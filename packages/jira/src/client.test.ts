@@ -74,6 +74,24 @@ describe("JiraClient TLS options", () => {
     expect(tls).toBeDefined();
     expect(tls?.rejectUnauthorized).toBe(false);
   });
+
+  test("forwards an abort signal through project catalog reads", async () => {
+    let capturedInit: RequestInit | undefined;
+    globalThis.fetch = mock((_url: string, options: RequestInit) => {
+      capturedInit = options;
+      return Promise.resolve(
+        new Response(JSON.stringify({ values: [], total: 0, startAt: 0, maxResults: 50 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    await new JiraClient(mockProfile).listProjects({ signal: controller.signal });
+
+    expect(capturedInit?.signal).toBe(controller.signal);
+  });
 });
 
 describe("JiraClient session auth mode (spec 001 task 5)", () => {

@@ -25,7 +25,7 @@ import { createSiteContext } from "../entrypoints/sidepanel/ports/site-context.j
 import { idbTemplateLibrary } from "../utils/templates/library.js";
 import { UNKNOWN_SITE_ORIGIN } from "../utils/docx/template-store.js";
 
-const SITE_A = "https://mayflower.atlassian.net";
+const SITE_A = "https://tenant-a.atlassian.net";
 const SITE_B = "https://other-tenant.atlassian.net";
 const PAGE_A = `${SITE_A}/wiki/spaces/DOCSY/pages/1/Root`;
 
@@ -56,6 +56,7 @@ describe("CHROME_CAPABILITIES", () => {
       "pdf-preview",
       "template-library",
       "durable-jobs",
+      "research",
       "settings-persistence",
       "confluence-page-customization",
     ]);

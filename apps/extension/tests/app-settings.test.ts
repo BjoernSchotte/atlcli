@@ -9,6 +9,7 @@ describe("app settings", () => {
   it("keeps legacy records visible by default", () => {
     expect(normalizeSettings({ locale: "de" })).toEqual({
       locale: "de",
+      lastWorkspace: null,
       hideRovoEntrypoints: false,
     });
   });
@@ -18,12 +19,14 @@ describe("app settings", () => {
       normalizeSettings({ locale: "en", hideRovoEntrypoints: true })
     ).toEqual({
       locale: "en",
+      lastWorkspace: null,
       hideRovoEntrypoints: true,
     });
     expect(
       normalizeSettings({ locale: "en", hideRovoEntrypoints: "true" })
     ).toEqual({
       locale: "en",
+      lastWorkspace: null,
       hideRovoEntrypoints: false,
     });
   });
@@ -35,11 +38,12 @@ describe("app settings", () => {
     ).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("persists both fields through the memory port", async () => {
+  it("persists the combined workspace and Rovo settings through the memory port", async () => {
     const store = memorySettingsStore();
-    await store.save({ locale: "de", hideRovoEntrypoints: true });
+    await store.save({ locale: "de", lastWorkspace: "ai", hideRovoEntrypoints: true });
     expect(await store.load()).toEqual({
       locale: "de",
+      lastWorkspace: "ai",
       hideRovoEntrypoints: true,
     });
   });

@@ -1508,6 +1508,8 @@ test("packed Activity and toolbar project mixed PDF/DOCX states durably", async 
 
   const activity = await context.newPage();
   await activity.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await activity.getByTestId("area-menu-toggle").click();
+  await activity.getByTestId("area-publishing").click();
   await activity.getByTestId("nav-activity").click();
   await expect(activity.getByTestId("activity-screen")).toBeVisible();
   await expect(activity.getByTestId("job-row")).toHaveCount(12);

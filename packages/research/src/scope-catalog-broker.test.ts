@@ -1,0 +1,152 @@
+import { describe, expect, test } from "bun:test";
+import {
+  ResearchScopeCatalogBroker,
+  type ResearchScopeCatalogProvidersV1,
+} from "./scope-catalog-broker.js";
+import { RESEARCH_SCOPE_CATALOG_SCHEMAS } from "./scope-catalog.js";
+
+const baseCandidate = {
+  schema: "atlcli.research-scope-candidate/v1" as const,
+  id: "research-scope-candidate:atlcli",
+  tenantOrigin: "https://tenant-a.atlassian.net",
+  product: "jira" as const,
+  entityKind: "project" as const,
+  entityRef: "research-scope-entity:atlcli",
+  key: "ATLCLI",
+  name: "atlcli",
+  accessible: true as const,
+  providerFreshnessAt: "2026-07-31T10:00:00.000Z",
+};
+
+function providers(): ResearchScopeCatalogProvidersV1 & { seenCursors: string[] } {
+  const seenCursors: string[] = [];
+  return {
+    seenCursors,
+    jira: {
+      async listProjects(input) {
+        seenCursors.push(input.providerCursor ?? "");
+        return input.providerCursor
+          ? { candidates: [{ ...baseCandidate, id: "research-scope-candidate:second", key: "OPS", name: "Operations" }] }
+          : { candidates: [{ ...baseCandidate, id: "research-scope-candidate:first" }], nextProviderCursor: "provider-secret-cursor" };
+      },
+    },
+    confluence: {
+      async listSpaces() {
+        return { candidates: [] };
+      },
+    },
+    async resolveReference() {
+      return undefined;
+    },
+  };
+}
+
+describe("scope catalog broker", () => {
+  test("keeps provider pagination cursors opaque", async () => {
+    const host = providers();
+    const broker = new ResearchScopeCatalogBroker({
+      tenantOrigin: "https://tenant-a.atlassian.net",
+      providers: host,
+    });
+    const first = await broker.invoke("jira.project.search", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
+      product: "jira",
+      entityKind: "project",
+      includeArchived: false,
+      maxCandidates: 25,
+    });
+    expect(first).toMatchObject({ candidates: [{ key: "ATLCLI" }] });
+    expect(typeof (first as { nextCursorRef?: unknown }).nextCursorRef).toBe("string");
+    expect((first as { nextCursorRef: string }).nextCursorRef).toMatch(/^research-scope-cursor:/);
+    expect(JSON.stringify(first)).not.toContain("provider-secret-cursor");
+
+    const nextCursorRef = (first as { nextCursorRef: string }).nextCursorRef;
+    const second = await broker.invoke("jira.project.search", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
+      product: "jira",
+      entityKind: "project",
+      includeArchived: false,
+      cursorRef: nextCursorRef,
+      maxCandidates: 25,
+    });
+    expect(second).toMatchObject({ candidates: [{ key: "OPS" }] });
+    expect(host.seenCursors).toEqual(["", "provider-secret-cursor"]);
+  });
+
+  test("fails closed when a provider returns a foreign candidate", async () => {
+    const host = providers();
+    host.jira.listProjects = async () => ({
+      candidates: [{ ...baseCandidate, tenantOrigin: "https://other.atlassian.net" }],
+    });
+    const broker = new ResearchScopeCatalogBroker({ tenantOrigin: "https://tenant-a.atlassian.net", providers: host });
+    await expect(broker.invoke("jira.project.search", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
+      product: "jira",
+      entityKind: "project",
+      includeArchived: false,
+      maxCandidates: 25,
+    })).rejects.toThrow("outside the active tenant");
+  });
+
+  test("fails closed when a provider returns an unversioned candidate", async () => {
+    const host = providers();
+    host.jira.listProjects = async () => ({
+      candidates: [{ ...baseCandidate, schema: undefined as never }],
+    });
+    const broker = new ResearchScopeCatalogBroker({ tenantOrigin: "https://tenant-a.atlassian.net", providers: host });
+    await expect(broker.invoke("jira.project.search", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
+      product: "jira",
+      entityKind: "project",
+      includeArchived: false,
+      maxCandidates: 25,
+    })).rejects.toThrow("schema is unsupported");
+  });
+
+  test("bounds catalog calls independently across search and reference resolution", async () => {
+    const host = providers();
+    let referenceCalls = 0;
+    host.resolveReference = async () => {
+      referenceCalls += 1;
+      return undefined;
+    };
+    const broker = new ResearchScopeCatalogBroker({
+      tenantOrigin: "https://tenant-a.atlassian.net",
+      providers: host,
+      limits: { maxCalls: 1 },
+    });
+    await broker.invoke("jira.project.search", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
+      product: "jira",
+      entityKind: "project",
+      includeArchived: false,
+      maxCandidates: 1,
+    });
+    await expect(broker.invoke("atlassian.reference.resolve", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["atlassian.reference.resolve"].input,
+      reference: "https://tenant-a.atlassian.net/browse/ATLCLI",
+      expectedTenantOrigin: "https://tenant-a.atlassian.net",
+      expectedKinds: ["project"],
+    })).rejects.toThrow("Scope catalog call budget exhausted");
+    expect(referenceCalls).toBe(0);
+  });
+
+  test("aborts a catalog provider call at its independent timeout", async () => {
+    const host = providers();
+    host.jira.listProjects = async ({ signal }) => await new Promise((_, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+    const broker = new ResearchScopeCatalogBroker({
+      tenantOrigin: "https://tenant-a.atlassian.net",
+      providers: host,
+      limits: { maxCallDurationMs: 1 },
+    });
+    await expect(broker.invoke("jira.project.search", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
+      product: "jira",
+      entityKind: "project",
+      includeArchived: false,
+      maxCandidates: 1,
+    })).rejects.toThrow("Scope catalog call timed out");
+  });
+});

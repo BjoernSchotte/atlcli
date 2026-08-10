@@ -259,12 +259,15 @@ export declare class JiraClient {
     private baseDelayMs;
     private isCloud;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    constructor(profile: Profile, options?: JiraClientOptions);
     private get apiPath();
     private get agilePath();
     private sleep;
     private applyFetchOptions;
+    private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
     listProjects(options?: {
@@ -274,11 +277,14 @@ export declare class JiraClient {
         query?: string;
         typeKey?: string;
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<{
         values: JiraProject[];
         total: number;
     }>;
-    getProject(keyOrId: string): Promise<JiraProject>;
+    getProject(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraProject>;
     createProject(params: {
         key: string;
         name: string;
@@ -472,7 +478,9 @@ export declare class JiraClient {
             outward: string;
         }>;
     }>;
-    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLinks(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraRemoteLink[]>;
     getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
     createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
         id: number;
@@ -617,6 +625,12 @@ export declare class JiraClient {
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
+// export: JiraClientOptions
+export interface JiraClientOptions {
+    guardTransport?: (event: JiraTransportEvent) => void;
+    observeTransport?: (event: JiraTransportEvent) => void;
+}
+
 // export: JiraComment
 export interface JiraComment {
     id: string;
@@ -740,6 +754,12 @@ export interface JiraIssueFields {
     parent?: JiraIssueRef;
     subtasks?: JiraIssueRef[];
     issuelinks?: JiraIssueLink[];
+    comment?: {
+        comments?: JiraComment[];
+        startAt?: number;
+        maxResults?: number;
+        total?: number;
+    };
     timetracking?: {
         originalEstimate?: string;
         remainingEstimate?: string;
@@ -808,6 +828,7 @@ export interface JiraProject {
     style?: string;
     avatarUrls?: Record<string, string>;
     simplified?: boolean;
+    archived?: boolean;
 }
 
 // export: JiraProjectCategory
@@ -902,6 +923,26 @@ export interface JiraTransitionField {
     fieldId: string;
     allowedValues?: unknown[];
 }
+
+// export: JiraTransportEvent
+export type JiraTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
+};
 
 // export: JiraUser
 export interface JiraUser {
@@ -1451,12 +1492,15 @@ export declare class JiraClient {
     private baseDelayMs;
     private isCloud;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    constructor(profile: Profile, options?: JiraClientOptions);
     private get apiPath();
     private get agilePath();
     private sleep;
     private applyFetchOptions;
+    private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
     listProjects(options?: {
@@ -1466,11 +1510,14 @@ export declare class JiraClient {
         query?: string;
         typeKey?: string;
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<{
         values: JiraProject[];
         total: number;
     }>;
-    getProject(keyOrId: string): Promise<JiraProject>;
+    getProject(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraProject>;
     createProject(params: {
         key: string;
         name: string;
@@ -1664,7 +1711,9 @@ export declare class JiraClient {
             outward: string;
         }>;
     }>;
-    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLinks(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraRemoteLink[]>;
     getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
     createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
         id: number;
@@ -1809,6 +1858,12 @@ export declare class JiraClient {
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
+// export: JiraClientOptions
+export interface JiraClientOptions {
+    guardTransport?: (event: JiraTransportEvent) => void;
+    observeTransport?: (event: JiraTransportEvent) => void;
+}
+
 // export: JiraComment
 export interface JiraComment {
     id: string;
@@ -1932,6 +1987,12 @@ export interface JiraIssueFields {
     parent?: JiraIssueRef;
     subtasks?: JiraIssueRef[];
     issuelinks?: JiraIssueLink[];
+    comment?: {
+        comments?: JiraComment[];
+        startAt?: number;
+        maxResults?: number;
+        total?: number;
+    };
     timetracking?: {
         originalEstimate?: string;
         remainingEstimate?: string;
@@ -2000,6 +2061,7 @@ export interface JiraProject {
     style?: string;
     avatarUrls?: Record<string, string>;
     simplified?: boolean;
+    archived?: boolean;
 }
 
 // export: JiraProjectCategory
@@ -2194,6 +2256,26 @@ export interface JiraTransitionField {
     fieldId: string;
     allowedValues?: unknown[];
 }
+
+// export: JiraTransportEvent
+export type JiraTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
+};
 
 // export: JiraUser
 export interface JiraUser {
@@ -2846,12 +2928,15 @@ export declare class JiraClient {
     private baseDelayMs;
     private isCloud;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    constructor(profile: Profile, options?: JiraClientOptions);
     private get apiPath();
     private get agilePath();
     private sleep;
     private applyFetchOptions;
+    private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
     listProjects(options?: {
@@ -2861,11 +2946,14 @@ export declare class JiraClient {
         query?: string;
         typeKey?: string;
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<{
         values: JiraProject[];
         total: number;
     }>;
-    getProject(keyOrId: string): Promise<JiraProject>;
+    getProject(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraProject>;
     createProject(params: {
         key: string;
         name: string;
@@ -3059,7 +3147,9 @@ export declare class JiraClient {
             outward: string;
         }>;
     }>;
-    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLinks(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraRemoteLink[]>;
     getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
     createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
         id: number;
@@ -3204,6 +3294,12 @@ export declare class JiraClient {
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
+// export: JiraClientOptions
+export interface JiraClientOptions {
+    guardTransport?: (event: JiraTransportEvent) => void;
+    observeTransport?: (event: JiraTransportEvent) => void;
+}
+
 // export: JiraComment
 export interface JiraComment {
     id: string;
@@ -3327,6 +3423,12 @@ export interface JiraIssueFields {
     parent?: JiraIssueRef;
     subtasks?: JiraIssueRef[];
     issuelinks?: JiraIssueLink[];
+    comment?: {
+        comments?: JiraComment[];
+        startAt?: number;
+        maxResults?: number;
+        total?: number;
+    };
     timetracking?: {
         originalEstimate?: string;
         remainingEstimate?: string;
@@ -3395,6 +3497,7 @@ export interface JiraProject {
     style?: string;
     avatarUrls?: Record<string, string>;
     simplified?: boolean;
+    archived?: boolean;
 }
 
 // export: JiraProjectCategory
@@ -3489,6 +3592,26 @@ export interface JiraTransitionField {
     fieldId: string;
     allowedValues?: unknown[];
 }
+
+// export: JiraTransportEvent
+export type JiraTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
+};
 
 // export: JiraUser
 export interface JiraUser {
@@ -4038,12 +4161,15 @@ export declare class JiraClient {
     private baseDelayMs;
     private isCloud;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    constructor(profile: Profile, options?: JiraClientOptions);
     private get apiPath();
     private get agilePath();
     private sleep;
     private applyFetchOptions;
+    private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
     listProjects(options?: {
@@ -4053,11 +4179,14 @@ export declare class JiraClient {
         query?: string;
         typeKey?: string;
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<{
         values: JiraProject[];
         total: number;
     }>;
-    getProject(keyOrId: string): Promise<JiraProject>;
+    getProject(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraProject>;
     createProject(params: {
         key: string;
         name: string;
@@ -4251,7 +4380,9 @@ export declare class JiraClient {
             outward: string;
         }>;
     }>;
-    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLinks(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraRemoteLink[]>;
     getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
     createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
         id: number;
@@ -4396,6 +4527,12 @@ export declare class JiraClient {
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
+// export: JiraClientOptions
+export interface JiraClientOptions {
+    guardTransport?: (event: JiraTransportEvent) => void;
+    observeTransport?: (event: JiraTransportEvent) => void;
+}
+
 // export: JiraComment
 export interface JiraComment {
     id: string;
@@ -4519,6 +4656,12 @@ export interface JiraIssueFields {
     parent?: JiraIssueRef;
     subtasks?: JiraIssueRef[];
     issuelinks?: JiraIssueLink[];
+    comment?: {
+        comments?: JiraComment[];
+        startAt?: number;
+        maxResults?: number;
+        total?: number;
+    };
     timetracking?: {
         originalEstimate?: string;
         remainingEstimate?: string;
@@ -4587,6 +4730,7 @@ export interface JiraProject {
     style?: string;
     avatarUrls?: Record<string, string>;
     simplified?: boolean;
+    archived?: boolean;
 }
 
 // export: JiraProjectCategory
@@ -4781,6 +4925,26 @@ export interface JiraTransitionField {
     fieldId: string;
     allowedValues?: unknown[];
 }
+
+// export: JiraTransportEvent
+export type JiraTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
+};
 
 // export: JiraUser
 export interface JiraUser {

@@ -70,7 +70,24 @@ const NON_EXPORT_NOTE_CODES = new Set([
   // Publication build-budget issue, likewise separate from ExportNote.
   "chart-p0-diagnostic",
   "compiler-diagnostic",
+  // Chat answer gaps are a separate, host-owned evidence taxonomy. They use
+  // the same `{ code, message }` shape but are never Confluence ExportNotes.
+  "incomplete-coverage",
+  "incomplete-retrieval",
+  "invalid-citation",
   "legacy-pdf-error",
+  "missing-context",
+  "no-detail-evidence",
+  "prompt-injection-risk",
+  "question-not-answered",
+  "stale-source",
+  "uncovered-candidate",
+  "unresolved-contradiction",
+  "truncated-source",
+  "unresolved-reference",
+  "wrong-source",
+  // Zod refinement issues emitted while validating HITL question proposals.
+  "custom",
 ]);
 
 const NON_EXPORT_NOTE_PREFIXES = new Set([

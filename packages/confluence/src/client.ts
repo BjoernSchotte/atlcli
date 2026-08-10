@@ -216,7 +216,16 @@ export type ConfluenceSpace = {
   key: string;
   name: string;
   type: "global" | "personal";
+  status?: "current" | "archived" | "trashed";
+  /** Active human-facing aliases advertised by the v2 space catalog. */
+  aliases?: string[];
   url?: string;
+};
+
+/** A single bounded page from the cursor-paginated v2 spaces endpoint. */
+export type ConfluenceSpacePageV2 = {
+  spaces: ConfluenceSpace[];
+  nextCursor?: string;
 };
 
 /** A space's logo, from `GET /space/{key}?expand=icon` (spec 005, gap G3). */
@@ -449,6 +458,42 @@ function extractCursor(nextLink: string | undefined, baseUrl: string): string | 
 
 type RetryScheduler = (delayMs: number, signal?: AbortSignal) => Promise<void>;
 
+export type ConfluenceTransportEvent =
+  | {
+      type: "attempt";
+      method: string;
+      attempt: number;
+    }
+  | {
+      type: "response";
+      method: string;
+      attempt: number;
+      status: number;
+      durationMs: number;
+      responseBytes: number;
+      retryAfterMs?: number;
+    }
+  | {
+      type: "error";
+      method: string;
+      attempt: number;
+      durationMs: number;
+    };
+
+export interface ConfluenceClientOptions {
+  exportSourcePolicy?: ExportSourcePolicy;
+  /**
+   * Synchronous budget guard. It may throw before an attempt or after a body is
+   * measured, preventing further retries or exposure to the caller.
+   */
+  guardTransport?: (event: ConfluenceTransportEvent) => void;
+  /**
+   * Content-free transport telemetry for bounded hosts. Events omit URLs,
+   * query/body data, headers, response content, and error messages.
+   */
+  observeTransport?: (event: ConfluenceTransportEvent) => void;
+}
+
 // Internal-only test seam. Keeping this off the constructor avoids widening the
 // public client API while allowing retry tests to observe requested backoffs
 // without waiting through production-duration timers.
@@ -463,6 +508,8 @@ export class ConfluenceClient {
   private maxRetries = 3;
   private baseDelayMs = 1000;
   private tlsOptions: TlsOptions | undefined;
+  private guardTransport: ((event: ConfluenceTransportEvent) => void) | undefined;
+  private observeTransport: ((event: ConfluenceTransportEvent) => void) | undefined;
   /**
    * Where a SESSION-mode binary download may be redirected to. Injected into
    * `requestBinary`'s redirect follower rather than hardcoded there, so the
@@ -474,7 +521,7 @@ export class ConfluenceClient {
 
   constructor(
     profile: Profile,
-    options: { exportSourcePolicy?: ExportSourcePolicy } = {},
+    options: ConfluenceClientOptions = {},
   ) {
     this.confluenceBaseUrl = getConfluenceBaseUrl(profile);
     this.deploymentType = resolveDeploymentType(profile);
@@ -488,10 +535,21 @@ export class ConfluenceClient {
     this.useSession = profile.auth.type === "session";
     this.authHeader = this.useSession ? "" : buildAuthHeader(profile);
     this.tlsOptions = buildTlsOptions(profile);
+    this.guardTransport = options.guardTransport;
+    this.observeTransport = options.observeTransport;
     this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
       siteOrigin: this.confluenceBaseUrl,
     });
     this.exportSourcePolicy = options.exportSourcePolicy ?? "adf-primary";
+  }
+
+  private emitTransport(event: ConfluenceTransportEvent): void {
+    this.guardTransport?.(event);
+    try {
+      this.observeTransport?.(event);
+    } catch {
+      // Telemetry must never change request behaviour.
+    }
   }
 
   /** Get the Confluence instance base URL */
@@ -680,7 +738,7 @@ export class ConfluenceClient {
     // page text). Default behavior for every existing caller is unchanged.
     const suppressBody = options.logBody === false || options.logBody === "meta-only";
     const bodyMeta = (text: string, res: Response) => ({
-      byteLength: text.length,
+      byteLength: new TextEncoder().encode(text).byteLength,
       contentType: res.headers.get("content-type") ?? undefined,
       requestId,
     });
@@ -709,16 +767,32 @@ export class ConfluenceClient {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       options.signal?.throwIfAborted();
-      const res = await fetch(url.toString(), this.applyFetchOptions({
-        method,
-        headers: {
-          Authorization: this.authHeader,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined,
-        signal: options.signal,
-      }));
+      this.emitTransport({ type: "attempt", method, attempt });
+      const attemptStartedAt = Date.now();
+      let res: Response;
+      try {
+        res = await fetch(
+          url.toString(),
+          this.applyFetchOptions({
+            method,
+            headers: {
+              Authorization: this.authHeader,
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: options.body ? JSON.stringify(options.body) : undefined,
+            signal: options.signal,
+          })
+        );
+      } catch (error) {
+        this.emitTransport({
+          type: "error",
+          method,
+          attempt,
+          durationMs: Date.now() - attemptStartedAt,
+        });
+        throw error;
+      }
 
       // Session auth: a redirect means the session is missing — classify it
       // rather than follow it to a foreign origin with cookies.
@@ -729,6 +803,15 @@ export class ConfluenceClient {
         const delayMs =
           parseRetryAfterMs(res.headers.get("Retry-After")) ??
           this.baseDelayMs * Math.pow(2, attempt);
+        this.emitTransport({
+          type: "response",
+          method,
+          attempt,
+          status: res.status,
+          durationMs: Date.now() - attemptStartedAt,
+          responseBytes: 0,
+          retryAfterMs: delayMs,
+        });
 
         if (attempt < this.maxRetries) {
           await this.sleep(delayMs, options.signal);
@@ -746,6 +829,14 @@ export class ConfluenceClient {
       }
 
       const text = await res.text();
+      this.emitTransport({
+        type: "response",
+        method,
+        attempt,
+        status: res.status,
+        durationMs: Date.now() - attemptStartedAt,
+        responseBytes: new TextEncoder().encode(text).byteLength,
+      });
       let data: unknown = text;
       let isJson = false;
       if (text) {
@@ -1407,6 +1498,7 @@ export class ConfluenceClient {
         excerpt: excerpt ? "indexed" : undefined,
       },
       signal: options.signal,
+      logBody: "meta-only",
     })) as any;
 
     const results = Array.isArray(data.results) ? data.results : [];
@@ -1533,6 +1625,20 @@ export class ConfluenceClient {
   }
 
   /**
+   * Fetch one provider-issued next page for a previous `search()` call.
+   *
+   * The URL is accepted only when it resolves to this client's exact origin and
+   * REST search path. Extension guests never receive this provider cursor; it
+   * remains behind the run-local cursor vault.
+   */
+  async searchNextPage(
+    providerCursor: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<SearchResults> {
+    return this.searchByUrl(providerCursor, options.signal);
+  }
+
+  /**
    * Look up pages by EXACT title through the DIRECT content endpoint
    * (`GET /content?type=page&title=…[&spaceKey=…]`), NOT the CQL search index.
    *
@@ -1585,9 +1691,25 @@ export class ConfluenceClient {
    * Strips the /rest/api prefix from the URL since request() adds it.
    */
   private async searchByUrl(url: string, signal?: AbortSignal): Promise<SearchResults> {
-    // Strip /rest/api prefix since request() adds it
-    const path = url.replace(/^\/rest\/api/, "");
-    const data = (await this.request(path, { signal })) as any;
+    const apiBase = new URL(`${this.confluenceBaseUrl}/rest/api/`);
+    // Confluence Cloud currently emits both site-relative links
+    // (`/wiki/rest/api/...`) and product-relative links (`/rest/api/...`).
+    // A leading slash normally resets the URL path, so resolve the latter
+    // relative to the configured product REST base explicitly.
+    const resolved = url.startsWith("/rest/api/")
+      ? new URL(url.slice("/rest/api/".length), apiBase)
+      : new URL(url, apiBase);
+    if (
+      resolved.origin.toLowerCase() !== this.capabilityOrigin ||
+      !resolved.pathname.startsWith(apiBase.pathname)
+    ) {
+      throw new Error("Confluence search cursor is outside the configured REST API.");
+    }
+    const path = `/${resolved.pathname.slice(apiBase.pathname.length)}${resolved.search}`;
+    const data = (await this.request(path, {
+      signal,
+      logBody: "meta-only",
+    })) as any;
     const results = Array.isArray(data.results) ? data.results : [];
     const nextLink = data._links?.next;
 
@@ -2039,15 +2161,75 @@ export class ConfluenceClient {
   }
 
   /**
+   * List one bounded page of spaces using Confluence's cursor-paginated v2 API.
+   *
+   * This deliberately does not drain pagination. Callers such as the research
+   * scope broker own the page/cursor budget and keep the provider cursor opaque.
+   */
+  async listSpacesV2(
+    options: {
+      limit?: number;
+      cursor?: string;
+      status?: "current" | "archived";
+      keys?: readonly string[];
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<ConfluenceSpacePageV2> {
+    const requestedLimit = options.limit ?? 25;
+    const limit = Math.min(Math.max(Math.trunc(requestedLimit), 1), 250);
+    const data = (await this.requestV2("/spaces", {
+      query: { limit, cursor: options.cursor, status: options.status, keys: options.keys },
+      signal: options.signal,
+      logBody: "meta-only",
+    })) as any;
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const spaces = results.flatMap((item: any): ConfluenceSpace[] => {
+      if (!item || typeof item !== "object") return [];
+      const id = typeof item.id === "string" ? item.id : undefined;
+      const key = typeof item.key === "string" ? item.key : undefined;
+      const name = typeof item.name === "string" ? item.name : undefined;
+      if (!id || !key || !name) return [];
+      const type = item.type === "personal" ? "personal" : "global";
+      return [{
+        id,
+        key,
+        name,
+        type,
+        ...(item.status === "archived" || item.status === "trashed" || item.status === "current"
+          ? { status: item.status }
+          : {}),
+        ...(typeof item.currentActiveAlias === "string" && item.currentActiveAlias.trim()
+          ? { aliases: [item.currentActiveAlias.trim()] }
+          : {}),
+        url: this.buildWebUrl(item._links?.webui),
+      }];
+    });
+    const nextLink = typeof data?._links?.next === "string" ? data._links.next : undefined;
+    return {
+      spaces,
+      nextCursor: extractCursor(nextLink, `${this.confluenceBaseUrl}/api/v2/spaces`),
+    };
+  }
+
+  /**
    * Get a space by key.
    */
-  async getSpace(key: string): Promise<ConfluenceSpace> {
-    const data = (await this.request(`/space/${key}`, {})) as any;
+  async getSpace(
+    key: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluenceSpace> {
+    const data = (await this.request(`/space/${key}`, {
+      signal: options.signal,
+      logBody: "meta-only",
+    })) as any;
     return {
       id: data.id,
       key: data.key,
       name: data.name,
       type: data.type ?? "global",
+      ...(data.status === "current" || data.status === "archived" || data.status === "trashed"
+        ? { status: data.status }
+        : {}),
       url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
     };
   }
@@ -3344,10 +3526,12 @@ export class ConfluenceClient {
    */
   async listPageInlineCommentsForExport(
     pageId: string,
-    options: { signal?: AbortSignal; maxInlineComments?: number } = {},
+    options: { signal?: AbortSignal; maxInlineComments?: number; maxRequests?: number } = {},
   ): Promise<PageInlineCommentsExportResult> {
     const requested = options.maxInlineComments ?? DEFAULT_PAGE_INLINE_COMMENT_LIMIT;
     const maxComments = Math.max(0, Math.min(requested, MAX_PAGE_INLINE_COMMENT_LIMIT));
+    const requestedRequests = options.maxRequests ?? MAX_PAGE_INLINE_COMMENT_REQUESTS;
+    const maxRequests = Math.max(1, Math.min(requestedRequests, MAX_PAGE_INLINE_COMMENT_REQUESTS));
     if (maxComments === 0) return { comments: [], complete: false };
 
     let requests = 0;
@@ -3360,7 +3544,7 @@ export class ConfluenceClient {
       cursor: string | undefined,
       includeRootFilters: boolean,
     ): Promise<{ items: InlineComment[]; next?: string }> => {
-      if (requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+      if (requests >= maxRequests) {
         complete = false;
         return { items: [] };
       }
@@ -3404,7 +3588,7 @@ export class ConfluenceClient {
         true,
       );
       roots.push(...page.items);
-      if (!page.next || observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+      if (!page.next || observed >= maxComments || requests >= maxRequests) {
         if (page.next) complete = false;
         break;
       }
@@ -3414,7 +3598,7 @@ export class ConfluenceClient {
     }
 
     for (const root of roots) {
-      if (observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+      if (observed >= maxComments || requests >= maxRequests) {
         complete = false;
         break;
       }
@@ -3427,7 +3611,7 @@ export class ConfluenceClient {
           false,
         );
         root.replies.push(...page.items);
-        if (!page.next || observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+        if (!page.next || observed >= maxComments || requests >= maxRequests) {
           if (page.next) complete = false;
           break;
         }

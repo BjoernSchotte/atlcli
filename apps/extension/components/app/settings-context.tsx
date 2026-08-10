@@ -22,6 +22,7 @@ import {
 
 export interface AppSettingsApi {
   settings: AppSettings;
+  loaded: boolean;
   /** Merge a patch, persist it, and reflect it immediately. */
   update(patch: Partial<AppSettings>): Promise<void>;
 }
@@ -36,6 +37,7 @@ export function SettingsProvider({
   children: React.ReactNode;
 }): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [loaded, setLoaded] = useState(false);
   const currentRef = useRef<AppSettings>(DEFAULT_SETTINGS);
   const persistedRef = useRef<AppSettings>(DEFAULT_SETTINGS);
   const revisionRef = useRef(0);
@@ -50,11 +52,13 @@ export function SettingsProvider({
           currentRef.current = loaded;
           persistedRef.current = loaded;
           setSettings(loaded);
+          setLoaded(true);
         }
       })
       .catch(() => {
         // A host that cannot read preferences still gets a working app on the
         // defaults; the Settings screen surfaces write failures separately.
+        if (!cancelled) setLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -94,7 +98,10 @@ export function SettingsProvider({
     [store]
   );
 
-  const value = useMemo<AppSettingsApi>(() => ({ settings, update }), [settings, update]);
+  const value = useMemo<AppSettingsApi>(
+    () => ({ settings, loaded, update }),
+    [settings, loaded, update],
+  );
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 

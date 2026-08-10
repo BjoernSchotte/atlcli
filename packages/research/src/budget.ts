@@ -1,0 +1,710 @@
+import {
+  ResearchContractError,
+  type ResearchLimitsV1,
+  type ResearchProduct,
+  type ResearchRunCountsV1,
+} from "./contracts.js";
+import type { ResearchBudgetSnapshotV1 } from "./capability-contracts.js";
+
+type TransportBudgetEvent =
+  | { type: "attempt" }
+  | { type: "response"; responseBytes: number }
+  | { type: "error" };
+
+/**
+ * Body-free counters needed to continue a bounded run after its process or
+ * service worker has gone away. Provider cursors and response content are
+ * deliberately not part of this durable projection.
+ */
+export interface ResearchRunBudgetStateV1 {
+  schema: "atlcli.research-run-budget/v1";
+  ptcCalls: number;
+  httpAttempts: number;
+  responseBytes: number;
+  pages: Record<ResearchProduct, number>;
+  items: Record<ResearchProduct, number>;
+  details: Record<ResearchProduct, number>;
+}
+
+export interface ResearchModelBudgetSnapshotV1 {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costMicros: number;
+}
+
+/**
+ * Provider-observed token categories. The durable safety budget continues to
+ * enforce `inputTokens` as the conservative sum of all three input classes;
+ * this projection exists so performance and invoice-like diagnostics do not
+ * mistake cache reads for fresh prompt input.
+ */
+export interface ResearchModelObservedUsageV1 {
+  inputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  outputTokens: number;
+}
+
+/** Body-free byte attribution for the provider-visible request envelope. */
+export interface ResearchModelRequestBytesV1 {
+  systemBytes: number;
+  messageBytes: number;
+  toolBytes: number;
+  responseFormatBytes: number;
+  totalBytes: number;
+}
+
+export interface ResearchModelBudgetCapacityV1 {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/**
+ * Body-free model-spend checkpoint. It retains the immutable ceiling chosen
+ * when a durable session first dispatches a provider request, plus the
+ * pessimistic reservation/usage counters needed to continue safely after a
+ * process or service-worker restart.
+ */
+export interface ResearchModelBudgetStateV1 {
+  schema: "atlcli.research-model-budget/v1";
+  limits: Pick<
+    ResearchLimitsV1,
+    "maxModelCalls" | "maxTotalModelInputTokens" | "maxTotalModelOutputTokens" | "maxModelCostMicros"
+  >;
+  snapshot: ResearchModelBudgetSnapshotV1;
+  /** Optional for backwards compatibility with checkpoints written before T0. */
+  observedUsage?: ResearchModelObservedUsageV1;
+}
+
+interface ResearchModelBudgetReservationV1 {
+  id: number;
+  inputTokens: number;
+  outputTokens: number;
+  costMicros: number;
+}
+
+// Standard Sonnet requests cost $3/MTok input and $15/MTok output. Reserve
+// $4/MTok input to cover a normal five-minute cache write. A request only
+// reaches the more expensive long-context tier above 200k input tokens; that
+// decision is per provider request, not per aggregate session. The normal
+// research request ceiling is 80k, so charging every turn at long-context
+// rates would incorrectly prevent a bounded workflow from reaching its final
+// author.
+const STANDARD_CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN = 4;
+const STANDARD_CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN = 15;
+const LONG_CONTEXT_INPUT_TOKENS = 200_000;
+const LONG_CONTEXT_CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN = 6;
+const LONG_CONTEXT_CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN = 23;
+
+const RESEARCH_RUN_BUDGET_SCHEMA_V1 = "atlcli.research-run-budget/v1" as const;
+const RESEARCH_MODEL_BUDGET_SCHEMA_V1 = "atlcli.research-model-budget/v1" as const;
+
+function nonNegativeInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new ResearchContractError("invalid-request", `${label} is invalid.`);
+  }
+  return value as number;
+}
+
+function positiveInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new ResearchContractError("invalid-request", `${label} is invalid.`);
+  }
+  return value as number;
+}
+
+function productCounts(
+  value: unknown,
+  label: string,
+): Record<ResearchProduct, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ResearchContractError("invalid-request", `${label} is invalid.`);
+  }
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).length !== 2 || !("jira" in record) || !("confluence" in record)) {
+    throw new ResearchContractError("invalid-request", `${label} is invalid.`);
+  }
+  return {
+    jira: nonNegativeInteger(record.jira, `${label}.jira`),
+    confluence: nonNegativeInteger(record.confluence, `${label}.confluence`),
+  };
+}
+
+/** Validate a portable budget projection, optionally against one run's limits. */
+export function parseResearchRunBudgetStateV1(
+  value: unknown,
+  limits?: ResearchLimitsV1,
+): ResearchRunBudgetStateV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ResearchContractError("invalid-request", "Research run budget state is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  if (record.schema !== RESEARCH_RUN_BUDGET_SCHEMA_V1 ||
+      Object.keys(record).length !== 7) {
+    throw new ResearchContractError("invalid-request", "Research run budget state is invalid.");
+  }
+  const parsed: ResearchRunBudgetStateV1 = {
+    schema: RESEARCH_RUN_BUDGET_SCHEMA_V1,
+    ptcCalls: nonNegativeInteger(record.ptcCalls, "Research run PTC calls"),
+    httpAttempts: nonNegativeInteger(record.httpAttempts, "Research run HTTP attempts"),
+    responseBytes: nonNegativeInteger(record.responseBytes, "Research run response bytes"),
+    pages: productCounts(record.pages, "Research run page counters"),
+    items: productCounts(record.items, "Research run item counters"),
+    details: productCounts(record.details, "Research run detail counters"),
+  };
+  if (limits && (
+    parsed.ptcCalls > limits.maxPtcCalls ||
+    parsed.httpAttempts > limits.maxHttpCalls ||
+    parsed.responseBytes > limits.maxTotalResponseBytes ||
+    Object.values(parsed.pages).some((count) => count > limits.maxSearchPagesPerProduct) ||
+    Object.values(parsed.items).some((count) => count > limits.maxItemsPerProduct) ||
+    Object.values(parsed.details).some((count) => count > limits.maxDetailItemsPerProduct)
+  )) {
+    throw new ResearchContractError("invalid-request", "Research run budget state exceeds this run's limits.");
+  }
+  return structuredClone(parsed);
+}
+
+/** Validate a portable, body-free provider-spend checkpoint. */
+export function parseResearchModelBudgetStateV1(value: unknown): ResearchModelBudgetStateV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ResearchContractError("invalid-request", "Research model budget state is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  const allowedKeys = new Set(["schema", "limits", "snapshot", "observedUsage"]);
+  if (record.schema !== RESEARCH_MODEL_BUDGET_SCHEMA_V1 ||
+      (keys.length !== 3 && keys.length !== 4) ||
+      keys.some((key) => !allowedKeys.has(key)) ||
+      !record.limits || typeof record.limits !== "object" || Array.isArray(record.limits) ||
+      !record.snapshot || typeof record.snapshot !== "object" || Array.isArray(record.snapshot)) {
+    throw new ResearchContractError("invalid-request", "Research model budget state is invalid.");
+  }
+  const limitsRecord = record.limits as Record<string, unknown>;
+  const snapshotRecord = record.snapshot as Record<string, unknown>;
+  if (Object.keys(limitsRecord).length !== 4 || Object.keys(snapshotRecord).length !== 4) {
+    throw new ResearchContractError("invalid-request", "Research model budget state is invalid.");
+  }
+  const limits = {
+    maxModelCalls: positiveInteger(limitsRecord.maxModelCalls, "Research model call limit"),
+    maxTotalModelInputTokens: positiveInteger(limitsRecord.maxTotalModelInputTokens, "Research model input-token limit"),
+    maxTotalModelOutputTokens: positiveInteger(limitsRecord.maxTotalModelOutputTokens, "Research model output-token limit"),
+    maxModelCostMicros: positiveInteger(limitsRecord.maxModelCostMicros, "Research model cost limit"),
+  };
+  const snapshot = {
+    calls: nonNegativeInteger(snapshotRecord.calls, "Research model call count"),
+    inputTokens: nonNegativeInteger(snapshotRecord.inputTokens, "Research model input-token count"),
+    outputTokens: nonNegativeInteger(snapshotRecord.outputTokens, "Research model output-token count"),
+    costMicros: nonNegativeInteger(snapshotRecord.costMicros, "Research model cost count"),
+  };
+  const observedUsage = record.observedUsage === undefined
+    ? undefined
+    : parseResearchModelObservedUsageV1(record.observedUsage);
+  // A provider can report usage above a pessimistic pre-reservation. Retain
+  // that observed overage so a recovered host fails closed on the next call;
+  // rejecting it here would erase the only durable evidence of the spend.
+  return {
+    schema: RESEARCH_MODEL_BUDGET_SCHEMA_V1,
+    limits,
+    snapshot,
+    ...(observedUsage ? { observedUsage } : {}),
+  };
+}
+
+export function parseResearchModelObservedUsageV1(
+  value: unknown,
+): ResearchModelObservedUsageV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ResearchContractError("invalid-request", "Research model observed usage is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).length !== 4) {
+    throw new ResearchContractError("invalid-request", "Research model observed usage is invalid.");
+  }
+  return {
+    inputTokens: nonNegativeInteger(record.inputTokens, "Research model fresh input-token count"),
+    cacheCreationInputTokens: nonNegativeInteger(
+      record.cacheCreationInputTokens,
+      "Research model cache-creation input-token count",
+    ),
+    cacheReadInputTokens: nonNegativeInteger(
+      record.cacheReadInputTokens,
+      "Research model cache-read input-token count",
+    ),
+    outputTokens: nonNegativeInteger(record.outputTokens, "Research model observed output-token count"),
+  };
+}
+
+function encodedJsonBytes(value: unknown, label: string): number {
+  let encoded: string;
+  try {
+    encoded = JSON.stringify(value);
+  } catch {
+    throw new ResearchContractError("invalid-request", `${label} is not JSON-safe.`);
+  }
+  if (encoded === undefined) {
+    throw new ResearchContractError("invalid-request", `${label} is not JSON-safe.`);
+  }
+  return new TextEncoder().encode(encoded).byteLength;
+}
+
+function modelInputBytes(value: unknown, seen = new Set<object>()): number {
+  if (value === null || value === undefined) return 4;
+  if (typeof value === "string") return new TextEncoder().encode(value).byteLength;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value).length;
+  }
+  if (typeof value === "function" || typeof value === "symbol") return 0;
+  if (Array.isArray(value)) return value.reduce((total, item) => total + modelInputBytes(item, seen), 2);
+  if (typeof value !== "object") return 0;
+  if (seen.has(value)) return 0;
+  seen.add(value);
+  return Object.entries(value as Record<string, unknown>).reduce(
+    (total, [key, item]) => total + new TextEncoder().encode(key).byteLength + modelInputBytes(item, seen),
+    2,
+  );
+}
+
+// PTC requests usually carry a small JSON input schema per function. The
+// previous 8 KiB-per-tool placeholder treated every small read capability as
+// a large custom schema, multiplying a one-shot run's reservation until the
+// final author could not start. Keep a conservative, serializable bound per
+// tool and a separate fixed allowance for the provider's tool-use prompt.
+// The latter is documented by Anthropic and must not be multiplied by the
+// number of functions in a request.
+const MODEL_TOOL_SCHEMA_RESERVE_BYTES = 2_048;
+const MODEL_TOOL_USE_SYSTEM_RESERVE_BYTES = 1_536;
+const MODEL_RESPONSE_FORMAT_RESERVE_BYTES = 2_048;
+
+/**
+ * Project LangChain's internal request object onto the data that is actually
+ * serialized to a provider. Walking its complete object graph also walks Zod
+ * implementation metadata and middleware closures; those are not tokens and
+ * would make a fail-closed budget reject ordinary short calls.
+ */
+export function researchModelRequestBytesV1(value: unknown): ResearchModelRequestBytesV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const messageBytes = modelInputBytes(value);
+    return {
+      systemBytes: 0,
+      messageBytes,
+      toolBytes: 0,
+      responseFormatBytes: 0,
+      totalBytes: messageBytes,
+    };
+  }
+  const request = value as {
+    systemMessage?: unknown;
+    messages?: unknown;
+    tools?: unknown;
+    responseFormat?: unknown;
+  };
+  const systemMessage = request.systemMessage;
+  const messages = Array.isArray(request.messages)
+    ? request.messages.map((message) => {
+      if (!message || typeof message !== "object") return message;
+      const record = message as Record<string, unknown>;
+      // These are the LangChain fields which become Anthropic message blocks.
+      return {
+        content: record.content,
+        name: record.name,
+        tool_call_id: record.tool_call_id,
+        tool_calls: record.tool_calls,
+        additional_kwargs: record.additional_kwargs,
+      };
+    })
+    : request.messages;
+  const tools = Array.isArray(request.tools)
+    ? request.tools.map((tool) => {
+      if (!tool || typeof tool !== "object") return undefined;
+      const record = tool as Record<string, unknown>;
+      // Tool schema serialization is provider-specific. Reserve a deliberately
+      // high fixed amount instead of counting the non-serialized Zod graph.
+      return { name: record.name, description: record.description };
+    })
+    : [];
+  const systemBytes = modelInputBytes(systemMessage);
+  const messageBytes = modelInputBytes(messages);
+  const toolBytes = modelInputBytes(tools) +
+    (tools.length > 0 ? MODEL_TOOL_USE_SYSTEM_RESERVE_BYTES : 0) +
+    tools.length * MODEL_TOOL_SCHEMA_RESERVE_BYTES;
+  const responseFormatBytes = request.responseFormat === undefined
+    ? 0
+    : MODEL_RESPONSE_FORMAT_RESERVE_BYTES;
+  return {
+    systemBytes,
+    messageBytes,
+    toolBytes,
+    responseFormatBytes,
+    totalBytes: systemBytes + messageBytes + toolBytes + responseFormatBytes,
+  };
+}
+
+function providerRequestInputBytes(value: unknown): number {
+  return researchModelRequestBytesV1(value).totalBytes;
+}
+
+export function observedResearchModelUsageV1(
+  value: unknown,
+): ResearchModelObservedUsageV1 | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as {
+    usage_metadata?: Record<string, unknown> & {
+      input_token_details?: Record<string, unknown>;
+    };
+    response_metadata?: { usage?: Record<string, unknown> };
+  };
+  const raw = record.response_metadata?.usage;
+  const normalized = record.usage_metadata;
+  const inputDetails = normalized?.input_token_details;
+  if (!raw && !normalized) return undefined;
+  const token = (source: Record<string, unknown> | undefined, key: string): number | undefined =>
+    Number.isSafeInteger(source?.[key]) && (source?.[key] as number) >= 0
+      ? source?.[key] as number
+      : undefined;
+  const cacheCreationInputTokens = token(raw, "cache_creation_input_tokens") ??
+    token(inputDetails, "cache_creation") ?? 0;
+  const cacheReadInputTokens = token(raw, "cache_read_input_tokens") ??
+    token(inputDetails, "cache_read") ?? 0;
+  // Anthropic's raw usage reports fresh input separately. LangChain's
+  // normalized input_tokens includes fresh, cache-write, and cache-read input,
+  // so subtract the separately retained cache categories when raw usage is not
+  // available. This keeps the four receipt dimensions mutually exclusive.
+  const normalizedInputTokens = token(normalized, "input_tokens") ?? 0;
+  const inputTokens = token(raw, "input_tokens") ?? Math.max(
+    0,
+    normalizedInputTokens - cacheCreationInputTokens - cacheReadInputTokens,
+  );
+  const outputTokens = token(raw, "output_tokens") ?? token(normalized, "output_tokens") ?? 0;
+  return inputTokens > 0 || cacheCreationInputTokens > 0 || cacheReadInputTokens > 0 ||
+      outputTokens > 0
+    ? { inputTokens, cacheCreationInputTokens, cacheReadInputTokens, outputTokens }
+    : undefined;
+}
+
+/**
+ * A process-local, fail-closed model budget. It reserves a conservative
+ * request maximum before each model invocation, so concurrent subagents
+ * cannot exceed a run ceiling merely by starting together. On a provider
+ * error the reservation intentionally remains consumed: retry loops must not
+ * turn an uncertain billable call into unbounded spend.
+ */
+export class ResearchModelRunBudget {
+  readonly #limits: ResearchLimitsV1;
+  readonly #inputCostMicrosPerToken: number;
+  readonly #outputCostMicrosPerToken: number;
+  #calls = 0;
+  #inputTokens = 0;
+  #outputTokens = 0;
+  #costMicros = 0;
+  #observedUsage: ResearchModelObservedUsageV1 = {
+    inputTokens: 0,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+    outputTokens: 0,
+  };
+  #nextReservationId = 1;
+  readonly #reservations = new Map<number, ResearchModelBudgetReservationV1>();
+
+  constructor(limits: ResearchLimitsV1) {
+    this.#limits = limits;
+    const longContext = limits.maxModelInputTokens > LONG_CONTEXT_INPUT_TOKENS;
+    this.#inputCostMicrosPerToken = longContext
+      ? LONG_CONTEXT_CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN
+      : STANDARD_CONSERVATIVE_INPUT_COST_MICROS_PER_TOKEN;
+    this.#outputCostMicrosPerToken = longContext
+      ? LONG_CONTEXT_CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN
+      : STANDARD_CONSERVATIVE_OUTPUT_COST_MICROS_PER_TOKEN;
+  }
+
+  snapshot(): ResearchModelBudgetSnapshotV1 {
+    return {
+      calls: this.#calls,
+      inputTokens: this.#inputTokens,
+      outputTokens: this.#outputTokens,
+      costMicros: this.#costMicros,
+    };
+  }
+
+  observedUsage(): ResearchModelObservedUsageV1 {
+    return { ...this.#observedUsage };
+  }
+
+  exceedsLimits(): boolean {
+    return this.#calls > this.#limits.maxModelCalls ||
+      this.#inputTokens > this.#limits.maxTotalModelInputTokens ||
+      this.#outputTokens > this.#limits.maxTotalModelOutputTokens ||
+      this.#costMicros > this.#limits.maxModelCostMicros;
+  }
+
+  /** Persist the effective ceiling together with all pessimistic consumption. */
+  state(): ResearchModelBudgetStateV1 {
+    return {
+      schema: RESEARCH_MODEL_BUDGET_SCHEMA_V1,
+      limits: {
+        maxModelCalls: this.#limits.maxModelCalls,
+        maxTotalModelInputTokens: this.#limits.maxTotalModelInputTokens,
+        maxTotalModelOutputTokens: this.#limits.maxTotalModelOutputTokens,
+        maxModelCostMicros: this.#limits.maxModelCostMicros,
+      },
+      snapshot: this.snapshot(),
+      observedUsage: this.observedUsage(),
+    };
+  }
+
+  /**
+   * Restore a session checkpoint before any provider work. Outstanding
+   * reservations from a dead worker deliberately remain consumed: a fresh
+   * host has no evidence that the provider did not receive them.
+   */
+  restore(state: ResearchModelBudgetStateV1): void {
+    if (this.#calls !== 0 || this.#inputTokens !== 0 || this.#outputTokens !== 0 ||
+        this.#costMicros !== 0 || this.#reservations.size !== 0) {
+      throw new ResearchContractError("invalid-request", "Research model budget may be restored only before use.");
+    }
+    const parsed = parseResearchModelBudgetStateV1(state);
+    if (parsed.limits.maxModelCalls !== this.#limits.maxModelCalls ||
+        parsed.limits.maxTotalModelInputTokens !== this.#limits.maxTotalModelInputTokens ||
+        parsed.limits.maxTotalModelOutputTokens !== this.#limits.maxTotalModelOutputTokens ||
+        parsed.limits.maxModelCostMicros !== this.#limits.maxModelCostMicros) {
+      throw new ResearchContractError("invalid-request", "Research model budget checkpoint does not match its configured limits.");
+    }
+    this.#calls = parsed.snapshot.calls;
+    this.#inputTokens = parsed.snapshot.inputTokens;
+    this.#outputTokens = parsed.snapshot.outputTokens;
+    this.#costMicros = parsed.snapshot.costMicros;
+    this.#observedUsage = parsed.observedUsage ?? {
+      inputTokens: 0,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      outputTokens: 0,
+    };
+  }
+
+  canReserveCapacity(capacity: ResearchModelBudgetCapacityV1): boolean {
+    if (
+      !Number.isSafeInteger(capacity.calls) || capacity.calls < 0 ||
+      !Number.isSafeInteger(capacity.inputTokens) || capacity.inputTokens < 0 ||
+      !Number.isSafeInteger(capacity.outputTokens) || capacity.outputTokens < 0
+    ) {
+      throw new ResearchContractError("invalid-request", "Research model reserve capacity is invalid.");
+    }
+    const costMicros = capacity.inputTokens * this.#inputCostMicrosPerToken +
+      capacity.outputTokens * this.#outputCostMicrosPerToken;
+    return this.#calls + capacity.calls <= this.#limits.maxModelCalls &&
+      this.#inputTokens + capacity.inputTokens <= this.#limits.maxTotalModelInputTokens &&
+      this.#outputTokens + capacity.outputTokens <= this.#limits.maxTotalModelOutputTokens &&
+      this.#costMicros + costMicros <= this.#limits.maxModelCostMicros;
+  }
+
+  reserve(
+    request: unknown,
+    maximumOutputTokens: number,
+    retain?: ResearchModelBudgetCapacityV1,
+  ): ResearchModelBudgetReservationV1 {
+    if (!Number.isSafeInteger(maximumOutputTokens) || maximumOutputTokens < 1) {
+      throw new ResearchContractError("invalid-request", "Research model output reservation is invalid.");
+    }
+    // Four bytes per token is a useful prose estimate but too optimistic for
+    // tool JSON. Three bytes plus fixed provider/tool overhead is deliberate.
+    const inputTokens = Math.ceil(providerRequestInputBytes(request) / 3) + 1_024;
+    const outputTokens = maximumOutputTokens;
+    const costMicros = inputTokens * this.#inputCostMicrosPerToken +
+      outputTokens * this.#outputCostMicrosPerToken;
+    const retained = retain ?? { calls: 0, inputTokens: 0, outputTokens: 0 };
+    if (!this.canReserveCapacity({
+      calls: 1 + retained.calls,
+      inputTokens: inputTokens + retained.inputTokens,
+      outputTokens: outputTokens + retained.outputTokens,
+    })) {
+      throw new ResearchContractError("limit-exceeded", "The model run budget was exhausted before another provider call.");
+    }
+    const reservation: ResearchModelBudgetReservationV1 = {
+      id: this.#nextReservationId++,
+      inputTokens,
+      outputTokens,
+      costMicros,
+    };
+    this.#calls += 1;
+    this.#inputTokens += inputTokens;
+    this.#outputTokens += outputTokens;
+    this.#costMicros += costMicros;
+    this.#reservations.set(reservation.id, reservation);
+    return reservation;
+  }
+
+  settle(reservation: ResearchModelBudgetReservationV1, response: unknown): ResearchModelBudgetSnapshotV1 {
+    const active = this.#reservations.get(reservation.id);
+    if (!active) throw new ResearchContractError("invalid-request", "Research model budget reservation is unknown.");
+    this.#reservations.delete(reservation.id);
+    const usage = observedResearchModelUsageV1(response);
+    if (!usage) return this.snapshot();
+    const aggregateInputTokens = usage.inputTokens + usage.cacheCreationInputTokens +
+      usage.cacheReadInputTokens;
+    const actualCostMicros = aggregateInputTokens * this.#inputCostMicrosPerToken +
+      usage.outputTokens * this.#outputCostMicrosPerToken;
+    this.#inputTokens += aggregateInputTokens - active.inputTokens;
+    this.#outputTokens += usage.outputTokens - active.outputTokens;
+    this.#costMicros += actualCostMicros - active.costMicros;
+    this.#observedUsage.inputTokens += usage.inputTokens;
+    this.#observedUsage.cacheCreationInputTokens += usage.cacheCreationInputTokens;
+    this.#observedUsage.cacheReadInputTokens += usage.cacheReadInputTokens;
+    this.#observedUsage.outputTokens += usage.outputTokens;
+    return this.snapshot();
+  }
+}
+
+/**
+ * Mutable counters for exactly one research run.
+ *
+ * Invalid PTC inputs count before decoding. HTTP retries count through the
+ * clients' synchronous transport guard, so an exhausted budget stops before
+ * the next fetch rather than merely reporting an overrun afterwards.
+ */
+export class ResearchRunBudget {
+  readonly #limits: ResearchLimitsV1;
+  #ptcCalls = 0;
+  #httpAttempts = 0;
+  #responseBytes = 0;
+  readonly #pages: Record<ResearchProduct, number> = { jira: 0, confluence: 0 };
+  readonly #items: Record<ResearchProduct, number> = { jira: 0, confluence: 0 };
+  readonly #details: Record<ResearchProduct, number> = { jira: 0, confluence: 0 };
+
+  constructor(limits: ResearchLimitsV1) {
+    this.#limits = limits;
+  }
+
+  /** Restore one checkpoint before the next provider call; restoring twice is unsafe. */
+  restore(state: ResearchRunBudgetStateV1): void {
+    if (this.#ptcCalls !== 0 || this.#httpAttempts !== 0 || this.#responseBytes !== 0 ||
+        Object.values(this.#pages).some((count) => count !== 0) ||
+        Object.values(this.#items).some((count) => count !== 0) ||
+        Object.values(this.#details).some((count) => count !== 0)) {
+      throw new ResearchContractError("invalid-request", "Research run budget may be restored only once before use.");
+    }
+    const restored = parseResearchRunBudgetStateV1(state, this.#limits);
+    this.#ptcCalls = restored.ptcCalls;
+    this.#httpAttempts = restored.httpAttempts;
+    this.#responseBytes = restored.responseBytes;
+    Object.assign(this.#pages, restored.pages);
+    Object.assign(this.#items, restored.items);
+    Object.assign(this.#details, restored.details);
+  }
+
+  state(): ResearchRunBudgetStateV1 {
+    return {
+      schema: RESEARCH_RUN_BUDGET_SCHEMA_V1,
+      ptcCalls: this.#ptcCalls,
+      httpAttempts: this.#httpAttempts,
+      responseBytes: this.#responseBytes,
+      pages: { ...this.#pages },
+      items: { ...this.#items },
+      details: { ...this.#details },
+    };
+  }
+
+  beginPtc(input: unknown): void {
+    this.#ptcCalls += 1;
+    if (this.#ptcCalls > this.#limits.maxPtcCalls) {
+      throw new ResearchContractError("limit-exceeded", "The PTC call budget was exhausted.");
+    }
+    if (encodedJsonBytes(input, "PTC input") > this.#limits.maxPtcInputBytes) {
+      throw new ResearchContractError("limit-exceeded", "The PTC input byte limit was exceeded.");
+    }
+  }
+
+  completePtc(output: unknown): void {
+    if (encodedJsonBytes(output, "PTC output") > this.#limits.maxPtcOutputBytes) {
+      throw new ResearchContractError("limit-exceeded", "The PTC output byte limit was exceeded.");
+    }
+  }
+
+  guardTransport(event: TransportBudgetEvent): void {
+    if (event.type === "attempt") {
+      this.#httpAttempts += 1;
+      if (this.#httpAttempts > this.#limits.maxHttpCalls) {
+        throw new ResearchContractError(
+          "limit-exceeded",
+          "The HTTP attempt budget was exhausted."
+        );
+      }
+      return;
+    }
+    if (event.type === "response") {
+      this.#responseBytes += event.responseBytes;
+      if (this.#responseBytes > this.#limits.maxTotalResponseBytes) {
+        throw new ResearchContractError(
+          "limit-exceeded",
+          "The response byte budget was exhausted."
+        );
+      }
+    }
+  }
+
+  beginSearchPage(product: ResearchProduct): void {
+    this.#pages[product] += 1;
+    if (this.#pages[product] > this.#limits.maxSearchPagesPerProduct) {
+      throw new ResearchContractError(
+        "limit-exceeded",
+        `The ${product} search page budget was exhausted.`
+      );
+    }
+  }
+
+  canSearchAnotherPage(product: ResearchProduct): boolean {
+    return this.#pages[product] < this.#limits.maxSearchPagesPerProduct;
+  }
+
+  canReadAnotherDetail(product: ResearchProduct): boolean {
+    return this.#details[product] < this.#limits.maxDetailItemsPerProduct;
+  }
+
+  remainingItems(product: ResearchProduct): number {
+    return Math.max(0, this.#limits.maxItemsPerProduct - this.#items[product]);
+  }
+
+  addItems(product: ResearchProduct, count: number): void {
+    this.#items[product] += count;
+    if (this.#items[product] > this.#limits.maxItemsPerProduct) {
+      throw new ResearchContractError(
+        "limit-exceeded",
+        `The ${product} item budget was exceeded.`
+      );
+    }
+  }
+
+  beginDetail(product: ResearchProduct): void {
+    this.#details[product] += 1;
+    if (this.#details[product] > this.#limits.maxDetailItemsPerProduct) {
+      throw new ResearchContractError(
+        "limit-exceeded",
+        `The ${product} detail budget was exhausted.`
+      );
+    }
+  }
+
+  snapshot(): ResearchBudgetSnapshotV1 {
+    return {
+      ptcRemaining: Math.max(0, this.#limits.maxPtcCalls - this.#ptcCalls),
+      httpAttemptsRemaining: Math.max(
+        0,
+        this.#limits.maxHttpCalls - this.#httpAttempts
+      ),
+      responseBytesRemaining: Math.max(
+        0,
+        this.#limits.maxTotalResponseBytes - this.#responseBytes
+      ),
+    };
+  }
+
+  counts(): ResearchRunCountsV1 {
+    return {
+      ptcCalls: this.#ptcCalls,
+      httpCalls: this.#httpAttempts,
+      jiraItems: this.#items.jira,
+      confluenceItems: this.#items.confluence,
+    };
+  }
+}

@@ -36,8 +36,8 @@ provider uses the identical `<a data-datasource>` form.
 {
   "id": "768fc736-3af4-4a8f-b27e-203602bff8ca",   // matches the researched UUID exactly
   "parameters": {
-    "cloudId": "ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca",
-    "contributorAccountIds": ["70121:666cbd78-32fa-4764-90a1-d3368305f07b"],
+    "cloudId": "11111111-2222-4333-8444-555555555555",
+    "contributorAccountIds": ["fixture-account-001"],
     "searchString": ""                             // EMPTY — see trap 1
   },
   "views": [{ "type": "table", "properties": { "columns": [

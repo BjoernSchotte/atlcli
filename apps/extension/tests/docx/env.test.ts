@@ -21,7 +21,7 @@ import {
 import { classifyThrownError } from "../../utils/read-path.js";
 import { idbTemplateLibrary } from "../../utils/templates/library.js";
 
-const SITE = "https://mayflower.atlassian.net";
+const SITE = "https://tenant-a.atlassian.net";
 
 function docxBuffer(body = "$scroll.title"): { docx: Uint8Array; buffer: ArrayBuffer } {
   const docx = buildDocx({ body: para(body) });

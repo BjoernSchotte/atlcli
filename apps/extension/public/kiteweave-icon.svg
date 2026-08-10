@@ -1,8 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 54" fill="none" role="img" aria-labelledby="title desc">
   <title id="title">Kiteweave icon</title>
-  <desc id="desc">A geometric kite woven from two alternating ribbons.</desc>
-  <path fill="#14283d" d="M128 12 20 112l62 4 46-44V12Z"/>
-  <path fill="#f2a65a" d="m128 12 108 100-62 4-46-44V12Z"/>
-  <path fill="#14283d" d="M236 112 128 244v-60l46-68 62-4Z"/>
-  <path fill="#f2a65a" d="m20 112 108 132v-60l-46-68-62-4Z"/>
+  <desc id="desc">A blue and green Kiteweave kite.</desc>
+  <path fill="#0C66E4" d="M24 3 6 24l18 20V3Z"/>
+  <path fill="#00875A" d="m24 3 18 21-18 20V3Z"/>
+  <path fill="none" stroke="#FFF" stroke-linecap="round" stroke-width="2" d="M6 24h36M24 44c5 3 1 6 5 8"/>
 </svg>

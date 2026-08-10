@@ -5,7 +5,7 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
-import { cpSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,6 +65,10 @@ test.beforeAll(async () => {
   const userDataDir = join(suiteRoot, "profile");
   mkdirSync(extensionDir, { recursive: true });
   cpSync(OUTPUT_DIR, extensionDir, { recursive: true });
+  writeFileSync(
+    join(extensionDir, "storage-probe.html"),
+    "<!doctype html><meta charset=utf-8><title>Storage probe</title>",
+  );
 
   context = await chromium.launchPersistentContext(userDataDir, {
     channel: "chromium",
@@ -78,7 +82,7 @@ test.beforeAll(async () => {
     await context.waitForEvent("serviceworker", { timeout: 30_000 });
   const extensionId = new URL(serviceWorker.url()).host;
   storagePage = await context.newPage();
-  await storagePage.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await storagePage.goto(`chrome-extension://${extensionId}/storage-probe.html`);
 });
 
 test.beforeEach(async () => {

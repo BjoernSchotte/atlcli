@@ -38,11 +38,11 @@ legacy `jira` macros and at least one datasource link.
 Storage format of the live page (no `ac:structured-macro` anywhere on it):
 
 ```html
-<a href="https://<site>.atlassian.net/issues/?jql=project%20in%20(GROW)%20and%20status%20in%20(Review)%20ORDER%20BY%20created%20DESC"
+<a href="https://<site>.atlassian.net/issues/?jql=project%20in%20(DEMO)%20and%20status%20in%20(Review)%20ORDER%20BY%20created%20DESC"
    data-card-appearance="block"
    data-datasource="{&quot;id&quot;:&quot;d8b75300-dfda-4519-b6cd-e49abbd50401&quot;,
-     &quot;parameters&quot;:{&quot;cloudId&quot;:&quot;ca7c5cc9-…&quot;,
-                        &quot;jql&quot;:&quot;project in (GROW) and status in (Review) ORDER BY created DESC&quot;},
+     &quot;parameters&quot;:{&quot;cloudId&quot;:&quot;11111111-…&quot;,
+                        &quot;jql&quot;:&quot;project in (DEMO) and status in (Review) ORDER BY created DESC&quot;},
      &quot;views&quot;:[{&quot;type&quot;:&quot;table&quot;,&quot;properties&quot;:{&quot;columns&quot;:[
         {&quot;key&quot;:&quot;issuetype&quot;},{&quot;key&quot;:&quot;key&quot;},{&quot;key&quot;:&quot;summary&quot;},
         {&quot;key&quot;:&quot;assignee&quot;},{&quot;key&quot;:&quot;priority&quot;},{&quot;key&quot;:&quot;status&quot;},

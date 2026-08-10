@@ -1,0 +1,569 @@
+import { ResearchContractError, type ResearchScopeBindingV1 } from "./contracts.js";
+import type { ResearchGraphProposalV1, ResearchGraphV1 } from "./graph.js";
+import type { ResearchSessionStoreV1 } from "./session-store.js";
+import type {
+  ResearchRetrievalAssessmentV1,
+} from "./retrieval-assessment.js";
+import type {
+  ResearchGraphRevisionReasonV1,
+  ResearchSessionRetrievalContinuationV1,
+  ResearchSessionRetrievalAssessmentV1,
+  ResearchSessionRepairAuthorizationV1,
+  ResearchSessionTurnV1,
+  ResearchSessionUpdateV1,
+  ResearchSessionV1,
+} from "./session.js";
+import type {
+  ResearchScopeDiscoveryDispositionDecisionV1,
+  ResearchScopeDiscoveryDispositionReasonV1,
+  ResearchScopeDiscoveryDispositionV1,
+  ResearchScopeDiscoveryV1,
+  ResearchScopeExpansionProposalV1,
+} from "./scope-discovery.js";
+import type {
+  ResearchAcceptedPacketV1,
+  ResearchReconciliationDispositionV1,
+  ResearchTaskAttemptV1,
+  ResearchTaskUsageV1,
+} from "./workflow-contracts.js";
+import type { ResearchModelBudgetStateV1, ResearchRunBudgetStateV1 } from "./budget.js";
+
+function invalid(message: string): never {
+  throw new ResearchContractError("invalid-request", message);
+}
+
+function activeTurn(session: ResearchSessionV1, turnId: string): ResearchSessionTurnV1 {
+  if (session.activeTurnId !== turnId) {
+    invalid("Research durable dispatch does not own the active session turn.");
+  }
+  const turn = session.turns.find((candidate) => candidate.id === turnId);
+  if (!turn?.graph) invalid("Research durable dispatch has no active graph.");
+  return turn;
+}
+
+function graphFor(turn: ResearchSessionTurnV1, graphRevision: number): ResearchGraphV1 {
+  if (turn.graph?.revision !== graphRevision) {
+    invalid("Research durable dispatch graph revision is stale.");
+  }
+  return turn.graph;
+}
+
+function matchingAdmission(
+  stored: ResearchTaskAttemptV1,
+  requested: ResearchTaskAttemptV1,
+): boolean {
+  return stored.taskId === requested.taskId &&
+    stored.nodeId === requested.nodeId &&
+    stored.graphRevision === requested.graphRevision &&
+    stored.attempt === requested.attempt &&
+    stored.executor === requested.executor &&
+    stored.roleId === requested.roleId &&
+    stored.expectedOutputSchema === requested.expectedOutputSchema &&
+    JSON.stringify(stored.grantedCapabilityIds) === JSON.stringify(requested.grantedCapabilityIds) &&
+    JSON.stringify(stored.typedIntentRefs) === JSON.stringify(requested.typedIntentRefs) &&
+    JSON.stringify(stored.budget) === JSON.stringify(requested.budget);
+}
+
+type ResearchSessionUnfencedUpdateV1 = ResearchSessionUpdateV1 extends infer Update
+  ? Update extends ResearchSessionUpdateV1
+    ? Omit<Update, "expectedRevision" | "expectedLeaseEpoch" | "at">
+    : never
+  : never;
+
+export interface ResearchSessionDispatchJournalV1Options {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  turnId: string;
+  now?: () => string;
+}
+
+/**
+ * Host-neutral serial journal for the one durable aggregate that owns a
+ * selected graph's task lifecycle. It serializes local concurrent workers so
+ * independent `task()` calls retain the session revision/lease CAS fence.
+ * Cross-process ownership remains guarded by the store's CAS and must recover
+ * the lease before creating a second journal instance.
+ */
+export class ResearchSessionDispatchJournalV1 {
+  readonly #store: ResearchSessionStoreV1;
+  readonly #sessionId: string;
+  readonly #turnId: string;
+  readonly #now: () => string;
+  #tail: Promise<void> = Promise.resolve();
+
+  constructor(options: ResearchSessionDispatchJournalV1Options) {
+    if (!/^research-session:[A-Za-z0-9._-]{1,120}$/.test(options.sessionId) ||
+        !/^research-turn:[A-Za-z0-9._-]{1,120}$/.test(options.turnId)) {
+      invalid("Research durable dispatch identity is invalid.");
+    }
+    this.#store = options.store;
+    this.#sessionId = options.sessionId;
+    this.#turnId = options.turnId;
+    this.#now = options.now ?? (() => new Date().toISOString());
+  }
+
+  #enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.#tail.then(operation, operation);
+    this.#tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  async #read(): Promise<ResearchSessionV1> {
+    const session = await this.#store.read(this.#sessionId);
+    if (!session) invalid("Research durable dispatch session is not found.");
+    activeTurn(session, this.#turnId);
+    return session;
+  }
+
+  async #commit<T>(
+    session: ResearchSessionV1,
+    update: ResearchSessionUnfencedUpdateV1,
+    project: (next: ResearchSessionV1) => T,
+  ): Promise<T> {
+    const committed = await this.#store.commit(this.#sessionId, {
+      ...update,
+      expectedRevision: session.revision,
+      expectedLeaseEpoch: session.lease.epoch,
+      at: this.#now(),
+    } as ResearchSessionUpdateV1);
+    return project(committed.session);
+  }
+
+  /** Commit the selected executable subset before the first task admission. */
+  commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "commit_graph_selection", proposal }, (next) =>
+        activeTurn(next, this.#turnId).graph!,
+      );
+    });
+  }
+
+  /**
+   * Persist the conservative provider-spend counters before dispatch and
+   * again after a response settles. The journal serializes sibling subagents,
+   * so their reservations cannot race the session's optimistic-concurrency
+   * fence.
+   */
+  recordModelBudget(budgetState: ResearchModelBudgetStateV1): Promise<ResearchModelBudgetStateV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "record_model_budget", budgetState }, (next) => {
+        if (!next.modelBudgetState) invalid("Research durable dispatch did not retain its model budget.");
+        return next.modelBudgetState;
+      });
+    });
+  }
+
+  /** Release a retryable provider-authentication wait without discarding the budget reservation. */
+  waitForAuthentication(): Promise<ResearchSessionV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "wait_authentication" }, (next) => next);
+    });
+  }
+
+  /** Release a retryable provider-quota wait without discarding the budget reservation. */
+  waitForQuota(): Promise<ResearchSessionV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "wait_quota" }, (next) => next);
+    });
+  }
+
+  /** Commit a host-validated, checkpoint-caused graph revision before new work starts. */
+  applyGraphRevision(input: {
+    graph: ResearchGraphV1;
+    evidenceIds: string[];
+    gapIds: string[];
+    reason: ResearchGraphRevisionReasonV1;
+    steeringId?: string;
+  }): Promise<ResearchGraphV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graph.revision - 1);
+      return this.#commit(session, {
+        kind: "apply_graph_revision",
+        graph: input.graph,
+        evidenceIds: input.evidenceIds,
+        gapIds: input.gapIds,
+        reason: input.reason,
+        ...(input.steeringId === undefined ? {} : { steeringId: input.steeringId }),
+      }, (next) => activeTurn(next, this.#turnId).graph!);
+    });
+  }
+
+  /**
+   * Retain host-observed metadata candidates while their admitting task is
+   * still running. The session reducer verifies the exact task grant and does
+   * not treat this observation as a binding or an approval.
+   */
+  recordScopeDiscoveries(input: {
+    graphRevision: number;
+    discoveries: ResearchScopeDiscoveryV1[];
+  }): Promise<void> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      await this.#commit(session, {
+        kind: "record_scope_discoveries",
+        graphRevision: input.graphRevision,
+        discoveries: input.discoveries,
+      }, () => undefined);
+    });
+  }
+
+  /**
+   * Atomically persist central-supervisor decisions over previously observed
+   * metadata candidates. The session reducer owns generated disposition and
+   * proposal IDs and moves to user scope approval before any content read.
+   */
+  dispositionScopeDiscoveries(input: {
+    graphRevision: number;
+    decisions: Array<{
+      discoveryId: string;
+      decision: ResearchScopeDiscoveryDispositionDecisionV1;
+      reasonCode: ResearchScopeDiscoveryDispositionReasonV1;
+      coverageGapId?: string;
+    }>;
+  }): Promise<{
+    dispositions: ResearchScopeDiscoveryDispositionV1[];
+    proposal?: ResearchScopeExpansionProposalV1;
+    preauthorizedExactBinding?: ResearchScopeBindingV1;
+  }> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      const existingDispositionCount = (turn.scopeDiscoveryDispositions ?? []).length;
+      const existingProposalIds = new Set(turn.scopeExpansionProposals.map((proposal) => proposal.id));
+      const existingBindingIds = new Set(turn.scopeBindings.map((binding) => binding.id));
+      return this.#commit(session, {
+        kind: "disposition_scope_discoveries",
+        graphRevision: input.graphRevision,
+        decisions: input.decisions,
+      }, (next) => {
+        const nextTurn = activeTurn(next, this.#turnId);
+        const dispositions = (nextTurn.scopeDiscoveryDispositions ?? []).slice(existingDispositionCount);
+        if (dispositions.length !== input.decisions.length) {
+          invalid("Research durable dispatch did not retain every scope discovery disposition.");
+        }
+        const proposal = nextTurn.scopeExpansionProposals.find((candidate) =>
+          !existingProposalIds.has(candidate.id),
+        );
+        const preauthorizedExactBinding = nextTurn.scopeBindings.find((binding) =>
+          !existingBindingIds.has(binding.id),
+        );
+        return {
+          dispositions,
+          ...(proposal === undefined ? {} : { proposal }),
+          ...(preauthorizedExactBinding === undefined ? {} : { preauthorizedExactBinding }),
+        };
+      });
+    });
+  }
+
+  /** Persist an exact ready attempt and its dispatch start before provider work. */
+  admitAndStart(input: ResearchTaskAttemptV1 & { providerRequestId?: string }): Promise<ResearchTaskAttemptV1> {
+    return this.#enqueue(async () => {
+      let session = await this.#read();
+      let turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      const existing = turn.tasks.find((candidate) => candidate.taskId === input.taskId);
+      if (existing && !matchingAdmission(existing, input)) {
+        invalid("Research durable dispatch task admission does not match the stored attempt.");
+      }
+      if (!existing) {
+        await this.#commit(session, {
+          kind: "admit_tasks",
+          graphRevision: input.graphRevision,
+          tasks: [input],
+        }, () => undefined);
+        session = await this.#read();
+        turn = activeTurn(session, this.#turnId);
+      }
+      const admitted = turn.tasks.find((candidate) => candidate.taskId === input.taskId);
+      if (!admitted) invalid("Research durable dispatch did not retain its admitted task.");
+      if (admitted.status !== "ready" || admitted.dispatchState !== "not_started") {
+        invalid("Research durable dispatch task is already active or terminal.");
+      }
+      return this.#commit(session, {
+        kind: "dispatch_started",
+        taskId: input.taskId,
+        graphRevision: input.graphRevision,
+        ...(input.providerRequestId ? { providerRequestId: input.providerRequestId } : {}),
+      }, (next) => {
+        const task = activeTurn(next, this.#turnId).tasks.find((candidate) =>
+          candidate.taskId === input.taskId,
+        );
+        if (!task) invalid("Research durable dispatch lost its started task.");
+        return task;
+      });
+    });
+  }
+
+  acceptPacket(input: {
+    taskId: string;
+    graphRevision: number;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    availableSourceIds: string[];
+    maximumResultBytes: number;
+    budgetState?: ResearchRunBudgetStateV1;
+  }): Promise<ResearchAcceptedPacketV1 & { graph: ResearchGraphV1 }> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      return this.#commit(session, {
+        kind: "accept_packet",
+        taskId: input.taskId,
+        graphRevision: input.graphRevision,
+        body: input.body,
+        usage: input.usage,
+        availableSourceIds: [...input.availableSourceIds],
+        maximumResultBytes: input.maximumResultBytes,
+        ...(input.budgetState ? { budgetState: input.budgetState } : {}),
+      }, (next) => {
+        const nextTurn = activeTurn(next, this.#turnId);
+        const packet = nextTurn.acceptedPackets.find((candidate) =>
+          candidate.taskId === input.taskId,
+        );
+        if (!packet || !nextTurn.graph) {
+          invalid("Research durable dispatch did not retain its accepted packet.");
+        }
+        return { ...packet, graph: nextTurn.graph };
+      });
+    });
+  }
+
+  markOutcomeUnknown(taskId: string, graphRevision: number): Promise<ResearchTaskAttemptV1> {
+    return this.#transitionTask("outcome_unknown", taskId, graphRevision);
+  }
+
+  quarantine(taskId: string, graphRevision: number, reason: string): Promise<ResearchTaskAttemptV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, graphRevision);
+      return this.#commit(session, {
+        kind: "quarantine_packet",
+        taskId,
+        graphRevision,
+        reason,
+      }, (next) => {
+        const task = activeTurn(next, this.#turnId).tasks.find((candidate) => candidate.taskId === taskId);
+        if (!task) invalid("Research durable dispatch lost its quarantined task.");
+        return task;
+      });
+    });
+  }
+
+  recordReconciliation(input: {
+    dispositions: readonly ResearchReconciliationDispositionV1[];
+    repair?: Pick<ResearchSessionRepairAuthorizationV1, "nodeId" | "reconciliationTaskId"> & {
+      followUpId: string;
+    };
+  }): Promise<{
+    dispositions: ResearchReconciliationDispositionV1[];
+    graph: ResearchGraphV1;
+    repairAuthorization?: ResearchSessionRepairAuthorizationV1;
+  }> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, {
+        kind: "record_reconciliation",
+        dispositions: [...input.dispositions],
+        ...(input.repair ? { repair: { ...input.repair } } : {}),
+      }, (next) => {
+        const turn = activeTurn(next, this.#turnId);
+        const recorded = input.dispositions.map((disposition) => {
+          const stored = turn.reconciliationDispositions.find((candidate) =>
+            candidate.id === disposition.id,
+          );
+          if (!stored) invalid("Research durable dispatch did not retain its reconciliation disposition.");
+          return stored;
+        });
+        if (!turn.graph) invalid("Research durable dispatch lost its execution graph.");
+        return {
+          dispositions: recorded,
+          graph: turn.graph,
+          ...(turn.repairAuthorization ? { repairAuthorization: turn.repairAuthorization } : {}),
+        };
+      });
+    });
+  }
+
+  /** Record the body-free retrieval decision before a later wave or terminal render. */
+  recordRetrievalAssessment(input: {
+    graphRevision: number;
+    assessment: ResearchRetrievalAssessmentV1;
+    /** Only the host may request a later disposable supervisor evaluation. */
+    issueContinuation?: boolean;
+    /** Counter projection coupled to the checkpoint that permits resume. */
+    budgetState?: ResearchRunBudgetStateV1;
+  }): Promise<ResearchSessionRetrievalAssessmentV1 & { graph: ResearchGraphV1 }> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      const priorWaves = (turn.retrievalAssessments ?? [])
+        .filter((candidate) => candidate.graphRevision === input.graphRevision)
+        .map((candidate) => candidate.wave ?? 1);
+      const expectedWave = Math.max(turn.graph!.researchWavesCompleted, ...priorWaves) + 1;
+      return this.#commit(session, {
+        kind: "record_retrieval_assessment",
+        graphRevision: input.graphRevision,
+        assessment: input.assessment,
+        ...(input.issueContinuation === true ? { issueContinuation: true } : {}),
+        ...(input.budgetState ? { budgetState: input.budgetState } : {}),
+      }, (next) => {
+        const nextTurn = activeTurn(next, this.#turnId);
+        const record = (nextTurn.retrievalAssessments ?? []).find((candidate) =>
+          candidate.graphRevision === input.graphRevision && candidate.wave === expectedWave,
+        );
+        if (!record || !nextTurn.graph) {
+          invalid("Research durable dispatch did not retain its retrieval assessment.");
+        }
+        return { ...record, graph: nextTurn.graph };
+      });
+    });
+  }
+
+  /**
+   * Confirm a user-requested pause only after a settled retrieval wave has
+   * persisted its one-time continuation. This is the only point at which a
+   * new worker can resume without replaying an unobservable provider outcome.
+   */
+  acknowledgePauseAtRetrievalCheckpoint(): Promise<boolean> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      if (session.status !== "pause_requested") return false;
+      const turn = activeTurn(session, this.#turnId);
+      const hasUnsettledWork = turn.tasks.some((task) =>
+        task.status === "ready" || task.status === "running" || task.status === "outcome_unknown",
+      );
+      const hasIssuedContinuation = turn.retrievalAssessments?.some((assessment) =>
+        assessment.continuation?.status === "issued",
+      ) ?? false;
+      if (hasUnsettledWork || !hasIssuedContinuation) return false;
+      const paused = await this.#commit(session, { kind: "acknowledge_pause" }, (next) => next);
+      return paused.status === "paused";
+    });
+  }
+
+  /**
+   * Atomically acquire the exact continuation issued for a settled retrieval
+   * wave. A restarted host reads the same state and cannot acquire it twice.
+   */
+  consumeRetrievalContinuation(input: {
+    graphRevision: number;
+    wave: number;
+    continuationId: string;
+  }): Promise<ResearchSessionRetrievalContinuationV1 & {
+    graph: ResearchGraphV1;
+    assessment: ResearchRetrievalAssessmentV1;
+  }> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      return this.#commit(session, {
+        kind: "consume_retrieval_continuation",
+        graphRevision: input.graphRevision,
+        wave: input.wave,
+        continuationId: input.continuationId,
+      }, (next) => {
+        const nextTurn = activeTurn(next, this.#turnId);
+        const record = (nextTurn.retrievalAssessments ?? []).find((candidate) =>
+          candidate.graphRevision === input.graphRevision && candidate.wave === input.wave,
+        );
+        if (!record?.continuation || !nextTurn.graph) {
+          invalid("Research durable dispatch did not retain its retrieval continuation.");
+        }
+        return {
+          ...record.continuation,
+          graph: nextTurn.graph,
+          assessment: record.assessment,
+        };
+      });
+    });
+  }
+
+  /**
+   * Reissue only a consumed continuation whose stored frontier has not changed.
+   * The reducer verifies the task/packet cardinalities captured at consumption,
+   * so a restarted host cannot repeat an admitted provider operation.
+   */
+  reissueRetrievalContinuation(input: {
+    graphRevision: number;
+    wave: number;
+    continuationId: string;
+  }): Promise<ResearchSessionRetrievalContinuationV1 & {
+    graph: ResearchGraphV1;
+    assessment: ResearchRetrievalAssessmentV1;
+  }> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, input.graphRevision);
+      return this.#commit(session, {
+        kind: "reissue_retrieval_continuation",
+        graphRevision: input.graphRevision,
+        wave: input.wave,
+        continuationId: input.continuationId,
+      }, (next) => {
+        const nextTurn = activeTurn(next, this.#turnId);
+        const record = (nextTurn.retrievalAssessments ?? []).find((candidate) =>
+          candidate.graphRevision === input.graphRevision && candidate.wave === input.wave,
+        );
+        if (!record?.continuation || !nextTurn.graph) {
+          invalid("Research durable dispatch did not reissue its retrieval continuation.");
+        }
+        return {
+          ...record.continuation,
+          graph: nextTurn.graph,
+          assessment: record.assessment,
+        };
+      });
+    });
+  }
+
+  /** Mark the durable turn complete only after its final report artifact exists. */
+  complete(): Promise<ResearchSessionV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "complete" }, (next) => next);
+    });
+  }
+
+  /** End an interrupted execution without persisting provider or source text. */
+  fail(reason = "Research execution ended before report validation."): Promise<ResearchSessionV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "fail", reason }, (next) => next);
+    });
+  }
+
+  #transitionTask(
+    kind: "outcome_unknown",
+    taskId: string,
+    graphRevision: number,
+  ): Promise<ResearchTaskAttemptV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      const turn = activeTurn(session, this.#turnId);
+      graphFor(turn, graphRevision);
+      return this.#commit(session, { kind, taskId, graphRevision }, (next) => {
+        const task = activeTurn(next, this.#turnId).tasks.find((candidate) => candidate.taskId === taskId);
+        if (!task) invalid("Research durable dispatch lost its task transition.");
+        return task;
+      });
+    });
+  }
+}

@@ -21,6 +21,111 @@ describe("escapeCqlValue", () => {
   });
 });
 
+describe("Confluence v2 space pagination", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("maps a bounded page and extracts the opaque cursor from _links.next", async () => {
+    const requests: string[] = [];
+    globalThis.fetch = mock((url: string) => {
+      requests.push(url);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            results: [
+              {
+                id: "123",
+                key: "DOCSY",
+                name: "Documentation",
+                type: "global",
+                currentActiveAlias: "Docs team",
+                _links: { webui: "/spaces/DOCSY" },
+              },
+              { id: "missing-name", key: "SKIP" },
+            ],
+            _links: {
+              next: "/wiki/api/v2/spaces?cursor=next-page-2&limit=2",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    const page = await new ConfluenceClient(mockProfile).listSpacesV2({ limit: 2, cursor: "page-1" });
+
+    expect(requests).toEqual([
+      "https://test.atlassian.net/wiki/api/v2/spaces?limit=2&cursor=page-1",
+    ]);
+    expect(page.spaces).toEqual([
+      {
+        id: "123",
+        key: "DOCSY",
+        name: "Documentation",
+        type: "global",
+        aliases: ["Docs team"],
+        url: "https://test.atlassian.net/wiki/spaces/DOCSY",
+      },
+    ]);
+    expect(page.nextCursor).toBe("next-page-2");
+  });
+
+  test("does not invent a cursor when the v2 response has no next link", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    await expect(new ConfluenceClient(mockProfile).listSpacesV2()).resolves.toEqual({
+      spaces: [],
+      nextCursor: undefined,
+    });
+  });
+
+  test("clamps the requested page size to the documented client boundary", async () => {
+    let requested = "";
+    globalThis.fetch = mock((url: string) => {
+      requested = url;
+      return Promise.resolve(
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    await new ConfluenceClient(mockProfile).listSpacesV2({ limit: 10_000 });
+
+    expect(requested).toContain("limit=250");
+  });
+
+  test("passes bounded exact space keys through the documented v2 filter", async () => {
+    let requested = "";
+    globalThis.fetch = mock((url: string) => {
+      requested = url;
+      return Promise.resolve(
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    await new ConfluenceClient(mockProfile).listSpacesV2({
+      limit: 2,
+      keys: ["DOCSY", "TEAM"],
+    });
+
+    expect(requested).toContain("keys=DOCSY");
+    expect(requested).toContain("keys=TEAM");
+  });
+});
+
 // Mock profile for testing
 const mockProfile = {
   name: "test",

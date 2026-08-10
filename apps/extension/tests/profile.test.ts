@@ -21,7 +21,7 @@ describe("isAtlassianCloudHost", () => {
 
 describe("isAtlassianCloudUrl (shared origin gate — finding #3)", () => {
   it("accepts well-formed http(s) URLs on an Atlassian Cloud host", () => {
-    expect(isAtlassianCloudUrl("https://mayflower.atlassian.net/wiki/spaces/D/pages/1")).toBe(true);
+    expect(isAtlassianCloudUrl("https://tenant-a.atlassian.net/wiki/spaces/D/pages/1")).toBe(true);
     expect(isAtlassianCloudUrl("https://x.atlassian.net/browse/ATLCLI-1")).toBe(true);
   });
 
@@ -38,11 +38,11 @@ describe("isAtlassianCloudUrl (shared origin gate — finding #3)", () => {
 describe("profileFromTabUrl", () => {
   it("builds a session profile from an Atlassian Cloud page URL", () => {
     const profile = profileFromTabUrl(
-      "https://mayflower.atlassian.net/wiki/spaces/DOCSY/pages/12345/Home"
+      "https://tenant-a.atlassian.net/wiki/spaces/DOCSY/pages/12345/Home"
     );
     expect(profile).toEqual({
       name: "session",
-      baseUrl: "https://mayflower.atlassian.net",
+      baseUrl: "https://tenant-a.atlassian.net",
       deploymentType: "cloud",
       auth: { type: "session" },
     });

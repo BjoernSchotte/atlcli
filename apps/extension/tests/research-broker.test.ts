@@ -1,0 +1,1421 @@
+import { describe, expect, it } from "bun:test";
+import {
+  RESEARCH_REQUEST_SCHEMA_V1,
+  ResearchContractError,
+  normalizeResearchRequestV1,
+} from "../utils/research/contracts.js";
+import {
+  BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+  RESEARCH_CAPABILITY_SCHEMAS,
+  RESEARCH_LANGCHAIN_TOOL_NAMES,
+  type ResearchSearchOutputV1,
+} from "../utils/research/capability-contracts.js";
+import {
+  ResearchCapabilityBroker,
+  WorkspaceResearchClaimLedgerV1,
+  WorkspaceResearchEvidenceStoreV1,
+  beginChatTurnV1,
+  buildChatTurnContextV1,
+  chatScopeFingerprintV1,
+  completeChatTurnV1,
+  createChatSessionV1,
+  createResearchClaimV1,
+  createMemoryResearchWorkspace,
+  type ChatAnswerV1,
+  type ChatStrategyV1,
+  type ResearchReadProviders,
+} from "@atlcli/research";
+import {
+  buildResearchCql,
+  buildResearchJql,
+  jiraResearchTextTerms,
+} from "@atlcli/research";
+
+function request(
+  limits: Record<string, number> = {}
+): ReturnType<typeof normalizeResearchRequestV1> {
+  return normalizeResearchRequestV1({
+    schema: RESEARCH_REQUEST_SCHEMA_V1,
+    question:
+      "Jira-Projektkey DEMO, Confluence-Spacekey KB: Which pages explain the open work?",
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: ["DEMO"],
+      confluenceSpaceKeys: ["KB"],
+      timeWindow: { from: "2026-01-01", to: "2026-07-30" },
+    },
+    limits,
+    wikiProvider: "rest",
+  });
+}
+
+function fakeProviders(): ResearchReadProviders & {
+  calls: Array<Record<string, unknown>>;
+} {
+  const calls: Array<Record<string, unknown>> = [];
+  return {
+    calls,
+    jira: {
+      async searchPage(input) {
+        calls.push({ product: "jira", ...input, signal: undefined });
+        if (!input.providerCursor) {
+          return {
+            items: [
+              {
+                issueKey: "DEMO-1",
+                projectKey: "DEMO",
+                title: "Scoped issue",
+                updatedAt: "2026-07-01T10:00:00.000Z",
+              },
+              {
+                issueKey: "OTHER-9",
+                projectKey: "OTHER",
+                title: "OUT-OF-SCOPE-SENTINEL",
+              },
+            ],
+            nextProviderCursor: "jira-provider-next-1",
+          };
+        }
+        return {
+          items: [
+            {
+              issueKey: "DEMO-2",
+              projectKey: "DEMO",
+              title: "Second scoped issue",
+            },
+          ],
+        };
+      },
+      async getIssue(input) {
+        calls.push({ product: "jira-detail", ...input, signal: undefined });
+        return {
+          issueKey: input.issueKey,
+          projectKey: "DEMO",
+          title: "Scoped issue",
+          content: {
+            text: "The Jira issue links to the implementation page.",
+            linkTargets: [
+              "https://example.atlassian.net/wiki/spaces/KB/pages/1001",
+            ],
+            truncated: false,
+            inputBytes: 64,
+          },
+        };
+      },
+    },
+    wiki: {
+      async searchPage(input) {
+        calls.push({ product: "wiki", ...input, signal: undefined });
+        if (!input.providerCursor) {
+          return {
+            items: [
+              {
+                contentId: "1001",
+                spaceKey: "KB",
+                title: "Implementation page",
+              },
+              {
+                contentId: "9009",
+                spaceKey: "OTHER",
+                title: "OUT-OF-SCOPE-SENTINEL",
+              },
+            ],
+            nextProviderCursor:
+              "https://example.atlassian.net/wiki/rest/api/content/search?cursor=secret",
+          };
+        }
+        return {
+          items: [
+            {
+              contentId: "1002",
+              spaceKey: "KB",
+              title: "Second implementation page",
+            },
+          ],
+        };
+      },
+      async getPage(input) {
+        calls.push({ product: "wiki-detail", ...input, signal: undefined });
+        return {
+          contentId: input.contentId,
+          spaceKey: "KB",
+          title: "Implementation page",
+          content: {
+            text: "This page names DEMO-1 exactly.",
+            linkTargets: [],
+            truncated: false,
+            inputBytes: 42,
+          },
+        };
+      },
+    },
+  };
+}
+
+async function admitRankedCandidates(
+  broker: ResearchCapabilityBroker,
+  product: "jira" | "confluence",
+  items: readonly { entityRef: string }[],
+): Promise<void> {
+  await broker.invoke("research.candidate.rank", {
+    schema: RESEARCH_CAPABILITY_SCHEMAS["research.candidate.rank"].input,
+    product,
+    entityRefs: items.map((item) => item.entityRef),
+  });
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+describe("research query builders", () => {
+  it("builds only scoped host-owned JQL and CQL with escaped guest text", () => {
+    const scope = request().scope;
+    const text = '" OR project = "OTHER"\n';
+
+    expect(buildResearchJql(scope, { text })).toBe(
+      'project in ("DEMO") AND updated >= "2026-01-01" AND updated <= "2026-07-30" AND (text ~ "OTHER") ORDER BY updated DESC, key ASC'
+    );
+    expect(buildResearchCql(scope, { text })).toBe(
+      'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND (title ~ "\\"\\" OR project = \\"OTHER\\"\\"" OR text ~ "\\"\\" OR project = \\"OTHER\\"\\"") ORDER BY lastmodified DESC'
+    );
+  });
+
+  it("expands a cross-product Jira intent into bounded safe discovery terms", () => {
+    expect(
+      jiraResearchTextTerms(
+        "Jira lead qualification and Account-based Data-Aggregation pilot discovery"
+      )
+    ).toEqual([
+      "lead",
+      "qualification",
+      "Account-based",
+      "Data-Aggregation",
+      "pilot",
+      "discovery",
+    ]);
+    expect(
+      buildResearchJql(request().scope, {
+        text: "lead qualification discovery pilot",
+      })
+    ).toContain(
+      '(text ~ "lead" OR text ~ "qualification" OR text ~ "discovery" OR text ~ "pilot")'
+    );
+    expect(
+      buildResearchCql(request().scope, {
+        text: "Lead Pipeline: Modernisierung",
+      }),
+    ).toContain(
+      '(title ~ "\\"Lead Pipeline: Modernisierung\\"" OR text ~ "\\"Lead Pipeline: Modernisierung\\"")',
+    );
+  });
+
+  it("compiles closed typed labels and Confluence hierarchy filters into the already-clamped host query", () => {
+    const scope = request().scope;
+    expect(buildResearchJql(scope, {
+      labels: ["release", "agentic-ai"],
+    })).toBe(
+      'project in ("DEMO") AND updated >= "2026-01-01" AND updated <= "2026-07-30" AND labels = "agentic-ai" AND labels = "release" ORDER BY updated DESC, key ASC',
+    );
+    expect(buildResearchCql(scope, {
+      labels: ["release", "agentic-ai"],
+      ancestorId: "1001",
+    })).toBe(
+      'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND label = "agentic-ai" AND label = "release" AND ancestor = 1001 ORDER BY lastmodified DESC',
+    );
+    expect(buildResearchCql(scope, { parentId: "1001" })).toBe(
+      'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND parent = 1001 ORDER BY lastmodified DESC',
+    );
+  });
+
+  it("keeps stable permission ids separate from valid QuickJS tool names", () => {
+    expect(RESEARCH_LANGCHAIN_TOOL_NAMES).toEqual({
+      "jira.issue.search": "jira_issue_search",
+      "jira.issue.get": "jira_issue_get",
+      "wiki.search": "wiki_search",
+      "wiki.page.get": "wiki_page_get",
+      "research.candidate.rank": "research_candidate_rank",
+    });
+    expect(Object.values(RESEARCH_LANGCHAIN_TOOL_NAMES).every((name) => !name.includes(".")))
+      .toBe(true);
+  });
+});
+
+describe("bounded research capability broker", () => {
+  it("reports product-specific search and detail capacity for repair admission", async () => {
+    const broker = new ResearchCapabilityBroker(
+      request({ maxSearchPagesPerProduct: 1, maxDetailItemsPerProduct: 1 }),
+      fakeProviders(),
+      { createEntityId: () => "repair-budget-entity" },
+    );
+    expect(broker.budget.canSearchAnotherPage("jira")).toBe(true);
+    expect(broker.budget.canReadAnotherDetail("jira")).toBe(true);
+
+    const page = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "jira", page.items);
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[0]!.entityRef,
+    });
+
+    expect(broker.budget.canSearchAnotherPage("jira")).toBe(false);
+    expect(broker.budget.canReadAnotherDetail("jira")).toBe(false);
+    expect(broker.budget.canSearchAnotherPage("confluence")).toBe(true);
+    expect(broker.budget.canReadAnotherDetail("confluence")).toBe(true);
+  });
+
+  it("permits the bounded Confluence comment sidecar only on an already-ranked page", async () => {
+    const providers = fakeProviders();
+    const broker = new ResearchCapabilityBroker(
+      request({ maxDetailItemsPerProduct: 1 }),
+      providers,
+      { createEntityId: () => "comment-sidecar-entity" },
+    );
+    const page = await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "confluence", page.items);
+
+    await expect(broker.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: page.items[0]!.entityRef,
+      includeComments: true,
+    })).resolves.toMatchObject({
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].output,
+      source: { contentId: "1001" },
+    });
+    expect(providers.calls).toContainEqual(expect.objectContaining({
+      product: "wiki-detail",
+      contentId: "1001",
+      includeComments: true,
+    }));
+
+    await expect(broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[0]!.entityRef,
+      includeComments: true,
+    })).rejects.toThrow("contains unknown fields");
+  });
+
+  it("assesses only host-observed ranked retrieval state before another wave", async () => {
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(
+      request({ maxSearchPagesPerProduct: 2, maxDetailItemsPerProduct: 1 }),
+      fakeProviders(),
+      { createEntityId: () => `assessment-entity-${++entityId}` },
+    );
+    const page = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "jira", page.items);
+    expect(broker.retrievalAssessment(["jira"])).toMatchObject({
+      action: "continue",
+      reason: "unread_ranked_candidates",
+      products: [{ product: "jira", unreadRankedCandidateCount: 1 }],
+    });
+
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[0]!.entityRef,
+    });
+    expect(broker.retrievalAssessment(["jira"])).toMatchObject({
+      action: "continue",
+      reason: "search_not_terminal",
+      newDetailSourceCount: 1,
+    });
+    await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      cursor: page.page.nextCursor,
+    });
+    const detailedSourceId = broker.detailEvidenceLedger()[0]!.source.id;
+    expect(broker.retrievalAssessment(["jira"], [detailedSourceId])).toMatchObject({
+      action: "stop",
+      reason: "marginal_evidence",
+      newDetailSourceCount: 0,
+      duplicateDetailReadCount: 0,
+    });
+    const gapBroker = new ResearchCapabilityBroker(
+      request({ maxSearchPagesPerProduct: 1, maxDetailItemsPerProduct: 1 }),
+      fakeProviders(),
+    );
+    expect(gapBroker.retrievalAssessment(["jira"], [], {
+      unresolvedCoverageTargetIds: ["coverage-target:approved"],
+    })).toMatchObject({
+      action: "replan",
+      reason: "coverage_gap",
+      unresolvedCoverageTargetCount: 1,
+    });
+  });
+
+  it("persists approved, tenant-bound evidence before publishing a detail body to the broker ledger", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const broker = new ResearchCapabilityBroker(request(), fakeProviders(), {
+      createEntityId: () => "evidence-entity",
+      evidence: {
+        store: evidence,
+        scopeBindings: [
+          {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:test:jira:DEMO",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "jira",
+            entityKind: "project",
+            entityRef: "scope-key:jira:DEMO",
+            key: "DEMO",
+            name: "DEMO",
+            source: "cli_flag",
+            authority: "locked",
+          },
+          {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:test:confluence:KB",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "confluence",
+            entityKind: "space",
+            entityRef: "scope-key:confluence:KB",
+            key: "KB",
+            name: "KB",
+            source: "cli_flag",
+            authority: "locked",
+          },
+        ],
+        capturedAt: () => "2026-08-01T12:00:00.000Z",
+      },
+    });
+    const page = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "jira", page.items);
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[0]!.entityRef,
+    });
+
+    const retained = await evidence.list();
+    expect(retained.records).toMatchObject([{
+      source: { id: "jira:DEMO-1" },
+      identity: { canonicalId: "https://example.atlassian.net|jira|issue|DEMO-1" },
+      authority: { bindingId: "scope-binding:test:jira:DEMO" },
+      retrieval: {
+        sourceId: "jira:DEMO-1",
+        reason: "question_relevance_rank",
+        rank: 1,
+      },
+    }]);
+    expect(await evidence.chunks(retained.records[0]!.id)).toMatchObject([
+      { text: "The Jira issue links to the implementation page." },
+    ]);
+    expect(broker.detailEvidenceLedger()).toMatchObject([
+      {
+        source: { id: "jira:DEMO-1" },
+        retrieval: {
+          sourceId: "jira:DEMO-1",
+          reason: "question_relevance_rank",
+          rank: 1,
+        },
+        evidenceId: retained.records[0]!.id,
+      },
+    ]);
+  });
+
+  it("admits an approved exact issue and page through search-rank-get without widening to their parent scopes", async () => {
+    const exactRequest = normalizeResearchRequestV1({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Compare the approved exact Jira issue and Confluence page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeSeeds: [
+        {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:exact:jira:ATLCLI-42",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "jira",
+            entityKind: "issue",
+            entityRef: "research-scope-entity:jira-issue-atlcli-42",
+            key: "ATLCLI-42",
+            name: "Exact Jira issue",
+            source: "exact_link",
+            authority: "approved",
+          },
+          precedence: 400,
+        },
+        {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:exact:confluence:1001",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "confluence",
+            entityKind: "page",
+            entityRef: "research-scope-entity:confluence-page-1001",
+            key: "1001",
+            name: "Exact Confluence page",
+            source: "exact_link",
+            authority: "approved",
+          },
+          precedence: 400,
+        },
+      ],
+      limits: { maxDetailItemsPerProduct: 1 },
+      wikiProvider: "rest",
+    });
+    const providers = fakeProviders();
+    let jiraSearches = 0;
+    let wikiSearches = 0;
+    providers.jira.searchPage = async () => {
+      jiraSearches += 1;
+      throw new Error("exact scope must not issue a Jira project search");
+    };
+    providers.wiki.searchPage = async () => {
+      wikiSearches += 1;
+      throw new Error("exact scope must not issue a Confluence space search");
+    };
+    providers.jira.getIssue = async ({ issueKey }) => ({
+      issueKey,
+      projectKey: "UNSCOPED",
+      title: "Exact Jira issue",
+      content: { text: "Exact issue evidence.", linkTargets: [], truncated: false, inputBytes: 21 },
+    });
+    providers.wiki.getPage = async ({ contentId }) => ({
+      contentId,
+      spaceKey: "UNSCOPED",
+      title: "Exact Confluence page",
+      content: { text: "Exact page evidence.", linkTargets: [], truncated: false, inputBytes: 20 },
+    });
+    const evidence = new WorkspaceResearchEvidenceStoreV1(createMemoryResearchWorkspace());
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(exactRequest, providers, {
+      createEntityId: () => `exact-entity-${++entityId}`,
+      evidence: {
+        store: evidence,
+        scopeBindings: exactRequest.scopeSeeds!.map((seed) => seed.binding),
+        capturedAt: () => "2026-08-02T20:00:00.000Z",
+      },
+    });
+
+    const jira = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    const wiki = await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    expect(jira.items[0]).toMatchObject({ issueKey: "ATLCLI-42" });
+    expect(wiki.items[0]).toMatchObject({ contentId: "1001" });
+    expect(jira.items[0]).not.toHaveProperty("projectKey");
+    expect(wiki.items[0]).not.toHaveProperty("spaceKey");
+    expect(jira.page).toEqual({ complete: true, termination: "index-exhausted" });
+    expect(wiki.page).toEqual({ complete: true, termination: "index-exhausted" });
+    expect(jiraSearches).toBe(0);
+    expect(wikiSearches).toBe(0);
+
+    await admitRankedCandidates(broker, "jira", jira.items);
+    await admitRankedCandidates(broker, "confluence", wiki.items);
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: jira.items[0]!.entityRef,
+    });
+    await broker.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: wiki.items[0]!.entityRef,
+    });
+
+    expect(await evidence.list()).toMatchObject({
+      records: [
+        { authority: { bindingId: "scope-binding:exact:jira:ATLCLI-42", authorityClass: "exact_entity" } },
+        { authority: { bindingId: "scope-binding:exact:confluence:1001", authorityClass: "exact_entity" } },
+      ],
+    });
+  });
+
+  it("reuses only fresh authorized exact evidence and re-reads stale content", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const exactSeed = {
+      binding: {
+        schema: "atlcli.research-scope-binding/v1" as const,
+        id: "scope-binding:exact:confluence:1001",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence" as const,
+        entityKind: "page" as const,
+        entityRef: "research-scope-entity:confluence-page-1001",
+        key: "1001",
+        name: "Exact synthetic page",
+        source: "current_context" as const,
+        authority: "approved" as const,
+      },
+      precedence: 300,
+    };
+    const exactRequest = (maxEvidenceAgeMs: number) => normalizeResearchRequestV1({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Summarize the exact synthetic page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeSeeds: [exactSeed],
+      exactContextProducts: ["confluence"],
+      limits: { maxEvidenceAgeMs, maxDetailItemsPerProduct: 2 },
+      wikiProvider: "rest",
+    });
+    let providerReads = 0;
+    const providersForText = (text: string): ResearchReadProviders => ({
+      jira: {
+        async searchPage() { throw new Error("unexpected Jira search"); },
+        async getIssue() { throw new Error("unexpected Jira detail"); },
+      },
+      wiki: {
+        async searchPage() { throw new Error("unexpected Confluence search"); },
+        async getPage({ contentId }) {
+          providerReads += 1;
+          return {
+            contentId,
+            spaceKey: "UNSCOPED",
+            title: "Exact synthetic page",
+            updatedAt: providerReads === 1
+              ? "2026-08-06T09:00:00.000Z"
+              : "2026-08-06T09:05:00.000Z",
+            content: {
+              text,
+              linkTargets: [],
+              truncated: false,
+              inputBytes: new TextEncoder().encode(text).byteLength,
+            },
+          };
+        },
+      },
+    });
+    const firstRequest = exactRequest(60_000);
+    const first = new ResearchCapabilityBroker(
+      firstRequest,
+      providersForText("Fresh retained evidence."),
+      {
+        evidence: {
+          store: evidence,
+          scopeBindings: [exactSeed.binding],
+          capturedAt: () => "2026-08-06T09:00:00.000Z",
+        },
+      },
+    );
+    const firstAnchor = first.exactAnchors()[0]!;
+    await first.readExactAnchor({
+      schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+      anchorRef: firstAnchor.anchorRef,
+    });
+    const firstEvidenceId = first.detailEvidenceLedger()[0]!.evidenceId!;
+    expect(providerReads).toBe(1);
+    const firstRecord = await evidence.get(firstEvidenceId);
+    expect(firstRecord).toBeDefined();
+    const strategy: ChatStrategyV1 = {
+      qualityMode: "quick",
+      path: "direct",
+      delegated: false,
+      reasonCode: "quick-direct",
+      reasonCodes: ["quick-direct"],
+      ambiguityDisposition: "none",
+      requiredCapabilities: ["exact-read", "chat-answer"],
+      expectedComplexity: "simple",
+      qualityRisks: [],
+    };
+    const firstAnswer: ChatAnswerV1 = {
+      schema: "atlcli.chat-answer/v1",
+      messageMarkdown: "The retained evidence is fresh. [[source:wiki:1001]]",
+      citations: [{
+        sourceId: "wiki:1001",
+        title: "Exact synthetic page",
+        url: "https://example.atlassian.net/wiki/pages/1001",
+        product: "confluence",
+      }],
+      evidenceRefs: ["wiki:1001"],
+      gaps: [],
+      strategy,
+      run: {
+        model: "synthetic",
+        startedAt: "2026-08-06T09:00:00.000Z",
+        completedAt: "2026-08-06T09:00:01.000Z",
+        durationMs: 1_000,
+        counts: { ptcCalls: 1, httpCalls: 1, jiraItems: 0, confluenceItems: 1 },
+      },
+    };
+    const fingerprint = await chatScopeFingerprintV1({
+      scope: firstRequest.scope,
+      scopeBindings: [exactSeed.binding],
+    });
+    const initialSession = createChatSessionV1({
+      conversationId: "chat-conversation:evidence-reuse",
+      identity: {
+        userId: "principal:synthetic-reuse",
+        providerCacheIdentity: "provider-cache:synthetic-reuse",
+      },
+      tenantOrigin: firstRequest.scope.siteOrigin,
+      createdAt: "2026-08-06T09:00:00.000Z",
+    });
+    const firstTurn = beginChatTurnV1({
+      session: initialSession,
+      expectedSessionRevision: initialSession.revision,
+      turnId: "chat-turn:first",
+      objective: firstRequest.question,
+      qualityMode: "quick",
+      scopeFingerprint: fingerprint,
+      startedAt: "2026-08-06T09:00:00.000Z",
+    });
+    const completedSession = completeChatTurnV1({
+      session: firstTurn,
+      expectedSessionRevision: firstTurn.revision,
+      turnId: "chat-turn:first",
+      answer: firstAnswer,
+      acceptedStrategy: strategy,
+      activityRefs: [],
+      evidenceRecords: [firstRecord!],
+      completedAt: "2026-08-06T09:00:01.000Z",
+    });
+    const followUpSession = beginChatTurnV1({
+      session: completedSession,
+      expectedSessionRevision: completedSession.revision,
+      turnId: "chat-turn:follow-up",
+      objective: "Which retained detail matters most?",
+      qualityMode: "quick",
+      scopeFingerprint: fingerprint,
+      startedAt: "2026-08-06T09:00:30.000Z",
+    });
+    const retainedIds = buildChatTurnContextV1(
+      followUpSession,
+      "chat-turn:follow-up",
+    ).acceptedEvidence.map((entry) => entry.evidenceId);
+    expect(retainedIds).toEqual([firstEvidenceId]);
+
+    const fresh = new ResearchCapabilityBroker(
+      firstRequest,
+      providersForText("must not be fetched"),
+      {
+        evidence: {
+          store: evidence,
+          scopeBindings: [exactSeed.binding],
+          capturedAt: () => "2026-08-06T09:00:30.000Z",
+        },
+      },
+    );
+    expect(await fresh.restoreRetainedEvidence({
+      evidenceIds: retainedIds,
+      checkedAt: "2026-08-06T09:00:30.000Z",
+    })).toMatchObject({ staged: 1, stale: 0, unauthorized: 0 });
+    const freshResult = await fresh.readExactAnchor({
+      schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+      anchorRef: fresh.exactAnchors()[0]!.anchorRef,
+    });
+    expect(freshResult.content.text).toBe("Fresh retained evidence.");
+    expect(providerReads).toBe(1);
+
+    const staleRequest = exactRequest(1_000);
+    const stale = new ResearchCapabilityBroker(
+      staleRequest,
+      providersForText("Changed provider evidence."),
+      {
+        evidence: {
+          store: evidence,
+          scopeBindings: [exactSeed.binding],
+          capturedAt: () => "2026-08-06T09:05:00.000Z",
+        },
+      },
+    );
+    expect(await stale.restoreRetainedEvidence({
+      evidenceIds: [firstEvidenceId],
+      checkedAt: "2026-08-06T09:05:00.000Z",
+    })).toMatchObject({ staged: 0, stale: 1 });
+    const staleResult = await stale.readExactAnchor({
+      schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+      anchorRef: stale.exactAnchors()[0]!.anchorRef,
+    });
+    expect(staleResult.content.text).toBe("Changed provider evidence.");
+    expect(providerReads).toBe(2);
+    expect(stale.detailEvidenceLedger()[0]!.evidenceId).not.toBe(firstEvidenceId);
+  });
+
+  it("turns fresh accepted whole-scope evidence into one opaque follow-up read without search or HTTP", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const scopedRequest = request({ maxEvidenceAgeMs: 60_000 });
+    const spaceBinding = {
+      schema: "atlcli.research-scope-binding/v1" as const,
+      id: "scope-binding:space-KB",
+      tenantOrigin: "https://example.atlassian.net",
+      product: "confluence" as const,
+      entityKind: "space" as const,
+      entityRef: "research-scope-entity:space-KB",
+      key: "KB",
+      name: "Synthetic knowledge base",
+      source: "ui_added" as const,
+      authority: "approved" as const,
+    };
+    let providerSearches = 0;
+    let providerReads = 0;
+    const providers: ResearchReadProviders = {
+      jira: {
+        async searchPage() { throw new Error("unexpected Jira search"); },
+        async getIssue() { throw new Error("unexpected Jira detail"); },
+      },
+      wiki: {
+        async searchPage() {
+          providerSearches += 1;
+          return {
+            items: [{
+              contentId: "1001",
+              spaceKey: "KB",
+              title: "Scoped retained page",
+              updatedAt: "2026-08-06T09:00:00.000Z",
+            }],
+          };
+        },
+        async getPage({ contentId }) {
+          providerReads += 1;
+          return {
+            contentId,
+            spaceKey: "KB",
+            title: "Scoped retained page",
+            updatedAt: "2026-08-06T09:00:00.000Z",
+            content: {
+              text: "Accepted whole-scope evidence for a later follow-up.",
+              linkTargets: [],
+              truncated: false,
+              inputBytes: 52,
+            },
+          };
+        },
+      },
+    };
+    const first = new ResearchCapabilityBroker(scopedRequest, providers, {
+      scopeBindings: [spaceBinding],
+      createEntityId: () => "retained-whole-scope-entity",
+      evidence: {
+        store: evidence,
+        scopeBindings: [spaceBinding],
+        capturedAt: () => "2026-08-06T09:00:00.000Z",
+      },
+    });
+    const discovered = await first.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(first, "confluence", discovered.items);
+    await first.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: discovered.items[0]!.entityRef,
+    });
+    const evidenceId = first.detailEvidenceLedger()[0]!.evidenceId!;
+    expect({ providerSearches, providerReads }).toEqual({
+      providerSearches: 1,
+      providerReads: 1,
+    });
+
+    const followUp = new ResearchCapabilityBroker(scopedRequest, providers, {
+      scopeBindings: [spaceBinding],
+      createAnchorId: () => "retained-whole-scope-anchor",
+      evidence: {
+        store: evidence,
+        scopeBindings: [spaceBinding],
+        capturedAt: () => "2026-08-06T09:00:30.000Z",
+      },
+    });
+    expect(await followUp.restoreRetainedEvidence({
+      evidenceIds: [evidenceId],
+      checkedAt: "2026-08-06T09:00:30.000Z",
+    })).toMatchObject({ staged: 1, stale: 0, unauthorized: 0 });
+    const anchors = followUp.exactAnchors();
+    expect(anchors).toEqual([{
+      anchorRef: "research-anchor:retained-whole-scope-anchor",
+      product: "confluence",
+      entityKind: "page",
+      name: "Scoped retained page",
+    }]);
+    await followUp.readExactAnchor({
+      schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+      anchorRef: anchors[0]!.anchorRef,
+    });
+    expect({ providerSearches, providerReads }).toEqual({
+      providerSearches: 1,
+      providerReads: 1,
+    });
+  });
+
+  it("admits only exact Jira keys observed in a retrieved bound page", async () => {
+    const exactPageRequest = normalizeResearchRequestV1({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Summarize the approved exact page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: ["KB"],
+      },
+      scopeSeeds: [
+        {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:current:confluence:KB",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "confluence",
+            entityKind: "space",
+            entityRef: "research-scope-entity:confluence-space-kb",
+            key: "KB",
+            name: "Knowledge base",
+            source: "current_context",
+            authority: "approved",
+          },
+          precedence: 300,
+        },
+        {
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:current:confluence:2002",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "confluence",
+            entityKind: "page",
+            entityRef: "research-scope-entity:confluence-page-2002",
+            key: "2002",
+            name: "Bound implementation note",
+            source: "current_context",
+            authority: "approved",
+          },
+          precedence: 300,
+        },
+      ],
+      exactContextProducts: ["confluence"],
+      limits: { maxDetailItemsPerProduct: 2 },
+      wikiProvider: "rest",
+    });
+    const providers = fakeProviders();
+    let jiraProjectSearches = 0;
+    let wikiSpaceSearches = 0;
+    providers.wiki.searchPage = async () => {
+      wikiSpaceSearches += 1;
+      throw new Error("an exact page must not search its parent space");
+    };
+    providers.wiki.getPage = async ({ contentId }) => ({
+      contentId,
+      spaceKey: "KB",
+      title: "Bound implementation note",
+      content: {
+        text: "The next implementation step is tracked by DEMO-7.",
+        linkTargets: [],
+        truncated: false,
+        inputBytes: 51,
+      },
+    });
+    providers.jira.searchPage = async () => {
+      jiraProjectSearches += 1;
+      throw new Error("an observed exact Jira key must not search a project");
+    };
+    providers.jira.getIssue = async ({ issueKey }) => ({
+      issueKey,
+      projectKey: "UNSCOPED",
+      title: "Observed exact work item",
+      content: {
+        text: "The work item implements the referenced step.",
+        linkTargets: [],
+        truncated: false,
+        inputBytes: 47,
+      },
+    });
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(exactPageRequest, providers, {
+      createEntityId: () => `observed-entity-${++entityId}`,
+    });
+
+    const wiki = await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await admitRankedCandidates(broker, "confluence", wiki.items);
+    await broker.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: wiki.items[0]!.entityRef,
+    });
+
+    const jira = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    expect(jira.items).toHaveLength(1);
+    expect(jira.items[0]).toMatchObject({ issueKey: "DEMO-7" });
+    await admitRankedCandidates(broker, "jira", jira.items);
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: jira.items[0]!.entityRef,
+    });
+
+    expect({ jiraProjectSearches, wikiSpaceSearches }).toEqual({
+      jiraProjectSearches: 0,
+      wikiSpaceSearches: 0,
+    });
+    expect(broker.detailEvidenceLedger().map((entry) => entry.source.id)).toEqual([
+      "wiki:2002",
+      "jira:DEMO-7",
+    ]);
+  });
+
+  it("admits one host-preauthorized exact link without a parent-space search", async () => {
+    const exactRequest = normalizeResearchRequestV1({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Read the one exact linked Confluence page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      limits: { maxDetailItemsPerProduct: 1 },
+      wikiProvider: "rest",
+    });
+    const providers = fakeProviders();
+    let wikiSearches = 0;
+    providers.wiki.searchPage = async () => {
+      wikiSearches += 1;
+      throw new Error("preauthorized exact scope must not issue a parent-space search");
+    };
+    providers.wiki.getPage = async ({ contentId }) => ({
+      contentId,
+      spaceKey: "UNSCOPED",
+      title: "Preauthorized exact page",
+      content: { text: "Exact linked evidence.", linkTargets: [], truncated: false, inputBytes: 22 },
+    });
+    const broker = new ResearchCapabilityBroker(exactRequest, providers, {
+      createEntityId: () => "preauthorized-entity-1",
+    });
+    broker.allowPreauthorizedExactEntity({
+      schema: "atlcli.research-scope-binding/v1",
+      id: "scope-binding:preauthorized:research-scope-candidate:linked-page",
+      tenantOrigin: "https://example.atlassian.net",
+      product: "confluence",
+      entityKind: "page",
+      entityRef: "research-scope-entity:linked-page",
+      key: "1001",
+      name: "Preauthorized exact page",
+      source: "research_discovery",
+      authority: "approved",
+      candidateId: "research-scope-candidate:linked-page",
+      approvedAt: "2026-08-02T20:00:00.000Z",
+    });
+
+    const wiki = await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    expect(wiki.items).toEqual([expect.objectContaining({ contentId: "1001" })]);
+    expect(wiki.page).toEqual({ complete: true, termination: "index-exhausted" });
+    expect(wikiSearches).toBe(0);
+
+    await admitRankedCandidates(broker, "confluence", wiki.items);
+    const detail = await broker.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: wiki.items[0]!.entityRef,
+    });
+    expect(detail).toMatchObject({
+      source: { contentId: "1001", url: "https://example.atlassian.net/wiki/spaces/UNSCOPED/pages/1001" },
+      content: { text: "Exact linked evidence." },
+    });
+  });
+
+  it("invalidates claims that depend on a superseded provider detail version", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const claims = new WorkspaceResearchClaimLedgerV1(workspace, evidence);
+    const providers = fakeProviders();
+    let detailReads = 0;
+    providers.jira.getIssue = async ({ issueKey }) => {
+      detailReads += 1;
+      return {
+        issueKey,
+        projectKey: "DEMO",
+        title: "Scoped issue",
+        updatedAt: `2026-08-0${detailReads}T12:00:00.000Z`,
+        content: {
+          text: detailReads === 1
+            ? "The first detail version has a direct implementation reference."
+            : "The revised detail version changes the implementation reference.",
+          linkTargets: [],
+          truncated: false,
+          inputBytes: 70,
+        },
+      };
+    };
+    const broker = new ResearchCapabilityBroker(request({ maxDetailItemsPerProduct: 2 }), providers, {
+      createEntityId: () => "claim-invalidation-entity",
+      evidence: {
+        store: evidence,
+        claimLedger: claims,
+        scopeBindings: [{
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:test:jira:DEMO",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "jira",
+          entityKind: "project",
+          entityRef: "scope-key:jira:DEMO",
+          key: "DEMO",
+          name: "DEMO",
+          source: "cli_flag",
+          authority: "locked",
+        }],
+        capturedAt: () => `2026-08-0${detailReads + 1}T12:01:00.000Z`,
+      },
+    });
+    const page = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    const entityRef = page.items[0]!.entityRef;
+    await admitRankedCandidates(broker, "jira", page.items);
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef,
+    });
+    const firstEvidence = (await evidence.list()).records[0]!;
+    const firstChunk = (await evidence.chunks(firstEvidence.id))[0]!;
+    const quote = firstChunk.text.slice(0, 12);
+    const claim = await createResearchClaimV1({
+      evidenceStore: evidence,
+      classification: "fact",
+      statement: "The issue has an implementation reference.",
+      evidenceSpans: [{
+        evidenceId: firstEvidence.id,
+        chunkId: firstChunk.id,
+        start: firstChunk.start,
+        end: firstChunk.start + quote.length,
+        textHash: await sha256(quote),
+      }],
+      createdAt: "2026-08-01T12:02:00.000Z",
+    });
+    await claims.put(claim);
+
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef,
+    });
+    await expect(claims.get(claim.id)).resolves.toMatchObject({
+      freshness: "invalidated",
+      invalidationReason: "evidence_changed",
+    });
+  });
+
+  it("paginates both products without exposing provider cursors or out-of-scope hits", async () => {
+    const providers = fakeProviders();
+    let cursorId = 0;
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(request(), providers, {
+      createCursorId: () => `cursor-${++cursorId}`,
+      createEntityId: () => `entity-${++entityId}`,
+    });
+
+    const jiraFirst = (await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: { text: "implementation" },
+      pageSize: 2,
+    })) as ResearchSearchOutputV1;
+    const wikiFirst = (await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: { text: "implementation" },
+      pageSize: 2,
+    })) as ResearchSearchOutputV1;
+
+    expect(jiraFirst.items.map((item) => item.issueKey)).toEqual(["DEMO-1"]);
+    expect(wikiFirst.items.map((item) => item.contentId)).toEqual(["1001"]);
+    expect(JSON.stringify([jiraFirst, wikiFirst])).not.toContain(
+      "OUT-OF-SCOPE-SENTINEL"
+    );
+    expect(jiraFirst.page.nextCursor).toMatch(/^research-cursor:/);
+    expect(wikiFirst.page.nextCursor).toMatch(/^research-cursor:/);
+    expect(JSON.stringify([jiraFirst, wikiFirst])).not.toContain("provider-next");
+    expect(JSON.stringify([jiraFirst, wikiFirst])).not.toContain("cursor=secret");
+
+    const jiraSecond = (await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      cursor: jiraFirst.page.nextCursor,
+    })) as ResearchSearchOutputV1;
+    const wikiSecond = (await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      cursor: wikiFirst.page.nextCursor,
+    })) as ResearchSearchOutputV1;
+
+    expect(jiraSecond.items.map((item) => item.issueKey)).toEqual(["DEMO-2"]);
+    expect(wikiSecond.items.map((item) => item.contentId)).toEqual(["1002"]);
+    expect(jiraSecond.page).toEqual({
+      complete: true,
+      termination: "index-exhausted",
+    });
+    expect(wikiSecond.page).toEqual({
+      complete: true,
+      termination: "index-exhausted",
+    });
+    expect(broker.completionStatus()).toEqual({
+      complete: true,
+      warnings: [],
+    });
+    expect(providers.calls[0]?.jql).toContain('project in ("DEMO")');
+    expect(providers.calls[1]?.cql).toContain('space in ("KB")');
+  });
+
+  it("retains only host-normalized typed filters across an opaque cursor", async () => {
+    const providers = fakeProviders();
+    let cursorId = 0;
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(request(), providers, {
+      createCursorId: () => `cursor-${++cursorId}`,
+      createEntityId: () => `entity-${++entityId}`,
+    });
+    const first = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: { labels: ["release", "agentic-ai"] },
+    }) as ResearchSearchOutputV1;
+    await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      cursor: first.page.nextCursor,
+    });
+    const jqlCalls = providers.calls.filter((call) => call.product === "jira");
+    expect(jqlCalls).toHaveLength(2);
+    expect(jqlCalls.map((call) => call.jql)).toEqual([
+      expect.stringContaining('project in ("DEMO")'),
+      expect.stringContaining('project in ("DEMO")'),
+    ]);
+    expect(jqlCalls.map((call) => call.jql)).toEqual([
+      expect.stringContaining('labels = "agentic-ai" AND labels = "release"'),
+      expect.stringContaining('labels = "agentic-ai" AND labels = "release"'),
+    ]);
+    expect(JSON.stringify(first)).not.toContain("agentic-ai");
+  });
+
+  it("allows details only through search-issued refs and rechecks provider scope", async () => {
+    const providers = fakeProviders();
+    let cursorId = 0;
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(request(), providers, {
+      createCursorId: () => `cursor-${++cursorId}`,
+      createEntityId: () => `entity-${++entityId}`,
+    });
+    const jira = (await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    })) as ResearchSearchOutputV1;
+    const wiki = (await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    })) as ResearchSearchOutputV1;
+
+    await expect(
+      broker.invoke("jira.issue.get", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+        entityRef: jira.items[0]!.entityRef,
+      }),
+    ).rejects.toThrow("candidate reference admitted by research.candidate.rank");
+    await admitRankedCandidates(broker, "jira", jira.items);
+    await admitRankedCandidates(broker, "confluence", wiki.items);
+
+    const jiraDetail = await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: jira.items[0]!.entityRef,
+    });
+    const wikiDetail = await broker.invoke("wiki.page.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+      entityRef: wiki.items[0]!.entityRef,
+    });
+    expect(JSON.stringify(jiraDetail)).toContain("implementation page");
+    expect(JSON.stringify(wikiDetail)).toContain("DEMO-1");
+
+    await expect(
+      broker.invoke("jira.issue.get", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+        entityRef: "DEMO-999",
+      })
+    ).rejects.toThrow("Entity reference is invalid");
+    await expect(
+      broker.invoke("wiki.page.get", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].input,
+        entityRef: jira.items[0]!.entityRef,
+      })
+    ).rejects.toThrow("another capability");
+
+    const escapingProviders = fakeProviders();
+    escapingProviders.jira.getIssue = async (input) => ({
+      issueKey: input.issueKey,
+      projectKey: "OTHER",
+      title: "OUT-OF-SCOPE-SENTINEL",
+      content: {
+        text: "OUT-OF-SCOPE-SENTINEL",
+        linkTargets: [],
+        truncated: false,
+        inputBytes: 1,
+      },
+    });
+    const guarded = new ResearchCapabilityBroker(request(), escapingProviders, {
+      createCursorId: () => "cursor",
+      createEntityId: () => "entity",
+    });
+    const found = (await guarded.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    })) as ResearchSearchOutputV1;
+    await admitRankedCandidates(guarded, "jira", found.items);
+    await expect(
+      guarded.invoke("jira.issue.get", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+        entityRef: found.items[0]!.entityRef,
+      })
+    ).rejects.toThrow("outside the run scope");
+  });
+
+  it("ranks complete opaque candidate sets on the host before detail access", async () => {
+    const providers = fakeProviders();
+    providers.jira.searchPage = async () => ({
+      items: [
+        {
+          issueKey: "DEMO-1",
+          projectKey: "DEMO",
+          title: "Background discovery",
+          excerpt: "internal-only-excerpt-a",
+        },
+        {
+          issueKey: "DEMO-2",
+          projectKey: "DEMO",
+          title: "Open work delivery plan",
+          excerpt: "internal-only-excerpt-b",
+        },
+      ],
+    });
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(request(), providers, {
+      createEntityId: () => `rank-${++entityId}`,
+    });
+    const page = (await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    })) as ResearchSearchOutputV1;
+
+    const ranked = await broker.invoke("research.candidate.rank", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["research.candidate.rank"].input,
+      product: "jira",
+      entityRefs: [...page.items].reverse().map((item) => item.entityRef),
+    });
+
+    expect(ranked).toMatchObject({
+      schema: "atlcli.ptc/research.candidate.rank.output/v1",
+      items: [
+        { entityRef: page.items[1]!.entityRef, sourceId: "jira:DEMO-2", rank: 1 },
+        { entityRef: page.items[0]!.entityRef, sourceId: "jira:DEMO-1", rank: 2 },
+      ],
+    });
+    expect(JSON.stringify(ranked)).not.toContain("internal-only-excerpt");
+
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[1]!.entityRef,
+    });
+    expect(providers.calls.filter((call) => call.product === "jira-detail")).toHaveLength(1);
+    expect(broker.detailEvidenceLedger()).toMatchObject([{
+      source: { id: "jira:DEMO-2" },
+      retrieval: {
+        sourceId: "jira:DEMO-2",
+        reason: "question_relevance_rank",
+        rank: 1,
+      },
+    }]);
+  });
+
+  it("rejects raw query languages and terminates an incomplete pagination budget visibly", async () => {
+    const providers = fakeProviders();
+    let entityId = 0;
+    const broker = new ResearchCapabilityBroker(
+      request({ maxSearchPagesPerProduct: 1 }),
+      providers,
+      {
+        createCursorId: () => "cursor",
+        createEntityId: () => `entity-${++entityId}`,
+      }
+    );
+
+    await expect(
+      broker.invoke("jira.issue.search", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+        query: {},
+        jql: 'project = "OTHER"',
+      })
+    ).rejects.toThrow("unknown fields");
+
+    await expect(
+      broker.invoke("jira.issue.search", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+        query: { ancestorId: "1001" },
+      }),
+    ).rejects.toThrow("unknown fields");
+    await expect(
+      broker.invoke("wiki.search", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+        query: { labels: ["valid", "valid"] },
+      }),
+    ).rejects.toThrow("unique");
+    await expect(
+      broker.invoke("wiki.search", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+        query: { ancestorId: "1001 OR space = OTHER" },
+      }),
+    ).rejects.toThrow("ancestor ID");
+    await expect(
+      broker.invoke("wiki.search", {
+        schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+        query: { ancestorId: "1001", parentId: "1001" },
+      }),
+    ).rejects.toThrow("mutually exclusive");
+
+    const result = (await broker.invoke("wiki.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.search"].input,
+      query: {},
+    })) as ResearchSearchOutputV1;
+    expect(result.page).toEqual({ complete: false, termination: "page-limit" });
+    expect(broker.completionStatus()).toEqual({
+      complete: false,
+      warnings: [
+        "Jira search did not reach a terminal page.",
+        "Confluence search incomplete: page-limit.",
+      ],
+    });
+    expect(broker.completionStatus(["confluence"])).toEqual({
+      complete: false,
+      warnings: ["Confluence search incomplete: page-limit."],
+    });
+  });
+
+  it("counts invalid PTC calls and enforces HTTP attempts synchronously", async () => {
+    const providers = fakeProviders();
+    const broker = new ResearchCapabilityBroker(
+      request({ maxPtcCalls: 4, maxHttpCalls: 4 }),
+      providers,
+      {
+        createCursorId: () => "cursor",
+        createEntityId: () => "entity",
+      }
+    );
+    for (let count = 0; count < 4; count += 1) {
+      await expect(
+        broker.invoke("jira.issue.search", { schema: "wrong", query: {} })
+      ).rejects.toBeInstanceOf(ResearchContractError);
+    }
+    await expect(
+      broker.invoke("jira.issue.search", { schema: "wrong", query: {} })
+    ).rejects.toThrow("PTC call budget");
+
+    for (let count = 0; count < 4; count += 1) {
+      broker.budget.guardTransport({ type: "attempt" });
+    }
+    expect(() => broker.budget.guardTransport({ type: "attempt" })).toThrow(
+      "HTTP attempt budget"
+    );
+  });
+});

@@ -23,7 +23,7 @@ class FakeRoot {
 }
 
 function settings(hideRovoEntrypoints: boolean): AppSettings {
-  return { locale: null, hideRovoEntrypoints };
+  return { locale: null, lastWorkspace: null, hideRovoEntrypoints };
 }
 
 async function flush(): Promise<void> {

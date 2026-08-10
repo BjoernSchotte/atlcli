@@ -26,7 +26,7 @@
  */
 
 import { decodeHTML } from "entities";
-import { KNOWN_MACROS } from "./markdown.js";
+import { KNOWN_MACROS } from "./known-macros.js";
 import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import { translateDatasourceLink } from "./datasource.js";
 import { normalizeChartMacro } from "./chart-macro.js";
@@ -2109,6 +2109,26 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
         })
       );
       return display;
+    }
+    const authoredAppearance = el.attrs["data-card-appearance"];
+    if (
+      authoredAppearance === "inline" ||
+      authoredAppearance === "block" ||
+      authoredAppearance === "embed"
+    ) {
+      return [{
+        type: "smartCard",
+        card: {
+          appearance: authoredAppearance,
+          source: "url",
+          url: href,
+          target: { kind: "external", href },
+          ...(inlineText(display).trim() ? { title: inlineText(display).trim() } : {}),
+          ...(el.attrs["local-id"] !== undefined
+            ? { localId: el.attrs["local-id"] }
+            : {}),
+        },
+      }];
     }
     return [{ type: "link", target: { kind: "external", href }, content: display }];
   }

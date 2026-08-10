@@ -1,0 +1,12 @@
+diff --git a/dist/tools/webSearch.d.cts b/dist/tools/webSearch.d.cts
+--- a/dist/tools/webSearch.d.cts
++++ b/dist/tools/webSearch.d.cts
+@@ -31,1 +31,1 @@
+-  userLocation?: Anthropic$1.Beta.BetaWebSearchTool20250305.UserLocation;
++  userLocation?: Anthropic$1.Beta.BetaUserLocation;
+diff --git a/dist/tools/webSearch.d.ts b/dist/tools/webSearch.d.ts
+--- a/dist/tools/webSearch.d.ts
++++ b/dist/tools/webSearch.d.ts
+@@ -31,1 +31,1 @@
+-  userLocation?: Anthropic$1.Beta.BetaWebSearchTool20250305.UserLocation;
++  userLocation?: Anthropic$1.Beta.BetaUserLocation;

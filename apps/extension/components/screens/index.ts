@@ -31,12 +31,17 @@ import { templatesScreenDefinition } from "./TemplatesScreen.js";
 import { SETTINGS_SCREEN_ID, SettingsScreen } from "./SettingsScreen.js";
 import { AboutScreen } from "./AboutScreen.js";
 import { jobsScreenDefinition } from "./JobsScreen.js";
+import {
+  researchScreenDefinition,
+  RESEARCH_SCREEN_ID,
+} from "./ResearchScreen.js";
 
 export const SCREEN_IDS = {
   export: "export",
   preview: "preview",
   templates: "templates",
   activity: "activity",
+  research: RESEARCH_SCREEN_ID,
   settings: SETTINGS_SCREEN_ID,
   about: "about",
 } as const;
@@ -59,6 +64,7 @@ export const defaultScreens: readonly ScreenDefinition[] = [
   {
     ...jobsScreenDefinition,
   },
+  researchScreenDefinition,
   {
     id: SCREEN_IDS.settings,
     labelKey: "screen.settings.label",

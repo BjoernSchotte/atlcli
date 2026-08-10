@@ -7,12 +7,17 @@ import {
   PDFJS_ARTIFACT_PATTERNS,
   TYPST_COMPILER_WASM_SHA256,
   scanText,
-  validatePdfArtifactInventory,
+  validateExtensionArtifactInventory,
 } from "../scripts/check-output-build.js";
 import { EXTENSION_ROOT, ensureExtensionBuilt, OUTPUT_DIR } from "./build-helper.js";
 
 const CLI_PATH = join(EXTENSION_ROOT, "scripts", "check-output-build.ts");
 const EXTENSION_BUILD_TIMEOUT_MS = 180_000;
+// The complete production bundle includes the vendored PDF/DOCX runtimes and
+// takes about 6-7 seconds to hash and scan on the CI-class test host. Keep the
+// functional process gate above Bun's implicit 5-second per-test timeout; this
+// does not change or skip any scanner rule.
+const OUTPUT_SCAN_E2E_TIMEOUT_MS = 20_000;
 
 /** Run the REAL check CLI against `root`; return exit code + merged output. */
 function runCheckCli(root: string): { code: number; output: string } {
@@ -65,6 +70,20 @@ describe("scanText classification", () => {
     expect(scanText(`import a from "./local.js";`)).toEqual([]);
     // A bare URL string (not an import/script) is not a remote SCRIPT origin.
     expect(scanText(`const url = "https://api.atlassian.net/rest";`)).toEqual([]);
+  });
+
+  it("does not flag node/global words inside inert diagnostics", () => {
+    expect(
+      scanText(
+        `const help = "set process.env or import('node:buffer').File; never call eval(userInput)";`
+      )
+    ).toEqual([]);
+  });
+
+  it("does not flag an SDK process.env label after minified regex syntax", () => {
+    const source =
+      "const delimiter=/[\"'`]/g;this.logLevel=parse(value,`process.env['ANTHROPIC_LOG']`);";
+    expect(scanText(source)).toEqual([]);
   });
 
   // Regression (finding #6 hardening): bare node GLOBALS are invisible to the
@@ -140,6 +159,16 @@ describe("scanText classification", () => {
 
   it("does not confuse method names with direct eval", () => {
     expect(scanText(`const value = parser.eval(source);`)).toEqual([]);
+    expect(
+      scanText(`class Interpreter { async eval(source, options) { return source; } }`)
+    ).toEqual([]);
+    expect(
+      scanText(`const Interpreter = { eval(source) { return source; } };`)
+    ).toEqual([]);
+  });
+
+  it("still scans executable template expressions", () => {
+    expect(scanText("const value = `${eval(userInput)}`;")).toContain("eval(");
   });
 });
 
@@ -169,36 +198,43 @@ describe("PDF artifact inventory", () => {
     { path: "assets/LICENSE-Noto-Sans-Symbols-2-abc.txt", size: 4_000 },
     { path: "assets/LICENSE-Noto-Emoji-abc.txt", size: 4_000 },
     { path: "assets/LICENSE-abc.", size: 11_000 },
+    { path: "assets/research-agent-abc.js", size: 2_000_000 },
+    {
+      path: "assets/emscripten-module-quickjs.wasm",
+      size: 1_075_905,
+      sha256:
+        "3742fb828ff9841d57dd7350657e3bc9ae2ae52a1d079615f100166c1274052f",
+    },
   ];
 
   it("accepts a complete local PDF runtime", () => {
-    expect(validatePdfArtifactInventory(complete)).toEqual([]);
+    expect(validateExtensionArtifactInventory(complete)).toEqual([]);
   });
 
   it("names missing and truncated compiler artifacts", () => {
     const missingWorker = complete.filter((artifact) => !artifact.path.includes("pdf-compiler"));
-    expect(validatePdfArtifactInventory(missingWorker).join("\n")).toContain(
+    expect(validateExtensionArtifactInventory(missingWorker).join("\n")).toContain(
       "PDF compiler worker"
     );
 
     const truncated = complete.map((artifact) =>
       artifact.path.endsWith(".wasm") ? { ...artifact, size: 1024 } : artifact
     );
-    expect(validatePdfArtifactInventory(truncated).join("\n")).toContain(
+    expect(validateExtensionArtifactInventory(truncated).join("\n")).toContain(
       "unexpectedly small"
     );
 
     const tampered = complete.map((artifact) =>
       artifact.path.includes("SourceSans3-Regular") ? { ...artifact, sha256: "tampered" } : artifact
     );
-    expect(validatePdfArtifactInventory(tampered).join("\n")).toContain("SHA-256");
+    expect(validateExtensionArtifactInventory(tampered).join("\n")).toContain("SHA-256");
   });
 
   it("requires exactly one pinned DOCX code font", () => {
     const missing = complete.filter(
       (artifact) => !artifact.path.includes("JetBrainsMono-Regular"),
     );
-    expect(validatePdfArtifactInventory(missing).join("\n")).toContain(
+    expect(validateExtensionArtifactInventory(missing).join("\n")).toContain(
       "DOCX code font",
     );
 
@@ -210,13 +246,13 @@ describe("PDF artifact inventory", () => {
         sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
       },
     ];
-    expect(validatePdfArtifactInventory(duplicate).join("\n")).toContain(
+    expect(validateExtensionArtifactInventory(duplicate).join("\n")).toContain(
       "expected exactly one bundled artifact",
     );
   });
 
   it("rejects Oniguruma WASM and aggregate Shiki catalogue chunks", () => {
-    const issues = validatePdfArtifactInventory([
+    const issues = validateExtensionArtifactInventory([
       ...complete,
       { path: "assets/onig-seeded.wasm", size: 20_000 },
       { path: "chunks/themes-seeded.js", size: 6_000 },
@@ -237,12 +273,12 @@ describe("PDF artifact inventory", () => {
     ["PDF.js worker", "pdf.worker.min-abc.mjs"],
   ])("requires %s to be present and unmodified", (label, file) => {
     const missing = complete.filter((artifact) => !artifact.path.endsWith(file));
-    expect(validatePdfArtifactInventory(missing).join("\n")).toContain(label);
+    expect(validateExtensionArtifactInventory(missing).join("\n")).toContain(label);
 
     const tampered = complete.map((artifact) =>
       artifact.path.endsWith(file) ? { ...artifact, sha256: "tampered" } : artifact
     );
-    expect(validatePdfArtifactInventory(tampered).join("\n")).toContain("SHA-256");
+    expect(validateExtensionArtifactInventory(tampered).join("\n")).toContain("SHA-256");
   });
 });
 
@@ -308,25 +344,33 @@ describe("check-output-build CLI (end-to-end)", () => {
 
   afterAll(() => rmSync(leakDir, { recursive: true, force: true }));
 
-  it("exits 0 on the real clean .output/chrome-mv3", () => {
-    const { code, output } = runCheckCli(OUTPUT_DIR);
-    expect(code).toBe(0);
-    expect(output).toContain("clean");
-  });
+  it(
+    "exits 0 on the real clean .output/chrome-mv3",
+    () => {
+      const { code, output } = runCheckCli(OUTPUT_DIR);
+      expect(code).toBe(0);
+      expect(output).toContain("clean");
+    },
+    OUTPUT_SCAN_E2E_TIMEOUT_MS
+  );
 
-  it("exits nonzero and names the offending file + specifier on a seeded leak", () => {
-    // Copy the real build into an alternate outDir, then seed a leak file.
-    cpSync(OUTPUT_DIR, leakDir, { recursive: true });
-    writeFileSync(
-      join(leakDir, "leaky.js"),
-      `import { platform } from "node:os";\nexport const p = platform();\n`
-    );
+  it(
+    "exits nonzero and names the offending file + specifier on a seeded leak",
+    () => {
+      // Copy the real build into an alternate outDir, then seed a leak file.
+      cpSync(OUTPUT_DIR, leakDir, { recursive: true });
+      writeFileSync(
+        join(leakDir, "leaky.js"),
+        `import { platform } from "node:os";\nexport const p = platform();\n`
+      );
 
-    const { code, output } = runCheckCli(leakDir);
-    expect(code).not.toBe(0);
-    expect(output).toContain("leaky.js");
-    expect(output).toContain("node:os");
-  });
+      const { code, output } = runCheckCli(leakDir);
+      expect(code).not.toBe(0);
+      expect(output).toContain("leaky.js");
+      expect(output).toContain("node:os");
+    },
+    OUTPUT_SCAN_E2E_TIMEOUT_MS
+  );
 
   /**
    * The PDF.js path is **not** exempt (spec 010 T5.3).
@@ -336,37 +380,48 @@ describe("check-output-build CLI (end-to-end)", () => {
    * dependency, this test goes red and the exemption has to be argued for
    * rather than inherited.
    */
-  it("fails when dynamic code is seeded into the vendored PDF.js file itself", () => {
-    const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-pdfjs-"));
-    try {
-      cpSync(OUTPUT_DIR, seedDir, { recursive: true });
-      const assets = join(seedDir, "assets");
-      const target = readdirSync(assets).find(
-        (name) => name.startsWith("pdf.min-") && name.endsWith(".mjs")
-      );
-      expect(target).toBeDefined();
-      const path = join(assets, target!);
-      writeFileSync(path, `${readFileSync(path, "utf8")}\nconst x = new Function("return 1");\n`);
+  it(
+    "fails when dynamic code is seeded into the vendored PDF.js file itself",
+    () => {
+      const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-pdfjs-"));
+      try {
+        cpSync(OUTPUT_DIR, seedDir, { recursive: true });
+        const assets = join(seedDir, "assets");
+        const target = readdirSync(assets).find(
+          (name) => name.startsWith("pdf.min-") && name.endsWith(".mjs")
+        );
+        expect(target).toBeDefined();
+        const path = join(assets, target!);
+        writeFileSync(
+          path,
+          `${readFileSync(path, "utf8")}\nconst x = new Function("return 1");\n`
+        );
 
-      const { code, output } = runCheckCli(seedDir);
-      expect(code).not.toBe(0);
-      expect(output).toContain(target!);
-      expect(output).toContain("Function(");
-    } finally {
-      rmSync(seedDir, { recursive: true, force: true });
-    }
-  });
+        const { code, output } = runCheckCli(seedDir);
+        expect(code).not.toBe(0);
+        expect(output).toContain(target!);
+        expect(output).toContain("Function(");
+      } finally {
+        rmSync(seedDir, { recursive: true, force: true });
+      }
+    },
+    OUTPUT_SCAN_E2E_TIMEOUT_MS
+  );
 
-  it("scans .mjs assets at all — a new extension is not a way around the gate", () => {
-    const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-mjs-"));
-    try {
-      cpSync(OUTPUT_DIR, seedDir, { recursive: true });
-      writeFileSync(join(seedDir, "sneaky.mjs"), `const value = eval("1 + 1");\n`);
-      const { code, output } = runCheckCli(seedDir);
-      expect(code).not.toBe(0);
-      expect(output).toContain("sneaky.mjs");
-    } finally {
-      rmSync(seedDir, { recursive: true, force: true });
-    }
-  });
+  it(
+    "scans .mjs assets at all — a new extension is not a way around the gate",
+    () => {
+      const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-mjs-"));
+      try {
+        cpSync(OUTPUT_DIR, seedDir, { recursive: true });
+        writeFileSync(join(seedDir, "sneaky.mjs"), `const value = eval("1 + 1");\n`);
+        const { code, output } = runCheckCli(seedDir);
+        expect(code).not.toBe(0);
+        expect(output).toContain("sneaky.mjs");
+      } finally {
+        rmSync(seedDir, { recursive: true, force: true });
+      }
+    },
+    OUTPUT_SCAN_E2E_TIMEOUT_MS
+  );
 });

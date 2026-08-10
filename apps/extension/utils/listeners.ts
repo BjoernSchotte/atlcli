@@ -18,8 +18,22 @@ import {
   type PdfCompileHints,
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
+import type {
+  ChatQualityPolicyV1,
+  ChatAnswerV1,
+  ResearchReport,
+  ResearchRequestV1,
+  ResearchOneShotPolicyV1,
+} from "./research/contracts.js";
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
+import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/research";
+import type {
+  ChatHostIdentityV1,
+  ChatInteractionControlV1,
+  ChatInteractionStateV1,
+  ChatUserQuestionAnswerV1,
+} from "@atlcli/research";
 
 /** Effects the offscreen listener depends on (injectable for tests). */
 export interface OffscreenListenerDeps {
@@ -36,6 +50,34 @@ export interface OffscreenListenerDeps {
     jobIds?: string[],
     options?: { resumeWaiting?: boolean },
   ) => Promise<string | undefined>;
+  runResearch?: (
+    runId: string,
+    sessionId: string,
+    turnId: string,
+    apiKey: string,
+    mode: "chat" | "research",
+    request: ResearchRequestV1,
+    policy?: ResearchOneShotPolicyV1,
+    qualityPolicy?: ChatQualityPolicyV1,
+    hostIdentity?: ChatHostIdentityV1,
+    resumeAnswer?: ChatUserQuestionAnswerV1,
+    resumeCheckpoint?: {
+      kind: "stream-interruption" | "steering";
+    },
+  ) => Promise<ResearchReport | ChatAnswerV1>;
+  resumeResearch?: (
+    runId: string,
+    sessionId: string,
+    turnId: string,
+    apiKey: string,
+  ) => Promise<ResearchReport>;
+  pauseResearch?: (runId: string) => Promise<boolean>;
+  cancelResearch?: (runId: string) => Promise<boolean>;
+  controlChat?: (
+    runId: string,
+    controlId: string,
+    control: ChatInteractionControlV1,
+  ) => Promise<ChatInteractionStateV1>;
 }
 
 const toMessage = (err: unknown): string =>
@@ -74,6 +116,223 @@ export function handleExtMessage(
             kind: "docx:prepare-runtime-result",
             ok: false,
             error: toMessage(err),
+          });
+          break;
+        case "research:run":
+          sendResponse({
+            kind: "research:run-result",
+            runId: message.runId,
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:resume":
+          sendResponse({
+            kind: "research:resume-result",
+            runId: message.runId,
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:list-resumable-sessions":
+          sendResponse({
+            kind: "research:list-resumable-sessions-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:steer-session":
+          sendResponse({
+            kind: "research:steer-session-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:delete-session":
+          sendResponse({
+            kind: "research:delete-session-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:list-scope-reviews":
+          sendResponse({
+            kind: "research:list-scope-reviews-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:list-scope-plan-reviews":
+          sendResponse({
+            kind: "research:list-scope-plan-reviews-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:approve-scope-review":
+          sendResponse({
+            kind: "research:approve-scope-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:reject-scope-review":
+          sendResponse({
+            kind: "research:reject-scope-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:approve-scope-plan-review":
+          sendResponse({
+            kind: "research:approve-scope-plan-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:prepare-plan-review":
+          sendResponse({
+            kind: "research:prepare-plan-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:list-plan-reviews":
+          sendResponse({
+            kind: "research:list-plan-reviews-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:approve-plan-review":
+          sendResponse({
+            kind: "research:approve-plan-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:reject-plan-review":
+          sendResponse({
+            kind: "research:reject-plan-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:prepare-clarification-review":
+          sendResponse({
+            kind: "research:prepare-clarification-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:list-clarification-reviews":
+          sendResponse({
+            kind: "research:list-clarification-reviews-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:resolve-clarification-review":
+          sendResponse({
+            kind: "research:resolve-clarification-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:continue-clarification-review":
+          sendResponse({
+            kind: "research:continue-clarification-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:prepare-scope-clarification-review":
+          sendResponse({
+            kind: "research:prepare-scope-clarification-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:list-scope-clarification-reviews":
+          sendResponse({
+            kind: "research:list-scope-clarification-reviews-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:resolve-scope-clarification-review":
+          sendResponse({
+            kind: "research:resolve-scope-clarification-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:continue-scope-clarification-review":
+          sendResponse({
+            kind: "research:continue-scope-clarification-review-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:cancel-session":
+          sendResponse({
+            kind: "research:cancel-session-result",
+            runId: message.runId,
+            cancelled: false,
+          });
+          break;
+        case "research:chat-control":
+          sendResponse({
+            kind: "research:chat-control-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:pause-session":
+          sendResponse({
+            kind: "research:pause-session-result",
+            runId: message.runId,
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:resolve-scope":
+          sendResponse({
+            kind: "research:resolve-scope-result",
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:cancel":
+          sendResponse({
+            kind: "research:cancel-result",
+            runId: message.runId,
+            cancelled: false,
           });
           break;
         case "ping":
@@ -151,6 +410,117 @@ export function handleOffscreenMessage(
         .catch((error) => sendResponse({
           kind: "offscreen:jobs-wake-result",
           error: toMessage(error),
+        }));
+      break;
+    case "offscreen:research-run":
+      (deps.runResearch
+        ? deps.runResearch(
+          message.runId,
+          message.sessionId,
+          message.turnId,
+          message.apiKey,
+          message.mode,
+          message.request,
+          message.policy,
+          message.qualityPolicy,
+          message.hostIdentity,
+          message.resumeAnswer,
+          message.resumeCheckpoint,
+        )
+        : Promise.reject(new Error("Research worker host is not configured.")))
+        .then((report) => sendResponse({
+          kind: "offscreen:research-run-result",
+          runId: message.runId,
+          ok: true,
+          report,
+        }))
+        .catch((error) => {
+          const classified = classifyResearchError(error);
+          sendResponse({
+            kind: "offscreen:research-run-result",
+            runId: message.runId,
+            ok: false,
+            code: classified.code,
+            error: classified.message,
+            ...(error instanceof ChatUserQuestionRequiredError
+              ? { question: error.question }
+              : {}),
+          });
+        });
+      break;
+    case "offscreen:research-resume":
+      (deps.resumeResearch
+        ? deps.resumeResearch(
+          message.runId,
+          message.sessionId,
+          message.turnId,
+          message.apiKey,
+        )
+        : Promise.reject(new Error("Research worker resume is not configured.")))
+        .then((report) => sendResponse({
+          kind: "offscreen:research-resume-result",
+          runId: message.runId,
+          ok: true,
+          report,
+        }))
+        .catch((error) => {
+          const classified = classifyResearchError(error);
+          sendResponse({
+            kind: "offscreen:research-resume-result",
+            runId: message.runId,
+            ok: false,
+            code: classified.code,
+            error: classified.message,
+          });
+        });
+      break;
+    case "offscreen:research-cancel":
+      (deps.cancelResearch?.(message.runId) ?? Promise.resolve(false))
+        .then((cancelled) => sendResponse({
+          kind: "offscreen:research-cancel-result",
+          runId: message.runId,
+          cancelled,
+        }))
+        .catch(() => sendResponse({
+          kind: "offscreen:research-cancel-result",
+          runId: message.runId,
+          cancelled: false,
+        }));
+      break;
+    case "offscreen:research-chat-control":
+      (deps.controlChat
+        ? deps.controlChat(message.runId, message.controlId, message.control)
+        : Promise.reject(new Error("Chat interaction control is not configured.")))
+        .then((state) => sendResponse({
+          kind: "offscreen:research-chat-control-result",
+          runId: message.runId,
+          controlId: message.controlId,
+          ok: true,
+          state,
+        }))
+        .catch((error) => {
+          const classified = classifyResearchError(error);
+          sendResponse({
+            kind: "offscreen:research-chat-control-result",
+            runId: message.runId,
+            controlId: message.controlId,
+            ok: false,
+            code: classified.code,
+            error: classified.message,
+          });
+        });
+      break;
+    case "offscreen:research-pause":
+      (deps.pauseResearch?.(message.runId) ?? Promise.resolve(false))
+        .then((paused) => sendResponse({
+          kind: "offscreen:research-pause-result",
+          runId: message.runId,
+          paused,
+        }))
+        .catch(() => sendResponse({
+          kind: "offscreen:research-pause-result",
+          runId: message.runId,
+          paused: false,
         }));
       break;
   }
