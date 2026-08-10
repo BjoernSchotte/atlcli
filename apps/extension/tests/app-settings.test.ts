@@ -6,6 +6,8 @@ import {
 } from "../utils/ports/settings.js";
 import {
   ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
+  browserChatActiveConversationStorageKeyV1,
+  browserChatProviderCacheIdentityV1,
   LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
 } from "../utils/local-model/selection.js";
 
@@ -54,6 +56,21 @@ describe("app settings", () => {
         modelId: "user-controlled",
       },
     })).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("isolates durable Chat identity and active pointers by selected model", () => {
+    expect(browserChatProviderCacheIdentityV1(
+      LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+      "browser-principal:fixture",
+    )).toContain("local-gemma:onnx-community/gemma-4-E4B-it-ONNX");
+    expect(browserChatActiveConversationStorageKeyV1(
+      ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
+    )).toBe("atlcli.research.active-chat-conversation-id.v1");
+    expect(browserChatActiveConversationStorageKeyV1(
+      LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+    )).not.toBe(browserChatActiveConversationStorageKeyV1(
+      ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
+    ));
   });
 
   it("falls back safely for malformed records", () => {

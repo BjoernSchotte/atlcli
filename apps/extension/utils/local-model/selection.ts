@@ -65,6 +65,29 @@ export function browserModelSelectionKey(selection: BrowserModelSelectionV1): st
   return `${selection.providerId}:${selection.modelId}`;
 }
 
+/** Provider/model fence for durable Chat state and provider-side cache reuse. */
+export function browserChatProviderCacheIdentityV1(
+  selection: BrowserModelSelectionV1,
+  userId: string,
+): string {
+  return selection.providerId === "anthropic"
+    ? `anthropic:${userId}`
+    : `${browserModelSelectionKey(selection)}:${userId}`;
+}
+
+/**
+ * Keep the legacy Anthropic pointer stable while isolating every additional
+ * browser model in its own active-conversation slot.
+ */
+export function browserChatActiveConversationStorageKeyV1(
+  selection: BrowserModelSelectionV1,
+): string {
+  const legacy = "atlcli.research.active-chat-conversation-id.v1";
+  return selection.providerId === "anthropic"
+    ? legacy
+    : `${legacy}:${encodeURIComponent(browserModelSelectionKey(selection))}`;
+}
+
 export function browserModelDescriptorByKey(
   key: string,
 ): BrowserModelDescriptorV1 | undefined {

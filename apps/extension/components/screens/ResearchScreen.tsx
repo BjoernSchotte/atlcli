@@ -1298,6 +1298,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const chatPort = ports.chat;
   const site = useMemo(() => currentSite(page), [page]);
   const [hasKey, setHasKey] = useState(false);
+  const [selectedModelProvider, setSelectedModelProvider] = useState<
+    "anthropic" | "local-gemma"
+  >("anthropic");
   const [question, setQuestion] = useState("");
   const [chatTurns, setChatTurns] = useState<Array<{
     id: string;
@@ -1553,13 +1556,25 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   useEffect(() => {
     let active = true;
-    void port?.hasApiKey().then((value) => {
-      if (active) setHasKey(value);
+    void (async () => {
+      const settings = ports.settings ? await ports.settings.load() : undefined;
+      const provider = settings?.modelSelection.providerId ?? "anthropic";
+      const ready = provider === "local-gemma"
+        ? (await ports.localModel?.status())?.status === "ready"
+        : await port?.hasApiKey() ?? false;
+      if (!active) return;
+      setSelectedModelProvider(provider);
+      setHasKey(ready);
+      if (provider === "local-gemma") {
+        setInteractionMode((current) => current === "deep" ? "chat" : current);
+      }
+    })().catch(() => {
+      if (active) setHasKey(false);
     });
     return () => {
       active = false;
     };
-  }, [port]);
+  }, [port, ports.localModel, ports.settings]);
 
   useEffect(() => {
     let active = true;
@@ -2098,7 +2113,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         }
       }
       if (!hasKey) {
-        throw new ResearchContractError("missing-key", t("research.key.missing"));
+        throw new ResearchContractError(
+          "missing-key",
+          t(selectedModelProvider === "local-gemma"
+            ? "research.local.notReady"
+            : "research.key.missing"),
+        );
+      }
+      if (activeInteractionMode === "deep" && selectedModelProvider === "local-gemma") {
+        throw new ResearchContractError(
+          "invalid-request",
+          t("research.local.deepUnavailable"),
+        );
       }
       const controller = new AbortController();
       abortRef.current = controller;
@@ -4012,6 +4038,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                         : "text-muted-foreground hover:text-foreground",
                     )}
                     aria-pressed={interactionMode === "deep"}
+                    disabled={selectedModelProvider === "local-gemma"}
+                    title={selectedModelProvider === "local-gemma"
+                      ? t("research.local.deepUnavailable")
+                      : undefined}
                     onClick={() => selectInteractionMode("deep")}
                     data-testid="research-mode-deep"
                   >
@@ -4066,7 +4096,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             </div>
           </div>
           <p className="m-0 shrink-0 px-1 text-center text-[11px] text-muted-foreground">
-            {running
+            {selectedModelProvider === "local-gemma"
+              ? t("research.local.deepUnavailable")
+              : running
               ? t("research.chat.composerHelp.running")
               : t("research.chat.composerHelp.idle")}
           </p>

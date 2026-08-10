@@ -49,6 +49,8 @@ import type {
 } from "../utils/research/contracts.js";
 import type { ScreenProps } from "../utils/screens/registry.js";
 import type { AppPorts } from "../utils/ports/index.js";
+import { DEFAULT_SETTINGS, memorySettingsStore } from "../utils/ports/settings.js";
+import { LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1 } from "../utils/local-model/selection.js";
 import { createReactHarness } from "./react-harness.js";
 
 const dom = createReactHarness();
@@ -380,6 +382,7 @@ function screenProps(
   port: ResearchPort,
   spaceKey = "KB",
   chat?: ChatAgentPortV1,
+  overrides: Partial<AppPorts> = {},
 ): ScreenProps {
   return {
     ports: {
@@ -389,8 +392,10 @@ function screenProps(
         version: "1",
         capabilities: ["research"],
       },
+      settings: memorySettingsStore(),
       research: port,
       ...(chat ? { chat } : {}),
+      ...overrides,
     } as unknown as AppPorts,
     page: {
       status: "loaded",
@@ -752,6 +757,63 @@ describe("portable Research screen", () => {
     await dom.flush();
     expect(feedback).toEqual(["helpful"]);
     expect(dom.find("research-chat-feedback-helpful").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("runs installed local Gemma through the existing Chat surface without an API key", async () => {
+    const starts: string[] = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => report,
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    const chat = fakeChatPort({
+      async startTurn(input) {
+        starts.push(input.qualityPolicy.mode);
+        return chatAnswer;
+      },
+    });
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port, "KB", chat, {
+          settings: memorySettingsStore({
+            ...DEFAULT_SETTINGS,
+            modelSelection: LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+          }),
+          localModel: {
+            status: async () => ({
+              status: "ready",
+              aggregateByteLength: 4_924_946_442,
+            }),
+            install: async () => ({
+              status: "ready",
+              aggregateByteLength: 4_924_946_442,
+            }),
+            subscribe: () => () => undefined,
+          },
+        })} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+    expect(dom.find("research-mode-deep").hasAttribute("disabled")).toBe(true);
+    expect(dom.container().textContent).toContain("Gemma runs Chat locally");
+    await dom.setValue("research-chat-thinking", "quick");
+    await dom.toggle("research-disclosure");
+    await dom.setValue("copilot-chat-textarea", "Summarize the attached page locally.");
+    await dom.click("research-run");
+    await dom.flush();
+    expect(starts).toEqual(["quick"]);
+    expect(dom.find("research-chat-answer").textContent)
+      .toContain("The shared Chat port answered");
   });
 
   it("renders the compact chat surface and opens an intentionally empty add menu", async () => {

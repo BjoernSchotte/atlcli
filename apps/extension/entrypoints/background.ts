@@ -107,6 +107,10 @@ import {
 import { LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1 } from "../utils/local-model/storage.js";
 import { resolveBrowserChatModelRunBindingV1 } from "../utils/local-model/run-binding.js";
 import {
+  browserChatActiveConversationStorageKeyV1,
+  browserChatProviderCacheIdentityV1,
+} from "../utils/local-model/selection.js";
+import {
   countInFlightPdfJobs,
   listPdfJobMeta,
   sweepPdfJobs,
@@ -141,7 +145,6 @@ import {
  */
 const OFFSCREEN_IDLE_MS = 5 * 60 * 1000;
 const TAB_OBSERVER_STORAGE_KEY = "tab-observer-state-v1";
-const ACTIVE_CHAT_CONVERSATION_KEY = "atlcli.research.active-chat-conversation-id.v1";
 const CHAT_HOST_PRINCIPAL_KEY = "atlcli.chat.host-principal-id.v1";
 const CHAT_HOST_PRINCIPAL_PATTERN = /^browser-principal:[0-9a-f-]{36}$/u;
 const CHAT_CONVERSATION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/u;
@@ -560,6 +563,22 @@ export default defineBackground({
         return storedActivation[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1];
       },
     });
+    let effectiveHostIdentity = hostIdentity;
+    if (mode === "chat") {
+      const storedPrincipal = await chrome.storage.local.get(CHAT_HOST_PRINCIPAL_KEY);
+      const userId = storedPrincipal[CHAT_HOST_PRINCIPAL_KEY];
+      if (!hostIdentity || typeof userId !== "string" ||
+          !CHAT_HOST_PRINCIPAL_PATTERN.test(userId) || hostIdentity.userId !== userId) {
+        throw new ResearchContractError(
+          "access-denied",
+          "The browser Chat principal does not own this model run.",
+        );
+      }
+      effectiveHostIdentity = {
+        userId,
+        providerCacheIdentity: browserChatProviderCacheIdentityV1(modelSelection, userId),
+      };
+    }
     if (activeResearchRuns.has(runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
     }
@@ -577,7 +596,7 @@ export default defineBackground({
         mode,
         request,
         policy,
-        ...(hostIdentity ? { hostIdentity } : {}),
+        ...(effectiveHostIdentity ? { hostIdentity: effectiveHostIdentity } : {}),
         ...(qualityPolicy ? { qualityPolicy } : {}),
         ...(resumeAnswer ? { resumeAnswer } : {}),
         ...(resumeCheckpoint ? { resumeCheckpoint } : {}),
@@ -1777,10 +1796,17 @@ export default defineBackground({
       );
     }
     const stored = await chrome.storage.local.get([
-      ACTIVE_CHAT_CONVERSATION_KEY,
+      APP_SETTINGS_STORAGE_KEY,
       CHAT_HOST_PRINCIPAL_KEY,
     ]);
-    const conversationId = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+    const modelSelection = normalizeSettings(
+      stored[APP_SETTINGS_STORAGE_KEY],
+    ).modelSelection;
+    const activeConversationKey = browserChatActiveConversationStorageKeyV1(
+      modelSelection,
+    );
+    const storedConversation = await chrome.storage.local.get(activeConversationKey);
+    const conversationId = storedConversation[activeConversationKey];
     const userId = stored[CHAT_HOST_PRINCIPAL_KEY];
     if (typeof conversationId !== "string" ||
         !CHAT_CONVERSATION_ID_PATTERN.test(conversationId) ||
@@ -1814,7 +1840,10 @@ export default defineBackground({
         conversationId,
         binding: {
           userId,
-          providerCacheIdentity: `anthropic:${userId}`,
+          providerCacheIdentity: browserChatProviderCacheIdentityV1(
+            modelSelection,
+            userId,
+          ),
           threadId: conversationId,
           tenantOrigin,
         },
