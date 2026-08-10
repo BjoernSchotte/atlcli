@@ -100,6 +100,11 @@ describe("Chat supervisor prompt", () => {
     expect(repair).toContain("do not count them toward N");
     expect(repair).toContain("means descending by the stated comparable metric");
     expect(repair).toContain("means ascending");
+    expect(repair).toContain("compare isolated interventions against a stated baseline");
+    expect(repair).toContain("holding the requested outcome quality");
+    expect(repair).toContain("bundled configuration change");
+    expect(repair).toContain("preserve each effect measure explicitly reported by the source");
+    expect(repair).toContain("must not replace an explicit source percentage");
     expect(repair).toContain("Finish the complete ChatAnswerDraftV2 JSON");
   });
 

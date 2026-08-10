@@ -2501,49 +2501,60 @@ export function createKiteweaveChatAgent(
             status: "reset",
           });
           try {
-            finalResult = await agent.invoke({
-              messages: [new HumanMessage([
-                "The host rejected the previous terminal draft.",
-                "Rewrite the complete answer now from the evidence already read for the original user question.",
-                `Allowed sourceRefs: ${JSON.stringify([
-                  ...new Set(broker.detailEvidenceLedger().flatMap((entry) => [
-                    entry.source.id,
-                    ...broker.readSectionReferenceLedger()
-                      .filter((section) => section.sourceId === entry.source.id)
-                      .map((section) => `${section.sourceId}#${section.sectionId}`),
-                  ])),
-                ])}.`,
-                ...(requestChecklist.length > 0
-                  ? [
-                      `Required user-authored facet labels: ${JSON.stringify(requestChecklist)}.`,
-                      "Use every label verbatim exactly once as a heading or bullet label, followed by its supported answer or one precise evidence gap.",
-                    ]
-                  : ["Cover every explicitly requested facet or state one precise gap."]),
-                "Do not call a tool, retrieve, ask a question, or expose an abandoned wording alternative.",
-                "Use short self-contained paragraphs or bullets. End every factual sentence with closing punctuation. If a quoted fragment would leave a sentence unfinished, omit the fragment and state only the complete supported fact.",
-                "Make every factual sentence grammatically complete; do not leave a clause ending in a connector or auxiliary verb.",
-                "Do not leave a detached lowercase continuation paragraph beginning with da, weil, obwohl, während, und, aber, because, although, whereas, which, and, or, or but.",
-                "Do not classify the same evidence as both directly measured and conjectural. Separate observations from interpretation explicitly when the user asks for that distinction.",
-                "Apply the user's selection predicate before its requested count: a top-N measured list may contain only explicitly comparable measured items; move unmeasured mechanisms or hypotheses to a separate caveat. For a greatest/strongest/highest/top/groesste/größte/staerkste/stärkste/hoechste/höchste ranking, calculate each comparable effect from its explicit before/after values and sort the items descending by that numeric effect unless the user explicitly asks for another direction; smallest/lowest/kleinste/niedrigste means ascending.",
-              ].join("\n"))],
-            }, {
-              configurable: { thread_id: checkpoint.threadId },
-              recursionLimit: 12,
-              signal: controller.signal,
-            });
-            await modelBudgetWrite;
-            const repairedInspection = inspectChatDraftAfterHostRepairV1({
-              draft: chatStructuredDraftFromAgentResultV1(finalResult),
-              detailEvidence: broker.detailEvidenceLedger(),
-              readSectionReferences: broker.readSectionReferenceLedger(),
-              requestFacets: requestChecklist,
-              question: turn.question,
-            });
-            const repairedDraft = repairedInspection.draft;
+            let repairedDraft: ReturnType<
+              typeof inspectChatDraftAfterHostRepairV1
+            >["draft"];
+            let repairRejectionReasons: readonly string[] = [];
+            for (let attempt = 0; attempt < 2 && !repairedDraft; attempt += 1) {
+              finalResult = await agent.invoke({
+                messages: [new HumanMessage([
+                  attempt === 0
+                    ? "The host rejected the previous terminal draft."
+                    : `The host rejected the first terminal correction (${repairRejectionReasons.join(",")}).`,
+                  "Rewrite the complete answer now from the evidence already read for the original user question.",
+                  `Allowed sourceRefs: ${JSON.stringify([
+                    ...new Set(broker.detailEvidenceLedger().flatMap((entry) => [
+                      entry.source.id,
+                      ...broker.readSectionReferenceLedger()
+                        .filter((section) => section.sourceId === entry.source.id)
+                        .map((section) => `${section.sourceId}#${section.sectionId}`),
+                    ])),
+                  ])}.`,
+                  ...(requestChecklist.length > 0
+                    ? [
+                        `Required user-authored facet labels: ${JSON.stringify(requestChecklist)}.`,
+                        "Use every label verbatim exactly once as a heading or bullet label, followed by its supported answer or one precise evidence gap.",
+                      ]
+                    : ["Cover every explicitly requested facet or state one precise gap."]),
+                  "Do not call a tool, retrieve, ask a question, or expose an abandoned wording alternative.",
+                  "Use short self-contained paragraphs or bullets. End every factual sentence with closing punctuation. If a quoted fragment would leave a sentence unfinished, omit the fragment and state only the complete supported fact.",
+                  "Make every factual sentence grammatically complete; do not leave a clause ending in a connector or auxiliary verb.",
+                  "Do not leave a detached lowercase continuation paragraph beginning with da, weil, obwohl, während, und, aber, because, although, whereas, which, and, or, or but.",
+                  "Do not classify the same evidence as both directly measured and conjectural. Separate observations from interpretation explicitly when the user asks for that distinction.",
+                  "Apply the user's selection predicate before its requested count: a top-N measured list may contain only explicitly comparable measured items; move unmeasured mechanisms or hypotheses to a separate caveat. For a greatest/strongest/highest/top/groesste/größte/staerkste/stärkste/hoechste/höchste ranking, calculate each comparable effect from its explicit before/after values and sort the items descending by that numeric effect unless the user explicitly asks for another direction; smallest/lowest/kleinste/niedrigste means ascending.",
+                  "For a causal top-N of technical levers, compare isolated interventions against a stated baseline while holding the requested outcome quality and other material variables constant. Do not count a bundled configuration change or a speed result that changes answer quality as one comparable lever; report it separately as a trade-off unless the user explicitly requests raw throughput regardless of quality.",
+                  "For every ranked measured item, preserve each effect measure explicitly reported by the source: include its before/after values and any reported relative percentage as well as a useful absolute delta. A derived absolute delta must not replace an explicit source percentage.",
+                ].join("\n"))],
+              }, {
+                configurable: { thread_id: checkpoint.threadId },
+                recursionLimit: 12,
+                signal: controller.signal,
+              });
+              await modelBudgetWrite;
+              const repairedInspection = inspectChatDraftAfterHostRepairV1({
+                draft: chatStructuredDraftFromAgentResultV1(finalResult),
+                detailEvidence: broker.detailEvidenceLedger(),
+                readSectionReferences: broker.readSectionReferenceLedger(),
+                requestFacets: requestChecklist,
+                question: turn.question,
+              });
+              repairedDraft = repairedInspection.draft;
+              repairRejectionReasons = repairedInspection.rejectionReasons;
+            }
             if (!repairedDraft) {
               throw new ChatContractError(
                 "invalid-report",
-                `The Chat answer repair did not produce a complete evidence-bound draft (${repairedInspection.rejectionReasons.join(",")}).`,
+                `The Chat answer repair did not produce a complete evidence-bound draft (${repairRejectionReasons.join(",")}).`,
               );
             }
             finalDraft = repairedDraft;

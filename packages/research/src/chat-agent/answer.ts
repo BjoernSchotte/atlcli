@@ -511,6 +511,12 @@ function strongMarkerCountV1(markdown: string): number {
   return [...withoutCode.matchAll(/\*\*/gu)].length;
 }
 
+function removeUnbalancedStrongPresentationV1(markdown: string): string {
+  return strongMarkerCountV1(markdown) % 2 === 0
+    ? markdown
+    : markdown.replace(/\*\*/gu, "");
+}
+
 export const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1 = [
   "incomplete-prose",
   "observation-classification-conflict",
@@ -616,6 +622,55 @@ function containsRepeatedProseV1(markdown: string): boolean {
   return units.some((left, index) =>
     units.slice(index + 1).some((right) => redundantProseV1(left, right))
   );
+}
+
+/**
+ * A structured answer block can contain two abandoned line-level variants of
+ * the same sentence. They necessarily share assertion, scope, and evidence
+ * binding, so retain only the more informative high-confidence variant. Code
+ * fences, headings, and materially different lines are never candidates.
+ */
+function collapseRedundantLinesWithinAnswerBlockV1(markdown: string): string {
+  const lines = markdown.split("\n");
+  const candidates: number[] = [];
+  let inFence = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const trimmed = lines[index]!.trim();
+    if (/^```/u.test(trimmed)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (
+      inFence || !trimmed ||
+      /^(?:#{1,6}\s|\|\s*[-:]+|---+$)/u.test(trimmed)
+    ) continue;
+    candidates.push(index);
+  }
+  const removed = new Set<number>();
+  for (let left = 0; left < candidates.length; left += 1) {
+    const leftIndex = candidates[left]!;
+    if (removed.has(leftIndex)) continue;
+    for (let right = left + 1; right < candidates.length; right += 1) {
+      const rightIndex = candidates[right]!;
+      if (removed.has(rightIndex)) continue;
+      if (!redundantProseV1(lines[leftIndex]!, lines[rightIndex]!)) continue;
+      const leftTokens = normalizedProseTokensV1(lines[leftIndex]!).length;
+      const rightTokens = normalizedProseTokensV1(lines[rightIndex]!).length;
+      if (
+        rightTokens > leftTokens ||
+        (rightTokens === leftTokens && lines[rightIndex]!.length > lines[leftIndex]!.length)
+      ) {
+        removed.add(leftIndex);
+        break;
+      }
+      removed.add(rightIndex);
+    }
+  }
+  return lines
+    .filter((_line, index) => !removed.has(index))
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
 }
 
 /**
@@ -1143,7 +1198,11 @@ export function inspectChatDraftAfterHostRepairV1(input: {
       // clause (for example, one ending in "als") and made the strict repair
       // corridor reject its own deterministic cleanup. Closing punctuation is
       // safe here: it changes no words, evidence, assertion, or source binding.
-      markdown: balanceGermanClosingQuotesV1(block.markdown),
+      markdown: collapseRedundantLinesWithinAnswerBlockV1(
+        removeUnbalancedStrongPresentationV1(
+          balanceGermanClosingQuotesV1(block.markdown),
+        ),
+      ),
     }));
   const blocks = normalizeMeasuredRankingBlocksV1(
     coalesceRequestFacetLabelsV1(

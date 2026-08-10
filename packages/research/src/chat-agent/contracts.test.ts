@@ -391,6 +391,55 @@ describe("Chat answer contract", () => {
     expect(repaired.draft?.blocks[0]?.markdown).toContain("Qualitätsfehlern verworfen");
   });
 
+  test("collapses repeated line variants within one evidence-bound answer block", () => {
+    const repaired = inspectChatDraftAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: [
+            "## Ergebnis",
+            "Der belegte Standardpfad bleibt für diese Aufgabe unverändert bestehen.",
+            "Der belegte Standardpfad bleibt für diese Aufgabe unverändert bestehen und wird weiterhin empfohlen.",
+            "Eine zweite, eigenständige Aussage bleibt erhalten.",
+          ].join("\n"),
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+
+    expect(repaired.rejectionReasons).toEqual([]);
+    expect(repaired.draft?.blocks[0]?.markdown).not.toContain(
+      "unverändert bestehen.\n",
+    );
+    expect(repaired.draft?.blocks[0]?.markdown).toContain("weiterhin empfohlen");
+    expect(repaired.draft?.blocks[0]?.markdown).toContain(
+      "Eine zweite, eigenständige Aussage bleibt erhalten.",
+    );
+  });
+
+  test("removes an unmatched strong marker without discarding supported prose", () => {
+    const repaired = inspectChatDraftAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "**Belegte Aussage: Der dokumentierte Standardpfad bleibt aktiv.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+
+    expect(repaired.rejectionReasons).toEqual([]);
+    expect(repaired.draft?.blocks[0]?.markdown).toBe(
+      "Belegte Aussage: Der dokumentierte Standardpfad bleibt aktiv.",
+    );
+  });
+
   test("merges repeated supported prose that names different detailed sources", () => {
     const secondSource = {
       ...syntheticPageSource,

@@ -765,6 +765,57 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(nativeModel.callCount).toBe(1);
   });
 
+  test("retries one bounded terminal correction when the first omits a request facet", async () => {
+    const input = request("Antworte mit Betriebsart und Sicherheitsgrenze.");
+    const workspace = createMemoryResearchWorkspace();
+    const incomplete = JSON.stringify({
+      blocks: [{
+        id: "answer-block:mode-only",
+        markdown: "**Betriebsart:** Der synthetische Standardmodus bleibt aktiv.",
+        sourceRefs: [],
+        assertion: "none",
+        scope: "none",
+      }],
+      gaps: [],
+    });
+    const nativeModel = fakeModel()
+      .respond(new AIMessage(incomplete))
+      .respond(new AIMessage(incomplete))
+      .respond(new AIMessage(JSON.stringify({
+        blocks: [{
+          id: "answer-block:mode",
+          markdown: "**Betriebsart:** Der synthetische Standardmodus bleibt aktiv.",
+          sourceRefs: [],
+          assertion: "none",
+          scope: "none",
+        }, {
+          id: "answer-block:boundary",
+          markdown: "**Sicherheitsgrenze:** Außerhalb des gebundenen Umfangs wird abgebrochen.",
+          sourceRefs: [],
+          assertion: "none",
+          scope: "none",
+        }],
+        gaps: [],
+      })));
+
+    const answer = await runtime.runChatAgent({
+      ...input,
+      modelBinding: {
+        model: nativeModel,
+        modelId: "synthetic-native-model",
+        qualityAdapter: CAPABILITY_FREE_QUALITY_ADAPTER_V1,
+        structuredOutput: "native",
+      },
+      providers,
+      workspace,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+    });
+
+    expect(answer.messageMarkdown).toContain("Betriebsart");
+    expect(answer.messageMarkdown).toContain("Sicherheitsgrenze");
+    expect(nativeModel.callCount).toBe(3);
+  });
+
   test("keeps enough root output budget for a complete Quick structured answer", () => {
     expect(chatRootOutputTokenLimitV1({
       configuredMaxOutputTokens: 8_000,
