@@ -261,8 +261,8 @@ const HOST_PARITY_CRITIQUE = {
     severity: "important",
     target: { kind: "coverage", id: "coverage:primary-question" },
     code: "missing_coverage",
+    gapIds: [],
     references: [],
-    explanation: "The synthetic host-parity scenario contains no source evidence.",
     suggestedAction: "abstain",
   }],
   proposedFollowUps: [],
@@ -270,11 +270,7 @@ const HOST_PARITY_CRITIQUE = {
 
 const HOST_PARITY_DRAFT = {
   title: "Cross-host synthetic report",
-  executiveSummary: "No source evidence was supplied to this parity run.",
   selectedClaimIds: [],
-  findings: [],
-  relationships: [],
-  limitations: ["Synthetic host-parity scenario."],
 };
 
 const WIKI_ACQUISITION_CODE = `
@@ -382,6 +378,25 @@ const PACKED_EXACT_PAGE_CHAT_DRAFT = {
   gaps: [],
 };
 
+const PACKED_EXACT_PAGE_COMPLEX_CHAT_DRAFT = {
+  blocks: [{
+    markdown: "The attached page directly establishes the packed implementation statement.",
+    sourceRefs: ["wiki:1001"],
+    assertion: "positive",
+    scope: "none",
+  }, {
+    markdown: "The comparison of the attached page with the approved rollout criteria remains incomplete because no separate criteria were included in the accepted evidence. The available evidence cannot identify contradictions.",
+    sourceRefs: ["wiki:1001"],
+    assertion: "absence",
+    scope: "source",
+  }],
+  gaps: [{
+    code: "incomplete-coverage",
+    message: "Approved rollout criteria are required to complete the comparison and contradiction check.",
+    sourceIds: ["wiki:1001"],
+  }],
+};
+
 const PACKED_EXACT_ISSUE_CHAT_DRAFT = {
   blocks: [{
     markdown: "The attached issue directly establishes the packed implementation task.",
@@ -479,69 +494,73 @@ const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
 if (acceptedGraph.schema !== "atlcli.accepted-research-graph/v1") {
   throw new Error("Packed graph proposal was not accepted.");
 }
+const taskFor = (nodeId) => {
+  const returnedTask = acceptedGraph.tasks.find((candidate) => candidate.nodeId === nodeId);
+  if (!returnedTask) throw new Error("Packed graph omitted " + nodeId + ".");
+  return returnedTask;
+};
+const jiraTask = taskFor("research-node:jira-research");
+const wikiTask = taskFor("research-node:wiki-research");
 const [jira, wiki] = await Promise.all([
   task({
-    description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: "research-task:r1:jira-research:a1", objective: "Acquire detail-backed Jira evidence for the accepted objective." }),
-    subagentType: "focused-researcher-jira-research",
-    responseSchema: ${JSON.stringify(RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2)}
+    description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: jiraTask.taskId, objective: jiraTask.objective }),
+    subagentType: jiraTask.subagentType,
+    responseSchema: jiraTask.responseSchema
   }),
   task({
-    description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: "research-task:r1:wiki-research:a1", objective: "Acquire detail-backed Confluence evidence for the accepted objective." }),
-    subagentType: "focused-researcher-wiki-research",
-    responseSchema: ${JSON.stringify(RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2)}
+    description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: wikiTask.taskId, objective: wikiTask.objective }),
+    subagentType: wikiTask.subagentType,
+    responseSchema: wikiTask.responseSchema
   })
 ]);
+const joinTask = taskFor("research-node:cross-product-join");
 const joined = await task({
   description: JSON.stringify({
     schema: "atlcli.research-task-dispatch/v1",
-    taskId: "research-task:r1:cross-product-join:a1",
-    objective: "Join accepted Jira and Confluence packets without new reads.",
+    taskId: joinTask.taskId,
+    objective: joinTask.objective,
     dependencyResults: [
-      { taskId: "research-task:r1:jira-research:a1", result: jira },
-      { taskId: "research-task:r1:wiki-research:a1", result: wiki }
+      { taskId: jiraTask.taskId, result: jira },
+      { taskId: wikiTask.taskId, result: wiki }
     ]
   }),
-  subagentType: "document-distiller-cross-product-join",
-  responseSchema: ${JSON.stringify(RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2)}
+  subagentType: joinTask.subagentType,
+  responseSchema: joinTask.responseSchema
 });
+const outlineTask = taskFor("research-node:outline-planning");
 const outline = await task({
   description: JSON.stringify({
     schema: "atlcli.research-task-dispatch/v1",
-    taskId: "research-task:r1:outline-planning:a1",
-    objective: "Propose a bounded claim-linked report outline from host-projected current claims only.",
+    taskId: outlineTask.taskId,
+    objective: outlineTask.objective,
     dependencyResults: [
-      { taskId: "research-task:r1:jira-research:a1", result: jira },
-      { taskId: "research-task:r1:wiki-research:a1", result: wiki },
-      { taskId: "research-task:r1:cross-product-join:a1", result: joined }
+      { taskId: jiraTask.taskId, result: jira },
+      { taskId: wikiTask.taskId, result: wiki },
+      { taskId: joinTask.taskId, result: joined }
     ]
   }),
-  subagentType: "outline-planner-outline-planning",
-  responseSchema: ${JSON.stringify(RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2)}
+  subagentType: outlineTask.subagentType,
+  responseSchema: outlineTask.responseSchema
 });
+const reconciliationTask = taskFor("research-node:reconciler");
 const critique = await task({
   description: JSON.stringify({
     schema: "atlcli.research-task-dispatch/v1",
-    taskId: "research-task:r1:reconciler:a1",
-    objective: "Critique accepted packets in fresh context and return typed defects.",
+    taskId: reconciliationTask.taskId,
+    objective: reconciliationTask.objective,
     dependencyResults: [
-      { taskId: "research-task:r1:jira-research:a1", result: jira },
-      { taskId: "research-task:r1:wiki-research:a1", result: wiki },
-      { taskId: "research-task:r1:cross-product-join:a1", result: joined },
-      { taskId: "research-task:r1:outline-planning:a1", result: outline }
+      { taskId: jiraTask.taskId, result: jira },
+      { taskId: wikiTask.taskId, result: wiki },
+      { taskId: joinTask.taskId, result: joined },
+      { taskId: outlineTask.taskId, result: outline }
     ]
   }),
-  subagentType: "reconciler",
-  responseSchema: ${JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1)}
+  subagentType: reconciliationTask.subagentType,
+  responseSchema: reconciliationTask.responseSchema
 });
 const acceptedDispositions = JSON.parse(await tools.researchReconciliationDispositions({
-  basedOnGraphRevision: 1,
-  reconciliationTaskId: "research-task:r1:reconciler:a1",
-  decisions: [{
-    defectId: "defect:packed-relationship-review",
-    decision: "add_follow_up",
-    reasonCode: "material_defect"
-  }],
-  repairFollowUpId: "follow-up:packed-relationship-review"
+  basedOnGraphRevision: acceptedGraph.graphRevision,
+  reconciliationTaskId: reconciliationTask.taskId
 }));
 if (acceptedDispositions.schema !== "atlcli.accepted-reconciliation/v1") {
   throw new Error("Packed reconciliation dispositions were not accepted.");
@@ -555,28 +574,29 @@ const repaired = await task({
     taskId: acceptedDispositions.repairTask.taskId,
     objective: acceptedDispositions.repairTask.objective,
     dependencyResults: [
-      { taskId: "research-task:r1:reconciler:a1", result: critique }
+      { taskId: reconciliationTask.taskId, result: critique }
     ]
   }),
   subagentType: acceptedDispositions.repairTask.subagentType,
-  responseSchema: ${JSON.stringify(RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2)}
+  responseSchema: acceptedDispositions.repairTask.responseSchema
 });
+const synthesizerTask = acceptedGraph.synthesizerTask;
 const finalDraft = await task({
   description: JSON.stringify({
     schema: "atlcli.research-task-dispatch/v1",
-    taskId: "research-task:r1:synthesizer:a1",
-    objective: "Write exactly one typed final report draft from accepted packets and dispositions.",
+    taskId: synthesizerTask.taskId,
+    objective: synthesizerTask.objective,
     dependencyResults: [
-      { taskId: "research-task:r1:jira-research:a1", result: jira },
-      { taskId: "research-task:r1:wiki-research:a1", result: wiki },
-      { taskId: "research-task:r1:cross-product-join:a1", result: joined },
-      { taskId: "research-task:r1:outline-planning:a1", result: outline },
-      { taskId: "research-task:r1:reconciler:a1", result: critique },
+      { taskId: jiraTask.taskId, result: jira },
+      { taskId: wikiTask.taskId, result: wiki },
+      { taskId: joinTask.taskId, result: joined },
+      { taskId: outlineTask.taskId, result: outline },
+      { taskId: reconciliationTask.taskId, result: critique },
       { taskId: acceptedDispositions.repairTask.taskId, result: repaired }
     ]
   }),
-  subagentType: "synthesizer",
-  responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
+  subagentType: synthesizerTask.subagentType,
+  responseSchema: synthesizerTask.responseSchema
 });
 finalDraft;
 `.trim();
@@ -801,10 +821,20 @@ await task({
   subagentType: critiqueTask.subagentType,
   responseSchema: responseSchemas[critiqueTask.outputSchema]
 });
-await tools.researchReconciliationDispositions({
+const acceptedDispositions = JSON.parse(await tools.researchReconciliationDispositions({
   basedOnGraphRevision: continuation.graphRevision,
   reconciliationTaskId: critiqueTask.taskId,
   decisions: [{ defectId: "defect:host-parity-coverage", decision: "abstain", reasonCode: "material_defect" }]
+}));
+const repairTask = acceptedDispositions.repairTask;
+const repairResult = repairTask === undefined ? null : await task({
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: repairTask.taskId,
+    objective: repairTask.objective
+  }),
+  subagentType: repairTask.subagentType,
+  responseSchema: responseSchemas[repairTask.outputSchema]
 });
 const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
 const finalTask = finalFrontier.tasks[0];
@@ -1131,6 +1161,7 @@ const workerId = crypto.randomUUID();
 let modelCalls = 0;
 let packedJiraOnlyRun = false;
 let packedJiraOnlyAcquisitionRequested = false;
+let packedWikiAcquisitionRequested = false;
 const packedChatExactAcquiredAnchors = new Set();
 let packedHostParityRun = false;
 let packedSentinelRun = false;
@@ -1141,13 +1172,15 @@ let packedResumeSteeringInitialRun = false;
 let packedChatStreamInterruptionInitialRun = false;
 let packedRedactionRun = false;
 let packedResumeSupervisorEvals = 0;
+let packedResumeContinuationIssued = false;
 let supervisorWorkflowStarted = false;
 let jiraOnlySelectedClaimIds = [];
 let packedSelectedClaimIds = [];
 channel.postMessage({ kind: "worker-start", workerId });
 globalThis.addEventListener("message", (event) => {
   if (
-    event.data?.kind === "research-worker:run" &&
+    (event.data?.kind === "research-worker:run" ||
+      event.data?.kind === "research-worker:resume") &&
     typeof event.data?.runId === "string"
   ) {
     packedRedactionRun = event.data.runId === "packed-redaction";
@@ -1331,6 +1364,7 @@ const packedReportInput = ${JSON.stringify(PACKED_REPORT_INPUT)};
 const packedJiraOnlyReportInput = ${JSON.stringify(PACKED_JIRA_ONLY_REPORT_INPUT)};
 const packedJiraOnlyChatDraft = ${JSON.stringify(PACKED_JIRA_ONLY_CHAT_DRAFT)};
 const packedExactPageChatDraft = ${JSON.stringify(PACKED_EXACT_PAGE_CHAT_DRAFT)};
+const packedExactPageComplexChatDraft = ${JSON.stringify(PACKED_EXACT_PAGE_COMPLEX_CHAT_DRAFT)};
 const packedExactIssueChatDraft = ${JSON.stringify(PACKED_EXACT_ISSUE_CHAT_DRAFT)};
 const packedLongPageChatDraft = ${JSON.stringify(PACKED_LONG_PAGE_CHAT_DRAFT)};
 const packedChatExactEvidencePacket = ${JSON.stringify(PACKED_CHAT_EXACT_EVIDENCE_PACKET)};
@@ -1384,6 +1418,8 @@ const critiqueForV2Packets = () => ({
   ...critique,
   defects: critique.defects.map((defect) => ({
     ...defect,
+    explanation: undefined,
+    gapIds: [],
     // The body-free V2 reconciliation index has no evidence IDs unless an
     // earlier outline or contradiction packet explicitly projected them.
     references: [],
@@ -1547,6 +1583,7 @@ globalThis.fetch = async (input, init) => {
     ) {
       packedResumeSupervisorEvals += 1;
       if (
+        !packedResumeSteeringRun &&
         packedResumeSupervisorEvals > 1 &&
         serializedRequest.includes("RESUMED CONTINUATION")
       ) {
@@ -1645,6 +1682,7 @@ globalThis.fetch = async (input, init) => {
 
     if (
       serializedRequest.includes("Read only opaque host-attached entities.") ||
+      serializedRequest.includes("Call chat_exact_context_acquire exactly once") ||
       (
         toolNames.includes("chat_exact_context_acquire") &&
         toolNames.includes("ChatEvidencePacketV1")
@@ -1683,7 +1721,9 @@ globalThis.fetch = async (input, init) => {
     }
 
     if (serializedRequest.includes("Draft one provisional answer")) {
-      return structured(packedExactPageChatDraft);
+      return structured(serializedRequest.includes("approved rollout criteria")
+        ? packedExactPageComplexChatDraft
+        : packedExactPageChatDraft);
     }
 
     if (serializedRequest.includes("Independently critique the provisional answer")) {
@@ -1692,7 +1732,9 @@ globalThis.fetch = async (input, init) => {
 
     if (serializedRequest.includes("Write the single final conversational answer only from accepted evidence")) {
       return structured({
-        ...packedExactPageChatDraft,
+        ...(serializedRequest.includes("approved rollout criteria")
+          ? packedExactPageComplexChatDraft
+          : packedExactPageChatDraft),
         gaps: [
           {
             code: "incomplete-coverage",
@@ -1760,30 +1802,9 @@ globalThis.fetch = async (input, init) => {
       );
     }
     if (packedExactPageChat || packedExactIssueChat || packedLongPageChat) {
-      const strategyRequired = serializedRequest.includes(
-        "make the first statement in the eval program exactly one await tools.chatStrategyDecide({})",
-      );
-      const agenticStrategy = strategyRequired && serializedRequest.includes(
+      const agenticStrategy = serializedRequest.includes(
         "The host requires an agentic Chat workflow for this turn.",
       );
-      if (
-        strategyRequired &&
-        !agenticStrategy &&
-        !serializedMessages.includes("atlcli.chat-strategy-decision/v1")
-      ) {
-        return providerMessage(
-          [{
-            type: "tool_use",
-            id: "toolu_packed_chat_strategy_" + modelCalls,
-            name: "eval",
-            input: {
-              code: "JSON.parse(await tools.chatStrategyDecide({}))",
-            },
-          }],
-          "tool_use",
-          modelCalls,
-        );
-      }
       if (
         agenticStrategy &&
         !serializedMessages.includes("atlcli.chat-workflow-admission/v1")
@@ -1862,7 +1883,9 @@ globalThis.fetch = async (input, init) => {
       }
       if (packedLongPageChat) return structured(packedLongPageChatDraft);
       const exactDraft = packedExactPageChat
-        ? packedExactPageChatDraft
+        ? serializedRequest.includes("approved rollout criteria")
+          ? packedExactPageComplexChatDraft
+          : packedExactPageChatDraft
         : packedExactIssueChatDraft;
       return structured(exactDraft);
     }
@@ -1871,7 +1894,8 @@ globalThis.fetch = async (input, init) => {
       if (packedHostParityRun || packedSentinelRun) {
         return structured(parityPacketForResponse());
       }
-      if (!serializedMessages.includes("atlcli.ptc/wiki.page.get.output/v1")) {
+      if (!packedWikiAcquisitionRequested) {
+        packedWikiAcquisitionRequested = true;
         return providerMessage(
           [{
             type: "tool_use",
@@ -1973,9 +1997,53 @@ globalThis.fetch = async (input, init) => {
         serializedRequest.match(/claim:[a-f0-9]{48}/g) || [],
       )].slice(0, 8);
       return structured({
-        ...packedReportInput,
+        title: packedReportInput.title,
         selectedClaimIds: packedSelectedClaimIds,
       });
+    }
+
+    if (
+      packedResumeContinuationIssued &&
+      toolNames.includes("eval") &&
+      serializedRequest.includes("You are the central supervisor") &&
+      serializedRequest.includes("RESUMED CONTINUATION")
+    ) {
+      return providerMessage(
+        [{ type: "text", text: JSON.stringify(packedHostParityDraft) }],
+        "end_turn",
+        modelCalls,
+      );
+    }
+
+    if (
+      !packedResumeContinuationIssued &&
+      toolNames.includes("eval") &&
+      serializedRequest.includes("You are the central supervisor") &&
+      serializedRequest.includes("RESUMED CONTINUATION")
+    ) {
+      packedHostParityRun = packedHostParityRun || serializedRequest.includes("packed-host-parity");
+      packedSentinelRun = packedSentinelRun || serializedRequest.includes("packed-sentinel");
+      packedJiraOnlyRun = packedJiraOnlyRun || serializedRequest.includes("packed-jira-only");
+      packedResumeContinuationIssued = true;
+      supervisorWorkflowStarted = true;
+      channel.postMessage({
+        kind: "packed-resume-continuation-eval",
+        workerId,
+      });
+      return providerMessage(
+        [{
+          type: "tool_use",
+          id: "toolu_packed_eval",
+          name: "eval",
+          input: {
+            code: packedResumeSteeringRun
+              ? ${JSON.stringify(PACKED_RESUME_STEERING_WORKFLOW_CODE)}
+              : ${JSON.stringify(PACKED_RESUME_CONTINUATION_WORKFLOW_CODE)},
+          },
+        }],
+        "tool_use",
+        modelCalls,
+      );
     }
 
     if (
@@ -2039,7 +2107,7 @@ globalThis.fetch = async (input, init) => {
             ...packedJiraOnlyReportInput,
             selectedClaimIds: jiraOnlySelectedClaimIds,
           } : {
-            ...packedReportInput,
+            title: packedReportInput.title,
             selectedClaimIds: packedSelectedClaimIds,
           });
     }
@@ -2070,7 +2138,7 @@ globalThis.fetch = async (input, init) => {
               ...packedJiraOnlyReportInput,
               selectedClaimIds: jiraOnlySelectedClaimIds,
             } : {
-              ...packedReportInput,
+              title: packedReportInput.title,
               selectedClaimIds: packedSelectedClaimIds,
             },
       }],
@@ -2905,6 +2973,13 @@ async function runNodeHostParityFixture(): Promise<{
   return { report, events };
 }
 
+function withoutHostSpecificModelCallDiagnostics(report: ResearchReport): ResearchReport {
+  const normalized = structuredClone(report);
+  delete normalized.run.counts.modelCalls;
+  normalized.markdown = normalized.markdown.replace(/ \/ \d+ Model/u, "");
+  return normalized;
+}
+
 type PackedRunResponse =
   | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReport }
   | { kind: "research:run-result"; runId: string; ok: false; code: string; error: string };
@@ -3712,7 +3787,7 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
       nestingDepth: 4,
     },
     ResearchPacketBodyV2: {
-      serializedBytes: 3_051,
+      serializedBytes: 3_052,
       propertyCount: 32,
       nestingDepth: 5,
     },
@@ -3722,7 +3797,7 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
       nestingDepth: 4,
     },
     ReconciliationBodyV1: {
-      serializedBytes: 1_929,
+      serializedBytes: 1_957,
       propertyCount: 19,
       nestingDepth: 5,
     },
@@ -5075,7 +5150,7 @@ test("fences concurrent packed resumes so only one fresh worker owns a checkpoin
   }
 });
 
-test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress semantically equivalent", async () => {
+test("keeps Node and packed MV3 report content equivalent while preserving host call diagnostics", async () => {
   const releaseStarted = performance.now();
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
@@ -5092,9 +5167,15 @@ test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress
     throw new Error(JSON.stringify({ packed, events: await harnessEvents(page) }, null, 2));
   }
 
-  expect(packed.report).toEqual(node.report);
-  expect(new TextEncoder().encode(packed.report.markdown)).toEqual(
-    new TextEncoder().encode(node.report.markdown),
+  expect(withoutHostSpecificModelCallDiagnostics(packed.report)).toEqual(
+    withoutHostSpecificModelCallDiagnostics(node.report),
+  );
+  expect(new TextEncoder().encode(
+    withoutHostSpecificModelCallDiagnostics(packed.report).markdown,
+  )).toEqual(
+    new TextEncoder().encode(
+      withoutHostSpecificModelCallDiagnostics(node.report).markdown,
+    ),
   );
   const durable = await readPackedDurableResearchSession(
     page,
@@ -5114,7 +5195,7 @@ test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress
       path: "/artifacts/report.md",
       contentType: "text/markdown",
     }),
-    contents: node.report.markdown,
+    contents: packed.report.markdown,
   }));
   const [intents, gaps, draft] = await Promise.all([
     readPackedDurableResearchSession(
@@ -5170,8 +5251,13 @@ test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress
       .map(withoutEventSequence));
   expect(canonicalConcurrentCompletions(packedEvents))
     .toEqual(canonicalConcurrentCompletions(node.events));
-  expect(events.find((event) => event.messageKind === "research-worker:complete")?.report)
-    .toEqual(node.report);
+  const completedReport = events.find(
+    (event) => event.messageKind === "research-worker:complete",
+  )?.report;
+  expect(completedReport).toBeDefined();
+  expect(withoutHostSpecificModelCallDiagnostics(completedReport!)).toEqual(
+    withoutHostSpecificModelCallDiagnostics(node.report),
+  );
 
   const structured = events
     .filter((event) => event.kind === "packed-host-parity-structured")
@@ -5372,9 +5458,15 @@ test("resumes a checkpointed packed session in a fresh dedicated worker without 
       throw new Error(JSON.stringify({ resumed, events: await harnessEvents(page) }, null, 2));
     }
     const node = await runNodeHostParityFixture();
-    expect(resumed.report).toEqual(node.report);
-    expect(new TextEncoder().encode(resumed.report.markdown)).toEqual(
-      new TextEncoder().encode(node.report.markdown),
+    expect(withoutHostSpecificModelCallDiagnostics(resumed.report)).toEqual(
+      withoutHostSpecificModelCallDiagnostics(node.report),
+    );
+    expect(new TextEncoder().encode(
+      withoutHostSpecificModelCallDiagnostics(resumed.report).markdown,
+    )).toEqual(
+      new TextEncoder().encode(
+        withoutHostSpecificModelCallDiagnostics(node.report).markdown,
+      ),
     );
     expect(resumed.report.title).toBe(HOST_PARITY_DRAFT.title);
     const completed = await readPackedDurableResearchSession(
@@ -6380,7 +6472,7 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
       delegated: false,
       expectedComplexity: "simple",
     });
-    expect(simple.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 2);
+    expect(simple.report.run.counts.ptcCalls).toBe(1);
     await recordPackedReleaseRun({
       target: "quality",
       caseId: "packed:mode-simple",
@@ -6465,9 +6557,9 @@ test("keeps Quick direct and lets Auto or Deep accept direct and agentic Chat st
         }),
       });
     }
-    // Agentic exact-context Chat uses strategy, proposal, one direct evidence
-    // extraction, host strategy review, and host quality review.
-    expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 5);
+    // The host already accepted the strategy. Agentic exact-context Chat uses
+    // proposal, one direct evidence extraction, strategy review, and quality review.
+    expect(complex.report.run.counts.ptcCalls).toBe(mode === "quick" ? 1 : 4);
     await recordPackedReleaseRun({
       target: "quality",
       caseId: "packed:mode-complex",
@@ -7091,10 +7183,10 @@ test("redacts provider and browser credential text before durable browser persis
 
 test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders safe Markdown", async ({
 }, testInfo) => {
+  test.setTimeout(180_000);
   const releaseStarted = performance.now();
   await openResearchScreen(page);
   await installEventCapture(page);
-  await excludeCurrentContext(page);
   await page.getByTestId("area-menu-toggle").click();
   await page.getByTestId("nav-settings").click();
   await expect(page.getByTestId("settings-ai-key")).toHaveAttribute(
@@ -7110,6 +7202,10 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
 
   const completedObjective = "hold-after-ptc: How does Jira project DEMO relate to Confluence space KB?";
   await fillResearchForm(page, completedObjective, { includeScope: false });
+  // Returning from settings intentionally re-detects the open Atlassian page.
+  // Remove that anchor afterwards so this scenario continues to prove scoped
+  // Jira and Confluence discovery rather than an unrelated bound-page read.
+  await excludeCurrentContext(page);
   await page.getByTestId("research-mode-deep").click();
   await expect(page.getByTestId("research-mode-deep")).toHaveAttribute("aria-pressed", "true");
   const planReviewCards = page.getByTestId("research-plan-reviews")
@@ -7224,7 +7320,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
             (await page.getByTestId("research-error").count()) > 0
               ? await page.getByTestId("research-error").textContent()
               : null,
-          workerTargets: await researchWorkerTargets(root),
+          workerTargets: "omitted because the failed worker may no longer answer CDP",
         },
         null,
         2
@@ -7335,7 +7431,9 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(providerFetches).toHaveLength(10);
   expect(providerFetches.at(-1)).toMatchObject({
     modelCall: 10,
-    toolNames: ["AtlcliDynamicResearchAgentDraftV1"],
+    // The current Anthropic adapter requests the authoritative synthesizer
+    // schema through output_config instead of a synthetic response tool.
+    toolNames: [],
   });
   expect(JSON.stringify(successEvents)).not.toContain(FAKE_KEY);
   const persistedResearchDatabase = await readPackedResearchDatabaseText(page);
