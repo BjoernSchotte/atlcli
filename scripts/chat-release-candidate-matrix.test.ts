@@ -52,8 +52,10 @@ describe("release-candidate matrix CLI", () => {
   });
 
   test("returns non-zero for an incomplete receipt", async () => {
-    const path = `/private/tmp/chat-release-candidate-${crypto.randomUUID()}.json`;
-    await Bun.write(path, JSON.stringify({
+    const directory = await mkdtemp(join(tmpdir(), "atlcli-chat-release-incomplete-"));
+    temporaryDirectories.push(directory);
+    const path = join(directory, "receipt.json");
+    await writeFile(path, JSON.stringify({
       schema: "atlcli.chat-release-candidate-matrix/v1",
       generatedAt: "2026-08-09T12:00:00.000Z",
       proofs: [],
@@ -67,7 +69,6 @@ describe("release-candidate matrix CLI", () => {
     } finally {
       console.log = original;
       console.error = originalError;
-      await Bun.file(path).delete();
     }
   });
 
