@@ -181,6 +181,14 @@ html.theme-dark {
   animation: kiteweave-agent-dot 900ms ease-in-out infinite alternate;
 }
 
+.scrollbar-invisible {
+  scrollbar-width: none;
+}
+
+.scrollbar-invisible::-webkit-scrollbar {
+  display: none;
+}
+
 @keyframes kiteweave-agent-dot {
   from {
     opacity: 0.35;

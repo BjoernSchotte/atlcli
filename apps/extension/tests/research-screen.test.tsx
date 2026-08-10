@@ -13,6 +13,7 @@ import {
   ResearchScreen,
   inferResearchScope,
   researchTimelineSteps,
+  streamedChatAnswer,
 } from "../components/screens/ResearchScreen.js";
 import { I18nProvider } from "../utils/i18n/context.js";
 import type {
@@ -51,6 +52,32 @@ import type { AppPorts } from "../utils/ports/index.js";
 import { createReactHarness } from "./react-harness.js";
 
 const dom = createReactHarness();
+
+it("keeps the visible streamed answer until a replacement generation starts", () => {
+  const base = [{
+    kind: "chat-presentation",
+    seq: 1,
+    at: "2026-08-03T12:00:00.000Z",
+    channel: "answer-markdown",
+    status: "delta",
+    delta: "Visible provisional answer.",
+  }, {
+    kind: "chat-presentation",
+    seq: 2,
+    at: "2026-08-03T12:00:01.000Z",
+    channel: "answer-markdown",
+    status: "reset",
+  }] as Parameters<typeof streamedChatAnswer>[0];
+  expect(streamedChatAnswer(base)).toBe("Visible provisional answer.");
+  expect(streamedChatAnswer([...base, {
+    kind: "chat-presentation",
+    seq: 3,
+    at: "2026-08-03T12:00:02.000Z",
+    channel: "answer-markdown",
+    status: "delta",
+    delta: "Validated replacement answer.",
+  }])).toBe("Validated replacement answer.");
+});
 
 async function pressComposerKey(
   key: string,
@@ -629,6 +656,13 @@ describe("portable Research screen", () => {
     await dom.click("chat-conversation-history-0");
     expect(dom.find("research-chat-report").textContent)
       .toContain("The shared Chat port answered from the attached page.");
+    expect(dom.find("research-chat-report").className).not.toContain("border");
+    expect(dom.find("research-copy").textContent).toBe("");
+    expect(dom.find("research-copy").getAttribute("aria-label")).toContain("Copy");
+    expect(dom.find("research-download").textContent).toBe("");
+    expect(dom.find("research-download").getAttribute("aria-label")).toContain("Download");
+    await dom.click("research-copy");
+    expect(dom.find("research-copy").querySelector(".lucide-check")).not.toBeNull();
   });
 
   it("routes ordinary Chat through ChatAgentPortV1 while keeping Research separate", async () => {
@@ -829,6 +863,14 @@ describe("portable Research screen", () => {
     let runCalls = 0;
     const runQuestions: string[] = [];
     const conversationIds: Array<string | undefined> = [];
+    let emitPresentation: ((event: {
+      kind: "chat-presentation";
+      seq: number;
+      at: string;
+      channel: "answer-markdown";
+      status: "delta";
+      delta: string;
+    }) => void) | undefined;
     const port: ResearchPort = {
       hasApiKey: async () => true,
       setApiKey: async () => undefined,
@@ -841,6 +883,7 @@ describe("portable Research screen", () => {
         resolutions: [],
       }),
       run: async (request, options) => {
+        emitPresentation = options?.onChatPresentation;
         runCalls += 1;
         runQuestions.push(request.question);
         conversationIds.push(options?.conversationId);
@@ -922,13 +965,19 @@ describe("portable Research screen", () => {
     expect(dom.find("research-chat").className).toContain("min-h-0");
     expect(dom.find("research-chat").className).toContain("overflow-hidden");
     expect(dom.find("research-chat-timeline").className).toContain("overflow-y-auto");
+    expect(dom.find("research-chat-timeline").className).toContain("scrollbar-invisible");
     expect(dom.find("research-chat-composer").className).toContain("shrink-0");
     expect(dom.find("research-chat-welcome").textContent).toContain("Ask a research question");
+    const timeline = dom.find("research-chat-timeline");
+    Object.defineProperty(timeline, "scrollHeight", { configurable: true, value: 1_200 });
+    Object.defineProperty(timeline, "clientHeight", { configurable: true, value: 320 });
+    timeline.scrollTop = 0;
     await dom.setValue("research-chat-thinking", "quick");
     await dom.toggle("research-disclosure");
     await dom.setValue("copilot-chat-textarea", "How are DEMO-1 and KB related?");
     await dom.click("research-run");
     await dom.flush();
+    expect(timeline.scrollTop).toBe(1_200);
     expect(runCalls).toBe(1);
     expect(dom.find("research-activity").textContent).not.toContain("The selected sources are being investigated");
     expect(dom.find("research-activity").textContent).toContain("is being read");
@@ -954,6 +1003,18 @@ describe("portable Research screen", () => {
       .toContain("The selected evidence supports the answer.");
     expect(dom.find("research-streaming-answer").textContent)
       .not.toContain("This provisional draft must disappear.");
+    expect(dom.find("research-streaming-answer").className).not.toContain("border");
+    timeline.scrollTop = 0;
+    emitPresentation?.({
+      kind: "chat-presentation",
+      seq: 8,
+      at: "2026-08-03T12:00:07.000Z",
+      channel: "answer-markdown",
+      status: "delta",
+      delta: "\n\nA later streamed paragraph.",
+    });
+    await dom.flush(20);
+    expect(timeline.scrollTop).toBe(1_200);
 
     await dom.setValue("copilot-chat-textarea", "Queue a source check after this report.");
     await pressComposerKey("Enter");

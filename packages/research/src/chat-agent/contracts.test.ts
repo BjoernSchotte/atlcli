@@ -37,6 +37,7 @@ import {
   createKiteweaveChatAgent,
   projectChatAgentDiagnosticActivityV1,
   projectChatReasoningSummaryDeltaV1,
+  streamedAnswerSnapshotDeltaV1,
   streamedJsonStringFieldV1,
   streamedJsonStringFieldsV1,
   type ChatAgentRuntimeBindings,
@@ -418,6 +419,38 @@ describe("Chat answer contract", () => {
     expect(repaired.draft?.blocks[0]?.markdown).toContain(
       "Eine zweite, eigenständige Aussage bleibt erhalten.",
     );
+  });
+
+  test("coalesces adjacent numbered item fragments without losing either statement", () => {
+    const repaired = inspectChatDraftAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "1. **SIP-Endpunkt und Avaya-Integration** — Die technische Prüfung ist ausdrücklich vorbehalten.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }, {
+          markdown: "1. **SIP-Endpunkt und Avaya-Integration** — Ohne einen funktionierenden Endpunkt kann der Telefoniepfad nicht getestet werden.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }, {
+          markdown: "2. **API-Schnittstellen** — Dokumentation und Testbarkeit bestimmen den Integrationsaufwand.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+
+    expect(repaired.rejectionReasons).toEqual([]);
+    expect(repaired.draft?.blocks).toHaveLength(2);
+    expect(repaired.draft?.blocks[0]?.markdown).toContain("technische Prüfung");
+    expect(repaired.draft?.blocks[0]?.markdown).toContain("Telefoniepfad");
+    expect(repaired.draft?.blocks[0]?.markdown.match(/SIP-Endpunkt/gu)).toHaveLength(1);
+    expect(repaired.draft?.blocks[1]?.markdown).toContain("API-Schnittstellen");
   });
 
   test("removes an unmatched strong marker without discarding supported prose", () => {
@@ -2353,6 +2386,24 @@ describe("separate Chat root", () => {
       '{"blocks":[{"markdown":"First"},{"markdown":"Second\\npart"}]}',
       "markdown",
     )).toEqual(["First", "Second\npart"]);
+  });
+
+  test("resets a streamed answer when a running structured snapshot revises its prefix", () => {
+    expect(streamedAnswerSnapshotDeltaV1(
+      "1. First draft\n\n2. Second draft",
+      "1. Final first point\n\n2. Final second point",
+    )).toEqual({
+      reset: true,
+      delta: "1. Final first point\n\n2. Final second point",
+    });
+    expect(streamedAnswerSnapshotDeltaV1(
+      "1. Final first",
+      "1. Final first point",
+    )).toEqual({ reset: false, delta: " point" });
+    expect(streamedAnswerSnapshotDeltaV1(
+      "1. Final first point",
+      "1. Final first point",
+    )).toEqual({ reset: false, delta: "" });
   });
 
   test("exposes only eval and durable HITL while hiding DeepAgents scaffolding", async () => {

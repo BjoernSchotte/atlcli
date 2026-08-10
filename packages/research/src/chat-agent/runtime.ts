@@ -937,6 +937,23 @@ function streamedChatDraftMarkdownV2(input: string): string {
   return blocks || streamedJsonStringFieldV1(input, "messageMarkdown") || "";
 }
 
+/**
+ * Convert a projected structured-output snapshot into presentation semantics.
+ * Tool-call chunks are running JSON snapshots and providers may revise an
+ * already emitted prefix. Such a revision must replace the provisional answer
+ * instead of appending an abandoned wording as another answer fragment.
+ */
+export function streamedAnswerSnapshotDeltaV1(
+  previous: string,
+  next: string,
+): { readonly reset: boolean; readonly delta: string } {
+  if (next === previous) return { reset: false, delta: "" };
+  if (previous && !next.startsWith(previous)) {
+    return { reset: true, delta: next };
+  }
+  return { reset: false, delta: next.slice(previous.length) };
+}
+
 function isChatAnswerDraftToolNameV2(name: string | undefined): boolean {
   return name === CHAT_AGENT_DRAFT_TOOL_NAME_V2 || name === "ChatAnswerDraftV1";
 }
@@ -1543,19 +1560,32 @@ export function createKiteweaveChatAgent(
           reasoningProjection: ChatReasoningSummaryProjectionStateV1;
           answerStarted: boolean;
           structuredText: string;
-          emittedAnswerChars: number;
+          emittedAnswerMarkdown: string;
         }>();
         let emittedSubagentReasoningChars = 0;
         const emitProjectedSubagentAnswer = (state: {
           answerStarted: boolean;
           structuredText: string;
-          emittedAnswerChars: number;
+          emittedAnswerMarkdown: string;
         }): void => {
           if (state.structuredText.length > turn.limits.maxReportChars * 4) return;
           const projected = streamedChatDraftMarkdownV2(state.structuredText)
             .slice(0, turn.limits.maxReportChars);
-          if (projected.length <= state.emittedAnswerChars) return;
-          const delta = projected.slice(state.emittedAnswerChars);
+          const projection = streamedAnswerSnapshotDeltaV1(
+            state.emittedAnswerMarkdown,
+            projected,
+          );
+          if (!projection.delta) return;
+          if (projection.reset) {
+            input.onChatPresentation?.({
+              kind: "chat-presentation",
+              seq: nextEventSequence(),
+              at: new Date(now()).toISOString(),
+              channel: "answer-markdown",
+              status: "reset",
+            });
+            state.answerStarted = false;
+          }
           if (!state.answerStarted) {
             state.answerStarted = true;
             input.onChatPresentation?.({
@@ -1566,14 +1596,14 @@ export function createKiteweaveChatAgent(
               status: "started",
             });
           }
-          state.emittedAnswerChars = projected.length;
+          state.emittedAnswerMarkdown = projected;
           input.onChatPresentation?.({
             kind: "chat-presentation",
             seq: nextEventSequence(),
             at: new Date(now()).toISOString(),
             channel: "answer-markdown",
             status: "delta",
-            delta,
+            delta: projection.delta,
           });
         };
         const emitSubagentModelStream = ({
@@ -1586,7 +1616,7 @@ export function createKiteweaveChatAgent(
             reasoningProjection: { accumulated: "", emittedCodes: new Set<string>() },
             answerStarted: false,
             structuredText: "",
-            emittedAnswerChars: 0,
+            emittedAnswerMarkdown: "",
           };
           subagentStreams.set(runId, state);
           if (event.event === "content-block-delta") {
@@ -2196,14 +2226,14 @@ export function createKiteweaveChatAgent(
         );
         const streamPresentation = (async (): Promise<void> => {
           let emittedReasoningChars = 0;
-          let emittedAnswerChars = 0;
+          let emittedAnswerMarkdown = "";
           let structuredAnswerText = "";
           let answerGeneration = 0;
           let answerStarted = false;
           const maximumReasoningChars = 12_000;
           const maximumAnswerChars = turn.limits.maxReportChars;
           const beginAnswerGeneration = (): void => {
-            if (answerGeneration > 0 && emittedAnswerChars > 0) {
+            if (answerGeneration > 0 && emittedAnswerMarkdown) {
               input.onChatPresentation?.({
                 kind: "chat-presentation",
                 seq: nextEventSequence(),
@@ -2214,14 +2244,28 @@ export function createKiteweaveChatAgent(
             }
             answerGeneration += 1;
             structuredAnswerText = "";
-            emittedAnswerChars = 0;
+            emittedAnswerMarkdown = "";
             answerStarted = false;
           };
           const emitProjectedAnswer = (): void => {
             if (structuredAnswerText.length > maximumAnswerChars * 4) return;
             const projected = streamedChatDraftMarkdownV2(structuredAnswerText)
               .slice(0, maximumAnswerChars);
-            if (projected.length <= emittedAnswerChars) return;
+            const projection = streamedAnswerSnapshotDeltaV1(
+              emittedAnswerMarkdown,
+              projected,
+            );
+            if (!projection.delta) return;
+            if (projection.reset) {
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "answer-markdown",
+                status: "reset",
+              });
+              answerStarted = false;
+            }
             if (!answerStarted) {
               answerStarted = true;
               input.onChatPresentation?.({
@@ -2232,16 +2276,15 @@ export function createKiteweaveChatAgent(
                 status: "started",
               });
             }
-            const delta = projected.slice(emittedAnswerChars);
-            emittedAnswerChars = projected.length;
-            for (let offset = 0; offset < delta.length; offset += 1_024) {
+            emittedAnswerMarkdown = projected;
+            for (let offset = 0; offset < projection.delta.length; offset += 1_024) {
               input.onChatPresentation?.({
                 kind: "chat-presentation",
                 seq: nextEventSequence(),
                 at: new Date(now()).toISOString(),
                 channel: "answer-markdown",
                 status: "delta",
-                delta: delta.slice(offset, offset + 1_024),
+                delta: projection.delta.slice(offset, offset + 1_024),
               });
             }
           };

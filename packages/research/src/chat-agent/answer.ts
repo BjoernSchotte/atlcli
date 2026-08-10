@@ -815,6 +815,73 @@ function leadingCodeListSubjectV1(markdown: string): string | undefined {
   return match?.[1]?.normalize("NFKC").toLocaleLowerCase("en-US").trim();
 }
 
+interface NumberedListLeadV1 {
+  ordinal: string;
+  subject: string;
+  prefix: string;
+  remainder: string;
+}
+
+function numberedListLeadV1(markdown: string): NumberedListLeadV1 | undefined {
+  const match = markdown.match(
+    /^(\s*(\d+)[.)]\s+(?:(?:\*\*|__)\s*)?([^\n:–—]{1,160}?)(?:(?:\*\*|__)\s*)?\s*(?:[:–—])\s*)([\s\S]+)$/u,
+  );
+  const ordinal = match?.[2]?.trim();
+  const rawSubject = match?.[3]?.trim();
+  const prefix = match?.[1];
+  const remainder = match?.[4]?.trim();
+  if (!ordinal || !rawSubject || !prefix || !remainder) return undefined;
+  const subject = normalizedRequestFacetV1(rawSubject);
+  return subject ? { ordinal, subject, prefix, remainder } : undefined;
+}
+
+/**
+ * A model can split one numbered item into two evidence blocks and repeat the
+ * ordinal and subject on both. Preserve both distinct statements, but publish
+ * one list item by appending the later statement as an indented continuation.
+ * Only adjacent blocks with the exact same ordinal, normalized subject, and a
+ * compatible evidence binding are eligible.
+ */
+function coalesceRepeatedNumberedListItemsV1(
+  blocks: readonly ChatAnswerBlockV2[],
+  sourceReferenceIsDetailed?: (sourceRef: string) => boolean,
+): ChatAnswerBlockV2[] {
+  const result: ChatAnswerBlockV2[] = [];
+  for (const block of blocks) {
+    const previous = result.at(-1);
+    const previousLead = previous ? numberedListLeadV1(previous.markdown) : undefined;
+    const currentLead = numberedListLeadV1(block.markdown);
+    if (
+      !previous || !previousLead || !currentLead ||
+      previousLead.ordinal !== currentLead.ordinal ||
+      previousLead.subject !== currentLead.subject ||
+      !compatibleAnswerBlockBindingV1(
+        previous,
+        block,
+        sourceReferenceIsDetailed,
+      )
+    ) {
+      result.push({ ...block, sourceRefs: [...block.sourceRefs] });
+      continue;
+    }
+    const continuation = redundantProseV1(
+        previousLead.remainder,
+        currentLead.remainder,
+      )
+      ? (normalizedProseTokensV1(currentLead.remainder).length >
+          normalizedProseTokensV1(previousLead.remainder).length
+        ? currentLead.remainder
+        : previousLead.remainder)
+      : `${previousLead.remainder}\n   ${currentLead.remainder}`;
+    result[result.length - 1] = {
+      ...previous,
+      markdown: `${previousLead.prefix}${continuation}`,
+      sourceRefs: [...new Set([...previous.sourceRefs, ...block.sourceRefs])],
+    };
+  }
+  return result;
+}
+
 /**
  * Remove only high-confidence repeated blocks with the same evidence binding.
  * Prefer the more informative wording; distinct facts or differently sourced
@@ -961,6 +1028,16 @@ export function chatDraftNeedsHostRepairV1(input: {
     return true;
   }
   if (collapseRedundantAnswerBlocksV1(
+    draft.blocks,
+    (sourceRef) => sourceReferenceIsDetailedV2(
+      sourceRef,
+      input.detailEvidence,
+      input.readSectionReferences ?? [],
+    ),
+  ).length !== draft.blocks.length) {
+    return true;
+  }
+  if (coalesceRepeatedNumberedListItemsV1(
     draft.blocks,
     (sourceRef) => sourceReferenceIsDetailedV2(
       sourceRef,
@@ -1207,8 +1284,15 @@ export function inspectChatDraftAfterHostRepairV1(input: {
   const blocks = normalizeMeasuredRankingBlocksV1(
     coalesceRequestFacetLabelsV1(
       collapseRedundantRequestFacetAlternativesV1(
-        collapseRedundantAnswerBlocksV1(
-          balancedBlocks,
+        coalesceRepeatedNumberedListItemsV1(
+          collapseRedundantAnswerBlocksV1(
+            balancedBlocks,
+            (sourceRef) => sourceReferenceIsDetailedV2(
+              sourceRef,
+              input.detailEvidence,
+              input.readSectionReferences ?? [],
+            ),
+          ),
           (sourceRef) => sourceReferenceIsDetailedV2(
             sourceRef,
             input.detailEvidence,

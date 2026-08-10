@@ -2,7 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import {
   ArrowUp,
+  Check,
   ChevronRight,
+  Copy,
+  Download,
   FileText,
   FlaskConical,
   MessageCircle,
@@ -356,19 +359,24 @@ function chatReasoningSummary(events: readonly ResearchTimelineEventV1[]): strin
     .trim();
 }
 
-function streamedChatAnswer(events: readonly ResearchTimelineEventV1[]): string {
-  const latestReset = events.findLastIndex((event) =>
-    event.kind === "chat-presentation" &&
-    event.channel === "answer-markdown" &&
-    event.status === "reset");
-  return events
-    .slice(latestReset + 1)
-    .filter((event): event is ChatPresentationStreamEventV1 =>
-      event.kind === "chat-presentation" &&
-      event.channel === "answer-markdown" &&
-      event.status === "delta")
-    .map((event) => event.delta ?? "")
-    .join("");
+export function streamedChatAnswer(events: readonly ResearchTimelineEventV1[]): string {
+  let visible = "";
+  let replacementPending = false;
+  for (const event of events) {
+    if (event.kind !== "chat-presentation" || event.channel !== "answer-markdown") continue;
+    if (event.status === "reset") {
+      replacementPending = true;
+      continue;
+    }
+    if (event.status !== "delta") continue;
+    if (replacementPending) {
+      visible = event.delta ?? "";
+      replacementPending = false;
+    } else {
+      visible += event.delta ?? "";
+    }
+  }
+  return visible;
 }
 
 function timelineStepKind(event: ResearchTimelineEventV1): ResearchTimelineStepKind | null {
@@ -1271,7 +1279,7 @@ function ResearchStreamingTurn({
       </div>
       {running && answerDraft && (
         <article
-          className="mt-3 rounded-lg border border-border/70 bg-card px-3 py-2 text-sm leading-6"
+          className="mt-3 py-1 text-sm leading-6"
           aria-label={t("research.chat.presentation.answerDraft")}
           data-testid="research-streaming-answer"
         >
@@ -1360,6 +1368,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [submittedRequest, setSubmittedRequest] =
     useState<ResearchRequestV1 | null>(null);
   const [actionStatus, setActionStatus] = useState("");
+  const [markdownCopied, setMarkdownCopied] = useState(false);
   const [resumableSessions, setResumableSessions] = useState<
     ResearchResumableSessionV1[]
   >([]);
@@ -1402,6 +1411,53 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const automaticStreamResumeRef = useRef<string | null>(null);
   const expectedDirectSteeringAbort = useRef(false);
   const planReviewListingGeneration = useRef(0);
+  const chatTimelineRef = useRef<HTMLDivElement | null>(null);
+  const chatTimelineFollowsEndRef = useRef(true);
+
+  const scrollChatTimelineToEnd = (): void => {
+    const timeline = chatTimelineRef.current;
+    if (!timeline) return;
+    timeline.scrollTop = timeline.scrollHeight;
+  };
+
+  useEffect(() => {
+    chatTimelineFollowsEndRef.current = true;
+    const frame = requestAnimationFrame(scrollChatTimelineToEnd);
+    return () => cancelAnimationFrame(frame);
+  }, [chatTurns.length]);
+
+  useEffect(() => {
+    setMarkdownCopied(false);
+  }, [report]);
+
+  useEffect(() => {
+    if (!chatTimelineFollowsEndRef.current) return;
+    const frame = requestAnimationFrame(scrollChatTimelineToEnd);
+    return () => cancelAnimationFrame(frame);
+  }, [activity.at(-1)?.seq, actionStatus, error, pendingChatQuestion, report, running]);
+
+  useEffect(() => {
+    const timeline = chatTimelineRef.current;
+    if (!timeline) return;
+    let frame: number | null = null;
+    const followRenderedStream = (): void => {
+      if (!chatTimelineFollowsEndRef.current || frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        scrollChatTimelineToEnd();
+      });
+    };
+    const observer = new MutationObserver(followRenderedStream);
+    observer.observe(timeline, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, []);
 
   function publishChatInteraction(state: ChatInteractionStateV1 | null): void {
     chatInteractionRef.current = state;
@@ -3500,7 +3556,16 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         }}
       >
         <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden" data-testid="research-chat">
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-0.5" data-testid="research-chat-timeline">
+          <div
+            ref={chatTimelineRef}
+            className="scrollbar-invisible flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-0.5"
+            data-testid="research-chat-timeline"
+            onScroll={(event) => {
+              const timeline = event.currentTarget;
+              chatTimelineFollowsEndRef.current =
+                timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight <= 48;
+            }}
+          >
             {!hasConversation && (
               <div className="py-2" data-testid="research-chat-welcome">
                 <p className="m-0 text-sm leading-6 text-muted-foreground">
@@ -3767,7 +3832,14 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
               </Alert>
             )}
             {report && (
-              <div className="rounded-lg border border-border/70 bg-card px-3 py-2" data-testid="research-chat-report">
+              <div
+                className={cn(
+                  report.schema === "atlcli.chat-answer/v1" || interactionMode === "chat"
+                    ? "space-y-3"
+                    : "rounded-lg border border-border/70 bg-card px-3 py-2",
+                )}
+                data-testid="research-chat-report"
+              >
                 {report.schema === "atlcli.chat-answer/v1"
                   ? (
                     <ChatAnswer
@@ -3814,20 +3886,31 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                     </div>
                   )}
                   <Button
-                    size="sm"
-                    variant="outline"
+                    size="icon"
+                    variant="ghost"
+                    className="size-8"
+                    aria-label={t("research.copy")}
+                    title={t("research.copy")}
                     onClick={() => void port.copyMarkdown(
                       report.schema === "atlcli.chat-answer/v1"
                         ? report.messageMarkdown
                         : report.markdown,
-                    ).then(() => setActionStatus(t("research.copied")))}
+                    ).then(() => {
+                      setMarkdownCopied(true);
+                      setActionStatus(t("research.copied"));
+                    })}
                     data-testid="research-copy"
                   >
-                    {t("research.copy")}
+                    {markdownCopied
+                      ? <Check className="size-4" aria-hidden="true" />
+                      : <Copy className="size-4" aria-hidden="true" />}
                   </Button>
                   <Button
-                    size="sm"
-                    variant="outline"
+                    size="icon"
+                    variant="ghost"
+                    className="size-8"
+                    aria-label={t("research.download")}
+                    title={t("research.download")}
                     onClick={() => void port.downloadMarkdown(
                       report.schema === "atlcli.chat-answer/v1"
                         ? report.messageMarkdown
@@ -3838,7 +3921,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                     ).then(() => setActionStatus(t("research.downloaded")))}
                     data-testid="research-download"
                   >
-                    {t("research.download")}
+                    <Download className="size-4" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -4794,20 +4877,31 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                 {t("research.raw")}
               </Button>
               <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void port.copyMarkdown(report.markdown).then(() => setActionStatus(t("research.copied")))}
+                size="icon"
+                variant="ghost"
+                className="size-8"
+                aria-label={t("research.copy")}
+                title={t("research.copy")}
+                onClick={() => void port.copyMarkdown(report.markdown).then(() => {
+                  setMarkdownCopied(true);
+                  setActionStatus(t("research.copied"));
+                })}
                 data-testid="research-copy"
               >
-                {t("research.copy")}
+                {markdownCopied
+                  ? <Check className="size-4" aria-hidden="true" />
+                  : <Copy className="size-4" aria-hidden="true" />}
               </Button>
               <Button
-                size="sm"
-                variant="outline"
+                size="icon"
+                variant="ghost"
+                className="size-8"
+                aria-label={t("research.download")}
+                title={t("research.download")}
                 onClick={() => void port.downloadMarkdown(report.markdown, `${report.title}.md`).then(() => setActionStatus(t("research.downloaded")))}
                 data-testid="research-download"
               >
-                {t("research.download")}
+                <Download className="size-4" aria-hidden="true" />
               </Button>
             </div>
             {actionStatus && <span role="status" className="text-xs text-muted-foreground">{actionStatus}</span>}
