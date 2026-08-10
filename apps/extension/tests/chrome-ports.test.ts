@@ -58,6 +58,7 @@ describe("CHROME_CAPABILITIES", () => {
       "durable-jobs",
       "research",
       "settings-persistence",
+      "confluence-page-customization",
     ]);
   });
 

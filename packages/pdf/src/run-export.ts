@@ -26,7 +26,11 @@ import type {
   PdfThemeOptions,
   PreparedPdfBlock,
 } from "./types.js";
-import { validatePdfOutput } from "./validate.js";
+import { validatePdfOutput, validatePdfOutputStandard } from "./validate.js";
+import {
+  resolvePdfOutputPolicyV1,
+  type PdfOutputPolicyV1,
+} from "./output-policy.js";
 import {
   resolveCodeThemeId,
   type CodeThemeId,
@@ -61,6 +65,8 @@ export interface RunPdfExportInput {
   sourceNotes?: ExportNote[];
   metadata: PdfExportMetadata;
   profile?: PdfProfile;
+  /** Strict PDF/A or PDF/UA request. Legacy profile remains report-only. */
+  outputPolicy?: PdfOutputPolicyV1;
   theme?: PdfThemeOptions;
   settings?: PdfTemplateSettings;
   /** Curated template manifest to render with (spec 012). Defaults to built-in. */
@@ -126,6 +132,8 @@ export interface PreparedPdfExportV1 {
   filename: string;
   codeTheme: CodeThemeId;
   profile: PdfProfile;
+  /** Normalized strict standard request, persisted for deterministic replay. */
+  outputPolicy?: PdfOutputPolicyV1;
   language?: string;
   sourceNotes: ExportNote[];
   bundleNotes: ExportNote[];
@@ -312,7 +320,15 @@ export async function preparePdfExport(
   // forwarded to serialize, whose own resolve call short-circuits on it.
   input.onPhase?.("configuration");
   let settings;
+  let outputPolicy: PdfOutputPolicyV1 | undefined;
   try {
+    const resolvedOutputPolicy = resolvePdfOutputPolicyV1(input.outputPolicy);
+    outputPolicy = resolvedOutputPolicy === undefined
+      ? undefined
+      : {
+        schema: resolvedOutputPolicy.schema,
+        standards: [...resolvedOutputPolicy.standards],
+      };
     settings = resolvePdfSettings(input.settings, {
       ...(input.metadata.language !== undefined ? { locale: input.metadata.language } : {}),
       ...(input.metadata.region !== undefined ? { region: input.metadata.region } : {}),
@@ -399,6 +415,7 @@ export async function preparePdfExport(
     bundle: bundle!,
     filename: input.filename,
     profile: input.profile ?? "tagged",
+    ...(outputPolicy !== undefined ? { outputPolicy } : {}),
     ...(input.metadata.language !== undefined ? { language: input.metadata.language } : {}),
     sourceNotes: resolvedNotes,
     bundleNotes,
@@ -427,6 +444,7 @@ export async function renderPreparedPdfExport(
       { phase: "compile" },
     );
   }
+  const fontRequirements = bundle.fontRequirements;
   // Move, do not borrow: while Typst/WASM and the resulting PDF are alive, the
   // caller-visible prepared value must not keep a second route to the complete
   // VFS. A retry rematerializes a fresh clone from the durable checkpoint.
@@ -436,7 +454,12 @@ export async function renderPreparedPdfExport(
   const compileStarted = now();
   let compiled;
   try {
-    compiled = await env.compiler.compile(bundle!, { signal: input.signal });
+    compiled = await env.compiler.compile(bundle!, {
+      signal: input.signal,
+      ...(prepared.outputPolicy !== undefined
+        ? { outputPolicy: prepared.outputPolicy }
+        : {}),
+    });
     throwIfAborted(input.signal);
   } catch (error) {
     wrapFailure(error, "compile");
@@ -456,9 +479,13 @@ export async function renderPreparedPdfExport(
 
   input.onPhase?.("validating");
   let inspection;
+  let outputStandardEvidence;
   try {
     throwIfAborted(input.signal);
     inspection = validatePdfOutput(compiled.pdf);
+    outputStandardEvidence = prepared.outputPolicy === undefined
+      ? undefined
+      : validatePdfOutputStandard(compiled.pdf, prepared.outputPolicy, inspection);
     throwIfAborted(input.signal);
   } catch (error) {
     wrapFailure(error, "validate");
@@ -487,7 +514,15 @@ export async function renderPreparedPdfExport(
     codeTheme: resolveCodeThemeId(prepared.codeTheme),
     filename: prepared.filename,
     profile: prepared.profile,
+    ...(prepared.outputPolicy !== undefined
+      ? { outputPolicy: prepared.outputPolicy }
+      : {}),
+    ...(outputStandardEvidence !== undefined
+      ? { outputStandardEvidence }
+      : {}),
     compilerVersion: compiled.compilerVersion,
+    ...(fontRequirements ? { fontRequirements } : {}),
+    ...(compiled.fontEvidence ? { fontEvidence: compiled.fontEvidence } : {}),
     pageCount: inspection.pageCount,
     embeddedImages: prepared.counts.images,
     renderedDiagrams: prepared.counts.diagrams,

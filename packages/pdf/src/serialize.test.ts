@@ -1,10 +1,23 @@
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
+import { CHART_KINDS_V1 } from "@atlcli/export-blocks";
+import {
+  validateManifestV3,
+  type WikiPdfTemplateDesignV3,
+} from "@atlcli/template-pack";
 import {
   CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
   composeChapters,
 } from "@atlcli/confluence";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
+import {
+  PDF_TEMPLATE_CAPABILITIES_V3,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+} from "./design-catalog.js";
+import { BUILTIN_PDF_TEMPLATE_BASELINE_V1 } from "./recipe-baselines.js";
+import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
+import type { PdfTemplateManifestV5 } from "./template-pack.js";
 import { preparePdfDocument } from "./prepare.js";
 import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
 import type { PreparedPdfBlock } from "./types.js";
@@ -19,6 +32,163 @@ const metadata = {
   region: "US",
   exportedAt: new Date("2026-07-16T12:00:00Z"),
 };
+
+function revision5Manifest(
+  mutate?: (design: WikiPdfTemplateDesignV3) => void,
+): PdfTemplateManifestV5 {
+  const design = structuredClone(
+    BUILTIN_PDF_TEMPLATE_BASELINE_V1.design,
+  ) as unknown as WikiPdfTemplateDesignV3;
+  mutate?.(design);
+  return validateManifestV3({
+    schemaVersion: 1,
+    id: "fixture.serialize-catalog-v3",
+    name: "Serialize Catalog V3 fixture",
+    version: "1.0.0",
+    engine: {
+      kind: "typst",
+      api: "wiki.pdf-template/v1",
+      entry: "atlcli.typ",
+      compilerRange: ">=0.15.1 <0.16",
+    },
+    canonicalSource: { api: "wiki.pdf-canonical-typst", revision: "5" },
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+    },
+    design,
+    requiredFonts: PDF_RUNTIME_ASSETS.fonts,
+  });
+}
+
+const NON_CHART_REGRESSION_BLOCKS_V1: ExportBlock[] = [
+  { type: "heading", level: 2, content: [{ type: "text", text: "Stable guide" }] },
+  { type: "paragraph", content: [{ type: "text", text: "Existing exports must not enter the chart rendering path." }] },
+  {
+    type: "list", ordered: false, items: [
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "First" }] }] },
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "Second" }] }] },
+    ],
+  },
+  {
+    type: "table", rows: [{ cells: [
+      { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Key" }] }] },
+      { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }] },
+    ] }],
+  },
+];
+
+it("pins a chart-free PDF Typst structure golden with no generated chart asset", async () => {
+  const prepared = await preparePdfDocument(NON_CHART_REGRESSION_BLOCKS_V1, {
+    resolve: async () => { throw new Error("non-chart fixture attempted an asset resolve"); },
+  });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.assets.some((asset) => asset.path.startsWith("assets/chart-"))).toBe(false);
+  expect(createHash("sha256").update(bundle.main).digest("hex")).toBe("19ac73191b15b7637c5b6da7de258eee2046e9ab7083b212f9e6f7fea3d5af91");
+});
+
+it("serializes a chart ExportBlock as an SVG visual plus deterministic data table", async () => {
+  const prepared = await preparePdfDocument([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      subtitle: "FY 2026 plan",
+      data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+    diagnostics: [{ code: "skipped-row", message: "One malformed row was skipped.", row: 3 }],
+  }], { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.main).toContain('#text("Revenue")');
+  expect(bundle.main).toContain('#text("FY 2026 plan")');
+  expect(bundle.main).toContain('style: "italic"');
+  expect(bundle.main).toContain('#text("Chart data note: One malformed row was skipped.")');
+  expect(bundle.main).toContain('fill: rgb("#FFFAE6")');
+  expect(bundle.main).toContain('stroke: rgb("#974F0C")');
+  expect(bundle.main).toContain('#text("Jan")');
+  expect(bundle.main).toContain('#text("20")');
+  expect(bundle.main).toContain("#table(columns: 2");
+  expect(bundle.main).toContain('image("assets/chart-1-');
+  expect(bundle.assets.some((asset) => asset.mediaType === "image/svg+xml" && asset.path.startsWith("assets/chart-"))).toBe(true);
+  const chartAsset = bundle.assets.find((asset) => asset.mediaType === "image/svg+xml" && asset.path.startsWith("assets/chart-"));
+  expect(chartAsset).toBeDefined();
+  const chartSvg = new TextDecoder().decode(chartAsset!.bytes);
+  expect(chartSvg).toContain('class="ts-chart"');
+  expect(chartSvg).toContain("ts-chart__bar");
+  expect(chartSvg).toContain('role="img"');
+  expect(bundle.main).toContain('[#text("Revenue")]');
+  expect(bundle.main).not.toContain(', #text("Revenue")');
+
+  const themedManifest = structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST);
+  themedManifest.design!.typography.roles.adfSmallText!.size = "8.25pt";
+  themedManifest.design!.tokens.layout.calloutInsetX = "13pt";
+  themedManifest.design!.tokens.layout.calloutInsetY = "10pt";
+  themedManifest.design!.tokens.layout.calloutRadius = "5pt";
+  themedManifest.design!.semanticPalettes.callouts.warning = {
+    background: "#EAF7F0",
+    foreground: "#14532D",
+  };
+  const themed = serializePdfDocument(prepared, { metadata, templateManifest: themedManifest });
+  expect(themed.main).toContain('size: 8.25pt');
+  expect(themed.main).toContain('inset: (x: 13pt, y: 10pt)');
+  expect(themed.main).toContain('fill: rgb("#EAF7F0")');
+  expect(themed.main).toContain('stroke: rgb("#14532D")');
+  expect(themed.main).toContain('radius: 5pt');
+});
+
+it("keeps a captioned chart visual and semantic table in one figure", async () => {
+  const prepared = await preparePdfDocument([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      data: { mode: "categories", labels: ["Jan"], series: [{ id: "revenue", label: "Value", values: [10] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+    caption: { kind: "figure", content: [{ type: "text", text: "Revenue proof" }] },
+  }], { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.main.match(/#table\(columns:/gu)).toHaveLength(1);
+  expect(bundle.main.match(/#figure\(/gu)).toHaveLength(1);
+  expect(bundle.main).toContain('#figure(block(width: 100%)[');
+  expect(bundle.main).toContain('#image("assets/chart-1-');
+});
+
+it("keeps sparse XY series aligned by their own x keys", async () => {
+  const prepared = await preparePdfDocument([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1", kind: "xyLine", title: "Sparse",
+      data: { mode: "points", series: [
+        { id: "a", label: "A", points: [{ x: 1, y: 10 }, { x: 2, y: 20 }] },
+        { id: "b", label: "B", points: [{ x: 2, y: 30 }] },
+      ] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.main).toContain('#text("2")');
+  expect(bundle.main).toContain('#text("20")');
+  expect(bundle.main).toContain('#text("30")');
+});
+
+it("projects every normalized chart shape into a non-empty PDF table", async () => {
+  const blocks: ExportBlock[] = CHART_KINDS_V1.map((kind) => ({
+    type: "chart" as const,
+    chart: kind === "gantt"
+      ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "gantt" as const, tasks: [{ id: "t", label: "Task", start: "2026-01-01", end: "2026-01-02" }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+      : ["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"].includes(kind)
+        ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "points" as const, series: [{ id: "s", label: "Value", points: [{ x: kind === "timeSeries" ? "2026-01-01" : 1, y: 2 }] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+        : { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "categories" as const, labels: ["A"], series: [{ id: "s", label: "Value", values: [2] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } },
+  }));
+  const prepared = await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  for (const kind of CHART_KINDS_V1) expect(bundle.main).toContain(`shape-${kind}`);
+});
 
 function pngBytes(): Uint8Array {
   return new Uint8Array([
@@ -2372,6 +2542,166 @@ describe("serialize — T1.6 table header repeat", () => {
       },
     ]);
     expect(main).toContain("table.header(repeat: true,");
+  });
+
+  it("keeps header semantics while applying revision-5 repeat, banding, border, and code defaults", async () => {
+    const prepared = await preparePdfDocument(
+      [
+        {
+          type: "table",
+          rows: [
+            {
+              cells: [
+                {
+                  header: true,
+                  colspan: 1,
+                  rowspan: 1,
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Header" }],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              cells: [
+                {
+                  header: false,
+                  colspan: 1,
+                  rowspan: 1,
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Body" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "codeBlock",
+          language: "text",
+          code: "averylongunbreakableidentifierthatneedsemergencywrapping",
+        },
+      ],
+      { resolve: async () => { throw new Error("unused"); } },
+    );
+    const manifest = revision5Manifest((design) => {
+      design.components.table = {
+        repeatHeader: false,
+        banding: "rows",
+        borders: "outer",
+        bandColor: "codeBackground",
+        borderColor: "tableStroke",
+      };
+      design.components.codeBlock = {
+        wrap: "soft",
+        lineNumbers: "show",
+      };
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata,
+      templateManifest: manifest,
+    });
+    expect(bundle.main).toContain("table.header(repeat: false,");
+    expect(bundle.main).toContain("fill: (x, y) => if y >= 1");
+    expect(bundle.main).toContain("top: if y == 0");
+    expect(bundle.main).toContain("right: if x == 0");
+    expect(bundle.main).toContain("columns: (auto, 1fr)");
+    expect(bundle.main).toContain("#h(0 * 1pt, weak: true)");
+    expect(bundle.template).toContain("marker-align: start");
+  });
+
+  it("emits every bounded table banding/border mode and honors no-wrap code", async () => {
+    const prepared = await preparePdfDocument(
+      [
+        {
+          type: "table",
+          rows: [
+            {
+              cells: [
+                {
+                  header: true,
+                  colspan: 1,
+                  rowspan: 1,
+                  content: [{ type: "paragraph", content: [{ type: "text", text: "H" }] }],
+                },
+              ],
+            },
+            {
+              cells: [
+                {
+                  header: false,
+                  colspan: 1,
+                  rowspan: 1,
+                  content: [{ type: "paragraph", content: [{ type: "text", text: "B" }] }],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "codeBlock",
+          language: "text",
+          code: "averylongunbreakableidentifierthatmustremainunbroken",
+        },
+      ],
+      { resolve: async () => { throw new Error("unused"); } },
+    );
+    const cases = [
+      {
+        banding: "none" as const,
+        borders: "all" as const,
+        fill: undefined,
+        stroke: 'stroke: rgb("#DFE1E6")',
+      },
+      {
+        banding: "rows" as const,
+        borders: "horizontal" as const,
+        fill: "if y >= 1",
+        stroke: "stroke: (x, y) => (top:",
+      },
+      {
+        banding: "columns" as const,
+        borders: "outer" as const,
+        fill: "if calc.odd(x)",
+        stroke: "top: if y == 0",
+      },
+      {
+        banding: "none" as const,
+        borders: "none" as const,
+        fill: undefined,
+        stroke: "stroke: none",
+      },
+    ];
+    for (const fixture of cases) {
+      const templateManifest = revision5Manifest((design) => {
+        design.components.table = {
+          repeatHeader: true,
+          banding: fixture.banding,
+          borders: fixture.borders,
+        };
+        design.components.codeBlock = {
+          wrap: "none",
+          lineNumbers: "hide",
+        };
+      });
+      const main = serializePdfDocument(prepared, {
+        metadata,
+        templateManifest,
+      }).main;
+      if (fixture.fill === undefined) {
+        expect(main).not.toContain("fill: (x, y) =>");
+      } else {
+        expect(main).toContain(fixture.fill);
+      }
+      expect(main).toContain(fixture.stroke);
+      expect(main).not.toContain("#h(0pt, weak: true)");
+    }
   });
 });
 

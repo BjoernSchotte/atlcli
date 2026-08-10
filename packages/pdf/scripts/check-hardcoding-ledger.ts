@@ -1,7 +1,7 @@
 /**
  * Hardcoding-ledger lint — CI-enforced (spec 007 T2.5 → spec 012 T6.3).
  *
- * After the 012 migration, `packages/pdf/src/template.ts` and `serialize.ts`
+ * After the 012 migration, the canonical template renderers and `serialize.ts`
  * author **no presentation literal**: every color, length, and font family is
  * either interpolated from a validated `wiki.pdf-template/v1` design (`${…}`)
  * or read from the resolved `settings.design`/`settings.labels` at runtime. The
@@ -35,7 +35,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
-const HOT_FILES = ["template.ts", "serialize.ts"] as const;
+const HOT_FILES = ["template.ts", "template-v4.ts", "serialize.ts"] as const;
 
 /**
  * Structural literals (not presentation) intentionally allowed to appear bare.
@@ -107,7 +107,7 @@ export interface CheckResult {
   filesScanned: string[];
 }
 
-/** Run the lint against both hot files (`template.ts` + `serialize.ts`). */
+/** Run the lint against the canonical renderers plus `serialize.ts`. */
 export function checkHardcodingLedger(options: { srcDir?: string } = {}): CheckResult {
   const srcDir = options.srcDir ?? resolve(SCRIPT_DIR, "../src");
   const violations: LedgerViolation[] = [];

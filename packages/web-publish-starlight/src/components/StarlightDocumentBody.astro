@@ -1,0 +1,37 @@
+---
+import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
+import type {
+  AstroExportBlockOverridesV1,
+  AstroExportBlockRenderContextV1,
+} from "@atlcli/export-blocks-astro";
+import type { ExportBlock } from "@atlcli/export-blocks";
+import StarlightCodeBlock from "./StarlightCodeBlock.astro";
+import InteractiveChart from "@atlcli/export-blocks-astro/components/InteractiveChart.astro";
+
+interface Props {
+  blocks: readonly ExportBlock[];
+  context: AstroExportBlockRenderContextV1;
+  /** Trusted page-graph data; never derived from rendered/source HTML. */
+  search?: {
+    sourceId: string;
+    title: string;
+    labels: readonly string[];
+    locale?: string;
+  };
+  overrides?: AstroExportBlockOverridesV1;
+}
+
+const { blocks, context, search, overrides } = Astro.props;
+const starlightOverrides: AstroExportBlockOverridesV1 = { code: StarlightCodeBlock, chart: InteractiveChart, ...overrides };
+---
+
+<!-- StarlightPage owns the single canonical Pagefind body region. -->
+<section data-atlcli-starlight-slot="main-content">
+  {search !== undefined && <div data-atlcli-search-metadata aria-hidden="true" hidden>
+    <span data-pagefind-meta="title">{search.title}</span>
+    <span data-pagefind-meta="source-id">{search.sourceId}</span>
+    {search.labels.map((label) => <span data-pagefind-filter="label">{label}</span>)}
+    {search.locale === undefined ? null : <span data-pagefind-filter="language">{search.locale}</span>}
+  </div>}
+  <ExportDocument blocks={blocks} context={context} overrides={starlightOverrides} />
+</section>

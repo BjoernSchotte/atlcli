@@ -60,6 +60,15 @@ interface EmissionScan {
  */
 const NON_EXPORT_NOTE_CODES = new Set([
   "browser-case-failure",
+  // Closed ChartDiagnosticV1 vocabulary. These records deliberately share
+  // the generic `{ code, message }` shape but are not ExportNote emissions.
+  "flattened-3d",
+  "invalid-option",
+  "malformed-data",
+  "skipped-row",
+  "unsupported-kind",
+  // Publication build-budget issue, likewise separate from ExportNote.
+  "chart-p0-diagnostic",
   "compiler-diagnostic",
   // Chat answer gaps are a separate, host-owned evidence taxonomy. They use
   // the same `{ code, message }` shape but are never Confluence ExportNotes.

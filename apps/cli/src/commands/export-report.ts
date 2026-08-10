@@ -123,6 +123,10 @@ export interface ExportReport {
   engine?: ExportReportEngine;
   /** Effective bundled Shiki theme used for code blocks. */
   codeTheme?: string;
+  /** Strict PDF/A or PDF/UA request passed to the compiler. */
+  outputPolicy?: PdfExportReport["outputPolicy"];
+  /** Evidence inspected from the compiled PDF bytes. */
+  outputStandardEvidence?: PdfExportReport["outputStandardEvidence"];
   sourcePages: SourcePageEntry[];
   outputDetails: OutputDetail[];
   outputs: string[];
@@ -381,6 +385,8 @@ export interface BuildReportInput {
   format: ExportFormat;
   engine?: ExportReportEngine;
   codeTheme?: string;
+  outputPolicy?: PdfExportReport["outputPolicy"];
+  outputStandardEvidence?: PdfExportReport["outputStandardEvidence"];
   sourcePages: SourcePageEntry[];
   outputDetails: OutputDetail[];
   issues: Issue[];
@@ -435,6 +441,10 @@ export function buildReport(input: BuildReportInput): ExportReport {
     format: input.format,
     ...(input.engine ? { engine: input.engine } : {}),
     ...(input.codeTheme ? { codeTheme: input.codeTheme } : {}),
+    ...(input.outputPolicy ? { outputPolicy: input.outputPolicy } : {}),
+    ...(input.outputStandardEvidence
+      ? { outputStandardEvidence: input.outputStandardEvidence }
+      : {}),
     sourcePages: input.sourcePages,
     outputDetails: input.outputDetails,
     outputs: input.outputDetails.map((detail) => detail.output),

@@ -9,5 +9,11 @@
     "customConditions": ["development"]
   },
   "include": ["apps/**/src/**/*.ts", "packages/**/src/**/*.ts", "scripts/**/*.ts"],
-  "exclude": ["src", "astro.config.mjs", "apps/browser-export-harness"]
+  "exclude": [
+    "src",
+    "astro.config.mjs",
+    "apps/browser-export-harness",
+    "packages/web-publish-astro/fixtures/**",
+    "packages/export-blocks-astro/fixtures/**"
+  ]
 }

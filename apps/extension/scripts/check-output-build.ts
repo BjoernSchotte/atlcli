@@ -56,6 +56,10 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
+import { TYPST_VENDOR_PINS } from "../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
+
+export const TYPST_COMPILER_WASM_SHA256 =
+  TYPST_VENDOR_PINS["typst_ts_web_compiler_bg.wasm"]!;
 
 /** Real `node:`/`bun:` import/require syntax, excluding inert diagnostic text. */
 const NODE_BUN_RES: RegExp[] = [
@@ -144,7 +148,7 @@ const REQUIRED_PDF_ARTIFACTS = [
     label: "Typst compiler WASM",
     pattern: /(?:^|\/)assets\/typst_ts_web_compiler_bg-[^/]+\.wasm$/,
     minimumSize: 20_000_000,
-    sha256: "1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd",
+    sha256: TYPST_COMPILER_WASM_SHA256,
   },
   {
     label: "DOCX code font",
@@ -200,6 +204,11 @@ const REQUIRED_PDF_ARTIFACTS = [
     label: "Source Code Pro Bold",
     pattern: /(?:^|\/)assets\/SourceCodePro-Bold-[^/]+\.ttf$/,
     sha256: "b2095e0d657e6d28dc32444a9dacabab0c9241d0bf39d96371756cc9bdbc3a5f",
+  },
+  {
+    label: "Noto Sans Arabic Regular",
+    pattern: /(?:^|\/)assets\/NotoSansArabic-Regular-[^/]+\.ttf$/,
+    sha256: "ceea25b464a656dc3b26849bab9356740401af62aedf1bfa8b7f0d9b75925b1b",
   },
   {
     label: "Noto Sans Symbols 2 Regular",

@@ -9,6 +9,11 @@ import type {
   TablePresentation,
 } from "@atlcli/confluence";
 import {
+  validatePdfTemplateDesignV3,
+  type DesignComponentsV3,
+  type WikiPdfTemplateDesignV3,
+} from "@atlcli/template-pack";
+import {
   UNSAFE_LINK_NOTE_CODE,
   computeHeadingOffset,
   formatAdfDateTimestamp,
@@ -26,13 +31,14 @@ import {
   DEFAULT_CODE_THEME,
   resolveCodeTheme,
 } from "@atlcli/code-highlight/registry";
-import {
-  projectPdfDesignThroughCatalog,
-  readPdfDesignCapability,
-} from "./design-catalog.js";
+import { readPdfDesignCapability } from "./design-catalog.js";
+import { resolvePdfCatalogRuntime } from "./catalog-runtime.js";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
+import { createAtlcliTypstTemplateV5 } from "./template-v5.js";
+import { resolvePdfFontRequirementsV1 } from "./font-requirements.js";
+import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import {
   pdfColorContrast,
   pdfTableCellForeground,
@@ -190,6 +196,8 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
           return block.alt ?? block.label;
         case "smartCard":
           return smartCardDisplayText(block.card);
+        case "chart":
+          return chartPlainText(block.chart);
         case "diagram":
           return block.alt ?? "Diagram";
         case "divider":
@@ -1061,9 +1069,23 @@ interface Writer {
   contrastWarnings: Set<string>;
   /** The ACTIVE template design driving serializer-emitted presentation. */
   catalogDesign: ResolvedPdfDesign;
+  /** Revision-5 semantic component policy; absent keeps revisions 1-4 exact. */
+  componentsV5?: DesignComponentsV3;
   /** BCP-47 locale for semantic inline dates. */
   locale: string;
   comments: PdfCommentRegistry;
+}
+
+function resolveComponentsV5(
+  options: PdfSerializeOptions,
+): DesignComponentsV3 | undefined {
+  const manifest = options.templatePack?.manifest ?? options.templateManifest;
+  if (manifest?.canonicalSource?.revision !== "5" || !manifest.design) {
+    return undefined;
+  }
+  return validatePdfTemplateDesignV3(
+    manifest.design as WikiPdfTemplateDesignV3,
+  ).components;
 }
 
 function serializeDecisionItem(
@@ -1162,6 +1184,23 @@ function shikiRgb(value: string, fallback: string): string {
   return alpha ? alpha[1]!.toUpperCase() : safeColor(raw, fallback);
 }
 
+function softCodeTokenSource(
+  value: string,
+  render: (chunk: string) => string,
+): string {
+  if (![...value].some((_, index) => index >= 24) || /\s/u.test(value)) {
+    return render(value);
+  }
+  const characters = [...value];
+  const chunks: string[] = [];
+  for (let index = 0; index < characters.length; index += 12) {
+    chunks.push(render(characters.slice(index, index + 12).join("")));
+  }
+  // Zero-width weak spacing creates renderer-owned emergency line-break
+  // opportunities without adding extractable characters to the source text.
+  return chunks.join("#h(0 * 1pt, weak: true)");
+}
+
 /**
  * Render the shared Shiki projection without asking Typst to choose syntax
  * colors. Each source line remains a distinct grid row, including trailing
@@ -1173,37 +1212,93 @@ function serializeHighlightedCodeBlock(
 ): string {
   const mono = writer.catalogDesign.typography.fonts.mono;
   const size = writer.catalogDesign.typography.roles.code!.size;
+  const softWrap = writer.componentsV5 !== undefined &&
+    (block.wrap ?? writer.componentsV5.codeBlock.wrap === "soft");
   const firstLineNumber = block.firstLineNumber ?? 1;
+  const showLineNumbers = block.hideLineNumbers === undefined
+    ? writer.componentsV5?.codeBlock.lineNumbers === "show"
+    : block.hideLineNumbers === false;
   const lastLineNumber = firstLineNumber + Math.max(0, block.highlight.lines.length - 1);
   const lineNumberWidth = String(lastLineNumber).length;
   const rows = block.highlight.lines.map((tokens, index) => {
     const spans = tokens.length === 0 || tokens.every((token) => token.text.length === 0)
       ? `#box(height: ${size})[]`
-      : tokens.map((token) =>
-          `#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(
-            shikiRgb(
-              token.color ?? block.highlight.theme.foreground,
-              block.highlight.theme.foreground,
-            ),
-          )}), ${typstString(token.text)})`
-        ).join("");
+      : tokens.map((token) => {
+          const color = shikiRgb(
+            token.color ?? block.highlight.theme.foreground,
+            block.highlight.theme.foreground,
+          );
+          const render = (text: string): string =>
+            `#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(
+              color,
+            )}), ${typstString(text)})`;
+          return softWrap ? softCodeTokenSource(token.text, render) : render(token.text);
+        }).join("");
     const body = `#box(width: 100%)[${spans}]`;
-    if (block.hideLineNumbers !== false) return `[${body}]`;
+    if (!showLineNumbers) return `[${body}]`;
     const number = String(firstLineNumber + index).padStart(lineNumberWidth);
     return `[#grid(columns: (auto, 1fr), column-gutter: ${writer.catalogDesign.tokens.layout.codeInset}, ` +
       `[${`#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}), ${typstString(number)})`}], ` +
       `[${body}])]`;
   });
-  const background = shikiRgb(
-    block.highlight.theme.background,
-    block.highlight.theme.background,
-  );
+  const background = writer.componentsV5?.codeBlock.backgroundColor
+    ? componentColorV5(
+        writer,
+        writer.componentsV5.codeBlock.backgroundColor,
+        "codeBackground",
+      )
+    : shikiRgb(
+        block.highlight.theme.background,
+        block.highlight.theme.background,
+      );
   return (
     `block(width: 100%, fill: rgb(${typstString(background)}), ` +
     `inset: ${writer.catalogDesign.tokens.layout.codeInset}, ` +
     `radius: ${writer.catalogDesign.tokens.layout.codeRadius})[` +
     `#grid(columns: (1fr), row-gutter: ${size} * 0.35, ${rows.join(", ")})]`
   );
+}
+
+function componentColorV5(
+  writer: Writer,
+  token: string | undefined,
+  fallback: string,
+): string {
+  const name = token ?? fallback;
+  const color = writer.catalogDesign.tokens.colors[name];
+  if (color === undefined) {
+    throw new Error(`PDF component policy references missing color token "${name}".`);
+  }
+  return color;
+}
+
+function tableFillSourceV5(
+  writer: Writer,
+  leadingHeaderCount: number,
+): string | undefined {
+  const table = writer.componentsV5?.table;
+  if (!table || table.banding === "none") return undefined;
+  const color = componentColorV5(writer, table.bandColor, "codeBackground");
+  return table.banding === "rows"
+    ? `(x, y) => if y >= ${leadingHeaderCount} and calc.odd(y - ${leadingHeaderCount}) { rgb(${typstString(color)}) } else { none }`
+    : `(x, y) => if calc.odd(x) { rgb(${typstString(color)}) } else { none }`;
+}
+
+function tableStrokeSourceV5(
+  writer: Writer,
+  columnCount: number,
+  rowCount: number,
+): string | undefined {
+  const table = writer.componentsV5?.table;
+  if (!table) return undefined;
+  if (table.borders === "none") return "none";
+  const color = componentColorV5(writer, table.borderColor, "tableStroke");
+  const paint = `rgb(${typstString(color)})`;
+  if (table.borders === "all") return paint;
+  if (table.borders === "horizontal") {
+    return `(x, y) => (top: ${paint}, bottom: ${paint})`;
+  }
+  return `(x, y) => (top: if y == 0 { ${paint} } else { none }, bottom: if y == ${Math.max(0, rowCount - 1)} { ${paint} } else { none }, left: if x == 0 { ${paint} } else { none }, right: if x == ${Math.max(0, columnCount - 1)} { ${paint} } else { none })`;
 }
 
 function serializeBlocks(
@@ -1697,11 +1792,19 @@ function serializeBlock(
           .flatMap((row) => row.cells);
         // `repeat: true` is Typst's default, but pin it explicitly so the golden
         // proves header rows repeat on every page across a break (spec 003 T1.6).
-        rows.push(`table.header(repeat: true, ${headerCells.join(", ")})`);
+        rows.push(
+          `table.header(repeat: ${writer.componentsV5?.table.repeatHeader === false ? "false" : "true"}, ${headerCells.join(", ")})`,
+        );
       }
       rows.push(...serializedRows.slice(leadingHeaderCount).map((row) => row.cells.join(", ")));
       const horizontalInset = layout === "normal" ? NORMAL_CELL_INSET_PT : DENSE_CELL_INSET_PT;
-      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: ${writer.catalogDesign.tokens.layout.tableCellInsetY}), stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}),\n${rows.join(",\n")}\n)`;
+      const fillV5 = tableFillSourceV5(writer, leadingHeaderCount);
+      const strokeV5 = tableStrokeSourceV5(
+        writer,
+        columnCount,
+        serializedRows.length,
+      );
+      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: ${writer.catalogDesign.tokens.layout.tableCellInsetY}),${fillV5 ? ` fill: ${fillV5},` : ""} stroke: ${strokeV5 ?? `rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)})`},\n${rows.join(",\n")}\n)`;
       // "scaled"/"overflow-warned" render body text at the readability floor
       // (accept wrap/clip over losing content).
       const scaled = layout === "scaled" || layout === "overflow-warned";
@@ -1722,6 +1825,40 @@ function serializeBlock(
       value = block.caption
         ? `#figure(${tableBlockExpr}, ${captionFigureArgs(block.caption, writer)})`
         : `#${tableBlockExpr}`;
+      break;
+    }
+    case "chart": {
+      // Embed the shared deterministic SVG visual and retain the semantic table
+      // immediately below it for tagged-PDF consumers and copy/paste fallback.
+      const rows = chartRows(block.chart);
+      const columns = Math.max(1, rows.reduce((max, row) => Math.max(max, row.length), 0));
+      // `table(...)` arguments are Typst code mode. Each cell therefore needs
+      // a content block around its markup expression; emitting a bare
+      // `#text(...)` here makes Typst reject the `#` as invalid code.
+      const cells = rows.flatMap((row) => Array.from(
+        { length: columns },
+        (_, index) => `[${literalText(row[index] ?? "")}]`,
+      ));
+      const table = `#table(columns: ${columns}, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}), ${cells.join(", ")})`;
+      const title = block.chart.title ? `#par[${literalText(block.chart.title)}]\n` : "";
+      const subtitleSize = readPdfDesignCapability<string>(
+        writer.catalogDesign,
+        "typography.roles.adfSmallText.size",
+      );
+      const subtitle = block.chart.subtitle
+        ? `#par[#text(size: ${subtitleSize}, style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}))[${literalText(block.chart.subtitle)}]]\n`
+        : "";
+      const warningPalette = writer.catalogDesign.semanticPalettes.callouts.warning;
+      const diagnostics = block.diagnostics?.length
+        ? `#block(width: 100%, inset: (x: ${designLength(writer.catalogDesign, "calloutInsetX")}, y: ${designLength(writer.catalogDesign, "calloutInsetY")}), fill: rgb(${typstString(warningPalette.background)}), stroke: rgb(${typstString(warningPalette.foreground)}), radius: ${designLength(writer.catalogDesign, "calloutRadius")})[#text(weight: "bold", fill: rgb(${typstString(warningPalette.foreground)}))[${literalText(`Chart data note: ${block.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}`)}]]\n`
+        : "";
+      const visual = block.visualAssetPath
+        ? `#image(${typstString(block.visualAssetPath)}, width: 100%, alt: ${typstString(block.chart.title ?? "Chart") })\n`
+        : "";
+      const figureBody = `block(width: 100%)[\n${visual}${table}\n]`;
+      value = title + subtitle + diagnostics + (block.caption
+        ? `#figure(${figureBody}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${figureBody}`);
       break;
     }
     case "divider":
@@ -1865,6 +2002,48 @@ function serializeBlock(
   return writeMapped(block, writer, path, value, summary);
 }
 
+function chartPlainText(chart: import("@atlcli/export-blocks").ChartModelV1): string {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [chart.title, ...data.labels, ...data.series.flatMap((series) => [series.label, ...series.values.map(String)])]
+      .filter(Boolean).join(" ");
+  }
+  if (data.mode === "points") {
+    return [chart.title, ...data.series.flatMap((series) => [series.label, ...series.points.flatMap((point) => [String(point.x), String(point.y)])])]
+      .filter(Boolean).join(" ");
+  }
+  return [chart.title, ...data.tasks.flatMap((task) => [task.label, task.start, task.end, task.progress === undefined ? "" : `${task.progress * 100}%`])]
+    .filter(Boolean).join(" ");
+}
+
+function chartRows(chart: import("@atlcli/export-blocks").ChartModelV1): string[][] {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [
+      ["Label", ...data.series.map((series) => series.label)],
+      ...data.labels.map((label, index) => [label, ...data.series.map((series) => String(series.values[index] ?? ""))]),
+    ];
+  }
+  if (data.mode === "points") {
+    const keys = [...new Set(data.series.flatMap((series) => series.points.map((point) => `${typeof point.x}:${String(point.x)}`)))];
+    const valueAt = (series: (typeof data.series)[number], key: string): string | number => {
+      const point = series.points.find((candidate) => `${typeof candidate.x}:${String(candidate.x)}` === key);
+      return point?.y ?? "";
+    };
+    return [
+      ["X", ...data.series.map((series) => series.label)],
+      ...keys.map((key) => [
+        key.slice(key.indexOf(":") + 1),
+        ...data.series.map((series) => String(valueAt(series, key))),
+      ]),
+    ];
+  }
+  return [
+    ["Task", "Start", "End", "Progress"],
+    ...data.tasks.map((task) => [task.label, task.start, task.end, task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`]),
+  ];
+}
+
 function mediaImageWidth(
   block: Extract<PreparedPdfBlock, { type: "image" }>,
   context: RenderContext,
@@ -1960,6 +2139,7 @@ export function serializePdfDocument(
     ...(options.templatePack !== undefined ? { templatePack: options.templatePack } : {}),
   });
   const collected = collectHeadingLabels(document.blocks);
+  const componentsV5 = resolveComponentsV5(options);
   const writer: Writer = {
     sourceMap: [],
     notes: [...document.notes],
@@ -1969,7 +2149,10 @@ export function serializePdfDocument(
     headingCounts: new Map(),
     theme,
     contrastWarnings: new Set(),
-    catalogDesign: projectPdfDesignThroughCatalog(settings.design),
+    catalogDesign: componentsV5
+      ? settings.design
+      : resolvePdfCatalogRuntime(settings.capabilityCatalog).project(settings.design),
+    ...(componentsV5 === undefined ? {} : { componentsV5 }),
     locale: documentLocale(options.metadata.language, options.metadata.region),
     comments: new PdfCommentRegistry(),
   };
@@ -2043,7 +2226,7 @@ export function serializePdfDocument(
   exporter: ${typstString(meta.exporter ?? author)},
   language: ${typstString(meta.language ?? "en")},
   region: ${meta.region ? typstString(meta.region) : "none"},
-  exported-at: ${typstDate(meta.exportedAt)},
+${meta.direction === undefined ? "" : `  direction: ${meta.direction},\n`}  exported-at: ${typstDate(meta.exportedAt)},
   exported-label: ${typstString(exportedLabel)},
 ), settings: ${typstSettingsDict(settings, { logoPath: logoAsset?.path })})
 
@@ -2058,11 +2241,21 @@ ${body}${commentAppendix}
     // again per document locale.
     template:
       options.templatePack?.canonicalSource.source ??
-      createAtlcliTypstTemplate(
-        settings.design,
-        settings.labels,
-        settings.templateVisuals
-      ),
+      (options.templateManifest?.canonicalSource?.revision === "5"
+        ? createAtlcliTypstTemplateV5(
+            validatePdfTemplateDesignV3(
+              options.templateManifest.design as WikiPdfTemplateDesignV3,
+              "design",
+              { availableFonts: PDF_RUNTIME_ASSETS.fonts },
+            ),
+            settings.labels,
+            settings.templateVisuals,
+          )
+        : createAtlcliTypstTemplate(
+            settings.design,
+            settings.labels,
+            settings.templateVisuals,
+          )),
     assets: [
       ...document.assets,
       ...(logoAsset ? [logoAsset] : []),
@@ -2070,6 +2263,16 @@ ${body}${commentAppendix}
     ],
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,
+    fontRequirements: resolvePdfFontRequirementsV1({
+      document,
+      metadata: options.metadata,
+      settings,
+      ...(options.templatePack?.manifest
+        ? { manifest: options.templatePack.manifest }
+        : options.templateManifest
+          ? { manifest: options.templateManifest }
+          : {}),
+    }),
   };
 }
 

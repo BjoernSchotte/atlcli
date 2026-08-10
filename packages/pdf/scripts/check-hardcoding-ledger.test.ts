@@ -4,7 +4,7 @@
  *
  * `bun test` runs every `*.test.ts` in the repo, so this wrapper is what makes
  * `check-hardcoding-ledger.ts` actually run in CI. Post-migration the lint MUST
- * find ZERO bare presentation literals in `template.ts`/`serialize.ts` (all now
+ * find ZERO bare presentation literals in both templates/`serialize.ts` (all now
  * interpolated from the manifest design), and it must still catch a newly
  * introduced bare hex, length, or font family.
  */
@@ -25,7 +25,11 @@ describe("check-hardcoding-ledger (CI-enforced)", () => {
       throw new Error(`Bare presentation literals leaked back into engine code:\n${detail}`);
     }
     expect(result.violations).toEqual([]);
-    expect(result.filesScanned).toEqual(["template.ts", "serialize.ts"]);
+    expect(result.filesScanned).toEqual([
+      "template.ts",
+      "template-v4.ts",
+      "serialize.ts",
+    ]);
   });
 
   it("detects a new bare hex color, length, and font family", () => {

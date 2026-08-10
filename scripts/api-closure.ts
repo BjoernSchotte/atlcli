@@ -38,6 +38,54 @@ export interface FreezeDecision {
  * Recorded here as the single source the closure files render from.
  */
 export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
+  "@atlcli/export-blocks": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: extracted as the dependency-free, consumer-neutral document model for " +
+      "DOCX, PDF, and web publishing. Keep it experimental while the first standalone " +
+      "Astro renderer and an external package consumer prove the separated contract.",
+  },
+  "@atlcli/export-blocks-astro": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: theme-neutral Astro render-kit for the dependency-free ExportBlock model. " +
+      "Keep it experimental until exhaustive block/macro rendering, a packed plain-Astro consumer, " +
+      "and Starlight-independent accessibility/security evidence prove its public component contract.",
+  },
+  "@atlcli/export-charts-tanstack": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: pinned TanStack Charts adapter shared by Astro, DOCX, and PDF chart " +
+      "projections. Keep it experimental while the upstream 0.x API and the all-shapes " +
+      "scene/SVG contract mature through real publication consumers.",
+  },
+  "@atlcli/web-publish": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the mostly isomorphic publication project, bundle, " +
+      "experience, and build contract layer. Keep it experimental while Astro/Starlight " +
+      "adapters and a second experience consumer prove capability negotiation and closure.",
+  },
+  "@atlcli/web-publish-astro": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: Node-only Astro structured-data loader and static integration introduced " +
+      "for web publishing. Keep it experimental until packed clean-project, Starlight, and " +
+      "real Cloud/Data Center publication artifacts prove the integration contract.",
+  },
+  "@atlcli/web-publish-starlight": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: first supported Starlight publishing experience, deliberately separated " +
+      "from acquisition, build execution, and ExportBlock rendering. Keep it experimental until " +
+      "a production Starlight artifact and a non-Starlight experience prove the slot and theme contract.",
+  },
   "@atlcli/code-highlight": {
     version: "0.x",
     frozen: false,

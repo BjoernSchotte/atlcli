@@ -1,5 +1,5 @@
 /**
- * The CLI's PDF compiler assets (spec 008 T3.1): the patched typst.ts wasm plus
+ * The CLI's PDF compiler assets (spec 008 T3.1): the pinned typst.ts WASM plus
  * the 12 canonical fonts, materialized as EMBEDDED assets and fed into the
  * runtime-agnostic {@link BrowserPdfCompiler}.
  *
@@ -22,7 +22,7 @@
  * Unlike the mermaid rasterizer, a load failure here is a HARD error: PDF export
  * cannot degrade to a "diagram-as-code" fallback, so the loader throws.
  */
-import typstWasm from "@myriaddreamin/typst-ts-web-compiler/wasm" with { type: "file" };
+import typstWasm from "@atlcli/pdf-compiler-browser/wasm" with { type: "file" };
 import sourceSansRegular from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf" with { type: "file" };
 import sourceSansItalic from "@atlcli/pdf/fonts/SourceSans3-It.ttf" with { type: "file" };
 import sourceSansSemibold from "@atlcli/pdf/fonts/SourceSans3-Semibold.ttf" with { type: "file" };
@@ -35,10 +35,12 @@ import sourceCodeRegular from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf" with
 import sourceCodeBold from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf" with { type: "file" };
 import notoSymbolsRegular from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf" with { type: "file" };
 import notoEmojiRegular from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf" with { type: "file" };
+import notoArabicRegular from "@atlcli/pdf/fonts/NotoSansArabic-Regular.ttf" with { type: "file" };
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
 import type { PdfCompilePort } from "@atlcli/pdf";
+import type { BrowserPdfCompilerFontSourceV1 } from "@atlcli/pdf-compiler-browser";
 
 /**
  * Resolve a `with { type: "file" }` import path to something `readFile` can open
@@ -70,6 +72,7 @@ const FONT_FILES: ReadonlyArray<{ fileName: string; path: string }> = [
   { fileName: "SourceSerif4-Bold.ttf", path: sourceSerifBold },
   { fileName: "SourceCodePro-Regular.ttf", path: sourceCodeRegular },
   { fileName: "SourceCodePro-Bold.ttf", path: sourceCodeBold },
+  { fileName: "NotoSansArabic-Regular.ttf", path: notoArabicRegular },
   { fileName: "NotoSansSymbols2-Regular.ttf", path: notoSymbolsRegular },
   { fileName: "NotoEmoji-wght.ttf", path: notoEmojiRegular },
 ];
@@ -112,6 +115,25 @@ export async function loadPdfCompilerAssets(): Promise<{ wasm: ArrayBuffer; font
 
 let compilerPromise: Promise<PdfCompilePort> | null = null;
 
+function demandAwareFontSources(): BrowserPdfCompilerFontSourceV1[] {
+  assertPdfAssetParity();
+  return FONT_FILES.map((font, index) => {
+    const manifest = PDF_RUNTIME_ASSETS.fonts[index]!;
+    return {
+      assetId: manifest.assetId,
+      sha256: manifest.sha256,
+      load: async (context = {}) => {
+        context.signal?.throwIfAborted();
+        const bytes = new Uint8Array(
+          await readFile(assetFilePath(font.path)),
+        );
+        context.signal?.throwIfAborted();
+        return bytes;
+      },
+    };
+  });
+}
+
 /**
  * Lazily create ONE compiler per CLI process (spike lifecycle decision T3.1):
  * `reset_shadow()` runs between pages inside `compile()`, so a single instance
@@ -123,8 +145,16 @@ export function getPdfCompiler(): Promise<PdfCompilePort> {
   if (compilerPromise) return compilerPromise;
   compilerPromise = (async () => {
     const { BrowserPdfCompiler } = await import("@atlcli/pdf-compiler-browser");
-    const { wasm, fonts } = await loadPdfCompilerAssets();
-    return new BrowserPdfCompiler({ wasm, fonts });
+    assertPdfAssetParity();
+    const wasmBytes = await readFile(assetFilePath(typstWasm));
+    const wasm = wasmBytes.buffer.slice(
+      wasmBytes.byteOffset,
+      wasmBytes.byteOffset + wasmBytes.byteLength,
+    );
+    return new BrowserPdfCompiler({
+      wasm,
+      fonts: demandAwareFontSources(),
+    });
   })().catch((error) => {
     compilerPromise = null;
     throw error;

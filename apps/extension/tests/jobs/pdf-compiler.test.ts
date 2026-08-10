@@ -83,6 +83,10 @@ describe("offscreen private PDF compiler bridge", () => {
               activityVisibility: "private",
               parentJobId: claimed.id,
               parentLeaseEpoch: claimed.leaseEpoch,
+              outputPolicy: {
+                schema: "atlcli.pdf-output-policy/1",
+                standards: ["ua-1"],
+              },
             });
             expect(await catalog.listLegacyBridges()).toEqual([{
               legacyJobId: jobId,
@@ -96,6 +100,13 @@ describe("offscreen private PDF compiler bridge", () => {
               pdf,
               diagnostics: [],
               compilerVersion: "test",
+              fontEvidence: {
+                schema: "atlcli.pdf-font-load-evidence/1",
+                requirementKey: "font-key",
+                registeredAssetIds: ["canonical/SourceSans3-Regular.ttf"],
+                loadedFontNames: ["Source Sans 3"],
+                fullBundleFallback: false,
+              },
             }, factory);
             return { kind: "pdf-worker:complete", jobId, ok: true };
           },
@@ -104,10 +115,22 @@ describe("offscreen private PDF compiler bridge", () => {
       },
     });
 
-    expect(await port.compile(bundle)).toEqual({
+    expect(await port.compile(bundle, {
+      outputPolicy: {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["ua-1"],
+      },
+    })).toEqual({
       pdf,
       diagnostics: [],
       compilerVersion: "test",
+      fontEvidence: {
+        schema: "atlcli.pdf-font-load-evidence/1",
+        requirementKey: "font-key",
+        registeredAssetIds: ["canonical/SourceSans3-Regular.ttf"],
+        loadedFontNames: ["Source Sans 3"],
+        fullBundleFallback: false,
+      },
     });
     expect(await getPdfJob("11111111-1111-4111-8111-111111111111", factory)).toBeUndefined();
     expect(await catalog.listLegacyBridges()).toEqual([]);

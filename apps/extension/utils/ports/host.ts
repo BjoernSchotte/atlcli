@@ -31,7 +31,9 @@ export type HostCapability =
   /** Can run the private read-only research spike. */
   | "research"
   /** Preferences survive a reload. */
-  | "settings-persistence";
+  | "settings-persistence"
+  /** Can adjust selected controls in the surrounding Confluence page UI. */
+  | "confluence-page-customization";
 
 export interface HostInfo {
   /**

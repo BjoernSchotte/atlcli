@@ -25,6 +25,11 @@ await runPdfExport({ blocks: doc.blocks, metadata, filename: "handbook.pdf" },
   nodePdfEnv(profile, { outDir: "dist" }));
 ```
 
+`nodePdfCompiler()` resolves the compiler WASM once and exposes every installed
+canonical font through a hash-bound lazy loader. Each compile reads and
+registers only the subset carried by its final `PdfSourceBundle`; reports
+include the selected and loaded asset IDs.
+
 DOCX with zero template setup: `runExport(input, nodeDocxEnv({ outPath: "page.docx" }))`
 uses a programmatically built default template (no binary asset shipped).
 

@@ -39,6 +39,30 @@ export interface MacroInstance {
 }
 
 /**
+ * Closed semantic categories a trusted macro renderer may expose to a static
+ * publication target. The value comes from the renderer registry, never from
+ * page content or an extension-provided parameter.
+ */
+export type MacroWebRenderModelKindV1 =
+  | "toc"
+  | "jira-data"
+  | "diagram"
+  | "chart"
+  | "status"
+  | "smart-card"
+  | "unknown";
+
+/**
+ * A renderer-owned declaration of its publication-safe output category and
+ * the live data classes that had to be frozen to obtain it. It intentionally
+ * contains no source payload, HTML, URL, credential, or callback.
+ */
+export interface MacroWebRenderModelDescriptorV1 {
+  readonly kind: MacroWebRenderModelKindV1;
+  readonly dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
+
+/**
  * Stable per-instance key for report correlation and `visited`/dedup
  * bookkeeping. Internal to the resolver — never round-tripped through
  * `ExportNote` (which carries no `macroId`/`instanceId` field).
@@ -132,6 +156,12 @@ export interface MacroRenderer {
   readonly macros: readonly string[];
   /** Stable identity for introspection, override resolution, docs listing. */
   readonly id: string;
+  /**
+   * Optional closed publication-model declaration. Custom renderers that do
+   * not make one are represented as the visible `unknown` fallback by web
+   * publishing rather than gaining an implicit component surface.
+   */
+  readonly webRenderModel?: MacroWebRenderModelDescriptorV1;
   /**
    * `false` for renderers that only read `m.params`/`m.body` (TOC,
    * scroll-tablelayout, transparent-body passthroughs) — these still run under
@@ -363,7 +393,7 @@ export interface MacroExportContext {
      * arbitrary-SVG-attachment seam yet (blocked on 006-word-quality G4/T1.15),
      * so it stays on the PNG preview.
      */
-    targetEngine?: "docx" | "pdf";
+    targetEngine?: "docx" | "pdf" | "web";
   };
   /**
    * The whole composed document's block tree, set by the resolver. The TOC

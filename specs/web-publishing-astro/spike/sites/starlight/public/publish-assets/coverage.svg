@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 180" role="img" aria-labelledby="title desc">
+  <title id="title">Structured publication flow</title>
+  <desc id="desc">Export blocks flow through a neutral render kit into Astro and Starlight.</desc>
+  <rect width="640" height="180" rx="24" fill="#eef4ff"/>
+  <g fill="#155eef" font-family="system-ui, sans-serif" font-size="22" text-anchor="middle">
+    <text x="110" y="98">ExportBlock[]</text>
+    <text x="320" y="98">Render kit</text>
+    <text x="530" y="98">Experience</text>
+  </g>
+  <path d="M190 90h45m170 0h45" stroke="#155eef" stroke-width="8" stroke-linecap="round"/>
+</svg>

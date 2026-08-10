@@ -109,6 +109,8 @@ const CAPABILITY_REASON_KEYS: Record<HostCapability, MessageKey> = {
   "pdf-preview": "screen.unmet.capability.pdfPreview",
   research: "screen.unmet.capability.research",
   "settings-persistence": "screen.unmet.capability.settingsPersistence",
+  "confluence-page-customization":
+    "screen.unmet.capability.confluencePageCustomization",
 };
 
 /** The i18n key explaining a single unmet requirement. */

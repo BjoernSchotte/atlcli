@@ -18,6 +18,13 @@ silently clamps an out-of-range value. Host-supplied strings are escaped before
 they reach the generated document, so a header or watermark string can never
 inject template source.
 
+:::note[Output standards are not template settings]
+`--pdf-standard` belongs to the export request and compiler policy. It is not a
+Recipe V2, pack-manifest, theme, or Level-A settings field. Templates control
+design; only validation of the emitted bytes can provide PDF/A or PDF/UA
+evidence.
+:::
+
 ## On this page
 
 - [Prerequisites](#prerequisites)

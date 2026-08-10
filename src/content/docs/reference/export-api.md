@@ -180,7 +180,9 @@ See the package README for complete CLI/session/Forge examples and
 - Host helper seams (specs 007/008): `preparePdfDocument` (pre-compile asset resolution),
   `validatePdfOutput` (structural output gate), `resolvePdfSettings` (template settings),
   `normalizePdfLocale`, `parseFontMeta`/`verifyFontBytes` (font intake),
-  `formatPdfCompilerDiagnostics`, `PDF_RUNTIME_ASSETS` (the canonical font/license manifest).
+  `formatPdfCompilerDiagnostics`, `PDF_RUNTIME_ASSETS` (the canonical font/license manifest),
+  and the versioned `resolvePdfFontRequirementsV1` /
+  `assertResolvedPdfFontRequirementsV1` contract.
 - Transitively frozen types: `PdfBytesHandle`, `PdfSourceBundle`, `PdfCompilerDiagnostic`, `PdfExportMetadata`,
   `PdfProfile`, `PdfThemeOptions`, `PdfTemplateSettings` (spec 007 settings/watermark),
   `PreparePdfOptions`/`PreparedPdfDocument`, `ResolvedPdfSettings`, `ParsedFontFace`.
@@ -267,9 +269,16 @@ takes a plain `Uint8Array`.
 
 - `PdfCompilePort` (`@atlcli/pdf`): `compile(bundle, context?)` → `PdfCompileResult`.
 - `BrowserPdfCompiler` (`@atlcli/pdf-compiler-browser`): the shipped implementation over the
-  sha256-pinned, CSP-patched typst.ts wasm ("browser" names the wasm build target — it runs
+  SHA-256-pinned, provenance-bound typst.ts WASM ("browser" names the WASM build target — it runs
   under Node/Bun/browsers). Assets come in as `BrowserPdfCompilerAssets`
   (`{ wasm, fonts }` — see the [asset contract](/reference/asset-contract/)).
+- `PdfSourceBundle.fontRequirements`: deterministic, byte-free
+  `ResolvedPdfFontRequirementsV1` derived after document, macro, settings, and
+  template resolution. Legacy hand-built bundles may omit it and use the full
+  canonical set.
+- `PdfCompileResult.fontEvidence` / `PdfExportReport.fontEvidence`: the
+  requirement key, registered asset IDs, Typst-loaded font names, and whether
+  the legacy full-bundle fallback was used.
 
 ## Macro rendering: MacroRendererRegistry
 

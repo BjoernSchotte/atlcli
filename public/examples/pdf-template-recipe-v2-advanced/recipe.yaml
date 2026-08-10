@@ -1,0 +1,105 @@
+schema: wiki.pdf-template-recipe/v2
+
+template:
+  id: example.handbook
+  name: Example Handbook
+  version: 1.0.0
+
+baseline:
+  id: atlcli.editorial
+  version: 1
+  catalogVersion: 3
+  digest: 46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a
+
+design:
+  page:
+    format:
+      kind: preset
+      name: letter
+    binding: right
+    margin:
+      mode: logical
+      top: 18mm
+      bottom: 22mm
+      inside: 25mm
+      outside: 18mm
+
+  compositions:
+    cover:
+      kind: type-cut
+      logo: hide
+      metadataPosition: flow
+      typeCut:
+        angle: 43
+        stop: 58
+    running:
+      header:
+        enabled: true
+        layout: split
+        first: hide
+        odd:
+          start: { field: chapterTitle }
+          end: { field: spaceKey }
+        even:
+          start: { field: spaceKey }
+          end: { field: documentTitle }
+
+  navigation:
+    contents:
+      enabled: true
+      depth: 3
+      pageNumbers: show
+      leader: dots
+    bookmarks:
+      enabled: true
+      depth: 4
+      includeHeadingNumbers: true
+
+  components:
+    paragraph: { align: justify, hyphenation: auto }
+    list: { bulletPreset: disc-circle-square, markerAlign: horizon }
+    table: { repeatHeader: true, banding: rows, borders: horizontal }
+    outline: { leader: dots, pageNumbers: show }
+
+  typography:
+    roles:
+      coverTitleCompact: { font: heading, size: 25pt, weight: semibold }
+      coverTitleMinimum: { font: heading, size: 19pt, weight: semibold }
+
+  tokens:
+    colors:
+      coverTitleInverse: "#FFFFFF"
+    layout:
+      coverTitleFrameHeight: 92mm
+
+  paints:
+    hero:
+      kind: linear
+      angle: 43
+      relativeTo: parent
+      stops:
+        - { at: 0, color: coverTitleInk }
+        - { at: 58, color: coverTitleInk }
+        - { at: 58, color: coverTitleInverse }
+        - { at: 100, color: coverTitleInverse }
+
+  decorations:
+    - kind: rect
+      scope: first
+      layer: page-background
+      box: { x: 0mm, y: 0mm, width: 216mm, height: 80mm }
+      fill: hero
+
+assets:
+  asset.coverBackground:
+    source: assets/cover.svg
+    decorative: true
+    placement:
+      relativeTo: page
+      fit: cover
+      x: 0mm
+      y: 0mm
+      width: 216mm
+      height: 279.4mm
+      crop: { left: 0.05, top: 0, right: 0, bottom: 0 }
+      clip: { kind: rounded-rect, radius: 4mm }

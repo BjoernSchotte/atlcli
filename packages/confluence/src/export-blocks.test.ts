@@ -1703,6 +1703,20 @@ describe("storageToBlocks — C4 scroll-only / scroll-ignore (block)", () => {
     expect(notes[0]!.code).toBe("scroll-only-applied");
   });
 
+  test("web is an explicit exporter identity, not an unknown fallback", () => {
+    const webOnly = storageToBlocks(only("web"), { exporter: "web" });
+    expect(webOnly.blocks).toEqual([{ type: "paragraph", content: [{ type: "text", text: "secret" }] }]);
+    expect(webOnly.notes.map((note) => note.code)).toEqual(["scroll-only-applied"]);
+
+    const webIgnore = storageToBlocks(ignore("web"), { exporter: "web" });
+    expect(webIgnore.blocks).toEqual([]);
+    expect(webIgnore.notes.map((note) => note.code)).toEqual(["scroll-ignore-applied"]);
+
+    const wordOnly = storageToBlocks(only("web"), { exporter: "word" });
+    expect(wordOnly.blocks).toEqual([]);
+    expect(wordOnly.notes.map((note) => note.code)).toEqual(["scroll-only-skipped-other-exporter"]);
+  });
+
   test("scroll-only: mismatching exporter DROPS body (opposite of no-op) + note", () => {
     const { blocks: b, notes } = storageToBlocks(only("pdf"), { exporter: "word" });
     expect(b).toEqual([]);

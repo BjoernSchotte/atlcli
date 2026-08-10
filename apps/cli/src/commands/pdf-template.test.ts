@@ -121,6 +121,14 @@ function dependencies(
       onProgress: (event) => progress.push(event),
       readBytes: async (path) => new Uint8Array(await readFile(path)),
       createPreviewCompiler: async () => previewCompiler(),
+      createGeneratedPackCompiler: () => ({
+        async compile({ packBytes }) {
+          return {
+            digest: await sha256Hex(packBytes),
+            pageCount: 3,
+          };
+        },
+      }),
     },
   };
 }
@@ -1045,7 +1053,7 @@ describe("pdf-template CLI project journey", () => {
       generation: string;
       artifacts: readonly { regions: readonly unknown[] }[];
     };
-    expect(proof.compilerVersion).toBe("typst-wasm-pinned-0.14");
+    expect(proof.compilerVersion).toBe("typst-wasm-pinned-0.15.1");
     expect(result.view).toBeDefined();
     expect(proof.generation).toBe(result.view!.generation);
     expect(proof.artifacts.every(({ regions }) => regions.length > 0)).toBe(

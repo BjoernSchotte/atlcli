@@ -53,6 +53,7 @@ export const CHROME_CAPABILITIES: readonly HostCapability[] = [
   "durable-jobs",
   "research",
   "settings-persistence",
+  "confluence-page-customization",
 ];
 
 export function createChromePorts(): AppPorts {

@@ -1,0 +1,15 @@
+---
+import type { ExportBlock } from "@atlcli/export-blocks";
+import type { AstroExportBlockRenderContextV1 } from "@atlcli/export-blocks-astro";
+
+interface Props {
+  block: Extract<ExportBlock, { type: "heading" }>;
+  context: AstroExportBlockRenderContextV1;
+}
+
+const { block } = Astro.props;
+const HeadingTag = `h${block.level}`;
+const text = block.content.map((node) => node.type === "text" ? node.text : "").join("");
+---
+
+<HeadingTag id={block.explicitAnchor} data-atlcli-block="heading" data-fixture-trusted-override>{text}</HeadingTag>

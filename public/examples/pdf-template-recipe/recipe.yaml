@@ -1,0 +1,254 @@
+schema: wiki.pdf-template-recipe/v1
+template:
+  id: example.executive
+  name: Example Executive
+  version: 1.0.0
+  compilerRange: ">=0.15.1 <0.16"
+design:
+  page:
+    size: a4
+    orientation: portrait
+    margin:
+      top: 23mm
+      bottom: 20mm
+      left: 22mm
+      right: 22mm
+  features:
+    cover:
+      enabled: true
+    outline:
+      enabled: true
+      depth: 3
+    header:
+      enabled: true
+      mode: title
+    footer:
+      enabled: true
+    closingPage:
+      enabled: true
+  branding:
+    accent: "#4B57A3"
+    websiteLabel: example.com
+    websiteUrl: https://example.com
+    legalNotice: Example GmbH · Berlin
+  typography:
+    fonts:
+      body: Source Serif 4
+      heading: Source Sans 3
+      mono: Source Code Pro
+    roles:
+      body: { size: 10pt, font: body }
+      adfSmallText: { size: 9pt, font: body }
+      h1: { size: 18pt, font: heading, weight: semibold }
+      h2: { size: 14pt, font: heading, weight: semibold }
+      h3: { size: 11.5pt, font: heading, weight: semibold }
+      code: { size: 8.5pt, font: mono }
+      tableCell: { size: 9pt, font: heading }
+      numbering: { size: 0.95em, font: heading, weight: semibold }
+      runningHead: { size: 8pt, font: heading }
+      coverEyebrow: { size: 8pt, font: heading, weight: semibold, tracking: 0.12em }
+      coverTitle: { size: 31pt, font: body, weight: semibold }
+      coverMetaLabel: { size: 7.5pt, font: heading, weight: semibold, tracking: 0.08em }
+      coverMetaValue: { size: 9.5pt, font: heading }
+      closingEyebrow: { size: 8pt, font: heading, weight: semibold, tracking: 0.14em }
+      closingTitle: { size: 24pt, font: body, weight: semibold }
+      closingMetaLabel: { size: 7.5pt, font: heading, weight: semibold, tracking: 0.08em }
+      closingMetaValue: { size: 9.5pt, font: heading }
+      colophon: { size: 8.5pt, font: heading }
+      statusBadge: { size: 7.5pt, font: mono, weight: bold }
+      taskMarker: { size: 8.5pt, font: heading, weight: semibold }
+      coverTitleCompact: { font: body, size: 25pt, weight: semibold }
+      coverTitleMinimum: { font: body, size: 19pt, weight: semibold }
+      closingWebsite: { font: heading, size: 14pt, weight: semibold }
+      closingLegal: { font: heading, size: 9pt, weight: regular }
+  tokens:
+    colors:
+      accent: "#4B57A3"
+      ink: "#172B4D"
+      paper: "#FCFBF8"
+      coverTitleInk: "#202A44"
+      warmSlate: "#74727A"
+      muted: "#6B778C"
+      hairline: "#DFE1E6"
+      heading3: "#253858"
+      codeBackground: "#F4F5F7"
+      neutral: "#42526E"
+      taskChecked: "#0052CC"
+      taskUnchecked: "#6B778C"
+      mention: "#0747A6"
+      placeholder: "#97A0AF"
+      tableStroke: "#DFE1E6"
+      tableHeaderBackground: "#F4F5F7"
+      smartCardInlineBackground: "#E9F2FF"
+      smartCardBlockBackground: "#F4F5F7"
+      smartCardBlockStroke: "#B3BAC5"
+      mediaGroupBackground: "#F7F8F9"
+      watermark: "#DE350B"
+      coverTitleInverse: "#FFFFFF"
+      closingPageBackground: "#E75204"
+      closingBrandText: "#FFFFFF"
+    layout:
+      paragraphLeading: 0.74em
+      paragraphSpacing: 10pt
+      adfBlockIndentStep: 1.5em
+      listBodyIndent: 0.7em
+      listSpacing: 8pt
+      enumBodyIndent: 0.7em
+      enumSpacing: 8pt
+      h1Above: 28pt
+      h1Below: 14pt
+      h2Above: 24pt
+      h2Below: 12pt
+      h3Above: 18pt
+      h3Below: 8pt
+      inlineCodeInsetX: 0.2em
+      inlineCodeInsetY: 0.06em
+      inlineCodeRadius: 2pt
+      codeInset: 9pt
+      codeRadius: 4pt
+      codeTitleBelow: 0pt
+      calloutStroke: 3pt
+      calloutInsetX: 11pt
+      calloutInsetY: 9pt
+      calloutRadius: 4pt
+      calloutAbove: 6pt
+      calloutBelow: 8pt
+      calloutIconGap: 0.55em
+      smartCardInlineInsetX: 3pt
+      smartCardInlineInsetY: 1pt
+      smartCardInlineRadius: 2pt
+      smartCardBlockInset: 8pt
+      smartCardBlockRadius: 3pt
+      inlineMediaBaseline: 0pt
+      inlineMediaInset: 0pt
+      inlineMediaChipInsetX: 3pt
+      inlineMediaChipInsetY: 1pt
+      inlineMediaChipRadius: 2pt
+      mediaWrapColumnGutter: 8pt
+      mediaFrameInset: 3pt
+      mediaFrameDefaultStroke: 0.5pt
+      statusBadgeInsetX: 5pt
+      statusBadgeInsetY: 2pt
+      statusBadgeRadius: 3pt
+      denseBadgeCompactInsetX: 2pt
+      denseBadgeInsetX: 1pt
+      denseBadgeInsetY: 2pt
+      denseBadgeRadius: 3pt
+      denseBadgeLeading: 0.72em
+      denseBadgeWidthAdjust: 2pt
+      taskGridMarker: 1.05em
+      taskGridGutter: 0.45em
+      taskListBodyIndent: 0pt
+      pageLayoutColumnGutter: 12pt
+      pageLayoutInsetX: 0pt
+      denseTableThreshold: 18mm
+      tableCellInsetY: 7pt
+      tableCellInsetNormalX: 6pt
+      tableCellInsetDenseX: 2pt
+      coverTopPad: 37mm
+      coverLogoBelow: 18pt
+      coverLogoHeight: 12mm
+      coverLogoWidth: 45mm
+      coverEyebrowGap: 17pt
+      coverTitleGap: 25pt
+      coverRuleLength: 52mm
+      coverRuleStroke: 0.9pt
+      coverMetaGap: 23pt
+      coverMetaColLabel: 30mm
+      coverMetaColGutter: 12pt
+      coverMetaRowGutter: 8pt
+      coverTitleLeading: 0.98em
+      closingTopPad: 57mm
+      closingEyebrowGap: 14pt
+      closingTitleGap: 22pt
+      closingRuleLength: 52mm
+      closingRuleStroke: 0.9pt
+      closingMetaGap: 22pt
+      closingColophonGap: 24pt
+      closingTitleLeading: 1.02em
+      coverTitleFrameHeight: 92mm
+      coverMetaBottomInset: 24mm
+      closingBrandBottomInset: 24mm
+      closingBrandBlockWidth: 92mm
+      closingBrandLogoWidth: 42mm
+      closingBrandLogoHeight: 18mm
+      closingBrandLogoGap: 8mm
+      closingBrandTextGap: 4mm
+    ratios:
+      coverBlockWidth: 90
+      closingBlockWidth: 82
+      statusBadgeLighten: 82
+      watermarkOpacityScale: 100
+    contrast:
+      minimum: 4.5
+  semanticPalettes:
+    callouts:
+      info: { background: "#DEEBFF", foreground: "#0747A6" }
+      note: { background: "#EAE6FF", foreground: "#403294" }
+      warning: { background: "#FFFAE6", foreground: "#974F0C" }
+      tip: { background: "#E3FCEF", foreground: "#006644" }
+      success: { background: "#E3FCEF", foreground: "#006644" }
+      error: { background: "#FFEBE6", foreground: "#BF2600" }
+      panel: { background: "#F4F5F7", foreground: "#42526E" }
+    statuses:
+      neutral: "#42526E"
+      grey: "#42526E"
+      gray: "#42526E"
+      purple: "#403294"
+      red: "#DE350B"
+      yellow: "#FF991F"
+      green: "#00875A"
+      blue: "#0052CC"
+      default: "#42526E"
+  compositions:
+    cover:
+      kind: type-cut
+      logo: hide
+      metadataPosition: bottom
+      typeCut:
+        angle: 43
+        stop: 58
+    closingPage:
+      kind: brand-lockup
+      logo: show
+      website: show
+      legalNotice: show
+      align: left
+localization:
+  defaultLocale: en
+  fallbackLocale: en
+  locales:
+    en:
+      template:
+        name: Editorial Indigo
+        description: The built-in atlcli editorial PDF template.
+      document:
+        version: Version
+        exported: Exported
+        exporter: Exported by
+        contents: Contents
+        endOfDocument: END OF DOCUMENT
+        pages: Pages
+        generatedWith: Generated from Confluence with
+        spacePrefix: CONFLUENCE SPACE
+    de:
+      template:
+        name: Editorial Indigo
+        description: Die eingebaute atlcli-Editorial-PDF-Vorlage.
+      document:
+        version: Version
+        exported: Exportiert
+        exporter: Exportiert von
+        contents: Inhalt
+        endOfDocument: DOKUMENTENDE
+        pages: Seiten
+        generatedWith: Erzeugt aus Confluence mit
+        spacePrefix: CONFLUENCE SPACE
+assets:
+  asset.coverBackground:
+    source: assets/cover.svg
+    decorative: true
+  asset.logo:
+    source: assets/logo.svg
+    decorative: false
+    alt: Example mark

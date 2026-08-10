@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
   composeChapters,
@@ -7,6 +8,7 @@ import {
   type ExportNode,
   type InlineNode,
 } from "@atlcli/confluence";
+import { CHART_KINDS_V1 } from "@atlcli/export-blocks";
 import {
   columnWidthsDxa,
   serializeBlocks,
@@ -14,6 +16,7 @@ import {
   type CodeBlock,
   type DiagramEmbedOutcome,
   type DiagramEmbedSeam,
+  type ImageEmbedSeam,
 } from "./serialize.js";
 import { renderDiagram } from "@atlcli/diagram";
 import {
@@ -25,6 +28,121 @@ import { headingStyle, stylesXml } from "./fixtures.js";
 import { collectDocxCodeHighlightUsage } from "./code-highlighting.js";
 
 const noStyles = new Map<string, string>();
+
+const NON_CHART_REGRESSION_BLOCKS_V1: ExportBlock[] = [
+  { type: "heading", level: 2, content: [{ type: "text", text: "Stable guide" }] },
+  { type: "paragraph", content: [{ type: "text", text: "Existing exports must not enter the chart rendering path." }] },
+  {
+    type: "list", ordered: false, items: [
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "First" }] }] },
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "Second" }] }] },
+    ],
+  },
+  {
+    type: "table", rows: [{ cells: [
+      { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Key" }] }] },
+      { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }] },
+    ] }],
+  },
+];
+
+it("pins a chart-free DOCX structure golden and never calls the chart SVG seam", async () => {
+  let generatedSvgCalls = 0;
+  const result = await serializeBlocks(NON_CHART_REGRESSION_BLOCKS_V1, {
+    styleNames: noStyles,
+    images: {
+      embed: async () => { throw new Error("non-chart fixture attempted an image embed"); },
+      embedGeneratedSvg: async () => {
+        generatedSvgCalls += 1;
+        throw new Error("non-chart fixture entered the generated SVG path");
+      },
+    },
+  });
+  expect(generatedSvgCalls).toBe(0);
+  expect(result.notes).toEqual([]);
+  expect(createHash("sha256").update(result.xml).digest("hex")).toBe("06e68599315fdb01080fa9cf08d851023b6d3514775ff3a3a5aa5824830fe48d");
+});
+
+it("serializes a chart ExportBlock as a deterministic accessible data table", async () => {
+  const result = await serializeBlocks([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      subtitle: "FY 2026 plan",
+      data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+    diagnostics: [{ code: "skipped-row", message: "One malformed row was skipped.", row: 3 }],
+  }], { styleNames: noStyles });
+  expect(result.xml).toContain("Revenue");
+  expect(result.xml).toContain("FY 2026 plan");
+  expect(result.xml).toContain('<w:color w:val="5E6C84"/>');
+  expect(result.xml).toContain('<w:i/>');
+  expect(result.xml).toContain("Chart data note: One malformed row was skipped.");
+  expect(result.xml).toContain('<w:color w:val="B54708"/>');
+  expect(result.xml).toContain("Jan");
+  expect(result.xml).toContain("20");
+  expect(result.xml).toContain("<w:tbl");
+});
+
+it("embeds the shared chart SVG visual before the accessible table when the host provides the SVG seam", async () => {
+  const svgs: string[] = [];
+  const images: ImageEmbedSeam = {
+    embed: async () => ({ ok: false, reason: "not used" }),
+    embedGeneratedSvg: async (svg) => {
+      svgs.push(svg);
+      return { ok: true, xml: "<w:p><w:drawing data-chart-svg=\"true\"/></w:p>" };
+    },
+  };
+  const result = await serializeBlocks([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { styleNames: noStyles, images });
+  expect(svgs).toHaveLength(1);
+  expect(svgs[0]).toContain('class="ts-chart"');
+  expect(svgs[0]).toContain("ts-chart__bar");
+  expect(svgs[0]).toContain('role="img"');
+  expect(result.xml).toContain("data-chart-svg=\"true\"");
+  expect(result.xml.indexOf("data-chart-svg")).toBeLessThan(result.xml.indexOf("<w:tbl"));
+});
+
+it("keeps sparse XY series aligned by their own x keys", async () => {
+  const result = await serializeBlocks([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1", kind: "xyLine", title: "Sparse",
+      data: { mode: "points", series: [
+        { id: "a", label: "A", points: [{ x: 1, y: 10 }, { x: 2, y: 20 }] },
+        { id: "b", label: "B", points: [{ x: 2, y: 30 }] },
+      ] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { styleNames: noStyles });
+  expect(result.xml).toContain(">2<");
+  expect(result.xml).toContain(">20<");
+  expect(result.xml).toContain(">30<");
+});
+
+it("projects every normalized chart shape into a non-empty DOCX table", async () => {
+  const blocks: ExportBlock[] = CHART_KINDS_V1.map((kind) => ({
+    type: "chart" as const,
+    chart: kind === "gantt"
+      ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "gantt" as const, tasks: [{ id: "t", label: "Task", start: "2026-01-01", end: "2026-01-02" }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+      : ["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"].includes(kind)
+        ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "points" as const, series: [{ id: "s", label: "Value", points: [{ x: kind === "timeSeries" ? "2026-01-01" : 1, y: 2 }] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+        : { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "categories" as const, labels: ["A"], series: [{ id: "s", label: "Value", values: [2] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } },
+  }));
+  const result = await serializeBlocks(blocks, { styleNames: noStyles });
+  for (const kind of CHART_KINDS_V1) expect(result.xml).toContain(`shape-${kind}`);
+});
 
 describe("DOCX code-highlighting preparation", () => {
   it("collects nested aliases once, counts blocks, and excludes Mermaid", () => {

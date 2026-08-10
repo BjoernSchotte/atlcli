@@ -1,0 +1,72 @@
+:where([data-atlcli-export-document]) {
+  --atlcli-content-accent: #155eef;
+  --atlcli-content-border: #cfd8e6;
+  --atlcli-content-callout: #eef4ff;
+  color: var(--atlcli-content-fg, inherit);
+  line-height: 1.6;
+}
+
+:where([data-atlcli-export-document]) a {
+  color: var(--atlcli-content-accent);
+}
+
+:where([data-atlcli-block="callout"]) {
+  border-inline-start: 0.25rem solid var(--atlcli-content-accent);
+  background: var(--atlcli-content-callout);
+  padding: 0.75rem 1rem;
+  margin-block: 1rem;
+}
+
+:where([data-atlcli-export-document]) table {
+  border-collapse: collapse;
+  inline-size: 100%;
+}
+
+:where([data-atlcli-export-document]) th,
+:where([data-atlcli-export-document]) td {
+  border: 1px solid var(--atlcli-content-border);
+  padding: 0.45rem 0.6rem;
+  text-align: start;
+}
+
+:where([data-atlcli-export-document]) pre {
+  overflow: auto;
+  border: 1px solid var(--atlcli-content-border);
+  padding: 0.8rem;
+}
+
+:where([data-atlcli-chart]) svg {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+}
+
+:where([data-atlcli-chart]) [data-chart-bar] {
+  fill: var(--atlcli-chart-bar, var(--atlcli-content-accent));
+}
+
+:where([data-atlcli-chart][data-enhanced="true"]) [data-chart-table][hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :where([data-atlcli-chart]) [data-chart-bar] {
+    transition: opacity 120ms ease;
+  }
+}
+
+@media print {
+  :where([data-atlcli-export-document]) {
+    color: #000;
+  }
+
+  :where([data-atlcli-export-document]) details {
+    display: block;
+  }
+
+  :where([data-atlcli-export-document]) figure,
+  :where([data-atlcli-export-document]) table,
+  :where([data-atlcli-block="callout"]) {
+    break-inside: avoid;
+  }
+}

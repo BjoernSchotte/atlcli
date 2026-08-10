@@ -90,15 +90,20 @@ Unknown languages degrade to plain readable code and a report note.
 
 | Component | Pinned value | Verification |
 |-----------|--------------|--------------|
-| Web compiler wrapper | `@myriaddreamin/typst-ts-web-compiler` 0.7.0 | Exact package version and Bun patch |
-| Embedded Typst engine | 0.14.2 | PDF `Creator` metadata and compiler fixture |
-| Compiler WASM | SHA-256 `1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd` | Build inventory gate |
+| Web compiler wrapper | fork distribution `@myriaddreamin/typst-ts-web-compiler` 0.8.0-rc3.typst0151.1 | Exact fork commit, package provenance, and artifact hashes |
+| Embedded Typst engine | 0.15.1 | Runtime-exported version and exact core commit |
+| Compiler WASM | SHA-256 `39d2ce3cda6cc41ed267a8dd641a358785bca65c99df39bdd55574f7f688cd27` | Build inventory gate |
 | Source Sans 3 Regular / Italic / SemiBold / Bold | Adobe commit and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch and inventory gates |
 | Source Serif 4 Regular / Italic / SemiBold / Bold | Adobe commit and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch and inventory gates |
 | Source Code Pro Regular / Bold | Adobe commit and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch and inventory gates |
+| Noto Sans Symbols 2 / Noto Emoji | Google release assets and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch, coverage generation, and inventory gates |
 
-Each production browser host artifact includes the 28.3 MB compiler WASM, ten static font files
-and their shipped license texts. The build gates fail
+Each production browser host artifact includes the 30.17 MB compiler WASM,
+twelve static font files and their shipped license texts. Before compiling, the
+engine resolves a deterministic subset from the final document/template state.
+Browser hosts keep all imports statically discoverable but fetch only that
+subset; CLI and Node read only the corresponding installed files. The build
+gates fail
 if any runtime asset is absent, the WASM is unexpectedly small, or generated JavaScript
 contains a known Manifest V3-incompatible dynamic-code constructor.
 
@@ -114,8 +119,10 @@ contacts Adobe, Google Fonts, Fontsource or another font service.
 1. Convert Confluence storage to exhaustive `ExportBlock[]` values.
 2. Resolve approved assets through the host's `PdfAssetResolver` and render Mermaid through
    `@atlcli/diagram`.
-3. Serialize deterministic `main.typ`, the pinned template, assets and nested source mappings.
-4. Compile through the injected `PdfCompilePort` and normalized diagnostics contract.
+3. Serialize deterministic `main.typ`, the pinned template, assets, nested
+   source mappings, and `ResolvedPdfFontRequirementsV1`.
+4. Compile through the injected `PdfCompilePort`, registering only the resolved
+   font subset and returning normalized diagnostics plus font-load evidence.
 5. Validate pages, tag structure and embedded font programs.
 6. Emit through the host's `PdfOutputSink`, with an abort check before emission. The sink
    receives a `PdfBytesHandle` rather than the byte array, so a host that needs a `Blob` or an
@@ -159,12 +166,17 @@ table. The dense section covers full-target raw links, custom link labels, compl
 status badges, mentions, and normal wrapping prose. A warm repeat compile is required to be
 byte-identical.
 
-## Known profile boundary
+## Output-standard boundary
 
-Standard export requires tagged output and rejects an untagged result. The pinned compiler does
-not expose a PDF/UA-1 selector. Therefore the engine deliberately makes no PDF/UA or PDF/A claim;
-adding either profile requires a separately validated implementation and independent conformance
-evidence.
+Standard export requires tagged output and rejects an untagged result. The
+pinned Typst 0.15.1 browser binding exposes a request-scoped PDF-standard option;
+atlcli wraps it in `atlcli.pdf-output-policy/1`, rejects unsupported requests
+before compilation, and checks the resulting header and XMP identifiers before
+emission. The old `PdfProfile` label is deprecated and is not reinterpreted.
+
+Internal byte inspection is evidence that the compiler received and represented
+the requested mode, not certification. The external veraPDF acceptance lane is
+the separate conformance boundary.
 
 ## Related topics
 

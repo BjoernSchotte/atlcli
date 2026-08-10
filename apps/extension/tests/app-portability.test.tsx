@@ -230,6 +230,15 @@ async function selectValue(testId: string, value: string): Promise<void> {
   await flush();
 }
 
+async function setChecked(testId: string, checked: boolean): Promise<void> {
+  const { act } = await import("react");
+  const element = find(testId) as unknown as HTMLInputElement;
+  await act(async () => {
+    if (element.checked !== checked) element.click();
+  });
+  await flush();
+}
+
 // ---------------------------------------------------------------------------
 // Fakes — the only mocked layer
 // ---------------------------------------------------------------------------
@@ -383,7 +392,11 @@ function makePorts(
       uploadedAt: 1_700_000_000_000,
       bytes: new ArrayBuffer(8),
     }),
-    settings: memorySettingsStore({ locale: null, lastWorkspace: "publishing" }),
+    settings: memorySettingsStore({
+      locale: null,
+      lastWorkspace: "publishing",
+      hideRovoEntrypoints: false,
+    }),
     ...overrides,
   };
 }
@@ -589,7 +602,11 @@ describe("the shell renders from the registry", () => {
   });
 
   it("restores the last selected workspace when the sidebar opens again", async () => {
-    const settings = memorySettingsStore({ locale: null, lastWorkspace: "publishing" });
+    const settings = memorySettingsStore({
+      locale: null,
+      lastWorkspace: "publishing",
+      hideRovoEntrypoints: false,
+    });
     await render(
       <ExportApp
         ports={makePorts(newRecorder(), { settings, research: fakeResearchPort() }, [
@@ -607,7 +624,11 @@ describe("the shell renders from the registry", () => {
   });
 
   it("returns from Settings to the currently selected AI workspace", async () => {
-    const settings = memorySettingsStore({ locale: null, lastWorkspace: "ai" });
+    const settings = memorySettingsStore({
+      locale: null,
+      lastWorkspace: "ai",
+      hideRovoEntrypoints: false,
+    });
     await render(
       <ExportApp
         ports={makePorts(newRecorder(), { settings, research: fakeResearchPort() }, [
@@ -803,7 +824,74 @@ describe("i18n reaches the rendered app", () => {
     await click("nav-settings");
     await selectValue("settings-language", "de");
 
-    expect(await settings.load()).toEqual({ locale: "de", lastWorkspace: null });
+    expect(await settings.load()).toEqual({
+      locale: "de",
+      lastWorkspace: null,
+      hideRovoEntrypoints: false,
+    });
+  });
+
+  it("shows and persists the Rovo toggle only for a capable host", async () => {
+    const settings = memorySettingsStore();
+    const capabilities: readonly HostCapability[] = [
+      "pdf-export",
+      "docx-export",
+      "docx-template-store",
+      "settings-persistence",
+      "confluence-page-customization",
+    ];
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), { settings }, capabilities)}
+        localeCandidates={["en"]}
+      />
+    );
+    await click("nav-settings");
+
+    const checkbox = find("settings-hide-rovo") as unknown as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    await setChecked("settings-hide-rovo", true);
+
+    expect((find("settings-hide-rovo") as unknown as HTMLInputElement).checked).toBe(true);
+    expect(await settings.load()).toEqual({
+      locale: null,
+      lastWorkspace: null,
+      hideRovoEntrypoints: true,
+    });
+  });
+
+  it("does not expose browser-page customization in an incapable host", async () => {
+    await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
+    await click("nav-settings");
+    expect(maybeFind("settings-hide-rovo")).toBeNull();
+  });
+
+  it("rolls an optimistic Rovo toggle back when persistence fails", async () => {
+    const capabilities: readonly HostCapability[] = [
+      "settings-persistence",
+      "confluence-page-customization",
+    ];
+    const settings: AppPorts["settings"] = {
+      load: async () => ({
+        locale: null,
+        lastWorkspace: null,
+        hideRovoEntrypoints: false,
+      }),
+      save: async () => {
+        throw new Error("storage unavailable");
+      },
+    };
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), { settings }, capabilities)}
+        localeCandidates={["en"]}
+      />
+    );
+    await click("nav-settings");
+    await setChecked("settings-hide-rovo", true);
+
+    expect((find("settings-hide-rovo") as unknown as HTMLInputElement).checked).toBe(false);
+    expect(maybeFind("settings-error")).not.toBeNull();
   });
 });
 

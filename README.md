@@ -34,6 +34,23 @@ jobs, and machine-readable reports for repeatable publishing and CI.
 
 [Explore DOCX and PDF export →](https://atlcli.sh/confluence/export/)
 
+### Static web publishing with Astro
+
+Build a Confluence page tree or space into a verified static Astro site. The
+pipeline acquires a private immutable bundle, renders `ExportBlock[]` through
+the supported Starlight experience or a plain Astro render kit, builds local
+Pagefind search, and verifies the final output before an operator deploys it.
+It does not use Markdown as an intermediate format and does not claim remote
+deployment, PWA, or request-time Confluence access.
+
+```bash
+atlcli wiki publish plan --project .atlcli/publish.json --profile work
+atlcli wiki publish run --project .atlcli/publish.json --profile work
+atlcli wiki publish verify --project .atlcli/publish.json
+```
+
+[Explore Astro web publishing →](https://atlcli.sh/publishing/)
+
 ### World-class document fidelity
 
 atlcli does not print a web page or flatten Confluence into a screenshot. It
@@ -111,6 +128,11 @@ PDF and Word files:
 - **Mermaid as a real diagram** — flowcharts, state, sequence, class, ER, and
   XY charts render as vector SVG. DOCX also embeds a high-resolution PNG
   fallback for older Word and LibreOffice versions.
+- **Confluence charts from their real data** — Pie, Bar, Line, Area, XY,
+  Scatter, Time Series, and Gantt Chart macros normalize from Cloud ADF or Data
+  Center Storage into one validated model. Astro, DOCX, and PDF share the same
+  TanStack vector geometry and retain the exact-value table; the proven Bar and
+  XY Bar Astro profiles add optional keyboard-accessible interaction.
 - **Draw.io and Gliffy support** — `drawio`, `inc-drawio`, `drawio-sketch`, and
   `gliffy` macros resolve their Confluence preview assets into the exported
   document.

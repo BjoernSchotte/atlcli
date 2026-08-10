@@ -10,6 +10,7 @@ import React, { useEffect, useState } from "react";
 import type { ScreenProps } from "../../utils/screens/registry.js";
 import { useI18n } from "../../utils/i18n/context.js";
 import { isLocale, LOCALES } from "../../utils/i18n/messages.js";
+import { hasCapability } from "../../utils/ports/host.js";
 import { useAppSettings } from "../app/settings-context.js";
 import { Alert } from "../ui/alert.js";
 import { Card, CardContent } from "../ui/card.js";
@@ -102,6 +103,10 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
       setAiError(value instanceof Error ? value.message : t("settings.ai.saveFailed"));
     }
   }
+  const canCustomizeConfluence = hasCapability(
+    ports.host,
+    "confluence-page-customization"
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -201,6 +206,25 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
           )}
         </CardContent>
       </Card>
+
+      {canCustomizeConfluence && (
+        <Card>
+          <CardContent className="flex flex-col gap-1.5 p-3">
+            <CheckboxField
+              data-testid="settings-hide-rovo"
+              label={t("settings.rovo.label")}
+              help={t("settings.rovo.help")}
+              checked={settings.hideRovoEntrypoints}
+              onChange={(event) => {
+                setFailed(false);
+                void update({ hideRovoEntrypoints: event.target.checked }).catch(() =>
+                  setFailed(true)
+                );
+              }}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {failed && (
         <Alert role="alert" tone="danger" data-testid="settings-error">

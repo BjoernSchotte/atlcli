@@ -11,6 +11,7 @@ import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
 import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
 import emojiRegularUrl from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf?url";
+import arabicRegularUrl from "@atlcli/pdf/fonts/NotoSansArabic-Regular.ttf?url";
 import { composeChapters, type ExportBlock } from "@atlcli/confluence/browser";
 import {
   memoryTemplateSource,
@@ -50,6 +51,7 @@ const fontUrls = new Map<string, string>([
   ["SourceSerif4-Bold.ttf", serifBoldUrl],
   ["SourceCodePro-Regular.ttf", codeRegularUrl],
   ["SourceCodePro-Bold.ttf", codeBoldUrl],
+  ["NotoSansArabic-Regular.ttf", arabicRegularUrl],
   ["NotoSansSymbols2-Regular.ttf", symbolsRegularUrl],
   ["NotoEmoji-wght.ttf", emojiRegularUrl],
 ]);

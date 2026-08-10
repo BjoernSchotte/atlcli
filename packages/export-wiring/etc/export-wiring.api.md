@@ -15,7 +15,7 @@ export interface BuildMacroOptionsArgs {
     siteBaseUrl: string;
     confluence: ConfluenceClient;
     jira?: JiraClientLike;
-    targetEngine: "docx" | "pdf";
+    targetEngine: "docx" | "pdf" | "web";
     live?: boolean;
     nativeTocPresent?: boolean;
     policy?: ExternalAssetPolicy;
@@ -152,6 +152,9 @@ export declare function createExternalAssetPolicy(options: ExternalAssetPolicyOp
 // export: createMacroRegistry
 export declare function createMacroRegistry(): MacroRendererRegistry;
 
+// export: deduplicateMaterializedPublicationAssetsV1
+export declare function deduplicateMaterializedPublicationAssetsV1(assets: readonly MaterializedPublicationAssetV1[]): readonly MaterializedPublicationAssetV1[];
+
 // export: defaultExternalAssetFetcher
 export declare function defaultExternalAssetFetcher(policy: ExternalAssetPolicy, deps?: ExternalAssetFetcherDeps): ExternalAssetFetcher;
 
@@ -233,6 +236,9 @@ export declare class ExternalAssetTimeoutError extends Error {
     constructor(url: string, timeoutMs: number);
 }
 
+// export: fetchAndMaterializePublicationAssetV1
+export declare function fetchAndMaterializePublicationAssetV1(request: PublicationAssetRequestV1, policy: PublicationAssetPolicyV1, deps: PublicationAssetMaterializationDepsV1, signal?: AbortSignal): Promise<MaterializedPublicationAssetV1>;
+
 // export: isExternalAssetBlockedError
 export declare function isExternalAssetBlockedError(error: unknown): error is ExternalAssetBlockedError;
 
@@ -296,6 +302,12 @@ export declare function jiraIssuePortFromClient(client: JiraClientLike, browseBa
 // export: jiraIssueRef
 export declare function jiraIssueRef(issue: JiraIssueLike, browseBaseUrl: string): JiraIssueRef;
 
+// export: MaterializedPublicationAssetV1
+export interface MaterializedPublicationAssetV1 {
+    entry: PublicationAssetEntryV1;
+    bytes: Uint8Array;
+}
+
 // export: OrderedSourceCheckpointV1
 export interface OrderedSourceCheckpointV1<Cursor> {
     version: 1;
@@ -348,9 +360,66 @@ export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     ref: string;
 }
 
+// export: PublicationAssetDeduplicationErrorCodeV1
+export type PublicationAssetDeduplicationErrorCodeV1 = "duplicate-asset-id" | "invalid-materialized-asset" | "digest-conflict";
+
+// export: PublicationAssetDeduplicationErrorV1
+export declare class PublicationAssetDeduplicationErrorV1 extends Error {
+    readonly code: PublicationAssetDeduplicationErrorCodeV1;
+    constructor(code: PublicationAssetDeduplicationErrorCodeV1, message: string);
+}
+
+// export: PublicationAssetMaterializationDepsV1
+export interface PublicationAssetMaterializationDepsV1 {
+    attachmentPort?: PublicationAttachmentAssetPortV1;
+    externalFetcher?: ExternalAssetFetcher;
+}
+
+// export: PublicationAssetMaterializationErrorCodeV1
+export type PublicationAssetMaterializationErrorCodeV1 = "invalid-request" | "missing-fetch-port" | "too-large" | "unsupported-media" | "mime-mismatch" | "unsafe-svg" | "svg-node-budget" | "image-pixel-budget";
+
+// export: PublicationAssetMaterializationErrorV1
+export declare class PublicationAssetMaterializationErrorV1 extends Error {
+    readonly code: PublicationAssetMaterializationErrorCodeV1;
+    constructor(code: PublicationAssetMaterializationErrorCodeV1, message: string);
+}
+
+// export: PublicationAssetRequestV1
+export interface PublicationAssetRequestV1 {
+    assetId: string;
+    source: PublicationAssetSourceV1;
+}
+
+// export: PublicationAssetSourceV1
+export type PublicationAssetSourceV1 = {
+    kind: "attachment";
+    pageId: string;
+    filename: string;
+} | {
+    kind: "external";
+    url: string;
+    filename: string;
+};
+
+// export: PublicationAttachmentAssetPortV1
+export interface PublicationAttachmentAssetPortV1 {
+    fetchAttachment(request: {
+        pageId: string;
+        filename: string;
+        maxBytes: number;
+        signal?: AbortSignal;
+    }): Promise<{
+        bytes: Uint8Array;
+        mediaType?: string;
+    }>;
+}
+
+// export: resolveConfluencePageGraphV1
+export declare function resolveConfluencePageGraphV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluencePageGraphV1>;
+
 // export: ResolveConfluenceSourceOptionsV1
 export interface ResolveConfluenceSourceOptionsV1 {
-    exporter: "pdf" | "word";
+    exporter: "pdf" | "word" | "web";
     port: ConfluenceSourceResolverPortV1;
     signal: AbortSignal;
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
@@ -363,6 +432,23 @@ export interface ResolveConfluenceSourceOptionsV1 {
 
 // export: resolveConfluenceSourceV1
 export declare function resolveConfluenceSourceV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluenceSourceV1>;
+
+// export: ResolvedConfluencePageGraphV1
+export interface ResolvedConfluencePageGraphV1 {
+    scope: ExportScope;
+    nodes: readonly ExportNode[];
+    sourceNotes: readonly ExportNote[];
+    complete: boolean;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    pages: readonly ResolvedConfluenceSourcePageV1[];
+    pageCount: number;
+    sourceSummary: TreeSourceSummary;
+}
 
 // export: ResolvedConfluenceSourcePageV1
 export interface ResolvedConfluenceSourcePageV1 {
@@ -389,6 +475,30 @@ export interface ResolvedConfluenceSourceV1 {
     sourceSummary: TreeSourceSummary;
     chapterAnchorById?: ReadonlyMap<string, string>;
 }
+
+// export: ResolvedWebMacroPageV1
+export interface ResolvedWebMacroPageV1 {
+    sourceId: string;
+    sourceVersion?: number;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+    renderModels: readonly WebMacroRenderModelV1[];
+    frozenProvenance: WebMacroFrozenProvenanceV1;
+    resolvedAtEpochMs: number;
+    usedLive: boolean;
+}
+
+// export: ResolveWebPageMacrosOptionsV1
+export interface ResolveWebPageMacrosOptionsV1 {
+    macros: MacroResolutionOptions;
+    policy: WebMacroResolutionPolicyV1;
+    previousBySourceId?: ReadonlyMap<string, ResolvedWebMacroPageV1>;
+    dependencyDigestForPage?: (page: ExportPageNode) => string | undefined;
+    now?: () => number;
+}
+
+// export: resolveWebPageMacrosV1
+export declare function resolveWebPageMacrosV1(pages: readonly ExportPageNode[], options: ResolveWebPageMacrosOptionsV1): Promise<readonly ResolvedWebMacroPageV1[]>;
 
 // export: runCheckpointedOrderedSourcePipeline
 export declare function runCheckpointedOrderedSourcePipeline<Value, Cursor, Result>(options: CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result>): Promise<CheckpointedOrderedSourcePipelineResultV1<Cursor>>;
@@ -425,6 +535,32 @@ export declare function trustRoutingAssetFetcher(inner: AssetFetcher, external: 
 
 // export: trustRoutingPdfAssetResolver
 export declare function trustRoutingPdfAssetResolver(inner: PdfAssetResolver, external: ExternalAssetFetcher): PdfAssetResolver;
+
+// export: WebMacroFrozenProvenanceV1
+export interface WebMacroFrozenProvenanceV1 {
+    sourceId: string;
+    sourceVersion?: number;
+    resolvedAtEpochMs: number;
+    dependencyDigest?: string;
+    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
+
+// export: WebMacroRenderModelV1
+export interface WebMacroRenderModelV1 {
+    sourceId: string;
+    macroName: string;
+    kind: MacroWebRenderModelKindV1;
+    requestedKind?: Exclude<MacroWebRenderModelKindV1, "unknown">;
+    rendererId?: string;
+    provenance: "static" | "frozen-live" | "fallback";
+    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
+
+// export: WebMacroResolutionPolicyV1
+export interface WebMacroResolutionPolicyV1 {
+    mode: "static-only" | "allow-frozen-live";
+    liveFreshnessSeconds?: number;
+}
 ```
 
 ### Entry point `./fixtures`
@@ -1041,9 +1177,12 @@ export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     ref: string;
 }
 
+// export: resolveConfluencePageGraphV1
+export declare function resolveConfluencePageGraphV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluencePageGraphV1>;
+
 // export: ResolveConfluenceSourceOptionsV1
 export interface ResolveConfluenceSourceOptionsV1 {
-    exporter: "pdf" | "word";
+    exporter: "pdf" | "word" | "web";
     port: ConfluenceSourceResolverPortV1;
     signal: AbortSignal;
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
@@ -1056,6 +1195,23 @@ export interface ResolveConfluenceSourceOptionsV1 {
 
 // export: resolveConfluenceSourceV1
 export declare function resolveConfluenceSourceV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluenceSourceV1>;
+
+// export: ResolvedConfluencePageGraphV1
+export interface ResolvedConfluencePageGraphV1 {
+    scope: ExportScope;
+    nodes: readonly ExportNode[];
+    sourceNotes: readonly ExportNote[];
+    complete: boolean;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    pages: readonly ResolvedConfluenceSourcePageV1[];
+    pageCount: number;
+    sourceSummary: TreeSourceSummary;
+}
 
 // export: ResolvedConfluenceSourcePageV1
 export interface ResolvedConfluenceSourcePageV1 {
@@ -1082,6 +1238,30 @@ export interface ResolvedConfluenceSourceV1 {
     sourceSummary: TreeSourceSummary;
     chapterAnchorById?: ReadonlyMap<string, string>;
 }
+
+// export: ResolvedWebMacroPageV1
+export interface ResolvedWebMacroPageV1 {
+    sourceId: string;
+    sourceVersion?: number;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+    renderModels: readonly WebMacroRenderModelV1[];
+    frozenProvenance: WebMacroFrozenProvenanceV1;
+    resolvedAtEpochMs: number;
+    usedLive: boolean;
+}
+
+// export: ResolveWebPageMacrosOptionsV1
+export interface ResolveWebPageMacrosOptionsV1 {
+    macros: MacroResolutionOptions;
+    policy: WebMacroResolutionPolicyV1;
+    previousBySourceId?: ReadonlyMap<string, ResolvedWebMacroPageV1>;
+    dependencyDigestForPage?: (page: ExportPageNode) => string | undefined;
+    now?: () => number;
+}
+
+// export: resolveWebPageMacrosV1
+export declare function resolveWebPageMacrosV1(pages: readonly ExportPageNode[], options: ResolveWebPageMacrosOptionsV1): Promise<readonly ResolvedWebMacroPageV1[]>;
 
 // export: runCheckpointedOrderedSourcePipeline
 export declare function runCheckpointedOrderedSourcePipeline<Value, Cursor, Result>(options: CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result>): Promise<CheckpointedOrderedSourcePipelineResultV1<Cursor>>;
@@ -1122,4 +1302,30 @@ export type TypescriptDocxExportJobResolvedInputV1 = TypescriptDocxExportJobEngi
         sourcePageCount: number;
     };
 };
+
+// export: WebMacroFrozenProvenanceV1
+export interface WebMacroFrozenProvenanceV1 {
+    sourceId: string;
+    sourceVersion?: number;
+    resolvedAtEpochMs: number;
+    dependencyDigest?: string;
+    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
+
+// export: WebMacroRenderModelV1
+export interface WebMacroRenderModelV1 {
+    sourceId: string;
+    macroName: string;
+    kind: MacroWebRenderModelKindV1;
+    requestedKind?: Exclude<MacroWebRenderModelKindV1, "unknown">;
+    rendererId?: string;
+    provenance: "static" | "frozen-live" | "fallback";
+    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
+
+// export: WebMacroResolutionPolicyV1
+export interface WebMacroResolutionPolicyV1 {
+    mode: "static-only" | "allow-frozen-live";
+    liveFreshnessSeconds?: number;
+}
 ```

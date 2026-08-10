@@ -17,6 +17,8 @@
       "type": "string",
       "description": "Effective bundled Shiki theme used for code blocks."
     },
+    "outputPolicy": { "$ref": "#/definitions/outputPolicy" },
+    "outputStandardEvidence": { "$ref": "#/definitions/outputStandardEvidence" },
     "sourcePages": {
       "type": "array",
       "description": "One entry per source page — provenance/fetch-and-compose status only, NO per-page metrics.",
@@ -88,6 +90,50 @@
     }
   },
   "definitions": {
+    "outputPolicy": {
+      "type": "object",
+      "required": ["schema", "standards"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": { "const": "atlcli.pdf-output-policy/1" },
+        "standards": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["a-1b", "a-1a", "a-2b", "a-2u", "a-2a", "a-3b", "a-3u", "a-3a", "a-4", "a-4f", "a-4e", "ua-1"] }
+        }
+      }
+    },
+    "outputStandardEvidence": {
+      "type": "object",
+      "required": ["schema", "requestedStandard", "basePdfVersion", "hasDocumentIdentifier", "tagged", "hasLang", "embeddedFontFiles"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": { "const": "atlcli.pdf-output-standard-evidence/1" },
+        "requestedStandard": { "enum": ["a-1b", "a-1a", "a-2b", "a-2u", "a-2a", "a-3b", "a-3u", "a-3a", "a-4", "a-4f", "a-4e", "ua-1"] },
+        "basePdfVersion": { "enum": ["1.4", "1.5", "1.6", "1.7", "2.0"] },
+        "pdfa": {
+          "type": "object",
+          "required": ["part"],
+          "additionalProperties": false,
+          "properties": {
+            "part": { "enum": ["1", "2", "3", "4"] },
+            "conformance": { "enum": ["A", "B", "E", "F", "U"] }
+          }
+        },
+        "pdfua": {
+          "type": "object",
+          "required": ["part"],
+          "additionalProperties": false,
+          "properties": { "part": { "const": "1" } }
+        },
+        "hasDocumentIdentifier": { "type": "boolean" },
+        "tagged": { "type": "boolean" },
+        "hasLang": { "type": "boolean" },
+        "embeddedFontFiles": { "type": "integer", "minimum": 1 }
+      }
+    },
     "issue": {
       "type": "object",
       "required": ["code", "severity", "phase", "retryable"],

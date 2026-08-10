@@ -131,6 +131,7 @@ export function tocRenderer(): MacroRenderer {
     id: "toc",
     macros: ["toc"],
     requiresLivePort: false,
+    webRenderModel: { kind: "toc", dependencies: [] },
     async render(m: MacroInstance, ctx: MacroExportContext): Promise<MacroRenderResult> {
       // When the DOCX template already carries a native TOC field, suppress the
       // macro's body-TOC so the export never shows a duplicate table of contents.

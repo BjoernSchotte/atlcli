@@ -21,8 +21,10 @@ import {
   ManifestValidationError,
   unflattenDesign,
   validateDesignAgainstCatalog,
+  WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   WIKI_PDF_V1_DOCUMENT_LABELS,
   type TemplateManifest,
+  type TemplateCapabilityCatalogReferenceV1,
   type WikiPdfTemplateDesignV1,
   type WikiPdfTemplateSettingBindingV1,
 } from "@atlcli/template-pack";
@@ -36,6 +38,12 @@ import {
   projectPdfDesignThroughCatalog,
   writePdfDesignCapability,
 } from "./design-catalog.js";
+import {
+  pdfCatalogRuntimeReference,
+  resolvePdfCatalogRuntime,
+  resolvePdfCatalogRuntimeV3,
+  type PdfCatalogRuntime,
+} from "./catalog-runtime.js";
 import { typstString } from "./escape.js";
 import { findSvgSafetyViolation } from "./svg-safety.js";
 import { resolvePdfTheme } from "./theme.js";
@@ -46,9 +54,12 @@ import type {
   PdfWatermarkSettings,
 } from "./types.js";
 import type {
+  AnyPdfTemplateManifest,
   PdfTemplateVisualsV1,
+  PdfTemplateManifestV5,
   ValidatedPdfTemplatePackV1,
 } from "./template-pack.js";
+import { projectPdfDesignV5RuntimeSettings } from "./template-v5.js";
 
 /** Structured validation failure naming the exact offending settings field. */
 export class PdfSettingsError extends Error {
@@ -132,6 +143,8 @@ export interface ResolvedPdfSettings {
   ignoredDesignCapabilities: readonly string[];
   /** Catalog contract pinned into future authoring snapshots/projects. */
   capabilityCatalogDigest: string;
+  /** Exact closed runtime identity; digest alone is never a dispatch key. */
+  capabilityCatalog: TemplateCapabilityCatalogReferenceV1;
   /** Document-facing labels for the export locale (spec 012 T6.2). */
   labels: ResolvedPdfLabels;
   /** Validated visual slots and decorations, with compiler-owned VFS paths. */
@@ -147,7 +160,7 @@ export interface ResolvePdfSettingsContext {
   /** Theme whose ink/paper are injected into the resolved design tokens. */
   theme?: PdfThemeOptions;
   /** Template manifest driving resolution; defaults to the built-in. */
-  manifest?: TemplateManifest;
+  manifest?: AnyPdfTemplateManifest;
   /** Validated pack supplying the manifest plus resolved visual payloads. */
   templatePack?: ValidatedPdfTemplatePackV1;
 }
@@ -342,6 +355,7 @@ export function resolvePdfSettings(
     designTrace: [],
     ignoredDesignCapabilities: [],
     capabilityCatalogDigest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    capabilityCatalog: pdfCatalogRuntimeReference(resolvePdfCatalogRuntime()),
     labels: {},
   };
 
@@ -382,6 +396,8 @@ export function resolvePdfSettings(
   resolved.design = designResolution.design;
   resolved.designTrace = designResolution.trace;
   resolved.ignoredDesignCapabilities = designResolution.ignoredCapabilities;
+  resolved.capabilityCatalogDigest = designResolution.capabilityCatalogDigest;
+  resolved.capabilityCatalog = designResolution.capabilityCatalog;
   resolved.labels = resolveTemplateLabels(manifest, context.locale, context.region);
   if (context.templatePack) {
     resolved.templateVisuals = {
@@ -405,7 +421,7 @@ export function resolvePdfSettings(
  * manifest's design.
  */
 export function resolveTemplateDesign(
-  manifest: TemplateManifest,
+  manifest: AnyPdfTemplateManifest,
   values: ResolvedPdfSettings,
   themeOptions?: PdfThemeOptions
 ): ResolvedPdfDesign {
@@ -416,6 +432,8 @@ export interface ResolvedTemplateDesignWithTrace {
   design: ResolvedPdfDesign;
   trace: readonly PdfDesignResolutionTraceEntry[];
   ignoredCapabilities: readonly string[];
+  capabilityCatalogDigest: string;
+  capabilityCatalog: TemplateCapabilityCatalogReferenceV1;
 }
 
 /**
@@ -425,7 +443,7 @@ export interface ResolvedTemplateDesignWithTrace {
  * execute.
  */
 export function resolveTemplateDesignWithTrace(
-  manifest: TemplateManifest,
+  manifest: AnyPdfTemplateManifest,
   values: ResolvedPdfSettings,
   themeOptions?: PdfThemeOptions
 ): ResolvedTemplateDesignWithTrace {
@@ -437,12 +455,101 @@ export function resolveTemplateDesignWithTrace(
     });
   }
 
-  const characterizedBaseline = getBuiltinPdfTemplate(manifest.id)?.design;
+  if (manifest.canonicalSource?.revision === "5") {
+    const manifestV5 = manifest as PdfTemplateManifestV5;
+    let runtime;
+    try {
+      runtime = resolvePdfCatalogRuntimeV3(manifestV5.capabilityCatalog!);
+    } catch (error) {
+      throw new PdfSettingsError({
+        path: "manifest.capabilityCatalog",
+        value: manifestV5.capabilityCatalog,
+        constraint:
+          error instanceof Error
+            ? error.message
+            : "unsupported PDF capability catalog",
+      });
+    }
+    if ((manifestV5.bindings?.length ?? 0) > 0 || themeOptions !== undefined) {
+      throw new PdfSettingsError({
+        path: "manifest.bindings",
+        value: manifestV5.bindings,
+        constraint:
+          "revision-5 runtime bindings and theme overlays require the Recipe-V2 CLI task",
+      });
+    }
+    const designV5 = runtime.project(manifestV5.design!);
+    const trace: PdfDesignResolutionTraceEntry[] = Object.entries(
+      flattenDesign(designV5),
+    ).map(([target, value], sequence) => ({
+      target,
+      source: "baseline",
+      sourceId: manifestV5.id,
+      sequence,
+      value,
+    }));
+    return {
+      design: projectPdfDesignV5RuntimeSettings(designV5),
+      trace,
+      ignoredCapabilities: [],
+      capabilityCatalogDigest: runtime.reference.digest,
+      capabilityCatalog: { ...runtime.reference },
+    };
+  }
+
+  const legacyManifest = manifest as TemplateManifest;
+
+  let runtime: PdfCatalogRuntime;
+  try {
+    runtime = resolvePdfCatalogRuntime(legacyManifest.capabilityCatalog);
+  } catch (error) {
+    throw new PdfSettingsError({
+      path: "manifest.capabilityCatalog",
+      value: legacyManifest.capabilityCatalog,
+      constraint: error instanceof Error ? error.message : "unsupported PDF capability catalog",
+    });
+  }
+
+  if (!runtime.allowsSparseLegacy) {
+    const baseline = runtime.project(legacyManifest.design!);
+    const trace: PdfDesignResolutionTraceEntry[] = Object.entries(
+      flattenDesign(baseline)
+    ).map(([target, value], sequence) => ({
+      target,
+      source: "baseline",
+      sourceId: legacyManifest.id,
+      sequence,
+      value,
+    }));
+    const bound = applyBindingsWithTraceForCatalog(
+      baseline,
+      legacyManifest.bindings ?? [],
+      values,
+      trace,
+      runtime.project,
+      runtime.write
+    );
+    const themed = applyThemePolicy(
+      bound.design,
+      bound.trace,
+      themeOptions,
+      runtime.write
+    );
+    return {
+      design: runtime.project(themed.design),
+      trace: themed.trace,
+      ignoredCapabilities: [],
+      capabilityCatalogDigest: runtime.reference.digest,
+      capabilityCatalog: pdfCatalogRuntimeReference(runtime),
+    };
+  }
+
+  const characterizedBaseline = getBuiltinPdfTemplate(legacyManifest.id)?.design;
   let baseline: ResolvedPdfDesign;
   let ignoredCapabilities: readonly string[];
   if (characterizedBaseline) {
     const materialized = materializeLegacyPdfDesign(
-      manifest.design,
+      legacyManifest.design!,
       characterizedBaseline,
       PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
     );
@@ -450,7 +557,7 @@ export function resolveTemplateDesignWithTrace(
     ignoredCapabilities = materialized.ignoredCapabilities;
   } else {
     const validation = validateDesignAgainstCatalog(
-      manifest.design,
+      legacyManifest.design!,
       PDF_TEMPLATE_CAPABILITIES_V1,
       "legacy"
     );
@@ -474,19 +581,43 @@ export function resolveTemplateDesignWithTrace(
   ).map(([target, value], sequence) => ({
     target,
     source: "baseline",
-    sourceId: manifest.id,
+    sourceId: legacyManifest.id,
     sequence,
     value,
   }));
   const bound = applyBindingsWithTrace(
     baseline,
-    manifest.bindings ?? [],
+    legacyManifest.bindings ?? [],
     values,
     trace
   );
 
-  let design = bound.design;
-  const nextTrace = [...bound.trace];
+  const themed = applyThemePolicy(
+    bound.design,
+    bound.trace,
+    themeOptions,
+    writePdfDesignCapability
+  );
+  return {
+    design: projectPdfDesignThroughCatalog(themed.design),
+    trace: themed.trace,
+    ignoredCapabilities,
+    capabilityCatalogDigest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    capabilityCatalog: pdfCatalogRuntimeReference(runtime),
+  };
+}
+
+function applyThemePolicy(
+  initialDesign: WikiPdfTemplateDesignV1,
+  initialTrace: readonly PdfDesignResolutionTraceEntry[],
+  themeOptions: PdfThemeOptions | undefined,
+  writeCapability: typeof writePdfDesignCapability
+): {
+  design: WikiPdfTemplateDesignV1;
+  trace: readonly PdfDesignResolutionTraceEntry[];
+} {
+  let design = initialDesign;
+  const nextTrace = [...initialTrace];
   // Resolve the complete theme to validate every supplied theme field, but
   // project only explicitly present fields into the design.
   const theme = resolvePdfTheme(themeOptions);
@@ -520,7 +651,7 @@ export function resolveTemplateDesignWithTrace(
   ];
   for (const write of policyWrites) {
     if (!write.present) continue;
-    design = writePdfDesignCapability(
+    design = writeCapability(
       design,
       write.target,
       write.value,
@@ -534,11 +665,7 @@ export function resolveTemplateDesignWithTrace(
       value: write.value,
     });
   }
-  return {
-    design: projectPdfDesignThroughCatalog(design),
-    trace: nextTrace,
-    ignoredCapabilities,
-  };
+  return { design, trace: nextTrace };
 }
 
 /** The Level-A resolved value a binding's `setting` reads. */
@@ -584,7 +711,28 @@ export function applyBindingsWithTrace(
   design: WikiPdfTemplateDesignV1;
   trace: readonly PdfDesignResolutionTraceEntry[];
 } {
-  let copy = projectPdfDesignThroughCatalog(design);
+  return applyBindingsWithTraceForCatalog(
+    design,
+    bindings,
+    values,
+    initialTrace,
+    projectPdfDesignThroughCatalog,
+    writePdfDesignCapability
+  );
+}
+
+function applyBindingsWithTraceForCatalog(
+  design: WikiPdfTemplateDesignV1,
+  bindings: WikiPdfTemplateSettingBindingV1[],
+  values: ResolvedPdfSettings,
+  initialTrace: readonly PdfDesignResolutionTraceEntry[],
+  projectDesign: (design: WikiPdfTemplateDesignV1) => WikiPdfTemplateDesignV1,
+  writeCapability: typeof writePdfDesignCapability
+): {
+  design: WikiPdfTemplateDesignV1;
+  trace: readonly PdfDesignResolutionTraceEntry[];
+} {
+  let copy = projectDesign(design);
   const trace = [...initialTrace];
   const written = new Set<string>();
   for (const binding of bindings) {
@@ -604,7 +752,7 @@ export function applyBindingsWithTrace(
       }
       written.add(target);
       const writerId = `setting.${binding.setting}`;
-      copy = writePdfDesignCapability(copy, target, value, writerId);
+      copy = writeCapability(copy, target, value, writerId);
       trace.push({
         target,
         source: "runtime-binding",
@@ -638,7 +786,7 @@ function applyTransform(binding: WikiPdfTemplateSettingBindingV1, source: unknow
  * label resolves to a non-empty string.
  */
 export function resolveTemplateLabels(
-  manifest: TemplateManifest,
+  manifest: AnyPdfTemplateManifest,
   locale: string | undefined,
   region: string | undefined
 ): ResolvedPdfLabels {
@@ -648,14 +796,14 @@ export function resolveTemplateLabels(
   const requested = [locale, region].filter(Boolean).join("-") || locale;
   // Walk lowest → highest priority so higher-priority copy wins on merge.
   const chain = localeChain(localization, requested).reverse();
-  // Only the DECLARED v1 document-label vocabulary is resolved. A manifest key
+  // Only the declared document-label vocabulary is resolved. A manifest key
   // outside it never reaches Typst emission — defence in depth behind the
   // manifest import gate, so an unexpected key can never become a dictionary
   // key in generated source.
   // Dropped rather than rejected for forward compatibility (a manifest written
   // for a newer engine must still import); `validateLocalization` warns by name
   // at import time so the drop is diagnosable, never silent.
-  const vocabulary = new Set<string>(WIKI_PDF_V1_DOCUMENT_LABELS);
+  const vocabulary = new Set<string>(WIKI_PDF_SUPPORTED_DOCUMENT_LABELS);
   for (const bundle of chain) {
     for (const [key, value] of Object.entries(bundle.document ?? {})) {
       if (!vocabulary.has(key)) continue;
@@ -725,7 +873,23 @@ export function typstSettingsDict(
   resolved: ResolvedPdfSettings,
   options: { logoPath?: string } = {}
 ): string {
-  const catalogDesign = projectPdfDesignThroughCatalog(resolved.design);
+  const runtimeReference = resolved.capabilityCatalog.version === 3
+    ? resolvePdfCatalogRuntimeV3(resolved.capabilityCatalog).reference
+    : resolvePdfCatalogRuntime(resolved.capabilityCatalog).reference;
+  if (resolved.capabilityCatalogDigest !== runtimeReference.digest) {
+    reject(
+      "capabilityCatalogDigest",
+      resolved.capabilityCatalogDigest,
+      "must match the exact resolved capability catalog identity"
+    );
+  }
+  // Revision 5 retains its complete design in the pack snapshot and exposes a
+  // deliberately narrow V1-shaped runtime-settings projection. Re-projecting
+  // that adapter through the V3 complete-design validator would be a category
+  // error; its exact V3 identity was checked above and at manifest import.
+  const catalogDesign = resolved.capabilityCatalog.version === 3
+    ? resolved.design
+    : resolvePdfCatalogRuntime(resolved.capabilityCatalog).project(resolved.design);
   const designLines: string[] = [
     "  design: (",
     "    branding: (",
@@ -747,12 +911,19 @@ export function typstSettingsDict(
     `      outline: (enabled: ${catalogDesign.features.outline.enabled ? "true" : "false"}, depth: ${numberLiteral(
       catalogDesign.features.outline.depth
     )}),`,
+    ...(resolved.capabilityCatalog.version !== 3 &&
+      resolvePdfCatalogRuntime(resolved.capabilityCatalog).supportsClosingPage
+      ? [`      closingPage: (enabled: ${catalogDesign.features.closingPage.enabled ? "true" : "false"}),`]
+      : []),
     "    ),",
     "  ),"
   );
 
-  const labelLines: string[] = ["  labels: ("];
-  for (const [key, value] of Object.entries(resolved.labels)) {
+  const labelEntries = Object.entries(resolved.labels);
+  const labelLines: string[] = labelEntries.length === 0
+    ? ["  labels: (:),"]
+    : ["  labels: ("];
+  for (const [key, value] of labelEntries) {
     // Emission guard (defence in depth): a dictionary KEY is interpolated into
     // Typst source unquoted, so only a safe identifier may pass. An unsafe key
     // that somehow slipped past the manifest import gate and the vocabulary
@@ -760,7 +931,7 @@ export function typstSettingsDict(
     assertEmittableKey(key, "labels");
     labelLines.push(`    ${key}: ${typstString(value)},`);
   }
-  labelLines.push("  ),");
+  if (labelEntries.length > 0) labelLines.push("  ),");
 
   const lines: string[] = [...designLines, ...labelLines];
 
@@ -798,9 +969,34 @@ export function typstSettingsDict(
           placement.height,
           "templatePack.assets.asset.logo.placement.height"
         )},`,
-        `    rotation: ${numberLiteral(placement.rotation ?? 0)},`,
-        "  ),"
+        `    rotation: ${numberLiteral(placement.rotation ?? 0)},`
       );
+      if (placement.crop) {
+        lines.push(
+          "    crop: (",
+          `      left: ${numberLiteral(placement.crop.left)},`,
+          `      top: ${numberLiteral(placement.crop.top)},`,
+          `      right: ${numberLiteral(placement.crop.right)},`,
+          `      bottom: ${numberLiteral(placement.crop.bottom)},`,
+          "    ),",
+        );
+      }
+      if (placement.clip) {
+        lines.push(
+          "    clip: (",
+          `      kind: ${typstString(placement.clip.kind)},`,
+          ...(placement.clip.kind === "rounded-rect"
+            ? [
+                `      radius: ${emittableLength(
+                  placement.clip.radius,
+                  "templatePack.assets.asset.logo.placement.clip.radius",
+                )},`,
+              ]
+            : []),
+          "    ),",
+        );
+      }
+      lines.push("  ),");
     }
   }
   if (resolved.watermark) {

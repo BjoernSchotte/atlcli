@@ -16,6 +16,7 @@ the built-in PDF design.
 - [CLI: DOCX quick start](#quick-start)
 - [CLI: PDF export](#cli-pdf-export) and [document settings](#document-settings-are-not-cli-flags-yet)
 - [Syntax-highlighting themes](#syntax-highlighting-themes)
+- [Confluence Chart macros](#confluence-chart-macros) and [Mermaid diagrams](#mermaid-diagrams)
 - [ADF source selection and rollback](#adf-source-selection-and-rollback)
 - [Rendering runtime](#rendering-runtime) and [migrating from the Python exporter](#migrating-from-the-python-exporter)
 - [Export activity and recovery](#export-activity-and-recovery)
@@ -54,7 +55,7 @@ the background so a whole-space export is something you can walk away from. See
 
 | Area | Behavior |
 |------|----------|
-| PDF profile | Tagged PDF; no PDF/UA or PDF/A conformance claim |
+| PDF output | Tagged PDF by default; the CLI may request a strict PDF/A or PDF/UA compiler mode |
 | Fonts | Bundled Source Serif 4, Source Sans 3 and Source Code Pro; no system-font or CDN dependency |
 | Attachments | PNG, JPEG, GIF, WebP and safe SVG; 25 MB per file, 50 MB total |
 | External images | Not fetched; exported as a readable fallback with a report note |
@@ -68,9 +69,10 @@ Compilation, the template and fonts are fully local. Network requests during PDF
 limited to the active `*.atlassian.net` tenant and authenticated attachment redirects to
 `api.media.atlassian.com`.
 
-The generated PDF is tagged by default, but tagged output is not the same as certified
-PDF/UA. The pinned browser compiler does not expose PDF/UA-1 profile selection, so atlcli does
-not make that claim.
+The generated PDF is tagged by default, but tagged output is not the same as
+certified PDF/UA. The CLI's explicit `--pdf-standard` policy selects the pinned
+compiler's standard mode and verifies the expected identifier in the resulting
+bytes. That evidence is still not an external certification verdict.
 
 ## Prerequisites
 
@@ -200,12 +202,25 @@ Pass one or the other, never both.
 | `--no-cache` | Do not persist downloaded assets across invocations |
 | `--exported-at <ISO8601>` | Fix the export timestamp (reproducible builds; also honors `SOURCE_DATE_EPOCH`) |
 | `--code-theme <id>` | Shiki theme for fenced code blocks; defaults to `github-light` |
+| `--pdf-standard <name>` | Strict compiler output: `a-1b`, `a-1a`, `a-2b`, `a-2u`, `a-2a`, `a-3b`, `a-3u`, `a-3a`, `a-4`, `a-4f`, `a-4e`, or `ua-1`; no downgrade fallback |
 | `--pdf-images <profile>` | Image quality profile: `original` (default), `standard` (180 PPI), or `print` (300 PPI) |
 | `--pdf-images-ppi <n>` | Exact target density in `[72, 1200]`; requires `--pdf-images standard` or `print` |
 | `--template, -t <path>` | Direct path to a verified `.wiki-pdf-template` pack; omission keeps Editorial Indigo |
 | `--report json` | Synonym for `--json` |
 
 All [scope and label options](#scope-options) work with `--format pdf` too.
+
+The standard request is persisted in the durable export job and appears in the
+JSON report as `outputPolicy`. A successful report also contains
+`outputStandardEvidence`, derived from the emitted PDF header, XMP identifier,
+document identifier, tags, language, and embedded-font inventory. Raw PDF
+versions such as `1.7` or `2.0` are deliberately not accepted as product
+options.
+
+```bash
+atlcli wiki export 12345678 --format pdf --pdf-standard ua-1 \
+  --output ./accessible.pdf --report json
+```
 
 ### Image quality profiles
 
@@ -539,6 +554,25 @@ to source code blocks and the report says so in a note.
 
 Diagram theming follows the export's brand colors when configured; the default is a neutral
 light theme matching the code-block styling. Theme colors should be hex values (`#RRGGBB`).
+
+### Confluence Chart macros
+
+The native Confluence Chart macro is distinct from a Mermaid diagram. atlcli
+reads the macro's authored table and parameters into one source-neutral chart
+model, then uses the same deterministic TanStack scene for DOCX, PDF, and Astro
+publishing.
+
+All twelve normalized shapes are supported: **Pie, Bar, Line, Area, XY Area,
+XY Bar, XY Line, XY Step, XY Step Area, Scatter, Time Series, and Gantt**. DOCX
+embeds vector SVG with a high-resolution PNG compatibility fallback; PDF embeds
+the SVG as vector content. Both retain an exact-value table below the visual so
+the data remains accessible and copyable.
+
+Malformed data, locale/date parsing, skipped rows, unsupported kinds, and
+approximated options are recorded as chart diagnostics. The optional generated
+chart attachment is not the source of truth and a missing attachment does not
+erase valid table data. See [Confluence charts across Astro, DOCX, and PDF](/publishing/charts/)
+for the complete shape matrix, options, limits, and troubleshooting.
 
 ## Tree and space export
 

@@ -1,0 +1,36 @@
+---
+import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
+import {
+  EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1,
+  EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+} from "@atlcli/export-blocks-astro/fixtures";
+import "@atlcli/export-blocks-astro/styles.css";
+import { PLAIN_PUBLISHING_EXPERIENCE_FIXTURE_V1 } from "../experience";
+---
+
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <title>A deliberately long plain publishing experience title to prove that tokenized ExportBlock content remains usable at narrow widths</title>
+    <style is:global>
+      :root {
+        --atlcli-content-foreground: #17324d;
+        --atlcli-content-muted: #31566f;
+        --atlcli-content-border: #3975a8;
+        --atlcli-content-surface: #e9f6ff;
+        --atlcli-content-code-background: #dff2ff;
+      }
+      body { margin: 0; padding: 1rem; }
+      main { margin-inline: auto; max-inline-size: 72rem; }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+    </style>
+  </head>
+  <body>
+    <main data-atlcli-experience={PLAIN_PUBLISHING_EXPERIENCE_FIXTURE_V1.id} data-atlcli-slot="main-content">
+      <ExportDocument
+        blocks={EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1}
+        context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, locale: "ar", direction: "rtl" }}
+      />
+    </main>
+  </body>
+</html>

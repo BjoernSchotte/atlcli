@@ -72,7 +72,7 @@ describe("validateManifest gate", () => {
           kind: "typst",
           api: "wiki.pdf-template/v1",
           entry: "template.typ",
-          compilerRange: ">=0.15 <0.16",
+          compilerRange: ">=0.14 <0.15",
         },
       },
       "compiler-range-mismatch"
@@ -86,10 +86,10 @@ describe("validateManifest gate", () => {
         kind: "typst",
         api: "wiki.pdf-template/v1",
         entry: "template.typ",
-        compilerRange: ">=0.14 <0.15",
+        compilerRange: ">=0.15.1 <0.16",
       },
     });
-    expect(m.engine.compilerRange).toBe(">=0.14 <0.15");
+    expect(m.engine.compilerRange).toBe(">=0.15.1 <0.16");
   });
 
   it("does not compiler-gate docx manifests", () => {
@@ -157,6 +157,8 @@ describe("validateManifest gate", () => {
             width: "210mm",
             height: "297mm",
             rotation: -2,
+            crop: { left: 0.1, top: 0, right: 0.1, bottom: 0 },
+            clip: { kind: "rounded-rect", radius: "4mm" },
           },
           decorative: true,
         },
@@ -168,6 +170,11 @@ describe("validateManifest gate", () => {
       "future.engine.writer"
     );
     expect(manifest.decorations?.[0]?.scope).toBe("odd");
+    const decoration = manifest.decorations?.[0];
+    expect(decoration?.kind === "image" && decoration.placement.clip).toEqual({
+      kind: "rounded-rect",
+      radius: "4mm",
+    });
   });
 
   it("rejects asset shape, path, reference, alt, and placement-bound errors", () => {
@@ -248,6 +255,39 @@ describe("validateManifest gate", () => {
       },
       "shape-error"
     );
+    expectReason(
+      {
+        ...base(),
+        assetDescriptors: { hero: descriptor },
+        assets: {
+          logo: {
+            descriptor: "hero",
+            writer: "writer.image",
+            decorative: true,
+          },
+        },
+        decorations: [
+          {
+            kind: "image",
+            id: "decoration",
+            writer: "writer.image",
+            scope: "all",
+            layer: "page-background",
+            asset: "logo",
+            placement: {
+              relativeTo: "page",
+              x: "0mm",
+              y: "0mm",
+              width: "20mm",
+              height: "20mm",
+              clip: { kind: "circle", radius: "4mm" },
+            },
+            decorative: true,
+          },
+        ],
+      },
+      "shape-error",
+    );
   });
 });
 
@@ -268,6 +308,8 @@ describe("satisfiesRange", () => {
   });
 
   it("gates against the pinned version by default", () => {
-    expect(PINNED_TYPST_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(PINNED_TYPST_VERSION).toBe("0.15.1");
+    expect(satisfiesRange(PINNED_TYPST_VERSION, ">=0.15.1 <0.16")).toBe(true);
+    expect(satisfiesRange(PINNED_TYPST_VERSION, ">=0.14 <0.15")).toBe(false);
   });
 });

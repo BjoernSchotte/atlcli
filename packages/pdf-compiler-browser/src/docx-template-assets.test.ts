@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
+import type { TemplateManifest } from "@atlcli/template-pack";
 import {
   PDF_CANONICAL_SOURCE_API_V1,
   PDF_CANONICAL_SOURCE_REVISION,
@@ -168,7 +169,7 @@ async function fixturePack(): Promise<Uint8Array> {
       kind: "typst",
       api: "wiki.pdf-template/v1",
       entry: "atlcli.typ",
-      compilerRange: ">=0.14 <0.15",
+      compilerRange: ">=0.15.1 <0.16",
     },
     requiredFonts: PDF_RUNTIME_ASSETS.fonts,
     design,
@@ -673,7 +674,7 @@ describe("DOCX template visual assets through real Typst-WASM", () => {
     };
     const resolveModel = async () => ({
       baseline: BUILTIN_PDF_TEMPLATE_MANIFEST,
-      current: pack.manifest,
+      current: pack.manifest as TemplateManifest,
       currentPack: pack,
     });
     const browserAdapter = new BrowserTemplatePreviewCompiler({
@@ -752,7 +753,7 @@ describe("DOCX template visual assets through real Typst-WASM", () => {
     };
     const resolveModel = async () => ({
       baseline: BUILTIN_PDF_TEMPLATE_MANIFEST,
-      current: pack.manifest,
+      current: pack.manifest as TemplateManifest,
       currentPack: pack,
     });
     const nodeResult = await new NodeTemplatePreviewCompiler({

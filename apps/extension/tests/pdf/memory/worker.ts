@@ -13,6 +13,7 @@ import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
 import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
 import emojiRegularUrl from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf?url";
+import arabicRegularUrl from "@atlcli/pdf/fonts/NotoSansArabic-Regular.ttf?url";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import {
   claimPdfJob,
@@ -44,6 +45,7 @@ const fontUrls = [
   serifBoldUrl,
   codeRegularUrl,
   codeBoldUrl,
+  arabicRegularUrl,
   symbolsRegularUrl,
   emojiRegularUrl,
 ] as const;

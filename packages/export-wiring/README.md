@@ -1,7 +1,7 @@
 # @atlcli/export-wiring
 
 Host wiring for Confluence/Jira exports: the adapters that turn a REST **client**
-into the inputs `@atlcli/docx` and `@atlcli/pdf` accept.
+into normalized renderer and publishing inputs.
 
 Isomorphic — it builds for `--target=browser` with zero `node:`/`bun:`
 specifiers (enforced by `scripts/check-browser-build.ts`), so the CLI, the
@@ -14,8 +14,10 @@ each.
 |---|---|
 | Macro ports | `confluenceContentPortFromClient`, `exportViewPortFromClient`, `attachmentLookupFromClient`, `jiraIssuePortFromClient`, `classifyClientError` |
 | Asset security boundary | `createExternalAssetPolicy`, `createExternalAssetFetcher`, `defaultExternalAssetPolicy`, `defaultExternalAssetFetcher`, `isPrivateHost`, `parseIpv6` |
+| Publication assets | `fetchAndMaterializePublicationAssetV1` and `deduplicateMaterializedPublicationAssetsV1`: policy-routed fetch, magic/MIME validation, SVG safety, dimensions/budgets, and content-addressed output metadata |
 | Sink-side trust routing | `trustRoutingAssetFetcher`, `trustRoutingPdfAssetResolver` |
 | Resolution options | `buildMacroResolutionOptions`, `createMacroRegistry` |
+| Confluence source graph | `resolveConfluencePageGraphV1` exposes ordered normalized page/folder nodes before document composition; `resolveConfluenceSourceV1` remains the DOCX/PDF compatibility wrapper |
 | Background export orchestration | `@atlcli/export-wiring/jobs`: ordered checkpoint pipeline, bounded asset streaming, and separate host-neutral TypeScript DOCX/PDF job executors |
 | Parity contract | `@atlcli/export-wiring/fixtures` |
 
@@ -65,6 +67,37 @@ const macros = buildMacroResolutionOptions({
 // that reach the ENGINE's asset seam, not the macro renderer's fetcher.
 const assets = trustRoutingPdfAssetResolver(hostResolver, externalAssets);
 ```
+
+## Page graph before document composition
+
+`resolveConfluencePageGraphV1(sourceRequest, options)` performs the same
+version-pinned discovery and body fetch as the existing document resolver, but
+returns the ordered `ExportNode[]` graph before `composeChapters()`. Page and
+folder hierarchy, positions, normalized per-page blocks/notes, source metadata,
+completeness, and aggregate source diagnostics remain available to publishing
+consumers. Raw ADF and Storage source never crosses this boundary.
+
+Existing DOCX/PDF hosts keep calling `resolveConfluenceSourceV1()`. It composes
+the graph from that same resolution pass, preserving the established document
+blocks, notes, page summaries, and chapter-anchor map without a second traversal
+or body read.
+
+## Static-publication assets
+
+`fetchAndMaterializePublicationAssetV1()` is the hand-off from source access to
+a static publication bundle. Attachment bytes come from an injected,
+host-authorized port. External bytes can only come from the existing
+policy-wrapped external fetcher, which omits credentials and checks every
+redirect. The function accepts PNG, JPEG, GIF, and self-contained SVG only;
+it rejects MIME/magic mismatches, unsafe SVG content, excessive SVG nodes, and
+pixel/byte budget violations. Its result contains digest-addressed local asset
+metadata and bytes, never a Confluence page ID or source URL.
+
+`deduplicateMaterializedPublicationAssetsV1()` coalesces multiple already
+validated materializations with identical bytes into one deterministic physical
+bundle path. Each logical asset ID retains its own safe `downloadName`, so later
+static download links can use the authored filename without duplicating bytes
+or trusting a source path.
 
 ## The rule that is easy to forget
 

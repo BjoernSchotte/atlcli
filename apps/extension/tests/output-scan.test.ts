@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   PDFJS_ARTIFACT_PATTERNS,
+  TYPST_COMPILER_WASM_SHA256,
   scanText,
   validateExtensionArtifactInventory,
 } from "../scripts/check-output-build.js";
@@ -176,7 +177,7 @@ describe("PDF artifact inventory", () => {
     { path: "assets/pdf-compiler-abc.js", size: 30_000 },
     { path: "assets/pdf.min-abc.mjs", size: 452_000, sha256: "4ba2f15599b03fde8755ad91349920c21dadd3e8fd6b6460a7663d46d4cf21b5" },
     { path: "assets/pdf.worker.min-abc.mjs", size: 1_260_000, sha256: "2ab9e09667296dab1a618868b3ce6e6c23d5b8f48120ae7c5b34e7e335ed01fa" },
-    { path: "assets/typst_ts_web_compiler_bg-abc.wasm", size: 28_000_000, sha256: "1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd" },
+    { path: "assets/typst_ts_web_compiler_bg-abc.wasm", size: 30_000_000, sha256: TYPST_COMPILER_WASM_SHA256 },
     { path: "assets/JetBrainsMono-Regular-abc.ttf", size: 273_900, sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f" },
     { path: "assets/SourceSans3-Regular-abc.ttf", size: 100_000, sha256: "4644c81b86ec9caaa76b634889968ed3c4f4f52f054855933acc7c2b21e53b0f" },
     { path: "assets/SourceSans3-It-abc.ttf", size: 100_000, sha256: "192afd78f0f54a3c69eaf02d43f4d9a821e9d6110e41d3d25d61a7385cd580e4" },
@@ -188,6 +189,7 @@ describe("PDF artifact inventory", () => {
     { path: "assets/SourceSerif4-Bold-abc.ttf", size: 100_000, sha256: "7cf4f4e1ad74f45058d5bc61716b82560442fbdcd9d3654d2dea96bf6c683d86" },
     { path: "assets/SourceCodePro-Regular-abc.ttf", size: 100_000, sha256: "74bd80d3e42a08517cd7e1108ba3d86f2da29ac0f3065be95e0357956ab9db37" },
     { path: "assets/SourceCodePro-Bold-abc.ttf", size: 100_000, sha256: "b2095e0d657e6d28dc32444a9dacabab0c9241d0bf39d96371756cc9bdbc3a5f" },
+    { path: "assets/NotoSansArabic-Regular-abc.ttf", size: 100_000, sha256: "ceea25b464a656dc3b26849bab9356740401af62aedf1bfa8b7f0d9b75925b1b" },
     { path: "assets/NotoSansSymbols2-Regular-abc.ttf", size: 100_000, sha256: "630846d528dbe4c4981370a4d0a9475a1fd1491a129bb411f8e157cdb5de13c6" },
     { path: "assets/NotoEmoji-wght-abc.ttf", size: 1_900_000, sha256: "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551" },
     { path: "assets/LICENSE-Source-Sans-3-abc.txt", size: 4_000 },

@@ -418,6 +418,9 @@ function createDefaultExtensionPdfJobInputResolver(
               ),
             },
             ...(selectedProfile ? { profile: selectedProfile } : {}),
+            ...(sourceRequest.options.outputPolicy !== undefined
+              ? { outputPolicy: sourceRequest.options.outputPolicy }
+              : {}),
             settings,
             filename: sourceRequest.requestedFilename ??
               sanitizeDownloadName(
@@ -566,6 +569,9 @@ export function createExtensionPdfJobInputResolver(
             : {}),
         },
         ...(profile ? { profile } : {}),
+        ...(request.options.outputPolicy !== undefined
+          ? { outputPolicy: request.options.outputPolicy }
+          : {}),
         settings,
         filename: request.requestedFilename
           ?? sanitizeDownloadName(request.displayName || "export", "pdf"),

@@ -14,6 +14,15 @@ async function pairedFeatureZooFixture(): Promise<{ adf: string; storage: string
   return { adf, storage };
 }
 
+async function pairedWebMacroFixture(): Promise<{ adf: string; storage: string }> {
+  const root = new URL("../test-fixtures/adf-pairs/", import.meta.url);
+  const [adf, storage] = await Promise.all([
+    Bun.file(new URL("web-macro.adf.json", root)).text(),
+    Bun.file(new URL("web-macro.storage.xml", root)).text(),
+  ]);
+  return { adf, storage };
+}
+
 describe("pageBodyToBlocks", () => {
   it("dispatches the paired semantic feature zoo to structurally identical blocks", async () => {
     const fixture = await pairedFeatureZooFixture();
@@ -186,6 +195,46 @@ describe("pageBodyToBlocks", () => {
       "expand-static",
       "expand-static",
     ]);
+  });
+
+  it("gives Cloud ADF and Data Center Storage the same renderer-visible web macro input", async () => {
+    const fixture = await pairedWebMacroFixture();
+    const pageContext = { id: "web-pair-7", version: 7, spaceKey: "DOCSY" };
+    const cloud = pageBodyToBlocks({
+      primary: { representation: "atlas_doc_format", value: fixture.adf },
+      storageSidecar: fixture.storage,
+    }, { exporter: "web", pageContext });
+    const dataCenter = pageBodyToBlocks({
+      primary: { representation: "storage", value: fixture.storage },
+    }, { exporter: "web", pageContext });
+
+    const rendererVisible = (blocks: readonly typeof cloud.blocks[number][]) => blocks.map((block) => {
+      if (block.type !== "unknown") return block;
+      return {
+        type: block.type,
+        macroName: block.macroName,
+        params: block.params,
+        body: block.body,
+        sourcePage: block.sourcePage,
+      };
+    });
+
+    expect(rendererVisible(cloud.blocks)).toEqual(rendererVisible(dataCenter.blocks));
+    expect(rendererVisible(cloud.blocks)).toEqual([
+      { type: "heading", level: 2, content: [{ type: "text", text: "Shared web macro" }] },
+      {
+        type: "unknown",
+        macroName: "release-widget",
+        params: [{ name: "limit", text: "5" }, { name: "view", text: "compact" }],
+        body: [{ type: "paragraph", content: [{ type: "text", text: "Visible static fallback" }] }],
+        sourcePage: { id: "web-pair-7", version: 7, spaceKey: "DOCSY" },
+      },
+      { type: "paragraph", content: [{ type: "text", text: "Web-only content" }] },
+    ]);
+    // Platform-specific macro identities remain decoder-local and are used
+    // only by the live fallback port; a web renderer sees neither identity.
+    expect(JSON.stringify(rendererVisible(cloud.blocks))).not.toContain("cloud-local-id");
+    expect(JSON.stringify(rendererVisible(dataCenter.blocks))).not.toContain("dc-macro-id");
   });
 
   it("preserves direct Storage output and adds no fallback note without an explicit reason", async () => {

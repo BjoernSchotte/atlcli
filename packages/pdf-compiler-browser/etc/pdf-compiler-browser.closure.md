@@ -10,7 +10,7 @@
 
 ### Entry point `.` — stable
 
-- exported symbols (3): BrowserPdfCompiler, BrowserPdfCompilerAssets, PDF_BROWSER_COMPILER_VERSION
-- same-package closure references: 1
-- reaches `@atlcli/pdf` (frozen): PdfCompileResult, PdfSourceBundle
+- exported symbols (4): BrowserPdfCompiler, BrowserPdfCompilerAssets, BrowserPdfCompilerFontSourceV1, PDF_BROWSER_COMPILER_VERSION
+- same-package closure references: 2
+- reaches `@atlcli/pdf` (frozen): PdfCompileContext, PdfCompileResult, PdfSourceBundle
 - reachable-but-unexported gaps: none

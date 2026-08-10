@@ -32,7 +32,7 @@ describe("legacy emoji projection PDF font coverage", () => {
         packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)
       )
     );
-    const wasm = await packageBytes("@myriaddreamin/typst-ts-web-compiler/wasm");
+    const wasm = await packageBytes("@atlcli/pdf-compiler-browser/wasm");
     const compiler = new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
     const rows = Object.values(CONFLUENCE_LEGACY_EMOJI_PROJECTIONS)
       .map(({ canonicalName, text }) => `${canonicalName}: ${text}`)

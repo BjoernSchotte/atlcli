@@ -19,9 +19,18 @@ export interface AppSettings {
   locale: Locale | null;
   /** `null` = open Kiteweave AI, the first-run workspace. */
   lastWorkspace: AppWorkspace | null;
+  /** Hide the two persistent Rovo entry points in the Confluence Cloud UI. */
+  hideRovoEntrypoints: boolean;
 }
 
-export const DEFAULT_SETTINGS: AppSettings = { locale: null, lastWorkspace: null };
+export const DEFAULT_SETTINGS: AppSettings = {
+  locale: null,
+  lastWorkspace: null,
+  hideRovoEntrypoints: false,
+};
+
+/** Shared record key used by every Chrome extension context. */
+export const APP_SETTINGS_STORAGE_KEY = "app-settings-v1";
 
 export interface SettingsStore {
   load(): Promise<AppSettings>;
@@ -37,10 +46,16 @@ export interface SettingsStore {
  */
 export function normalizeSettings(value: unknown): AppSettings {
   if (typeof value !== "object" || value === null) return { ...DEFAULT_SETTINGS };
-  const stored = value as { locale?: unknown; lastWorkspace?: unknown };
+  const candidate = value as {
+    locale?: unknown;
+    lastWorkspace?: unknown;
+    hideRovoEntrypoints?: unknown;
+  };
   return {
-    locale: isLocale(stored.locale) ? stored.locale : null,
-    lastWorkspace: isAppWorkspace(stored.lastWorkspace) ? stored.lastWorkspace : null,
+    locale: isLocale(candidate.locale) ? candidate.locale : null,
+    lastWorkspace: isAppWorkspace(candidate.lastWorkspace) ? candidate.lastWorkspace : null,
+    // Fail open: malformed or legacy records must never hide host UI.
+    hideRovoEntrypoints: candidate.hideRovoEntrypoints === true,
   };
 }
 

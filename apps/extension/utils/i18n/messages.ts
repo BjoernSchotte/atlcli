@@ -96,6 +96,8 @@ const en = {
   "screen.unmet.capability.pdfPreview": "PDF preview is not available in this app yet.",
   "screen.unmet.capability.research": "Read-only research is not available in this app.",
   "screen.unmet.capability.settingsPersistence": "This app cannot store preferences.",
+  "screen.unmet.capability.confluencePageCustomization":
+    "This app cannot customize the surrounding Confluence page.",
   "screen.unavailable.title": "Not available here",
 
   "page.idle": "No Atlassian page detected. Open a Confluence page to export it.",
@@ -755,6 +757,9 @@ const en = {
   "settings.language.system": "Follow browser language",
   "settings.language.en": "English",
   "settings.language.de": "Deutsch",
+  "settings.rovo.label": "Hide Rovo controls on Confluence pages",
+  "settings.rovo.help":
+    "Hides “Ask Rovo” in the top navigation and the Rovo button in the bottom-right corner. Rovo itself remains enabled.",
   "settings.saveFailed": "Preferences could not be saved.",
   "settings.ai.title": "AI",
   "settings.ai.provider.anthropic": "Anthropic (bring your own key)",
@@ -850,6 +855,8 @@ const de: MessageCatalog = {
   "screen.unmet.capability.pdfPreview": "Die PDF-Vorschau gibt es in dieser App noch nicht.",
   "screen.unmet.capability.research": "Die Read-only-Recherche ist in dieser App nicht verfügbar.",
   "screen.unmet.capability.settingsPersistence": "Diese App kann keine Einstellungen speichern.",
+  "screen.unmet.capability.confluencePageCustomization":
+    "Diese App kann die umgebende Confluence-Seite nicht anpassen.",
   "screen.unavailable.title": "Hier nicht verfügbar",
 
   "page.idle": "Keine Atlassian-Seite erkannt. Öffne eine Confluence-Seite, um sie zu exportieren.",
@@ -1502,6 +1509,9 @@ const de: MessageCatalog = {
   "settings.language.system": "Browsersprache folgen",
   "settings.language.en": "English",
   "settings.language.de": "Deutsch",
+  "settings.rovo.label": "Rovo-Bedienelemente auf Confluence-Seiten ausblenden",
+  "settings.rovo.help":
+    "Blendet „Rovo fragen“ oben und die Rovo-Schaltfläche unten rechts aus. Rovo selbst bleibt aktiviert.",
   "settings.saveFailed": "Die Einstellungen konnten nicht gespeichert werden.",
   "settings.ai.title": "KI",
   "settings.ai.provider.anthropic": "Anthropic (eigener Key)",

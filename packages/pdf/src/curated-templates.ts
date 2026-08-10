@@ -228,7 +228,7 @@ const RAW_MANUSCRIPT_MANIFEST = {
     kind: "typst",
     api: "wiki.pdf-template/v1",
     entry: "atlcli.typ",
-    compilerRange: ">=0.14 <0.15",
+    compilerRange: ">=0.15.1 <0.16",
   },
   requiredFonts: [
     { family: "Source Serif 4", style: "normal", weight: 600 },

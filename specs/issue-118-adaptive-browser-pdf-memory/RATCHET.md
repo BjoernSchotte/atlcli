@@ -245,3 +245,36 @@ file bytes), now pinned by a behavior test in
 - `wiki docs push` only uploads images referenced as
   `![alt](./<page>.attachments/<file>)`; other relative paths are left as-is
   and the PDF export then 401s trying `<base>/wiki` + `<relative-path>`.
+
+## Typst 0.15.1 production forward-port
+
+The production candidate is now the reproducible fork release
+`web-compiler-v0.8.0-rc3.typst0151.1`, built from typst.ts commit
+`2ff4a660…` and the patch-equivalent Typst core forward-port `301531fc…`.
+The consumed glue and WASM hashes are `54292657…` and `39d2ce3c…`; the old
+0.14.2 runtime and RC alias are not shipped as parallel candidates.
+
+| Corpus | 0.14.2 peak RSS / WASM / compile | 0.15.1 peak RSS / WASM / compile | Verdict |
+|---|---|---|---|
+| image-heavy | 1922.58 / 1326.38 MiB / 2982 ms | 1929.56 / 1326.00 MiB / 3236 ms | pass: +0.36% / -0.03% / +8.52% |
+| text-heavy, same-session 7-run pair | 961.25 / 391.75 MiB / 2824 ms | 923.30 / 336.88 MiB / 1729 ms | pass: -3.95% / -14.01% / -38.77% |
+| mixed, same-session 7-run pair | 905.39 / 224.81 MiB / 1103 ms | 917.98 / 220.56 MiB / 1089 ms | pass: +1.39% / -1.89% / -1.27% |
+
+The local host's text/mixed `/usr/bin/time` RSS and compile spreads exceeded
+the 1.5% controlled-runner target for both baseline and candidate. Those
+absolute values are therefore retained as noisy. The paired comparisons still
+exclude a regression: the candidate remains inside the 5% RSS/WASM and 10%
+compile ratchets in every corpus, and text-heavy WASM high-water is exactly
+stable across runs and materially lower.
+
+Source, strict-CSP, browser, packed-consumer, MV3, semantic parity, migration,
+and LIVE DOCSY gates passed. Full redacted provenance and per-gate results are
+recorded in `specs/typst-0151-runtime-forward-port/`.
+
+typst.ts itself depends on Myriad-specific Typst APIs; compiling directly
+against official `typst/typst` 0.15.1 fails at the first missing API,
+`Frame::content_hint`. The temporary core pin therefore targets
+`BjoernSchotte/typst@301531fc…`. Its exit sequence is: contribute the eight
+core patches to `Myriad-Dreamin/typst`, repoint the prepared two-commit
+typst.ts integration branch to that merged commit/tag, and only then submit a
+typst.ts PR when explicitly authorized. No upstream PR was created here.

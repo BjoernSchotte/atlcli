@@ -23,11 +23,11 @@ guarantee](#what-this-export-does-not-guarantee).
 ## The short version
 
 > **Not certified PDF/UA-1.**
-> The exporter produces a **Tagged PDF** with a document language, a bookmark
-> outline, fully embedded fonts, and alt-text pass-through. That is a solid
-> starting point, and it is **not** a claim of PDF/UA-1 conformance. No
-> certified conformance testing has been performed, and no conformance claim is
-> embedded in the output.
+> The default exporter produces a **Tagged PDF** with a document language, a
+> bookmark outline, fully embedded fonts, and alt-text pass-through. An explicit
+> `--pdf-standard ua-1` request additionally selects Typst's PDF/UA-1 output and
+> writes the standard identifier. Neither path is a certification claim until
+> the external validator acceptance lane has passed.
 
 If you need a legally defensible PDF/UA-1 conformance statement, treat an
 atlcli export as an input to your accessibility remediation process, not as its
@@ -70,17 +70,19 @@ accessible, which is why the [`image-missing-alt`](#note-codes) audit exists.
 These are unverified or known-absent, and are listed so nobody has to discover
 them the hard way:
 
-- **No PDF/UA-1 certification.** No `pdfuaid:part` identifier is written into
-  the XMP metadata, and no certified validation has been run. The export makes
-  no conformance claim, in the file or anywhere else.
-- **The `profile` field is a label, not a mode.** The export API accepts
+- **No PDF/UA-1 certification yet.** With no output policy, no
+  `pdfuaid:part` identifier is written. `--pdf-standard ua-1` writes the
+  identifier and the report includes byte-inspected evidence, but the external
+  veraPDF acceptance lane remains the certification boundary.
+- **The legacy `profile` field is a label, not a mode.** The export API accepts
   `profile: "pdf-ua-1"`, and the report echoes it — but it does **not** change
   the produced bytes and does **not** add a conformance identifier. An export
   requested with `pdf-ua-1` is byte-identical to one requested with `tagged`.
   It records what a host *asked for*, never what was *achieved*. (This is the
   PDF `profile` field in the export API — unrelated to the CLI's `--profile`
   flag, which selects an authentication profile. The CLI does not expose the
-  PDF profile at all; every CLI export is `tagged`.)
+  PDF profile at all. The separate `--pdf-standard` flag is the strict compiler
+  mode and is never inferred from this legacy label.)
 - **No veraPDF verdict yet.** See [Known veraPDF rule gaps](#known-verapdf-rule-gaps).
 - **No semantic review of tag order.** Tags reflect the exported block
   structure. Whether that reading order matches the *intended* reading order of

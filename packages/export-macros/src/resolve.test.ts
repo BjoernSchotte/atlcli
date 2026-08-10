@@ -138,6 +138,33 @@ describe("resolveMacroBlocks — fallback chain", () => {
     }]);
   });
 
+  test("keeps raw export_view HTML inside the converter boundary and out of trace/output", async () => {
+    const raw = '<section data-private="never-publish"><script>steal()</script><p>Safe projection</p></section>';
+    const seenRaw: string[] = [];
+    const traces: unknown[] = [];
+    const registry = createRegistry([exportViewFallbackRenderer({
+      htmlToExportBlocks(html) {
+        seenRaw.push(html);
+        return {
+          blocks: [{ type: "paragraph", content: [{ type: "text", text: "Safe projection" }] }],
+          notes: [],
+        };
+      },
+    })]);
+    const out = await resolveMacroBlocks({
+      blocks: [unknownBlock("third-party-widget", { macroId: "widget-1" })],
+      notes: [walkerNote("third-party-widget")],
+    }, registry, ctx({
+      exportView: { async renderMacroHtml() { return raw; } },
+    }), { onResolvedMacro: (trace) => traces.push(trace) });
+
+    expect(seenRaw).toEqual([raw]);
+    expect(JSON.stringify(out)).not.toContain("never-publish");
+    expect(JSON.stringify(out)).not.toContain("steal");
+    expect(JSON.stringify(traces)).not.toContain("never-publish");
+    expect(JSON.stringify(traces)).not.toContain("steal");
+  });
+
   test("keeps a Storage macro id authoritative when both identity forms exist", async () => {
     const ids: string[] = [];
     const renderer = exportViewFallbackRenderer({

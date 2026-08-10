@@ -1,0 +1,10 @@
+<h2>Shared web macro</h2>
+<ac:structured-macro ac:name="release-widget" ac:macro-id="dc-macro-id">
+  <ac:parameter ac:name="limit">5</ac:parameter>
+  <ac:parameter ac:name="view">compact</ac:parameter>
+  <ac:rich-text-body><p>Visible static fallback</p></ac:rich-text-body>
+</ac:structured-macro>
+<ac:structured-macro ac:name="scroll-only">
+  <ac:parameter ac:name="exporter">web</ac:parameter>
+  <ac:rich-text-body><p>Web-only content</p></ac:rich-text-body>
+</ac:structured-macro>

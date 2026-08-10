@@ -12,6 +12,7 @@
   "scripts": {
     "start": "bun --conditions=development run --cwd apps/cli src/index.ts",
     "fonts:ensure": "bun packages/pdf/scripts/ensure-fonts.ts",
+    "fonts:coverage": "bun packages/pdf/scripts/generate-font-coverage.ts",
     "vendor:typst": "bun packages/pdf-compiler-browser/scripts/vendor-typst.ts",
     "clean:browser-artifacts": "bun scripts/clean-browser-artifacts.ts all",
     "clean:extension-output": "bun scripts/clean-browser-artifacts.ts extension",
@@ -54,6 +55,7 @@
     "bench:export-baseline-chrome": "bun --conditions=development scripts/bench/run-chrome-export-baseline.ts",
     "bench:export-jobs-node": "bun --conditions=development scripts/bench/run-export-job-baseline.ts",
     "bench:export-jobs-chrome": "bun --conditions=development scripts/bench/run-chrome-export-job-baseline.ts",
+    "proof:pdf-standards": "bun --conditions=development scripts/verapdf/proof-pdf-standards.ts",
     "test:browser-export-harness": "bun run --cwd apps/browser-export-harness test:e2e",
     "check:extension-output": "bun run --cwd apps/extension check:output",
     "obfuscate": "terser dist/index.js --compress --mangle --output dist/index.js",
@@ -77,7 +79,7 @@
     "@atlcli/export-wiring": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
-    "astro": "^7.0.7",
+    "astro": "7.1.6",
     "sharp": "^0.34.2"
   },
   "devDependencies": {
@@ -91,11 +93,9 @@
     "github-slugger": "^2.0.0",
     "terser": "^5.44.1",
     "turbo": "^2.7.4",
-    "typescript": "^5.9.3",
-    "typst-ts-web-compiler-rc8": "npm:@myriaddreamin/typst-ts-web-compiler@0.8.0-rc3"
+    "typescript": "^5.9.3"
   },
   "patchedDependencies": {
-    "@myriaddreamin/typst-ts-web-compiler@0.7.0": "patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch",
     "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch"
   },
   "overrides": {

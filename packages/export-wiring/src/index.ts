@@ -65,6 +65,23 @@ export type {
   ExternalAssetFetcherDeps,
 } from "./asset-policy.js";
 
+// --- Static-publication asset materialization ---
+export {
+  deduplicateMaterializedPublicationAssetsV1,
+  fetchAndMaterializePublicationAssetV1,
+  PublicationAssetDeduplicationErrorV1,
+  PublicationAssetMaterializationErrorV1,
+} from "./publication-assets.js";
+export type {
+  PublicationAssetDeduplicationErrorCodeV1,
+  MaterializedPublicationAssetV1,
+  PublicationAssetMaterializationDepsV1,
+  PublicationAssetMaterializationErrorCodeV1,
+  PublicationAssetRequestV1,
+  PublicationAssetSourceV1,
+  PublicationAttachmentAssetPortV1,
+} from "./publication-assets.js";
+
 // --- Ports over the real clients ---
 export {
   attachmentLookupFromClient,
@@ -88,3 +105,4 @@ export * from "./jobs/checkpointed-source-pipeline.js";
 export * from "./jobs/confluence-job-resolve-input.js";
 export * from "./jobs/confluence-source-resolver.js";
 export * from "./jobs/streamed-asset.js";
+export * from "./jobs/web-macro-resolution.js";

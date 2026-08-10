@@ -101,6 +101,18 @@ export type PdfTemplateReferenceV1 =
   | PdfBuiltinTemplateReferenceV1
   | PdfTemplatePackReferenceV1;
 
+export type PdfOutputStandardV1 =
+  | "a-1b" | "a-1a"
+  | "a-2b" | "a-2u" | "a-2a"
+  | "a-3b" | "a-3u" | "a-3a"
+  | "a-4" | "a-4f" | "a-4e"
+  | "ua-1";
+
+export interface PdfOutputPolicyV1 {
+  schema: "atlcli.pdf-output-policy/1";
+  standards: readonly [PdfOutputStandardV1, ...PdfOutputStandardV1[]];
+}
+
 /** Version-1 Typst PDF export request. */
 export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
   format: "pdf";
@@ -126,6 +138,8 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
     imageProfile?: "original" | "standard" | "print";
     /** Advanced exact-PPI override in [72, 1200]; invalid with `original`. */
     imagePpi?: number;
+    /** Strict, replay-pinned PDF/A or PDF/UA request. */
+    outputPolicy?: PdfOutputPolicyV1;
   };
 }
 

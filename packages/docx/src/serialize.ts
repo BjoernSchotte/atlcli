@@ -25,6 +25,7 @@ import type {
   TableCell,
   TablePresentation,
   TableRow,
+  ChartModelV1,
 } from "@atlcli/confluence";
 import {
   computeHeadingOffset,
@@ -44,6 +45,10 @@ import {
   DEFAULT_CODE_THEME,
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
+import {
+  TANSTACK_CHART_SIZE_V1,
+  renderTanStackChartSvgV1,
+} from "@atlcli/export-charts-tanstack";
 import {
   highlightCodeWithRuntime,
   type CodeHighlightRuntime,
@@ -117,6 +122,13 @@ export type ImageEmbedOutcome =
  */
 export interface ImageEmbedSeam {
   embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+  /** Embed a renderer-generated chart SVG plus its mandatory raster fallback. */
+  embedGeneratedSvg?(svg: string, options: {
+    name: string;
+    alt: string;
+    widthPx: number;
+    heightPx: number;
+  }): Promise<ImageEmbedOutcome>;
   /** Embed a correlated image as a drawing run inside its existing paragraph. */
   embedInline?(node: InlineImageNode): Promise<ImageEmbedOutcome>;
   /**
@@ -734,6 +746,9 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
           walkCaption(block.caption);
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
+        case "chart":
+          walkCaption(block.caption);
+          break;
         case "mediaFallback":
           walkCaption(block.caption);
           break;
@@ -1020,6 +1035,50 @@ async function serializeBlock(
       return block.caption ? await captionXml(block.caption, ctx, notes) + tableXml : tableXml;
     }
 
+    case "chart": {
+      // Word's native chart DrawingML is template-owned. Embed the shared
+      // deterministic SVG projection through the existing svgBlip + PNG
+      // fallback seam, then retain the table as the accessible data surface.
+      const visual = ctx.images?.embedGeneratedSvg
+        ? await ctx.images.embedGeneratedSvg(renderTanStackChartSvgV1(block.chart), {
+            name: block.chart.title ?? "Chart",
+            alt: block.chart.title ?? "Chart",
+            widthPx: TANSTACK_CHART_SIZE_V1.width,
+            heightPx: TANSTACK_CHART_SIZE_V1.height,
+          })
+        : undefined;
+      let visualXml = "";
+      if (visual?.ok) {
+        if (visual.notes) notes.push(...visual.notes);
+        visualXml = visual.xml;
+      } else if (visual && !visual.ok) {
+        notes.push({
+          level: visual.level ?? "warning",
+          code: visual.code ?? "image-embed-failed",
+          message: `Chart ${block.chart.title ?? "visual"} could not be embedded (${visual.reason}).`,
+        });
+      }
+      const tableXml = await serializeTable(
+        chartTableRows(block.chart),
+        undefined,
+        undefined,
+        { ...ctx, defaultTextColor: undefined },
+        notes,
+      );
+      const title = block.chart.title ? paragraph(run(block.chart.title, { bold: true })) : "";
+      const subtitle = block.chart.subtitle
+        ? paragraph(run(block.chart.subtitle, { italic: true, color: "5E6C84", fontSizeHalfPoints: 20 }))
+        : "";
+      const diagnostics = block.diagnostics?.length
+        ? paragraph(run(
+            `Chart data note: ${block.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}`,
+            { bold: true, color: "B54708", fontSizeHalfPoints: 20 },
+          ))
+        : "";
+      const caption = block.caption ? await captionXml(block.caption, ctx, notes) : "";
+      return title + subtitle + diagnostics + visualXml + tableXml + caption;
+    }
+
     case "blockquote": {
       const inner = await serializeChildren(block.content, ctx, notes, depth + 1);
       // Indent + left accent bar on EVERY paragraph, including styled ones
@@ -1224,6 +1283,55 @@ async function serializeBlock(
       return _exhaustive;
     }
   }
+}
+
+function chartTextCell(value: string | number): TableCell {
+  return {
+    header: false,
+    colspan: 1,
+    rowspan: 1,
+    content: [{ type: "paragraph", content: [{ type: "text", text: String(value) }] }],
+  };
+}
+
+function chartHeaderCell(value: string): TableCell {
+  return { ...chartTextCell(value), header: true };
+}
+
+function chartTableRows(chart: ChartModelV1): TableRow[] {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [
+      { cells: [chartHeaderCell("Label"), ...data.series.map((series) => chartHeaderCell(series.label))] },
+      ...data.labels.map((label, index) => ({
+        cells: [chartHeaderCell(label), ...data.series.map((series) => chartTextCell(series.values[index] ?? ""))],
+      })),
+    ];
+  }
+  if (data.mode === "points") {
+    const keys = [...new Set(data.series.flatMap((series) => series.points.map((point) => `${typeof point.x}:${String(point.x)}`)))];
+    const valueAt = (series: (typeof data.series)[number], key: string): string | number => {
+      const point = series.points.find((candidate) => `${typeof candidate.x}:${String(candidate.x)}` === key);
+      return point?.y ?? "";
+    };
+    return [
+      { cells: [chartHeaderCell("X"), ...data.series.map((series) => chartHeaderCell(series.label))] },
+      ...keys.map((key) => ({
+        cells: [chartHeaderCell(key.slice(key.indexOf(":") + 1)), ...data.series.map((series) => chartTextCell(valueAt(series, key)))],
+      })),
+    ];
+  }
+  return [
+    { cells: [chartHeaderCell("Task"), chartHeaderCell("Start"), chartHeaderCell("End"), chartHeaderCell("Progress")] },
+    ...data.tasks.map((task) => ({
+      cells: [
+        chartHeaderCell(task.label),
+        chartTextCell(task.start),
+        chartTextCell(task.end),
+        chartTextCell(task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`),
+      ],
+    })),
+  ];
 }
 
 function describeImage(block: Extract<ExportBlock, { type: "image" }>): string {

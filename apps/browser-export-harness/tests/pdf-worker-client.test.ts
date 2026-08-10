@@ -71,6 +71,25 @@ describe("HarnessPdfWorkerClient", () => {
     expect(worker.messages[0]!.bundle.assets[0]!.bytes.buffer).not.toBe(originalBuffer);
   });
 
+  it("transports the strict output policy without widening the worker protocol", async () => {
+    const worker = new FakeWorker();
+    const client = new HarnessPdfWorkerClient(() => worker);
+    await client.compile(bundle(), {
+      outputPolicy: {
+        schema: "atlcli.pdf-output-policy/1",
+        standards: ["ua-1"],
+      },
+    });
+    expect(worker.messages[0]).toMatchObject({
+      options: {
+        outputPolicy: {
+          schema: "atlcli.pdf-output-policy/1",
+          standards: ["ua-1"],
+        },
+      },
+    });
+  });
+
   it("terminates a successfully warmed Worker when disposed", async () => {
     const worker = new FakeWorker();
     const client = new HarnessPdfWorkerClient(() => worker);

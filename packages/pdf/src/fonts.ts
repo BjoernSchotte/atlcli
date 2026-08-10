@@ -93,6 +93,15 @@ export interface ParsedFontFace {
   style: "normal" | "italic";
   /** Derived from the subfamily keyword (`Bold` -> 700, …); defaults to 400. */
   weight: number;
+  /** OpenType `fvar` axes inspected from this exact face. */
+  axes?: readonly ParsedFontAxis[];
+}
+
+export interface ParsedFontAxis {
+  tag: string;
+  min: number;
+  default: number;
+  max: number;
 }
 
 // sfnt magic numbers (big-endian uint32 read of the first four bytes).
@@ -121,6 +130,13 @@ function readU32(view: DataView, offset: number): number {
     throw new FontParseError("truncated", `font truncated: cannot read u32 at offset ${offset}`);
   }
   return view.getUint32(offset);
+}
+
+function readFixed16_16(view: DataView, offset: number): number {
+  if (offset < 0 || offset + 4 > view.byteLength) {
+    throw new FontParseError("truncated", `font truncated: cannot read fixed value at offset ${offset}`);
+  }
+  return view.getInt32(offset) / 65_536;
 }
 
 function readTag(bytes: Uint8Array, offset: number): string {
@@ -229,6 +245,40 @@ function deriveWeight(subfamily: string): number {
   return 400;
 }
 
+function parseVariationAxes(
+  bytes: Uint8Array,
+  view: DataView,
+  offset: number,
+  length: number,
+): ParsedFontAxis[] {
+  if (offset < 0 || length < 16 || offset + length > bytes.length) {
+    throw new FontParseError("truncated", "font fvar table is truncated");
+  }
+  const axesOffset = readU16(view, offset + 4);
+  const axisCount = readU16(view, offset + 8);
+  const axisSize = readU16(view, offset + 10);
+  if (axisSize < 20 || offset + axesOffset + axisCount * axisSize > offset + length) {
+    throw new FontParseError("truncated", "font fvar axis records extend past the table");
+  }
+  const axes: ParsedFontAxis[] = [];
+  for (let index = 0; index < axisCount; index++) {
+    const record = offset + axesOffset + index * axisSize;
+    const min = readFixed16_16(view, record + 4);
+    const defaultValue = readFixed16_16(view, record + 8);
+    const max = readFixed16_16(view, record + 12);
+    if (!(min <= defaultValue && defaultValue <= max)) {
+      throw new FontParseError("truncated", "font fvar axis bounds are inconsistent");
+    }
+    axes.push({
+      tag: readTag(bytes, record),
+      min,
+      default: defaultValue,
+      max,
+    });
+  }
+  return axes;
+}
+
 /** Parse one face at `tableDirOffset` (0 for a standalone font, else a TTC member). */
 function parseFace(bytes: Uint8Array, view: DataView, tableDirOffset: number): ParsedFontFace {
   const numTables = readU16(view, tableDirOffset + 4);
@@ -240,19 +290,33 @@ function parseFace(bytes: Uint8Array, view: DataView, tableDirOffset: number): P
   }
   let nameOffset: number | undefined;
   let nameLength: number | undefined;
+  let variationOffset: number | undefined;
+  let variationLength: number | undefined;
   for (let i = 0; i < numTables; i++) {
     const rec = dirStart + i * 16;
-    if (readTag(bytes, rec) === "name") {
+    const tag = readTag(bytes, rec);
+    if (tag === "name") {
       nameOffset = readU32(view, rec + 8);
       nameLength = readU32(view, rec + 12);
-      break;
+    } else if (tag === "fvar") {
+      variationOffset = readU32(view, rec + 8);
+      variationLength = readU32(view, rec + 12);
     }
   }
   if (nameOffset === undefined || nameLength === undefined) {
     throw new FontParseError("missing-name-table", "font has no `name` table");
   }
   const { family, subfamily } = parseNameTable(bytes, view, nameOffset, nameLength);
-  return { family, subfamily, style: deriveStyle(subfamily), weight: deriveWeight(subfamily) };
+  const axes = variationOffset === undefined || variationLength === undefined
+    ? undefined
+    : parseVariationAxes(bytes, view, variationOffset, variationLength);
+  return {
+    family,
+    subfamily,
+    style: deriveStyle(subfamily),
+    weight: deriveWeight(subfamily),
+    ...(axes === undefined || axes.length === 0 ? {} : { axes }),
+  };
 }
 
 /**

@@ -1,0 +1,38 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import type {
+  StarlightPublicationLabelLandingV1,
+  StarlightPublicationSidebarEntryV1,
+} from "../navigation.js";
+
+interface PublicationSeoHeadTagV1 {
+  tag: "title" | "meta" | "link" | "script";
+  attrs?: Readonly<Record<string, string>>;
+  content?: string;
+}
+
+interface Props {
+  /** A preplanned label landing; URL and members are never inferred from HTML. */
+  landing: StarlightPublicationLabelLandingV1;
+  sidebar: readonly StarlightPublicationSidebarEntryV1[];
+  copy?: { heading?: string; pages?: string };
+  seoHead?: readonly PublicationSeoHeadTagV1[];
+}
+
+const { landing, sidebar, copy = {}, seoHead } = Astro.props;
+const title = copy.heading === undefined ? `Topic: ${landing.label}` : `${copy.heading}: ${landing.label}`;
+const pagesLabel = copy.pages ?? "Pages";
+---
+
+<StarlightPage frontmatter={{ title, prev: false, next: false, ...(seoHead === undefined ? {} : { head: seoHead }) }} headings={[]} sidebar={sidebar}>
+  <!-- StarlightPage owns the single canonical Pagefind body region. -->
+  <article data-atlcli-publication-slot="label-landing">
+    <p data-pagefind-filter="label">{landing.label}</p>
+    <section aria-labelledby={`atlcli-label-pages-${landing.slug}`}>
+      <h2 id={`atlcli-label-pages-${landing.slug}`}>{pagesLabel}</h2>
+      <ul>
+        {landing.pages.map((page) => <li><a href={page.href}>{page.title}</a></li>)}
+      </ul>
+    </section>
+  </article>
+</StarlightPage>

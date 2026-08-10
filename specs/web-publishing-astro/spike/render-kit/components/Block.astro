@@ -1,0 +1,164 @@
+---
+import InlineNode from "./InlineNode.astro";
+import { safeHtmlId, safePublicHref } from "../contract.mjs";
+
+const { block, context = { locale: "en" }, overrides = {} } = Astro.props;
+const type = block && typeof block === "object" && typeof block.type === "string"
+  ? block.type
+  : "invalid";
+const inlines = (value) => Array.isArray(value) ? value : [];
+const blocks = (value) => Array.isArray(value) ? value : [];
+const HeadingTag = /^heading$/u.test(type) && Number.isInteger(block.level) && block.level >= 1 && block.level <= 6
+  ? `h${block.level}`
+  : "h2";
+const headingId = safeHtmlId(block?.explicitAnchor);
+const anchorId = safeHtmlId(block?.name);
+const ParagraphOverride = overrides?.paragraph;
+const CodeBlockOverride = overrides?.codeBlock;
+const ListTag = block?.ordered ? "ol" : "ul";
+const sourceName = block?.source?.filename ?? block?.source?.url;
+const resolvedImage = typeof sourceName === "string"
+  ? safePublicHref(context?.resolvedAssets?.[sourceName])
+  : undefined;
+const smartCardHref = safePublicHref(block?.card?.url);
+const supportedBlockTypes = new Set([
+  "heading", "paragraph", "smartCard", "codeBlock", "callout", "expand",
+  "list", "layout", "table", "image", "mediaFallback", "blockquote", "chart",
+  "divider", "pageBreak", "orientation", "anchor", "unknown", "invalid",
+]);
+---
+
+{type === "heading" && (
+  <HeadingTag id={headingId} data-atlcli-block="heading">
+    {inlines(block.content).map((node) => <InlineNode node={node} />)}
+  </HeadingTag>
+)}
+{type === "paragraph" && ParagraphOverride && (
+  <ParagraphOverride block={block} context={context} />
+)}
+{type === "paragraph" && !ParagraphOverride && (
+  <p data-atlcli-block="paragraph">
+    {inlines(block.content).map((node) => <InlineNode node={node} />)}
+  </p>
+)}
+{type === "smartCard" && smartCardHref && (
+  <p data-atlcli-block="smart-card"><a href={smartCardHref}>{String(block.card?.title ?? block.card?.url ?? "Smart link")}</a></p>
+)}
+{type === "smartCard" && !smartCardHref && <p data-atlcli-block="smart-card">Smart link unavailable</p>}
+{type === "codeBlock" && (
+  <figure data-atlcli-block="code">
+    {typeof block.title === "string" && <figcaption>{block.title}</figcaption>}
+    {CodeBlockOverride ? (
+      <CodeBlockOverride block={block} context={context} />
+    ) : (
+      <pre data-language={typeof block.language === "string" ? block.language : undefined}><code>{String(block.code ?? "")}</code></pre>
+    )}
+    {block.caption && <figcaption>{inlines(block.caption.content).map((node) => <InlineNode node={node} />)}</figcaption>}
+  </figure>
+)}
+{type === "callout" && (
+  <aside data-atlcli-block="callout" data-callout-kind={String(block.kind ?? "note")}>
+    {typeof block.title === "string" && <strong>{block.title}</strong>}
+    {blocks(block.content).map((child) => <Astro.self block={child} context={context} overrides={overrides} />)}
+  </aside>
+)}
+{type === "expand" && (
+  <details open data-atlcli-block="expand">
+    <summary>{typeof block.title === "string" ? block.title : "Details"}</summary>
+    {blocks(block.content).map((child) => <Astro.self block={child} context={context} overrides={overrides} />)}
+  </details>
+)}
+{type === "list" && (
+  <ListTag data-atlcli-block="list" start={block.ordered && Number.isInteger(block.start) ? block.start : undefined}>
+    {inlines(block.items).map((item) => (
+      <li data-task-state={typeof item?.state === "string" ? item.state : undefined}>
+        {blocks(item?.content).map((child) => <Astro.self block={child} context={context} overrides={overrides} />)}
+      </li>
+    ))}
+  </ListTag>
+)}
+{type === "layout" && (
+  <section data-atlcli-block="layout">
+    {inlines(block.columns).map((column) => (
+      <div data-layout-width={Number.isFinite(column?.width) ? column.width : undefined}>
+        {blocks(column?.content).map((child) => <Astro.self block={child} context={context} overrides={overrides} />)}
+      </div>
+    ))}
+  </section>
+)}
+{type === "table" && (
+  <figure data-atlcli-block="table">
+    {block.caption && <figcaption>{inlines(block.caption.content).map((node) => <InlineNode node={node} />)}</figcaption>}
+    <table>
+      <tbody>
+        {inlines(block.rows).map((row) => (
+          <tr>
+            {inlines(row?.cells).map((cell) => cell?.header ? (
+              <th colspan={cell.colspan ?? 1} rowspan={cell.rowspan ?? 1}>
+                {blocks(cell.content).map((child) => <Astro.self block={child} context={context} overrides={overrides} />)}
+              </th>
+            ) : (
+              <td colspan={cell?.colspan ?? 1} rowspan={cell?.rowspan ?? 1}>
+                {blocks(cell?.content).map((child) => <Astro.self block={child} context={context} overrides={overrides} />)}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </figure>
+)}
+{type === "chart" && block.chart?.data?.mode === "categories" && (
+  <figure data-atlcli-block="chart" data-atlcli-chart-kind={String(block.chart.kind ?? "bar")}>
+    <h3>{String(block.chart.title ?? `${block.chart.kind ?? "bar"} chart`)}</h3>
+    {block.chart.subtitle && <p>{String(block.chart.subtitle)}</p>}
+    <table aria-label="Normalized chart data">
+      <thead><tr><th scope="col">Category</th>{block.chart.data.series.map((series) => <th scope="col">{String(series.label)}</th>)}</tr></thead>
+      <tbody>{block.chart.data.labels.map((label, index) => <tr><th scope="row">{String(label)}</th>{block.chart.data.series.map((series) => <td>{String(series.values[index] ?? "")}</td>)}</tr>)}</tbody>
+    </table>
+  </figure>
+)}
+{type === "chart" && block.chart?.data?.mode === "points" && (
+  <figure data-atlcli-block="chart" data-atlcli-chart-kind={String(block.chart.kind ?? "line")}>
+    <h3>{String(block.chart.title ?? `${block.chart.kind ?? "line"} chart`)}</h3>
+    <table aria-label="Normalized chart data"><thead><tr><th scope="col">X</th>{block.chart.data.series.map((series) => <th scope="col">{String(series.label)}</th>)}</tr></thead><tbody>{block.chart.data.series[0]?.points.map((point, index) => <tr><th scope="row">{String(point.x)}</th>{block.chart.data.series.map((series) => <td>{String(series.points[index]?.y ?? "")}</td>)}</tr>)}</tbody></table>
+  </figure>
+)}
+{type === "chart" && block.chart?.data?.mode === "gantt" && (
+  <figure data-atlcli-block="chart" data-atlcli-chart-kind="gantt">
+    <h3>{String(block.chart.title ?? "Gantt chart")}</h3>
+    <table aria-label="Normalized chart data"><thead><tr><th scope="col">Task</th><th scope="col">Start</th><th scope="col">End</th><th scope="col">Progress</th></tr></thead><tbody>{block.chart.data.tasks.map((task) => <tr><th scope="row">{String(task.label)}</th><td>{String(task.start)}</td><td>{String(task.end)}</td><td>{task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`}</td></tr>)}</tbody></table>
+  </figure>
+)}
+{type === "image" && resolvedImage && (
+  <figure data-atlcli-block="image">
+    <img src={resolvedImage} alt={typeof block.alt === "string" ? block.alt : ""} width={block.width} height={block.height} loading="lazy" />
+    {block.caption && <figcaption>{inlines(block.caption.content).map((node) => <InlineNode node={node} />)}</figcaption>}
+  </figure>
+)}
+{type === "image" && !resolvedImage && <p data-atlcli-block="image-fallback">Image unavailable: {String(block.alt ?? sourceName ?? "image")}</p>}
+{type === "mediaFallback" && <p data-atlcli-block="media-fallback">{String(block.alt ?? block.label ?? block.media?.filename ?? "Media unavailable")}</p>}
+{type === "blockquote" && (
+  <blockquote data-atlcli-block="blockquote">
+    {blocks(block.content).map((child) => <Astro.self block={child} context={context} overrides={overrides} />)}
+  </blockquote>
+)}
+{type === "divider" && <hr data-atlcli-block="divider" />}
+{type === "pageBreak" && <hr data-atlcli-block="page-break" aria-label="Page break" />}
+{type === "orientation" && (
+  <section data-atlcli-block="orientation" data-landscape={block.landscape === true ? "true" : "false"}>
+    {blocks(block.content).map((child) => <Astro.self block={child} context={context} overrides={overrides} />)}
+  </section>
+)}
+{type === "anchor" && anchorId && <span id={anchorId} data-atlcli-block="anchor"></span>}
+{type === "unknown" && (
+  <aside data-atlcli-block="unknown">
+    <strong>Unsupported content: {String(block.macroName ?? "unknown")}</strong>
+    {typeof block.plainBody === "string" && <pre>{block.plainBody}</pre>}
+    {blocks(block.body).map((child) => <Astro.self block={child} context={context} overrides={overrides} />)}
+  </aside>
+)}
+{type === "invalid" && <aside data-atlcli-block="invalid">Unsupported block data</aside>}
+{!supportedBlockTypes.has(type) && (
+  <aside data-atlcli-block="unsupported">Unsupported block: {type}</aside>
+)}

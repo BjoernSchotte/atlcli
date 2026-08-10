@@ -95,6 +95,9 @@ export function createOffscreenPrivatePdfCompilePort(
           activityVisibility: "private",
           parentJobId: options.outerJobId,
           parentLeaseEpoch: options.outerLeaseEpoch,
+          ...(context.outputPolicy === undefined
+            ? {}
+            : { outputPolicy: context.outputPolicy }),
         });
         stored = true;
         await deps.catalog.putLegacyBridge({
@@ -115,6 +118,7 @@ export function createOffscreenPrivatePdfCompilePort(
             pdf: job.pdf,
             diagnostics: job.diagnostics ?? [],
             compilerVersion: job.compilerVersion ?? "unknown",
+            ...(job.fontEvidence ? { fontEvidence: job.fontEvidence } : {}),
           };
         }
         if (job?.status === "failed" && (job.diagnostics?.length ?? 0) > 0) {

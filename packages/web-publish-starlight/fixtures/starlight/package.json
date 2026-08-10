@@ -1,0 +1,14 @@
+{
+  "name": "web-publish-starlight-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "astro build", "dev": "astro dev" },
+  "dependencies": {
+    "@atlcli/export-blocks": "workspace:*",
+    "@atlcli/export-blocks-astro": "workspace:*",
+    "@atlcli/export-fixtures": "workspace:*",
+    "@atlcli/web-publish-starlight": "workspace:*",
+    "@astrojs/starlight": "^0.41.3",
+    "astro": "7.1.6"
+  }
+}

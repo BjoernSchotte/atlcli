@@ -19,10 +19,18 @@ Baseline source revision before this verification slice: `21c357511ce9`.
 | Privacy | `bun run check:research-privacy` | Tracked-tree research privacy gate passed. |
 | Patch hygiene | `git diff --check` | Passed before staging. |
 
-The installed extension was also exercised interactively during the development
-cycle. The operator accepted the final ordinary-Chat behavior and presentation;
-that observation does not replace the still-open revision-bound private operator
-matrix and aggregate receipt.
+The installed extension was also exercised interactively with genuine read-only
+usage during the development cycle. On 2026-08-10 the product owner explicitly
+accepted the resulting Chat behavior, presentation, source handling, and
+multi-turn experience and declared the candidate release-ready. Private inputs
+and outputs remain outside Git. This operator decision does not fabricate a
+revision-bound aggregate receipt; that automation remains follow-up hardening.
+
+The final merge integration additionally passed 52 focused settings, host,
+release-contract, and portability tests; root typecheck; all 27 build tasks; the
+31-entrypoint browser boundary; packed output and privacy checks; API report and
+closure regeneration; and all 45 packed MV3 research/Chat lifecycle tests with
+one Playwright worker.
 
 ## Full-suite limitation
 
@@ -39,7 +47,5 @@ browser, packed-output, packed-MV3, typecheck, and privacy gates above are green
 
 - A single revision-bound receipt assembled from customer-free, packed,
   lifecycle, and explicitly accepted private proof inputs.
-- The formal private operator review for usefulness, source choice, citations,
-  follow-up coherence, visible activity, latency, and cost trade-offs.
 - A root-suite run in an environment where ephemeral local ports remain
   available for the complete test duration.

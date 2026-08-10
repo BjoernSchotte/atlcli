@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import {
   PDF_RUNTIME_ASSETS,
   runPdfExport,
+  validatePdfOutput,
   type ExportBlock,
   type ExportNote,
   type PdfAssetResolver,
@@ -34,7 +35,10 @@ import {
   type PdfExportMetadata,
 } from "@atlcli/pdf";
 import { MANUSCRIPT_PDF_TEMPLATE_MANIFEST } from "@atlcli/pdf/internal";
-import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
+import {
+  BrowserPdfCompiler,
+  type BrowserPdfCompilerFontSourceV1,
+} from "@atlcli/pdf-compiler-browser";
 import {
   BLOCKS_ALL_FIELDS,
   BLOCKS_METADATA,
@@ -55,6 +59,8 @@ import {
 import { ensurePdfFonts } from "../../../packages/pdf/scripts/ensure-fonts.js";
 import { MemoryOutputSink } from "../src/memory-output.js";
 import { runDocxTemplateIntakeFlow } from "../src/docx-template-intake-flow.js";
+import { buildPdfV4RuntimeFixture } from "../src/pdf-v4-runtime-fixture.js";
+import { buildPdfV5RuntimeFixture } from "../src/pdf-v5-runtime-fixture.js";
 import {
   compareReportProjection,
   compareStructuredParity,
@@ -105,10 +111,14 @@ function deadlineCompiler(inner: PdfCompilePort): PdfCompilePort {
 
 async function buildBunCompiler(): Promise<PdfCompilePort> {
   await ensurePdfFonts({ logger: () => {} });
-  const [wasm, ...fonts] = await Promise.all([
-    packageBytes("@atlcli/pdf-compiler-browser/wasm"),
-    ...PDF_RUNTIME_ASSETS.fonts.map((font) => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)),
-  ]);
+  const wasm = await packageBytes("@atlcli/pdf-compiler-browser/wasm");
+  const fonts = PDF_RUNTIME_ASSETS.fonts.map(
+    (font): BrowserPdfCompilerFontSourceV1 => ({
+      assetId: font.assetId,
+      sha256: font.sha256,
+      load: () => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`),
+    }),
+  );
   const compiler = new BrowserPdfCompiler({
     wasm: wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength) as ArrayBuffer,
     fonts,
@@ -146,23 +156,74 @@ async function cliCompile(
 async function runPdfSettingsCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
   // Two settings variants (A/B) — the same pair the browser case emits digests
   // for. Each threads its own `settings` through the shared request shape.
-  const compileVariant = async (settings: typeof PDF_SETTINGS_A) => {
+  const compileVariant = async (
+    settings: typeof PDF_SETTINGS_A,
+    templatePack?: Awaited<ReturnType<typeof buildPdfV4RuntimeFixture>>["runtime"]
+  ) => {
     const output = new MemoryOutputSink();
     const report = await runPdfExport(
-      { blocks: PDF_SETTINGS_BLOCKS, metadata: PDF_SETTINGS_METADATA, settings, profile: "tagged", filename: "PDF Settings Conformance.pdf" },
+      {
+        blocks: PDF_SETTINGS_BLOCKS,
+        metadata: PDF_SETTINGS_METADATA,
+        settings,
+        profile: "tagged",
+        filename: "PDF Settings Conformance.pdf",
+        ...(templatePack ? { templatePack } : {}),
+      },
       { assets: noAssets, compiler, output, now: deterministicClock() },
     );
     return { bytes: output.single.bytes, report };
   };
   const a = await compileVariant(PDF_SETTINGS_A);
   const b = await compileVariant(PDF_SETTINGS_B);
+  const v4 = await buildPdfV4RuntimeFixture();
+  const runtimeRender = await compileVariant(PDF_SETTINGS_A, v4.runtime);
   return {
     compilerVersion: a.report.compilerVersion,
     digests: {
       "variant-a.pdf": sha256Hex(a.bytes),
       "variant-b.pdf": sha256Hex(b.bytes),
+      "runtime-v4.wiki-pdf-template": sha256Hex(v4.packBytes),
+      "runtime-v4.pdf": sha256Hex(runtimeRender.bytes),
     },
     notes: a.report.notes.map((n) => ({ code: n.code, level: n.level })),
+    parity: {
+      runtimeSnapshot: structuredClone(v4.runtime.runtimeSnapshot),
+      runtimeInspection: validatePdfOutput(runtimeRender.bytes),
+      runtimeReportNotes: runtimeRender.report.notes.map(({ code, level }) => ({
+        code,
+        level,
+      })),
+    },
+  };
+}
+
+async function runPdfV5Cli(compiler: PdfCompilePort): Promise<CliCaseResult> {
+  const fixture = await buildPdfV5RuntimeFixture();
+  const output = new MemoryOutputSink();
+  const report = await runPdfExport(
+    {
+      blocks: PDF_SETTINGS_BLOCKS,
+      metadata: PDF_SETTINGS_METADATA,
+      templatePack: fixture.runtime,
+      profile: "tagged",
+      filename: "Catalog V3 Browser Conformance.pdf",
+    },
+    { assets: noAssets, compiler, output, now: deterministicClock() },
+  );
+  const inspection = validatePdfOutput(output.single.bytes);
+  return {
+    compilerVersion: report.compilerVersion,
+    digests: {
+      "runtime-v5.wiki-pdf-template": sha256Hex(fixture.packBytes),
+      "runtime-v5.pdf": sha256Hex(output.single.bytes),
+    },
+    notes: report.notes.map(({ code, level }) => ({ code, level })),
+    parity: {
+      runtimeSnapshot: structuredClone(fixture.runtime.runtimeSnapshot),
+      runtimeInspection: inspection,
+      runtimeReportNotes: report.notes.map(({ code, level }) => ({ code, level })),
+    },
   };
 }
 
@@ -257,6 +318,7 @@ async function runDocxTemplateIntakeCli(
  */
 const PARITY_CASES: Record<string, (compiler: PdfCompilePort) => Promise<CliCaseResult>> = {
   "pdf-settings": runPdfSettingsCli,
+  "pdf-v5": runPdfV5Cli,
   "docx-template-intake": runDocxTemplateIntakeCli,
   blocks: runBlocksCli,
   scope: runScopeCli,

@@ -22,9 +22,16 @@ import {
   validateTemplateVisualManifestFieldsV1,
   type TemplateVisualManifestFieldsV1,
 } from "./assets.js";
-import { validateDesign, type WikiPdfTemplateDesignV1 } from "./design.js";
+import {
+  validateDesign,
+  validatePdfTemplateDesignV3,
+  type DesignAvailableFontV3,
+  type WikiPdfTemplateDesignV1,
+  type WikiPdfTemplateDesignV3,
+} from "./design.js";
 import {
   validateLocalization,
+  WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   WIKI_PDF_V1_DOCUMENT_LABELS,
   type DeclaredSettingsShape,
   type WikiPdfTemplateLocalizationV1,
@@ -42,11 +49,11 @@ export const SUPPORTED_SCHEMA_VERSION = 1;
 /**
  * Pinned Typst compiler version used to gate `engine.compilerRange`. Mirrors
  * the Typst version inside `PDF_BROWSER_COMPILER_VERSION`
- * (`@atlcli/pdf-compiler-browser`, currently `"… / Typst 0.14.2"`). Kept as a
+ * (`@atlcli/pdf-compiler-browser`, currently `"… / Typst 0.15.1"`). Kept as a
  * local constant so this pure package need not depend on the WASM compiler; a
  * host may pass the authoritative value via {@link ValidateManifestOptions}.
  */
-export const PINNED_TYPST_VERSION = "0.14.2";
+export const PINNED_TYPST_VERSION = "0.15.1";
 
 /** Recognized `engine.api` values, keyed by `engine.kind`. */
 export const KNOWN_ENGINE_API = {
@@ -99,7 +106,9 @@ export interface TemplateCapabilityCatalogReferenceV1 {
   digest: string;
 }
 
-export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
+export interface TemplateManifest<
+  TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1,
+> extends TemplateVisualManifestFieldsV1 {
   schemaVersion: number;
   id: string;
   name: string;
@@ -109,7 +118,7 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
   settings?: Record<string, ManifestSetting>;
   provenance?: TemplateProvenance;
   /** Presentation model (spec 012): typography, tokens, palettes, components. */
-  design?: WikiPdfTemplateDesignV1;
+  design?: TDesign;
   /** Exact catalog identity required by canonical generated packs. */
   capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
   /** Setting → design-field bindings (spec 012). */
@@ -121,8 +130,8 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
 export interface ValidateManifestOptions {
   /**
    * Pinned Typst version to gate `engine.compilerRange` against. Accepts a bare
-   * semver (`"0.14.2"`) or the descriptive `PDF_BROWSER_COMPILER_VERSION` form
-   * (`"typst.ts 0.7.0 / Typst 0.14.2"`, the last version token is used).
+   * semver (`"0.15.1"`) or the descriptive `PDF_BROWSER_COMPILER_VERSION` form
+   * (the last version token is used).
    * Defaults to {@link PINNED_TYPST_VERSION}.
    */
   pinnedTypstVersion?: string;
@@ -132,7 +141,7 @@ export interface ValidateManifestOptions {
    * family+style+weight) is rejected at import; when omitted, `requiredFonts`
    * is shape-checked only (007's behavior).
    */
-  availableFonts?: ReadonlyArray<{ family: string; style: string; weight: number }>;
+  availableFonts?: readonly DesignAvailableFontV3[];
   /** Sink for non-fatal localization warnings (partial non-fallback locales). */
   collectWarnings?: (warning: string) => void;
 }
@@ -250,10 +259,13 @@ export function satisfiesRange(version: string, range: string): boolean {
  *
  * @throws {ManifestValidationError} with a typed {@link ManifestErrorReason}.
  */
-export function validateManifest(
+function validateManifestWithDesign<
+  TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3,
+>(
   json: unknown,
-  options: ValidateManifestOptions = {}
-): TemplateManifest {
+  options: ValidateManifestOptions,
+  validateManifestDesign: (value: unknown) => TDesign,
+): TemplateManifest<TDesign> {
   if (!isObject(json)) {
     throw new ManifestValidationError("shape-error", "Manifest must be a JSON object");
   }
@@ -314,7 +326,9 @@ export function validateManifest(
       if (!satisfiesRange(pinned, compilerRange)) {
         throw new ManifestValidationError(
           "compiler-range-mismatch",
-          `Pinned Typst ${pinned} does not satisfy engine.compilerRange "${compilerRange}"`,
+          `Template engine range "${compilerRange}" does not accept required Typst ${pinned}. ` +
+            `Migrate the original recipe without overwriting it: atlcli pdf-template ` +
+            `migrate-runtime <recipe.yaml> --output <recipe.typst-${pinned}.yaml>`,
           "engine.compilerRange"
         );
       }
@@ -328,7 +342,8 @@ export function validateManifest(
   const provenance = validateProvenance(json.provenance);
 
   // 7. Presentation model (spec 012): design / bindings / localization.
-  const design = json.design !== undefined ? validateDesign(json.design) : undefined;
+  const design =
+    json.design !== undefined ? validateManifestDesign(json.design) : undefined;
   const capabilityCatalog = validateCapabilityCatalogReference(
     json.capabilityCatalog
   );
@@ -337,13 +352,15 @@ export function validateManifest(
     json.localization !== undefined
       ? validateLocalization(json.localization, {
           requiredDocumentLabels: kind === "typst" ? WIKI_PDF_V1_DOCUMENT_LABELS : [],
+          supportedDocumentLabels:
+            kind === "typst" ? WIKI_PDF_SUPPORTED_DOCUMENT_LABELS : [],
           declared: declaredSettingsShape(settings),
           ...(options.collectWarnings ? { onWarning: options.collectWarnings } : {}),
         })
       : undefined;
   const visual = validateTemplateVisualManifestFieldsV1(json);
 
-  const manifest: TemplateManifest = {
+  const manifest: TemplateManifest<TDesign> = {
     schemaVersion: SUPPORTED_SCHEMA_VERSION,
     id,
     name,
@@ -359,6 +376,30 @@ export function validateManifest(
     ...visual,
   };
   return manifest;
+}
+
+/** Validate a historical Catalog-V1/V2 manifest without widening its design type. */
+export function validateManifest(
+  json: unknown,
+  options: ValidateManifestOptions = {},
+): TemplateManifest {
+  return validateManifestWithDesign(json, options, validateDesign);
+}
+
+/** Validate a Catalog-V3/revision-5 manifest through the exact V3 design gate. */
+export function validateManifestV3(
+  json: unknown,
+  options: ValidateManifestOptions = {},
+): TemplateManifest<WikiPdfTemplateDesignV3> {
+  return validateManifestWithDesign(
+    json,
+    options,
+    (value) => validatePdfTemplateDesignV3(value, "design", {
+      ...(options.availableFonts === undefined
+        ? {}
+        : { availableFonts: options.availableFonts }),
+    }),
+  );
 }
 
 /** Reject any required font the bundled inventory cannot satisfy (spec 012). */

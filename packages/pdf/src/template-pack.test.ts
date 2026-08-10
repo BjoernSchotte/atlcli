@@ -2,24 +2,40 @@ import { describe, expect, it } from "bun:test";
 import {
   packTemplate,
   validateManifest,
+  validateManifestV3,
   type TemplateManifest,
 } from "@atlcli/template-pack";
 import {
   PDF_TEMPLATE_WRITERS_V1,
   PDF_CANONICAL_SOURCE_REVISION,
+  PDF_CANONICAL_SOURCE_REVISION_1,
+  PDF_CANONICAL_SOURCE_REVISION_2,
+  PDF_CANONICAL_SOURCE_REVISION_3,
+  PDF_CANONICAL_SOURCE_REVISION_4,
+  PDF_CANONICAL_SOURCE_REVISION_5,
+  PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION,
   PdfTemplateValidationError,
   buildUniformPdfPageBorderV1,
   loadPdfTemplatePack,
+  generateCanonicalPdfTemplateSourceV1,
   validatePdfTemplateManifest,
   validatePdfTemplatePack,
+  type PdfTemplateVisualsV1,
+  type AnyPdfTemplateManifest,
+  type PdfTemplateManifestV5,
 } from "./template-pack.js";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITIES_V3,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
 } from "./design-catalog.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
+import { BUILTIN_PDF_TEMPLATE_BASELINE_V1 } from "./recipe-baselines.js";
 
 const encoder = new TextEncoder();
 
@@ -71,6 +87,8 @@ async function manifestWith(
     canonical?: boolean;
     decorations?: readonly Record<string, unknown>[];
     requiredFonts?: TemplateManifest["requiredFonts"];
+    design?: TemplateManifest["design"];
+    compilerRange?: string;
   } = {}
 ): Promise<{
   manifest: TemplateManifest;
@@ -134,7 +152,8 @@ async function manifestWith(
         decorative: true,
       };
     });
-  const manifest = validateManifest({
+  const manifest = validateManifest(
+    {
       schemaVersion: 1,
       id: "fixture.assets",
       name: "Asset fixture",
@@ -143,9 +162,9 @@ async function manifestWith(
         kind: "typst",
         api: "wiki.pdf-template/v1",
         entry: "atlcli.typ",
-        compilerRange: ">=0.14 <0.15",
+        compilerRange: options.compilerRange ?? ">=0.15.1 <0.16",
       },
-      design: BUILTIN_PDF_DESIGN,
+      design: options.design ?? BUILTIN_PDF_DESIGN,
       requiredFonts: options.requiredFonts ?? PDF_RUNTIME_ASSETS.fonts,
       assetDescriptors: descriptors,
       assets,
@@ -158,7 +177,11 @@ async function manifestWith(
             },
           }
         : {}),
-    });
+    },
+    options.compilerRange === ">=0.14 <0.15"
+      ? { pinnedTypstVersion: "0.14.2" }
+      : undefined
+  );
   if (options.canonical) {
     files["atlcli.typ"] = encoder.encode(
       createAtlcliTypstTemplate(
@@ -168,6 +191,120 @@ async function manifestWith(
     );
   }
   return { manifest, files };
+}
+
+function revision4Design(): NonNullable<TemplateManifest["design"]> {
+  const design = structuredClone(BUILTIN_PDF_DESIGN);
+  design.compositions = {
+    cover: {
+      kind: "type-cut",
+      logo: "hide",
+      metadataPosition: "bottom",
+      typeCut: { angle: 43, stop: 58 },
+    },
+    closingPage: {
+      kind: "brand-lockup",
+      logo: "show",
+      website: "show",
+      legalNotice: "show",
+      align: "left",
+    },
+  };
+  design.branding.websiteLabel = "example.invalid";
+  design.branding.websiteUrl = "https://example.invalid";
+  design.branding.legalNotice = "© Example Systems GmbH";
+  Object.assign(design.tokens.colors, {
+    coverTitleInverse: "#FFFFFF",
+    closingPageBackground: "#E75204",
+    closingBrandText: "#FFFFFF",
+  });
+  Object.assign(design.tokens.layout, {
+    coverTitleFrameHeight: "35mm",
+    coverMetaBottomInset: "24mm",
+    closingBrandBottomInset: "24mm",
+    closingBrandBlockWidth: "90mm",
+    closingBrandLogoWidth: "42mm",
+    closingBrandLogoHeight: "12mm",
+    closingBrandLogoGap: "8mm",
+    closingBrandTextGap: "4mm",
+  });
+  Object.assign(design.typography.roles, {
+    coverTitle: { font: "heading", size: "44pt", weight: "bold" },
+    coverTitleCompact: { font: "heading", size: "34pt", weight: "bold" },
+    coverTitleMinimum: { font: "heading", size: "24pt", weight: "bold" },
+    closingWebsite: { font: "heading", size: "14pt", weight: "semibold" },
+    closingLegal: { font: "heading", size: "9pt", weight: "regular" },
+  });
+  return design;
+}
+
+function catalogReference(
+  version: 1 | 2
+): NonNullable<TemplateManifest["capabilityCatalog"]> {
+  return version === 1
+    ? {
+        id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+        version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+      }
+    : {
+        id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+        version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+      };
+}
+
+function revision5Manifest(): PdfTemplateManifestV5 {
+  return validateManifestV3({
+    schemaVersion: 1,
+    id: "fixture.catalog-v3",
+    name: "Catalog V3 fixture",
+    version: "1.0.0",
+    engine: {
+      kind: "typst",
+      api: "wiki.pdf-template/v1",
+      entry: "atlcli.typ",
+      compilerRange: ">=0.15.1 <0.16",
+    },
+    canonicalSource: {
+      api: "wiki.pdf-canonical-typst",
+      revision: PDF_CANONICAL_SOURCE_REVISION_5,
+    },
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+    },
+    design: structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V1.design),
+    requiredFonts: PDF_RUNTIME_ASSETS.fonts,
+  });
+}
+
+function visualsForManifest(manifest: AnyPdfTemplateManifest): PdfTemplateVisualsV1 {
+  return {
+    assets: Object.fromEntries(
+      Object.entries(manifest.assets ?? {}).map(([slot, reference]) => {
+        const descriptor = manifest.assetDescriptors?.[reference.descriptor];
+        if (!descriptor) throw new Error(`missing descriptor for ${slot}`);
+        const extension =
+          descriptor.mediaType === "image/png"
+            ? "png"
+            : descriptor.mediaType === "image/jpeg"
+              ? "jpg"
+              : "svg";
+        return [
+          slot,
+          {
+            vfsPath: `template-assets/${reference.descriptor
+              .toLowerCase()
+              .replace(/[._]+/gu, "-")}.${extension}`,
+            reference,
+          },
+        ];
+      })
+    ),
+    decorations: manifest.decorations ?? [],
+  };
 }
 
 function expectPdfReason(
@@ -243,27 +380,229 @@ describe("PDF template manifest phase", () => {
     );
   });
 
-  it("keeps the prior canonical revision readable and gives future revisions a migration diagnostic", async () => {
+  it("allows crop and bounded clip only on revision 5 while keeping alpha closed", async () => {
+    const fixture = await manifestWith({
+      "asset.coverBackground": {
+        descriptorId: "crop-proof",
+        bytes: svg(),
+      },
+    });
+    const legacy = structuredClone(fixture.manifest);
+    const revision5 = fixture.manifest as unknown as PdfTemplateManifestV5;
+    revision5.engine.compilerRange = ">=0.15.1 <0.16";
+    revision5.canonicalSource = {
+      api: "wiki.pdf-canonical-typst",
+      revision: PDF_CANONICAL_SOURCE_REVISION_5,
+    };
+    revision5.capabilityCatalog = {
+      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+    };
+    revision5.design = structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V1.design) as never;
+    const decoration = revision5.decorations![0]!;
+    if (decoration.kind !== "image") throw new Error("fixture drift");
+    decoration.placement = {
+      relativeTo: "page",
+      fit: "stretch",
+      x: "20mm",
+      y: "20mm",
+      width: "40mm",
+      height: "40mm",
+      crop: { left: 0.5, top: 0, right: 0, bottom: 0 },
+      clip: { kind: "circle" },
+    };
+    expect(validatePdfTemplateManifest(revision5)).toBe(revision5);
+
+    const rounded = structuredClone(revision5);
+    const roundedDecoration = rounded.decorations![0]!;
+    if (roundedDecoration.kind !== "image") throw new Error("fixture drift");
+    roundedDecoration.placement.clip = { kind: "rounded-rect", radius: "4mm" };
+    expect(validatePdfTemplateManifest(rounded)).toBe(rounded);
+
+    const nonSquare = structuredClone(revision5);
+    const nonSquareDecoration = nonSquare.decorations![0]!;
+    if (nonSquareDecoration.kind !== "image") throw new Error("fixture drift");
+    nonSquareDecoration.placement.width = "41mm";
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(nonSquare),
+      "invalid-geometry",
+    );
+
+    const translucent = structuredClone(revision5);
+    const translucentDecoration = translucent.decorations![0]!;
+    if (translucentDecoration.kind !== "image") throw new Error("fixture drift");
+    translucentDecoration.placement.opacity = 0.5;
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(translucent),
+      "unsupported-decoration",
+    );
+
+    const revision4 = legacy;
+    const revision4Decoration = revision4.decorations![0]!;
+    if (revision4Decoration.kind !== "image") throw new Error("fixture drift");
+    revision4Decoration.placement.clip = { kind: "rect" };
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(revision4),
+      "unsupported-decoration",
+    );
+  });
+
+  it("keeps revisions 1-4 pinned and registers revision 5 only with Catalog V3", async () => {
     expect(PDF_CANONICAL_SOURCE_REVISION).toBe("3");
+    expect(PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION).toBe("3");
+    expect([
+      PDF_CANONICAL_SOURCE_REVISION_1,
+      PDF_CANONICAL_SOURCE_REVISION_2,
+      PDF_CANONICAL_SOURCE_REVISION_3,
+      PDF_CANONICAL_SOURCE_REVISION_4,
+      PDF_CANONICAL_SOURCE_REVISION_5,
+    ]).toEqual(["1", "2", "3", "4", "5"]);
     const prior = await manifestWith({}, { canonical: true });
     expect(validatePdfTemplateManifest(prior.manifest)).toBe(prior.manifest);
 
     prior.manifest.canonicalSource!.revision = "2";
-    prior.manifest.capabilityCatalog = {
-      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
-      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
-      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
-    };
+    prior.manifest.capabilityCatalog = catalogReference(1);
     expect(validatePdfTemplateManifest(prior.manifest)).toBe(prior.manifest);
 
+    const revision5 = revision5Manifest();
+    expect(validatePdfTemplateManifest(revision5)).toBe(revision5);
+    const source = generateCanonicalPdfTemplateSourceV1(revision5, {
+      assets: {},
+      decorations: [],
+    });
+    expect(source).toContain("binding: left");
+    expect(source).toContain('pdf.artifact(kind: "header"');
+
+    const wrongCatalog = structuredClone(revision5);
+    wrongCatalog.capabilityCatalog!.digest = "0".repeat(64);
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(wrongCatalog),
+      "canonical-source-mismatch",
+    );
+
     const future = structuredClone(prior.manifest);
-    future.canonicalSource!.revision = "4";
+    future.canonicalSource!.revision = "6";
     await expectPdfReason(
       () => validatePdfTemplateManifest(future),
       "unsupported-canonical-revision"
     );
     expect(() => validatePdfTemplateManifest(future)).toThrow(
       /explicit template migration/
+    );
+  });
+
+  it("validates revision 4 only with Catalog V2 and complete conditional composition data", async () => {
+    const fixture = await manifestWith(
+      {
+        "asset.coverBackground": {
+          descriptorId: "cover",
+          bytes: svg(),
+        },
+        "asset.logo": {
+          descriptorId: "logo",
+          bytes: svg("#E75204"),
+          decorative: false,
+          alt: "Example Systems",
+        },
+      },
+      { design: revision4Design(), compilerRange: ">=0.14 <0.15" }
+    );
+    fixture.manifest.canonicalSource = {
+      api: "wiki.pdf-canonical-typst",
+      revision: PDF_CANONICAL_SOURCE_REVISION_4,
+    };
+    fixture.manifest.capabilityCatalog = catalogReference(2);
+    expect(validatePdfTemplateManifest(fixture.manifest)).toBe(fixture.manifest);
+    const source = generateCanonicalPdfTemplateSourceV1(
+      fixture.manifest,
+      visualsForManifest(fixture.manifest)
+    );
+    expect(await digest(encoder.encode(source))).toBe(
+      "52cf2cf897b0d5ae97e69037979f1cf161192a08979261055030a16fe1ee91a0"
+    );
+    fixture.files["atlcli.typ"] = encoder.encode(source);
+    expect(await digest(await packTemplate(fixture))).toBe(
+      // The canonical source stays byte-pinned above. The archive identity
+      // changes because the 0.15.1 runtime inventory now includes the bounded
+      // Arabic fallback font in requiredFonts.
+      "381d5ada802536e841fd9ea758f92297297fea2ce6d407b43f51dc4b2d8f3e7b"
+    );
+    const cover = source.slice(
+      source.indexOf('  if cover-config.at("enabled"'),
+      source.indexOf("  set page(fill: white)")
+    );
+    expect(cover.match(/#meta\.title/gu)).toHaveLength(1);
+    expect(cover).toContain("angle: 43deg");
+    expect(cover).toContain('(rgb("#202A44"), 58%)');
+    expect(cover).toContain('(rgb("#FFFFFF"), 58%)');
+    expect(cover).not.toContain("logo-path");
+    expect(cover).toContain("left + bottom");
+    expect(cover).toContain("dy: -24mm");
+    expect(source).toContain("template-page-decorations()");
+    expect(source).toContain('image("template-assets/cover.svg"');
+
+    const v1Digest = structuredClone(fixture.manifest);
+    v1Digest.capabilityCatalog = catalogReference(1);
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(v1Digest),
+      "canonical-source-mismatch"
+    );
+
+    const wrongDigest = structuredClone(fixture.manifest);
+    wrongDigest.capabilityCatalog!.digest = "0".repeat(64);
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(wrongDigest),
+      "canonical-source-mismatch"
+    );
+
+    const missing = structuredClone(fixture.manifest);
+    delete missing.design!.tokens.colors.coverTitleInverse;
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(missing),
+      "invalid-composition"
+    );
+    expect(() => validatePdfTemplateManifest(missing)).toThrow(
+      /tokens\.colors\.coverTitleInverse/
+    );
+
+    const missingBottomInset = structuredClone(fixture.manifest);
+    delete missingBottomInset.design!.tokens.layout.coverMetaBottomInset;
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(missingBottomInset),
+      "invalid-composition"
+    );
+    expect(() => validatePdfTemplateManifest(missingBottomInset)).toThrow(
+      /tokens\.layout\.coverMetaBottomInset/
+    );
+
+    const missingLogo = structuredClone(fixture.manifest);
+    delete (missingLogo.assets as Record<string, unknown>)["asset.logo"];
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(missingLogo),
+      "invalid-composition"
+    );
+
+    for (const key of ["websiteLabel", "websiteUrl", "legalNotice"] as const) {
+      const missingCopy = structuredClone(fixture.manifest);
+      delete missingCopy.design!.branding[key];
+      await expectPdfReason(
+        () => validatePdfTemplateManifest(missingCopy),
+        "invalid-composition"
+      );
+      expect(() => validatePdfTemplateManifest(missingCopy)).toThrow(
+        new RegExp(`branding\\.${key}`)
+      );
+    }
+  });
+
+  it("rejects a revision-3 manifest pinned to Catalog V2", async () => {
+    const fixture = await manifestWith({}, { canonical: true });
+    fixture.manifest.canonicalSource!.revision = PDF_CANONICAL_SOURCE_REVISION_3;
+    fixture.manifest.capabilityCatalog = catalogReference(2);
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(fixture.manifest),
+      "canonical-source-mismatch"
     );
   });
 
@@ -360,6 +699,91 @@ describe("PDF template manifest phase", () => {
 });
 
 describe("PDF template pack integrity phase", () => {
+  it("generates, packs, and reloads canonical revision 5 through the V3 import gate", async () => {
+    const manifest = revision5Manifest();
+    const source = generateCanonicalPdfTemplateSourceV1(manifest, {
+      assets: {},
+      decorations: [],
+    });
+    const files = { "atlcli.typ": encoder.encode(source) };
+    const runtime = await validatePdfTemplatePack(manifest, files);
+    expect(runtime.canonicalSource.revision).toBe("5");
+    expect("format" in runtime.runtimeSnapshot.design.page).toBe(true);
+
+    const bytes = await packTemplate({ manifest, files });
+    const loaded = await loadPdfTemplatePack(bytes);
+    expect(loaded.canonicalSource.source).toBe(source);
+    expect(loaded.runtimeSnapshot.capabilityCatalog.version).toBe(3);
+  });
+
+  it("pins and loads the characterized canonical source for revisions 1, 2, and 3", async () => {
+    const revision1 = await manifestWith(
+      {},
+      { canonical: true, compilerRange: ">=0.14 <0.15" }
+    );
+    const source1 = generateCanonicalPdfTemplateSourceV1(
+      revision1.manifest,
+      visualsForManifest(revision1.manifest)
+    );
+    expect(await digest(encoder.encode(source1))).toBe(
+      "690fd6bb3d13e102886245ee8fdc0ffd0e84b7090ab45c8a92c2e68586d0cc3f"
+    );
+    revision1.files["atlcli.typ"] = encoder.encode(source1);
+    const revision1Pack = await packTemplate(revision1);
+    expect(await digest(revision1Pack)).toBe(
+      "2e5e7851b933245920b56d3efabfa9f2a748d82f4b765803c6dc00cf183c519c"
+    );
+    expect(
+      (await loadPdfTemplatePack(revision1Pack, { pinnedTypstVersion: "0.14.2" }))
+        .canonicalSource.revision
+    ).toBe("1");
+    await expect(loadPdfTemplatePack(revision1Pack)).rejects.toThrow(
+      /migrate-runtime <recipe\.yaml>/u
+    );
+
+    // Source digests remain historical. Archive digests are re-pinned because
+    // requiredFonts now includes the 0.15.1 Arabic fallback inventory entry.
+    for (const [revision, expectedSource, expectedPack] of [
+      [
+        PDF_CANONICAL_SOURCE_REVISION_2,
+        "e5fbf3cbc79557ecd62a69eb70f8bd013b45b81b25d1d08b92e199969b6fe333",
+        "220ae0f00651f39f15cbde786b2217848044a2b1cee793a7d9b551497c283b19",
+      ],
+      [
+        PDF_CANONICAL_SOURCE_REVISION_3,
+        "01a978f09f902705664eaadb309f1560adce791ac747b17c8885cd565696ecb8",
+        "05a6ba7a63dd1d52160f3fe755fc8197c4fabc83fcdbdf03819afadfa984c8a5",
+      ],
+    ] as const) {
+      const fixture = await manifestWith(
+        {
+          "asset.coverBackground": {
+            descriptorId: "cover",
+            bytes: svg(),
+          },
+        },
+        { compilerRange: ">=0.14 <0.15" }
+      );
+      fixture.manifest.canonicalSource = {
+        api: "wiki.pdf-canonical-typst",
+        revision,
+      };
+      fixture.manifest.capabilityCatalog = catalogReference(1);
+      const source = generateCanonicalPdfTemplateSourceV1(
+        fixture.manifest,
+        visualsForManifest(fixture.manifest)
+      );
+      expect(await digest(encoder.encode(source))).toBe(expectedSource);
+      fixture.files["atlcli.typ"] = encoder.encode(source);
+      const pack = await packTemplate(fixture);
+      expect(await digest(pack)).toBe(expectedPack);
+      expect(
+        (await loadPdfTemplatePack(pack, { pinnedTypstVersion: "0.14.2" }))
+          .canonicalSource.revision
+      ).toBe(revision);
+    }
+  });
+
   it("accepts verified assets and returns compiler-owned VFS paths", async () => {
     const fixture = await manifestWith({
       "asset.pageBackground": {

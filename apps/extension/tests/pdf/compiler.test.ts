@@ -50,6 +50,7 @@ async function createCompiler(): Promise<BrowserPdfCompiler> {
     packageBytes("@atlcli/pdf/fonts/SourceSerif4-Bold.ttf"),
     packageBytes("@atlcli/pdf/fonts/SourceCodePro-Regular.ttf"),
     packageBytes("@atlcli/pdf/fonts/SourceCodePro-Bold.ttf"),
+    packageBytes("@atlcli/pdf/fonts/NotoSansArabic-Regular.ttf"),
     packageBytes("@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf"),
     packageBytes("@atlcli/pdf/fonts/NotoEmoji-wght.ttf"),
   ]);
@@ -877,8 +878,14 @@ This is a real PDF.
     expect(inspection.embeddedFontFiles).toBeGreaterThanOrEqual(3);
 
     const pdfSource = new TextDecoder("latin1").decode(result.pdf);
-    expect(pdfSource).toContain(`/URI (${DENSE_TABLE_LINK})`);
-    expect(pdfSource).toContain(`/URI (${CUSTOM_LABEL_LINK})`);
+    expect(
+      pdfSource.includes(`/URI (${DENSE_TABLE_LINK})`) ||
+        pdfSource.includes(`/URI(${DENSE_TABLE_LINK})`),
+    ).toBe(true);
+    expect(
+      pdfSource.includes(`/URI (${CUSTOM_LABEL_LINK})`) ||
+        pdfSource.includes(`/URI(${CUSTOM_LABEL_LINK})`),
+    ).toBe(true);
     expect(pdfSource).toMatch(/SourceCodePro-Bold/);
 
     expect(bundle.main).toContain('[#text("Normal")], [#text("Norm\u200Bal")]');

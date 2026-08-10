@@ -1,0 +1,48 @@
+---
+import type { StarlightPublicationPageNavigationV1 } from "../navigation.js";
+
+interface Props {
+  /** Already route-prefixed navigation for this immutable page identity. */
+  navigation: StarlightPublicationPageNavigationV1;
+  copy?: {
+    breadcrumbs?: string;
+    relatedPages?: string;
+    previous?: string;
+    next?: string;
+    pagination?: string;
+  };
+}
+
+const { navigation, copy = {} } = Astro.props;
+const text = {
+  breadcrumbs: copy.breadcrumbs ?? "Breadcrumbs",
+  relatedPages: copy.relatedPages ?? "Related pages",
+  previous: copy.previous ?? "Previous",
+  next: copy.next ?? "Next",
+  pagination: copy.pagination ?? "Page navigation",
+};
+---
+
+<nav aria-label={text.breadcrumbs} data-atlcli-publication-slot="breadcrumbs" data-pagefind-ignore>
+  <ol>
+    {navigation.breadcrumbs.map((entry, index) => <li>
+      {index + 1 === navigation.breadcrumbs.length
+        ? <span aria-current="page">{entry.title}</span>
+        : <a href={entry.href}>{entry.title}</a>}
+    </li>)}
+  </ol>
+</nav>
+
+{navigation.related.length > 0 && <aside aria-label={text.relatedPages} data-atlcli-publication-slot="related-pages" data-pagefind-ignore>
+  <h2>{text.relatedPages}</h2>
+  <ul>
+    {navigation.related.map((entry) => <li data-atlcli-related-reasons={entry.reasons.join(" ")}>
+      <a href={entry.href}>{entry.title}</a>
+    </li>)}
+  </ul>
+</aside>}
+
+{(navigation.previous !== undefined || navigation.next !== undefined) && <nav aria-label={text.pagination} data-atlcli-publication-slot="previous-next" data-pagefind-ignore>
+  {navigation.previous !== undefined && <a rel="prev" href={navigation.previous.href}>{text.previous}: {navigation.previous.title}</a>}
+  {navigation.next !== undefined && <a rel="next" href={navigation.next.href}>{text.next}: {navigation.next.title}</a>}
+</nav>}

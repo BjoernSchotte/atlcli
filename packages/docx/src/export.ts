@@ -714,8 +714,8 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   // serializer's per-image outcome channel so they survive a failed embed;
   // folded into the report's notes below.
   const imageAuditNotes: ExportNote[] = [];
-  const images = wantImages
-    ? imageSeam(embedder, input.assets!, input.details.id, timings, {
+  const images = wantImages || input.rasterizer
+    ? imageSeam(embedder, wantImages ? input.assets : undefined, input.details.id, timings, {
         budget,
         signal: input.signal,
         onProgress: input.onProgress,
@@ -1872,7 +1872,7 @@ function calloutIconSeam(
 
 function imageSeam(
   embedder: ImageEmbedder,
-  assets: AssetFetcher,
+  assets: AssetFetcher | undefined,
   pageId: string,
   timings: ExportTimings,
   seamOpts: ImageSeamOptions,
@@ -1893,6 +1893,7 @@ function imageSeam(
   // deduplicates the media part; this deduplicates the network fetch).
   const fetches = new Map<string, Promise<Uint8Array>>();
   const fetchBytes = (block: ImageAssetNode): Promise<Uint8Array> => {
+    if (!assets) return Promise.reject(new Error("image embedding is unavailable in this export"));
     const ref = assetRefFor(block, pageId);
     let p = fetches.get(ref.url);
     if (!p) {
@@ -1950,6 +1951,17 @@ function imageSeam(
     block: ImageAssetNode,
     inline: boolean,
   ): Promise<ImageEmbedOutcome> => {
+    // Generated chart SVGs only need the rasterizer. When that generated-image
+    // seam is active without a page-asset fetcher, preserve the established
+    // informational fallback for ordinary page images.
+    if (!assets) {
+      return {
+        ok: false,
+        code: "image-skipped",
+        level: "info",
+        reason: "image embedding is unavailable in this export",
+      };
+    }
     const name = block.source.kind === "attachment" ? block.source.filename : undefined;
     // Audit the SOURCE node first: the defect belongs to the page, not to the
     // embed attempt, so it is reported whether or not the bytes resolve.
@@ -1994,16 +2006,60 @@ function imageSeam(
   };
   return {
     prefetch(block: ImageBlock) {
-      void fetchBytes(block);
+      if (assets) void fetchBytes(block);
     },
     prefetchInline(block: InlineImageNode) {
-      void fetchBytes(block);
+      if (assets) void fetchBytes(block);
     },
     embed(block: ImageBlock) {
       return embed(block, false);
     },
     embedInline(block: InlineImageNode) {
       return embed(block, true);
+    },
+    async embedGeneratedSvg(svg: string, options: {
+      name: string;
+      alt: string;
+      widthPx: number;
+      heightPx: number;
+    }): Promise<ImageEmbedOutcome> {
+      if (!rasterizer) {
+        return {
+          ok: false,
+          code: "image-svg-no-rasterizer",
+          level: "warning",
+          reason: "no SVG rasterizer is available for the chart visual",
+        };
+      }
+      try {
+        assertSafeSvg(svg);
+        const target = boundRasterTarget({ widthPx: options.widthPx * 2, heightPx: options.heightPx * 2 });
+        if (!target) {
+          return {
+            ok: false,
+            code: "image-svg-oversized",
+            level: "warning",
+            reason: "the chart SVG rasterization target exceeds the size budget",
+          };
+        }
+        throwIfAborted(signal);
+        const png = await rasterizer.rasterize(svg, target, signal ? { signal } : {});
+        throwIfAborted(signal);
+        budget.account(new TextEncoder().encode(svg), { filename: `${options.name}.svg`, ...(pageId ? { pageId } : {}) });
+        budget.account(png, { filename: `${options.name}.png`, ...(pageId ? { pageId } : {}) });
+        const xml = embedder.embedSvg(svg, png, {
+          name: options.name,
+          alt: options.alt,
+          widthPx: options.widthPx,
+          heightPx: options.heightPx,
+          origin: "image",
+          ...(partPath ? { partPath } : {}),
+        });
+        return { ok: true, xml };
+      } catch (error) {
+        rethrowCancellation(error, signal);
+        return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+      }
     },
   };
 
@@ -2524,10 +2580,10 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
     // Serialize PER OCCURRENCE with part-bound seams: an included page's image
     // or diagram embeds its relationship into THIS occurrence's target part.
     const images =
-      pass.embedder && pass.wantImages && pass.assets
+      pass.embedder && (pass.wantImages || pass.rasterizer)
         ? imageSeam(
             pass.embedder,
-            pass.assets,
+            pass.wantImages ? pass.assets : undefined,
             page.id,
             pass.timings,
             {

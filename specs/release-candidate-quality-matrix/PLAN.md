@@ -3,9 +3,11 @@
 > Status: T0-T2 complete; the refreshed private CLI matrix passes all frozen
 > local-gold, lifecycle, mode-isolation, and integrity checks across seven
 > Quick, Auto, Deep, and separate Deep Research runs. The installed-MV3 subset
-> is complete; the explicit operator-review gates remain open. T4 reconciliation has
+> is complete, and the product owner explicitly accepted the genuinely tested
+> release behavior on 2026-08-10. T4 reconciliation has
 > a customer-free evidence record, but its monolithic root-suite and final
-> revision-bound receipt gates remain open. This slice turns the
+> revision-bound receipt gates remain deferred as non-blocking hardening. This
+> slice turns the
 > existing Chat gold labels and isolated functional tests into one executable,
 > privacy-safe release decision. Private Atlassian questions, sources, answers,
 > URLs, and transcripts remain outside Git.
@@ -135,8 +137,9 @@ Proof update (2026-08-10): the revision-bound full private CLI matrix passed all
 nine applicable source-selection, citation-support, required-fact,
 claim-support, outcome, mode-isolation, lifecycle, follow-up, and
 answer-integrity checks across two cases and seven runs. The neutral proof and
-all private inputs and outputs remain outside Git. This closes frozen local
-gold only; it does not close installed-extension or operator-review gates.
+all private inputs and outputs remain outside Git. The product owner subsequently
+accepted the genuinely tested extension behavior and declared the candidate
+release-ready; no private source or answer material is recorded here.
 
 - [x] Add a private-suite runner that executes opaque external cases through
       Quick, Auto, Deep, and optional Deep Research variants.
@@ -144,7 +147,7 @@ gold only; it does not close installed-extension or operator-review gates.
       provider traces under the operator-owned external artifact root.
 - [x] Score local expected source choice, required facts, forbidden claims,
       abstention, citation validity, follow-up coherence, latency, and cost.
-- [ ] Require explicit operator acceptance of usefulness, source choice,
+- [x] Require explicit operator acceptance of usefulness, source choice,
       citations, activity, follow-up coherence, latency, and cost trade-offs.
 - [x] Run at least two approved real Confluence pages individually and one
       connected follow-up; include both a simple and a materially analytical
@@ -154,7 +157,7 @@ gold only; it does not close installed-extension or operator-review gates.
 Acceptance:
 
 - [x] Every private case and variant passes its frozen local gold.
-- [ ] Every private case passes explicit operator review.
+- [x] Every private case passes explicit operator review.
 - [ ] The committed receipt exposes only non-identifying aggregate evidence.
 
 ## T4 - Close the ratchet and reconcile plans

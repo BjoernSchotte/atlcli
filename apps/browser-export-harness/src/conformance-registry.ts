@@ -10,6 +10,7 @@ import { runAdfSourceCase } from "./adf-source-case.js";
 import { runActivityMonitorCase } from "./activity-monitor-case.js";
 import { runAssetSpoolRecoveryCase } from "./asset-spool-recovery-case.js";
 import { runBlocksCase } from "./blocks-case.js";
+import { runChartCase } from "./chart-case.js";
 import { runContentCase } from "./content-case.js";
 import { runDocxCase } from "./docx-case.js";
 import { runDocxJobParityCase } from "./docx-job-parity-case.js";
@@ -21,6 +22,7 @@ import { runManuscriptCase } from "./manuscript-case.js";
 import { runPdfAbortCase, runPdfCase } from "./pdf-case.js";
 import { runPdfJobParityCase } from "./pdf-job-parity-case.js";
 import { runPdfSettingsCase } from "./pdf-settings-case.js";
+import { runPdfV5Case } from "./pdf-v5-case.js";
 import { runPlaceholderCase } from "./placeholder-case.js";
 import { runScopeCase } from "./scope-case.js";
 import { runSourceSpoolRecoveryCase } from "./source-spool-recovery-case.js";
@@ -39,8 +41,10 @@ const RUNNERS: Record<string, () => Promise<unknown>> = {
   pdf: runPdfCase,
   "pdf-job-parity": runPdfJobParityCase,
   "pdf-settings": runPdfSettingsCase,
+  "pdf-v5": runPdfV5Case,
   "docx-template-intake": runDocxTemplateIntakeCase,
   blocks: runBlocksCase,
+  charts: runChartCase,
   "adf-source": runAdfSourceCase,
   scope: runScopeCase,
   "content-compat": runContentCase,

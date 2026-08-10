@@ -564,7 +564,7 @@ function assertSemanticCalloutAccessibility(documentXml: string, pdfStructure: s
     if (docxCount !== 2) {
       throw new Error(`DOCX rendered golden expected one labelled ${label} icon, got ${docxCount / 2}.`);
     }
-    const pdfCount = pdfStructure.match(new RegExp(`/Alt \\(${label}\\)`, "gu"))?.length ?? 0;
+    const pdfCount = pdfStructure.match(new RegExp(`/Alt\\s*\\(${label}\\)`, "gu"))?.length ?? 0;
     if (pdfCount !== 1) {
       throw new Error(`PDF rendered golden expected one labelled ${label} figure, got ${pdfCount}.`);
     }
@@ -573,7 +573,7 @@ function assertSemanticCalloutAccessibility(documentXml: string, pdfStructure: s
   if (docxWarningCount !== 4) {
     throw new Error(`DOCX rendered golden expected two labelled Warning icons, got ${docxWarningCount / 2}.`);
   }
-  const pdfWarningCount = pdfStructure.match(/\/Alt \(Warning\)/gu)?.length ?? 0;
+  const pdfWarningCount = pdfStructure.match(/\/Alt\s*\(Warning\)/gu)?.length ?? 0;
   if (pdfWarningCount !== 2) {
     throw new Error(`PDF rendered golden expected two labelled Warning figures, got ${pdfWarningCount}.`);
   }

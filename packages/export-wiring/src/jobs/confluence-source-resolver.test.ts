@@ -9,6 +9,7 @@ import type { ExportSourceV1 } from "@atlcli/export-jobs";
 import {
   ConfluenceSourceVersionMismatchError,
   ConfluenceSourceResolutionError,
+  resolveConfluencePageGraphV1,
   resolveConfluenceSourceV1,
   type ConfluenceSourceResolverPortV1,
   type ResolvedConfluenceSourceV1,
@@ -79,6 +80,7 @@ function fixturePort(
     spaceHomepage?: string;
     onCall?: (method: string, id: string, signal: AbortSignal | undefined) => void;
     getPage?: TreeSource["getPage"];
+    getChildren?: TreeSource["getChildren"];
   } = {},
 ): ConfluenceSourceResolverPortV1 {
   const byId = new Map(pages.map((page) => [page.id, page]));
@@ -112,6 +114,7 @@ function fixturePort(
         },
         async getChildren(node, callContext) {
           options.onCall?.("getChildren", node.id, callContext.signal);
+          if (options.getChildren) return options.getChildren(node, callContext);
           return pages
             .filter((page) => page.parent === node.id)
             .map((page): TreeChild => ({
@@ -148,6 +151,128 @@ function pageRequest(locator: ExportSourceV1["locator"] = {
     completenessMode: "strict",
   };
 }
+
+describe("resolveConfluencePageGraphV1", () => {
+  it("returns the ordered page/folder graph before composition in one fetch pass", async () => {
+    const calls: string[] = [];
+    const pages: readonly FixturePage[] = [
+      {
+        id: "root",
+        title: "Root",
+        version: 3,
+        parent: null,
+        position: 0,
+        source: adfSource("root body", 3),
+      },
+      {
+        id: "child",
+        title: "Child",
+        version: 2,
+        parent: "folder",
+        position: 4,
+        source: adfSource("child body", 2),
+      },
+    ];
+    const graph = await resolveConfluencePageGraphV1(
+      {
+        ...pageRequest({ kind: "page-id", id: "root", version: 3 }),
+        scope: { kind: "tree" },
+      },
+      {
+        exporter: "pdf",
+        port: fixturePort(pages, {
+          onCall(method, id) { calls.push(`${method}:${id}`); },
+          async getChildren(node) {
+            if (node.id === "root") {
+              return [{
+                id: "folder",
+                title: "Folder",
+                kind: "folder",
+                position: 1,
+              }];
+            }
+            if (node.id === "folder") {
+              return [{
+                id: "child",
+                title: "Child",
+                kind: "page",
+                position: 4,
+              }];
+            }
+            return [];
+          },
+        }),
+        signal: new AbortController().signal,
+      },
+    );
+
+    expect(graph.scope).toEqual({ kind: "tree", rootPageId: "root" });
+    expect(graph.root).toEqual({ id: "root", title: "Root", version: 3, spaceKey: "SPACE" });
+    expect(graph.nodes.map((node) => ({
+      kind: node.kind,
+      id: node.kind === "page" ? node.pageId : node.folderId,
+      parentId: node.parentId,
+      depth: node.depth,
+      effectiveDepth: node.effectiveDepth,
+      position: node.position,
+    }))).toEqual([
+      { kind: "page", id: "root", parentId: null, depth: 0, effectiveDepth: 0, position: null },
+      { kind: "folder", id: "folder", parentId: "root", depth: 1, effectiveDepth: 1, position: 1 },
+      { kind: "page", id: "child", parentId: "folder", depth: 2, effectiveDepth: 2, position: 4 },
+    ]);
+    expect(graph.pages.map((page) => ({ id: page.id, version: page.version }))).toEqual([
+      { id: "root", version: 3 },
+      { id: "child", version: 2 },
+    ]);
+    const child = graph.nodes.find((node) => node.kind === "page" && node.pageId === "child");
+    expect(child?.kind === "page" ? child.meta : undefined).toEqual({
+      version: 2,
+      observedVersion: 2,
+      labels: [],
+      spaceKey: "SPACE",
+    });
+    expect(graph.nodes.flatMap((node) => node.kind === "page" ? node.blocks : []))
+      .not.toContainEqual({ type: "pageBreak" });
+    expect(graph.sourceSummary).toEqual({
+      pagesRead: 2,
+      representations: { atlas_doc_format: 2, storage: 0 },
+      degradedPages: 0,
+    });
+    expect(calls.filter((call) => call.startsWith("getPage:"))).toHaveLength(2);
+    expect(calls.filter((call) => call.startsWith("getPageVersion:"))).toHaveLength(2);
+  });
+
+  it("preserves partial placeholders and notes without exposing raw source", async () => {
+    const malformed: ExportPageSource = {
+      primary: { representation: "atlas_doc_format", value: "PRIVATE-MALFORMED-ADF" },
+      storageSidecar: "<p>PRIVATE-STORAGE-SIDECAR</p>",
+      sourceVersion: 1,
+    };
+    const graph = await resolveConfluencePageGraphV1(
+      { ...pageRequest(), completenessMode: "partial" },
+      {
+        exporter: "word",
+        port: fixturePort([{
+          id: "root",
+          title: "Root",
+          version: 1,
+          parent: null,
+          position: 0,
+          source: malformed,
+        }]),
+        signal: new AbortController().signal,
+      },
+    );
+
+    const page = graph.nodes[0];
+    expect(page?.kind).toBe("page");
+    expect(page?.kind === "page" && page.placeholder).toBe(true);
+    expect(graph.complete).toBe(false);
+    expect(JSON.stringify(graph)).toContain("Content unavailable");
+    expect(JSON.stringify(graph)).not.toContain("PRIVATE-MALFORMED-ADF");
+    expect(JSON.stringify(graph)).not.toContain("PRIVATE-STORAGE-SIDECAR");
+  });
+});
 
 describe("resolveConfluenceSourceV1", () => {
   it("decodes a pinned ADF page once and returns body-free source diagnostics", async () => {
@@ -413,6 +538,7 @@ describe("resolveConfluenceSourceV1", () => {
   });
 
   it("resolves content keys without a body read and composes one shared tree for both engines", async () => {
+    const calls: string[] = [];
     const extensionContent = [{
       type: "extension",
       attrs: { extensionType: "example", extensionKey: "widget", localId: "local" },
@@ -435,7 +561,10 @@ describe("resolveConfluenceSourceV1", () => {
         position: 0,
         source: adfSource("child", 2),
       },
-    ], { contentKey: "human-readable-key" });
+    ], {
+      contentKey: "human-readable-key",
+      onCall(method, id) { calls.push(`${method}:${id}`); },
+    });
     const request: ExportSourceV1 = {
       ...pageRequest({ kind: "content-key", value: "human-readable-key" }),
       scope: { kind: "tree" },
@@ -464,6 +593,8 @@ describe("resolveConfluenceSourceV1", () => {
       note.code === "macro-not-rendered" && note.macroName === "widget"
     )).toBe(true);
     expect(result.sourceSummary.representations).toEqual({ atlas_doc_format: 2, storage: 0 });
+    expect(calls.filter((call) => call.startsWith("getPage:"))).toHaveLength(2);
+    expect(calls.filter((call) => call.startsWith("getChildren:"))).toHaveLength(2);
   });
 
   it("fails before the first body read when a durable version pin changed", async () => {

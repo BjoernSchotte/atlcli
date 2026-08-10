@@ -94,7 +94,12 @@
  * {@link sweepPdfJobs} is the backstop that fails a job whose worker never
  * answered and deletes what nobody is coming back for.
  */
-import type { PdfCompilerDiagnostic, PdfSourceBundle } from "@atlcli/pdf/browser";
+import type {
+  PdfCompilerDiagnostic,
+  PdfFontLoadEvidenceV1,
+  PdfOutputPolicyV1,
+  PdfSourceBundle,
+} from "@atlcli/pdf/browser";
 import type { PdfJobKind } from "../messages.js";
 import {
   isPdfJobInFlight,
@@ -185,6 +190,9 @@ export interface StoredPdfJobMeta {
   outputBytes: number;
   diagnostics?: PdfCompilerDiagnostic[];
   compilerVersion?: string;
+  fontEvidence?: PdfFontLoadEvidenceV1;
+  /** Request-scoped compiler policy persisted next to the source bundle. */
+  outputPolicy?: PdfOutputPolicyV1;
   error?: string;
 
   // --- durability metadata (T5.6) ------------------------------------------
@@ -485,6 +493,7 @@ export interface PutPdfJobInput {
   activityVisibility?: "visible" | "private";
   parentJobId?: string;
   parentLeaseEpoch?: number;
+  outputPolicy?: PdfOutputPolicyV1;
 }
 
 export async function putPdfJob(
@@ -529,6 +538,7 @@ export async function putPdfJob(
     ...(input.activityVisibility === undefined ? {} : { activityVisibility: input.activityVisibility }),
     ...(input.parentJobId === undefined ? {} : { parentJobId: input.parentJobId }),
     ...(input.parentLeaseEpoch === undefined ? {} : { parentLeaseEpoch: input.parentLeaseEpoch }),
+    ...(input.outputPolicy === undefined ? {} : { outputPolicy: input.outputPolicy }),
   };
   // Admission control across BOTH tenants of the shared budget, before the write
   // transaction opens (see the module comment).
@@ -753,7 +763,12 @@ export async function releasePdfJobBundle(id: string, factory?: IDBFactory): Pro
 
 export async function completePdfJob(
   id: string,
-  output: { pdf: Uint8Array; diagnostics: PdfCompilerDiagnostic[]; compilerVersion: string },
+  output: {
+    pdf: Uint8Array;
+    diagnostics: PdfCompilerDiagnostic[];
+    compilerVersion: string;
+    fontEvidence?: PdfFontLoadEvidenceV1;
+  },
   factory?: IDBFactory
 ): Promise<StoredPdfJobMeta | undefined> {
   const limits = pdfJobLimits();
@@ -794,6 +809,9 @@ export async function completePdfJob(
             outputBytes: output.pdf.byteLength,
             diagnostics: output.diagnostics,
             compilerVersion: output.compilerVersion,
+            ...(output.fontEvidence
+              ? { fontEvidence: output.fontEvidence }
+              : {}),
             updatedAt: Date.now(),
           };
           const addResult = stores[RESULT_STORE]!.put({ id, pdf: output.pdf });

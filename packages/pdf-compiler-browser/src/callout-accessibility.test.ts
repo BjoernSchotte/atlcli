@@ -93,7 +93,7 @@ describe("semantic callout PDF accessibility spikes", () => {
     const figures = [...text.matchAll(/\/S\s*\/Figure\b/g)];
 
     expect(figures).toHaveLength(1);
-    expect(text).toContain("/Alt (Warning)");
+    expect(text).toMatch(/\/Alt\s*\(Warning\)/u);
   }, 120_000);
 
   it("compiles every production semantic callout as one labelled figure", async () => {
@@ -129,7 +129,7 @@ describe("semantic callout PDF accessibility spikes", () => {
     const text = inspectable(result.pdf!);
     expect([...text.matchAll(/\/S\s*\/Figure\b/g)]).toHaveLength(6);
     for (const label of ["Info", "Note", "Warning", "Tip", "Success", "Error"]) {
-      expect(text).toContain(`/Alt (${label})`);
+      expect(text).toMatch(new RegExp(`/Alt\\s*\\(${label}\\)`, "u"));
     }
   }, 120_000);
 });
