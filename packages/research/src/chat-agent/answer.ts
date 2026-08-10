@@ -652,16 +652,6 @@ function isMarkdownHeadingBlockV1(markdown: string): boolean {
   return /^\s{0,3}#{1,6}\s+\S/u.test(markdown);
 }
 
-function removeAbandonedTrailingGermanQuoteSentenceV1(markdown: string): string {
-  const lastOpen = markdown.lastIndexOf("„");
-  if (lastOpen === -1 || /[“”]/u.test(markdown.slice(lastOpen + 1))) return markdown;
-  const previousSentence = markdown.lastIndexOf(". ", lastOpen);
-  const previousLine = markdown.lastIndexOf("\n", lastOpen);
-  const boundary = Math.max(previousSentence === -1 ? -1 : previousSentence + 1, previousLine);
-  const retained = markdown.slice(0, boundary === -1 ? lastOpen : boundary).trimEnd();
-  return retained || markdown;
-}
-
 /**
  * One tool-free terminal repair is the final model-owned correction boundary.
  * After it, the host may remove only malformed non-factual prose. Factual
@@ -711,7 +701,13 @@ export function inspectChatDraftAfterHostRepairV1(input: {
     )
     .map((block) => ({
       ...block,
-      markdown: removeAbandonedTrailingGermanQuoteSentenceV1(block.markdown),
+      // A provider can return complete structured JSON while omitting only the
+      // typographic closing quote inside one otherwise complete Markdown
+      // block. Dropping the quoted phrase used to leave a dangling factual
+      // clause (for example, one ending in "als") and made the strict repair
+      // corridor reject its own deterministic cleanup. Closing punctuation is
+      // safe here: it changes no words, evidence, assertion, or source binding.
+      markdown: balanceGermanClosingQuotesV1(block.markdown),
     }));
   if (blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
     return { rejectionReasons: ["malformed-factual-markdown"] };

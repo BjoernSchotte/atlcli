@@ -481,7 +481,7 @@ describe("Chat answer contract", () => {
     })).toBeUndefined();
   });
 
-  test("preserves a supported repaired block after harmless ref whitespace and removes an abandoned trailing quote sentence", () => {
+  test("preserves a supported repaired block after harmless ref whitespace and balances a trailing German quote", () => {
     const repaired = chatDraftForFinalizationAfterHostRepairV1({
       draft: {
         blocks: [{
@@ -496,7 +496,7 @@ describe("Chat answer contract", () => {
     });
 
     expect(repaired?.blocks).toEqual([expect.objectContaining({
-      markdown: "The source recommends offline workloads.",
+      markdown: "The source recommends offline workloads. Als Profil gilt „lossless“",
       sourceRefs: [syntheticPageSource.id],
     })]);
     const answer = finalizeChatAnswerV1({
@@ -507,8 +507,28 @@ describe("Chat answer contract", () => {
       run,
     });
     expect(answer.messageMarkdown).toContain("offline workloads");
-    expect(answer.messageMarkdown).not.toContain("„lossless");
+    expect(answer.messageMarkdown).toContain("„lossless“");
     expect(answer.gaps).toEqual([]);
+  });
+
+  test("keeps a complete evidence-bound sentence when only its German closing quote is missing", () => {
+    const repaired = chatDraftForFinalizationAfterHostRepairV1({
+      draft: {
+        blocks: [{
+          markdown: "Die Quelle bezeichnet die Einstellung als „somwhat educated guess",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: [syntheticPageSource.id],
+        }],
+        gaps: [],
+      },
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+    });
+
+    expect(repaired?.blocks).toEqual([expect.objectContaining({
+      markdown: "Die Quelle bezeichnet die Einstellung als „somwhat educated guess“",
+    })]);
+    expect(chatMarkdownIntegrityIssuesV1(repaired!.blocks[0]!.markdown)).toEqual([]);
   });
 
   test("keeps recoverable child eval retries out of user-facing activity", () => {
