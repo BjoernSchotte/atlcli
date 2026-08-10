@@ -32,6 +32,7 @@ import {
   type ExportSourceFallbackReason,
   type ExportSourcePolicy,
 } from "./page-body.js";
+import type { PageDiffSourceV1 } from "./page-diff-source.js";
 import {
   AttachmentDeliveryError,
   createPageAttachmentWriterV1,
@@ -124,7 +125,11 @@ function invalidAdfResponse(pageId: string, reason: string): ExportPageReadError
   );
 }
 
-function parseConfluencePageAdf(data: unknown, pageId: string): ConfluencePageAdf {
+function parseConfluencePageAdf(
+  data: unknown,
+  pageId: string,
+  options: { missingRepresentationUnavailable?: boolean } = {},
+): ConfluencePageAdf {
   if (!isRecord(data)) throw invalidAdfResponse(pageId, "root is not an object");
   if (data.id !== pageId) throw invalidAdfResponse(pageId, "page id does not match");
   if (!isRecord(data.version)) throw invalidAdfResponse(pageId, "version is missing");
@@ -132,9 +137,25 @@ function parseConfluencePageAdf(data: unknown, pageId: string): ConfluencePageAd
   if (!Number.isInteger(version) || (version as number) < 1) {
     throw invalidAdfResponse(pageId, "version number is invalid");
   }
-  if (!isRecord(data.body)) throw invalidAdfResponse(pageId, "body is missing");
+  if (!isRecord(data.body)) {
+    if (options.missingRepresentationUnavailable && data.body === undefined) {
+      throw new ExportPageReadError(
+        "adf-representation-unavailable",
+        `Confluence does not expose atlas_doc_format for page ${pageId} at the requested version.`,
+        pageId,
+      );
+    }
+    throw invalidAdfResponse(pageId, "body is missing");
+  }
   const candidate = data.body.atlas_doc_format;
   if (!isRecord(candidate)) {
+    if (options.missingRepresentationUnavailable && candidate === undefined) {
+      throw new ExportPageReadError(
+        "adf-representation-unavailable",
+        `Confluence does not expose atlas_doc_format for page ${pageId} at the requested version.`,
+        pageId,
+      );
+    }
     throw invalidAdfResponse(pageId, "atlas_doc_format body is missing");
   }
   if (candidate.representation !== "atlas_doc_format") {
@@ -148,6 +169,16 @@ function parseConfluencePageAdf(data: unknown, pageId: string): ConfluencePageAd
     version: version as number,
     body: { representation: "atlas_doc_format", value: candidate.value },
   };
+}
+
+function requireRequestedPageVersion(pageId: string, version: number): void {
+  if (!Number.isInteger(version) || version < 1) {
+    throw new ExportPageReadError(
+      "invalid-page-version",
+      `Confluence page ${pageId} version must be a positive integer.`,
+      pageId,
+    );
+  }
 }
 
 function requireStorageVersion(details: ConfluencePageDetails, pageId: string): number {
@@ -1030,6 +1061,56 @@ export class ConfluenceClient {
         throw new ExportPageReadError(
           "adf-representation-unavailable",
           `Confluence does not expose atlas_doc_format for page reads at this site.`,
+          id,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Read one exact, previously published Cloud page version as ADF.
+   *
+   * Uses the documented REST v2 `version` and `body-format` query parameters.
+   * An omitted ADF response member is the documented representation-unavailable
+   * case; malformed members and version mismatches remain hard failures.
+   */
+  async getPageAdfAtVersion(
+    id: string,
+    version: number,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluencePageAdf> {
+    requireRequestedPageVersion(id, version);
+    try {
+      const data = await this.requestV2(`/pages/${id}`, {
+        query: {
+          "body-format": "atlas_doc_format",
+          version,
+        },
+        signal: options.signal,
+        logBody: "meta-only",
+      });
+      const page = parseConfluencePageAdf(data, id, {
+        missingRepresentationUnavailable: true,
+      });
+      if (page.version !== version) {
+        throw new ExportPageReadError(
+          "page-version-mismatch",
+          `Confluence page ${id} returned ADF version ${page.version} when version ${version} was requested.`,
+          id,
+          version,
+          page.version,
+        );
+      }
+      return page;
+    } catch (error) {
+      if (
+        error instanceof ConfluenceV2RequestError &&
+        error.classification === "adf-body-format-unsupported"
+      ) {
+        throw new ExportPageReadError(
+          "adf-representation-unavailable",
+          `Confluence does not expose atlas_doc_format for page ${id} at version ${version}.`,
           id,
         );
       }
@@ -3147,31 +3228,164 @@ export class ConfluenceClient {
    */
   async getPageAtVersion(
     pageId: string,
-    version: number
+    version: number,
+    options: { signal?: AbortSignal } = {},
   ): Promise<ConfluencePage & { storage: string }> {
-    const data = (await this.request(`/content/${pageId}/version/${version}`, {
+    requireRequestedPageVersion(pageId, version);
+    const raw = await this.request(`/content/${pageId}/version/${version}`, {
       query: { expand: "content.body.storage,content.space,content.ancestors" },
-    })) as any;
+      signal: options.signal,
+      logBody: "meta-only",
+    });
+    if (!isRecord(raw)) {
+      throw new ExportPageReadError(
+        "invalid-storage-response",
+        `Confluence Storage response for page ${pageId} version ${version} is invalid.`,
+        pageId,
+      );
+    }
 
     // The response structure nests content under 'content' key
-    const content = data.content || data;
+    const content = isRecord(raw.content) ? raw.content : raw;
+    const responseId = content.id;
+    const nestedVersion = isRecord(content.version)
+      ? content.version.number
+      : undefined;
+    const responseVersion = Number.isInteger(raw.number)
+      ? raw.number
+      : nestedVersion;
+    if (responseId !== pageId || responseVersion !== version) {
+      throw new ExportPageReadError(
+        "page-version-mismatch",
+        `Confluence page ${pageId} returned a different page or Storage version when version ${version} was requested.`,
+        pageId,
+        typeof responseVersion === "number" ? responseVersion : undefined,
+      );
+    }
+    const body = isRecord(content.body) ? content.body : undefined;
+    const storageBody = body && isRecord(body.storage) ? body.storage : undefined;
+    if (!storageBody || typeof storageBody.value !== "string") {
+      throw new ExportPageReadError(
+        "invalid-storage-response",
+        `Confluence Storage response for page ${pageId} version ${version} has no Storage body.`,
+        pageId,
+        version,
+      );
+    }
+    const title = typeof content.title === "string"
+      ? content.title
+      : typeof raw.title === "string"
+        ? raw.title
+        : undefined;
+    if (title === undefined) {
+      throw new ExportPageReadError(
+        "invalid-storage-response",
+        `Confluence Storage response for page ${pageId} version ${version} has no title.`,
+        pageId,
+        version,
+      );
+    }
 
     // Extract ancestors
     const ancestors = Array.isArray(content.ancestors)
       ? content.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
       : [];
     const parentId = ancestors.length > 0 ? ancestors[ancestors.length - 1].id : null;
+    const links = isRecord(content._links) ? content._links : undefined;
+    const url = links && typeof links.base === "string" && typeof links.webui === "string"
+      ? `${links.base}${links.webui}`
+      : undefined;
 
     return {
-      id: content.id || pageId,
-      title: content.title || data.title,
-      url: content._links?.base ? `${content._links.base}${content._links.webui}` : undefined,
-      version: data.number || version,
-      spaceKey: content.space?.key,
+      id: pageId,
+      title,
+      url,
+      version,
+      spaceKey: isRecord(content.space) && typeof content.space.key === "string"
+        ? content.space.key
+        : undefined,
       parentId,
       ancestors,
-      storage: content.body?.storage?.value ?? "",
+      storage: storageBody.value,
     };
+  }
+
+  /**
+   * Acquire one exact page version for semantic diffing.
+   *
+   * Cloud performs exact-version ADF and Storage reads concurrently; Storage
+   * becomes primary only for the narrowly classified unavailable-ADF case.
+   * Data Center uses the existing v1 Storage path and never probes REST v2.
+   */
+  async getPageDiffSource(
+    pageId: string,
+    version: number,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PageDiffSourceV1> {
+    requireRequestedPageVersion(pageId, version);
+
+    const storageSource = (
+      page: ConfluencePage & { storage: string },
+      deployment: PageDiffSourceV1["deployment"],
+      fallbackReason: PageDiffSourceV1["fallbackReason"],
+    ): PageDiffSourceV1 => ({
+      id: pageId,
+      title: page.title,
+      version,
+      deployment,
+      body: { representation: "storage", value: page.storage },
+      fallbackReason,
+    });
+
+    if (this.deploymentType === "data-center") {
+      const storage = await this.getPageAtVersion(pageId, version, options);
+      return storageSource(storage, "data-center", "data-center");
+    }
+
+    const { controller, cleanup } = linkAbortSignal(options.signal);
+    const readOptions = { signal: controller.signal };
+    const storagePromise = this.getPageAtVersion(pageId, version, readOptions);
+    const adfPromise = this.getPageAdfAtVersion(pageId, version, readOptions);
+
+    try {
+      try {
+        const [storage, adf] = await Promise.all([storagePromise, adfPromise]);
+        return {
+          id: pageId,
+          title: storage.title,
+          version,
+          deployment: "cloud",
+          body: adf.body,
+          storageSidecar: storage.storage,
+        };
+      } catch (error) {
+        if (
+          error instanceof ExportPageReadError &&
+          error.kind === "adf-representation-unavailable"
+        ) {
+          // Representation fallback is allowed only after the exact Storage
+          // read has independently proved page identity, permission and version.
+          try {
+            const storage = await storagePromise;
+            return storageSource(
+              storage,
+              "cloud",
+              "adf-version-unavailable",
+            );
+          } catch (storageError) {
+            controller.abort(storageError);
+            await Promise.allSettled([storagePromise, adfPromise]);
+            throw storageError;
+          }
+        }
+
+        controller.abort(error);
+        await Promise.allSettled([storagePromise, adfPromise]);
+        throw error;
+      }
+    } finally {
+      cleanup();
+    }
   }
 
   /**

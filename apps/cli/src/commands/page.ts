@@ -26,6 +26,9 @@ import {
   generateDiff,
   formatDiffWithColors,
   formatDiffSummary,
+  readPageDiffPair,
+  buildPageDiffChangeSetV1,
+  renderSemanticDiff,
   commentBodyToText,
   FooterComment,
   InlineComment,
@@ -38,6 +41,10 @@ import {
   parseFrontmatter,
   SortStrategy,
 } from "@atlcli/confluence/internal";
+import {
+  buildPageDiffChangeSetWithSpillV1,
+  shouldUseSemanticDiffSpillV1,
+} from "../semantic-diff-spill.js";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   // Show help if --help or -h flag is set
@@ -642,54 +649,202 @@ async function handleHistory(flags: Record<string, string | boolean | string[]>,
   }
 }
 
+type PageDiffFormat = "unified" | "semantic";
+
+type PageDiffSelection = {
+  format: PageDiffFormat;
+  from?: number;
+  to?: number;
+  context: number;
+  noColor: boolean;
+};
+
+function readPageDiffValueFlag(
+  flags: Record<string, string | boolean | string[]>,
+  name: string,
+  opts: OutputOptions,
+): string | undefined {
+  const value = flags[name];
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--${name} may only be specified once.`);
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--${name} requires a value.`);
+  }
+  return value;
+}
+
+function parsePageDiffVersion(
+  raw: string,
+  name: "version" | "from" | "to",
+  opts: OutputOptions,
+): number {
+  if (!/^[1-9]\d*$/.test(raw)) {
+    const message = name === "version"
+      ? "--version must be a positive number."
+      : `--${name} must be a positive integer.`;
+    fail(opts, 1, ERROR_CODES.USAGE, message);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--${name} exceeds the supported integer range.`);
+  }
+  return value;
+}
+
+function parsePageDiffSelection(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+): PageDiffSelection {
+  const formatRaw = readPageDiffValueFlag(flags, "format", opts);
+  if (formatRaw !== undefined && formatRaw !== "unified" && formatRaw !== "semantic") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--format must be either 'unified' or 'semantic'.");
+  }
+  const format: PageDiffFormat = formatRaw ?? "unified";
+
+  const versionRaw = readPageDiffValueFlag(flags, "version", opts);
+  const fromRaw = readPageDiffValueFlag(flags, "from", opts);
+  const toRaw = readPageDiffValueFlag(flags, "to", opts);
+  if (versionRaw !== undefined && (fromRaw !== undefined || toRaw !== undefined)) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--version cannot be combined with --from or --to.");
+  }
+  if (toRaw !== undefined && fromRaw === undefined) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--to requires --from.");
+  }
+
+  const contextRaw = readPageDiffValueFlag(flags, "context", opts);
+  if (format === "semantic" && contextRaw !== undefined) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--context is only supported with --format unified.");
+  }
+  let context = 3;
+  if (contextRaw !== undefined) {
+    if (!/^\d+$/.test(contextRaw)) {
+      fail(opts, 1, ERROR_CODES.USAGE, "--context must be a non-negative integer.");
+    }
+    context = Number(contextRaw);
+    if (!Number.isSafeInteger(context)) {
+      fail(opts, 1, ERROR_CODES.USAGE, "--context exceeds the supported integer range.");
+    }
+  }
+
+  const noColorValue = flags["no-color"];
+  if (noColorValue !== undefined && noColorValue !== true) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--no-color does not accept a value.");
+  }
+
+  return {
+    format,
+    from: versionRaw !== undefined
+      ? parsePageDiffVersion(versionRaw, "version", opts)
+      : fromRaw !== undefined
+        ? parsePageDiffVersion(fromRaw, "from", opts)
+        : undefined,
+    to: toRaw !== undefined ? parsePageDiffVersion(toRaw, "to", opts) : undefined,
+    context,
+    noColor: noColorValue === true || Object.hasOwn(process.env, "NO_COLOR"),
+  };
+}
+
 async function handleDiff(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
   }
 
-  const versionStr = getFlag(flags, "version");
+  const selection = parsePageDiffSelection(flags, opts);
   const client = await getClient(flags, opts);
-  const convOpts = await getConversionOptions(flags, opts);
-
-  // Get current page
-  const current = await client.getPage(id);
-  const currentMarkdown = storageToMarkdown(current.storage, convOpts);
-
-  // Determine which version to compare against
-  let compareVersion: number;
-  if (versionStr) {
-    compareVersion = Number(versionStr);
-    if (Number.isNaN(compareVersion) || compareVersion < 1) {
-      fail(opts, 1, ERROR_CODES.USAGE, "--version must be a positive number.");
+  if (selection.format === "semantic") {
+    let targetVersion = selection.to;
+    if (targetVersion === undefined) {
+      const current = await client.getPage(id);
+      targetVersion = current.version;
+      if (!Number.isSafeInteger(targetVersion) || targetVersion! < 1) {
+        fail(opts, 1, ERROR_CODES.API, "Current page version is unavailable.");
+      }
     }
-  } else {
-    // Default to previous version
-    compareVersion = (current.version ?? 2) - 1;
+    const compareVersion = selection.from ?? targetVersion! - 1;
     if (compareVersion < 1) {
       output("No previous version to compare against.", opts);
       return;
     }
+    try {
+      const pair = await readPageDiffPair(client, id, compareVersion, targetVersion!);
+      const { changeSet } = shouldUseSemanticDiffSpillV1(pair)
+        ? await buildPageDiffChangeSetWithSpillV1(pair)
+        : await buildPageDiffChangeSetV1(pair);
+      if (opts.json) {
+        output({ schemaVersion: "1", changeSet }, opts);
+        return;
+      }
+      output(renderSemanticDiff(changeSet, { color: !selection.noColor }), opts);
+      return;
+    } catch (error) {
+      const candidate = error as { kind?: unknown; code?: unknown; name?: unknown };
+      const classification = typeof candidate.kind === "string"
+        ? candidate.kind
+        : typeof candidate.code === "string"
+          ? candidate.code
+          : typeof candidate.name === "string"
+            ? candidate.name
+            : "semantic-diff-failed";
+      const message = error instanceof Error ? error.message : "Semantic page diff failed.";
+      const validationFailure = /(?:adf|storage|semantic|change-set|version-mismatch|invalid-)/iu
+        .test(classification);
+      fail(
+        opts,
+        1,
+        validationFailure ? ERROR_CODES.VALIDATION : ERROR_CODES.API,
+        message,
+        { classification },
+      );
+    }
   }
 
-  // Get the comparison version
-  const oldPage = await client.getPageAtVersion(id, compareVersion);
-  const oldMarkdown = storageToMarkdown(oldPage.storage, convOpts);
+  const convOpts = await getConversionOptions(flags, opts);
 
-  // Generate diff
-  const diff = generateDiff(oldMarkdown, currentMarkdown, {
+  let compareVersion: number;
+  let targetVersion: number;
+  let oldPage: Awaited<ReturnType<ConfluenceClient["getPageAtVersion"]>>;
+  let targetPage: Awaited<ReturnType<ConfluenceClient["getPage"]>>;
+  let targetIsCurrent = false;
+
+  if (selection.to !== undefined && selection.from !== undefined) {
+    compareVersion = selection.from;
+    targetVersion = selection.to;
+    oldPage = await client.getPageAtVersion(id, compareVersion);
+    targetPage = compareVersion === targetVersion
+      ? oldPage
+      : await client.getPageAtVersion(id, targetVersion);
+  } else {
+    const current = await client.getPage(id);
+    targetPage = current;
+    targetVersion = current.version ?? 1;
+    targetIsCurrent = true;
+    compareVersion = selection.from ?? targetVersion - 1;
+    if (compareVersion < 1) {
+      output("No previous version to compare against.", opts);
+      return;
+    }
+    oldPage = await client.getPageAtVersion(id, compareVersion);
+  }
+
+  const oldMarkdown = storageToMarkdown(oldPage.storage, convOpts);
+  const targetMarkdown = storageToMarkdown(targetPage.storage, convOpts);
+
+  const diff = generateDiff(oldMarkdown, targetMarkdown, {
     oldLabel: `Version ${compareVersion}`,
-    newLabel: `Version ${current.version} (current)`,
-    context: 3,
+    newLabel: `Version ${targetVersion}${targetIsCurrent ? " (current)" : ""}`,
+    context: selection.context,
   });
 
   if (opts.json) {
     output({
       schemaVersion: "1",
       pageId: id,
-      title: current.title,
+      title: targetPage.title,
       oldVersion: compareVersion,
-      newVersion: current.version,
+      newVersion: targetVersion,
       hasChanges: diff.hasChanges,
       additions: diff.additions,
       deletions: diff.deletions,
@@ -699,15 +854,14 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
   }
 
   if (!diff.hasChanges) {
-    output(`No changes between version ${compareVersion} and version ${current.version}.`, opts);
+    output(`No changes between version ${compareVersion} and version ${targetVersion}.`, opts);
     return;
   }
 
-  // Output colored diff
-  output(`\nDiff for "${current.title}"`, opts);
-  output(`Comparing version ${compareVersion} → ${current.version}`, opts);
+  output(`\nDiff for "${targetPage.title}"`, opts);
+  output(`Comparing version ${compareVersion} → ${targetVersion}`, opts);
   output(`${formatDiffSummary(diff)}\n`, opts);
-  output(formatDiffWithColors(diff), opts);
+  output(selection.noColor ? diff.unified : formatDiffWithColors(diff), opts);
 }
 
 async function handleRestore(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -1993,7 +2147,8 @@ Commands:
   archive --cql <query> --confirm      Archive pages matching CQL (bulk)
   label <add|remove|list> ...          Manage page labels
   history --id <id> [--limit <n>]      Show version history
-  diff --id <id> [--version <n>]       Compare versions
+  diff --id <id> [--version <n>]       Compare a version with current
+  diff --id <id> --from <n> [--to <n>] Compare any two versions
   restore --id <id> --version <n> --confirm  Restore to version
   comments <list|add|reply|...>        Manage page comments
   open <id>                            Open page in browser
@@ -2006,6 +2161,11 @@ Commands:
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
+  --format <name>    Diff format: unified (default) or semantic
+  --from <n>         Diff baseline version; target defaults to current
+  --to <n>           Diff target version; requires --from
+  --context <n>      Unified diff context lines (default: 3)
+  --no-color         Disable ANSI diff colors (also honors NO_COLOR)
   --dry-run          Preview bulk operations without executing
   --reverse          Reverse sort order (for sort command)
   --issue <key>      Jira issue key (for link-issue/unlink-issue)
@@ -2032,6 +2192,8 @@ Examples:
   atlcli wiki page archive --cql "lastModified < now('-1y')" --confirm
   atlcli wiki page history --id 12345 --limit 5
   atlcli wiki page diff --id 12345 --version 3
+  atlcli wiki page diff --id 12345 --from 3 --to 5 --format unified --context 5
+  atlcli wiki page diff --id 12345 --from 3 --format semantic --no-color
   atlcli wiki page restore --id 12345 --version 3 --confirm
   atlcli wiki page comments --id 12345
   atlcli wiki page comments add --id 12345 "Great work!"

@@ -308,12 +308,32 @@ export function parseXml(
   input: string,
   budget: StorageParseBudget = DEFAULT_STORAGE_PARSE_BUDGET
 ): XmlNode[] {
+  const nodes: XmlNode[] = [];
+  visitXmlTopLevel(input, budget, (node) => nodes.push(node));
+  return nodes;
+}
+
+/**
+ * Parse one top-level Storage node at a time. Nested state is retained only
+ * until its top-level owner closes; callers can spill that node immediately.
+ */
+export function visitXmlTopLevel(
+  input: string,
+  budget: StorageParseBudget,
+  visitor: (node: XmlNode, index: number) => void,
+): void {
   const root: XmlElement = { type: "element", name: "#root", attrs: {}, children: [] };
   const stack: XmlElement[] = [root];
   let i = 0;
   const n = input.length;
   let nodeCount = 0;
   let textLength = 0;
+  let topLevelIndex = 0;
+
+  const emitTopLevel = (node: XmlNode): void => {
+    visitor(node, topLevelIndex);
+    topLevelIndex += 1;
+  };
 
   const countNode = () => {
     if (++nodeCount > budget.maxNodes) {
@@ -339,7 +359,9 @@ export function parseXml(
       );
     }
     countNode();
-    stack[stack.length - 1].children.push({ type: "text", text });
+    const node: XmlText = { type: "text", text };
+    if (stack.length === 1) emitTopLevel(node);
+    else stack[stack.length - 1].children.push(node);
   };
 
   while (i < n) {
@@ -384,7 +406,13 @@ export function parseXml(
       // Pop to the matching open element if present; ignore stray closers.
       for (let d = stack.length - 1; d >= 1; d--) {
         if (stack[d].name === name) {
-          stack.length = d;
+          if (d === 1) {
+            const completed = stack[1]!;
+            stack.length = 1;
+            emitTopLevel(completed);
+          } else {
+            stack.length = d;
+          }
           break;
         }
       }
@@ -405,7 +433,7 @@ export function parseXml(
     const attrs = parseAttributes(tag.slice(nameMatch[1].length));
     countNode();
     const el: XmlElement = { type: "element", name, attrs, children: [] };
-    stack[stack.length - 1].children.push(el);
+    if (stack.length > 1) stack[stack.length - 1].children.push(el);
     if (!selfClosing && !VOID_ELEMENTS.has(name)) {
       stack.push(el);
       // `stack` includes the synthetic `#root`, so its length is depth + 1.
@@ -415,11 +443,14 @@ export function parseXml(
           `Page storage nests deeper than the ${budget.maxDepth}-level parse limit.`
         );
       }
+    } else if (stack.length === 1) {
+      emitTopLevel(el);
     }
     i = gt + 1;
   }
-
-  return root.children;
+  // The compatibility parser tolerates unclosed tags. Emit the still-open
+  // top-level owner at EOF with its accumulated children.
+  if (stack.length > 1) emitTopLevel(stack[1]!);
 }
 
 /** HTML void elements that never have a closing tag. */

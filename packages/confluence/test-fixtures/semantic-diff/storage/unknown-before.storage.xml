@@ -1,0 +1,4 @@
+<p>Known content</p>
+<vendor:release-widget vendor:mode="compact" vendor:revision="1">
+  <vendor:payload>Opaque payload</vendor:payload>
+</vendor:release-widget>
