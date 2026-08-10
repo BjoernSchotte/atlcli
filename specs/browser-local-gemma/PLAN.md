@@ -610,7 +610,7 @@ hardening.
 
 #### G0a — Build the thinnest production-shaped local binding
 
-- [ ] Pin exact `@huggingface/transformers`, resolved `onnxruntime-web`, and
+- [x] Pin exact `@huggingface/transformers`, resolved `onnxruntime-web`, and
       Gemma 4 E4B ONNX model revisions for the proof; record the selected model
       class/task, `q4f16` file inventory, per-file length/digest, aggregate size,
       license, and notice without yet building the complete lifecycle manager.
