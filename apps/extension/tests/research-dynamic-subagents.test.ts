@@ -436,11 +436,7 @@ test("repairs a provider-shaped synthesizer result rejected by the authoritative
   let invokes = 0;
   const invalidDraft = JSON.stringify({
     title: "Invalid",
-    executiveSummary: "Unsupported finding.",
-    selectedClaimIds: [],
-    findings: [{ classification: "fact", summary: "Unsupported", sourceIds: [] }],
-    relationships: [],
-    limitations: [],
+    selectedClaimIds: ["not-a-claim"],
   });
   const validDraft = JSON.stringify({
     title: "Repaired",
@@ -1256,6 +1252,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       [
         "PromptCachingMiddleware",
         "CacheBreakpointMiddleware",
+        "ModelCallLimitMiddleware",
         "ResearchStructuredOutputRepairNoPtcMiddleware",
         "ResearchCompletedEvalNoPtcMiddleware",
         "CodeInterpreterMiddleware",
@@ -1263,21 +1260,43 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       [
         "PromptCachingMiddleware",
         "CacheBreakpointMiddleware",
+        "ModelCallLimitMiddleware",
         "ResearchStructuredOutputRepairNoPtcMiddleware",
         "ResearchCompletedEvalNoPtcMiddleware",
         "CodeInterpreterMiddleware",
       ],
-      ["PromptCachingMiddleware", "CacheBreakpointMiddleware"],
-      ["PromptCachingMiddleware", "CacheBreakpointMiddleware"],
-      ["PromptCachingMiddleware", "CacheBreakpointMiddleware"],
       [
         "PromptCachingMiddleware",
         "CacheBreakpointMiddleware",
+        "ModelCallLimitMiddleware",
+        "ResearchStructuredOutputRepairNoPtcMiddleware",
+      ],
+      [
+        "PromptCachingMiddleware",
+        "CacheBreakpointMiddleware",
+        "ModelCallLimitMiddleware",
+        "ResearchStructuredOutputRepairNoPtcMiddleware",
+      ],
+      [
+        "PromptCachingMiddleware",
+        "CacheBreakpointMiddleware",
+        "ModelCallLimitMiddleware",
+        "ResearchStructuredOutputRepairNoPtcMiddleware",
+      ],
+      [
+        "PromptCachingMiddleware",
+        "CacheBreakpointMiddleware",
+        "ModelCallLimitMiddleware",
         "ResearchStructuredOutputRepairNoPtcMiddleware",
         "ResearchCompletedEvalNoPtcMiddleware",
         "CodeInterpreterMiddleware",
       ],
-      ["PromptCachingMiddleware", "CacheBreakpointMiddleware"],
+      [
+        "PromptCachingMiddleware",
+        "CacheBreakpointMiddleware",
+        "ModelCallLimitMiddleware",
+        "ResearchStructuredOutputRepairNoPtcMiddleware",
+      ],
     ]);
     expect(specs.every((spec) => !("responseFormat" in spec))).toBe(true);
     expect(specs[0]?.systemPrompt).toContain("single host-generated bounded program");
@@ -1300,7 +1319,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[5]?.systemPrompt).toContain("at most 2 candidate-ranking calls total");
     expect(specs[3]?.systemPrompt).toContain("host-validated coverage moderation context");
     expect(specs[3]?.systemPrompt).toContain("minimum distinct-source threshold");
-    expect(specs[6]?.systemPrompt).toContain("sole report author");
+    expect(specs[6]?.systemPrompt).toContain("sole final editor");
   });
 
   test("reserves host candidate ranking inside each executable acquisition budget", () => {
@@ -1513,20 +1532,18 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(prompt).toContain("Execute every entry in returned tasks exactly once");
     expect(prompt).toContain("two focused-researcher nodes are never interchangeable");
     expect(prompt).toContain("atlcli.research-task-dispatch/v1");
-    expect(prompt).toContain("Every task call must include responseSchema: responseSchemas[returnedTask.outputSchema]");
-    expect(prompt).toContain("outputSchema, objective, dependencyTaskIds");
+    expect(prompt).toContain("Every task call must include responseSchema: returnedTask.responseSchema");
+    expect(prompt).toContain("outputSchema, responseSchema, objective, dependencyTaskIds");
     expect(prompt).toContain("exactly one fresh-context independent critic");
     expect(prompt).toContain("tools.researchReconciliationDispositions");
-    expect(prompt).toContain("decisions must contain every returned defect ID exactly once");
-    expect(prompt).toContain("Exact disposition algorithm");
-    expect(prompt).toContain("do not infer a decision from defect.code");
-    expect(prompt).toContain("accept becomes { decision: no_change, reasonCode: supported_by_evidence }");
-    expect(prompt).toContain("Omit repairFollowUpId by default");
-    expect(prompt).toContain("AtlcliDynamicResearchAgentDraftV1");
-    expect(prompt).toContain("responseSchemas[repairTask.outputSchema]");
-    expect(prompt).toContain("reject_defect permits invalid_reference, already_resolved, or supported_by_evidence");
-    expect(prompt).toContain("coverage_gap to missing_coverage");
-    expect(prompt).toContain("If there is no compatible proposal, omit repairFollowUpId");
+    expect(prompt).toContain("reconciliationTaskId: accepted.reconciliationTaskId }) exactly once");
+    expect(prompt).toContain("never map defect.id, defect.defectId");
+    expect(prompt).toContain("the host validates every typed defect");
+    expect(prompt).toContain("selects the first compatible bounded follow-up");
+    expect(prompt).toContain("host supplies that exact schema with the admitted task");
+    expect(prompt).toContain("responseSchema: repairTask.responseSchema");
+    expect(prompt).not.toContain("const responseSchemas =");
+    expect(prompt).toContain("do not pass decisions, repairFollowUpId, or schema");
     expect(prompt).toContain("A synthesizer call before disposition acceptance is rejected");
     expect(prompt).toContain("Duplicate task IDs are rejected before model or provider work");
     expect(prompt).toContain("Console APIs are intentionally unavailable");
@@ -1565,8 +1582,12 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const graph = crossProductGraph();
     const proposalTool = createResearchGraphProposalPtcTool(graph);
     const projection = JSON.parse(await proposalTool.invoke(graphProposalInput(graph))) as {
-      tasks: Array<{ roleId: string }>;
-      synthesizerTask: { roleId: string; dependencyTaskIds: string[] };
+      tasks: Array<{ roleId: string; responseSchema: Record<string, unknown> }>;
+      synthesizerTask: {
+        roleId: string;
+        dependencyTaskIds: string[];
+        responseSchema: Record<string, unknown>;
+      };
     };
 
     expect(projection.tasks.some((task) => task.roleId === "synthesizer")).toBe(false);
@@ -1574,12 +1595,16 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       reconciliationTaskId: expect.stringContaining(":reconciler:"),
     });
     expect(projection.synthesizerTask.roleId).toBe("synthesizer");
+    expect(projection.synthesizerTask.responseSchema).toEqual(
+      RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
+    );
+    expect(projection.tasks.every((task) => task.responseSchema.type === "object")).toBe(true);
     expect(projection.synthesizerTask.dependencyTaskIds).toHaveLength(
       graph.nodes.filter((node) => node.executor === "subagent" && node.kind !== "repair").length - 1,
     );
   });
 
-  test("records one host-owned supervisor disposition for every accepted critic defect", async () => {
+  test("records every typed critic recommendation without supervisor-side ID mapping", async () => {
     const catalog = crossProductGraph();
     const graph = acceptResearchGraphProposalV1(catalog, {
       schema: "atlcli.research-graph-proposal/v1",
@@ -1633,11 +1658,6 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const input = {
       basedOnGraphRevision: graph.revision,
       reconciliationTaskId,
-      decisions: [{
-        defectId: "defect:unsupported-finding",
-        decision: "abstain",
-        reasonCode: "material_defect",
-      }],
     } as const;
     const result = JSON.parse(await tool.invoke(input)) as {
       schema: string;
@@ -1761,6 +1781,90 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     })).rejects.toThrow("repair request must reference");
   });
 
+  test("authorizes one material critic repair even when the supervisor omits its optional ID", async () => {
+    const catalog = crossProductGraph();
+    const graph = acceptResearchGraphProposalV1(catalog, {
+      schema: "atlcli.research-graph-proposal/v1",
+      ...graphProposalInput(catalog),
+    });
+    const reconciler = graph.nodes.find((node) => node.roleId === "reconciler")!;
+    const repair = catalog.nodes.find((node) => node.kind === "repair")!;
+    const reconciliationTaskId = researchTaskIdForNodeV1(graph, reconciler);
+    const packet = {
+      schema: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
+      packetRef: "packet:reconciler:auto-repair",
+      taskId: reconciliationTaskId,
+      graphRevision: graph.revision,
+      attempt: 1,
+      executor: "subagent",
+      roleId: "reconciler",
+      grantedCapabilityIds: [],
+      typedIntentRefs: [],
+      expectedOutputSchema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+      body: {
+        schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+        defects: [{
+          id: "defect:material-coverage",
+          severity: "important",
+          target: { kind: "coverage", id: "coverage:question" },
+          code: "missing_coverage",
+          references: [],
+          explanation: "A material facet is missing.",
+          suggestedAction: "add_follow_up",
+        }],
+        proposedFollowUps: [{
+          id: "follow-up:material-coverage",
+          defectId: "defect:material-coverage",
+          objective: "Recover the material facet from approved evidence.",
+          reasonCode: "coverage_gap",
+          sourceIds: [],
+        }],
+      },
+      hostObservedUsage: {
+        capabilityCalls: 0,
+        inputTokens: 10,
+        outputTokens: 5,
+        resultBytes: 200,
+        durationMs: 20,
+        costMicros: 0,
+      },
+      acceptedAt: "2026-08-01T12:00:00.000Z",
+    } satisfies ResearchAcceptedPacketV1;
+    const tool = createResearchReconciliationDispositionPtcTool(catalog, {
+      activeGraph: () => graph,
+      reconciliationPacket: () => packet,
+      isKnownTarget: () => true,
+      authorizeRepair: ({ followUp }) => ({
+        schema: "atlcli.accepted-repair-task/v1",
+        taskId: researchTaskIdForNodeV1(graph, repair),
+        nodeId: repair.id,
+        roleId: "contradiction-verifier",
+        subagentType: researchSubagentTypeForNodeV1(repair),
+        outputSchema: repair.outputSchema,
+        objective: repair.objective,
+        dependencyTaskIds: [reconciliationTaskId],
+        grantedCapabilityIds: [...repair.grantedCapabilityIds],
+        followUp,
+      }),
+    });
+
+    const result = JSON.parse(await tool.invoke({
+      basedOnGraphRevision: graph.revision,
+      reconciliationTaskId,
+      decisions: [{
+        defectId: "defect:material-coverage",
+        decision: "add_follow_up",
+        reasonCode: "material_defect",
+      }],
+    })) as Record<string, unknown>;
+
+    expect(result.repairStatus).toBe("authorized");
+    expect(result.repairTask).toEqual(expect.objectContaining({
+      roleId: "contradiction-verifier",
+      followUpId: "follow-up:material-coverage",
+    }));
+  });
+
   test("rejects the latent repair slot before host authorization and before provider work", async () => {
     const catalog = crossProductGraph();
     const graph = acceptResearchGraphProposalV1(catalog, {
@@ -1836,11 +1940,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
     const draft = {
       title: "Synthetic workflow report",
-      executiveSummary: "The bounded workflow completed without source findings.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["This characterization run intentionally has no source data."],
     };
     const code = `
       ${graphProposalPrelude(graph)}
@@ -1880,7 +1980,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(report.markdown).toContain(
       "No non-empty detail evidence supported a publishable finding"
     );
-    expect(report.markdown).not.toContain(draft.executiveSummary);
+    expect(report.markdown).not.toContain("The bounded workflow completed without source findings.");
     expect(report.limitations).toContain(
       "Proposed assumption (not user-confirmed): The report is intended for the delivery team.",
     );
@@ -1938,8 +2038,6 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       (event) => event.kind === "task" && event.status === "packet-accepted",
     )).toMatchObject({
       roleId: "synthesizer",
-      findingCount: 0,
-      relationshipCount: 0,
       capabilityCalls: 0,
     });
     expect(traceEvents.filter((event) => event.kind === "budget").map(
@@ -1949,6 +2047,131 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(dynamicModel.calls[0]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(true);
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Write exactly one typed final report draft"))).toBe(true);
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(false);
+  });
+
+  test("bounds a tool-free child that never returns its structured response", async () => {
+    const graph = synthesisOnlyGraph();
+    const brief = graphBrief(
+      "Get the exact bounded Jira item.",
+      ["jira"],
+      "lookup",
+      "off",
+    );
+    const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
+    const code = `
+      ${graphProposalPrelude(graph)}
+      const finalDraft = await task({
+        description: ${JSON.stringify(synthesisTask.description)},
+        subagentType: ${JSON.stringify(synthesisTask.subagentType)},
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      });
+      finalDraft;
+    `;
+    const supervisorModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code } }])
+      .respond(new Error("Synthetic supervisor stopped after the child failure."));
+    const childModel = fakeModel();
+    for (let index = 0; index < 12; index += 1) {
+      childModel.respond(new AIMessage(`Unstructured child response ${index + 1}.`));
+    }
+    const events: ResearchOneShotEventV1[] = [];
+
+    await expect(runResearchAgent({
+      model: supervisorModel,
+      subagentModelsByNode: {
+        "research-node:synthesizer": childModel,
+      },
+      request,
+      providers: {
+        jira: {
+          async searchPage() { return { items: [] }; },
+          async getIssue() { throw new Error("unused"); },
+        },
+        wiki: {
+          async searchPage() { return { items: [] }; },
+          async getPage() { throw new Error("unused"); },
+        },
+      },
+      researchGraph: graph,
+      brief,
+      runId: "bounded-tool-free-structured-child",
+      options: { onEvent: (event) => events.push(event) },
+    })).rejects.toThrow();
+
+    // One normal provider turn plus one host-owned, tool-free schema repair.
+    // LangChain must not keep recalling the child until the shared root budget
+    // or the fake model queue is exhausted.
+    expect(childModel.callCount).toBe(2);
+    expect(events.filter(
+      (event) => event.kind === "subagent" && event.status === "repairing",
+    )).toHaveLength(1);
+    expect(events.some(
+      (event) => event.kind === "subagent" && event.status === "failed",
+    )).toBe(true);
+  });
+
+  test("repairs one tool-free plain response without an internal framework retry loop", async () => {
+    const graph = synthesisOnlyGraph();
+    const brief = graphBrief(
+      "Get the exact bounded Jira item.",
+      ["jira"],
+      "lookup",
+      "off",
+    );
+    const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
+    const draft = {
+      title: "Bounded repaired synthesis",
+      selectedClaimIds: [],
+    };
+    const code = `
+      ${graphProposalPrelude(graph)}
+      const finalDraft = await task({
+        description: ${JSON.stringify(synthesisTask.description)},
+        subagentType: ${JSON.stringify(synthesisTask.subagentType)},
+        responseSchema: ${JSON.stringify(RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      });
+      finalDraft;
+    `;
+    const supervisorModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code } }]);
+    const childModel = fakeModel()
+      .respond(new AIMessage("I will return prose instead of the requested structure."))
+      .respondWithTools([{
+        name: "AtlcliDynamicResearchAgentDraftV1",
+        args: draft,
+      }]);
+    const events: ResearchOneShotEventV1[] = [];
+
+    const report = await runResearchAgent({
+      model: supervisorModel,
+      subagentModelsByNode: {
+        "research-node:synthesizer": childModel,
+      },
+      request,
+      providers: {
+        jira: {
+          async searchPage() { return { items: [] }; },
+          async getIssue() { throw new Error("unused"); },
+        },
+        wiki: {
+          async searchPage() { return { items: [] }; },
+          async getPage() { throw new Error("unused"); },
+        },
+      },
+      researchGraph: graph,
+      brief,
+      runId: "repaired-tool-free-structured-child",
+      options: { onEvent: (event) => events.push(event) },
+    });
+
+    expect(report.title).toBe(draft.title);
+    expect(childModel.callCount).toBe(2);
+    expect(events.filter(
+      (event) => event.kind === "subagent" && event.status === "repairing",
+    )).toHaveLength(1);
+    expect(events.some(
+      (event) => event.kind === "subagent" && event.status === "completed",
+    )).toBe(true);
   });
 
   test("retains a dynamic worker's catalog result in the durable session without widening scope", async () => {
@@ -1965,11 +2188,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const researcherTask = taskEnvelope(graph, researcher.id);
     const draft = {
       title: "Durable catalog discovery",
-      executiveSummary: "A metadata candidate was retained without becoming authority.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["Synthetic scope-discovery characterization."],
     };
     const code = `
       ${graphProposalPrelude(graph)}
@@ -2377,11 +2596,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const synthesizer = graph.nodes.find((node) => node.roleId === "synthesizer")!;
     const draft = {
       title: "Checkpointed deep research",
-      executiveSummary: "The durable continuation reached final synthesis.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["Synthetic checkpoint proof without retrieved detail evidence."],
     };
     const emptyPacket = {
       schema: "atlcli.research-packet-body/v1",
@@ -2557,11 +2772,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     };
     const draft = {
       title: "Coverage-gap replan",
-      executiveSummary: "The host admitted one additional coverage review after a bounded gap.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["Synthetic proof of host-derived replan control."],
     };
     const sourcePacket = {
       schema: "atlcli.research-packet-body/v1",
@@ -2856,11 +3067,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     )!.graph!;
     const draft = {
       title: "Resumed durable report",
-      executiveSummary: "The stored retrieval packet was reused without replaying acquisition.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["Synthetic durable-resume proof contains no external source detail."],
     };
     const continuationProgram = `
       const continuation = JSON.parse(await tools.researchRetrievalContinue({
@@ -2952,11 +3159,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
     const draft = {
       title: "Dynamically pruned workflow",
-      executiveSummary: "The accepted workflow omitted optional analysis roles.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["Synthetic dynamic-composition proof."],
     };
     const taskId = (node: typeof jira) => researchTaskIdForNodeV1(graph, node);
     const code = `
@@ -3050,11 +3253,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
     const draft = {
       title: "Single workflow only",
-      executiveSummary: "The first workflow returned a typed draft.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["Synthetic one-shot eval admission test."],
     };
     const firstWorkflow = `
       ${graphProposalPrelude(graph)}
@@ -3096,11 +3295,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
     const draft = {
       title: "Pre-dispatch repair",
-      executiveSummary: "The repaired workflow completed once.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["Synthetic pre-dispatch repair test."],
     };
     const repairedWorkflow = `
       ${graphProposalPrelude(graph)}
@@ -3178,8 +3373,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         severity: "important",
         target: { kind: "coverage", id: "coverage:primary-question" },
         code: "missing_coverage",
+        gapIds: [],
         references: [],
-        explanation: "The synthetic branch intentionally contains no source evidence.",
         suggestedAction: "add_follow_up",
       }],
       proposedFollowUps: [{
@@ -3199,11 +3394,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     };
     const draft = {
       title: "Validated dynamic graph",
-      executiveSummary: "All admitted graph nodes completed once.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["Synthetic no-source branch-coverage run."],
     };
     const code = `
       ${graphProposalPrelude(graph)}
@@ -3526,11 +3717,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     };
     const draft = {
       title: "V2 claim-graph fixture",
-      executiveSummary: "No detail claim was available in the deterministic V2 fixture.",
       selectedClaimIds: [],
-      findings: [],
-      relationships: [],
-      limitations: ["The fixture deliberately contains no detail evidence."],
     };
     const code = `
       ${graphProposalPrelude(graph)}
@@ -3694,15 +3881,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     };
     const draft = {
       title: "Durable V2 report",
-      executiveSummary: "Ignored as factual report prose in V2.",
       selectedClaimIds: [],
-      findings: [{
-        classification: "fact",
-        summary: "Select the validated Jira source for the final report.",
-        sourceIds: ["jira:DEMO-1"],
-      }],
-      relationships: [],
-      limitations: [],
     };
     const selectValidatedClaim = (messages: readonly { text: string }[]) => {
       const claimId = messages

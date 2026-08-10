@@ -27,6 +27,8 @@ import {
   hostSearchFreshnessLimitationsV1,
   projectExactDetailReportRequestV1,
   rehydrateResearchCheckpointRunInputV1,
+  researchAnthropicRoleModelConfigurationV1,
+  researchRepairAndSynthesisModelReserveV1,
   researchSupervisorContinuationPhaseIdV1,
   shouldRepairRejectedCheckpointContinuationV1,
   selectResearchSupervisorPtcToolsV1,
@@ -70,6 +72,37 @@ const draftTool = tool(async () => "unused", {
   name: "AtlcliResearchAgentDraftV1",
   description: "Synthetic structured response.",
   schema: z.object({ title: z.string() }),
+});
+
+test("configures each Anthropic research role with its own reasoning and output ceiling", () => {
+  expect(researchAnthropicRoleModelConfigurationV1("focused-researcher")).toEqual({
+    maxTokens: 6_000,
+    controls: { effort: "low", adaptiveThinking: false },
+  });
+  expect(researchAnthropicRoleModelConfigurationV1("outline-planner")).toEqual({
+    maxTokens: 6_000,
+    controls: { effort: "medium", adaptiveThinking: true },
+  });
+  expect(researchAnthropicRoleModelConfigurationV1("coverage-moderator")).toEqual({
+    maxTokens: 6_000,
+    controls: { effort: "high", adaptiveThinking: true },
+  });
+  expect(researchAnthropicRoleModelConfigurationV1("reconciler")).toEqual({
+    maxTokens: 8_000,
+    controls: { effort: "high", adaptiveThinking: true },
+  });
+  expect(researchAnthropicRoleModelConfigurationV1("synthesizer")).toEqual({
+    maxTokens: 4_000,
+    controls: { effort: "medium", adaptiveThinking: true },
+  });
+});
+
+test("reserves two repair model steps plus final synthesis before authorizing repair", () => {
+  expect(researchRepairAndSynthesisModelReserveV1()).toEqual({
+    calls: 3,
+    inputTokens: 72_000,
+    outputTokens: 20_000,
+  });
 });
 
 test("replaces a direct chat draft when no source was read in detail", () => {
@@ -614,6 +647,46 @@ describe("one-shot supervisor eval capability lifecycle", () => {
     );
   });
 
+  test("rejects node IDs used as role IDs before consuming a continuation", async () => {
+    const diagnostics: Array<{ status: string; errorCode?: string }> = [];
+    const middleware = createOneShotSupervisorEvalMiddleware({
+      startsWithContinuation: true,
+      canContinueAfterCheckpoint: () => true,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    const confusedRoleValidation = continuationWorkflowCode.replace(
+      "const finalDraft = await task({",
+      `if (frontier.tasks[0].roleId !== "research-node:synthesizer") {
+        throw new Error("Unexpected role");
+      }
+      const finalDraft = await task({`,
+    );
+    let evaluatorCalls = 0;
+    await middleware.wrapToolCall!(
+      {
+        toolCall: {
+          id: "tool-call:eval",
+          name: "eval",
+          args: { code: confusedRoleValidation },
+        },
+        tool: evalTool,
+      } as never,
+      async () => {
+        evaluatorCalls += 1;
+        return new ToolMessage({
+          content: "unexpected",
+          tool_call_id: "tool-call:eval",
+          name: "eval",
+        });
+      },
+    );
+
+    expect(evaluatorCalls).toBe(0);
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({ errorCode: "invalid-workflow-control-flow" }),
+    );
+  });
+
   test("permits sequential analysis frontiers only for a host-terminal continuation", async () => {
     const diagnostics: Array<{ status: string; errorCode?: string }> = [];
     const terminalWorkflow = `
@@ -667,6 +740,62 @@ describe("one-shot supervisor eval capability lifecycle", () => {
     expect(diagnostics).toContainEqual(
       expect.objectContaining({ errorCode: "invalid-workflow-control-flow" }),
     );
+  });
+
+  test("requires an optional reconciliation repair to be additional to the final frontier", async () => {
+    const diagnostics: Array<{ status: string; errorCode?: string }> = [];
+    const incomplete = `
+      const continuation = JSON.parse(await tools.researchRetrievalContinue({
+        graphRevision: 1,
+        wave: 1,
+        continuationId: "research-continuation:repair"
+      }));
+      const critiqueFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+      await task({ description: critiqueFrontier.tasks[0].objective });
+      const acceptedDispositions = JSON.parse(await tools.researchReconciliationDispositions({ decisions: [] }));
+      const finalFrontier = JSON.parse(await tools.researchReadyFrontier({ graphRevision: continuation.graphRevision }));
+      const finalDraft = await task({ description: finalFrontier.tasks[0].objective });
+      finalDraft;
+    `;
+    const rejected = createOneShotSupervisorEvalMiddleware({
+      startsWithContinuation: true,
+      terminalContinuation: true,
+      canContinueAfterCheckpoint: () => true,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    let evaluatorCalls = 0;
+    await rejected.wrapToolCall!(
+      {
+        toolCall: { id: "tool-call:eval", name: "eval", args: { code: incomplete } },
+        tool: evalTool,
+      } as never,
+      async () => {
+        evaluatorCalls += 1;
+        return new ToolMessage({ content: "unexpected", tool_call_id: "tool-call:eval", name: "eval" });
+      },
+    );
+    expect(evaluatorCalls).toBe(0);
+    expect(diagnostics).toContainEqual(expect.objectContaining({ errorCode: "invalid-workflow-control-flow" }));
+
+    const complete = incomplete.replace(
+      "const finalFrontier",
+      `const repairTask = acceptedDispositions.repairTask;
+      const repairResult = repairTask === undefined ? null : await task({
+        description: repairTask.objective,
+        subagentType: repairTask.subagentType,
+        responseSchema: responseSchemas[repairTask.outputSchema]
+      });
+      const finalFrontier`,
+    );
+    const acceptedDiagnostics: Array<{ status: string; errorCode?: string }> = [];
+    const accepted = createOneShotSupervisorEvalMiddleware({
+      startsWithContinuation: true,
+      terminalContinuation: true,
+      canContinueAfterCheckpoint: () => true,
+      onDiagnostic: (diagnostic) => acceptedDiagnostics.push(diagnostic),
+    });
+    await completeEval(accepted, JSON.stringify({ title: "Synthesized after repair" }), complete);
+    expect(acceptedDiagnostics).toContainEqual(expect.objectContaining({ status: "completed" }));
   });
 
   test("rejects a detached async workflow before dispatch and permits one direct repair", async () => {
@@ -1151,6 +1280,7 @@ describe("ready frontier PTC", () => {
       graphRevision: graph.revision,
       tasks: [expect.objectContaining({
         taskId: researchTaskIdForNodeV1(graph, node),
+        responseSchema: expect.objectContaining({ type: "object" }),
       })],
     });
     await expect(createResearchReadyFrontierPtcTool({
@@ -1633,7 +1763,9 @@ describe("durable graph revision PTC", () => {
     expect(terminalPrompt).toContain("coverage-moderator (research-node:coverage-moderation)");
     expect(terminalPrompt).toContain("reconciler (research-node:reconciler)");
     expect(terminalPrompt).toContain("synthesizer (research-node:synthesizer)");
-    expect(terminalPrompt).toContain("Do not use a loop, if/else, switch, callback, or block-scoped final result");
+    expect(terminalPrompt).toContain("Do not use a loop, switch, callback, or block-scoped final result");
+    expect(terminalPrompt).toContain("This conditional repair is additional work");
+    expect(terminalPrompt).toContain("Never rename a repair result to finalDraft");
     expect(terminalPrompt).toContain("top-level `const finalDraft = await task(...)`");
   });
 
@@ -1677,7 +1809,7 @@ describe("durable graph revision PTC", () => {
     })).toThrow("positive lease epoch");
   });
 
-  test("exposes only schemas admitted by a compact V2 lookup graph", () => {
+  test("keeps response schemas host-issued instead of embedding them in supervisor code", () => {
     const brief = createResearchBriefV1({
       sessionId: "research-session:lookup-schema-prompt",
       turnId: "research-turn:lookup-schema-prompt",
@@ -1697,11 +1829,10 @@ describe("durable graph revision PTC", () => {
       packetOutputSchema: "atlcli.research-packet-body/v2",
     }));
 
-    expect(prompt).toContain('"atlcli.research-packet-body/v2"');
-    expect(prompt).toContain('"atlcli.research-packet-reference-model/v2"');
-    expect(prompt).toContain('"atlcli.research-agent-draft/v1"');
-    expect(prompt).not.toContain('"atlcli.research-packet-body/v1"');
-    expect(prompt).not.toContain('"atlcli.reconciliation-body/v1"');
+    expect(prompt).toContain("host-issued `responseSchema: returnedTask.responseSchema`");
+    expect(prompt).toContain("Never define a response-schema map");
+    expect(prompt).not.toContain("const responseSchemas =");
+    expect(prompt).not.toContain('"properties":');
   });
 });
 

@@ -1,6 +1,8 @@
 import {
   parseResearchAgentDraftV1,
+  parseResearchDynamicAgentDraftV1,
   type ResearchAgentDraftV1,
+  type ResearchDynamicAgentDraftV1,
 } from "./agent-draft.js";
 import { ResearchContractError } from "./contracts.js";
 import type { ResearchGraphCapabilityV1 } from "./graph.js";
@@ -207,7 +209,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
     // A focused single-product branch may need ten screening pages, one host
     // ranking, and up to fifty serial detail reads. Cross-product runs divide
     // the shared PTC ceiling between acquisition branches before dispatch.
-    maxBudget: { maxCapabilityCalls: 64 },
+    maxBudget: { maxCapabilityCalls: 64, maxOutputTokens: 6_000 },
     mayProposeFollowUps: true,
   }),
   "document-distiller": role({
@@ -225,6 +227,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
     phase: "verification",
     availableFromPhase: "T3",
     allowedCapabilityIds: [
+      "atlassian.bound.read",
       "jira.issue.search",
       "jira.issue.get",
       "wiki.search",
@@ -470,8 +473,19 @@ export interface ResearchReconciliationDefectV1 {
     | "instruction_mismatch"
     | "duplicate"
     | "stale";
+  /**
+   * Exact host-projected gap identities that this defect consolidates. New
+   * provider output always supplies this field; it remains optional only so
+   * already-persisted reconciliation packets can still be decoded.
+   */
+  gapIds?: string[];
   references: ResearchSupportRefV1[];
-  explanation: string;
+  /**
+   * Legacy critic rationale retained only for decoding older durable packets.
+   * New provider output is deliberately identity- and enum-only so free critic
+   * prose cannot become report content or consume the bounded QuickJS schema.
+   */
+  explanation?: string;
   suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
 }
 
@@ -514,7 +528,12 @@ export interface ResearchAcceptedPacketV1 {
   grantedCapabilityIds: ResearchGraphCapabilityV1[];
   typedIntentRefs: string[];
   expectedOutputSchema: ResearchTaskOutputSchemaV1;
-  body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+  body:
+    | ResearchPacketBodyV1
+    | ResearchPacketBodyV2
+    | ReconciliationBodyV1
+    | ResearchAgentDraftV1
+    | ResearchDynamicAgentDraftV1;
   hostObservedUsage: ResearchTaskUsageV1;
   acceptedAt: string;
 }
@@ -761,7 +780,7 @@ export function parseResearchPacketModelBodyV2(value: unknown): ResearchPacketMo
     "abstentionReason",
   ], "Research V2 model packet body");
   if (packet.schema !== RESEARCH_PACKET_BODY_SCHEMA_V2 ||
-      !Array.isArray(packet.claimCandidates) || packet.claimCandidates.length > 8 ||
+      !Array.isArray(packet.claimCandidates) || packet.claimCandidates.length > 12 ||
       !Array.isArray(packet.contradictionCandidates) || packet.contradictionCandidates.length > 12 ||
       !Array.isArray(packet.outlineProposals) || packet.outlineProposals.length > 12 ||
       !Array.isArray(packet.gaps) || packet.gaps.length > 16 ||
@@ -1130,6 +1149,11 @@ export function validateResearchReconciliationBodyNamespaceV1(
     if (!isResearchReconciliationTargetKnownV1(defect.target, input)) {
       invalid(`Reconciliation defect target is outside the host namespace: ${defect.id}`);
     }
+    for (const gapId of defect.gapIds ?? []) {
+      if (!input.projection.gapIds.includes(gapId)) {
+        invalid(`Reconciliation defect gap is outside the host namespace: ${defect.id}`);
+      }
+    }
     for (const reference of defect.references) {
       if (!isResearchReconciliationReferenceKnownV1(reference, input)) {
         invalid(`Reconciliation defect reference is outside the host namespace: ${defect.id}`);
@@ -1306,7 +1330,7 @@ export function projectResearchReconciliationInputV1(input: {
 
 function parseReconciliationDefect(value: unknown): ResearchReconciliationDefectV1 {
   const item = object(value, "Reconciliation defect");
-  assertKeys(item, ["id", "severity", "target", "code", "references", "explanation", "suggestedAction"], "Reconciliation defect");
+  assertKeys(item, ["id", "severity", "target", "code", "gapIds", "references", "explanation", "suggestedAction"], "Reconciliation defect");
   const severity = ["blocking", "important", "minor"] as const;
   const codes = ["unsupported", "contradicted", "missing_coverage", "overstated", "instruction_mismatch", "duplicate", "stale"] as const;
   const actions = ["accept", "revise", "downgrade", "add_follow_up", "abstain"] as const;
@@ -1326,8 +1350,13 @@ function parseReconciliationDefect(value: unknown): ResearchReconciliationDefect
     severity: item.severity as typeof severity[number],
     target: { kind: target.kind as typeof targetKinds[number], id: boundedString(target.id, "Reconciliation target id", 160) },
     code: item.code as typeof codes[number],
+    ...(item.gapIds === undefined
+      ? {}
+      : { gapIds: stringArray(item.gapIds, "Reconciliation defect gap ids", 16, 160) }),
     references,
-    explanation: boundedString(item.explanation, "Reconciliation defect explanation", 1_000),
+    ...(item.explanation === undefined
+      ? {}
+      : { explanation: boundedString(item.explanation, "Reconciliation defect explanation", 1_000) }),
     suggestedAction: item.suggestedAction as typeof actions[number],
   };
 }
@@ -1430,12 +1459,27 @@ export function parseResearchReconciliationDispositionV1(
 export function parseResearchTaskBodyV1(
   schema: ResearchTaskOutputSchemaV1,
   value: unknown,
-): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 {
+):
+  | ResearchPacketBodyV1
+  | ResearchPacketBodyV2
+  | ReconciliationBodyV1
+  | ResearchAgentDraftV1
+  | ResearchDynamicAgentDraftV1 {
   if (schema === RESEARCH_PACKET_BODY_SCHEMA_V1) return parseResearchPacketBodyV1(value);
   if (schema === RESEARCH_PACKET_BODY_SCHEMA_V2) return parseResearchPacketBodyV2(value);
   if (schema === RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2) return parseResearchPacketBodyV2(value);
   if (schema === RESEARCH_RECONCILIATION_BODY_SCHEMA_V1) return parseReconciliationBodyV1(value);
-  if (schema === "atlcli.research-agent-draft/v1") return parseResearchAgentDraftV1(value);
+  if (schema === "atlcli.research-agent-draft/v1") {
+    // Dynamic V2 synthesis stores only the host-controlled editorial
+    // selection. Retained pre-V2 sessions may still carry the legacy prose
+    // draft, so accept that shape only when the compact contract does not
+    // match (notably when selectedClaimIds is absent).
+    try {
+      return parseResearchDynamicAgentDraftV1(value);
+    } catch {
+      return parseResearchAgentDraftV1(value);
+    }
+  }
   invalid("Research task output schema is unavailable.");
 }
 

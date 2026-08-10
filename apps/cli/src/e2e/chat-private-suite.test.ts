@@ -13,6 +13,7 @@ import {
   privateForbiddenClaimMatchesV1,
   projectPrivateAnswerV1,
   runChatPrivateSuiteV1,
+  selectChatPrivateSuiteV1,
 } from "./chat-private-suite.js";
 
 const roots: string[] = [];
@@ -72,7 +73,7 @@ function researchOutput(): string {
     report: {
       markdown: `# Bericht\n\nSupported fact 1.\n\n## Quellen\n\n[Quelle](${sourceUrl})`,
       sources: [{ url: sourceUrl }],
-      run: { durationMs: 500, counts: { ptcCalls: 4, httpCalls: 2 }, usage: { inputTokens: 300, outputTokens: 80 } },
+      run: { durationMs: 500, counts: { modelCalls: 7, ptcCalls: 4, httpCalls: 2 }, usage: { inputTokens: 300, outputTokens: 80 } },
     },
   });
 }
@@ -96,6 +97,22 @@ describe("private Chat release suite", () => {
       ATLCLI_DISABLE_UPDATE_CHECK: "1",
       ATLCLI_RESEARCH_SESSIONS_DIR: "/private/output/sessions",
     });
+  });
+
+  test("selects one opaque case and variant for a bounded live proof", () => {
+    const selected = selectChatPrivateSuiteV1(suite, {
+      caseId: "CASE02",
+      variant: "deep-research",
+    });
+    expect(selected.cases).toHaveLength(1);
+    expect(selected.cases[0]).toMatchObject({
+      id: "CASE02",
+      variants: ["deep-research"],
+    });
+    expect(() => selectChatPrivateSuiteV1(suite, {
+      caseId: "CASE01",
+      variant: "deep-research",
+    })).toThrow("not present");
   });
 
   test("builds production Chat follow-ups and the separate Deep Research command", () => {
@@ -125,7 +142,10 @@ describe("private Chat release suite", () => {
 
   test("projects structured Chat and Research output without accepting the wrong mode", () => {
     expect(projectPrivateAnswerV1(chatOutput("quick", 1), "quick").sourceUrls).toEqual([sourceUrl]);
-    expect(projectPrivateAnswerV1(researchOutput(), "deep-research").qualityMode).toBe("deep-research");
+    expect(projectPrivateAnswerV1(researchOutput(), "deep-research")).toMatchObject({
+      qualityMode: "deep-research",
+      modelCalls: 7,
+    });
     expect(() => projectPrivateAnswerV1(chatOutput("auto", 1), "quick")).toThrow("invalid");
   });
 

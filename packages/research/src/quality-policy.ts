@@ -232,7 +232,10 @@ export const RESEARCH_ROLE_MODEL_PROFILES_V1 = {
   "coverage-moderator": { profile: "strong-reasoner", reasoning: "thorough" },
   "outline-planner": { profile: "strong-reasoner", reasoning: "balanced" },
   reconciler: { profile: "strong-reasoner", reasoning: "thorough" },
-  synthesizer: { profile: "strong-reasoner", reasoning: "thorough" },
+  // The synthesizer selects accepted Claim IDs after outline, coverage, and
+  // critique. The host renders the report, so balanced reasoning preserves
+  // editorial quality without reopening a second deep-analysis pass.
+  synthesizer: { profile: "strong-reasoner", reasoning: "balanced" },
 } as const satisfies Record<string, ResearchRoleModelProfileV1>;
 
 export function resolveResearchRoleModelV1(

@@ -176,7 +176,7 @@ export const RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown> 
     schema: { const: "atlcli.research-packet-body/v2" },
     // One prioritized claim per production detail item keeps transient model
     // output bounded without reducing host-side retrieval coverage.
-    claimCandidates: boundedObjectArray(8, researchClaimCandidateV2Schema),
+    claimCandidates: boundedObjectArray(12, researchClaimCandidateV2Schema),
     contradictionCandidates: boundedObjectArray(12, researchContradictionCandidateV2Schema),
     outlineProposals: boundedObjectArray(12, researchOutlineProposalCandidateV2Schema),
     gaps: boundedObjectArray(16, gapSchema),
@@ -206,7 +206,7 @@ export const RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<strin
   "ResearchExactBoundPacketModelBodyV2",
   {
     schema: { const: "atlcli.research-packet-body/v2" },
-    claimCandidates: boundedObjectArray(8, researchClaimCandidateV2Schema),
+    claimCandidates: boundedObjectArray(12, researchClaimCandidateV2Schema),
     gaps: boundedObjectArray(16, gapSchema),
     coverageLimits: boundedStringArray(16, 600),
     abstentionReason: boundedString(1_000),
@@ -299,6 +299,7 @@ export const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown
             type: "string",
             enum: ["unsupported", "contradicted", "missing_coverage", "overstated", "instruction_mismatch", "duplicate", "stale"],
           },
+          gapIds: boundedStringArray(16, 160),
           references: boundedObjectArray(
             16,
             closedObject(
@@ -310,13 +311,12 @@ export const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown
               ["kind", "id"],
             ),
           ),
-          explanation: boundedString(1_000),
           suggestedAction: {
             type: "string",
             enum: ["accept", "revise", "downgrade", "add_follow_up", "abstain"],
           },
         },
-        ["id", "severity", "target", "code", "references", "explanation", "suggestedAction"],
+        ["id", "severity", "target", "code", "gapIds", "references", "suggestedAction"],
       ),
     ),
     proposedFollowUps: boundedObjectArray(3, reconciliationFollowUpSchema),

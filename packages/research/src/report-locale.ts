@@ -43,7 +43,7 @@ const ENGLISH: ResearchReportCopyV1 = {
   none: "_None reported._",
   model: "Model",
   confluenceProvider: "Confluence provider",
-  complete: "Complete",
+  complete: "Run completed",
   yes: "yes",
   no: "no",
   duration: "Duration",
@@ -73,7 +73,7 @@ const GERMAN: ResearchReportCopyV1 = {
   none: "_Keine angegeben._",
   model: "Modell",
   confluenceProvider: "Confluence-Anbieter",
-  complete: "Vollständig",
+  complete: "Lauf abgeschlossen",
   yes: "ja",
   no: "nein",
   duration: "Laufzeit",
@@ -129,7 +129,7 @@ export function localizeResearchSectionTitleV1(
 ): string {
   if (language !== "de") return title;
   if (title === "Evidence-backed findings") return "Direkt belegte Befunde";
-  if (title === "Additional validated findings") return "Weitere validierte Befunde";
+  if (title === "Additional evidence-backed findings") return "Weitere belegte Befunde";
   return title;
 }
 
@@ -141,8 +141,8 @@ export function localizeResearchSectionQuestionV1(
   if (question === "What do the currently validated claims establish?") {
     return "Was belegen die derzeit validierten Befunde?";
   }
-  if (question === "Which validated claims were not assigned to an outline section?") {
-    return "Welche validierten Befunde wurden keinem Gliederungsabschnitt zugeordnet?";
+  if (question === "What additional evidence-backed findings matter to the question?") {
+    return "Welche weiteren belegten Befunde sind für die Frage wesentlich?";
   }
   return question;
 }

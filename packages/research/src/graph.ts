@@ -743,8 +743,16 @@ function composeSeeds(brief: ResearchBriefV1, includeOutlinePlanner: boolean): N
       roleId: "contradiction-verifier",
       objective: "Execute at most one host-authorized reconciliation follow-up inside the approved Jira and Confluence scope.",
       requestedCapabilityIds: [
-        ...(jira ? ["jira.issue.search", "research.candidate.rank", "jira.issue.get"] as const : []),
-        ...(wiki ? ["wiki.search", "research.candidate.rank", "wiki.page.get"] as const : []),
+        ...(jira
+          ? hasExactJiraBinding
+            ? (["atlassian.bound.read"] as const)
+            : (["jira.issue.search", "research.candidate.rank", "jira.issue.get"] as const)
+          : []),
+        ...(wiki
+          ? hasExactWikiBinding
+            ? (["atlassian.bound.read"] as const)
+            : (["wiki.search", "research.candidate.rank", "wiki.page.get"] as const)
+          : []),
       ],
       dependencies: ["research-node:reconciler"],
       reasonCodes: ["coverage_gap"],

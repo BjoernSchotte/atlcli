@@ -219,6 +219,15 @@ describe("durable session artifact projections", () => {
         limitations: [],
       },
     }));
+    const compactDraft = prepareResearchSessionArtifactWriteV1(projectResearchReportDraftArtifactV1({
+      turnId: "research-turn:compact",
+      graphRevision: graph.revision,
+      updatedAt,
+      draft: {
+        title: "Compact V2 selection",
+        selectedClaimIds: [],
+      },
+    }));
 
     expect(query.metadata).toMatchObject({
       id: RESEARCH_QUERY_INTENTS_ARTIFACT_ID_V1,
@@ -236,6 +245,12 @@ describe("durable session artifact projections", () => {
     expect(secondDraft.metadata).toMatchObject({
       id: RESEARCH_REPORT_DRAFT_ARTIFACT_ID_V1,
       path: RESEARCH_REPORT_DRAFT_ARTIFACT_PATH_V1,
+    });
+    expect(JSON.parse(compactDraft.contents)).toMatchObject({
+      draft: {
+        title: "Compact V2 selection",
+        selectedClaimIds: [],
+      },
     });
     expect(firstDraft.contents).not.toEqual(secondDraft.contents);
   });

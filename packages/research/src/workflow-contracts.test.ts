@@ -104,6 +104,8 @@ describe("T3 workflow contracts", () => {
     ]);
     expect(RESEARCH_SUBAGENT_ROLE_REGISTRY_V1["focused-researcher"].maxBudget.maxCapabilityCalls)
       .toBe(64);
+    expect(RESEARCH_SUBAGENT_ROLE_REGISTRY_V1["focused-researcher"].maxBudget.maxOutputTokens)
+      .toBe(6_000);
     expect(() => validateResearchTaskAdmissionV1({
       executor: "subagent",
       roleId: "outline-planner",
@@ -168,7 +170,7 @@ describe("T3 workflow contracts", () => {
     })).toThrow("quote");
     expect(() => parseResearchPacketModelBodyV2({
       ...modelBody,
-      claimCandidates: Array.from({ length: 9 }, (_, index) => ({
+      claimCandidates: Array.from({ length: 13 }, (_, index) => ({
         ...modelBody.claimCandidates[0],
         id: `candidate:${index}`,
       })),
@@ -239,6 +241,7 @@ describe("T3 workflow contracts", () => {
         severity: "important",
         target: { kind: "coverage", id: "coverage:question" },
         code: "missing_coverage",
+        gapIds: ["gap:known"],
         references: [{ kind: "evidence", id: "evidence:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }],
         explanation: "The approved coverage target has one unresolved gap.",
         suggestedAction: "add_follow_up",
@@ -255,6 +258,10 @@ describe("T3 workflow contracts", () => {
       ...valid,
       defects: [{ ...valid.defects[0]!, target: { kind: "section", id: "section:verified" } }],
     }, input)).toEqual(expect.any(Object));
+    expect(() => validateResearchReconciliationBodyNamespaceV1({
+      ...valid,
+      defects: [{ ...valid.defects[0]!, gapIds: ["gap:invented"] }],
+    }, input)).toThrow("gap is outside the host namespace");
     expect(() => validateResearchReconciliationBodyNamespaceV1({
       ...valid,
       defects: [{ ...valid.defects[0]!, target: { kind: "coverage", id: "coverage:invented" } }],

@@ -50,26 +50,63 @@ function distinctClaimIds(value: readonly string[], label: string): string[] {
 }
 
 /**
- * A validated outline is the host's completeness boundary. The synthesizer may
- * prioritize claims for its compact draft, but it cannot silently remove a
- * current claim that the host retained in that outline.
+ * The ledger and outline retain the complete accepted evidence boundary. The
+ * published report is a question-directed projection of that boundary: when a
+ * synthesizer supplies an explicit selection, publish exactly that validated
+ * subset instead of appending every background or superseded repair claim.
+ * Coverage is recalculated later and therefore still exposes any omitted
+ * required target as a deterministic limitation.
  */
 export function completeResearchReportClaimSelectionV2(input: {
   acceptedClaimIds: readonly string[];
   selectedClaimIds?: readonly string[];
   outlineClaimIds: readonly string[];
+  /**
+   * Question-directed outline sections are an authoritative completeness
+   * boundary. The synthesizer may choose the smallest useful subset, but it
+   * cannot silently omit an entire planned section. Host fallback/background
+   * sections are deliberately not supplied here.
+   */
+  requiredOutlineClaimGroups?: readonly (readonly string[])[];
+  supersededClaimIds?: readonly string[];
 }): string[] {
   const accepted = distinctClaimIds(input.acceptedClaimIds, "Accepted V2 report claim IDs");
   const selected = input.selectedClaimIds === undefined
     ? accepted
     : distinctClaimIds(input.selectedClaimIds, "Synthesizer-selected V2 report claim IDs");
   const outlined = distinctClaimIds(input.outlineClaimIds, "Outlined V2 report claim IDs");
+  const superseded = input.supersededClaimIds === undefined
+    ? []
+    : distinctClaimIds(input.supersededClaimIds, "Superseded V2 report claim IDs");
+  const requiredGroups = (input.requiredOutlineClaimGroups ?? []).map((group) =>
+    distinctClaimIds(group, "Required outline claim group")
+  );
   const acceptedSet = new Set(accepted);
-  if ([...selected, ...outlined].some((claimId) => !acceptedSet.has(claimId))) {
+  if ([
+    ...selected,
+    ...outlined,
+    ...superseded,
+    ...requiredGroups.flat(),
+  ].some((claimId) => !acceptedSet.has(claimId))) {
     invalid("V2 report claim selection references a claim outside accepted evidence.");
   }
-  const required = new Set([...selected, ...outlined]);
-  return accepted.filter((claimId) => required.has(claimId));
+  const supersededSet = new Set(superseded);
+  if (input.selectedClaimIds !== undefined) {
+    const completed = selected.filter((claimId) => !supersededSet.has(claimId));
+    const completedSet = new Set(completed);
+    for (const group of requiredGroups) {
+      const eligible = group.filter((claimId) => !supersededSet.has(claimId));
+      if (eligible.length === 0 || eligible.some((claimId) => completedSet.has(claimId))) {
+        continue;
+      }
+      completed.push(eligible[0]!);
+      completedSet.add(eligible[0]!);
+    }
+    return completed;
+  }
+  return (outlined.length > 0 ? outlined : accepted).filter(
+    (claimId) => !supersededSet.has(claimId),
+  );
 }
 
 function sameSource(left: ResearchSourceReferenceV1, right: ResearchSourceReferenceV1): boolean {
@@ -110,14 +147,19 @@ function sectionsFor(
       claimIds: section.claimIds.filter((id) => selected.has(id)),
       coverageTargetIds: [...section.coverageTargetIds],
     }))
-    .filter((section) => section.claimIds.length > 0);
+    .filter((section) => section.claimIds.length > 0)
+    .sort((left, right) => {
+      const leftFallback = left.id === "outline-section:host-unassigned" ? 1 : 0;
+      const rightFallback = right.id === "outline-section:host-unassigned" ? 1 : 0;
+      return leftFallback - rightFallback;
+    });
   const assigned = new Set(sections.flatMap((section) => section.claimIds));
   const unassigned = claimIds.filter((id) => !assigned.has(id));
   if (unassigned.length > 0) {
     sections.push({
       id: "report-section:unassigned-validated-claims",
-      title: "Additional validated findings",
-      question: "Which validated claims were not assigned to an outline section?",
+      title: "Additional evidence-backed findings",
+      question: "What additional evidence-backed findings matter to the question?",
       claimIds: unassigned,
       coverageTargetIds: [],
     });
@@ -192,7 +234,6 @@ function renderMarkdown(
   const claimsById = new Map(report.claims.map((claim) => [claim.id, claim]));
   const sections = report.sections.map((section) => ({
     title: section.title,
-    question: section.question,
     findings: section.claimIds.map((id, index) => {
       const claim = claimsById.get(id);
       if (!claim) invalid("V2 report section references an unavailable claim.");
@@ -265,6 +306,12 @@ function reconciliationOutcome(value: unknown): ResearchReportReconciliationV2 {
       !target || typeof target !== "object" ||
       !["finding", "relationship", "claim", "section", "node", "coverage"].includes(target.kind ?? "") ||
       typeof target.id !== "string" || target.id.length === 0 || target.id.length > 160 ||
+      (outcome.defectCode !== undefined &&
+        !["unsupported", "contradicted", "missing_coverage", "overstated", "instruction_mismatch", "duplicate", "stale"].includes(outcome.defectCode)) ||
+      (outcome.gapIds !== undefined &&
+        (!Array.isArray(outcome.gapIds) || outcome.gapIds.length > 16 ||
+          outcome.gapIds.some((gapId) => typeof gapId !== "string" || gapId.length === 0 || gapId.length > 160) ||
+          new Set(outcome.gapIds).size !== outcome.gapIds.length)) ||
       !["reject_defect", "revise", "downgrade", "add_follow_up", "abstain", "no_change"].includes(outcome.decision ?? "") ||
       !["invalid_reference", "already_resolved", "supported_by_evidence", "material_defect", "insufficient_budget", "outside_approval_envelope"].includes(outcome.reasonCode ?? "")) {
     invalid("V2 report reconciliation outcome is invalid.");
@@ -272,6 +319,8 @@ function reconciliationOutcome(value: unknown): ResearchReportReconciliationV2 {
   return {
     defectId: outcome.defectId,
     target: { kind: target.kind, id: target.id },
+    ...(outcome.defectCode === undefined ? {} : { defectCode: outcome.defectCode }),
+    ...(outcome.gapIds === undefined ? {} : { gapIds: [...outcome.gapIds] }),
     decision: outcome.decision,
     reasonCode: outcome.reasonCode,
   } as ResearchReportReconciliationV2;
@@ -399,6 +448,18 @@ export interface FinalizeResearchReportV2Input {
   selectedSourceIds?: readonly string[];
   /** Host-recorded reconciliation results; never critic prose or source support. */
   reconciliation?: readonly ResearchReportReconciliationV2[];
+  /** Accepted brief targets used only to name unresolved coverage gaps. */
+  coverageTargets?: readonly { id: string; question: string }[];
+  /**
+   * Host-accepted packet gaps. They remain non-evidence metadata and are
+   * rendered only when an accepted reconciliation defect names their ID.
+   */
+  acceptedGaps?: readonly {
+    id: string;
+    summary: string;
+    targetId?: string;
+    sourceIds: readonly string[];
+  }[];
   run: ResearchRunSummaryV1;
   checkedAt: string;
 }
@@ -430,18 +491,171 @@ function normalizedReconciliation(
 function unresolvedReconciliationLimitations(
   outcomes: readonly ResearchReportReconciliationV2[],
   language: ResearchRequestV1["reportLanguage"],
+  context: {
+    claims: readonly ResearchReportClaimV2[];
+    sections: readonly ResearchReportSectionV2[];
+    coverageTargets?: readonly { id: string; question: string }[];
+    acceptedGaps?: readonly {
+      id: string;
+      summary: string;
+      targetId?: string;
+      sourceIds: readonly string[];
+    }[];
+    reportSourceIds: ReadonlySet<string>;
+  },
 ): string[] {
   const unresolved = outcomes.filter((outcome) =>
     outcome.decision === "add_follow_up" || outcome.decision === "abstain"
   );
-  if (unresolved.length === 0) return [];
-  return [language === "de"
-    ? unresolved.length === 1
-      ? "Die unabhängige Prüfung hat einen offenen Punkt identifiziert, der in einem Folgeschritt weiter geprüft werden muss."
-      : `Die unabhängige Prüfung hat ${unresolved.length} offene Punkte identifiziert, die in einem Folgeschritt weiter geprüft werden müssen.`
-    : unresolved.length === 1
-      ? "Independent review identified one open item that requires further follow-up."
-      : `Independent review identified ${unresolved.length} open items that require further follow-up.`];
+  const claimsById = new Map(context.claims.map((claim) => [claim.id, claim]));
+  const sectionsById = new Map(context.sections.map((section) => [section.id, section]));
+  const coverageById = new Map(
+    (context.coverageTargets ?? []).map((target) => [target.id, target]),
+  );
+  const acceptedCoverageTargetIds = new Set(coverageById.keys());
+  const safeGapSummary = (value: string): string => {
+    const withoutLinks = value
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "external reference")
+      .replace(/[.!?]+$/g, "");
+    return markdownText(withoutLinks).slice(0, 500).trimEnd();
+  };
+  const gapsById = new Map<string, { id: string; summary: string }>();
+  for (const gap of context.acceptedGaps ?? []) {
+    if (gapsById.has(gap.id) || gap.id.length === 0 || gap.id.length > 160 ||
+        gap.summary.length === 0 || gap.summary.length > 600 || gap.summary.includes("\u0000") ||
+        (gap.targetId !== undefined && !acceptedCoverageTargetIds.has(gap.targetId)) ||
+        gap.sourceIds.length > 12 || new Set(gap.sourceIds).size !== gap.sourceIds.length ||
+        gap.sourceIds.some((sourceId) => !context.reportSourceIds.has(sourceId))) {
+      continue;
+    }
+    const summary = safeGapSummary(gap.summary);
+    if (summary.length > 0) gapsById.set(gap.id, { id: gap.id, summary });
+  }
+  const concise = (value: string, maximum = 360): string => {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    return normalized.length <= maximum
+      ? normalized
+      : `${normalized.slice(0, maximum - 1).trimEnd()}…`;
+  };
+  const subjectFor = (outcome: ResearchReportReconciliationV2): string => {
+    if (outcome.target.kind === "claim") {
+      const claim = claimsById.get(outcome.target.id);
+      if (claim) return language === "de"
+        ? `die Aussage „${concise(claim.statement)}“`
+        : `the statement “${concise(claim.statement)}”`;
+    }
+    if (outcome.target.kind === "section") {
+      const section = sectionsById.get(outcome.target.id);
+      if (section) return language === "de"
+        ? `der Berichtsteil „${concise(section.title, 220)}“`
+        : `the report section “${concise(section.title, 220)}”`;
+    }
+    if (outcome.target.kind === "coverage") {
+      const target = coverageById.get(outcome.target.id);
+      if (target) return language === "de"
+        ? `der Fragenaspekt „${concise(target.question)}“`
+        : `the question aspect “${concise(target.question)}”`;
+      const section = context.sections.find((candidate) =>
+        candidate.coverageTargetIds.includes(outcome.target.id)
+      );
+      if (section) return language === "de"
+        ? `der Fragenaspekt im Berichtsteil „${concise(section.title, 220)}“`
+        : `the question aspect in report section “${concise(section.title, 220)}”`;
+    }
+    const fallback = language === "de"
+      ? {
+          finding: "ein angeforderter Befund",
+          relationship: "eine angeforderte Jira-↔-Confluence-Verbindung",
+          node: "ein erforderlicher Rechercheschritt",
+          claim: "eine zentrale Aussage",
+          section: "ein angeforderter Berichtsteil",
+          coverage: "ein erforderlicher Fragenaspekt",
+        }
+      : {
+          finding: "a requested finding",
+          relationship: "a requested Jira-to-Confluence relationship",
+          node: "a required research step",
+          claim: "a central statement",
+          section: "a requested report section",
+          coverage: "a required question aspect",
+        };
+    return fallback[outcome.target.kind];
+  };
+  const concreteGapOutcomeKeys = new Set(
+    unresolved
+      .filter((outcome) =>
+        (outcome.gapIds ?? []).some((gapId) => gapsById.has(gapId))
+      )
+      .map((outcome) =>
+        `${outcome.target.kind}:${outcome.target.id}:${outcome.defectCode ?? "unsupported"}`
+      ),
+  );
+  const concreteGapDefectCodes = new Set(
+    unresolved
+      .filter((outcome) =>
+        (outcome.gapIds ?? []).some((gapId) => gapsById.has(gapId))
+      )
+      .map((outcome) => outcome.defectCode ?? "unsupported"),
+  );
+  return unresolved.flatMap((outcome) => {
+    const concreteGaps = (outcome.gapIds ?? [])
+      .map((gapId) => gapsById.get(gapId))
+      .filter((gap): gap is { id: string; summary: string } => gap !== undefined);
+    if (concreteGaps.length > 0) {
+      return concreteGaps.map((gap) => language === "de"
+        ? `Offen bleibt: ${gap.summary}.`
+        : `Open point: ${gap.summary}.`);
+    }
+    const outcomeKey =
+      `${outcome.target.kind}:${outcome.target.id}:${outcome.defectCode ?? "unsupported"}`;
+    if (concreteGapOutcomeKeys.has(outcomeKey)) {
+      return [];
+    }
+    // A node is an internal workflow step, not a user-facing report subject.
+    // When the critic also supplied concrete gaps for the same defect class,
+    // those gaps are the actionable limitation and the node-level fallback is
+    // redundant. Keep an isolated node defect visible when no concrete gap
+    // explains it, so genuine orchestration failures are never hidden.
+    if (
+      outcome.target.kind === "node" &&
+      concreteGapDefectCodes.has(outcome.defectCode ?? "unsupported")
+    ) {
+      return [];
+    }
+    const subject = subjectFor(outcome);
+    const sentenceSubject = `${subject.charAt(0).toLocaleUpperCase(language === "de" ? "de-DE" : "en-US")}${subject.slice(1)}`;
+    if (outcome.reasonCode === "insufficient_budget") {
+      return [language === "de"
+        ? `Das festgelegte Zeit- oder Kostenlimit wurde erreicht, bevor ${subject} abschließend geprüft werden konnte.`
+        : `The configured time or cost limit was reached before ${subject} could be checked conclusively.`];
+    }
+    if (outcome.reasonCode === "outside_approval_envelope") {
+      return [language === "de"
+        ? `Für ${subject} wären zusätzliche, nicht freigegebene Quellen erforderlich; der Punkt bleibt deshalb offen.`
+        : `Resolving ${subject} requires additional sources outside the approved scope, so the item remains open.`];
+    }
+    const action = language === "de"
+      ? {
+          unsupported: `${sentenceSubject} ist durch die gelesenen Detailbelege nicht ausreichend gestützt.`,
+          contradicted: `Zu ${subject} bestehen weiterhin widersprüchliche Belege.`,
+          missing_coverage: `${sentenceSubject} wurde mit den gelesenen Quellen nicht vollständig beantwortet.`,
+          overstated: `${sentenceSubject} lässt sich nur eingeschränkt belegen und darf nicht stärker formuliert werden.`,
+          instruction_mismatch: `${sentenceSubject} wurde im bisherigen Rechercheergebnis nicht wie angefordert behandelt.`,
+          duplicate: `${sentenceSubject} konnte nicht als eigenständiger, ausreichend belegter Punkt bestätigt werden.`,
+          stale: `Für ${subject} liegt kein ausreichend aktueller Detailbeleg vor.`,
+        }
+      : {
+          unsupported: `${sentenceSubject} is not sufficiently supported by the detail evidence that was read.`,
+          contradicted: `The available evidence for ${subject} remains contradictory.`,
+          missing_coverage: `${sentenceSubject} was not fully answered by the sources that were read.`,
+          overstated: `${sentenceSubject} has only limited support and must not be stated more strongly.`,
+          instruction_mismatch: `${sentenceSubject} was not addressed as requested in the current research result.`,
+          duplicate: `${sentenceSubject} could not be confirmed as a distinct, sufficiently supported item.`,
+          stale: `No sufficiently current detail evidence is available for ${subject}.`,
+        };
+    return [action[outcome.defectCode ?? "unsupported"]];
+  });
 }
 
 /**
@@ -462,10 +676,16 @@ export function projectResearchReportReconciliationV2(
   return normalizedReconciliation(defects.map((defect) => {
     const disposition = dispositionsByDefectId.get(defect.id);
     if (!disposition) invalid("A reconciliation disposition is missing its defect.");
+    const decision =
+      disposition.decision === "add_follow_up" && disposition.resultingNodeId
+        ? "revise"
+        : disposition.decision;
     return {
       defectId: defect.id,
       target: structuredClone(defect.target),
-      decision: disposition.decision,
+      defectCode: defect.code,
+      ...(defect.gapIds === undefined ? {} : { gapIds: [...defect.gapIds] }),
+      decision,
       reasonCode: disposition.reasonCode,
     };
   }));
@@ -541,13 +761,30 @@ export async function finalizeResearchReportV2(
     authorities.add(record.authority.authorityClass);
     authorityClassesBySourceId.set(record.source.id, authorities);
   }
+  const questionDirectedSections = (input.outline?.sections ?? []).filter(
+    (section) => section.id !== "outline-section:host-unassigned",
+  );
+  const claimsById = new Map(reportClaims.map((claim) => [claim.id, claim]));
   const coverage = (input.outline?.coverage ?? []).map((entry) => {
-    const claimIds = entry.claimIds.filter((id) => currentClaimIds.has(id));
-    const evidenceIds = entry.evidenceIds.filter((id) => currentEvidenceIds.has(id));
+    const explicitlyTargetedSections = questionDirectedSections.filter((section) =>
+      section.coverageTargetIds.includes(entry.targetId)
+    );
+    const relevantSections = explicitlyTargetedSections.length > 0
+      ? explicitlyTargetedSections
+      : questionDirectedSections;
+    const claimIds = [...new Set(relevantSections.flatMap((section) =>
+      section.claimIds.filter((id) => currentClaimIds.has(id))
+    ))];
+    const evidenceIds = [...new Set(claimIds.flatMap((id) =>
+      claimsById.get(id)?.evidenceIds ?? []
+    ))];
     const distinctSourceCount = new Set(evidenceIds.map((id) => records.get(id)?.identity.canonicalId)).size;
+    const everySectionRepresented = relevantSections.length > 0 && relevantSections.every((section) =>
+      section.claimIds.some((id) => currentClaimIds.has(id))
+    );
     return {
       targetId: entry.targetId,
-      status: claimIds.length === entry.claimIds.length && evidenceIds.length === entry.evidenceIds.length
+      status: everySectionRepresented && distinctSourceCount >= entry.distinctSourceCount
         ? entry.status
         : evidenceIds.length === 0 ? "uncovered" as const : "partial" as const,
       claimIds,
@@ -556,6 +793,10 @@ export async function finalizeResearchReportV2(
     };
   });
   const reconciliation = normalizedReconciliation(input.reconciliation);
+  const reportSections = sectionsFor(
+    input.outline,
+    reportClaims.map((claim) => claim.id),
+  );
   const report = {
     schema: RESEARCH_REPORT_SCHEMA_V2,
     title: input.title === undefined ? "Evidence-backed research" : boundedText(input.title, "V2 report title", 300),
@@ -563,7 +804,7 @@ export async function finalizeResearchReportV2(
     scope: structuredClone(input.request.scope),
     executiveSummaryClaimIds: reportClaims.slice(0, 4).map((claim) => claim.id),
     claims: reportClaims,
-    sections: sectionsFor(input.outline, reportClaims.map((claim) => claim.id)),
+    sections: reportSections,
     coverage,
     reconciliation,
     sourceAuthorities: [...reportSourceIds]
@@ -580,7 +821,13 @@ export async function finalizeResearchReportV2(
       ...input.run.warnings.map((value) => boundedText(value, "V2 report run warning", 700)),
       ...staleLimitations.map((value) => localizeResearchLimitationV1(input.request.reportLanguage, value)),
       ...incompleteCoverageLimitations(coverage, input.request.reportLanguage),
-      ...unresolvedReconciliationLimitations(reconciliation, input.request.reportLanguage),
+      ...unresolvedReconciliationLimitations(reconciliation, input.request.reportLanguage, {
+        claims: reportClaims,
+        sections: reportSections,
+        coverageTargets: input.coverageTargets,
+        acceptedGaps: input.acceptedGaps,
+        reportSourceIds,
+      }),
     ])].slice(0, 12),
     sources: [...new Set(reportClaims.flatMap((claim) => claim.sourceIds))]
       .map((sourceId) => sources.get(sourceId)!)

@@ -342,6 +342,8 @@ export interface AtlassianRelationshipV1 {
 }
 
 export interface ResearchRunCountsV1 {
+  /** Provider calls observed by the shared root model budget. */
+  modelCalls?: number;
   ptcCalls: number;
   httpCalls: number;
   jiraItems: number;
@@ -413,6 +415,20 @@ export interface ResearchReportReconciliationV2 {
     kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
     id: string;
   };
+  /**
+   * Typed critic classification retained for a deterministic, user-facing gap
+   * explanation. Free-form critic prose and support references remain private.
+   */
+  defectCode?:
+    | "unsupported"
+    | "contradicted"
+    | "missing_coverage"
+    | "overstated"
+    | "instruction_mismatch"
+    | "duplicate"
+    | "stale";
+  /** Host-validated accepted gap identities; no critic prose is persisted. */
+  gapIds?: string[];
   decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
   reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
 }

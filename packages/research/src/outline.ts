@@ -570,8 +570,8 @@ export async function resolveResearchOutlineProposalV1(input: {
     if (revised) {
       sections.push({
         id: "outline-section:host-unassigned",
-        title: "Additional validated findings",
-        question: "Which validated claims or coverage targets were not assigned by the outline proposal?",
+        title: "Additional evidence-backed findings",
+        question: "What additional evidence-backed findings matter to the question?",
         claimIds: unassignedClaimIds,
         evidenceIds: evidenceIdsFor(unassignedClaimIds),
         contradictionIds: [],

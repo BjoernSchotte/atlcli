@@ -1,4 +1,7 @@
-import type { ResearchAgentDraftV1 } from "./agent-draft.js";
+import type {
+  ResearchAgentDraftV1,
+  ResearchDynamicAgentDraftV1,
+} from "./agent-draft.js";
 import type { ResearchGraphV1 } from "./graph.js";
 import type { ResearchRetrievalAssessmentV1 } from "./retrieval-assessment.js";
 import {
@@ -99,7 +102,12 @@ export interface ResearchReportDraftArtifactV1 {
   turnId: string;
   graphRevision?: number;
   updatedAt: string;
-  draft: ResearchAgentDraftV1;
+  /**
+   * Current dynamic V2 runs persist only the host-rendering selection. Retain
+   * the legacy prose draft in this V1 envelope so older sessions still resume
+   * without a migration or a second artifact identity.
+   */
+  draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
 }
 
 export type ResearchSessionArtifactDocumentV1 =
@@ -248,7 +256,7 @@ export function projectResearchGapAssessmentArtifactV1(input: {
 export function projectResearchReportDraftArtifactV1(input: {
   turnId: string;
   graphRevision?: number;
-  draft: ResearchAgentDraftV1;
+  draft: ResearchAgentDraftV1 | ResearchDynamicAgentDraftV1;
   updatedAt: string;
 }): ResearchReportDraftArtifactV1 {
   return {

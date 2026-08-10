@@ -147,14 +147,12 @@ export function reduceResearchAcceptedPacketV1(input: {
             .filter((reference) => reference.kind === "source")
             .map((reference) => reference.id)
         )
-      : [
-          ...(body as { findings: Array<{ sourceIds: string[] }> }).findings.flatMap(
-            (finding) => finding.sourceIds,
-          ),
-          ...(body as { relationships: Array<{ sourceIds: string[] }> }).relationships.flatMap(
-            (relationship) => relationship.sourceIds,
-          ),
-        ];
+      : "findings" in body && "relationships" in body
+        ? [
+            ...body.findings.flatMap((finding) => finding.sourceIds),
+            ...body.relationships.flatMap((relationship) => relationship.sourceIds),
+          ]
+        : [];
   for (const sourceId of sourceIds) {
     if (!available.has(sourceId)) {
       invalid("Research task result references unknown evidence.");

@@ -9,16 +9,182 @@ import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
 import { RESEARCH_REQUEST_SCHEMA_V1 } from "./contracts.js";
 import { BOUND_ENTITY_READ_INPUT_SCHEMA_V1 } from "./capability-contracts.js";
 import {
+  RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1,
   boundResearchNodePtcToolsV1,
   buildResearchAcquisitionProgram,
   buildResearchBoundAcquisitionProgramV1,
   compileDynamicResearchSubagents,
   completeResearchNodeStructuredCandidateV1,
+  normalizeResearchReconciliationCandidateV1,
+  optionalAnalysisFallbackForStructuredOutputFailureV1,
   responseSchemaForResearchNodeV1,
 } from "./dynamic-subagents.js";
 import { composeResearchGraphV1 } from "./graph.js";
 import { RESEARCH_EXACT_BOUND_PACKET_MODEL_BODY_JSON_SCHEMA_V2 } from "./response-schemas.js";
-import { RESEARCH_PACKET_BODY_SCHEMA_V2 } from "./workflow-contracts.js";
+import {
+  parseReconciliationBodyV1,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
+  RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+} from "./workflow-contracts.js";
+
+test("uses the deterministic host outline after nested optional planner schema failures", () => {
+  const providerError = new Error(
+    "Failed to parse structured output for tool 'ResearchPacketReferenceModelBodyV2'.",
+  );
+  const wrapped = new Error("Subagent invocation failed.", { cause: providerError });
+  const nested = new Error("Deep agent task failed.", { cause: wrapped });
+
+  expect(optionalAnalysisFallbackForStructuredOutputFailureV1(
+    "outline-planner",
+    nested,
+  )).toEqual({
+    schema: "atlcli.research-packet-reference-model/v2",
+    claimIds: [],
+    contradictions: [],
+    outlineProposals: [],
+    gaps: [],
+    proposedFollowUps: [],
+    coverageLimits: [],
+  });
+  expect(optionalAnalysisFallbackForStructuredOutputFailureV1(
+    "synthesizer",
+    nested,
+  )).toBeUndefined();
+  expect(optionalAnalysisFallbackForStructuredOutputFailureV1(
+    "outline-planner",
+    new Error("Provider connection closed."),
+  )).toBeUndefined();
+  expect(optionalAnalysisFallbackForStructuredOutputFailureV1(
+    "coverage-moderator",
+    nested,
+  )).toEqual({
+    schema: "atlcli.research-packet-reference-model/v2",
+    claimIds: [],
+    contradictions: [],
+    outlineProposals: [],
+    gaps: [],
+    proposedFollowUps: [],
+    coverageLimits: [
+      "The independent coverage projection could not be validated; the host and final critic retain all admitted evidence and must disclose unresolved coverage.",
+    ],
+  });
+});
+
+describe("reconciliation candidate normalization", () => {
+  test("drops only follow-ups that bind defects without add_follow_up", () => {
+    const candidate = {
+      schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+      defects: [{
+        id: "defect:needs-more-evidence",
+        severity: "important" as const,
+        target: { kind: "coverage" as const, id: "coverage:primary" },
+        code: "missing_coverage" as const,
+        references: [],
+        explanation: "A second source is required.",
+        suggestedAction: "add_follow_up" as const,
+      }, {
+        id: "defect:wording",
+        severity: "minor" as const,
+        target: { kind: "section" as const, id: "section:summary" },
+        code: "overstated" as const,
+        references: [],
+        explanation: "The wording should be narrowed.",
+        suggestedAction: "revise" as const,
+      }],
+      proposedFollowUps: [{
+        id: "follow-up:evidence",
+        defectId: "defect:needs-more-evidence",
+        objective: "Read one additional admitted source.",
+        reasonCode: "coverage_gap" as const,
+        sourceIds: [],
+      }, {
+        id: "follow-up:orphan",
+        defectId: "defect:wording",
+        objective: "Rewrite the accepted wording.",
+        reasonCode: "coverage_gap" as const,
+        sourceIds: [],
+      }],
+    };
+
+    const normalized = normalizeResearchReconciliationCandidateV1(candidate);
+
+    expect(parseReconciliationBodyV1(normalized)).toEqual({
+      ...candidate,
+      proposedFollowUps: [candidate.proposedFollowUps[0]],
+    });
+    expect(candidate.proposedFollowUps).toHaveLength(2);
+  });
+
+  test("leaves malformed and duplicate bindings for strict validation", () => {
+    const malformed = {
+      schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+      defects: [{ id: "defect:1", suggestedAction: "add_follow_up" }],
+      proposedFollowUps: [{ id: "follow-up:1", defectId: 42 }],
+    };
+    expect(normalizeResearchReconciliationCandidateV1(malformed)).toBe(malformed);
+
+    const duplicate = {
+      schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+      defects: [{
+        id: "defect:1",
+        severity: "important" as const,
+        target: { kind: "coverage" as const, id: "coverage:primary" },
+        code: "missing_coverage" as const,
+        references: [],
+        explanation: "More evidence is needed.",
+        suggestedAction: "add_follow_up" as const,
+      }],
+      proposedFollowUps: [{
+        id: "follow-up:1",
+        defectId: "defect:1",
+        objective: "Read another source.",
+        reasonCode: "coverage_gap" as const,
+        sourceIds: [],
+      }, {
+        id: "follow-up:2",
+        defectId: "defect:1",
+        objective: "Read another source again.",
+        reasonCode: "coverage_gap" as const,
+        sourceIds: [],
+      }],
+    };
+    expect(() => parseReconciliationBodyV1(
+      normalizeResearchReconciliationCandidateV1(duplicate),
+    )).toThrow("defect bindings must be unique");
+  });
+
+  test("folds distinct material coverage proposals into the single repair slot", () => {
+    const candidate = {
+      schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+      defects: ["commercial", "next-steps"].map((suffix) => ({
+        id: `defect:${suffix}`,
+        severity: "important" as const,
+        target: { kind: "coverage" as const, id: "coverage:primary" },
+        code: "missing_coverage" as const,
+        references: [],
+        explanation: `The ${suffix} facet is missing.`,
+        suggestedAction: "add_follow_up" as const,
+      })),
+      proposedFollowUps: ["commercial", "next-steps"].map((suffix) => ({
+        id: `follow-up:${suffix}`,
+        defectId: `defect:${suffix}`,
+        objective: `Recover the ${suffix} facet from approved exact evidence.`,
+        reasonCode: "coverage_gap" as const,
+        sourceIds: [],
+      })),
+    };
+
+    const normalized = parseReconciliationBodyV1(
+      normalizeResearchReconciliationCandidateV1(candidate),
+    );
+
+    expect(normalized.defects).toHaveLength(2);
+    expect(normalized.proposedFollowUps).toEqual([{
+      ...candidate.proposedFollowUps[0],
+      objective: "Recover the commercial facet from approved exact evidence.; Recover the next-steps facet from approved exact evidence.",
+    }]);
+  });
+});
 
 describe("Jira focused-researcher acquisition", () => {
   test("reads approved exact context directly without search or ranking", async () => {
@@ -73,6 +239,10 @@ describe("Jira focused-researcher acquisition", () => {
     if (!wikiNode?.roleId) throw new Error("Expected exact Confluence research node.");
 
     expect(wiki?.systemPrompt).toContain("exact context");
+    expect(wiki?.systemPrompt).toContain("Select at most 12 claimCandidates");
+    expect(wiki?.systemPrompt).toContain("Keep each summary to one concise sentence");
+    expect(RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1["focused-researcher"])
+      .toBe(6_000);
     expect(wiki?.systemPrompt).toContain("tools.atlassianBoundRead");
     expect(wiki?.systemPrompt).not.toContain("tools.wikiSearch");
     expect(wiki?.systemPrompt).not.toContain("tools.researchCandidateRank");
@@ -223,7 +393,7 @@ describe("Jira focused-researcher acquisition", () => {
 
     expect(jira?.systemPrompt).toContain("single host-generated bounded program");
     expect(jira?.systemPrompt).toContain("Do not call eval a second time");
-    expect(jira?.systemPrompt).toContain("Select at most 4 claimCandidates");
+    expect(jira?.systemPrompt).toContain("Select at most 6 claimCandidates");
     expect(jira?.systemPrompt).toContain("exact detail quotes of at most 280 characters");
     expect(jira?.systemPrompt).not.toContain("exactly two bounded stages");
     expect(jira?.systemPrompt).not.toContain("Stage 2 — read evidence");

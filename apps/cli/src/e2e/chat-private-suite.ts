@@ -90,6 +90,8 @@ export interface ChatPrivateSuiteArgumentsV1 {
   outputDirectory: string;
   reviewPath?: string;
   mode: "source" | "built";
+  caseId?: string;
+  variant?: ChatReleaseCandidateVariantV1;
 }
 
 export function chatPrivateSuiteEnvironmentV1(
@@ -202,6 +204,8 @@ export function parseChatPrivateSuiteArgumentsV1(argv: readonly string[], reposi
   let outputDirectory = "";
   let reviewPath: string | undefined;
   let mode: ChatPrivateSuiteArgumentsV1["mode"] = "source";
+  let caseId: string | undefined;
+  let variant: ChatReleaseCandidateVariantV1 | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const option = argv[index]!;
     const take = (): string => {
@@ -213,6 +217,15 @@ export function parseChatPrivateSuiteArgumentsV1(argv: readonly string[], reposi
     if (option === "--suite") suitePath = take();
     else if (option === "--output-dir") outputDirectory = take();
     else if (option === "--review") reviewPath = take();
+    else if (option === "--case") {
+      const value = take();
+      if (!CASE_ID.test(value)) throw new Error("--case must be an opaque private case ID.");
+      caseId = value;
+    } else if (option === "--variant") {
+      const value = take() as ChatReleaseCandidateVariantV1;
+      if (!VARIANTS.includes(value)) throw new Error("--variant is invalid.");
+      variant = value;
+    }
     else if (option === "--mode") {
       const value = take();
       if (value !== "source" && value !== "built") throw new Error("--mode must be source or built.");
@@ -223,8 +236,30 @@ export function parseChatPrivateSuiteArgumentsV1(argv: readonly string[], reposi
     suitePath: externalPath(suitePath, "--suite", repositoryRoot),
     outputDirectory: externalPath(outputDirectory, "--output-dir", repositoryRoot),
     ...(reviewPath ? { reviewPath: externalPath(reviewPath, "--review", repositoryRoot) } : {}),
+    ...(caseId ? { caseId } : {}),
+    ...(variant ? { variant } : {}),
     mode,
   };
+}
+
+/** Select one bounded live proof without copying private suite data. */
+export function selectChatPrivateSuiteV1(
+  suite: ChatPrivateSuiteV1,
+  args: Pick<ChatPrivateSuiteArgumentsV1, "caseId" | "variant">,
+): ChatPrivateSuiteV1 {
+  const cases = suite.cases
+    .filter((entry) => args.caseId === undefined || entry.id === args.caseId)
+    .map((entry) => ({
+      ...structuredClone(entry),
+      variants: entry.variants.filter((variant) =>
+        args.variant === undefined || variant === args.variant
+      ),
+    }))
+    .filter((entry) => entry.variants.length > 0);
+  if (cases.length === 0) {
+    throw new Error("The selected private case and variant are not present in the suite.");
+  }
+  return { ...structuredClone(suite), cases };
 }
 
 function executable(mode: ChatPrivateSuiteArgumentsV1["mode"], repositoryRoot: string): string[] {
@@ -376,7 +411,7 @@ export function projectPrivateAnswerV1(stdout: string, variant: ChatReleaseCandi
       sourceUrls: report.sources.flatMap((source) => typeof source.url === "string" ? [source.url] : []),
       qualityMode: variant,
       durationMs: typeof run.durationMs === "number" ? run.durationMs : 0,
-      modelCalls: 0,
+      modelCalls: typeof counts?.modelCalls === "number" ? counts.modelCalls : 0,
       ptcCalls: typeof counts?.ptcCalls === "number" ? counts.ptcCalls : 0,
       httpCalls: typeof counts?.httpCalls === "number" ? counts.httpCalls : 0,
       inputTokens: typeof usage?.inputTokens === "number" ? usage.inputTokens : 0,
@@ -623,7 +658,10 @@ async function capture(stream: ReadableStream<Uint8Array>, forward: boolean): Pr
 async function main(argv = Bun.argv.slice(2)): Promise<void> {
   if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new Error("ANTHROPIC_API_KEY is missing from the process environment.");
   const args = parseChatPrivateSuiteArgumentsV1(argv);
-  const suite = parseChatPrivateSuiteV1(JSON.parse(await readFile(args.suitePath, "utf8")));
+  const suite = selectChatPrivateSuiteV1(
+    parseChatPrivateSuiteV1(JSON.parse(await readFile(args.suitePath, "utf8"))),
+    args,
+  );
   const proof = await runChatPrivateSuiteV1(args, suite, async (command) => {
     const child = Bun.spawn([...command], {
       cwd: REPOSITORY_ROOT, env: chatPrivateSuiteEnvironmentV1(args),

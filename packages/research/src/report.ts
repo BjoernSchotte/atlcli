@@ -162,6 +162,9 @@ function assertRun(value: unknown): asserts value is ResearchRunSummaryV1 {
     throw new ResearchContractError("invalid-report", "Run counts are invalid.");
   }
   assertNonNegativeInteger(run.counts.ptcCalls, "PTC call count");
+  if (run.counts.modelCalls !== undefined) {
+    assertNonNegativeInteger(run.counts.modelCalls, "Model call count");
+  }
   assertNonNegativeInteger(run.counts.httpCalls, "HTTP call count");
   assertNonNegativeInteger(run.counts.jiraItems, "Jira item count");
   assertNonNegativeInteger(run.counts.confluenceItems, "Confluence item count");
@@ -346,7 +349,7 @@ function renderFindings(
   language?: ResearchReportLanguageV1,
 ): string[] {
   const copy = researchReportCopyV1(language);
-  const lines = [`## ${title}`, ""];
+  const lines = [`## ${markdownText(title)}`, ""];
   if (findings.length === 0) return [...lines, copy.none, ""];
   for (const [index, finding] of findings.entries()) {
     lines.push(
@@ -425,7 +428,7 @@ function renderResearchReportTail(
     `- ${copy.confluenceProvider}: \`${input.run.wikiProvider}\``,
     `- ${copy.complete}: ${input.run.complete ? copy.yes : copy.no}`,
     `- ${copy.duration}: ${input.run.durationMs} ms`,
-    `- ${copy.calls}: ${input.run.counts.ptcCalls} PTC / ${input.run.counts.httpCalls} HTTP`,
+    `- ${copy.calls}: ${input.run.counts.ptcCalls} PTC / ${input.run.counts.httpCalls} HTTP${input.run.counts.modelCalls === undefined ? "" : ` / ${input.run.counts.modelCalls} Model`}`,
     `- ${copy.items}: ${input.run.counts.jiraItems} Jira / ${input.run.counts.confluenceItems} Confluence`,
     `- ${copy.detailedSources}: ${detailedJiraSources} Jira / ${detailedConfluenceSources} Confluence`,
     ...(input.run.usage?.inputTokens !== undefined

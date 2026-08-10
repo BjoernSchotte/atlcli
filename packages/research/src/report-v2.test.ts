@@ -153,17 +153,31 @@ function ports(input: {
 }
 
 describe("V2 research report finalization", () => {
-  test("keeps every host-outlined claim when the synthesizer selects an incomplete subset", () => {
+  test("publishes the synthesizer subset and host-completes omitted planned sections", () => {
     expect(completeResearchReportClaimSelectionV2({
       acceptedClaimIds: [CURRENT_CLAIM, SECOND_CLAIM, STALE_CLAIM],
       selectedClaimIds: [CURRENT_CLAIM],
       outlineClaimIds: [CURRENT_CLAIM, SECOND_CLAIM, STALE_CLAIM],
+      requiredOutlineClaimGroups: [[CURRENT_CLAIM], [SECOND_CLAIM], [STALE_CLAIM]],
     })).toEqual([CURRENT_CLAIM, SECOND_CLAIM, STALE_CLAIM]);
+    expect(completeResearchReportClaimSelectionV2({
+      acceptedClaimIds: [CURRENT_CLAIM, SECOND_CLAIM, STALE_CLAIM],
+      selectedClaimIds: [CURRENT_CLAIM],
+      outlineClaimIds: [CURRENT_CLAIM, SECOND_CLAIM, STALE_CLAIM],
+      requiredOutlineClaimGroups: [[CURRENT_CLAIM, SECOND_CLAIM]],
+    })).toEqual([CURRENT_CLAIM]);
     expect(() => completeResearchReportClaimSelectionV2({
       acceptedClaimIds: [CURRENT_CLAIM],
       selectedClaimIds: [SECOND_CLAIM],
       outlineClaimIds: [CURRENT_CLAIM],
     })).toThrow("outside accepted evidence");
+    expect(completeResearchReportClaimSelectionV2({
+      acceptedClaimIds: [CURRENT_CLAIM, SECOND_CLAIM],
+      selectedClaimIds: [CURRENT_CLAIM, SECOND_CLAIM],
+      outlineClaimIds: [CURRENT_CLAIM, SECOND_CLAIM],
+      requiredOutlineClaimGroups: [[CURRENT_CLAIM]],
+      supersededClaimIds: [CURRENT_CLAIM],
+    })).toEqual([SECOND_CLAIM]);
   });
 
   test("projects host-recorded reconciliation decisions without publishing critic text or support", () => {
@@ -172,6 +186,7 @@ describe("V2 research report finalization", () => {
       severity: "important",
       target: { kind: "claim", id: CURRENT_CLAIM },
       code: "overstated",
+      gapIds: ["gap:validated-boundary"],
       references: [{ kind: "evidence", id: EVIDENCE }],
       explanation: "Private critic rationale must not be report content.",
       suggestedAction: "downgrade",
@@ -189,11 +204,46 @@ describe("V2 research report finalization", () => {
     expect(projected).toEqual([{
       defectId: "defect:report-coverage",
       target: { kind: "claim", id: CURRENT_CLAIM },
+      defectCode: "overstated",
+      gapIds: ["gap:validated-boundary"],
       decision: "downgrade",
       reasonCode: "material_defect",
     }]);
     expect(JSON.stringify(projected)).not.toContain("Private critic rationale");
     expect(JSON.stringify(projected)).not.toContain(EVIDENCE);
+  });
+
+  test("does not publish an executed bounded repair as a still-open follow-up", () => {
+    const defect = {
+      id: "defect:repairable-gap",
+      severity: "important" as const,
+      target: { kind: "coverage" as const, id: "coverage:delivery" },
+      code: "missing_coverage" as const,
+      gapIds: ["gap:repairable"],
+      references: [],
+      explanation: "A bounded repair can close this gap.",
+      suggestedAction: "add_follow_up" as const,
+    };
+    expect(projectResearchReportReconciliationV2([defect], [{
+      schema: "atlcli.reconciliation-disposition/v1",
+      id: "reconciliation-disposition:repairable-gap",
+      reconciliationPacketRef: "packet:report-reconciler",
+      defectId: defect.id,
+      basedOnGraphRevision: 1,
+      decision: "add_follow_up",
+      reasonCode: "material_defect",
+      resultingGraphRevision: 1,
+      resultingNodeId: "research-node:repair",
+      resultingClaimIds: [],
+      recordedAt: "2026-08-01T12:00:00.000Z",
+    }])).toEqual([{
+      defectId: defect.id,
+      target: defect.target,
+      defectCode: "missing_coverage",
+      gapIds: ["gap:repairable"],
+      decision: "revise",
+      reasonCode: "material_defect",
+    }]);
   });
 
   test("renders canonical Markdown only from current ledger claims and retained sources", async () => {
@@ -206,9 +256,14 @@ describe("V2 research report finalization", () => {
       claimIds: [CURRENT_CLAIM],
       title: "Validated implementation report",
       limitations: ["The deterministic fixture covers one retained issue."],
+      coverageTargets: [{
+        id: "coverage:delivery",
+        question: "Which delivery constraints remain unresolved?",
+      }],
       reconciliation: [{
         defectId: "defect:report-coverage",
         target: { kind: "coverage", id: "coverage:delivery" },
+        defectCode: "missing_coverage",
         decision: "abstain",
         reasonCode: "insufficient_budget",
       }],
@@ -229,10 +284,10 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).not.toContain("## Reconciliation decisions");
     expect(report.markdown).not.toContain("coverage:delivery: abstain");
     expect(report.limitations).toContain(
-      "Independent review identified one open item that requires further follow-up.",
+      "The configured time or cost limit was reached before the question aspect “Which delivery constraints remain unresolved?” could be checked conclusively.",
     );
     expect(report.markdown).toContain(
-      "Independent review identified one open item that requires further follow-up.",
+      "The configured time or cost limit was reached before the question aspect “Which delivery constraints remain unresolved?” could be checked conclusively.",
     );
     expect(report.markdown).not.toContain("## Source access authority");
     expect(report.markdown).not.toContain("`jira:ATLCLI-42`: whole scope.");
@@ -258,7 +313,7 @@ describe("V2 research report finalization", () => {
     expect(report.markdown).toContain("> Frage: Which implementation facts are currently supported?");
     expect(report.markdown).toContain("## Zusammenfassung");
     expect(report.markdown).toContain("## Direkt belegte Befunde");
-    expect(report.markdown).toContain("> Fokus: Was belegen die derzeit validierten Befunde?");
+    expect(report.markdown).not.toContain("> Fokus:");
     expect(report.markdown).toContain("Quellen: [Validated implementation item]");
     expect(report.markdown).toContain("## Einschränkungen");
     expect(report.markdown).toContain("## Ungelöste Jira ↔ Confluence-Verbindungen");
@@ -276,24 +331,75 @@ describe("V2 research report finalization", () => {
       request: normalizeResearchRequestV1({ ...request, reportLanguage: "de" }),
       ...ports({ claims: [current], records: [record(EVIDENCE, "jira:ATLCLI-42")] }),
       claimIds: [CURRENT_CLAIM],
+      coverageTargets: [{
+        id: "coverage:delivery",
+        question: "Which delivery constraints remain unresolved?",
+      }],
       reconciliation: [{
         defectId: "defect:private-rationale-must-not-render",
         target: { kind: "claim", id: CURRENT_CLAIM },
+        defectCode: "unsupported",
         decision: "add_follow_up",
         reasonCode: "material_defect",
       }, {
         defectId: "defect:handled-by-synthesis",
         target: { kind: "claim", id: CURRENT_CLAIM },
+        defectCode: "overstated",
+        gapIds: ["gap:resolved-by-synthesis"],
         decision: "revise",
         reasonCode: "material_defect",
+      }, {
+        defectId: "defect:coverage-needs-follow-up",
+        target: { kind: "coverage", id: "coverage:delivery" },
+        defectCode: "missing_coverage",
+        gapIds: ["gap:commercial-boundary", "gap:delivery-owner"],
+        decision: "abstain",
+        reasonCode: "material_defect",
+      }, {
+        defectId: "defect:redundant-whole-question-fallback",
+        target: { kind: "coverage", id: "coverage:delivery" },
+        defectCode: "missing_coverage",
+        gapIds: [],
+        decision: "abstain",
+        reasonCode: "material_defect",
+      }, {
+        defectId: "defect:redundant-internal-node-fallback",
+        target: { kind: "node", id: "research-node:coverage-moderation" },
+        defectCode: "missing_coverage",
+        gapIds: [],
+        decision: "add_follow_up",
+        reasonCode: "material_defect",
+      }],
+      acceptedGaps: [{
+        id: "gap:commercial-boundary",
+        summary: "The [commercial boundary](https://invalid.example/private) remains unconfirmed",
+        targetId: "coverage:delivery",
+        sourceIds: [],
+      }, {
+        id: "gap:delivery-owner",
+        summary: "The accountable delivery owner is not named",
+        targetId: "coverage:delivery",
+        sourceIds: [],
+      }, {
+        id: "gap:resolved-by-synthesis",
+        summary: "This resolved gap must never be rendered",
+        targetId: "coverage:delivery",
+        sourceIds: [],
       }],
       run,
       checkedAt: "2026-08-01T12:01:00.000Z",
     });
 
     expect(report.limitations).toContain(
-      "Die unabhängige Prüfung hat einen offenen Punkt identifiziert, der in einem Folgeschritt weiter geprüft werden muss.",
+      `Die Aussage „${current.statement}“ ist durch die gelesenen Detailbelege nicht ausreichend gestützt.`,
     );
+    expect(report.limitations).toContain("Offen bleibt: The commercial boundary remains unconfirmed.");
+    expect(report.limitations).toContain("Offen bleibt: The accountable delivery owner is not named.");
+    expect(report.limitations).not.toContainEqual(expect.stringContaining("wurde mit den gelesenen Quellen nicht vollständig beantwortet"));
+    expect(report.limitations).not.toContainEqual(expect.stringContaining("Rechercheschritt"));
+    expect(report.limitations).not.toContainEqual(expect.stringContaining("https://invalid.example"));
+    expect(report.limitations).not.toContainEqual(expect.stringContaining("resolved gap"));
+    expect(report.limitations).not.toContainEqual(expect.stringContaining("zwei offene Punkte"));
     expect(report.markdown).not.toContain("private-rationale-must-not-render");
     expect(report.markdown).not.toContain("handled-by-synthesis");
   });
@@ -463,7 +569,7 @@ describe("V2 research report finalization", () => {
       "Evidence coverage for coverage:delivery is partial (1 distinct retained source); the report is not exhaustive for this target.",
     ]);
     expect(report.markdown).toContain("## Delivery \\*evidence\\*");
-    expect(report.markdown).toContain("> Focus: What \\<is\\> currently established?");
+    expect(report.markdown).not.toContain("> Focus:");
     expect(report.markdown).not.toContain("## Additional validated findings");
     expect(report.markdown).not.toContain("## Findings");
   });
@@ -533,6 +639,7 @@ describe("V2 research report finalization", () => {
       reconciliation: [{
         defectId: "defect:coverage",
         target: { kind: "claim", id: CURRENT_CLAIM },
+        defectCode: "unsupported",
         decision: "abstain",
         reasonCode: "material_defect",
       }],
@@ -551,6 +658,7 @@ describe("V2 research report finalization", () => {
       reconciliation: [{
         defectId: "defect:forged-claim",
         target: { kind: "claim", id: STALE_CLAIM },
+        defectCode: "unsupported",
         decision: "no_change",
         reasonCode: "supported_by_evidence",
       }],

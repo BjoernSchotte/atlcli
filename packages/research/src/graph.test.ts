@@ -168,6 +168,48 @@ describe("dynamic research graph composition", () => {
     expect(graph.nodes[0]?.grantedCapabilityIds).not.toContain("research.candidate.rank");
     expect(graph.nodes[0]?.grantedCapabilityIds).not.toContain("wiki.page.get");
   });
+
+  test("keeps the one deep repair slot on retained exact evidence", () => {
+    const exactPageBrief = createResearchBriefV1({
+      sessionId: "research-session:exact-page-repair",
+      turnId: "research-turn:exact-page-repair",
+      objective: "Analyse every requested facet of the attached page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:exact-page-repair:12345",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "page",
+        entityRef: "page:12345",
+        key: "12345",
+        name: "Synthetic multi-facet page",
+        source: "exact_link",
+        authority: "approved",
+      }],
+      asOf: "2026-08-03T00:00:00.000Z",
+      timezone: "UTC",
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "auto",
+    });
+    const graph = composeResearchGraphV1(exactPageBrief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const repair = graph.nodes.find((node) => node.kind === "repair");
+
+    expect(repair).toMatchObject({
+      roleId: "contradiction-verifier",
+      grantedCapabilityIds: ["atlassian.bound.read"],
+      outputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    expect(repair?.grantedCapabilityIds).not.toContain("wiki.search");
+    expect(repair?.grantedCapabilityIds).not.toContain("research.candidate.rank");
+  });
   test("gives every productive host the same standard cross-product graph", () => {
     const graph = composeStandardResearchGraphV1(
       "Which Confluence pages correspond to Jira work items?",

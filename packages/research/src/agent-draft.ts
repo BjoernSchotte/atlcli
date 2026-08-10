@@ -16,7 +16,7 @@ const boundedText = (maximum: number): z.ZodString =>
 
 const selectedClaimIdsSchema = z.array(
   boundedText(96).regex(/^claim:[a-f0-9]{48}$/, "Claim ID is invalid."),
-).max(8);
+).max(12);
 
 export const RESEARCH_AGENT_DRAFT_SCHEMA_V1 = z
   .object({
@@ -72,11 +72,15 @@ export const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 = {
  * from the legacy report draft because it never accepts model-authored claim
  * text and cannot point outside the host's claim ledger.
  */
-export const RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1 = RESEARCH_AGENT_DRAFT_SCHEMA_V1
-  .extend({
+export const RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1 = z
+  .object({
+    title: boundedText(300),
     selectedClaimIds: selectedClaimIdsSchema,
   })
-  .strict()
+  // Older durable/test drafts may still carry the legacy prose fields. They
+  // are ignored at the host boundary; the provider-facing JSON Schema below
+  // advertises only the two values that V2 finalization actually consumes.
+  .strip()
   .meta({ title: "AtlcliDynamicResearchAgentDraftV1" });
 
 export type ResearchDynamicAgentDraftV1 = z.infer<typeof RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1>;
@@ -84,6 +88,10 @@ export type ResearchDynamicAgentDraftV1 = z.infer<typeof RESEARCH_DYNAMIC_AGENT_
 export const RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1 = {
   ...z.toJSONSchema(RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1, { target: "draft-7" }),
   title: "AtlcliDynamicResearchAgentDraftV1",
+  // Durable drafts created before the compact V2 selection may still contain
+  // legacy report fields. The provider is asked for only the declared fields;
+  // the authoritative Zod parser strips any extras on recovery.
+  additionalProperties: false,
 } as Record<string, unknown>;
 
 function uniqueKnownSourceIds(
@@ -425,7 +433,7 @@ function clampProviderDraft(input: unknown): unknown {
     ? draft.limitations.slice(0, 12).map((value) => clampText(value, 700))
     : draft.limitations;
   const selectedClaimIds = Array.isArray(draft.selectedClaimIds)
-    ? draft.selectedClaimIds.slice(0, 8).map((value) => clampText(value, 96))
+    ? draft.selectedClaimIds.slice(0, 12).map((value) => clampText(value, 96))
     : draft.selectedClaimIds;
   return {
     ...draft,
