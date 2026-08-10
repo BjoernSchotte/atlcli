@@ -29,8 +29,8 @@ permissions:
 
 jobs:
   static-quality:
-    name: Linux typecheck, browser checks, and build
-    if: inputs.run_static_quality
+    name: Linux typecheck, browser checks, build, and package contracts
+    if: inputs.run_static_quality || inputs.run_tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -66,32 +66,100 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check pinned ADF contract offline
+        if: inputs.run_static_quality
         run: bun run check:adf-pinned
 
       - name: Check generated Shiki catalogues and loaders
+        if: inputs.run_static_quality
         run: bun run --cwd packages/code-highlight catalogue:check
 
       - name: Type check
+        if: inputs.run_static_quality
         run: bun run typecheck
 
       - name: Check browser build
+        if: inputs.run_static_quality
         run: bun run check:browser
+
+      - name: Validate duration-aware test inventory
+        if: inputs.run_tests
+        run: bun scripts/ci/test-lanes.ts --check --topology general-3x1
 
       - name: Build
         run: bun run build
 
       - name: Check extension output bundle
+        if: inputs.run_static_quality
         run: bun run check:extension-output
 
+      # These guards both require fresh dist output and invoke the package
+      # build themselves. Running them after the canonical build preserves
+      # that contract while turning their internal Turbo builds into cache hits.
+      - name: Run package contract tests against the warm build
+        if: inputs.run_tests
+        run: |
+          mkdir -p test-results
+          LOG_FILE="test-results/bun-test-package-contract.log"
+          JUNIT_FILE="test-results/bun-test-package-contract.xml"
+
+          set +e
+          bun scripts/ci/run-test-lane.ts \
+            --topology general-3x1 \
+            --group package-contract \
+            --junit "$JUNIT_FILE" \
+            2>&1 | tee "$LOG_FILE"
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$TEST_EXIT" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -Eq '^[[:space:]]*[1-9][0-9]* errors?[[:space:]]*$' "$LOG_FILE"; then
+            exit "$TEST_EXIT"
+          fi
+          if grep -Eq '^[[:space:]]*0 fail[[:space:]]*$' "$LOG_FILE"; then
+            echo "::warning::Bun package-contract lane exited with code $TEST_EXIT despite reporting zero failed tests"
+            exit 0
+          fi
+          exit "$TEST_EXIT"
+
+      - name: Upload package contract JUnit
+        if: always() && inputs.run_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: bun-test-junit-package-contract-${{ github.sha }}
+          path: test-results/bun-test-package-contract.xml
+          if-no-files-found: error
+
+      - name: Upload failed package contract log
+        if: failure() && inputs.run_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: bun-test-package-contract-failure-log-${{ github.sha }}
+          path: test-results/bun-test-package-contract.log
+          if-no-files-found: error
+
   tests:
-    name: Linux Bun tests (${{ matrix.shard }}/4)
+    name: Linux Bun tests (${{ matrix.group }})
     if: inputs.run_tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        include:
+          - group: general-1
+            fonts: false
+            poppler: false
+          - group: general-2
+            fonts: false
+            poppler: false
+          - group: general-3
+            fonts: false
+            poppler: false
+          - group: pdf-typst
+            fonts: true
+            poppler: true
     steps:
       - uses: actions/checkout@v7
 
@@ -107,6 +175,7 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
 
       - name: Restore pinned PDF fonts
+        if: matrix.fonts
         uses: actions/cache@v6
         with:
           path: packages/pdf/.fonts
@@ -116,6 +185,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install PDF proof tools
+        if: matrix.poppler
         run: |
           sudo apt-get update
           sudo apt-get install --yes poppler-utils
@@ -126,24 +196,22 @@ jobs:
       # serial quality job warmed it during typecheck; independent shards must
       # establish the same precondition themselves.
       - name: Provision pinned PDF fonts
+        if: matrix.fonts
         run: bun run fonts:ensure
 
-      - name: Run test shard
+      - name: Run duration-aware test lane
         env:
-          SHARD: ${{ matrix.shard }}
+          GROUP: ${{ matrix.group }}
         run: |
           mkdir -p test-results
-          LOG_FILE="test-results/bun-test-shard-${SHARD}.log"
-          JUNIT_FILE="test-results/bun-test-shard-${SHARD}.xml"
+          LOG_FILE="test-results/bun-test-${GROUP}.log"
+          JUNIT_FILE="test-results/bun-test-${GROUP}.xml"
 
-          # Invoke the root test contract so the development export condition
-          # cannot drift. Bun has also been seen exiting with code 1 on Linux
-          # despite reporting zero failures; preserve genuine failures while
-          # accepting only that exact zero-failure summary.
           set +e
-          bun run test --shard="${SHARD}/4" \
-            --reporter=junit \
-            --reporter-outfile="$JUNIT_FILE" \
+          bun scripts/ci/run-test-lane.ts \
+            --topology general-3x1 \
+            --group "$GROUP" \
+            --junit "$JUNIT_FILE" \
             2>&1 | tee "$LOG_FILE"
           TEST_EXIT=${PIPESTATUS[0]}
           set -e
@@ -157,26 +225,26 @@ jobs:
           fi
 
           if grep -Eq '^[[:space:]]*0 fail[[:space:]]*$' "$LOG_FILE"; then
-            echo "::warning::Bun shard ${SHARD}/4 exited with code $TEST_EXIT despite reporting zero failed tests"
+            echo "::warning::Bun lane ${GROUP} exited with code $TEST_EXIT despite reporting zero failed tests"
             exit 0
           fi
 
           exit "$TEST_EXIT"
 
-      - name: Upload test shard JUnit
+      - name: Upload test lane JUnit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: bun-test-shard-${{ matrix.shard }}-${{ github.sha }}
-          path: test-results/bun-test-shard-${{ matrix.shard }}.xml
+          name: bun-test-junit-${{ matrix.group }}-${{ github.sha }}
+          path: test-results/bun-test-${{ matrix.group }}.xml
           if-no-files-found: error
 
-      - name: Upload failed test shard log
+      - name: Upload failed test lane log
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: bun-test-shard-${{ matrix.shard }}-failure-log-${{ github.sha }}
-          path: test-results/bun-test-shard-${{ matrix.shard }}.log
+          name: bun-test-${{ matrix.group }}-failure-log-${{ github.sha }}
+          path: test-results/bun-test-${{ matrix.group }}.log
           if-no-files-found: error
 
   publishing-platform:

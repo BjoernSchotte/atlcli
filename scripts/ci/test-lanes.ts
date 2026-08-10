@@ -28,6 +28,17 @@ export interface TestLaneMetadata {
   files: TestLaneMetadataEntry[];
 }
 
+export interface TestDurationSnapshot {
+  schema: 1;
+  baselineSha: string;
+  sourceRun: string;
+  samples: number;
+  files: Array<{
+    file: string;
+    durationSeconds: number;
+  }>;
+}
+
 export interface TestExecutionGroup {
   id: string;
   job: string;
@@ -436,10 +447,68 @@ export function testLaneMatrix(plan: TestLanePlan): { include: TestLaneMatrixEnt
   };
 }
 
+export function mergeTestDurationSnapshot(
+  metadata: TestLaneMetadata,
+  snapshot: TestDurationSnapshot,
+): TestLaneMetadata {
+  if (snapshot.schema !== 1) {
+    throw new Error(`unsupported test-duration schema: ${snapshot.schema}`);
+  }
+  if (!/^[0-9a-f]{40}$/i.test(snapshot.baselineSha)) {
+    throw new Error("test-duration baseline SHA must contain 40 hexadecimal characters");
+  }
+  if (!snapshot.sourceRun.trim()) throw new Error("test-duration source run is required");
+  if (!Number.isInteger(snapshot.samples) || snapshot.samples <= 0) {
+    throw new Error("test-duration samples must be a positive integer");
+  }
+
+  const durations = new Map<string, number>();
+  for (const entry of snapshot.files) {
+    const path = normalizeRepositoryTestPath(entry.file);
+    if (durations.has(path)) throw new Error(`duplicate test-duration snapshot: ${path}`);
+    if (!Number.isFinite(entry.durationSeconds) || entry.durationSeconds < 0) {
+      throw new Error(`invalid test-duration snapshot for ${path}`);
+    }
+    // Bun occasionally rounds an extremely small file aggregate to zero. Keep
+    // those files on the conservative new-file fallback rather than pretending
+    // they are free or violating the positive metadata-duration contract.
+    if (entry.durationSeconds > 0) durations.set(path, entry.durationSeconds);
+  }
+
+  const declared = new Set(
+    metadata.files.map((entry) => normalizeRepositoryTestPath(entry.path)),
+  );
+  const files = metadata.files.map((entry) => {
+    const path = normalizeRepositoryTestPath(entry.path);
+    const durationSeconds = durations.get(path);
+    return durationSeconds === undefined ? entry : { ...entry, durationSeconds };
+  });
+  for (const [path, durationSeconds] of durations) {
+    if (!declared.has(path)) files.push({ path, durationSeconds });
+  }
+
+  return {
+    ...metadata,
+    baselineSha: snapshot.baselineSha.toLowerCase(),
+    files,
+  };
+}
+
 export function loadTestLaneMetadata(
   path = resolve(import.meta.dir, "test-lanes.json"),
+  durationPath?: string,
 ): TestLaneMetadata {
-  return JSON.parse(readFileSync(path, "utf8")) as TestLaneMetadata;
+  const metadata = JSON.parse(readFileSync(path, "utf8")) as TestLaneMetadata;
+  const defaultMetadataPath = resolve(import.meta.dir, "test-lanes.json");
+  const resolvedDurationPath = durationPath ??
+    (resolve(path) === defaultMetadataPath
+      ? resolve(import.meta.dir, "test-duration-snapshot.json")
+      : undefined);
+  if (!resolvedDurationPath) return metadata;
+  const snapshot = JSON.parse(
+    readFileSync(resolvedDurationPath, "utf8"),
+  ) as TestDurationSnapshot;
+  return mergeTestDurationSnapshot(metadata, snapshot);
 }
 
 function topologyFromArgs(args: readonly string[]): TestTopology {

@@ -3,7 +3,7 @@ import { readdirSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 const TEST_FILE_PATTERN =
-  /(?:\.|_)(?:test|spec)\.(?:js|jsx|ts|tsx)$/;
+  /(?:\.|_)(?:test|spec)\.(?:cjs|js|jsx|mjs|ts|tsx)$/;
 
 const EXCLUDED_DIRECTORY_NAMES = new Set([
   "build",
@@ -18,6 +18,8 @@ const EXCLUDED_DIRECTORY_PREFIXES = [
   ".turbo/",
   "artifacts/",
   "playwright-report/",
+  // Keep explicit-file execution aligned with the canonical root test script.
+  "spikes/",
 ];
 
 function posix(path: string): string {

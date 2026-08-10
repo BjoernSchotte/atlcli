@@ -1,0 +1,5000 @@
+{
+  "schema": 1,
+  "baselineSha": "d3a5d82b5587670db666b82f4d19f9716bc42c71",
+  "sourceRun": "https://github.com/BjoernSchotte/atlcli/actions/runs/31404132142",
+  "samples": 4,
+  "files": [
+    {
+      "file": "apps/browser-export-harness/scripts/check-parity.test.ts",
+      "durationSeconds": 0.07256599999999999,
+      "tests": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/browser-export-harness/tests/boundaries.test.ts",
+      "durationSeconds": 0.006431999999999999,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/browser-export-harness/tests/docx-job-parity.test.ts",
+      "durationSeconds": 0.519324,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/browser-export-harness/tests/output-scan.test.ts",
+      "durationSeconds": 0.00813,
+      "tests": 30,
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/browser-export-harness/tests/pdf-job-parity.test.ts",
+      "durationSeconds": 0.075168,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/browser-export-harness/tests/pdf-worker-client.test.ts",
+      "durationSeconds": 0.0019089999999999999,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/audit-formatters.test.ts",
+      "durationSeconds": 0.006043,
+      "tests": 38,
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/audit.test.ts",
+      "durationSeconds": 0.257815,
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/auth-test-isolation.test.ts",
+      "durationSeconds": 0.096796,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/auth.test.ts",
+      "durationSeconds": 0.0028129999999999995,
+      "tests": 12,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 3
+    },
+    {
+      "file": "apps/cli/src/commands/chat-activity.test.ts",
+      "durationSeconds": 0.00036899999999999997,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/chat-agent-port.test.ts",
+      "durationSeconds": 0.018813,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/chat-controls.test.ts",
+      "durationSeconds": 0.0031839999999999998,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/docs-dir-flag.test.ts",
+      "durationSeconds": 7.310087,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/docs-json-single-document.test.ts",
+      "durationSeconds": 18.968686,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/docs-pull-attachment-guard.test.ts",
+      "durationSeconds": 23.053476,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/docs-pull-path-stability.test.ts",
+      "durationSeconds": 12.527411,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/docs-push-validate-target.test.ts",
+      "durationSeconds": 6.814344,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/docs.test.ts",
+      "durationSeconds": 0.010605,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/doctor-auth.test.ts",
+      "durationSeconds": 1.731159,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-adf-source.test.ts",
+      "durationSeconds": 0.023566999999999998,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-auth.test.ts",
+      "durationSeconds": 0.0010910000000000002,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-code-font-build-modes.test.ts",
+      "durationSeconds": 1.1315,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-field-refresh.test.ts",
+      "durationSeconds": 8.799106,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-internals.test.ts",
+      "durationSeconds": 0.012851000000000001,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-job-monitor.test.ts",
+      "durationSeconds": 0.013084,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-job-request.test.ts",
+      "durationSeconds": 0.002359,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-job-runtime.test.ts",
+      "durationSeconds": 0.90568,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-job-source-wiring.test.ts",
+      "durationSeconds": 0.00073,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-jobs.test.ts",
+      "durationSeconds": 0.025175000000000003,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-keep-ignored.test.ts",
+      "durationSeconds": 4.362546,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-macros-wiring.test.ts",
+      "durationSeconds": 0.08359600000000002,
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-pdf-assets.test.ts",
+      "durationSeconds": 0.361673,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-pdf-build-modes.test.ts",
+      "durationSeconds": 2.1555,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-pdf-integration.test.ts",
+      "durationSeconds": 0.479931,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-pdf-job-failure.test.ts",
+      "durationSeconds": 0.000275,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-pdf-sink.test.ts",
+      "durationSeconds": 0.011425999999999999,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-pdf-standard-flag.test.ts",
+      "durationSeconds": 0.854514,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-pdf-template.test.ts",
+      "durationSeconds": 4.564454,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-pdf-trust-routing.test.ts",
+      "durationSeconds": 0.0023010000000000005,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-pdf.e2e.test.ts",
+      "durationSeconds": 7.940474,
+      "tests": 8,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 7
+    },
+    {
+      "file": "apps/cli/src/commands/export-rasterizer-build-modes.test.ts",
+      "durationSeconds": 1.631322,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-report-flag.test.ts",
+      "durationSeconds": 3.706668,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-report-parity.test.ts",
+      "durationSeconds": 0.7165320000000002,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-report.test.ts",
+      "durationSeconds": 0.23227199999999998,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-request.test.ts",
+      "durationSeconds": 0.0031730000000000005,
+      "tests": 52,
+      "passed": 52,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-source-contract.test.ts",
+      "durationSeconds": 25.893413000000002,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-strict-severity.test.ts",
+      "durationSeconds": 12.641675000000001,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/export-template-fallback.test.ts",
+      "durationSeconds": 12.553655000000001,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/helloworld.test.ts",
+      "durationSeconds": 0.000338,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/jira-attach.test.ts",
+      "durationSeconds": 11.006163999999998,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/jira-attachments.test.ts",
+      "durationSeconds": 18.494766,
+      "tests": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/jira-template-level.test.ts",
+      "durationSeconds": 13.903793,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/jira-timer-stop.test.ts",
+      "durationSeconds": 22.054085,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/page-diff-legacy.test.ts",
+      "durationSeconds": 6.419217999999999,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/page-diff-semantic.test.ts",
+      "durationSeconds": 44.087164,
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/pdf-template-project-writer.test.ts",
+      "durationSeconds": 0.25992400000000004,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/pdf-template-yaml.test.ts",
+      "durationSeconds": 3.318872,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/pdf-template.test.ts",
+      "durationSeconds": 8.08104,
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/plugin.test.ts",
+      "durationSeconds": 5.032249,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/publish.test.ts",
+      "durationSeconds": 0.010878,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/research.test.ts",
+      "durationSeconds": 0.787574,
+      "tests": 59,
+      "passed": 59,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/search.test.ts",
+      "durationSeconds": 0.001097,
+      "tests": 30,
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/session-guard.test.ts",
+      "durationSeconds": 0.001255,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/sync-conflict.test.ts",
+      "durationSeconds": 7.387428,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/sync-dry-run.test.ts",
+      "durationSeconds": 5.604616,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/sync.test.ts",
+      "durationSeconds": 0.000824,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/commands/template-level.test.ts",
+      "durationSeconds": 23.244723,
+      "tests": 26,
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/completions.test.ts",
+      "durationSeconds": 0.000194,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/chat-private-suite.test.ts",
+      "durationSeconds": 0.040216999999999996,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/cleanup.test.ts",
+      "durationSeconds": 0.010046999999999997,
+      "tests": 47,
+      "passed": 47,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/entrypoint-lifecycle.test.ts",
+      "durationSeconds": 0.000299,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/registry-isolation.test.ts",
+      "durationSeconds": 0.17989,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/registry-probe.test.ts",
+      "durationSeconds": 0.0036639999999999997,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/research-build-assets.test.ts",
+      "durationSeconds": 0.003103,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/research-live.test.ts",
+      "durationSeconds": 0.002359,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/research-multi-turn.test.ts",
+      "durationSeconds": 0.003384,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/research-private-suite.test.ts",
+      "durationSeconds": 0.003577,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/research-process-recovery.test.ts",
+      "durationSeconds": 1.638289,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/e2e/resources.test.ts",
+      "durationSeconds": 0.018578,
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/cli/src/semantic-diff-spill.test.ts",
+      "durationSeconds": 3.242974,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/scripts/chat-agent-live.test.ts",
+      "durationSeconds": 0.000638,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/app-portability.test.tsx",
+      "durationSeconds": 1.7328619999999997,
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/app-settings.test.ts",
+      "durationSeconds": 0.00044899999999999996,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/app-shell-layout.test.tsx",
+      "durationSeconds": 0.12052199999999999,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/boundaries.test.ts",
+      "durationSeconds": 0.01514,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/browser-credential-storage.test.ts",
+      "durationSeconds": 0.001628,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/build-helper.test.ts",
+      "durationSeconds": 0.0010040000000000001,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/chat-agent-port.test.ts",
+      "durationSeconds": 0.002016,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/chrome-ports.test.ts",
+      "durationSeconds": 0.031421,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/confluence/tree-source.test.ts",
+      "durationSeconds": 1.0244829999999998,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/converter-fixture.test.ts",
+      "durationSeconds": 0.021874,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/detection-pull.test.ts",
+      "durationSeconds": 0.000987,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/bootstrap-boundary.test.ts",
+      "durationSeconds": 0.00034,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/env.test.ts",
+      "durationSeconds": 0.108735,
+      "tests": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/export-deps.test.ts",
+      "durationSeconds": 0.007763000000000001,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/export-panel.test.tsx",
+      "durationSeconds": 0.042989,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/rasterizer-report.test.ts",
+      "durationSeconds": 0.000904,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/report-view.test.tsx",
+      "durationSeconds": 0.018607000000000002,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/scan-view.test.tsx",
+      "durationSeconds": 0.02118,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/session-cache.test.ts",
+      "durationSeconds": 0.001303,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/template-load.test.ts",
+      "durationSeconds": 0.016007,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/template-store-keys.test.ts",
+      "durationSeconds": 0.0071129999999999995,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/template-store-migration.test.ts",
+      "durationSeconds": 0.190524,
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/docx/template-store.test.ts",
+      "durationSeconds": 0.041871000000000005,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/export-baseline/resume-provenance.test.ts",
+      "durationSeconds": 0.001972,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/export-note-groups.test.ts",
+      "durationSeconds": 0.004227000000000001,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/i18n.test.ts",
+      "durationSeconds": 0.0077940000000000014,
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/idle-timer.test.ts",
+      "durationSeconds": 0.00046199999999999995,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/activity-operations.test.ts",
+      "durationSeconds": 0.059060999999999995,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/activity.test.ts",
+      "durationSeconds": 0.024202,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/artifact-delivery.test.ts",
+      "durationSeconds": 0.0012970000000000002,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/badge.test.ts",
+      "durationSeconds": 0.0012779999999999998,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/catalog.test.ts",
+      "durationSeconds": 0.456187,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/chunk-store.test.ts",
+      "durationSeconds": 0.25943099999999997,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/docx-executor.test.ts",
+      "durationSeconds": 0.561177,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/docx-resolver.test.ts",
+      "durationSeconds": 0.042607,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/docx-run.test.ts",
+      "durationSeconds": 0.00218,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/docx-submit.test.ts",
+      "durationSeconds": 0.11928,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/executor-store.test.ts",
+      "durationSeconds": 0.078395,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/idle-gate.test.ts",
+      "durationSeconds": 0.0014429999999999996,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/model.test.ts",
+      "durationSeconds": 0.0011970000000000001,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/pdf-compiler.test.ts",
+      "durationSeconds": 0.064769,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/pdf-executor.test.ts",
+      "durationSeconds": 0.043692,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/pdf-resolver.test.ts",
+      "durationSeconds": 0.024026,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/pdf-run.test.ts",
+      "durationSeconds": 0.002041,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/pdf-submit.test.ts",
+      "durationSeconds": 0.006796,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/queue-runner.test.ts",
+      "durationSeconds": 0.232507,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/render-reservation.test.ts",
+      "durationSeconds": 0.003836,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/retention.test.ts",
+      "durationSeconds": 0.141201,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/runtime.test.ts",
+      "durationSeconds": 0.068661,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/jobs/shared-budget.test.ts",
+      "durationSeconds": 0.006148000000000001,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/listeners.test.ts",
+      "durationSeconds": 0.008192000000000001,
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/macro-outcome-summary.test.tsx",
+      "durationSeconds": 0.009131,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/macros/external-asset-policy.test.ts",
+      "durationSeconds": 0.005097999999999999,
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/macros/session-ports.test.ts",
+      "durationSeconds": 0.030753999999999986,
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/manifest.test.ts",
+      "durationSeconds": 0.0008280000000000001,
+      "tests": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/messages.test.ts",
+      "durationSeconds": 0.004762,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/observer-session.test.ts",
+      "durationSeconds": 0.0027199999999999998,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/offscreen.test.ts",
+      "durationSeconds": 0.001512,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/output-scan.test.ts",
+      "durationSeconds": 13.444626999999999,
+      "tests": 52,
+      "passed": 52,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/panel-state.test.ts",
+      "durationSeconds": 0.0013160000000000003,
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/compile-hints.test.ts",
+      "durationSeconds": 0.005352,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/compile-port.test.ts",
+      "durationSeconds": 0.003788,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/compiler-host.test.ts",
+      "durationSeconds": 0.004304999999999999,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/compiler.test.ts",
+      "durationSeconds": 3.3359929999999998,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/download.test.ts",
+      "durationSeconds": 0.011156999999999999,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/job-durability.test.ts",
+      "durationSeconds": 0.028822,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/job-store.test.ts",
+      "durationSeconds": 0.315883,
+      "tests": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/jobs-section.test.tsx",
+      "durationSeconds": 0.7023769999999999,
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/memory/attribution.test.ts",
+      "durationSeconds": 0.000982,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/offscreen-activity.test.ts",
+      "durationSeconds": 0.000332,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/preview-cache.test.ts",
+      "durationSeconds": 0.0076279999999999985,
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/preview.test.ts",
+      "durationSeconds": 0.014305000000000002,
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/report-view.test.tsx",
+      "durationSeconds": 0.009295,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/run-export-scope.test.ts",
+      "durationSeconds": 0.146984,
+      "tests": 56,
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/run-export.test.ts",
+      "durationSeconds": 0.041633,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/section-navigation.test.tsx",
+      "durationSeconds": 0.11147599999999999,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/validate.test.ts",
+      "durationSeconds": 0.000512,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/pdf/viewer.test.ts",
+      "durationSeconds": 0.32627,
+      "tests": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/preview-screen.test.tsx",
+      "durationSeconds": 0.790952,
+      "tests": 30,
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/profile.test.ts",
+      "durationSeconds": 0.0023239999999999997,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/read-path.test.ts",
+      "durationSeconds": 0.015805999999999997,
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-agent-draft.test.ts",
+      "durationSeconds": 0.011411999999999999,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-broker.test.ts",
+      "durationSeconds": 0.043436999999999996,
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-chat-conversation.test.ts",
+      "durationSeconds": 0.000441,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-content-projection.test.ts",
+      "durationSeconds": 0.007336999999999998,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-contracts.test.ts",
+      "durationSeconds": 0.002657,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-dispatch-adapter.test.ts",
+      "durationSeconds": 0.7999700000000001,
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-dynamic-subagents.test.ts",
+      "durationSeconds": 11.067413999999998,
+      "tests": 52,
+      "passed": 52,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-indexeddb-session-store.test.ts",
+      "durationSeconds": 0.302596,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-package-boundary.test.ts",
+      "durationSeconds": 0.002299,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-production-response-schemas.test.ts",
+      "durationSeconds": 0.298849,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-quickjs-characterization.test.ts",
+      "durationSeconds": 1.030969,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-quickjs.test.ts",
+      "durationSeconds": 0.196831,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-redaction.test.ts",
+      "durationSeconds": 0.0007109999999999999,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-report.test.ts",
+      "durationSeconds": 0.007329000000000001,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-rest-provider.test.ts",
+      "durationSeconds": 0.008218,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-scope-catalog-provider.test.ts",
+      "durationSeconds": 0.013106,
+      "tests": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-scope-catalog-tools.test.ts",
+      "durationSeconds": 0.10739399999999999,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-scope-discovery.test.ts",
+      "durationSeconds": 0.010150000000000003,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-screen.test.tsx",
+      "durationSeconds": 4.674694999999999,
+      "tests": 44,
+      "passed": 44,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-v1-compatibility.test.ts",
+      "durationSeconds": 0.005074999999999999,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/research-worker-host.test.ts",
+      "durationSeconds": 0.0031049999999999993,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/router.test.ts",
+      "durationSeconds": 0.0076180000000000015,
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/rovo-content-css.test.ts",
+      "durationSeconds": 0.015111000000000001,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/rovo-visibility.test.ts",
+      "durationSeconds": 0.0009630000000000001,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/scope-section.test.tsx",
+      "durationSeconds": 1.7256279999999997,
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/scope-state.test.ts",
+      "durationSeconds": 0.009006000000000004,
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/screens.test.ts",
+      "durationSeconds": 0.0020570000000000002,
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/settings-form.test.tsx",
+      "durationSeconds": 0.9236189999999999,
+      "tests": 30,
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/settings-screen.test.tsx",
+      "durationSeconds": 0.068649,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/tab-observer.test.ts",
+      "durationSeconds": 0.0026250000000000006,
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/template-library.test.tsx",
+      "durationSeconds": 0.35685999999999996,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/templates/library.test.ts",
+      "durationSeconds": 0.105589,
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/typecheck-coverage.test.ts",
+      "durationSeconds": 0.000099,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/extension/tests/wasm-smoke.test.ts",
+      "durationSeconds": 0.145617,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/change-set/src/adf/canonicalize.test.ts",
+      "durationSeconds": 0.010038,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/change-set/src/canonical-json.test.ts",
+      "durationSeconds": 0.002189,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/change-set/src/digest.test.ts",
+      "durationSeconds": 0.5023979999999999,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/change-set/src/matcher.test.ts",
+      "durationSeconds": 0.034692,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/change-set/src/schema.test.ts",
+      "durationSeconds": 0.015438000000000002,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/change-set/src/streaming.test.ts",
+      "durationSeconds": 0.004382,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/code-highlight/scripts/cli-artifact.test.ts",
+      "durationSeconds": 0.654243,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/code-highlight/src/index.test.ts",
+      "durationSeconds": 0.359094,
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/code-highlight/src/no-code-runtime.test.ts",
+      "durationSeconds": 0.328653,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/adf-direct-fixtures.test.ts",
+      "durationSeconds": 0.011468999999999998,
+      "tests": 61,
+      "passed": 61,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/adf-media.test.ts",
+      "durationSeconds": 0.006975,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/adf-to-blocks.test.ts",
+      "durationSeconds": 0.044654000000000006,
+      "tests": 43,
+      "passed": 43,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/adf-validate.test.ts",
+      "durationSeconds": 0.026053000000000003,
+      "tests": 26,
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/asset-budget.test.ts",
+      "durationSeconds": 0.023761,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/atlcli-dir.test.ts",
+      "durationSeconds": 0.121372,
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/attachment-delivery.test.ts",
+      "durationSeconds": 0.006047999999999999,
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/chart-macro.test.ts",
+      "durationSeconds": 0.036431000000000005,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/client-adf.test.ts",
+      "durationSeconds": 0.029186,
+      "tests": 38,
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/client-export-view.test.ts",
+      "durationSeconds": 0.001374,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/client-research-boundary.test.ts",
+      "durationSeconds": 0.002591,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/client-search-detailed.test.ts",
+      "durationSeconds": 0.012910000000000003,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/client.test.ts",
+      "durationSeconds": 0.097804,
+      "tests": 70,
+      "passed": 70,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/comments.test.ts",
+      "durationSeconds": 0.004305,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/compose-document.test.ts",
+      "durationSeconds": 0.017819,
+      "tests": 39,
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/datasource.test.ts",
+      "durationSeconds": 0.006373000000000001,
+      "tests": 45,
+      "passed": 45,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/diff.test.ts",
+      "durationSeconds": 0.006834999999999999,
+      "tests": 33,
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/emoji-projection.test.ts",
+      "durationSeconds": 0.001489,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/export-blocks-compat.test.ts",
+      "durationSeconds": 0.001578,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/export-blocks.test.ts",
+      "durationSeconds": 2.9413699999999996,
+      "tests": 181,
+      "passed": 181,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/export-scope.test.ts",
+      "durationSeconds": 0.004624,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/frontmatter.test.ts",
+      "durationSeconds": 0.001223,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/hierarchy.test.ts",
+      "durationSeconds": 0.008741999999999998,
+      "tests": 58,
+      "passed": 58,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/html-to-blocks.test.ts",
+      "durationSeconds": 0.004626,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/ignore.test.ts",
+      "durationSeconds": 0.011941999999999998,
+      "tests": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/in-order-limiter.test.ts",
+      "durationSeconds": 0.06897199999999999,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/link-extractor-markdown.test.ts",
+      "durationSeconds": 0.005620999999999999,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/link-extractor-storage.test.ts",
+      "durationSeconds": 0.006816999999999999,
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/link-safety.test.ts",
+      "durationSeconds": 0.005006,
+      "tests": 51,
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/link-validator.test.ts",
+      "durationSeconds": 0.11966299999999999,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/links.test.ts",
+      "durationSeconds": 0.0010369999999999997,
+      "tests": 29,
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/macro-extract.test.ts",
+      "durationSeconds": 0.0038380000000000003,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/markdown-macro-base64.test.ts",
+      "durationSeconds": 0.009183,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/markdown.test.ts",
+      "durationSeconds": 0.45806299999999994,
+      "tests": 231,
+      "passed": 231,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/merge.test.ts",
+      "durationSeconds": 0.003001,
+      "tests": 42,
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/page-body.test.ts",
+      "durationSeconds": 0.006177,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/page-diff-source.test.ts",
+      "durationSeconds": 0.023359,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/page-properties.test.ts",
+      "durationSeconds": 0.0023530000000000005,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/pagination.test.ts",
+      "durationSeconds": 0.001353,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/poller.test.ts",
+      "durationSeconds": 0.003046,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/render-semantic-diff.test.ts",
+      "durationSeconds": 0.005359000000000001,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/reorder.test.ts",
+      "durationSeconds": 0.0016290000000000002,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/research.test.ts",
+      "durationSeconds": 0.000059,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/resolve-mentions.test.ts",
+      "durationSeconds": 0.00251,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/retry-after.test.ts",
+      "durationSeconds": 0.000093,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/scope.test.ts",
+      "durationSeconds": 0.003787000000000001,
+      "tests": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/sha256.test.ts",
+      "durationSeconds": 0.08628599999999999,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/storage-change-tree.test.ts",
+      "durationSeconds": 0.027427999999999998,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/svg-safety.test.ts",
+      "durationSeconds": 0.000857,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/sync-db/json-adapter.test.ts",
+      "durationSeconds": 0.008956,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/sync-db/migrate-state-json.test.ts",
+      "durationSeconds": 0.285659,
+      "tests": 45,
+      "passed": 45,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/sync-db/sqlite-adapter.test.ts",
+      "durationSeconds": 0.08869199999999997,
+      "tests": 38,
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/tree-fetch-plan.test.ts",
+      "durationSeconds": 0.004865,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/tree-fetch.test.ts",
+      "durationSeconds": 0.20586100000000002,
+      "tests": 62,
+      "passed": 62,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/user-fetcher.test.ts",
+      "durationSeconds": 0.014980999999999998,
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/validation.test.ts",
+      "durationSeconds": 0.010224000000000002,
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/confluence/src/webhook-server.test.ts",
+      "durationSeconds": 0.38241100000000006,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/auth.core.test.ts",
+      "durationSeconds": 0.001182,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/auth.test.ts",
+      "durationSeconds": 0.001226,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/config.test.ts",
+      "durationSeconds": 0.0012010000000000002,
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/confluence-url.test.ts",
+      "durationSeconds": 0.0008619999999999999,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/entity-url.test.ts",
+      "durationSeconds": 0.0010749999999999998,
+      "tests": 35,
+      "passed": 35,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/flags.test.ts",
+      "durationSeconds": 0.008208,
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/keychain.test.ts",
+      "durationSeconds": 0.00045000000000000004,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/logger.core.test.ts",
+      "durationSeconds": 0.0010470000000000002,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/logger.test.ts",
+      "durationSeconds": 0.660473,
+      "tests": 34,
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/retry-after.test.ts",
+      "durationSeconds": 0.0005659999999999999,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/session-redirect.test.ts",
+      "durationSeconds": 0.010336000000000001,
+      "tests": 26,
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/template-library.test.ts",
+      "durationSeconds": 0.002118,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/templates/storage.test.ts",
+      "durationSeconds": 0.075012,
+      "tests": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/templates/templates.test.ts",
+      "durationSeconds": 0.029439999999999997,
+      "tests": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/tls.browser.test.ts",
+      "durationSeconds": 0.000416,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/core/src/tls.test.ts",
+      "durationSeconds": 0.001301,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/diagram/src/index.test.ts",
+      "durationSeconds": 0.4554399999999999,
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/diagram/src/svg-flatten.test.ts",
+      "durationSeconds": 0.360509,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/application.test.ts",
+      "durationSeconds": 0.245302,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/assets.test.ts",
+      "durationSeconds": 0.053665000000000004,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/drawingml.test.ts",
+      "durationSeconds": 0.091811,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/fixtures/fixtures.test.ts",
+      "durationSeconds": 0.44671599999999995,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/matching.test.ts",
+      "durationSeconds": 0.12122499999999999,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/ooxml-facts.test.ts",
+      "durationSeconds": 0.019907,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/opc.test.ts",
+      "durationSeconds": 0.014830000000000001,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/privacy.test.ts",
+      "durationSeconds": 0.008642,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/section-resolution.test.ts",
+      "durationSeconds": 0.0025640000000000003,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/style-resolution.test.ts",
+      "durationSeconds": 0.002344,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/theme-resolution.test.ts",
+      "durationSeconds": 0.005506,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx-template-intake/src/visual-roles.test.ts",
+      "durationSeconds": 0.329705,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/browser-entry.test.ts",
+      "durationSeconds": 0.6257699999999999,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/browser-runtime.test.ts",
+      "durationSeconds": 0.278156,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/callout-accessibility.test.ts",
+      "durationSeconds": 0.00032799999999999995,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/dateformat.test.ts",
+      "durationSeconds": 0.001155,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/emoji-font-coverage.libreoffice.test.ts",
+      "durationSeconds": 0,
+      "tests": 1,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 1
+    },
+    {
+      "file": "packages/docx/src/env.test.ts",
+      "durationSeconds": 0.026715000000000003,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/export-determinism.test.ts",
+      "durationSeconds": 0.024376,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/export.test.ts",
+      "durationSeconds": 2.1785460000000008,
+      "tests": 98,
+      "passed": 98,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/fixtures.test.ts",
+      "durationSeconds": 0.015441999999999997,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/font-embedding.test.ts",
+      "durationSeconds": 0.073393,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/foreign-placeholders.test.ts",
+      "durationSeconds": 0.071638,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/golden.test.ts",
+      "durationSeconds": 0.061722,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/header-libreoffice.smoke.test.ts",
+      "durationSeconds": 0,
+      "tests": 1,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 1
+    },
+    {
+      "file": "packages/docx/src/highlight.test.ts",
+      "durationSeconds": 0.665374,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/hyperlink-safety.test.ts",
+      "durationSeconds": 0.000898,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/image.test.ts",
+      "durationSeconds": 0.033546999999999993,
+      "tests": 51,
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/include-lookup.test.ts",
+      "durationSeconds": 0.0019089999999999999,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/macros-additive-golden.test.ts",
+      "durationSeconds": 0.025694,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/macros-hookin.test.ts",
+      "durationSeconds": 0.03158,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/node-adapters.test.ts",
+      "durationSeconds": 0.002905,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/node-consumer.test.ts",
+      "durationSeconds": 0.215321,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/numbering.test.ts",
+      "durationSeconds": 0.054606,
+      "tests": 42,
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/ooxml-text.test.ts",
+      "durationSeconds": 0.002537,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/opc-stream.test.ts",
+      "durationSeconds": 0.08252000000000001,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/placeholder-floor.test.ts",
+      "durationSeconds": 0.001536,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/placeholder-map.test.ts",
+      "durationSeconds": 0.004329999999999999,
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/prepared-export.test.ts",
+      "durationSeconds": 0.3101229999999999,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/resolver.test.ts",
+      "durationSeconds": 0.051898,
+      "tests": 60,
+      "passed": 60,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/resvg-rasterizer.test.ts",
+      "durationSeconds": 0.6166959999999999,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/scan.test.ts",
+      "durationSeconds": 16.840972999999998,
+      "tests": 62,
+      "passed": 62,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/serialize.test.ts",
+      "durationSeconds": 0.1674100000000001,
+      "tests": 131,
+      "passed": 131,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/styleref.test.ts",
+      "durationSeconds": 0.033216,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/docx/src/update-fields.test.ts",
+      "durationSeconds": 0.206684,
+      "tests": 40,
+      "passed": 40,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks-astro/src/astro-renderer.test.ts",
+      "durationSeconds": 10.810516,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks-astro/src/charts.test.ts",
+      "durationSeconds": 0.006311000000000001,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks-astro/src/index.test.ts",
+      "durationSeconds": 0.00587,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks-astro/src/overrides.test.ts",
+      "durationSeconds": 0.000598,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks-astro/src/packed-consumer.test.ts",
+      "durationSeconds": 3.215804,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks-astro/src/security.test.ts",
+      "durationSeconds": 0.000313,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks/src/charts.test.ts",
+      "durationSeconds": 0.003487,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks/src/index.test.ts",
+      "durationSeconds": 0.000508,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks/src/page-link-resolution.test.ts",
+      "durationSeconds": 0.000491,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-blocks/src/schema.test.ts",
+      "durationSeconds": 0.006915,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-charts-tanstack/src/index.test.ts",
+      "durationSeconds": 0.063854,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-fixtures/src/adf-fixtures.test.ts",
+      "durationSeconds": 0.068481,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-fixtures/src/archive-corpus.test.ts",
+      "durationSeconds": 0.023965,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-fixtures/src/chart-world-class-corpus.test.ts",
+      "durationSeconds": 0.040237,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-fixtures/src/docx-template-intake-fixture.test.ts",
+      "durationSeconds": 0.098865,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-fixtures/src/image-heavy-corpus.test.ts",
+      "durationSeconds": 1.499309,
+      "tests": 11,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 1
+    },
+    {
+      "file": "packages/export-fixtures/src/large-export-corpus.test.ts",
+      "durationSeconds": 0.359467,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-fixtures/src/macro-fixtures.test.ts",
+      "durationSeconds": 0.006906000000000001,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-fixtures/src/mixed-export-corpus.test.ts",
+      "durationSeconds": 0.989798,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-fixtures/src/svg-corpus.test.ts",
+      "durationSeconds": 0.003992,
+      "tests": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/activity.test.ts",
+      "durationSeconds": 0.004243,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/bound-stores.test.ts",
+      "durationSeconds": 0.0043029999999999995,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/bounded-stream.test.ts",
+      "durationSeconds": 0.00346,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/cleanup.test.ts",
+      "durationSeconds": 0.004955,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/contracts.test.ts",
+      "durationSeconds": 0.000185,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/finalization.test.ts",
+      "durationSeconds": 0.004044,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/in-memory.test.ts",
+      "durationSeconds": 0.09982800000000001,
+      "tests": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/lifecycle-retention.test.ts",
+      "durationSeconds": 0.006176000000000001,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/policy.test.ts",
+      "durationSeconds": 0.001374,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/replay.test.ts",
+      "durationSeconds": 0.003338,
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/request.test.ts",
+      "durationSeconds": 0.000705,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/resource-reservation.test.ts",
+      "durationSeconds": 0.007492,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/template-pack-store.test.ts",
+      "durationSeconds": 0.00235,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/transitions.test.ts",
+      "durationSeconds": 0.005886,
+      "tests": 33,
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-jobs/src/validation.test.ts",
+      "durationSeconds": 0.012103,
+      "tests": 102,
+      "passed": 102,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/chart.test.ts",
+      "durationSeconds": 0.000922,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/children.test.ts",
+      "durationSeconds": 0.001618,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/confluence-list.test.ts",
+      "durationSeconds": 0.007087000000000001,
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/diagram.test.ts",
+      "durationSeconds": 0.001469,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/include-excerpt.test.ts",
+      "durationSeconds": 0.0025710000000000004,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/jira.test.ts",
+      "durationSeconds": 0.004908999999999999,
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/multiexcerpt.test.ts",
+      "durationSeconds": 0.0025220000000000004,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/page-properties-report.test.ts",
+      "durationSeconds": 0.0016060000000000002,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/registry.test.ts",
+      "durationSeconds": 0.002204,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/resolve.test.ts",
+      "durationSeconds": 0.04535599999999999,
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/toc.test.ts",
+      "durationSeconds": 0.0055130000000000005,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/web-render-model.test.ts",
+      "durationSeconds": 0.002717,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-macros/src/whiteboard.test.ts",
+      "durationSeconds": 0.004019,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-media/src/codec.test.ts",
+      "durationSeconds": 2.9360280000000003,
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-node/src/a5-example.test.ts",
+      "durationSeconds": 0.115593,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-node/src/default-template.test.ts",
+      "durationSeconds": 0.014281,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-node/src/jobs/file-job-store-quarantine.test.ts",
+      "durationSeconds": 0.118166,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-node/src/jobs/file-persistence.test.ts",
+      "durationSeconds": 1.4682179999999998,
+      "tests": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-node/src/pdf-env.test.ts",
+      "durationSeconds": 0.069135,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/asset-policy.test.ts",
+      "durationSeconds": 0.065243,
+      "tests": 86,
+      "passed": 86,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/checkpointed-assets.test.ts",
+      "durationSeconds": 0.017326,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/checkpointed-source-pipeline.test.ts",
+      "durationSeconds": 0.024572000000000004,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/confluence-job-resolve-input.test.ts",
+      "durationSeconds": 0.010587000000000001,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/confluence-source-plan-spool.test.ts",
+      "durationSeconds": 0.00211,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/confluence-source-resolver.test.ts",
+      "durationSeconds": 0.011714999999999998,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/incremental-sha256.test.ts",
+      "durationSeconds": 0.06438100000000001,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/pdf-job-executor.test.ts",
+      "durationSeconds": 0.284721,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/productive-telemetry.test.ts",
+      "durationSeconds": 0.0030139999999999998,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/streamed-asset.test.ts",
+      "durationSeconds": 0.00246,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/tree-body-spool.test.ts",
+      "durationSeconds": 0.011156,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/typescript-docx-job-executor.test.ts",
+      "durationSeconds": 0.235036,
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/jobs/web-macro-resolution.test.ts",
+      "durationSeconds": 0.021249,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/macro-options.test.ts",
+      "durationSeconds": 0.0028850000000000004,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/ports.test.ts",
+      "durationSeconds": 0.004684,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/publication-assets.test.ts",
+      "durationSeconds": 0.003894,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/export-wiring/src/trust-routing.test.ts",
+      "durationSeconds": 0.008932,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/jira/src/attachments.test.ts",
+      "durationSeconds": 0.005924000000000004,
+      "tests": 45,
+      "passed": 45,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/jira/src/auth-redirect.test.ts",
+      "durationSeconds": 0.0011419999999999998,
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/jira/src/change-set.test.ts",
+      "durationSeconds": 0.035234,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/jira/src/client-research-boundary.test.ts",
+      "durationSeconds": 0.002219,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/jira/src/client.test.ts",
+      "durationSeconds": 0.13440800000000003,
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/jira/src/retry-after.test.ts",
+      "durationSeconds": 0.00214,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/callout-accessibility.test.ts",
+      "durationSeconds": 0.06858800000000001,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/chapter-running-head.test.ts",
+      "durationSeconds": 1.41769,
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/compiler.test.ts",
+      "durationSeconds": 104.52154899999998,
+      "tests": 29,
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/docx-template-assets.test.ts",
+      "durationSeconds": 0.5826060000000001,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/docx-template-intake-chain.test.ts",
+      "durationSeconds": 0.9756720000000001,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/emoji-font-coverage.test.ts",
+      "durationSeconds": 0.085486,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/fonts-compile.test.ts",
+      "durationSeconds": 0.038675,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/label-injection.test.ts",
+      "durationSeconds": 0.049420000000000006,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/pdf-accessibility-claims.test.ts",
+      "durationSeconds": 0.09340599999999999,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/pdf-lang-catalog.test.ts",
+      "durationSeconds": 0.076711,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/pdf-output-options.test.ts",
+      "durationSeconds": 0.111037,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/pdf-output-standards.test.ts",
+      "durationSeconds": 0.031808,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/second-template.test.ts",
+      "durationSeconds": 0.112466,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/template-capabilities-v5.test.ts",
+      "durationSeconds": 2.2816490000000003,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/template-composition-v4-renderer.test.ts",
+      "durationSeconds": 0.143256,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/template-composition-v4.test.ts",
+      "durationSeconds": 23.519161999999998,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/template-migration-parity.test.ts",
+      "durationSeconds": 0.083208,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/upstream-contract.test.ts",
+      "durationSeconds": 0.000026,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-compiler-browser/src/vendor.test.ts",
+      "durationSeconds": 0.36854200000000004,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-template-authoring/src/core.test.ts",
+      "durationSeconds": 0.10407200000000004,
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf-template-authoring/src/project.test.ts",
+      "durationSeconds": 0.172374,
+      "tests": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/scripts/check-hardcoding-ledger.test.ts",
+      "durationSeconds": 0.017621,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/scripts/ensure-fonts.test.ts",
+      "durationSeconds": 0.00284,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/asset-budget-parity.test.ts",
+      "durationSeconds": 1.626039,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/bytes-handle.test.ts",
+      "durationSeconds": 0.002036,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/callout-accessibility.test.ts",
+      "durationSeconds": 0.000185,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/cross-engine-table-width.test.ts",
+      "durationSeconds": 0.014986000000000001,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/design-catalog.test.ts",
+      "durationSeconds": 0.10820600000000002,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/escape.test.ts",
+      "durationSeconds": 0.000192,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/font-coverage.test.ts",
+      "durationSeconds": 0.015149,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/font-requirements.test.ts",
+      "durationSeconds": 0.144988,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/fonts.test.ts",
+      "durationSeconds": 0.011548000000000001,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/macros-hookin.test.ts",
+      "durationSeconds": 0.027452999999999998,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/output-policy.test.ts",
+      "durationSeconds": 0.000603,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/placeholder-floor.test.ts",
+      "durationSeconds": 0.034254,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/prepare.test.ts",
+      "durationSeconds": 5.133888000000002,
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/recipe-baselines.test.ts",
+      "durationSeconds": 0.19339499999999998,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/run-export.test.ts",
+      "durationSeconds": 0.1935599999999999,
+      "tests": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/runtime-assets.test.ts",
+      "durationSeconds": 0.003887,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/serialize.test.ts",
+      "durationSeconds": 0.7446099999999999,
+      "tests": 90,
+      "passed": 90,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/settings.test.ts",
+      "durationSeconds": 0.14803200000000002,
+      "tests": 38,
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/template-asset-capabilities.test.ts",
+      "durationSeconds": 0.003046,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/template-authoring-runtime.test.ts",
+      "durationSeconds": 0.015896,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/template-pack.test.ts",
+      "durationSeconds": 0.214974,
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/template-recipe.test.ts",
+      "durationSeconds": 0.567084,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/template.test.ts",
+      "durationSeconds": 0.10854599999999999,
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/theme.test.ts",
+      "durationSeconds": 0.000712,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/pdf/src/validate.test.ts",
+      "durationSeconds": 0.7075270000000001,
+      "tests": 99,
+      "passed": 99,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/agent-draft.test.ts",
+      "durationSeconds": 0.001664,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/agent-runtime-core.test.ts",
+      "durationSeconds": 0.06895599999999999,
+      "tests": 49,
+      "passed": 49,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/agent-runtime-invariants.test.ts",
+      "durationSeconds": 0.007077,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/agentic-workflow-core.test.ts",
+      "durationSeconds": 0.004178,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/brief.test.ts",
+      "durationSeconds": 0.006890999999999999,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/budget.test.ts",
+      "durationSeconds": 0.00759,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/candidate-ranking.test.ts",
+      "durationSeconds": 0.0026119999999999997,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/activity.test.ts",
+      "durationSeconds": 0.0012519999999999999,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/auxiliary.test.ts",
+      "durationSeconds": 0.0028339999999999997,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/checkpoint-continuation.test.ts",
+      "durationSeconds": 0.0243,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/contracts.test.ts",
+      "durationSeconds": 0.09600299999999998,
+      "tests": 74,
+      "passed": 74,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/evaluation.test.ts",
+      "durationSeconds": 0.0244,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/feedback.test.ts",
+      "durationSeconds": 0.00161,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/hitl.test.ts",
+      "durationSeconds": 0.092545,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/interaction.test.ts",
+      "durationSeconds": 0.004985,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/model.test.ts",
+      "durationSeconds": 0.003375,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/performance-ratchet.test.ts",
+      "durationSeconds": 0.005927,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/port.test.ts",
+      "durationSeconds": 0.000605,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/prompt-cache.test.ts",
+      "durationSeconds": 0.0017069999999999998,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/prompts.test.ts",
+      "durationSeconds": 0.002262,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/providers/anthropic.test.ts",
+      "durationSeconds": 0.08437700000000001,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/quality.test.ts",
+      "durationSeconds": 0.004549,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/release-candidate-matrix.test.ts",
+      "durationSeconds": 0.6345899999999999,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/release-gates.test.ts",
+      "durationSeconds": 0.072228,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/retrieval-plan.test.ts",
+      "durationSeconds": 0.04511099999999999,
+      "tests": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/retrieval.test.ts",
+      "durationSeconds": 0.024418000000000002,
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/scope-clarification.test.ts",
+      "durationSeconds": 0.004319,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/session.test.ts",
+      "durationSeconds": 0.037047,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/strategy-runtime.test.ts",
+      "durationSeconds": 1.7567300000000003,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/strategy.test.ts",
+      "durationSeconds": 0.007171000000000001,
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/summarization.test.ts",
+      "durationSeconds": 0.042107000000000006,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/testing/runtime-runner.test.ts",
+      "durationSeconds": 13.759031999999996,
+      "tests": 64,
+      "passed": 64,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/workflow-runtime.test.ts",
+      "durationSeconds": 0.6061919999999998,
+      "tests": 47,
+      "passed": 47,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-agent/workflow.test.ts",
+      "durationSeconds": 0.027785999999999998,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/chat-thinking.test.ts",
+      "durationSeconds": 0.002701,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/claim-candidate-normalizer.test.ts",
+      "durationSeconds": 0.04125,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/claim-ledger.test.ts",
+      "durationSeconds": 0.015255000000000001,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/data-store-conformance.test.ts",
+      "durationSeconds": 0.019536,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/deepagent-workspace-backend.test.ts",
+      "durationSeconds": 0.009914,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/direct-chat.test.ts",
+      "durationSeconds": 0.008019,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/dispatch-adapter.test.ts",
+      "durationSeconds": 0.001289,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/document-navigation.test.ts",
+      "durationSeconds": 0.015075,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/dynamic-subagents.test.ts",
+      "durationSeconds": 0.06423,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/events.test.ts",
+      "durationSeconds": 0.010887,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/evidence-store.test.ts",
+      "durationSeconds": 0.009776,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/graph.test.ts",
+      "durationSeconds": 0.029328999999999997,
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/host-parity.test.ts",
+      "durationSeconds": 2.972962,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/import-boundary.test.ts",
+      "durationSeconds": 1.7567030000000001,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/langgraph-checkpointer.test.ts",
+      "durationSeconds": 4.567883999999999,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/message-lineage.test.ts",
+      "durationSeconds": 0.060263,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/model-budget-middleware.test.ts",
+      "durationSeconds": 0.003563,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/outline.test.ts",
+      "durationSeconds": 0.09292199999999999,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/packet-v2-normalizer.test.ts",
+      "durationSeconds": 0.06686,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/pinned-runtime-contract.test.ts",
+      "durationSeconds": 0.231888,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/quality-policy.test.ts",
+      "durationSeconds": 0.0014989999999999997,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/report-v2-invalidation.test.ts",
+      "durationSeconds": 0.053425999999999994,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/report-v2.test.ts",
+      "durationSeconds": 0.013134000000000003,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/retrieval-assessment.test.ts",
+      "durationSeconds": 0.004606,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/scope-catalog-broker.test.ts",
+      "durationSeconds": 0.004262,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/scope-catalog.test.ts",
+      "durationSeconds": 0.005286,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/scope-mention-validation.test.ts",
+      "durationSeconds": 0.0046,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/scope-preflight.test.ts",
+      "durationSeconds": 0.013385000000000001,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/scope-resolution.test.ts",
+      "durationSeconds": 0.003948999999999999,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/session-artifacts.test.ts",
+      "durationSeconds": 0.002203,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/session-clarification-review.test.ts",
+      "durationSeconds": 0.0056819999999999996,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/session-dispatch-journal.test.ts",
+      "durationSeconds": 0.135383,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/session-plan-review.test.ts",
+      "durationSeconds": 0.003846,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/session-runtime.test.ts",
+      "durationSeconds": 0.179191,
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/session-scope-clarification-review.test.ts",
+      "durationSeconds": 0.003529,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/session-scope-review.test.ts",
+      "durationSeconds": 0.009994,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/session-store.test.ts",
+      "durationSeconds": 0.044393999999999996,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/session.test.ts",
+      "durationSeconds": 0.059102999999999996,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/sqlite-session-store.test.ts",
+      "durationSeconds": 0.301408,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/state-lifetime-baseline.test.ts",
+      "durationSeconds": 0.004168,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/task-ledger.test.ts",
+      "durationSeconds": 0.0025340000000000002,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/testing/deterministic-scenario.test.ts",
+      "durationSeconds": 0.0006979999999999998,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/testing/evaluation.test.ts",
+      "durationSeconds": 0.00139,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/testing/gold-set-format.test.ts",
+      "durationSeconds": 0.14429299999999998,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/testing/t3-comparison.test.ts",
+      "durationSeconds": 0.016509,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/testing/t3-runtime-comparison.test.ts",
+      "durationSeconds": 2.033481,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/turn-context.test.ts",
+      "durationSeconds": 0.006067,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/workflow-contracts.test.ts",
+      "durationSeconds": 0.005068,
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/research/src/workspace.test.ts",
+      "durationSeconds": 0.004314,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/template-pack/src/asset-capabilities.test.ts",
+      "durationSeconds": 0.000473,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/template-pack/src/capabilities-v2.test.ts",
+      "durationSeconds": 0.008318,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/template-pack/src/capabilities.test.ts",
+      "durationSeconds": 0.0027080000000000003,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/template-pack/src/design.test.ts",
+      "durationSeconds": 0.051439,
+      "tests": 54,
+      "passed": 54,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/template-pack/src/manifest.test.ts",
+      "durationSeconds": 0.006741,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/template-pack/src/pack.test.ts",
+      "durationSeconds": 0.016311,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/template-pack/src/recipe.test.ts",
+      "durationSeconds": 0.012252999999999998,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/template-pack/src/unpack.test.ts",
+      "durationSeconds": 11.800701000000004,
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/template-pack/src/validate.test.ts",
+      "durationSeconds": 0.011991,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/analytics.test.ts",
+      "durationSeconds": 0.0008939999999999999,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/astro-consumer.test.ts",
+      "durationSeconds": 43.371422,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/build-command.test.ts",
+      "durationSeconds": 0.080343,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/builder.test.ts",
+      "durationSeconds": 12.526397,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/edit-links.test.ts",
+      "durationSeconds": 0.000411,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/loader.test.ts",
+      "durationSeconds": 0.8484929999999998,
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/manifest.test.ts",
+      "durationSeconds": 0.008726,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/output-verify.test.ts",
+      "durationSeconds": 0.032805,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/performance-budget.test.ts",
+      "durationSeconds": 0.002876,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/prefetch.test.ts",
+      "durationSeconds": 0.00040699999999999997,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/render-context.test.ts",
+      "durationSeconds": 0.003124,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/search-budget.test.ts",
+      "durationSeconds": 0.751763,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/search.test.ts",
+      "durationSeconds": 0.000357,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-astro/src/seo.test.ts",
+      "durationSeconds": 0.001484,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-starlight/src/code.test.ts",
+      "durationSeconds": 0.000247,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-starlight/src/index.test.ts",
+      "durationSeconds": 0.001699,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-starlight/src/navigation.test.ts",
+      "durationSeconds": 0.0026190000000000002,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish-starlight/src/starlight-renderer.test.ts",
+      "durationSeconds": 32.839435,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/cache.test.ts",
+      "durationSeconds": 0.004653,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/chart-budgets.test.ts",
+      "durationSeconds": 0.012289,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/chart-diagnostics.test.ts",
+      "durationSeconds": 0.0043360000000000004,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/contracts.test.ts",
+      "durationSeconds": 0.000057,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/digests.test.ts",
+      "durationSeconds": 0.004625,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/experience.test.ts",
+      "durationSeconds": 0.009880000000000002,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/i18n.test.ts",
+      "durationSeconds": 0.000651,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/navigation.test.ts",
+      "durationSeconds": 0.003043,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/node.test.ts",
+      "durationSeconds": 0.20918399999999998,
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/references.test.ts",
+      "durationSeconds": 0.007353999999999999,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/refresh.test.ts",
+      "durationSeconds": 0.0031589999999999995,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/routes.test.ts",
+      "durationSeconds": 0.007905,
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "packages/web-publish/src/schema.test.ts",
+      "durationSeconds": 0.010697,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "plugins/plugin-git/src/auto-commit.test.ts",
+      "durationSeconds": 0.5270900000000001,
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "plugins/plugin-git/src/git-hooks-exitcode.test.ts",
+      "durationSeconds": 0.19736,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "plugins/plugin-git/src/git-hooks.test.ts",
+      "durationSeconds": 0.186658,
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "plugins/plugin-git/src/utils.test.ts",
+      "durationSeconds": 0.376806,
+      "tests": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/adf-drift.test.ts",
+      "durationSeconds": 1.557776,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/adf-gap-register.test.ts",
+      "durationSeconds": 0.0014529999999999999,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/adf-rendered-goldens.test.ts",
+      "durationSeconds": 0.002001,
+      "tests": 2,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 1
+    },
+    {
+      "file": "scripts/api-report.test.ts",
+      "durationSeconds": 143.78471100000002,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/bench-env.test.ts",
+      "durationSeconds": 0.036590000000000004,
+      "tests": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/compare-trend.test.ts",
+      "durationSeconds": 0.0028030000000000004,
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/export-baseline-contract.test.ts",
+      "durationSeconds": 0.026607,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/generate-adf-source-fixture.test.ts",
+      "durationSeconds": 0.037118,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/generate-fixture.test.ts",
+      "durationSeconds": 0.025494000000000003,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/generate-m1-corpus.test.ts",
+      "durationSeconds": 0.014452,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/generate-storage-fixture.test.ts",
+      "durationSeconds": 0.033268000000000006,
+      "tests": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/run-adf-source-bench.test.ts",
+      "durationSeconds": 0.000907,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/run-export-job-baseline.test.ts",
+      "durationSeconds": 6.188038,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bench/run-runtime-lane.test.ts",
+      "durationSeconds": 0.00036799999999999995,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/bun-version-pin.test.ts",
+      "durationSeconds": 0.005319000000000001,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/chat-performance-ratchet.test.ts",
+      "durationSeconds": 0.00038599999999999995,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/chat-release-candidate-matrix.test.ts",
+      "durationSeconds": 0.08063200000000001,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/check-browser-build.test.ts",
+      "durationSeconds": 1.2593770000000002,
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/actions-timings.test.ts",
+      "durationSeconds": 0.0012549999999999998,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/classify-changes.test.ts",
+      "durationSeconds": 0.0014620000000000002,
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/proof-mode.test.ts",
+      "durationSeconds": 0.064746,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/research-privacy.test.ts",
+      "durationSeconds": 0.001342,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/telemetry-summary.test.ts",
+      "durationSeconds": 0.001672,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/test-inventory.test.ts",
+      "durationSeconds": 0.001826,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/test-lanes.test.ts",
+      "durationSeconds": 0.08949199999999999,
+      "tests": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/test-timings.test.ts",
+      "durationSeconds": 0.06754199999999999,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/turbo-cache-policy.test.ts",
+      "durationSeconds": 0.00176,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/validate-readme-media.test.ts",
+      "durationSeconds": 0.1365,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/ci/workflow-policy.test.ts",
+      "durationSeconds": 0.048351,
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/clean-browser-artifacts.test.ts",
+      "durationSeconds": 0.001641,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/consumer-smoke.test.ts",
+      "durationSeconds": 0.001232,
+      "tests": 9,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 4
+    },
+    {
+      "file": "scripts/dev-resolution.test.ts",
+      "durationSeconds": 0.000625,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/dist-hygiene.test.ts",
+      "durationSeconds": 60.076239,
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/docs-links.test.ts",
+      "durationSeconds": 0.06838699999999999,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/export-note-codes.test.ts",
+      "durationSeconds": 0.17227,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/install-matrix.test.ts",
+      "durationSeconds": 0,
+      "tests": 3,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 3
+    },
+    {
+      "file": "scripts/pack-check.test.ts",
+      "durationSeconds": 5.047077,
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/publish-classification.test.ts",
+      "durationSeconds": 0.003764,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/publishable-deps.test.ts",
+      "durationSeconds": 0.004121,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/release.test.ts",
+      "durationSeconds": 0.195389,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/security/attest.test.ts",
+      "durationSeconds": 0.06919399999999998,
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/strip-dev-condition.test.ts",
+      "durationSeconds": 0.013354999999999999,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/verapdf/ratchet.test.ts",
+      "durationSeconds": 0.000868,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "scripts/verapdf/verapdf.ratchet.test.ts",
+      "durationSeconds": 0,
+      "tests": 1,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 1
+    },
+    {
+      "file": "specs/web-publishing-astro/spike/integration/integration.test.mjs",
+      "durationSeconds": 0.000899,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "specs/web-publishing-astro/spike/render-kit/contract.test.mjs",
+      "durationSeconds": 0.00081,
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    }
+  ]
+}

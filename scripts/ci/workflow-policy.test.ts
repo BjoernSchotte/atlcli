@@ -330,22 +330,33 @@ describe("CI workflow policy", () => {
     expect(staticQuality).toContain("bun run check:browser");
     expect(staticQuality).toContain("bun run build");
     expect(staticQuality).toContain("bun run check:extension-output");
-    expect(staticQuality).not.toContain("bun run test");
+    expect(staticQuality).toContain("Validate duration-aware test inventory");
+    expect(staticQuality).toContain("Run package contract tests against the warm build");
+    expect(staticQuality).toContain("--group package-contract");
+    expect(staticQuality).toContain("bun-test-junit-package-contract-${{ github.sha }}");
+    expect(staticQuality!.indexOf("- name: Build")).toBeLessThan(
+      staticQuality!.indexOf("Run package contract tests against the warm build"),
+    );
 
     expect(tests).not.toBeNull();
     expect(tests).toContain("if: inputs.run_tests");
     expect(tests).toContain("fail-fast: false");
-    expect(tests).toContain("shard: [1, 2, 3, 4]");
-    expect(tests).toContain('bun run test --shard="${SHARD}/4"');
-    expect(tests).toContain("--reporter=junit");
-    expect(tests).toContain("--reporter-outfile=\"$JUNIT_FILE\"");
+    for (const group of ["general-1", "general-2", "general-3", "pdf-typst"]) {
+      expect(tests).toContain(`group: ${group}`);
+    }
+    expect(tests).toContain("bun scripts/ci/run-test-lane.ts");
+    expect(tests).toContain("--topology general-3x1");
+    expect(tests).toContain('if: matrix.poppler');
+    expect(tests).toContain('if: matrix.fonts');
+    expect(tests).not.toContain("--parallel=2");
     expect(tests).toContain("TEST_EXIT=${PIPESTATUS[0]}");
     expect(tests).toContain("0 fail");
     expect(tests).toContain("if: always()");
-    expect(tests).toContain("bun-test-shard-${{ matrix.shard }}.xml");
-    expect(tests).toContain("Upload failed test shard log");
+    expect(tests).toContain("bun-test-junit-${{ matrix.group }}-${{ github.sha }}");
+    expect(tests).toContain("bun-test-${{ matrix.group }}.xml");
+    expect(tests).toContain("Upload failed test lane log");
     expect(tests).toContain("if: failure()");
-    expect(tests).toContain("bun-test-shard-${{ matrix.shard }}.log");
+    expect(tests).toContain("bun-test-${{ matrix.group }}.log");
     expect(tests).not.toContain("continue-on-error:");
 
     expect(publishing).not.toBeNull();
@@ -393,6 +404,8 @@ describe("CI workflow policy", () => {
     expect(telemetry).toContain("needs: [changes, required]");
     expect(telemetry).toContain("if: always()");
     expect(telemetry).toContain("actions/download-artifact@v8");
+    expect(telemetry).toContain("pattern: bun-test-junit-*-${{ github.sha }}");
+    expect(telemetry).toContain("'general-3x1'");
     expect(telemetry).toContain("bun scripts/ci/telemetry-summary.ts");
     expect(required).not.toBeNull();
     expect(required).not.toContain("telemetry");
@@ -418,6 +431,11 @@ describe("CI workflow policy", () => {
     expect(comparison).toContain("shard: [1, 2, 3, 4]");
     expect(comparison).toContain("if: matrix.poppler");
     expect(comparison).toContain("if: matrix.fonts");
+    expect(comparison).toContain("actions/download-artifact@v8");
+    expect(comparison).toContain("bun scripts/ci/test-timings.ts compare");
+    expect(comparison).toContain("--legacy-namespace legacy-4-shard");
+    expect(comparison).toContain("Prove exact identity, outcomes, and timing");
+    expect(comparison).toContain("topology-comparison-${{ needs.plan.outputs.topology }}");
   });
 
   it("keeps the standalone security attestation dependency-free", async () => {
