@@ -350,6 +350,7 @@ describe("CI workflow policy", () => {
     expect(publishing).toContain('ATLCLI_CONSUMER_SMOKE: "1"');
     expect(publishing).toContain("minimum-astro");
     expect(publishing).toContain("windows-astro");
+    expect(publishing).toContain("if: runner.os != 'Windows'");
     expect(publishing).not.toContain("latest-astro-7");
 
     expect(latest).not.toBeNull();

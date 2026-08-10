@@ -27,9 +27,8 @@ open until the live sample gates in `PLAN.md` are satisfied.
 - Official GitHub Actions in the touched workflows use their current Node 24
   majors (`checkout@v7`, `setup-node@v7`, `github-script@v9`, `cache@v6`,
   `upload-artifact@v7`, and `download-artifact@v8`)
-- The isolated Windows PDF sink deliberately skips the shared Bun package
-  cache after a live restore stalled longer than the complete Linux/browser
-  proof paths
+- Windows platform lanes deliberately skip the shared Bun package cache after
+  live restores outlasted the complete Linux/browser proof paths
 
 ## PR #139 observed bottleneck
 
