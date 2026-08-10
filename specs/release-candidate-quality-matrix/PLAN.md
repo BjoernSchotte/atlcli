@@ -1,9 +1,12 @@
 # Release-candidate quality matrix
 
-> Status: implementation in progress. This slice turns the existing Chat gold
-> labels and isolated functional tests into one executable, privacy-safe release
-> decision. Private Atlassian questions, sources, answers, URLs, and transcripts
-> remain outside Git.
+> Status: T0-T2 complete; the private CLI matrix exists and has run, but T3 is
+> not accepted because two quality checks still fail and the installed-MV3 plus
+> operator-review gates remain open. T4 reconciliation has started, but its
+> verification and final receipt gates remain open. This slice turns the
+> existing Chat gold labels and isolated functional tests into one executable,
+> privacy-safe release decision. Private Atlassian questions, sources, answers,
+> URLs, and transcripts remain outside Git.
 
 ## Goal
 
@@ -126,15 +129,15 @@ fingerprints, and remain outside Git.
 
 ## T3 - Run the private read-only operator matrix
 
-- [ ] Add a private-suite runner that executes opaque external cases through
+- [x] Add a private-suite runner that executes opaque external cases through
       Quick, Auto, Deep, and optional Deep Research variants.
-- [ ] Keep the suite definition, local gold labels, Markdown, JSON, logs, and
+- [x] Keep the suite definition, local gold labels, Markdown, JSON, logs, and
       provider traces under the operator-owned external artifact root.
-- [ ] Score local expected source choice, required facts, forbidden claims,
+- [x] Score local expected source choice, required facts, forbidden claims,
       abstention, citation validity, follow-up coherence, latency, and cost.
 - [ ] Require explicit operator acceptance of usefulness, source choice,
       citations, activity, follow-up coherence, latency, and cost trade-offs.
-- [ ] Run at least two approved real Confluence pages individually and one
+- [x] Run at least two approved real Confluence pages individually and one
       connected follow-up; include both a simple and a materially analytical
       question.
 - [ ] Run a small installed-extension subset after rebuilding/reloading it.
@@ -150,9 +153,9 @@ Acceptance:
       gates, public API/closure gates, and `check:research-privacy`.
 - [ ] Add an evidence record containing only customer-free methodology,
       aggregate measurements, commands, and commit references.
-- [ ] Mark superseded status in the older Chat quality plans without pretending
+- [x] Mark superseded status in the older Chat quality plans without pretending
       that contract-only checks were runtime evidence.
-- [ ] Confirm AGG, local models, web search, TUI, and export extensions remain
+- [x] Confirm AGG, local models, web search, TUI, and export extensions remain
       separate follow-up slices rather than release-matrix dependencies.
 
 Acceptance:

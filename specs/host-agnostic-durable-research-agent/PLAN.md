@@ -1,6 +1,10 @@
 # Host-agnostic durable Jira and Confluence research agent
 
-- Status: Implementation-ready
+- Status: Substantially implemented through successor Chat, performance, and
+  release-candidate plans. Remaining unchecked items are long-horizon Research
+  durability hardening, full private retrieval evaluation, TUI/ordinary-browser
+  productization, and documentation; they are not all release blockers for the
+  current Chat candidate.
 - Planning baseline: `5fd856a` (`codex/issue-138-deepagents-research`,
   2026-07-31)
 - Supersedes: none
@@ -4136,13 +4140,13 @@ CLI:
       and a second case where an exact Jira/Confluence link discovers a related
       scope. Present every resolution and scope-expansion decision before the
       final Markdown.
-- [ ] Save reports outside the repository and emit a sanitized metrics JSON
+- [x] Save reports outside the repository and emit a sanitized metrics JSON
       containing no source text, private title, URL, key, or ID.
 
 Extension/browser:
 
-- [ ] Execute the same capability scenarios through packed fake-provider tests.
-- [ ] Exercise current-context, manual-context, ambiguous selection,
+- [x] Execute the same capability scenarios through packed fake-provider tests.
+- [x] Exercise current-context, manual-context, ambiguous selection,
       exact-linked approval, and whole-scope approval through packed sidebar
       journeys.
 - [ ] Run a bounded live Mayflower browser session for representative exact,
@@ -4150,21 +4154,21 @@ Extension/browser:
 
 Gate:
 
-- [ ] Verified-relationship precision is 100% on the deterministic corpus.
-- [ ] Unsupported factual-claim rate is 0 on the deterministic corpus.
-- [ ] Correct abstention is 100% for synthetic no-evidence and inaccessible
+- [x] Verified-relationship precision is 100% on the deterministic corpus.
+- [x] Unsupported factual-claim rate is 0 on the deterministic corpus.
+- [x] Correct abstention is 100% for synthetic no-evidence and inaccessible
       evidence cases.
 - [ ] Private gold-set source recall at the agreed cutoff is at least 90%, or
       the conditional local-index follow-up is triggered.
-- [ ] CLI and browser return the same normalized evidence/claim/report shapes
+- [x] CLI and browser return the same normalized evidence/claim/report shapes
       for identical provider responses.
-- [ ] Task-different retrieval fixtures continue to produce different valid
+- [x] Task-different retrieval fixtures continue to produce different valid
       graph compositions after richer capabilities are introduced.
-- [ ] A dynamically composed subagent can discover a related space/project,
+- [x] A dynamically composed subagent can discover a related space/project,
       but only the central supervisor plus host transition can bind it.
       `strict` performs no out-of-scope content calls, `ask` waits durably, and
       `exact-linked` reads only the approved exact entity within caps.
-- [ ] Duplicate-name, archived, inaccessible, cross-tenant, stale-candidate,
+- [x] Duplicate-name, archived, inaccessible, cross-tenant, stale-candidate,
       pagination, rate-limit/retry, cancellation, and partial-result fixtures
       fail or degrade identically in CLI and packed browser without silent
       scope expansion.

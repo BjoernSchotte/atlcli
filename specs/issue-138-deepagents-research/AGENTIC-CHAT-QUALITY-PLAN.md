@@ -1,6 +1,10 @@
 # Agentic Chat Quality Workflow
 
-Status: **T0-T1 verified; T2 implementation next**
+Status: **Execution order superseded by `CHAT-AGENT-RECOVERY-PLAN.md`.
+The shared agentic architecture through T10 is substantially implemented; the
+remaining release proof is canonical in
+`../release-candidate-quality-matrix/PLAN.md`. Unchecked items below remain only
+when their exact proof or deferred product surface is still absent.**
 
 ## 1. Objective
 
@@ -844,29 +848,29 @@ T1 proof completed on 2026-08-04:
 
 ### T2 — Generalize the existing dynamic workflow engine
 
-- [ ] Extract graph admission, ready-frontier dispatch, reconciliation, and
+- [x] Extract graph admission, ready-frontier dispatch, reconciliation, and
       synthesis from research-only naming into an internal host-neutral
       agentic-workflow core. Do not claim fair-share allocation or FIFO queueing
       through extraction; T6/T8 introduce those missing primitives explicitly.
-- [ ] Retain one logical `createDeepAgent` supervisor execution per active turn;
+- [x] Retain one logical `createDeepAgent` supervisor execution per active turn;
       never create separate root executions for routing, critique, repair, or
       synthesis.
-- [ ] Separate immutable graph construction from typed per-run binding. Keep
+- [x] Separate immutable graph construction from typed per-run binding. Keep
       per-turn construction as the baseline, then optionally reuse a compiled root
       within a compatible host only if cross-user/thread/scope/control isolation
       and measured startup/latency benefit are proven.
-- [ ] Add `conversation-answer` and `research-report` completion objectives.
-- [ ] Replace the pinned built-in middleware by name with the repository-owned
+- [x] Add `conversation-answer` and `research-report` completion objectives.
+- [x] Replace the pinned built-in middleware by name with the repository-owned
       `subAgentMiddleware`; resolve only host-registered, depth-one profiles.
-- [ ] Reuse the existing QuickJS one-shot/continuation evaluator, while routing
+- [x] Reuse the existing QuickJS one-shot/continuation evaluator, while routing
       its `task()` bridge through a generalized durable host dispatcher rather
       than treating stock in-eval task invocation as crash-safe.
-- [ ] Enforce authorization, HITL, admission, deterministic task/attempt IDs,
+- [x] Enforce authorization, HITL, admission, deterministic task/attempt IDs,
       budget reservation, cancellation, and journal writes inside that bridge,
       because ToolNode, `wrapToolCall`, and `interruptOn` do not cover it.
-- [ ] Generalize the existing dispatch-admission/journal seam; do not implement
+- [x] Generalize the existing dispatch-admission/journal seam; do not implement
       a second unrelated Chat scheduler.
-- [ ] Ensure Quick Chat constructs neither subagent middleware nor a task bridge.
+- [x] Ensure Quick Chat constructs neither subagent middleware nor a task bridge.
 
 Proof: current Deep Research graph tests remain unchanged and green; new Chat
 tests exercise the same core with the answer objective, reject an unknown
@@ -878,22 +882,22 @@ reuse is disabled unless trajectories match and no cross-run value leaks.
 
 ### T3 — Dynamic agentic Chat composition
 
-- [ ] Add the host-validated Chat workflow proposal and strategy-decision PTCs.
-- [ ] Make Auto delegation optional and Deep strategy selection mandatory.
-- [ ] Add the pre-proposal ambiguity policy and durable `askUserQuestion` tool
+- [x] Add the host-validated Chat workflow proposal and strategy-decision PTCs.
+- [x] Make Auto delegation optional and Deep strategy selection mandatory.
+- [x] Add the pre-proposal ambiguity policy and durable `askUserQuestion` tool
       for multiple-choice, free-text, and constrained mixed responses; support
       declared-assumption continuation for low-risk ambiguity.
-- [ ] Support dynamically sized parallel frontiers and dependency-driven
+- [x] Support dynamically sized parallel frontiers and dependency-driven
       multi-wave continuation under root resource budgets.
-- [ ] Compile focused read/analysis/critic/synthesizer profiles with minimal
+- [x] Compile focused read/analysis/critic/synthesizer profiles with minimal
       tools, prompts, context, response schemas, and provider-neutral model
       routing preferences.
-- [ ] Prove sibling subagents run concurrently and never receive sibling or full
+- [x] Prove sibling subagents run concurrently and never receive sibling or full
       supervisor context.
-- [ ] Define packet item/character/byte/schema-depth limits with headroom below
+- [x] Define packet item/character/byte/schema-depth limits with headroom below
       interpreter limits; keep source bodies in the evidence store and reduce
       them to references/metadata in guest code.
-- [ ] Prove no nested delegation, raw network, raw GraphQL, credentials, host
+- [x] Prove no nested delegation, raw network, raw GraphQL, credentials, host
       filesystem, Chrome APIs, or mutations become reachable.
 
 Proof: deterministic QuickJS composition, task-admission, concurrency,
@@ -902,26 +906,26 @@ near-limit packet, overflow rejection, and single-model fallback tests.
 
 ### T4 — Retrieval planning, candidate coverage, and gap-directed acquisition
 
-- [ ] Add `RetrievalPlanV1` plus typed anchor, entity, approved-search,
+- [x] Add `RetrievalPlanV1` plus typed anchor, entity, approved-search,
       relationship-traversal, unresolved-term, and completion-signal contracts.
-- [ ] Enforce direct detail-read precedence for bound page/issue context and
+- [x] Enforce direct detail-read precedence for bound page/issue context and
       explicit URLs/IDs/keys without an unnecessary discovery search.
-- [ ] Resolve natural-language space/project names through approved resolvers;
+- [x] Resolve natural-language space/project names through approved resolvers;
       park ambiguous matches through the shared HITL contract.
-- [ ] Validate every proposed operation, tenant/scope, CQL/JQL shape, variable,
+- [x] Validate every proposed operation, tenant/scope, CQL/JQL shape, variable,
       pagination cursor, traversal, byte/time limit, and budget in the host.
-- [ ] Implement bounded query reformulation/diversification and saturation
+- [x] Implement bounded query reformulation/diversification and saturation
       detection for unresolved synonyms, titles, terminology, and time windows.
-- [ ] Build the durable candidate ledger with discovery provenance, canonical
+- [x] Build the durable candidate ledger with discovery provenance, canonical
       identity, deduplication, source metadata, and explicit coverage state.
-- [ ] Traverse Jira-to-Confluence remote links and Confluence-to-Jira text
+- [x] Traverse Jira-to-Confluence remote links and Confluence-to-Jira text
       mentions/macros in both directions without expanding scope implicitly.
-- [ ] Implement host-owned retrieval completion assessment; few search results or
+- [x] Implement host-owned retrieval completion assessment; few search results or
       a fixed candidate cap cannot establish completeness.
-- [ ] Convert critic gaps into targeted retrieval work for missing time range,
+- [x] Convert critic gaps into targeted retrieval work for missing time range,
       entity/scope, pagination, relationship, source authority, or version
       conflict rather than repeating broad discovery.
-- [ ] Reserve root budget separately for direct detail reads, discovery/
+- [x] Reserve root budget separately for direct detail reads, discovery/
       pagination, relationship traversal, gap repair, critique, and synthesis;
       choose additional work by expected information gain.
 
@@ -951,28 +955,28 @@ without committing private inputs or results.
 
 ### T5 — Quality assessment, critique, repair, and synthesis
 
-- [ ] Implement the sufficient-evidence assessment independently from report
+- [x] Implement the sufficient-evidence assessment independently from report
       completeness targets.
-- [ ] Add conditional critic scheduling based on coverage/conflict/citation risk
+- [x] Add conditional critic scheduling based on coverage/conflict/citation risk
       rather than a fixed ceremonial pipeline.
-- [ ] Implement a versioned groundedness rubric with anchored scores/reasons for
+- [x] Implement a versioned groundedness rubric with anchored scores/reasons for
       claim support, citation correctness, scope completion, freshness/authority,
       conflict handling, explicit gaps, and false-completeness avoidance.
-- [ ] Enforce a configured critique/repair iteration limit and synthesis-reserve
+- [x] Enforce a configured critique/repair iteration limit and synthesis-reserve
       check in host state, not only in prompts.
-- [ ] Support targeted repair and additional acquisition waves until evidence is
+- [x] Support targeted repair and additional acquisition waves until evidence is
       sufficient or the conversational deadline enters its synthesis reserve.
-- [ ] Enforce exact-context precedence, complete admitted detail handling,
+- [x] Enforce exact-context precedence, complete admitted detail handling,
       canonical URLs, bidirectional Jira/Confluence links, and truncated/empty
       evidence exclusion.
-- [ ] Treat every retrieved field as untrusted data and structurally isolate it
+- [x] Treat every retrieved field as untrusted data and structurally isolate it
       from instructions; block source-authored attempts to alter scope, tools,
       models, workflows, HITL, secrets, or mutation policy.
-- [ ] Rank and disclose source version, last-modified time, authority, and
+- [x] Rank and disclose source version, last-modified time, authority, and
       freshness; cluster near-duplicates and prevent duplicate text from counting
       as independent corroboration.
-- [ ] Require a dedicated synthesizer for every agentic Chat path.
-- [ ] Return supported partial findings plus explicit gaps at deadline; never
+- [x] Require a dedicated synthesizer for every agentic Chat path.
+- [x] Return supported partial findings plus explicit gaps at deadline; never
       fabricate completeness.
 
 Proof: gold cases for exact page, multi-page comparison, cross-product links,
@@ -984,42 +988,42 @@ until calibrated in T10.
 
 ### T6 — Durable execution and steering
 
-- [ ] Introduce one machine-readable state-lifetime registry covering durable
+- [x] Introduce one machine-readable state-lifetime registry covering durable
       model-visible, durable UI-restore, durable orchestration, client-per-turn,
       transient-progress, and observability fields; fail CI for missing or
       multiply classified fields.
-- [ ] Implement lifetime-aware resume merging: checkpoint/journal authority wins
+- [x] Implement lifetime-aware resume merging: checkpoint/journal authority wins
       for durable fields, fresh authenticated client context may only narrow
       authorized scope, and transient progress is reconstructed rather than
       accepted as authority.
-- [ ] Extend the durable session model with Chat workflow revisions, frontiers,
+- [x] Extend the durable session model with Chat workflow revisions, frontiers,
       task attempts, accepted packets, quality assessments, and resumable
       deadline checkpoints.
-- [ ] Build the missing host-neutral durable FIFO message queue and shared
+- [x] Build the missing host-neutral durable FIFO message queue and shared
       queue/steer/stop controls with revision fencing and exactly-once control
       application; do not treat the extension's current UI array as durability.
-- [ ] Preserve FIFO stacked queue messages with edit/delete before admission;
+- [x] Preserve FIFO stacked queue messages with edit/delete before admission;
       prove queued messages remain distinct from immediate steering.
-- [ ] Allow steering to revise objective, priority, context, and requested scope
+- [x] Allow steering to revise objective, priority, context, and requested scope
       while re-running authorization/HITL checks for newly requested access.
-- [ ] Propagate one cancellation signal through every abort-aware layer
+- [x] Propagate one cancellation signal through every abort-aware layer
       (supervisor, children, broker, pagination, and scope catalog) and expose
       the same cancellation state to the non-signal-aware interpreter bridge.
-- [ ] Run QuickJS orchestration as short one-shot/continuation slices, poll the
+- [x] Run QuickJS orchestration as short one-shot/continuation slices, poll the
   durable control mailbox in bridge dispatch, and measure/enforce a maximum
   stop/steering acknowledgement latency far below the current explicitly
   configured 60-second worker-eval ceiling.
-- [ ] Quarantine late results from cancelled/obsolete graph revisions using the
+- [x] Quarantine late results from cancelled/obsolete graph revisions using the
       existing journal vocabulary; do not add a competing `superseded` state.
-- [ ] Persist ambiguous post-dispatch/pre-commit attempts as the journal's
+- [x] Persist ambiguous post-dispatch/pre-commit attempts as the journal's
       canonical `outcome_unknown`; never automatically repeat them as though no
       external call occurred.
 - [ ] Rehydrate after worker/process restart at every committed phase without
       repeating settled model or Atlassian calls.
-- [ ] Reuse accepted content-addressed evidence across turns only when
+- [x] Reuse accepted content-addressed evidence across turns only when
       tenant/scope/capability provenance and `maxEvidenceAgeMs` pass and source
       version/last-modified metadata is unchanged; re-read stale/changed items.
-- [ ] Preserve existing conversation summarization, provider prompt caching, and
+- [x] Preserve existing conversation summarization, provider prompt caching, and
       compact long-turn context in durable host state rather than QuickJS vars.
 
 Proof: exhaustive state-classification and hostile-client resume tests plus fault
@@ -1037,22 +1041,22 @@ apply only to committed boundaries, never mid-provider call.
 
 ### T7 — Safe streaming and presenter parity
 
-- [ ] Extend safe events for strategy, dynamic groups, child lifecycle,
+- [x] Extend safe events for strategy, dynamic groups, child lifecycle,
       assessment, critique, repair, steering, deadline, and continuation.
-- [ ] Consume DeepAgentsJS subagent streams concurrently without exposing raw
+- [x] Consume DeepAgentsJS subagent streams concurrently without exposing raw
       child tokens or hidden reasoning by default.
-- [ ] Stream final synthesizer Markdown tokens/chunks incrementally while keeping
+- [x] Stream final synthesizer Markdown tokens/chunks incrementally while keeping
       child generation private; atomically persist the completed final answer.
 - [ ] Render identical semantic activity in CLI/TUI, extension, and ordinary
       browser presenters.
-- [ ] Move activity/error/HITL wording out of runtime event creation into a
+- [x] Move activity/error/HITL wording out of runtime event creation into a
       locale-aware presenter catalogue with complete German and English coverage
       plus deterministic fallbacks.
-- [ ] Preserve FIFO queued messages, edit/delete, immediate steering, and stop.
-- [ ] Make the actually selected Auto strategy visible after routing.
+- [x] Preserve FIFO queued messages, edit/delete, immediate steering, and stop.
+- [x] Make the actually selected Auto strategy visible after routing.
 - [ ] Offer "continue deeply" and "switch to Deep Research" actions when a
       conversational deadline leaves material gaps.
-- [ ] Define MV3/browser reconnect semantics: replay committed events and answer
+- [x] Define MV3/browser reconnect semantics: replay committed events and answer
       final answers without duplicates; when provider tokens were lost before
       final-answer commit, resume from a workflow checkpoint or show a typed
       resumable interruption rather than pretending token-stream resumption
@@ -1066,24 +1070,24 @@ Exact mid-stream chunk replay is not a Stage A/B gate.
 
 ### T8 — Conversational latency and budget policy
 
-- [ ] Instrument phase durations for routing/scope, each frontier, quality/
+- [x] Instrument phase durations for routing/scope, each frontier, quality/
       critique, repair, and first/final synthesis token in Core, CLI, and MV3.
-- [ ] Run cold/warm latency experiments over exact-context, search-heavy,
+- [x] Run cold/warm latency experiments over exact-context, search-heavy,
       parallel, repair, and reconnect cases; compare candidate 120/180/240/300
       second envelopes before selecting Auto/Deep defaults.
-- [ ] Implement soft deadline, hard deadline, and finalization reserve as
+- [x] Implement soft deadline, hard deadline, and finalization reserve as
       durable host policies, not prompt suggestions.
-- [ ] Derive `mustSynthesizeAt` from measured synthesis P95 plus margin and prove
+- [x] Derive `mustSynthesizeAt` from measured synthesis P95 plus margin and prove
       normal completion uses it instead of routinely hitting hard timeout.
-- [ ] Stop dispatching new work when the synthesis reserve begins while allowing
+- [x] Stop dispatching new work when the synthesis reserve begins while allowing
       accepted in-flight results to settle only within the remaining deadline.
 - [ ] Build the missing fair-share allocator for token/cost/model-call/tool-call
       and concurrency budgets across dynamic children, critic, repair, and
       synthesizer from one reserve-before-call root budget.
-- [ ] Evaluate role-based model routing and stable-prefix prompt caching against
+- [x] Evaluate role-based model routing and stable-prefix prompt caching against
       single-model/no-cache baselines for latency, cost, and answer quality.
-- [ ] Show user-facing time state without raw token/cost debug noise.
-- [ ] Prove Deep Chat never silently inherits the Deep Research ten-minute
+- [x] Show user-facing time state without raw token/cost debug noise.
+- [x] Prove Deep Chat never silently inherits the Deep Research ten-minute
       default.
 
 Proof: committed synthetic latency harness and non-committed live measurement
@@ -1094,18 +1098,18 @@ only after the results and user-visible trade-off are reviewed.
 
 ### T9 — CLI, extension, and ordinary-browser controls
 
-- [ ] Keep `--thinking quick|auto|deep` as the CLI-facing spelling while mapping
+- [x] Keep `--thinking quick|auto|deep` as the CLI-facing spelling while mapping
       it to the new provider-neutral policy.
-- [ ] Add explicit CLI deadline overrides without exposing internal workflow
+- [x] Add explicit CLI deadline overrides without exposing internal workflow
       tuning knobs.
 - [ ] Implement interactive TUI queue/steer/stop bindings on the shared control
       port.
 - [ ] Render the shared `askUserQuestion` schema as multiple-choice/free-text/
       mixed HITL in TUI, extension/CopilotKit UI, and ordinary browser; support
       durable pause, reload/restart, answer submission, and exact resume.
-- [ ] Keep the compact extension selector; show the active strategy and deadline
+- [x] Keep the compact extension selector; show the active strategy and deadline
       behavior through activity, not power-user forms.
-- [ ] Verify sidebar/worker recreation, last-workspace restoration, conversation
+- [x] Verify sidebar/worker recreation, last-workspace restoration, conversation
       history, and multi-turn continuation.
 - [ ] Verify the ordinary-browser shape against the same ports and event log.
 
@@ -1118,21 +1122,21 @@ the full CLI/MV3 fault matrix. All shapes preserve the same product semantics.
 
 ### T10 — Evaluation-driven quality gate
 
-- [ ] Start with roughly 20 hand-labelled, committed synthetic DOCSY/ATLCLI cases
+- [x] Start with roughly 20 hand-labelled, committed synthetic DOCSY/ATLCLI cases
       and single-decision checks (routing, scope, clarification, direct context,
       retrieval plan/admission/completion, critique, repair, steering admission)
       before expanding to full trajectories.
-- [ ] Expand that gold set to cover dynamic multi-wave work, deadline behavior,
+- [x] Expand that gold set to cover dynamic multi-wave work, deadline behavior,
       prompt injection, stale/duplicate/conflicting sources, model routing,
       reconnect, and cross-turn evidence reuse.
-- [ ] Maintain private live evaluation inputs/results only outside Git.
-- [ ] Score answer correctness, citation precision, evidence recall, wrong-source
+- [x] Maintain private live evaluation inputs/results only outside Git.
+- [x] Score answer correctness, citation precision, evidence recall, wrong-source
       rate, candidate recall, admitted/detail-read coverage, relationship recall,
       contradiction handling, uncovered-candidate disclosure, query-variant
       contribution, latency, model tokens, and Atlassian call count.
-- [ ] Evaluate trajectory, final answer, durable state, single decisions, full
+- [x] Evaluate trajectory, final answer, durable state, single decisions, full
       turns, and multi-turn sessions.
-- [ ] Run architecture-invariant and fresh-versus-reused-root differential tests
+- [x] Run architecture-invariant and fresh-versus-reused-root differential tests
       as release-blocking non-quality gates; benchmark construction reuse
       separately and keep the safe per-turn fallback when benefit is immaterial.
 - [x] Calibrate every rubric/LLM judge against hand-labelled anchors, publish
@@ -1145,7 +1149,7 @@ the full CLI/MV3 fault matrix. All shapes preserve the same product semantics.
       without regressing simple exact-context correctness; require Auto routing
       to choose the cheaper direct path for simple questions and the agentic path
       for complex ones.
-- [ ] Add at least one browser and one CLI restart/steering scenario to the
+- [x] Add at least one browser and one CLI restart/steering scenario to the
       release-blocking suite.
 - [x] Add lightweight answer feedback (for example useful/not useful plus an
       optional reason) as an opt-in, privacy-safe online-evaluation signal.
@@ -1164,23 +1168,23 @@ feedback text, tenant-derived report, or evaluation trace is committed.
 - [ ] Document provider-neutral behavior and optional provider adapters.
 - [ ] Document the exact DeepAgentsJS preview pin, beta interpreter risk, known
       bridge/interrupt/stream limitations, and a deliberate upgrade policy.
-- [ ] Make upstream upgrades conditional on the T0 seam contract suite covering
+- [x] Make upstream upgrades conditional on the T0 seam contract suite covering
       middleware merge-by-name, registry closure, bridge dispatch, cancellation,
       interpreter limits, checkpointer behavior, state-lifetime completeness,
       per-run binding isolation, and event/stream shapes.
-- [ ] After durable-beta user testing, decide whether seamless mid-token reconnect
+- [x] After durable-beta user testing, decide whether seamless mid-token reconnect
       justifies exact committed chunk/cursor replay. If accepted, prove no
       duplicate/missing Markdown across MV3 recycle; otherwise document the
       checkpoint-resume behavior as the supported production contract.
-- [ ] Expand the exhaustive state-transition/property suite into host-specific
+- [x] Expand the exhaustive state-transition/property suite into host-specific
       fault E2Es only where a host adds a distinct lifecycle/storage risk; avoid
       duplicating identical Core failure cases across all presenters.
-- [ ] Update public API/closure reports and the main implementation plan.
+- [x] Update public API/closure reports and the main implementation plan.
 - [ ] Run focused tests, root typecheck, complete build, packed MV3 E2E, built CLI
       E2E, and applicable root regression lanes.
-- [ ] Scan staged changes for credentials, private tenant identifiers, private
+- [x] Scan staged changes for credentials, private tenant identifiers, private
       live questions/results, source bodies, and hidden reasoning.
-- [ ] Commit and push only proven logical slices to the existing Draft PR and
+- [x] Commit and push only proven logical slices to the existing Draft PR and
       keep its description aligned with verified behavior.
 
 Proof: dependency seam-contract suite, focused and root regression lanes,

@@ -1,6 +1,9 @@
 # Kiteweave Chat Agent Recovery Plan
 
-Status: **In progress; C0-C3A proven, C4 live MV3 proof pending**
+Status: **Implementation substantially complete through C11; final private
+release-candidate acceptance is tracked in
+`../release-candidate-quality-matrix/PLAN.md`. Two private CLI quality defects,
+the installed-MV3 subset, and operator review remain open.**
 
 ## Contents
 
@@ -949,7 +952,7 @@ Implementation:
       constrained mixed answers, and declared-assumption continuation.
 - [x] Add one host-neutral FIFO queue with edit/delete-before-admission and a
       separate immediate steering command applied at a durable checkpoint.
-- [ ] Propagate stop through root, children, broker, pagination, catalog,
+- [x] Propagate stop through root, children, broker, pagination, catalog,
       interpreter bridge, and provider calls; quarantine obsolete late results.
 - [x] Project semantic events for strategy, direct read, search, selected sources,
       child work, critique, repair, synthesis, gap, HITL, steering, stop,
@@ -1152,7 +1155,7 @@ Live acceptance:
 
 Acceptance criteria:
 
-- [ ] All interaction controls use the same core contract in every host shape.
+- [x] All interaction controls use the same core contract in every host shape.
 
 ### C10 — Complete CLI, extension, and ordinary-browser parity
 
@@ -1257,12 +1260,12 @@ Live acceptance:
 
 - [ ] The same read-only question and context produce equivalent source choice,
       strategy, supported claims, citations, and gaps in CLI and MV3.
-- [ ] Switching to Deep Research visibly changes product mode and creates a report;
+- [x] Switching to Deep Research visibly changes product mode and creates a report;
       changing Chat quality never does so.
 
 Acceptance criteria:
 
-- [ ] Chat semantics, controls, and evidence boundaries are shape-neutral.
+- [x] Chat semantics, controls, and evidence boundaries are shape-neutral.
 
 ### C11 — Establish release-blocking Chat quality gates and remove the legacy path
 
@@ -1443,14 +1446,14 @@ Tasks: C0-C3A.
 
 Exit gate:
 
-- [ ] Exact page and exact issue answers are correct, natural, canonically cited,
+- [x] Exact page and exact issue answers are correct, natural, canonically cited,
       and use no unnecessary search.
-- [ ] Long-page questions can fetch relevant sections instead of failing solely
+- [x] Long-page questions can fetch relevant sections instead of failing solely
       on one truncated projection.
 - [x] CLI and MV3 production paths pass the same direct-answer acceptance.
-- [ ] Complex Storage structures preserve their source/version identity and
+- [x] Complex Storage structures preserve their source/version identity and
       unresolved portions become typed gaps rather than false negatives.
-- [ ] Exact context never asks a ceremonial question; material unresolved scope
+- [x] Exact context never asks a ceremonial question; material unresolved scope
       pauses and resumes through the shared durable HITL contract.
 
 Commit boundaries:
@@ -1467,11 +1470,11 @@ Tasks: C4-C7.
 
 Exit gate:
 
-- [ ] Quick, Auto, and Deep execute different host-validated policies.
-- [ ] Complex Auto/Deep questions use dynamic context-isolated children when
+- [x] Quick, Auto, and Deep execute different host-validated policies.
+- [x] Complex Auto/Deep questions use dynamic context-isolated children when
       useful, plus bounded independent quality validation.
-- [ ] Retrieval accounts for candidates and repairs material evidence gaps.
-- [ ] Deep improves complex-answer quality without degrading simple answers.
+- [x] Retrieval accounts for candidates and repairs material evidence gaps.
+- [x] Deep improves complex-answer quality without degrading simple answers.
 
 Commit boundaries:
 
@@ -1486,9 +1489,9 @@ Tasks: C8-C11.
 
 Exit gate:
 
-- [ ] Evidence-aware follow-ups, HITL, queue, steering, stop, streaming, restart,
+- [x] Evidence-aware follow-ups, HITL, queue, steering, stop, streaming, restart,
       and conversation history work through shared ports.
-- [ ] CLI, MV3, and ordinary browser preserve the same product semantics.
+- [x] CLI, MV3, and ordinary browser preserve the same product semantics.
 - [ ] Release-blocking quality and privacy gates pass and the legacy path is gone.
 
 Commit boundaries:
@@ -1522,26 +1525,26 @@ fallback, per-turn root construction, and honest resumable interruption.
 
 This recovery is complete only when all of the following are true:
 
-- [ ] Ordinary Chat never runs through the Research brief/report pipeline.
-- [ ] One attached entity is read directly and cannot be replaced by a ranked
+- [x] Ordinary Chat never runs through the Research brief/report pipeline.
+- [x] One attached entity is read directly and cannot be replaced by a ranked
       unrelated candidate.
-- [ ] Chat Markdown answers the actual question before presenting material gaps.
-- [ ] Quick, Auto, and Deep change workflow semantics independently of provider
+- [x] Chat Markdown answers the actual question before presenting material gaps.
+- [x] Quick, Auto, and Deep change workflow semantics independently of provider
       reasoning controls.
-- [ ] Auto and Deep use one central Chat supervisor and dynamically selected
+- [x] Auto and Deep use one central Chat supervisor and dynamically selected
       depth-one specialists only when they improve the task.
-- [ ] Retrieval is question-directed, candidate-accountable, and capable of
+- [x] Retrieval is question-directed, candidate-accountable, and capable of
       targeted repair.
-- [ ] Agentic paths have an independent quality boundary and one coherent final
+- [x] Agentic paths have an independent quality boundary and one coherent final
       synthesizer.
-- [ ] Multi-turn Chat preserves conversation state and safely reusable evidence
+- [x] Multi-turn Chat preserves conversation state and safely reusable evidence
       without replaying all historic source bodies.
-- [ ] HITL, queue, steering, stop, streaming, and restart use shared shape-neutral
+- [x] HITL, queue, steering, stop, streaming, and restart use shared shape-neutral
       contracts.
 - [ ] CLI, extension, and ordinary browser pass the accepted quality and control
       gates.
-- [ ] Deep Research remains a separate explicit agent and product mode.
-- [ ] Private live data and artifacts never enter Git or public collaboration
+- [x] Deep Research remains a separate explicit agent and product mode.
+- [x] Private live data and artifacts never enter Git or public collaboration
       surfaces.
 
 Implementation begins with C0 and proceeds in order. No later infrastructure
