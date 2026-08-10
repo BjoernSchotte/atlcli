@@ -38,7 +38,16 @@ function textContentV1(message: BaseMessage): string {
         typeof (block as { text?: unknown }).text === "string") {
       return (block as { text: string }).text;
     }
-    throw new Error("Local Gemma accepts text-only LangChain message content.");
+    if (block && typeof block === "object" && block.type === "tool_call" &&
+        AIMessage.isInstance(message)) {
+      return "";
+    }
+    const type = block && typeof block === "object" && "type" in block
+      ? String(block.type)
+      : typeof block;
+    throw new Error(
+      `Local Gemma accepts text-only LangChain message content; received ${type}.`,
+    );
   }).join("");
   return text;
 }
