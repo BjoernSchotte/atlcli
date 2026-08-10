@@ -14,6 +14,7 @@ import {
 import { createMemoryResearchWorkspace } from "../workspace.js";
 import {
   chatDraftForFinalizationAfterHostRepairV1,
+  chatDraftMissingRequestFacetsV1,
   chatDraftNeedsHostRepairV1,
   finalizeChatAnswerV1,
 } from "./answer.js";
@@ -176,6 +177,47 @@ describe("Chat answer contract", () => {
       },
       detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
     })).toBe(true);
+  });
+
+  test("requires every explicit user-authored facet before and after terminal repair", () => {
+    const incomplete = {
+      blocks: [{
+        markdown: "**Modellgröße:** klein.\n\n**Endgeschwindigkeit:** schnell.",
+        assertion: "positive",
+        scope: "none",
+        sourceRefs: [syntheticPageSource.id],
+      }],
+      gaps: [],
+    };
+    const requestFacets = ["Modellgröße", "Endgeschwindigkeit", "die Einsatzempfehlung"];
+
+    expect(chatDraftMissingRequestFacetsV1({ draft: incomplete, requestFacets })).toEqual([
+      "die Einsatzempfehlung",
+    ]);
+    expect(chatDraftNeedsHostRepairV1({
+      draft: incomplete,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      requestFacets,
+    })).toBe(true);
+    expect(chatDraftForFinalizationAfterHostRepairV1({
+      draft: incomplete,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      requestFacets,
+    })).toBeUndefined();
+
+    const complete = {
+      ...incomplete,
+      blocks: [{
+        ...incomplete.blocks[0],
+        markdown: `${incomplete.blocks[0]!.markdown}\n\n**Einsatzempfehlung:** einsetzen.`,
+      }],
+    };
+    expect(chatDraftMissingRequestFacetsV1({ draft: complete, requestFacets })).toEqual([]);
+    expect(chatDraftForFinalizationAfterHostRepairV1({
+      draft: complete,
+      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      requestFacets,
+    })).toBeDefined();
   });
 
   test("accepts a repaired draft only after dropping safe prose and preserving non-empty evidence sections", () => {

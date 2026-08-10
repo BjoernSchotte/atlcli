@@ -323,6 +323,10 @@ function normalized(value: string): string {
 
 function normalizedFact(value: string): string {
   return normalized(value)
+    .replace(
+      /(\d+(?:[.,]\d+)?)\s*(?:→|->)\s*(\d+(?:[.,]\d+)?)\s*(%|[\p{L}][\p{L}\d./_-]{0,24})/gu,
+      "$1 $3 $2 $3",
+    )
     .replace(/\bt\s*&\s*m\b/gu, "time material")
     .replace(/\btime\s*(?:&|and)\s*material\b/gu, "time material")
     .replace(/\bvorrang\s+vor\b/gu, "vor")
@@ -444,6 +448,7 @@ export function projectPrivateAnswerV1(stdout: string, variant: ChatReleaseCandi
 function evaluateGold(answer: ProjectedAnswerV1, gold: ChatPrivateGoldV1): {
   sourceSelection: boolean;
   citationSupport: boolean;
+  requiredFactCoverage: boolean;
   claimSupport: boolean;
   outcome: boolean;
 } {
@@ -463,7 +468,8 @@ function evaluateGold(answer: ProjectedAnswerV1, gold: ChatPrivateGoldV1): {
   return {
     sourceSelection,
     citationSupport,
-    claimSupport: facts && !forbidden,
+    requiredFactCoverage: facts,
+    claimSupport: !forbidden,
     outcome: gold.expectAbstention ? abstained : facts && !forbidden,
   };
 }
@@ -477,6 +483,7 @@ function failureCodes(checks: readonly ChatReleaseCandidateCheckResultV1[]): Cha
   const codes: ChatReleaseCandidateFailureCodeV1[] = [];
   if (failed.has("source-selection")) codes.push("wrong-source");
   if (failed.has("citation-support")) codes.push("citation-invalid");
+  if (failed.has("required-fact-coverage")) codes.push("required-fact-missing");
   if (failed.has("claim-support")) codes.push("unsupported-claim");
   if (failed.has("outcome")) codes.push("outcome-incorrect");
   if (failed.has("mode-isolation")) codes.push("mode-isolation-failed");
@@ -497,6 +504,7 @@ async function privateRun(input: {
   const checks = [
     check("source-selection", scored.every((entry) => entry.sourceSelection)),
     check("citation-support", scored.every((entry) => entry.citationSupport)),
+    check("required-fact-coverage", scored.every((entry) => entry.requiredFactCoverage)),
     check("claim-support", scored.every((entry) => entry.claimSupport)),
     check("outcome", scored.every((entry) => entry.outcome)),
     check("mode-isolation", input.answers.every((answer) => answer.qualityMode === input.variant)),

@@ -7,6 +7,38 @@ export interface ChatAnswerOutputContractV1 {
   maxBlocks: number;
 }
 
+const REQUEST_LIST_VERB_V1 =
+  /\b(?:nenne|nenn|liste|liste\s+auf|gib|beschreibe|erkläre|erklaere|vergleiche|name|list|state|give|provide|describe|explain|compare|include)\b/giu;
+const REQUEST_LIST_SEPARATOR_V1 = /\s*(?:,|;|\bund\b|\boder\b|\band\b|\bor\b)\s*/giu;
+
+function compactRequestFacetV1(value: string): string | undefined {
+  const compact = value
+    .replace(/https:\/\/\S+/giu, "")
+    .replace(/[.:!?]+$/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return compact.length >= 2 && compact.length <= 180 ? compact : undefined;
+}
+
+/**
+ * Preserve explicit user-authored enumerations as a small model checklist.
+ * This adds no inferred requirement: every item is copied from the question.
+ */
+export function deriveChatRequestChecklistV1(question: string): string[] {
+  const withoutUrls = question.replace(/https:\/\/\S+/giu, " ").replace(/\s+/gu, " ").trim();
+  const matches = [...withoutUrls.matchAll(REQUEST_LIST_VERB_V1)];
+  const trigger = matches.at(-1);
+  if (!trigger || trigger.index === undefined) return [];
+  const verbEnd = trigger.index + trigger[0].length;
+  const tail = withoutUrls.slice(verbEnd).replace(/^\s*[:\-–—]?\s*/u, "").trim();
+  const listed = tail
+    .split(REQUEST_LIST_SEPARATOR_V1)
+    .map(compactRequestFacetV1)
+    .filter((value): value is string => value !== undefined);
+  if (listed.length < 2) return [];
+  return [...new Set(listed)].slice(0, 8);
+}
+
 export function chatAnswerOutputContractV1(
   qualityMode: ChatQualityModeV1,
 ): ChatAnswerOutputContractV1 {
@@ -89,8 +121,15 @@ export function buildChatTurnPromptV1(input: {
   /** Host-projected bounded memory; summaries and prior answers are not evidence. */
   durableContext?: string;
 }): string {
+  const requestChecklist = deriveChatRequestChecklistV1(input.question);
   return [
     `User question: ${JSON.stringify(input.question)}`,
+    ...(requestChecklist.length > 0
+      ? [
+          `Explicit user request checklist (verbatim fragments, no added requirements): ${JSON.stringify(requestChecklist)}.`,
+          "Cover every checklist item exactly once with supported evidence or a precise gap before finalizing.",
+        ]
+      : []),
     `Host-bound Jira projects: ${input.jiraProjectKeys.join(", ") || "none"}.`,
     `Host-bound Confluence spaces: ${input.confluenceSpaceKeys.join(", ") || "none"}.`,
     `Attached host-bound entities (opaque refs only): ${JSON.stringify(input.anchors)}.`,

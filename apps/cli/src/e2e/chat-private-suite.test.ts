@@ -189,6 +189,10 @@ describe("private Chat release suite", () => {
       "Für den Betrieb hat Qualität Vorrang vor Geschwindigkeit.",
       ["Qualität vor Geschwindigkeit"],
     )).toBe(true);
+    expect(privateFactGroupMatchesV1(
+      "Der Durchsatz stieg von 0,42 → 0,60 tok/s.",
+      ["0,42 tok/s"],
+    )).toBe(true);
   });
 
   test("does not treat an explicit negation as a forbidden positive claim", () => {
@@ -235,6 +239,37 @@ describe("private Chat release suite", () => {
     expect(persisted).not.toContain("tenant.invalid");
     expect(persisted).not.toContain("Private live activity");
     expect(persisted).toContain("private:CASE01");
+  });
+
+  test("classifies missing required facts separately from forbidden claims", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-chat-private-missing-fact-"));
+    roots.push(root);
+    const args = parseChatPrivateSuiteArgumentsV1([
+      "--suite", join(root, "suite.json"), "--output-dir", join(root, "artifacts"),
+    ], "/repository");
+    const selected = selectChatPrivateSuiteV1(suite, { caseId: "CASE02", variant: "quick" });
+    const proof = await runChatPrivateSuiteV1(args, selected, async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        sessionId: "research-session:private",
+        answer: {
+          messageMarkdown: `## Antwort\n\nA different supported detail. [Quelle](${sourceUrl})`,
+          citations: [{ url: sourceUrl }],
+          strategy: { qualityMode: "quick" },
+          run: {
+            durationMs: 100,
+            counts: { ptcCalls: 1, httpCalls: 1 },
+            usage: { inputTokens: 10, outputTokens: 5 },
+            modelRouting: { callsByRoute: { supervisor: 1 } },
+          },
+        },
+      }),
+      stderr: "",
+    }));
+
+    expect(proof.status).toBe("failed");
+    expect(proof.failureCodes).toContain("required-fact-missing");
+    expect(proof.failureCodes).not.toContain("unsupported-claim");
   });
 
   test("compiles explicit operator and installed-extension decisions into neutral proofs", async () => {

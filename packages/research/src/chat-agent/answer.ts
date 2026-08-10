@@ -511,14 +511,53 @@ function strongMarkerCountV1(markdown: string): number {
   return [...withoutCode.matchAll(/\*\*/gu)].length;
 }
 
+function normalizedRequestFacetV1(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase("de-DE")
+    .replace(/^\s*(?:der|die|das|den|dem|des|the|a|an)\s+/u, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+/**
+ * Explicit enumerations copied from the user's question are a deterministic
+ * completion contract. Requiring their labels in the draft lets the host catch
+ * a silently omitted facet without trying to infer semantic requirements.
+ */
+export function chatDraftMissingRequestFacetsV1(input: {
+  draft: unknown;
+  requestFacets: readonly string[];
+}): string[] {
+  if (input.requestFacets.length === 0) return [];
+  const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
+  if (!parsed.success) return [];
+  const markdown = normalizeChatAgentDraftV2(parsed.data).blocks
+    .map((block) => block.markdown)
+    .join("\n\n");
+  const normalizedMarkdown = normalizedRequestFacetV1(markdown);
+  return input.requestFacets.filter((facet) => {
+    const normalizedFacet = normalizedRequestFacetV1(facet);
+    return normalizedFacet.length > 0 && !normalizedMarkdown.includes(normalizedFacet);
+  });
+}
+
 export function chatDraftNeedsHostRepairV1(input: {
   draft: unknown;
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+  requestFacets?: readonly string[];
 }): boolean {
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
   if (!parsed.success) return false;
   const draft = normalizeChatAgentDraftV2(parsed.data);
+  if (chatDraftMissingRequestFacetsV1({
+    draft,
+    requestFacets: input.requestFacets ?? [],
+  }).length > 0) {
+    return true;
+  }
   if (draft.blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
     return true;
   }
@@ -559,6 +598,7 @@ export function chatDraftForFinalizationAfterHostRepairV1(input: {
   draft: unknown;
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
+  requestFacets?: readonly string[];
 }): ChatAgentDraftV2 | undefined {
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
   if (!parsed.success) return undefined;
@@ -597,7 +637,14 @@ export function chatDraftForFinalizationAfterHostRepairV1(input: {
     }
   }
   if (pendingHeading) return undefined;
-  return { ...draft, blocks };
+  const repaired = { ...draft, blocks };
+  if (chatDraftMissingRequestFacetsV1({
+    draft: repaired,
+    requestFacets: input.requestFacets ?? [],
+  }).length > 0) {
+    return undefined;
+  }
+  return repaired;
 }
 
 /**

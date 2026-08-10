@@ -65,6 +65,7 @@ import {
   buildChatSystemPromptV1,
   buildChatTurnPromptV1,
   chatAnswerOutputInstructionV1,
+  deriveChatRequestChecklistV1,
 } from "./prompts.js";
 import { createChatPromptCacheMiddlewareV1 } from "./prompt-cache.js";
 import {
@@ -1064,6 +1065,7 @@ export function createKiteweaveChatAgent(
   return {
     async runChatAgent(input): Promise<ChatAnswerV1> {
       const turn = normalizeChatTurnRequestV1(input.turn);
+      const requestChecklist = deriveChatRequestChecklistV1(turn.question);
       const qualityPolicy = normalizeChatQualityPolicyV1(
         input.qualityPolicy ?? chatQualityPolicyV1("auto"),
       );
@@ -1688,6 +1690,7 @@ export function createKiteweaveChatAgent(
                 ) {
                   return JSON.stringify({
                     question: turn.question,
+                    explicitRequestChecklist: requestChecklist,
                     hostGroundednessContract: {
                       invariant:
                         "Every sourceId present in a completed dependency evidence packet is a host-confirmed successful detail read. Raw bodies are intentionally absent and their absence is not a missing-detail defect.",
@@ -2430,6 +2433,7 @@ export function createKiteweaveChatAgent(
             draft: finalDraft,
             detailEvidence: broker.detailEvidenceLedger(),
             readSectionReferences: broker.readSectionReferenceLedger(),
+            requestFacets: requestChecklist,
           })
         ) {
           terminalAnswerRepairOnly = true;
@@ -2454,7 +2458,13 @@ export function createKiteweaveChatAgent(
                       .map((section) => `${section.sourceId}#${section.sectionId}`),
                   ])),
                 ])}.`,
-                "Cover every explicitly requested facet or state one precise gap. Do not call a tool, retrieve, ask a question, or expose an abandoned wording alternative.",
+                ...(requestChecklist.length > 0
+                  ? [
+                      `Required user-authored facet labels: ${JSON.stringify(requestChecklist)}.`,
+                      "Use every label verbatim exactly once as a heading or bullet label, followed by its supported answer or one precise evidence gap.",
+                    ]
+                  : ["Cover every explicitly requested facet or state one precise gap."]),
+                "Do not call a tool, retrieve, ask a question, or expose an abandoned wording alternative.",
               ].join("\n"))],
             }, {
               configurable: { thread_id: checkpoint.threadId },
@@ -2466,6 +2476,7 @@ export function createKiteweaveChatAgent(
               draft: finalResult.structuredResponse,
               detailEvidence: broker.detailEvidenceLedger(),
               readSectionReferences: broker.readSectionReferenceLedger(),
+              requestFacets: requestChecklist,
             });
             if (!repairedDraft) {
               throw new ChatContractError(

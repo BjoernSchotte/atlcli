@@ -247,6 +247,7 @@ test("projects only the question and body-free anchor catalogue into shared chil
   }]);
   expect(JSON.parse(context)).toEqual({
     question: "Compare the sources.",
+    explicitRequestChecklist: [],
     exactAnchors: [{
       anchorRef: "research-anchor:page-1",
       product: "confluence",
@@ -258,6 +259,17 @@ test("projects only the question and body-free anchor catalogue into shared chil
     "retrieval",
   );
   expect(context).not.toContain("content");
+});
+
+test("projects explicit user-authored facets into every child context", () => {
+  const context = minimalChatSubagentTaskContextV1(
+    "Nenne Modellgröße, Endgeschwindigkeit und Einsatzempfehlung.",
+  );
+  expect(JSON.parse(context).explicitRequestChecklist).toEqual([
+    "Modellgröße",
+    "Endgeschwindigkeit",
+    "Einsatzempfehlung",
+  ]);
 });
 
 function analysisPacketNearBytes(targetBytes: number) {

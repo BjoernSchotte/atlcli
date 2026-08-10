@@ -3,6 +3,7 @@ import {
   buildChatSystemPromptV1,
   buildChatTurnPromptV1,
   chatAnswerOutputInstructionV1,
+  deriveChatRequestChecklistV1,
 } from "./prompts.js";
 
 describe("Chat supervisor prompt", () => {
@@ -112,5 +113,32 @@ describe("Chat supervisor prompt", () => {
     expect(prompt).toContain("call the matching host acquisition controller exactly once");
     expect(prompt).not.toContain("design");
     expect(prompt).not.toContain("architecture");
+  });
+
+  test("projects explicit enumerated user facets without inventing requirements", () => {
+    const question = [
+      "Fasse ausschließlich die direkt verlinkte Seite knapp zusammen und nenne",
+      "Modellgröße, gemessene Endgeschwindigkeit und die Einsatzempfehlung:",
+      "https://tenant.invalid/wiki/spaces/SAFE/pages/100/Private-title",
+    ].join(" ");
+
+    expect(deriveChatRequestChecklistV1(question)).toEqual([
+      "Modellgröße",
+      "gemessene Endgeschwindigkeit",
+      "die Einsatzempfehlung",
+    ]);
+    const prompt = buildChatTurnPromptV1({
+      question,
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: [],
+      anchors: [],
+    });
+    expect(prompt).toContain("Explicit user request checklist");
+    expect(prompt).toContain('"die Einsatzempfehlung"');
+    expect(prompt).toContain("no added requirements");
+  });
+
+  test("does not manufacture a checklist for an ordinary unenumerated question", () => {
+    expect(deriveChatRequestChecklistV1("Worum geht es auf dieser Seite?")).toEqual([]);
   });
 });
