@@ -398,10 +398,11 @@ generation. Unknown, late, duplicate, or oversized messages fail closed.
 ### 5.4 LangChain adapter
 
 Implement one local `BaseChatModel` adapter/proxy over Transformers.js and
-expose it as a `ChatModelBindingV1`. G0 must choose and freeze one Transformers.js
-API shape: either `AutoProcessor` plus `Gemma4ForConditionalGeneration`, or the
-appropriate pipeline abstraction if it proves equivalent for text-only loading,
-streaming, tools, cancellation, and resource disposal. Do not bypass
+expose it as a `ChatModelBindingV1`. G0 freezes the text-only Transformers.js
+API shape as `AutoTokenizer` plus `Gemma4ForConditionalGeneration`; this avoids
+requiring Gemma's unused image/audio processor configuration while preserving
+chat-template processing, streaming, tools, cancellation, and resource disposal.
+Do not bypass
 Transformers.js with a second direct `onnxruntime-web` generation loop.
 
 This adapter is the only integration point exposed to the shared LangChain/
@@ -422,7 +423,7 @@ The binding has these initial capabilities:
 
 Message conversion must cover system, human, assistant, tool-call, and tool
 result messages. Project the LangChain tool schemas into the pinned Gemma 4 chat
-template through the selected Transformers.js processor. Tool-call IDs, names,
+template through the selected Transformers.js tokenizer. Tool-call IDs, names,
 incremental arguments, and final arguments must survive streaming and special-
 token parsing without guesswork. Unknown tool names or invalid arguments are
 returned to the shared repair/error path and never executed.
@@ -633,7 +634,7 @@ hardening.
 - [x] Package Transformers.js plus the resolved ONNX Runtime Web JS/WASM in the
       real WXT/MV3 build; do not add remote executable code or a separate page/
       application.
-- [ ] Configure Transformers.js model resolution/fetching so the engine can load
+- [x] Configure Transformers.js model resolution/fetching so the engine can load
       only the verified local manifest files and cannot contact Hugging Face or
       another model host after installation.
 - [ ] Add the thin offscreen-owned model host, bounded `MessagePort` transport to
