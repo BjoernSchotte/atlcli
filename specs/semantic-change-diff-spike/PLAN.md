@@ -1484,6 +1484,7 @@ src/content/docs/reference/cli-commands.md
 src/content/docs/jira/bulk-operations.md
 specs/semantic-change-diff-spike/EVIDENCE.md
 bun.lock
+spikes/pierre-diffs-renderer/**
 ```
 
 Generated API report/closure paths for the new package are also in scope. If an
@@ -1568,6 +1569,11 @@ The spike continues in three separately proven and committed increments:
    dependencies must not enter `@atlcli/change-set`, the Confluence/Jira
    adapters, or the core CLI command path.
 
+   The prototype lives outside the Bun workspace under
+   `spikes/pierre-diffs-renderer/`, pins its own dependency graph, and receives
+   live review JSON through a loopback-only in-memory server. Its committed
+   fixtures are synthetic; captures and operator page data remain temporary.
+
 Each increment requires focused/full proportional gates, a read-only live
 v1 -> current comparison of the operator-supplied Mayflower page, an output
 shown directly in the task, privacy inspection, then its own commit and push.
@@ -1575,7 +1581,7 @@ No live source body, page identifier, URL, or generated rendering is committed.
 
 - [x] Option B text alias and word diff are contract-tested and live-proven.
 - [x] Option C combined review is contract-tested and live-proven.
-- [ ] The Pierre prototype is isolated, evaluated, and live-proven without
+- [x] The Pierre prototype is isolated, evaluated, and live-proven without
       contaminating the host-neutral core.
 
 ## 19. STOP conditions

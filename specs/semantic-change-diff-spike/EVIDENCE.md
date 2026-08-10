@@ -258,6 +258,32 @@ Focused contract proof covers Cloud ADF plus exact Storage sidecars, DC Storage
 without Cloud calls, one JSON document, ANSI-free word review, context control,
 readable terminal composition, and fail-closed flag validation before I/O.
 
+### Pierre renderer prototype
+
+The isolated, non-workspace prototype pins `@pierre/diffs` 1.3.5 and consumes
+only `review.textDiff.unified` plus bounded ChangeSet summary fields. A
+synthetic contract proves that Pierre parses atlcli's jsdiff patch headers,
+hunks, deletion lines, and addition lines directly. A second contract pins the
+actual `atlcli.change-set/1` summary and completeness field names at the thin
+view adapter.
+
+The authorized real-world Cloud v1-to-v3 review was acquired read-only, held in
+a loopback server's memory, rendered by Pierre's Vanilla `FileDiff` component,
+and inspected in headless Chromium. The view displayed both hunks, Markdown
+syntax, line numbers, classic indicators, wrapping, and Pierre's inline change
+machinery. The semantic metrics remained an atlcli-owned view above the text
+renderer. The screenshot was shown in the task from a private temporary path;
+no live JSON, title, page identifier, URL, body, attachment name, tenant
+identifier, account data, or image is committed.
+
+The simple browser entry is 10,735,635 bytes minified and 1,834,672 bytes gzip;
+the isolated dependency installation is approximately 70 MiB. This rejects an
+eager CLI/core dependency. Pierre remains viable as an optional, lazy web or
+extension renderer, provided a production follow-up proves CodeView
+virtualization, worker behavior, initial-JS/heap/interaction budgets, CSP, and
+the same privacy boundary. It does not replace the semantic diff engine or the
+neutral review JSON contract.
+
 ## Verification commands
 
 ```bash
