@@ -726,6 +726,45 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(interaction.streamInterruption).toBeUndefined();
   });
 
+  test("uses safe deterministic normalization before spending a terminal repair call", async () => {
+    const input = request("Answer this simple conversational question.");
+    const workspace = createMemoryResearchWorkspace();
+    const nativeModel = fakeModel()
+      .respond(new AIMessage(JSON.stringify({
+        blocks: [{
+          id: "answer-block:first",
+          markdown: "A complete bounded answer sentence.",
+          sourceRefs: [],
+          assertion: "none",
+          scope: "none",
+        }, {
+          id: "answer-block:duplicate",
+          markdown: "A complete bounded answer sentence.",
+          sourceRefs: [],
+          assertion: "none",
+          scope: "none",
+        }],
+        gaps: [],
+      })))
+      .respond(new AIMessage("A terminal repair must not be requested."));
+
+    const answer = await runtime.runChatAgent({
+      ...input,
+      modelBinding: {
+        model: nativeModel,
+        modelId: "synthetic-native-model",
+        qualityAdapter: CAPABILITY_FREE_QUALITY_ADAPTER_V1,
+        structuredOutput: "native",
+      },
+      providers,
+      workspace,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+    });
+
+    expect(answer.messageMarkdown).toBe("A complete bounded answer sentence.");
+    expect(nativeModel.callCount).toBe(1);
+  });
+
   test("keeps enough root output budget for a complete Quick structured answer", () => {
     expect(chatRootOutputTokenLimitV1({
       configuredMaxOutputTokens: 8_000,

@@ -2471,6 +2471,15 @@ export function createKiteweaveChatAgent(
         let finalDraft = agenticWorkflow
           ? agenticWorkflow.assertComplete()
           : chatStructuredDraftFromAgentResultV1(result);
+        if (!agenticWorkflow) {
+          const safelyNormalized = inspectChatDraftAfterHostRepairV1({
+            draft: finalDraft,
+            detailEvidence: broker.detailEvidenceLedger(),
+            readSectionReferences: broker.readSectionReferenceLedger(),
+            requestFacets: requestChecklist,
+          });
+          if (safelyNormalized.draft) finalDraft = safelyNormalized.draft;
+        }
         if (
           !agenticWorkflow &&
           chatDraftNeedsHostRepairV1({
@@ -2509,6 +2518,7 @@ export function createKiteweaveChatAgent(
                     ]
                   : ["Cover every explicitly requested facet or state one precise gap."]),
                 "Do not call a tool, retrieve, ask a question, or expose an abandoned wording alternative.",
+                "Use short self-contained paragraphs or bullets. End every factual sentence with closing punctuation. If a quoted fragment would leave a sentence unfinished, omit the fragment and state only the complete supported fact.",
                 "Make every factual sentence grammatically complete; do not leave a clause ending in a connector or auxiliary verb.",
                 "Do not leave a detached lowercase continuation paragraph beginning with da, weil, obwohl, während, und, aber, because, although, whereas, which, and, or, or but.",
                 "Do not classify the same evidence as both directly measured and conjectural. Separate observations from interpretation explicitly when the user asks for that distinction.",

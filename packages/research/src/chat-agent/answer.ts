@@ -900,8 +900,9 @@ function isMarkdownHeadingBlockV1(markdown: string): boolean {
 }
 
 /**
- * One tool-free terminal repair is the final model-owned correction boundary.
- * After it, the host may remove only malformed non-factual prose. Factual
+ * Before or after one tool-free terminal repair, the host may apply only the
+ * same conservative body-free normalization. It may remove malformed
+ * non-factual prose and collapse semantically identical blocks. Factual
  * blocks remain subject to the normal evidence projection, which drops an
  * unsupported neighbour and records a gap without discarding supported facts.
  * A heading left without any factual block is rejected so a requested answer
