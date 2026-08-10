@@ -72,4 +72,3 @@ describe("scope catalog capability contracts", () => {
     })).not.toThrow();
   });
 });
-

@@ -290,4 +290,3 @@ export function chatRuntimeFixtureV1(scenarioId: string): ChatRuntimeFixtureV1 {
   if (!fixture) throw new Error(`Missing independent runtime fixture for ${scenarioId}.`);
   return structuredClone(fixture);
 }
-

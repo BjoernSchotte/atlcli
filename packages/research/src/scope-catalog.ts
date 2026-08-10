@@ -137,4 +137,3 @@ export function decodeResearchReferenceResolveIntentV1(value: unknown): Research
   });
   return { schema: expectedSchema("atlassian.reference.resolve"), reference, expectedTenantOrigin: origin, expectedKinds };
 }
-
