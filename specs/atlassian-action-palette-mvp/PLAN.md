@@ -426,6 +426,7 @@ If the command/message protocol, screen registry, export request ownership, rese
 - Use an atlcli branch such as `codex/action-palette-mvp`. Use a separate reviewed branch in `kiteweave-forge-app`; never stage or commit across repositories as though they were one change.
 - Keep commits conventional and scoped, for example `feat(core): add action palette contracts`, `feat(extension): mount action palette`, `feat(extension): add palette actions`, `docs: document action palette`, and Forge-side `feat: add Confluence action palette`.
 - Per repository rules, run the relevant E2E gate before every commit, then inspect the staged diff for generated artifacts, credentials, tenant data, and unrelated files.
+- Capture privacy-safe screenshots for every live test, store the image files outside both repositories, and present absolute view/download links in the task conversation. Never stage or commit the screenshots.
 - Never push, publish packages, deploy to production, release, or open a PR without explicit authorization. Forge development deployment for AP-08 is test evidence, not release authorization.
 
 ### 8.2 Dependency graph
@@ -513,12 +514,12 @@ bun run check:browser
 **Depends on:** AP-01  
 **Blocks:** AP-03, AP-04
 
-- [ ] Implement `createActionCatalog()`, duplicate diagnostics, stable group/order resolution, and capability/context availability.
-- [ ] Implement locale-aware normalization and deterministic local scoring for exact, prefix, token, keyword, alias, and subsequence matches.
-- [ ] Keep disabled matches discoverable for explicit queries while omitting irrelevant disabled actions from the default suggestion list.
-- [ ] Implement pure selection transitions across every visible option, including unavailable rows, and selection repair when results change. Execution—not inspection—is blocked for unavailable actions.
-- [ ] Add property/fixture tests for deterministic ordering, Unicode/diacritics, empty queries, no enabled results, 1,000-action catalogs, duplicate labels, and stable selection.
-- [ ] Add a benchmark test that reports query latency for 1,000 actions without turning a flaky wall-clock assertion into the sole correctness gate.
+- [x] Implement `createActionCatalog()`, duplicate diagnostics, stable group/order resolution, and capability/context availability.
+- [x] Implement locale-aware normalization and deterministic local scoring for exact, prefix, token, keyword, alias, and subsequence matches.
+- [x] Keep disabled matches discoverable for explicit queries while omitting irrelevant disabled actions from the default suggestion list.
+- [x] Implement pure selection transitions across every visible option, including unavailable rows, and selection repair when results change. Execution—not inspection—is blocked for unavailable actions.
+- [x] Add property/fixture tests for deterministic ordering, Unicode/diacritics, empty queries, no enabled results, 1,000-action catalogs, duplicate labels, and stable selection.
+- [x] Add a benchmark test that reports query latency for 1,000 actions without turning a flaky wall-clock assertion into the sole correctness gate.
 
 **Proof**
 
