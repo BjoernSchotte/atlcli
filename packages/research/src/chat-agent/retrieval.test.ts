@@ -435,6 +435,71 @@ describe("Chat exact-anchor retrieval", () => {
     expect(broker.budget.counts()).toMatchObject({ ptcCalls: 2, httpCalls: 0 });
   });
 
+  test("authorizes section refs from a host pre-read populated after tool construction", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.wiki.getPage = async ({ contentId }) => {
+      calls.push(`wiki.get:${contentId}`);
+      return {
+        contentId,
+        spaceKey: "~account-id",
+        title: "Pre-read navigable page",
+        content: {
+          text: "The initial projection is incomplete.",
+          linkTargets: [],
+          truncated: true,
+          inputBytes: 4_000,
+        },
+        navigation: navigateConfluenceStorageV1({
+          storage: "<h1>Decision</h1><p>The pre-read decision is approved.</p>",
+          sourceVersion: 1,
+          siteOrigin: ORIGIN,
+          projectionLimits: {
+            maxTextChars: 10,
+            maxTextBytes: 40,
+            maxLinks: 10,
+            maxNodes: 1_000,
+            maxDepth: 32,
+          },
+        }),
+      };
+    };
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({
+        product: "confluence",
+        entityKind: "page",
+        key: "1001",
+        name: "Page",
+        id: "page-1001",
+      })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, {
+      createAnchorId: () => "anchor",
+      createSectionId: () => "decision-section",
+    });
+    const preReadDetails = new Map<string, BoundEntityReadOutputV1>();
+    const tools = createChatPtcToolsV1(broker, { preReadDetails });
+    const section = tools.find((candidate) =>
+      candidate.name === "atlassian_bound_section_read"
+    );
+    if (!section) throw new Error("missing section read tool");
+
+    const anchorRef = broker.exactAnchors()[0]!.anchorRef;
+    const detail = await broker.readExactAnchor({
+      schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+      anchorRef,
+    });
+    preReadDetails.set(anchorRef, detail);
+    const sectionRef = detail.document?.sections[0]?.sectionRef;
+    if (!sectionRef) throw new Error("missing pre-read section ref");
+
+    const accepted = JSON.parse(String(await section.invoke({ sectionRef })));
+    expect(accepted.source.sourceId).toBe("wiki:1001");
+    expect(accepted.section.heading).toBe("Decision");
+    expect(calls).toEqual(["wiki.get:1001"]);
+  });
+
   test("reads an attached Jira issue once and preserves its host canonical URL", async () => {
     const calls: string[] = [];
     const broker = new ResearchCapabilityBroker(request({

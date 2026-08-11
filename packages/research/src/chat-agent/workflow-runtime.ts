@@ -33,7 +33,10 @@ import {
 import {
   RESEARCH_LANGCHAIN_TOOL_NAMES,
 } from "../capability-contracts.js";
-import type { BoundEntityAnchorV1 } from "../capability-contracts.js";
+import type {
+  BoundEntityAnchorV1,
+  BoundEntityReadOutputV1,
+} from "../capability-contracts.js";
 import type { ResearchLimitsV1, ResearchProduct } from "../contracts.js";
 import type { ProviderReasoningPreferenceV1 } from "../quality-policy.js";
 import {
@@ -1227,7 +1230,7 @@ export function createPlannedSearchAcquisitionToolV1(input: {
 export function createExactContextAcquisitionToolV1(input: {
   tools: readonly DynamicStructuredTool[];
   maxDetails: number;
-  preReadDetails?: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
+  preReadDetails?: ReadonlyMap<string, BoundEntityReadOutputV1>;
   /** Snake-case LangChain name; QuickJS exposes the camel-cased equivalent. */
   toolName?: string;
 }): DynamicStructuredTool {
@@ -1251,7 +1254,7 @@ export function createExactContextAcquisitionToolV1(input: {
     if (existing) return existing;
     const acquisition = (async () => {
       const nestedConfig = nestedToolConfigV1(config);
-      const details: Record<string, unknown>[] = [];
+      const details: unknown[] = [];
       for (const anchorRef of anchorRefs) {
         const preRead = input.preReadDetails?.get(anchorRef);
         if (preRead) {
@@ -1303,7 +1306,7 @@ function compileChatSubagentsV1(input: {
   modelBudget: ResearchModelRunBudget;
   onModelBudgetSnapshot: (state: ResearchModelBudgetStateV1) => Promise<void>;
   onModelCallObservation?: (observation: ResearchModelCallObservationV1) => void | Promise<void>;
-  exactReadCache?: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
+  exactReadCache?: ReadonlyMap<string, BoundEntityReadOutputV1>;
 }): SubAgent[] {
   const subagents = CHAT_SUBAGENT_PROFILES_V1.map((profile): SubAgent => {
     const routeRole: ChatModelRouteRoleV1 = profile.phase === "acquisition"
@@ -1346,6 +1349,9 @@ function compileChatSubagentsV1(input: {
       ? []
       : createChatPtcToolsV1(input.broker, {
           now: input.now,
+          ...(input.exactReadCache
+            ? { preReadDetails: input.exactReadCache }
+            : {}),
           exactContextProducts: input.exactContextProducts,
           searchProducts: input.searchProducts,
           boundProjectKeys: input.boundProjectKeys,
@@ -1906,7 +1912,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
   const profileByTaskId = new Map<string, ChatSubagentProfileIdV1>();
   const taskById = new Map<string, ChatWorkflowTaskProposalV1>();
   const modelStreamErrorByTaskId = new Map<string, { code?: string; message: string }>();
-  const exactReadCache = new Map<string, Readonly<Record<string, unknown>>>();
+  const exactReadCache = new Map<string, BoundEntityReadOutputV1>();
   let exactEvidenceFastPath: Promise<ChatEvidencePacketV1 | undefined> | undefined;
 
   const referencedSourceIds = (): string[] => [...new Set(
@@ -2250,7 +2256,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
         );
         exactReadCache.set(
           anchorRef,
-          structuredClone(detail) as unknown as Readonly<Record<string, unknown>>,
+          structuredClone(detail),
         );
       }
       const sourceIds = new Set(anchorRefs

@@ -134,12 +134,19 @@ G0 complete:
   machine;
 - the UI emitted one host-owned semantic progress sequence and completed without
   a local-model failure or a new run-related page-console error;
+- the packed extension subsequently completed the same fixed Quick exact-context
+  case three consecutive times through the existing side-panel Chat path. First
+  visible answer content arrived after approximately 21, 32, and 31 seconds;
+  terminal cited answers completed after approximately 89, 118, and 137 seconds;
+- the third completed Quick conversation reopened from the existing history
+  path with its question, canonical answer, citations, completion state, and
+  Quick mode intact;
+- the late host pre-read section-reference handoff is covered by a regression
+  fixture and the full Chat-agent suite is green without replaying the bound
+  entity read or widening broker scope;
 - automated fixtures cover the local Quick, Auto, and Think-deeper strategy
   semantics, but repeated live proof for every required trajectory is still
-  outstanding;
-- the full Chat-agent suite currently has one unresolved section-reference
-  fallback failure. G0 cannot record GO while a required repository gate is
-  knowingly red.
+  outstanding for Auto and Think deeper.
 
 Committed plans and receipts must keep private tenant content, URLs, customer
 names, identifiers, traces, and generated answers out of Git. Live proof may use
@@ -795,21 +802,21 @@ hardening.
 - [x] Keep host validation language-independent and prove German, English, and
       French paraphrases in contract fixtures; remove phrase-based acceptance,
       repair, ranking, and request-substring checks.
-- [ ] Resolve the remaining section-reference fallback failure and return the
+- [x] Resolve the remaining section-reference fallback failure and return the
       full Chat-agent test suite to green before a GO receipt.
 
 #### G0b — Prove Quick through the existing UI
 
-- [ ] In the existing side-panel Chat UI, select Quick, submit a synthetic
+- [x] In the existing side-panel Chat UI, select Quick, submit a synthetic
       context-bound question, and traverse `ResearchScreen` -> `ChatAgentPort` ->
       background -> offscreen -> fresh agent worker -> shared `runChatAgent` ->
       local model RPC.
-- [ ] Require the real model to issue the expected `eval` call, consume the
+- [x] Require the real model to issue the expected `eval` call, consume the
       host-produced tool result, produce the canonical structured Chat answer,
       and render its stream and citations in the existing conversation UI.
-- [ ] Prove the completed conversation persists and reopens through the existing
+- [x] Prove the completed conversation persists and reopens through the existing
       Chat history path under the local provider/model identity.
-- [ ] Repeat the fixed Quick case three times with valid tool and terminal-answer
+- [x] Repeat the fixed Quick case three times with valid tool and terminal-answer
       envelopes on every run.
 
 #### G0c — Prove Auto and Think deeper through the existing UI
@@ -842,9 +849,12 @@ Live proof:
 - [x] A production-packed extension installs the real E4B ONNX file set from
       existing Settings, retains it across reload, and completes one fixed Auto
       exact-context case in the existing Chat UI.
-- [ ] The same packed extension completes the fixed Quick case three times,
-      Auto-direct and Auto-agentic cases three times each, and Think-deeper-
-      direct and Think-deeper-agentic cases three times each.
+- [x] The same packed extension completes the fixed Quick case three consecutive
+      times with one progress sequence, streamed answer content, terminal cited
+      answers, and no local-model, tool, section-reference, or contract error.
+- [ ] The same packed extension completes Auto-direct and Auto-agentic cases
+      three times each and Think-deeper-direct and Think-deeper-agentic cases
+      three times each.
 - [ ] A new local conversation completes at least one evidence-aware follow-up
       turn without losing provider identity, accepted evidence, or tool-result
       correlation; close/reopen the side panel and reopen the conversation.
@@ -1139,14 +1149,14 @@ Required repository gates:
 - [x] The current checkpoint passes focused Research contracts/prompts/strategy
       tests, relevant extension local-model/Chat/UI tests, typecheck, extension
       build, extension-output audit, research-privacy audit, and diff checks.
-- [ ] Resolve the current section-reference fallback failure before treating the
+- [x] Resolve the current section-reference fallback failure before treating the
       full Chat-agent suite as green.
-- [ ] `bun run test <focused test files>` for each task.
+- [x] `bun run test <focused test files>` for each task.
 - [ ] `bun run test` (never bare `bun test`).
-- [ ] `bun run typecheck`.
+- [x] `bun run typecheck`.
 - [ ] `bun run build`.
-- [ ] `bun run check:extension-output`.
-- [ ] `bun run check:research-privacy`.
+- [x] `bun run check:extension-output`.
+- [x] `bun run check:research-privacy`.
 - [ ] `bun run check:chat-performance`.
 - [ ] `bun run check:chat-release-candidate` with the local provider dimension.
 - [ ] `bun run --cwd apps/extension test:research-extension-browser` and the
