@@ -9,11 +9,10 @@
     "publish": "public-0.x"
   },
   "sideEffects": [
-    "./styles.css"
+    "./dist/styles.css"
   ],
   "files": [
-    "dist",
-    "styles.css"
+    "dist"
   ],
   "type": "module",
   "exports": {
@@ -22,10 +21,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./styles.css": "./styles.css"
+    "./styles.css": "./dist/styles.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && cp styles.css dist/styles.css",
     "clean": "rm -rf dist",
     "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
