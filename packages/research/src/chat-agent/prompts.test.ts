@@ -92,13 +92,14 @@ describe("Chat supervisor prompt", () => {
 
     expect(repair).toContain("REPAIR OUTPUT CONTRACT (quick, hard limit)");
     expect(repair).toContain("at most 350 visible words and 16 blocks");
-    expect(repair).toContain("grammatically complete");
-    expect(repair).toContain("detached lowercase continuation paragraph");
+    expect(repair).toContain("complete, self-contained statement in the user's language");
+    expect(repair).toContain("detached continuation fragments");
     expect(repair).toContain("cannot be both directly measured and conjectural");
     expect(repair).toContain("selection predicate before satisfying a requested count or ranking");
-    expect(repair).toContain("do not count them toward N");
-    expect(repair).toContain("means descending by the stated comparable metric");
-    expect(repair).toContain("means ascending");
+    expect(repair).toContain("do not count them toward the requested set");
+    expect(repair).toContain("Preserve the ranking direction expressed by the user");
+    expect(repair).not.toContain("groesste");
+    expect(repair).not.toContain("niedrigste");
     expect(repair).toContain("compare isolated interventions against a stated baseline");
     expect(repair).toContain("holding the requested outcome quality");
     expect(repair).toContain("bundled configuration change");
