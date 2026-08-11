@@ -141,12 +141,16 @@ G0 complete:
 - the third completed Quick conversation reopened from the existing history
   path with its question, canonical answer, citations, completion state, and
   Quick mode intact;
+- the same fixed exact-context case subsequently completed three consecutive
+  Auto-direct runs with first visible answer content after approximately 34,
+  42, and 45 seconds and terminal cited answers after approximately 117, 149,
+  and 205 seconds;
 - the late host pre-read section-reference handoff is covered by a regression
   fixture and the full Chat-agent suite is green without replaying the bound
   entity read or widening broker scope;
 - automated fixtures cover the local Quick, Auto, and Think-deeper strategy
-  semantics, but repeated live proof for every required trajectory is still
-  outstanding for Auto and Think deeper.
+  semantics, but repeated live proof remains outstanding for Auto-agentic and
+  both Think-deeper trajectories.
 
 Committed plans and receipts must keep private tenant content, URLs, customer
 names, identifiers, traces, and generated answers out of Git. Live proof may use
@@ -821,13 +825,17 @@ hardening.
 
 #### G0c — Prove Auto and Think deeper through the existing UI
 
-- [ ] Run fixed Auto-direct and Auto-agentic cases through the existing mode
-      selector and require the expected strategy decision and trajectory.
+- [x] Run a fixed Auto-direct case through the existing mode selector three
+      consecutive times and require the direct strategy, one progress sequence,
+      streamed content, and terminal cited answer on every run.
+- [ ] Run a fixed Auto-agentic case through the existing mode selector three
+      consecutive times and require the agentic strategy and workflow trajectory
+      on every run.
 - [ ] Run fixed Think-deeper-direct and Think-deeper-agentic cases through the
       existing mode selector and require the expected strategy, delegation,
       validation/repair, synthesis, and terminal Chat events.
-- [ ] Repeat each fixed trajectory three times and require valid tool, workflow,
-      evidence/citation, and terminal-answer contracts on every run.
+- [ ] Repeat each remaining fixed trajectory three times and require valid tool,
+      workflow, evidence/citation, and terminal-answer contracts on every run.
 - [x] Keep the existing Deep Research choice visibly unavailable for Gemma in
       the product UI and automated capability fixtures. The separate network
       no-fallback observation remains a live-proof gate below.
@@ -852,9 +860,11 @@ Live proof:
 - [x] The same packed extension completes the fixed Quick case three consecutive
       times with one progress sequence, streamed answer content, terminal cited
       answers, and no local-model, tool, section-reference, or contract error.
-- [ ] The same packed extension completes Auto-direct and Auto-agentic cases
-      three times each and Think-deeper-direct and Think-deeper-agentic cases
-      three times each.
+- [x] The same packed extension completes the fixed Auto-direct case three
+      consecutive times with the expected direct trajectory, streamed answer,
+      citations, and terminal contract.
+- [ ] The same packed extension completes Auto-agentic three times and Think-
+      deeper-direct and Think-deeper-agentic cases three times each.
 - [ ] A new local conversation completes at least one evidence-aware follow-up
       turn without losing provider identity, accepted evidence, or tool-result
       correlation; close/reopen the side panel and reopen the conversation.
