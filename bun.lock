@@ -141,6 +141,10 @@
         "zod": "4.4.3",
       },
     },
+    "packages/action-registry": {
+      "name": "@atlcli/action-registry",
+      "version": "0.1.0",
+    },
     "packages/change-set": {
       "name": "@atlcli/change-set",
       "version": "0.1.0",
@@ -526,6 +530,8 @@
     "@astrojs/telemetry": ["@astrojs/telemetry@3.3.3", "", { "dependencies": { "ci-info": "^4.4.0", "dset": "^3.1.4", "is-docker": "^4.0.0", "package-manager-detector": "^1.6.0" } }, "sha512-C1TLn5sPJr0x4vk56piHWKbnqlEB8BKyte5Y45V02U+D7BGO5eMqZDH5aPjnkXQWJggvmsTXxH03QMZ9NgWLzQ=="],
 
     "@astrojs/yaml2ts": ["@astrojs/yaml2ts@0.2.4", "", { "dependencies": { "yaml": "^2.8.3" } }, "sha512-8oddpOae35pJsXPQXhTkM0ypfKPskVsh2bCxRtbf7e+/Epw2nReakFYpLKjZMEr75CsoF203PMnCocpfz0s69A=="],
+
+    "@atlcli/action-registry": ["@atlcli/action-registry@workspace:packages/action-registry"],
 
     "@atlcli/browser-export-harness": ["@atlcli/browser-export-harness@workspace:apps/browser-export-harness"],
 

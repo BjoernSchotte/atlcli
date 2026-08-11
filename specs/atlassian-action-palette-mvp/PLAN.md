@@ -489,16 +489,16 @@ Only one task should be marked in progress at a time in this file. Check a task 
 **Depends on:** AP-00  
 **Blocks:** AP-02, AP-04, AP-08
 
-- [ ] Create `packages/action-registry/package.json`, `tsconfig.build.json`, `src/contracts.ts`, `src/validation.ts`, and `src/index.ts` using current package export conventions.
-- [ ] Define versioned action, module, context, requirement, intent, input, request, receipt, result, and executor-port types.
-- [ ] Reserve stable root IDs: `atlcli.export.pdf.current-page`, `atlcli.export.docx.current-page`, `atlcli.export.docx.configure`, `atlcli.sidebar.open`, `atlcli.sidebar.publishing`, `atlcli.sidebar.research`, `atlcli.sidebar.activity`, and `atlcli.ai.quick-ask`. Use a typed navigation intent with a closed target union while keeping each visible command ID distinct.
-- [ ] Implement validation for schema versions, namespaced action/module/group/capability IDs, duplicates, serializability, bounded strings/keywords, known effects, supported input types, and secondary/result `ActionAffordanceV1` entries.
-- [ ] Define capability and requirement evaluation as pure functions; unavailable actions return structured reason codes.
-- [ ] Define a redacted receipt contract and structured-clone-safe public projections.
-- [ ] Export browser-safe entry points and add only the neutral registry entry to workspace/build/typecheck and `scripts/check-browser-build.ts` coverage; update its exact-entrypoint test.
-- [ ] Add contract tests including hostile/invalid definitions, unknown versions/intents, duplicate IDs, mutation attempts, and JSON round-trips.
-- [ ] Add text-key/fallback validation and locale-key parity fixtures without importing the extension's `MessageKey` type into the neutral package.
-- [ ] Add one synthetic contribution module fixture that is not imported by the palette shell directly.
+- [x] Create `packages/action-registry/package.json`, `tsconfig.build.json`, `src/contracts.ts`, `src/validation.ts`, and `src/index.ts` using current package export conventions.
+- [x] Define versioned action, module, context, requirement, intent, input, request, receipt, result, and executor-port types.
+- [x] Reserve stable root IDs: `atlcli.export.pdf.current-page`, `atlcli.export.docx.current-page`, `atlcli.export.docx.configure`, `atlcli.sidebar.open`, `atlcli.sidebar.publishing`, `atlcli.sidebar.research`, `atlcli.sidebar.activity`, and `atlcli.ai.quick-ask`. Use a typed navigation intent with a closed target union while keeping each visible command ID distinct.
+- [x] Implement validation for schema versions, namespaced action/module/group/capability IDs, duplicates, serializability, bounded strings/keywords, known effects, supported input types, and secondary/result `ActionAffordanceV1` entries.
+- [x] Define capability and requirement evaluation as pure functions; unavailable actions return structured reason codes.
+- [x] Define a redacted receipt contract and structured-clone-safe public projections.
+- [x] Export browser-safe entry points and add only the neutral registry entry to workspace/build/typecheck and `scripts/check-browser-build.ts` coverage; update its exact-entrypoint test.
+- [x] Add contract tests including hostile/invalid definitions, unknown versions/intents, duplicate IDs, mutation attempts, and JSON round-trips.
+- [x] Add text-key/fallback validation and locale-key parity fixtures without importing the extension's `MessageKey` type into the neutral package.
+- [x] Add one synthetic contribution module fixture that is not imported by the palette shell directly.
 
 **Proof**
 

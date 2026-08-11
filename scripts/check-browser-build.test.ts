@@ -35,6 +35,7 @@ function fixtureDir(): string {
 describe("browser-build gate (spec 001 task 6)", () => {
   test("the gate's entrypoint set includes every browser entrypoint", () => {
     expect(BROWSER_ENTRYPOINTS).toEqual([
+      "packages/action-registry/src/index.ts",
       "packages/change-set/src/index.ts",
       "packages/change-set/src/adf/index.ts",
       "packages/export-blocks/src/index.ts",
