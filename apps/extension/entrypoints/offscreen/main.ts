@@ -61,6 +61,16 @@ void recoverResearchSessionsAfterOffscreenStart().catch((error) =>
   console.error("Durable research recovery after offscreen startup failed", error),
 );
 
+let localModelRuntimeModulePromise: Promise<
+  typeof import("../../workers/local-model.js")
+> | undefined;
+
+function localModelRuntimeModuleV1() {
+  return localModelRuntimeModulePromise ??= import(
+    "../../workers/local-model.js"
+  );
+}
+
 async function connectInstalledLocalModelV1() {
   // Offscreen documents expose only chrome.runtime, not chrome.storage. The
   // background host validates the exact installed activation immediately
@@ -68,9 +78,7 @@ async function connectInstalledLocalModelV1() {
   // offscreen Window rather than a nested DedicatedWorker. ORT's WebGPU JSEP
   // bridge has a distinct WorkerGlobalScope path that aborts the Gemma 4 E4B
   // decoder in Chrome MV3 after embedding succeeds.
-  const { connectLocalModelPortV1 } = await import(
-    "../../workers/local-model.js"
-  );
+  const { connectLocalModelPortV1 } = await localModelRuntimeModuleV1();
   const channel = new MessageChannel();
   connectLocalModelPortV1(channel.port2);
   return {
@@ -162,6 +170,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
     runWasmAdd: async (a, b) => {
       const { runWasmAdd } = await import("../../utils/wasm-smoke.js");
       return runWasmAdd(a, b);
+    },
+    prewarmLocalModel: async () => {
+      const { prewarmLocalModelRuntimeV1 } = await localModelRuntimeModuleV1();
+      const receipt = await prewarmLocalModelRuntimeV1();
+      console.info("[local-gemma/offscreen] prewarm completed", receipt);
+      return receipt;
     },
     // The T5.3 scheduling hints ride the message (scalars only) because the
     // panel decides the job kind while the offscreen queue enforces it — see

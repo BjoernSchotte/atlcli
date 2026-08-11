@@ -695,6 +695,7 @@ function isChatCheckpointResumeV1(value: unknown): value is {
  */
 export type OffscreenRequest =
   | { kind: "offscreen:wasm-add"; a: number; b: number }
+  | { kind: "offscreen:local-model-prewarm" }
   | ({ kind: "offscreen:pdf-compile"; jobId: string } & PdfCompileHints)
   | { kind: "offscreen:pdf-cancel"; jobId: string }
   | { kind: "offscreen:docx-prepare-runtime"; codeTheme?: CodeThemeId }
@@ -734,6 +735,19 @@ export type OffscreenRequest =
 export type OffscreenResponse =
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
   | { kind: "offscreen:wasm-add-result"; ok: false; error: string }
+  | {
+      kind: "offscreen:local-model-prewarm-result";
+      ok: true;
+      runtimeState: "already-warm" | "prewarmed";
+      runtimeLoadMs: number;
+      compileMs: number;
+      totalMs: number;
+    }
+  | {
+      kind: "offscreen:local-model-prewarm-result";
+      ok: false;
+      error: string;
+    }
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: true }
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: false; error: string }
   | { kind: "offscreen:pdf-cancel-result"; jobId: string; cancelled: boolean }
@@ -1182,6 +1196,9 @@ export function isEntityChangedForWindow(
 export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { kind?: unknown; jobId?: unknown };
+  if (candidate.kind === "offscreen:local-model-prewarm") {
+    return hasOnlyKeys(value, ["kind"]);
+  }
   if (candidate.kind === "offscreen:pdf-compile") {
     return hasOnlyKeys(value, ["kind", "jobId", "job", "pages"]) && isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
   }

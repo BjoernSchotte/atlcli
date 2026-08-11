@@ -19,7 +19,11 @@ describe("local model offscreen boundary", () => {
     expect(offscreenSource).not.toMatch(/chrome\.storage\.(?:local|session)/u);
     expect(offscreenSource).not.toContain("restoreInstalledLocalModelWorkerV1");
     expect(offscreenSource).toContain("function connectInstalledLocalModelV1()");
+    expect(offscreenSource).toContain("prewarmLocalModelRuntimeV1");
+    expect(offscreenSource).toContain("localModelRuntimeModulePromise");
     expect(offscreenSource).toContain("connectLocalModelPortV1(channel.port2)");
     expect(offscreenSource).not.toMatch(/new Worker\([^)]*local-model/isu);
+    expect(backgroundSource).toContain("prewarmSelectedLocalModelV1");
+    expect(backgroundSource).toContain("selection.providerId !== \"local-gemma\"");
   });
 });

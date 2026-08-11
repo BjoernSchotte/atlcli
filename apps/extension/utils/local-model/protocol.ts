@@ -75,6 +75,13 @@ export interface LocalModelInferencePerformanceV1 {
   totalMs: number;
 }
 
+export interface LocalModelPrewarmReceiptV1 {
+  runtimeState: "already-warm" | "prewarmed";
+  runtimeLoadMs: number;
+  compileMs: number;
+  totalMs: number;
+}
+
 export type LocalModelPortResponseV1 =
   | {
       schema: typeof LOCAL_MODEL_PROTOCOL_SCHEMA_V1;

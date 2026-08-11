@@ -389,6 +389,48 @@ async function prepareDocxRuntime(codeTheme?: CodeThemeId) {
   return response.preparation;
 }
 
+let localModelPrewarmPromise: Promise<void> | undefined;
+
+function prewarmSelectedLocalModelV1(): Promise<void> {
+  if (localModelPrewarmPromise) return localModelPrewarmPromise;
+  const task = (async () => {
+    const stored = await chrome.storage.local.get([
+      APP_SETTINGS_STORAGE_KEY,
+      LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1,
+    ]);
+    const selection = normalizeSettings(
+      stored[APP_SETTINGS_STORAGE_KEY],
+    ).modelSelection;
+    if (selection.providerId !== "local-gemma") return;
+    await resolveBrowserChatModelRunBindingV1({
+      selection,
+      mode: "chat",
+      readAnthropicApiKey: async () => undefined,
+      readLocalActivation: async () =>
+        stored[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1],
+    });
+    offscreenActivity.begin();
+    try {
+      await ensureOffscreen();
+      const response = (await chrome.runtime.sendMessage({
+        kind: "offscreen:local-model-prewarm",
+      })) as OffscreenResponse | undefined;
+      if (!response ||
+          response.kind !== "offscreen:local-model-prewarm-result") {
+        throw new Error("Offscreen local model host returned no prewarm result.");
+      }
+      if (!response.ok) throw new Error(response.error);
+      console.info("[local-gemma/background] selected runtime ready", response);
+    } finally {
+      offscreenActivity.end();
+    }
+  })();
+  localModelPrewarmPromise = task.finally(() => {
+    localModelPrewarmPromise = undefined;
+  });
+  return localModelPrewarmPromise;
+}
+
 async function runJobsWake(
   jobIds?: string[],
   options?: { resumeWaiting?: boolean },
@@ -2164,6 +2206,26 @@ export default defineBackground({
     }
     return handled;
   });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" ||
+        (!changes[APP_SETTINGS_STORAGE_KEY] &&
+          !changes[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1])) return;
+    void prewarmSelectedLocalModelV1().catch((error) =>
+      console.warn("[local-gemma/background] selected runtime prewarm failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  });
+
+  // A retained local selection should be ready before the first Chat request
+  // after browser or extension startup. Validation remains background-owned;
+  // Anthropic and incomplete local installations return before offscreen work.
+  void prewarmSelectedLocalModelV1().catch((error) =>
+    console.warn("[local-gemma/background] startup prewarm skipped", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  );
 
   // Tab switch: resolve the newly-active tab's URL, then observe it.
   chrome.tabs.onActivated.addListener((activeInfo) => {

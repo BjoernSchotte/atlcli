@@ -309,6 +309,38 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
     ]);
   });
 
+  it("returns true and prewarms the local model without request content", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    let calls = 0;
+    const ret = handleOffscreenMessage(
+      { kind: "offscreen:local-model-prewarm" },
+      cap.sendResponse,
+      {
+        ...okOffscreenDeps,
+        prewarmLocalModel: async () => {
+          calls += 1;
+          return {
+            runtimeState: "prewarmed",
+            runtimeLoadMs: 3_000,
+            compileMs: 4_000,
+            totalMs: 7_000,
+          };
+        },
+      },
+    );
+    expect(ret).toBe(true);
+    await cap.called;
+    expect(calls).toBe(1);
+    expect(cap.values).toEqual([{
+      kind: "offscreen:local-model-prewarm-result",
+      ok: true,
+      runtimeState: "prewarmed",
+      runtimeLoadMs: 3_000,
+      compileMs: 4_000,
+      totalMs: 7_000,
+    }]);
+  });
+
   it("returns true and responds with an error when instantiation rejects", async () => {
     const cap = captureResponse<OffscreenResponse>();
     const ret = handleOffscreenMessage(

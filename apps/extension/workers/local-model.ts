@@ -43,6 +43,7 @@ import {
   type LocalModelPortRequestV1,
   type LocalModelPortResponseV1,
   type LocalModelInferencePerformanceV1,
+  type LocalModelPrewarmReceiptV1,
   type LocalModelWorkerConnectV1,
 } from "../utils/local-model/protocol.js";
 
@@ -73,6 +74,8 @@ let loadedRuntime: Promise<{
   tokenizer: GemmaTokenizer;
   model: Awaited<ReturnType<typeof Gemma4ForCausalLM.from_pretrained>>;
 }> | undefined;
+let runtimePrewarmed = false;
+let prewarmPromise: Promise<LocalModelPrewarmReceiptV1> | undefined;
 
 async function loadRuntimeV1() {
   loadedRuntime ??= (async () => {
@@ -129,6 +132,75 @@ async function loadRuntimeV1() {
 const activeCriteria = new Map<string, InterruptableStoppingCriteria>();
 const cancelledRequests = new Set<string>();
 let generationQueue = Promise.resolve();
+
+async function runPrewarmV1(
+  queuedAt: number,
+): Promise<LocalModelPrewarmReceiptV1> {
+  if (runtimePrewarmed) {
+    return {
+      runtimeState: "already-warm",
+      runtimeLoadMs: 0,
+      compileMs: 0,
+      totalMs: Math.max(0, performance.now() - queuedAt),
+    };
+  }
+  const loadStartedAt = performance.now();
+  const { tokenizer, model } = await loadRuntimeV1();
+  const loadedAt = performance.now();
+  const inputs = tokenizer.apply_chat_template([
+    { role: "user", content: "Ready." },
+  ], {
+    add_generation_prompt: true,
+    tokenize: true,
+    return_tensor: true,
+    return_dict: true,
+  });
+  let output: unknown;
+  const compileStartedAt = performance.now();
+  try {
+    // One deterministic token exercises the embedding and decoder WebGPU
+    // pipelines without using any user or tenant content.
+    output = await model.generate({
+      ...inputs,
+      max_new_tokens: 1,
+      do_sample: false,
+    });
+    runtimePrewarmed = true;
+  } finally {
+    disposeLocalModelValueV1(output);
+    disposeLocalModelInputsV1(inputs as unknown as Record<string, unknown>);
+  }
+  const completedAt = performance.now();
+  return {
+    runtimeState: "prewarmed",
+    runtimeLoadMs: Math.max(0, loadedAt - loadStartedAt),
+    compileMs: Math.max(0, completedAt - compileStartedAt),
+    totalMs: Math.max(0, completedAt - queuedAt),
+  };
+}
+
+/** Preload weights and compile WebGPU kernels in this retained offscreen realm. */
+export function prewarmLocalModelRuntimeV1(): Promise<LocalModelPrewarmReceiptV1> {
+  if (runtimePrewarmed) {
+    return Promise.resolve({
+      runtimeState: "already-warm",
+      runtimeLoadMs: 0,
+      compileMs: 0,
+      totalMs: 0,
+    });
+  }
+  if (prewarmPromise) return prewarmPromise;
+  const queuedAt = performance.now();
+  const task = generationQueue.then(
+    () => runPrewarmV1(queuedAt),
+    () => runPrewarmV1(queuedAt),
+  );
+  generationQueue = task.then(() => undefined, () => undefined);
+  prewarmPromise = task.finally(() => {
+    prewarmPromise = undefined;
+  });
+  return prewarmPromise;
+}
 
 function postPortV1(port: MessagePort, response: LocalModelPortResponseV1): void {
   port.postMessage(response);
@@ -302,6 +374,7 @@ async function generateV1(
         ...(request.requiredToolName ? { logits_processor: logitsProcessors } : {}),
       });
       modelGenerationCompletedAt = performance.now();
+      runtimePrewarmed = true;
     } catch (error) {
       const footprint = request.messages.map((message) =>
         `${message.role}:${message.content.length}`

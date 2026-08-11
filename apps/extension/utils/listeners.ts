@@ -43,6 +43,12 @@ export interface OffscreenListenerDeps {
     hints?: PdfCompileHints
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   runPdfCancel: (jobId: string) => Promise<boolean>;
+  prewarmLocalModel?: () => Promise<{
+    runtimeState: "already-warm" | "prewarmed";
+    runtimeLoadMs: number;
+    compileMs: number;
+    totalMs: number;
+  }>;
   prepareDocxRuntime?: (
     codeTheme?: CodeThemeId,
   ) => Promise<DocxRuntimePreparationMessage>;
@@ -372,6 +378,21 @@ export function handleOffscreenMessage(
       deps.runWasmAdd(message.a, message.b)
         .then((result) => sendResponse({ kind: "offscreen:wasm-add-result", ok: true, result }))
         .catch((err) => sendResponse({ kind: "offscreen:wasm-add-result", ok: false, error: toMessage(err) }));
+      break;
+    case "offscreen:local-model-prewarm":
+      (deps.prewarmLocalModel
+        ? deps.prewarmLocalModel()
+        : Promise.reject(new Error("Local model prewarm is not configured.")))
+        .then((receipt) => sendResponse({
+          kind: "offscreen:local-model-prewarm-result",
+          ok: true,
+          ...receipt,
+        }))
+        .catch((error) => sendResponse({
+          kind: "offscreen:local-model-prewarm-result",
+          ok: false,
+          error: toMessage(error),
+        }));
       break;
     case "offscreen:pdf-compile":
       deps.runPdfCompile(message.jobId, { job: message.job, pages: message.pages })
