@@ -805,8 +805,39 @@ describe("portable Research screen", () => {
       downloadMarkdown: async () => undefined,
     };
     const chat = fakeChatPort({
-      async startTurn(input) {
+      async startTurn(input, stream) {
         starts.push(input.qualityPolicy.mode);
+        stream?.onSessionStart?.({
+          conversationId: "chat-conversation:local-progress",
+          turnId: "chat-turn:local-progress",
+        });
+        stream?.onEvent?.({
+          kind: "activity",
+          seq: 1,
+          at: "2026-08-11T12:00:00.000Z",
+          code: "strategy",
+          status: "completed",
+        });
+        stream?.onEvent?.({
+          kind: "capability",
+          seq: 2,
+          at: "2026-08-11T12:00:00.001Z",
+          callId: "atlassian.bound.read:1",
+          toolId: "atlassian.bound.read",
+          inputKind: "detail",
+          status: "completed",
+          itemCount: 1,
+          itemLabels: ["Design"],
+          truncated: false,
+          durationMs: 42,
+        });
+        stream?.onEvent?.({
+          kind: "activity",
+          seq: 3,
+          at: "2026-08-11T12:00:00.043Z",
+          code: "synthesis",
+          status: "started",
+        });
         return chatAnswer;
       },
     });
@@ -842,6 +873,18 @@ describe("portable Research screen", () => {
     expect(starts).toEqual(["quick"]);
     expect(dom.find("research-chat-answer").textContent)
       .toContain("The shared Chat port answered");
+    expect(dom.find("research-activity").textContent).toContain(
+      "The content and structure of “Design” are available for the answer.",
+    );
+    expect(dom.find("research-activity").textContent).toContain(
+      "The source was read completely.",
+    );
+    expect(dom.find("research-activity").textContent).toContain(
+      "Read completed in 42 ms.",
+    );
+    expect(dom.find("research-activity").textContent).not.toContain(
+      "The available evidence is being matched to the question.",
+    );
   });
 
   it("rechecks a completed local Gemma installation when Chat submits", async () => {

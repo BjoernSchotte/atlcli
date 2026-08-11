@@ -286,6 +286,7 @@ function researchActivityMessage(
 function researchActivityDetailMessages(
   events: readonly ResearchTimelineEventV1[],
   t: ReturnType<typeof useT>,
+  exactBoundLabel?: string,
 ): string[] {
   const messages = events.flatMap((event): string[] => {
     if (event.kind === "chat-presentation") return [];
@@ -293,6 +294,22 @@ function researchActivityDetailMessages(
       if (event.status === "failed") return [t("research.chat.detail.readFailed")];
       if (event.status !== "completed") return [];
       const count = String(event.itemCount ?? 0);
+      const readOutcome = (): string[] => [
+        ...(event.truncated === false
+          ? [t("research.chat.detail.readComplete")]
+          : event.truncated === true
+            ? [t("research.chat.detail.readProjected")]
+            : []),
+        ...(event.durationMs === undefined
+          ? []
+          : event.durationMs < 1_000
+            ? [t("research.chat.detail.readDurationMs", {
+                milliseconds: String(Math.max(0, Math.round(event.durationMs))),
+              })]
+            : [t("research.chat.detail.readDurationSeconds", {
+                seconds: String(Math.max(1, Math.round(event.durationMs / 1_000))),
+              })]),
+      ];
       if (event.toolId === "wiki.search" || event.toolId === "wiki.space.search") {
         if (event.itemLabels?.length) {
           return event.itemLabels.map((label) => t("research.chat.detail.foundItem", { label }));
@@ -300,13 +317,17 @@ function researchActivityDetailMessages(
         return [t("research.chat.detail.confluenceFound", { count })];
       }
       if (event.toolId === "wiki.page.get") {
-        return [t("research.chat.detail.confluenceRead")];
+        return [t("research.chat.detail.confluenceRead"), ...readOutcome()];
       }
       if (event.toolId === "atlassian.bound.read") {
-        if (event.itemLabels?.length) {
-          return event.itemLabels.map((label) => t("research.chat.detail.boundRead", { label }));
+        const labels = exactBoundLabel ? [exactBoundLabel] : event.itemLabels;
+        if (labels?.length) {
+          return [
+            ...labels.map((label) => t("research.chat.detail.boundRead", { label })),
+            ...readOutcome(),
+          ];
         }
-        return [t("research.chat.detail.boundReadGeneric")];
+        return [t("research.chat.detail.boundReadGeneric"), ...readOutcome()];
       }
       if (event.toolId === "atlassian.bound.section.read") {
         if (event.itemLabels?.length) {
@@ -321,7 +342,7 @@ function researchActivityDetailMessages(
         return [t("research.chat.detail.jiraFound", { count })];
       }
       if (event.toolId === "jira.issue.get") {
-        return [t("research.chat.detail.jiraRead")];
+        return [t("research.chat.detail.jiraRead"), ...readOutcome()];
       }
       if (event.toolId === "research.candidate.rank") {
         if (event.itemLabels?.length) {
@@ -1205,9 +1226,11 @@ function ResearchStreamingTurn({
           const active = running && index === displaySteps.length - 1;
           const details = exactPage && step.kind === "confluence-search"
             ? [t("research.chat.detail.confluenceContextSelected")]
-            : exactPage && step.kind === "bound-read"
-              ? [t("research.chat.detail.boundRead", { label: exactPage.name })]
-              : researchActivityDetailMessages(step.events, t);
+            : researchActivityDetailMessages(
+                step.events,
+                t,
+                exactPage && step.kind === "bound-read" ? exactPage.name : undefined,
+              );
           if (step.kind === "planning") {
             details.push(exactPage
               ? t("research.chat.detail.planExactContext", { name: exactPage.name })
