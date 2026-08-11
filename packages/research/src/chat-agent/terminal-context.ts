@@ -20,7 +20,7 @@ const CHAT_TERMINAL_EVIDENCE_CHUNK_CHARS_V1 = 6_000;
 const CHAT_TERMINAL_EVIDENCE_CHUNK_OVERLAP_CHARS_V1 = 320;
 const CHAT_TERMINAL_EVIDENCE_MAX_BATCHES_V1 = 24;
 const CHAT_TERMINAL_PACKET_REDUCTION_CHARS_V1 = 7_000;
-const CHAT_TERMINAL_PACKET_REDUCTION_ROUNDS_V1 = 5;
+const CHAT_TERMINAL_PACKET_TARGET_CHARS_V1 = 5_800;
 const CHAT_TERMINAL_DIRECT_SNIPPET_CHARS_V1 = 1_400;
 const CHAT_TERMINAL_DIRECT_SNIPPET_OVERLAP_CHARS_V1 = 160;
 const CHAT_TERMINAL_DIRECT_MAX_SNIPPETS_V1 = 4;
@@ -378,6 +378,163 @@ function mergePacketsV1(packets: readonly ChatEvidencePacketV1[]): ChatEvidenceP
   };
 }
 
+function hostTerminalSegmentsV1(text: string): string[] {
+  const segments: string[] = [];
+  let remaining = text.trim();
+  while (remaining) {
+    if (remaining.length <= 340) {
+      segments.push(remaining);
+      break;
+    }
+    const window = remaining.slice(0, 341);
+    const boundary = Math.max(
+      window.lastIndexOf("\n"),
+      window.lastIndexOf(". "),
+      window.lastIndexOf("; "),
+      window.lastIndexOf(" "),
+    );
+    const splitAt = boundary >= 180 ? boundary + 1 : 340;
+    const segment = remaining.slice(0, splitAt).trim();
+    if (segment) segments.push(segment);
+    remaining = remaining.slice(splitAt).trim();
+  }
+  return segments;
+}
+
+function representativeTerminalClaimsV1(input: {
+  question: string;
+  sourceId: string;
+  sourceRefs: readonly string[];
+  text: string;
+  maximumClaims?: number;
+}): ChatEvidencePacketV1["claims"] {
+  const segments = hostTerminalSegmentsV1(input.text);
+  if (segments.length === 0) return [];
+  const questionTerms = lexicalTermsV1(input.question);
+  const ranked = segments.map((text, index) => ({
+    text,
+    index,
+    score: [...questionTerms].reduce((total, term) =>
+      total + (lexicalTermsV1(text).has(term) ? 1 : 0), 0),
+  }));
+  const selected = new Map<number, (typeof ranked)[number]>();
+  const maximumClaims = Math.max(1, Math.min(12, input.maximumClaims ?? 4));
+  const admit = (candidate: (typeof ranked)[number] | undefined): void => {
+    if (!candidate || selected.size >= maximumClaims) return;
+    selected.set(candidate.index, candidate);
+  };
+  admit(ranked[0]);
+  admit(ranked.at(-1));
+  for (const candidate of [...ranked]
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index)) {
+    admit(candidate);
+  }
+  if (selected.size < maximumClaims && ranked.length > selected.size) {
+    for (let slot = 1; slot < maximumClaims - 1; slot += 1) {
+      admit(ranked[Math.round(slot * (ranked.length - 1) / (maximumClaims - 1))]);
+    }
+  }
+  const sourceRefs = input.sourceRefs.filter(Boolean);
+  return [...selected.values()]
+    .sort((left, right) => left.index - right.index)
+    .map((candidate) => ({
+      text: candidate.text,
+      sourceIds: [input.sourceId],
+      sourceRefs: sourceRefs.length > 0 ? [...sourceRefs] : [input.sourceId],
+    }));
+}
+
+function recoverTerminalEvidencePacketV1(humanContent: string): ChatEvidencePacketV1 | undefined {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(humanContent);
+  } catch {
+    return undefined;
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const record = payload as Record<string, unknown>;
+  if (record.schema === "atlcli.chat-terminal-evidence-batch/v1") {
+    const source = record.source && typeof record.source === "object" &&
+        !Array.isArray(record.source)
+      ? record.source as Record<string, unknown>
+      : undefined;
+    const fragment = record.fragment && typeof record.fragment === "object" &&
+        !Array.isArray(record.fragment)
+      ? record.fragment as Record<string, unknown>
+      : undefined;
+    if (typeof source?.id !== "string" || typeof fragment?.text !== "string") {
+      return undefined;
+    }
+    const refs = Array.isArray(record.allowedSourceRefs)
+      ? record.allowedSourceRefs.filter((value): value is string => typeof value === "string")
+      : [source.id];
+    const packet: ChatEvidencePacketV1 = {
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: [source.id],
+      claims: representativeTerminalClaimsV1({
+        question: typeof record.question === "string" ? record.question : "",
+        sourceId: source.id,
+        sourceRefs: refs,
+        text: fragment.text,
+      }),
+      relationships: [],
+      gaps: fragment.sourceProjectionTruncated === true
+        ? ["The attached source fragment was truncated by the source reader."]
+        : [],
+    };
+    return parseChatSubagentResultV1(
+      "exact-context-reader",
+      packet,
+    ) as ChatEvidencePacketV1;
+  }
+  if (record.schema === "atlcli.chat-terminal-evidence-reduction/v1" &&
+      Array.isArray(record.packets)) {
+    const packets = record.packets.flatMap((candidate) => {
+      try {
+        return [parseChatSubagentResultV1(
+          "exact-context-reader",
+          candidate,
+        ) as ChatEvidencePacketV1];
+      } catch {
+        return [];
+      }
+    });
+    if (packets.length === 0) return undefined;
+    const merged = mergePacketsV1(packets);
+    const claims = merged.claims;
+    if (JSON.stringify(merged).length <= CHAT_TERMINAL_PACKET_REDUCTION_CHARS_V1) {
+      return merged;
+    }
+    const selected = new Map<number, (typeof claims)[number]>();
+    for (const sourceId of merged.sourceIds) {
+      const index = claims.findIndex((claim) => claim.sourceIds.includes(sourceId));
+      if (index >= 0) selected.set(index, claims[index]!);
+    }
+    const questionTerms = lexicalTermsV1(
+      typeof record.question === "string" ? record.question : "",
+    );
+    for (const entry of claims
+      .map((claim, index) => ({ claim, index, score: [...questionTerms].reduce(
+        (total, term) => total + (lexicalTermsV1(claim.text).has(term) ? 1 : 0),
+        0,
+      ) }))
+      .sort((left, right) => right.score - left.score || left.index - right.index)) {
+      if (selected.size >= 12) break;
+      selected.set(entry.index, entry.claim);
+    }
+    return {
+      ...merged,
+      claims: [...selected.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, claim]) => claim),
+      relationships: merged.relationships.slice(0, 8),
+      gaps: merged.gaps.slice(0, 8),
+    };
+  }
+  return undefined;
+}
+
 async function invokeEvidencePacketV1(input: {
   model: BaseChatModel;
   humanContent: string;
@@ -431,28 +588,161 @@ async function invokeEvidencePacketV1(input: {
       parseFailure = error;
     }
   }
+  const recovered = recoverTerminalEvidencePacketV1(input.humanContent);
+  if (recovered) {
+    console.warn("[local-gemma/terminal-context] used host evidence projection", {
+      toolName: input.toolName,
+      claimCount: recovered.claims.length,
+      sourceCount: recovered.sourceIds.length,
+      gapCount: recovered.gaps.length,
+      modelError: parseFailure instanceof Error
+        ? parseFailure.message
+        : "missing structured evidence packet",
+    });
+    return recovered;
+  }
   throw parseFailure ?? new ChatContractError(
     "invalid-report",
     "The local terminal-context compiler returned no structured evidence packet.",
   );
 }
 
-function reductionGroupsV1(packets: readonly ChatEvidencePacketV1[]): ChatEvidencePacketV1[][] {
-  const groups: ChatEvidencePacketV1[][] = [];
-  let current: ChatEvidencePacketV1[] = [];
-  let currentChars = 0;
-  for (const packet of packets) {
-    const chars = JSON.stringify(packet).length;
-    if (current.length > 0 && currentChars + chars > CHAT_TERMINAL_PACKET_REDUCTION_CHARS_V1) {
-      groups.push(current);
-      current = [];
-      currentChars = 0;
-    }
-    current.push(packet);
-    currentChars += chars;
+function compactTerminalPacketV1(input: {
+  packet: ChatEvidencePacketV1;
+  question: string;
+}): ChatEvidencePacketV1 {
+  if (
+    JSON.stringify(input.packet).length <= CHAT_TERMINAL_PACKET_TARGET_CHARS_V1 &&
+    input.packet.sourceIds.length <= 24 &&
+    input.packet.claims.length <= 12 &&
+    input.packet.relationships.length <= 8 &&
+    input.packet.gaps.length <= 8
+  ) {
+    return input.packet;
   }
-  if (current.length > 0) groups.push(current);
-  return groups;
+  const claims = input.packet.claims;
+  const candidateIndexes: number[] = [];
+  const seenIndexes = new Set<number>();
+  const maximumClaims = 12;
+  const admit = (index: number): void => {
+    if (index < 0 || candidateIndexes.length >= maximumClaims || seenIndexes.has(index)) {
+      return;
+    }
+    seenIndexes.add(index);
+    candidateIndexes.push(index);
+  };
+  for (const sourceId of input.packet.sourceIds) {
+    admit(claims.findIndex((claim) => claim.sourceIds.includes(sourceId)));
+    const reverseIndex = [...claims].reverse().findIndex((claim) =>
+      claim.sourceIds.includes(sourceId)
+    );
+    if (reverseIndex >= 0) admit(claims.length - 1 - reverseIndex);
+  }
+  const questionTerms = lexicalTermsV1(input.question);
+  for (const entry of claims
+    .map((claim, index) => ({
+      index,
+      score: [...questionTerms].reduce((total, term) =>
+        total + (lexicalTermsV1(claim.text).has(term) ? 1 : 0), 0),
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index)) {
+    admit(entry.index);
+  }
+  if (candidateIndexes.length < maximumClaims && claims.length > candidateIndexes.length) {
+    for (let slot = 1; slot < maximumClaims - 1; slot += 1) {
+      admit(Math.round(slot * (claims.length - 1) / (maximumClaims - 1)));
+    }
+  }
+  const compacted: ChatEvidencePacketV1 = {
+    schema: "atlcli.chat-evidence-packet/v1",
+    sourceIds: [],
+    claims: [],
+    relationships: [],
+    gaps: [],
+  };
+  const acceptedClaimIndexes: number[] = [];
+  for (const index of candidateIndexes) {
+    const claim = claims[index]!;
+    const sourceIds = [...new Set(claim.sourceIds)].slice(0, 2);
+    if (sourceIds.length === 0) continue;
+    const sectionRef = claim.sourceRefs.find((ref) =>
+      sourceIds.some((sourceId) => ref.startsWith(`${sourceId}#`))
+    );
+    const sourceRef = sectionRef ?? claim.sourceRefs[0] ?? sourceIds[0]!;
+    const candidate = {
+      text: claim.text.slice(0, 320),
+      sourceIds,
+      sourceRefs: [sourceRef],
+    };
+    const next = {
+      ...compacted,
+      sourceIds: [...new Set([...compacted.sourceIds, ...sourceIds])],
+      claims: [...compacted.claims, candidate],
+    };
+    if (JSON.stringify(next).length <= CHAT_TERMINAL_PACKET_TARGET_CHARS_V1) {
+      compacted.sourceIds = next.sourceIds;
+      compacted.claims = next.claims;
+      acceptedClaimIndexes.push(index);
+    }
+  }
+  compacted.claims = compacted.claims
+    .map((claim, acceptedIndex) => ({
+      claim,
+      originalIndex: acceptedClaimIndexes[acceptedIndex]!,
+    }))
+    .sort((left, right) => left.originalIndex - right.originalIndex)
+    .map(({ claim }) => claim);
+  for (const relationship of input.packet.relationships.slice(0, 8)) {
+    const candidate = {
+      ...relationship,
+      kind: relationship.kind.slice(0, 120),
+      support: relationship.support.slice(0, 240),
+    };
+    const next = { ...compacted, relationships: [...compacted.relationships, candidate] };
+    if (JSON.stringify(next).length <= CHAT_TERMINAL_PACKET_TARGET_CHARS_V1) {
+      compacted.relationships = next.relationships;
+    }
+  }
+  for (const gap of input.packet.gaps.slice(0, 8)) {
+    const next = { ...compacted, gaps: [...compacted.gaps, gap.slice(0, 240)] };
+    if (JSON.stringify(next).length <= CHAT_TERMINAL_PACKET_TARGET_CHARS_V1) {
+      compacted.gaps = next.gaps;
+    }
+  }
+  return compacted;
+}
+
+function hostRepresentativeTerminalPacketV1(input: {
+  question: string;
+  evidence: readonly ResearchDetailEvidenceV1[];
+  readSections: readonly ResearchReadSectionReferenceV1[];
+}): ChatEvidencePacketV1 {
+  const refs = allowedRefsBySourceV1(input.evidence, input.readSections);
+  const maximumClaimsPerSource = Math.max(
+    2,
+    Math.floor(12 / Math.max(1, input.evidence.length)),
+  );
+  return compactTerminalPacketV1({
+    question: input.question,
+    packet: {
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: input.evidence.map((entry) => entry.source.id),
+      claims: input.evidence.flatMap((entry) => representativeTerminalClaimsV1({
+        question: input.question,
+        sourceId: entry.source.id,
+        sourceRefs: refs.get(entry.source.id) ?? [entry.source.id],
+        text: entry.content.text,
+        maximumClaims: maximumClaimsPerSource,
+      })),
+      relationships: [],
+      gaps: input.evidence.flatMap((entry) =>
+        entry.content.truncated
+          ? [`The attached source projection for ${entry.source.id} was truncated.`]
+          : []
+      ),
+    },
+  });
 }
 
 async function reducePacketsV1(input: {
@@ -464,46 +754,29 @@ async function reducePacketsV1(input: {
   signal?: AbortSignal;
   locale?: string;
 }): Promise<ChatEvidencePacketV1> {
-  let packets = [...input.packets];
-  for (let round = 0; round < CHAT_TERMINAL_PACKET_REDUCTION_ROUNDS_V1; round += 1) {
-    const merged = mergePacketsV1(packets);
-    if (JSON.stringify(merged).length <= CHAT_TERMINAL_PACKET_REDUCTION_CHARS_V1) {
-      return bindPacketReferencesV1({
-        packet: merged,
-        evidence: input.evidence,
-        readSections: input.readSections,
-      });
-    }
-    const groups = reductionGroupsV1(packets);
-    if (groups.length >= packets.length) break;
-    const reduced: ChatEvidencePacketV1[] = [];
-    for (const [groupIndex, group] of groups.entries()) {
-      const packet = await invokeEvidencePacketV1({
-        model: input.model,
-        signal: input.signal,
-        locale: input.locale,
-        toolName: "KiteweaveLocalTerminalEvidenceReduceV1",
-        humanContent: JSON.stringify({
-          schema: "atlcli.chat-terminal-evidence-reduction/v1",
-          question: input.question,
-          groupIndex,
-          groupCount: groups.length,
-          instruction: "Merge duplicate claims and retain question-relevant facts. Do not add claims or source references.",
-          packets: group,
-        }),
-      });
-      reduced.push(bindPacketReferencesV1({
-        packet,
-        evidence: input.evidence,
-        readSections: input.readSections,
-      }));
-    }
-    packets = reduced;
+  if (input.signal?.aborted) {
+    throw input.signal.reason ?? new DOMException("Cancelled", "AbortError");
   }
-  throw new ChatContractError(
-    "limit-exceeded",
-    "The local terminal evidence packet could not be reduced into the browser inference envelope.",
-  );
+  // Batch extraction already performed the semantic work. Reduction is only
+  // a browser-envelope concern, so keep it deterministic and source-bound
+  // instead of spending more local model calls on another fragile schema hop.
+  void input.model;
+  void input.locale;
+  const compacted = compactTerminalPacketV1({
+    packet: mergePacketsV1(input.packets),
+    question: input.question,
+  });
+  if (JSON.stringify(compacted).length > CHAT_TERMINAL_PACKET_REDUCTION_CHARS_V1) {
+    throw new ChatContractError(
+      "limit-exceeded",
+      "The local terminal evidence packet could not be compacted into the browser inference envelope.",
+    );
+  }
+  return bindPacketReferencesV1({
+    packet: compacted,
+    evidence: input.evidence,
+    readSections: input.readSections,
+  });
 }
 
 /**
@@ -559,6 +832,40 @@ export async function createChatLocalTerminalContextMessagesV1(input: {
     evidence,
     readSections,
   });
+  if (batches.length > 1) {
+    const packet = hostRepresentativeTerminalPacketV1({
+      question: input.question,
+      evidence,
+      readSections,
+    });
+    const packetChars = JSON.stringify(packet).length;
+    if (
+      packet.claims.length === 0 ||
+      packetChars > CHAT_TERMINAL_PACKET_REDUCTION_CHARS_V1
+    ) {
+      throw new ChatContractError(
+        "limit-exceeded",
+        "The local terminal evidence packet could not be compacted into the browser inference envelope.",
+      );
+    }
+    console.info("[local-gemma/terminal-context] representative projection selected", {
+      evidenceCount: evidence.length,
+      readSectionCount: readSections.length,
+      batchCount: batches.length,
+      packetChars,
+      claimCount: packet.claims.length,
+    });
+    return [new HumanMessage(JSON.stringify({
+      schema: "atlcli.chat-terminal-context/v1",
+      question: input.question,
+      evidencePacket: packet,
+      instruction: [
+        "Return one complete ChatAnswerDraftV2 from this representative projection of the already-read evidence.",
+        CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1,
+        "Copy exact sourceRefs from evidencePacket; do not retrieve, call eval, or ask for preceding conversation messages.",
+      ].join(" "),
+    }))];
+  }
   const compilerStartedAt = Date.now();
   console.info("[local-gemma/terminal-context] compilation started", {
     question: input.question,

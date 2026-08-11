@@ -2085,6 +2085,146 @@ describe("Chat agentic workflow runtime", () => {
     expect(harness.broker.readSectionReferenceLedger()).toHaveLength(1);
   });
 
+  test("projects cached source evidence when local exact-reader schemas fail without replaying its bounded page read", async () => {
+    let pageReads = 0;
+    let exactChildAttempts = 0;
+    let extractionAttempts = 0;
+    let anchorRef = "";
+    let acquireTool: { invoke(value: unknown): Promise<unknown> } | undefined;
+    const extractionModel = {
+      withStructuredOutput: (schema: unknown) => ({
+        invoke: async () => {
+          extractionAttempts += 1;
+          expect(schema).toMatchObject({
+            title: "KiteweaveLocalExactEvidenceV1",
+            required: ["claims"],
+          });
+          throw new Error(
+            "Failed to parse structured output for tool 'KiteweaveExactEvidenceExtractionV1'.",
+          );
+        },
+      }),
+    } as unknown as BaseChatModel;
+    const exactRequest: ResearchRequestV1 = {
+      ...request,
+      question: "Summarize the attached Confluence page.",
+      scope: {
+        ...request.scope,
+        confluenceSpaceKeys: ["DEMO"],
+      },
+      scopeSeeds: [{
+        binding: {
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:current:workflow-page-1004",
+          tenantOrigin: request.scope.siteOrigin,
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:workflow-page-1004",
+          key: "1004",
+          name: "Long attached page",
+          source: "current_context",
+          authority: "approved",
+        },
+        precedence: 300,
+      }],
+      exactContextProducts: ["confluence"],
+    };
+    const harness = createHarness({
+      researchRequest: exactRequest,
+      withRetrievalAssessment: true,
+      modelForRoute: (request) => ({
+        model: extractionModel,
+        effectiveModelId: "fixture/local-gemma",
+        requestedPreference: request.preference,
+        effectivePreference: request.preference,
+        thinkingMode: "disabled",
+        finalizationCorridor: "standard",
+      }),
+      readProviders: {
+        ...providers,
+        wiki: {
+          ...providers.wiki,
+          async getPage({ contentId }) {
+            pageReads += 1;
+            return {
+              contentId,
+              spaceKey: "DEMO",
+              title: "Long attached page",
+              content: {
+                text: `Bounded page evidence. ${"x".repeat(11_000)}`,
+                linkTargets: [],
+                truncated: false,
+                inputBytes: 11_023,
+              },
+            };
+          },
+        },
+      },
+      async invoke(taskInput) {
+        if (taskInput.subagent_type !== "chat-exact-context-reader-v1") {
+          return analysisPacket();
+        }
+        exactChildAttempts += 1;
+        if (!acquireTool || !anchorRef) throw new Error("missing exact acquisition fixture");
+        await acquireTool.invoke({ anchorRefs: [anchorRef] });
+        throw new Error(
+          "Chat subagent exact-context-reader returned an invalid structured packet.",
+        );
+      },
+    });
+    anchorRef = harness.broker.exactAnchors()[0]?.anchorRef ?? "";
+    const exactReader = harness.compiledSubagents.find((entry) =>
+      entry.name === "chat-exact-context-reader-v1"
+    );
+    acquireTool = exactReader?.tools?.find((candidate) =>
+      Boolean(candidate && typeof candidate === "object" &&
+        (candidate as { name?: unknown }).name === "chat_exact_context_acquire")
+    ) as typeof acquireTool;
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [{
+        taskId: "task:exact",
+        profileId: "exact-context-reader",
+        objective: "Summarize the attached Confluence page from its bounded evidence.",
+        dependencyTaskIds: [],
+      }, ...qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Analyze the bounded exact evidence.",
+        dependencyTaskIds: ["task:exact"],
+      }])],
+      maxConcurrency: 1,
+    }));
+    const exactDispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:exact"
+    );
+    if (!exactDispatch) throw new Error("missing exact dispatch");
+
+    const projected = await invokeDispatch(harness.runtime, exactDispatch) as {
+      schema: string;
+      sourceIds: string[];
+      claims: Array<{ text: string; sourceIds: string[]; sourceRefs: string[] }>;
+      relationships: unknown[];
+      gaps: string[];
+    };
+    expect(projected).toMatchObject({
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: ["wiki:1004"],
+      relationships: [],
+      gaps: [],
+    });
+    expect(projected.claims[0]).toMatchObject({
+      text: expect.stringContaining("Bounded page evidence."),
+      sourceIds: ["wiki:1004"],
+      sourceRefs: ["wiki:1004"],
+    });
+    expect(projected.claims.length).toBeGreaterThan(1);
+    expect({ exactChildAttempts, extractionAttempts, pageReads }).toEqual({
+      exactChildAttempts: 1,
+      extractionAttempts: 1,
+      pageReads: 1,
+    });
+  });
+
   test("marks an interrupted exact extraction outcome unknown without retrying it", async () => {
     let pageReads = 0;
     let extractionAttempts = 0;

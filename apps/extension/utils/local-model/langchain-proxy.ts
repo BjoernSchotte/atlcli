@@ -27,6 +27,7 @@ import {
   type LocalModelChatMessageV1,
   type LocalModelPortRequestV1,
   type LocalModelPortResponseV1,
+  type LocalModelToolCallV1,
   type LocalModelToolV1,
 } from "./protocol.js";
 import { projectLocalGemmaToolProtocolV1 } from "./tool-protocol.js";
@@ -203,6 +204,74 @@ function toLocalToolsV1(
       },
     };
   });
+}
+
+const LOCAL_GEMMA_ANSWER_ASSERTIONS_V1 = new Set([
+  "positive",
+  "absence",
+  "none",
+]);
+const LOCAL_GEMMA_ANSWER_SCOPES_V1 = new Set([
+  "none",
+  "source",
+  "selected-sources",
+  "bound-scope",
+]);
+
+/**
+ * Repair only the small set of schema-equivalent shortcuts observed from the
+ * pinned local Gemma model. DeepAgents still receives the canonical tool call
+ * and performs its normal schema/evidence validation. Explicit but unknown
+ * values remain untouched so this adapter cannot turn arbitrary malformed
+ * output into an accepted answer.
+ */
+export function normalizeLocalGemmaToolCallV1(
+  call: LocalModelToolCallV1,
+): LocalModelToolCallV1 {
+  if (call.name !== "ChatAnswerDraftV2") return call;
+  const blocks = Array.isArray(call.arguments.blocks)
+    ? call.arguments.blocks.map((value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+          return value;
+        }
+        const block = value as Record<string, unknown>;
+        const sourceRefs = Array.isArray(block.sourceRefs)
+          ? block.sourceRefs.filter((sourceRef) =>
+              typeof sourceRef === "string" && sourceRef.trim().length > 0
+            )
+          : [];
+        const assertion = typeof block.assertion === "string" &&
+            LOCAL_GEMMA_ANSWER_ASSERTIONS_V1.has(block.assertion)
+          ? block.assertion
+          : block.assertion === undefined
+            ? sourceRefs.length > 0 ? "positive" : "none"
+            : block.assertion;
+        const scope = typeof block.scope === "string" &&
+            LOCAL_GEMMA_ANSWER_SCOPES_V1.has(block.scope)
+          ? block.scope
+          : block.scope === undefined
+            ? assertion === "absence" ? "source" : "none"
+            : block.scope;
+        return { ...block, assertion, scope };
+      })
+    : call.arguments.blocks;
+  return {
+    ...call,
+    arguments: {
+      ...call.arguments,
+      ...(blocks === undefined ? {} : { blocks }),
+      // Gemma 4 E4B occasionally uses numeric zero as an empty collection.
+      // This is unambiguous only for zero; every other non-array value remains
+      // invalid and is rejected by the canonical structured-output schema.
+      ...(call.arguments.gaps === 0 ? { gaps: [] } : {}),
+    },
+  };
+}
+
+function normalizeLocalGemmaToolCallsV1(
+  calls: LocalModelToolCallV1[],
+): LocalModelToolCallV1[] {
+  return calls.map(normalizeLocalGemmaToolCallV1);
 }
 
 class LocalGemmaPortClientV1 {
@@ -406,6 +475,7 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
       if (response.kind === "complete") final = response;
     }
     if (!final) throw new Error("Local Gemma ended without a terminal response.");
+    const toolCalls = normalizeLocalGemmaToolCallsV1(final.toolCalls);
     if (previewMarkdown) {
       this.#publishAnswerPreview?.({
         generationId: final.requestId,
@@ -418,10 +488,10 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
         text: final.text,
         message: new AIMessage({
           content: final.text,
-          additional_kwargs: final.thought && final.toolCalls.length > 0
+          additional_kwargs: final.thought && toolCalls.length > 0
             ? { localGemmaThought: final.thought }
             : {},
-          tool_calls: final.toolCalls.map((call) => ({
+          tool_calls: toolCalls.map((call) => ({
             id: call.id,
             name: call.name,
             args: call.arguments,
@@ -464,6 +534,7 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
           message: new AIMessageChunk({ content: response.text }),
         });
       } else {
+        const toolCalls = normalizeLocalGemmaToolCallsV1(response.toolCalls);
         if (previewMarkdown) {
           this.#publishAnswerPreview?.({
             generationId: response.requestId,
@@ -475,10 +546,10 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
           text: sawTextDelta ? "" : response.text,
           message: new AIMessageChunk({
             content: sawTextDelta ? "" : response.text,
-            additional_kwargs: response.thought && response.toolCalls.length > 0
+            additional_kwargs: response.thought && toolCalls.length > 0
               ? { localGemmaThought: response.thought }
               : {},
-            tool_call_chunks: response.toolCalls.map((call, index) => ({
+            tool_call_chunks: toolCalls.map((call, index) => ({
               id: call.id,
               name: call.name,
               args: JSON.stringify(call.arguments),

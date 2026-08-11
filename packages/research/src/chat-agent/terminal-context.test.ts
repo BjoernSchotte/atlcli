@@ -4,8 +4,10 @@ import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import type {
   ResearchCapabilityBroker,
   ResearchDetailEvidenceV1,
+  ResearchReadSectionReferenceV1,
 } from "../broker.js";
 import { ChatContractError } from "./contracts.js";
+import type { ChatEvidencePacketV1 } from "./workflow.js";
 import {
   buildChatLocalDirectEvidenceProjectionV1,
   buildChatTerminalEvidenceBatchesV1,
@@ -191,5 +193,176 @@ describe("local Chat terminal-context compiler", () => {
     expect(terminal.instruction).toContain("Judge coverage by meaning, not wording");
     expect(messages[0]!.text).not.toContain("explicitRequestChecklist");
     expect(messages[0]).toBeInstanceOf(HumanMessage);
+  });
+
+  test("projects already-read source fragments when local terminal packet output is malformed", async () => {
+    let calls = 0;
+    const model = {
+      bindTools: (tools: Array<{ function: { name: string } }>) => ({
+        invoke: async () => {
+          calls += 1;
+          return new AIMessage({
+            content: "",
+            tool_calls: [{
+              id: `call:malformed:${calls}`,
+              name: tools[0]!.function.name,
+              args: {
+                schema: "atlcli.chat-evidence-packet/v1",
+                sourceIds: [source.id],
+              },
+            }],
+          });
+        },
+      }),
+    } as unknown as BaseChatModel;
+    const body = [
+      `PAGE-START ${"a".repeat(1_500)}`,
+      `PAGE-MIDDLE ${"b".repeat(1_500)}`,
+      "PAGE-END",
+    ].join("\n");
+    const broker = {
+      detailEvidenceLedger: () => [evidence(body)],
+      readSectionReferenceLedger: () => [],
+    } as unknown as ResearchCapabilityBroker;
+
+    const messages = await createChatLocalTerminalContextMessagesV1({
+      model,
+      broker,
+      question: "Gib mir eine Zusammenfassung der Seite.",
+      locale: "de-DE",
+    });
+
+    expect(calls).toBe(1);
+    const terminal = JSON.parse(messages[0]!.text) as {
+      evidencePacket: ChatEvidencePacketV1;
+    };
+    expect(terminal.evidencePacket.sourceIds).toEqual([source.id]);
+    expect(terminal.evidencePacket.claims.length).toBeGreaterThan(2);
+    expect(JSON.stringify(terminal.evidencePacket).length).toBeLessThanOrEqual(7_000);
+    expect(terminal.evidencePacket.claims.every((claim) =>
+      claim.sourceIds.length === 1 && claim.sourceIds[0] === source.id &&
+      claim.sourceRefs.length === 1 && claim.sourceRefs[0] === source.id
+    )).toBe(true);
+    const projected = terminal.evidencePacket.claims.map((claim) => claim.text).join("\n");
+    expect(projected).toContain("PAGE-START");
+    expect(projected).toContain("PAGE-END");
+  });
+
+  test("projects representative long-page evidence without extra local model calls", async () => {
+    let calls = 0;
+    const model = {
+      bindTools: (tools: Array<{ function: { name: string } }>) => ({
+        invoke: async () => {
+          calls += 1;
+          return new AIMessage({
+            content: "",
+            tool_calls: [{
+              id: `call:large:${calls}`,
+              name: tools[0]!.function.name,
+              args: {
+                schema: "atlcli.chat-evidence-packet/v1",
+                sourceIds: [source.id],
+                claims: Array.from({ length: 12 }, (_, index) => ({
+                  text: `Batch ${calls} claim ${index} ${"x".repeat(320)}`,
+                  sourceIds: [source.id],
+                  sourceRefs: [source.id],
+                })),
+                relationships: [],
+                gaps: [],
+              },
+            }],
+          });
+        },
+      }),
+    } as unknown as BaseChatModel;
+    const longBody = [
+      `PAGE-START ${"a".repeat(6_200)}`,
+      `PAGE-MIDDLE ${"b".repeat(6_200)}`,
+      "PAGE-END",
+    ].join("\n");
+    const broker = {
+      detailEvidenceLedger: () => [evidence(longBody)],
+      readSectionReferenceLedger: () => [],
+    } as unknown as ResearchCapabilityBroker;
+
+    const messages = await createChatLocalTerminalContextMessagesV1({
+      model,
+      broker,
+      question: "Gib mir eine Zusammenfassung der Seite.",
+      locale: "de-DE",
+    });
+
+    expect(calls).toBe(0);
+    const terminal = JSON.parse(messages[0]!.text) as {
+      evidencePacket: ChatEvidencePacketV1;
+    };
+    expect(terminal.evidencePacket.claims.length).toBeLessThanOrEqual(12);
+    expect(JSON.stringify(terminal.evidencePacket).length).toBeLessThanOrEqual(7_000);
+    const projected = terminal.evidencePacket.claims.map((claim) => claim.text).join("\n");
+    expect(projected).toContain("PAGE-START");
+    expect(projected).toContain("b".repeat(100));
+    expect(projected).toContain("PAGE-END");
+  });
+
+  test("fits the full serialized packet when valid claims repeat long section refs", async () => {
+    let calls = 0;
+    const sections: ResearchReadSectionReferenceV1[] = Array.from(
+      { length: 8 },
+      (_, index) => ({
+        sourceId: source.id,
+        sectionId: `${index}-${"s".repeat(180)}`,
+        heading: `Section ${index}`,
+        order: index,
+      }),
+    );
+    const allowedRefs = sections.map((section) =>
+      `${section.sourceId}#${section.sectionId}`
+    );
+    const model = {
+      bindTools: (tools: Array<{ function: { name: string } }>) => ({
+        invoke: async () => {
+          calls += 1;
+          return new AIMessage({
+            content: "",
+            tool_calls: [{
+              id: "call:long-refs",
+              name: tools[0]!.function.name,
+              args: {
+                schema: "atlcli.chat-evidence-packet/v1",
+                sourceIds: [source.id],
+                claims: Array.from({ length: 12 }, (_, index) => ({
+                  text: `Claim ${index} ${"x".repeat(340)}`,
+                  sourceIds: [source.id],
+                  sourceRefs: allowedRefs,
+                })),
+                relationships: [],
+                gaps: [],
+              },
+            }],
+          });
+        },
+      }),
+    } as unknown as BaseChatModel;
+    const broker = {
+      detailEvidenceLedger: () => [evidence("Short authoritative evidence.")],
+      readSectionReferenceLedger: () => sections,
+    } as unknown as ResearchCapabilityBroker;
+
+    const messages = await createChatLocalTerminalContextMessagesV1({
+      model,
+      broker,
+      question: "Explain the evidence.",
+      locale: "en-US",
+    });
+
+    expect(calls).toBe(1);
+    const terminal = JSON.parse(messages[0]!.text) as {
+      evidencePacket: ChatEvidencePacketV1;
+    };
+    expect(terminal.evidencePacket.claims.length).toBeGreaterThan(0);
+    expect(JSON.stringify(terminal.evidencePacket).length).toBeLessThanOrEqual(5_800);
+    expect(terminal.evidencePacket.claims.every((claim) =>
+      claim.sourceRefs.length === 1 && allowedRefs.includes(claim.sourceRefs[0]!)
+    )).toBe(true);
   });
 });

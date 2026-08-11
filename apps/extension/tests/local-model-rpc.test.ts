@@ -12,6 +12,7 @@ import {
 } from "../utils/local-model/gemma-response.js";
 import {
   createLocalGemmaChatModelBindingV1,
+  normalizeLocalGemmaToolCallV1,
   toLocalModelMessagesV1,
 } from "../utils/local-model/langchain-proxy.js";
 import {
@@ -129,6 +130,64 @@ describe("pinned Gemma 4 response grammar", () => {
 });
 
 describe("local model RPC boundary", () => {
+  it("normalizes the pinned Gemma empty-gap and omitted block metadata shortcuts", () => {
+    expect(normalizeLocalGemmaToolCallV1({
+      id: "answer-1",
+      name: "ChatAnswerDraftV2",
+      arguments: {
+        blocks: [{
+          markdown: "1. A source-bound answer.",
+          sourceRefs: ["wiki:1172799499"],
+        }, {
+          markdown: "A short heading",
+          sourceRefs: [],
+        }],
+        gaps: 0,
+      },
+    })).toEqual({
+      id: "answer-1",
+      name: "ChatAnswerDraftV2",
+      arguments: {
+        blocks: [{
+          markdown: "1. A source-bound answer.",
+          sourceRefs: ["wiki:1172799499"],
+          assertion: "positive",
+          scope: "none",
+        }, {
+          markdown: "A short heading",
+          sourceRefs: [],
+          assertion: "none",
+          scope: "none",
+        }],
+        gaps: [],
+      },
+    });
+  });
+
+  it("does not normalize explicit unknown answer metadata", () => {
+    expect(normalizeLocalGemmaToolCallV1({
+      id: "answer-invalid",
+      name: "ChatAnswerDraftV2",
+      arguments: {
+        blocks: [{
+          markdown: "Invalid metadata stays invalid.",
+          sourceRefs: [],
+          assertion: "maybe",
+          scope: "everywhere",
+        }],
+        gaps: 1,
+      },
+    }).arguments).toEqual({
+      blocks: [{
+        markdown: "Invalid metadata stays invalid.",
+        sourceRefs: [],
+        assertion: "maybe",
+        scope: "everywhere",
+      }],
+      gaps: 1,
+    });
+  });
+
   it("retains private Gemma thought only inside the active tool-calling turn", () => {
     const messages = toLocalModelMessagesV1([
       new AIMessage({
