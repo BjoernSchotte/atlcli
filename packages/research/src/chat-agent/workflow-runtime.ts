@@ -57,7 +57,6 @@ import {
 } from "./contracts.js";
 import { createChatPtcToolsV1 } from "./retrieval.js";
 import { createChatPromptCacheMiddlewareV1 } from "./prompt-cache.js";
-import { deriveChatRequestChecklistV1 } from "./prompts.js";
 import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
 import type { ChatStrategyDecisionV1 } from "./strategy.js";
 import type {
@@ -106,7 +105,6 @@ export function minimalChatSubagentTaskContextV1(
 ): string {
   return JSON.stringify({
     question,
-    explicitRequestChecklist: deriveChatRequestChecklistV1(question),
     exactAnchors: exactAnchors.map((anchor) => ({
       anchorRef: anchor.anchorRef,
       product: anchor.product,

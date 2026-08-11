@@ -1,6 +1,6 @@
 # Browser-local Gemma 4 E4B with Transformers.js implementation plan
 
-Status: **Proposed; Transformers.js selected; implementation has not started.**
+Status: **In progress; Transformers.js selected; local Chat checkpoint implemented and under live validation.**
 
 Planned against repository commit `878675a3` on 2026-08-10.
 
@@ -173,7 +173,7 @@ Primary model references:
 
 ### 4.2 Selected runtime
 
-Use **`@huggingface/transformers` 4.1.x**, pinned to an exact version, with its
+Use **`@huggingface/transformers` 4.2.x**, pinned to an exact version, with its
 ONNX Runtime Web WebGPU backend. Pin the resolved `onnxruntime-web` version in
 the lockfile and dependency policy as part of the same runtime revision.
 Transformers.js owns processor/tokenizer loading, the Gemma 4 chat template,
@@ -184,11 +184,14 @@ a second direct ONNX Runtime generation implementation.
 - [Transformers.js pipelines and streaming](https://huggingface.co/docs/transformers.js/en/pipelines)
 - [ONNX Runtime WebGPU guide](https://onnxruntime.ai/docs/tutorials/web/ep-webgpu.html)
 
-Transformers.js 4.1 added Gemma 4 and supports the tokenizer-level chat-template
-tool schema used by this adapter. Pin 4.1.0 with its resolved ONNX Runtime Web
-revision because that exact browser stack has live Gemma 4 extension evidence;
-the adapter does not depend on the 4.2 text-generation pipeline helper. These
-paths are recent and remain subject to the real extension proof. Treat
+Transformers.js 4.1 added Gemma 4 and the tokenizer-level chat-template tool
+schema used by this adapter. Pin 4.2.0 with its resolved ONNX Runtime Web
+revision: 4.2 initializes the empty KV cache from the decoder session's actual
+ONNX input metadata instead of reconstructing Gemma 4's shared, variable-width
+cache shapes from configuration. This is required by the live extension
+failure boundary observed near 4k input tokens. The adapter does not depend on
+the 4.2 text-generation pipeline helper. These paths remain subject to the real
+extension proof. Treat
 model/chat-template output as untrusted: translate valid
 model tool calls into LangChain `AIMessage.tool_calls`, return host-produced
 `ToolMessage` values, and let the existing Chat runtime retain authorization,
@@ -448,8 +451,36 @@ at Gemma's native `<|tool_response>` boundary so the host can execute the tool
 before generation continues.
 
 Use a conservative release corridor instead of advertising the model's nominal
-context limit. G0 freezes the initial maximum input, output, and retained
-conversation budget that works reliably in the packed extension.
+context limit. G0 currently caps one packed-extension invocation at 3,072 input
+tokens and 2,048 output tokens, with smaller role-specific output ceilings
+(including 768 for evidence extraction). These are local WebGPU execution
+limits, never token-usage or cost quotas. Recalibrate them only from named live
+evidence.
+
+Long retrieved documents must not be made to fit that per-generation envelope
+by a fixed first-N-character projection. For the final local
+`ChatAnswerDraftV2` call, add a host-owned **terminal context compiler** at the
+existing direct-Chat middleware boundary:
+
+1. keep the complete canonical DeepAgentsJS conversation and broker evidence
+   ledger unchanged;
+2. split every accepted detail-evidence body into bounded, overlapping browser
+   inference batches (currently 6,000 source characters per extraction call)
+   and fail explicitly if the declared batch ceiling is exceeded;
+3. use the same local LangChain model with a forced typed evidence-packet tool
+   to extract question-relevant claims from every batch sequentially;
+4. reduce large packet sets hierarchically against the current user question
+   and explicit request checklist;
+5. replace only the next local terminal model request's messages with one fresh
+   `atlcli.chat-terminal-context/v1` message; reuse that immutable projection
+   for the one terminal repair attempt.
+
+This is a local-provider context adapter, not a second agent or workflow. The
+root still chooses and invokes `eval`, QuickJS still executes the admitted host
+capabilities, DeepAgentsJS still owns the graph/checkpoint, and the existing
+host answer validator remains authoritative. Configure no such projection for
+Anthropic. Agentic Auto and Think-deeper trajectories continue through their
+existing typed specialist packets and synthesis path.
 
 ### 5.5 Model lifecycle and storage
 
@@ -847,6 +878,19 @@ Implementation:
 - [x] Apply the initial conservative local context/output corridor before ONNX
       execution, trigger root compaction from that operational capability, and
       fail early with an actionable error.
+- [x] Upgrade to Transformers.js 4.2.0 and its matched ONNX Runtime Web build so
+      Gemma 4 KV-cache inputs derive from actual decoder metadata; keep the
+      installed model-file inventory and cache URLs unchanged.
+- [x] Route extraction, planning, analysis, and finalization through distinct
+      output ceilings and keep terminal evidence batches below the measured
+      browser/WebGPU prompt boundary without dropping evidence.
+- [x] Add the local-only terminal context compiler to the existing direct Chat
+      middleware: process every accepted evidence chunk, hierarchically reduce
+      typed `ChatEvidencePacketV1` values, and replace only the final local
+      model request without mutating DeepAgents/checkpoint state.
+- [x] Remove the terminal first-N-character evidence shim; retain the generic
+      bounded intermediate tool-result projection used before the model has
+      completed retrieval.
 - [ ] Replace credential-only background/offscreen/worker messages with the
       discriminated internal run binding.
 - [ ] Resolve Anthropic credentials only for Anthropic requests and verified
@@ -868,6 +912,10 @@ Automated proof:
 - [ ] Codec fixtures cover system/user/assistant/tool messages, Unicode,
       streamed text, fragmented JSON, multiple tool calls, correlated results,
       malformed arguments, unknown tools, and abort.
+- [x] A real browser-runtime `runChatAgent` contract test proves direct local
+      retrieval, multiple full-evidence compiler batches, a fresh terminal
+      request with no retained raw tool transcript, exact evidence references,
+      and the canonical cited answer.
 - [ ] Contract tests run the real `runChatAgent` Quick, Auto-direct,
       Auto-agentic, Think-deeper-direct, and Think-deeper-agentic paths with the
       local binding and validate `ChatAnswerV1`/current canonical successor,

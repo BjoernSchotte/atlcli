@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-  projectLocalGemmaFinalToolResultV1,
-  projectLocalGemmaToolResultV1,
-} from
+import { projectLocalGemmaToolResultV1 } from
   "../utils/local-model/tool-result.js";
 
 describe("local Gemma evidence projection", () => {
@@ -106,38 +103,4 @@ describe("local Gemma evidence projection", () => {
     );
   });
 
-  it("uses a smaller evidence projection after the terminal tool is selected", () => {
-    const content = JSON.stringify({
-      schema: "atlcli.ptc/atlassian.bound.read.output/v1",
-      source: { id: "wiki:page-1", title: "Budget indication" },
-      content: {
-        text: `Budget 2026: 60,000-85,000 EUR. From 2027: 30,000 EUR. ${"x".repeat(4_000)}`,
-        linkTargets: Array.from({ length: 20 }, (_, index) => `link-${index}`),
-      },
-      relatedAnchors: Array.from({ length: 20 }, (_, index) => ({
-        anchorRef: `anchor-${index}`,
-        name: `Related ${index}`,
-      })),
-      document: {
-        totalSections: 40,
-        unreadSections: 0,
-        sections: Array.from({ length: 40 }, (_, index) => ({
-          sectionRef: `section-ref-${index}`,
-          sectionId: `section-${index}`,
-          heading: index === 39 ? "Budget 2026 and 2027" : `Heading ${index}`,
-          order: index,
-          contentBytes: 500,
-        })),
-      },
-    });
-
-    const projected = projectLocalGemmaFinalToolResultV1(content, "Budget 2026 2027");
-    expect(projected).toContain("60,000-85,000 EUR");
-    expect(projected).toContain("30,000 EUR");
-    expect(projected).not.toContain("section-ref-39");
-    expect(projected).not.toContain("anchor-0");
-    expect(projected).not.toContain("link-1");
-    expect(projected).toContain("wiki:page-1");
-    expect(projected.length).toBeLessThan(1_200);
-  });
 });

@@ -81,6 +81,34 @@ it("keeps the visible streamed answer until a replacement generation starts", ()
   }])).toBe("Validated replacement answer.");
 });
 
+it("shows each repeatable semantic phase once while retaining its latest position", () => {
+  const events = [
+    { kind: "phase", seq: 1, at: "2026-08-03T12:00:00.000Z", phase: "analyzing" },
+    {
+      kind: "capability",
+      seq: 2,
+      at: "2026-08-03T12:00:01.000Z",
+      toolId: "atlassian.bound.read",
+      status: "completed",
+    },
+    { kind: "phase", seq: 3, at: "2026-08-03T12:00:02.000Z", phase: "analyzing" },
+    { kind: "phase", seq: 4, at: "2026-08-03T12:00:03.000Z", phase: "rendering" },
+    { kind: "phase", seq: 5, at: "2026-08-03T12:00:04.000Z", phase: "checking" },
+    { kind: "phase", seq: 6, at: "2026-08-03T12:00:05.000Z", phase: "rendering" },
+  ] as Parameters<typeof researchTimelineSteps>[0];
+
+  const steps = researchTimelineSteps(events, true);
+  expect(steps.map((step) => step.kind)).toEqual([
+    "bound-read",
+    "analyzing",
+    "checking",
+    "synthesizing",
+  ]);
+  expect(steps.filter((step) => step.kind === "analyzing")).toHaveLength(1);
+  expect(steps.filter((step) => step.kind === "synthesizing")).toHaveLength(1);
+  expect(steps.find((step) => step.kind === "analyzing")?.events).toHaveLength(2);
+});
+
 async function pressComposerKey(
   key: string,
   options: { metaKey?: boolean; shiftKey?: boolean } = {},

@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto";
 
 export const ORT_JSEP_FACTORY_UPSTREAM_SHA256 =
-  "18e4399d2c6998ed06bce49c4b7476984e77be43205f758607bc779344a804a6";
+  "522b3769929f5684c83a12cf1e06eedf073b65d161728b4f3757c75d62b14384";
 export const ORT_JSEP_WASM_UPSTREAM_SHA256 =
-  "12017c384fc3f11f9fcbac694c373e31f62a87c37d14a823fe884b40b8392706";
+  "ae61141f8fbf0a4e43fd7b4f4d40a1a115627f6facc4f33ddf84074a655e33ea";
 export const ORT_JSEP_FACTORY_MV3_SHA256 =
-  "bc66e8b9c769788a5c684c060d0a5028e90cd35539d359ed9ed74b4fe87a0eed";
+  "2e0868307f98308c707bc0225e4085157d43bf980ab2f8972f3b0c0a720ee585";
 export const ORT_ASYNCIFY_FACTORY_UPSTREAM_SHA256 =
-  "718f08970456a0843a1281be041fa4520e4df67ba09f0264f72818b2ca987590";
+  "5959c6733039619c9af710d8e1bae8d6e84402787990637be987c2b1bd6c5fa9";
 export const ORT_ASYNCIFY_WASM_UPSTREAM_SHA256 =
-  "1d6ee4ff60d7f0e6b6efa34469157d3bdcbe2f3b0dbcea2a645bb41361a85973";
+  "e0c0c6d3e73d43b8a249972f8358f845b08cc16fec3c80efafdf8bed40366786";
 export const ORT_ASYNCIFY_FACTORY_MV3_SHA256 =
-  "01d36095dbd45fb097b54b035ff29184edde6be1424d980ef4600749baa286bc";
+  "0ee9bd8fa4c450a2fde5134c89e683f0a023e1ca75bf8c6c6cbd0d1289030098";
 
 const DYNAMIC_EMVAL_INVOKER =
   'function Pb(a,b,d){var [c,...e]=Df(a,b>>>0);b=c.Vc.bind(c);var g=e.map(n=>n.Uc.bind(n));a--;var k={toValue:V};a=g.map((n,p)=>{var u=`argFromPtr${p}`;k[u]=n;return`${u}(args${p?"+"+8*p:""})`});switch(d){case 0:var l="toValue(handle)";break;case 2:l="new (toValue(handle))";break;case 3:l="";break;case 1:k.getStringOrSymbol=Gf,l="toValue(handle)[getStringOrSymbol(methodName)]"}l+=`(${a})`;c.zd||(k.toReturnWire=b,k.emval_returnValue=Ef,l=`return emval_returnValue(toReturnWire, destructorsRef, ${l})`);\nl=`return function (handle, methodName, destructorsRef, args) {\\n  ${l}\\n  }`;d=(new Function(Object.keys(k),l))(...Object.values(k));l=`methodCaller<(${e.map(n=>n.name)}) => ${c.name}>`;return Cf(Object.defineProperty(d,"name",{value:l}))}';

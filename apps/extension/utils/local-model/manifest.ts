@@ -33,7 +33,7 @@ export interface LocalModelManifestV1 {
  * G0 supply-chain boundary for the text-only Gemma 4 E4B browser proof.
  *
  * The immutable revision and file metadata come from the Hugging Face model
- * API with blob metadata enabled. Transformers.js 4.1.0 ModelRegistry resolves
+ * API with blob metadata enabled. Transformers.js 4.2.0 ModelRegistry resolves
  * this exact nine-file set for `text-generation`, `q4f16`, and `webgpu`.
  * Vision/audio encoders and every other dtype are deliberately absent.
  */
@@ -95,8 +95,8 @@ export const LOCAL_GEMMA_G0_MANIFEST_V1: LocalModelManifestV1 = {
     },
   ],
   runtime: {
-    transformersJs: "4.1.0",
-    onnxRuntimeWeb: "1.26.0-dev.20260410-5e55544225",
+    transformersJs: "4.2.0",
+    onnxRuntimeWeb: "1.26.0-dev.20260416-b7804b056c",
   },
   license: {
     spdx: "Apache-2.0",

@@ -8,10 +8,50 @@
  */
 export const LOCAL_GEMMA_OPERATIONAL_PROFILE_V1 = Object.freeze({
   harnessKey: "atlcli-local:gemma-4-e4b",
-  maxInputTokens: 8_192,
-  maxOutputTokens: 4_096,
+  // Gemma 4 E4B itself supports a much larger context. This lower ceiling is
+  // the measured browser/WebGPU execution corridor for the 4.9 GiB q4f16
+  // build, not a provider usage budget. Larger evidence is compiled across
+  // several calls before finalization.
+  maxInputTokens: 3_072,
+  maxOutputTokens: 2_048,
   maxInterpreterResultChars: 4_000,
 });
+
+export type LocalGemmaRouteRoleV1 =
+  | "root-planning"
+  | "extraction"
+  | "analysis"
+  | "drafting"
+  | "critique"
+  | "repair"
+  | "synthesis";
+
+/**
+ * Bound each role to the output it can actually use. The former 4096-token
+ * allowance was applied to every extraction and routing call, unnecessarily
+ * expanding Gemma's browser-side generation corridor.
+ */
+export function localGemmaRouteOutputTokensV1(
+  role: LocalGemmaRouteRoleV1,
+  configuredMaxOutputTokens: number,
+): number {
+  const roleLimit = (() => {
+    switch (role) {
+      case "extraction": return 768;
+      case "root-planning":
+      case "critique": return 1_024;
+      case "analysis": return 1_536;
+      case "drafting":
+      case "repair":
+      case "synthesis": return 2_048;
+    }
+  })();
+  return Math.min(
+    configuredMaxOutputTokens,
+    roleLimit,
+    LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.maxOutputTokens,
+  );
+}
 
 export type LocalGemmaThinkingModeV1 = "disabled" | "low" | "enabled";
 

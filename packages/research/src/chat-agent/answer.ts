@@ -700,98 +700,6 @@ function normalizedRequestFacetV1(value: string): string {
     .trim();
 }
 
-function requestFacetRemainderTokensV1(
-  markdown: string,
-  normalizedFacet: string,
-): Set<string> {
-  const normalized = normalizedRequestFacetV1(markdown);
-  const remainder = normalized.startsWith(normalizedFacet)
-    ? normalized.slice(normalizedFacet.length).trim()
-    : normalized;
-  return new Set(
-    remainder.split(" ").filter((token) => token.length >= 3),
-  );
-}
-
-function redundantRequestFacetAlternativeV1(
-  left: ChatAnswerBlockV2,
-  right: ChatAnswerBlockV2,
-  normalizedFacet: string,
-): boolean {
-  if (
-    left.assertion !== "none" || right.assertion !== "none" ||
-    left.sourceRefs.length > 0 || right.sourceRefs.length > 0
-  ) return false;
-  const leftTokens = requestFacetRemainderTokensV1(left.markdown, normalizedFacet);
-  const rightTokens = requestFacetRemainderTokensV1(right.markdown, normalizedFacet);
-  if (leftTokens.size === 0 || rightTokens.size === 0) return false;
-  const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
-  const union = new Set([...leftTokens, ...rightTokens]).size;
-  const containment = intersection / Math.min(leftTokens.size, rightTokens.size);
-  const jaccard = intersection / union;
-  return containment >= 0.7 && jaccard >= 0.5;
-}
-
-function requestFacetBlockIndexesV1(
-  blocks: readonly ChatAnswerBlockV2[],
-  facet: string,
-): number[] {
-  const normalizedFacet = normalizedRequestFacetV1(facet);
-  if (!normalizedFacet) return [];
-  return blocks.flatMap((block, index) =>
-    normalizedRequestFacetV1(block.markdown).startsWith(normalizedFacet)
-      ? [index]
-      : []
-  );
-}
-
-/**
- * A terminal provider repair can contain several abandoned phrasings for the
- * same explicit user facet even though each block is valid JSON and complete
- * prose. Remove only a high-confidence cluster of ungrounded alternatives and
- * retain its most informative member. Factual or materially different blocks
- * remain untouched and are rejected by the duplicate-facet guard below.
- */
-function collapseRedundantRequestFacetAlternativesV1(
-  blocks: readonly ChatAnswerBlockV2[],
-  requestFacets: readonly string[],
-): ChatAnswerBlockV2[] {
-  const removed = new Set<number>();
-  for (const facet of requestFacets) {
-    const normalizedFacet = normalizedRequestFacetV1(facet);
-    const indexes = requestFacetBlockIndexesV1(blocks, facet)
-      .filter((index) =>
-        !removed.has(index) &&
-        blocks[index]!.assertion === "none" &&
-        blocks[index]!.sourceRefs.length === 0
-      );
-    if (indexes.length < 2 || !normalizedFacet) continue;
-    const keeper = [...indexes].sort((left, right) => {
-      const tokenDelta = requestFacetRemainderTokensV1(
-        blocks[right]!.markdown,
-        normalizedFacet,
-      ).size - requestFacetRemainderTokensV1(
-        blocks[left]!.markdown,
-        normalizedFacet,
-      ).size;
-      return tokenDelta !== 0
-        ? tokenDelta
-        : blocks[right]!.markdown.length - blocks[left]!.markdown.length;
-    })[0]!;
-    for (const index of indexes) {
-      if (
-        index !== keeper &&
-        redundantRequestFacetAlternativeV1(
-          blocks[keeper]!,
-          blocks[index]!,
-          normalizedFacet,
-        )
-      ) removed.add(index);
-    }
-  }
-  return blocks.filter((_block, index) => !removed.has(index));
-}
-
 function compatibleAnswerBlockBindingV1(
   left: ChatAnswerBlockV2,
   right: ChatAnswerBlockV2,
@@ -934,99 +842,15 @@ function collapseRedundantAnswerBlocksV1(
   return result.filter((_block, index) => !removed.has(index));
 }
 
-function escapedRegularExpressionV1(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
-function stripRequestFacetLabelV1(markdown: string, facet: string): string | undefined {
-  const exact = escapedRegularExpressionV1(facet.trim());
-  const label = new RegExp(
-    `^(\\s*(?:#{1,6}\\s+|[-*+]\\s+)?)(?:\\*\\*|__)?\\s*${exact}\\s*(?::|[–—-])?\\s*(?:\\*\\*|__)?\\s*`,
-    "iu",
-  );
-  const stripped = markdown.replace(label, "$1").trim();
-  return stripped !== markdown.trim() && stripped.length > 0 ? stripped : undefined;
-}
-
-/**
- * Distinct blocks may legitimately answer different parts of one requested
- * facet. Preserve all of their content while displaying the verbatim facet
- * label only once, preferring the evidence-bound block as its owner. Removing
- * a repeated presentation label changes neither claim text nor source binding.
- */
-function coalesceRequestFacetLabelsV1(
-  blocks: readonly ChatAnswerBlockV2[],
-  requestFacets: readonly string[],
-): ChatAnswerBlockV2[] {
-  let result = [...blocks];
-  for (const facet of requestFacets) {
-    const indexes = requestFacetBlockIndexesV1(result, facet);
-    if (indexes.length < 2) continue;
-    const owner = indexes.find((index) =>
-      result[index]!.assertion !== "none" && result[index]!.sourceRefs.length > 0
-    ) ?? indexes[0]!;
-    result = result.map((block, index) => {
-      if (index === owner || !indexes.includes(index)) return block;
-      const markdown = stripRequestFacetLabelV1(block.markdown, facet);
-      return markdown ? { ...block, markdown } : block;
-    });
-  }
-  return result;
-}
-
-function repeatedRequestFacetsV1(input: {
-  blocks: readonly ChatAnswerBlockV2[];
-  requestFacets: readonly string[];
-}): string[] {
-  return input.requestFacets.filter((facet) =>
-    requestFacetBlockIndexesV1(input.blocks, facet).length > 1
-  );
-}
-
-/**
- * Explicit enumerations copied from the user's question are a deterministic
- * completion contract. Requiring their labels in the draft lets the host catch
- * a silently omitted facet without trying to infer semantic requirements.
- */
-export function chatDraftMissingRequestFacetsV1(input: {
-  draft: unknown;
-  requestFacets: readonly string[];
-}): string[] {
-  if (input.requestFacets.length === 0) return [];
-  const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
-  if (!parsed.success) return [];
-  const markdown = normalizeChatAgentDraftV2(parsed.data).blocks
-    .map((block) => block.markdown)
-    .join("\n\n");
-  const normalizedMarkdown = normalizedRequestFacetV1(markdown);
-  return input.requestFacets.filter((facet) => {
-    const normalizedFacet = normalizedRequestFacetV1(facet);
-    return normalizedFacet.length > 0 && !normalizedMarkdown.includes(normalizedFacet);
-  });
-}
-
 export function chatDraftNeedsHostRepairV1(input: {
   draft: unknown;
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-  requestFacets?: readonly string[];
   question?: string;
 }): boolean {
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
   if (!parsed.success) return false;
   const draft = normalizeChatAgentDraftV2(parsed.data);
-  if (chatDraftMissingRequestFacetsV1({
-    draft,
-    requestFacets: input.requestFacets ?? [],
-  }).length > 0) {
-    return true;
-  }
-  if (repeatedRequestFacetsV1({
-    blocks: draft.blocks,
-    requestFacets: input.requestFacets ?? [],
-  }).length > 0) {
-    return true;
-  }
   if (collapseRedundantAnswerBlocksV1(
     draft.blocks,
     (sourceRef) => sourceReferenceIsDetailedV2(
@@ -1089,7 +913,6 @@ export function chatDraftForFinalizationAfterHostRepairV1(input: {
   draft: unknown;
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-  requestFacets?: readonly string[];
   question?: string;
 }): ChatAgentDraftV2 | undefined {
   return inspectChatDraftAfterHostRepairV1(input).draft;
@@ -1100,8 +923,6 @@ export const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1 = [
   "malformed-factual-markdown",
   "missing-detailed-factual-block",
   "orphan-heading",
-  "missing-request-facet",
-  "repeated-request-facet",
   "repeated-prose",
   "incomplete-prose",
   "observation-classification-conflict",
@@ -1254,7 +1075,6 @@ export function inspectChatDraftAfterHostRepairV1(input: {
   draft: unknown;
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-  requestFacets?: readonly string[];
   question?: string;
 }): {
   draft?: ChatAgentDraftV2;
@@ -1282,26 +1102,20 @@ export function inspectChatDraftAfterHostRepairV1(input: {
       ),
     }));
   const blocks = normalizeMeasuredRankingBlocksV1(
-    coalesceRequestFacetLabelsV1(
-      collapseRedundantRequestFacetAlternativesV1(
-        coalesceRepeatedNumberedListItemsV1(
-          collapseRedundantAnswerBlocksV1(
-            balancedBlocks,
-            (sourceRef) => sourceReferenceIsDetailedV2(
-              sourceRef,
-              input.detailEvidence,
-              input.readSectionReferences ?? [],
-            ),
-          ),
-          (sourceRef) => sourceReferenceIsDetailedV2(
-            sourceRef,
-            input.detailEvidence,
-            input.readSectionReferences ?? [],
-          ),
+    coalesceRepeatedNumberedListItemsV1(
+      collapseRedundantAnswerBlocksV1(
+        balancedBlocks,
+        (sourceRef) => sourceReferenceIsDetailedV2(
+          sourceRef,
+          input.detailEvidence,
+          input.readSectionReferences ?? [],
         ),
-        input.requestFacets ?? [],
       ),
-      input.requestFacets ?? [],
+      (sourceRef) => sourceReferenceIsDetailedV2(
+        sourceRef,
+        input.detailEvidence,
+        input.readSectionReferences ?? [],
+      ),
     ),
     input.question,
   );
@@ -1351,20 +1165,7 @@ export function inspectChatDraftAfterHostRepairV1(input: {
   if (repairedBlocks.length === 0) {
     return { rejectionReasons: ["orphan-heading"] };
   }
-  const repaired = { ...draft, blocks: repairedBlocks };
-  if (chatDraftMissingRequestFacetsV1({
-    draft: repaired,
-    requestFacets: input.requestFacets ?? [],
-  }).length > 0) {
-    return { rejectionReasons: ["missing-request-facet"] };
-  }
-  if (repeatedRequestFacetsV1({
-    blocks: repaired.blocks,
-    requestFacets: input.requestFacets ?? [],
-  }).length > 0) {
-    return { rejectionReasons: ["repeated-request-facet"] };
-  }
-  return { draft: repaired, rejectionReasons: [] };
+  return { draft: { ...draft, blocks: repairedBlocks }, rejectionReasons: [] };
 }
 
 /**

@@ -33,6 +33,7 @@ import {
   recoverExpiredResearchSessionsAtSafeBoundaryV1,
 } from "@atlcli/research/browser";
 import { LOCAL_GEMMA_G0_MANIFEST_V1 } from "../../utils/local-model/manifest.js";
+import { withLocalRunHeartbeatV1 } from "../../utils/research/run-heartbeat.js";
 
 const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
 
@@ -200,7 +201,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       const apiKey = modelProvider === "local-gemma"
         ? ""
         : normalizeAnthropicApiKey(key);
-      return researchHost.run({
+      const run = async () => researchHost.run({
         runId,
         sessionId,
         turnId,
@@ -237,6 +238,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
           }).catch(() => undefined);
         },
       });
+      return modelProvider === "local-gemma"
+        ? withLocalRunHeartbeatV1({
+            runId,
+            operation: run,
+            sendHeartbeat: async (activeRunId) => {
+              await chrome.runtime.sendMessage({
+                kind: "research:heartbeat",
+                runId: activeRunId,
+              });
+            },
+          })
+        : run();
     },
     resumeResearch: async (runId, sessionId, turnId, key) => {
       const apiKey = normalizeAnthropicApiKey(key);

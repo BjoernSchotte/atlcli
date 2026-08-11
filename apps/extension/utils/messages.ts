@@ -627,6 +627,14 @@ export type ChatPresentationMessage = {
   runId: string;
   event: ChatPresentationStreamEventV1;
 };
+/**
+ * Transport-only keepalive emitted by the offscreen host during a silent local
+ * inference interval. It is not user-visible agent progress.
+ */
+export type ResearchHeartbeatMessage = {
+  kind: "research:heartbeat";
+  runId: string;
+};
 
 function isChatHostIdentityV1(value: unknown): value is ChatHostIdentityV1 {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -787,6 +795,7 @@ export type ExtMessage =
   | ResearchProgressMessage
   | ResearchEventMessage
   | ChatPresentationMessage
+  | ResearchHeartbeatMessage
   | OffscreenRequest
   | OffscreenResponse;
 

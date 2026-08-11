@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { Tensor } from "@huggingface/transformers";
 import {
+  CompleteToolCallStoppingCriteriaV1,
+  LOCAL_GEMMA_TOOL_STOP_MARKERS_V1,
   RequiredToolPrefixLogitsProcessorV1,
   TokenSequenceStoppingCriteriaV1,
 } from
@@ -24,6 +26,31 @@ describe("Gemma required tool prefix", () => {
 });
 
 describe("Gemma native tool-call stopping", () => {
+  it("stops a forced tool call as soon as its argument object is complete", () => {
+    const prompt = [1, 2, 3];
+    const partial = "<|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|\"|>Budget";
+    const complete = `${partial}<|\"|>,sourceRefs:[],assertion:<|\"|>none<|\"|>,scope:<|\"|>none<|\"|>}],gaps:[]}`;
+    const criterion = new CompleteToolCallStoppingCriteriaV1(
+      prompt.length,
+      "ChatAnswerDraftV2",
+      (tokens) => String.fromCodePoint(...tokens),
+    );
+
+    expect(criterion._call([[...prompt, ...[...partial].map((value) => value.codePointAt(0)!)]])).toEqual([false]);
+    expect(criterion._call([[...prompt, ...[...complete].map((value) => value.codePointAt(0)!)]])).toEqual([true]);
+  });
+
+  it("pins the completed native tool-call marker as a terminal boundary", () => {
+    expect(LOCAL_GEMMA_TOOL_STOP_MARKERS_V1).toContain("<tool_call|>");
+    const markerTokens = LOCAL_GEMMA_TOOL_STOP_MARKERS_V1.map((marker, index) =>
+      marker === "<tool_call|>" ? [31, 32, 33] : [41 + index]
+    );
+    const criterion = new TokenSequenceStoppingCriteriaV1(markerTokens);
+
+    expect(criterion._call([[7, 31, 32, 33]])).toEqual([true]);
+    expect(criterion._call([[7, 31, 32]])).toEqual([false]);
+  });
+
   it("stops only when a complete configured token sequence is at the tail", () => {
     const criterion = new TokenSequenceStoppingCriteriaV1([[7, 8], [11]]);
 

@@ -247,7 +247,6 @@ test("projects only the question and body-free anchor catalogue into shared chil
   }]);
   expect(JSON.parse(context)).toEqual({
     question: "Compare the sources.",
-    explicitRequestChecklist: [],
     exactAnchors: [{
       anchorRef: "research-anchor:page-1",
       product: "confluence",
@@ -261,15 +260,11 @@ test("projects only the question and body-free anchor catalogue into shared chil
   expect(context).not.toContain("content");
 });
 
-test("projects explicit user-authored facets into every child context", () => {
-  const context = minimalChatSubagentTaskContextV1(
-    "Nenne Modellgröße, Endgeschwindigkeit und Einsatzempfehlung.",
-  );
-  expect(JSON.parse(context).explicitRequestChecklist).toEqual([
-    "Modellgröße",
-    "Endgeschwindigkeit",
-    "Einsatzempfehlung",
-  ]);
+test("keeps the original multilingual question canonical in every child context", () => {
+  const question = "Indiquez la taille du modèle, la vitesse et la recommandation.";
+  const context = minimalChatSubagentTaskContextV1(question);
+  expect(JSON.parse(context)).toEqual({ question, exactAnchors: [] });
+  expect(context).not.toContain("explicitRequestChecklist");
 });
 
 function analysisPacketNearBytes(targetBytes: number) {

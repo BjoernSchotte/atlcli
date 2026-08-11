@@ -443,6 +443,12 @@ export function researchTimelineSteps(
   running: boolean,
 ): ResearchTimelineStep[] {
   const steps: ResearchTimelineStep[] = [];
+  const repeatablePhaseKinds = new Set<ResearchTimelineStepKind>([
+    "planning",
+    "analyzing",
+    "checking",
+    "synthesizing",
+  ]);
   for (const event of events) {
     const kind = timelineStepKind(event);
     const current = steps.at(-1);
@@ -453,6 +459,18 @@ export function researchTimelineSteps(
     if (current?.kind === kind) {
       current.events.push(event);
       continue;
+    }
+    if (repeatablePhaseKinds.has(kind)) {
+      const previousIndex = steps.findIndex((step) => step.kind === kind);
+      if (previousIndex >= 0) {
+        const [previous] = steps.splice(previousIndex, 1);
+        steps.push({
+          id: `research-step:${event.seq}`,
+          kind,
+          events: [...previous!.events, event],
+        });
+        continue;
+      }
     }
     steps.push({ id: `research-step:${event.seq}`, kind, events: [event] });
   }

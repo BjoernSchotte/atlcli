@@ -47,6 +47,7 @@ export type LocalModelPortRequestV1 =
       messages: LocalModelChatMessageV1[];
       tools: LocalModelToolV1[];
       requiredToolName?: string;
+      streamAnswerPreview?: boolean;
       maxOutputTokens: number;
       thinkingMode: LocalModelThinkingModeV1;
     }
@@ -68,6 +69,12 @@ export type LocalModelPortResponseV1 =
       kind: "text-delta";
       requestId: string;
       text: string;
+    }
+  | {
+      schema: typeof LOCAL_MODEL_PROTOCOL_SCHEMA_V1;
+      kind: "answer-preview";
+      requestId: string;
+      markdown: string;
     }
   | {
       schema: typeof LOCAL_MODEL_PROTOCOL_SCHEMA_V1;
@@ -184,6 +191,10 @@ export function assertLocalModelGenerateRequestV1(
     if (!value.tools.some((tool) => tool.function.name === value.requiredToolName)) {
       throw new Error("The required local model tool is not declared.");
     }
+  }
+  if (value.streamAnswerPreview !== undefined &&
+      typeof value.streamAnswerPreview !== "boolean") {
+    throw new Error("The local model answer-preview flag is invalid.");
   }
   if (typeof value.maxOutputTokens !== "number" ||
       !Number.isInteger(value.maxOutputTokens) || value.maxOutputTokens < 1 ||

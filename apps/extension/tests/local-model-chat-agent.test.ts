@@ -5,6 +5,7 @@ import {
   chatQualityPolicyV1,
   classifyResearchError,
   createMemoryResearchWorkspace,
+  createResearchKeyScopeSeedV1,
   type ChatPresentationStreamEventV1,
   type ChatSessionV1,
   type ResearchRequestV1,
@@ -351,6 +352,181 @@ describe("local Gemma shared Chat-agent path", () => {
           messageMarkdown: "A bounded synthetic local Chat answer.",
         },
       });
+    } finally {
+      channel.port1.close();
+      channel.port2.close();
+    }
+  }, 30_000);
+
+  it("compiles full retrieved evidence into a fresh local terminal context", async () => {
+    const channel = new MessageChannel();
+    const requests: Extract<LocalModelPortRequestV1, { kind: "generate" }>[] = [];
+    const longPage = [
+      "Budget 2026: 60,000-85,000 EUR.",
+      "x".repeat(13_000),
+      "Base fee from 2027: 30,000 EUR.",
+    ].join("\n");
+    channel.port2.onmessage = (
+      event: MessageEvent<LocalModelPortRequestV1>,
+    ) => {
+      const message = event.data;
+      if (message.kind !== "generate") return;
+      requests.push(message);
+      let toolCalls;
+      if (!message.requiredToolName) {
+        toolCalls = [{
+          id: "local-terminal-eval",
+          name: "eval",
+          arguments: {
+            code: "JSON.parse(await tools.chatConfluenceRetrievalAcquire({}))",
+          },
+        }];
+      } else if (message.requiredToolName === "KiteweaveLocalTerminalEvidenceV1") {
+        const content = message.messages.findLast((candidate) => candidate.role === "user")
+          ?.content ?? "";
+        const claims = [
+          ...(content.includes("Budget 2026")
+            ? [{
+                text: "The 2026 budget is 60,000-85,000 EUR.",
+                sourceIds: ["wiki:1001"],
+                sourceRefs: ["wiki:1001"],
+              }]
+            : []),
+          ...(content.includes("Base fee from 2027")
+            ? [{
+                text: "The base fee from 2027 is 30,000 EUR.",
+                sourceIds: ["wiki:1001"],
+                sourceRefs: ["wiki:1001"],
+              }]
+            : []),
+        ];
+        toolCalls = [{
+          id: `local-terminal-evidence-${requests.length}`,
+          name: message.requiredToolName,
+          arguments: {
+            schema: "atlcli.chat-evidence-packet/v1",
+            sourceIds: ["wiki:1001"],
+            claims,
+            relationships: [],
+            gaps: [],
+          },
+        }];
+      } else if (message.requiredToolName === "ChatAnswerDraftV2") {
+        toolCalls = [{
+          id: "local-terminal-answer",
+          name: "ChatAnswerDraftV2",
+          arguments: {
+            blocks: [{
+              id: "answer-block:local-terminal-context",
+              markdown:
+                "The 2026 budget is 60,000-85,000 EUR; the base fee from 2027 is 30,000 EUR.",
+              sourceRefs: ["wiki:1001"],
+              assertion: "positive",
+              scope: "none",
+            }],
+            gaps: [],
+          },
+        }];
+      } else {
+        throw new Error(`Unexpected required tool: ${message.requiredToolName}`);
+      }
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: message.requestId,
+        text: "",
+        toolCalls,
+        inputTokens: 256,
+        outputTokens: 64,
+      });
+    };
+    channel.port2.start();
+    const input = request({
+      suffix: "terminal-context",
+      question: "Summarize the approved budget page.",
+      confluenceSpaceKeys: ["KB"],
+    });
+    input.brokerRequest = {
+      ...input.brokerRequest,
+      scopeSeeds: [createResearchKeyScopeSeedV1({
+        tenantOrigin: input.brokerRequest.scope.siteOrigin,
+        product: "confluence",
+        key: "KB",
+        source: "current_context",
+        authority: "approved",
+      })],
+    };
+    const scopedProviders = {
+      jira: providers.jira,
+      wiki: {
+        async searchPage() {
+          return {
+            items: [{ contentId: "1001", spaceKey: "KB", title: "Budget page" }],
+          };
+        },
+        async getPage() {
+          return {
+            contentId: "1001",
+            spaceKey: "KB",
+            title: "Budget page",
+            content: {
+              text: longPage,
+              inputBytes: longPage.length,
+              truncated: false,
+              linkTargets: [],
+            },
+          };
+        },
+      },
+    };
+
+    try {
+      const answer = await runChatAgent({
+        ...input,
+        modelBinding: createLocalGemmaChatModelBindingV1({
+          port: channel.port1,
+          modelId: "fixture/local-gemma",
+          maxOutputTokens: 512,
+        }),
+        modelProviderFailureMode: "surface-terminal",
+        modelUsageBudget: "local-unmetered",
+        providers: scopedProviders,
+        workspace: createMemoryResearchWorkspace(),
+        hostIdentity: {
+          userId: "principal:local-terminal-context",
+          providerCacheIdentity: "provider-cache:local-terminal-context",
+        },
+        qualityPolicy: chatQualityPolicyV1("quick"),
+      });
+
+      const extractionRequests = requests.filter((candidate) =>
+        candidate.requiredToolName === "KiteweaveLocalTerminalEvidenceV1"
+      );
+      expect(extractionRequests).toHaveLength(3);
+      expect(extractionRequests.map((candidate) =>
+        candidate.messages.map((message) => message.content).join("\n")
+      ).join("\n")).toContain("Budget 2026");
+      expect(extractionRequests.map((candidate) =>
+        candidate.messages.map((message) => message.content).join("\n")
+      ).join("\n")).toContain("Base fee from 2027");
+      const finalRequest = requests.find((candidate) =>
+        candidate.requiredToolName === "ChatAnswerDraftV2"
+      )!;
+      expect(finalRequest.messages.some((message) => message.role === "tool")).toBe(false);
+      expect(JSON.stringify(finalRequest.messages)).toContain(
+        "atlcli.chat-terminal-context/v1",
+      );
+      expect(JSON.stringify(finalRequest.messages)).toContain(
+        "The 2026 budget is 60,000-85,000 EUR.",
+      );
+      expect(JSON.stringify(finalRequest.messages)).toContain(
+        "The base fee from 2027 is 30,000 EUR.",
+      );
+      expect(answer.messageMarkdown).toContain("60,000-85,000 EUR");
+      expect(answer.messageMarkdown).toContain("30,000 EUR");
+      expect(answer.citations).toEqual([
+        expect.objectContaining({ sourceId: "wiki:1001" }),
+      ]);
     } finally {
       channel.port1.close();
       channel.port2.close();

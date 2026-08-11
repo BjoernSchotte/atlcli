@@ -5,7 +5,12 @@ import {
   toolStrategy,
   type ModelRequest,
 } from "langchain";
-import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+  type BaseMessage,
+} from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { type ResearchPtcDiagnosticV1 } from "../agent-tools.js";
@@ -68,12 +73,13 @@ import {
   type ChatTurnRequestV1,
 } from "./contracts.js";
 import {
+  CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1,
   buildChatSystemPromptV1,
   buildChatTurnPromptV1,
   chatAnswerOutputInstructionV1,
-  deriveChatRequestChecklistV1,
 } from "./prompts.js";
 import { createChatPromptCacheMiddlewareV1 } from "./prompt-cache.js";
+import { createChatLocalTerminalContextMessagesV1 } from "./terminal-context.js";
 import {
   CHAT_SESSION_PATH_V1,
   CHAT_SESSION_SCHEMA_V1,
@@ -472,11 +478,16 @@ export function createChatDirectToolSurfaceMiddlewareV1(
     evidenceAccessRequired?: boolean;
     evidenceAccessAttempted?: () => boolean;
     terminalRepairOnly?: () => boolean;
+    projectTerminalContext?: (input: {
+      signal?: AbortSignal;
+    }) => Promise<BaseMessage[] | undefined>;
+    debugLocalModel?: boolean;
   } = {},
 ) {
   let completedEvidenceStep = false;
   let completedFinalReview = false;
   let nativeStructuredRepairAttempts = 0;
+  let terminalContextProjection: Promise<BaseMessage[] | undefined> | undefined;
   const modelPurpose = (): Extract<ChatAgentDiagnosticV1, { kind: "model-step" }>['purpose'] =>
     completedFinalReview || completedEvidenceStep
       ? "answer-drafting"
@@ -484,6 +495,60 @@ export function createChatDirectToolSurfaceMiddlewareV1(
   return createMiddleware({
     name: "ChatDirectToolSurfaceMiddleware",
     async wrapModelCall(request, handler) {
+      const traceStartedAt = Date.now();
+      let traceCall = 0;
+      const tracedHandler = async (
+        projectedRequest: ModelRequest,
+        stage: string,
+      ) => {
+        traceCall += 1;
+        const callStartedAt = Date.now();
+        if (options.debugLocalModel) {
+          console.debug("[local-gemma/deepagent] model request", {
+            stage,
+            call: traceCall,
+            tools: projectedRequest.tools.map((tool) => tool.name),
+            toolChoice: projectedRequest.toolChoice,
+            systemChars: String(projectedRequest.systemMessage.content).length,
+            messages: projectedRequest.messages.map((message, index) => ({
+              index,
+              role: message.getType(),
+              chars: String(message.content).length,
+              preview: String(message.content).slice(-240),
+            })),
+          });
+        }
+        try {
+          const response = await handler(projectedRequest);
+          if (options.debugLocalModel) {
+            const diagnostic = diagnosticMessage(response);
+            console.debug("[local-gemma/deepagent] model response", {
+              stage,
+              call: traceCall,
+              durationMs: Date.now() - callStartedAt,
+              toolNames: diagnostic.toolNames,
+              stopReason: diagnostic.stopReason,
+              responseType: response && typeof response === "object"
+                ? response.constructor?.name
+                : typeof response,
+              contentChars: response && typeof response === "object" && "content" in response
+                ? String(response.content).length
+                : undefined,
+            });
+          }
+          return response;
+        } catch (error) {
+          if (options.debugLocalModel) {
+            console.error("[local-gemma/deepagent] model failure", {
+              stage,
+              call: traceCall,
+              durationMs: Date.now() - callStartedAt,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          throw error;
+        }
+      };
       const purpose = modelPurpose();
       onDiagnostic?.({ kind: "model-step", status: "started", purpose });
       if (options.agenticWorkflowComplete?.()) {
@@ -503,6 +568,14 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         const terminalRepairOnly = options.terminalRepairOnly?.() === true;
         const requireTerminalAnswer = options.toolStructuredOutput === true &&
           (terminalRepairOnly || options.evidenceAccessAttempted?.() === true);
+        if (requireTerminalAnswer && options.projectTerminalContext) {
+          terminalContextProjection ??= options.projectTerminalContext({
+            signal: request.runtime?.signal,
+          });
+        }
+        const terminalMessages = terminalContextProjection
+          ? await terminalContextProjection
+          : undefined;
         const filteredRequest = {
           ...request,
           // createDeepAgent always assembles filesystem and task scaffolding.
@@ -516,7 +589,10 @@ export function createChatDirectToolSurfaceMiddlewareV1(
                 candidate.name === "eval" || candidate.name === "ask_user_question"
               ),
           ...(requireTerminalAnswer
-            ? { toolChoice: CHAT_ANSWER_TOOL_CHOICE_V2 }
+            ? {
+                toolChoice: CHAT_ANSWER_TOOL_CHOICE_V2,
+                ...(terminalMessages ? { messages: terminalMessages } : {}),
+              }
             : {}),
           ...(terminalRepairOnly
             ? {
@@ -524,7 +600,8 @@ export function createChatDirectToolSurfaceMiddlewareV1(
                   "Terminal answer correction for this turn:",
                   "The host rejected the previous draft because its Markdown was incomplete or none of its factual blocks used an accepted detail-evidence reference.",
                   "Use only the evidence already present in this conversation. Do not call a tool, ask a question, retrieve, or broaden scope.",
-                  "Return one complete ChatAnswerDraftV2. Cover every explicitly requested facet with a supported block or a precise gap, use only the exact allowed source references supplied by the host, and emit no abandoned alternatives.",
+                  "Return one complete ChatAnswerDraftV2 using only the exact allowed source references supplied by the host, and emit no abandoned alternatives.",
+                  CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1,
                   options.answerOutputInstruction ?? "",
                 ].filter(Boolean).join("\n"))),
               }
@@ -532,7 +609,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         };
         let response;
         try {
-          response = await handler(filteredRequest);
+          response = await tracedHandler(filteredRequest, "primary");
           const calledTools = diagnosticMessage(response).toolNames;
           if (
             !terminalRepairOnly &&
@@ -540,7 +617,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
             !options.evidenceAccessAttempted?.() &&
             !calledTools.includes("eval")
           ) {
-            response = await handler({
+            response = await tracedHandler({
               ...filteredRequest,
               systemMessage: filteredRequest.systemMessage.concat(
                 new SystemMessage([
@@ -551,7 +628,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
                 ].join("\n")),
               ),
               toolChoice: CHAT_EVAL_TOOL_CHOICE_V1,
-            });
+            }, "evidence-correction");
           }
         } catch (error) {
           if (
@@ -560,14 +637,14 @@ export function createChatDirectToolSurfaceMiddlewareV1(
             !isChatAnswerStructuredOutputErrorV1(error)
           ) throw error;
           nativeStructuredRepairAttempts += 1;
-          response = await handler({
+          response = await tracedHandler({
             ...filteredRequest,
             systemPrompt: [
               filteredRequest.systemPrompt,
               "The previous terminal answer did not satisfy the required JSON schema. Retry the terminal answer exactly once from the already accepted evidence; do not call eval, ask a question, retrieve, or widen scope. Return ChatAnswerDraftV2 with ordered blocks and an actual gaps array. Put exactly one factual paragraph, list item, or table row in each block. Copy exact accepted evidence references into sourceRefs. Positive facts use assertion=positive and scope=none. Negative findings use assertion=absence and the narrowest truthful scope. Headings and non-factual transitions use assertion=none, scope=none, and no sourceRefs.",
               options.answerOutputInstruction,
             ].filter(Boolean).join("\n\n"),
-          });
+          }, "structured-output-repair");
         }
         onDiagnostic?.({
           kind: "model-step",
@@ -595,6 +672,14 @@ export function createChatDirectToolSurfaceMiddlewareV1(
           );
         }
         throw error;
+      } finally {
+        if (options.debugLocalModel) {
+          console.debug("[local-gemma/deepagent] middleware complete", {
+            purpose,
+            calls: traceCall,
+            durationMs: Date.now() - traceStartedAt,
+          });
+        }
       }
     },
     async wrapToolCall(request, handler) {
@@ -1146,7 +1231,6 @@ export function createKiteweaveChatAgent(
   return {
     async runChatAgent(input): Promise<ChatAnswerV1> {
       const turn = normalizeChatTurnRequestV1(input.turn);
-      const requestChecklist = deriveChatRequestChecklistV1(turn.question);
       const qualityPolicy = normalizeChatQualityPolicyV1(
         input.qualityPolicy ?? chatQualityPolicyV1("auto"),
       );
@@ -1164,6 +1248,7 @@ export function createKiteweaveChatAgent(
       let resumeEnvelope: ChatResumeEnvelopeV1 | undefined;
       let modelCheckpointEntered = false;
       let resumableRootModelFailure = false;
+      let structuredAnswerPreviewUnsubscribe: (() => void) | undefined;
       let eventSequence = 0;
       const nextEventSequence = (): number => ++eventSequence;
       const emitPhase = (phase: string): void => {
@@ -1505,6 +1590,91 @@ export function createKiteweaveChatAgent(
             "The Chat host did not bind a LangChain chat model.",
           );
         }
+        const structuredAnswerPreviewState = {
+          generationId: "",
+          markdown: "",
+          started: false,
+        };
+        structuredAnswerPreviewUnsubscribe =
+          modelBinding.subscribeStructuredAnswerPreview?.((preview) => {
+            if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+              console.debug("[local-gemma/deepagent] answer preview received", {
+                generationId: preview.generationId,
+                status: preview.status,
+                markdownChars: preview.markdown.length,
+              });
+            }
+            if (preview.generationId !== structuredAnswerPreviewState.generationId) {
+              if (structuredAnswerPreviewState.markdown) {
+                input.onChatPresentation?.({
+                  kind: "chat-presentation",
+                  seq: nextEventSequence(),
+                  at: new Date(now()).toISOString(),
+                  channel: "answer-markdown",
+                  status: "reset",
+                });
+              }
+              structuredAnswerPreviewState.generationId = preview.generationId;
+              structuredAnswerPreviewState.markdown = "";
+              structuredAnswerPreviewState.started = false;
+            }
+            if (preview.status === "completed") {
+              if (structuredAnswerPreviewState.started) {
+                input.onChatPresentation?.({
+                  kind: "chat-presentation",
+                  seq: nextEventSequence(),
+                  at: new Date(now()).toISOString(),
+                  channel: "answer-markdown",
+                  status: "completed",
+                });
+                structuredAnswerPreviewState.started = false;
+              }
+              return;
+            }
+            const projected = preview.markdown.slice(0, turn.limits.maxReportChars);
+            const projection = streamedAnswerSnapshotDeltaV1(
+              structuredAnswerPreviewState.markdown,
+              projected,
+            );
+            if (!projection.delta) return;
+            if (projection.reset) {
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "answer-markdown",
+                status: "reset",
+              });
+              structuredAnswerPreviewState.started = false;
+            }
+            if (!structuredAnswerPreviewState.started) {
+              structuredAnswerPreviewState.started = true;
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "answer-markdown",
+                status: "started",
+              });
+            }
+            structuredAnswerPreviewState.markdown = projected;
+            input.onChatPresentation?.({
+              kind: "chat-presentation",
+              seq: nextEventSequence(),
+              at: new Date(now()).toISOString(),
+              channel: "answer-markdown",
+              status: "delta",
+              delta: projection.delta,
+            });
+            if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+              console.debug("[local-gemma/deepagent] answer preview presented", {
+                generationId: preview.generationId,
+                deltaChars: projection.delta.length,
+                totalChars: projected.length,
+                reset: projection.reset,
+              });
+            }
+          });
         if (
           modelBinding.harnessProfile &&
           !registeredHarnessProfiles.has(modelBinding.harnessProfile.key)
@@ -1703,6 +1873,7 @@ export function createKiteweaveChatAgent(
             if (
               event.delta.type === "block-delta" &&
               profileId === "chat-synthesizer" &&
+              !structuredAnswerPreviewState.markdown &&
               event.delta.fields.type === "tool_call_chunk" &&
               typeof event.delta.fields.args === "string"
             ) {
@@ -1813,7 +1984,6 @@ export function createKiteweaveChatAgent(
                 ) {
                   return JSON.stringify({
                     question: turn.question,
-                    explicitRequestChecklist: requestChecklist,
                     hostGroundednessContract: {
                       invariant:
                         "Every sourceId present in a completed dependency evidence packet is a host-confirmed successful detail read. Raw bodies are intentionally absent and their absence is not a missing-detail defect.",
@@ -2158,6 +2328,27 @@ export function createKiteweaveChatAgent(
                 broker.detailEvidenceLedger().length > 0 ||
                 budget.counts().httpCalls > 0,
               terminalRepairOnly: () => terminalAnswerRepairOnly,
+              debugLocalModel:
+                modelBinding.qualityAdapter.providerId === "local-gemma",
+              ...(strategyDecision.execution !== "agentic" &&
+                  modelBinding.qualityAdapter.providerId === "local-gemma"
+                ? {
+                    projectTerminalContext: async ({ signal }: {
+                      signal?: AbortSignal;
+                    }) => broker.detailEvidenceLedger().length === 0
+                      ? undefined
+                      : createChatLocalTerminalContextMessagesV1({
+                          model: modelForRoute({
+                            role: "extraction",
+                            preference: "fast",
+                          }).model,
+                          broker,
+                          question: turn.question,
+                          locale: turn.locale,
+                          signal,
+                        }),
+                  }
+                : {}),
             }),
             durableSummarizationMiddleware,
             rootModelBudgetMiddleware,
@@ -2430,7 +2621,8 @@ export function createKiteweaveChatAgent(
             source: AsyncIterable<unknown>,
             allowed: boolean,
           ): Promise<void> => {
-            if (!allowed || modelBinding.structuredOutput !== "tool") {
+            if (!allowed || modelBinding.structuredOutput !== "tool" ||
+                structuredAnswerPreviewState.markdown) {
               for await (const _unused of source) {
                 // Drain the message event stream independently of reasoning.
               }
@@ -2578,21 +2770,35 @@ export function createKiteweaveChatAgent(
             draft: finalDraft,
             detailEvidence: broker.detailEvidenceLedger(),
             readSectionReferences: broker.readSectionReferenceLedger(),
-            requestFacets: requestChecklist,
             question: turn.question,
           });
+          if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+            console.debug("[local-gemma/host-validator] initial draft inspection", {
+              rejectionReasons: safelyNormalized.rejectionReasons,
+              detailEvidence: broker.detailEvidenceLedger().map((entry) => ({
+                sourceId: entry.source.id,
+                sectionId: entry.section?.sectionId,
+                truncated: entry.content.truncated,
+              })),
+              readSectionReferences: broker.readSectionReferenceLedger(),
+              draft: finalDraft,
+            });
+          }
           if (safelyNormalized.draft) finalDraft = safelyNormalized.draft;
         }
-        if (
-          !agenticWorkflow &&
+        const needsHostRepair = !agenticWorkflow &&
           chatDraftNeedsHostRepairV1({
             draft: finalDraft,
             detailEvidence: broker.detailEvidenceLedger(),
             readSectionReferences: broker.readSectionReferenceLedger(),
-            requestFacets: requestChecklist,
             question: turn.question,
-          })
-        ) {
+          });
+        if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+          console.debug("[local-gemma/host-validator] repair decision", {
+            needsHostRepair,
+          });
+        }
+        if (needsHostRepair) {
           terminalAnswerRepairOnly = true;
           emitActivity("repair", "started");
           input.onChatPresentation?.({
@@ -2623,12 +2829,7 @@ export function createKiteweaveChatAgent(
                         .map((section) => `${section.sourceId}#${section.sectionId}`),
                     ])),
                   ])}.`,
-                  ...(requestChecklist.length > 0
-                    ? [
-                        `Required user-authored facet labels: ${JSON.stringify(requestChecklist)}.`,
-                        "Use every label verbatim exactly once as a heading or bullet label, followed by its supported answer or one precise evidence gap.",
-                      ]
-                    : ["Cover every explicitly requested facet or state one precise gap."]),
+                  CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1,
                   "Do not call a tool, retrieve, ask a question, or expose an abandoned wording alternative.",
                   "Use short self-contained paragraphs or bullets. End every factual sentence with closing punctuation. If a quoted fragment would leave a sentence unfinished, omit the fragment and state only the complete supported fact.",
                   "Make every factual sentence grammatically complete; do not leave a clause ending in a connector or auxiliary verb.",
@@ -2648,9 +2849,15 @@ export function createKiteweaveChatAgent(
                 draft: chatStructuredDraftFromAgentResultV1(finalResult),
                 detailEvidence: broker.detailEvidenceLedger(),
                 readSectionReferences: broker.readSectionReferenceLedger(),
-                requestFacets: requestChecklist,
                 question: turn.question,
               });
+              if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+                console.debug("[local-gemma/host-validator] repair inspection", {
+                  attempt: attempt + 1,
+                  rejectionReasons: repairedInspection.rejectionReasons,
+                  draft: chatStructuredDraftFromAgentResultV1(finalResult),
+                });
+              }
               repairedDraft = repairedInspection.draft;
               repairRejectionReasons = repairedInspection.rejectionReasons;
             }
@@ -2974,6 +3181,7 @@ export function createKiteweaveChatAgent(
         globalThis.clearTimeout(timeout);
         input.signal?.removeEventListener("abort", forwardAbort);
         controller.signal.removeEventListener("abort", onAbort);
+        structuredAnswerPreviewUnsubscribe?.();
         activeBroker?.cancel();
       }
     },

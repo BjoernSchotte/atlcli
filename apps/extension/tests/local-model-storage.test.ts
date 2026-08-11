@@ -115,6 +115,37 @@ describe("browser-local model installation", () => {
     expect(await port.status()).toEqual({ status: "ready", aggregateByteLength: 3 });
   });
 
+  it("keeps verified model files active across a packaged runtime-only upgrade", async () => {
+    const installedManifest = {
+      ...fixtureManifest(),
+      runtime: { transformersJs: "4.1.0", onnxRuntimeWeb: "old" },
+    };
+    const upgradedManifest = fixtureManifest();
+    const cache = memoryCache();
+    const activationStore = memoryActivationStore();
+    const installer = createBrowserLocalModelPortV1({
+      manifest: installedManifest,
+      fetch: async () => chunkedAbcResponse(),
+      openCache: async () => cache,
+      activationStore,
+    });
+    expect(await installer.install()).toEqual({
+      status: "ready",
+      aggregateByteLength: 3,
+    });
+
+    const upgraded = createBrowserLocalModelPortV1({
+      manifest: upgradedManifest,
+      fetch: async () => { throw new Error("runtime upgrade must not redownload"); },
+      openCache: async () => cache,
+      activationStore,
+    });
+    expect(await upgraded.status()).toEqual({
+      status: "ready",
+      aggregateByteLength: 3,
+    });
+  });
+
   it("fails closed and leaves no activation or corrupt cache entry", async () => {
     const manifest = fixtureManifest("0".repeat(64));
     const cache = memoryCache();

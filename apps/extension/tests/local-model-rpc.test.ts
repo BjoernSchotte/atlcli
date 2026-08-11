@@ -6,7 +6,10 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { z } from "zod";
-import { parseGemma4ResponseV1 } from "../utils/local-model/gemma-response.js";
+import {
+  parseGemma4ResponseV1,
+  projectPartialGemmaAnswerMarkdownV1,
+} from "../utils/local-model/gemma-response.js";
 import {
   createLocalGemmaChatModelBindingV1,
   toLocalModelMessagesV1,
@@ -42,6 +45,47 @@ describe("pinned Gemma 4 response grammar", () => {
       raw: "A local answer.<turn|>",
       allowedToolNames: new Set(),
     })).toEqual({ text: "A local answer.", toolCalls: [] });
+  });
+
+  it("accepts a complete forced tool object before the optional close marker", () => {
+    expect(parseGemma4ResponseV1({
+      requestId: "markerless",
+      raw: '<|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|"|>Budget<|"|>,sourceRefs:[],assertion:<|"|>none<|"|>,scope:<|"|>none<|"|>}],gaps:[]}',
+      allowedToolNames: new Set(["ChatAnswerDraftV2"]),
+    }).toolCalls).toEqual([{
+      id: "local-markerless-0",
+      name: "ChatAnswerDraftV2",
+      arguments: {
+        blocks: [{
+          markdown: "Budget",
+          sourceRefs: [],
+          assertion: "none",
+          scope: "none",
+        }],
+        gaps: [],
+      },
+    }]);
+  });
+
+  it("projects visible answer blocks from an incomplete native tool call", () => {
+    expect(projectPartialGemmaAnswerMarkdownV1(
+      '<|channel>thought\nprivate markdown:<|"|>hidden<|"|><channel|><|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|"|>Budget: 60,000–85,000 EUR<|"|>,sourceRefs:[<|"|>source-1<|"|>],assertion:<|"|>positive<|"|>,scope:<|"|>none<|"|>},{markdown:<|"|>Base fee: 30,000',
+      "ChatAnswerDraftV2",
+    )).toBe("Budget: 60,000–85,000 EUR\n\nBase fee: 30,000");
+  });
+
+  it("hides unresolved host-private source IDs from the streamed preview", () => {
+    expect(projectPartialGemmaAnswerMarkdownV1(
+      '<|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|"|>Budget: 60,000 EUR [wiki:1001#section:004:budget]<|"|>},{markdown:<|"|>Base fee: 30,000 EUR [jira:DEMO-1<|"|>',
+      "ChatAnswerDraftV2",
+    )).toBe("Budget: 60,000 EUR\n\nBase fee: 30,000 EUR");
+  });
+
+  it("does not project thought or non-answer tool fields", () => {
+    expect(projectPartialGemmaAnswerMarkdownV1(
+      '<|channel>thought\nmarkdown:<|"|>secret<|"|><channel|><|tool_call>call:eval{code:<|"|>return { markdown: \'not an answer\' }<|"|>}',
+      "ChatAnswerDraftV2",
+    )).toBe("");
   });
 
   it("rejects unknown, malformed, and empty responses", () => {
@@ -152,20 +196,23 @@ describe("local model RPC boundary", () => {
     expect(JSON.stringify(messages)).not.toContain("private acquisition reasoning");
   });
 
-  it("keeps only the original objective from the initial user envelope during terminal projection", () => {
+  it("keeps the complete human message when no host projection replaces it", () => {
     const messages = toLocalModelMessagesV1([
       new HumanMessage([
         'User question: "What is the budget?"',
-        'Explicit user request checklist (verbatim fragments, no added requirements): ["budget"].',
-        "Cover every checklist item exactly once with supported evidence or a precise gap before finalizing.",
+        "Address the user's substantive request by meaning, using natural wording.",
+        "Use supported evidence or state a precise material gap.",
         "Attached host-bound entities (opaque refs only): a large routing envelope.",
         `Durable conversation context: ${"x".repeat(8_000)}`,
       ].join("\n")),
-    ], { terminalAnswerProjection: true });
+    ]);
 
     expect(messages).toEqual([{ role: "user", content: [
       'User question: "What is the budget?"',
-      'Explicit user request checklist (verbatim fragments, no added requirements): ["budget"].',
+      "Address the user's substantive request by meaning, using natural wording.",
+      "Use supported evidence or state a precise material gap.",
+      "Attached host-bound entities (opaque refs only): a large routing envelope.",
+      `Durable conversation context: ${"x".repeat(8_000)}`,
     ].join("\n") }]);
   });
 
@@ -332,9 +379,9 @@ describe("local model RPC boundary", () => {
       tools: [{ function: { name: "ChatAnswerDraftV2" } }],
     });
     if (observed?.kind !== "generate") throw new Error("Expected generation request.");
-    expect(JSON.stringify(observed.tools[0])).not.toContain("maxItems");
+    expect(JSON.stringify(observed.tools[0])).toContain('"maxItems":8');
     expect(JSON.stringify(observed.tools[0])).not.toContain("continuation");
-    expect(JSON.stringify(observed.tools[0]).length).toBeLessThan(900);
+    expect(JSON.stringify(observed.tools[0]).length).toBeLessThan(1_200);
     expect(observed.tools[0]!.function.parameters).toMatchObject({
       properties: {
         blocks: {
@@ -350,6 +397,89 @@ describe("local model RPC boundary", () => {
     expect(observed.messages[0]!.content).toContain(
       "response must begin with the Gemma tool call",
     );
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("publishes local answer previews without changing the canonical tool call", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "answer-preview",
+        requestId: event.data.requestId,
+        markdown: "Budget: 60,000–85,000 EUR",
+      });
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "required-answer",
+          name: "ChatAnswerDraftV2",
+          arguments: {
+            blocks: [{
+              markdown: "Budget: 60,000–85,000 EUR",
+              sourceRefs: ["source-1"],
+              assertion: "positive",
+              scope: "none",
+            }],
+            gaps: [],
+          },
+        }],
+        inputTokens: 20,
+        outputTokens: 40,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 512,
+    });
+    const previews: unknown[] = [];
+    const unsubscribe = binding.subscribeStructuredAnswerPreview?.((preview) => {
+      previews.push(preview);
+    });
+    const routedRootModel = binding.modelForRoute?.({
+      role: "root-planning",
+      preference: "fast",
+    }).model;
+    if (!routedRootModel) throw new Error("Expected the local root model route.");
+    const runnable = routedRootModel.bindTools!([{
+      name: "ChatAnswerDraftV2",
+      description: "Answer",
+      schema: z.object({ blocks: z.array(z.unknown()), gaps: z.array(z.unknown()) }),
+    }], { tool_choice: "ChatAnswerDraftV2" });
+
+    const result = await runnable.invoke([new HumanMessage("Finish")]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "ChatAnswerDraftV2",
+      streamAnswerPreview: true,
+    });
+    expect(previews).toEqual([
+      {
+        generationId: expect.any(String),
+        status: "snapshot",
+        markdown: "Budget: 60,000–85,000 EUR",
+      },
+      {
+        generationId: expect.any(String),
+        status: "completed",
+        markdown: "Budget: 60,000–85,000 EUR",
+      },
+    ]);
+    expect(result.tool_calls?.[0]).toMatchObject({
+      name: "ChatAnswerDraftV2",
+      args: { blocks: [{ scope: "none" }], gaps: [] },
+    });
+    unsubscribe?.();
     channel.port1.close();
     channel.port2.close();
   });
@@ -450,21 +580,27 @@ describe("local model RPC boundary", () => {
     });
 
     expect(binding.model.profile).toMatchObject({
-      maxOutputTokens: 4_096,
+      maxOutputTokens: 2_048,
       toolCalling: true,
     });
     expect(binding.harnessProfile?.key).toBe("atlcli-local:gemma-4-e4b");
-    expect(binding.runtimeLimits?.maxInputTokens).toBe(8_192);
+    expect(binding.runtimeLimits?.maxInputTokens).toBe(3_072);
     expect(binding.runtimeLimits?.interpreterResultChars).toBe(4_000);
     expect(binding.modelForRoute?.({ role: "analysis", preference: "balanced" }))
-      .toMatchObject({ thinkingMode: "adaptive-summary" });
+      .toMatchObject({
+        thinkingMode: "adaptive-summary",
+        model: { profile: { maxOutputTokens: 1_536 } },
+      });
     expect(binding.modelForRoute?.({ role: "analysis", preference: "thorough" }))
       .toMatchObject({ thinkingMode: "adaptive-summary" });
     expect(binding.modelForRoute?.({ role: "synthesis", preference: "thorough" }))
       .toMatchObject({
         thinkingMode: "disabled",
         finalizationCorridor: "finalize-only",
+        model: { profile: { maxOutputTokens: 2_048 } },
       });
+    expect(binding.modelForRoute?.({ role: "extraction", preference: "fast" }))
+      .toMatchObject({ model: { profile: { maxOutputTokens: 768 } } });
     channel.port1.close();
     channel.port2.close();
   });

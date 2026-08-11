@@ -19,13 +19,6 @@ const LOCAL_TOOL_RESULT_DEFAULT_LIMITS_V1: LocalToolResultProjectionLimitsV1 = {
   maxRelatedAnchors: 8,
 };
 
-const LOCAL_TOOL_RESULT_FINALIZATION_LIMITS_V1: LocalToolResultProjectionLimitsV1 = {
-  maxTextChars: 600,
-  maxLinks: 1,
-  maxSections: 0,
-  maxRelatedAnchors: 0,
-};
-
 function recordV1(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -196,22 +189,4 @@ export function projectLocalGemmaToolResultV1(
     return content;
   }
   return JSON.stringify(compactNestedEvidenceV1(parsed, relevanceText, limits));
-}
-
-/**
- * The host has already selected the terminal answer tool, so discovery links
- * and a broad outline are no longer useful. Keep only the exact source,
- * question-relevant evidence projection, coverage flags, and a few relevant
- * section handles for the local finalization call. The full tool result stays
- * unchanged in canonical DeepAgents state and host evidence ledgers.
- */
-export function projectLocalGemmaFinalToolResultV1(
-  content: string,
-  relevanceText = "",
-): string {
-  return projectLocalGemmaToolResultV1(
-    content,
-    relevanceText,
-    LOCAL_TOOL_RESULT_FINALIZATION_LIMITS_V1,
-  );
 }

@@ -3,7 +3,6 @@ import {
   buildChatSystemPromptV1,
   buildChatTurnPromptV1,
   chatAnswerOutputInstructionV1,
-  deriveChatRequestChecklistV1,
 } from "./prompts.js";
 
 describe("Chat supervisor prompt", () => {
@@ -127,53 +126,26 @@ describe("Chat supervisor prompt", () => {
     expect(prompt).not.toContain("architecture");
   });
 
-  test("projects explicit enumerated user facets without inventing requirements", () => {
-    const question = [
-      "Fasse ausschließlich die direkt verlinkte Seite knapp zusammen und nenne",
-      "Modellgröße, gemessene Endgeschwindigkeit und die Einsatzempfehlung:",
-      "https://tenant.invalid/wiki/spaces/SAFE/pages/100/Private-title",
-    ].join(" ");
+  test("uses the original German, English, or French question as semantic guidance", () => {
+    const questions = [
+      "Nenne den Budgetrahmen und die jährliche Basisgebühr.",
+      "State the budget range and the annual base fee.",
+      "Indiquez la fourchette budgétaire et les frais annuels de base.",
+    ];
 
-    expect(deriveChatRequestChecklistV1(question)).toEqual([
-      "Modellgröße",
-      "gemessene Endgeschwindigkeit",
-      "die Einsatzempfehlung",
-    ]);
-    const prompt = buildChatTurnPromptV1({
-      question,
-      jiraProjectKeys: [],
-      confluenceSpaceKeys: [],
-      anchors: [],
-    });
-    expect(prompt).toContain("Explicit user request checklist");
-    expect(prompt).toContain('"die Einsatzempfehlung"');
-    expect(prompt).toContain("no added requirements");
-  });
-
-  test("does not manufacture a checklist for an ordinary unenumerated question", () => {
-    expect(deriveChatRequestChecklistV1("Worum geht es auf dieser Seite?")).toEqual([]);
-  });
-
-  test("preserves repeated interrogative and answer-with facets", () => {
-    const question = [
-      "Welche Betriebsart und welche Sicherheitsabwägung gilt?",
-      "Antworte mit den zentralen Einstellungen und der begründeten Einsatzgrenze.",
-    ].join(" ");
-
-    expect(deriveChatRequestChecklistV1(question)).toEqual([
-      "Betriebsart",
-      "Sicherheitsabwägung",
-      "den zentralen Einstellungen",
-      "der begründeten Einsatzgrenze",
-    ]);
-    const prompt = buildChatTurnPromptV1({
-      question,
-      jiraProjectKeys: [],
-      confluenceSpaceKeys: [],
-      anchors: [],
-    });
-    expect(prompt).toContain('"Betriebsart"');
-    expect(prompt).toContain('"der begründeten Einsatzgrenze"');
-    expect(prompt).toContain("Cover every checklist item exactly once");
+    for (const question of questions) {
+      const prompt = buildChatTurnPromptV1({
+        question,
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+        anchors: [],
+      });
+      expect(prompt).toContain(JSON.stringify(question));
+      expect(prompt).toContain("Judge coverage by meaning, not wording");
+      expect(prompt).toContain("the user's chosen language");
+      expect(prompt).toContain("Never copy question fragments merely to satisfy validation");
+      expect(prompt).not.toContain("request checklist");
+      expect(prompt).not.toContain("verbatim fragments");
+    }
   });
 });

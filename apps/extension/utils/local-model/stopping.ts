@@ -3,6 +3,17 @@ import {
   type Tensor,
   StoppingCriteria,
 } from "@huggingface/transformers";
+import { isCompleteGemmaToolCallV1 } from "./gemma-response.js";
+
+/** Native Gemma tool-turn boundaries that end one model invocation. */
+export const LOCAL_GEMMA_TOOL_STOP_MARKERS_V1 = [
+  // The model has finished serializing the requested tool call. Waiting for a
+  // later tool-response marker makes it continue generating host-owned turns.
+  "<tool_call|>",
+  // Defensive boundary for malformed continuations from an already-complete
+  // tool request.
+  "<|tool_response>",
+] as const;
 
 /**
  * Enforce only a host-selected tool-call prefix. The model remains responsible
@@ -51,6 +62,27 @@ export class TokenSequenceStoppingCriteriaV1 extends StoppingCriteria {
         // bigint depending on the underlying tensor implementation.
         ids[ids.length - sequence.length + index] == token
       )
+    ));
+  }
+}
+
+/** Stop a forced tool invocation once its complete argument object exists. */
+export class CompleteToolCallStoppingCriteriaV1 extends StoppingCriteria {
+  constructor(
+    readonly promptTokenCount: number,
+    readonly requiredToolName: string,
+    readonly decode: (tokenIds: number[]) => string,
+  ) {
+    super();
+    if (promptTokenCount < 1 || requiredToolName.length === 0) {
+      throw new Error("A complete local tool-call criterion needs a prompt and tool name.");
+    }
+  }
+
+  override _call(inputIds: number[][]): boolean[] {
+    return inputIds.map((ids) => isCompleteGemmaToolCallV1(
+      this.decode(ids.slice(this.promptTokenCount)),
+      this.requiredToolName,
     ));
   }
 }

@@ -4,6 +4,120 @@ const TOOL_OPEN = "<|tool_call>";
 const TOOL_CLOSE = "<tool_call|>";
 const STRING_DELIMITER = '<|"|>';
 
+function hideUnvalidatedSourceRefsV1(markdown: string): string {
+  return markdown
+    // Gemma sometimes writes host-private source IDs into its prose even
+    // though sourceRefs is a separate structured field. The final answer
+    // renderer receives host-resolved citations; a speculative preview must
+    // never expose these unresolved IDs while the tool object is incomplete.
+    .replace(/[ \t]*\[(?:wiki|jira):[^\]\r\n]{1,512}\]/giu, "")
+    .replace(/[ \t]*\[(?:wiki|jira):[^\]\r\n]{0,512}$/giu, "")
+    .trim();
+}
+
+function partialJsonStringV1(source: string): string {
+  let value = "";
+  let cursor = 1;
+  while (cursor < source.length) {
+    const character = source[cursor]!;
+    if (character === '"') return value;
+    if (character !== "\\") {
+      value += character;
+      cursor += 1;
+      continue;
+    }
+    if (cursor + 1 >= source.length) return value;
+    const escaped = source[cursor + 1]!;
+    const simpleEscapes: Record<string, string> = {
+      '"': '"',
+      "\\": "\\",
+      "/": "/",
+      b: "\b",
+      f: "\f",
+      n: "\n",
+      r: "\r",
+      t: "\t",
+    };
+    if (escaped in simpleEscapes) {
+      value += simpleEscapes[escaped];
+      cursor += 2;
+      continue;
+    }
+    if (escaped !== "u" || cursor + 6 > source.length) return value;
+    const unit = source.slice(cursor + 2, cursor + 6);
+    if (!/^[0-9a-f]{4}$/iu.test(unit)) return value;
+    value += String.fromCharCode(Number.parseInt(unit, 16));
+    cursor += 6;
+  }
+  return value;
+}
+
+/**
+ * Conservatively project only visible Markdown strings from Gemma's partial
+ * native tool grammar. This never participates in tool execution or schema
+ * acceptance; the complete response is still parsed and validated normally.
+ */
+export function projectPartialGemmaAnswerMarkdownV1(
+  raw: string,
+  requiredToolName: string,
+): string {
+  const header = `${TOOL_OPEN}call:${requiredToolName}`;
+  const headerIndex = raw.lastIndexOf(header);
+  if (headerIndex < 0) return "";
+  const argumentsSource = raw.slice(headerIndex + header.length);
+  const field = /(?:^|[,{])\s*(?:markdown|"markdown")\s*:\s*/gu;
+  const blocks: string[] = [];
+  let cursor = 0;
+  while (cursor < argumentsSource.length) {
+    field.lastIndex = cursor;
+    const match = field.exec(argumentsSource);
+    if (!match) break;
+    const valueStart = field.lastIndex;
+    const remaining = argumentsSource.slice(valueStart);
+    let value: string | undefined;
+    if (remaining.startsWith(STRING_DELIMITER)) {
+      const content = remaining.slice(STRING_DELIMITER.length);
+      const end = content.indexOf(STRING_DELIMITER);
+      value = end < 0 ? content : content.slice(0, end);
+      cursor = end < 0
+        ? argumentsSource.length
+        : valueStart + STRING_DELIMITER.length + end + STRING_DELIMITER.length;
+    } else if (remaining.startsWith('"')) {
+      value = partialJsonStringV1(remaining);
+      cursor = valueStart + Math.max(1, remaining.indexOf('"', 1) + 1);
+    } else {
+      cursor = valueStart + 1;
+    }
+    const normalized = value?.trim();
+    if (normalized) blocks.push(normalized);
+  }
+  return hideUnvalidatedSourceRefsV1(blocks.join("\n\n"));
+}
+
+/**
+ * A forced local tool call is complete as soon as its argument object parses.
+ * Gemma sometimes delays or omits the optional closing control token after it
+ * has already produced the entire object. The browser host can safely stop at
+ * that point because it owns tool execution and the following conversation
+ * turn.
+ */
+export function isCompleteGemmaToolCallV1(
+  raw: string,
+  requiredToolName: string,
+): boolean {
+  const start = raw.lastIndexOf(TOOL_OPEN);
+  if (start < 0) return false;
+  const body = raw.slice(start + TOOL_OPEN.length);
+  const match = /^call:([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)([\s\S]+)$/u.exec(body);
+  if (match?.[1] !== requiredToolName || !match[2]) return false;
+  try {
+    new GemmaArgumentsParserV1(match[2]).parse();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function normalizeToolCallV1(input: {
   name: string;
   arguments: Record<string, unknown>;
@@ -162,8 +276,14 @@ export function parseGemma4ResponseV1(input: {
     }
     text += remaining.slice(0, start);
     const end = remaining.indexOf(TOOL_CLOSE, start + TOOL_OPEN.length);
-    if (end < 0) throw new Error("Gemma tool call is unterminated.");
-    const body = remaining.slice(start + TOOL_OPEN.length, end);
+    // A host stopping criterion may terminate a forced tool call immediately
+    // after its complete argument object, before Gemma emits TOOL_CLOSE.
+    // Parsing still requires the entire remaining body to be one valid object,
+    // so truncated or trailing output remains invalid.
+    const body = remaining.slice(
+      start + TOOL_OPEN.length,
+      end < 0 ? remaining.length : end,
+    );
     const match = /^call:([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)([\s\S]+)$/u.exec(body);
     if (!match?.[1] || !match[2]) throw new Error("Gemma tool call has an invalid header.");
     const normalized = normalizeToolCallV1({
@@ -176,7 +296,7 @@ export function parseGemma4ResponseV1(input: {
       name: normalized.name,
       arguments: normalized.arguments,
     });
-    remaining = remaining.slice(end + TOOL_CLOSE.length);
+    remaining = end < 0 ? "" : remaining.slice(end + TOOL_CLOSE.length);
   }
 
   text = text

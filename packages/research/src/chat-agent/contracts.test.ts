@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { AIMessage, SystemMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
   type ChatPresentationStreamEventV1,
@@ -15,7 +15,6 @@ import { createMemoryResearchWorkspace } from "../workspace.js";
 import {
   chatMarkdownIntegrityIssuesV1,
   chatDraftForFinalizationAfterHostRepairV1,
-  chatDraftMissingRequestFacetsV1,
   chatDraftNeedsHostRepairV1,
   finalizeChatAnswerV1,
   inspectChatDraftAfterHostRepairV1,
@@ -47,7 +46,6 @@ import {
   CHAT_RETRIEVAL_ASSESSMENT_PATH_V1,
   CHAT_RETRIEVAL_PLAN_PATH_V1,
 } from "./retrieval-plan.js";
-import { deriveChatRequestChecklistV1 } from "./prompts.js";
 import { createKiteweaveResearchAgent } from "../agent-runtime-core.js";
 
 const turn: ChatTurnRequestV1 = {
@@ -184,151 +182,41 @@ describe("Chat answer contract", () => {
     })).toBe(true);
   });
 
-  test("requires every explicit user-authored facet before and after terminal repair", () => {
-    const incomplete = {
-      blocks: [{
-        markdown: "**Modellgröße:** klein.\n\n**Endgeschwindigkeit:** schnell.",
-        assertion: "positive",
-        scope: "none",
-        sourceRefs: [syntheticPageSource.id],
-      }],
-      gaps: [],
-    };
-    const requestFacets = ["Modellgröße", "Endgeschwindigkeit", "die Einsatzempfehlung"];
+  test("accepts evidence-bound natural paraphrases in German, English, and French", () => {
+    const cases = [{
+      question: "Nenne den Budgetrahmen und die jährliche Basisgebühr.",
+      markdown: "Für 2026 sind netto 60.000 bis 85.000 Euro vorgesehen; danach fallen jährlich 30.000 Euro an.",
+    }, {
+      question: "State the budget range and the annual base fee.",
+      markdown: "The 2026 estimate is EUR 60,000–85,000 net, followed by EUR 30,000 per year.",
+    }, {
+      question: "Indiquez la fourchette budgétaire et les frais annuels de base.",
+      markdown: "Le coût estimé pour 2026 est de 60 000 à 85 000 EUR hors taxes, puis de 30 000 EUR par an.",
+    }];
 
-    expect(chatDraftMissingRequestFacetsV1({ draft: incomplete, requestFacets })).toEqual([
-      "die Einsatzempfehlung",
-    ]);
-    expect(chatDraftNeedsHostRepairV1({
-      draft: incomplete,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBe(true);
-    expect(chatDraftForFinalizationAfterHostRepairV1({
-      draft: incomplete,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBeUndefined();
-
-    const complete = {
-      ...incomplete,
-      blocks: [{
-        ...incomplete.blocks[0],
-        markdown: `${incomplete.blocks[0]!.markdown}\n\n**Einsatzempfehlung:** einsetzen.`,
-      }],
-    };
-    expect(chatDraftMissingRequestFacetsV1({ draft: complete, requestFacets })).toEqual([]);
-    expect(chatDraftForFinalizationAfterHostRepairV1({
-      draft: complete,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBeDefined();
-  });
-
-  test("forces repair when an interrogative or answer-with facet is omitted", () => {
-    const requestFacets = deriveChatRequestChecklistV1([
-      "Welche Betriebsart und welche Sicherheitsabwägung gilt?",
-      "Antworte mit den zentralen Einstellungen und der begründeten Einsatzgrenze.",
-    ].join(" "));
-    const incomplete = {
-      blocks: [{
-        markdown: "**Betriebsart:** lokal.\n\n**Sicherheitsabwägung:** begrenzt.",
-        assertion: "positive" as const,
-        scope: "none" as const,
-        sourceRefs: [syntheticPageSource.id],
-      }],
-      gaps: [],
-    };
-
-    expect(chatDraftMissingRequestFacetsV1({ draft: incomplete, requestFacets })).toEqual([
-      "den zentralen Einstellungen",
-      "der begründeten Einsatzgrenze",
-    ]);
-    expect(chatDraftNeedsHostRepairV1({
-      draft: incomplete,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBe(true);
-  });
-
-  test("keeps one complete phrasing when terminal repair repeats the same facet alternatives", () => {
-    const requestFacets = ["Modellgröße", "Messung und Vermutung trennen"];
-    const draft = {
-      blocks: [{
-        markdown: "**Modellgröße:** Das Modell umfasst vier Einheiten.",
-        assertion: "positive" as const,
-        scope: "none" as const,
-        sourceRefs: [syntheticPageSource.id],
-      }, {
-        markdown: "**Messung und Vermutung trennen:** Die vier Einheiten sind direkt dokumentiert; eine Aussage zur Laufzeit bleibt eine ungemessene Vermutung.",
-        assertion: "none" as const,
-        scope: "none" as const,
-        sourceRefs: [],
-      }, {
-        markdown: "**Messung und Vermutung trennen:** Direkt dokumentiert sind die vier Einheiten; die Aussage zur Laufzeit bleibt dagegen eine ungemessene Vermutung.",
-        assertion: "none" as const,
-        scope: "none" as const,
-        sourceRefs: [],
-      }, {
-        markdown: "**Messung und Vermutung trennen:** Direkt dokumentiert sind vier Einheiten; eine Aussage zur tatsächlichen Laufzeit bleibt dagegen eine ungemessene Vermutung.",
-        assertion: "none" as const,
-        scope: "none" as const,
-        sourceRefs: [],
-      }],
-      gaps: [],
-    };
-
-    expect(chatDraftNeedsHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBe(true);
-    const repaired = chatDraftForFinalizationAfterHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    });
-    expect(repaired?.blocks).toHaveLength(2);
-    expect(repaired?.blocks.filter((block) =>
-      block.markdown.includes("Messung und Vermutung trennen")
-    )).toHaveLength(1);
-    expect(repaired?.blocks[1]?.markdown).toContain("tatsächlichen Laufzeit");
-  });
-
-  test("preserves materially different repeated facet blocks while displaying their label once", () => {
-    const requestFacets = ["Modellgröße", "Messung und Vermutung trennen"];
-    const inspection = inspectChatDraftAfterHostRepairV1({
-      draft: {
+    for (const { question, markdown } of cases) {
+      const draft = {
         blocks: [{
-          markdown: "**Modellgröße:** Das Modell umfasst vier Einheiten.",
-          assertion: "positive",
-          scope: "none",
-          sourceRefs: [syntheticPageSource.id],
-        }, {
-          markdown: "**Messung und Vermutung trennen:** Die gemessene Startzeit beträgt zwölf Sekunden.",
-          assertion: "positive",
-          scope: "none",
-          sourceRefs: [syntheticPageSource.id],
-        }, {
-          markdown: "**Messung und Vermutung trennen:** Die vermutete Ursache wird in der Quelle nicht bestätigt.",
-          assertion: "positive",
-          scope: "none",
+          markdown,
+          assertion: "positive" as const,
+          scope: "none" as const,
           sourceRefs: [syntheticPageSource.id],
         }],
         gaps: [],
-      },
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    });
-
-    expect(inspection.rejectionReasons).toEqual([]);
-    expect(inspection.draft?.blocks).toHaveLength(3);
-    expect(inspection.draft?.blocks.filter((block) =>
-      block.markdown.includes("Messung und Vermutung trennen")
-    )).toHaveLength(1);
-    expect(inspection.draft?.blocks[2]?.markdown).toBe(
-      "Die vermutete Ursache wird in der Quelle nicht bestätigt.",
-    );
+      };
+      expect(chatDraftNeedsHostRepairV1({
+        draft,
+        detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+        question,
+      })).toBe(false);
+      const inspection = inspectChatDraftAfterHostRepairV1({
+        draft,
+        detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+        question,
+      });
+      expect(inspection.rejectionReasons).toEqual([]);
+      expect(inspection.draft?.blocks[0]?.markdown).toBe(markdown);
+    }
   });
 
   test("repairs repeated evidence blocks and retains their most informative wording", () => {
@@ -606,7 +494,6 @@ describe("Chat answer contract", () => {
         gaps: [],
       },
       detailEvidence: [],
-      requestFacets: ["First facet", "Second facet"],
     })).toEqual({ rejectionReasons: ["orphan-heading"] });
   });
 
@@ -2538,6 +2425,42 @@ describe("separate Chat root", () => {
     expect(toolChoice).toBe("ChatAnswerDraftV2");
   });
 
+  test("projects a fresh terminal context once without mutating retained agent state", async () => {
+    let projectionCalls = 0;
+    const retainedMessages = [new HumanMessage("retained full conversation")];
+    const terminalMessages = [new HumanMessage(JSON.stringify({
+      schema: "atlcli.chat-terminal-context/v1",
+      question: "What is the budget?",
+    }))];
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      toolStructuredOutput: true,
+      evidenceAccessAttempted: () => true,
+      projectTerminalContext: async () => {
+        projectionCalls += 1;
+        return terminalMessages;
+      },
+    });
+    const observed: unknown[] = [];
+    const request = {
+      tools: [{ name: "eval" }, { name: "ask_user_question" }],
+      messages: retainedMessages,
+      systemMessage: new SystemMessage("Stable Chat contract."),
+    } as never;
+
+    await middleware.wrapModelCall?.(request, async (projected) => {
+      observed.push(projected.messages);
+      return new AIMessage("fixture") as never;
+    });
+    await middleware.wrapModelCall?.(request, async (projected) => {
+      observed.push(projected.messages);
+      return new AIMessage("repair fixture") as never;
+    });
+
+    expect(projectionCalls).toBe(1);
+    expect(observed).toEqual([terminalMessages, terminalMessages]);
+    expect(retainedMessages[0]!.text).toBe("retained full conversation");
+  });
+
   test("closes an accepted agentic workflow without a supervisor rewrite", async () => {
     const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
       agenticWorkflowComplete: () => true,
@@ -2560,7 +2483,7 @@ describe("separate Chat root", () => {
     expect(chatRecursionLimitV1(10_000)).toBe(56);
   });
 
-  function runtimeHarness() {
+  function runtimeHarness(harnessOptions: { beforeMessages?: () => void } = {}) {
     let chatRoots = 0;
     let researchRoots = 0;
     const chatRuntime = {
@@ -2578,6 +2501,7 @@ describe("separate Chat root", () => {
         return {
           streamEvents: async () => ({
             messages: (async function* () {
+              harnessOptions.beforeMessages?.();
               yield {
                 text: (async function* () {})(),
                 reasoning: (async function* () { yield "Checking the selected evidence."; })(),
@@ -2817,6 +2741,79 @@ describe("separate Chat root", () => {
       }),
       expect.objectContaining({ channel: "answer-markdown", status: "completed" }),
     ]);
+  });
+
+  test("presents an out-of-band structured preview without replaying final tool chunks", async () => {
+    let previewListener: ((preview: {
+      generationId: string;
+      status: "snapshot" | "completed";
+      markdown: string;
+    }) => void) | undefined;
+    const harness = runtimeHarness({
+      beforeMessages: () => {
+        previewListener?.({
+          generationId: "local-final-1",
+          status: "snapshot",
+          markdown: 'No detailed "Atlassian" ',
+        });
+        previewListener?.({
+          generationId: "local-final-1",
+          status: "snapshot",
+          markdown: 'No detailed "Atlassian" evidence was needed for this response.',
+        });
+        previewListener?.({
+          generationId: "local-final-1",
+          status: "completed",
+          markdown: 'No detailed "Atlassian" evidence was needed for this response.',
+        });
+      },
+    });
+    const chat = createKiteweaveChatAgent(harness.chatRuntime);
+    const presentation: ChatPresentationStreamEventV1[] = [];
+    await chat.runChatAgent({
+      modelBinding: {
+        model: {} as BaseChatModel,
+        modelId: "synthetic-local-preview-model",
+        qualityAdapter: CAPABILITY_FREE_QUALITY_ADAPTER_V1,
+        structuredOutput: "tool",
+        subscribeStructuredAnswerPreview: (listener) => {
+          previewListener = listener;
+          return () => { previewListener = undefined; };
+        },
+      },
+      turn,
+      brokerRequest,
+      providers: {
+        jira: {
+          searchPage: async () => { throw new Error("unexpected Jira search"); },
+          getIssue: async () => { throw new Error("unexpected Jira detail"); },
+        },
+        wiki: {
+          searchPage: async () => { throw new Error("unexpected wiki search"); },
+          getPage: async () => { throw new Error("unexpected wiki detail"); },
+        },
+      },
+      workspace: createMemoryResearchWorkspace(),
+      hostIdentity,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      onChatPresentation: (event) => presentation.push(event),
+    });
+
+    expect(presentation.filter((event) => event.channel === "answer-markdown")).toEqual([
+      expect.objectContaining({ channel: "answer-markdown", status: "started" }),
+      expect.objectContaining({
+        channel: "answer-markdown",
+        status: "delta",
+        delta: 'No detailed "Atlassian" ',
+      }),
+      expect.objectContaining({
+        channel: "answer-markdown",
+        status: "delta",
+        delta: "evidence was needed for this response.",
+      }),
+      expect.objectContaining({ channel: "answer-markdown", status: "completed" }),
+    ]);
+    expect(previewListener).toBeUndefined();
   });
 
   test("rejects an incompatible persisted state before root construction", async () => {

@@ -19,12 +19,20 @@ import {
   configureVerifiedLocalModelRuntimeV1,
   readVerifiedLocalModelJsonV1,
 } from "../utils/local-model/runtime-cache.js";
-import { parseGemma4ResponseV1 } from "../utils/local-model/gemma-response.js";
+import {
+  isCompleteGemmaToolCallV1,
+  parseGemma4ResponseV1,
+  projectPartialGemmaAnswerMarkdownV1,
+} from "../utils/local-model/gemma-response.js";
 import {
   disposeLocalModelInputsV1,
   disposeLocalModelValueV1,
 } from "../utils/local-model/runtime-lifecycle.js";
-import { TokenSequenceStoppingCriteriaV1 } from
+import {
+  CompleteToolCallStoppingCriteriaV1,
+  LOCAL_GEMMA_TOOL_STOP_MARKERS_V1,
+  TokenSequenceStoppingCriteriaV1,
+} from
   "../utils/local-model/stopping.js";
 import { RequiredToolPrefixLogitsProcessorV1 } from
   "../utils/local-model/stopping.js";
@@ -67,12 +75,19 @@ let loadedRuntime: Promise<{
 
 async function loadRuntimeV1() {
   loadedRuntime ??= (async () => {
+    const startedAt = Date.now();
+    console.info("[local-gemma/worker] loading verified runtime", {
+      modelId: LOCAL_GEMMA_G0_MANIFEST_V1.modelId,
+      revision: LOCAL_GEMMA_G0_MANIFEST_V1.modelRevision,
+      device: LOCAL_GEMMA_G0_MANIFEST_V1.device,
+      dtype: LOCAL_GEMMA_G0_MANIFEST_V1.dtype,
+    });
     const cache = await localOnlyRuntimeReady;
     const options = {
       revision: LOCAL_GEMMA_G0_MANIFEST_V1.modelRevision,
       local_files_only: true,
     } as const;
-    // Transformers.js 4.1.0 tokenizer discovery probes metadata without
+    // Transformers.js 4.2.0 tokenizer discovery probes metadata without
     // forwarding the caller's pinned revision. That default-branch probe must
     // not weaken our immutable cache boundary, so construct the known Gemma
     // tokenizer from the two already verified revision-keyed JSON artifacts.
@@ -102,6 +117,9 @@ async function loadRuntimeV1() {
         device: LOCAL_GEMMA_G0_MANIFEST_V1.device,
       },
     );
+    console.info("[local-gemma/worker] runtime ready", {
+      durationMs: Date.now() - startedAt,
+    });
     return { tokenizer, model };
   })();
   return loadedRuntime;
@@ -119,7 +137,22 @@ async function generateV1(
   port: MessagePort,
   request: Extract<LocalModelPortRequestV1, { kind: "generate" }>,
 ): Promise<void> {
+  const generationStartedAt = Date.now();
   assertLocalModelGenerateRequestV1(request);
+  console.info("[local-gemma/worker] generation queued", {
+    requestId: request.requestId,
+    requiredToolName: request.requiredToolName,
+    streamAnswerPreview: request.streamAnswerPreview === true,
+    thinkingMode: request.thinkingMode,
+    requestedMaxOutputTokens: request.maxOutputTokens,
+    tools: request.tools.map((tool) => tool.function.name),
+    messages: request.messages.map((message, index) => ({
+      index,
+      role: message.role,
+      chars: message.content.length,
+      preview: message.content.slice(-320),
+    })),
+  });
   if (cancelledRequests.has(request.requestId)) {
     postPortV1(port, {
       schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
@@ -140,6 +173,11 @@ async function generateV1(
     return_dict: true,
   });
   const inputTokens = inputs.input_ids.dims.at(-1) ?? 0;
+  console.info("[local-gemma/worker] prompt tokenized", {
+    requestId: request.requestId,
+    inputTokens,
+    durationMs: Date.now() - generationStartedAt,
+  });
   const contextOverflow = localGemmaContextOverflowMessageV1(inputTokens);
   if (contextOverflow) {
     disposeLocalModelInputsV1(inputs as unknown as Record<string, unknown>);
@@ -153,17 +191,72 @@ async function generateV1(
     return;
   }
   const criterion = new InterruptableStoppingCriteria();
-  const toolResponseCriterion = new TokenSequenceStoppingCriteriaV1([
-    tokenizer.encode("<|tool_response>", { add_special_tokens: false }),
-  ]);
+  const toolBoundaryCriterion = new TokenSequenceStoppingCriteriaV1(
+    LOCAL_GEMMA_TOOL_STOP_MARKERS_V1.map((marker) =>
+      tokenizer.encode(marker, { add_special_tokens: false })
+    ),
+  );
+  const completeRequiredToolCriterion = request.requiredToolName
+    ? new CompleteToolCallStoppingCriteriaV1(
+        inputTokens,
+        request.requiredToolName,
+        (tokenIds) => tokenizer.decode(tokenIds, { skip_special_tokens: false }),
+      )
+    : undefined;
   if (cancelledRequests.has(request.requestId)) criterion.interrupt();
   activeCriteria.set(request.requestId, criterion);
   const generatedTokens: bigint[] = [];
+  let nextProgressToken = 32;
+  let nextPreviewToken = 16;
+  let emittedAnswerPreview = "";
   const streamer = new TextStreamer(tokenizer, {
     skip_prompt: true,
     skip_special_tokens: false,
     callback_function: () => undefined,
-    token_callback_function: (tokens) => generatedTokens.push(...tokens),
+    token_callback_function: (tokens) => {
+      generatedTokens.push(...tokens);
+      if (
+        request.streamAnswerPreview &&
+        request.requiredToolName === "ChatAnswerDraftV2" &&
+        generatedTokens.length >= nextPreviewToken
+      ) {
+        const rawSnapshot = tokenizer.decode(generatedTokens, {
+          skip_special_tokens: false,
+        });
+        const markdown = projectPartialGemmaAnswerMarkdownV1(
+          rawSnapshot,
+          request.requiredToolName,
+        );
+        if (markdown && markdown !== emittedAnswerPreview) {
+          const firstPreview = emittedAnswerPreview.length === 0;
+          emittedAnswerPreview = markdown;
+          console.debug("[local-gemma/worker] answer preview emitted", {
+            requestId: request.requestId,
+            firstPreview,
+            outputTokens: generatedTokens.length,
+            markdownChars: markdown.length,
+          });
+          postPortV1(port, {
+            schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+            kind: "answer-preview",
+            requestId: request.requestId,
+            markdown,
+          });
+        }
+        nextPreviewToken = generatedTokens.length + 16;
+      }
+      if (generatedTokens.length < nextProgressToken) return;
+      const tail = tokenizer.decode(generatedTokens.slice(-192), {
+        skip_special_tokens: false,
+      });
+      console.debug("[local-gemma/worker] generation progress", {
+        requestId: request.requestId,
+        outputTokens: generatedTokens.length,
+        durationMs: Date.now() - generationStartedAt,
+        tail: tail.slice(-1_200),
+      });
+      nextProgressToken = generatedTokens.length + 32;
+    },
   });
   let output: unknown;
   const logitsProcessors = new LogitsProcessorList();
@@ -182,10 +275,15 @@ async function generateV1(
         max_new_tokens: request.maxOutputTokens,
         do_sample: false,
         streamer,
-        // Gemma 4 defines <|tool_response> as an additional inference stop.
-        // Stop immediately after the model requests a host tool instead of
-        // letting it hallucinate the unavailable result until max_new_tokens.
-        stopping_criteria: [criterion, toolResponseCriterion],
+        // A complete native tool call is the end of this model turn. The host
+        // owns execution and the following tool-result message; letting Gemma
+        // continue until a hypothetical response marker can burn the entire
+        // output corridor after the useful JSON is already complete.
+        stopping_criteria: [
+          criterion,
+          toolBoundaryCriterion,
+          ...(completeRequiredToolCriterion ? [completeRequiredToolCriterion] : []),
+        ],
         ...(request.requiredToolName ? { logits_processor: logitsProcessors } : {}),
       });
     } catch (error) {
@@ -209,13 +307,74 @@ async function generateV1(
       return;
     }
     const raw = tokenizer.decode(generatedTokens, { skip_special_tokens: false });
-    const parsed = parseGemma4ResponseV1({
+    if (request.streamAnswerPreview &&
+        request.requiredToolName === "ChatAnswerDraftV2") {
+      const finalMarkdownPreview = projectPartialGemmaAnswerMarkdownV1(
+        raw,
+        request.requiredToolName,
+      );
+      if (finalMarkdownPreview && finalMarkdownPreview !== emittedAnswerPreview) {
+        emittedAnswerPreview = finalMarkdownPreview;
+        console.debug("[local-gemma/worker] final answer preview emitted", {
+          requestId: request.requestId,
+          outputTokens: generatedTokens.length,
+          markdownChars: finalMarkdownPreview.length,
+        });
+        postPortV1(port, {
+          schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+          kind: "answer-preview",
+          requestId: request.requestId,
+          markdown: finalMarkdownPreview,
+        });
+      }
+      console.debug("[local-gemma/worker] answer preview projection completed", {
+        requestId: request.requestId,
+        enabled: request.streamAnswerPreview === true,
+        outputTokens: generatedTokens.length,
+        markdownChars: finalMarkdownPreview.length,
+      });
+    }
+    console.info("[local-gemma/worker] generation stopped", {
       requestId: request.requestId,
-      raw,
-      allowedToolNames: new Set(
-        request.tools.map((tool) => tool.function.name),
+      inputTokens,
+      outputTokens: generatedTokens.length,
+      durationMs: Date.now() - generationStartedAt,
+      interrupted: criterion.interrupted,
+      hitConfiguredLimit: generatedTokens.length >= (
+        request.maxOutputTokens
       ),
+      hasToolBoundary: LOCAL_GEMMA_TOOL_STOP_MARKERS_V1.some((marker) => raw.includes(marker)),
+      hasCompleteRequiredTool: request.requiredToolName
+        ? isCompleteGemmaToolCallV1(raw, request.requiredToolName)
+        : undefined,
+      rawHead: raw.slice(0, 1_200),
+      rawTail: raw.slice(-1_200),
     });
+    let parsed: ReturnType<typeof parseGemma4ResponseV1>;
+    try {
+      parsed = parseGemma4ResponseV1({
+        requestId: request.requestId,
+        raw,
+        allowedToolNames: new Set(
+          request.tools.map((tool) => tool.function.name),
+        ),
+      });
+    } catch (error) {
+      console.error("[local-gemma/worker] response parse failed", {
+        requestId: request.requestId,
+        requiredToolName: request.requiredToolName,
+        outputTokens: generatedTokens.length,
+        error: error instanceof Error ? error.message : String(error),
+        rawHead: raw.slice(0, 2_000),
+        rawTail: raw.slice(-2_000),
+      });
+      if (!request.requiredToolName) throw error;
+      throw new Error(
+        `Local Gemma diagnostic after ${generatedTokens.length} output tokens: ${
+          error instanceof Error ? error.message : String(error)
+        }; generated=${JSON.stringify(raw.slice(0, 1_600))}`,
+      );
+    }
     postPortV1(port, {
       schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
       kind: "complete",
@@ -225,6 +384,43 @@ async function generateV1(
       toolCalls: parsed.toolCalls,
       inputTokens,
       outputTokens: generatedTokens.length,
+    });
+    console.info("[local-gemma/worker] generation completed", {
+      requestId: request.requestId,
+      inputTokens,
+      outputTokens: generatedTokens.length,
+      toolCalls: parsed.toolCalls.map((call) => call.name),
+      toolCallShapes: parsed.toolCalls.map((call) => {
+        const blocks = Array.isArray(call.arguments.blocks)
+          ? call.arguments.blocks
+          : undefined;
+        return {
+          name: call.name,
+          argumentKeys: Object.keys(call.arguments),
+          blocks: blocks?.map((block) => {
+            if (!block || typeof block !== "object" || Array.isArray(block)) {
+              return { type: typeof block };
+            }
+            const candidate = block as Record<string, unknown>;
+            return {
+              keys: Object.keys(candidate),
+              markdownChars: typeof candidate.markdown === "string"
+                ? candidate.markdown.length
+                : undefined,
+              sourceRefs: Array.isArray(candidate.sourceRefs)
+                ? candidate.sourceRefs
+                : undefined,
+              assertion: candidate.assertion,
+              scope: candidate.scope,
+            };
+          }),
+          gaps: Array.isArray(call.arguments.gaps)
+            ? call.arguments.gaps.length
+            : typeof call.arguments.gaps,
+        };
+      }),
+      textChars: parsed.text.length,
+      durationMs: Date.now() - generationStartedAt,
     });
   } finally {
     disposeLocalModelValueV1(output);

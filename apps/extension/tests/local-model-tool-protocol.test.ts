@@ -137,6 +137,7 @@ describe("local Gemma prompt projection", () => {
         content: [
           "You are Kiteweave Chat, a conversational read-only Jira and Confluence assistant.",
           "Write the user-facing answer and all provider-visible reasoning summaries in German.",
+          "The host-selected conversational quality mode is auto.",
           "x".repeat(90_000),
         ].join("\n"),
       },
@@ -146,6 +147,8 @@ describe("local Gemma prompt projection", () => {
 
     expect(projected[0]!.content.length).toBeLessThan(1_200);
     expect(projected[0]!.content).toContain("non-empty `blocks` array");
+    expect(projected[0]!.content).toContain("at most 180 visible words and 6 blocks");
+    expect(projected[0]!.content).toContain("not a usage quota");
     expect(projected[0]!.content).toContain(
       "response must begin with the Gemma tool call",
     );

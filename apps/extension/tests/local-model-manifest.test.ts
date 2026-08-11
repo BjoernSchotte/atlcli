@@ -18,8 +18,8 @@ describe("Gemma 4 E4B G0 manifest", () => {
       dtype: "q4f16",
       device: "webgpu",
       runtime: {
-        transformersJs: "4.1.0",
-        onnxRuntimeWeb: "1.26.0-dev.20260410-5e55544225",
+        transformersJs: "4.2.0",
+        onnxRuntimeWeb: "1.26.0-dev.20260416-b7804b056c",
       },
       license: {
         spdx: "Apache-2.0",

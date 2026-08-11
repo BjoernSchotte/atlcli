@@ -19,6 +19,7 @@ import { ResearchContractError } from "@atlcli/research/contracts";
 import {
   CAPABILITY_FREE_QUALITY_ADAPTER_V1,
   type ChatModelBindingV1,
+  type ChatStructuredAnswerPreviewV1,
 } from "@atlcli/research/browser/agent";
 import {
   LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
@@ -29,13 +30,11 @@ import {
   type LocalModelToolV1,
 } from "./protocol.js";
 import { projectLocalGemmaToolProtocolV1 } from "./tool-protocol.js";
-import {
-  projectLocalGemmaFinalToolResultV1,
-  projectLocalGemmaToolResultV1,
-} from "./tool-result.js";
+import { projectLocalGemmaToolResultV1 } from "./tool-result.js";
 import {
   LOCAL_GEMMA_HARNESS_PROFILE_V1,
   LOCAL_GEMMA_OPERATIONAL_PROFILE_V1,
+  localGemmaRouteOutputTokensV1,
   localGemmaThinkingModeV1,
   type LocalGemmaThinkingModeV1,
 } from "./model-profile.js";
@@ -82,7 +81,6 @@ export function toLocalModelMessagesV1(
   messages: BaseMessage[],
   options: {
     retainPrivateThought?: boolean;
-    terminalAnswerProjection?: boolean;
   } = {},
 ): LocalModelChatMessageV1[] {
   const relevanceText = [...messages].reverse().find((message) =>
@@ -94,14 +92,7 @@ export function toLocalModelMessagesV1(
     const content = textContentV1(message);
     if (type === "system") return { role: "system", content };
     if (type === "human") {
-      const terminalContent = options.terminalAnswerProjection &&
-          content.includes("User question:")
-        ? content.split("\n").filter((line) =>
-            line.startsWith("User question:") ||
-            line.startsWith("Explicit user request checklist")
-          ).join("\n")
-        : content;
-      return { role: "user", content: terminalContent || content };
+      return { role: "user", content };
     }
     if (type === "ai") {
       const retainedThought = options.retainPrivateThought !== false &&
@@ -137,9 +128,7 @@ export function toLocalModelMessagesV1(
       }
       return {
         role: "tool",
-        content: options.terminalAnswerProjection
-          ? projectLocalGemmaFinalToolResultV1(content, relevance)
-          : projectLocalGemmaToolResultV1(content, relevance),
+        content: projectLocalGemmaToolResultV1(content, relevance),
         name: toolName,
         tool_call_id: message.tool_call_id,
       };
@@ -150,16 +139,19 @@ export function toLocalModelMessagesV1(
 
 const LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 = {
   type: "object",
+  additionalProperties: false,
   required: ["blocks"],
   properties: {
     blocks: {
       type: "array",
+      maxItems: 8,
       items: {
         type: "object",
+        additionalProperties: false,
         required: ["markdown", "sourceRefs", "assertion", "scope"],
         properties: {
-          markdown: { type: "string" },
-          sourceRefs: { type: "array", items: { type: "string" } },
+          markdown: { type: "string", maxLength: 1_600 },
+          sourceRefs: { type: "array", maxItems: 6, items: { type: "string" } },
           assertion: {
             type: "string",
             enum: ["positive", "absence", "none"],
@@ -173,13 +165,15 @@ const LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 = {
     },
     gaps: {
       type: "array",
+      maxItems: 4,
       items: {
         type: "object",
+        additionalProperties: false,
         required: ["code", "message", "sourceIds"],
         properties: {
-          code: { type: "string" },
-          message: { type: "string" },
-          sourceIds: { type: "array", items: { type: "string" } },
+          code: { type: "string", maxLength: 80 },
+          message: { type: "string", maxLength: 500 },
+          sourceIds: { type: "array", maxItems: 6, items: { type: "string" } },
         },
       },
     },
@@ -237,11 +231,13 @@ class LocalGemmaPortClientV1 {
     messages: LocalModelChatMessageV1[];
     tools: LocalModelToolV1[];
     requiredToolName?: string;
+    streamAnswerPreview?: boolean;
     maxOutputTokens: number;
     thinkingMode: LocalGemmaThinkingModeV1;
     signal?: AbortSignal;
   }): AsyncGenerator<LocalModelPortResponseV1> {
     const requestId = `generation-${Date.now()}-${++this.#sequence}`;
+    const startedAt = Date.now();
     const pending = { responses: [], done: false } as {
       responses: LocalModelPortResponseV1[];
       wake?: () => void;
@@ -260,9 +256,24 @@ class LocalGemmaPortClientV1 {
       messages: input.messages,
       tools: input.tools,
       ...(input.requiredToolName ? { requiredToolName: input.requiredToolName } : {}),
+      ...(input.streamAnswerPreview ? { streamAnswerPreview: true } : {}),
       maxOutputTokens: input.maxOutputTokens,
       thinkingMode: input.thinkingMode,
     } satisfies LocalModelPortRequestV1);
+    console.info("[local-gemma/proxy] request sent", {
+      requestId,
+      requiredToolName: input.requiredToolName,
+      streamAnswerPreview: input.streamAnswerPreview === true,
+      thinkingMode: input.thinkingMode,
+      maxOutputTokens: input.maxOutputTokens,
+      tools: input.tools.map((tool) => tool.function.name),
+      messages: input.messages.map((message, index) => ({
+        index,
+        role: message.role,
+        chars: message.content.length,
+        preview: message.content.slice(-240),
+      })),
+    });
     input.signal?.addEventListener("abort", cancel, { once: true });
     if (input.signal?.aborted) cancel();
     try {
@@ -271,7 +282,30 @@ class LocalGemmaPortClientV1 {
           await new Promise<void>((resolve) => { pending.wake = resolve; });
           continue;
         }
-        yield pending.responses.shift()!;
+        const response = pending.responses.shift()!;
+        if (response.kind === "answer-preview") {
+          console.debug("[local-gemma/proxy] answer preview received", {
+            requestId,
+            markdownChars: response.markdown.length,
+          });
+        } else if (response.kind === "complete") {
+          console.info("[local-gemma/proxy] request completed", {
+            requestId,
+            durationMs: Date.now() - startedAt,
+            inputTokens: response.inputTokens,
+            outputTokens: response.outputTokens,
+            textChars: response.text.length,
+            toolCalls: response.toolCalls.map((call) => call.name),
+          });
+        } else if (response.kind === "error") {
+          console.error("[local-gemma/proxy] request failed", {
+            requestId,
+            durationMs: Date.now() - startedAt,
+            code: response.code,
+            error: response.error,
+          });
+        }
+        yield response;
       }
     } finally {
       input.signal?.removeEventListener("abort", cancel);
@@ -301,11 +335,15 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
   readonly #client: LocalGemmaPortClientV1;
   readonly #maxOutputTokens: number;
   readonly #thinkingMode: LocalGemmaThinkingModeV1;
+  readonly #streamAnswerPreview: boolean;
+  readonly #publishAnswerPreview?: (preview: ChatStructuredAnswerPreviewV1) => void;
 
   constructor(input: {
     client: LocalGemmaPortClientV1;
     maxOutputTokens: number;
     thinkingMode?: LocalGemmaThinkingModeV1;
+    streamAnswerPreview?: boolean;
+    publishAnswerPreview?: (preview: ChatStructuredAnswerPreviewV1) => void;
   }) {
     super({});
     this.#client = input.client;
@@ -315,13 +353,15 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
       LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.maxOutputTokens,
     );
     this.#thinkingMode = input.thinkingMode ?? "disabled";
+    this.#streamAnswerPreview = input.streamAnswerPreview === true;
+    this.#publishAnswerPreview = input.publishAnswerPreview;
   }
 
   _llmType(): string { return "atlcli-local-gemma"; }
 
   override get profile(): ModelProfile {
     return {
-      maxOutputTokens: LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.maxOutputTokens,
+      maxOutputTokens: this.#maxOutputTokens,
       reasoningOutput: true,
       toolCalling: true,
       toolChoice: true,
@@ -347,11 +387,32 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
     options: LocalGemmaCallOptionsV1,
   ): Promise<ChatResult> {
     let final: Extract<LocalModelPortResponseV1, { kind: "complete" }> | undefined;
+    let previewMarkdown = "";
     for await (const response of this.#call(messages, options)) {
       if (response.kind === "error") throw localModelErrorV1(response);
+      if (response.kind === "answer-preview") {
+        previewMarkdown = response.markdown;
+        console.debug("[local-gemma/proxy] answer preview published", {
+          requestId: response.requestId,
+          path: "generate",
+          markdownChars: response.markdown.length,
+        });
+        this.#publishAnswerPreview?.({
+          generationId: response.requestId,
+          status: "snapshot",
+          markdown: response.markdown,
+        });
+      }
       if (response.kind === "complete") final = response;
     }
     if (!final) throw new Error("Local Gemma ended without a terminal response.");
+    if (previewMarkdown) {
+      this.#publishAnswerPreview?.({
+        generationId: final.requestId,
+        status: "completed",
+        markdown: previewMarkdown,
+      });
+    }
     return {
       generations: [{
         text: final.text,
@@ -381,15 +442,35 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
     options: LocalGemmaCallOptionsV1,
   ): AsyncGenerator<ChatGenerationChunk> {
     let sawTextDelta = false;
+    let previewMarkdown = "";
     for await (const response of this.#call(messages, options)) {
       if (response.kind === "error") throw localModelErrorV1(response);
-      if (response.kind === "text-delta") {
+      if (response.kind === "answer-preview") {
+        previewMarkdown = response.markdown;
+        console.debug("[local-gemma/proxy] answer preview published", {
+          requestId: response.requestId,
+          path: "stream",
+          markdownChars: response.markdown.length,
+        });
+        this.#publishAnswerPreview?.({
+          generationId: response.requestId,
+          status: "snapshot",
+          markdown: response.markdown,
+        });
+      } else if (response.kind === "text-delta") {
         sawTextDelta = true;
         yield new ChatGenerationChunk({
           text: response.text,
           message: new AIMessageChunk({ content: response.text }),
         });
       } else {
+        if (previewMarkdown) {
+          this.#publishAnswerPreview?.({
+            generationId: response.requestId,
+            status: "completed",
+            markdown: previewMarkdown,
+          });
+        }
         yield new ChatGenerationChunk({
           text: sawTextDelta ? "" : response.text,
           message: new AIMessageChunk({
@@ -432,7 +513,6 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
           // keeps the local finalization call inside the browser context
           // envelope without changing the canonical LangChain messages.
           retainPrivateThought: requiredToolName === undefined,
-          terminalAnswerProjection: requiredToolName === "ChatAnswerDraftV2",
         }),
         tools,
         this.#thinkingMode,
@@ -440,6 +520,9 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
       ),
       tools,
       ...(requiredToolName ? { requiredToolName } : {}),
+      ...(this.#streamAnswerPreview && requiredToolName === "ChatAnswerDraftV2"
+        ? { streamAnswerPreview: true }
+        : {}),
       maxOutputTokens: this.#maxOutputTokens,
       thinkingMode: this.#thinkingMode,
       ...(options.signal ? { signal: options.signal } : {}),
@@ -453,22 +536,37 @@ export function createLocalGemmaChatModelBindingV1(input: {
   maxOutputTokens: number;
 }): ChatModelBindingV1 {
   const client = new LocalGemmaPortClientV1(input.port);
-  const models = new Map<LocalGemmaThinkingModeV1, LocalGemmaChatModelV1>();
+  const previewListeners = new Set<(
+    preview: ChatStructuredAnswerPreviewV1,
+  ) => void>();
+  const publishAnswerPreview = (preview: ChatStructuredAnswerPreviewV1): void => {
+    for (const listener of previewListeners) listener(preview);
+  };
+  const models = new Map<string, LocalGemmaChatModelV1>();
   const modelForThinking = (
     thinkingMode: LocalGemmaThinkingModeV1,
+    maxOutputTokens = input.maxOutputTokens,
+    streamAnswerPreview = false,
   ): LocalGemmaChatModelV1 => {
-    let model = models.get(thinkingMode);
+    const boundedOutputTokens = Math.min(
+      maxOutputTokens,
+      LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.maxOutputTokens,
+    );
+    const key = `${thinkingMode}:${boundedOutputTokens}:${streamAnswerPreview}`;
+    let model = models.get(key);
     if (!model) {
       model = new LocalGemmaChatModelV1({
         client,
-        maxOutputTokens: input.maxOutputTokens,
+        maxOutputTokens: boundedOutputTokens,
         thinkingMode,
+        streamAnswerPreview,
+        publishAnswerPreview,
       });
-      models.set(thinkingMode, model);
+      models.set(key, model);
     }
     return model;
   };
-  const model = modelForThinking("disabled");
+  const model = modelForThinking("disabled", input.maxOutputTokens, true);
   return {
     model,
     modelId: input.modelId,
@@ -477,6 +575,10 @@ export function createLocalGemmaChatModelBindingV1(input: {
       providerId: "local-gemma",
     },
     structuredOutput: "tool",
+    subscribeStructuredAnswerPreview: (listener) => {
+      previewListeners.add(listener);
+      return () => previewListeners.delete(listener);
+    },
     harnessProfile: {
       key: LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.harnessKey,
       profile: LOCAL_GEMMA_HARNESS_PROFILE_V1,
@@ -493,8 +595,16 @@ export function createLocalGemmaChatModelBindingV1(input: {
       const localThinkingMode = finalizeOnly
         ? "disabled"
         : localGemmaThinkingModeV1(request.preference);
+      const maxOutputTokens = localGemmaRouteOutputTokensV1(
+        request.role,
+        input.maxOutputTokens,
+      );
       return {
-        model: modelForThinking(localThinkingMode),
+        model: modelForThinking(
+          localThinkingMode,
+          maxOutputTokens,
+          request.role === "root-planning" || request.role === "synthesis",
+        ),
         effectiveModelId: input.modelId,
         requestedPreference: request.preference,
         effectivePreference: finalizeOnly ? "fast" : request.preference,
