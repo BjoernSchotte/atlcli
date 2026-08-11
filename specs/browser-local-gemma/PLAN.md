@@ -1,8 +1,13 @@
 # Browser-local Gemma 4 E4B with Transformers.js implementation plan
 
-Status: **In progress; Transformers.js selected; local Chat checkpoint implemented and under live validation.**
+Status: **In progress; the production Chat path is proven for one local Auto
+exact-context case, but G0 remains open until the repeated Quick, Auto, Think
+deeper, multi-turn, cancellation, and network/privacy gates pass.**
 
-Planned against repository commit `878675a3` on 2026-08-10.
+Originally planned against repository commit `878675a3` on 2026-08-10.
+Re-baselined against implementation commit `e247cfe7` on 2026-08-11 after the
+first successful production-path live proof and its performance/reliability
+ratchets.
 
 ## Contents
 
@@ -47,7 +52,7 @@ been installed.
 
 ### 2.1 Active browser path
 
-The current extension path is:
+The implemented extension path is:
 
 ```text
 ResearchScreen
@@ -56,7 +61,14 @@ ResearchScreen
   -> offscreen document
   -> fresh research-agent Web Worker for one run
   -> runChatAgent(...) or runResearchAgent(...)
-  -> Anthropic model binding
+  -> host-owned provider/model run binding
+       -> Anthropic model binding
+       -> local BaseChatModel proxy
+            -> bounded MessagePort RPC
+            -> offscreen-owned long-lived model worker
+            -> packaged Transformers.js / ONNX Runtime Web
+            -> verified Gemma files in extension Cache Storage
+            -> WebGPU
 ```
 
 Important seams and constraints:
@@ -67,19 +79,19 @@ Important seams and constraints:
 - `packages/research/src/chat-agent/runtime.ts` accepts an injected model or
   model binding and only constructs the Anthropic default when neither is
   supplied.
-- `apps/extension/entrypoints/background.ts`,
-  `apps/extension/utils/research/worker-protocol.ts`, and
-  `apps/extension/workers/research-agent.ts` currently require an Anthropic API
-  key. The browser-internal request must become a discriminated provider
-  selection rather than making the key optional everywhere.
+- `apps/extension/utils/local-model/run-binding.ts` and the background,
+  offscreen, and agent-worker protocols now carry a discriminated host-owned
+  provider/model selection. Anthropic credentials never enter the local run
+  binding.
 - `apps/extension/utils/research/worker-host.ts` intentionally creates and
   terminates the agent worker for every run. A multi-gigabyte model must not be
   owned by that worker.
 - `apps/extension/entrypoints/offscreen/main.ts` already owns durable browser
   workers and is the correct lifecycle owner for a local inference service.
-- `apps/extension/entrypoints/sidepanel/ports/research.ts` currently partitions
-  conversation state with an Anthropic-specific `providerCacheIdentity`.
-  Provider/model changes must never mix checkpoints or cached evidence.
+- `apps/extension/entrypoints/sidepanel/ports/research.ts` partitions active
+  conversations and provider cache identity by provider/model. Remaining G1
+  work must harden migration and cross-provider isolation rather than add a
+  second persistence path.
 - `apps/extension/utils/export-jobs/render-reservation.ts` serializes heavy
   PDF/DOCX work. Local WebGPU inference must participate in the same resource
   admission policy so model loading cannot race a memory-intensive export.
@@ -103,6 +115,36 @@ contract. The model adapter therefore has to prove all of the following:
 
 General conversational quality or a successful “hello world” generation is
 not release evidence.
+
+### 2.3 Current proof checkpoint
+
+The implementation has progressed beyond the original thin G0 skeleton because
+real packed-extension failures required production-shaped fixes before a useful
+GO/NO-GO run was possible. The following checkpoint is proven without claiming
+G0 complete:
+
+- the verified Gemma 4 E4B model remains installed across an extension reload;
+- the existing side-panel Chat, background, offscreen document, fresh agent
+  worker, shared `runChatAgent`, local RPC, and WebGPU engine complete one real
+  Auto exact-context turn;
+- the answer begins streaming before terminal validation completes and is then
+  replaced by the validated, cited canonical answer;
+- the observed checkpoint streamed answer content after approximately 29
+  seconds and completed after approximately 139 seconds on the named decision
+  machine;
+- the UI emitted one host-owned semantic progress sequence and completed without
+  a local-model failure or a new run-related page-console error;
+- automated fixtures cover the local Quick, Auto, and Think-deeper strategy
+  semantics, but repeated live proof for every required trajectory is still
+  outstanding;
+- the full Chat-agent suite currently has one unresolved section-reference
+  fallback failure. G0 cannot record GO while a required repository gate is
+  knowingly red.
+
+Committed plans and receipts must keep private tenant content, URLs, customer
+names, identifiers, traces, and generated answers out of Git. Live proof may use
+authorized private read-only context, but records only sanitized case classes,
+measurements, contract results, and hashes.
 
 ## 3. Fixed product decisions
 
@@ -139,6 +181,12 @@ not release evidence.
     background, offscreen, fresh agent-worker, and `runChatAgent` boundaries. A
     separate Gemma chat, demo page, alternate agent, or direct adapter harness
     cannot satisfy the GO gate.
+12. **Natural-language validation is language-independent.** The host validates
+    structured answer, evidence, scope, retrieval, and presentation contracts.
+    It must not accept, reject, reorder, complete, translate, or rewrite answer
+    prose through German-, English-, French-, or other language-specific phrase
+    regular expressions. A user request is a semantic contract, not a literal
+    substring checklist.
 
 ## 4. Runtime and model decision
 
@@ -274,7 +322,7 @@ flowchart TD
     ChatRuntime -->|"Local proxy binding"| RPC["Bounded MessagePort RPC"]
     RPC --> LocalHost["Offscreen-owned local model host"]
     LocalHost --> ModelWorker["Long-lived Transformers.js / ORT WebGPU worker"]
-    ModelWorker --> OPFS["Verified ONNX model file set in OPFS"]
+    ModelWorker --> CacheStorage["Verified ONNX model file set in Cache Storage"]
     ModelWorker --> GPU["WebGPU"]
 
     LocalHost --> Arbiter["Shared heavy-work arbiter"]
@@ -470,7 +518,8 @@ existing direct-Chat middleware boundary:
 3. use the same local LangChain model with a forced typed evidence-packet tool
    to extract question-relevant claims from every batch sequentially;
 4. reduce large packet sets hierarchically against the current user question
-   and explicit request checklist;
+   and its semantic facets without requiring literal words or fixed-language
+   request fragments to appear in the answer;
 5. replace only the next local terminal model request's messages with one fresh
    `atlcli.chat-terminal-context/v1` message; reuse that immutable projection
    for the one terminal repair attempt.
@@ -482,11 +531,44 @@ host answer validator remains authoritative. Configure no such projection for
 Anthropic. Agentic Auto and Think-deeper trajectories continue through their
 existing typed specialist packets and synthesis path.
 
+For a fresh, single-anchor local turn, the host may pre-read the already bound
+page or issue through the existing authorized exact-context capability before
+the model plans retrieval. This removes a redundant model/tool round trip; it
+does not bypass authorization, create a separate agent, replay HTTP reads, or
+change retained DeepAgentsJS state. Section-handle recovery may project cached
+accepted evidence only when the original bounded read already succeeded.
+
+The host answer boundary remains provider-neutral and structure-driven:
+
+- `ChatAnswerDraftV2` schema and block shape;
+- valid `assertion`, `scope`, and `sourceRefs` combinations;
+- source references backed by accepted detail evidence;
+- absence claims bounded by actual retrieval/document coverage;
+- Unicode-normalized duplicate detection and generic Markdown/list/table
+  integrity;
+- canonical citation projection and Jira-key evidence checks.
+
+Do not add natural-language phrase detectors for sentence completeness,
+observation labels, absence wording, ranking words, quotation punctuation, or
+request-facet substrings. The model owns wording in the user's language. Host
+repair may drop invalid structured blocks or presentation fragments, but it may
+not semantically rewrite prose.
+
+Local terminal `ChatAnswerDraftV2` JSON may be projected into provisional answer
+blocks while generation is still running. The UI must label this as in-progress,
+reset a preview if a later structured snapshot revises its prefix, and publish
+only the host-validated canonical answer. Progress copy is derived from
+host-owned lifecycle/tool/evidence events; private model thought and raw
+chain-of-thought are never exposed.
+
 ### 5.5 Model lifecycle and storage
 
-Use OPFS (or another measured extension-owned large-object store selected by
-G0) for the selected ONNX model file set; keep only the small canonical
-manifest/state record in `chrome.storage.local`.
+G0 selected extension Cache Storage for the verified ONNX response bodies and
+keeps only the small canonical activation record in `chrome.storage.local`.
+Transformers.js receives those files through the extension-owned local fetch
+boundary. Revisit this choice only if quota, lifecycle, or performance evidence
+records a concrete failure; do not maintain parallel OPFS and Cache Storage
+installations.
 
 Use Transformers.js `ModelRegistry` to enumerate the exact files and available
 dtypes for the pinned model revision before installation. Do not delegate the
@@ -651,10 +733,12 @@ entire extension or connected Atlassian product is offline.
 ## 8. Implementation tasks
 
 Parent tasks are checked only after their implementation and proof subtasks are
-complete. G0 creates the thin production skeleton that later tasks harden; it
-must not create a parallel Chat surface or throwaway agent path. Temporary
-instrumentation that is not retained is deleted before its parent task is
-checked.
+complete. G0 began as a thin production skeleton, but packed-extension failures
+required selected G3/G4-shaped lifecycle, context, recovery, and streaming work
+before the first trustworthy answer. Those retained fixes are now part of the
+production path; this does not waive the remaining G0 gates or permit a parallel
+Chat surface. Temporary instrumentation that is not retained is deleted before
+its parent task is checked.
 
 ### G0 — Prove Gemma through the existing browser Chat
 
@@ -697,6 +781,23 @@ hardening.
       and worker path to resolve either the Anthropic binding or a verified local
       binding; do not fork `ChatAgentPortV1` or the Chat workflow.
 
+#### G0 checkpoint ledger — proven, but not yet GO
+
+- [x] Reload the production-packed extension without removing the installed
+      model and recover a ready local runtime.
+- [x] Complete one real Auto exact-context turn through the existing side-panel
+      Chat and shared agent path with a canonical cited answer.
+- [x] Stream provisional answer content before terminal validation, then publish
+      the validated canonical answer without duplicate progress phases.
+- [x] Record the checkpoint's sanitized time to first visible answer content
+      (approximately 29 seconds) and terminal completion (approximately 139
+      seconds) on the named decision machine.
+- [x] Keep host validation language-independent and prove German, English, and
+      French paraphrases in contract fixtures; remove phrase-based acceptance,
+      repair, ranking, and request-substring checks.
+- [ ] Resolve the remaining section-reference fallback failure and return the
+      full Chat-agent test suite to green before a GO receipt.
+
 #### G0b — Prove Quick through the existing UI
 
 - [ ] In the existing side-panel Chat UI, select Quick, submit a synthetic
@@ -720,8 +821,9 @@ hardening.
       validation/repair, synthesis, and terminal Chat events.
 - [ ] Repeat each fixed trajectory three times and require valid tool, workflow,
       evidence/citation, and terminal-answer contracts on every run.
-- [ ] Keep the existing Deep Research choice visibly unavailable for Gemma and
-      prove it neither invokes Anthropic nor silently launches a Chat mode.
+- [x] Keep the existing Deep Research choice visibly unavailable for Gemma in
+      the product UI and automated capability fixtures. The separate network
+      no-fallback observation remains a live-proof gate below.
 
 Automated proof:
 
@@ -737,52 +839,67 @@ Automated proof:
 
 Live proof:
 
-- [ ] A production-packed extension installs the real E4B ONNX file set from
-      existing Settings and answers the fixed Quick, Auto, and Think deeper
-      cases in the existing Chat UI.
+- [x] A production-packed extension installs the real E4B ONNX file set from
+      existing Settings, retains it across reload, and completes one fixed Auto
+      exact-context case in the existing Chat UI.
+- [ ] The same packed extension completes the fixed Quick case three times,
+      Auto-direct and Auto-agentic cases three times each, and Think-deeper-
+      direct and Think-deeper-agentic cases three times each.
+- [ ] A new local conversation completes at least one evidence-aware follow-up
+      turn without losing provider identity, accepted evidence, or tool-result
+      correlation; close/reopen the side panel and reopen the conversation.
 - [ ] Network observation records zero Anthropic and model-origin requests during
       local inference while allowing only expected Atlassian traffic.
 - [ ] Existing Chat cancellation reaches a terminal cancelled event, stops local
       generation, and releases the model/resource lease.
-- [ ] Record cold load, time to first token, decode rate, peak JS/GPU/process
-      memory, and cleanup behavior on the named decision hardware; broad support
+- [x] Record initial cold/warm and answer-stream timing samples on the named
+      decision hardware.
+- [ ] Complete the measurement set with decode rate, peak JS/GPU/process memory,
+      thermal behavior, cancellation cleanup, and idle disposal; broad support
       thresholds remain G6 work.
 - [ ] Write a sanitized GO/NO-GO receipt under this spec with the exact commit,
       packed extension, Chrome/OS/hardware, Transformers.js/ORT/model revisions,
       selected file manifest, test cases, network evidence, and measurements.
 
-STOP and record NO-GO before G1–G7 if any required mode cannot reliably satisfy
-the existing Chat contracts, if the production path needs a separate Chat
-surface/workflow, if MV3 requires remote executable code or unsafe CSP, or if
-the named decision hardware repeatedly crashes or exhausts memory.
+STOP additional product scope and record NO-GO if any required mode cannot
+reliably satisfy the existing Chat contracts, if the production path needs a
+separate Chat surface/workflow, if MV3 requires remote executable code or unsafe
+CSP, or if the named decision hardware repeatedly crashes or exhausts memory.
+Retained G1–G5-shaped fixes already required to reach this checkpoint remain in
+place, but they do not authorize further release hardening around a failed G0.
 
 ### G1 — Harden the provider/model registry and migration
 
 Goal: make model choice explicit without changing the presenter port or
 Anthropic behavior.
 
+G1 hardens the G0 registry already used by the production path; it does not add
+another selector or duplicate provider state.
+
 Implementation:
 
-- [ ] Add versioned browser model selection and descriptor contracts.
-- [ ] Register only Anthropic and Local Gemma E4B in V1.
-- [ ] Add pure readiness and mode-capability projection functions.
-- [ ] Migrate an absent legacy selection to Anthropic without changing stored
-      credentials or existing conversation history.
-- [ ] Keep provider credentials outside the generic selection contract.
+- [x] Add versioned browser model selection and descriptor contracts.
+- [x] Register only Anthropic and Local Gemma E4B in V1.
+- [x] Add pure readiness and mode-capability projection functions.
+- [x] Migrate an absent or unknown legacy selection to Anthropic without
+      changing stored credentials or existing conversation history.
+- [x] Keep provider credentials outside the generic selection contract.
 - [ ] Derive a stable provider cache identity from provider, model-manifest
       digest, runtime, and principal.
-- [ ] Start a new active conversation on selection change while retaining old
-      history under its original identity.
-- [ ] Keep `ChatAgentPortV1` provider-neutral and add a regression test that
+- [x] Partition the active-conversation pointer by provider/model while
+      retaining old history under its original identity.
+- [x] Keep `ChatAgentPortV1` provider-neutral and add a regression test that
       rejects provider configuration on that interface.
 
 Automated proof:
 
-- [ ] Round-trip and reject unknown selection schema/provider/model values.
-- [ ] Prove legacy users continue on Anthropic with no credential mutation.
+- [x] Round-trip the shipped selections and normalize unknown selection
+      schema/provider/model values to the safe Anthropic default.
+- [x] Prove legacy users continue on Anthropic with no credential mutation.
 - [ ] Prove provider switches cannot reuse checkpoints, evidence caches, or
       active-turn authority from another model identity.
-- [ ] Prove Anthropic's Quick/Auto/Deep/Research capability matrix is unchanged.
+- [x] Prove Anthropic's Quick/Auto/Deep/Research capability matrix is unchanged
+      in descriptor and regression fixtures.
 
 ### G2 — Implement verified model installation and removal
 
@@ -791,28 +908,29 @@ executable-code trust.
 
 Implementation:
 
-- [ ] Add the versioned, pinned multi-file model manifest and license/notice
+- [x] Add the versioned, pinned multi-file model manifest and license/notice
       metadata.
-- [ ] Select OPFS or the measured alternative using the G0 evidence and record
-      the decision.
-- [ ] Implement quota/persistence preflight and the explicit lifecycle state
-      machine.
-- [ ] Stream every required file into staging storage with bounded memory and
+- [x] Select extension Cache Storage using the G0 evidence and record the
+      single-store decision.
+- [x] Implement quota/persistence preflight and the G0 lifecycle states.
+- [x] Stream every required file into staging storage with bounded memory and
       aggregate/per-file progress.
-- [ ] Verify every exact byte length and SHA-256 before atomically activating
+- [x] Verify every exact byte length and SHA-256 before atomically activating
       the complete manifest.
 - [ ] Implement abort, retry, interrupted-download cleanup, stale revision
       cleanup, explicit removal, and storage usage reporting.
-- [ ] Reject corrupt, missing, extra, partial, unknown, or runtime-incompatible
+- [x] Reject corrupt, missing, extra, partial, unknown, or runtime-incompatible
       model files and unapproved dtype/model-class requests.
 - [ ] Decide from evidence whether `unlimitedStorage` is required; if so, add
       the narrow permission and update permission disclosure.
-- [ ] Ensure model weights, partial downloads, and device-derived artifacts are
+- [x] Ensure model weights, partial downloads, and device-derived artifacts are
       ignored by Git and excluded from extension packages/test snapshots.
 
 Automated proof:
 
 - [ ] State-machine tests cover every valid transition and reject invalid ones.
+- [x] G0 storage tests cover quota rejection, streamed progress, exact digest
+      verification, cached-file verification, and atomic activation.
 - [ ] Storage tests cover low quota, cancel, resume/retry, one-file and multi-file
       digest mismatch, incomplete manifest, atomic activation, update mismatch,
       removal, and offscreen recreation.
@@ -830,11 +948,11 @@ Implementation:
 
 - [ ] Generalize `BrowserRenderReservationPoolV1` into a shared heavy-work
       arbiter while preserving PDF/DOCX behavior and tests.
-- [ ] Add an offscreen-owned `LocalModelRuntimeHost` and preferred dedicated
+- [x] Add an offscreen-owned `LocalModelRuntimeHost` and dedicated
       local-model worker.
-- [ ] Define versioned RPC messages with request IDs, stream sequence numbers,
+- [x] Define versioned RPC messages with request IDs, stream sequence numbers,
       byte/item limits, usage/timing, cancellation, and terminal errors.
-- [ ] Add transferable `MessagePort` support to the per-run agent-worker host.
+- [x] Add transferable `MessagePort` support to the per-run agent-worker host.
 - [ ] Serialize local generations and bind every generation to the run abort
       signal and owning agent worker.
 - [ ] Implement bounded warm retention, idle disposal, export preemption of an
@@ -847,6 +965,8 @@ Implementation:
 
 Automated proof:
 
+- [x] Core RPC fixtures cover ordered text/tool streaming, valid terminal
+      responses, malformed/unknown tool calls, context overflow, and abort.
 - [ ] RPC tests cover streaming order, tool-call fragments, cancel races,
       timeout, oversize payloads, duplicate/late messages, and worker loss.
 - [ ] Arbiter tests prove PDF, DOCX, model load, and generation obey the initial
@@ -891,9 +1011,9 @@ Implementation:
 - [x] Remove the terminal first-N-character evidence shim; retain the generic
       bounded intermediate tool-result projection used before the model has
       completed retrieval.
-- [ ] Replace credential-only background/offscreen/worker messages with the
+- [x] Replace credential-only background/offscreen/worker messages with the
       discriminated internal run binding.
-- [ ] Resolve Anthropic credentials only for Anthropic requests and verified
+- [x] Resolve Anthropic credentials only for Anthropic requests and verified
       model-manifest readiness only for local requests.
 - [ ] Require local readiness before creating a durable turn; installation time
       does not consume a conversation run deadline.
@@ -904,25 +1024,36 @@ Implementation:
       when useful, independent validation/repair, and Chat completion horizon.
 - [x] Keep only the separate Deep Research product mode capability-disabled for
       Gemma.
+- [x] Prewarm the verified local runtime without consuming a Chat turn and
+      retain the installed model across an extension reload.
+- [x] Pre-read a fresh, single-anchor exact context through the existing
+      authorized capability and reuse accepted evidence without replaying HTTP.
+- [x] Stream provisional structured answer blocks early, reset revised
+      snapshots, and publish only the validated canonical answer.
+- [x] Project host-owned semantic read/evidence/draft progress without exposing
+      private model thought or duplicating lifecycle phases.
+- [x] Make host answer validation language-independent: retain schema, evidence,
+      scope, retrieval, duplicate, citation, and Markdown checks; remove
+      language-specific phrase rewriting and literal request-substring gates.
 - [ ] Prove no local error path invokes, selects, or recommends an automatic
       Anthropic fallback.
 
 Automated proof:
 
-- [ ] Codec fixtures cover system/user/assistant/tool messages, Unicode,
+- [x] Codec fixtures cover system/user/assistant/tool messages, Unicode,
       streamed text, fragmented JSON, multiple tool calls, correlated results,
       malformed arguments, unknown tools, and abort.
 - [x] A real browser-runtime `runChatAgent` contract test proves direct local
       retrieval, multiple full-evidence compiler batches, a fresh terminal
       request with no retained raw tool transcript, exact evidence references,
       and the canonical cited answer.
-- [ ] Contract tests run the real `runChatAgent` Quick, Auto-direct,
+- [x] Contract tests run the real `runChatAgent` Quick, Auto-direct,
       Auto-agentic, Think-deeper-direct, and Think-deeper-agentic paths with the
       local binding and validate `ChatAnswerV1`/current canonical successor,
       citations, evidence refs, delegation/validation events, limits, and
       terminal events.
-- [ ] Regression tests run the Anthropic binding through all existing modes.
-- [ ] Privacy tests assert the local run binding contains no credential and
+- [x] Regression tests run the Anthropic binding through all existing modes.
+- [x] Privacy tests assert the local run binding contains no credential and
       cannot construct an Anthropic client.
 
 ### G5 — Implement provider-aware settings and mode UX
@@ -930,23 +1061,28 @@ Automated proof:
 Goal: expose a clear additional choice while preserving the current option and
 leaving room for future providers.
 
+G5 completes and hardens the provider-aware G0 UI; it does not replace the
+working selector with another settings architecture.
+
 Implementation:
 
-- [ ] Replace the Anthropic-only Settings section with the registry-driven model
+- [x] Replace the Anthropic-only Settings section with the registry-driven model
       provider selection and conditional controls.
-- [ ] Preserve all existing Anthropic key/session/device operations.
-- [ ] Add Gemma compatibility, installed model size/license/privacy, install
-      progress, retry/cancel, ready, update-required, and removal states.
-- [ ] Replace the global API-key run gate with selected-provider readiness.
-- [ ] Enable Quick, Auto, and Think deeper for a ready Gemma installation;
+- [x] Preserve all existing Anthropic key/session/device operations.
+- [x] Add the G0 Gemma compatibility, measured installed size/license/privacy,
+      install progress, ready, and terminal error states.
+- [ ] Add the remaining retry/cancel, update-required, removal confirmation, and
+      storage-reclamation UX states.
+- [x] Replace the global API-key run gate with selected-provider readiness.
+- [x] Enable Quick, Auto, and Think deeper for a ready Gemma installation;
       retain the existing mode labels and explanations.
-- [ ] Keep Deep Research visible but disabled for Gemma with an explicit
+- [x] Keep Deep Research visible but disabled for Gemma with an explicit
       explanation and provider-selection action.
 - [ ] Show the provider/model identity on current and historical conversations.
 - [ ] Prevent model selection changes from rebinding an in-flight turn.
-- [ ] Add complete German and English copy, including the precise local privacy
-      boundary and one-time network download.
-- [ ] Do not add custom endpoint/Ollama fields, placeholder inputs, or arbitrary
+- [x] Add German and English G0 copy for the local privacy boundary and one-time
+      network download; complete copy for the remaining lifecycle states above.
+- [x] Do not add custom endpoint/Ollama fields, placeholder inputs, or arbitrary
       URL persistence.
 
 Automated proof:
@@ -971,6 +1107,10 @@ Implementation and proof:
       corridor, follow-up, multi-source comparison, no-evidence abstention,
       malformed tool repair, prompt injection, cancellation, and context
       overflow.
+- [ ] Add provider-neutral answer-contract cases in multiple languages and prove
+      that equivalent paraphrases receive the same structural/evidence outcome;
+      fail the gate if host acceptance depends on language-specific words,
+      punctuation repair, ranking synonyms, or literal request substrings.
 - [ ] Add deterministic Auto cases that require direct and agentic routing, and
       Think deeper cases that require an explicit strategy decision,
       delegation, independent critique/repair, and final synthesis.
@@ -996,6 +1136,11 @@ Implementation and proof:
 
 Required repository gates:
 
+- [x] The current checkpoint passes focused Research contracts/prompts/strategy
+      tests, relevant extension local-model/Chat/UI tests, typecheck, extension
+      build, extension-output audit, research-privacy audit, and diff checks.
+- [ ] Resolve the current section-reference fallback failure before treating the
+      full Chat-agent suite as green.
 - [ ] `bun run test <focused test files>` for each task.
 - [ ] `bun run test` (never bare `bun test`).
 - [ ] `bun run typecheck`.
@@ -1059,24 +1204,37 @@ identifiers never enter committed evidence.
 
 ## 10. Delivery order and commit boundaries
 
-Continue with G1–G7 only after G0 records GO. Suggested conventional commit
-sequence:
+The original G0-to-G7 commit sequence is historical rather than executable:
+real browser failures required selected G3/G4/G5 work before G0 could produce a
+valid answer. Retain the current implementation baseline and finish G0 as a
+proof ratchet. Do not rewrite history or reopen parallel implementations.
 
-1. `feat(extension): prove local gemma through browser chat` — G0 production
-   skeleton, focused tests, and GO receipt.
-2. `feat(extension): harden browser model selection contracts` — G1.
-3. `feat(extension): manage verified local model files` — G2.
-4. `feat(extension): harden offscreen local inference` — G3.
-5. `feat(research): complete local gemma chat modes` — G4.
-6. `feat(extension): add local gemma provider ux` — G5.
-7. `test(extension): gate local gemma release behavior` — G6.
-8. `docs(extension): document local gemma chat` — G7.
+Remaining critical-path ratchets:
 
-Each commit boundary requires focused tests. Stage boundaries after G0, G4, and
-G7 require the full workspace/typecheck/build and applicable packed-browser
-gates. Follow the repository workflow for private E2E and cleanup before
-committing implementation work. Do not push or release without explicit user
-instruction; perform release dry-run first when release is later requested.
+1. **Quick live ratchet** — fixed exact-context case three consecutive times,
+   valid `eval`, canonical answer, citations, persistence, close/reopen.
+2. **Auto live ratchet** — fixed direct and agentic cases three consecutive
+   times each with the expected strategy and event trajectory.
+3. **Think-deeper live ratchet** — fixed direct and agentic cases three
+   consecutive times each with delegation/validation/repair where expected.
+4. **Conversation ratchet** — evidence-aware follow-up and another materially
+   different question shape without retained-active-turn, duplicated progress,
+   literal-facet, or context-envelope failure.
+5. **Reliability/privacy ratchet** — cancellation, worker/offscreen recovery,
+   no remote-provider/model-origin inference traffic, no silent fallback, and
+   completed performance/resource measurements.
+6. **GO ratchet** — full required suites green, sanitized receipt committed,
+   G0 aggregate tasks checked only from the receipt.
+7. Continue the remaining G1–G7 hardening and release-readiness tasks after G0
+   records GO.
+
+After each independently proven ratchet, update this checklist and its sanitized
+evidence summary, run the focused gates, then create one scoped conventional
+commit and push it to the existing draft-PR branch when authorized. G0, G4, and
+G7 stage boundaries require the full workspace/typecheck/build and applicable
+packed-browser gates. Follow the private E2E and cleanup rules before committing;
+never place private context or outputs in Git or the PR. Never release
+automatically; perform a release dry-run first when release is later requested.
 
 ## 11. Definition of done
 
@@ -1096,12 +1254,17 @@ This plan is complete only when all of the following are true:
       Anthropic or any model/provider origin.
 - [ ] No local error or unsupported mode silently falls back to Anthropic or
       silently changes product semantics.
+- [ ] Host acceptance and repair remain language-independent and
+      structure/evidence-driven; natural paraphrases are not rejected, reordered,
+      completed, or rewritten by language-specific regexes or literal request
+      matching.
 - [ ] Provider/model switching partitions durable conversations and caches.
 - [ ] Local inference and PDF/DOCX work obey the proven shared resource policy.
 - [ ] Supported browser/hardware/context/performance limits are based on named
       evidence and shown in docs/UI.
-- [ ] Quick, Auto, and Think deeper are enabled for Gemma only after their
-      individual quality/performance/resource gates pass; Deep Research remains
+- [ ] Quick, Auto, and Think deeper are advertised as release-supported for
+      Gemma only after their individual quality/performance/resource gates pass;
+      development builds may expose them for G0 proof. Deep Research remains
       visibly capability-disabled.
 - [ ] Full repository, privacy, quality, build, packed-extension, and private
       live E2E gates pass with cleanup complete.
@@ -1123,18 +1286,36 @@ This plan is complete only when all of the following are true:
 
 ## 13. Measurement-bound decisions and unresolved questions
 
-There are no blocking product questions for starting G0. The following choices
-must be resolved by its evidence rather than guessed in advance:
+The following G0 choices are now resolved and frozen for the current proof:
 
-- exact E4B model revision, dtype, selected file inventory, per-file byte
-  lengths/digests, aggregate size, and distribution origins;
-- dedicated worker versus offscreen-window engine placement;
-- OPFS versus a measured extension-owned large-object alternative;
+- exact Gemma 4 E4B revision, `q4f16` text-only file inventory, lengths,
+  digests, aggregate size, license, and distribution origin;
+- packaged Transformers.js 4.2.0 with its matched ONNX Runtime Web revision;
+- an offscreen-owned host with a dedicated long-lived local-model worker and
+  bounded `MessagePort` RPC to fresh agent workers;
+- extension Cache Storage for verified model responses plus a small activation
+  record in `chrome.storage.local`;
+- 3,072 input tokens per invocation, 2,048 maximum output tokens, and smaller
+  role-specific output ceilings as the current WebGPU safety corridor, not an
+  economic or cumulative token budget.
+
+The following choices still require evidence:
+
 - whether `unlimitedStorage` is necessary;
 - supported Chrome/OS/GPU/RAM matrix;
-- conservative context/output corridor and warm-engine idle duration;
+- warm-engine idle duration and export-arbiter disposal policy;
 - numerical cold-load, time-to-first-token, decode-rate, and peak-memory release
   thresholds for each supported hardware class.
+
+Do not raise the 3,072-token per-call corridor merely because pre-read,
+compaction, or the terminal evidence compiler reduced current prompts. A
+recalibration ratchet must run named Quick, Auto-direct, Auto-agentic,
+Think-deeper-direct, Think-deeper-agentic, long-page, and multi-turn cases at the
+current limit and each proposed higher limit; record success rate, first-token
+latency, final latency, decode rate, peak memory, thermal behavior, cancellation,
+and worker recovery. Raise the corridor only when every required case repeats
+without ORT overflow, unaligned access, out-of-bounds memory, browser crash, or
+contract regression.
 
 Failure of any real shared Quick, Auto, or Think deeper tool/answer/workflow
 gate is a NO-GO for this plan's release, not permission to ship a text-only or
