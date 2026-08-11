@@ -1,0 +1,48 @@
+{
+  "name": "@atlcli/action-palette-react",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": [
+    "./styles.css"
+  ],
+  "files": [
+    "dist",
+    "styles.css"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./styles.css": "./styles.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
+  },
+  "dependencies": {
+    "@atlcli/action-registry": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18 <20",
+    "react-dom": ">=18 <20"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "axe-core": "^4.13.0",
+    "happy-dom": "^20.0.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}

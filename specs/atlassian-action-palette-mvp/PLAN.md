@@ -542,18 +542,18 @@ bun run typecheck
 
 **Blocks:** AP-03A, AP-05
 
-- [ ] Create `packages/action-palette-react` with browser-safe exports, React/ReactDOM externalized, and a peer range compatible with the extension's React 19 and Forge's React 18 (proposed `>=18 <20`) while using only the common API surface.
-- [ ] Implement the palette state machine and components for root list, action panel, input form, executing, queued/completed, empty, and failed states.
-- [ ] Implement the keyboard contract, IME guard, focus trap, focus restoration hook, scroll-into-view, and single-execution guard.
-- [ ] Implement correct dialog/combobox/listbox semantics, labelled groups, disabled reasons, live-region throttling, and text-only result rendering.
-- [ ] Accept a host-supplied Shadow DOM/Custom UI portal target, icon resolver, translations, executor, and lifecycle callbacks. Import no host APIs.
-- [ ] Reuse/adapt current CSS tokens while keeping package styles host-agnostic and themeable.
-- [ ] Add component tests for every keyboard transition, focus entry/return, Escape hierarchy, no-results recovery, long labels, RTL-safe layout primitives, error boundaries, and double-submit prevention.
-- [ ] Add English/German host-dictionary parity and placeholder tests; unknown contribution keys render their safe fallback rather than a raw key or blank row.
-- [ ] Run automated accessibility checks with zero serious/critical violations and add forced-colors/reduced-motion snapshots.
-- [ ] Compare packed/browser graphs before and after any new dialog/listbox dependency. Reject it if it pulls host, Node, engine, or remote-runtime code into the palette chunk.
-- [ ] Add a dedicated package boundary test for the React presenter. Do not add it to a neutral graph gate that intentionally rejects React imports.
-- [ ] Add Extension and Forge consumer-resolution fixtures proving each bundle uses exactly one host-owned React runtime and does not bundle a second React copy.
+- [x] Create `packages/action-palette-react` with browser-safe exports, React/ReactDOM externalized, and a peer range compatible with the extension's React 19 and Forge's React 18 (proposed `>=18 <20`) while using only the common API surface.
+- [x] Implement the palette state machine and components for root list, action panel, input form, executing, queued/completed, empty, and failed states.
+- [x] Implement the keyboard contract, IME guard, focus trap, focus restoration hook, scroll-into-view, and single-execution guard.
+- [x] Implement correct dialog/combobox/listbox semantics, labelled groups, disabled reasons, live-region throttling, and text-only result rendering.
+- [x] Accept a host-supplied Shadow DOM/Custom UI portal target, icon resolver, translations, executor, and lifecycle callbacks. Import no host APIs.
+- [x] Reuse/adapt current CSS tokens while keeping package styles host-agnostic and themeable.
+- [x] Add component tests for every keyboard transition, focus entry/return, Escape hierarchy, no-results recovery, long labels, RTL-safe layout primitives, error boundaries, and double-submit prevention.
+- [x] Add English/German host-dictionary parity and placeholder tests; unknown contribution keys render their safe fallback rather than a raw key or blank row.
+- [x] Run automated accessibility checks with zero serious/critical violations and add forced-colors/reduced-motion snapshots.
+- [x] Compare packed/browser graphs before and after any new dialog/listbox dependency. Reject it if it pulls host, Node, engine, or remote-runtime code into the palette chunk.
+- [x] Add a dedicated package boundary test for the React presenter. Do not add it to a neutral graph gate that intentionally rejects React imports.
+- [x] Add Extension and Forge consumer-resolution fixtures proving each bundle uses exactly one host-owned React runtime and does not bundle a second React copy.
 
 **Proof**
 
