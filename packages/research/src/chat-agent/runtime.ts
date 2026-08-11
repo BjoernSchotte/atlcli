@@ -2346,6 +2346,8 @@ export function createKiteweaveChatAgent(
                           question: turn.question,
                           locale: turn.locale,
                           signal,
+                          maxInputTokens:
+                            modelBinding.runtimeLimits?.maxInputTokens,
                         }),
                   }
                 : {}),

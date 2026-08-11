@@ -12,6 +12,7 @@ import {
   buildChatLocalDirectEvidenceProjectionV1,
   buildChatTerminalEvidenceBatchesV1,
   createChatLocalTerminalContextMessagesV1,
+  deriveChatLocalTerminalEnvelopeV1,
 } from "./terminal-context.js";
 
 const source = {
@@ -44,6 +45,34 @@ function evidence(text: string): ResearchDetailEvidenceV1 {
 }
 
 describe("local Chat terminal-context compiler", () => {
+  test("derives a smaller question-aware evidence envelope from the local runtime corridor", () => {
+    const narrow = deriveChatLocalTerminalEnvelopeV1({
+      question: "What is the 2026 budget?",
+      evidence: [evidence("The 2026 budget is 60,000 EUR. Other background follows.")],
+      maxInputTokens: 3_072,
+    });
+    const broad = deriveChatLocalTerminalEnvelopeV1({
+      question: "Summarize the page.",
+      evidence: [evidence("The page covers budget, delivery, risks, and governance.")],
+      maxInputTokens: 3_072,
+    });
+
+    expect(narrow.selection).toBe("question-anchored");
+    expect(narrow.matchedQuestionTerms).toEqual(["2026", "budget"]);
+    expect(narrow.packetTargetChars).toBeLessThan(5_800);
+    expect(narrow.directEvidenceTargetChars).toBeLessThan(narrow.packetTargetChars);
+    expect(narrow.maximumClaims).toBeLessThan(broad.maximumClaims);
+    expect(broad.selection).toBe("broad-representative");
+
+    const constrained = deriveChatLocalTerminalEnvelopeV1({
+      question: "Summarize the page.",
+      evidence: [evidence("The page covers budget, delivery, risks, and governance.")],
+      maxInputTokens: 2_048,
+    });
+    expect(constrained.packetTargetChars).toBeLessThan(broad.packetTargetChars);
+    expect(constrained.maximumClaims).toBeLessThanOrEqual(broad.maximumClaims);
+  });
+
   test("recompiles all long evidence chunks for each distinct user question", () => {
     const text = [
       `FIRST-BUDGET ${"a".repeat(12_500)}`,
@@ -105,8 +134,12 @@ describe("local Chat terminal-context compiler", () => {
       .toContain("60,000-85,000 EUR");
     expect(projection?.snippets.map((snippet) => snippet.text).join("\n"))
       .toContain("30,000 EUR");
+    const envelope = deriveChatLocalTerminalEnvelopeV1({
+      question: "What are the budget for 2026 and the base fee from 2027?",
+      evidence: [evidence(body)],
+    });
     expect(projection!.snippets.reduce((total, snippet) => total + snippet.text.length, 0))
-      .toBeLessThanOrEqual(5_200);
+      .toBeLessThanOrEqual(envelope.directEvidenceTargetChars);
   });
 
   test("falls back to semantic compilation when the question has no direct evidence anchor", () => {
@@ -296,8 +329,13 @@ describe("local Chat terminal-context compiler", () => {
     const terminal = JSON.parse(messages[0]!.text) as {
       evidencePacket: ChatEvidencePacketV1;
     };
-    expect(terminal.evidencePacket.claims.length).toBeLessThanOrEqual(12);
-    expect(JSON.stringify(terminal.evidencePacket).length).toBeLessThanOrEqual(7_000);
+    const envelope = deriveChatLocalTerminalEnvelopeV1({
+      question: "Gib mir eine Zusammenfassung der Seite.",
+      evidence: [evidence(longBody)],
+    });
+    expect(terminal.evidencePacket.claims).toHaveLength(envelope.maximumClaims);
+    expect(JSON.stringify(terminal.evidencePacket).length)
+      .toBeLessThanOrEqual(envelope.packetTargetChars);
     const projected = terminal.evidencePacket.claims.map((claim) => claim.text).join("\n");
     expect(projected).toContain("PAGE-START");
     expect(projected).toContain("b".repeat(100));

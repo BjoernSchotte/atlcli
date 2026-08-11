@@ -21,6 +21,8 @@ const CHAT_TERMINAL_EVIDENCE_CHUNK_OVERLAP_CHARS_V1 = 320;
 const CHAT_TERMINAL_EVIDENCE_MAX_BATCHES_V1 = 24;
 const CHAT_TERMINAL_PACKET_REDUCTION_CHARS_V1 = 7_000;
 const CHAT_TERMINAL_PACKET_TARGET_CHARS_V1 = 5_800;
+const CHAT_TERMINAL_PACKET_MIN_CHARS_V1 = 2_400;
+const CHAT_TERMINAL_DEFAULT_MAX_INPUT_TOKENS_V1 = 3_072;
 const CHAT_TERMINAL_DIRECT_SNIPPET_CHARS_V1 = 1_400;
 const CHAT_TERMINAL_DIRECT_SNIPPET_OVERLAP_CHARS_V1 = 160;
 const CHAT_TERMINAL_DIRECT_MAX_SNIPPETS_V1 = 4;
@@ -90,6 +92,15 @@ export interface ChatTerminalEvidenceBatchV1 {
   serialized: string;
 }
 
+export interface ChatLocalTerminalEnvelopeV1 {
+  maxInputTokens: number;
+  packetTargetChars: number;
+  directEvidenceTargetChars: number;
+  maximumClaims: number;
+  matchedQuestionTerms: string[];
+  selection: "broad-representative" | "question-anchored";
+}
+
 function splitEvidenceTextV1(text: string): string[] {
   if (text.length <= CHAT_TERMINAL_EVIDENCE_CHUNK_CHARS_V1) return [text];
   const chunks: string[] = [];
@@ -141,6 +152,71 @@ function lexicalTermsV1(text: string): Set<string> {
   );
 }
 
+function discriminativeQuestionTermsV1(input: {
+  question: string;
+  evidence: readonly ResearchDetailEvidenceV1[];
+}): string[] {
+  const evidenceTerms = new Set(
+    input.evidence.flatMap((entry) => [...lexicalTermsV1(entry.content.text)]),
+  );
+  return [...lexicalTermsV1(input.question)]
+    .filter((term) =>
+      evidenceTerms.has(term) && (term.length >= 5 || /^\p{N}+$/u.test(term))
+    )
+    .sort((left, right) => left.localeCompare(right, "en-US"));
+}
+
+/**
+ * Convert the provider-owned input corridor into a conservative evidence
+ * projection. The worker remains the final token authority; this host-side
+ * envelope keeps the final request smaller without treating local inference as
+ * a metered usage budget.
+ */
+export function deriveChatLocalTerminalEnvelopeV1(input: {
+  question: string;
+  evidence: readonly ResearchDetailEvidenceV1[];
+  maxInputTokens?: number;
+}): ChatLocalTerminalEnvelopeV1 {
+  const maxInputTokens = Math.max(
+    1_536,
+    Math.floor(input.maxInputTokens ?? CHAT_TERMINAL_DEFAULT_MAX_INPUT_TOKENS_V1),
+  );
+  const matchedQuestionTerms = discriminativeQuestionTermsV1(input);
+  const selection = matchedQuestionTerms.length > 0
+    ? "question-anchored" as const
+    : "broad-representative" as const;
+  // The structured-answer schema, stable system prompt, and question need a
+  // substantial fixed corridor. A deliberately conservative 1.65 chars/token
+  // projection accounts for Gemma tokenizing identifiers and JSON less densely
+  // than ordinary prose.
+  const packetTargetChars = Math.max(
+    CHAT_TERMINAL_PACKET_MIN_CHARS_V1,
+    Math.min(
+      CHAT_TERMINAL_PACKET_TARGET_CHARS_V1,
+      Math.floor(maxInputTokens * 1.65) - Math.min(600, input.question.length),
+    ),
+  );
+  const sourceFloor = Math.min(12, Math.max(1, input.evidence.length));
+  const desiredClaims = selection === "broad-representative"
+    ? 8
+    : Math.min(12, 3 + matchedQuestionTerms.length);
+  const charBoundClaims = Math.max(4, Math.floor(packetTargetChars / 440));
+  return {
+    maxInputTokens,
+    packetTargetChars,
+    directEvidenceTargetChars: Math.min(
+      CHAT_TERMINAL_DIRECT_MAX_TEXT_CHARS_V1,
+      Math.max(1_800, Math.floor(packetTargetChars * 0.72)),
+    ),
+    maximumClaims: Math.min(12, Math.max(
+      sourceFloor,
+      Math.min(desiredClaims, charBoundClaims),
+    )),
+    matchedQuestionTerms,
+    selection,
+  };
+}
+
 export interface ChatLocalDirectEvidenceProjectionV1 {
   schema: "atlcli.chat-direct-evidence/v1";
   selection: "question-lexical-v1";
@@ -164,6 +240,7 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
   question: string;
   evidence: readonly ResearchDetailEvidenceV1[];
   readSections?: readonly ResearchReadSectionReferenceV1[];
+  targetTextChars?: number;
 }): ChatLocalDirectEvidenceProjectionV1 | undefined {
   const questionTerms = lexicalTermsV1(input.question);
   if (questionTerms.size === 0) return undefined;
@@ -214,12 +291,19 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
   const selected: typeof ranked = [];
   const coveredTerms = new Set<string>();
   let selectedChars = 0;
+  const targetTextChars = Math.max(
+    CHAT_TERMINAL_DIRECT_SNIPPET_CHARS_V1,
+    Math.min(
+      CHAT_TERMINAL_DIRECT_MAX_TEXT_CHARS_V1,
+      input.targetTextChars ?? CHAT_TERMINAL_DIRECT_MAX_TEXT_CHARS_V1,
+    ),
+  );
   for (const candidate of ranked) {
     if (selected.length >= CHAT_TERMINAL_DIRECT_MAX_SNIPPETS_V1) break;
     if (candidate.matches.every((term) => coveredTerms.has(term))) continue;
     if (
       selected.length > 0 &&
-      selectedChars + candidate.text.length > CHAT_TERMINAL_DIRECT_MAX_TEXT_CHARS_V1
+      selectedChars + candidate.text.length > targetTextChars
     ) {
       continue;
     }
@@ -610,11 +694,15 @@ async function invokeEvidencePacketV1(input: {
 function compactTerminalPacketV1(input: {
   packet: ChatEvidencePacketV1;
   question: string;
+  envelope?: Pick<ChatLocalTerminalEnvelopeV1, "packetTargetChars" | "maximumClaims" | "selection">;
 }): ChatEvidencePacketV1 {
+  const packetTargetChars = input.envelope?.packetTargetChars ??
+    CHAT_TERMINAL_PACKET_TARGET_CHARS_V1;
+  const maximumClaims = input.envelope?.maximumClaims ?? 12;
   if (
-    JSON.stringify(input.packet).length <= CHAT_TERMINAL_PACKET_TARGET_CHARS_V1 &&
+    JSON.stringify(input.packet).length <= packetTargetChars &&
     input.packet.sourceIds.length <= 24 &&
-    input.packet.claims.length <= 12 &&
+    input.packet.claims.length <= maximumClaims &&
     input.packet.relationships.length <= 8 &&
     input.packet.gaps.length <= 8
   ) {
@@ -623,7 +711,6 @@ function compactTerminalPacketV1(input: {
   const claims = input.packet.claims;
   const candidateIndexes: number[] = [];
   const seenIndexes = new Set<number>();
-  const maximumClaims = 12;
   const admit = (index: number): void => {
     if (index < 0 || candidateIndexes.length >= maximumClaims || seenIndexes.has(index)) {
       return;
@@ -631,23 +718,30 @@ function compactTerminalPacketV1(input: {
     seenIndexes.add(index);
     candidateIndexes.push(index);
   };
-  for (const sourceId of input.packet.sourceIds) {
-    admit(claims.findIndex((claim) => claim.sourceIds.includes(sourceId)));
-    const reverseIndex = [...claims].reverse().findIndex((claim) =>
-      claim.sourceIds.includes(sourceId)
-    );
-    if (reverseIndex >= 0) admit(claims.length - 1 - reverseIndex);
-  }
   const questionTerms = lexicalTermsV1(input.question);
-  for (const entry of claims
+  const rankedClaims = claims
     .map((claim, index) => ({
       index,
       score: [...questionTerms].reduce((total, term) =>
         total + (lexicalTermsV1(claim.text).has(term) ? 1 : 0), 0),
     }))
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.index - right.index)) {
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+  for (const sourceId of input.packet.sourceIds) {
+    const sourceCandidate = rankedClaims.find((entry) =>
+      claims[entry.index]!.sourceIds.includes(sourceId)
+    );
+    if (sourceCandidate) admit(sourceCandidate.index);
+  }
+  for (const entry of rankedClaims.filter((candidate) => candidate.score > 0)) {
     admit(entry.index);
+  }
+  if (input.envelope?.selection !== "question-anchored") {
+    for (const sourceId of input.packet.sourceIds) {
+      const reverseIndex = [...claims].reverse().findIndex((claim) =>
+        claim.sourceIds.includes(sourceId)
+      );
+      if (reverseIndex >= 0) admit(claims.length - 1 - reverseIndex);
+    }
   }
   if (candidateIndexes.length < maximumClaims && claims.length > candidateIndexes.length) {
     for (let slot = 1; slot < maximumClaims - 1; slot += 1) {
@@ -680,7 +774,7 @@ function compactTerminalPacketV1(input: {
       sourceIds: [...new Set([...compacted.sourceIds, ...sourceIds])],
       claims: [...compacted.claims, candidate],
     };
-    if (JSON.stringify(next).length <= CHAT_TERMINAL_PACKET_TARGET_CHARS_V1) {
+    if (JSON.stringify(next).length <= packetTargetChars) {
       compacted.sourceIds = next.sourceIds;
       compacted.claims = next.claims;
       acceptedClaimIndexes.push(index);
@@ -700,13 +794,13 @@ function compactTerminalPacketV1(input: {
       support: relationship.support.slice(0, 240),
     };
     const next = { ...compacted, relationships: [...compacted.relationships, candidate] };
-    if (JSON.stringify(next).length <= CHAT_TERMINAL_PACKET_TARGET_CHARS_V1) {
+    if (JSON.stringify(next).length <= packetTargetChars) {
       compacted.relationships = next.relationships;
     }
   }
   for (const gap of input.packet.gaps.slice(0, 8)) {
     const next = { ...compacted, gaps: [...compacted.gaps, gap.slice(0, 240)] };
-    if (JSON.stringify(next).length <= CHAT_TERMINAL_PACKET_TARGET_CHARS_V1) {
+    if (JSON.stringify(next).length <= packetTargetChars) {
       compacted.gaps = next.gaps;
     }
   }
@@ -717,14 +811,16 @@ function hostRepresentativeTerminalPacketV1(input: {
   question: string;
   evidence: readonly ResearchDetailEvidenceV1[];
   readSections: readonly ResearchReadSectionReferenceV1[];
+  envelope: ChatLocalTerminalEnvelopeV1;
 }): ChatEvidencePacketV1 {
   const refs = allowedRefsBySourceV1(input.evidence, input.readSections);
   const maximumClaimsPerSource = Math.max(
     2,
-    Math.floor(12 / Math.max(1, input.evidence.length)),
+    Math.floor(input.envelope.maximumClaims / Math.max(1, input.evidence.length)),
   );
   return compactTerminalPacketV1({
     question: input.question,
+    envelope: input.envelope,
     packet: {
       schema: "atlcli.chat-evidence-packet/v1",
       sourceIds: input.evidence.map((entry) => entry.source.id),
@@ -753,6 +849,7 @@ async function reducePacketsV1(input: {
   readSections: readonly ResearchReadSectionReferenceV1[];
   signal?: AbortSignal;
   locale?: string;
+  envelope: ChatLocalTerminalEnvelopeV1;
 }): Promise<ChatEvidencePacketV1> {
   if (input.signal?.aborted) {
     throw input.signal.reason ?? new DOMException("Cancelled", "AbortError");
@@ -765,6 +862,7 @@ async function reducePacketsV1(input: {
   const compacted = compactTerminalPacketV1({
     packet: mergePacketsV1(input.packets),
     question: input.question,
+    envelope: input.envelope,
   });
   if (JSON.stringify(compacted).length > CHAT_TERMINAL_PACKET_REDUCTION_CHARS_V1) {
     throw new ChatContractError(
@@ -789,6 +887,7 @@ export async function createChatLocalTerminalContextMessagesV1(input: {
   question: string;
   locale?: string;
   signal?: AbortSignal;
+  maxInputTokens?: number;
 }): Promise<BaseMessage[]> {
   const evidence = input.broker.detailEvidenceLedger();
   const readSections = input.broker.readSectionReferenceLedger();
@@ -798,10 +897,16 @@ export async function createChatLocalTerminalContextMessagesV1(input: {
       "The local terminal-context compiler has no accepted detail evidence.",
     );
   }
+  const envelope = deriveChatLocalTerminalEnvelopeV1({
+    question: input.question,
+    evidence,
+    maxInputTokens: input.maxInputTokens,
+  });
   const directEvidence = buildChatLocalDirectEvidenceProjectionV1({
     question: input.question,
     evidence,
     readSections,
+    targetTextChars: envelope.directEvidenceTargetChars,
   });
   if (directEvidence) {
     console.info("[local-gemma/terminal-context] direct projection selected", {
@@ -813,6 +918,7 @@ export async function createChatLocalTerminalContextMessagesV1(input: {
         (total, snippet) => total + snippet.text.length,
         0,
       ),
+      envelope,
     });
     return [new HumanMessage(JSON.stringify({
       schema: "atlcli.chat-terminal-context/v1",
@@ -837,6 +943,7 @@ export async function createChatLocalTerminalContextMessagesV1(input: {
       question: input.question,
       evidence,
       readSections,
+      envelope,
     });
     const packetChars = JSON.stringify(packet).length;
     if (
@@ -854,6 +961,7 @@ export async function createChatLocalTerminalContextMessagesV1(input: {
       batchCount: batches.length,
       packetChars,
       claimCount: packet.claims.length,
+      envelope,
     });
     return [new HumanMessage(JSON.stringify({
       schema: "atlcli.chat-terminal-context/v1",
@@ -915,6 +1023,7 @@ export async function createChatLocalTerminalContextMessagesV1(input: {
     readSections,
     signal: input.signal,
     locale: input.locale,
+    envelope,
   });
   console.info("[local-gemma/terminal-context] compilation completed", {
     durationMs: Date.now() - compilerStartedAt,
