@@ -128,6 +128,9 @@ describe("local Gemma prompt projection", () => {
     expect(projected[0]!.content.length).toBeLessThan(2_000);
     expect(projected[0]!.content).toContain("tool result already present");
     expect(projected[0]!.content).toContain("ChatAnswerDraftV2");
+    expect(projected[0]!.content).toContain(
+      "never use it for success, language/style commentary, or validation notes",
+    );
   });
 
   it("uses only the terminal contract once the host selects the answer tool", () => {
@@ -146,9 +149,10 @@ describe("local Gemma prompt projection", () => {
     ], [tools[1]!], "low", "ChatAnswerDraftV2");
 
     expect(projected[0]!.content.length).toBeLessThan(1_200);
-    expect(projected[0]!.content).toContain("non-empty `blocks` array");
+    expect(projected[0]!.content).toContain("non-empty `blocks` and actual `gaps` arrays");
     expect(projected[0]!.content).toContain("at most 180 visible words and 6 blocks");
     expect(projected[0]!.content).toContain("not a usage quota");
+    expect(projected[0]!.content).toContain("return `gaps: []`");
     expect(projected[0]!.content).toContain(
       "response must begin with the Gemma tool call",
     );

@@ -358,7 +358,7 @@ describe("local Gemma shared Chat-agent path", () => {
     }
   }, 30_000);
 
-  it("compiles full retrieved evidence into a fresh local terminal context", async () => {
+  it("projects matched retrieved evidence into a fresh local terminal context", async () => {
     const channel = new MessageChannel();
     const requests: Extract<LocalModelPortRequestV1, { kind: "generate" }>[] = [];
     const longPage = [
@@ -443,7 +443,7 @@ describe("local Gemma shared Chat-agent path", () => {
     channel.port2.start();
     const input = request({
       suffix: "terminal-context",
-      question: "Summarize the approved budget page.",
+      question: "State the 2026 budget and the base fee from 2027.",
       confluenceSpaceKeys: ["KB"],
     });
     input.brokerRequest = {
@@ -502,13 +502,7 @@ describe("local Gemma shared Chat-agent path", () => {
       const extractionRequests = requests.filter((candidate) =>
         candidate.requiredToolName === "KiteweaveLocalTerminalEvidenceV1"
       );
-      expect(extractionRequests).toHaveLength(3);
-      expect(extractionRequests.map((candidate) =>
-        candidate.messages.map((message) => message.content).join("\n")
-      ).join("\n")).toContain("Budget 2026");
-      expect(extractionRequests.map((candidate) =>
-        candidate.messages.map((message) => message.content).join("\n")
-      ).join("\n")).toContain("Base fee from 2027");
+      expect(extractionRequests).toHaveLength(0);
       const finalRequest = requests.find((candidate) =>
         candidate.requiredToolName === "ChatAnswerDraftV2"
       )!;
@@ -517,10 +511,10 @@ describe("local Gemma shared Chat-agent path", () => {
         "atlcli.chat-terminal-context/v1",
       );
       expect(JSON.stringify(finalRequest.messages)).toContain(
-        "The 2026 budget is 60,000-85,000 EUR.",
+        "Budget 2026: 60,000-85,000 EUR.",
       );
       expect(JSON.stringify(finalRequest.messages)).toContain(
-        "The base fee from 2027 is 30,000 EUR.",
+        "Base fee from 2027: 30,000 EUR.",
       );
       expect(answer.messageMarkdown).toContain("60,000-85,000 EUR");
       expect(answer.messageMarkdown).toContain("30,000 EUR");

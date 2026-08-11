@@ -7,6 +7,7 @@ import type {
 } from "../broker.js";
 import { ChatContractError } from "./contracts.js";
 import {
+  buildChatLocalDirectEvidenceProjectionV1,
   buildChatTerminalEvidenceBatchesV1,
   createChatLocalTerminalContextMessagesV1,
 } from "./terminal-context.js";
@@ -80,7 +81,50 @@ describe("local Chat terminal-context compiler", () => {
     })).toThrow(ChatContractError);
   });
 
-  test("builds a fresh finalization message from typed packets", async () => {
+  test("projects all directly matched question anchors into a browser-safe context", () => {
+    const body = [
+      "Budget 2026: 60,000-85,000 EUR.",
+      "x".repeat(10_000),
+      "Base fee from 2027: 30,000 EUR.",
+    ].join("\n");
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question: "What are the budget for 2026 and the base fee from 2027?",
+      evidence: [evidence(body)],
+    });
+
+    expect(projection?.matchedQuestionTerms).toEqual(expect.arrayContaining([
+      "budget",
+      "2026",
+      "base",
+      "fee",
+      "2027",
+    ]));
+    expect(projection?.snippets.map((snippet) => snippet.text).join("\n"))
+      .toContain("60,000-85,000 EUR");
+    expect(projection?.snippets.map((snippet) => snippet.text).join("\n"))
+      .toContain("30,000 EUR");
+    expect(projection!.snippets.reduce((total, snippet) => total + snippet.text.length, 0))
+      .toBeLessThanOrEqual(5_200);
+  });
+
+  test("falls back to semantic compilation when the question has no direct evidence anchor", () => {
+    expect(buildChatLocalDirectEvidenceProjectionV1({
+      question: "Explain the strategic implications.",
+      evidence: [evidence("Budget 2026: 60,000-85,000 EUR.")],
+    })).toBeUndefined();
+  });
+
+  test("does not mistake a generic page-summary request for a direct fact lookup", () => {
+    expect(buildChatLocalDirectEvidenceProjectionV1({
+      question: "Gib mir eine Zusammenfassung der Seite.",
+      evidence: [evidence([
+        "Die Seite beschreibt den aktuellen Leistungsumfang.",
+        "Weitere Abschnitte erläutern Kosten, Voraussetzungen und Risiken.",
+      ].join("\n"))],
+    })).toBeUndefined();
+  });
+
+  test("builds a fresh finalization message directly from bounded matched evidence", async () => {
     const calls: string[] = [];
     const model = {
       bindTools: (tools: Array<{ function: { name: string } }>) => ({
@@ -125,19 +169,22 @@ describe("local Chat terminal-context compiler", () => {
       locale: "de-DE",
     });
 
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(0);
     expect(messages).toHaveLength(1);
     const terminal = JSON.parse(messages[0]!.text) as {
       schema: string;
       question: string;
       instruction: string;
-      evidencePacket: { claims: unknown[] };
+      evidenceProjection: { snippets: Array<{ text: string }> };
     };
     expect(terminal).toMatchObject({
       schema: "atlcli.chat-terminal-context/v1",
       question: "State the budget and deadline.",
     });
-    expect(terminal.evidencePacket.claims).toHaveLength(3);
+    expect(terminal.evidenceProjection.snippets.map((snippet) => snippet.text).join("\n"))
+      .toContain("BUDGET");
+    expect(terminal.evidenceProjection.snippets.map((snippet) => snippet.text).join("\n"))
+      .toContain("DEADLINE");
     expect(terminal.instruction).toContain(
       "Address each substantive request in the user's original question",
     );
