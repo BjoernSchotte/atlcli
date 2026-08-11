@@ -1,10 +1,15 @@
 # Atlassian Action Palette MVP
 
-**Status:** Proposed  
-**Spec ID:** `action-palette-mvp`  
-**Primary repository:** `atlcli` at `0adae619`  
-**External consumer:** `/Users/bjoern/code/kiteweave-forge-app` at `f520e66`  
-**Target surfaces:** Chrome extension on Atlassian Cloud; Forge Custom UI on Confluence Cloud  
+**Status:** Proposed
+
+**Spec ID:** `action-palette-mvp`
+
+**Primary repository:** `atlcli` at `0adae619`
+
+**External consumer:** `/Users/bjoern/code/kiteweave-forge-app` at `f520e66`
+
+**Target surfaces:** Chrome extension on Atlassian Cloud; Forge Custom UI on Confluence Cloud
+
 **Origin:** Product concept for a Raycast-inspired action palette opened from Atlassian pages
 
 ## 1. Executive summary
@@ -453,7 +458,8 @@ Only one task should be marked in progress at a time in this file. Check a task 
 
 ### AP-00 — Revalidate baselines and prove platform feasibility
 
-**Depends on:** Nothing  
+**Depends on:** Nothing
+
 **Blocks:** All implementation tasks
 
 - [x] Run the drift checks in Section 7 and record the reviewed commits and relevant diffs in `specs/atlassian-action-palette-mvp/evidence/AP-00-baseline.md`.
@@ -487,7 +493,8 @@ Only one task should be marked in progress at a time in this file. Check a task 
 
 ### AP-01 — Add the neutral action contracts
 
-**Depends on:** AP-00  
+**Depends on:** AP-00
+
 **Blocks:** AP-02, AP-04, AP-08
 
 - [x] Create `packages/action-registry/package.json`, `tsconfig.build.json`, `src/contracts.ts`, `src/validation.ts`, and `src/index.ts` using current package export conventions.
@@ -511,7 +518,8 @@ bun run check:browser
 
 ### AP-02 — Implement deterministic catalog resolution and search
 
-**Depends on:** AP-01  
+**Depends on:** AP-01
+
 **Blocks:** AP-03, AP-04
 
 - [x] Implement `createActionCatalog()`, duplicate diagnostics, stable group/order resolution, and capability/context availability.
@@ -530,7 +538,8 @@ bun run typecheck
 
 ### AP-03 — Build the accessible shared React presenter
 
-**Depends on:** AP-02  
+**Depends on:** AP-02
+
 **Blocks:** AP-03A, AP-05
 
 - [ ] Create `packages/action-palette-react` with browser-safe exports, React/ReactDOM externalized, and a peer range compatible with the extension's React 19 and Forge's React 18 (proposed `>=18 <20`) while using only the common API surface.
@@ -556,7 +565,8 @@ bun run check:browser
 
 ### AP-03A — Produce the cross-repository development package handoff
 
-**Depends on:** AP-03  
+**Depends on:** AP-03
+
 **Blocks:** AP-08
 
 - [ ] After the relevant E2E gate, commit AP-01 through AP-03 on the atlcli feature branch so the handoff has one immutable source SHA; a dirty worktree is not a package source.
@@ -576,7 +586,8 @@ bun run check:browser
 
 ### AP-04 — Add the authoritative extension broker, context, and executor adapters
 
-**Depends on:** AP-02  
+**Depends on:** AP-02
+
 **Blocks:** AP-05, AP-06, AP-07
 
 - [ ] Add `apps/extension/utils/action-palette/protocol.ts`, `context.ts`, `catalog.ts`, and `background-host.ts` with a thin integration in `background.ts`.
@@ -602,7 +613,8 @@ bun run typecheck
 
 ### AP-05 — Mount the extension overlay and wire the configurable shortcut
 
-**Depends on:** AP-03, AP-04  
+**Depends on:** AP-03, AP-04
+
 **Blocks:** AP-06
 
 - [ ] Add the top-frame isolated WXT content script and one Shadow DOM mount for `https://*.atlassian.net/*`.
@@ -628,7 +640,8 @@ bun run check:browser
 
 ### AP-06 — Connect export, sidebar, and activity actions
 
-**Depends on:** AP-05  
+**Depends on:** AP-05
+
 **Blocks:** AP-07, AP-09
 
 - [ ] Reuse `loadConfluencePage()`, `createExtensionPdfJobRequest()`, and `submitExtensionPdfExport()` for the PDF current-page action; preserve established defaults and persistence-before-wake semantics.
@@ -656,7 +669,8 @@ bun run typecheck
 
 ### AP-07 — Add bounded quick AI and sidebar continuation
 
-**Depends on:** AP-04, AP-06  
+**Depends on:** AP-04, AP-06
+
 **Blocks:** AP-09
 
 - [ ] Extract shared browser chat-host identity and pure Quick request/policy preparation from their current side-panel/Research locations, then construct the chat adapter in the background with the existing injected `runResearch`; preserve workspace/provider/permission checks and avoid a broad `background.ts` refactor.
@@ -679,7 +693,8 @@ bun run typecheck
 
 ### AP-08 — Mount the Forge Confluence palette
 
-**Depends on:** AP-00, AP-03A  
+**Depends on:** AP-00, AP-03A
+
 **Blocks:** AP-09
 
 - [ ] In a reviewed Forge branch, explicitly exclude and preserve the pre-existing untracked `design/` directory, consume the exact AP-03A receipt, update `package.json`/lockfile, and refuse to proceed if the atlcli source is dirty, at a different SHA, has different package versions/hashes, or resolves outside the recorded `dist/` entries.
@@ -702,7 +717,8 @@ forge lint
 
 ### AP-09 — Harden, document, and produce release evidence
 
-**Depends on:** AP-06, AP-07, AP-08  
+**Depends on:** AP-06, AP-07, AP-08
+
 **Blocks:** MVP release decision
 
 - [ ] Add `src/content/docs/reference/action-palette.md` using the repository documentation template: intro, prerequisites, UI-first setup, shortcut configuration, actions, examples, troubleshooting, related topics, and feedback/edit link.

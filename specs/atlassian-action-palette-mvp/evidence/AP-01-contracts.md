@@ -1,7 +1,9 @@
 # AP-01 neutral action-contract evidence
 
-**Captured:** 2026-08-11  
-**Task base:** `e10278b0dcd722fd4505d9d6ab3dddc200f1b303`  
+**Captured:** 2026-08-11
+
+**Task base:** `e10278b0dcd722fd4505d9d6ab3dddc200f1b303`
+
 **Package:** `@atlcli/action-registry` `0.1.0`
 
 ## Outcome

@@ -1,8 +1,11 @@
 # AP-00 baseline and platform-feasibility evidence
 
-**Captured:** 2026-08-11  
-**atlcli reviewed HEAD:** `b50979bffad9a04c610c7d0c587f29189ad765c0`  
-**atlcli planned source baseline:** `0adae61967e9c48589fe22a4404e91c748aa4b46`  
+**Captured:** 2026-08-11
+
+**atlcli reviewed HEAD:** `b50979bffad9a04c610c7d0c587f29189ad765c0`
+
+**atlcli planned source baseline:** `0adae61967e9c48589fe22a4404e91c748aa4b46`
+
 **Forge reviewed baseline:** `f520e66f8f1fdd02f94a82e771553464d86deb14`
 
 ## Gate verdicts
