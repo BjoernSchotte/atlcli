@@ -11,7 +11,9 @@ import { defineBackground } from "wxt/utils/define-background";
 import {
   createActionPaletteBackgroundHostV1,
   createExtensionActionPaletteExecutorsV1,
+  type ActionPaletteExecutorEntryV1,
 } from "../utils/action-palette/background-host.js";
+import { createActionPaletteQuickAiExecutorV1 } from "../utils/action-palette/quick-ai.js";
 import {
   isActionPaletteRequestCandidateV1,
   type ActionPaletteResponseV1,
@@ -49,9 +51,12 @@ import {
   type ResearchSessionSteeringActionRequest,
   type ResearchSessionDeletionActionRequest,
   isExportJobsChanged,
+  isChatPresentationMessage,
+  isResearchEvent,
 } from "../utils/messages.js";
 import type {
   ChatQualityPolicyV1,
+  ResearchPort,
   ResearchOneShotPolicyV1,
   ResearchRequestV1,
 } from "../utils/research/contracts.js";
@@ -137,6 +142,15 @@ import { createObserverSession } from "../utils/observer-session.js";
 import { loadConfluencePage } from "../utils/read-path.js";
 import { idbTemplateLibrary } from "../utils/templates/library.js";
 import {
+  ACTIVE_CHAT_CONVERSATION_KEY,
+  CHAT_CONVERSATION_ID_PATTERN,
+  CHAT_HOST_PRINCIPAL_KEY,
+  CHAT_HOST_PRINCIPAL_PATTERN,
+  activeBrowserChatConversationIdV1,
+  browserChatHostIdentityV1,
+} from "../utils/research/browser-chat-host.js";
+import { createBrowserChatTurnPortV1 } from "../utils/research/chat-turn-port.js";
+import {
   currentDetection,
   initialObserverState,
   isObserverState,
@@ -152,10 +166,6 @@ import {
  */
 const OFFSCREEN_IDLE_MS = 5 * 60 * 1000;
 const TAB_OBSERVER_STORAGE_KEY = "tab-observer-state-v1";
-const ACTIVE_CHAT_CONVERSATION_KEY = "atlcli.research.active-chat-conversation-id.v1";
-const CHAT_HOST_PRINCIPAL_KEY = "atlcli.chat.host-principal-id.v1";
-const CHAT_HOST_PRINCIPAL_PATTERN = /^browser-principal:[0-9a-f-]{36}$/u;
-const CHAT_CONVERSATION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/u;
 const commonExportCatalog = new IndexedDbExportJobCatalog();
 const commonExportBytes = new IndexedDbExportByteStore();
 
@@ -481,6 +491,7 @@ export default defineBackground({
 
   const queuePaletteSurface = async (
     screen: "export" | "research" | "activity" | "settings",
+    continuationId?: string,
   ): Promise<void> => {
     const navigationId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
@@ -489,6 +500,7 @@ export default defineBackground({
       requestId: `navigation:${navigationId}`,
       navigationId,
       screen,
+      ...(continuationId ? { continuationId } : {}),
       createdAt,
       expiresAt: new Date(Date.now() + 120_000).toISOString(),
     };
@@ -567,6 +579,8 @@ export default defineBackground({
     }),
   });
 
+  let quickAskExecutor: ActionPaletteExecutorEntryV1["execute"] | undefined;
+
   const actionPaletteHost = createActionPaletteBackgroundHostV1({
     getTab: async (tabId) => {
       try {
@@ -580,15 +594,26 @@ export default defineBackground({
       queueSurface: queuePaletteSurface,
       exportPdf: paletteExports.pdf,
       exportDocx: paletteExports.docx,
-      quickAsk: async () => {
-        await queuePaletteSurface("research");
-        return { status: "open-surface", target: { kind: "sidebar", screen: "research" } };
-      },
+      quickAsk: (...args) => quickAskExecutor
+        ? quickAskExecutor(...args)
+        : Promise.resolve({
+            status: "failed",
+            errorCode: "atlcli.ai.host-unavailable",
+            messageKey: "atlcli.action.quick-ask.host-unavailable",
+            retryable: true,
+          }),
     }),
     shortcutStatus: async () => {
       const commands = await chrome.commands.getAll();
       const shortcut = commands.find((command) => command.name === ACTION_PALETTE_COMMAND_ID)?.shortcut?.trim() || null;
       return { status: shortcut ? "assigned" : "unbound", value: shortcut };
+    },
+    emitStream: async (sender, event) => {
+      await chrome.tabs.sendMessage(sender.tabId, event, {
+        documentId: sender.documentId,
+      }).catch(() => {
+        // A closed palette detaches from the durable Chat turn.
+      });
     },
     acknowledgeSurface: async (navigationId) => {
       const stored = await chrome.storage.session.get(ACTION_PALETTE_NAVIGATION_STORAGE_KEY);
@@ -686,13 +711,16 @@ export default defineBackground({
     resumeCheckpoint?: {
       kind: "stream-interruption" | "steering";
     },
+    signal?: AbortSignal,
   ) => {
+    signal?.throwIfAborted();
     const request = normalizeResearchRequestV1(value);
     const policy = normalizeResearchOneShotPolicyV1(policyValue);
     const qualityPolicy = mode === "chat" && qualityPolicyValue
       ? normalizeChatQualityPolicyV1(qualityPolicyValue)
       : undefined;
     const detection = await getCurrentEntity(windowId);
+    signal?.throwIfAborted();
     const profile = detection.url ? profileFromTabUrl(detection.url) : null;
     if (!profile || new URL(profile.baseUrl).origin !== request.scope.siteOrigin) {
       throw new ResearchContractError(
@@ -703,6 +731,7 @@ export default defineBackground({
     const apiKey = normalizeAnthropicApiKey(
       await readBrowserApiKeyV1(chromeBrowserCredentialStorageV1()),
     );
+    signal?.throwIfAborted();
     if (activeResearchRuns.has(runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
     }
@@ -710,6 +739,7 @@ export default defineBackground({
     offscreenActivity.begin();
     try {
       await ensureOffscreen();
+      signal?.throwIfAborted();
       const response = (await chrome.runtime.sendMessage({
         kind: "offscreen:research-run",
         runId,
@@ -724,6 +754,7 @@ export default defineBackground({
         ...(resumeAnswer ? { resumeAnswer } : {}),
         ...(resumeCheckpoint ? { resumeCheckpoint } : {}),
       })) as OffscreenResponse | undefined;
+      signal?.throwIfAborted();
       if (
         !response ||
         response.kind !== "offscreen:research-run-result" ||
@@ -2016,6 +2047,81 @@ export default defineBackground({
         response.cancelled
     );
   };
+
+  quickAskExecutor = createActionPaletteQuickAiExecutorV1({
+    hasProvider: async () => Boolean(
+      await readBrowserApiKeyV1(chromeBrowserCredentialStorageV1()),
+    ),
+    getConversationId: () => activeBrowserChatConversationIdV1(),
+    createChat(binding) {
+      const run: ResearchPort["run"] = async (request, options) => {
+        if (options?.mode !== "chat") {
+          throw new ResearchContractError("invalid-request", "The action palette accepts Chat turns only.");
+        }
+        options.signal?.throwIfAborted();
+        const tab = await chrome.tabs.get(binding.tabId);
+        if (tab.id !== binding.tabId || tab.windowId === undefined || tab.url !== binding.url) {
+          throw new ResearchContractError("access-denied", "The action palette context is stale.");
+        }
+        const runId = crypto.randomUUID();
+        const sessionId = options.conversationId ??
+          await activeBrowserChatConversationIdV1() ??
+          `research-session:${crypto.randomUUID()}`;
+        if (!CHAT_CONVERSATION_ID_PATTERN.test(sessionId)) {
+          throw new ResearchContractError("invalid-request", "The Chat conversation identity is invalid.");
+        }
+        const turnId = options.chatResume?.turnId ??
+          options.chatCheckpointResume?.turnId ??
+          `research-turn:${crypto.randomUUID()}`;
+        const identity = await browserChatHostIdentityV1();
+        await chrome.storage.local.set({ [ACTIVE_CHAT_CONVERSATION_KEY]: sessionId });
+        options.signal?.throwIfAborted();
+        options.onSessionStart?.({ sessionId, turnId });
+        const onMessage = (message: unknown): void => {
+          if (isResearchEvent(message, runId)) options.onEvent?.(message.event);
+          if (isChatPresentationMessage(message, runId)) {
+            options.onChatPresentation?.(message.event);
+          }
+        };
+        const cancel = (): void => {
+          void cancelResearch(runId).catch(() => undefined);
+        };
+        chrome.runtime.onMessage.addListener(onMessage);
+        options.signal?.addEventListener("abort", cancel, { once: true });
+        const timeoutId = setTimeout(cancel, request.limits.maxRunMs);
+        try {
+          const result = await runResearch(
+            runId,
+            sessionId,
+            turnId,
+            tab.windowId,
+            "chat",
+            request,
+            options.policy,
+            options.qualityPolicy,
+            identity,
+            options.chatResume?.answer,
+            options.chatCheckpointResume
+              ? { kind: options.chatCheckpointResume.kind }
+              : undefined,
+            options.signal,
+          );
+          options.signal?.throwIfAborted();
+          return result;
+        } catch (error) {
+          if (options.signal?.aborted) {
+            throw new ResearchContractError("cancelled", "The Chat turn was cancelled.");
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+          chrome.runtime.onMessage.removeListener(onMessage);
+          options.signal?.removeEventListener("abort", cancel);
+        }
+      };
+      return createBrowserChatTurnPortV1(run);
+    },
+  });
 
   const pauseResearchWorker = async (runId: string): Promise<boolean> => {
     await ensureOffscreen();

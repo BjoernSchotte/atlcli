@@ -437,6 +437,7 @@ const ERROR_MESSAGE_BY_CODE: Readonly<
 
 function InputForm({
   title,
+  contextLabel,
   schema,
   values,
   errors,
@@ -447,6 +448,7 @@ function InputForm({
   onBack,
 }: {
   readonly title: string;
+  readonly contextLabel?: string;
   readonly schema: ActionInputSchemaV1;
   readonly values: ActionInputValuesV1;
   readonly errors: Readonly<Record<string, ActionInputErrorCodeV1>>;
@@ -506,6 +508,11 @@ function InputForm({
         </h2>
       </header>
       <div className="atlcli-action-palette-fields">
+        {contextLabel ? (
+          <div className="atlcli-action-palette-context-chips" aria-label="Current context">
+            <span>{contextLabel}</span>
+          </div>
+        ) : null}
         {schema.fields.map((field) => {
           const fieldId = `${idPrefix}-${field.id}`;
           const error = errors[field.id];
@@ -524,7 +531,19 @@ function InputForm({
           return (
             <div className="atlcli-action-palette-field" key={field.id}>
               <label htmlFor={fieldId}>{resolveText(field.label)}</label>
-              {field.type === "select" ? (
+              {field.type === "boolean" ? (
+                <input
+                  id={fieldId}
+                  name={field.id}
+                  type="checkbox"
+                  checked={(values[field.id] ?? "") === "true"}
+                  required={field.required}
+                  data-testid={`palette-input-${field.id}`}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={errorId}
+                  onChange={(event) => update(field.id, event.currentTarget.checked ? "true" : "false")}
+                />
+              ) : field.type === "select" ? (
                 <select {...common} required={field.required}>
                   <option value="" />
                   {field.options.map((option) => (
@@ -634,6 +653,15 @@ function ResultView({
       </div>
       <h2>{heading}</h2>
       {description ? <p>{description}</p> : null}
+      {result.status === "completed" && result.presentation ? (
+        <div
+          className="atlcli-action-palette-answer"
+          data-testid="palette-result-presentation"
+          aria-label="AI answer"
+        >
+          {result.presentation.text}
+        </div>
+      ) : null}
       <div className="atlcli-action-palette-result-actions">
         {result.status === "failed" && result.retryable ? (
           <button type="button" className="atlcli-action-palette-primary" onClick={onRetry}>
@@ -666,12 +694,18 @@ function ResultView({
 
 function ExecutingView({
   title,
+  streamText,
   closeLabel,
+  cancelLabel,
   onClose,
+  onCancel,
 }: {
   readonly title: string;
+  readonly streamText: string;
   readonly closeLabel: string;
+  readonly cancelLabel: string;
   readonly onClose: () => void;
+  readonly onCancel?: () => void;
 }): ReactNode {
   const sectionRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
@@ -692,6 +726,20 @@ function ExecutingView({
     >
       <span className="atlcli-action-palette-progress" aria-hidden="true" />
       <h2>{title}</h2>
+      {streamText ? (
+        <div
+          className="atlcli-action-palette-answer atlcli-action-palette-answer-stream"
+          data-testid="palette-stream-text"
+          aria-live="off"
+        >
+          {streamText}
+        </div>
+      ) : null}
+      {onCancel ? (
+        <button type="button" className="atlcli-action-palette-primary" onClick={onCancel}>
+          {cancelLabel}
+        </button>
+      ) : null}
       <button type="button" className="atlcli-action-palette-secondary" onClick={onClose}>
         {closeLabel}
       </button>
@@ -805,7 +853,9 @@ function ActionPaletteContentV1(props: ActionPalettePropsV1): ReactNode {
         }),
       );
       try {
-        const result = await executor.execute(request, controller.signal);
+        const result = await executor.execute(request, controller.signal, (event) => {
+          if (!controller.signal.aborted) dispatch({ type: "stream", ...event });
+        });
         if (controller.signal.aborted) return;
         lifecycle?.onResult?.(request.actionId, result);
         if (result.status === "input-required") {
@@ -1093,6 +1143,7 @@ function ActionPaletteContentV1(props: ActionPalettePropsV1): ReactNode {
         ) : state.screen.kind === "input" ? (
           <InputForm
             title={selectedTitle}
+            contextLabel={contextLabel}
             schema={state.screen.schema}
             values={state.screen.values}
             errors={state.screen.errors}
@@ -1121,8 +1172,17 @@ function ActionPaletteContentV1(props: ActionPalettePropsV1): ReactNode {
             title={formatActionPaletteMessageV1(messages["palette.executing"], {
               action: selectedTitle,
             })}
+            streamText={state.screen.streamText}
             closeLabel={messages["palette.close"]}
+            cancelLabel={messages["palette.cancel"]}
             onClose={requestClose}
+            onCancel={executor.cancel && lastRequestRef.current
+              ? () => {
+                  const active = lastRequestRef.current;
+                  if (!active) return;
+                  void executor.cancel?.(active.request).finally(() => requestClose());
+                }
+              : undefined}
           />
         ) : (
           <ResultView

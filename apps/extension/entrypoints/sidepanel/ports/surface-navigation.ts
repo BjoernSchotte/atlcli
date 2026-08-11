@@ -12,9 +12,19 @@ function isNavigationRequest(value: unknown): value is Extract<
 > {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
-  return candidate.kind === "action-palette:open-surface-request" &&
+  const expectedKeys = candidate.continuationId === undefined
+    ? ["kind", "requestId", "navigationId", "screen", "createdAt", "expiresAt"]
+    : ["kind", "requestId", "navigationId", "screen", "continuationId", "createdAt", "expiresAt"];
+  return Object.keys(candidate).length === expectedKeys.length &&
+    expectedKeys.every((key) => Object.hasOwn(candidate, key)) &&
+    candidate.kind === "action-palette:open-surface-request" &&
     typeof candidate.requestId === "string" && typeof candidate.navigationId === "string" &&
     ["export", "research", "activity", "settings"].includes(String(candidate.screen)) &&
+    (candidate.continuationId === undefined || (
+      typeof candidate.continuationId === "string" &&
+      candidate.screen === "research" &&
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(candidate.continuationId)
+    )) &&
     typeof candidate.createdAt === "string" && Number.isFinite(Date.parse(candidate.createdAt)) &&
     typeof candidate.expiresAt === "string";
 }
@@ -26,6 +36,7 @@ function toPortRequest(message: Extract<
   return {
     id: message.navigationId,
     screen: message.screen,
+    ...(message.continuationId ? { continuationId: message.continuationId } : {}),
     createdAt: message.createdAt,
     expiresAt: message.expiresAt,
   };

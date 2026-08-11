@@ -19,10 +19,11 @@ import {
   ActionPaletteV1,
   type ActionPaletteExecutorV1,
 } from "@atlcli/action-palette-react";
-import type {
-  ActionPaletteCatalogProjectionV1,
-  ActionPaletteRequestV1,
-  ActionPaletteResponseV1,
+import {
+  isActionPaletteStreamEventV1,
+  type ActionPaletteCatalogProjectionV1,
+  type ActionPaletteRequestV1,
+  type ActionPaletteResponseV1,
 } from "../../utils/action-palette/protocol.js";
 import "@atlcli/action-palette-react/styles.css";
 import "./style.css";
@@ -32,7 +33,8 @@ type FramePhaseV1 = "closed" | "loading" | "ready" | "error";
 type ContentToFrameMessageV1 =
   | { readonly kind: "action-palette-frame:open" }
   | { readonly kind: "action-palette-frame:close" }
-  | { readonly kind: "action-palette-frame:response"; readonly response: ActionPaletteResponseV1 };
+  | { readonly kind: "action-palette-frame:response"; readonly response: ActionPaletteResponseV1 }
+  | { readonly kind: "action-palette-frame:stream"; readonly event: Extract<ActionPaletteResponseV1, { kind: "action-palette:stream-event" }> };
 
 type FrameToContentMessageV1 =
   | { readonly kind: "action-palette-frame:ready" }
@@ -53,6 +55,7 @@ const CLOSED_VIEW: FrameViewV1 = {
 
 let channel: MessagePort | null = null;
 const pending = new Map<string, (response: ActionPaletteResponseV1) => void>();
+const streamListeners = new Map<string, (event: Extract<ActionPaletteResponseV1, { kind: "action-palette:stream-event" }>) => void>();
 const listeners = new Set<(message: ContentToFrameMessageV1) => void>();
 let queuedControl: Extract<ContentToFrameMessageV1, { kind: "action-palette-frame:open" | "action-palette-frame:close" }> | null = null;
 
@@ -61,6 +64,9 @@ function isContentMessageV1(value: unknown): value is ContentToFrameMessageV1 {
   const message = value as Record<string, unknown>;
   if (message.kind === "action-palette-frame:open" || message.kind === "action-palette-frame:close") {
     return Object.keys(message).length === 1;
+  }
+  if (message.kind === "action-palette-frame:stream") {
+    return Object.keys(message).length === 2 && isActionPaletteStreamEventV1(message.event);
   }
   return message.kind === "action-palette-frame:response" &&
     Object.keys(message).length === 2 && Boolean(message.response && typeof message.response === "object");
@@ -84,6 +90,10 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
       }
       return;
     }
+    if (portEvent.data.kind === "action-palette-frame:stream") {
+      streamListeners.get(portEvent.data.event.executionId)?.(portEvent.data.event);
+      return;
+    }
     if (listeners.size === 0) queuedControl = portEvent.data;
     else for (const listener of listeners) listener(portEvent.data);
   });
@@ -100,12 +110,15 @@ function requestId(prefix: string): string {
   return `${prefix}:${crypto.randomUUID()}`;
 }
 
-function request(message: ActionPaletteRequestV1): Promise<ActionPaletteResponseV1> {
+function request(
+  message: ActionPaletteRequestV1,
+  timeoutMs = 3_000,
+): Promise<ActionPaletteResponseV1> {
   return new Promise((resolve, reject) => {
     const timeout = globalThis.setTimeout(() => {
       pending.delete(message.requestId);
       reject(new Error("The action palette request timed out."));
-    }, 3_000);
+    }, timeoutMs);
     pending.set(message.requestId, (response) => {
       globalThis.clearTimeout(timeout);
       resolve(response);
@@ -256,15 +269,36 @@ function App(): ReactNode {
     () => projection ? createActionCatalog(projection.modules, projection.context) : null,
     [projection],
   );
-  const executor = useMemo<ActionPaletteExecutorV1 | null>(() => projection ? ({
-    async execute(execution, signal): Promise<ActionResultV1> {
+  const executor = useMemo<ActionPaletteExecutorV1 | null>(() => {
+    if (!projection) return null;
+    let active: {
+      readonly id: string;
+      readonly actionId: string;
+      cancelled: boolean;
+    } | null = null;
+    return {
+    async execute(execution, signal, onStream): Promise<ActionResultV1> {
       const id = requestId("execute");
+      active = { id, actionId: execution.actionId, cancelled: false };
+      let lastStreamSequence = -1;
+      if (onStream) {
+        streamListeners.set(id, (event) => {
+          if (event.sequence <= lastStreamSequence) return;
+          lastStreamSequence = event.sequence;
+          onStream({
+            sequence: event.sequence,
+            status: event.status,
+            ...(event.delta === undefined ? {} : { delta: event.delta }),
+          });
+        });
+      }
       const abort = (): void => {
+        if (active?.id === id && active.cancelled) return;
         void request({
           kind: "action-palette:stream-control",
           requestId: requestId("control"),
           executionId: id,
-          command: "abort",
+          command: "detach",
         }).catch(() => undefined);
       };
       if (signal.aborted) abort();
@@ -277,7 +311,7 @@ function App(): ReactNode {
           actionId: execution.actionId,
           locale: execution.locale,
           ...(execution.input ? { input: execution.input } : {}),
-        });
+        }, 120_000);
         if (response.kind === "action-palette:execute-result") return response.result;
         if (response.kind === "action-palette:error") {
           return {
@@ -290,9 +324,22 @@ function App(): ReactNode {
         throw new Error("Unexpected action palette response.");
       } finally {
         signal.removeEventListener("abort", abort);
+        streamListeners.delete(id);
+        if (active?.id === id) active = null;
       }
     },
-  }) : null, [projection]);
+    async cancel(execution) {
+      if (!active || active.actionId !== execution.actionId) return;
+      active.cancelled = true;
+      await request({
+        kind: "action-palette:stream-control",
+        requestId: requestId("control"),
+        executionId: active.id,
+        command: "abort",
+      });
+    },
+  };
+  }, [projection]);
 
   if (view.phase === "closed") return null;
   if (view.phase === "loading" || view.phase === "error") {

@@ -91,8 +91,16 @@ const aiModule: ActionModuleV1 = {
         placeholder: { key: "atlcli.action.quick-ask.placeholder", fallback: "Ask about the current page…" },
         required: true,
         multiline: true,
-        minLength: 1,
-        maxLength: 10_000,
+        minLength: 3,
+        maxLength: 2_000,
+      }, {
+        type: "boolean",
+        id: "disclosure",
+        label: {
+          key: "atlcli.action.quick-ask.disclosure",
+          fallback: "I understand that the current Atlassian context is sent to the selected LLM provider.",
+        },
+        required: true,
       }],
       submitLabel: { key: "atlcli.action.quick-ask.submit", fallback: "Ask AI" },
     },

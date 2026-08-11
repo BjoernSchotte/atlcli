@@ -93,7 +93,18 @@ describe("action palette navigation", () => {
     });
     const activity = entries.find((entry) => entry.actionId === ACTION_IDS.openActivity);
     expect(activity).toBeDefined();
-    expect(await activity!.execute(execution, new AbortController().signal, async () => undefined)).toEqual({
+    expect(await activity!.execute(
+      execution,
+      new AbortController().signal,
+      async () => ({
+        tabId: 1,
+        documentId: "doc-1",
+        frameId: 0,
+        origin: "https://fixture.atlassian.net",
+        url: "https://fixture.atlassian.net/wiki/spaces/DOC/pages/42/Guide",
+      }),
+      async () => undefined,
+    )).toEqual({
       status: "open-surface",
       target: { kind: "sidebar", screen: "activity" },
     });

@@ -12,10 +12,19 @@ import { submitExtensionPdfExport } from "../utils/export-jobs/pdf-submit.js";
 import { submitExtensionDocxExport } from "../utils/export-jobs/docx-submit.js";
 import type { DocxTemplateRecord } from "../utils/ports/export.js";
 import type { LoadedPage } from "../utils/read-path.js";
+import type { ActionPaletteContextBindingV1 } from "../utils/action-palette/context.js";
 
 globalThis.IDBKeyRange = IDBKeyRange;
 
 const pageUrl = "https://fixture.atlassian.net/wiki/spaces/DOC/pages/42/Guide";
+const currentBinding: ActionPaletteContextBindingV1 = {
+  tabId: 4,
+  documentId: "doc-1",
+  frameId: 0,
+  origin: "https://fixture.atlassian.net",
+  url: pageUrl,
+};
+const assertCurrent = async (): Promise<ActionPaletteContextBindingV1> => currentBinding;
 const page: LoadedPage = {
   details: {
     id: "42",
@@ -113,7 +122,7 @@ describe("action palette durable exports", () => {
   test("builds the same current-page PDF request as Publishing and returns a redacted receipt", async () => {
     const h = harness();
     const request = actionRequest("pdf");
-    const result = await h.runners.pdf(request, new AbortController().signal, async () => undefined);
+    const result = await h.runners.pdf(request, new AbortController().signal, assertCurrent);
     expect(result).toMatchObject({
       status: "queued",
       receipt: { id: "palette-pdf", actionId: ACTION_IDS.exportPdfCurrentPage, jobKind: "pdf" },
@@ -132,7 +141,7 @@ describe("action palette durable exports", () => {
     const active = await template();
     const h = harness({ resolveTemplate: async () => active });
     const request = actionRequest("docx");
-    const result = await h.runners.docx(request, new AbortController().signal, async () => undefined);
+    const result = await h.runners.docx(request, new AbortController().signal, assertCurrent);
     expect(result).toMatchObject({
       status: "queued",
       receipt: { id: "palette-docx", actionId: ACTION_IDS.exportDocxCurrentPage, jobKind: "docx" },
@@ -154,7 +163,7 @@ describe("action palette durable exports", () => {
       const result = await h.runners.docx(
         actionRequest("docx", `missing-${index}`),
         new AbortController().signal,
-        async () => undefined,
+        assertCurrent,
       );
       expect(result).toMatchObject({
         status: "open-surface",
@@ -179,7 +188,10 @@ describe("action palette durable exports", () => {
     await expect(cancelled.runners.pdf(
       actionRequest("pdf", "cancelled-pdf"),
       controller.signal,
-      async () => { controller.abort(new DOMException("closed", "AbortError")); },
+      async () => {
+        controller.abort(new DOMException("closed", "AbortError"));
+        return currentBinding;
+      },
     )).rejects.toThrow();
     expect(cancelled.counts().submits).toBe(0);
     expect(await cancelled.catalog.get("cancelled-pdf")).toBeUndefined();
@@ -222,7 +234,7 @@ describe("action palette durable exports", () => {
         }),
       });
       const id = `detached-${format}`;
-      const result = await runners[format](actionRequest(format, id), controller.signal, async () => undefined);
+      const result = await runners[format](actionRequest(format, id), controller.signal, assertCurrent);
       expect(result).toMatchObject({ status: "queued", receipt: { id, status: "queued", jobKind: format } });
       expect(await catalog.get(id)).toMatchObject({ state: "queued" });
     }
@@ -231,8 +243,8 @@ describe("action palette durable exports", () => {
   test("deduplicates a retry after response loss or service-worker restart", async () => {
     const h = harness();
     const request = actionRequest("pdf", "restart-pdf");
-    const first = await h.runners.pdf(request, new AbortController().signal, async () => undefined);
-    const second = await h.runners.pdf(request, new AbortController().signal, async () => undefined);
+    const first = await h.runners.pdf(request, new AbortController().signal, assertCurrent);
+    const second = await h.runners.pdf(request, new AbortController().signal, assertCurrent);
     expect(second).toEqual(first);
     expect(h.counts()).toEqual({ loads: 1, submits: 1 });
     expect(await h.catalog.list({ limit: 10 })).toHaveLength(1);

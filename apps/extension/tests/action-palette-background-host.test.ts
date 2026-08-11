@@ -211,7 +211,7 @@ describe("authoritative action palette background host", () => {
     expect(JSON.stringify(malformedResult)).not.toContain("must-not-cross");
   });
 
-  test("propagates abort/control to an in-flight executor", async () => {
+  test("keeps detach non-cancelling and propagates explicit abort to an in-flight executor", async () => {
     let observedSignal: AbortSignal | undefined;
     let release: (() => void) | undefined;
     const pending = new Promise<void>((resolve) => { release = resolve; });
@@ -225,6 +225,12 @@ describe("authoritative action palette background host", () => {
     const execution = h.execute(revision, "execute:abort");
     await Promise.resolve();
     await Promise.resolve();
+    const detach = await h.host.handle({
+      kind: "action-palette:stream-control", requestId: "control:detach",
+      executionId: "execute:abort", command: "detach",
+    }, sender);
+    expect(detach).toMatchObject({ kind: "action-palette:stream-control-result", accepted: true });
+    expect(observedSignal?.aborted).toBe(false);
     const control = await h.host.handle({
       kind: "action-palette:stream-control", requestId: "control:1",
       executionId: "execute:abort", command: "abort",

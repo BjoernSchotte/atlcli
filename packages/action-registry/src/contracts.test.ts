@@ -108,6 +108,15 @@ const builtInModule: ActionModuleV1 = {
             minLength: 2,
             maxLength: 2_000,
           },
+          {
+            type: "boolean",
+            id: "disclosure",
+            label: {
+              key: "atlcli.action.quick-ask.disclosure.label",
+              fallback: "Send the current context to the AI provider",
+            },
+            required: true,
+          },
         ],
         submitLabel: {
           key: "atlcli.action.quick-ask.submit",
@@ -494,15 +503,22 @@ describe("input, localization, and result boundaries", () => {
   const quickAskInput = builtInModule.actions[1]!.input as ActionInputSchemaV1;
 
   test("validates and freezes input values without accepting undeclared fields", () => {
-    expect(validateActionInputValuesV1(quickAskInput, { question: "Why?" })).toEqual([]);
-    expect(validateActionInputValuesV1(quickAskInput, { question: "x" })).toEqual([
+    expect(validateActionInputValuesV1(quickAskInput, {
+      question: "Why?", disclosure: "true",
+    })).toEqual([]);
+    expect(validateActionInputValuesV1(quickAskInput, { question: "x", disclosure: "false" })).toEqual([
       expect.objectContaining({ code: "input-length" }),
+      expect.objectContaining({ code: "required-input" }),
     ]);
-    expect(validateActionInputValuesV1(quickAskInput, { question: "Why?", apiKey: "secret" })).toEqual([
+    expect(validateActionInputValuesV1(quickAskInput, {
+      question: "Why?", disclosure: "true", apiKey: "secret",
+    })).toEqual([
       expect.objectContaining({ code: "unknown-input-field" }),
     ]);
-    const parsed = parseActionInputValuesV1(quickAskInput, { question: "Why?" });
-    expect(parsed).toEqual({ question: "Why?" });
+    const parsed = parseActionInputValuesV1(quickAskInput, {
+      question: "Why?", disclosure: "true",
+    });
+    expect(parsed).toEqual({ question: "Why?", disclosure: "true" });
     expect(Object.isFrozen(parsed)).toBe(true);
   });
 
@@ -524,6 +540,7 @@ describe("input, localization, and result boundaries", () => {
     const result = parseActionResultV1({
       status: "completed",
       messageKey: "atlcli.action.result.completed",
+      presentation: { kind: "markdown", text: "Bounded answer", truncated: false },
       actions: builtInModule.actions[0]!.secondaryActions,
     });
     expect(result.status).toBe("completed");
@@ -540,6 +557,21 @@ describe("input, localization, and result boundaries", () => {
       kind: "sidebar",
       screen: "research",
     });
+    expect(assertValidSurfaceTargetV1({
+      kind: "sidebar",
+      screen: "research",
+      continuationId: "research-session:quick-1",
+    })).toMatchObject({ continuationId: "research-session:quick-1" });
+    expect(() => assertValidSurfaceTargetV1({
+      kind: "sidebar",
+      screen: "export",
+      continuationId: "research-session:wrong-screen",
+    })).toThrow(ActionContractValidationError);
+    expect(() => parseActionResultV1({
+      status: "completed",
+      messageKey: "atlcli.action.result.completed",
+      presentation: { kind: "markdown", text: "x".repeat(12_001), truncated: true },
+    })).toThrow(ActionContractValidationError);
     expect(parseActionResultV1({
       status: "open-surface",
       target: { kind: "sidebar", screen: "export" },

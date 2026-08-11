@@ -20,7 +20,15 @@ export interface ActionPaletteExecutorV1 {
   execute(
     request: ActionPaletteExecuteRequestV1,
     signal: AbortSignal,
+    onStream?: (event: ActionPaletteExecutionStreamV1) => void,
   ): Promise<ActionResultV1>;
+  cancel?(request: ActionPaletteExecuteRequestV1): Promise<void>;
+}
+
+export interface ActionPaletteExecutionStreamV1 {
+  readonly sequence: number;
+  readonly status: "started" | "delta" | "reset" | "completed";
+  readonly delta?: string;
 }
 
 export interface ActionPaletteLifecycleV1 {

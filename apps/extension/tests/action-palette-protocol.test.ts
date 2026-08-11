@@ -4,6 +4,7 @@ import {
   actionPaletteInvalidRequest,
   isActionPaletteRequestCandidateV1,
   isActionPaletteRequestV1,
+  isActionPaletteStreamEventV1,
   type ActionPaletteMessageV1,
 } from "../utils/action-palette/protocol.js";
 import type { ExtMessage } from "../utils/messages.js";
@@ -82,6 +83,21 @@ describe("action palette protocol", () => {
     expect(structuredClone(extension)).toEqual(extension);
   });
 
+  test("accepts only exact bounded ephemeral stream events", () => {
+    const event = {
+      kind: "action-palette:stream-event",
+      requestId: "quick:1",
+      executionId: "quick:1",
+      sequence: 1,
+      status: "delta",
+      delta: "Bounded answer",
+    };
+    expect(isActionPaletteStreamEventV1(event)).toBe(true);
+    expect(isActionPaletteStreamEventV1({ ...event, delta: "x".repeat(2_001) })).toBe(false);
+    expect(isActionPaletteStreamEventV1({ ...event, prompt: "must-not-cross" })).toBe(false);
+    expect(isActionPaletteStreamEventV1({ ...event, status: "completed", delta: "stale" })).toBe(false);
+  });
+
   test("reports assigned and unbound Chrome shortcut states through the portable port", async () => {
     let shortcut = "Ctrl+Shift+K";
     const opened: chrome.tabs.CreateProperties[] = [];
@@ -140,6 +156,17 @@ describe("action palette protocol", () => {
     const live = { ...cold, requestId: "navigation:live", navigationId: "live", screen: "activity" };
     for (const listener of listeners) listener(live);
     expect(received).toEqual(["cold:research", "live:activity"]);
+    const continuation = {
+      ...cold,
+      requestId: "navigation:continuation",
+      navigationId: "continuation",
+      continuationId: "research-session:quick-1",
+    };
+    for (const listener of listeners) listener(continuation);
+    expect(received).toEqual(["cold:research", "live:activity", "continuation:research"]);
+    for (const listener of listeners) listener({ ...continuation, navigationId: "secret", pageBody: "private" });
+    for (const listener of listeners) listener({ ...continuation, navigationId: "wrong", screen: "export" });
+    expect(received).toEqual(["cold:research", "live:activity", "continuation:research"]);
     expect(await port.acknowledge("live")).toBe(true);
     expect(sent).toEqual([{
       kind: "action-palette:open-surface-ack", requestId: "ack:live", navigationId: "live",

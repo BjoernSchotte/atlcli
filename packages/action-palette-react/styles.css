@@ -400,6 +400,43 @@
   resize: vertical;
 }
 
+.atlcli-action-palette-field input[type="checkbox"] {
+  width: 1.25rem;
+  min-height: 1.25rem;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--atlcli-palette-accent);
+}
+
+.atlcli-action-palette-context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.atlcli-action-palette-context-chips span {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--atlcli-palette-border);
+  border-radius: 999px;
+  background: var(--atlcli-palette-accent-soft);
+  color: var(--atlcli-palette-text-muted);
+  font-size: 0.75rem;
+}
+
+.atlcli-action-palette-answer {
+  width: min(100%, 46rem);
+  max-height: 16rem;
+  padding: 0.875rem;
+  overflow: auto;
+  border: 1px solid var(--atlcli-palette-border);
+  border-radius: 0.75rem;
+  background: var(--atlcli-palette-surface-raised);
+  color: var(--atlcli-palette-text);
+  text-align: start;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .atlcli-action-palette-field [aria-invalid="true"] {
   border-color: var(--atlcli-palette-danger);
 }

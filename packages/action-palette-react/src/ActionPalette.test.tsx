@@ -253,13 +253,18 @@ describe("input, execution, and result states", () => {
     await dom.setValue("palette-input-question", "Explain this page");
     await dom.keyDown("palette-input-question", "Enter");
     expect(calls).toHaveLength(0);
+    expect(dom.find("palette-input-form").textContent).toContain("Confluence · Fixture page");
+    await dom.keyDown("palette-input-question", "Enter", { ctrlKey: true });
+    expect(dom.find("palette-input-form").textContent).toContain("Please complete this field");
+    expect(calls).toHaveLength(0);
+    await dom.click("palette-input-disclosure");
     await dom.keyDown("palette-input-question", "Enter", { ctrlKey: true });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.request).toEqual({
       schemaVersion: 1,
       actionId: "test.palette.quick-ask",
       locale: "en-US",
-      input: { question: "Explain this page" },
+      input: { question: "Explain this page", disclosure: "true" },
     });
     expect(dom.find("palette-result-completed").textContent).toContain("Action completed");
   });

@@ -84,18 +84,29 @@ describe("pure palette state machine", () => {
       kind: "input",
       actionId: "test.palette.quick-ask",
       schema,
-      values: { question: "" },
+      values: { question: "", disclosure: "" },
       errors: {},
     });
     state = reduceActionPaletteStateV1(state, {
       type: "input-values",
-      values: { question: "Explain this" },
+      values: { question: "Explain this", disclosure: "true" },
     });
     state = reduceActionPaletteStateV1(state, {
       type: "executing",
       actionId: "test.palette.quick-ask",
     });
     expect(state.screen.kind).toBe("executing");
+    state = reduceActionPaletteStateV1(state, {
+      type: "stream",
+      status: "delta",
+      delta: "Bounded answer",
+    });
+    expect(state.screen).toMatchObject({ kind: "executing", streamText: "Bounded answer" });
+    state = reduceActionPaletteStateV1(state, {
+      type: "stream",
+      status: "reset",
+    });
+    expect(state.screen).toMatchObject({ kind: "executing", streamText: "" });
     for (const result of [
       { status: "completed", messageKey: "done" },
       {
@@ -127,13 +138,18 @@ describe("bounded input validation", () => {
   const schema = paletteModuleV1.actions[1]!.input!;
 
   test("creates exact empty values and validates code points", () => {
-    expect(createActionInputValuesV1(schema)).toEqual({ question: "" });
-    expect(validateActionPaletteInputV1(schema, {})).toEqual({ question: "required" });
-    expect(validateActionPaletteInputV1(schema, { question: "x" })).toEqual({
+    expect(createActionInputValuesV1(schema)).toEqual({ question: "", disclosure: "" });
+    expect(validateActionPaletteInputV1(schema, {})).toEqual({
+      question: "required",
+      disclosure: "required",
+    });
+    expect(validateActionPaletteInputV1(schema, { question: "x", disclosure: "true" })).toEqual({
       question: "too-short",
     });
-    expect(validateActionPaletteInputV1(schema, { question: "👍👍" })).toEqual({});
-    expect(validateActionPaletteInputV1(schema, { question: "x".repeat(201) })).toEqual({
+    expect(validateActionPaletteInputV1(schema, { question: "👍👍", disclosure: "true" })).toEqual({});
+    expect(validateActionPaletteInputV1(schema, {
+      question: "x".repeat(201), disclosure: "true",
+    })).toEqual({
       question: "too-long",
     });
   });

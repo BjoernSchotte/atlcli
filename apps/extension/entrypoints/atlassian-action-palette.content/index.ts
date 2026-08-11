@@ -1,6 +1,7 @@
 import { defineContentScript } from "wxt/utils/define-content-script";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import {
+  isActionPaletteStreamEventV1,
   isActionPaletteRequestV1,
   type ActionPaletteRequestV1,
   type ActionPaletteResponseV1,
@@ -26,6 +27,10 @@ type ContentToFrameMessageV1 =
   | {
       readonly kind: "action-palette-frame:response";
       readonly response: ActionPaletteResponseV1;
+    }
+  | {
+      readonly kind: "action-palette-frame:stream";
+      readonly event: Extract<ActionPaletteResponseV1, { kind: "action-palette:stream-event" }>;
     };
 
 interface FocusSnapshotV1 {
@@ -192,9 +197,15 @@ export default defineContentScript({
     };
     const onMessage = (
       message: unknown,
-      _sender: chrome.runtime.MessageSender,
+      sender: chrome.runtime.MessageSender,
       sendResponse: (response: ActionPaletteResponseV1) => void,
     ): boolean => {
+      if (isActionPaletteStreamEventV1(message)) {
+        if (open && sender.id === chrome.runtime.id) {
+          post({ kind: "action-palette-frame:stream", event: message });
+        }
+        return false;
+      }
       if (!isToggleMessageV1(message)) return false;
       void (open ? Promise.resolve(close()) : show())
         .then(() => sendResponse({

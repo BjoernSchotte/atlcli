@@ -31,7 +31,11 @@ export type ActionPaletteScreenV1 =
       readonly values: ActionInputValuesV1;
       readonly errors: ActionInputErrorsV1;
     }
-  | { readonly kind: "executing"; readonly actionId: string }
+  | {
+      readonly kind: "executing";
+      readonly actionId: string;
+      readonly streamText: string;
+    }
   | {
       readonly kind: "result";
       readonly actionId: string;
@@ -76,6 +80,11 @@ export type ActionPaletteMachineEventV1 =
   | { readonly type: "input-errors"; readonly errors: ActionInputErrorsV1 }
   | { readonly type: "executing"; readonly actionId: string }
   | {
+      readonly type: "stream";
+      readonly status: "started" | "delta" | "reset" | "completed";
+      readonly delta?: string;
+    }
+  | {
       readonly type: "result";
       readonly actionId: string;
       readonly result: ActionResultV1;
@@ -111,6 +120,10 @@ export function validateActionPaletteInputV1(
       errors[field.id] = "required";
       continue;
     }
+    if (field.type === "boolean" && field.required && value !== "true") {
+      errors[field.id] = "required";
+      continue;
+    }
     if (field.type === "text") {
       const length = [...value].length;
       if (value !== "" && field.minLength !== undefined && length < field.minLength) {
@@ -118,10 +131,12 @@ export function validateActionPaletteInputV1(
       } else if (length > field.maxLength) {
         errors[field.id] = "too-long";
       }
-    } else if (
+    } else if (field.type === "select" &&
       value !== "" &&
       !field.options.some((option) => option.id === value)
     ) {
+      errors[field.id] = "invalid-option";
+    } else if (field.type === "boolean" && value !== "true" && value !== "false") {
       errors[field.id] = "invalid-option";
     }
   }
@@ -180,7 +195,20 @@ export function reduceActionPaletteStateV1(
         ? { ...state, screen: { ...state.screen, errors: event.errors } }
         : state;
     case "executing":
-      return { ...state, screen: { kind: "executing", actionId: event.actionId } };
+      return { ...state, screen: { kind: "executing", actionId: event.actionId, streamText: "" } };
+    case "stream":
+      if (state.screen.kind !== "executing") return state;
+      return {
+        ...state,
+        screen: {
+          ...state.screen,
+          streamText: event.status === "reset"
+            ? ""
+            : event.status === "delta"
+              ? `${state.screen.streamText}${event.delta ?? ""}`.slice(0, 12_000)
+              : state.screen.streamText,
+        },
+      };
     case "result":
       return {
         ...state,

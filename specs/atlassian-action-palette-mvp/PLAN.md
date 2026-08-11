@@ -673,13 +673,13 @@ bun run typecheck
 
 **Blocks:** AP-09
 
-- [ ] Extract shared browser chat-host identity and pure Quick request/policy preparation from their current side-panel/Research locations, then construct the chat adapter in the background with the existing injected `runResearch`; preserve workspace/provider/permission checks and avoid a broad `background.ts` refactor.
-- [ ] Add an explicit quick-AI input state with context chips, per-invocation disclosure confirmation, Submit, explicit Cancel, and “Continue in Research”.
-- [ ] Stream a bounded answer from `ChatAgentPortV1.startTurn()` without announcing each token or blocking keyboard dismissal.
-- [ ] Define handoff behavior for clarification, approval, tool requests, long output, citations, and multi-turn continuation: open Research with a typed continuation token/state, not duplicated workflow UI.
-- [ ] Ensure opening/searching the palette emits no provider request and reads no page body. Page/context loading begins only after Submit.
-- [ ] Ensure closing or navigating detaches the view without implicitly cancelling a handed-off/durable turn; explicit Cancel uses the existing control contract and does not damage Research history or leave a worker lease.
-- [ ] Keep content requests to prompt, disclosure confirmation, execution ID, and the opaque sender-bound catalog revision. Add tests for unavailable provider, disclosure refusal, permission denial, explicit cancel, close/detach, stream error, clarification handoff, stale page, rejected sensitive protocol fields, prompt redaction in metrics, and zero network work before Submit.
+- [x] Extract shared browser chat-host identity and pure Quick request/policy preparation from their current side-panel/Research locations, then construct the chat adapter in the background with the existing injected `runResearch`; preserve workspace/provider/permission checks and avoid a broad `background.ts` refactor.
+- [x] Add an explicit quick-AI input state with context chips, per-invocation disclosure confirmation, Submit, explicit Cancel, and “Continue in Research”.
+- [x] Stream a bounded answer from `ChatAgentPortV1.startTurn()` without announcing each token or blocking keyboard dismissal.
+- [x] Define handoff behavior for clarification, approval, tool requests, long output, citations, and multi-turn continuation: open Research with a typed continuation token/state, not duplicated workflow UI.
+- [x] Ensure opening/searching the palette emits no provider request and reads no page body. Page/context loading begins only after Submit.
+- [x] Ensure closing or navigating detaches the view without implicitly cancelling a handed-off/durable turn; explicit Cancel uses the existing control contract and does not damage Research history or leave a worker lease.
+- [x] Keep content requests to prompt, disclosure confirmation, execution ID, and the opaque sender-bound catalog revision. Add tests for unavailable provider, disclosure refusal, permission denial, explicit cancel, close/detach, stream error, clarification handoff, stale page, rejected sensitive protocol fields, prompt redaction in metrics, and zero network work before Submit.
 
 **Proof**
 

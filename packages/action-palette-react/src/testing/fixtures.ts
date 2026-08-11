@@ -83,6 +83,15 @@ export const paletteModuleV1: ActionModuleV1 = {
             minLength: 2,
             maxLength: 200,
           },
+          {
+            type: "boolean",
+            id: "disclosure",
+            label: {
+              key: "test.disclosure.label",
+              fallback: "Send the current context to the selected AI provider",
+            },
+            required: true,
+          },
         ],
         submitLabel: { key: "test.ask.submit", fallback: "Ask" },
       },

@@ -188,7 +188,18 @@ export interface ActionSelectInputV1 {
   readonly options: readonly ActionSelectOptionV1[];
 }
 
-export type ActionInputFieldV1 = ActionTextInputV1 | ActionSelectInputV1;
+/** Explicit per-invocation acknowledgement; serialized as the string `"true"`. */
+export interface ActionBooleanInputV1 {
+  readonly type: "boolean";
+  readonly id: string;
+  readonly label: ActionTextV1;
+  readonly required?: boolean;
+}
+
+export type ActionInputFieldV1 =
+  | ActionTextInputV1
+  | ActionSelectInputV1
+  | ActionBooleanInputV1;
 
 export interface ActionInputSchemaV1 {
   readonly schemaVersion: 1;
@@ -264,6 +275,12 @@ export type ActionResultV1 =
   | {
       readonly status: "completed";
       readonly messageKey: string;
+      /** Ephemeral host-validated output. Presenters render it as text, never HTML. */
+      readonly presentation?: {
+        readonly kind: "markdown";
+        readonly text: string;
+        readonly truncated: boolean;
+      };
       readonly actions?: readonly ActionAffordanceV1[];
     }
   | {

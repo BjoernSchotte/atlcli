@@ -15,8 +15,9 @@ import type { LoadedPage } from "../read-path.js";
 import type { SubmittedExtensionDocxExportV1 } from "../export-jobs/docx-submit.js";
 import type { SubmittedExtensionPdfExportV1 } from "../export-jobs/pdf-submit.js";
 import { EXTENSION_ACTION_CAPABILITIES_V1 } from "./catalog.js";
+import type { ActionPaletteContextBindingV1 } from "./context.js";
 
-export type AssertActionPaletteContextCurrentV1 = () => Promise<void>;
+export type AssertActionPaletteContextCurrentV1 = () => Promise<ActionPaletteContextBindingV1>;
 
 export type ActionPaletteExportRunnerV1 = (
   request: ActionExecutionRequestV1,

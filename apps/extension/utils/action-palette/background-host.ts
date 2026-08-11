@@ -42,8 +42,15 @@ export interface ActionPaletteExecutorEntryV1 {
   execute(
     request: ActionExecutionRequestV1,
     signal: AbortSignal,
-    assertContextCurrent: () => Promise<void>,
+    assertContextCurrent: () => Promise<ActionPaletteContextBindingV1>,
+    emit: (event: ActionPaletteExecutionStreamV1) => Promise<void>,
   ): Promise<ActionResultV1>;
+}
+
+export interface ActionPaletteExecutionStreamV1 {
+  readonly sequence: number;
+  readonly status: "started" | "delta" | "reset" | "completed";
+  readonly delta?: string;
 }
 
 export interface ActionPaletteBackgroundDepsV1 {
@@ -56,6 +63,10 @@ export interface ActionPaletteBackgroundDepsV1 {
   readonly leaseMs?: number;
   readonly shortcutStatus?: () => Promise<{ status: "assigned" | "unbound"; value: string | null }>;
   readonly acknowledgeSurface?: (navigationId: string) => Promise<boolean>;
+  readonly emitStream?: (
+    sender: ActionPaletteSenderV1,
+    event: Extract<ActionPaletteResponseV1, { kind: "action-palette:stream-event" }>,
+  ) => Promise<void>;
 }
 
 interface CatalogLeaseV1 {
@@ -73,6 +84,7 @@ export interface ActionPaletteBackgroundHostV1 {
 
 export type QueueActionPaletteSurfaceV1 = (
   screen: "export" | "research" | "activity" | "settings",
+  continuationId?: string,
 ) => Promise<void>;
 
 export interface ExtensionActionPaletteExecutorDepsV1 {
@@ -97,9 +109,12 @@ export function createExtensionActionPaletteExecutorsV1(
     capability,
     effect,
     intentKind,
-    async execute() {
-      await deps.queueSurface?.(screen);
-      return { status: "open-surface", target: { kind: "sidebar", screen } };
+    async execute(request) {
+      const target = request.intent.kind === "surface.open" && request.intent.target.kind === "sidebar"
+        ? request.intent.target
+        : { kind: "sidebar" as const, screen };
+      await deps.queueSurface?.(target.screen, target.continuationId);
+      return { status: "open-surface", target };
     },
   });
   const entries: ActionPaletteExecutorEntryV1[] = [];
@@ -180,9 +195,12 @@ function hasValidInput(
       continue;
     }
     if (field.required && value.trim().length === 0) return false;
+    if (field.type === "boolean" && field.required && value !== "true") return false;
     if (field.type === "text") {
       if (value.length < (field.minLength ?? 0) || value.length > field.maxLength) return false;
-    } else if (!field.options.some((option) => option.id === value)) {
+    } else if (field.type === "select" && !field.options.some((option) => option.id === value)) {
+      return false;
+    } else if (field.type === "boolean" && value !== "true" && value !== "false") {
       return false;
     }
   }
@@ -281,16 +299,27 @@ export function createActionPaletteBackgroundHostV1(
     const controller = new AbortController();
     executions.set(request.requestId, controller);
     try {
-      const assertContextCurrent = async (): Promise<void> => {
+      const assertContextCurrent = async (): Promise<ActionPaletteContextBindingV1> => {
         const current = await derive(sender, request.locale);
         if (!bindingsEqualV1(lease.binding, current.binding)) {
           throw new ActionPaletteContextError("stale-context");
         }
+        return current.binding;
       };
       const result = parseActionResultV1(await executor.execute(
         executionRequest,
         controller.signal,
         assertContextCurrent,
+        async (event) => {
+          await deps.emitStream?.(sender, {
+            kind: "action-palette:stream-event",
+            requestId: request.requestId,
+            executionId: request.requestId,
+            sequence: event.sequence,
+            status: event.status,
+            ...(event.delta === undefined ? {} : { delta: event.delta }),
+          });
+        },
       ), {
         allowedContributionIntentKinds,
       });

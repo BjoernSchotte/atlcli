@@ -11,7 +11,6 @@ import {
   type ChatAgentPortV1,
 } from "@atlcli/research";
 import type {
-  ChatHostIdentityV1,
   ResearchResumableSessionV1,
   ResearchRetainedSessionV1,
   ResearchClarificationReviewResolutionV1,
@@ -48,28 +47,15 @@ import {
   isResearchEvent,
   isResearchProgress,
 } from "../../../utils/messages.js";
+import {
+  ACTIVE_CHAT_CONVERSATION_KEY,
+  CHAT_CONVERSATION_ID_PATTERN,
+  browserChatHostIdentityV1,
+} from "../../../utils/research/browser-chat-host.js";
+import { createBrowserChatTurnPortV1 } from "../../../utils/research/chat-turn-port.js";
 
 const MAX_RESEARCH_RESUME_MS = 10 * 60_000;
-const ACTIVE_CHAT_CONVERSATION_KEY = "atlcli.research.active-chat-conversation-id.v1";
-const CHAT_HOST_PRINCIPAL_KEY = "atlcli.chat.host-principal-id.v1";
-const RESEARCH_SESSION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/;
-const CHAT_HOST_PRINCIPAL_PATTERN = /^browser-principal:[0-9a-f-]{36}$/u;
-
-async function browserChatHostIdentityV1(): Promise<ChatHostIdentityV1> {
-  const stored = await chrome.storage.local.get(CHAT_HOST_PRINCIPAL_KEY);
-  const storedUserId = stored[CHAT_HOST_PRINCIPAL_KEY];
-  let userId: string;
-  if (typeof storedUserId === "string" && CHAT_HOST_PRINCIPAL_PATTERN.test(storedUserId)) {
-    userId = storedUserId;
-  } else {
-    userId = `browser-principal:${crypto.randomUUID()}`;
-    await chrome.storage.local.set({ [CHAT_HOST_PRINCIPAL_KEY]: userId });
-  }
-  return {
-    userId,
-    providerCacheIdentity: `anthropic:${userId}`,
-  };
-}
+const RESEARCH_SESSION_ID_PATTERN = CHAT_CONVERSATION_ID_PATTERN;
 
 async function readActiveChatInteractionV1(siteOrigin: string): Promise<{
   conversationId: string;
@@ -1393,8 +1379,7 @@ export function chromeResearchPort(): ResearchPort {
 
 /** Chrome transport for the shared ordinary-Chat product port. */
 export function chromeChatAgentPort(research: ResearchPort): ChatAgentPortV1 {
-  let activeController: AbortController | null = null;
-
+  const turns = createBrowserChatTurnPortV1(research.run.bind(research));
   const execute = async (input: {
     request: import("@atlcli/research").ResearchRequestV1;
     qualityPolicy: import("@atlcli/research").ChatQualityPolicyV1;
@@ -1402,44 +1387,7 @@ export function chromeChatAgentPort(research: ResearchPort): ChatAgentPortV1 {
     resumeAnswer?: import("@atlcli/research").ChatUserQuestionAnswerV1;
     resumeCheckpoint?: { turnId: string; kind: "stream-interruption" | "steering" };
   }, stream?: import("@atlcli/research").ChatAgentStreamV1): Promise<ChatAnswerV1> => {
-    if (activeController) {
-      throw new ResearchContractError("invalid-request", "A Chat turn is already active.");
-    }
-    const controller = new AbortController();
-    activeController = controller;
-    const forwardAbort = (): void => controller.abort(stream?.signal?.reason);
-    stream?.signal?.addEventListener("abort", forwardAbort, { once: true });
-    if (stream?.signal?.aborted) forwardAbort();
-    try {
-      const result = await research.run(input.request, {
-        mode: "chat",
-        signal: controller.signal,
-        qualityPolicy: input.qualityPolicy,
-        ...(input.conversationId ? { conversationId: input.conversationId } : {}),
-        ...(input.resumeAnswer && input.resumeCheckpoint
-          ? { chatResume: { turnId: input.resumeCheckpoint.turnId, answer: input.resumeAnswer } }
-          : {}),
-        ...(!input.resumeAnswer && input.resumeCheckpoint
-          ? { chatCheckpointResume: input.resumeCheckpoint }
-          : {}),
-        onSessionStart: (session) => {
-          if (!session.turnId) return;
-          stream?.onSessionStart?.({
-            conversationId: session.sessionId,
-            turnId: session.turnId,
-          });
-        },
-        onEvent: stream?.onEvent,
-        onChatPresentation: stream?.onPresentation,
-      });
-      if (result.schema !== "atlcli.chat-answer/v1") {
-        throw new ResearchContractError("invalid-report", "The Chat host returned a Research report.");
-      }
-      return result;
-    } finally {
-      stream?.signal?.removeEventListener("abort", forwardAbort);
-      if (activeController === controller) activeController = null;
-    }
+    return turns.execute(input, stream);
   };
 
   return defineChatAgentPortV1({
@@ -1495,11 +1443,7 @@ export function chromeChatAgentPort(research: ResearchPort): ChatAgentPortV1 {
       }
       return research.controlActiveChat(command);
     },
-    async stop() {
-      if (!activeController) return "stopped";
-      activeController.abort(new DOMException("The Chat turn was stopped.", "AbortError"));
-      return "stop_requested";
-    },
+    stop: turns.stop,
     listHistory: listChatHistoryV1,
     async replay(input) {
       const conversationId = input.conversationId ?? (

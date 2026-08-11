@@ -1291,7 +1291,7 @@ function ResearchStreamingTurn({
   );
 }
 
-export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element {
+export function ResearchScreen({ ports, page, continuationId }: ScreenProps): React.JSX.Element {
   const t = useT();
   const { locale } = useI18n();
   const port = ports.research;
@@ -1609,7 +1609,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     let active = true;
     if ((!chatPort && !port?.getChatReplay) || !site?.origin) return () => { active = false; };
     void (chatPort
-      ? chatPort.replay({ siteOrigin: site.origin })
+      ? chatPort.replay({
+          siteOrigin: site.origin,
+          ...(continuationId ? { conversationId: continuationId } : {}),
+        })
       : port!.getChatReplay!(site.origin))
       .then((replay) => {
         if (!active || !replay) return;
@@ -1632,7 +1635,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       })
       .catch(() => undefined);
     return () => { active = false; };
-  }, [chatPort, port, site?.origin]);
+  }, [chatPort, continuationId, port, site?.origin]);
 
   useEffect(() => {
     setChatQuestionText("");

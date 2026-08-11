@@ -87,6 +87,7 @@ const MAX_FALLBACK = 240;
 const MAX_KEYWORD = 64;
 const MAX_ID = 160;
 const MAX_INPUT_VALUE = 10_000;
+const MAX_RESULT_PRESENTATION = 12_000;
 
 type MutableRecord = Record<string, unknown>;
 
@@ -290,6 +291,14 @@ function checkSurfaceTarget(
         max: 128,
         pattern: OPAQUE_ID_RE,
       });
+      if (object.screen !== "research") {
+        issue(
+          issues,
+          `${path}.continuationId`,
+          "unexpected-continuation",
+          "is supported only for the Research sidebar screen",
+        );
+      }
     }
     return;
   }
@@ -421,7 +430,14 @@ function checkInputField(
     });
     return;
   }
-  issue(issues, `${path}.type`, "unknown-input-type", "must be text or select");
+  if (object.type === "boolean") {
+    checkExactKeys(object, ["type", "id", "label", "required"], path, issues);
+    checkString(object.id, `${path}.id`, issues, { max: 64, pattern: FIELD_ID_RE });
+    checkText(object.label, `${path}.label`, issues);
+    if (object.required !== undefined) checkBoolean(object.required, `${path}.required`, issues);
+    return;
+  }
+  issue(issues, `${path}.type`, "unknown-input-type", "must be text, select, or boolean");
 }
 
 function checkInputSchema(
@@ -1055,6 +1071,10 @@ export function validateActionInputValuesV1(
       issue(issues, `$.${field.id}`, "expected-string", "must be a string");
       continue;
     }
+    if (field.type === "boolean" && field.required && fieldValue !== "true") {
+      issue(issues, `$.${field.id}`, "required-input", "must be explicitly confirmed");
+      continue;
+    }
     if (field.type === "text") {
       const minLength = field.minLength ?? 0;
       if (fieldValue.length < minLength || fieldValue.length > field.maxLength) {
@@ -1065,8 +1085,10 @@ export function validateActionInputValuesV1(
           `must contain between ${minLength} and ${field.maxLength} characters`,
         );
       }
-    } else if (!field.options.some((option) => option.id === fieldValue)) {
+    } else if (field.type === "select" && !field.options.some((option) => option.id === fieldValue)) {
       issue(issues, `$.${field.id}`, "unknown-select-option", "is not an allowed option");
+    } else if (field.type === "boolean" && fieldValue !== "true" && fieldValue !== "false") {
+      issue(issues, `$.${field.id}`, "invalid-boolean-input", "must be true or false");
     }
   }
   return deepFreeze(issues);
@@ -1173,8 +1195,22 @@ function checkResult(
   if (!object) return;
   const allowedContributionKinds = new Set(policy.allowedContributionIntentKinds ?? []);
   if (object.status === "completed") {
-    checkExactKeys(object, ["status", "messageKey", "actions"], "$", issues);
+    checkExactKeys(object, ["status", "messageKey", "presentation", "actions"], "$", issues);
     checkNamespacedId(object.messageKey, "$.messageKey", issues);
+    if (object.presentation !== undefined) {
+      const presentation = checkObject(object.presentation, "$.presentation", issues);
+      if (presentation) {
+        checkExactKeys(presentation, ["kind", "text", "truncated"], "$.presentation", issues);
+        if (presentation.kind !== "markdown") {
+          issue(issues, "$.presentation.kind", "unknown-presentation-kind", "must be markdown");
+        }
+        checkString(presentation.text, "$.presentation.text", issues, {
+          min: 1,
+          max: MAX_RESULT_PRESENTATION,
+        });
+        checkBoolean(presentation.truncated, "$.presentation.truncated", issues);
+      }
+    }
   } else if (object.status === "queued") {
     checkExactKeys(object, ["status", "receipt", "actions"], "$", issues);
     checkReceiptContract(object.receipt, "$.receipt", issues);

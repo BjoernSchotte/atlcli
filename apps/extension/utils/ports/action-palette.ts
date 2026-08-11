@@ -13,6 +13,7 @@ export interface ShortcutPort {
 export interface SurfaceNavigationRequestV1 {
   readonly id: string;
   readonly screen: "export" | "research" | "activity" | "settings";
+  readonly continuationId?: string;
   readonly createdAt: string;
   readonly expiresAt: string;
 }

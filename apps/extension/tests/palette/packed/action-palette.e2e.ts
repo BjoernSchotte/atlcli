@@ -365,9 +365,18 @@ test("preserves contenteditable focus and selection and exposes accessible neste
     await frame.getByTestId("palette-search").fill("Ask AI");
     await frame.getByTestId("palette-search").press("Enter");
     await expect(frame.getByTestId("palette-input-form")).toBeVisible();
+    await expect(frame.getByText("Confluence · DOCSY", { exact: true })).toBeVisible();
+    await expect(frame.getByTestId("palette-input-disclosure")).not.toBeChecked();
+    await frame.getByTestId("palette-input-question").fill("Summarize the current context");
+    await frame.getByTestId("palette-input-question").press("Control+Enter");
+    await expect(frame.getByTestId("palette-input-form")).toBeVisible();
+    await expect(frame.getByTestId("palette-executing")).toHaveCount(0);
+    await frame.getByTestId("palette-input-disclosure").check();
+    await frame.getByTestId("palette-input-question").press("Control+Enter");
+    await expect(frame.getByTestId("palette-result-failed")).toBeVisible();
     await assertNoSeriousOrCriticalAxe(page);
     await assertPointerTargets(frame);
-    await frame.getByRole("button", { name: /Back/ }).first().click();
+    await frame.getByRole("button", { name: /Back/ }).click();
   });
   await test.step("close and restore selection", async () => {
     await frame.getByTestId("palette-search").fill("");

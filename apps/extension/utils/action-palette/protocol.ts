@@ -73,10 +73,19 @@ export type ActionPaletteResponseV1 =
       readonly accepted: boolean;
     }
   | {
+      readonly kind: "action-palette:stream-event";
+      readonly requestId: string;
+      readonly executionId: string;
+      readonly sequence: number;
+      readonly status: "started" | "delta" | "reset" | "completed";
+      readonly delta?: string;
+    }
+  | {
       readonly kind: "action-palette:open-surface-request";
       readonly requestId: string;
       readonly navigationId: string;
       readonly screen: "export" | "research" | "activity" | "settings";
+      readonly continuationId?: string;
       readonly createdAt: string;
       readonly expiresAt: string;
     }
@@ -184,4 +193,20 @@ export function actionPaletteInvalidRequest(
   requestId: string = "invalid",
 ): Extract<ActionPaletteResponseV1, { kind: "action-palette:error" }> {
   return { kind: "action-palette:error", requestId, code: "invalid-request", retryable: false };
+}
+
+/** Exact validator for ephemeral AI presentation events. */
+export function isActionPaletteStreamEventV1(value: unknown): value is Extract<
+  ActionPaletteResponseV1,
+  { kind: "action-palette:stream-event" }
+> {
+  if (!isRecord(value) || value.kind !== "action-palette:stream-event") return false;
+  const keys = value.delta === undefined
+    ? ["kind", "requestId", "executionId", "sequence", "status"]
+    : ["kind", "requestId", "executionId", "sequence", "status", "delta"];
+  return hasExactKeys(value, keys) && opaque(value.requestId) && opaque(value.executionId) &&
+    Number.isSafeInteger(value.sequence) && (value.sequence as number) >= 0 &&
+    ["started", "delta", "reset", "completed"].includes(String(value.status)) &&
+    (value.delta === undefined || (typeof value.delta === "string" && value.delta.length <= 2_000)) &&
+    (value.status === "delta" ? typeof value.delta === "string" && value.delta.length > 0 : value.delta === undefined);
 }
