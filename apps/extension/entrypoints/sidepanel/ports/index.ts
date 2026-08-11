@@ -33,6 +33,8 @@ import { chromeDocxExportPort, chromeDocxTemplateStore } from "./docx.js";
 import { chromeTemplateLibrary } from "./templates.js";
 import { chromeSettingsStore } from "./settings.js";
 import { chromeChatAgentPort, chromeResearchPort } from "./research.js";
+import { chromeShortcutPort } from "./shortcut.js";
+import { chromeSurfaceNavigationPort } from "./surface-navigation.js";
 
 /**
  * What the Chrome side panel can actually do today.
@@ -106,6 +108,8 @@ export function createChromePorts(): AppPorts {
     settings: chromeSettingsStore(),
     research,
     chat: chromeChatAgentPort(research),
+    shortcut: chromeShortcutPort(),
+    surfaceNavigation: chromeSurfaceNavigationPort(),
     // `countScopePages` is deliberately NOT supplied — see the note above.
   };
 }

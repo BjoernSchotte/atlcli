@@ -590,17 +590,17 @@ bun run check:browser
 
 **Blocks:** AP-05, AP-06, AP-07
 
-- [ ] Add `apps/extension/utils/action-palette/protocol.ts`, `context.ts`, `catalog.ts`, and `background-host.ts` with a thin integration in `background.ts`.
-- [ ] Use the active tab only to route the initial shortcut. Build every later `ActionSurfaceContextV1` from the exact sender `{ tabId, documentId, frameId: 0, origin }`, re-read that tab, and bind an opaque short-lived catalog revision to it; cover Confluence, Jira, generic Atlassian, tab switching, navigation, document replacement, and stale-context cases.
-- [ ] Define extension action capabilities from actual background/host adapters, not from product assumptions or caller claims.
-- [ ] Add static extension action modules for publishing, research/AI, navigation, and the synthetic fixture.
-- [ ] Add a host-local executor registry with an exhaustive allowlist and a second availability/effect check immediately before delegation.
-- [ ] Define a bounded content-script/background protocol: requests contain only request ID, action ID, locale, and validated user input; responses contain only catalog/context projections and redacted result/session IDs.
-- [ ] Explicitly reject caller-supplied site origin, URL, scope, tenant, tab/window ID, host identity, provider credential, export request, template bytes, or raw research request.
-- [ ] Add typed message variants for palette toggle, catalog/list, execute, stream/control, open-surface request, and bounded diagnostics while preserving the discriminated-union protocol.
-- [ ] Add nullable `ShortcutPort` and `SurfaceNavigationPort` capabilities to `AppPorts`, Chrome adapters, and fake/test ports. `ShortcutPort` exposes assigned/unbound status without a Chrome import in portable Settings; `SurfaceNavigationPort` exposes live request subscription/acknowledgement for an already-mounted `ExportApp` as well as cold-open delivery.
-- [ ] Add unit tests proving unsupported contexts and missing capabilities cannot reach executors, stale origins are rejected, unknown intents fail closed, spoofed host fields are rejected, abort/control propagation is correct, and projections are structured-clone safe.
-- [ ] Register the synthetic module plus an allowlisted test executor through the normal host composition, execute it through the unchanged presenter/client contract, and prove that adding it required no palette-shell conditional or import.
+- [x] Add `apps/extension/utils/action-palette/protocol.ts`, `context.ts`, `catalog.ts`, and `background-host.ts` with a thin integration in `background.ts`.
+- [x] Use the active tab only to route the initial shortcut. Build every later `ActionSurfaceContextV1` from the exact sender `{ tabId, documentId, frameId: 0, origin }`, re-read that tab, and bind an opaque short-lived catalog revision to it; cover Confluence, Jira, generic Atlassian, tab switching, navigation, document replacement, and stale-context cases.
+- [x] Define extension action capabilities from actual background/host adapters, not from product assumptions or caller claims.
+- [x] Add static extension action modules for publishing, research/AI, navigation, and the synthetic fixture.
+- [x] Add a host-local executor registry with an exhaustive allowlist and a second availability/effect check immediately before delegation.
+- [x] Define a bounded content-script/background protocol: requests contain only request ID, action ID, locale, and validated user input; responses contain only catalog/context projections and redacted result/session IDs.
+- [x] Explicitly reject caller-supplied site origin, URL, scope, tenant, tab/window ID, host identity, provider credential, export request, template bytes, or raw research request.
+- [x] Add typed message variants for palette toggle, catalog/list, execute, stream/control, open-surface request, and bounded diagnostics while preserving the discriminated-union protocol.
+- [x] Add nullable `ShortcutPort` and `SurfaceNavigationPort` capabilities to `AppPorts`, Chrome adapters, and fake/test ports. `ShortcutPort` exposes assigned/unbound status without a Chrome import in portable Settings; `SurfaceNavigationPort` exposes live request subscription/acknowledgement for an already-mounted `ExportApp` as well as cold-open delivery.
+- [x] Add unit tests proving unsupported contexts and missing capabilities cannot reach executors, stale origins are rejected, unknown intents fail closed, spoofed host fields are rejected, abort/control propagation is correct, and projections are structured-clone safe.
+- [x] Register the synthetic module plus an allowlisted test executor through the normal host composition, execute it through the unchanged presenter/client contract, and prove that adding it required no palette-shell conditional or import.
 
 **Proof**
 

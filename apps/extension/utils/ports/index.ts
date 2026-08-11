@@ -41,6 +41,7 @@ import type {
 import type { SettingsStore } from "./settings.js";
 import type { ResearchPort } from "../research/contracts.js";
 import type { ChatAgentPortV1 } from "@atlcli/research";
+import type { ShortcutPort, SurfaceNavigationPort } from "./action-palette.js";
 
 /**
  * What the host knows about the page it is showing.
@@ -95,6 +96,10 @@ export interface AppPorts {
   research?: ResearchPort | null;
   /** Ordinary Chat controls and streams, independent from Deep Research. */
   chat?: ChatAgentPortV1 | null;
+  /** `null`/absent outside hosts that expose configurable command assignment. */
+  shortcut?: ShortcutPort | null;
+  /** `null`/absent outside hosts that can deep-link an already-mounted surface. */
+  surfaceNavigation?: SurfaceNavigationPort | null;
 
   /**
    * The multi-slot template library (spec 010 T5.2).
@@ -127,3 +132,4 @@ export interface AppPorts {
 export * from "./host.js";
 export * from "./export.js";
 export * from "./settings.js";
+export * from "./action-palette.js";

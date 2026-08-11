@@ -1,0 +1,72 @@
+import type {
+  SurfaceNavigationPort,
+  SurfaceNavigationRequestV1,
+} from "../../../utils/ports/index.js";
+import type { ActionPaletteMessageV1 } from "../../../utils/action-palette/protocol.js";
+
+export const ACTION_PALETTE_NAVIGATION_STORAGE_KEY = "actionPalette.navigation.v1";
+
+function isNavigationRequest(value: unknown): value is Extract<
+  ActionPaletteMessageV1,
+  { kind: "action-palette:open-surface-request" }
+> {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return candidate.kind === "action-palette:open-surface-request" &&
+    typeof candidate.requestId === "string" && typeof candidate.navigationId === "string" &&
+    ["export", "research", "activity", "settings"].includes(String(candidate.screen)) &&
+    typeof candidate.createdAt === "string" && Number.isFinite(Date.parse(candidate.createdAt)) &&
+    typeof candidate.expiresAt === "string";
+}
+
+function toPortRequest(message: Extract<
+  ActionPaletteMessageV1,
+  { kind: "action-palette:open-surface-request" }
+>): SurfaceNavigationRequestV1 {
+  return {
+    id: message.navigationId,
+    screen: message.screen,
+    createdAt: message.createdAt,
+    expiresAt: message.expiresAt,
+  };
+}
+
+export function chromeSurfaceNavigationPort(): SurfaceNavigationPort {
+  return {
+    subscribe(onRequest) {
+      let active = true;
+      const delivered = new Set<string>();
+      const deliver = (message: unknown): void => {
+        if (!active || !isNavigationRequest(message) || delivered.has(message.navigationId) ||
+            Date.parse(message.expiresAt) <= Date.now()) return;
+        delivered.add(message.navigationId);
+        onRequest(toPortRequest(message));
+      };
+      const listener = (message: unknown): false => {
+        deliver(message);
+        return false;
+      };
+      chrome.runtime.onMessage.addListener(listener);
+      void chrome.storage.session.get(ACTION_PALETTE_NAVIGATION_STORAGE_KEY).then((stored) => {
+        deliver(stored[ACTION_PALETTE_NAVIGATION_STORAGE_KEY]);
+      }).catch(() => {
+        // A transient storage failure must not break live delivery.
+      });
+      return () => {
+        if (!active) return;
+        active = false;
+        chrome.runtime.onMessage.removeListener(listener);
+      };
+    },
+    async acknowledge(id) {
+      const response = await chrome.runtime.sendMessage({
+        kind: "action-palette:open-surface-ack",
+        requestId: `ack:${id}`,
+        navigationId: id,
+      });
+      return Boolean(response && typeof response === "object" &&
+        (response as { kind?: unknown }).kind === "action-palette:open-surface-ack-result" &&
+        (response as { accepted?: unknown }).accepted === true);
+    },
+  };
+}

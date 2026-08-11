@@ -141,6 +141,21 @@ function AppBody({
   );
   const restoredWorkspace = useRef(false);
 
+  useEffect(() => {
+    if (!ports.surfaceNavigation) return;
+    return ports.surfaceNavigation.subscribe((request) => {
+      const workspace = workspaceForScreen(request.screen);
+      if (workspace) setActiveWorkspace(workspace);
+      // Palette deep-links are transient and must not overwrite the user's
+      // remembered workspace preference.
+      setRequestedScreenId(request.screen);
+      void ports.surfaceNavigation?.acknowledge(request.id).catch(() => {
+        // The request is already applied; a missed acknowledgement only leaves
+        // the short-lived mailbox for the next mount to expire/deduplicate.
+      });
+    });
+  }, [ports.surfaceNavigation, workspaceForScreen]);
+
   const resolved = useMemo(
     () =>
       resolveScreens(screens, {

@@ -8,6 +8,17 @@
  *   3. manage the offscreen document lifecycle for the WASM round-trip.
  */
 import { defineBackground } from "wxt/utils/define-background";
+import {
+  createActionPaletteBackgroundHostV1,
+  createExtensionActionPaletteExecutorsV1,
+} from "../utils/action-palette/background-host.js";
+import {
+  isActionPaletteRequestCandidateV1,
+  type ActionPaletteResponseV1,
+} from "../utils/action-palette/protocol.js";
+import type { ActionPaletteSenderV1 } from "../utils/action-palette/context.js";
+import { ACTION_PALETTE_NAVIGATION_STORAGE_KEY } from "./sidepanel/ports/surface-navigation.js";
+import { ACTION_PALETTE_COMMAND_ID } from "./sidepanel/ports/shortcut.js";
 // Import from @atlcli/core's BROWSER entry. Presence in the bundle proves Vite
 // resolves the `browser` export condition (PLAN §6 risk 4); the Task 6 output
 // scan then proves this pulls in zero node:/bun: specifiers.
@@ -425,6 +436,16 @@ function pushEntityChanged(message: EntityChanged): void {
   });
 }
 
+function paletteSenderFromChrome(sender: chrome.runtime.MessageSender): ActionPaletteSenderV1 {
+  return {
+    tabId: sender.tab?.id ?? -1,
+    documentId: sender.documentId ?? "",
+    frameId: sender.frameId ?? -1,
+    origin: sender.origin ?? "",
+    ...(sender.url ? { url: sender.url } : {}),
+  };
+}
+
 export default defineBackground({
   // Emit `"background": { "type": "module", ... }` in the manifest (PLAN §2.3).
   type: "module",
@@ -437,6 +458,50 @@ export default defineBackground({
   chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((err) => console.error("setPanelBehavior failed", err));
+
+  const queuePaletteSurface = async (
+    screen: "export" | "research" | "activity" | "settings",
+  ): Promise<void> => {
+    const navigationId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const message: Extract<ActionPaletteResponseV1, { kind: "action-palette:open-surface-request" }> = {
+      kind: "action-palette:open-surface-request",
+      requestId: `navigation:${navigationId}`,
+      navigationId,
+      screen,
+      createdAt,
+      expiresAt: new Date(Date.now() + 120_000).toISOString(),
+    };
+    await chrome.storage.session.set({ [ACTION_PALETTE_NAVIGATION_STORAGE_KEY]: message });
+    void chrome.runtime.sendMessage(message).catch(() => {
+      // The retained storage.session mailbox supplies cold-open delivery.
+    });
+  };
+
+  const actionPaletteHost = createActionPaletteBackgroundHostV1({
+    getTab: async (tabId) => {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        return tab.id === undefined ? undefined : { id: tab.id, ...(tab.url ? { url: tab.url } : {}) };
+      } catch {
+        return undefined;
+      }
+    },
+    executors: createExtensionActionPaletteExecutorsV1(queuePaletteSurface),
+    shortcutStatus: async () => {
+      const commands = await chrome.commands.getAll();
+      const shortcut = commands.find((command) => command.name === ACTION_PALETTE_COMMAND_ID)?.shortcut?.trim() || null;
+      return { status: shortcut ? "assigned" : "unbound", value: shortcut };
+    },
+    acknowledgeSurface: async (navigationId) => {
+      const stored = await chrome.storage.session.get(ACTION_PALETTE_NAVIGATION_STORAGE_KEY);
+      const current = stored[ACTION_PALETTE_NAVIGATION_STORAGE_KEY];
+      if (!current || typeof current !== "object" ||
+          (current as { navigationId?: unknown }).navigationId !== navigationId) return false;
+      await chrome.storage.session.remove(ACTION_PALETTE_NAVIGATION_STORAGE_KEY);
+      return true;
+    },
+  });
 
   // ---- Tab observation (Task 1) --------------------------------------------
   // The SW is the canonical observer (PLAN §2.1), but MV3 workers are
@@ -1997,7 +2062,11 @@ export default defineBackground({
 
   // The `true` return from handleExtMessage keeps the channel open for the
   // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (isActionPaletteRequestCandidateV1(message)) {
+      void actionPaletteHost.handle(message, paletteSenderFromChrome(sender)).then(sendResponse);
+      return true;
+    }
     if (isExportJobsChanged(message)) {
       refreshExportBadge();
       return false;

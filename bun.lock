@@ -96,6 +96,7 @@
       "name": "@atlcli/extension",
       "version": "0.0.0",
       "dependencies": {
+        "@atlcli/action-registry": "workspace:*",
         "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",

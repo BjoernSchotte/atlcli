@@ -39,6 +39,7 @@
     "check:output": "bun scripts/check-output-build.ts"
   },
   "dependencies": {
+    "@atlcli/action-registry": "workspace:*",
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/core": "workspace:*",
