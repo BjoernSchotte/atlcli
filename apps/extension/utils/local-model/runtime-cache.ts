@@ -30,6 +30,29 @@ export interface ConfigureLocalModelRuntimeDepsV1 {
   openCache(name: string): Promise<LocalModelCacheV1>;
 }
 
+export async function readVerifiedLocalModelJsonV1(input: {
+  manifest: LocalModelManifestV1;
+  cache: TransformersLocalOnlyCacheV1;
+  path: string;
+}): Promise<Record<string, unknown>> {
+  const response = await input.cache.match(
+    localModelRemoteUrlV1(input.manifest, input.path),
+  );
+  if (!response) {
+    throw new Error(`Installed local model file is unavailable: ${input.path}.`);
+  }
+  let value: unknown;
+  try {
+    value = await response.json();
+  } catch {
+    throw new Error(`Installed local model JSON is invalid: ${input.path}.`);
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Installed local model JSON is invalid: ${input.path}.`);
+  }
+  return value as Record<string, unknown>;
+}
+
 function exactManifestUrlInventoryV1(manifest: LocalModelManifestV1): Map<string, number> {
   return new Map(
     manifest.files.map((file) => [

@@ -20,7 +20,7 @@ function fixtureManifest(sha256 = ABC_SHA256): LocalModelManifestV1 {
     modelRevision: LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1.modelRevision,
     sourceModelId: "google/gemma-4-E4B-it",
     task: "text-generation",
-    modelClass: "Gemma4ForConditionalGeneration",
+    modelClass: "Gemma4ForCausalLM",
     dtype: "q4f16",
     device: "webgpu",
     aggregateByteLength: 3,

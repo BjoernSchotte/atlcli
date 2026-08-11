@@ -173,7 +173,7 @@ Primary model references:
 
 ### 4.2 Selected runtime
 
-Use **`@huggingface/transformers` 4.2.x**, pinned to an exact version, with its
+Use **`@huggingface/transformers` 4.1.x**, pinned to an exact version, with its
 ONNX Runtime Web WebGPU backend. Pin the resolved `onnxruntime-web` version in
 the lockfile and dependency policy as part of the same runtime revision.
 Transformers.js owns processor/tokenizer loading, the Gemma 4 chat template,
@@ -184,9 +184,12 @@ a second direct ONNX Runtime generation implementation.
 - [Transformers.js pipelines and streaming](https://huggingface.co/docs/transformers.js/en/pipelines)
 - [ONNX Runtime WebGPU guide](https://onnxruntime.ai/docs/tutorials/web/ep-webgpu.html)
 
-Transformers.js 4.1 added Gemma 4 and 4.2 added `tools` support to the text
-generation pipeline. Those paths are recent and remain subject to the real
-extension proof. Treat model/chat-template output as untrusted: translate valid
+Transformers.js 4.1 added Gemma 4 and supports the tokenizer-level chat-template
+tool schema used by this adapter. Pin 4.1.0 with its resolved ONNX Runtime Web
+revision because that exact browser stack has live Gemma 4 extension evidence;
+the adapter does not depend on the 4.2 text-generation pipeline helper. These
+paths are recent and remain subject to the real extension proof. Treat
+model/chat-template output as untrusted: translate valid
 model tool calls into LangChain `AIMessage.tool_calls`, return host-produced
 `ToolMessage` values, and let the existing Chat runtime retain authorization,
 budgeting, and audit ownership. Neither Transformers.js nor the model may
@@ -399,9 +402,12 @@ generation. Unknown, late, duplicate, or oversized messages fail closed.
 
 Implement one local `BaseChatModel` adapter/proxy over Transformers.js and
 expose it as a `ChatModelBindingV1`. G0 freezes the text-only Transformers.js
-API shape as `AutoTokenizer` plus `Gemma4ForConditionalGeneration`; this avoids
-requiring Gemma's unused image/audio processor configuration while preserving
-chat-template processing, streaming, tools, cancellation, and resource disposal.
+API shape as a hash-verified `GemmaTokenizer` plus `Gemma4ForCausalLM`. The
+causal-LM class is Transformers.js' supported text-only route for the native
+multimodal Gemma 4 config: it selects only `embed_tokens` and
+`decoder_model_merged`, avoiding the unused image/audio processors and encoder
+sessions while preserving chat-template processing, streaming, tools,
+cancellation, and resource disposal.
 Do not bypass
 Transformers.js with a second direct `onnxruntime-web` generation loop.
 
@@ -414,12 +420,18 @@ lifecycles directly.
 The binding has these initial capabilities:
 
 - `structuredOutput: "tool"`;
-- one stable model for every route;
+- one stable loaded engine with lightweight route adapters for every mode;
 - no provider prompt-cache claim;
 - no reasoning-summary presentation grant;
-- thinking disabled for the initial release;
-- explicit local usage metadata with zero monetary tariff, while retaining
-  token, call, time, memory, and thermal budgets.
+- Quick disables Gemma thinking, Auto enables efficient/low thinking, and
+  Think deeper enables the full private thought channel; retain private thought
+  only across tool calls in the active model turn and strip it before later
+  ordinary conversation turns;
+- one model-specific DeepAgentsJS harness profile clarifies that `eval` is the
+  direct model tool while `tools.*` exists only inside QuickJS code;
+- explicit local usage metadata with zero monetary tariff and no cumulative
+  input-token, output-token, or cost quota; retain call, time, memory, thermal,
+  context-window, and per-generation safety limits.
 
 Message conversion must cover system, human, assistant, tool-call, and tool
 result messages. Project the LangChain tool schemas into the pinned Gemma 4 chat
@@ -427,6 +439,13 @@ template through the selected Transformers.js tokenizer. Tool-call IDs, names,
 incremental arguments, and final arguments must survive streaming and special-
 token parsing without guesswork. Unknown tool names or invalid arguments are
 returned to the shared repair/error path and never executed.
+
+The portable structured-output branch must explicitly select LangChain
+`toolStrategy(schema)` for dynamically dispatched specialists. Never advertise
+provider-native structured output in the Gemma model profile, and never rewrite
+an undeclared `tools.*` model call into `eval` after generation. Stop inference
+at Gemma's native `<|tool_response>` boundary so the host can execute the tool
+before generation continues.
 
 Use a conservative release corridor instead of advertising the model's nominal
 context limit. G0 freezes the initial maximum input, output, and retained
@@ -586,13 +605,16 @@ entire extension or connected Atlassian product is offline.
 
 - Capability preflight is advisory; actual load failures remain handled.
 - Enforce one generation at a time and bounded queues.
-- Bound input tokens, output tokens, message count, JSON/tool argument bytes,
-  and total RPC bytes before allocating GPU work.
-- The local monetary tariff is zero, but call/token/time budgets remain active.
+- Bound each request's context, generated output, message count, JSON/tool
+  argument bytes, and total RPC bytes before allocating GPU work.
+- The local monetary tariff is zero and cumulative token/cost quotas are
+  disabled; call/time workflow guards and technical per-generation limits stay
+  active.
 - Cancellation propagates UI -> background -> offscreen -> agent worker -> local
   runtime and ends at a terminal event.
-- Offscreen recreation detects installed state, rebuilds the service, and never
-  treats an unverified staging object as ready.
+- The background validates installed state before each local run; offscreen
+  recreation lazily rebuilds the service without accessing activation storage
+  or treating an unverified staging object as ready.
 - A local failure cannot mutate the selected provider or retry remotely.
 
 ## 8. Implementation tasks
@@ -679,7 +701,7 @@ Automated proof:
 - [ ] A caller-path assertion proves every G0 acceptance run entered through the
       existing `ResearchScreen`/port/background path; direct runtime/adapter
       harnesses cannot emit the acceptance receipt.
-- [ ] Anthropic regression fixtures prove the G0 binding changes leave existing
+- [x] Anthropic regression fixtures prove the G0 binding changes leave existing
       Chat and Deep Research behavior unchanged.
 
 Live proof:
@@ -808,16 +830,22 @@ Chat path without a provider-specific workflow.
 
 Implementation:
 
-- [ ] Implement the cloneable LangChain message/tool codec and local
+- [x] Implement the cloneable LangChain message/tool codec and local
       `BaseChatModel` proxy.
-- [ ] Convert Gemma chat-template special tokens and streamed tool-call output
+- [x] Convert Gemma chat-template special tokens and streamed tool-call output
       into stable LangChain tool calls with exact names and arguments; assign a
       collision-free host ID when the model format does not provide one.
-- [ ] Create the local `ChatModelBindingV1` with tool structured output, one
-      model route, no prompt cache, and no reasoning-summary grant.
-- [ ] Add provider-aware zero-dollar tariff metadata without disabling shared
-      token/call/time budgets.
-- [ ] Apply the measured local context/output corridor before model loading and
+- [x] Create the local `ChatModelBindingV1` with tool structured output, one
+      loaded engine, mode-aware thinking routes, no prompt cache, and no
+      reasoning-summary presentation grant.
+- [x] Register the local DeepAgentsJS harness profile, keep QuickJS `tools.*`
+      behind direct `eval`, and force dynamic specialist schemas through the
+      portable ToolStrategy branch without changing Anthropic ProviderStrategy.
+- [x] Add provider-aware zero-dollar tariff metadata and disable cumulative
+      token/cost quotas for local inference without disabling shared call/time
+      guards or technical context/per-generation limits.
+- [x] Apply the initial conservative local context/output corridor before ONNX
+      execution, trigger root compaction from that operational capability, and
       fail early with an actionable error.
 - [ ] Replace credential-only background/offscreen/worker messages with the
       discriminated internal run binding.
@@ -825,12 +853,12 @@ Implementation:
       model-manifest readiness only for local requests.
 - [ ] Require local readiness before creating a durable turn; installation time
       does not consume a conversation run deadline.
-- [ ] Preserve Quick's deterministic direct-only path.
-- [ ] Preserve Auto's strategy choice between direct and agentic execution and
-      prove at least one accepted trajectory of each kind.
-- [ ] Preserve Think deeper's explicit strategy decision, agentic delegation
+- [x] Preserve Quick's deterministic direct-only path in automated fixtures.
+- [x] Preserve Auto's strategy choice between direct and agentic execution and
+      prove at least one accepted automated trajectory of each kind.
+- [x] Preserve Think deeper's explicit strategy decision, agentic delegation
       when useful, independent validation/repair, and Chat completion horizon.
-- [ ] Keep only the separate Deep Research product mode capability-disabled for
+- [x] Keep only the separate Deep Research product mode capability-disabled for
       Gemma.
 - [ ] Prove no local error path invokes, selects, or recommends an automatic
       Anthropic fallback.

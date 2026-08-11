@@ -1,7 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { HumanMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
+import { z } from "zod";
 import { parseGemma4ResponseV1 } from "../utils/local-model/gemma-response.js";
-import { createLocalGemmaChatModelBindingV1 } from "../utils/local-model/langchain-proxy.js";
+import {
+  createLocalGemmaChatModelBindingV1,
+  toLocalModelMessagesV1,
+} from "../utils/local-model/langchain-proxy.js";
 import {
   LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
   assertLocalModelGenerateRequestV1,
@@ -17,6 +26,7 @@ describe("pinned Gemma 4 response grammar", () => {
       allowedToolNames: new Set(["eval"]),
     })).toEqual({
       text: "",
+      thought: "private",
       toolCalls: [{
         id: "local-r1-0",
         name: "eval",
@@ -51,9 +61,120 @@ describe("pinned Gemma 4 response grammar", () => {
       allowedToolNames: new Set(),
     })).toThrow("neither text nor a tool call");
   });
+
+  it("rejects a QuickJS namespace call instead of changing its semantics", () => {
+    expect(() => parseGemma4ResponseV1({
+      requestId: "namespace",
+      raw: '<|tool_call>call:tools.atlassianBoundRead{anchorRef:<|"|>research-anchor:page-1<|"|>}<tool_call|><turn|>',
+      allowedToolNames: new Set(["eval", "ChatAnswerDraftV2"]),
+    })).toThrow("unknown tool: tools.atlassianBoundRead");
+  });
+
+  it("rejects unknown QuickJS namespaces and never bypasses a missing eval tool", () => {
+    expect(() => parseGemma4ResponseV1({
+      requestId: "unknown-namespace",
+      raw: "<|tool_call>call:tools.fetch{url:<|\"|>https://example.test<|\"|>}<tool_call|>",
+      allowedToolNames: new Set(["eval"]),
+    })).toThrow("unknown tool: tools.fetch");
+    expect(() => parseGemma4ResponseV1({
+      requestId: "missing-eval",
+      raw: "<|tool_call>call:tools.atlassianBoundRead{anchorRef:<|\"|>research-anchor:page-1<|\"|>}<tool_call|>",
+      allowedToolNames: new Set(["ChatAnswerDraftV2"]),
+    })).toThrow("unknown tool: tools.atlassianBoundRead");
+  });
 });
 
 describe("local model RPC boundary", () => {
+  it("retains private Gemma thought only inside the active tool-calling turn", () => {
+    const messages = toLocalModelMessagesV1([
+      new AIMessage({
+        content: "",
+        additional_kwargs: { localGemmaThought: "inspect declared tools" },
+        tool_calls: [{
+          id: "call-1",
+          name: "eval",
+          args: { code: "return 1" },
+          type: "tool_call",
+        }],
+      }),
+    ]);
+
+    expect(messages[0]).toMatchObject({
+      role: "assistant",
+      content: "<|channel>thought\ninspect declared tools<channel|>",
+    });
+  });
+
+  it("recovers a nameless DeepAgents tool result from its preceding call id", () => {
+    const messages = toLocalModelMessagesV1([
+      new AIMessage({
+        content: "",
+        tool_calls: [{
+          id: "local-eval-1",
+          name: "eval",
+          args: { code: "return 1" },
+          type: "tool_call",
+        }],
+      }),
+      new ToolMessage({
+        content: "bounded evidence",
+        tool_call_id: "local-eval-1",
+      }),
+    ]);
+
+    expect(messages[1]).toMatchObject({
+      role: "tool",
+      name: "eval",
+      tool_call_id: "local-eval-1",
+    });
+  });
+
+  it("drops prior private thought once the host selects the exact next tool", () => {
+    const messages = toLocalModelMessagesV1([
+      new AIMessage({
+        content: "",
+        additional_kwargs: { localGemmaThought: "long private acquisition reasoning" },
+        tool_calls: [{
+          id: "local-eval-1",
+          name: "eval",
+          args: { code: "return 1" },
+          type: "tool_call",
+        }],
+      }),
+      new ToolMessage({
+        content: "bounded evidence",
+        tool_call_id: "local-eval-1",
+      }),
+    ], { retainPrivateThought: false });
+
+    expect(messages[0]).toMatchObject({ role: "assistant", content: "" });
+    expect(messages[1]).toMatchObject({ role: "tool", name: "eval" });
+    expect(JSON.stringify(messages)).not.toContain("private acquisition reasoning");
+  });
+
+  it("keeps only the original objective from the initial user envelope during terminal projection", () => {
+    const messages = toLocalModelMessagesV1([
+      new HumanMessage([
+        'User question: "What is the budget?"',
+        'Explicit user request checklist (verbatim fragments, no added requirements): ["budget"].',
+        "Cover every checklist item exactly once with supported evidence or a precise gap before finalizing.",
+        "Attached host-bound entities (opaque refs only): a large routing envelope.",
+        `Durable conversation context: ${"x".repeat(8_000)}`,
+      ].join("\n")),
+    ], { terminalAnswerProjection: true });
+
+    expect(messages).toEqual([{ role: "user", content: [
+      'User question: "What is the budget?"',
+      'Explicit user request checklist (verbatim fragments, no added requirements): ["budget"].',
+    ].join("\n") }]);
+  });
+
+  it("rejects a nameless tool result without a matching preceding call", () => {
+    expect(() => toLocalModelMessagesV1([
+      new ToolMessage({ content: "orphan", tool_call_id: "missing" }),
+    ])).toThrow("could not be matched to its call id: missing");
+  });
+
   it("transfers one fresh port from the offscreen-owned worker host", () => {
     const sent: Array<{ message: unknown; transfer: Transferable[] }> = [];
     const host = new LocalModelWorkerHostV1("fixture/model", {
@@ -102,14 +223,28 @@ describe("local model RPC boundary", () => {
         parameters: { type: "object", properties: { code: { type: "string" } } },
       },
     }]);
-    const result = await runnable.invoke([new HumanMessage("Use eval")]);
+    const result = await runnable.invoke([
+      new SystemMessage("Stable agent contract."),
+      new HumanMessage("Use eval"),
+    ]);
     expect(observed).toMatchObject({
       schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
       kind: "generate",
-      messages: [{ role: "user", content: "Use eval" }],
+      messages: [
+        { role: "system" },
+        { role: "user", content: "Use eval" },
+      ],
       tools: [{ type: "function", function: { name: "eval" } }],
       maxOutputTokens: 128,
+      thinkingMode: "disabled",
     });
+    if (observed?.kind !== "generate") throw new Error("Expected a generation request.");
+    const system = observed.messages.find((message) => message.role === "system");
+    if (!system) throw new Error("Expected the projected system message.");
+    expect(system.content.includes("Stable agent contract.")).toBe(true);
+    expect(system.content.includes("complete list of functions you may call directly is: `eval`")).toBe(true);
+    expect(system.content.includes("`tools` is a JavaScript namespace")).toBe(true);
+    expect(system.content.includes("Never emit a tool call whose function name is `tools`")).toBe(true);
     expect(result.tool_calls).toEqual([
       { id: "call-1", name: "eval", args: { code: "return 1" }, type: "tool_call" },
     ]);
@@ -122,6 +257,103 @@ describe("local model RPC boundary", () => {
     channel.port2.close();
   });
 
+  it("adds a local-only tool boundary without mutating tool-free chat", async () => {
+    const channel = new MessageChannel();
+    const requests: LocalModelPortRequestV1[] = [];
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      requests.push(event.data);
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "Local answer.",
+        toolCalls: [],
+        inputTokens: 4,
+        outputTokens: 2,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 32,
+    });
+
+    await binding.model.invoke([new HumanMessage("Hello")]);
+    expect(requests[0]).toMatchObject({
+      kind: "generate",
+      messages: [{ role: "user", content: "Hello" }],
+      tools: [],
+    });
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("projects a named LangChain tool choice into one required Gemma tool", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "required-answer",
+          name: "ChatAnswerDraftV2",
+          arguments: { blocks: [], gaps: [] },
+        }],
+        inputTokens: 4,
+        outputTokens: 2,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 32,
+    });
+    const runnable = binding.model.bindTools!([
+      { name: "eval", description: "Evaluate", schema: z.object({ code: z.string() }) },
+      {
+        name: "ChatAnswerDraftV2",
+        description: "Answer",
+        schema: z.object({ blocks: z.array(z.unknown()), gaps: z.array(z.unknown()) }),
+      },
+    ], { tool_choice: "ChatAnswerDraftV2" });
+
+    await runnable.invoke([new HumanMessage("Finish")]);
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "ChatAnswerDraftV2",
+      tools: [{ function: { name: "ChatAnswerDraftV2" } }],
+    });
+    if (observed?.kind !== "generate") throw new Error("Expected generation request.");
+    expect(JSON.stringify(observed.tools[0])).not.toContain("maxItems");
+    expect(JSON.stringify(observed.tools[0])).not.toContain("continuation");
+    expect(JSON.stringify(observed.tools[0]).length).toBeLessThan(900);
+    expect(observed.tools[0]!.function.parameters).toMatchObject({
+      properties: {
+        blocks: {
+          items: {
+            properties: {
+              assertion: { type: "string" },
+              scope: { type: "string" },
+            },
+          },
+        },
+      },
+    });
+    expect(observed.messages[0]!.content).toContain(
+      "response must begin with the Gemma tool call",
+    );
+    channel.port1.close();
+    channel.port2.close();
+  });
+
   it("rejects oversized envelopes before model execution", () => {
     const request = {
       schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
@@ -130,6 +362,7 @@ describe("local model RPC boundary", () => {
       messages: [{ role: "user", content: "x".repeat(300_000) }],
       tools: [],
       maxOutputTokens: 1,
+      thinkingMode: "disabled",
     } as LocalModelPortRequestV1;
     expect(() => assertLocalModelGenerateRequestV1(request)).toThrow("byte limit");
   });
@@ -143,6 +376,7 @@ describe("local model RPC boundary", () => {
       messages: "not-an-array",
       tools: [],
       maxOutputTokens: 1,
+      thinkingMode: "disabled",
     })).toThrow("must be arrays");
   });
 
@@ -174,6 +408,91 @@ describe("local model RPC boundary", () => {
     controller.abort();
     await expect(invoked).rejects.toThrow("cancelled");
     expect(observed.map((request) => request.kind)).toEqual(["generate", "cancel"]);
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("preserves a typed, actionable local runtime failure", async () => {
+    const channel = new MessageChannel();
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "error",
+        requestId: event.data.requestId,
+        code: "model-error",
+        error: "Synthetic local runtime failed before generation.",
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 32,
+    });
+
+    await expect(binding.model.invoke([new HumanMessage("Diagnose")]))
+      .rejects.toMatchObject({
+        name: "ResearchContractError",
+        code: "provider-error",
+        message: "Synthetic local runtime failed before generation.",
+      });
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("exposes a real LangChain model profile and routes Gemma thinking by preference", () => {
+    const channel = new MessageChannel();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 99_999,
+    });
+
+    expect(binding.model.profile).toMatchObject({
+      maxOutputTokens: 4_096,
+      toolCalling: true,
+    });
+    expect(binding.harnessProfile?.key).toBe("atlcli-local:gemma-4-e4b");
+    expect(binding.runtimeLimits?.maxInputTokens).toBe(8_192);
+    expect(binding.runtimeLimits?.interpreterResultChars).toBe(4_000);
+    expect(binding.modelForRoute?.({ role: "analysis", preference: "balanced" }))
+      .toMatchObject({ thinkingMode: "adaptive-summary" });
+    expect(binding.modelForRoute?.({ role: "analysis", preference: "thorough" }))
+      .toMatchObject({ thinkingMode: "adaptive-summary" });
+    expect(binding.modelForRoute?.({ role: "synthesis", preference: "thorough" }))
+      .toMatchObject({
+        thinkingMode: "disabled",
+        finalizationCorridor: "finalize-only",
+      });
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("maps a local context envelope failure to LangChain ContextOverflowError", async () => {
+    const channel = new MessageChannel();
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "error",
+        requestId: event.data.requestId,
+        code: "context-overflow",
+        error: "Synthetic local context overflow.",
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 32,
+    });
+
+    await expect(binding.model.invoke([new HumanMessage("Too large")]))
+      .rejects.toMatchObject({
+        name: "ContextOverflowError",
+        message: "Synthetic local context overflow.",
+      });
     channel.port1.close();
     channel.port2.close();
   });

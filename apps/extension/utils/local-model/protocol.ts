@@ -10,6 +10,8 @@ export const LOCAL_MODEL_RPC_LIMITS_V1 = {
   maxOutputTokens: 8_192,
 } as const;
 
+export type LocalModelThinkingModeV1 = "disabled" | "low" | "enabled";
+
 export interface LocalModelToolV1 {
   type: "function";
   function: {
@@ -44,7 +46,9 @@ export type LocalModelPortRequestV1 =
       requestId: string;
       messages: LocalModelChatMessageV1[];
       tools: LocalModelToolV1[];
+      requiredToolName?: string;
       maxOutputTokens: number;
+      thinkingMode: LocalModelThinkingModeV1;
     }
   | {
       schema: typeof LOCAL_MODEL_PROTOCOL_SCHEMA_V1;
@@ -70,6 +74,7 @@ export type LocalModelPortResponseV1 =
       kind: "complete";
       requestId: string;
       text: string;
+      thought?: string;
       toolCalls: LocalModelToolCallV1[];
       inputTokens: number;
       outputTokens: number;
@@ -78,7 +83,7 @@ export type LocalModelPortResponseV1 =
       schema: typeof LOCAL_MODEL_PROTOCOL_SCHEMA_V1;
       kind: "error";
       requestId: string;
-      code: "cancelled" | "invalid-request" | "model-error";
+      code: "cancelled" | "invalid-request" | "context-overflow" | "model-error";
       error: string;
     };
 
@@ -174,10 +179,19 @@ export function assertLocalModelGenerateRequestV1(
     throw new Error("The local model tool inventory exceeds the bounded protocol.");
   }
   for (const tool of value.tools) assertToolV1(tool);
+  if (value.requiredToolName !== undefined) {
+    assertText(value.requiredToolName, "The required local model tool name");
+    if (!value.tools.some((tool) => tool.function.name === value.requiredToolName)) {
+      throw new Error("The required local model tool is not declared.");
+    }
+  }
   if (typeof value.maxOutputTokens !== "number" ||
       !Number.isInteger(value.maxOutputTokens) || value.maxOutputTokens < 1 ||
       value.maxOutputTokens > LOCAL_MODEL_RPC_LIMITS_V1.maxOutputTokens) {
     throw new Error("The local model output-token limit is invalid.");
+  }
+  if (!["disabled", "low", "enabled"].includes(String(value.thinkingMode))) {
+    throw new Error("The local model thinking mode is invalid.");
   }
 }
 

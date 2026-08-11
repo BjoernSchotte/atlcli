@@ -13,7 +13,7 @@ export interface LocalModelManifestV1 {
   modelRevision: string;
   sourceModelId: string;
   task: "text-generation";
-  modelClass: "Gemma4ForConditionalGeneration";
+  modelClass: "Gemma4ForCausalLM";
   dtype: "q4f16";
   device: "webgpu";
   aggregateByteLength: number;
@@ -33,7 +33,7 @@ export interface LocalModelManifestV1 {
  * G0 supply-chain boundary for the text-only Gemma 4 E4B browser proof.
  *
  * The immutable revision and file metadata come from the Hugging Face model
- * API with blob metadata enabled. Transformers.js 4.2.0 ModelRegistry resolves
+ * API with blob metadata enabled. Transformers.js 4.1.0 ModelRegistry resolves
  * this exact nine-file set for `text-generation`, `q4f16`, and `webgpu`.
  * Vision/audio encoders and every other dtype are deliberately absent.
  */
@@ -43,7 +43,7 @@ export const LOCAL_GEMMA_G0_MANIFEST_V1: LocalModelManifestV1 = {
   modelRevision: "843f250f23bc91754def1e0f0db390dacd1e6b05",
   sourceModelId: "google/gemma-4-E4B-it",
   task: "text-generation",
-  modelClass: "Gemma4ForConditionalGeneration",
+  modelClass: "Gemma4ForCausalLM",
   dtype: "q4f16",
   device: "webgpu",
   aggregateByteLength: 4_924_946_442,
@@ -95,8 +95,8 @@ export const LOCAL_GEMMA_G0_MANIFEST_V1: LocalModelManifestV1 = {
     },
   ],
   runtime: {
-    transformersJs: "4.2.0",
-    onnxRuntimeWeb: "1.26.0-dev.20260416-b7804b056c",
+    transformersJs: "4.1.0",
+    onnxRuntimeWeb: "1.26.0-dev.20260410-5e55544225",
   },
   license: {
     spdx: "Apache-2.0",

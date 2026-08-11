@@ -33,11 +33,6 @@ import {
   recoverExpiredResearchSessionsAtSafeBoundaryV1,
 } from "@atlcli/research/browser";
 import { LOCAL_GEMMA_G0_MANIFEST_V1 } from "../../utils/local-model/manifest.js";
-import {
-  isLocalModelActivationV1,
-  LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1,
-} from "../../utils/local-model/storage.js";
-import { LocalModelWorkerHostV1 } from "../../utils/local-model/worker-host.js";
 
 const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
 
@@ -65,37 +60,23 @@ void recoverResearchSessionsAfterOffscreenStart().catch((error) =>
   console.error("Durable research recovery after offscreen startup failed", error),
 );
 
-let localModelHost: LocalModelWorkerHostV1 | undefined;
-
-async function restoreInstalledLocalModelWorkerV1(): Promise<void> {
-  if (localModelHost) return;
-  const stored = await chrome.storage.local.get(LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1);
-  if (!isLocalModelActivationV1(
-    stored[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1],
-    LOCAL_GEMMA_G0_MANIFEST_V1,
-  )) {
-    return;
-  }
-  const worker = new Worker(new URL("../../workers/local-model.ts", import.meta.url), {
-    type: "module",
-    name: "atlcli-local-model",
-  });
-  localModelHost = new LocalModelWorkerHostV1(
-    LOCAL_GEMMA_G0_MANIFEST_V1.modelId,
-    worker,
-  );
-}
-
-void restoreInstalledLocalModelWorkerV1().catch((error) =>
-  console.error("Installed local model worker recovery failed", error),
-);
-
 async function connectInstalledLocalModelV1() {
-  await restoreInstalledLocalModelWorkerV1();
-  if (!localModelHost) {
-    throw new Error("The selected local model is not installed and active.");
-  }
-  return localModelHost.connect();
+  // Offscreen documents expose only chrome.runtime, not chrome.storage. The
+  // background host validates the exact installed activation immediately
+  // before it sends a local-gemma run. Load ORT lazily, but execute it in this
+  // offscreen Window rather than a nested DedicatedWorker. ORT's WebGPU JSEP
+  // bridge has a distinct WorkerGlobalScope path that aborts the Gemma 4 E4B
+  // decoder in Chrome MV3 after embedding succeeds.
+  const { connectLocalModelPortV1 } = await import(
+    "../../workers/local-model.js"
+  );
+  const channel = new MessageChannel();
+  connectLocalModelPortV1(channel.port2);
+  return {
+    kind: "local-gemma" as const,
+    modelId: LOCAL_GEMMA_G0_MANIFEST_V1.modelId,
+    port: channel.port1,
+  };
 }
 
 const pdfHost = new ChromeWorkerCompilerHost({

@@ -58,8 +58,8 @@ import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { TYPST_VENDOR_PINS } from "../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
 import {
-  ORT_JSEP_FACTORY_MV3_SHA256,
-  ORT_JSEP_WASM_UPSTREAM_SHA256,
+  ORT_ASYNCIFY_FACTORY_MV3_SHA256,
+  ORT_ASYNCIFY_WASM_UPSTREAM_SHA256,
 } from "./patch-ort-jsep-csp.js";
 
 export const TYPST_COMPILER_WASM_SHA256 =
@@ -267,20 +267,20 @@ const REQUIRED_RESEARCH_ARTIFACTS = [
 
 const REQUIRED_LOCAL_MODEL_ARTIFACTS = [
   {
-    label: "local Gemma model worker",
-    pattern: /(?:^|\/)assets\/local-model-[^/]+[.]js$/,
+    label: "local Gemma offscreen model host",
+    pattern: /(?:^|\/)chunks\/local-model-[^/]+[.]js$/,
     minimumSize: 300_000,
   },
   {
-    label: "MV3-safe ONNX Runtime JSEP factory",
-    pattern: /(?:^|\/)assets\/ort-wasm-simd-threaded[.]jsep-[^/]+[.]mjs$/,
-    sha256: ORT_JSEP_FACTORY_MV3_SHA256,
+    label: "MV3-safe ONNX Runtime WebGPU factory",
+    pattern: /(?:^|\/)assets\/ort-wasm-simd-threaded[.]asyncify-[^/]+[.]mjs$/,
+    sha256: ORT_ASYNCIFY_FACTORY_MV3_SHA256,
   },
   {
-    label: "ONNX Runtime JSEP WebGPU WASM",
-    pattern: /(?:^|\/)assets\/ort-wasm-simd-threaded[.]jsep-[^/]+[.]wasm$/,
+    label: "ONNX Runtime asyncify WebGPU WASM",
+    pattern: /(?:^|\/)assets\/ort-wasm-simd-threaded[.]asyncify-[^/]+[.]wasm$/,
     minimumSize: 20_000_000,
-    sha256: ORT_JSEP_WASM_UPSTREAM_SHA256,
+    sha256: ORT_ASYNCIFY_WASM_UPSTREAM_SHA256,
   },
 ] as const;
 

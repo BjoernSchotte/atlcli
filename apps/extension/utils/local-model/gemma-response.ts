@@ -4,6 +4,20 @@ const TOOL_OPEN = "<|tool_call>";
 const TOOL_CLOSE = "<tool_call|>";
 const STRING_DELIMITER = '<|"|>';
 
+function normalizeToolCallV1(input: {
+  name: string;
+  arguments: Record<string, unknown>;
+  allowedToolNames: ReadonlySet<string>;
+}): { name: string; arguments: Record<string, unknown> } {
+  if (input.allowedToolNames.has(input.name)) {
+    return { name: input.name, arguments: input.arguments };
+  }
+  const declared = [...input.allowedToolNames].sort().join(", ") || "none";
+  throw new Error(
+    `Gemma requested an unknown tool: ${input.name}. Declared tools: ${declared}.`,
+  );
+}
+
 class GemmaArgumentsParserV1 {
   #index = 0;
   constructor(readonly source: string) {}
@@ -120,6 +134,7 @@ class GemmaArgumentsParserV1 {
 export interface ParsedGemmaResponseV1 {
   text: string;
   toolCalls: LocalModelToolCallV1[];
+  thought?: string;
 }
 
 /** Parse only the pinned Gemma 4 response-template grammar. */
@@ -129,9 +144,11 @@ export function parseGemma4ResponseV1(input: {
   allowedToolNames: ReadonlySet<string>;
 }): ParsedGemmaResponseV1 {
   let remaining = input.raw;
+  let thought: string | undefined;
   if (remaining.startsWith("<|channel>thought\n")) {
     const thoughtEnd = remaining.indexOf("<channel|>");
     if (thoughtEnd < 0) throw new Error("Gemma thinking channel is unterminated.");
+    thought = remaining.slice("<|channel>thought\n".length, thoughtEnd);
     remaining = remaining.slice(thoughtEnd + "<channel|>".length);
   }
 
@@ -147,15 +164,17 @@ export function parseGemma4ResponseV1(input: {
     const end = remaining.indexOf(TOOL_CLOSE, start + TOOL_OPEN.length);
     if (end < 0) throw new Error("Gemma tool call is unterminated.");
     const body = remaining.slice(start + TOOL_OPEN.length, end);
-    const match = /^call:([A-Za-z_][A-Za-z0-9_-]*)([\s\S]+)$/u.exec(body);
+    const match = /^call:([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)([\s\S]+)$/u.exec(body);
     if (!match?.[1] || !match[2]) throw new Error("Gemma tool call has an invalid header.");
-    if (!input.allowedToolNames.has(match[1])) {
-      throw new Error(`Gemma requested an unknown tool: ${match[1]}.`);
-    }
-    toolCalls.push({
-      id: `local-${input.requestId}-${toolCalls.length}`,
+    const normalized = normalizeToolCallV1({
       name: match[1],
       arguments: new GemmaArgumentsParserV1(match[2]).parse(),
+      allowedToolNames: input.allowedToolNames,
+    });
+    toolCalls.push({
+      id: `local-${input.requestId}-${toolCalls.length}`,
+      name: normalized.name,
+      arguments: normalized.arguments,
     });
     remaining = remaining.slice(end + TOOL_CLOSE.length);
   }
@@ -167,5 +186,5 @@ export function parseGemma4ResponseV1(input: {
   if (!text && toolCalls.length === 0) {
     throw new Error("Gemma returned neither text nor a tool call.");
   }
-  return { text, toolCalls };
+  return { text, toolCalls, ...(thought ? { thought } : {}) };
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { LocalModelManifestV1 } from "../utils/local-model/manifest.js";
 import {
   configureVerifiedLocalModelRuntimeV1,
+  readVerifiedLocalModelJsonV1,
   type TransformersLocalOnlyEnvironmentV1,
 } from "../utils/local-model/runtime-cache.js";
 import {
@@ -16,7 +17,7 @@ const MANIFEST: LocalModelManifestV1 = {
   modelRevision: "0123456789abcdef",
   sourceModelId: "fixture/source",
   task: "text-generation",
-  modelClass: "Gemma4ForConditionalGeneration",
+  modelClass: "Gemma4ForCausalLM",
   dtype: "q4f16",
   device: "webgpu",
   aggregateByteLength: 3,
@@ -106,5 +107,38 @@ describe("verified local Transformers.js model resolution", () => {
     );
     await expect(localCache.put(expectedUrl, new Response())).rejects.toThrow("read-only");
     await expect(localCache.match(expectedUrl)).rejects.toThrow("length metadata");
+  });
+
+  it("reads tokenizer metadata only from the immutable revision cache key", async () => {
+    const body = JSON.stringify({ tokenizer_class: "GemmaTokenizer" });
+    const manifest: LocalModelManifestV1 = {
+      ...MANIFEST,
+      aggregateByteLength: body.length,
+      files: [{
+        path: "tokenizer_config.json",
+        byteLength: body.length,
+        sha256: "1".repeat(64),
+      }],
+    };
+    const pinnedUrl = localModelRemoteUrlV1(manifest, "tokenizer_config.json");
+    const requested: string[] = [];
+    const cache = {
+      async match(request: string) {
+        requested.push(request);
+        return request === pinnedUrl
+          ? new Response(body, { headers: { "content-length": String(body.length) } })
+          : undefined;
+      },
+      async put() { throw new Error("not used"); },
+    };
+
+    await expect(readVerifiedLocalModelJsonV1({
+      manifest,
+      cache,
+      path: "tokenizer_config.json",
+    })).resolves.toEqual({ tokenizer_class: "GemmaTokenizer" });
+    expect(requested).toEqual([pinnedUrl]);
+    expect(pinnedUrl).toContain(`resolve/${manifest.modelRevision}/tokenizer_config.json`);
+    expect(pinnedUrl).not.toContain("/resolve/main/");
   });
 });

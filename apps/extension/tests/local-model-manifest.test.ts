@@ -14,12 +14,12 @@ describe("Gemma 4 E4B G0 manifest", () => {
       modelRevision: "843f250f23bc91754def1e0f0db390dacd1e6b05",
       sourceModelId: "google/gemma-4-E4B-it",
       task: "text-generation",
-      modelClass: "Gemma4ForConditionalGeneration",
+      modelClass: "Gemma4ForCausalLM",
       dtype: "q4f16",
       device: "webgpu",
       runtime: {
-        transformersJs: "4.2.0",
-        onnxRuntimeWeb: "1.26.0-dev.20260416-b7804b056c",
+        transformersJs: "4.1.0",
+        onnxRuntimeWeb: "1.26.0-dev.20260410-5e55544225",
       },
       license: {
         spdx: "Apache-2.0",

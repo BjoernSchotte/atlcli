@@ -10,8 +10,8 @@ import {
   validateExtensionArtifactInventory,
 } from "../scripts/check-output-build.js";
 import {
-  ORT_JSEP_FACTORY_MV3_SHA256,
-  ORT_JSEP_WASM_UPSTREAM_SHA256,
+  ORT_ASYNCIFY_FACTORY_MV3_SHA256,
+  ORT_ASYNCIFY_WASM_UPSTREAM_SHA256,
 } from "../scripts/patch-ort-jsep-csp.js";
 import { EXTENSION_ROOT, ensureExtensionBuilt, OUTPUT_DIR } from "./build-helper.js";
 
@@ -209,16 +209,16 @@ describe("PDF artifact inventory", () => {
       sha256:
         "3742fb828ff9841d57dd7350657e3bc9ae2ae52a1d079615f100166c1274052f",
     },
-    { path: "assets/local-model-abc.js", size: 470_000 },
+    { path: "chunks/local-model-abc.js", size: 470_000 },
     {
-      path: "assets/ort-wasm-simd-threaded.jsep-abc.mjs",
+      path: "assets/ort-wasm-simd-threaded.asyncify-abc.mjs",
       size: 46_000,
-      sha256: ORT_JSEP_FACTORY_MV3_SHA256,
+      sha256: ORT_ASYNCIFY_FACTORY_MV3_SHA256,
     },
     {
-      path: "assets/ort-wasm-simd-threaded.jsep-abc.wasm",
-      size: 26_000_000,
-      sha256: ORT_JSEP_WASM_UPSTREAM_SHA256,
+      path: "assets/ort-wasm-simd-threaded.asyncify-abc.wasm",
+      size: 23_000_000,
+      sha256: ORT_ASYNCIFY_WASM_UPSTREAM_SHA256,
     },
   ];
 
@@ -276,21 +276,21 @@ describe("PDF artifact inventory", () => {
     expect(issues).toContain("aggregate Shiki catalogue");
   });
 
-  it("requires the pinned local-model worker and ONNX runtime assets", () => {
-    const missingWorker = complete.filter(
+  it("requires the pinned local-model offscreen host and ONNX runtime assets", () => {
+    const missingHost = complete.filter(
       (artifact) => !artifact.path.includes("local-model-abc.js"),
     );
-    expect(validateExtensionArtifactInventory(missingWorker).join("\n")).toContain(
-      "local Gemma model worker",
+    expect(validateExtensionArtifactInventory(missingHost).join("\n")).toContain(
+      "local Gemma offscreen model host",
     );
 
     const tamperedFactory = complete.map((artifact) =>
-      artifact.path.endsWith(".jsep-abc.mjs")
+      artifact.path.endsWith(".asyncify-abc.mjs")
         ? { ...artifact, sha256: "tampered" }
         : artifact,
     );
     expect(validateExtensionArtifactInventory(tamperedFactory).join("\n")).toContain(
-      "MV3-safe ONNX Runtime JSEP factory",
+      "MV3-safe ONNX Runtime WebGPU factory",
     );
   });
 

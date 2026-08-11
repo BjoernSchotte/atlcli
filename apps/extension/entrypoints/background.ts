@@ -90,8 +90,11 @@ import {
   type ResearchScopePreflightOptionsV1,
   WorkspaceChatInteractionControllerV1,
   applyChatInteractionControlV1,
+  assertChatSessionBindingV1,
   assertChatInteractionBindingV1,
+  CHAT_SESSION_PATH_V1,
   CHAT_INTERACTION_STATE_PATH_V1,
+  parseChatSessionV1,
   parseChatInteractionStateV1,
   stampChatInteractionCommandV1,
 } from "@atlcli/research/browser";
@@ -106,6 +109,7 @@ import {
 } from "../utils/ports/settings.js";
 import { LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1 } from "../utils/local-model/storage.js";
 import { resolveBrowserChatModelRunBindingV1 } from "../utils/local-model/run-binding.js";
+import { recoverUnownedRunningChatTurnV1 } from "../utils/research/chat-recovery.js";
 import {
   browserChatActiveConversationStorageKeyV1,
   browserChatProviderCacheIdentityV1,
@@ -581,6 +585,41 @@ export default defineBackground({
     }
     if (activeResearchRuns.has(runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
+    }
+    if (mode === "chat" && effectiveHostIdentity) {
+      if ([...activeResearchRuns.values()].some((active) =>
+        active.mode === "chat" && active.sessionId === sessionId
+      )) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "This retained Chat conversation is already active.",
+        );
+      }
+      const store = await IndexedDbResearchSessionStoreV1.open();
+      try {
+        if (await store.read(sessionId)) {
+          const workspace = await store.workspace(sessionId);
+          const serialized = await workspace.readFile(CHAT_SESSION_PATH_V1);
+          if (serialized !== undefined) {
+            const retained = parseChatSessionV1(JSON.parse(serialized));
+            assertChatSessionBindingV1({
+              session: retained,
+              conversationId: sessionId,
+              identity: effectiveHostIdentity,
+              tenantOrigin: request.scope.siteOrigin,
+            });
+            const recovered = recoverUnownedRunningChatTurnV1({
+              session: retained,
+              at: new Date().toISOString(),
+            });
+            if (recovered !== retained) {
+              await workspace.writeFile(CHAT_SESSION_PATH_V1, JSON.stringify(recovered));
+            }
+          }
+        }
+      } finally {
+        store.close();
+      }
     }
     activeResearchRuns.set(runId, { sessionId, mode });
     offscreenActivity.begin();

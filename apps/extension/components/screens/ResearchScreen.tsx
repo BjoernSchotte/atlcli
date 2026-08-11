@@ -1955,7 +1955,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     if (!retry) setSubmittedRequest(null);
     try {
       if (!site) throw new ResearchContractError("not-atlassian", t("research.siteMissing"));
-      if (!disclosed) {
+      if (selectedModelProvider !== "local-gemma" && !disclosed) {
         throw new ResearchContractError("invalid-request", t("research.disclosure"));
       }
       const initialRequest = retry?.request ?? (() => {
@@ -4093,17 +4093,19 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   />
                 </div>
               </div>
-              <label className="flex cursor-pointer items-start gap-2 border-t border-border/60 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="mt-px size-3.5 shrink-0 rounded border-input accent-primary"
-                  checked={disclosed}
-                  onChange={(event) => setDisclosed(event.target.checked)}
-                  disabled={running || Boolean(pendingChatQuestion)}
-                  data-testid="research-disclosure"
-                />
-                <span>{t("research.disclosure")}</span>
-              </label>
+              {selectedModelProvider !== "local-gemma" && (
+                <label className="flex cursor-pointer items-start gap-2 border-t border-border/60 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-px size-3.5 shrink-0 rounded border-input accent-primary"
+                    checked={disclosed}
+                    onChange={(event) => setDisclosed(event.target.checked)}
+                    disabled={running || Boolean(pendingChatQuestion)}
+                    data-testid="research-disclosure"
+                  />
+                  <span>{t("research.disclosure")}</span>
+                </label>
+              )}
             </div>
           </div>
           <p className="m-0 shrink-0 px-1 text-center text-[11px] text-muted-foreground">

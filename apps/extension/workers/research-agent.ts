@@ -224,6 +224,12 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             apiKey,
             ...(message.modelBinding?.kind === "local-gemma"
               ? {
+                  modelUsageBudget: "local-unmetered" as const,
+                  modelProviderFailureMode: "surface-terminal" as const,
+                }
+              : {}),
+            ...(message.modelBinding?.kind === "local-gemma"
+              ? {
                   modelBinding: createLocalGemmaChatModelBindingV1({
                     port: message.modelBinding.port,
                     modelId: message.modelBinding.modelId,

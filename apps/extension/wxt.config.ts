@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 // dist/ and break `bun install` (postinstall: wxt prepare) on a fresh clone
 // before any build exists.
 import { DOCX_BROWSER_VITE_DEFINES } from "../../packages/docx/src/vite";
-import { patchOrtJsepFactoryForMv3 } from "./scripts/patch-ort-jsep-csp";
+import { patchOrtAsyncifyFactoryForMv3 } from "./scripts/patch-ort-jsep-csp";
 
 const researchBrowserModule = (name: string): string =>
   fileURLToPath(new URL(`./utils/research/${name}.ts`, import.meta.url));
@@ -113,13 +113,13 @@ export default defineConfig({
         },
       },
       {
-        name: "mv3-csp-safe-ort-jsep-factory",
+        name: "mv3-csp-safe-ort-webgpu-factory",
         enforce: "post",
         generateBundle(_options, bundle) {
           const candidates = Object.values(bundle).filter(
             (item) =>
               item.type === "asset" &&
-              /ort-wasm-simd-threaded[.]jsep-[^/]+[.]mjs$/u.test(item.fileName),
+              /ort-wasm-simd-threaded[.]asyncify-[^/]+[.]mjs$/u.test(item.fileName),
           );
           // WXT invokes this plugin once per entrypoint build. Most entrypoints
           // do not contain the local-model worker (and therefore no ORT
@@ -128,14 +128,14 @@ export default defineConfig({
           if (candidates.length === 0) return;
           if (candidates.length !== 1 || candidates[0]?.type !== "asset") {
             throw new Error(
-              `Expected one packaged ONNX Runtime JSEP factory, found ${candidates.length}.`,
+              `Expected one packaged ONNX Runtime WebGPU factory, found ${candidates.length}.`,
             );
           }
           const source = candidates[0].source;
           const text = typeof source === "string"
             ? source
             : new TextDecoder().decode(source);
-          candidates[0].source = patchOrtJsepFactoryForMv3(text);
+          candidates[0].source = patchOrtAsyncifyFactoryForMv3(text);
         },
       },
     ],

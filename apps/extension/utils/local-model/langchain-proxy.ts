@@ -10,9 +10,12 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs";
-import type { Runnable } from "@langchain/core/runnables";
+import { RunnableBinding, type Runnable } from "@langchain/core/runnables";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 import type { BaseLanguageModelInput, ToolDefinition } from "@langchain/core/language_models/base";
+import type { ModelProfile } from "@langchain/core/language_models/profile";
+import { ContextOverflowError } from "@langchain/core/errors";
+import { ResearchContractError } from "@atlcli/research/contracts";
 import {
   CAPABILITY_FREE_QUALITY_ADAPTER_V1,
   type ChatModelBindingV1,
@@ -25,9 +28,32 @@ import {
   type LocalModelPortResponseV1,
   type LocalModelToolV1,
 } from "./protocol.js";
+import { projectLocalGemmaToolProtocolV1 } from "./tool-protocol.js";
+import {
+  projectLocalGemmaFinalToolResultV1,
+  projectLocalGemmaToolResultV1,
+} from "./tool-result.js";
+import {
+  LOCAL_GEMMA_HARNESS_PROFILE_V1,
+  LOCAL_GEMMA_OPERATIONAL_PROFILE_V1,
+  localGemmaThinkingModeV1,
+  type LocalGemmaThinkingModeV1,
+} from "./model-profile.js";
 
 interface LocalGemmaCallOptionsV1 extends BaseChatModelCallOptions {
   tools?: ToolDefinition[];
+  tool_choice?: string | { type?: string; name?: string; function?: { name?: string } };
+}
+
+function requiredToolNameV1(
+  toolChoice: LocalGemmaCallOptionsV1["tool_choice"],
+): string | undefined {
+  if (typeof toolChoice === "string") {
+    return toolChoice === "auto" || toolChoice === "any" || toolChoice === "none"
+      ? undefined
+      : toolChoice;
+  }
+  return toolChoice?.name ?? toolChoice?.function?.name;
 }
 
 function textContentV1(message: BaseMessage): string {
@@ -52,13 +78,37 @@ function textContentV1(message: BaseMessage): string {
   return text;
 }
 
-export function toLocalModelMessagesV1(messages: BaseMessage[]): LocalModelChatMessageV1[] {
-  return messages.map((message): LocalModelChatMessageV1 => {
+export function toLocalModelMessagesV1(
+  messages: BaseMessage[],
+  options: {
+    retainPrivateThought?: boolean;
+    terminalAnswerProjection?: boolean;
+  } = {},
+): LocalModelChatMessageV1[] {
+  const relevanceText = [...messages].reverse().find((message) =>
+    message.getType() === "human"
+  );
+  const relevance = relevanceText ? textContentV1(relevanceText) : "";
+  return messages.map((message, messageIndex): LocalModelChatMessageV1 => {
     const type = message.getType();
     const content = textContentV1(message);
     if (type === "system") return { role: "system", content };
-    if (type === "human") return { role: "user", content };
+    if (type === "human") {
+      const terminalContent = options.terminalAnswerProjection &&
+          content.includes("User question:")
+        ? content.split("\n").filter((line) =>
+            line.startsWith("User question:") ||
+            line.startsWith("Explicit user request checklist")
+          ).join("\n")
+        : content;
+      return { role: "user", content: terminalContent || content };
+    }
     if (type === "ai") {
+      const retainedThought = options.retainPrivateThought !== false &&
+          AIMessage.isInstance(message) &&
+          typeof message.additional_kwargs.localGemmaThought === "string"
+        ? message.additional_kwargs.localGemmaThought
+        : "";
       const toolCalls = AIMessage.isInstance(message)
         ? message.tool_calls?.map((call) => ({
             id: call.id ?? `prior-${call.name}`,
@@ -68,16 +118,29 @@ export function toLocalModelMessagesV1(messages: BaseMessage[]): LocalModelChatM
         : undefined;
       return {
         role: "assistant",
-        content,
+        content: retainedThought
+          ? `<|channel>thought\n${retainedThought}<channel|>${content}`
+          : content,
         ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
       };
     }
     if (type === "tool" && ToolMessage.isInstance(message)) {
-      if (!message.name) throw new Error("A local Gemma tool result requires a tool name.");
+      const toolName = message.name ?? [...messages.slice(0, messageIndex)]
+        .reverse()
+        .filter(AIMessage.isInstance)
+        .flatMap((candidate) => candidate.tool_calls ?? [])
+        .find((call) => call.id === message.tool_call_id)?.name;
+      if (!toolName) {
+        throw new Error(
+          `A local Gemma tool result could not be matched to its call id: ${message.tool_call_id}.`,
+        );
+      }
       return {
         role: "tool",
-        content,
-        name: message.name,
+        content: options.terminalAnswerProjection
+          ? projectLocalGemmaFinalToolResultV1(content, relevance)
+          : projectLocalGemmaToolResultV1(content, relevance),
+        name: toolName,
         tool_call_id: message.tool_call_id,
       };
     }
@@ -85,7 +148,48 @@ export function toLocalModelMessagesV1(messages: BaseMessage[]): LocalModelChatM
   });
 }
 
-function toLocalToolsV1(tools: ToolDefinition[] | undefined): LocalModelToolV1[] {
+const LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 = {
+  type: "object",
+  required: ["blocks"],
+  properties: {
+    blocks: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["markdown", "sourceRefs", "assertion", "scope"],
+        properties: {
+          markdown: { type: "string" },
+          sourceRefs: { type: "array", items: { type: "string" } },
+          assertion: {
+            type: "string",
+            enum: ["positive", "absence", "none"],
+          },
+          scope: {
+            type: "string",
+            enum: ["none", "source", "selected-sources", "bound-scope"],
+          },
+        },
+      },
+    },
+    gaps: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["code", "message", "sourceIds"],
+        properties: {
+          code: { type: "string" },
+          message: { type: "string" },
+          sourceIds: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+  },
+} as const;
+
+function toLocalToolsV1(
+  tools: ToolDefinition[] | undefined,
+  requiredToolName?: string,
+): LocalModelToolV1[] {
   return (tools ?? []).map((tool) => {
     if (tool.type !== "function" || !tool.function?.name || !tool.function.parameters) {
       throw new Error("Local Gemma accepts only named function tools with JSON Schema parameters.");
@@ -94,8 +198,14 @@ function toLocalToolsV1(tools: ToolDefinition[] | undefined): LocalModelToolV1[]
       type: "function",
       function: {
         name: tool.function.name,
-        ...(tool.function.description ? { description: tool.function.description } : {}),
-        parameters: tool.function.parameters,
+        ...(requiredToolName === "ChatAnswerDraftV2"
+          ? { parameters: LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 }
+          : {
+              ...(tool.function.description
+                ? { description: tool.function.description }
+                : {}),
+              parameters: tool.function.parameters,
+            }),
       },
     };
   });
@@ -126,7 +236,9 @@ class LocalGemmaPortClientV1 {
   async *generate(input: {
     messages: LocalModelChatMessageV1[];
     tools: LocalModelToolV1[];
+    requiredToolName?: string;
     maxOutputTokens: number;
+    thinkingMode: LocalGemmaThinkingModeV1;
     signal?: AbortSignal;
   }): AsyncGenerator<LocalModelPortResponseV1> {
     const requestId = `generation-${Date.now()}-${++this.#sequence}`;
@@ -147,7 +259,9 @@ class LocalGemmaPortClientV1 {
       requestId,
       messages: input.messages,
       tools: input.tools,
+      ...(input.requiredToolName ? { requiredToolName: input.requiredToolName } : {}),
       maxOutputTokens: input.maxOutputTokens,
+      thinkingMode: input.thinkingMode,
     } satisfies LocalModelPortRequestV1);
     input.signal?.addEventListener("abort", cancel, { once: true });
     if (input.signal?.aborted) cancel();
@@ -166,28 +280,65 @@ class LocalGemmaPortClientV1 {
   }
 }
 
+function localModelErrorV1(
+  response: Extract<LocalModelPortResponseV1, { kind: "error" }>,
+): Error {
+  if (response.code === "context-overflow") {
+    return new ContextOverflowError(response.error);
+  }
+  return new ResearchContractError(
+    response.code === "cancelled"
+      ? "cancelled"
+      : response.code === "invalid-request"
+        ? "invalid-request"
+        : "provider-error",
+    response.error,
+  );
+}
+
 export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1> {
+  readonly modelName = LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.harnessKey;
   readonly #client: LocalGemmaPortClientV1;
   readonly #maxOutputTokens: number;
+  readonly #thinkingMode: LocalGemmaThinkingModeV1;
 
-  constructor(input: { client: LocalGemmaPortClientV1; maxOutputTokens: number }) {
+  constructor(input: {
+    client: LocalGemmaPortClientV1;
+    maxOutputTokens: number;
+    thinkingMode?: LocalGemmaThinkingModeV1;
+  }) {
     super({});
     this.#client = input.client;
     this.#maxOutputTokens = Math.min(
       input.maxOutputTokens,
       LOCAL_MODEL_RPC_LIMITS_V1.maxOutputTokens,
+      LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.maxOutputTokens,
     );
+    this.#thinkingMode = input.thinkingMode ?? "disabled";
   }
 
   _llmType(): string { return "atlcli-local-gemma"; }
+
+  override get profile(): ModelProfile {
+    return {
+      maxOutputTokens: LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.maxOutputTokens,
+      reasoningOutput: true,
+      toolCalling: true,
+      toolChoice: true,
+    };
+  }
 
   bindTools(
     tools: BindToolsInput[],
     kwargs?: Partial<LocalGemmaCallOptionsV1>,
   ): Runnable<BaseLanguageModelInput, AIMessageChunk, LocalGemmaCallOptionsV1> {
-    return this.withConfig({
-      tools: tools.map((tool) => convertToOpenAITool(tool)),
-      ...kwargs,
+    return new RunnableBinding({
+      bound: this,
+      config: {},
+      kwargs: {
+        tools: tools.map((tool) => convertToOpenAITool(tool)),
+        ...kwargs,
+      },
     });
   }
 
@@ -197,7 +348,7 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
   ): Promise<ChatResult> {
     let final: Extract<LocalModelPortResponseV1, { kind: "complete" }> | undefined;
     for await (const response of this.#call(messages, options)) {
-      if (response.kind === "error") throw new Error(response.error);
+      if (response.kind === "error") throw localModelErrorV1(response);
       if (response.kind === "complete") final = response;
     }
     if (!final) throw new Error("Local Gemma ended without a terminal response.");
@@ -206,6 +357,9 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
         text: final.text,
         message: new AIMessage({
           content: final.text,
+          additional_kwargs: final.thought && final.toolCalls.length > 0
+            ? { localGemmaThought: final.thought }
+            : {},
           tool_calls: final.toolCalls.map((call) => ({
             id: call.id,
             name: call.name,
@@ -228,7 +382,7 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
   ): AsyncGenerator<ChatGenerationChunk> {
     let sawTextDelta = false;
     for await (const response of this.#call(messages, options)) {
-      if (response.kind === "error") throw new Error(response.error);
+      if (response.kind === "error") throw localModelErrorV1(response);
       if (response.kind === "text-delta") {
         sawTextDelta = true;
         yield new ChatGenerationChunk({
@@ -240,6 +394,9 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
           text: sawTextDelta ? "" : response.text,
           message: new AIMessageChunk({
             content: sawTextDelta ? "" : response.text,
+            additional_kwargs: response.thought && response.toolCalls.length > 0
+              ? { localGemmaThought: response.thought }
+              : {},
             tool_call_chunks: response.toolCalls.map((call, index) => ({
               id: call.id,
               name: call.name,
@@ -259,10 +416,32 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
   }
 
   #call(messages: BaseMessage[], options: LocalGemmaCallOptionsV1) {
+    const requiredToolName = requiredToolNameV1(options.tool_choice);
+    const declaredTools = toLocalToolsV1(options.tools, requiredToolName);
+    const tools = requiredToolName
+      ? declaredTools.filter((tool) => tool.function.name === requiredToolName)
+      : declaredTools;
+    if (requiredToolName && tools.length !== 1) {
+      throw new Error(`The required local Gemma tool is not declared: ${requiredToolName}.`);
+    }
     return this.#client.generate({
-      messages: toLocalModelMessagesV1(messages),
-      tools: toLocalToolsV1(options.tools),
+      messages: projectLocalGemmaToolProtocolV1(
+        toLocalModelMessagesV1(messages, {
+          // Once DeepAgents has selected an exact tool, the previous private
+          // thought is neither evidence nor needed for routing. Omitting it
+          // keeps the local finalization call inside the browser context
+          // envelope without changing the canonical LangChain messages.
+          retainPrivateThought: requiredToolName === undefined,
+          terminalAnswerProjection: requiredToolName === "ChatAnswerDraftV2",
+        }),
+        tools,
+        this.#thinkingMode,
+        requiredToolName,
+      ),
+      tools,
+      ...(requiredToolName ? { requiredToolName } : {}),
       maxOutputTokens: this.#maxOutputTokens,
+      thinkingMode: this.#thinkingMode,
       ...(options.signal ? { signal: options.signal } : {}),
     });
   }
@@ -274,10 +453,22 @@ export function createLocalGemmaChatModelBindingV1(input: {
   maxOutputTokens: number;
 }): ChatModelBindingV1 {
   const client = new LocalGemmaPortClientV1(input.port);
-  const model = new LocalGemmaChatModelV1({
-    client,
-    maxOutputTokens: input.maxOutputTokens,
-  });
+  const models = new Map<LocalGemmaThinkingModeV1, LocalGemmaChatModelV1>();
+  const modelForThinking = (
+    thinkingMode: LocalGemmaThinkingModeV1,
+  ): LocalGemmaChatModelV1 => {
+    let model = models.get(thinkingMode);
+    if (!model) {
+      model = new LocalGemmaChatModelV1({
+        client,
+        maxOutputTokens: input.maxOutputTokens,
+        thinkingMode,
+      });
+      models.set(thinkingMode, model);
+    }
+    return model;
+  };
+  const model = modelForThinking("disabled");
   return {
     model,
     modelId: input.modelId,
@@ -286,13 +477,32 @@ export function createLocalGemmaChatModelBindingV1(input: {
       providerId: "local-gemma",
     },
     structuredOutput: "tool",
-    modelForRoute: (request) => ({
-      model,
-      effectiveModelId: input.modelId,
-      requestedPreference: request.preference,
-      effectivePreference: request.preference,
-      thinkingMode: "disabled",
-      finalizationCorridor: "standard",
-    }),
+    harnessProfile: {
+      key: LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.harnessKey,
+      profile: LOCAL_GEMMA_HARNESS_PROFILE_V1,
+    },
+    runtimeLimits: {
+      maxInputTokens: LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.maxInputTokens,
+      interpreterResultChars:
+        LOCAL_GEMMA_OPERATIONAL_PROFILE_V1.maxInterpreterResultChars,
+    },
+    modelForPreference: (preference) =>
+      modelForThinking(localGemmaThinkingModeV1(preference)),
+    modelForRoute: (request) => {
+      const finalizeOnly = ["drafting", "repair", "synthesis"].includes(request.role);
+      const localThinkingMode = finalizeOnly
+        ? "disabled"
+        : localGemmaThinkingModeV1(request.preference);
+      return {
+        model: modelForThinking(localThinkingMode),
+        effectiveModelId: input.modelId,
+        requestedPreference: request.preference,
+        effectivePreference: finalizeOnly ? "fast" : request.preference,
+        thinkingMode: localThinkingMode === "disabled"
+          ? "disabled"
+          : "adaptive-summary",
+        finalizationCorridor: finalizeOnly ? "finalize-only" : "standard",
+      };
+    },
   };
 }

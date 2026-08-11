@@ -28,6 +28,7 @@ import {
 } from "../model-budget-middleware.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
+  ResearchContractError,
   type ChatPresentationStreamEventV1,
   type ResearchActivityCodeV1,
   type ResearchOneShotEventV1,
@@ -149,6 +150,9 @@ import {
 // Keep the runtime value provider-neutral so ChatAnthropic can project it to
 // `{ type: "tool", name: "eval" }` instead of forwarding an invalid envelope.
 const CHAT_EVAL_TOOL_CHOICE_V1 = "eval" as unknown as NonNullable<
+  ModelRequest["toolChoice"]
+>;
+const CHAT_ANSWER_TOOL_CHOICE_V2 = "ChatAnswerDraftV2" as unknown as NonNullable<
   ModelRequest["toolChoice"]
 >;
 
@@ -463,6 +467,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
   options: {
     agenticWorkflowComplete?: () => boolean;
     nativeStructuredOutput?: boolean;
+    toolStructuredOutput?: boolean;
     answerOutputInstruction?: string;
     evidenceAccessRequired?: boolean;
     evidenceAccessAttempted?: () => boolean;
@@ -496,6 +501,8 @@ export function createChatDirectToolSurfaceMiddlewareV1(
       }
       try {
         const terminalRepairOnly = options.terminalRepairOnly?.() === true;
+        const requireTerminalAnswer = options.toolStructuredOutput === true &&
+          (terminalRepairOnly || options.evidenceAccessAttempted?.() === true);
         const filteredRequest = {
           ...request,
           // createDeepAgent always assembles filesystem and task scaffolding.
@@ -508,6 +515,9 @@ export function createChatDirectToolSurfaceMiddlewareV1(
             : request.tools.filter((candidate) =>
                 candidate.name === "eval" || candidate.name === "ask_user_question"
               ),
+          ...(requireTerminalAnswer
+            ? { toolChoice: CHAT_ANSWER_TOOL_CHOICE_V2 }
+            : {}),
           ...(terminalRepairOnly
             ? {
                 systemMessage: request.systemMessage.concat(new SystemMessage([
@@ -747,6 +757,18 @@ export interface RunChatAgentInput {
   /** Opaque host-owned principal/cache fences; never credentials or email addresses. */
   hostIdentity: ChatHostIdentityV1;
   qualityPolicy?: ChatQualityPolicyV1;
+  /**
+   * Local inference has no provider token or spend quota. This disables only
+   * the cumulative input/output/cost ceilings; model-call, context, transport,
+   * acquisition, and per-generation safety limits remain enforced.
+   */
+  modelUsageBudget?: "provider-metered" | "local-unmetered";
+  /**
+   * Remote stream interruptions remain resumable by default. A local runtime
+   * can instead surface its actionable device/model error immediately because
+   * retrying it does not risk another uncertain billable provider call.
+   */
+  modelProviderFailureMode?: "durable-resume" | "surface-terminal";
   /** Resume exactly this turn's durable askUserQuestion checkpoint. */
   resumeAnswer?: ChatUserQuestionAnswerV1;
   /** Resume the same durable model checkpoint without pretending token replay. */
@@ -1120,6 +1142,7 @@ export function createKiteweaveChatAgent(
 ): {
   runChatAgent(input: RunChatAgentInput): Promise<ChatAnswerV1>;
 } {
+  const registeredHarnessProfiles = new Set<string>();
   return {
     async runChatAgent(input): Promise<ChatAnswerV1> {
       const turn = normalizeChatTurnRequestV1(input.turn);
@@ -1482,6 +1505,16 @@ export function createKiteweaveChatAgent(
             "The Chat host did not bind a LangChain chat model.",
           );
         }
+        if (
+          modelBinding.harnessProfile &&
+          !registeredHarnessProfiles.has(modelBinding.harnessProfile.key)
+        ) {
+          runtime.registerHarnessProfile(
+            modelBinding.harnessProfile.key,
+            modelBinding.harnessProfile.profile,
+          );
+          registeredHarnessProfiles.add(modelBinding.harnessProfile.key);
+        }
         const rootPlanningPreference = chatRootPlanningPreferenceV1({
           qualityMode: qualityPolicy.mode,
           execution: strategyDecision.execution,
@@ -1500,6 +1533,13 @@ export function createKiteweaveChatAgent(
             qualityMode: qualityPolicy.mode,
             execution: strategyDecision.execution,
           }),
+          ...(input.modelUsageBudget === "local-unmetered"
+            ? {
+                maxTotalModelInputTokens: Number.MAX_SAFE_INTEGER,
+                maxTotalModelOutputTokens: Number.MAX_SAFE_INTEGER,
+                maxModelCostMicros: Number.MAX_SAFE_INTEGER,
+              }
+            : {}),
         });
         const modelCallObservations: ResearchModelCallObservationV1[] = [];
         const observeModelCall = async (
@@ -1743,6 +1783,12 @@ export function createKiteweaveChatAgent(
               ...(modelBinding.projectResponseSchema
                 ? { projectResponseSchema: modelBinding.projectResponseSchema }
                 : {}),
+              ...(modelBinding.runtimeLimits?.interpreterResultChars === undefined
+                ? {}
+                : {
+                    interpreterResultChars:
+                      modelBinding.runtimeLimits.interpreterResultChars,
+                  }),
               strategy: strategyDecision,
               budget,
               modelBudget,
@@ -2031,6 +2077,14 @@ export function createKiteweaveChatAgent(
           createChatDurableSummarizationMiddlewareV1(runtime, {
             workspace: input.workspace,
             model,
+            shortTurnPassThrough:
+              modelBinding.qualityAdapter.providerId === "local-gemma",
+            ...(modelBinding.runtimeLimits?.maxInputTokens === undefined
+              ? {}
+              : {
+                  operationalMaxInputTokens:
+                    modelBinding.runtimeLimits.maxInputTokens,
+                }),
           });
         const checkpoint = new ChatTurnWorkspaceCheckpointerV1({
           conversationId: turn.conversationId,
@@ -2078,6 +2132,9 @@ export function createKiteweaveChatAgent(
               nativeStructuredOutput:
                 strategyDecision.execution !== "agentic" &&
                 modelBinding.structuredOutput === "native",
+              toolStructuredOutput:
+                strategyDecision.execution !== "agentic" &&
+                modelBinding.structuredOutput === "tool",
               answerOutputInstruction: chatAnswerOutputInstructionV1(
                 qualityPolicy.mode,
                 true,
@@ -2126,6 +2183,8 @@ export function createKiteweaveChatAgent(
               maxPtcCalls: turn.limits.maxPtcCalls,
               maxResultChars: Math.min(
                 turn.limits.maxPtcOutputBytes,
+                modelBinding.runtimeLimits?.interpreterResultChars ??
+                  Number.MAX_SAFE_INTEGER,
                 Math.max(24_000, turn.limits.maxReportChars),
               ),
               captureConsole: false,
@@ -2548,7 +2607,8 @@ export function createKiteweaveChatAgent(
               typeof inspectChatDraftAfterHostRepairV1
             >["draft"];
             let repairRejectionReasons: readonly string[] = [];
-            for (let attempt = 0; attempt < 2 && !repairedDraft; attempt += 1) {
+            const maxRepairAttempts = modelBinding.structuredOutput === "tool" ? 1 : 2;
+            for (let attempt = 0; attempt < maxRepairAttempts && !repairedDraft; attempt += 1) {
               finalResult = await agent.invoke({
                 messages: [new HumanMessage([
                   attempt === 0
@@ -2770,11 +2830,18 @@ export function createKiteweaveChatAgent(
           throw error;
         }
         const classified = classifyResearchError(error);
-        const terminalError = classified.code === "invalid-report" &&
-            !(error instanceof ChatContractError)
-          ? new ChatContractError("invalid-report", classified.message)
-          : error;
+        const terminalError = input.modelProviderFailureMode === "surface-terminal" &&
+            classified.code === "provider-error"
+          ? new ResearchContractError(
+              "provider-error",
+              redactResearchSecrets(error),
+            )
+          : classified.code === "invalid-report" &&
+              !(error instanceof ChatContractError)
+            ? new ChatContractError("invalid-report", classified.message)
+            : error;
         const resumableStreamFailure = Boolean(
+          input.modelProviderFailureMode !== "surface-terminal" &&
           modelCheckpointEntered &&
           resumableRootModelFailure &&
           resumeEnvelope &&
@@ -2882,6 +2949,13 @@ export function createKiteweaveChatAgent(
             // Never replace the causal model/provider/runtime failure with a
             // best-effort state-publication failure.
           }
+        }
+        if (
+          input.modelProviderFailureMode === "surface-terminal" &&
+          classified.code === "provider-error" &&
+          !input.signal?.aborted
+        ) {
+          throw terminalError;
         }
         if (!controller.signal.aborted) controller.abort(terminalError);
         if (controller.signal.aborted) {

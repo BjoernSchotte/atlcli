@@ -2518,6 +2518,26 @@ describe("separate Chat root", () => {
     expect((response as AIMessage).tool_calls?.[0]?.name).toBe("eval");
   });
 
+  test("selects the terminal tool after local evidence access without changing native output", async () => {
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      toolStructuredOutput: true,
+      evidenceAccessRequired: true,
+      evidenceAccessAttempted: () => true,
+    });
+    let toolChoice: unknown;
+    await middleware.wrapModelCall?.(
+      {
+        tools: [{ name: "eval" }, { name: "ask_user_question" }],
+        systemMessage: new SystemMessage("Stable Chat contract."),
+      } as never,
+      async (request) => {
+        toolChoice = request.toolChoice;
+        return new AIMessage("fixture") as never;
+      },
+    );
+    expect(toolChoice).toBe("ChatAnswerDraftV2");
+  });
+
   test("closes an accepted agentic workflow without a supervisor rewrite", async () => {
     const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
       agenticWorkflowComplete: () => true,

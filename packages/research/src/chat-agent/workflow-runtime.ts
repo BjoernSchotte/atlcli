@@ -1029,6 +1029,7 @@ function compileChatSubagentsV1(input: {
   modelForFinalization?: () => BaseChatModel;
   modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
   promptCache?: { ttl: "5m" | "1h" };
+  interpreterResultChars?: number;
   broker: ResearchCapabilityBroker;
   limits: ResearchLimitsV1;
   locale?: string;
@@ -1468,6 +1469,7 @@ function compileChatSubagentsV1(input: {
               maxPtcCalls: childPtcCallLimit,
               maxResultChars: Math.min(
                 input.limits.maxPtcOutputBytes,
+                input.interpreterResultChars ?? Number.MAX_SAFE_INTEGER,
                 boundedAcquisitionResultAvailable
                   ? input.limits.maxPtcOutputBytes
                   : profile.maxResultBytes,
@@ -1559,6 +1561,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     type: "object";
     [key: string]: unknown;
   };
+  interpreterResultChars?: number;
   strategy: ChatStrategyDecisionV1;
   budget: ResearchRunBudget;
   modelBudget: ResearchModelRunBudget;
@@ -1690,6 +1693,9 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       : {}),
     ...(input.modelForRoute ? { modelForRoute: input.modelForRoute } : {}),
     ...(input.promptCache ? { promptCache: input.promptCache } : {}),
+    ...(input.interpreterResultChars === undefined
+      ? {}
+      : { interpreterResultChars: input.interpreterResultChars }),
     broker: input.broker,
     limits: input.limits,
     ...(input.locale ? { locale: input.locale } : {}),
@@ -2147,8 +2153,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       return result;
     },
     projectDependencyResult: (_taskId, result) => structuredClone(result),
-    projectResponseFormat: input.structuredOutput === "native"
-      ? (schema, admission) => {
+    projectResponseFormat: (schema, admission) => {
           const typed = schema as {
             type: "object";
             properties?: Record<string, unknown>;
@@ -2157,9 +2162,12 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
             [key: string]: unknown;
           };
           if (
-            admission.subagentType === "chat-answer-drafter-v1" ||
-            admission.subagentType === "chat-answer-repairer-v1" ||
-            admission.subagentType === "chat-synthesizer-v1"
+            input.structuredOutput === "native" &&
+            [
+              "chat-answer-drafter-v1",
+              "chat-answer-repairer-v1",
+              "chat-synthesizer-v1",
+            ].includes(admission.subagentType)
           ) {
             // These children have no read tools or side effects. A provider
             // with native structured output can therefore avoid the extra
@@ -2170,8 +2178,7 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
           // Tool-bearing and analytical children stay on ToolStrategy so a
           // transient provider stream can never replay an Atlassian read.
           return toolStrategy(typed);
-        }
-      : undefined,
+        },
     beforeInvoke: async ({ taskId }) => {
       const profileId = profileByTaskId.get(taskId);
       if (profileId === "answer-critic") await ensureGroundednessAssessment();

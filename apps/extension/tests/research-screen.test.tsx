@@ -806,8 +806,8 @@ describe("portable Research screen", () => {
     await dom.flush();
     expect(dom.find("research-mode-deep").hasAttribute("disabled")).toBe(true);
     expect(dom.container().textContent).toContain("Gemma runs Chat locally");
+    expect(dom.maybeFind("research-disclosure")).toBeNull();
     await dom.setValue("research-chat-thinking", "quick");
-    await dom.toggle("research-disclosure");
     await dom.setValue("copilot-chat-textarea", "Summarize the attached page locally.");
     await dom.click("research-run");
     await dom.flush();
@@ -870,7 +870,7 @@ describe("portable Research screen", () => {
 
     localReady = true;
     await dom.setValue("research-chat-thinking", "quick");
-    await dom.toggle("research-disclosure");
+    expect(dom.maybeFind("research-disclosure")).toBeNull();
     await dom.setValue("copilot-chat-textarea", "Answer after local installation.");
     await dom.click("research-run");
     await dom.flush();

@@ -54,6 +54,22 @@ export interface ChatModelBindingV1 {
     ttl: "5m" | "1h";
   };
   /**
+   * Optional DeepAgentsJS harness tuning selected by the provider adapter.
+   * The host registers it before constructing root or child agents; it never
+   * changes model selection or grants capabilities.
+   */
+  harnessProfile?: {
+    key: string;
+    profile: Parameters<
+      typeof import("deepagents/browser").registerHarnessProfile
+    >[1];
+  };
+  /** Per-invocation controls for constrained runtimes, not usage quotas. */
+  runtimeLimits?: {
+    maxInputTokens?: number;
+    interpreterResultChars?: number;
+  };
+  /**
    * Explicit role-to-capability route. It may return the same model for every
    * role; routing metadata cannot grant tools, scope, or workflow authority.
    */

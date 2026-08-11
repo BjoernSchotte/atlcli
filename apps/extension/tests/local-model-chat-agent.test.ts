@@ -3,6 +3,7 @@ import {
   CHAT_SESSION_PATH_V1,
   DEFAULT_RESEARCH_LIMITS_V1,
   chatQualityPolicyV1,
+  classifyResearchError,
   createMemoryResearchWorkspace,
   type ChatPresentationStreamEventV1,
   type ChatSessionV1,
@@ -14,6 +15,9 @@ import {
   LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
   type LocalModelPortRequestV1,
 } from "../utils/local-model/protocol.js";
+import {
+  LOCAL_GEMMA_ROOT_SYSTEM_PROMPT_MAX_CHARS_V1,
+} from "../utils/local-model/tool-protocol.js";
 
 const providers = {
   jira: {
@@ -40,6 +44,7 @@ function request(
     question?: string;
     jiraProjectKeys?: string[];
     confluenceSpaceKeys?: string[];
+    limits?: Partial<ResearchRequestV1["limits"]>;
   } = {},
 ): {
   turn: {
@@ -64,6 +69,7 @@ function request(
     maxTotalModelInputTokens: 1_000_000,
     maxTotalModelOutputTokens: 128_000,
     maxModelCostMicros: 100_000_000,
+    ...options.limits,
   };
   const question =
     options.question ?? "Give the bounded synthetic local answer.";
@@ -89,6 +95,126 @@ function request(
 }
 
 describe("local Gemma shared Chat-agent path", () => {
+  it("surfaces an actionable local runtime failure instead of a remote-stream checkpoint", async () => {
+    const channel = new MessageChannel();
+    channel.port2.onmessage = (
+      event: MessageEvent<LocalModelPortRequestV1>,
+    ) => {
+      const message = event.data;
+      if (message.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "error",
+        requestId: message.requestId,
+        code: "model-error",
+        error: "Synthetic WebGPU initialization failed.",
+      });
+    };
+    channel.port2.start();
+    try {
+      try {
+        await runChatAgent({
+          ...request({ suffix: "runtime-failure" }),
+          modelBinding: createLocalGemmaChatModelBindingV1({
+            port: channel.port1,
+            modelId: "fixture/local-gemma",
+            maxOutputTokens: 512,
+          }),
+          modelProviderFailureMode: "surface-terminal",
+          modelUsageBudget: "local-unmetered",
+          providers,
+          workspace: createMemoryResearchWorkspace(),
+          hostIdentity: {
+            userId: "principal:local-runtime-failure",
+            providerCacheIdentity: "provider-cache:local-runtime-failure",
+          },
+          qualityPolicy: chatQualityPolicyV1("quick"),
+        });
+        throw new Error("Expected local runtime failure.");
+      } catch (error) {
+        expect(error).toMatchObject({
+          message: "Synthetic WebGPU initialization failed.",
+        });
+        expect(classifyResearchError(error)).toEqual({
+          code: "provider-error",
+          message: "Synthetic WebGPU initialization failed.",
+        });
+      }
+    } finally {
+      channel.port1.close();
+      channel.port2.close();
+    }
+  }, 30_000);
+
+  it("does not apply provider token or cost quotas to local inference", async () => {
+    const channel = new MessageChannel();
+    channel.port2.onmessage = (
+      event: MessageEvent<LocalModelPortRequestV1>,
+    ) => {
+      const message = event.data;
+      if (message.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: message.requestId,
+        text: "",
+        toolCalls: [
+          {
+            id: "local-unmetered-answer",
+            name: "ChatAnswerDraftV2",
+            arguments: {
+              blocks: [
+                {
+                  id: "answer-block:local-unmetered",
+                  markdown: "A local answer without a provider token quota.",
+                  sourceRefs: [],
+                  assertion: "none",
+                  scope: "none",
+                },
+              ],
+              gaps: [],
+            },
+          },
+        ],
+        inputTokens: 8_000,
+        outputTokens: 4_000,
+      });
+    };
+    channel.port2.start();
+    try {
+      const answer = await runChatAgent({
+        ...request({
+          suffix: "unmetered",
+          limits: {
+            maxTotalModelInputTokens: 1_000,
+            maxTotalModelOutputTokens: 1_000,
+            maxModelCostMicros: 10_000,
+          },
+        }),
+        modelBinding: createLocalGemmaChatModelBindingV1({
+          port: channel.port1,
+          modelId: "fixture/local-gemma",
+          maxOutputTokens: 512,
+        }),
+        modelUsageBudget: "local-unmetered",
+        providers,
+        workspace: createMemoryResearchWorkspace(),
+        hostIdentity: {
+          userId: "principal:local-unmetered",
+          providerCacheIdentity: "provider-cache:local-unmetered",
+        },
+        qualityPolicy: chatQualityPolicyV1("quick"),
+      });
+
+      expect(answer.messageMarkdown).toBe(
+        "A local answer without a provider token quota.",
+      );
+    } finally {
+      channel.port1.close();
+      channel.port2.close();
+    }
+  }, 30_000);
+
   it("round-trips eval and a structured answer through the real browser runChatAgent", async () => {
     const channel = new MessageChannel();
     const requests: Extract<LocalModelPortRequestV1, { kind: "generate" }>[] =
@@ -154,6 +280,7 @@ describe("local Gemma shared Chat-agent path", () => {
             modelId: "fixture/local-gemma",
             maxOutputTokens: 512,
           }),
+          modelProviderFailureMode: "surface-terminal",
           providers,
           workspace,
           hostIdentity: {
@@ -180,6 +307,9 @@ describe("local Gemma shared Chat-agent path", () => {
       );
       expect(requests[0]!.tools.map((tool) => tool.function.name)).toContain(
         "ChatAnswerDraftV2",
+      );
+      expect(requests[0]!.messages[0]!.content.length).toBeLessThanOrEqual(
+        LOCAL_GEMMA_ROOT_SYSTEM_PROMPT_MAX_CHARS_V1,
       );
       expect(requests[1]!.messages).toEqual(
         expect.arrayContaining([
@@ -280,10 +410,15 @@ describe("local Gemma shared Chat-agent path", () => {
             userId: `principal:local-${mode}-integration`,
             providerCacheIdentity: `provider-cache:local-${mode}-integration`,
           },
+          modelProviderFailureMode: "surface-terminal",
           qualityPolicy: chatQualityPolicyV1(mode),
         });
 
         expect(requests).toHaveLength(1);
+        expect(requests[0]!.thinkingMode).toBe(
+          mode === "auto" ? "low" : "enabled",
+        );
+        expect(requests[0]!.messages[0]!.content).toContain("<|think|>");
         expect(requests[0]!.tools.map((tool) => tool.function.name)).toContain(
           "ChatAnswerDraftV2",
         );
@@ -425,13 +560,26 @@ syntheticWorkflowRun;`;
           ],
         },
       ];
+      let scriptedResponseIndex = 0;
       channel.port2.onmessage = (
         event: MessageEvent<LocalModelPortRequestV1>,
       ) => {
         const message = event.data;
         if (message.kind !== "generate") return;
         requests.push(message);
-        const response = scriptedResponses[requests.length - 1];
+        if (message.tools.length === 0) {
+          channel.port2.postMessage({
+            schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+            kind: "complete",
+            requestId: message.requestId,
+            text: "Synthetic compact conversation context.",
+            toolCalls: [],
+            inputTokens: 48,
+            outputTokens: 12,
+          });
+          return;
+        }
+        const response = scriptedResponses[scriptedResponseIndex++];
         if (!response) throw new Error("unexpected local agentic model call");
         channel.port2.postMessage({
           schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
@@ -456,6 +604,7 @@ syntheticWorkflowRun;`;
             modelId: "fixture/local-gemma",
             maxOutputTokens: 1_024,
           }),
+          modelProviderFailureMode: "surface-terminal",
           providers,
           workspace: createMemoryResearchWorkspace(),
           hostIdentity: {
@@ -465,7 +614,13 @@ syntheticWorkflowRun;`;
           qualityPolicy: chatQualityPolicyV1(mode),
         });
 
-        expect(requests).toHaveLength(scriptedResponses.length);
+        expect(scriptedResponseIndex).toBe(scriptedResponses.length);
+        expect(requests[0]!.messages[0]!.content.length).toBeLessThanOrEqual(
+          LOCAL_GEMMA_ROOT_SYSTEM_PROMPT_MAX_CHARS_V1,
+        );
+        expect(requests[0]!.messages[0]!.content).toContain(
+          "tools.chatWorkflowPropose",
+        );
         expect(answer).toMatchObject({
           strategy: { qualityMode: mode, path: "agentic", delegated: true },
         });
