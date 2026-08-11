@@ -9,6 +9,7 @@
     "publish": "public-0.x"
   },
   "sideEffects": [
+    "./styles.css",
     "./dist/styles.css"
   ],
   "files": [
@@ -21,7 +22,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./styles.css": "./dist/styles.css"
+    "./styles.css": {
+      "development": "./styles.css",
+      "default": "./dist/styles.css"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && cp styles.css dist/styles.css",

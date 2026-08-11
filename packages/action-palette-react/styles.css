@@ -129,9 +129,16 @@
   cursor: pointer;
 }
 
+.atlcli-action-palette-close,
+.atlcli-action-palette-back,
+.atlcli-action-palette-primary {
+  min-width: 3rem;
+  min-height: 3rem;
+}
+
 .atlcli-action-palette-close {
   display: grid;
-  width: 2.75rem;
+  width: 3rem;
   padding: 0;
   place-items: center;
   background: transparent;
@@ -258,6 +265,10 @@
   background: var(--atlcli-palette-surface);
   color: var(--atlcli-palette-text-muted);
   font-size: 0.75rem;
+}
+
+.atlcli-action-palette-footer-leading {
+  margin-inline-end: auto;
 }
 
 .atlcli-action-palette-footer span {

@@ -7,6 +7,7 @@ export interface ShortcutAssignmentV1 {
 /** Portable Settings-facing shortcut status; hosts own command APIs. */
 export interface ShortcutPort {
   getAssignment(): Promise<ShortcutAssignmentV1>;
+  openSettings(): Promise<void>;
 }
 
 export interface SurfaceNavigationRequestV1 {

@@ -25,6 +25,9 @@
     "pretest:rovo-extension-browser": "bun run build",
     "test:rovo-extension-browser": "bun run test:rovo-extension-browser:prebuilt",
     "test:rovo-extension-browser:prebuilt": "node --conditions=development ../../node_modules/@playwright/test/cli.js test --config tests/rovo/packed/playwright.config.ts",
+    "pretest:palette-extension-browser": "bun run build",
+    "test:palette-extension-browser": "bun run test:palette-extension-browser:prebuilt",
+    "test:palette-extension-browser:prebuilt": "node --conditions=development ../../node_modules/@playwright/test/cli.js test --config tests/palette/packed/playwright.config.ts",
     "prebench:memory-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && bun --conditions=development tests/pdf/memory/generate-corpus.ts && vite build --config tests/pdf/memory/vite.config.ts",
     "bench:memory-chrome": "playwright test --config tests/pdf/memory/playwright.config.ts",
     "prebench:export-baseline-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && vite build --config tests/export-baseline/vite.config.ts",
@@ -40,6 +43,7 @@
   },
   "dependencies": {
     "@atlcli/action-registry": "workspace:*",
+    "@atlcli/action-palette-react": "workspace:*",
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/core": "workspace:*",
@@ -63,6 +67,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
     "@langchain/core": "1.2.3",
     "@langchain/langgraph": "1.4.8",
     "@langchain/langgraph-checkpoint": "1.1.3",

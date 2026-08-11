@@ -617,15 +617,15 @@ bun run typecheck
 
 **Blocks:** AP-06
 
-- [ ] Add the top-frame isolated WXT content script and one Shadow DOM mount for `https://*.atlassian.net/*`.
-- [ ] Add one manifest `commands` entry using the AP-00-approved default and background `commands.onCommand` handling.
-- [ ] Read and display the actual assigned command in the palette footer and the existing extension Settings screen, including an honest unbound state and concise instructions/link to Chrome extension shortcut settings. Keep the current toolbar-to-sidebar behavior as the visible recovery path.
-- [ ] Lazily mount/toggle the palette through typed messages; prevent duplicate mounts/listeners across SPA navigation and service-worker wakeups.
-- [ ] Keep DOM focus in the combobox input and active-row state in `aria-activedescendant`; preserve host focus plus contenteditable selection range, dismiss through the defined Escape hierarchy/outside pointer interaction, and intercept no Atlassian/editor shortcuts while closed.
-- [ ] Update `wxt.config.ts` and normative built-manifest tests for command declarations, content-script matches, top-frame behavior, isolated world, output files, permissions, host permissions, and unchanged exact CSP.
-- [ ] Add a `test:palette-extension-browser:prebuilt` packed Chromium lane based on the existing Rovo persistent-profile harness. Cover Confluence view/editor, Jira issue/board, generic Atlassian, non-Atlassian absence, SPA navigation, adversarial host CSS, missing capabilities, 50 open/close cycles, focus/editor-selection restoration, browser zoom, and no console errors.
-- [ ] Add `@axe-core/playwright` checks for root, results, empty, loading, error, action panel, and input states with zero A/AA violations in the palette root and zero serious/critical page violations caused by the palette; measure every pointer target (minimum 24×24 CSS px, target 44×44 for primary controls).
-- [ ] Measure and assert every Section 2 budget for cold/warm open, rendered query latency, pure 1,000-action search, main-thread long tasks, and palette chunk deltas over 30 runs after five warmups; store raw JSON and summarized evidence. A miss keeps AP-05 open.
+- [x] Add the top-frame isolated WXT content script and one Shadow DOM mount for `https://*.atlassian.net/*`.
+- [x] Add one manifest `commands` entry using the AP-00-approved default and background `commands.onCommand` handling.
+- [x] Read and display the actual assigned command in the palette footer and the existing extension Settings screen, including an honest unbound state and concise instructions/link to Chrome extension shortcut settings. Keep the current toolbar-to-sidebar behavior as the visible recovery path.
+- [x] Lazily mount/toggle the palette through typed messages; prevent duplicate mounts/listeners across SPA navigation and service-worker wakeups.
+- [x] Keep DOM focus in the combobox input and active-row state in `aria-activedescendant`; preserve host focus plus contenteditable selection range, dismiss through the defined Escape hierarchy/outside pointer interaction, and intercept no Atlassian/editor shortcuts while closed.
+- [x] Update `wxt.config.ts` and normative built-manifest tests for command declarations, content-script matches, top-frame behavior, isolated world, output files, permissions, host permissions, and unchanged exact CSP.
+- [x] Add a `test:palette-extension-browser:prebuilt` packed Chromium lane based on the existing Rovo persistent-profile harness. Cover Confluence view/editor, Jira issue/board, generic Atlassian, non-Atlassian absence, SPA navigation, adversarial host CSS, missing capabilities, 50 open/close cycles, focus/editor-selection restoration, browser zoom, and no console errors.
+- [x] Add `@axe-core/playwright` checks for root, results, empty, loading, error, action panel, and input states with zero A/AA violations in the palette root and zero serious/critical page violations caused by the palette; measure every pointer target (minimum 24×24 CSS px, target 44×44 for primary controls).
+- [x] Measure and assert every Section 2 budget for cold/warm open, rendered query latency, pure 1,000-action search, main-thread long tasks, and palette chunk deltas over 30 runs after five warmups; store raw JSON and summarized evidence. A miss keeps AP-05 open.
 
 **Proof**
 

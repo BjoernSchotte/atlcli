@@ -65,6 +65,8 @@ export interface ActionPalettePropsV1 {
   readonly executor: ActionPaletteExecutorV1;
   readonly portalTarget?: Element | DocumentFragment;
   readonly contextLabel?: string;
+  /** Optional host-owned status placed at the leading edge of the footer. */
+  readonly footerLeading?: ReactNode;
   readonly aliases?: Readonly<Record<string, readonly string[]>>;
   readonly messages?: Partial<ActionPaletteMessagesV1>;
   readonly resolveText?: ActionPaletteTextResolverV1;

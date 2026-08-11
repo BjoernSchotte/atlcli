@@ -47,7 +47,7 @@ test("reports deterministic local query latency for 1,000 actions", () => {
   }
 
   const samples: number[] = [];
-  for (let iteration = 0; iteration < 20; iteration += 1) {
+  for (let iteration = 0; iteration < 30; iteration += 1) {
     const startedAt = performance.now();
     for (const query of queries) searchActionCatalog(catalog, query, { limit: 20 });
     samples.push((performance.now() - startedAt) / queries.length);
@@ -60,8 +60,12 @@ test("reports deterministic local query latency for 1,000 actions", () => {
 
   expect(catalog.actions).toHaveLength(1_000);
   expect(exact.some((result) => result.entry.action.id === "benchmark.action.item-0427")).toBe(true);
+  expect(samples).toHaveLength(30);
   expect(samples.every(Number.isFinite)).toBe(true);
-  console.info(
-    `ACTION_SEARCH_BENCHMARK actions=1000 queries=${queries.length} samples=${samples.length} median_ms=${medianMs.toFixed(3)} p95_ms=${p95Ms.toFixed(3)} max_ms=${maxMs.toFixed(3)}`,
-  );
+  expect(p95Ms).toBeLessThanOrEqual(16);
+  expect(maxMs).toBeLessThanOrEqual(50);
+  console.info(`ACTION_SEARCH_PERFORMANCE ${JSON.stringify({
+    samples,
+    summary: { actions: 1_000, queries: queries.length, sampleCount: samples.length, medianMs, p95Ms, maxMs },
+  })}`);
 });

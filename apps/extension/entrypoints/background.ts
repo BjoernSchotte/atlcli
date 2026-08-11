@@ -459,6 +459,20 @@ export default defineBackground({
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((err) => console.error("setPanelBehavior failed", err));
 
+  chrome.commands.onCommand.addListener((command) => {
+    if (command !== ACTION_PALETTE_COMMAND_ID) return;
+    void chrome.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => {
+      if (tab?.id === undefined || !tab.url || !profileFromTabUrl(tab.url)) return;
+      return chrome.tabs.sendMessage(
+        tab.id,
+        { kind: "action-palette:toggle", requestId: `shortcut:${crypto.randomUUID()}` },
+        { frameId: 0 },
+      ).catch(() => {
+        // The supported tab may still be navigating before its content script starts.
+      });
+    });
+  });
+
   const queuePaletteSurface = async (
     screen: "export" | "research" | "activity" | "settings",
   ): Promise<void> => {

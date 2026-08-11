@@ -84,16 +84,24 @@ describe("action palette protocol", () => {
 
   test("reports assigned and unbound Chrome shortcut states through the portable port", async () => {
     let shortcut = "Ctrl+Shift+K";
+    const opened: chrome.tabs.CreateProperties[] = [];
     chromeGlobal.chrome = {
       commands: { getAll: async () => [{ name: "action-palette", shortcut }] },
+      tabs: { create: async (properties: chrome.tabs.CreateProperties) => {
+        opened.push(properties);
+        return {} as chrome.tabs.Tab;
+      } },
     } as unknown as typeof chrome;
-    expect(await chromeShortcutPort().getAssignment()).toEqual({
+    const port = chromeShortcutPort();
+    expect(await port.getAssignment()).toEqual({
       commandId: "action-palette", status: "assigned", value: "Ctrl+Shift+K",
     });
     shortcut = "";
-    expect(await chromeShortcutPort().getAssignment()).toEqual({
+    expect(await port.getAssignment()).toEqual({
       commandId: "action-palette", status: "unbound", value: null,
     });
+    await port.openSettings();
+    expect(opened).toEqual([{ url: "chrome://extensions/shortcuts" }]);
   });
 
   test("delivers cold and live surface requests, acknowledges, and unsubscribes", async () => {

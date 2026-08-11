@@ -705,6 +705,7 @@ function ActionPaletteContentV1(props: ActionPalettePropsV1): ReactNode {
     catalog,
     executor,
     contextLabel,
+    footerLeading,
     aliases,
     messages: messageOverrides,
     resolveText = defaultResolveText,
@@ -1041,11 +1042,19 @@ function ActionPaletteContentV1(props: ActionPalettePropsV1): ReactNode {
                 <span aria-hidden="true">×</span>
               </button>
             </header>
-            <main className="atlcli-action-palette-main">
+            <main className="atlcli-action-palette-main" data-testid="palette-results-region" tabIndex={0}>
               {results.length === 0 ? (
-                <div className="atlcli-action-palette-empty" data-testid="palette-empty">
-                  <h2>{messages["palette.results.empty.title"]}</h2>
-                  <p>{messages["palette.results.empty.hint"]}</p>
+                <div
+                  id={listboxId}
+                  className="atlcli-action-palette-empty"
+                  data-testid="palette-empty"
+                  role="listbox"
+                  aria-label={messages["palette.search.label"]}
+                >
+                  <div role="option" aria-disabled="true" aria-selected="false">
+                    <h2>{messages["palette.results.empty.title"]}</h2>
+                    <p>{messages["palette.results.empty.hint"]}</p>
+                  </div>
                 </div>
               ) : (
                 <RootList
@@ -1062,6 +1071,11 @@ function ActionPaletteContentV1(props: ActionPalettePropsV1): ReactNode {
               )}
             </main>
             <footer className="atlcli-action-palette-footer" aria-hidden="true">
+              {footerLeading ? (
+                <span className="atlcli-action-palette-footer-leading" data-testid="palette-footer-leading">
+                  {footerLeading}
+                </span>
+              ) : null}
               <span><kbd>Esc</kbd> {messages["palette.close"]}</span>
               <span><kbd>↵</kbd> {messages["palette.run"]}</span>
               <span><kbd>⌘↵</kbd> {messages["palette.open-actions"]}</span>

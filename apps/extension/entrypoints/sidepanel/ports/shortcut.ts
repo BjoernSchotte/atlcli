@@ -14,5 +14,8 @@ export function chromeShortcutPort(): ShortcutPort {
         value,
       };
     },
+    async openSettings() {
+      await chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+    },
   };
 }

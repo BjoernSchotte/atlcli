@@ -41,8 +41,11 @@ describe("published presenter boundary", () => {
   test("keeps React host-owned and rejects a second dialog/listbox framework", () => {
     expect(manifest.peerDependencies).toEqual({ react: ">=18 <20", "react-dom": ">=18 <20" });
     expect(manifest.dependencies).toEqual({ "@atlcli/action-registry": "workspace:*" });
-    expect(manifest.sideEffects).toEqual(["./dist/styles.css"]);
-    expect(manifest.exports?.["./styles.css"]).toBe("./dist/styles.css");
+    expect(manifest.sideEffects).toEqual(["./styles.css", "./dist/styles.css"]);
+    expect(manifest.exports?.["./styles.css"]).toEqual({
+      development: "./styles.css",
+      default: "./dist/styles.css",
+    });
 
     const dependencyNames = Object.keys({
       ...manifest.dependencies,

@@ -84,6 +84,12 @@ describe("root dialog and keyboard contract", () => {
     expect(opened).toEqual([1]);
   });
 
+  test("renders optional host-owned footer status without changing the keyboard contract", async () => {
+    await dom.render(defaultPalette({ footerLeading: <span><kbd>⌘⇧K</kbd> Open palette</span> }));
+    expect(dom.find("palette-footer-leading").textContent).toContain("⌘⇧K Open palette");
+    expect(dom.find("palette-search").getAttribute("aria-activedescendant")).toBeTruthy();
+  });
+
   test("moves through all visible rows, including unavailable rows, without wrapping", async () => {
     const calls: RecordedExecution[] = [];
     await dom.render(defaultPalette({ executor: executorReturning({ status: "completed", messageKey: "done" }, calls) }));
@@ -180,10 +186,9 @@ describe("focus lifecycle and nested action panel", () => {
     await dom.render(<ActionPaletteV1 open {...props} />);
     expectActiveElement(dom.find("palette-search"));
     await dom.keyDown("palette-search", "Tab", { shiftKey: true });
-    expect(dom.window().document.activeElement?.getAttribute("aria-label")).toBe("Close");
-    const close = dom.container().querySelector(".atlcli-action-palette-close") as HTMLElement;
-    close.focus();
-    await dom.keyDown("palette-close", "Tab");
+    const results = dom.find("palette-results-region");
+    expectActiveElement(results);
+    await dom.keyDown("palette-results-region", "Tab");
     expectActiveElement(dom.find("palette-search"));
     await dom.render(<ActionPaletteV1 open={false} {...props} />);
     expectActiveElement(hostButton);

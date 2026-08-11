@@ -96,6 +96,7 @@
       "name": "@atlcli/extension",
       "version": "0.0.0",
       "dependencies": {
+        "@atlcli/action-palette-react": "workspace:*",
         "@atlcli/action-registry": "workspace:*",
         "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
@@ -120,6 +121,7 @@
         "tailwind-merge": "^3.6.0",
       },
       "devDependencies": {
+        "@axe-core/playwright": "^4.10.2",
         "@langchain/core": "1.2.3",
         "@langchain/langgraph": "1.4.8",
         "@langchain/langgraph-checkpoint": "1.1.3",
@@ -612,6 +614,8 @@
     "@atlcli/web-publish-astro": ["@atlcli/web-publish-astro@workspace:packages/web-publish-astro"],
 
     "@atlcli/web-publish-starlight": ["@atlcli/web-publish-starlight@workspace:packages/web-publish-starlight"],
+
+    "@axe-core/playwright": ["@axe-core/playwright@4.13.0", "", { "dependencies": { "axe-core": "~4.13.0" }, "peerDependencies": { "playwright-core": ">= 1.0.0" } }, "sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg=="],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 

@@ -35,6 +35,7 @@ const DOM_GLOBALS = [
   "FileList",
   "Blob",
   "getComputedStyle",
+  "getSelection",
   "requestAnimationFrame",
   "cancelAnimationFrame",
   "MutationObserver",
