@@ -63,6 +63,18 @@ export interface LocalModelToolCallV1 {
   arguments: Record<string, unknown>;
 }
 
+export interface LocalModelInferencePerformanceV1 {
+  runtimeState: "cold" | "warm";
+  requiredToolName?: string;
+  queuedMs: number;
+  runtimeLoadMs: number;
+  tokenizeMs: number;
+  firstTokenMs?: number;
+  firstPreviewMs?: number;
+  generationMs: number;
+  totalMs: number;
+}
+
 export type LocalModelPortResponseV1 =
   | {
       schema: typeof LOCAL_MODEL_PROTOCOL_SCHEMA_V1;
@@ -85,6 +97,7 @@ export type LocalModelPortResponseV1 =
       toolCalls: LocalModelToolCallV1[];
       inputTokens: number;
       outputTokens: number;
+      performance?: LocalModelInferencePerformanceV1;
     }
   | {
       schema: typeof LOCAL_MODEL_PROTOCOL_SCHEMA_V1;

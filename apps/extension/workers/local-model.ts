@@ -42,6 +42,7 @@ import {
   localModelRequestIdV1,
   type LocalModelPortRequestV1,
   type LocalModelPortResponseV1,
+  type LocalModelInferencePerformanceV1,
   type LocalModelWorkerConnectV1,
 } from "../utils/local-model/protocol.js";
 
@@ -136,7 +137,9 @@ function postPortV1(port: MessagePort, response: LocalModelPortResponseV1): void
 async function generateV1(
   port: MessagePort,
   request: Extract<LocalModelPortRequestV1, { kind: "generate" }>,
+  queuedAt: number,
 ): Promise<void> {
+  const dispatchedAt = performance.now();
   const generationStartedAt = Date.now();
   assertLocalModelGenerateRequestV1(request);
   console.info("[local-gemma/worker] generation queued", {
@@ -164,7 +167,12 @@ async function generateV1(
     cancelledRequests.delete(request.requestId);
     return;
   }
+  const runtimeState: LocalModelInferencePerformanceV1["runtimeState"] =
+    loadedRuntime === undefined ? "cold" : "warm";
+  const runtimeLoadStartedAt = performance.now();
   const { tokenizer, model } = await loadRuntimeV1();
+  const runtimeLoadedAt = performance.now();
+  const tokenizeStartedAt = performance.now();
   const inputs = tokenizer.apply_chat_template(request.messages, {
     tools: request.tools,
     add_generation_prompt: true,
@@ -172,6 +180,7 @@ async function generateV1(
     return_tensor: true,
     return_dict: true,
   });
+  const tokenizedAt = performance.now();
   const inputTokens = inputs.input_ids.dims.at(-1) ?? 0;
   console.info("[local-gemma/worker] prompt tokenized", {
     requestId: request.requestId,
@@ -209,11 +218,14 @@ async function generateV1(
   let nextProgressToken = 32;
   let nextPreviewToken = 16;
   let emittedAnswerPreview = "";
+  let firstTokenAt: number | undefined;
+  let firstPreviewAt: number | undefined;
   const streamer = new TextStreamer(tokenizer, {
     skip_prompt: true,
     skip_special_tokens: false,
     callback_function: () => undefined,
     token_callback_function: (tokens) => {
+      firstTokenAt ??= performance.now();
       generatedTokens.push(...tokens);
       if (
         request.streamAnswerPreview &&
@@ -229,6 +241,7 @@ async function generateV1(
         );
         if (markdown && markdown !== emittedAnswerPreview) {
           const firstPreview = emittedAnswerPreview.length === 0;
+          firstPreviewAt ??= performance.now();
           emittedAnswerPreview = markdown;
           console.debug("[local-gemma/worker] answer preview emitted", {
             requestId: request.requestId,
@@ -269,6 +282,8 @@ async function generateV1(
     ));
   }
   try {
+    const modelGenerationStartedAt = performance.now();
+    let modelGenerationCompletedAt = modelGenerationStartedAt;
     try {
       output = await model.generate({
         ...inputs,
@@ -286,6 +301,7 @@ async function generateV1(
         ],
         ...(request.requiredToolName ? { logits_processor: logitsProcessors } : {}),
       });
+      modelGenerationCompletedAt = performance.now();
     } catch (error) {
       const footprint = request.messages.map((message) =>
         `${message.role}:${message.content.length}`
@@ -314,6 +330,7 @@ async function generateV1(
         request.requiredToolName,
       );
       if (finalMarkdownPreview && finalMarkdownPreview !== emittedAnswerPreview) {
+        firstPreviewAt ??= performance.now();
         emittedAnswerPreview = finalMarkdownPreview;
         console.debug("[local-gemma/worker] final answer preview emitted", {
           requestId: request.requestId,
@@ -375,6 +392,23 @@ async function generateV1(
         }; generated=${JSON.stringify(raw.slice(0, 1_600))}`,
       );
     }
+    const performanceReceipt: LocalModelInferencePerformanceV1 = {
+      runtimeState,
+      ...(request.requiredToolName
+        ? { requiredToolName: request.requiredToolName }
+        : {}),
+      queuedMs: Math.max(0, dispatchedAt - queuedAt),
+      runtimeLoadMs: Math.max(0, runtimeLoadedAt - runtimeLoadStartedAt),
+      tokenizeMs: Math.max(0, tokenizedAt - tokenizeStartedAt),
+      ...(firstTokenAt === undefined
+        ? {}
+        : { firstTokenMs: Math.max(0, firstTokenAt - queuedAt) }),
+      ...(firstPreviewAt === undefined
+        ? {}
+        : { firstPreviewMs: Math.max(0, firstPreviewAt - queuedAt) }),
+      generationMs: Math.max(0, modelGenerationCompletedAt - modelGenerationStartedAt),
+      totalMs: Math.max(0, performance.now() - queuedAt),
+    };
     postPortV1(port, {
       schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
       kind: "complete",
@@ -384,6 +418,7 @@ async function generateV1(
       toolCalls: parsed.toolCalls,
       inputTokens,
       outputTokens: generatedTokens.length,
+      performance: performanceReceipt,
     });
     console.info("[local-gemma/worker] generation completed", {
       requestId: request.requestId,
@@ -421,6 +456,7 @@ async function generateV1(
       }),
       textChars: parsed.text.length,
       durationMs: Date.now() - generationStartedAt,
+      performance: performanceReceipt,
     });
   } finally {
     disposeLocalModelValueV1(output);
@@ -457,9 +493,10 @@ export function connectLocalModelPortV1(port: MessagePort): void {
       }
       return;
     }
+    const queuedAt = performance.now();
     generationQueue = generationQueue.then(
-      () => generateV1(port, request),
-      () => generateV1(port, request),
+      () => generateV1(port, request, queuedAt),
+      () => generateV1(port, request, queuedAt),
     ).catch((error) => {
       postPortV1(port, {
         schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,

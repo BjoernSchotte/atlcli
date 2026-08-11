@@ -39,6 +39,7 @@ import {
   localGemmaThinkingModeV1,
   type LocalGemmaThinkingModeV1,
 } from "./model-profile.js";
+import type { LocalGemmaPerformanceSampleV1 } from "./performance.js";
 
 interface LocalGemmaCallOptionsV1 extends BaseChatModelCallOptions {
   tools?: ToolDefinition[];
@@ -406,6 +407,7 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
   readonly #thinkingMode: LocalGemmaThinkingModeV1;
   readonly #streamAnswerPreview: boolean;
   readonly #publishAnswerPreview?: (preview: ChatStructuredAnswerPreviewV1) => void;
+  readonly #publishPerformance?: (sample: LocalGemmaPerformanceSampleV1) => void;
 
   constructor(input: {
     client: LocalGemmaPortClientV1;
@@ -413,6 +415,7 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
     thinkingMode?: LocalGemmaThinkingModeV1;
     streamAnswerPreview?: boolean;
     publishAnswerPreview?: (preview: ChatStructuredAnswerPreviewV1) => void;
+    publishPerformance?: (sample: LocalGemmaPerformanceSampleV1) => void;
   }) {
     super({});
     this.#client = input.client;
@@ -424,6 +427,7 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
     this.#thinkingMode = input.thinkingMode ?? "disabled";
     this.#streamAnswerPreview = input.streamAnswerPreview === true;
     this.#publishAnswerPreview = input.publishAnswerPreview;
+    this.#publishPerformance = input.publishPerformance;
   }
 
   _llmType(): string { return "atlcli-local-gemma"; }
@@ -475,6 +479,15 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
       if (response.kind === "complete") final = response;
     }
     if (!final) throw new Error("Local Gemma ended without a terminal response.");
+    if (final.performance) {
+      this.#publishPerformance?.({
+        requestId: final.requestId,
+        recordedAt: new Date().toISOString(),
+        inputTokens: final.inputTokens,
+        outputTokens: final.outputTokens,
+        timing: final.performance,
+      });
+    }
     const toolCalls = normalizeLocalGemmaToolCallsV1(final.toolCalls);
     if (previewMarkdown) {
       this.#publishAnswerPreview?.({
@@ -534,6 +547,15 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
           message: new AIMessageChunk({ content: response.text }),
         });
       } else {
+        if (response.performance) {
+          this.#publishPerformance?.({
+            requestId: response.requestId,
+            recordedAt: new Date().toISOString(),
+            inputTokens: response.inputTokens,
+            outputTokens: response.outputTokens,
+            timing: response.performance,
+          });
+        }
         const toolCalls = normalizeLocalGemmaToolCallsV1(response.toolCalls);
         if (previewMarkdown) {
           this.#publishAnswerPreview?.({
@@ -605,6 +627,7 @@ export function createLocalGemmaChatModelBindingV1(input: {
   port: MessagePort;
   modelId: string;
   maxOutputTokens: number;
+  onPerformanceSample?: (sample: LocalGemmaPerformanceSampleV1) => void;
 }): ChatModelBindingV1 {
   const client = new LocalGemmaPortClientV1(input.port);
   const previewListeners = new Set<(
@@ -632,6 +655,7 @@ export function createLocalGemmaChatModelBindingV1(input: {
         thinkingMode,
         streamAnswerPreview,
         publishAnswerPreview,
+        publishPerformance: input.onPerformanceSample,
       });
       models.set(key, model);
     }

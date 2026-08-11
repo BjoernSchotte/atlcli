@@ -396,6 +396,50 @@ describe("local model RPC boundary", () => {
     channel.port2.close();
   });
 
+  it("publishes one metadata-only performance sample for a completed call", async () => {
+    const channel = new MessageChannel();
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "Measured answer.",
+        toolCalls: [],
+        inputTokens: 40,
+        outputTokens: 5,
+        performance: {
+          runtimeState: "warm",
+          queuedMs: 1,
+          runtimeLoadMs: 0,
+          tokenizeMs: 2,
+          firstTokenMs: 12,
+          generationMs: 20,
+          totalMs: 24,
+        },
+      });
+    };
+    channel.port2.start();
+    const samples: unknown[] = [];
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 32,
+      onPerformanceSample: (sample) => samples.push(sample),
+    });
+
+    await binding.model.invoke([new HumanMessage("Hello")]);
+    expect(samples).toHaveLength(1);
+    expect(samples[0]).toMatchObject({
+      inputTokens: 40,
+      outputTokens: 5,
+      timing: { runtimeState: "warm", totalMs: 24 },
+    });
+    expect(JSON.stringify(samples[0])).not.toContain("Measured answer");
+    channel.port1.close();
+    channel.port2.close();
+  });
+
   it("projects a named LangChain tool choice into one required Gemma tool", async () => {
     const channel = new MessageChannel();
     let observed: LocalModelPortRequestV1 | undefined;

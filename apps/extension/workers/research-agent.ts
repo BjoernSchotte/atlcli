@@ -46,6 +46,10 @@ import type {
 } from "../utils/research/worker-protocol.js";
 import { openDurableChatConversationWorkspaceV1 } from "../utils/research/chat-conversation.js";
 import { createLocalGemmaChatModelBindingV1 } from "../utils/local-model/langchain-proxy.js";
+import {
+  appendLocalGemmaPerformanceSamplesV1,
+  type LocalGemmaPerformanceSampleV1,
+} from "../utils/local-model/performance.js";
 
 function post(message: ResearchWorkerResponseV1): void {
   globalThis.postMessage(message);
@@ -220,6 +224,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
               ? { exactContextProducts: request.exactContextProducts }
               : {}),
           };
+          const localPerformanceSamples: LocalGemmaPerformanceSampleV1[] = [];
           const answer = await runChatAgent({
             apiKey,
             ...(message.modelBinding?.kind === "local-gemma"
@@ -234,6 +239,10 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
                     port: message.modelBinding.port,
                     modelId: message.modelBinding.modelId,
                     maxOutputTokens: request.limits.maxModelOutputTokens,
+                    onPerformanceSample: (sample) => {
+                      localPerformanceSamples.push(sample);
+                      console.info("[local-gemma/performance] inference sample", sample);
+                    },
                   }),
                 }
               : {}),
@@ -263,6 +272,18 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             onEvent,
             onChatPresentation,
           });
+          if (localPerformanceSamples.length > 0) {
+            try {
+              await appendLocalGemmaPerformanceSamplesV1({
+                workspace,
+                samples: localPerformanceSamples,
+              });
+            } catch (error) {
+              console.warn("[local-gemma/performance] receipt persistence failed", {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
           post({ kind: "research-worker:complete", runId, answer });
         } finally {
           store.close();
