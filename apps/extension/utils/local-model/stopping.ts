@@ -72,6 +72,7 @@ export class CompleteToolCallStoppingCriteriaV1 extends StoppingCriteria {
     readonly promptTokenCount: number,
     readonly requiredToolName: string,
     readonly decode: (tokenIds: number[]) => string,
+    readonly responsePrefix = "",
   ) {
     super();
     if (promptTokenCount < 1 || requiredToolName.length === 0) {
@@ -81,7 +82,7 @@ export class CompleteToolCallStoppingCriteriaV1 extends StoppingCriteria {
 
   override _call(inputIds: number[][]): boolean[] {
     return inputIds.map((ids) => isCompleteGemmaToolCallV1(
-      this.decode(ids.slice(this.promptTokenCount)),
+      `${this.responsePrefix}${this.decode(ids.slice(this.promptTokenCount))}`,
       this.requiredToolName,
     ));
   }

@@ -4,6 +4,32 @@ const TOOL_OPEN = "<|tool_call>";
 const TOOL_CLOSE = "<tool_call|>";
 const STRING_DELIMITER = '<|"|>';
 
+export const LOCAL_GEMMA_FIRST_ANSWER_PREVIEW_TOKEN_V1 = 1;
+export const LOCAL_GEMMA_ANSWER_TOOL_PREFILL_V1 =
+  '<|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|"|>';
+
+/**
+ * Prefill only the host-forced terminal answer syntax. The model still owns
+ * every visible character and the remainder of the schema-valid tool object.
+ */
+export function localGemmaAnswerToolPrefillV1(input: {
+  requiredToolName?: string;
+  streamAnswerPreview?: boolean;
+}): string {
+  return input.streamAnswerPreview === true &&
+      input.requiredToolName === "ChatAnswerDraftV2"
+    ? LOCAL_GEMMA_ANSWER_TOOL_PREFILL_V1
+    : "";
+}
+
+/** Poll every token until Markdown becomes visible, then amortize decoding. */
+export function nextLocalGemmaAnswerPreviewTokenV1(
+  outputTokens: number,
+  hasVisiblePreview: boolean,
+): number {
+  return outputTokens + (hasVisiblePreview ? 8 : 1);
+}
+
 function hideUnvalidatedSourceRefsV1(markdown: string): string {
   return markdown
     // Gemma sometimes writes host-private source IDs into its prose even

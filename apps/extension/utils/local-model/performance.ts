@@ -57,7 +57,9 @@ function isSampleV1(value: unknown): value is LocalGemmaPerformanceSampleV1 {
     isFiniteNonNegative(timing.generationMs) &&
     isFiniteNonNegative(timing.totalMs) &&
     (timing.firstTokenMs === undefined || isFiniteNonNegative(timing.firstTokenMs)) &&
-    (timing.firstPreviewMs === undefined || isFiniteNonNegative(timing.firstPreviewMs));
+    (timing.firstPreviewMs === undefined || isFiniteNonNegative(timing.firstPreviewMs)) &&
+    (timing.firstPreviewOutputTokens === undefined ||
+      isFiniteNonNegative(timing.firstPreviewOutputTokens));
 }
 
 export function parseLocalGemmaPerformanceHistoryV1(

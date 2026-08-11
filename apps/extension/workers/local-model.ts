@@ -21,6 +21,9 @@ import {
 } from "../utils/local-model/runtime-cache.js";
 import {
   isCompleteGemmaToolCallV1,
+  LOCAL_GEMMA_FIRST_ANSWER_PREVIEW_TOKEN_V1,
+  localGemmaAnswerToolPrefillV1,
+  nextLocalGemmaAnswerPreviewTokenV1,
   parseGemma4ResponseV1,
   projectPartialGemmaAnswerMarkdownV1,
 } from "../utils/local-model/gemma-response.js";
@@ -245,13 +248,28 @@ async function generateV1(
   const { tokenizer, model } = await loadRuntimeV1();
   const runtimeLoadedAt = performance.now();
   const tokenizeStartedAt = performance.now();
-  const inputs = tokenizer.apply_chat_template(request.messages, {
+  const responsePrefill = localGemmaAnswerToolPrefillV1(request);
+  const chatTemplateOptions = {
     tools: request.tools,
     add_generation_prompt: true,
-    tokenize: true,
-    return_tensor: true,
-    return_dict: true,
-  });
+  } as const;
+  const inputs = responsePrefill
+    ? tokenizer(
+        `${tokenizer.apply_chat_template(request.messages, {
+          ...chatTemplateOptions,
+          tokenize: false,
+        })}${responsePrefill}`,
+        {
+          add_special_tokens: false,
+          return_tensor: true,
+        },
+      )
+    : tokenizer.apply_chat_template(request.messages, {
+        ...chatTemplateOptions,
+        tokenize: true,
+        return_tensor: true,
+        return_dict: true,
+      });
   const tokenizedAt = performance.now();
   const inputTokens = inputs.input_ids.dims.at(-1) ?? 0;
   console.info("[local-gemma/worker] prompt tokenized", {
@@ -282,16 +300,18 @@ async function generateV1(
         inputTokens,
         request.requiredToolName,
         (tokenIds) => tokenizer.decode(tokenIds, { skip_special_tokens: false }),
+        responsePrefill,
       )
     : undefined;
   if (cancelledRequests.has(request.requestId)) criterion.interrupt();
   activeCriteria.set(request.requestId, criterion);
   const generatedTokens: bigint[] = [];
   let nextProgressToken = 32;
-  let nextPreviewToken = 16;
+  let nextPreviewToken = LOCAL_GEMMA_FIRST_ANSWER_PREVIEW_TOKEN_V1;
   let emittedAnswerPreview = "";
   let firstTokenAt: number | undefined;
   let firstPreviewAt: number | undefined;
+  let firstPreviewOutputTokens: number | undefined;
   const streamer = new TextStreamer(tokenizer, {
     skip_prompt: true,
     skip_special_tokens: false,
@@ -304,9 +324,9 @@ async function generateV1(
         request.requiredToolName === "ChatAnswerDraftV2" &&
         generatedTokens.length >= nextPreviewToken
       ) {
-        const rawSnapshot = tokenizer.decode(generatedTokens, {
+        const rawSnapshot = `${responsePrefill}${tokenizer.decode(generatedTokens, {
           skip_special_tokens: false,
-        });
+        })}`;
         const markdown = projectPartialGemmaAnswerMarkdownV1(
           rawSnapshot,
           request.requiredToolName,
@@ -314,6 +334,7 @@ async function generateV1(
         if (markdown && markdown !== emittedAnswerPreview) {
           const firstPreview = emittedAnswerPreview.length === 0;
           firstPreviewAt ??= performance.now();
+          firstPreviewOutputTokens ??= generatedTokens.length;
           emittedAnswerPreview = markdown;
           console.debug("[local-gemma/worker] answer preview emitted", {
             requestId: request.requestId,
@@ -328,7 +349,10 @@ async function generateV1(
             markdown,
           });
         }
-        nextPreviewToken = generatedTokens.length + 16;
+        nextPreviewToken = nextLocalGemmaAnswerPreviewTokenV1(
+          generatedTokens.length,
+          emittedAnswerPreview.length > 0,
+        );
       }
       if (generatedTokens.length < nextProgressToken) return;
       const tail = tokenizer.decode(generatedTokens.slice(-192), {
@@ -345,7 +369,7 @@ async function generateV1(
   });
   let output: unknown;
   const logitsProcessors = new LogitsProcessorList();
-  if (request.requiredToolName) {
+  if (request.requiredToolName && !responsePrefill) {
     logitsProcessors.push(new RequiredToolPrefixLogitsProcessorV1(
       inputTokens,
       tokenizer.encode(`<|tool_call>call:${request.requiredToolName}`, {
@@ -395,7 +419,9 @@ async function generateV1(
       });
       return;
     }
-    const raw = tokenizer.decode(generatedTokens, { skip_special_tokens: false });
+    const raw = `${responsePrefill}${tokenizer.decode(generatedTokens, {
+      skip_special_tokens: false,
+    })}`;
     if (request.streamAnswerPreview &&
         request.requiredToolName === "ChatAnswerDraftV2") {
       const finalMarkdownPreview = projectPartialGemmaAnswerMarkdownV1(
@@ -404,6 +430,7 @@ async function generateV1(
       );
       if (finalMarkdownPreview && finalMarkdownPreview !== emittedAnswerPreview) {
         firstPreviewAt ??= performance.now();
+        firstPreviewOutputTokens ??= generatedTokens.length;
         emittedAnswerPreview = finalMarkdownPreview;
         console.debug("[local-gemma/worker] final answer preview emitted", {
           requestId: request.requestId,
@@ -478,7 +505,10 @@ async function generateV1(
         : { firstTokenMs: Math.max(0, firstTokenAt - queuedAt) }),
       ...(firstPreviewAt === undefined
         ? {}
-        : { firstPreviewMs: Math.max(0, firstPreviewAt - queuedAt) }),
+        : {
+            firstPreviewMs: Math.max(0, firstPreviewAt - queuedAt),
+            firstPreviewOutputTokens,
+          }),
       generationMs: Math.max(0, modelGenerationCompletedAt - modelGenerationStartedAt),
       totalMs: Math.max(0, performance.now() - queuedAt),
     };

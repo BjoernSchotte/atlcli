@@ -7,6 +7,10 @@ import {
 } from "@langchain/core/messages";
 import { z } from "zod";
 import {
+  LOCAL_GEMMA_ANSWER_TOOL_PREFILL_V1,
+  LOCAL_GEMMA_FIRST_ANSWER_PREVIEW_TOKEN_V1,
+  localGemmaAnswerToolPrefillV1,
+  nextLocalGemmaAnswerPreviewTokenV1,
   parseGemma4ResponseV1,
   projectPartialGemmaAnswerMarkdownV1,
 } from "../utils/local-model/gemma-response.js";
@@ -23,6 +27,32 @@ import {
 import { LocalModelWorkerHostV1 } from "../utils/local-model/worker-host.js";
 
 describe("pinned Gemma 4 response grammar", () => {
+  it("polls every generated token until the first preview and then amortizes decoding", () => {
+    expect(LOCAL_GEMMA_FIRST_ANSWER_PREVIEW_TOKEN_V1).toBe(1);
+    expect(nextLocalGemmaAnswerPreviewTokenV1(1, false)).toBe(2);
+    expect(nextLocalGemmaAnswerPreviewTokenV1(19, false)).toBe(20);
+    expect(nextLocalGemmaAnswerPreviewTokenV1(20, true)).toBe(28);
+  });
+
+  it("prefills only forced streamed answer syntax so Markdown can start immediately", () => {
+    expect(localGemmaAnswerToolPrefillV1({
+      requiredToolName: "ChatAnswerDraftV2",
+      streamAnswerPreview: true,
+    })).toBe(LOCAL_GEMMA_ANSWER_TOOL_PREFILL_V1);
+    expect(localGemmaAnswerToolPrefillV1({
+      requiredToolName: "ChatAnswerDraftV2",
+      streamAnswerPreview: false,
+    })).toBe("");
+    expect(localGemmaAnswerToolPrefillV1({
+      requiredToolName: "ChatAnalysisPacketV1",
+      streamAnswerPreview: true,
+    })).toBe("");
+    expect(projectPartialGemmaAnswerMarkdownV1(
+      `${LOCAL_GEMMA_ANSWER_TOOL_PREFILL_V1}Purpose`,
+      "ChatAnswerDraftV2",
+    )).toBe("Purpose");
+  });
+
   it("parses text and the native delimited tool-call arguments", () => {
     expect(parseGemma4ResponseV1({
       requestId: "r1",

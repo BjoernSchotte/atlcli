@@ -28,6 +28,7 @@ function sampleV1(
       tokenizeMs: 10,
       firstTokenMs: 200,
       firstPreviewMs,
+      firstPreviewOutputTokens: 12,
       generationMs: 800,
       totalMs,
     },

@@ -71,6 +71,7 @@ export interface LocalModelInferencePerformanceV1 {
   tokenizeMs: number;
   firstTokenMs?: number;
   firstPreviewMs?: number;
+  firstPreviewOutputTokens?: number;
   generationMs: number;
   totalMs: number;
 }

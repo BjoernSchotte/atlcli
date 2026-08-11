@@ -40,6 +40,20 @@ describe("Gemma native tool-call stopping", () => {
     expect(criterion._call([[...prompt, ...[...complete].map((value) => value.codePointAt(0)!)]])).toEqual([true]);
   });
 
+  it("recognizes a complete tool call whose fixed answer syntax was prefilled", () => {
+    const prompt = [1, 2, 3];
+    const prefix = '<|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|"|>';
+    const suffix = 'Ready<|"|>,sourceRefs:[],assertion:<|"|>none<|"|>,scope:<|"|>none<|"|>}],gaps:[]}';
+    const criterion = new CompleteToolCallStoppingCriteriaV1(
+      prompt.length,
+      "ChatAnswerDraftV2",
+      (tokens) => String.fromCodePoint(...tokens),
+      prefix,
+    );
+
+    expect(criterion._call([[...prompt, ...[...suffix].map((value) => value.codePointAt(0)!)]])).toEqual([true]);
+  });
+
   it("pins the completed native tool-call marker as a terminal boundary", () => {
     expect(LOCAL_GEMMA_TOOL_STOP_MARKERS_V1).toContain("<tool_call|>");
     const markerTokens = LOCAL_GEMMA_TOOL_STOP_MARKERS_V1.map((marker, index) =>
