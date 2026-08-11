@@ -54,7 +54,7 @@ These numbers are release gates once the AP-00 measurement harness is stable. If
 
 - Atlassian Cloud match scope: `https://*.atlassian.net/*`, top frame only.
 - Product/context recognition for Confluence pages, Jira issues, and a safe site-level fallback using `@atlcli/core/entity-url` plus the existing page/tab context machinery.
-- Configurable browser command. Desired default: `Ctrl+K`, which Chrome maps to `Command+K` on macOS. The installed binding is read through `chrome.commands.getAll()` and documented as user-remappable through Chrome's extension shortcut settings.
+- Configurable browser command. AP-00 proved the original `Ctrl+K` suggestion unreliable on Linux, so the explicitly approved default is `Ctrl+Shift+K`, which Chrome maps to `Command+Shift+K` on macOS. The installed binding is read through `chrome.commands.getAll()` and documented as user-remappable through Chrome's extension shortcut settings.
 - A Shadow DOM overlay with atlcli-owned design tokens, no host-page CSS dependency, no remote iframe, and no remote assets.
 - Root suggestions, local search, disabled reasons, an action panel, minimal parameter forms, loading/empty/error/queued states, and a route to the sidebar for larger workflows.
 - Extension actions:
@@ -139,7 +139,7 @@ The visual language should borrow Raycast's density and progressive disclosure, 
 
 IME composition must suppress navigation/submit handling until composition ends. Repeated shortcut events must not mount duplicate overlays or execute an action twice.
 
-Raycast uses `Cmd/Ctrl+K` for its nested Action Panel because its launcher has a different global shortcut. This product uses `Cmd/Ctrl+K` to toggle the palette, so the MVP assigns `Cmd/Ctrl+Enter` to the nested Action Panel and documents that deliberate divergence.
+Raycast uses `Cmd/Ctrl+K` for its nested Action Panel because its launcher has a different global shortcut. This product uses the configured browser command (approved default `Cmd/Ctrl+Shift+K`) to toggle the palette, so the MVP assigns `Cmd/Ctrl+Enter` to the nested Action Panel and documents that deliberate divergence.
 
 ### 4.3 Accessibility contract
 
@@ -455,8 +455,8 @@ Only one task should be marked in progress at a time in this file. Check a task 
 **Depends on:** Nothing  
 **Blocks:** All implementation tasks
 
-- [ ] Run the drift checks in Section 7 and record the reviewed commits and relevant diffs in `specs/atlassian-action-palette-mvp/evidence/AP-00-baseline.md`.
-- [ ] Install workspace dependencies and prove the current focused extension baseline is reproducibly green before palette code:
+- [x] Run the drift checks in Section 7 and record the reviewed commits and relevant diffs in `specs/atlassian-action-palette-mvp/evidence/AP-00-baseline.md`.
+- [x] Install workspace dependencies and prove the current focused extension baseline is reproducibly green before palette code:
 
   ```bash
   bun install
@@ -468,14 +468,14 @@ Only one task should be marked in progress at a time in this file. Check a task 
     apps/extension/tests/rovo-visibility.test.ts
   ```
 
-- [ ] Create a minimal packed-extension spike declaring the desired `Ctrl+K` command and test actual Chrome Stable on macOS plus Windows or Linux. Observe both `chrome.commands.getAll()` and the real `commands.onCommand` event; a page-level `keyboard.press()` substitute does not count.
-- [ ] Verify whether Chrome assigns the default or leaves it unbound because of the omnibox conflict. Record the actual installed binding, event receipt, Chrome version, OS, policy context, and `chrome://extensions/shortcuts` behavior. CI counts only when it exercises the browser command itself.
-- [ ] Prove that a real palette action can call `chrome.sidePanel.open()` through the proposed content-script/background path while preserving user-gesture eligibility.
-- [ ] Add a temporary Forge development manifest probe for `mod+k`; verify whether Confluence captures it and whether the content action still opens from the page menu.
-- [ ] From that content-action palette, prove the nested handoff to both existing named export modals: correct page ID/context, replace/close behavior, Escape/focus return, and user-gesture behavior. If nested modal stacking is unsupported, record whether the palette must replace/close itself before opening the export modal.
-- [ ] Test the simultaneous-installation shortcut case and make an enforceable manifest choice: Forge uses a distinct static accelerator such as `mod+shift+k`, or declares no shortcut. A policy sentence claiming extension ownership is insufficient.
-- [ ] Capture initial cold/warm timing methodology and a packed-output baseline before choosing UI dependencies.
-- [ ] Delete or convert throwaway spike code into tests before AP-01; do not leave an alternate implementation path.
+- [x] Create a minimal packed-extension spike declaring the desired `Ctrl+K` command and test actual Chrome Stable on macOS plus Windows or Linux. Observe both `chrome.commands.getAll()` and the real `commands.onCommand` event; a page-level `keyboard.press()` substitute does not count.
+- [x] Verify whether Chrome assigns the default or leaves it unbound because of the omnibox conflict. Record the actual installed binding, event receipt, Chrome version, OS, policy context, and `chrome://extensions/shortcuts` behavior. CI counts only when it exercises the browser command itself.
+- [x] Prove that a real palette action can call `chrome.sidePanel.open()` through the proposed content-script/background path while preserving user-gesture eligibility.
+- [x] Add a temporary Forge development manifest probe for `mod+k`; verify whether Confluence captures it and whether the content action still opens from the page menu.
+- [x] From that content-action palette, prove the nested handoff to both existing named export modals: correct page ID/context, replace/close behavior, Escape/focus return, and user-gesture behavior. If nested modal stacking is unsupported, record whether the palette must replace/close itself before opening the export modal.
+- [x] Test the simultaneous-installation shortcut case and make an enforceable manifest choice: Forge uses a distinct static accelerator such as `mod+shift+k`, or declares no shortcut. A policy sentence claiming extension ownership is insufficient.
+- [x] Capture initial cold/warm timing methodology and a packed-output baseline before choosing UI dependencies.
+- [x] Delete or convert throwaway spike code into tests before AP-01; do not leave an alternate implementation path.
 
 **Acceptance evidence**
 
@@ -851,9 +851,9 @@ Stop implementation and update this plan when any of these occurs:
 | “Plugin-ready” becomes remote code execution | Security and maintenance burden | Compile-time data modules only; runtime plugin system separately threat-modeled |
 | Forge scope expands into Jira/AI | Product/security boundary erosion | Explicit defer/STOP gates and existing Forge cost/boundary tests |
 
-## 16. Unresolved product decisions
+## 16. Product decisions
 
-1. **Fallback shortcut:** If AP-00 proves `Cmd/Ctrl+K` unreliable, approve `Cmd/Ctrl+Shift+K` as the default fallback, or require users to bind their own shortcut with no default. Recommendation: ship the explicit fallback and display the actual binding.
+1. **Fallback shortcut — resolved 2026-08-11:** AP-00 proved `Cmd/Ctrl+K` unreliable on Linux. The operator explicitly approved `Cmd/Ctrl+Shift+K` as the extension default; the product displays the actual installed binding. Forge retains the statically distinct `mod+k` accelerator plus menu access.
 2. **Product label:** Choose the user-facing name. Recommendation: **Kiteweave Actions** as the surface name, with “Search actions…” as the field placeholder; avoid claiming affiliation with Raycast.
 3. **Forge release coupling:** Decide whether Forge parity is required for the first public MVP or may follow the extension beta. Recommendation: treat the Forge mount as an MVP deliverable but allow separate host release decisions after shared-contract compatibility is proven.
 
