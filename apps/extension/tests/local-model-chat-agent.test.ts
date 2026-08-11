@@ -7,6 +7,7 @@ import {
   createMemoryResearchWorkspace,
   createResearchKeyScopeSeedV1,
   type ChatPresentationStreamEventV1,
+  type ResearchOneShotEventV1,
   type ChatSessionV1,
   type ResearchRequestV1,
 } from "@atlcli/research";
@@ -526,6 +527,159 @@ describe("local Gemma shared Chat-agent path", () => {
       channel.port2.close();
     }
   }, 30_000);
+
+  for (const mode of ["auto", "deep"] as const) {
+    it(`pre-reads one exact page before the first local ${mode} model call`, async () => {
+      const channel = new MessageChannel();
+      const requests: Extract<LocalModelPortRequestV1, { kind: "generate" }>[] = [];
+      const events: ResearchOneShotEventV1[] = [];
+      let pageReads = 0;
+      let searchCalls = 0;
+      let modelCalls = 0;
+      channel.port2.onmessage = (
+        event: MessageEvent<LocalModelPortRequestV1>,
+      ) => {
+        const message = event.data;
+        if (message.kind !== "generate") return;
+        requests.push(message);
+        channel.port2.postMessage({
+          schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+          kind: "complete",
+          requestId: message.requestId,
+          text: "",
+          toolCalls: [{
+            id: `local-exact-${mode}-answer`,
+            name: "ChatAnswerDraftV2",
+            arguments: {
+              blocks: [{
+                id: `answer-block:local-exact-${mode}`,
+                markdown: "The current page defines a staged voice-testing strategy.",
+                sourceRefs: ["wiki:1001"],
+                assertion: "positive",
+                scope: "none",
+              }],
+              gaps: [],
+            },
+          }],
+          inputTokens: 48,
+          outputTokens: 24,
+        });
+      };
+      channel.port2.start();
+      const input = request({
+        suffix: `exact-pre-read-${mode}`,
+        question: "Summarize the purpose, test stages, examples, and open limits from the current page with evidence.",
+        confluenceSpaceKeys: ["VAI"],
+      });
+      input.brokerRequest = {
+        ...input.brokerRequest,
+        exactContextProducts: ["confluence"],
+        scopeSeeds: [{
+          binding: {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:current:voice-testing",
+            tenantOrigin: input.brokerRequest.scope.siteOrigin,
+            product: "confluence",
+            entityKind: "page",
+            entityRef: "research-scope-entity:voice-testing",
+            key: "1001",
+            name: "Voice Testing (WIP)",
+            source: "current_context",
+            authority: "approved",
+          },
+          precedence: 300,
+        }],
+      };
+      const exactProviders = {
+        jira: providers.jira,
+        wiki: {
+          async searchPage() {
+            searchCalls += 1;
+            return { items: [] };
+          },
+          async getPage() {
+            pageReads += 1;
+            return {
+              contentId: "1001",
+              spaceKey: "VAI",
+              title: "Voice Testing (WIP)",
+              content: {
+                text: [
+                  "Purpose: validate voice agents from components through realistic conversations.",
+                  "Stages: unit tests, component tests, conversation tests, and end-to-end tests.",
+                  "Examples: deterministic audio fixtures and a complete caller journey.",
+                  "Open limits: subjective voice quality and production variability remain unresolved.",
+                ].join("\n"),
+                inputBytes: 300,
+                truncated: false,
+                linkTargets: [],
+              },
+            };
+          },
+        },
+      };
+
+      try {
+        const answer = await runChatAgent({
+          ...input,
+          modelBinding: createLocalGemmaChatModelBindingV1({
+            port: channel.port1,
+            modelId: "fixture/local-gemma",
+            maxOutputTokens: 512,
+          }),
+          modelProviderFailureMode: "surface-terminal",
+          modelUsageBudget: "local-unmetered",
+          providers: exactProviders,
+          workspace: createMemoryResearchWorkspace(),
+          hostIdentity: {
+            userId: `principal:local-exact-${mode}`,
+            providerCacheIdentity: `provider-cache:local-exact-${mode}`,
+          },
+          qualityPolicy: chatQualityPolicyV1(mode),
+          onEvent: (event) => events.push(event),
+          onModelCallObservation: () => {
+            modelCalls += 1;
+          },
+        });
+
+        expect(pageReads).toBe(1);
+        expect(searchCalls).toBe(0);
+        expect(modelCalls).toBe(1);
+        expect(requests).toHaveLength(1);
+        expect(requests[0]!.requiredToolName).toBe("ChatAnswerDraftV2");
+        expect(JSON.stringify(requests[0]!.messages)).toContain(
+          "atlcli.chat-terminal-context/v1",
+        );
+        expect(events).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            kind: "capability",
+            toolId: "atlassian.bound.read",
+            status: "completed",
+            itemCount: 1,
+          }),
+          expect.objectContaining({
+            kind: "activity",
+            code: "synthesis",
+            status: "started",
+          }),
+        ]));
+        expect(events).not.toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            kind: "activity",
+            code: "model-assessing",
+            status: "started",
+          }),
+        ]));
+        expect(answer.messageMarkdown).toContain("staged voice-testing strategy");
+        expect(answer.citations).toEqual([
+          expect.objectContaining({ sourceId: "wiki:1001" }),
+        ]);
+      } finally {
+        channel.port1.close();
+        channel.port2.close();
+      }
+    }, 30_000);
+  }
 
   for (const mode of ["auto", "deep"] as const) {
     it(`runs the ${mode} direct strategy through the local binding`, async () => {

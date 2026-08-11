@@ -36,6 +36,7 @@ import {
   createKiteweaveChatAgent,
   projectChatAgentDiagnosticActivityV1,
   projectChatReasoningSummaryDeltaV1,
+  shouldPreReadLocalExactContextV1,
   streamedAnswerSnapshotDeltaV1,
   streamedJsonStringFieldV1,
   streamedJsonStringFieldsV1,
@@ -74,6 +75,17 @@ const hostIdentity = {
   userId: "principal:synthetic-user",
   providerCacheIdentity: "provider-cache:synthetic-user",
 } as const;
+
+const exactDirectStrategy = {
+  schema: "atlcli.chat-strategy-decision/v1" as const,
+  qualityMode: "auto" as const,
+  execution: "direct" as const,
+  reasonCodes: ["single-exact-context" as const],
+  ambiguityDisposition: "none" as const,
+  requiredCapabilities: ["exact-read" as const, "chat-answer" as const],
+  expectedComplexity: "simple" as const,
+  qualityRisks: [],
+};
 
 const run = {
   model: "synthetic-model",
@@ -788,6 +800,28 @@ describe("Chat answer contract", () => {
       markdown: "Die Quelle bezeichnet die Einstellung als „somwhat educated guess“",
     })]);
     expect(chatMarkdownIntegrityIssuesV1(repaired!.blocks[0]!.markdown)).toEqual([]);
+  });
+
+  test("admits only a fresh local single-anchor direct turn to host pre-read", () => {
+    expect(shouldPreReadLocalExactContextV1({
+      providerId: "local-gemma",
+      strategy: exactDirectStrategy,
+      anchorRefs: ["research-anchor:a1"],
+      searchProducts: [],
+      resuming: false,
+    })).toBe(true);
+
+    for (const rejected of [
+      { providerId: "anthropic", anchorRefs: ["research-anchor:a1"], searchProducts: [], resuming: false },
+      { providerId: "local-gemma", anchorRefs: ["research-anchor:a1", "research-anchor:a2"], searchProducts: [], resuming: false },
+      { providerId: "local-gemma", anchorRefs: ["research-anchor:a1"], searchProducts: ["confluence" as const], resuming: false },
+      { providerId: "local-gemma", anchorRefs: ["research-anchor:a1"], searchProducts: [], resuming: true },
+    ]) {
+      expect(shouldPreReadLocalExactContextV1({
+        ...rejected,
+        strategy: exactDirectStrategy,
+      })).toBe(false);
+    }
   });
 
   test("keeps recoverable child eval retries out of user-facing activity", () => {

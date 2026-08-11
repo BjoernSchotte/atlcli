@@ -489,7 +489,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
   let nativeStructuredRepairAttempts = 0;
   let terminalContextProjection: Promise<BaseMessage[] | undefined> | undefined;
   const modelPurpose = (): Extract<ChatAgentDiagnosticV1, { kind: "model-step" }>['purpose'] =>
-    completedFinalReview || completedEvidenceStep
+    completedFinalReview || completedEvidenceStep || options.evidenceAccessAttempted?.() === true
       ? "answer-drafting"
       : "planning";
   return createMiddleware({
@@ -924,6 +924,33 @@ export function chatRootPlanningPreferenceV1(input: {
   // reasoning because no specialist workflow follows them.
   if (input.execution === "agentic") return "balanced";
   return chatQualityPolicyV1(input.qualityMode).providerReasoningPreference;
+}
+
+/**
+ * Local browser inference must not spend a full model turn selecting an exact
+ * read that the host has already admitted. Keep this gate deliberately narrow:
+ * every ambiguous, resumable, discovery, multi-anchor, and agentic turn stays
+ * on the ordinary DeepAgents path, as do remote providers.
+ */
+export function shouldPreReadLocalExactContextV1(input: {
+  providerId: string;
+  strategy: ChatStrategyDecisionV1;
+  anchorRefs: readonly string[];
+  searchProducts: readonly ("jira" | "confluence")[];
+  resuming: boolean;
+}): boolean {
+  const allowedCapabilities = new Set(["exact-read", "chat-answer"]);
+  return input.providerId === "local-gemma" &&
+    input.strategy.execution === "direct" &&
+    input.strategy.ambiguityDisposition === "none" &&
+    input.strategy.reasonCodes.includes("single-exact-context") &&
+    input.strategy.requiredCapabilities.includes("exact-read") &&
+    input.strategy.requiredCapabilities.every((capability) =>
+      allowedCapabilities.has(capability)
+    ) &&
+    input.anchorRefs.length === 1 &&
+    input.searchProducts.length === 0 &&
+    !input.resuming;
 }
 
 const CHAT_SYNTHESIS_TIME_RESERVE_MS_V1 = 15_000;
@@ -2208,6 +2235,27 @@ export function createKiteweaveChatAgent(
                 ...acquisition,
               ];
             })();
+        if (shouldPreReadLocalExactContextV1({
+          providerId: modelBinding.qualityAdapter.providerId,
+          strategy: strategyDecision,
+          anchorRefs: anchors.map((anchor) => anchor.anchorRef),
+          searchProducts,
+          resuming: Boolean(input.resumeAnswer || input.resumeCheckpoint),
+        })) {
+          const exactRead = ptcTools.find((candidate) =>
+            candidate.name === "atlassian_bound_read"
+          );
+          if (!exactRead) {
+            throw new ChatContractError(
+              "invalid-request",
+              "The admitted exact-context read capability is unavailable.",
+            );
+          }
+          await exactRead.invoke(
+            { anchorRef: anchors[0]!.anchorRef },
+            { signal: controller.signal },
+          );
+        }
         let structuredRepairAttempts = 0;
         const rootModelOutputTokens = chatRootOutputTokenLimitV1({
           configuredMaxOutputTokens: turn.limits.maxModelOutputTokens,
