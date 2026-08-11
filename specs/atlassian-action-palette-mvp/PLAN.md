@@ -569,11 +569,11 @@ bun run check:browser
 
 **Blocks:** AP-08
 
-- [ ] After the relevant E2E gate, commit AP-01 through AP-03 on the atlcli feature branch so the handoff has one immutable source SHA; a dirty worktree is not a package source.
-- [ ] From a clean checkout at that exact SHA, build `@atlcli/action-registry` and `@atlcli/action-palette-react`, record their versions, exported entries, `dist/` hashes, React peer range, and build/test commands in `specs/atlassian-action-palette-mvp/evidence/AP-03-package-handoff.md`.
-- [ ] Choose and record one development-consumption mechanism consistent with the current private Forge workflow: clean exact-SHA `file:` dependencies to built package roots, or versioned tarballs packed from that clean SHA. Do not point Forge at extension source or a dirty working directory.
-- [ ] If using the current `file:` model, update the Forge lockfile in AP-08, set `EXPECTED_COMMIT` to the handoff SHA, add both packages to `EXPECTED_PACKAGES`, and verify every resolved entry is under the recorded package `dist/`. If using tarballs, record SHA-256 values and extend the verifier to assert package/version/hash provenance.
-- [ ] Keep public package publishing outside automatic execution. A later production consumption method requires explicit release authorization, but AP-08 development proof must already be reproducible from this receipt.
+- [x] After the relevant E2E gate, commit AP-01 through AP-03 on the atlcli feature branch so the handoff has one immutable source SHA; a dirty worktree is not a package source.
+- [x] From a clean checkout at that exact SHA, build `@atlcli/action-registry` and `@atlcli/action-palette-react`, record their versions, exported entries, `dist/` hashes, React peer range, and build/test commands in `specs/atlassian-action-palette-mvp/evidence/AP-03-package-handoff.md`.
+- [x] Choose and record one development-consumption mechanism consistent with the current private Forge workflow: clean exact-SHA `file:` dependencies to built package roots, or versioned tarballs packed from that clean SHA. Do not point Forge at extension source or a dirty working directory.
+- [x] If using the current `file:` model, update the Forge lockfile in AP-08, set `EXPECTED_COMMIT` to the handoff SHA, add both packages to `EXPECTED_PACKAGES`, and verify every resolved entry is under the recorded package `dist/`. If using tarballs, record SHA-256 values and extend the verifier to assert package/version/hash provenance.
+- [x] Keep public package publishing outside automatic execution. A later production consumption method requires explicit release authorization, but AP-08 development proof must already be reproducible from this receipt.
 
 **Proof**
 
