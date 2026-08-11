@@ -6,6 +6,7 @@ import {
   type BrowserContext,
   type FrameLocator,
   type Page,
+  type Worker,
 } from "@playwright/test";
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,6 +52,7 @@ let storagePage: Page;
 let suiteRoot: string;
 let extensionId: string;
 let missingCapabilityFixture = false;
+let extensionWorker: Worker;
 
 function paletteFrame(page: Page): FrameLocator {
   return page.frameLocator("atlcli-action-palette-root iframe");
@@ -183,8 +185,9 @@ test.beforeAll(async ({}, workerInfo) => {
     headless: true,
     args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
   });
-  const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker", { timeout: 30_000 });
-  extensionId = new URL(worker.url()).host;
+  extensionWorker = context.serviceWorkers()[0] ??
+    await context.waitForEvent("serviceworker", { timeout: 30_000 });
+  extensionId = new URL(extensionWorker.url()).host;
   storagePage = await context.newPage();
   await storagePage.goto(`chrome-extension://${extensionId}/storage-probe.html`);
 });
@@ -275,6 +278,52 @@ test("survives SPA navigation, adversarial CSS, zoom, and fifty toggle cycles", 
   }
   expect(await page.locator("atlcli-action-palette-root").count()).toBe(1);
   expect(errors).toEqual([]);
+  await page.close();
+});
+
+test("queues the real current-page PDF path and hands missing DOCX setup to Publishing", async () => {
+  await extensionWorker.evaluate(() => {
+    const originalFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.startsWith("https://fixture.atlassian.net/wiki/rest/api/")) {
+        const body = url.includes("/child/attachment")
+          ? { results: [] }
+          : {
+              id: "42",
+              title: "Palette Guide",
+              body: { storage: { value: "<h1>Palette Guide</h1><p>Fixture body</p>" } },
+              version: { number: 7 },
+              space: { key: "DOCSY" },
+            };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+  });
+  const page = await openFixture(URLS.confluenceView);
+  expect(await toggle(page)).toBe(true);
+  let frame = await expectOpen(page, /Confluence · DOCSY/);
+  await frame.getByTestId("palette-search").fill("Export current page as PDF");
+  await frame.getByTestId("palette-search").press("Enter");
+  const pdfResult = frame.locator("[data-testid^='palette-result-']");
+  await expect(pdfResult).toBeVisible();
+  await expect(pdfResult).toHaveAttribute("data-testid", "palette-result-queued");
+  await expect(frame.getByTestId("palette-result-queued")).toContainText("PDF · queued");
+  expect(await toggle(page)).toBe(true);
+  await expect(frame.getByTestId("palette-search")).toBeHidden();
+
+  expect(await toggle(page)).toBe(true);
+  frame = await expectOpen(page, /Confluence · DOCSY/);
+  await frame.getByTestId("palette-search").fill("Export current page as DOCX");
+  await frame.getByTestId("palette-search").press("Enter");
+  await expect(frame.getByTestId("palette-result-open-surface")).toBeVisible();
+  await expect(frame.getByRole("button", { name: "Open Publishing" })).toBeVisible();
+  await frame.getByRole("button", { name: "Open Publishing" }).click();
+  await expect(frame.getByTestId("palette-result-open-surface")).toBeVisible();
   await page.close();
 });
 

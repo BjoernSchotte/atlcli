@@ -1182,7 +1182,7 @@ function checkResult(
     checkExactKeys(object, ["status", "input"], "$", issues);
     checkInputSchema(object.input, "$.input", issues);
   } else if (object.status === "open-surface") {
-    checkExactKeys(object, ["status", "target"], "$", issues);
+    checkExactKeys(object, ["status", "target", "actions"], "$", issues);
     checkSurfaceTarget(object.target, "$.target", issues);
   } else if (object.status === "failed") {
     checkExactKeys(object, ["status", "errorCode", "messageKey", "retryable"], "$", issues);

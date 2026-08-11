@@ -540,6 +540,17 @@ describe("input, localization, and result boundaries", () => {
       kind: "sidebar",
       screen: "research",
     });
+    expect(parseActionResultV1({
+      status: "open-surface",
+      target: { kind: "sidebar", screen: "export" },
+      actions: [{
+        schemaVersion: 1,
+        id: ACTION_IDS.openPublishing,
+        title: { key: "atlcli.action.open-publishing.title", fallback: "Open Publishing" },
+        intent: { kind: "surface.open", target: { kind: "sidebar", screen: "export" } },
+        effect: "external-navigation",
+      }],
+    })).toMatchObject({ status: "open-surface", actions: [{ id: ACTION_IDS.openPublishing }] });
     expect(() => assertValidSurfaceTargetV1({ kind: "sidebar", screen: "arbitrary" })).toThrow(
       ActionContractValidationError,
     );

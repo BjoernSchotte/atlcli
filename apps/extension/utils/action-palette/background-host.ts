@@ -29,6 +29,7 @@ import {
   type ActionPaletteRequestV1,
   type ActionPaletteResponseV1,
 } from "./protocol.js";
+import type { ActionPaletteExportRunnerV1 } from "./export-actions.js";
 
 const ALLOWED_EFFECTS = new Set<ActionEffectV1>(["read", "download", "external-navigation"]);
 const DEFAULT_LEASE_MS = 120_000;
@@ -38,7 +39,11 @@ export interface ActionPaletteExecutorEntryV1 {
   readonly capability: string;
   readonly effect: ActionEffectV1;
   readonly intentKind: ActionIntentV1["kind"];
-  execute(request: ActionExecutionRequestV1, signal: AbortSignal): Promise<ActionResultV1>;
+  execute(
+    request: ActionExecutionRequestV1,
+    signal: AbortSignal,
+    assertContextCurrent: () => Promise<void>,
+  ): Promise<ActionResultV1>;
 }
 
 export interface ActionPaletteBackgroundDepsV1 {
@@ -70,9 +75,16 @@ export type QueueActionPaletteSurfaceV1 = (
   screen: "export" | "research" | "activity" | "settings",
 ) => Promise<void>;
 
+export interface ExtensionActionPaletteExecutorDepsV1 {
+  readonly queueSurface?: QueueActionPaletteSurfaceV1;
+  readonly exportPdf?: ActionPaletteExportRunnerV1;
+  readonly exportDocx?: ActionPaletteExportRunnerV1;
+  readonly quickAsk?: ActionPaletteExecutorEntryV1["execute"];
+}
+
 /** Normal production composition: every advertised capability has a concrete adapter. */
 export function createExtensionActionPaletteExecutorsV1(
-  queueSurface: QueueActionPaletteSurfaceV1,
+  deps: ExtensionActionPaletteExecutorDepsV1,
 ): readonly ActionPaletteExecutorEntryV1[] {
   const surface = (
     actionId: string,
@@ -86,20 +98,42 @@ export function createExtensionActionPaletteExecutorsV1(
     effect,
     intentKind,
     async execute() {
-      await queueSurface(screen);
+      await deps.queueSurface?.(screen);
       return { status: "open-surface", target: { kind: "sidebar", screen } };
     },
   });
-  return Object.freeze([
-    surface(ACTION_IDS.exportPdfCurrentPage, EXTENSION_ACTION_CAPABILITIES_V1.pdf, "download", "export.current-page", "export"),
-    surface(ACTION_IDS.exportDocxCurrentPage, EXTENSION_ACTION_CAPABILITIES_V1.docx, "download", "export.current-page", "export"),
-    surface(ACTION_IDS.configureDocx, EXTENSION_ACTION_CAPABILITIES_V1.docx, "external-navigation", "export.configure-docx", "settings"),
+  const entries: ActionPaletteExecutorEntryV1[] = [];
+  if (deps.exportPdf) entries.push({
+    actionId: ACTION_IDS.exportPdfCurrentPage,
+    capability: EXTENSION_ACTION_CAPABILITIES_V1.pdf,
+    effect: "download",
+    intentKind: "export.current-page",
+    execute: deps.exportPdf,
+  });
+  if (deps.exportDocx) entries.push({
+    actionId: ACTION_IDS.exportDocxCurrentPage,
+    capability: EXTENSION_ACTION_CAPABILITIES_V1.docx,
+    effect: "download",
+    intentKind: "export.current-page",
+    execute: deps.exportDocx,
+  });
+  if (deps.exportDocx && deps.queueSurface) entries.push(
+    surface(ACTION_IDS.configureDocx, EXTENSION_ACTION_CAPABILITIES_V1.docx, "external-navigation", "export.configure-docx", "export"),
+  );
+  if (deps.queueSurface) entries.push(
     surface(ACTION_IDS.openSidebar, EXTENSION_ACTION_CAPABILITIES_V1.surface, "external-navigation", "surface.open", "export"),
     surface(ACTION_IDS.openPublishing, EXTENSION_ACTION_CAPABILITIES_V1.surface, "external-navigation", "surface.open", "export"),
     surface(ACTION_IDS.openResearch, EXTENSION_ACTION_CAPABILITIES_V1.surface, "external-navigation", "surface.open", "research"),
     surface(ACTION_IDS.openActivity, EXTENSION_ACTION_CAPABILITIES_V1.surface, "external-navigation", "surface.open", "activity"),
-    surface(ACTION_IDS.quickAsk, EXTENSION_ACTION_CAPABILITIES_V1.ai, "read", "ai.quick-ask", "research"),
-  ]);
+  );
+  if (deps.quickAsk) entries.push({
+    actionId: ACTION_IDS.quickAsk,
+    capability: EXTENSION_ACTION_CAPABILITIES_V1.ai,
+    effect: "read",
+    intentKind: "ai.quick-ask",
+    execute: deps.quickAsk,
+  });
+  return Object.freeze(entries);
 }
 
 function error(
@@ -247,7 +281,17 @@ export function createActionPaletteBackgroundHostV1(
     const controller = new AbortController();
     executions.set(request.requestId, controller);
     try {
-      const result = parseActionResultV1(await executor.execute(executionRequest, controller.signal), {
+      const assertContextCurrent = async (): Promise<void> => {
+        const current = await derive(sender, request.locale);
+        if (!bindingsEqualV1(lease.binding, current.binding)) {
+          throw new ActionPaletteContextError("stale-context");
+        }
+      };
+      const result = parseActionResultV1(await executor.execute(
+        executionRequest,
+        controller.signal,
+        assertContextCurrent,
+      ), {
         allowedContributionIntentKinds,
       });
       return {
@@ -256,7 +300,10 @@ export function createActionPaletteBackgroundHostV1(
         executionId: request.requestId,
         result,
       };
-    } catch {
+    } catch (caught) {
+      if (caught instanceof ActionPaletteContextError) {
+        return error(request.requestId, caught.code, caught.code === "stale-context");
+      }
       return error(request.requestId, "execution-failed", true);
     } finally {
       executions.delete(request.requestId);

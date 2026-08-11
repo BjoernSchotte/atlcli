@@ -644,15 +644,15 @@ bun run check:browser
 
 **Blocks:** AP-07, AP-09
 
-- [ ] Reuse `loadConfluencePage()`, `createExtensionPdfJobRequest()`, and `submitExtensionPdfExport()` for the PDF current-page action; preserve established defaults and persistence-before-wake semantics.
-- [ ] Reuse the IDB template library's active space-specific/global fallback, `createExtensionDocxJobRequest()`, and `submitExtensionDocxExport()` for DOCX; pin the exact record key, bytes, and SHA-256 before queueing. Return `open-surface` when a valid template is unavailable.
-- [ ] Keep both actions in the background executor. Do not import compiler/engine/job-polling code into the content script or presenter, and never call `runSubmittedExtensionPdfExport()` or `runSubmittedExtensionDocxExport()` from the palette path.
-- [ ] Return redacted queued/completed receipts and secondary actions for Activity/Open Sidebar.
-- [ ] Implement one-shot target-screen navigation through the existing screen registry for Export, Research, and Activity.
-- [ ] Test cold-open delivery, already-open delivery, mailbox expiry, acknowledgement, duplicate suppression, and a host with no navigation capability; do not overwrite workspace preferences to deep-link.
-- [ ] Verify closing the palette after job submission does not cancel or orphan PDF/DOCX jobs; verify pre-submit cancellation does stop pending non-durable work.
-- [ ] Add parity tests showing palette and Publishing Studio builders produce equivalent requests for current-page defaults.
-- [ ] Add regression tests for no template, unreadable template, page navigation during selection, port failure, duplicate submit, service-worker restart, and side-panel gesture loss.
+- [x] Reuse `loadConfluencePage()`, `createExtensionPdfJobRequest()`, and `submitExtensionPdfExport()` for the PDF current-page action; preserve established defaults and persistence-before-wake semantics.
+- [x] Reuse the IDB template library's active space-specific/global fallback, `createExtensionDocxJobRequest()`, and `submitExtensionDocxExport()` for DOCX; pin the exact record key, bytes, and SHA-256 before queueing. Return `open-surface` when a valid template is unavailable.
+- [x] Keep both actions in the background executor. Do not import compiler/engine/job-polling code into the content script or presenter, and never call `runSubmittedExtensionPdfExport()` or `runSubmittedExtensionDocxExport()` from the palette path.
+- [x] Return redacted queued/completed receipts and secondary actions for Activity/Open Sidebar.
+- [x] Implement one-shot target-screen navigation through the existing screen registry for Export, Research, and Activity.
+- [x] Test cold-open delivery, already-open delivery, mailbox expiry, acknowledgement, duplicate suppression, and a host with no navigation capability; do not overwrite workspace preferences to deep-link.
+- [x] Verify closing the palette after job submission does not cancel or orphan PDF/DOCX jobs; verify pre-submit cancellation does stop pending non-durable work.
+- [x] Add parity tests showing palette and Publishing Studio builders produce equivalent requests for current-page defaults.
+- [x] Add regression tests for no template, unreadable template, page navigation during selection, port failure, duplicate submit, service-worker restart, and side-panel gesture loss.
 
 **Proof**
 

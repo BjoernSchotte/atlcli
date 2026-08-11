@@ -278,6 +278,7 @@ export type ActionResultV1 =
   | {
       readonly status: "open-surface";
       readonly target: ActionSurfaceTargetV1;
+      readonly actions?: readonly ActionAffordanceV1[];
     }
   | {
       readonly status: "failed";

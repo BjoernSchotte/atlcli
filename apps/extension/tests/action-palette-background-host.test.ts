@@ -75,7 +75,15 @@ function revisionOf(response: Awaited<ReturnType<ReturnType<typeof harness>["cat
 
 describe("authoritative action palette background host", () => {
   test("keeps the production executor allowlist exhaustive and adapter-backed", () => {
-    const entries = createExtensionActionPaletteExecutorsV1(async () => undefined);
+    const exportRunner = async (): Promise<ActionResultV1> => ({
+      status: "completed", messageKey: "atlcli.test.done",
+    });
+    const entries = createExtensionActionPaletteExecutorsV1({
+      queueSurface: async () => undefined,
+      exportPdf: exportRunner,
+      exportDocx: exportRunner,
+      quickAsk: exportRunner,
+    });
     expect(entries.map((entry) => entry.actionId).sort()).toEqual(Object.values(ACTION_IDS).sort());
     expect(new Set(entries.map((entry) => entry.capability))).toEqual(new Set([
       EXTENSION_ACTION_CAPABILITIES_V1.pdf,
@@ -145,6 +153,24 @@ describe("authoritative action palette background host", () => {
     h.advance(501);
     expect(await h.execute(revision, "execute:5")).toMatchObject({
       kind: "action-palette:error", code: "catalog-expired",
+    });
+  });
+
+  test("lets a slow executor revalidate the sender binding immediately before commit", async () => {
+    let navigate = (): void => undefined;
+    const h = harness([syntheticExecutor(async (_request, _signal, assertContextCurrent) => {
+      navigate();
+      await assertContextCurrent();
+      return { status: "completed", messageKey: "atlcli.test.done" };
+    })]);
+    navigate = () => h.setTab({
+      id: 4,
+      url: "https://fixture.atlassian.net/wiki/spaces/DOC/pages/88/Other",
+    });
+    expect(await h.execute(revisionOf(await h.catalog()))).toMatchObject({
+      kind: "action-palette:error",
+      code: "stale-context",
+      retryable: true,
     });
   });
 

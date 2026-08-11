@@ -17,6 +17,8 @@ import {
   type ActionPaletteResponseV1,
 } from "../utils/action-palette/protocol.js";
 import type { ActionPaletteSenderV1 } from "../utils/action-palette/context.js";
+import { createActionPaletteExportRunnersV1 } from "../utils/action-palette/export-actions.js";
+import { openActionPaletteSidePanelForGestureV1 } from "../utils/action-palette/gesture.js";
 import { ACTION_PALETTE_NAVIGATION_STORAGE_KEY } from "./sidepanel/ports/surface-navigation.js";
 import { ACTION_PALETTE_COMMAND_ID } from "./sidepanel/ports/shortcut.js";
 // Import from @atlcli/core's BROWSER entry. Presence in the bundle proves Vite
@@ -118,6 +120,8 @@ import {
 } from "../utils/pdf/job-store.js";
 import { IndexedDbExportJobCatalog } from "../utils/export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../utils/export-jobs/chunk-store.js";
+import { submitExtensionPdfExport } from "../utils/export-jobs/pdf-submit.js";
+import { submitExtensionDocxExport } from "../utils/export-jobs/docx-submit.js";
 import { listExtensionExportActivity } from "../utils/export-jobs/activity.js";
 import { sweepExtensionExportJobRetention } from "../utils/export-jobs/retention.js";
 import {
@@ -130,6 +134,8 @@ import {
   planExtensionExportBadge,
 } from "../utils/export-jobs/badge.js";
 import { createObserverSession } from "../utils/observer-session.js";
+import { loadConfluencePage } from "../utils/read-path.js";
+import { idbTemplateLibrary } from "../utils/templates/library.js";
 import {
   currentDetection,
   initialObserverState,
@@ -492,6 +498,75 @@ export default defineBackground({
     });
   };
 
+  const wakePaletteExport = async (
+    jobIds: string[],
+  ): Promise<{ claimedJobId?: string; error?: string }> => {
+    try {
+      const claimedJobId = await runJobsWake(jobIds);
+      return claimedJobId ? { claimedJobId } : {};
+    } catch {
+      return { error: "The durable export is queued, but the worker could not be woken." };
+    }
+  };
+
+  const paletteExports = createActionPaletteExportRunnersV1({
+    async loadPage(request, signal) {
+      signal.throwIfAborted();
+      const entity = request.context.entity;
+      if (entity?.kind !== "atlcli.entity.confluence-page") {
+        throw new Error("The current tab is not a Confluence page.");
+      }
+      const profile = profileFromTabUrl(entity.url);
+      if (!profile || new URL(entity.url).origin !== request.context.siteOrigin) {
+        throw new Error("The current Confluence page is outside the authoritative site.");
+      }
+      // The durable request stores only authoritative source identity/version;
+      // rendering re-reads the page later in the export worker. Turndown's DOM
+      // conversion belongs to a document host and is unavailable in an MV3
+      // service worker, so keep this background read intentionally content-free.
+      const page = await loadConfluencePage(entity.id, profile, {
+        toMarkdown: () => "",
+      });
+      signal.throwIfAborted();
+      return page;
+    },
+    async resolveDocxTemplate(request, signal) {
+      signal.throwIfAborted();
+      const spaceKey = request.context.entity?.key;
+      const library = idbTemplateLibrary({ siteOrigin: request.context.siteOrigin });
+      const activeTemplateId = await library.getActiveTemplateId("docx", spaceKey);
+      if (!activeTemplateId) return null;
+      const entry = await library.resolve(activeTemplateId, "docx", spaceKey);
+      if (!entry) return null;
+      const bytes = await library.getBytes(entry);
+      signal.throwIfAborted();
+      return {
+        name: entry.fileName,
+        uploadedAt: Date.parse(entry.uploadedAt),
+        bytes: bytes.slice().buffer,
+        recordKey: entry.recordKey,
+        sha256: entry.sha256,
+      };
+    },
+    async getExistingJob(id) {
+      return (await commonExportCatalog.get(id)) ?? undefined;
+    },
+    submitPdf: (input, requestId) => submitExtensionPdfExport(input, {
+      requestId,
+      catalog: commonExportCatalog,
+      bytes: commonExportBytes,
+      postPersistAbortPolicy: "detach",
+      wake: wakePaletteExport,
+    }),
+    submitDocx: (input, requestId) => submitExtensionDocxExport(input, {
+      requestId,
+      catalog: commonExportCatalog,
+      bytes: commonExportBytes,
+      postPersistAbortPolicy: "detach",
+      wake: wakePaletteExport,
+    }),
+  });
+
   const actionPaletteHost = createActionPaletteBackgroundHostV1({
     getTab: async (tabId) => {
       try {
@@ -501,7 +576,15 @@ export default defineBackground({
         return undefined;
       }
     },
-    executors: createExtensionActionPaletteExecutorsV1(queuePaletteSurface),
+    executors: createExtensionActionPaletteExecutorsV1({
+      queueSurface: queuePaletteSurface,
+      exportPdf: paletteExports.pdf,
+      exportDocx: paletteExports.docx,
+      quickAsk: async () => {
+        await queuePaletteSurface("research");
+        return { status: "open-surface", target: { kind: "sidebar", screen: "research" } };
+      },
+    }),
     shortcutStatus: async () => {
       const commands = await chrome.commands.getAll();
       const shortcut = commands.find((command) => command.name === ACTION_PALETTE_COMMAND_ID)?.shortcut?.trim() || null;
@@ -2078,7 +2161,13 @@ export default defineBackground({
   // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (isActionPaletteRequestCandidateV1(message)) {
-      void actionPaletteHost.handle(message, paletteSenderFromChrome(sender)).then(sendResponse);
+      const paletteSender = paletteSenderFromChrome(sender);
+      openActionPaletteSidePanelForGestureV1(message, paletteSender, (tabId) => {
+        void chrome.sidePanel.open({ tabId }).catch(() => {
+          // The toolbar remains the visible recovery path when Chrome drops activation.
+        });
+      });
+      void actionPaletteHost.handle(message, paletteSender).then(sendResponse);
       return true;
     }
     if (isExportJobsChanged(message)) {
