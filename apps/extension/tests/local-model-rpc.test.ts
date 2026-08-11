@@ -9,6 +9,7 @@ import { z } from "zod";
 import {
   LOCAL_GEMMA_ANSWER_TOOL_PREFILL_V1,
   LOCAL_GEMMA_FIRST_ANSWER_PREVIEW_TOKEN_V1,
+  isCompleteGemmaToolCallV1,
   localGemmaAnswerToolPrefillV1,
   nextLocalGemmaAnswerPreviewTokenV1,
   parseGemma4ResponseV1,
@@ -96,6 +97,48 @@ describe("pinned Gemma 4 response grammar", () => {
         gaps: [],
       },
     }]);
+  });
+
+  it("repairs omitted object separators only for the terminal answer", () => {
+    const raw = '<|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|"|>Budget<|"|>sourceRefs:[] assertion:<|"|>positive<|"|>,scope:<|"|>none<|"|>}]gaps:[]}';
+    expect(parseGemma4ResponseV1({
+      requestId: "one-separator",
+      raw,
+      allowedToolNames: new Set(["ChatAnswerDraftV2"]),
+    }).toolCalls[0]?.arguments).toEqual({
+      blocks: [{
+        markdown: "Budget",
+        sourceRefs: [],
+        assertion: "positive",
+        scope: "none",
+      }],
+      gaps: [],
+    });
+    expect(isCompleteGemmaToolCallV1(raw, "ChatAnswerDraftV2")).toBe(true);
+
+    expect(() => parseGemma4ResponseV1({
+      requestId: "strict-eval",
+      raw: '<|tool_call>call:eval{code:<|"|>return 42<|"|>flags:[]}',
+      allowedToolNames: new Set(["eval"]),
+    })).toThrow("missing ','");
+  });
+
+  it("closes only the omitted terminal root boundary", () => {
+    const markerless = '<|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|"|>Complete<|"|>,sourceRefs:[]}]}';
+    const raw = `${markerless}<tool_call|>`;
+    expect(isCompleteGemmaToolCallV1(markerless, "ChatAnswerDraftV2")).toBe(true);
+    expect(parseGemma4ResponseV1({
+      requestId: "root-boundary",
+      raw,
+      allowedToolNames: new Set(["ChatAnswerDraftV2"]),
+    }).toolCalls[0]?.arguments).toEqual({
+      blocks: [{ markdown: "Complete", sourceRefs: [] }],
+    });
+    expect(() => parseGemma4ResponseV1({
+      requestId: "nested-truncation",
+      raw: '<|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|"|>Incomplete<|"|>,sourceRefs:[]]<tool_call|>',
+      allowedToolNames: new Set(["ChatAnswerDraftV2"]),
+    })).toThrow();
   });
 
   it("projects visible answer blocks from an incomplete native tool call", () => {
@@ -192,6 +235,12 @@ describe("local model RPC boundary", () => {
         gaps: [],
       },
     });
+
+    expect(normalizeLocalGemmaToolCallV1({
+      id: "answer-without-gaps",
+      name: "ChatAnswerDraftV2",
+      arguments: { blocks: [] },
+    }).arguments.gaps).toEqual([]);
   });
 
   it("does not normalize explicit unknown answer metadata", () => {
@@ -494,7 +543,7 @@ describe("local model RPC boundary", () => {
     const binding = createLocalGemmaChatModelBindingV1({
       port: channel.port1,
       modelId: "fixture/model",
-      maxOutputTokens: 32,
+      maxOutputTokens: 1_024,
     });
     const runnable = binding.model.bindTools!([
       { name: "eval", description: "Evaluate", schema: z.object({ code: z.string() }) },
@@ -509,16 +558,18 @@ describe("local model RPC boundary", () => {
     expect(observed).toMatchObject({
       kind: "generate",
       requiredToolName: "ChatAnswerDraftV2",
+      maxOutputTokens: 896,
       tools: [{ function: { name: "ChatAnswerDraftV2" } }],
     });
     if (observed?.kind !== "generate") throw new Error("Expected generation request.");
     expect(JSON.stringify(observed.tools[0])).toContain('"maxItems":8');
     expect(JSON.stringify(observed.tools[0])).not.toContain("continuation");
-    expect(JSON.stringify(observed.tools[0]).length).toBeLessThan(1_200);
+    expect(JSON.stringify(observed.tools[0]).length).toBeLessThan(850);
     expect(observed.tools[0]!.function.parameters).toMatchObject({
       properties: {
         blocks: {
           items: {
+            required: ["markdown", "sourceRefs"],
             properties: {
               assertion: { type: "string" },
               scope: { type: "string" },
@@ -528,7 +579,7 @@ describe("local model RPC boundary", () => {
       },
     });
     expect(observed.messages[0]!.content).toContain(
-      "response must begin with the Gemma tool call",
+      "Return only `<|tool_call>call:ChatAnswerDraftV2`",
     );
     channel.port1.close();
     channel.port2.close();

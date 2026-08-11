@@ -509,7 +509,7 @@ describe("local Gemma shared Chat-agent path", () => {
       )!;
       expect(finalRequest.messages.some((message) => message.role === "tool")).toBe(false);
       expect(JSON.stringify(finalRequest.messages)).toContain(
-        "atlcli.chat-terminal-context/v1",
+        "atlcli.chat-terminal-context/v2",
       );
       expect(JSON.stringify(finalRequest.messages)).toContain(
         "Budget 2026: 60,000-85,000 EUR.",
@@ -648,7 +648,7 @@ describe("local Gemma shared Chat-agent path", () => {
         expect(requests).toHaveLength(1);
         expect(requests[0]!.requiredToolName).toBe("ChatAnswerDraftV2");
         expect(JSON.stringify(requests[0]!.messages)).toContain(
-          "atlcli.chat-terminal-context/v1",
+          "atlcli.chat-terminal-context/v2",
         );
         expect(events).toEqual(expect.arrayContaining([
           expect.objectContaining({

@@ -141,7 +141,6 @@ export function toLocalModelMessagesV1(
 
 const LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 = {
   type: "object",
-  additionalProperties: false,
   required: ["blocks"],
   properties: {
     blocks: {
@@ -149,11 +148,10 @@ const LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 = {
       maxItems: 8,
       items: {
         type: "object",
-        additionalProperties: false,
-        required: ["markdown", "sourceRefs", "assertion", "scope"],
+        required: ["markdown", "sourceRefs"],
         properties: {
-          markdown: { type: "string", maxLength: 1_600 },
-          sourceRefs: { type: "array", maxItems: 6, items: { type: "string" } },
+          markdown: { type: "string" },
+          sourceRefs: { type: "array", items: { type: "string" } },
           assertion: {
             type: "string",
             enum: ["positive", "absence", "none"],
@@ -170,12 +168,11 @@ const LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 = {
       maxItems: 4,
       items: {
         type: "object",
-        additionalProperties: false,
         required: ["code", "message", "sourceIds"],
         properties: {
-          code: { type: "string", maxLength: 80 },
-          message: { type: "string", maxLength: 500 },
-          sourceIds: { type: "array", maxItems: 6, items: { type: "string" } },
+          code: { type: "string" },
+          message: { type: "string" },
+          sourceIds: { type: "array", items: { type: "string" } },
         },
       },
     },
@@ -264,7 +261,9 @@ export function normalizeLocalGemmaToolCallV1(
       // Gemma 4 E4B occasionally uses numeric zero as an empty collection.
       // This is unambiguous only for zero; every other non-array value remains
       // invalid and is rejected by the canonical structured-output schema.
-      ...(call.arguments.gaps === 0 ? { gaps: [] } : {}),
+      ...(call.arguments.gaps === 0 || call.arguments.gaps === undefined
+        ? { gaps: [] }
+        : {}),
     },
   };
 }
@@ -616,7 +615,12 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
       ...(this.#streamAnswerPreview && requiredToolName === "ChatAnswerDraftV2"
         ? { streamAnswerPreview: true }
         : {}),
-      maxOutputTokens: this.#maxOutputTokens,
+      // A terminal answer is already bounded to a handful of concise blocks.
+      // Keep enough tail room to close the tool JSON: 768 produced useful
+      // previews but truncated a four-facet answer before its final block.
+      maxOutputTokens: requiredToolName === "ChatAnswerDraftV2"
+        ? Math.min(this.#maxOutputTokens, 896)
+        : this.#maxOutputTokens,
       thinkingMode: this.#thinkingMode,
       ...(options.signal ? { signal: options.signal } : {}),
     });

@@ -477,19 +477,31 @@ async function generateV1(
         ),
       });
     } catch (error) {
+      const parseErrorMessage = error instanceof Error ? error.message : String(error);
+      const parseErrorByte = /at byte (\d+)/u.exec(parseErrorMessage)?.[1];
+      const parseErrorIndex = parseErrorByte === undefined
+        ? undefined
+        : Number.parseInt(parseErrorByte, 10);
+      const parseErrorContext = parseErrorIndex === undefined ||
+          !Number.isFinite(parseErrorIndex)
+        ? raw.slice(-600)
+        : raw.slice(
+            Math.max(0, parseErrorIndex - 240),
+            Math.min(raw.length, parseErrorIndex + 360),
+          );
       console.error("[local-gemma/worker] response parse failed", {
         requestId: request.requestId,
         requiredToolName: request.requiredToolName,
         outputTokens: generatedTokens.length,
-        error: error instanceof Error ? error.message : String(error),
+        error: parseErrorMessage,
         rawHead: raw.slice(0, 2_000),
         rawTail: raw.slice(-2_000),
       });
       if (!request.requiredToolName) throw error;
       throw new Error(
         `Local Gemma diagnostic after ${generatedTokens.length} output tokens: ${
-          error instanceof Error ? error.message : String(error)
-        }; generated=${JSON.stringify(raw.slice(0, 1_600))}`,
+          parseErrorMessage
+        }; near=${JSON.stringify(parseErrorContext)}`,
       );
     }
     const performanceReceipt: LocalModelInferencePerformanceV1 = {

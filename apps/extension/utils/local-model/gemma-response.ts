@@ -137,11 +137,33 @@ export function isCompleteGemmaToolCallV1(
   const match = /^call:([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)([\s\S]+)$/u.exec(body);
   if (match?.[1] !== requiredToolName || !match[2]) return false;
   try {
-    new GemmaArgumentsParserV1(match[2]).parse();
+    new GemmaArgumentsParserV1(
+      terminalAnswerArgumentBoundaryV1(match[2], requiredToolName),
+      requiredToolName === "ChatAnswerDraftV2" ? 32 : 0,
+    ).parse();
     return true;
   } catch {
     return false;
   }
+}
+
+function terminalAnswerArgumentBoundaryV1(
+  source: string,
+  toolName: string,
+): string {
+  const trimmed = source.trimEnd();
+  // The pinned Gemma template sometimes closes a complete final `blocks`
+  // (or `gaps`) array and immediately emits the tool-close token without the
+  // single outer object brace. Append only that root boundary; a truncated
+  // nested object/string still fails the parser below.
+  if (
+    toolName === "ChatAnswerDraftV2" &&
+    trimmed.startsWith("{") &&
+    trimmed.endsWith("]")
+  ) {
+    return `${trimmed}}${source.slice(trimmed.length)}`;
+  }
+  return source;
 }
 
 function normalizeToolCallV1(input: {
@@ -160,7 +182,11 @@ function normalizeToolCallV1(input: {
 
 class GemmaArgumentsParserV1 {
   #index = 0;
-  constructor(readonly source: string) {}
+  #implicitObjectSeparators = 0;
+  constructor(
+    readonly source: string,
+    readonly maximumImplicitObjectSeparators = 0,
+  ) {}
 
   parse(): Record<string, unknown> {
     const value = this.#value();
@@ -248,6 +274,13 @@ class GemmaArgumentsParserV1 {
     return key;
   }
 
+  #looksLikeKey(): boolean {
+    this.#space();
+    return this.source.startsWith(STRING_DELIMITER, this.#index) ||
+      this.source[this.#index] === '"' ||
+      /^[A-Za-z_][A-Za-z0-9_-]*/u.test(this.source.slice(this.#index));
+  }
+
   #object(): Record<string, unknown> {
     const object: Record<string, unknown> = {};
     if (this.#take("}")) return object;
@@ -256,7 +289,22 @@ class GemmaArgumentsParserV1 {
       if (!this.#take(":")) throw new Error("Gemma tool argument key is missing ':'.");
       object[key] = this.#value();
       if (this.#take("}")) return object;
-      if (!this.#take(",")) throw new Error("Gemma tool argument object is missing ','.");
+      if (this.#take(",")) continue;
+      // Gemma 4 occasionally omits field separators in an otherwise complete
+      // terminal answer object. Tolerate only this answer grammar, with a hard
+      // ceiling above the maximum separators in the projected block schema.
+      // Arbitrary/eval tool calls retain strict parsing, and host schema plus
+      // evidence validation still gates the resulting packet.
+      if (
+        this.#implicitObjectSeparators < this.maximumImplicitObjectSeparators &&
+        this.#looksLikeKey()
+      ) {
+        this.#implicitObjectSeparators += 1;
+        continue;
+      }
+      throw new Error(
+        `Gemma tool argument object is missing ',' at byte ${this.#index}.`,
+      );
     }
   }
 
@@ -314,7 +362,10 @@ export function parseGemma4ResponseV1(input: {
     if (!match?.[1] || !match[2]) throw new Error("Gemma tool call has an invalid header.");
     const normalized = normalizeToolCallV1({
       name: match[1],
-      arguments: new GemmaArgumentsParserV1(match[2]).parse(),
+      arguments: new GemmaArgumentsParserV1(
+        terminalAnswerArgumentBoundaryV1(match[2], match[1]),
+        match[1] === "ChatAnswerDraftV2" ? 32 : 0,
+      ).parse(),
       allowedToolNames: input.allowedToolNames,
     });
     toolCalls.push({

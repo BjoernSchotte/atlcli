@@ -126,8 +126,6 @@ describe("local Chat terminal-context compiler", () => {
     expect(projection?.matchedQuestionTerms).toEqual(expect.arrayContaining([
       "budget",
       "2026",
-      "base",
-      "fee",
       "2027",
     ]));
     expect(projection?.snippets.map((snippet) => snippet.text).join("\n"))
@@ -140,6 +138,59 @@ describe("local Chat terminal-context compiler", () => {
     });
     expect(projection!.snippets.reduce((total, snippet) => total + snippet.text.length, 0))
       .toBeLessThanOrEqual(envelope.directEvidenceTargetChars);
+  });
+
+  test("retains adjacent rows when a matched exact-page section crosses a snippet boundary", () => {
+    const body = [
+      `StrategyStages ${"a".repeat(550)}`,
+      "Stage 3 Audio uses a real call. Stage 4 Live runs the complete unsimulated chain.",
+      "b".repeat(20_000),
+      "ConcreteExamples and OpenLimits: a failed ticket handoff and missing audio material.",
+    ].join("\n");
+    const question =
+      "Summarize StrategyStages, ConcreteExamples, and OpenLimits from this page.";
+    const envelope = deriveChatLocalTerminalEnvelopeV1({
+      question,
+      evidence: [evidence(body)],
+    });
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question,
+      evidence: [evidence(body)],
+      targetTextChars: envelope.directEvidenceTargetChars,
+    });
+    const projectedText = projection?.snippets
+      .map((snippet) => snippet.text)
+      .join("\n") ?? "";
+
+    expect(projectedText).toContain("Stage 3 Audio uses a real call");
+    expect(projectedText).toContain("Stage 4 Live runs the complete unsimulated chain");
+    expect(projectedText).toContain("failed ticket handoff");
+    expect(projectedText.length).toBeLessThanOrEqual(
+      envelope.directEvidenceTargetChars + (projection!.snippets.length - 1),
+    );
+  });
+
+  test("retains one representative concrete detail beside anchored overview evidence", () => {
+    const body = [
+      "StrategyStages explains the four-level test ladder.",
+      "x".repeat(8_000),
+      "VS-3: caller correction 42 instead of 43. Seen in 17 recorded calls.",
+      "y".repeat(8_000),
+      "OpenLimits require audio material and a complete live environment.",
+    ].join("\n");
+    const question = "Summarize StrategyStages and OpenLimits with concrete examples.";
+    const envelope = deriveChatLocalTerminalEnvelopeV1({
+      question,
+      evidence: [evidence(body)],
+    });
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question,
+      evidence: [evidence(body)],
+      targetTextChars: envelope.directEvidenceTargetChars,
+    });
+
+    expect(projection?.snippets.map((snippet) => snippet.text).join("\n"))
+      .toContain("VS-3: caller correction 42 instead of 43");
   });
 
   test("falls back to semantic compilation when the question has no direct evidence anchor", () => {
@@ -210,21 +261,23 @@ describe("local Chat terminal-context compiler", () => {
       schema: string;
       question: string;
       instruction: string;
-      evidenceProjection: { snippets: Array<{ text: string }> };
+      sources: Array<{ sourceRef: string; excerpts: string[] }>;
     };
     expect(terminal).toMatchObject({
-      schema: "atlcli.chat-terminal-context/v1",
+      schema: "atlcli.chat-terminal-context/v2",
       question: "State the budget and deadline.",
     });
-    expect(terminal.evidenceProjection.snippets.map((snippet) => snippet.text).join("\n"))
+    expect(terminal.sources.flatMap((entry) => entry.excerpts).join("\n"))
       .toContain("BUDGET");
-    expect(terminal.evidenceProjection.snippets.map((snippet) => snippet.text).join("\n"))
+    expect(terminal.sources.flatMap((entry) => entry.excerpts).join("\n"))
       .toContain("DEADLINE");
-    expect(terminal.instruction).toContain(
-      "Address each substantive request in the user's original question",
-    );
-    expect(terminal.instruction).toContain("Judge coverage by meaning, not wording");
+    expect(terminal.sources).toHaveLength(1);
+    expect(terminal.sources[0]!.sourceRef).toBe(source.id);
+    expect(terminal.instruction).toContain("substantive part by meaning");
+    expect(terminal.instruction).toContain("user's language");
+    expect(terminal.instruction).toContain("reserve blocks for requested examples");
     expect(messages[0]!.text).not.toContain("explicitRequestChecklist");
+    expect(messages[0]!.text.length).toBeLessThan(body.length / 3);
     expect(messages[0]).toBeInstanceOf(HumanMessage);
   });
 

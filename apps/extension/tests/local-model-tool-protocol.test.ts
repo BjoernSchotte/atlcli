@@ -149,13 +149,14 @@ describe("local Gemma prompt projection", () => {
     ], [tools[1]!], "low", "ChatAnswerDraftV2");
 
     expect(projected[0]!.content.length).toBeLessThan(1_200);
-    expect(projected[0]!.content).toContain("non-empty `blocks` and actual `gaps` arrays");
-    expect(projected[0]!.content).toContain("at most 180 visible words and 6 blocks");
+    expect(projected[0]!.content).toContain("Call `ChatAnswerDraftV2` once");
+    expect(projected[0]!.content).toContain("reserve blocks for explicitly requested examples");
+    expect(projected[0]!.content).toContain("at most 140 visible words and 5 blocks");
+    expect(projected[0]!.content).toContain("one concise block per requested facet");
+    expect(projected[0]!.content).toContain("Do not repeat the question or evidence wording");
     expect(projected[0]!.content).toContain("not a usage quota");
-    expect(projected[0]!.content).toContain("return `gaps: []`");
-    expect(projected[0]!.content).toContain(
-      "response must begin with the Gemma tool call",
-    );
+    expect(projected[0]!.content).toContain("Return gaps=[]");
+    expect(projected[0]!.content).toContain("Return only `<|tool_call>call:ChatAnswerDraftV2`");
     expect(projected[0]!.content).not.toContain("complete list of functions");
     expect(projected[0]!.content).not.toContain("x".repeat(1_000));
   });
