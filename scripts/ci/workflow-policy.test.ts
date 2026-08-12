@@ -116,6 +116,78 @@ describe("CI workflow policy", () => {
     expect(reusable).not.toMatch(/download-artifact@v8\n\s+with:\n\s+path:/);
   });
 
+  it("uses one fail-closed scheduled and manual dev-release graph", async () => {
+    const dev = await workflow("dev-release.yml");
+    const triggers = block(dev, /^on:\s*$/, 0);
+    expect(triggers).not.toBeNull();
+    expect(triggers).toContain('cron: "17 2 * * *"');
+    expect(triggers).toContain("workflow_dispatch:");
+    expect(triggers).toContain("source_sha:");
+    expect(triggers).toContain("force_rebuild:");
+    expect(triggers).toContain("publish_homebrew:");
+    expect(triggers).not.toContain("pull_request:");
+    expect(triggers).not.toContain("pull_request_target:");
+    expect(triggers).not.toMatch(/^ {2}push:/m);
+    expect(dev).toContain("group: dev-release");
+    expect(dev).toContain("cancel-in-progress: false");
+    expect(dev).toMatch(/^permissions:\n  contents: read/m);
+    expect(dev).not.toContain("contents: write");
+    expect(dev).not.toContain("id-token: write");
+    expect(dev).not.toContain("attestations: write");
+    expect(dev).not.toContain("softprops/action-gh-release");
+    expect(dev).not.toContain("nightly-latest");
+  });
+
+  it("ignores the manual UI ref and accepts only a full SHA reachable from origin/main", async () => {
+    const dev = await workflow("dev-release.yml");
+    const resolve = block(dev, /^ {2}resolve-source:\s*$/, 2);
+    expect(resolve).not.toBeNull();
+    expect(resolve).toContain("ref: main");
+    expect(resolve).toContain("git rev-parse origin/main");
+    expect(resolve).toContain('[[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]');
+    expect(resolve).toContain('git cat-file -e "$source_sha^{commit}"');
+    expect(resolve).toContain('git merge-base --is-ancestor "$source_sha" origin/main');
+    expect(resolve).toContain('git checkout --detach "$source_sha"');
+    expect(resolve).not.toContain("github.ref");
+  });
+
+  it("puts no-op inspection and green exact-SHA eligibility before every dev build", async () => {
+    const dev = await workflow("dev-release.yml");
+    const decision = block(dev, /^ {2}publication-decision:\s*$/, 2);
+    const eligibility = block(dev, /^ {2}eligible-source:\s*$/, 2);
+    const preflight = block(dev, /^ {2}preflight:\s*$/, 2);
+    const artifacts = block(dev, /^ {2}artifacts:\s*$/, 2);
+    expect(decision).not.toBeNull();
+    expect(decision).toContain("needs: resolve-source");
+    expect(decision).toContain("scripts/ci/dev-release-decision.ts");
+    expect(decision).toContain('--force-rebuild "${{ inputs.force_rebuild || false }}"');
+    expect(eligibility).not.toBeNull();
+    expect(eligibility).toContain("needs: [resolve-source, publication-decision]");
+    expect(eligibility).toContain("needs.publication-decision.outputs.decision == 'create'");
+    expect(eligibility).toContain("actions: read");
+    expect(eligibility).toContain("checks: read");
+    expect(eligibility).toContain("contents: read");
+    expect(eligibility).toContain("scripts/ci/release-eligibility.ts");
+    expect(eligibility).toContain('--source-sha "${{ needs.resolve-source.outputs.source_sha }}"');
+    expect(preflight).not.toBeNull();
+    expect(preflight).toContain("needs: [resolve-source, publication-decision, eligible-source]");
+    expect(preflight).toContain("source_sha: ${{ needs.resolve-source.outputs.source_sha }}");
+    expect(preflight).not.toContain("always()");
+    expect(artifacts).not.toBeNull();
+    expect(artifacts).toContain("needs: [resolve-source, publication-decision, eligible-source, preflight]");
+    expect(artifacts).toContain("source_eligibility_artifact: source-eligibility-");
+    expect(artifacts).not.toContain("always()");
+  });
+
+  it("binds every reusable quality checkout and attestation to the requested source SHA", async () => {
+    const reusable = await workflow("reusable-quality.yml");
+    const checkouts = reusable.match(/ref: \$\{\{ inputs\.source_sha \|\| github\.sha \}\}/g) ?? [];
+    expect(checkouts).toHaveLength(6);
+    expect(reusable).toContain("EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}");
+    expect(reusable).toContain("attestation.commit !== process.env.EXPECTED_SOURCE_SHA");
+    expect(reusable).toContain("security-attestation-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+  });
+
   it("emits exactly one mode-named aggregate around selectively skipped jobs", async () => {
     const ci = await workflow("ci.yml");
     expect(ci).toContain("bun scripts/ci/classify-changes.ts --full");
@@ -393,7 +465,7 @@ describe("CI workflow policy", () => {
     expect(staticQuality).toContain("Validate duration-aware test inventory");
     expect(staticQuality).toContain("Run package contract tests against the warm build");
     expect(staticQuality).toContain("--group package-contract");
-    expect(staticQuality).toContain("bun-test-junit-package-contract-${{ github.sha }}");
+    expect(staticQuality).toContain("bun-test-junit-package-contract-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(staticQuality!.indexOf("- name: Build")).toBeLessThan(
       staticQuality!.indexOf("Run package contract tests against the warm build"),
     );
@@ -413,7 +485,7 @@ describe("CI workflow policy", () => {
     expect(tests).toContain("TEST_EXIT=${PIPESTATUS[0]}");
     expect(tests).toContain("0 fail");
     expect(tests).toContain("if: always()");
-    expect(tests).toContain("bun-test-junit-${{ matrix.group }}-${{ github.sha }}");
+    expect(tests).toContain("bun-test-junit-${{ matrix.group }}-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(tests).toContain("bun-test-${{ matrix.group }}.xml");
     expect(tests).toContain("Upload failed test lane log");
     expect(tests).toContain("if: failure()");
@@ -449,8 +521,8 @@ describe("CI workflow policy", () => {
     expect(attestation).not.toContain("needs:");
     expect(attestation).toContain("if: inputs.emit_security_attestation");
     expect(attestation).toContain("fetch-depth: 2");
-    expect(attestation).toContain("attestation.commit !== process.env.GITHUB_SHA");
-    expect(attestation).toContain("security-attestation-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(attestation).toContain("attestation.commit !== process.env.EXPECTED_SOURCE_SHA");
+    expect(attestation).toContain("security-attestation-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
 
     expect(complete).toBeNull();
     expect(block(reusable, /^ {2}publishing:\s*$/, 2)).toBeNull();
@@ -465,7 +537,7 @@ describe("CI workflow policy", () => {
     expect(telemetry).toContain("needs: [changes, required]");
     expect(telemetry).toContain("if: always()");
     expect(telemetry).toContain("actions/download-artifact@v8");
-    expect(telemetry).toContain("pattern: bun-test-junit-*-${{ github.sha }}");
+    expect(telemetry).toContain("pattern: bun-test-junit-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(telemetry).toContain("'general-3x1'");
     expect(telemetry).toContain("bun scripts/ci/telemetry-summary.ts");
     expect(required).not.toBeNull();

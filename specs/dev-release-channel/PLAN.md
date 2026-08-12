@@ -1,6 +1,6 @@
 # Dev-Release-Channel: Nightly und manuell ausloesbare, bewiesene Releases
 
-**Status:** In Umsetzung; DR-00 bis DR-04 bewiesen
+**Status:** In Umsetzung; DR-00 bis DR-05 bewiesen
 
 **Planungsstand:** 2026-08-12
 
@@ -557,42 +557,42 @@ Berechtigung ist fuer Stable-Builds erforderlich.
 
 **Blocks:** DR-06, DR-09
 
-- [ ] `.github/workflows/dev-release.yml` mit `schedule` und
+- [x] `.github/workflows/dev-release.yml` mit `schedule` und
   `workflow_dispatch` aus Abschnitt 6 erstellen.
-- [ ] Default fuer Schedule und leeren manuellen `source_sha` auf den beim Start
+- [x] Default fuer Schedule und leeren manuellen `source_sha` auf den beim Start
   frisch aufgeloesten `origin/main`-SHA setzen.
-- [ ] Optionalen SHA auf Format, Existenz und Erreichbarkeit von `origin/main`
+- [x] Optionalen SHA auf Format, Existenz und Erreichbarkeit von `origin/main`
   pruefen; UI-Branch und Checkout-Ref duerfen ihn nicht still ersetzen.
-- [ ] `scripts/ci/release-eligibility.ts` implementieren: passenden
+- [x] `scripts/ci/release-eligibility.ts` implementieren: passenden
   `.github/workflows/ci.yml`-Run fuer `event=push`, `branch=main` und exakten
   `head_sha` bestimmen, dessen neuesten Attempt und Aggregatjob `required`
   abfragen und nur `success` akzeptieren.
-- [ ] Bei `queued`/`in_progress` mit begrenztem, konfiguriertem Timeout pollen.
+- [x] Bei `queued`/`in_progress` mit begrenztem, konfiguriertem Timeout pollen.
   Fehlend, Timeout oder jede andere Conclusion als `success` ergibt
   `decision: blocked`; es wird weder Tag noch Draft noch Homebrew-Dispatch
   erzeugt.
-- [ ] Einen versionierten Required-/Advisory-Vertrag definieren. Die bereits
+- [x] Einen versionierten Required-/Advisory-Vertrag definieren. Die bereits
   nicht blockierenden Windows-/Floating-Astro-Canaries duerfen nur aufgrund
   dieser expliziten Klassifizierung rot sein und muessen dann als `degraded`
   im Eligibility-Receipt erscheinen.
-- [ ] `eligible-source` vor Quality-Preflight und Build in den `needs`-Graph
+- [x] `eligible-source` vor Quality-Preflight und Build in den `needs`-Graph
   setzen. Der Publish-Job darf kein `always()` und keine Bedingung besitzen,
   die ein nicht erfolgreiches Eligibility-/Preflight-Ergebnis uebergeht.
-- [ ] Dem Eligibility-Job nur `actions: read`, `checks: read` und
+- [x] Dem Eligibility-Job nur `actions: read`, `checks: read` und
   `contents: read` geben; Publish-Credentials bleiben unerreichbar.
-- [ ] API-Fixture-Tests fuer erfolgreichen Main-Push, roten Required-Job,
+- [x] API-Fixture-Tests fuer erfolgreichen Main-Push, roten Required-Job,
   fehlenden Run, Pending/Timeout, Cancelled/Skipped/Neutral/Stale, alten gruenen
   plus neueren roten Attempt, gleichnamigen PR-/Manual-Run und advisory-roten
   Canary schreiben.
-- [ ] Einen kanalweiten Concurrency-Lock mit `cancel-in-progress: false`
+- [x] Einen kanalweiten Concurrency-Lock mit `cancel-in-progress: false`
   einrichten.
-- [ ] Vor dem Build ueber GitHub API pruefen, ob derselbe SHA bereits vollstaendig
+- [x] Vor dem Build ueber GitHub API pruefen, ob derselbe SHA bereits vollstaendig
   publiziert/bewiesen ist; dann No-op. `force_rebuild` erstellt eine neue ID.
-- [ ] Top-level `contents: read`; `contents: write`, `id-token: write` und
+- [x] Top-level `contents: read`; `contents: write`, `id-token: write` und
   `attestations: write` nur am kleinstmoeglichen Publish-/Attest-Job. Tap-Secret
   nur in einem geschuetzten Environment und nie in Build-/PR-Jobs.
-- [ ] Keine PR-, `pull_request_target`- oder Fork-Trigger zulassen.
-- [ ] Policy-Tests fuer Trigger, Inputs/Defaults, Source-Gate, Concurrency,
+- [x] Keine PR-, `pull_request_target`- oder Fork-Trigger zulassen.
+- [x] Policy-Tests fuer Trigger, Inputs/Defaults, Source-Gate, Concurrency,
   Eligibility vor Preflight/Build, Permission-Scope, Needs-Graph, No-op/Force
   ohne Gate-Bypass und fehlende bewegliche Tags schreiben.
 

@@ -589,7 +589,7 @@ jobs:
         if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true'
         uses: actions/download-artifact@v8
         with:
-          pattern: bun-test-junit-*-${{ github.sha }}
+          pattern: bun-test-junit-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results
 
       - name: Read same-attempt Actions jobs

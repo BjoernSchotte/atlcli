@@ -109,6 +109,8 @@ async function writeFixture(input: {
   const eligibility = canonicalJson({
     schema: "atlcli.source-eligibility/v1",
     decision: "eligible",
+    reason: "eligible",
+    degraded: false,
     sourceSha: SOURCE_SHA,
     policyVersion: "fixture/v1",
     workflow: {

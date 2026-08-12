@@ -3,6 +3,11 @@ name: Reusable product quality
 on:
   workflow_call:
     inputs:
+      source_sha:
+        description: Optional exact commit to test; defaults to the caller event SHA
+        required: false
+        default: ""
+        type: string
       run_static_quality:
         description: Run repository typecheck and build contracts
         required: false
@@ -35,6 +40,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -57,7 +64,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .turbo
-          key: ${{ runner.os }}-turbo-quality-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-quality-${{ inputs.source_sha || github.sha }}
           restore-keys: |
             ${{ runner.os }}-turbo-quality-
             ${{ runner.os }}-turbo-
@@ -127,7 +134,7 @@ jobs:
         if: always() && inputs.run_tests
         uses: actions/upload-artifact@v7
         with:
-          name: bun-test-junit-package-contract-${{ github.sha }}
+          name: bun-test-junit-package-contract-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/bun-test-package-contract.xml
           if-no-files-found: error
 
@@ -135,7 +142,7 @@ jobs:
         if: failure() && inputs.run_tests
         uses: actions/upload-artifact@v7
         with:
-          name: bun-test-package-contract-failure-log-${{ github.sha }}
+          name: bun-test-package-contract-failure-log-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/bun-test-package-contract.log
           if-no-files-found: error
 
@@ -162,6 +169,8 @@ jobs:
             poppler: true
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -235,7 +244,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: bun-test-junit-${{ matrix.group }}-${{ github.sha }}
+          name: bun-test-junit-${{ matrix.group }}-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/bun-test-${{ matrix.group }}.xml
           if-no-files-found: error
 
@@ -243,7 +252,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: bun-test-${{ matrix.group }}-failure-log-${{ github.sha }}
+          name: bun-test-${{ matrix.group }}-failure-log-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/bun-test-${{ matrix.group }}.log
           if-no-files-found: error
 
@@ -262,6 +271,8 @@ jobs:
             astro: "7.1.6"
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -326,6 +337,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -384,6 +397,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -457,6 +472,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           # attest.ts compares HEAD with its parent. Keep the exact release SHA
           # plus one parent so the delta cannot silently become indeterminate.
           fetch-depth: 2
@@ -470,12 +486,14 @@ jobs:
         run: bun scripts/security/attest.ts --out security-attestation.json
 
       - name: Verify security attestation SHA
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
         run: |
           # shellcheck disable=SC2016
           bun -e '
             const attestation = await Bun.file("security-attestation.json").json();
-            if (attestation.commit !== process.env.GITHUB_SHA) {
-              console.error(`Attestation commit ${attestation.commit} does not match ${process.env.GITHUB_SHA}`);
+            if (attestation.commit !== process.env.EXPECTED_SOURCE_SHA) {
+              console.error(`Attestation commit ${attestation.commit} does not match ${process.env.EXPECTED_SOURCE_SHA}`);
               process.exit(1);
             }
           '
@@ -484,6 +502,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: security-attestation-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: security-attestation-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: security-attestation.json
           if-no-files-found: error

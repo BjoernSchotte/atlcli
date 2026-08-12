@@ -335,6 +335,8 @@ describe("release receipt schemas", () => {
       validateEligibility({
         schema: SOURCE_ELIGIBILITY_SCHEMA_ID,
         decision: "eligible",
+        reason: "eligible",
+        degraded: false,
         sourceSha: SHA,
         policyVersion: "1",
         workflow: {
@@ -352,6 +354,33 @@ describe("release receipt schemas", () => {
           status: "completed",
           conclusion: "success",
           url: "https://github.com/BjoernSchotte/atlcli/actions/runs/123/job/456",
+        },
+        advisory: [],
+      }),
+    ).toBe(true);
+    expect(
+      validateEligibility({
+        schema: SOURCE_ELIGIBILITY_SCHEMA_ID,
+        decision: "blocked",
+        reason: "timeout-missing-run",
+        degraded: false,
+        sourceSha: SHA,
+        policyVersion: "atlcli.dev-release-eligibility/v1",
+        workflow: {
+          path: ".github/workflows/ci.yml",
+          event: "push",
+          branch: "main",
+          runId: null,
+          runAttempt: null,
+          status: "missing",
+          conclusion: null,
+          url: null,
+        },
+        requiredJob: {
+          name: "required",
+          status: "missing",
+          conclusion: null,
+          url: null,
         },
         advisory: [],
       }),
