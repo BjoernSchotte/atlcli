@@ -11,6 +11,7 @@ import {
 export const RELEASE_ELIGIBILITY_POLICY = "atlcli.dev-release-eligibility/v1";
 export const REQUIRED_JOB_NAME = "required";
 export const ADVISORY_JOB_NAMES = new Set([
+  "Non-required CI timing telemetry",
   "Non-required system Chrome compatibility",
   "Product quality / Astro Windows compatibility canary (Astro 7.1.6, Node 24)",
   "Product quality / Astro platform canary (latest Astro 7, Node 24)",
@@ -168,7 +169,7 @@ export function evaluateEligibilitySnapshot(input: {
   if (!run) return { state: "pending", reason: "missing-run" };
   const workflow = workflowReceipt(run);
   if (run.status !== "completed") return { state: "pending", reason: "run-pending" };
-  if (run.conclusion !== "success") {
+  if (!input.jobs && run.conclusion !== "success") {
     return {
       state: "terminal",
       receipt: receipt({
@@ -228,6 +229,18 @@ export function evaluateEligibilitySnapshot(input: {
   const advisory = failedJobs
     .filter((job) => ADVISORY_JOB_NAMES.has(job.name))
     .map((job) => ({ name: job.name, conclusion: job.conclusion! }));
+  if (run.conclusion !== "success" && advisory.length === 0) {
+    return {
+      state: "terminal",
+      receipt: receipt({
+        sourceSha,
+        decision: "blocked",
+        reason: `canonical-run-${run.conclusion ?? "missing-conclusion"}-without-advisory-failure`,
+        workflow,
+        requiredJob: jobReceipt(required),
+      }),
+    };
+  }
   return {
     state: "terminal",
     receipt: receipt({
@@ -259,7 +272,7 @@ export async function resolveSourceEligibility(input: {
   while (true) {
     const runs = await input.client.listCanonicalRuns(sourceSha);
     lastRun = canonicalRuns(runs, sourceSha)[0];
-    const jobs = lastRun?.status === "completed" && lastRun.conclusion === "success"
+    const jobs = lastRun?.status === "completed"
       ? await input.client.listAttemptJobs(lastRun.id, lastRun.run_attempt)
       : undefined;
     lastEvaluation = evaluateEligibilitySnapshot({ sourceSha, runs, jobs });

@@ -127,6 +127,30 @@ describe("dev release source eligibility", () => {
     expect(unknown.reason).toContain("unclassified-failed-job");
   });
 
+  test("accepts a failed workflow conclusion only when required passed and the sole failure is advisory", () => {
+    const result = terminal({
+      runs: [run({ conclusion: "failure", run_attempt: 2 })],
+      jobs: [
+        job(),
+        job({ id: 201, name: "Non-required CI timing telemetry", conclusion: "failure" }),
+      ],
+    });
+    expect(result).toMatchObject({
+      decision: "eligible",
+      reason: "eligible-with-advisory-failures",
+      degraded: true,
+      workflow: { runAttempt: 2, conclusion: "failure" },
+      requiredJob: { conclusion: "success" },
+      advisory: [{ name: "Non-required CI timing telemetry", conclusion: "failure" }],
+    });
+
+    const unexplained = terminal({
+      runs: [run({ conclusion: "failure" })],
+      jobs: [job()],
+    });
+    expect(unexplained.reason).toBe("canonical-run-failure-without-advisory-failure");
+  });
+
   test("polls pending state and emits a blocked timeout receipt without publishing", async () => {
     let clock = 0;
     const client: EligibilityClient = {
