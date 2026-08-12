@@ -39,8 +39,12 @@ jobs:
       - name: Build the production MV3 extension
         run: bun run --cwd apps/extension build
 
-      - name: Install the pinned Chromium browser
-        run: bunx playwright install chromium
+      - name: Verify Google Chrome Stable
+        shell: pwsh
+        run: |
+          $chrome = Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"
+          if (-not (Test-Path $chrome)) { throw "Google Chrome Stable is not installed." }
+          & $chrome --version
 
       - name: Run NVDA against the headed production extension
         shell: pwsh
@@ -77,6 +81,7 @@ jobs:
           $env:ATLCLI_NVDA_LOG_PATH = $nvdaLog
           $env:ATLCLI_NVDA_VERSION = $version
           $env:ATLCLI_NVDA_INSTALLER_SHA256 = $actualSha256
+          $env:ATLCLI_BROWSER_CHANNEL = "chrome"
           $env:ATLCLI_SOURCE_SHA = "${{ github.event.pull_request.head.sha || github.sha }}"
           try {
             & node apps/extension/tests/palette/screenreader/nvda-windows.mjs

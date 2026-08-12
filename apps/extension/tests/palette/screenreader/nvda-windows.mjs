@@ -22,6 +22,7 @@ const nvdaLogPath = process.env.ATLCLI_NVDA_LOG_PATH;
 const sourceSha = process.env.ATLCLI_SOURCE_SHA ?? "unknown";
 const nvdaVersion = process.env.ATLCLI_NVDA_VERSION ?? "unknown";
 const nvdaInstallerSha256 = process.env.ATLCLI_NVDA_INSTALLER_SHA256 ?? "unknown";
+const browserChannel = process.env.ATLCLI_BROWSER_CHANNEL ?? "chromium";
 const fixtureUrl = "https://fixture.atlassian.net/wiki/spaces/DOCSY/pages/42/Palette-screenreader-test";
 const fixture = `<!doctype html>
 <html lang="en">
@@ -108,7 +109,7 @@ async function toggle(storagePage, page) {
 async function openHarness({ instrumented }) {
   const copied = copyExtension({ instrumented });
   const context = await chromium.launchPersistentContext(copied.profileDirectory, {
-    channel: "chromium",
+    channel: browserChannel,
     headless: false,
     viewport: { width: 1440, height: 1000 },
     args: [
@@ -301,7 +302,7 @@ try {
   await runInstrumentedLane(screenshotPaths);
   await waitForSpeech();
   const speechAssertions = assertNvdaSpeech();
-  const browser = await chromium.launch({ channel: "chromium", headless: true });
+  const browser = await chromium.launch({ channel: browserChannel, headless: true });
   const browserVersion = browser.version();
   await browser.close();
   const receipt = {
@@ -309,7 +310,12 @@ try {
     generatedAt: new Date().toISOString(),
     sourceSha,
     os: `${process.platform} ${process.arch}`,
-    browser: { name: "Chromium", version: browserVersion, headed: true },
+    browser: {
+      name: browserChannel === "chrome" ? "Google Chrome" : "Chromium",
+      channel: browserChannel,
+      version: browserVersion,
+      headed: true,
+    },
     screenReader: {
       name: "NVDA",
       version: nvdaVersion,
