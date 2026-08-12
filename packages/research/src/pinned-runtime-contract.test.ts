@@ -17,11 +17,10 @@ import { createMiddleware, type AgentMiddleware } from "langchain";
 import { z } from "zod/v4";
 import type { ResearchAgentRuntimeBindings } from "./agent-runtime-core.js";
 
-const PREVIEW_REVISION = "717";
 const DEEPAGENTS_INTEGRITY =
-  "sha512-NV7QNwwhDlo6kp0woq8UtGiz8OLNoA7tGgaDmLRiK5pwOxpV/qcCUtouyyl9hw1PYDBeP40jG+eF8WG7R+kARg==";
+  "sha512-XAqdzNeI/yvm0XNhVBFG5CytnLJ4WziYWbBwrtAzMPub9S2tnLBXiwRpaqieNm/BDvA6IcI4j70ioXwJEb4jvQ==";
 const QUICKJS_INTEGRITY =
-  "sha512-oDG0+bwfo3uU4SV3nAbeIyZR094rjCq6BMSRKWjvgADoknw4CHK1+2UnwgmXLupdcu6d5B+8yAmle/WpFGqenQ==";
+  "sha512-QdNWVK8Ydi3+knzO6FfX/2WRoPd5ClJIuyGxNwvGiSUmPshQA1XQ9tXvWIQmZ2VLuxpkM2GqEeGWYq/KENJIpA==";
 
 type InspectableDeepAgent = {
   options: {
@@ -59,7 +58,7 @@ function middlewareNames(agent: InspectableDeepAgent): string[] {
 }
 
 describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
-  test("locks the preview revision, installed versions, and generated lock identities", async () => {
+  test("locks durable registry versions, installed versions, and generated lock identities", async () => {
     const researchPackage = (await Bun.file(
       new URL("../package.json", import.meta.url),
     ).json()) as { dependencies?: Record<string, string> };
@@ -72,24 +71,15 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
     const deepagentsPackage = await packageJsonFor("deepagents/node");
     const quickjsPackage = await packageJsonFor("@langchain/quickjs");
 
-    expect(researchPackage.dependencies?.deepagents).toBe(
-      `https://pkg.pr.new/deepagents@${PREVIEW_REVISION}`,
-    );
-    expect(researchPackage.dependencies?.["@langchain/quickjs"]).toBe(
-      `https://pkg.pr.new/@langchain/quickjs@${PREVIEW_REVISION}`,
-    );
-    expect(rootPackage.overrides?.deepagents).toBe(
-      `https://pkg.pr.new/deepagents@${PREVIEW_REVISION}`,
-    );
+    expect(researchPackage.dependencies?.deepagents).toBe("1.12.1");
+    expect(researchPackage.dependencies?.["@langchain/quickjs"]).toBe("1.0.0");
+    expect(rootPackage.overrides?.deepagents).toBe("1.12.1");
     expect(deepagentsPackage.version).toBe("1.12.1");
     expect(quickjsPackage.version).toBe("1.0.0");
-    expect(lockfile).toContain(
-      `deepagents@https://pkg.pr.new/deepagents@${PREVIEW_REVISION}`,
-    );
+    expect(lockfile).not.toContain("pkg.pr.new");
+    expect(lockfile).toContain('"deepagents": ["deepagents@1.12.1"');
     expect(lockfile).toContain(DEEPAGENTS_INTEGRITY);
-    expect(lockfile).toContain(
-      `@langchain/quickjs@https://pkg.pr.new/@langchain/quickjs@${PREVIEW_REVISION}`,
-    );
+    expect(lockfile).toContain('"@langchain/quickjs": ["@langchain/quickjs@1.0.0"');
     expect(lockfile).toContain(QUICKJS_INTEGRITY);
   });
 

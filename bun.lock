@@ -127,14 +127,14 @@
         "@langchain/langgraph": "1.4.8",
         "@langchain/langgraph-checkpoint": "1.1.3",
         "@langchain/langgraph-sdk": "1.9.28",
-        "@langchain/quickjs": "https://pkg.pr.new/@langchain/quickjs@717",
+        "@langchain/quickjs": "1.0.0",
         "@playwright/test": "1.55.0",
         "@tailwindcss/postcss": "^4.3.3",
         "@types/chrome": "^0.2.2",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "@wxt-dev/module-react": "^1.2.2",
-        "deepagents": "https://pkg.pr.new/deepagents@717",
+        "deepagents": "1.12.1",
         "fake-indexeddb": "^6.2.5",
         "happy-dom": "^20.0.2",
         "langchain": "1.5.4",
@@ -421,8 +421,8 @@
         "@langchain/langgraph": "1.4.8",
         "@langchain/langgraph-checkpoint": "1.1.3",
         "@langchain/langgraph-sdk": "1.9.28",
-        "@langchain/quickjs": "https://pkg.pr.new/@langchain/quickjs@717",
-        "deepagents": "https://pkg.pr.new/deepagents@717",
+        "@langchain/quickjs": "1.0.0",
+        "deepagents": "1.12.1",
         "langchain": "1.5.4",
         "langsmith": "0.7.17",
         "zod": "4.4.3",
@@ -481,7 +481,7 @@
     "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch",
   },
   "overrides": {
-    "deepagents": "https://pkg.pr.new/deepagents@717",
+    "deepagents": "1.12.1",
   },
   "packages": {
     "@0no-co/graphql.web": ["@0no-co/graphql.web@1.3.3", "", { "peerDependencies": { "graphql": "^14.0.0 || ^15.0.0 || ^16.0.0" }, "optionalPeers": ["graphql"] }, "sha512-4gFGBdyaFmQ6n9euhp5JtIGS4ZeivwDr1tCPENUxTvy5wyv532yOtFCr9zzYAJh1s6uibgC+TRXUcay+mxzCoQ=="],
@@ -870,7 +870,7 @@
 
     "@langchain/protocol": ["@langchain/protocol@0.0.18", "", {}, "sha512-XW1egQtPfsGI41w2AMZNFZrUIwFSQHTjVMZs0OaTpCAvht/QLoaPN8FQcsysMVypOhupG28J29yOorrc70otBQ=="],
 
-    "@langchain/quickjs": ["@langchain/quickjs@https://pkg.pr.new/@langchain/quickjs@717", { "dependencies": { "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.32.0", "@sveltejs/acorn-typescript": "^1.0.9", "acorn": "^8.16.0", "dedent": "^1.7.1", "estree-walker": "^3.0.3", "json-schema-to-typescript": "^15.0.4", "magic-string": "^1.0.0", "p-queue": "^9.3.0", "quickjs-emscripten": "^0.32.0", "quickjs-emscripten-core": "^0.32.0" }, "peerDependencies": { "deepagents": ">=1.12.0-rc.0" } }, "sha512-oDG0+bwfo3uU4SV3nAbeIyZR094rjCq6BMSRKWjvgADoknw4CHK1+2UnwgmXLupdcu6d5B+8yAmle/WpFGqenQ=="],
+    "@langchain/quickjs": ["@langchain/quickjs@1.0.0", "", { "dependencies": { "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.32.0", "@sveltejs/acorn-typescript": "^1.0.9", "acorn": "^8.16.0", "dedent": "^1.7.1", "estree-walker": "^3.0.3", "json-schema-to-typescript": "^15.0.4", "magic-string": "^1.0.0", "p-queue": "^9.3.0", "quickjs-emscripten": "^0.32.0", "quickjs-emscripten-core": "^0.32.0" }, "peerDependencies": { "deepagents": ">=1.12.0-rc.0" } }, "sha512-QdNWVK8Ydi3+knzO6FfX/2WRoPd5ClJIuyGxNwvGiSUmPshQA1XQ9tXvWIQmZ2VLuxpkM2GqEeGWYq/KENJIpA=="],
 
     "@lit-labs/react": ["@lit-labs/react@2.1.3", "", { "dependencies": { "@lit/react": "^1.0.3" } }, "sha512-OD9h2JynerBQUMNzb563jiVpxfvPF0HjQkKY2mx0lpVYvD7F+rtJpOGz6ek+6ufMidV3i+MPT9SX62OKWHFrQg=="],
 
@@ -1606,7 +1606,7 @@
 
     "deep-extend": ["deep-extend@0.6.0", "", {}, "sha512-LOHxIOaPYdHlJRtCQfDIVZtfw/ufM8+rVj649RIHzcm/vGwQRXFt6OPqIFWsm2XEMrNIEtWR64sY1LEKD2vAOA=="],
 
-    "deepagents": ["deepagents@https://pkg.pr.new/deepagents@717", { "dependencies": { "fast-glob": "^3.3.3", "micromatch": "^4.0.8", "yaml": "^2.8.2", "zod": "^4.3.6" }, "peerDependencies": { "@langchain/core": "^1.2.0", "@langchain/langgraph": "^1.4.4", "@langchain/langgraph-checkpoint": "^1.1.2", "@langchain/langgraph-sdk": "^1.9.23", "langchain": "^1.5.0", "langsmith": "^0.7.1" } }, "sha512-NV7QNwwhDlo6kp0woq8UtGiz8OLNoA7tGgaDmLRiK5pwOxpV/qcCUtouyyl9hw1PYDBeP40jG+eF8WG7R+kARg=="],
+    "deepagents": ["deepagents@1.12.1", "", { "dependencies": { "fast-glob": "^3.3.3", "micromatch": "^4.0.8", "yaml": "^2.8.2", "zod": "^4.3.6" }, "peerDependencies": { "@langchain/core": "^1.2.0", "@langchain/langgraph": "^1.4.4", "@langchain/langgraph-checkpoint": "^1.1.2", "@langchain/langgraph-sdk": "^1.9.23", "langchain": "^1.5.0", "langsmith": "^0.7.1" } }, "sha512-XAqdzNeI/yvm0XNhVBFG5CytnLJ4WziYWbBwrtAzMPub9S2tnLBXiwRpaqieNm/BDvA6IcI4j70ioXwJEb4jvQ=="],
 
     "default-browser": ["default-browser@5.5.0", "", { "dependencies": { "bundle-name": "^4.1.0", "default-browser-id": "^5.0.0" } }, "sha512-H9LMLr5zwIbSxrmvikGuI/5KGhZ8E2zH3stkMgM5LpOWDutGM2JZaj460Udnf1a+946zc7YBgrqEWwbk7zHvGw=="],
 
