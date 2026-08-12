@@ -38,6 +38,22 @@ export interface FreezeDecision {
  * Recorded here as the single source the closure files render from.
  */
 export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
+  "@atlcli/action-palette-react": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the host-neutral React presenter for the first action-palette " +
+      "MVP. Keep it experimental while extension and Forge consumers prove focus, accessibility, " +
+      "localization, input, and result contracts across release and host-runtime upgrades.",
+  },
+  "@atlcli/action-registry": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the serializable, host-neutral action definition and catalog " +
+      "contract for the first palette MVP. Keep it experimental until additional build-time " +
+      "contributors and hosts prove versioning, validation, capability, and execution seams.",
+  },
   "@atlcli/change-set": {
     version: "0.x",
     frozen: false,
