@@ -826,8 +826,14 @@ hardening.
       provider-partitioned conversation reached terminal synthesis in
       approximately 82 seconds on the named decision machine, covered every
       requested answer facet, emitted one ordered progress sequence, and bound
-      its factual sections to three canonical section references. The
-      three-consecutive-run ratchet remains open.
+      its factual sections to three canonical section references.
+- [x] Repeat the same production-packed Think-deeper-agentic case twice more in
+      fresh provider-partitioned conversations without another model install.
+      The three consecutive runs completed in approximately 82, 88, and 140
+      seconds on the named decision machine; every run covered the fixed answer
+      facets, emitted one ordered progress sequence, published canonical
+      section references, and returned to a send-ready terminal state without a
+      local-model, workflow, or contract error.
 
 #### G0b — Prove Quick through the existing UI
 
@@ -859,7 +865,7 @@ hardening.
       events.
 - [x] Repeat the fixed Think-deeper-direct trajectory three times and require
       valid evidence/citation and terminal-answer contracts on every run.
-- [ ] Repeat the remaining Think-deeper-agentic trajectory three times and
+- [x] Repeat the remaining Think-deeper-agentic trajectory three times and
       require valid tool, workflow, evidence/citation, and terminal-answer
       contracts on every run.
 - [x] Keep the existing Deep Research choice visibly unavailable for Gemma in
@@ -895,7 +901,7 @@ Live proof:
 - [x] The same packed extension completes Think-deeper-direct three consecutive
       times with one progress sequence, one cited terminal answer, and no local
       model, tool, or contract failure.
-- [ ] The same packed extension completes Think-deeper-agentic three consecutive
+- [x] The same packed extension completes Think-deeper-agentic three consecutive
       times with the expected workflow, validation, repair where required, and
       terminal synthesis.
 - [ ] A new local conversation completes at least one evidence-aware follow-up
