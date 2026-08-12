@@ -239,6 +239,20 @@ describe("CI workflow policy", () => {
     }
   });
 
+  it("starts the NVDA Chrome evidence lane without inheriting a GUI Chrome process", async () => {
+    const nvda = await workflow("action-palette-nvda.yml");
+    const harness = await readFile(
+      join(REPO_ROOT, "apps", "extension", "tests", "palette", "screenreader", "nvda-windows.mjs"),
+      "utf8",
+    );
+
+    expect(nvda).toContain("(Get-Item $chrome).VersionInfo.ProductVersion");
+    expect(nvda).not.toContain("& $chrome --version");
+    expect(nvda).toContain("Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force");
+    expect(harness).toContain("NVDA_STAGE_TIMEOUT");
+    expect(harness).toContain("process.exit(124)");
+  });
+
   it("runs the browser gate in parallel with product quality", async () => {
     const ci = await workflow("ci.yml");
     const browser = ci.slice(ci.indexOf("  browser-export-harness:"), ci.indexOf("  required:"));

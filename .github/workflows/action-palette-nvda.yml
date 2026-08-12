@@ -44,7 +44,9 @@ jobs:
         run: |
           $chrome = Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"
           if (-not (Test-Path $chrome)) { throw "Google Chrome Stable is not installed." }
-          & $chrome --version
+          $version = (Get-Item $chrome).VersionInfo.ProductVersion
+          if (-not $version) { throw "Google Chrome Stable has no readable product version." }
+          Write-Output "Google Chrome Stable $version"
 
       - name: Run NVDA against the headed production extension
         shell: pwsh
@@ -84,6 +86,10 @@ jobs:
           $env:ATLCLI_BROWSER_CHANNEL = "chrome"
           $env:ATLCLI_SOURCE_SHA = "${{ github.event.pull_request.head.sha || github.sha }}"
           try {
+            # chrome.exe --version can open a persistent GUI process on Windows.
+            # The verification step reads file metadata instead, and this guards
+            # against any runner image process stealing Playwright's launch pipe.
+            Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force
             & node apps/extension/tests/palette/screenreader/nvda-windows.mjs
             if ($LASTEXITCODE -ne 0) { throw "NVDA screen-reader assertions failed." }
           } finally {

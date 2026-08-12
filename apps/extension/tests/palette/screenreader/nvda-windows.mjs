@@ -45,6 +45,15 @@ const fixture = `<!doctype html>
   </body>
 </html>`;
 
+const watchdog = setTimeout(() => {
+  console.error("NVDA_STAGE_TIMEOUT The evidence harness exceeded 12 minutes.");
+  process.exit(124);
+}, 12 * 60 * 1_000);
+
+function stage(message) {
+  console.log(`NVDA_STAGE ${new Date().toISOString()} ${message}`);
+}
+
 mkdirSync(evidenceDirectory, { recursive: true });
 
 function sha256(path) {
@@ -107,7 +116,9 @@ async function toggle(storagePage, page) {
 }
 
 async function openHarness({ instrumented }) {
+  stage(`open-harness:${instrumented ? "instrumented" : "production"}:copy`);
   const copied = copyExtension({ instrumented });
+  stage(`open-harness:${instrumented ? "instrumented" : "production"}:launch-chrome`);
   const context = await chromium.launchPersistentContext(copied.profileDirectory, {
     channel: browserChannel,
     headless: false,
@@ -118,6 +129,7 @@ async function openHarness({ instrumented }) {
       "--disable-features=Translate",
     ],
   });
+  stage(`open-harness:${instrumented ? "instrumented" : "production"}:chrome-launched`);
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker", { timeout: 30_000 });
   const extensionId = new URL(worker.url()).host;
   const storagePage = await context.newPage();
@@ -126,6 +138,7 @@ async function openHarness({ instrumented }) {
   await page.route(fixtureUrl, (route) => route.fulfill({ status: 200, contentType: "text/html", body: fixture }));
   await page.goto(fixtureUrl);
   await page.bringToFront();
+  stage(`open-harness:${instrumented ? "instrumented" : "production"}:ready`);
   return { ...copied, context, worker, storagePage, page };
 }
 
@@ -136,6 +149,7 @@ async function screenshot(page, filename) {
 }
 
 async function runProductionLane(screenshotPaths) {
+  stage("production:start");
   const harness = await openHarness({ instrumented: false });
   try {
     await harness.worker.evaluate(() => {
@@ -223,13 +237,17 @@ async function runProductionLane(screenshotPaths) {
     }
     await waitForSpeech();
     screenshotPaths.push(await screenshot(harness.page, "ap09-nvda-focus-return.png"));
+    stage("production:assertions-complete");
   } finally {
+    stage("production:close-chrome");
     await harness.context.close();
     rmSync(harness.root, { recursive: true, force: true });
+    stage("production:complete");
   }
 }
 
 async function runInstrumentedLane(screenshotPaths) {
+  stage("instrumented:start");
   const harness = await openHarness({ instrumented: true });
   try {
     await harness.page.locator("#host-button").focus();
@@ -268,9 +286,12 @@ async function runInstrumentedLane(screenshotPaths) {
     if (await harness.page.evaluate(() => document.activeElement?.id) !== "host-button") {
       throw new Error("Instrumented lane did not return focus to the host button.");
     }
+    stage("instrumented:assertions-complete");
   } finally {
+    stage("instrumented:close-chrome");
     await harness.context.close();
     rmSync(harness.root, { recursive: true, force: true });
+    stage("instrumented:complete");
   }
 }
 
@@ -298,13 +319,17 @@ function assertNvdaSpeech() {
 
 const screenshotPaths = [];
 try {
+  stage(`run:start:${browserChannel}`);
   await runProductionLane(screenshotPaths);
   await runInstrumentedLane(screenshotPaths);
   await waitForSpeech();
+  stage("speech:assert");
   const speechAssertions = assertNvdaSpeech();
+  stage("browser-version:start");
   const browser = await chromium.launch({ channel: browserChannel, headless: true });
   const browserVersion = browser.version();
   await browser.close();
+  stage(`browser-version:complete:${browserVersion}`);
   const receipt = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -344,7 +369,9 @@ try {
   };
   writeFileSync(join(evidenceDirectory, "ap09-nvda-receipt.json"), `${JSON.stringify(receipt, null, 2)}\n`);
   console.log(`NVDA_SCREENREADER_EVIDENCE ${JSON.stringify(receipt)}`);
+  clearTimeout(watchdog);
 } catch (error) {
+  clearTimeout(watchdog);
   console.error(error);
   process.exitCode = 1;
 }
