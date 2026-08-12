@@ -85,10 +85,12 @@ describe("CI workflow policy", () => {
     expect(release).toContain("uses: ./.github/workflows/reusable-release-artifacts.yml");
     expect(release).toContain("security_attestation_artifact: security-attestation-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(release).toContain("name: ${{ needs.artifacts.outputs.bundle_artifact }}");
-    expect(release).toContain("prerelease: false");
-    expect(release).toContain("make_latest: true");
-    expect(release).toContain("target_commitish: ${{ needs.resolve.outputs.source_sha }}");
-    expect(release).toContain("files: release/*");
+    expect(release).toContain("scripts/ci/github-release-transaction.ts create-draft");
+    expect(release).toContain("scripts/ci/github-release-transaction.ts download-draft");
+    expect(release).toContain("scripts/ci/github-release-transaction.ts publish-draft");
+    expect(release).toContain("scripts/ci/github-release-transaction.ts verify-published");
+    expect(release).toContain("--channel stable");
+    expect(release).not.toContain("softprops/action-gh-release");
     expect(release).not.toContain("source_eligibility_artifact:");
 
     expect(reusable).toContain("target: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64]");
@@ -131,7 +133,18 @@ describe("CI workflow policy", () => {
     expect(dev).toContain("group: dev-release");
     expect(dev).toContain("cancel-in-progress: false");
     expect(dev).toMatch(/^permissions:\n  contents: read/m);
-    expect(dev).not.toContain("contents: write");
+    for (const name of [
+      "resolve-source",
+      "publication-decision",
+      "eligible-source",
+      "verify-downloaded-draft",
+      "native-cli-consumer",
+      "verify-published",
+    ]) {
+      expect(block(dev, new RegExp(`^ {2}${name}:\\s*$`), 2)).not.toContain("contents: write");
+    }
+    expect(block(dev, /^ {2}create-draft:\s*$/, 2)).toContain("contents: write");
+    expect(block(dev, /^ {2}publish-draft:\s*$/, 2)).toContain("contents: write");
     expect(dev).not.toContain("id-token: write");
     expect(dev).not.toContain("attestations: write");
     expect(dev).not.toContain("softprops/action-gh-release");
@@ -186,6 +199,88 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain("EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}");
     expect(reusable).toContain("attestation.commit !== process.env.EXPECTED_SOURCE_SHA");
     expect(reusable).toContain("security-attestation-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+  });
+
+  it("publishes dev only through exclusive draft, downloaded proof, and publish jobs", async () => {
+    const dev = await workflow("dev-release.yml");
+    expect(dev).toContain("vars.DEV_RELEASE_SCHEDULE_ENABLED == 'true'");
+    const create = block(dev, /^ {2}create-draft:\s*$/, 2);
+    const verify = block(dev, /^ {2}verify-downloaded-draft:\s*$/, 2);
+    const native = block(dev, /^ {2}native-cli-consumer:\s*$/, 2);
+    const publish = block(dev, /^ {2}publish-draft:\s*$/, 2);
+    const published = block(dev, /^ {2}verify-published:\s*$/, 2);
+    expect(create).toContain("needs: [resolve-source, publication-decision, eligible-source, preflight, artifacts]");
+    expect(create).toContain("contents: write");
+    expect(create).toContain("github-release-transaction.ts create-draft");
+    expect(create).toContain("verify-release-artifacts.ts --dir bundle");
+    expect(verify).toContain("contents: read");
+    expect(verify).toContain("github-release-transaction.ts download-draft");
+    expect(verify).toContain("verify-release-artifacts.ts --dir downloaded");
+    for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
+      expect(verify).toContain(`test:${suite}-extension-browser:prebuilt`);
+    }
+    for (const [target, runner] of [
+      ["linux-x64", "ubuntu-24.04"],
+      ["linux-arm64", "ubuntu-24.04-arm"],
+      ["darwin-x64", "macos-15-intel"],
+      ["darwin-arm64", "macos-15"],
+      ["windows-x64", "windows-2025"],
+    ]) {
+      expect(native).toContain(`target: ${target}`);
+      expect(native).toContain(`runner: ${runner}`);
+    }
+    expect(native).toContain("github-release-transaction.ts download-native-asset");
+    expect(native).toContain("verify-native-cli.ts");
+    expect(native).toContain("contents: read");
+    expect(publish).toContain(
+      "needs: [resolve-source, publication-decision, create-draft, verify-downloaded-draft, native-cli-consumer]",
+    );
+    expect(publish).toContain("contents: write");
+    expect(publish).toContain("github-release-transaction.ts publish-draft");
+    expect(published).toContain("contents: read");
+    expect(published).toContain("github-release-transaction.ts verify-published");
+    expect(published).toContain("verify-release-artifacts.ts --dir published-download");
+    expect(dev.match(/contents: write/g)).toHaveLength(2);
+    expect(dev).not.toContain("--clobber");
+    expect(dev).not.toContain("softprops/action-gh-release");
+  });
+
+  it("uses the same draft-first release transaction for stable", async () => {
+    const stable = await workflow("release.yml");
+    expect(block(stable, /^ {2}create-draft:\s*$/, 2)).toContain("contents: write");
+    expect(block(stable, /^ {2}verify-downloaded-draft:\s*$/, 2)).toContain("download-draft");
+    const native = block(stable, /^ {2}native-cli-consumer:\s*$/, 2);
+    expect(native).toContain("download-native-asset");
+    expect(native).toContain("verify-native-cli.ts");
+    const publish = block(stable, /^ {2}publish-draft:\s*$/, 2);
+    expect(publish).toContain("needs: [resolve, create-draft, verify-downloaded-draft, native-cli-consumer]");
+    expect(publish).toContain("publish-draft");
+    expect(block(stable, /^ {2}verify-published:\s*$/, 2)).toContain("verify-published");
+    expect(stable.match(/contents: write/g)).toHaveLength(2);
+    expect(stable).not.toContain("--clobber");
+    expect(stable).not.toContain("softprops/action-gh-release");
+  });
+
+  it("keeps retention dry-run read-only and rechecks fixed protection pointers before apply", async () => {
+    const cleanup = await workflow("dev-release-cleanup.yml");
+    const triggers = block(cleanup, /^on:\s*$/, 0);
+    expect(triggers).toContain("workflow_dispatch:");
+    expect(triggers).toContain("proven_tag:");
+    expect(triggers).not.toContain("schedule:");
+    expect(cleanup).toMatch(/^permissions:\n  contents: read/m);
+    const plan = block(cleanup, /^ {2}plan:\s*$/, 2);
+    const apply = block(cleanup, /^ {2}apply:\s*$/, 2);
+    expect(plan).not.toContain("contents: write");
+    expect(plan).toContain("BjoernSchotte/homebrew-tap/HEAD/metadata/atlcli-dev.json");
+    expect(plan).toContain("--retain-successful 14");
+    expect(plan).toContain("--retain-days 30");
+    expect(apply).toContain("if: inputs.apply && inputs.proven_tag != ''");
+    expect(apply).toContain("contents: write");
+    expect(apply).toContain('test "$stable_latest" = "$planned_stable"');
+    expect(apply).toContain('test "$homebrew_tag" = "$planned_homebrew"');
+    expect(apply).toContain('test "$PROVEN_TAG" = "$homebrew_tag"');
+    expect(apply).toContain("--expected-plan plan/retention-plan.json");
+    expect(apply).toContain("--apply");
   });
 
   it("emits exactly one mode-named aggregate around selectively skipped jobs", async () => {

@@ -1,0 +1,111 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-06",
+  "recordedAt": "2026-08-12T16:36:02Z",
+  "proofedParentHead": "54d19b907f1ecde0844e8c3c3a0c5f81a9ce9268",
+  "authoritativePublishedArtifact": false,
+  "purpose": "mutationsfreier Implementations- und Regressionsbeweis fuer die Draft-first GitHub-Transaktion, native CLI-/Browser-Consumer und den geschuetzten Cleanup; der oeffentliche immutable Prerelease-Beweis folgt in DR-10",
+  "publishContract": {
+    "devTagCreatedAtExactSourceSha": true,
+    "existingDevTagRejected": true,
+    "draftStartsWithoutAssets": true,
+    "exactAssetsUploadedBeforePublish": true,
+    "serverSha256Required": true,
+    "draftAssetsRedownloadedAndConsumed": true,
+    "tagShaRecheckedImmediatelyBeforePublish": true,
+    "prerelease": true,
+    "makeLatest": false,
+    "stableLatestInvariant": true,
+    "publishedReleaseNeverEdited": true,
+    "stablePublisherUsesSameDraftFirstTransaction": true
+  },
+  "consumerContract": {
+    "nativeCliTargets": {
+      "linux-x64": "ubuntu-24.04",
+      "linux-arm64": "ubuntu-24.04-arm",
+      "darwin-x64": "macos-15-intel",
+      "darwin-arm64": "macos-15",
+      "windows-x64": "windows-2025"
+    },
+    "runnerLabelsVerifiedAgainst": [
+      "https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
+      "https://github.com/actions/runner-images"
+    ],
+    "runtimeReceiptSchema": "atlcli.native-cli-verification/v1",
+    "runtimeIdentityFields": [
+      "version",
+      "channel",
+      "sourceSha",
+      "buildId",
+      "releaseTag",
+      "homebrewVersion"
+    ],
+    "packedChromiumSuites": ["worker", "jobs", "research", "rovo", "palette"]
+  },
+  "retentionContract": {
+    "defaultRetainSuccessful": 14,
+    "defaultRetainDays": 30,
+    "dryRunIsReadOnly": true,
+    "applyRequiresFrozenExactPlan": true,
+    "protectsStableLatest": true,
+    "protectsLiveHomebrewDevTag": true,
+    "protectsDraftsForOperatorReview": true,
+    "protectsMutableHistoricalReleases": true,
+    "applyRechecksPointersAndProvenTag": true,
+    "tagNamesNeverReused": true,
+    "githubImmutableReleaseDeletionContract": "release may be deleted; tag can then be deleted but its name can never be reused",
+    "githubDocumentation": "https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases"
+  },
+  "proof": {
+    "focusedTests": {
+      "command": "bun run test scripts/ci/github-release-transaction.test.ts scripts/ci/verify-native-cli.test.ts scripts/ci/dev-release-retention.test.ts scripts/ci/workflow-policy.test.ts",
+      "result": "success",
+      "passed": 46,
+      "failed": 0
+    },
+    "fullTests": {
+      "command": "bun run test",
+      "result": "success",
+      "passed": 8078,
+      "skipped": 16,
+      "failed": 0,
+      "files": 657
+    },
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "build": {
+      "command": "bun run build",
+      "result": "success",
+      "packagesSuccessful": 30
+    },
+    "workflowLint": {
+      "command": "actionlint .github/workflows/dev-release.yml .github/workflows/release.yml .github/workflows/dev-release-cleanup.yml",
+      "result": "success"
+    },
+    "stableDryRun": {
+      "command": "bun scripts/release.ts patch --dry-run",
+      "result": "success",
+      "externalMutation": false,
+      "expectedNextVersion": "0.17.3"
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "success"
+    }
+  },
+  "deferredLiveProof": {
+    "workflowShadowRun": "DR-09",
+    "publishedImmutableRelease": "DR-10",
+    "ghReleaseVerify": "DR-10",
+    "ghReleaseVerifyAsset": "DR-10",
+    "reason": "Repository policy requires the complete dry-run and explicit first-publication gate before a live release mutation."
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false,
+    "containsOnlyPublicDocumentationUrls": true
+  }
+}

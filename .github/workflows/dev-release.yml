@@ -31,6 +31,7 @@ concurrency:
 jobs:
   resolve-source:
     name: Resolve immutable source from origin/main
+    if: github.event_name != 'schedule' || vars.DEV_RELEASE_SCHEDULE_ENABLED == 'true'
     runs-on: ubuntu-latest
     outputs:
       source_sha: ${{ steps.identity.outputs.source_sha }}
@@ -38,6 +39,7 @@ jobs:
       version: ${{ steps.identity.outputs.version }}
       build_id: ${{ steps.identity.outputs.build_id }}
       created_at: ${{ steps.identity.outputs.created_at }}
+      stable_latest: ${{ steps.identity.outputs.stable_latest }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,6 +56,7 @@ jobs:
         id: identity
         env:
           REQUESTED_SOURCE_SHA: ${{ inputs.source_sha || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git fetch --no-tags origin main
           main_sha="$(git rev-parse origin/main)"
@@ -80,12 +83,14 @@ jobs:
             --run-number "$GITHUB_RUN_NUMBER" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" > dev-release-identity.json
           build_id="$(bun -e 'console.log((await Bun.file("dev-release-identity.json").json()).buildId)')"
+          stable_latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
           {
             echo "source_sha=$source_sha"
             echo "source_ref=refs/heads/main"
             echo "version=$version"
             echo "build_id=$build_id"
             echo "created_at=$created_at"
+            echo "stable_latest=$stable_latest"
           } >> "$GITHUB_OUTPUT"
 
       - name: Upload source identity receipt
@@ -211,16 +216,321 @@ jobs:
       security_attestation_artifact: security-attestation-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
       source_eligibility_artifact: source-eligibility-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
-  proven-build:
-    name: Dev artifact graph proven without publication
+  create-draft:
+    name: Create exclusive draft and upload exact assets
     needs: [resolve-source, publication-decision, eligible-source, preflight, artifacts]
     if: needs.publication-decision.outputs.decision == 'create'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
+      release_url: ${{ steps.draft.outputs.release_url }}
     steps:
-      - name: Record DR-05 boundary
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download this run's exact bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.artifacts.outputs.bundle_artifact }}
+          path: bundle
+
+      - name: Reverify before any GitHub write
+        run: bun scripts/verify-release-artifacts.ts --dir bundle > pre-upload-verification.json
+
+      - name: Write dev release notes
         env:
           PUBLISH_HOMEBREW_REQUESTED: ${{ github.event_name == 'schedule' || inputs.publish_homebrew }}
         run: |
-          echo "Built and consumer-tested ${{ needs.resolve-source.outputs.build_id }}"
-          echo "DR-05 intentionally has no GitHub or Homebrew write permission."
-          echo "publish_homebrew=$PUBLISH_HOMEBREW_REQUESTED is consumed only after DR-07."
+          {
+            echo "Development release built from a green canonical main SHA."
+            echo ""
+            echo "- Source: ${{ needs.resolve-source.outputs.source_sha }}"
+            echo "- Build: ${{ needs.resolve-source.outputs.build_id }}"
+            echo "- Homebrew requested: $PUBLISH_HOMEBREW_REQUESTED"
+            echo ""
+            echo "This is a prerelease and is never GitHub Latest."
+          } > release-notes.md
+
+      - name: Create new tag, exclusive draft, and exact asset set
+        id: draft
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts create-draft \
+            --channel dev \
+            --version "${{ needs.resolve-source.outputs.version }}" \
+            --tag "${{ needs.resolve-source.outputs.build_id }}" \
+            --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --dir bundle \
+            --title "${{ needs.resolve-source.outputs.build_id }}" \
+            --body-file release-notes.md \
+            --stable-latest-before "${{ needs.resolve-source.outputs.stable_latest }}" \
+            --out create-draft-receipt.json
+
+      - name: Upload draft transaction receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-create-draft-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            create-draft-receipt.json
+            pre-upload-verification.json
+          if-no-files-found: error
+          retention-days: 30
+
+  verify-downloaded-draft:
+    name: Download and consume every draft asset
+    needs: [resolve-source, publication-decision, create-draft]
+    if: needs.publication-decision.outputs.decision == 'create'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download exact assets back from draft release API
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts download-draft \
+            --channel dev \
+            --version "${{ needs.resolve-source.outputs.version }}" \
+            --tag "${{ needs.resolve-source.outputs.build_id }}" \
+            --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --release-id "${{ needs.create-draft.outputs.release_id }}" \
+            --dir downloaded \
+            --stable-latest-before "${{ needs.resolve-source.outputs.stable_latest }}" \
+            --out downloaded-draft-receipt.json
+
+      - name: Verify downloaded CLI, metadata, attestation, and extension bytes
+        run: bun scripts/verify-release-artifacts.ts --dir downloaded > downloaded-verification.json
+
+      - name: Install Chromium for downloaded packed consumers
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run every packed extension consumer against downloaded bytes
+        env:
+          ATLCLI_EXTENSION_OUTPUT_DIR: ${{ github.workspace }}/downloaded/extension
+        run: |
+          bun run --cwd apps/extension test:worker-extension-browser:prebuilt
+          bun run --cwd apps/extension test:jobs-extension-browser:prebuilt
+          bun run --cwd apps/extension test:research-extension-browser:prebuilt
+          bun run --cwd apps/extension test:rovo-extension-browser:prebuilt
+          bun run --cwd apps/extension test:palette-extension-browser:prebuilt
+
+      - name: Upload downloaded consumer receipts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-downloaded-draft-verification-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            downloaded-draft-receipt.json
+            downloaded-verification.json
+          if-no-files-found: error
+          retention-days: 30
+
+  native-cli-consumer:
+    name: Execute downloaded CLI (${{ matrix.target }})
+    needs: [resolve-source, publication-decision, create-draft]
+    if: needs.publication-decision.outputs.decision == 'create'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-24.04
+            archive: atlcli-linux-x64.tar.gz
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            archive: atlcli-linux-arm64.tar.gz
+          - target: darwin-x64
+            runner: macos-15-intel
+            archive: atlcli-darwin-x64.tar.gz
+          - target: darwin-arm64
+            runner: macos-15
+            archive: atlcli-darwin-arm64.tar.gz
+          - target: windows-x64
+            runner: windows-2025
+            archive: atlcli-windows-x64.zip
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Download one exact native archive from the complete draft
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts download-native-asset \
+            --channel dev \
+            --version "${{ needs.resolve-source.outputs.version }}" \
+            --tag "${{ needs.resolve-source.outputs.build_id }}" \
+            --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --release-id "${{ needs.create-draft.outputs.release_id }}" \
+            --asset "${{ matrix.archive }}" \
+            --dir native-download \
+            --stable-latest-before "${{ needs.resolve-source.outputs.stable_latest }}" \
+            --out native-download-receipt.json
+
+      - name: Execute Unix CLI on its native architecture
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          ATLCLI_DISABLE_UPDATE_CHECK: "1"
+        run: |
+          mkdir native-executable
+          tar -xzf "native-download/${{ matrix.archive }}" -C native-executable
+          native-executable/atlcli release-info --json --no-log > native-release-info.json
+
+      - name: Execute Windows CLI on its native architecture
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ATLCLI_DISABLE_UPDATE_CHECK: "1"
+        run: |
+          Expand-Archive -LiteralPath "native-download/${{ matrix.archive }}" -DestinationPath native-executable
+          $releaseInfo = & .\native-executable\atlcli.exe release-info --json --no-log
+          $releaseInfo | Set-Content -Encoding utf8 native-release-info.json
+
+      - name: Verify exact runtime identity and write receipt
+        shell: bash
+        run: |
+          bun scripts/ci/verify-native-cli.ts \
+            --input native-release-info.json \
+            --channel dev \
+            --version "${{ needs.resolve-source.outputs.version }}" \
+            --tag "${{ needs.resolve-source.outputs.build_id }}" \
+            --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --target "${{ matrix.target }}" \
+            --out native-cli-verification.json
+
+      - name: Upload native consumer receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-native-cli-${{ matrix.target }}-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-download-receipt.json
+            native-release-info.json
+            native-cli-verification.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-draft:
+    name: Publish already verified dev prerelease
+    needs: [resolve-source, publication-decision, create-draft, verify-downloaded-draft, native-cli-consumer]
+    if: needs.publication-decision.outputs.decision == 'create'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_url: ${{ steps.publish.outputs.release_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Publish complete draft without changing latest
+        id: publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts publish-draft \
+            --channel dev \
+            --version "${{ needs.resolve-source.outputs.version }}" \
+            --tag "${{ needs.resolve-source.outputs.build_id }}" \
+            --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --release-id "${{ needs.create-draft.outputs.release_id }}" \
+            --stable-latest-before "${{ needs.resolve-source.outputs.stable_latest }}" \
+            --out publish-receipt.json
+
+      - name: Upload publication receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-publish-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: publish-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  verify-published:
+    name: Verify public prerelease and stable latest isolation
+    needs: [resolve-source, publication-decision, create-draft, publish-draft]
+    if: needs.publication-decision.outputs.decision == 'create'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Redownload and verify the published prerelease
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts verify-published \
+            --channel dev \
+            --version "${{ needs.resolve-source.outputs.version }}" \
+            --tag "${{ needs.resolve-source.outputs.build_id }}" \
+            --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --release-id "${{ needs.create-draft.outputs.release_id }}" \
+            --dir published-download \
+            --stable-latest-before "${{ needs.resolve-source.outputs.stable_latest }}" \
+            --out published-release-receipt.json
+          bun scripts/verify-release-artifacts.ts --dir published-download > published-verification.json
+
+      - name: Upload public release verification receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-public-release-verification-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            published-release-receipt.json
+            published-verification.json
+          if-no-files-found: error
+          retention-days: 90
