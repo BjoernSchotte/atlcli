@@ -94,7 +94,10 @@ describe("CI workflow policy", () => {
     expect(release).not.toContain("source_eligibility_artifact:");
 
     expect(reusable).toContain("target: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64]");
-    expect(reusable).toContain("bun install --frozen-lockfile");
+    expect(reusable.match(/for attempt in 1 2 3; do/g)).toHaveLength(3);
+    expect(reusable.match(/if bun install --frozen-lockfile; then/g)).toHaveLength(3);
+    expect(reusable.match(/if \[ "\$attempt" -eq 3 \]; then/g)).toHaveLength(3);
+    expect(reusable.match(/sleep "\$\(\(attempt \* 5\)\)"/g)).toHaveLength(3);
     expect(reusable).toContain("bun scripts/release-artifacts.ts build");
     expect(reusable).toContain('--target "${{ matrix.target }}"');
     expect(reusable).toContain("--skip-extension");
