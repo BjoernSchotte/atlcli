@@ -1,0 +1,75 @@
+# AP-09 quality-gate evidence
+
+**Status:** COMPLETE
+
+**Date:** 2026-08-12
+
+**Source commit:** `882a838230cf8e96c86d250f93c42cc92a826cc9`
+
+## Environment
+
+- macOS `26.4` (`25E246`), arm64;
+- Google Chrome `151.0.7922.137`;
+- Bun `1.3.14`;
+- Node.js `v22.18.0`;
+- WXT `0.20.27`;
+- Playwright `1.55.0`.
+
+The commands below ran from a clean `codex/action-palette-mvp-plan` worktree.
+The full root test temporarily regenerated one tracked publish inventory and one
+ignored-style consumer output directory. Both were identified by comparison
+with the clean pre-test state and removed/restored after the run; no generated
+consumer output is part of this evidence commit.
+
+## Required gate log
+
+| Command | Result |
+| --- | --- |
+| `bun run test` | **7,971 pass, 16 explicit skip, 0 fail**, 6 snapshots and 40,179 assertions across 640 files in 431.00 seconds |
+| `bun run typecheck` | Passed on the recorded source commit |
+| `bun run build` | Passed; all 30 Turbo tasks completed |
+| `bun run check:browser` | Passed; all 34 browser entrypoints remained free of reachable Node/Bun built-ins |
+| `bun run --cwd apps/extension build` | Passed; WXT produced the Chrome MV3 production directory, 61.71 MB including the existing export runtimes |
+| `bun run check:extension-output` | Passed; output reported CSP-safe and a complete export runtime |
+| `bun run --cwd apps/extension test:palette-extension-browser:prebuilt` | **7 pass, 0 fail** in 15.9 seconds against a copied production build loaded unpacked into Chromium |
+
+The 16 root-suite skips are intentional opt-in consumer, veraPDF, scale, and
+live-tenant lanes. The AP-09 tenant acceptance is tracked separately and is not
+claimed by this offline quality gate.
+
+The first packed-browser invocation inside the restricted filesystem sandbox
+could not start Chromium because macOS denied Crashpad access. The identical
+command was then run in the approved unsandboxed browser lane and all seven
+tests passed. No source, production output, test expectation, or browser flag
+was changed between those invocations.
+
+## Packed MV3 result
+
+The production-output suite proved:
+
+- Atlassian-only mounting and Confluence, Jira, and generic-site context;
+- SPA survival, adversarial host CSS, zoom, and 50 open/close cycles;
+- real current-page PDF durable submission and the DOCX Publishing handoff;
+- contenteditable selection/focus restoration and accessible nested states;
+- bounded loading and transport-error states;
+- a visible, explained, inert action when a required capability is absent;
+- no search-time request and no palette long task.
+
+The final performance sample reported cold-open p95 `58.624 ms`, warm-open p95
+`5.673 ms`, maximum long task `0 ms`, search requests `0`, eager palette gzip
+`6,758 bytes`, and lazy palette gzip `81,851 bytes`. These all remain inside the
+approved AP-05 budgets.
+
+## Production-output identity
+
+The final WXT build used for the output scan and packed-browser test has these
+SHA-256 identities:
+
+| File | SHA-256 |
+| --- | --- |
+| `apps/extension/.output/chrome-mv3/manifest.json` | `9ad7e7092ee258002b733d8f4e47061d5adbf29d84087ad228184f791721af25` |
+| `apps/extension/.output/chrome-mv3/background.js` | `c930f40951b77187fe19602a98512f9bdf8dbc148c018b34ee90de9e428d9d8b` |
+| `apps/extension/.output/chrome-mv3/content-scripts/atlassian-action-palette.js` | `905fa85b9e7f5b3234630b11c776815cb4bb18a5fd965bf554f713016fd1881d` |
+
+This is a production WXT build directory loaded through Chrome's unpacked
+extension mechanism; it is not represented as a signed or packed CRX.
