@@ -82,6 +82,12 @@ describe("root dialog and keyboard contract", () => {
     expectActiveElement(search);
     expect(activeOption()?.textContent).toContain("Export current page as PDF");
     expect(opened).toEqual([1]);
+    const liveStatus = dom.container().querySelector("[role='status']");
+    expect(liveStatus?.textContent).toBe("");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 140));
+    });
+    expect(liveStatus?.textContent).toBe("3 actions available");
   });
 
   test("renders optional host-owned footer status without changing the keyboard contract", async () => {

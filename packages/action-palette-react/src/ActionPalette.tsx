@@ -109,8 +109,8 @@ function useRestoredFocusV1(
 }
 
 function useThrottledTextV1(value: string, delayMs = 120): string {
-  const [visible, setVisible] = useState(value);
-  const lastChangedAt = useRef(0);
+  const [visible, setVisible] = useState("");
+  const lastChangedAt = useRef(Date.now());
   useEffect(() => {
     if (visible === value) return;
     const elapsed = Date.now() - lastChangedAt.current;
