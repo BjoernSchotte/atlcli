@@ -4,6 +4,7 @@ import {
   captureFocusV1,
   isFrameMessageV1,
   isToggleMessageV1,
+  releaseActionPaletteHostV1,
   restoreFocusV1,
 } from "../entrypoints/atlassian-action-palette.content/index.js";
 import { createReactHarness } from "./react-harness.js";
@@ -79,5 +80,17 @@ describe("action palette content-shell protocol", () => {
     expect(container.firstElementChild).toBe(iframe);
     expect(iframe.src).toBe("chrome-extension://fixture/action-palette.html");
     expect(handshakes).toBe(1);
+  });
+
+  test("releases the retained frame transport so the next open reconnects", async () => {
+    let resolveHost: ((host: { remove(): void }) => void) | undefined;
+    let removals = 0;
+    const pending = new Promise<{ remove(): void }>((resolve) => { resolveHost = resolve; });
+
+    expect(releaseActionPaletteHostV1(pending)).toBeNull();
+    resolveHost?.({ remove: () => { removals += 1; } });
+    await Promise.resolve();
+
+    expect(removals).toBe(1);
   });
 });

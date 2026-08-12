@@ -103,6 +103,21 @@ export function appendActionPaletteFrameV1(
 }
 
 /**
+ * Tear down the frame transport after every close. Reusing a detached or
+ * invalidated MessagePort can leave the retained iframe visibly blank on the
+ * next shortcut; a fresh frame is cheap and gives every open a new handshake.
+ */
+export function releaseActionPaletteHostV1(
+  host: PromiseLike<{ remove(): void }> | null,
+): null {
+  if (host) void host.then(
+    (ui) => { ui.remove(); },
+    () => undefined,
+  );
+  return null;
+}
+
+/**
  * The eager content-script shell does no DOM work. It loads the React host only
  * after the service worker routes the configured extension command here.
  */
@@ -131,6 +146,7 @@ export default defineContentScript({
       });
       const snapshot = focusSnapshot;
       focusSnapshot = null;
+      hostPromise = releaseActionPaletteHostV1(hostPromise);
       restoreFocusV1(snapshot);
     };
     const onPortMessage = (event: MessageEvent<unknown>): void => {
@@ -193,7 +209,10 @@ export default defineContentScript({
           frame = iframe;
           return iframe;
         },
-        onRemove() {
+        onRemove(mounted) {
+          // An immediately reopened palette may already own a new frame. The
+          // stale host must never clear that newer transport's state.
+          if (mounted && frame !== mounted) return;
           port?.removeEventListener("message", onPortMessage);
           port?.close();
           port = null;
