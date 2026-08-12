@@ -65,16 +65,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install frozen dependencies
-        run: |
-          for attempt in 1 2 3; do
-            if bun install --frozen-lockfile; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep "$((attempt * 5))"
-          done
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
@@ -128,16 +119,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install frozen dependencies
-        run: |
-          for attempt in 1 2 3; do
-            if bun install --frozen-lockfile; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep "$((attempt * 5))"
-          done
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
@@ -190,16 +172,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install frozen dependencies
-        run: |
-          for attempt in 1 2 3; do
-            if bun install --frozen-lockfile; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep "$((attempt * 5))"
-          done
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Download this run's CLI artifacts only
         uses: actions/download-artifact@v8

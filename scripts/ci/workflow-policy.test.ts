@@ -6,6 +6,7 @@ import { join } from "node:path";
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const WORKFLOW_DIR = join(REPO_ROOT, ".github", "workflows");
 const workflow = (name: string) => readFile(join(WORKFLOW_DIR, name), "utf8");
+const ciScript = (name: string) => readFile(join(REPO_ROOT, "scripts", "ci", name), "utf8");
 const workflowNames = async () =>
   (await readdir(WORKFLOW_DIR)).filter((entry) => entry.endsWith(".yml"));
 
@@ -94,10 +95,7 @@ describe("CI workflow policy", () => {
     expect(release).not.toContain("source_eligibility_artifact:");
 
     expect(reusable).toContain("target: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64]");
-    expect(reusable.match(/for attempt in 1 2 3; do/g)).toHaveLength(3);
-    expect(reusable.match(/if bun install --frozen-lockfile; then/g)).toHaveLength(3);
-    expect(reusable.match(/if \[ "\$attempt" -eq 3 \]; then/g)).toHaveLength(3);
-    expect(reusable.match(/sleep "\$\(\(attempt \* 5\)\)"/g)).toHaveLength(3);
+    expect(reusable.match(/bash scripts\/ci\/install-frozen-dependencies\.sh/g)).toHaveLength(3);
     expect(reusable).toContain("bun scripts/release-artifacts.ts build");
     expect(reusable).toContain('--target "${{ matrix.target }}"');
     expect(reusable).toContain("--skip-extension");
@@ -251,6 +249,20 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain("security-attestation-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(reusable).toContain("Validate dev-release evidence schemas and privacy");
     expect(reusable).toContain("bun scripts/ci/dev-release-evidence-policy.ts");
+  });
+
+  it("retries only the frozen dependency install in quality and release producers", async () => {
+    const quality = await workflow("reusable-quality.yml");
+    const release = await workflow("reusable-release-artifacts.yml");
+    const installer = await ciScript("install-frozen-dependencies.sh");
+
+    expect(quality.match(/bash scripts\/ci\/install-frozen-dependencies\.sh/g)).toHaveLength(5);
+    expect(release.match(/bash scripts\/ci\/install-frozen-dependencies\.sh/g)).toHaveLength(3);
+    expect(installer).toContain("for attempt in 1 2 3; do");
+    expect(installer).toContain("if bun install --frozen-lockfile; then");
+    expect(installer).toContain('if [[ "$attempt" -eq 3 ]]; then');
+    expect(installer).toContain('sleep "$((attempt * 5))"');
+    expect(installer).not.toContain("bun install --no-progress");
   });
 
   it("publishes dev only through exclusive draft, downloaded proof, and publish jobs", async () => {
