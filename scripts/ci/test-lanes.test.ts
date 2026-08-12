@@ -255,6 +255,34 @@ describe("duration-aware test lanes", () => {
     ).toEqual([]);
   });
 
+  test("runs wall-clock performance gates in isolated fresh processes", () => {
+    const performancePaths = [
+      "packages/action-palette-react/src/render-performance.benchmark.test.tsx",
+      "packages/action-registry/src/search.benchmark.test.ts",
+    ];
+    const inventory = discoverTestFiles();
+    const realMetadata = loadTestLaneMetadata();
+    const result = planTestLanes(inventory, realMetadata, "general-3x1");
+
+    for (const path of performancePaths) {
+      const metadataEntry = realMetadata.files.find((entry) => entry.path === path);
+      expect(metadataEntry).toMatchObject({ requirements: ["stateful"] });
+      expect(metadataEntry?.atomicGroup).toMatch(/performance$/u);
+
+      const isolated = result.groups.find((candidate) => candidate.files.includes(path));
+      expect(isolated).toMatchObject({
+        mode: "serial",
+        workers: 1,
+        files: [path],
+        requirements: ["stateful"],
+      });
+      const jobPhases = executionPhases(
+        result.groups.filter((candidate) => candidate.job === isolated?.job),
+      );
+      expect(jobPhases.find((candidate) => candidate.files.includes(path))?.files).toEqual([path]);
+    }
+  });
+
   test("keeps atomic groups indivisible in a separate serial execution group", () => {
     const result = plan(
       ["pkg/a.test.ts", "pkg/b.test.ts", "pkg/safe.test.ts"],
@@ -345,18 +373,22 @@ describe("duration-aware test lanes", () => {
       group: "general-1",
       workers: 2,
       fonts: true,
-      executionGroups: ["general-1-parallel", "general-1-serial"],
+      executionGroups: ["general-1-parallel", "general-1-serial-1"],
     });
     const shared = result.groups.filter(({ job }) => job === "general-1");
     expect(executionPhases(shared)).toHaveLength(2);
 
-    expect(executionPhases(shared.map((phase) => ({ ...phase, workers: 1 })))).toMatchObject([
-      {
-        id: "general-1",
-        workers: 1,
-        files: expect.arrayContaining(["pkg/stateful.test.ts"]),
-      },
-    ]);
+    const forcedSerial = executionPhases(
+      shared.map((phase) => ({ ...phase, workers: 1 })),
+    );
+    expect(forcedSerial).toHaveLength(2);
+    expect(
+      forcedSerial.find((phase) => phase.files.includes("pkg/stateful.test.ts")),
+    ).toMatchObject({
+      id: "general-1-serial-1",
+      workers: 1,
+      files: ["pkg/stateful.test.ts"],
+    });
   });
 
   test("merges bounded JUnit phase documents for one logical runner", () => {

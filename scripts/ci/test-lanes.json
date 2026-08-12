@@ -22,6 +22,16 @@
       "requirements": ["stateful"]
     },
     {
+      "path": "packages/action-palette-react/src/render-performance.benchmark.test.tsx",
+      "atomicGroup": "action-palette-render-performance",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "packages/action-registry/src/search.benchmark.test.ts",
+      "atomicGroup": "action-registry-search-performance",
+      "requirements": ["stateful"]
+    },
+    {
       "path": "apps/browser-export-harness/tests/boundaries.test.ts",
       "lane": "pdf-typst",
       "requirements": ["fonts", "typst-runtime"]
