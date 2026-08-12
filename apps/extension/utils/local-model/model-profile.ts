@@ -42,7 +42,11 @@ export function localGemmaRouteOutputTokensV1(
       // while 1536 tokens exceeded its 240-second browser deadline. One
       // thousand tokens leaves closing-schema room inside that measured lane.
       case "extraction": return 1_024;
-      case "critique": return 768;
+      // The critique contract contains at most four compact typed defects.
+      // On the measured single-WebGPU lane, 768 tokens left insufficient
+      // wall-clock room for a bounded schema repair. 512 still closes the
+      // contract while keeping two attempts inside the specialist corridor.
+      case "critique": return 512;
       // The local agentic root now skips private thinking and a measured
       // five-role proposal closed at 494 tokens. One thousand tokens retains
       // generous schema tail room while bounding a malformed browser turn.

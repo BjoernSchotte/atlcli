@@ -273,6 +273,41 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             onProgress,
             onEvent,
             onChatPresentation,
+            ...(message.modelBinding?.kind === "local-gemma"
+              ? {
+                  onDispatchDiagnostic: (diagnostic) => {
+                    if (diagnostic.status !== "failed" && diagnostic.status !== "cancelled") {
+                      return;
+                    }
+                    console.warn(
+                      `[local-gemma/chat] specialist dispatch ${JSON.stringify({
+                        taskId: diagnostic.taskId,
+                        subagentType: diagnostic.subagentType,
+                        status: diagnostic.status,
+                        code: diagnostic.code,
+                        failureStage: diagnostic.failureStage,
+                        failureClass: diagnostic.failureClass,
+                        providerStatus: diagnostic.providerStatus,
+                        resultBytes: diagnostic.resultBytes,
+                      })}`,
+                    );
+                  },
+                  onSubagentResultDiagnostic: (diagnostic) => {
+                    if (diagnostic.status !== "error") return;
+                    console.warn(
+                      `[local-gemma/chat] specialist result ${JSON.stringify({
+                        profileId: diagnostic.profileId,
+                        status: diagnostic.status,
+                        phase: diagnostic.phase,
+                        valueKind: diagnostic.valueKind,
+                        objectKeys: diagnostic.objectKeys,
+                        referenceKinds: diagnostic.referenceKinds,
+                        unknownReferenceKinds: diagnostic.unknownReferenceKinds,
+                      })}`,
+                    );
+                  },
+                }
+              : {}),
           });
           if (localPerformanceSamples.length > 0) {
             try {

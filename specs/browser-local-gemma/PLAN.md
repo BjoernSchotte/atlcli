@@ -815,6 +815,12 @@ hardening.
       repair, ranking, and request-substring checks.
 - [x] Resolve the remaining section-reference fallback failure and return the
       full Chat-agent test suite to green before a GO receipt.
+- [x] Complete the fixed Think-deeper-direct case three consecutive times
+      through the production-packed side panel after one extension reload.
+      The runs completed in approximately 37, 39, and 41 seconds on the named
+      decision machine, each with the direct strategy, one progress sequence,
+      one source-bound terminal answer, and no stop or failure state. The
+      separate Think-deeper-agentic ratchet remains open.
 
 #### G0b — Prove Quick through the existing UI
 
@@ -838,11 +844,17 @@ hardening.
 - [x] Run a fixed Auto-agentic case through the existing mode selector three
       consecutive times and require the agentic strategy and workflow trajectory
       on every run.
-- [ ] Run fixed Think-deeper-direct and Think-deeper-agentic cases through the
-      existing mode selector and require the expected strategy, delegation,
-      validation/repair, synthesis, and terminal Chat events.
-- [ ] Repeat each remaining fixed trajectory three times and require valid tool,
-      workflow, evidence/citation, and terminal-answer contracts on every run.
+- [x] Run the fixed Think-deeper-direct case through the existing mode selector
+      and require the direct strategy, validation, terminal Chat events, and a
+      cited canonical answer.
+- [ ] Run the fixed Think-deeper-agentic case through the existing mode selector
+      and require delegation, validation/repair, synthesis, and terminal Chat
+      events.
+- [x] Repeat the fixed Think-deeper-direct trajectory three times and require
+      valid evidence/citation and terminal-answer contracts on every run.
+- [ ] Repeat the remaining Think-deeper-agentic trajectory three times and
+      require valid tool, workflow, evidence/citation, and terminal-answer
+      contracts on every run.
 - [x] Keep the existing Deep Research choice visibly unavailable for Gemma in
       the product UI and automated capability fixtures. The separate network
       no-fallback observation remains a live-proof gate below.
@@ -873,8 +885,12 @@ Live proof:
 - [x] The same packed extension completes Auto-agentic three consecutive times
       with the expected workflow trajectory, one progress sequence, streamed
       answer, citations, and terminal contract.
-- [ ] The same packed extension completes Think-deeper-direct and Think-deeper-
-      agentic cases three times each.
+- [x] The same packed extension completes Think-deeper-direct three consecutive
+      times with one progress sequence, one cited terminal answer, and no local
+      model, tool, or contract failure.
+- [ ] The same packed extension completes Think-deeper-agentic three consecutive
+      times with the expected workflow, validation, repair where required, and
+      terminal synthesis.
 - [ ] A new local conversation completes at least one evidence-aware follow-up
       turn without losing provider identity, accepted evidence, or tool-result
       correlation; close/reopen the side panel and reopen the conversation.

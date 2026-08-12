@@ -590,6 +590,7 @@ export const CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1 =
 
 export const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1 = [
   "host-exact-anchors-bound",
+  "host-required-specialists-added",
   "exact-readers-packed",
   "dominated-specialists-removed",
   "phase-dependencies-normalized",
@@ -1051,6 +1052,7 @@ function normalizeChatWorkflowProposalTasksV1(input: {
   strategy: Readonly<ChatStrategyDecisionV1>;
   tasks: readonly ChatWorkflowTaskProposalV1[];
   exactAnchorRefs?: readonly string[];
+  requiredProfileIds?: readonly ChatSubagentProfileIdV1[];
 }): {
   tasks: ChatWorkflowTaskProposalV1[];
   reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
@@ -1063,7 +1065,21 @@ function normalizeChatWorkflowProposalTasksV1(input: {
   if (dominated.length < input.tasks.length) {
     reasonCodes.push("dominated-specialists-removed");
   }
-  const bound = bindSmallHostExactAnchorsV1(dominated, input.exactAnchorRefs);
+  const existingProfiles = new Set(dominated.map((task) => task.profileId));
+  const requiredMissing = [...new Set(input.requiredProfileIds ?? [])]
+    .filter((profileId) => !existingProfiles.has(profileId));
+  const augmented = [...dominated, ...requiredMissing.map((profileId) => ({
+    taskId: `task:host-required:${profileId}`,
+    profileId,
+    objective: profileId === "contradiction-checker"
+      ? "Check the accepted evidence and analysis for contradictions required by the host strategy."
+      : `Perform the ${profileId} work required by the accepted host strategy.`,
+    dependencyTaskIds: [],
+  }))];
+  if (requiredMissing.length > 0) {
+    reasonCodes.push("host-required-specialists-added");
+  }
+  const bound = bindSmallHostExactAnchorsV1(augmented, input.exactAnchorRefs);
   if (bound.some((task, index) => task.objective !== dominated[index]?.objective)) {
     reasonCodes.push("host-exact-anchors-bound");
   }
@@ -1256,16 +1272,6 @@ export function createChatWorkflowProposalControllerV1(input: {
         `Each exact-context-reader may receive at most ${MAX_EXACT_ANCHORS_PER_CHAT_READER_V1} assigned anchorRefs. Split: ${oversizedExactTasks.map((task) => `${task.taskId} (${task.count})`).join(", ")}.`,
       );
     }
-    const proposedProfiles = new Set(proposal.tasks.map((task) => task.profileId));
-    const missingRequiredProfiles = requiredProfiles.filter((profileId) =>
-      !proposedProfiles.has(profileId)
-    );
-    if (missingRequiredProfiles.length > 0) {
-      throw new ChatContractError(
-        "invalid-request",
-        `The Chat workflow does not cover the accepted strategy. Add the required profiles: ${missingRequiredProfiles.join(", ")}.`,
-      );
-    }
     accepting = true;
     try {
       input.budget.beginPtc({ schema: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1 });
@@ -1276,6 +1282,7 @@ export function createChatWorkflowProposalControllerV1(input: {
         strategy: input.strategy,
         tasks: proposal.tasks.map((task) => ({ ...task })),
         exactAnchorRefs: input.exactAnchorRefs,
+        requiredProfileIds: requiredProfiles,
       });
       assertChatWorkflowDominanceV1({
         strategy: input.strategy,

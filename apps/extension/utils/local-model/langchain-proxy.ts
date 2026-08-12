@@ -76,6 +76,112 @@ function implicitStructuredToolNameV1(
     : undefined;
 }
 
+const LOCAL_SPECIALIST_EVAL_LIMIT_CODE_V1 = "EVAL_LIMIT_REACHED.";
+const KITEWEAVE_ROOT_PROMPT_MARKER_V1 =
+  "You are Kiteweave Chat, a conversational read-only Jira and Confluence assistant.";
+
+function localSpecialistInitialEvalToolV1(
+  tools: readonly LocalModelToolV1[],
+  messages: readonly BaseMessage[],
+): string | undefined {
+  if (
+    messages.some(ToolMessage.isInstance) ||
+    messages.some((message) =>
+      message.getType() === "system" &&
+      textContentV1(message).includes(KITEWEAVE_ROOT_PROMPT_MARKER_V1)
+    )
+  ) return undefined;
+  const names = tools.map((tool) => tool.function.name);
+  const packetNames = names.filter(isVersionedChatStructuredToolV1);
+  return names.includes("eval") && packetNames.length === 1 ? "eval" : undefined;
+}
+
+function localSpecialistTerminalPacketToolV1(
+  tools: readonly LocalModelToolV1[],
+  messages: readonly BaseMessage[],
+): string | undefined {
+  const reachedHostLimit = messages.some((message) =>
+    ToolMessage.isInstance(message) &&
+    textContentV1(message).trimStart().startsWith(LOCAL_SPECIALIST_EVAL_LIMIT_CODE_V1)
+  );
+  if (!reachedHostLimit) return undefined;
+  const packetNames = tools
+    .map((tool) => tool.function.name)
+    .filter(isVersionedChatStructuredToolV1);
+  return packetNames.length === 1 ? packetNames[0] : undefined;
+}
+
+function projectLocalSpecialistTerminalMessagesV1(
+  messages: readonly BaseMessage[],
+  packetToolName: string | undefined,
+): BaseMessage[] {
+  if (!packetToolName) return [...messages];
+  const firstLimitResult = messages.findIndex((message) =>
+    ToolMessage.isInstance(message) &&
+    textContentV1(message).trimStart().startsWith(LOCAL_SPECIALIST_EVAL_LIMIT_CODE_V1)
+  );
+  if (firstLimitResult < 0) return [...messages];
+  // The host has made the terminal state authoritative. A smaller model may
+  // nevertheless repeat the now-rejected eval call, producing identical
+  // assistant/tool pairs until its context overflows. Keep the first typed
+  // stop result (and all useful results before it), but hide only later
+  // rejected repetitions from this provider invocation. Canonical DeepAgents
+  // state remains unchanged.
+  return messages.slice(0, firstLimitResult + 1);
+}
+
+function projectLocalStructuredRepairMessagesV1(
+  messages: readonly BaseMessage[],
+  packetToolName: string | undefined,
+): BaseMessage[] {
+  if (!packetToolName || !isVersionedChatStructuredToolV1(packetToolName)) {
+    return [...messages];
+  }
+  const attempts: Array<readonly [number, number]> = [];
+  for (let toolIndex = 0; toolIndex < messages.length; toolIndex += 1) {
+    const result = messages[toolIndex];
+    if (!result || !ToolMessage.isInstance(result)) continue;
+    const callIndex = messages.findLastIndex((candidate, candidateIndex) =>
+      candidateIndex < toolIndex && AIMessage.isInstance(candidate) &&
+      candidate.tool_calls?.length === 1 &&
+      candidate.tool_calls[0]?.id === result.tool_call_id &&
+      candidate.tool_calls[0]?.name === packetToolName
+    );
+    if (callIndex >= 0) attempts.push([callIndex, toolIndex]);
+  }
+  if (attempts.length === 0) return [...messages];
+  const discarded = new Set<number>();
+  // A ToolMessage after a forced structured packet is host validation
+  // feedback: a successful packet would already have terminated the child.
+  // Retain the newest failed packet plus its language-independent validator
+  // feedback, but hide older duplicate repair pairs from this local provider
+  // invocation. DeepAgents keeps the complete canonical history, and remote
+  // providers never pass through this projection.
+  for (const [callIndex, toolIndex] of attempts.slice(0, -1)) {
+    discarded.add(callIndex);
+    discarded.add(toolIndex);
+  }
+  const newestCallIndex = attempts.at(-1)?.[0];
+  return messages.flatMap((message, index) => {
+    if (discarded.has(index)) return [];
+    if (index !== newestCallIndex || !AIMessage.isInstance(message)) {
+      return [message];
+    }
+    const failedCall = message.tool_calls?.[0];
+    if (!failedCall) return [message];
+    // The paired ToolMessage is the authoritative host rejection. Its
+    // language-independent schema feedback plus the currently declared tool
+    // schema are sufficient for repair; replaying the rejected packet body is
+    // not evidence and can consume the local browser envelope. Preserve only
+    // the tool identity needed to correlate that feedback. This projection is
+    // local-provider-only and never mutates canonical DeepAgents state.
+    return [new AIMessage({
+      content: "",
+      tool_calls: [{ ...failedCall, args: {} }],
+    })];
+  });
+}
+
 function isVersionedChatStructuredToolV1(name: string): boolean {
   return /^Chat[A-Za-z0-9]+V[0-9]+$/u.test(name);
 }
@@ -166,6 +272,7 @@ function isLocalGemmaAgenticRootV1(
   options: LocalGemmaCallOptionsV1,
 ): boolean {
   return requiredToolNameV1(options.tool_choice) === undefined &&
+    !messages.some(ToolMessage.isInstance) &&
     messages.some((message) =>
       message.getType() === "system" && textContentV1(message).includes(
         "The host requires an agentic Chat workflow for this turn.",
@@ -522,6 +629,27 @@ export function normalizeLocalGemmaToolCallV1(
       },
     };
   }
+  if (call.name === "ChatCritiquePacketV1") {
+    // Gemma 4 E4B uses numeric zero for an empty collection in the same way
+    // it does for answer gaps. Only that singleton shortcut is unambiguous.
+    // An actually empty defect set also has exactly one valid readiness state;
+    // do not infer readiness for a non-empty or otherwise malformed critique.
+    const defects = withStructuredEnvelope.arguments.defects === 0
+      ? []
+      : withStructuredEnvelope.arguments.defects;
+    const readyForSynthesis = Array.isArray(defects) && defects.length === 0 &&
+        withStructuredEnvelope.arguments.readyForSynthesis === undefined
+      ? true
+      : withStructuredEnvelope.arguments.readyForSynthesis;
+    return {
+      ...withStructuredEnvelope,
+      arguments: {
+        ...withStructuredEnvelope.arguments,
+        ...(defects === undefined ? {} : { defects }),
+        ...(readyForSynthesis === undefined ? {} : { readyForSynthesis }),
+      },
+    };
+  }
   if (!LOCAL_GEMMA_ANSWER_DRAFT_TOOLS_V1.has(call.name)) {
     return withStructuredEnvelope;
   }
@@ -705,7 +833,7 @@ class LocalGemmaPortClientV1 {
       maxOutputTokens: input.maxOutputTokens,
       thinkingMode: input.thinkingMode,
     } satisfies LocalModelPortRequestV1);
-    console.info("[local-gemma/proxy] request sent", {
+    console.info(`[local-gemma/proxy] request sent ${JSON.stringify({
       requestId,
       requiredToolName: input.requiredToolName,
       streamAnswerPreview: input.streamAnswerPreview === true,
@@ -717,7 +845,7 @@ class LocalGemmaPortClientV1 {
         role: message.role,
         chars: message.content.length,
       })),
-    });
+    })}`);
     input.signal?.addEventListener("abort", cancel, { once: true });
     if (input.signal?.aborted) cancel();
     try {
@@ -733,21 +861,20 @@ class LocalGemmaPortClientV1 {
             markdownChars: response.markdown.length,
           });
         } else if (response.kind === "complete") {
-          console.info("[local-gemma/proxy] request completed", {
+          console.info(`[local-gemma/proxy] request completed ${JSON.stringify({
             requestId,
             durationMs: Date.now() - startedAt,
             inputTokens: response.inputTokens,
             outputTokens: response.outputTokens,
             textChars: response.text.length,
             toolCalls: response.toolCalls.map((call) => call.name),
-          });
+          })}`);
         } else if (response.kind === "error") {
-          console.error("[local-gemma/proxy] request failed", {
+          console.error(`[local-gemma/proxy] request failed ${JSON.stringify({
             requestId,
             durationMs: Date.now() - startedAt,
             code: response.code,
-            error: response.error,
-          });
+          })}`);
         }
         yield response;
       }
@@ -974,7 +1101,17 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
   }
 
   #call(messages: BaseMessage[], options: LocalGemmaCallOptionsV1) {
-    const requestedToolName = requiredToolNameV1(options.tool_choice);
+    const providerTools = toLocalToolsV1(options.tools);
+    const terminalPacketToolName = localSpecialistTerminalPacketToolV1(
+      providerTools,
+      messages,
+    );
+    const initialEvalToolName = localSpecialistInitialEvalToolV1(
+      providerTools,
+      messages,
+    );
+    const requestedToolName = terminalPacketToolName ??
+      requiredToolNameV1(options.tool_choice) ?? initialEvalToolName;
     const agenticRoot = isLocalGemmaAgenticRootV1(messages, options);
     const initiallyDeclaredTools = toLocalToolsV1(
       options.tools,
@@ -1001,7 +1138,15 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
     const requiredToolName = agenticRoot
       ? "eval"
       : requestedToolName ?? implicitStructuredToolName;
-    const localMessages = toLocalModelMessagesV1(messages, {
+    const terminalMessages = projectLocalSpecialistTerminalMessagesV1(
+      messages,
+      terminalPacketToolName,
+    );
+    const projectedMessages = projectLocalStructuredRepairMessagesV1(
+      terminalMessages,
+      requiredToolName,
+    );
+    const localMessages = toLocalModelMessagesV1(projectedMessages, {
       // Once the local provider has selected an exact output tool, previous
       // private thought is neither evidence nor needed for routing.
       retainPrivateThought: requiredToolName === undefined,

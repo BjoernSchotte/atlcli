@@ -430,6 +430,25 @@ describe("local model RPC boundary", () => {
     }
   });
 
+  it("normalizes only an unambiguously empty local Gemma critique", () => {
+    expect(normalizeLocalGemmaToolCallV1({
+      id: "critic-empty",
+      name: "ChatCritiquePacketV1",
+      arguments: { defects: 0 },
+    }, { schema: "atlcli.chat-critique-packet/v1" })).toMatchObject({
+      arguments: {
+        schema: "atlcli.chat-critique-packet/v1",
+        defects: [],
+        readyForSynthesis: true,
+      },
+    });
+    expect(normalizeLocalGemmaToolCallV1({
+      id: "critic-non-empty",
+      name: "ChatCritiquePacketV1",
+      arguments: { defects: [{ code: "unsupported-claim" }] },
+    }).arguments).not.toHaveProperty("readyForSynthesis");
+  });
+
   it("does not normalize explicit unknown answer metadata", () => {
     expect(normalizeLocalGemmaToolCallV1({
       id: "answer-invalid",
@@ -772,6 +791,75 @@ describe("local model RPC boundary", () => {
     channel.port2.close();
   });
 
+  it("leaves the local agentic root eval after its single host result", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "agentic-root-answer",
+          name: "ChatAnswerDraftV2",
+          arguments: { blocks: [], gaps: [] },
+        }],
+        inputTokens: 32,
+        outputTokens: 12,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      name: "eval",
+      description: "Run the admitted workflow.",
+      schema: z.object({ code: z.string() }),
+    }, {
+      name: "ChatAnswerDraftV2",
+      description: "Return the terminal answer.",
+      schema: z.object({
+        blocks: z.array(z.unknown()),
+        gaps: z.array(z.unknown()),
+      }),
+    }]);
+
+    const result = await runnable.invoke([
+      new SystemMessage(
+        "The host requires an agentic Chat workflow for this turn.",
+      ),
+      new HumanMessage("Use the admitted workflow."),
+      new AIMessage({
+        content: "",
+        tool_calls: [{
+          id: "agentic-root-eval",
+          name: "eval",
+          args: { code: "await tools.chatWorkflowRun({})" },
+        }],
+      }),
+      new ToolMessage({
+        content: "The admitted workflow completed.",
+        tool_call_id: "agentic-root-eval",
+        name: "eval",
+      }),
+    ]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "ChatAnswerDraftV2",
+      tools: [{ function: { name: "ChatAnswerDraftV2" } }],
+    });
+    expect(result.tool_calls?.[0]?.name).toBe("ChatAnswerDraftV2");
+    channel.port1.close();
+    channel.port2.close();
+  });
+
   it("binds a sole DeepAgents structured packet without provider thought", async () => {
     const channel = new MessageChannel();
     let observed: LocalModelPortRequestV1 | undefined;
@@ -974,6 +1062,225 @@ describe("local model RPC boundary", () => {
       requiredToolName: "ChatEvidencePacketV1",
       tools: [{ function: { name: "ChatEvidencePacketV1" } }],
     });
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("starts a local QuickJS reader with its acquisition tool before its packet", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "initial-acquisition",
+          name: "eval",
+          arguments: { code: "await tools.chatRetrievalAcquire({})" },
+        }],
+        inputTokens: 32,
+        outputTokens: 12,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      name: "eval",
+      description: "Evaluate one bounded acquisition step.",
+      schema: z.object({ code: z.string() }),
+    }, {
+      name: "ChatEvidencePacketV1",
+      description: "Return the evidence packet.",
+      schema: z.object({
+        claims: z.array(z.unknown()),
+        relationships: z.array(z.unknown()),
+        gaps: z.array(z.string()),
+      }),
+    }]);
+
+    const result = await runnable.invoke([
+      new SystemMessage("Depth-one bounded evidence reader."),
+      new HumanMessage("Acquire evidence for the admitted objective."),
+    ]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "eval",
+      tools: [{ function: { name: "eval" } }],
+    });
+    expect(result.tool_calls?.[0]?.name).toBe("eval");
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("ratchets a locally exhausted specialist from repeated eval into its packet tool", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "terminal-packet",
+          name: "ChatEvidencePacketV1",
+          arguments: { claims: [], relationships: [], gaps: ["bounded"] },
+        }],
+        inputTokens: 32,
+        outputTokens: 12,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      name: "eval",
+      description: "Evaluate one bounded acquisition step.",
+      schema: z.object({ code: z.string() }),
+    }, {
+      name: "ChatEvidencePacketV1",
+      description: "Return the evidence packet.",
+      schema: z.object({
+        claims: z.array(z.unknown()),
+        relationships: z.array(z.unknown()),
+        gaps: z.array(z.string()),
+      }),
+    }], { tool_choice: "eval" });
+    const limitPair = (sequence: number) => [
+      new AIMessage({
+        content: "",
+        tool_calls: [{
+          id: `eval-${sequence}`,
+          name: "eval",
+          args: { code: "return 'retry'" },
+        }],
+      }),
+      new ToolMessage({
+        content: [
+          "EVAL_LIMIT_REACHED.",
+          "Do not call eval again.",
+          "Return the requested structured packet now.",
+        ].join(" "),
+        tool_call_id: `eval-${sequence}`,
+        name: "eval",
+      }),
+    ];
+    const result = await runnable.invoke([
+      new HumanMessage("Use the bounded results."),
+      ...limitPair(1),
+      ...limitPair(2),
+      ...limitPair(3),
+    ]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "ChatEvidencePacketV1",
+      tools: [{ function: { name: "ChatEvidencePacketV1" } }],
+    });
+    if (!observed || observed.kind !== "generate") throw new Error("Missing request.");
+    expect(observed.messages).toHaveLength(4);
+    expect(observed.messages.at(-1)).toMatchObject({
+      role: "tool",
+      name: "eval",
+    });
+    expect(observed.messages.filter((message) => message.role === "tool")).toHaveLength(1);
+    expect(result.tool_calls?.[0]?.name).toBe("ChatEvidencePacketV1");
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("keeps only the newest local structured repair feedback and redacts its rejected body", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "packet-final",
+          name: "ChatEvidencePacketV1",
+          arguments: { claims: [], relationships: [], gaps: [] },
+        }],
+        inputTokens: 32,
+        outputTokens: 12,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      name: "ChatEvidencePacketV1",
+      description: "Return the evidence packet.",
+      schema: z.object({
+        claims: z.array(z.unknown()),
+        relationships: z.array(z.unknown()),
+        gaps: z.array(z.unknown()),
+      }),
+    }], { tool_choice: "ChatEvidencePacketV1" });
+    const failedPacketPair = (sequence: number) => [
+      new AIMessage({
+        content: "",
+        tool_calls: [{
+          id: `packet-${sequence}`,
+          name: "ChatEvidencePacketV1",
+          args: { claims: sequence },
+        }],
+      }),
+      new ToolMessage({
+        content: `Host schema feedback ${sequence}.`,
+        tool_call_id: `packet-${sequence}`,
+        name: "ChatEvidencePacketV1",
+      }),
+    ];
+
+    await runnable.invoke([
+      new HumanMessage("Return one bounded evidence packet."),
+      ...failedPacketPair(1),
+      ...failedPacketPair(2),
+      ...failedPacketPair(3),
+    ]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "ChatEvidencePacketV1",
+    });
+    if (!observed || observed.kind !== "generate") throw new Error("Missing request.");
+    expect(observed.messages.filter((message) =>
+      message.role === "assistant" && message.tool_calls?.[0]?.function.name ===
+        "ChatEvidencePacketV1"
+    )).toEqual([expect.objectContaining({
+      tool_calls: [expect.objectContaining({
+        id: "packet-3",
+        function: expect.objectContaining({
+          name: "ChatEvidencePacketV1",
+          arguments: {},
+        }),
+      })],
+    })]);
+    expect(observed.messages.filter((message) =>
+      message.role === "tool" && message.name === "ChatEvidencePacketV1"
+    )).toEqual([expect.objectContaining({ content: "Host schema feedback 3." })]);
     channel.port1.close();
     channel.port2.close();
   });

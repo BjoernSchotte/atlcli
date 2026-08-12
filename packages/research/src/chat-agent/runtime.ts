@@ -504,7 +504,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         traceCall += 1;
         const callStartedAt = Date.now();
         if (options.debugLocalModel) {
-          console.debug("[local-gemma/deepagent] model request", {
+          console.debug(`[local-gemma/deepagent] model request ${JSON.stringify({
             stage,
             call: traceCall,
             tools: projectedRequest.tools.map((tool) => tool.name),
@@ -515,13 +515,13 @@ export function createChatDirectToolSurfaceMiddlewareV1(
               role: message.getType(),
               chars: String(message.content).length,
             })),
-          });
+          })}`);
         }
         try {
           const response = await handler(projectedRequest);
           if (options.debugLocalModel) {
             const diagnostic = diagnosticMessage(response);
-            console.debug("[local-gemma/deepagent] model response", {
+            console.debug(`[local-gemma/deepagent] model response ${JSON.stringify({
               stage,
               call: traceCall,
               durationMs: Date.now() - callStartedAt,
@@ -533,17 +533,17 @@ export function createChatDirectToolSurfaceMiddlewareV1(
               contentChars: response && typeof response === "object" && "content" in response
                 ? String(response.content).length
                 : undefined,
-            });
+            })}`);
           }
           return response;
         } catch (error) {
           if (options.debugLocalModel) {
-            console.error("[local-gemma/deepagent] model failure", {
+            console.error(`[local-gemma/deepagent] model failure ${JSON.stringify({
               stage,
               call: traceCall,
               durationMs: Date.now() - callStartedAt,
-              error: error instanceof Error ? error.message : String(error),
-            });
+              errorClass: classifyResearchError(error).code,
+            })}`);
           }
           throw error;
         }
@@ -673,11 +673,11 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         throw error;
       } finally {
         if (options.debugLocalModel) {
-          console.debug("[local-gemma/deepagent] middleware complete", {
+          console.debug(`[local-gemma/deepagent] middleware complete ${JSON.stringify({
             purpose,
             calls: traceCall,
             durationMs: Date.now() - traceStartedAt,
-          });
+          })}`);
         }
       }
     },

@@ -804,7 +804,7 @@ describe("Chat dynamic workflow admission", () => {
     })).toThrow("invalid structured packet");
   });
 
-  test("requires the dynamic graph to cover every available strategy capability", async () => {
+  test("adds every host-required strategy specialist missing from the dynamic graph", async () => {
     const controller = createChatWorkflowProposalControllerV1({
       strategy: {
         ...agentic,
@@ -819,7 +819,7 @@ describe("Chat dynamic workflow admission", () => {
         "chat-synthesizer",
       ],
     });
-    await expect(controller.tool.invoke({
+    const normalized = JSON.parse(await controller.tool.invoke({
       tasks: qualityWorkflowTasks([{
         taskId: "task:analysis",
         profileId: "comparison-analyst",
@@ -827,24 +827,57 @@ describe("Chat dynamic workflow admission", () => {
         dependencyTaskIds: [],
       }]),
       maxConcurrency: 1,
-    })).rejects.toThrow(
-      "Add the required profiles: exact-context-reader",
+    })) as {
+      normalization: { reasonCodes: string[]; proposedTaskCount: number; admittedTaskCount: number };
+      dispatches: Array<{ subagentType: string }>;
+    };
+    expect(normalized.normalization).toMatchObject({
+      proposedTaskCount: 4,
+      admittedTaskCount: 4,
+    });
+    expect(normalized.normalization.reasonCodes).toEqual(expect.arrayContaining([
+      "dominated-specialists-removed",
+      "host-required-specialists-added",
+      "host-exact-anchors-bound",
+    ]));
+    expect(normalized.dispatches.map((entry) => entry.subagentType)).toContain(
+      "chat-exact-context-reader-v1",
     );
-    expect(controller.tool.description).toContain(
-      "requires these profiles in this proposal: exact-context-reader",
-    );
-    const accepted = JSON.parse(await controller.tool.invoke({
+  });
+
+  test("adds a host-required contradiction checker without changing the model's quality chain", async () => {
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: comparisonContradictionAgentic,
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      allowedProfileIds: [
+        "comparison-analyst",
+        "contradiction-checker",
+        "answer-drafter",
+        "answer-critic",
+        "chat-synthesizer",
+      ],
+    });
+    const response = JSON.parse(await controller.tool.invoke({
       tasks: qualityWorkflowTasks([{
-        taskId: "task:exact",
-        profileId: "exact-context-reader",
-        objective: "Read the retained exact evidence needed for this follow-up.",
+        taskId: "task:compare",
+        profileId: "comparison-analyst",
+        objective: "Compare the accepted sources.",
         dependencyTaskIds: [],
       }]),
       maxConcurrency: 1,
-    })) as { dispatches: Array<{ subagentType: string }> };
-    expect(accepted.dispatches.map((entry) => entry.subagentType)).toContain(
-      "chat-exact-context-reader-v1",
+    })) as {
+      normalization: { reasonCodes: string[]; admittedProfileIds: string[] };
+    };
+    expect(response.normalization.reasonCodes).toContain(
+      "host-required-specialists-added",
     );
+    expect(response.normalization.admittedProfileIds).toEqual([
+      "comparison-analyst",
+      "answer-drafter",
+      "answer-critic",
+      "chat-synthesizer",
+      "contradiction-checker",
+    ]);
   });
 
   test("splits oversized exact-source assignments before child dispatch", async () => {

@@ -35,7 +35,8 @@ describe("local Gemma operational profile", () => {
     expect(localGemmaRouteOutputTokensV1("root-planning", 4_096)).toBe(1_024);
     expect(localGemmaRouteOutputTokensV1("root-planning", 768)).toBe(768);
     expect(localGemmaRouteOutputTokensV1("analysis", 4_096)).toBe(1_024);
-    expect(localGemmaRouteOutputTokensV1("critique", 4_096)).toBe(768);
+    expect(localGemmaRouteOutputTokensV1("critique", 4_096)).toBe(512);
+    expect(localGemmaRouteOutputTokensV1("critique", 384)).toBe(384);
     expect(localGemmaRouteOutputTokensV1("synthesis", 4_096)).toBe(1_024);
     expect(localGemmaRouteOutputTokensV1("synthesis", 512)).toBe(512);
   });

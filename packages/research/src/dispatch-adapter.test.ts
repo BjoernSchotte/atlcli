@@ -40,8 +40,11 @@ test("records a body-free HTTP status when a subagent provider fails", async () 
 
   expect(diagnostics).toContainEqual({
     taskId: "task:provider-failure",
+    subagentType: "researcher",
     status: "failed",
     code: "subagent-provider-error",
+    failureStage: "upstream",
+    failureClass: "provider",
     providerStatus: 529,
   });
 });
@@ -84,6 +87,48 @@ test("host response-schema hydration ignores an untrusted guest copy", async () 
     },
   })).resolves.toEqual({ answer: "host bound" });
   expect(received).toEqual(responseSchema);
+});
+
+test("classifies a rejected typed result at the host commit boundary", async () => {
+  const responseSchema = { type: "object" };
+  const diagnostics: ResearchDispatchDiagnosticV1[] = [];
+  const adapter = createResearchDispatchInterceptionAdapter({
+    admissions: [{
+      taskId: "task:invalid-packet",
+      subagentType: "chat-drafter",
+      objective: "Draft the admitted answer.",
+      grantedCapabilityIds: [],
+      responseSchema,
+      maxResultBytes: 1_024,
+      maxDurationMs: 1_000,
+    }],
+    maxTasks: 1,
+    maxConcurrency: 1,
+    invokeUpstream: async () => ({ blocks: [] }),
+    projectResult: () => {
+      throw new Error("The Chat answer draft returned an invalid structured packet.");
+    },
+    onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+  });
+
+  await expect(adapter.invoke({
+    description: encodeResearchTaskDescriptionV1({
+      taskId: "task:invalid-packet",
+      objective: "Draft the admitted answer.",
+    }),
+    subagent_type: "chat-drafter",
+  }, {
+    configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: responseSchema },
+  })).rejects.toThrow("invalid structured packet");
+
+  expect(diagnostics.at(-1)).toEqual({
+    taskId: "task:invalid-packet",
+    subagentType: "chat-drafter",
+    status: "failed",
+    code: "structured-output-invalid",
+    failureStage: "result-commit",
+    failureClass: "structured-output",
+  });
 });
 
 test("keeps an aborted provider error outcome unknown instead of quarantining a nonexistent result", async () => {
