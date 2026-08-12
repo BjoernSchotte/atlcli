@@ -155,6 +155,7 @@ describe("attestation document", () => {
       "commit",
       "date",
       "m1AcceptanceOk",
+      "schema",
       "securityReviewNote",
       "veraPdfBaselineDelta",
       "veraPdfDigestOk",
@@ -233,6 +234,7 @@ describe("baseline / docs synchronisation", () => {
 
 describe("exit-code policy", () => {
   const base: SecurityAttestation = {
+    schema: "atlcli.security-attestation/v1",
     commit: "0".repeat(40),
     date: "2026-07-20T00:00:00Z",
     veraPdfDigestOk: null,

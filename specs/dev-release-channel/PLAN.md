@@ -397,30 +397,30 @@ noch GitHub noch den Tap und nennt alle geplanten externen Schritte.
 
 **Blocks:** DR-02 bis DR-06
 
-- [ ] Pure Funktionen in `scripts/release-artifacts.ts` fuer Source-SHA-
+- [x] Pure Funktionen in `scripts/release-artifacts.ts` fuer Source-SHA-
   Validierung, Build-ID, Tag, CLI-/Extension-Version, Dateinamen und erwartete
   Asset-Menge implementieren.
-- [ ] JSON-Schema beziehungsweise Zod-Schema fuer `build-metadata.json` und
+- [x] JSON-Schema beziehungsweise Zod-Schema fuer `build-metadata.json` und
   `security-attestation.json` sowie `source-eligibility.json` definieren und
   versionieren.
-- [ ] Metadatenfelder aufnehmen: Schema, Kanal, Root-Version, voller Source-SHA,
+- [x] Metadatenfelder aufnehmen: Schema, Kanal, Root-Version, voller Source-SHA,
   Ref/Tag, Run-ID/-Attempt/-Event, UTC-Zeit, Bun/WXT/Runner-OS, Lockfile-Digest,
   Dateiname/Groesse/SHA-256 je Asset, sortierter Content-Tree-Digest der
   Extension, Manifest-CSP-/Permission-Fingerprint sowie Digest und kanonische
   Run-Identitaet des Eligibility-Receipts.
-- [ ] Idempotenzentscheidung als reine Funktion implementieren: create, no-op,
+- [x] Idempotenzentscheidung als reine Funktion implementieren: create, no-op,
   force-rebuild oder hard conflict.
-- [ ] Tests fuer Datums-/Run-Grenzen, Short-SHA-Kollisionen, ungueltige/nicht von
+- [x] Tests fuer Datums-/Run-Grenzen, Short-SHA-Kollisionen, ungueltige/nicht von
   `main` erreichbare SHA-Eingaben, Chrome-Version 0/65535/65536, sortierte
   Checksummen, fehlende/extra Assets und reproduzierbare JSON-Ausgabe schreiben.
-- [ ] CLI-Build-Identitaet (`version`, `channel`, `sourceSha`, `buildId`,
+- [x] CLI-Build-Identitaet (`version`, `channel`, `sourceSha`, `buildId`,
   `releaseTag`, `homebrewVersion`) zentral als versioniertes Schema
   `atlcli.release-info/v1` definieren.
-- [ ] Den aktuellen Rueckgabevertrag von `atlcli version --json` zuerst mit Tests
+- [x] Den aktuellen Rueckgabevertrag von `atlcli version --json` zuerst mit Tests
   einfrieren. Falls er wie an der Planungs-Baseline nur einen JSON-String
   liefert, einen neuen expliziten `atlcli release-info --json`-Pfad einfuehren,
   statt den bestehenden Vertrag still in ein Objekt zu brechen.
-- [ ] Stable-Updater- und Installationshinweise testen: Stable bleibt bei
+- [x] Stable-Updater- und Installationshinweise testen: Stable bleibt bei
   `/releases/latest`; Dev meldet den Dev-Kanal und verweist bei Homebrew auf
   `atlcli-dev`, ohne Stable-Upgrades vorzutäuschen.
 

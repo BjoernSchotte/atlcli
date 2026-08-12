@@ -1,0 +1,108 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-01",
+  "recordedAt": "2026-08-12T14:31:06Z",
+  "proofedParentHead": "7ac2bf8206fcdf0cafe31fb78cf87e00605d168f",
+  "sourceIdentityFixture": {
+    "schema": "atlcli.release-info/v1",
+    "channel": "dev",
+    "rootVersion": "0.17.2",
+    "sourceSha": "7ac2bf8206fcdf0cafe31fb78cf87e00605d168f",
+    "shortSha": "7ac2bf82",
+    "buildId": "dev-20260812.418.2-7ac2bf82",
+    "releaseTag": "dev-20260812.418.2-7ac2bf82",
+    "cliVersion": "0.17.2-dev.20260812.418.2+7ac2bf82",
+    "extensionVersion": "0.17.2.418",
+    "extensionVersionName": "0.17.2-dev.20260812.418.2-7ac2bf82",
+    "homebrewVersion": "20260812021745.418.2",
+    "createdAt": "2026-08-12T02:17:45.000Z",
+    "runNumber": 418,
+    "runAttempt": 2
+  },
+  "schemas": [
+    "atlcli.build-metadata/v1",
+    "atlcli.security-attestation/v1",
+    "atlcli.source-eligibility/v1",
+    "atlcli.release-info/v1"
+  ],
+  "expectedReleaseAssets": [
+    "atlcli-darwin-arm64.tar.gz",
+    "atlcli-darwin-x64.tar.gz",
+    "atlcli-extension-chrome-mv3-dev-20260812.418.2-7ac2bf82.zip",
+    "atlcli-linux-arm64.tar.gz",
+    "atlcli-linux-x64.tar.gz",
+    "atlcli-windows-x64.zip",
+    "build-metadata.json",
+    "checksums.txt",
+    "security-attestation.json",
+    "source-eligibility.json"
+  ],
+  "compiledDevBundle": {
+    "path": "dist/index.js",
+    "size": 22035566,
+    "sha256": "1abbbdfea0eb3cf849fd9469d79dc4a30c63edc5eb1466ede541f92485344795",
+    "releaseInfoCommand": "bun dist/index.js release-info --json --no-log",
+    "releaseInfoMatched": true,
+    "legacyVersionJsonRemainedString": true,
+    "authoritativePublishedArtifact": false,
+    "purpose": "working-tree compile-time identity proof; DR-10 binds published bytes to their exact committed source SHA"
+  },
+  "updater": {
+    "stableLatestEndpoint": "https://api.github.com/repos/BjoernSchotte/atlcli/releases/latest",
+    "stableBehaviorPreserved": true,
+    "devFetchesStableLatest": false,
+    "stableFormulaCommand": "brew update && brew upgrade atlcli",
+    "devFormulaCommand": "brew update && brew upgrade atlcli-dev"
+  },
+  "stableBuildCompatibility": {
+    "command": "bun apps/cli/build.ts --minify",
+    "result": "success",
+    "channel": "stable",
+    "version": "0.17.2",
+    "buildId": "v0.17.2",
+    "releaseTag": "v0.17.2",
+    "homebrewVersion": "0.17.2"
+  },
+  "proof": {
+    "focusedTests": {
+      "command": "bun run test apps/cli/build-release-info.test.ts scripts/release-artifacts.test.ts scripts/security/attest.test.ts packages/core/src/release-info.test.ts packages/core/src/update.test.ts apps/cli/src/release-info.test.ts apps/cli/src/commands/update.test.ts",
+      "result": "success",
+      "passed": 52,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "apiClosure": {
+      "command": "bun run test scripts/api-report.test.ts",
+      "result": "success",
+      "passed": 5,
+      "failed": 0,
+      "reviewedReportChanges": [
+        "packages/core/etc/core.api.md",
+        "packages/core/etc/core.closure.md"
+      ]
+    },
+    "securityAttestation": {
+      "schema": "atlcli.security-attestation/v1",
+      "command": "bun scripts/security/attest.ts --out <temporary-path>",
+      "result": "success",
+      "boundCommit": "7ac2bf8206fcdf0cafe31fb78cf87e00605d168f",
+      "checkCount": 4
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "success"
+    }
+  },
+  "toolchain": {
+    "bun": "1.3.14",
+    "wxt": "0.20.27"
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false
+  }
+}

@@ -35,6 +35,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SECURITY_ATTESTATION_SCHEMA_ID } from "../release-artifacts.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..");
@@ -78,6 +79,8 @@ export interface VeraPdfBaselineDelta {
 }
 
 export interface SecurityAttestation {
+  /** Versioned public contract consumed by release verification. */
+  schema: typeof SECURITY_ATTESTATION_SCHEMA_ID;
   /** The commit this attestation is bound to. */
   commit: string;
   /** The commit's own committer date (ISO 8601) — reproducible, unlike "now". */
@@ -303,6 +306,7 @@ export function buildAttestation(options: { reviewNote?: string } = {}): Securit
   });
 
   return {
+    schema: SECURITY_ATTESTATION_SCHEMA_ID,
     commit,
     date,
     veraPdfDigestOk: digest.ok,
