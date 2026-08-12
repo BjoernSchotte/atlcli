@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { assembleReleaseBundle } from "../assemble-release-bundle.js";
@@ -8,6 +9,7 @@ import { buildReleaseArtifacts } from "../build-release-artifacts.js";
 import {
   canonicalJson,
   createReleaseIdentity,
+  expectedReleaseAssetNames,
   type ArtifactDigest,
 } from "../release-artifacts.js";
 import { verifyReleaseArtifacts } from "../verify-release-artifacts.js";
@@ -21,10 +23,11 @@ function git(args: string[]): string {
 
 function argument(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
-  return index === -1 ? undefined : args[index + 1];
+  if (index !== -1) return args[index + 1];
+  return args.find((entry) => entry.startsWith(`${name}=`))?.slice(name.length + 1);
 }
 
-function requiredBoolean(args: string[], name: string): boolean {
+export function requiredBoolean(args: string[], name: string): boolean {
   const value = argument(args, name);
   if (value !== "true" && value !== "false") throw new Error(`${name} requires true or false`);
   return value === "true";
@@ -34,6 +37,17 @@ function byName(artifacts: ArtifactDigest[]): Record<string, { size: number; sha
   return Object.fromEntries(
     artifacts.map(({ name, size, sha256 }) => [name, { size, sha256 }]),
   );
+}
+
+function bundleAssets(directory: string, names: string[]): ArtifactDigest[] {
+  return names.map((name) => {
+    const path = join(directory, name);
+    return {
+      name,
+      size: statSync(path).size,
+      sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
+    };
+  });
 }
 
 export interface DevReleaseRehearsalReceipt {
@@ -57,7 +71,7 @@ export async function rehearseDevRelease(args: string[]): Promise<DevReleaseRehe
   const createdAt = new Date(
     argument(args, "--timestamp") ?? git(["show", "-s", "--format=%cI", sourceSha]),
   ).toISOString();
-  const runNumber = Number(argument(args, "--run-number") ?? "900001");
+  const runNumber = Number(argument(args, "--run-number") ?? "60001");
   const runAttempt = Number(argument(args, "--run-attempt") ?? "1");
   const identity = createReleaseIdentity({
     channel: "dev",
@@ -108,7 +122,7 @@ export async function rehearseDevRelease(args: string[]): Promise<DevReleaseRehe
       advisory: [],
     }));
 
-    const verified = [];
+    const verified: ArtifactDigest[][] = [];
     for (const pass of [1, 2]) {
       const directory = join(root, `bundle-${pass}`);
       await buildReleaseArtifacts({
@@ -134,13 +148,14 @@ export async function rehearseDevRelease(args: string[]): Promise<DevReleaseRehe
         sourceEligibilityPath: eligibility,
         runnerOs: "local-shadow",
       });
-      verified.push(await verifyReleaseArtifacts({ directory }));
+      await verifyReleaseArtifacts({ directory });
+      verified.push(bundleAssets(directory, expectedReleaseAssetNames(identity)));
     }
-    if (JSON.stringify(byName(verified[0]!.verifiedArtifacts)) !== JSON.stringify(byName(verified[1]!.verifiedArtifacts))) {
+    if (JSON.stringify(byName(verified[0]!)) !== JSON.stringify(byName(verified[1]!))) {
       throw new Error("repeated dev release builds are not byte-identical");
     }
 
-    const assets = verified[0]!.verifiedArtifacts;
+    const assets = verified[0]!;
     const plan = createDevReleaseShadowPlan({
       sourceSha,
       tag: identity.buildId,
