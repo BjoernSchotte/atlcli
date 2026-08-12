@@ -10,9 +10,6 @@ on:
         required: true
         type: string
 
-env:
-  BUN_VERSION: "1.3.14"
-
 permissions:
   contents: read
 
@@ -27,126 +24,108 @@ jobs:
     with:
       emit_security_attestation: true
 
-  # Build one binary per target platform, all cross-compiled from Ubuntu via bun
-  build:
+  resolve:
+    name: Freeze stable release identity
     needs: preflight
-    strategy:
-      matrix:
-        target: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64]
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      build_id: ${{ steps.identity.outputs.build_id }}
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      source_ref: ${{ steps.identity.outputs.source_ref }}
+      created_at: ${{ steps.identity.outputs.created_at }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Resolve and validate stable identity
+        id: identity
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            version="$REQUESTED_VERSION"
+          else
+            version="${GITHUB_REF#refs/tags/v}"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid stable version: $version" >&2
+            exit 1
+          fi
+          package_version="$(node -p 'require("./package.json").version')"
+          if [ "$version" != "$package_version" ]; then
+            echo "Release version $version does not match package.json $package_version" >&2
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          {
+            echo "version=$version"
+            echo "build_id=v$version"
+            echo "source_sha=$GITHUB_SHA"
+            echo "source_ref=$GITHUB_REF"
+            echo "created_at=$(git show -s --format=%cI "$GITHUB_SHA")"
+          } >> "$GITHUB_OUTPUT"
+
+  artifacts:
+    name: Build and consume shared stable artifacts
+    needs: resolve
+    uses: ./.github/workflows/reusable-release-artifacts.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source_sha }}
+      source_ref: ${{ needs.resolve.outputs.source_ref }}
+      channel: stable
+      version: ${{ needs.resolve.outputs.version }}
+      build_id: ${{ needs.resolve.outputs.build_id }}
+      created_at: ${{ needs.resolve.outputs.created_at }}
+      security_attestation_artifact: security-attestation-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+  release:
+    name: Publish stable GitHub release
+    needs: [resolve, artifacts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
           fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version: 1.3.14
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      # Spec 008: the CLI bundle graph reaches export-pdf-assets.ts, whose
-      # `with { type: "file" }` imports of @atlcli/pdf/fonts/* resolve into the
-      # gitignored packages/pdf/.fonts/ tree. Without this step every target's
-      # `bun build --compile` fails at bundle time with "Could not resolve".
-      # The assets are embedded into each binary here on the build host, so the
-      # shipped binaries (incl. windows-x64) never resolve fonts at runtime.
-      - name: Provision pinned PDF fonts
-        run: bun run fonts:ensure
-
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build binary
-        run: |
-          bun scripts/release-artifacts.ts build \
-            --channel stable \
-            --version "${{ steps.version.outputs.version }}" \
-            --source-sha "$GITHUB_SHA" \
-            --timestamp "$(git show -s --format=%cI "$GITHUB_SHA")" \
-            --run-number "$GITHUB_RUN_NUMBER" \
-            --run-attempt "$GITHUB_RUN_ATTEMPT" \
-            --target "${{ matrix.target }}" \
-            --skip-extension \
-            --output release
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: binary-${{ matrix.target }}
-          path: release/atlcli-${{ matrix.target }}.*
-
-  # Create GitHub Release
-  release:
-    needs: [build]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download all artifacts
+      - name: Download this run's manifested bundle only
         uses: actions/download-artifact@v8
         with:
-          path: artifacts
+          name: ${{ needs.artifacts.outputs.bundle_artifact }}
+          path: release
 
-      - name: Prepare release files
+      - name: Assert complete stable asset contract
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          mkdir -p release
-          for dir in artifacts/binary-*/; do
-            cp "$dir"*.tar.gz release/ 2>/dev/null || cp "$dir"*.zip release/ 2>/dev/null || true
-          done
-
-          # Generate combined checksums
-          cd release
-          shopt -s nullglob
-          for f in *.tar.gz *.zip; do sha256sum "$f" >> checksums.txt; done
-          shopt -u nullglob
-
-          if [[ ! -s checksums.txt ]]; then
-            echo "ERROR: no release archives found" >&2
-            exit 1
-          fi
-          cat checksums.txt
-          ls -la
+          bun -e '
+            import { expectedStableReleaseAssetNames } from "./scripts/release-artifacts.ts";
+            const actual = [...new Bun.Glob("*").scanSync("release")].sort();
+            const expected = expectedStableReleaseAssetNames(process.env.VERSION);
+            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+              console.error({ expected, actual });
+              process.exit(1);
+            }
+          '
 
       - name: Generate changelog
-        id: changelog
         run: |
-          # Get commits since last tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
           if [ -n "$PREV_TAG" ]; then
-            echo "Generating changelog from $PREV_TAG to HEAD"
             CHANGELOG=$(git log --pretty=format:"- %s (%h)" "$PREV_TAG"..HEAD)
           else
-            echo "No previous tag, including all commits"
             CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD~20..HEAD 2>/dev/null || git log --pretty=format:"- %s (%h)")
           fi
-
-          # Write to file for multiline handling
-          echo "$CHANGELOG" > changelog.txt
-
-          # Also create a formatted version
           {
             echo "## What's Changed"
             echo ""
@@ -166,20 +145,20 @@ jobs:
             echo '```'
             echo ""
             echo "### Manual Download"
-            echo "Download the appropriate binary for your platform, extract, and add to your PATH."
+            echo "Download the appropriate CLI archive or the packaged Chrome MV3 extension."
           } > release_notes.md
 
-      - name: Create Release
+      - name: Create stable release
         uses: softprops/action-gh-release@v2
         with:
-          name: v${{ steps.version.outputs.version }}
-          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ needs.resolve.outputs.version }}
+          tag_name: v${{ needs.resolve.outputs.version }}
+          target_commitish: ${{ needs.resolve.outputs.source_sha }}
           body_path: release_notes.md
-          files: |
-            release/*.tar.gz
-            release/*.zip
-            release/checksums.txt
+          files: release/*
           draft: false
           prerelease: false
+          make_latest: true
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

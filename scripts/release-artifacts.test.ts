@@ -12,6 +12,7 @@ import {
   createReleaseIdentity,
   decidePublication,
   expectedReleaseAssetNames,
+  expectedStableReleaseAssetNames,
   normalizeArtifactDigests,
   renderChecksums,
   sha256Text,
@@ -125,6 +126,20 @@ describe("release identity", () => {
     expect(() => assertExpectedReleaseAssets(identity, [...expected, expected[0]!])).toThrow(
       "duplicate",
     );
+  });
+
+  test("keeps stable on the shared product contract without a dev eligibility claim", () => {
+    expect(expectedStableReleaseAssetNames("0.17.2")).toEqual([
+      "atlcli-darwin-arm64.tar.gz",
+      "atlcli-darwin-x64.tar.gz",
+      "atlcli-extension-chrome-mv3-v0.17.2.zip",
+      "atlcli-linux-arm64.tar.gz",
+      "atlcli-linux-x64.tar.gz",
+      "atlcli-windows-x64.zip",
+      "build-metadata.json",
+      "checksums.txt",
+      "security-attestation.json",
+    ]);
   });
 });
 
@@ -275,6 +290,33 @@ describe("release receipt schemas", () => {
           permissionsSha256: DIGEST_B,
         },
         sourceEligibilitySha256: DIGEST_A,
+      }),
+    ).toBe(true);
+    expect(
+      validateBuildMetadata({
+        schema: BUILD_METADATA_SCHEMA_ID,
+        channel: "stable",
+        rootVersion: "0.17.2",
+        sourceSha: SHA,
+        sourceRef: "refs/tags/v0.17.2",
+        releaseTag: "v0.17.2",
+        buildId: "v0.17.2",
+        run: {
+          id: 123,
+          attempt: 1,
+          event: "push",
+          createdAt: "2026-08-12T02:17:45.000Z",
+        },
+        toolchain: { bun: "1.3.14", wxt: "0.20.27", runnerOs: "Linux" },
+        lockfileSha256: DIGEST_A,
+        artifacts: [{ name: "atlcli-linux-x64.tar.gz", size: 1, sha256: DIGEST_B }],
+        extension: {
+          contentTreeSha256: DIGEST_A,
+          manifestSha256: DIGEST_B,
+          cspSha256: DIGEST_A,
+          permissionsSha256: DIGEST_B,
+        },
+        sourceEligibilitySha256: null,
       }),
     ).toBe(true);
     expect(

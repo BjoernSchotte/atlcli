@@ -79,18 +79,41 @@ function runRequiredGate(
 }
 
 describe("CI workflow policy", () => {
-  it("delegates stable CLI packaging to the shared deterministic artifact builder", async () => {
+  it("delegates the complete stable product bundle to the reusable artifact workflow", async () => {
     const release = await workflow("release.yml");
-    const build = block(release, /^ {2}build:\s*$/, 2);
-    expect(build).not.toBeNull();
-    expect(build).toContain("bun install --frozen-lockfile");
-    expect(build).toContain("bun scripts/release-artifacts.ts build");
-    expect(build).toContain("--channel stable");
-    expect(build).toContain('--target "${{ matrix.target }}"');
-    expect(build).toContain("--skip-extension");
-    expect(build).toContain("path: release/atlcli-${{ matrix.target }}.*");
-    expect(build).not.toContain("bun build apps/cli/src/index.ts");
-    expect(build).not.toMatch(/\b(?:tar|zip)\s+[-\w]/);
+    const reusable = await workflow("reusable-release-artifacts.yml");
+    expect(release).toContain("uses: ./.github/workflows/reusable-release-artifacts.yml");
+    expect(release).toContain("security_attestation_artifact: security-attestation-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(release).toContain("name: ${{ needs.artifacts.outputs.bundle_artifact }}");
+    expect(release).toContain("prerelease: false");
+    expect(release).toContain("make_latest: true");
+    expect(release).toContain("target_commitish: ${{ needs.resolve.outputs.source_sha }}");
+    expect(release).toContain("files: release/*");
+    expect(release).not.toContain("source_eligibility_artifact:");
+
+    expect(reusable).toContain("target: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64]");
+    expect(reusable).toContain("bun install --frozen-lockfile");
+    expect(reusable).toContain("bun scripts/release-artifacts.ts build");
+    expect(reusable).toContain('--target "${{ matrix.target }}"');
+    expect(reusable).toContain("--skip-extension");
+    expect(reusable).toContain("--skip-cli");
+    expect(reusable).toContain("bun scripts/assemble-release-bundle.ts");
+    expect(reusable).toContain("bun scripts/verify-release-artifacts.ts --dir bundle");
+    for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
+      expect(reusable).toContain(`test:${suite}-extension-browser:prebuilt`);
+    }
+    expect(reusable).not.toContain("bun build apps/cli/src/index.ts");
+    expect(reusable).not.toMatch(/^\s+(?:tar|zip)\s+/m);
+  });
+
+  it("prevents cross-run artifact collection and keeps build jobs read-only", async () => {
+    const reusable = await workflow("reusable-release-artifacts.yml");
+    expect(reusable).toMatch(/permissions:\n\s+contents: read/);
+    expect(reusable).toContain("ref: ${{ inputs.source_sha }}");
+    expect(reusable).toContain("${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-cli-${{ matrix.target }}");
+    expect(reusable).toContain("${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-extension");
+    expect(reusable).toContain("pattern: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-cli-*");
+    expect(reusable).not.toMatch(/download-artifact@v8\n\s+with:\n\s+path:/);
   });
 
   it("emits exactly one mode-named aggregate around selectively skipped jobs", async () => {
@@ -427,7 +450,7 @@ describe("CI workflow policy", () => {
     expect(attestation).toContain("if: inputs.emit_security_attestation");
     expect(attestation).toContain("fetch-depth: 2");
     expect(attestation).toContain("attestation.commit !== process.env.GITHUB_SHA");
-    expect(attestation).toContain("security-attestation-${{ github.sha }}");
+    expect(attestation).toContain("security-attestation-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
 
     expect(complete).toBeNull();
     expect(block(reusable, /^ {2}publishing:\s*$/, 2)).toBeNull();
@@ -542,6 +565,7 @@ describe("CI workflow policy", () => {
   it("blocks release builds on the shared SHA-bound preflight", async () => {
     const release = await workflow("release.yml");
     expect(release).toMatch(/preflight:[\s\S]*emit_security_attestation: true/);
-    expect(release).toMatch(/build:\n\s+needs: preflight/);
+    expect(release).toMatch(/resolve:[\s\S]*needs: preflight/);
+    expect(release).toMatch(/artifacts:[\s\S]*needs: resolve/);
   });
 });

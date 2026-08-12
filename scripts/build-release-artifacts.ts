@@ -254,13 +254,20 @@ export async function runReleaseArtifactBuildCli(args: string[]): Promise<void> 
     }
   }
   const requestedTargets = requestedTargetValues as (typeof CLI_TARGETS)[number][];
+  const skipCli = args.includes("--skip-cli");
+  if (skipCli && args.includes("--skip-extension")) {
+    throw new Error("build cannot skip both CLI and extension artifacts");
+  }
   const receipt = await buildReleaseArtifacts({
     identity,
     outputDirectory: value(args, "--output") ?? join(REPO_ROOT, ".artifacts", "dev-release"),
-    targets: requestedTargets.length > 0 ? requestedTargets : undefined,
+    targets: skipCli ? [] : requestedTargets.length > 0 ? requestedTargets : undefined,
     includeExtension: !args.includes("--skip-extension"),
     dryRun,
     publishableSource,
   });
-  process.stdout.write(canonicalJson(receipt));
+  const rendered = canonicalJson(receipt);
+  const receiptPath = value(args, "--receipt");
+  if (receiptPath) writeFileSync(resolve(receiptPath), rendered);
+  else process.stdout.write(rendered);
 }

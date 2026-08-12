@@ -58,7 +58,7 @@ interface BuildMetadata {
     cspSha256: string;
     permissionsSha256: string;
   };
-  sourceEligibilitySha256: string;
+  sourceEligibilitySha256: string | null;
 }
 
 interface SecurityAttestation {
@@ -451,23 +451,25 @@ function assertSchema<T>(validate: ReturnType<Ajv["compile"]>, value: T, label: 
 }
 
 function expectedAssetNames(metadata: BuildMetadata): string[] {
-  return [
+  const names = [
     ...CLI_TARGETS.map(cliAssetName),
     `atlcli-extension-chrome-mv3-${metadata.buildId}.zip`,
     "checksums.txt",
     "build-metadata.json",
     "security-attestation.json",
-    "source-eligibility.json",
-  ].sort();
+  ];
+  if (metadata.channel === "dev") names.push("source-eligibility.json");
+  return names.sort();
 }
 
 function payloadNames(metadata: BuildMetadata): string[] {
-  return [
+  const names = [
     ...CLI_TARGETS.map(cliAssetName),
     `atlcli-extension-chrome-mv3-${metadata.buildId}.zip`,
     "security-attestation.json",
-    "source-eligibility.json",
-  ].sort();
+  ];
+  if (metadata.channel === "dev") names.push("source-eligibility.json");
+  return names.sort();
 }
 
 export async function verifyReleaseArtifacts(input: {
@@ -478,11 +480,15 @@ export async function verifyReleaseArtifacts(input: {
   const directory = resolve(input.directory);
   const metadata = parseJson<BuildMetadata>(join(directory, "build-metadata.json"));
   const security = parseJson<SecurityAttestation>(join(directory, "security-attestation.json"));
-  const eligibility = parseJson<SourceEligibility>(join(directory, "source-eligibility.json"));
+  const eligibility = metadata.channel === "dev"
+    ? parseJson<SourceEligibility>(join(directory, "source-eligibility.json"))
+    : null;
   const ajv = new Ajv({ allErrors: true, strict: false });
   assertSchema(ajv.compile(BUILD_METADATA_JSON_SCHEMA), metadata, "build-metadata.json");
   assertSchema(ajv.compile(SECURITY_ATTESTATION_JSON_SCHEMA), security, "security-attestation.json");
-  assertSchema(ajv.compile(SOURCE_ELIGIBILITY_JSON_SCHEMA), eligibility, "source-eligibility.json");
+  if (eligibility) {
+    assertSchema(ajv.compile(SOURCE_ELIGIBILITY_JSON_SCHEMA), eligibility, "source-eligibility.json");
+  }
   const devIdentity = /^dev-(\d{8})\.(\d+)\.(\d+)-([0-9a-f]{8})$/.exec(metadata.buildId);
   if (metadata.channel === "stable") {
     if (metadata.buildId !== `v${metadata.rootVersion}` || metadata.releaseTag !== metadata.buildId) {
@@ -507,13 +513,18 @@ export async function verifyReleaseArtifacts(input: {
   ) {
     throw new Error("security attestation contains a failed check");
   }
-  if (
-    eligibility.sourceSha !== metadata.sourceSha ||
-    eligibility.decision !== "eligible" ||
-    eligibility.workflow.conclusion !== "success" ||
-    eligibility.requiredJob.conclusion !== "success"
-  ) {
-    throw new Error("source eligibility is not a successful proof for metadata source SHA");
+  if (metadata.channel === "dev") {
+    if (
+      !eligibility ||
+      eligibility.sourceSha !== metadata.sourceSha ||
+      eligibility.decision !== "eligible" ||
+      eligibility.workflow.conclusion !== "success" ||
+      eligibility.requiredJob.conclusion !== "success"
+    ) {
+      throw new Error("source eligibility is not a successful proof for metadata source SHA");
+    }
+  } else if (metadata.sourceEligibilitySha256 !== null) {
+    throw new Error("stable metadata must not claim a source eligibility receipt");
   }
 
   const topLevelFiles = readdirSync(directory)
@@ -547,9 +558,11 @@ export async function verifyReleaseArtifacts(input: {
     }
     actualArtifacts.push(actual);
   }
-  const eligibilityDigest = sha256(readFileSync(join(directory, "source-eligibility.json")));
-  if (eligibilityDigest !== metadata.sourceEligibilitySha256) {
-    throw new Error("source eligibility digest does not match metadata");
+  if (eligibility) {
+    const eligibilityDigest = sha256(readFileSync(join(directory, "source-eligibility.json")));
+    if (eligibilityDigest !== metadata.sourceEligibilitySha256) {
+      throw new Error("source eligibility digest does not match metadata");
+    }
   }
 
   for (const target of CLI_TARGETS) {

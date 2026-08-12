@@ -70,4 +70,16 @@ describe("release artifact builder safety", () => {
       ]),
     ).rejects.toThrow("unsupported release target");
   });
+
+  test("never accepts a build that skips every product artifact", async () => {
+    await expect(
+      runReleaseArtifactBuildCli([
+        "--channel",
+        "dev",
+        "--dry-run",
+        "--skip-cli",
+        "--skip-extension",
+      ]),
+    ).rejects.toThrow("cannot skip both");
+  });
 });

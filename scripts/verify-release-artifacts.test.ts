@@ -33,14 +33,22 @@ function sha256(bytes: Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-async function writeFixture(input: { manifestPath?: string; forbiddenPath?: string } = {}): Promise<string> {
+async function writeFixture(input: {
+  manifestPath?: string;
+  forbiddenPath?: string;
+  channel?: "stable" | "dev";
+} = {}): Promise<string> {
+  const channel = input.channel ?? "dev";
+  const buildId = channel === "stable" ? "v0.17.2" : BUILD_ID;
+  const cliVersion = channel === "stable" ? "0.17.2" : CLI_VERSION;
+  const homebrewVersion = channel === "stable" ? "0.17.2" : "20260812021745.418.2";
   const root = mkdtempSync(join(tmpdir(), "atlcli-release-verifier-"));
   const extension = join(root, "extension-source");
   const manifest = {
     manifest_version: 3,
     name: "atlcli",
-    version: "0.17.2.418",
-    version_name: EXTENSION_VERSION_NAME,
+    version: channel === "stable" ? "0.17.2" : "0.17.2.418",
+    version_name: channel === "stable" ? "0.17.2-stable" : EXTENSION_VERSION_NAME,
     permissions: ["storage", "tabs"],
     host_permissions: ["https://*.atlassian.net/*"],
     content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" },
@@ -54,11 +62,11 @@ async function writeFixture(input: { manifestPath?: string; forbiddenPath?: stri
   const artifactDigests: ArtifactDigest[] = [];
   const binary = new TextEncoder().encode([
     "atlcli.release-info/v1",
-    CLI_VERSION,
+    cliVersion,
     SOURCE_SHA,
-    BUILD_ID,
-    BUILD_ID,
-    "20260812021745.418.2",
+    buildId,
+    buildId,
+    homebrewVersion,
   ].join("\0"));
   for (const target of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"] as const) {
     const bytes = deterministicTarGz(executableEntry("atlcli", binary));
@@ -73,7 +81,7 @@ async function writeFixture(input: { manifestPath?: string; forbiddenPath?: stri
 
   const extensionEntries = readReleaseTree(extension);
   const extensionZip = await deterministicZip(extensionEntries);
-  const extensionName = `atlcli-extension-chrome-mv3-${BUILD_ID}.zip`;
+  const extensionName = `atlcli-extension-chrome-mv3-${buildId}.zip`;
   writeFileSync(join(root, extensionName), extensionZip);
   artifactDigests.push({
     name: extensionName,
@@ -121,26 +129,28 @@ async function writeFixture(input: { manifestPath?: string; forbiddenPath?: stri
     },
     advisory: [],
   });
-  writeFileSync(join(root, "source-eligibility.json"), eligibility);
-  artifactDigests.push({
-    name: "source-eligibility.json",
-    size: Buffer.byteLength(eligibility),
-    sha256: sha256(eligibility),
-  });
+  if (channel === "dev") {
+    writeFileSync(join(root, "source-eligibility.json"), eligibility);
+    artifactDigests.push({
+      name: "source-eligibility.json",
+      size: Buffer.byteLength(eligibility),
+      sha256: sha256(eligibility),
+    });
+  }
 
   const normalized = normalizeArtifactDigests(artifactDigests);
   const metadata = canonicalJson({
     schema: "atlcli.build-metadata/v1",
-    channel: "dev",
+    channel,
     rootVersion: "0.17.2",
     sourceSha: SOURCE_SHA,
-    sourceRef: "refs/heads/main",
-    releaseTag: BUILD_ID,
-    buildId: BUILD_ID,
+    sourceRef: channel === "stable" ? "refs/tags/v0.17.2" : "refs/heads/main",
+    releaseTag: buildId,
+    buildId,
     run: {
       id: 1,
-      attempt: 2,
-      event: "workflow_dispatch",
+      attempt: channel === "stable" ? 1 : 2,
+      event: channel === "stable" ? "push" : "workflow_dispatch",
       createdAt: "2026-08-12T02:17:45.000Z",
     },
     toolchain: { bun: "1.3.14", wxt: "0.20.27", runnerOs: "fixture" },
@@ -155,7 +165,7 @@ async function writeFixture(input: { manifestPath?: string; forbiddenPath?: stri
         permissions: [...manifest.permissions].sort(),
       })),
     },
-    sourceEligibilitySha256: sha256(eligibility),
+    sourceEligibilitySha256: channel === "dev" ? sha256(eligibility) : null,
   });
   writeFileSync(join(root, "build-metadata.json"), metadata);
   writeFileSync(join(root, "checksums.txt"), renderChecksums(normalized));
@@ -189,6 +199,23 @@ describe("release artifact verifier", () => {
       expect(receipt.verifiedArtifacts).toHaveLength(8);
       expect(receipt.extension.entryCount).toBe(2);
       expect(receipt.extension.outputScan).toBe("not-run");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(`${join(root, "extracted")}.atlcli-release-extraction-v1`, { force: true });
+    }
+  });
+
+  test("verifies the complete stable bundle without a dev eligibility receipt", async () => {
+    const root = await writeFixture({ channel: "stable" });
+    try {
+      const receipt = await verifyReleaseArtifacts({
+        directory: root,
+        extractExtensionDirectory: join(root, "extracted"),
+        verifyExtensionRuntime: false,
+      });
+      expect(receipt.channel).toBe("stable");
+      expect(receipt.releaseTag).toBe("v0.17.2");
+      expect(receipt.verifiedArtifacts).toHaveLength(7);
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(`${join(root, "extracted")}.atlcli-release-extraction-v1`, { force: true });

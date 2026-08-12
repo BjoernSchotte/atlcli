@@ -170,13 +170,25 @@ export function cliAssetName(target: (typeof CLI_TARGETS)[number]): string {
 }
 
 export function expectedReleaseAssetNames(identity: ReleaseIdentity): string[] {
-  return [
+  const names = [
     ...CLI_TARGETS.map(cliAssetName),
     `atlcli-extension-chrome-mv3-${identity.buildId}.zip`,
     "checksums.txt",
     "build-metadata.json",
     "security-attestation.json",
-    "source-eligibility.json",
+  ];
+  if (identity.channel === "dev") names.push("source-eligibility.json");
+  return names.sort();
+}
+
+export function expectedStableReleaseAssetNames(version: string): string[] {
+  const [major, minor, patch] = parseRootVersion(version);
+  return [
+    ...CLI_TARGETS.map(cliAssetName),
+    `atlcli-extension-chrome-mv3-v${major}.${minor}.${patch}.zip`,
+    "checksums.txt",
+    "build-metadata.json",
+    "security-attestation.json",
   ].sort();
 }
 
@@ -366,7 +378,9 @@ export const BUILD_METADATA_JSON_SCHEMA = {
         permissionsSha256: SHA256_SCHEMA,
       },
     },
-    sourceEligibilitySha256: SHA256_SCHEMA,
+    sourceEligibilitySha256: {
+      anyOf: [SHA256_SCHEMA, { type: "null" }],
+    },
   },
 } as const;
 

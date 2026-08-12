@@ -484,6 +484,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: security-attestation-${{ github.sha }}
+          name: security-attestation-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: security-attestation.json
           if-no-files-found: error

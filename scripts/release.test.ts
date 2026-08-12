@@ -7,6 +7,7 @@ import {
   RELEASE_TEST_COMMAND,
   rollback,
   showDryRunPlan,
+  stableReleaseAssetsReady,
   type ReleaseState,
 } from "./release";
 
@@ -154,6 +155,12 @@ describe("release dry-run pre-release checklist (spec 011)", () => {
     expect(out).toContain("--dry-run");
   });
 
+  test("keeps the stable Homebrew dispatch isolated from the dev formula", () => {
+    const out = planOutput();
+    expect(out).toContain("-f formula=atlcli -f tag=v0.18.0");
+    expect(out).not.toContain("formula=atlcli-dev");
+  });
+
   test("uses the canonical root test command", () => {
     const out = planOutput();
     expect([...RELEASE_TEST_COMMAND]).toEqual(["bun", "run", "test"]);
@@ -184,5 +191,29 @@ describe("release dry-run pre-release checklist (spec 011)", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("DRY RUN - No changes will be made.");
     expect(stdout).toContain("Dry run: mutation preconditions are not required");
+  });
+});
+
+describe("stable release completion", () => {
+  const complete = [
+    "atlcli-darwin-arm64.tar.gz",
+    "atlcli-darwin-x64.tar.gz",
+    "atlcli-extension-chrome-mv3-v0.17.2.zip",
+    "atlcli-linux-arm64.tar.gz",
+    "atlcli-linux-x64.tar.gz",
+    "atlcli-windows-x64.zip",
+    "build-metadata.json",
+    "checksums.txt",
+    "security-attestation.json",
+  ];
+
+  test("waits for the shared CLI, extension, metadata, and security contract", () => {
+    expect(stableReleaseAssetsReady("0.17.2", complete)).toBe(true);
+    for (const required of complete) {
+      expect(
+        stableReleaseAssetsReady("0.17.2", complete.filter((name) => name !== required)),
+        `missing ${required} must keep the release incomplete`,
+      ).toBe(false);
+    }
   });
 });

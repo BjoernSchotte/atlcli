@@ -1,6 +1,6 @@
 # Dev-Release-Channel: Nightly und manuell ausloesbare, bewiesene Releases
 
-**Status:** In Umsetzung; DR-00 bis DR-02 lokal bewiesen
+**Status:** In Umsetzung; DR-00 bis DR-04 bewiesen
 
 **Planungsstand:** 2026-08-12
 
@@ -521,22 +521,22 @@ Artefakt durch einen lokalen Rebuild.
 
 **Blocks:** DR-05
 
-- [ ] `.github/workflows/reusable-release-artifacts.yml` mit `workflow_call`
+- [x] `.github/workflows/reusable-release-artifacts.yml` mit `workflow_call`
   erstellen; Inputs sind Source-SHA, Kanal und Build-ID, Outputs sind nur
   manifestierte Artefakte/Receipts.
-- [ ] Bestehenden SHA-gebundenen `reusable-quality.yml`-Preflight als zwingende
+- [x] Bestehenden SHA-gebundenen `reusable-quality.yml`-Preflight als zwingende
   Voraussetzung behalten und Security-Attestation in den Release-Assetvertrag
   uebernehmen.
-- [ ] Build-Matrix fuer alle fuenf CLI-Plattformen plus Extension-Package und
+- [x] Build-Matrix fuer alle fuenf CLI-Plattformen plus Extension-Package und
   Consumer-Proofs implementieren; Build-Jobs haben nur `contents: read`.
-- [ ] Stable `.github/workflows/release.yml` auf den gemeinsamen Builder umstellen
+- [x] Stable `.github/workflows/release.yml` auf den gemeinsamen Builder umstellen
   und erstmals das gepackte Extension-ZIP, Metadata und Security-Receipt als
   Stable-Assets publizieren.
-- [ ] `scripts/release.ts::waitForRelease` auf den neuen vollstaendigen Stable-
+- [x] `scripts/release.ts::waitForRelease` auf den neuen vollstaendigen Stable-
   Assetvertrag umstellen.
-- [ ] Regressionstests fuer Stable-Tag, Namen, `prerelease=false`, Latest-
+- [x] Regressionstests fuer Stable-Tag, Namen, `prerelease=false`, Latest-
   Verhalten, CLI-Assetnamen und Homebrew-Stable-Dispatch ergaenzen.
-- [ ] Alle Action-Artefakte eindeutig nach Source-SHA/Run benennen; kein Job darf
+- [x] Alle Action-Artefakte eindeutig nach Source-SHA/Run benennen; kein Job darf
   versehentlich Artefakte eines anderen Runs einsammeln.
 
 **Proof**
