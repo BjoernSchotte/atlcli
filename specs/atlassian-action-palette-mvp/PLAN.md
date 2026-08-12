@@ -1,12 +1,12 @@
 # Atlassian Action Palette MVP
 
-**Status:** Proposed
+**Status:** Implemented and proven; host release decisions pending
 
 **Spec ID:** `action-palette-mvp`
 
-**Primary repository:** `atlcli` at `0adae619`
+**Primary repository:** `atlcli` at `028790b7`
 
-**External consumer:** `/Users/bjoern/code/kiteweave-forge-app` at `f520e66`
+**External consumer:** `/Users/bjoern/code/kiteweave-forge-app` at `7aef95a`
 
 **Target surfaces:** Chrome extension on Atlassian Cloud; Forge Custom UI on Confluence Cloud
 
@@ -728,11 +728,11 @@ forge lint
 - [x] Run full root test/typecheck/build/browser/output gates and capture versions plus logs in `specs/atlassian-action-palette-mvp/evidence/AP-09-quality.md`.
 - [x] Run accessibility and performance matrices and attach machine-readable results/screenshots without tenant or document data.
 - [x] Run VoiceOver + Chrome on macOS and NVDA + Chrome on Windows. Record expected/actual dialog label, result count, group, active option, unavailable reason, execution status, Escape hierarchy, and returned host focus in `evidence/AP-09-screenreaders.md`.
-- [ ] Run extension E2E on profile `mayflower`, Confluence space `DOCSY`, and Jira project `ATLCLI` as applicable; create only named disposable resources and delete them after proof.
-- [ ] Verify a real PDF and DOCX artifact from the palette, durable Activity receipt, quick-AI explicit-submit path, Jira context, and sidebar continuation.
-- [ ] Run Forge development-installation E2E on a disposable Confluence page; prove both existing export modals and clean up generated attachments/pages.
+- [x] Run extension E2E on profile `mayflower`, Confluence space `DOCSY`, and Jira project `ATLCLI` as applicable; create only named disposable resources and delete them after proof. See [`evidence/AP-09-live-e2e.md`](evidence/AP-09-live-e2e.md).
+- [x] Verify a real PDF and DOCX artifact from the palette, durable Activity receipt, quick-AI explicit-submit path, Jira context, and sidebar continuation. See [`evidence/AP-09-live-e2e.md`](evidence/AP-09-live-e2e.md).
+- [x] Run Forge development-installation E2E on a disposable Confluence page; prove both existing export modals and clean up generated attachments/pages. See [`evidence/AP-09-live-e2e.md`](evidence/AP-09-live-e2e.md).
 - [x] Scan staged diffs and built output for credentials, tenant identifiers, page content, downloaded/generated artifacts, remote code, and unexpected permissions.
-- [ ] Update this plan's status and checkboxes only from recorded evidence. Keep unresolved gates open rather than calling the MVP complete.
+- [x] Update this plan's status and checkboxes only from recorded evidence. Implementation and proof are complete; product naming and separate host release decisions remain explicitly unresolved in Section 16.
 
 **Full atlcli proof**
 
@@ -841,17 +841,17 @@ Stop implementation and update this plan when any of these occurs:
 
 ## 14. Definition of done
 
-- [ ] AP-00 through AP-09, including AP-03A, are checked with linked evidence.
-- [ ] The neutral registry and presenter are documented, versioned, browser-safe, and consumed by both hosts.
-- [ ] The extension shortcut is truly configurable and its actual binding/unbound state is visible/documented.
-- [ ] The extension overlay works on Confluence and Jira without host CSS/keyboard regressions.
-- [ ] PDF/DOCX use existing durable paths and request semantics; no duplicate implementation exists.
-- [ ] Quick AI is explicit, privacy-gated, bounded, and hands complex interaction to Research.
-- [ ] The Forge palette delegates only to existing Confluence export modals and passes boundary/cost gates.
-- [ ] Packed extension and Forge development-installation E2E evidence exists and all created resources are cleaned up.
-- [ ] Accessibility, performance, security, full test, typecheck, build, browser, and output checks pass.
-- [ ] Documentation covers configuration, actions, privacy, limitations, troubleshooting, and future contribution boundaries.
-- [ ] No release, production deploy, or push has occurred without explicit authorization.
+- [x] AP-00 through AP-09, including AP-03A, are checked with linked evidence.
+- [x] The neutral registry and presenter are documented, versioned, browser-safe, and consumed by both hosts.
+- [x] The extension shortcut is truly configurable and its actual binding/unbound state is visible/documented.
+- [x] The extension overlay works on Confluence and Jira without host CSS/keyboard regressions.
+- [x] PDF/DOCX use existing durable paths and request semantics; no duplicate implementation exists.
+- [x] Quick AI is explicit, privacy-gated, bounded, and hands complex interaction to Research.
+- [x] The Forge palette delegates only to existing Confluence export modals and passes boundary/cost gates.
+- [x] Packed extension and Forge development-installation E2E evidence exists and all created resources are cleaned up.
+- [x] Accessibility, performance, security, full test, typecheck, build, browser, and output checks pass.
+- [x] Documentation covers configuration, actions, privacy, limitations, troubleshooting, and future contribution boundaries.
+- [x] No release, production deploy, or push has occurred without explicit authorization.
 
 ## 15. Risks and mitigations
 
