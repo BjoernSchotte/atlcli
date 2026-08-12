@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rollback, showDryRunPlan, type ReleaseState } from "./release";
+import {
+  assertSuccessfulExit,
+  RELEASE_TEST_COMMAND,
+  rollback,
+  showDryRunPlan,
+  type ReleaseState,
+} from "./release";
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
   const proc = Bun.spawn(["git", ...args], {
@@ -146,5 +152,37 @@ describe("release dry-run pre-release checklist (spec 011)", () => {
     const out = planOutput();
     expect(out).toContain("0.17.0 \u2192 0.18.0");
     expect(out).toContain("--dry-run");
+  });
+
+  test("uses the canonical root test command", () => {
+    const out = planOutput();
+    expect([...RELEASE_TEST_COMMAND]).toEqual(["bun", "run", "test"]);
+    expect(out).toContain("bun run typecheck && bun run test");
+    expect(out).not.toContain("&& bun test");
+  });
+
+  test("trusts the process exit code instead of parsing test output", () => {
+    expect(() => assertSuccessfulExit("Tests", 0)).not.toThrow();
+    expect(() => assertSuccessfulExit("Tests", 1)).toThrow(
+      "Tests failed with exit code 1",
+    );
+  });
+
+  test("runs from a review branch without release mutation preconditions", async () => {
+    const proc = Bun.spawn(["bun", "scripts/release.ts", "patch", "--dry-run"], {
+      cwd: join(import.meta.dir, ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("DRY RUN - No changes will be made.");
+    expect(stdout).toContain("Dry run: mutation preconditions are not required");
   });
 });

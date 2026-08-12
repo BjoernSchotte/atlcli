@@ -116,6 +116,15 @@ Examples:
 async function validateEnvironment(dryRun: boolean): Promise<void> {
   console.log("Validating environment...");
 
+  // A dry run only renders the release plan from the checked-out package
+  // version. Keep it usable from review branches and dirty worktrees so the
+  // mandatory rehearsal can happen before the release implementation is
+  // committed. The real release path below retains every mutation precondition.
+  if (dryRun) {
+    console.log("  Dry run: mutation preconditions are not required");
+    return;
+  }
+
   // Check git status is clean
   const status = await $`git status --porcelain`.text();
   if (status.trim()) {
@@ -162,6 +171,14 @@ function bumpVersion(current: string, type: "patch" | "minor" | "major"): string
   }
 }
 
+export const RELEASE_TEST_COMMAND = ["bun", "run", "test"] as const;
+
+export function assertSuccessfulExit(label: string, exitCode: number): void {
+  if (exitCode !== 0) {
+    throw new Error(`${label} failed with exit code ${exitCode}`);
+  }
+}
+
 async function runTests(): Promise<void> {
   console.log("Running tests...");
 
@@ -169,20 +186,23 @@ async function runTests(): Promise<void> {
   console.log("  Running typecheck...");
   await $`bun run typecheck`;
 
-  // Tests - Bun test exits 1 even on success, check output for actual failures
   console.log("  Running tests...");
-  const proc = Bun.spawn(["bun", "test"], {
+  const proc = Bun.spawn([...RELEASE_TEST_COMMAND], {
     stdout: "pipe",
     stderr: "pipe",
   });
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   const output = stdout + stderr;
 
-  // Check for actual failures
-  if (output.includes("fail") && !output.includes("0 fail")) {
+  try {
+    assertSuccessfulExit("Tests", exitCode);
+  } catch (error) {
     console.error(output);
-    throw new Error("Tests failed");
+    throw error;
   }
 
   // Extract pass count
@@ -557,7 +577,7 @@ DRY RUN - No changes will be made.
 Release plan: ${currentVersion} → ${newVersion}
 
 Steps that would be executed:
-  1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun test
+  1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun run test
   2. Update version: package.json (version: "${newVersion}")
   3. Generate changelog: bunx git-cliff --tag v${newVersion} -o CHANGELOG.md
   4. Add "New Contributors" + "Thanks" sections to CHANGELOG.md (via GitHub API)

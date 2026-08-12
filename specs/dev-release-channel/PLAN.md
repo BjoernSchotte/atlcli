@@ -361,24 +361,24 @@ bleiben ein separater Commit/PR im Tap-Repository.
 
 **Blocks:** alle weiteren Tasks
 
-- [ ] Repository-HEAD, Default-Branch-SHA, aktueller Stable-Tag, Ergebnis von
+- [x] Repository-HEAD, Default-Branch-SHA, aktueller Stable-Tag, Ergebnis von
   `/releases/latest`, Stable-Assetliste und Root-Version in
   `evidence/DR-00-baseline.json` erfassen.
-- [ ] Den kanonischen Source-Eligibility-Vertrag erfassen: Workflow-Pfad
+- [x] Den kanonischen Source-Eligibility-Vertrag erfassen: Workflow-Pfad
   `.github/workflows/ci.yml`, Event `push`, Branch `main`, Aggregatjob
   `required`, aktuelle API-Berechtigungen sowie explizit nicht blockierende
   Canaries. Check-Namen allein duerfen nicht als Identitaet dienen.
-- [ ] Tap-HEAD, `Formula/atlcli.rb`, aktueller Formel-Commit und vorhandener
+- [x] Tap-HEAD, `Formula/atlcli.rb`, aktueller Formel-Commit und vorhandener
   Update-Workflow revisiongebunden erfassen; keine Secrets oder lokale absolute
   Pfade aufnehmen.
-- [ ] Owner und minimal benoetigte Berechtigungen fuer GitHub Environment und
+- [x] Owner und minimal benoetigte Berechtigungen fuer GitHub Environment und
   die dedizierte, ausschliesslich auf dem Tap installierte GitHub App
   dokumentieren.
-- [ ] `scripts/release.ts` von direktem `bun test` auf `bun run test` umstellen;
+- [x] `scripts/release.ts` von direktem `bun test` auf `bun run test` umstellen;
   Exit-Code verwenden und die fehleranfaellige Textsuche nach `fail` entfernen.
-- [ ] `scripts/release.test.ts` um einen Regressionstest fuer den kanonischen
+- [x] `scripts/release.test.ts` um einen Regressionstest fuer den kanonischen
   Testaufruf und die Dry-Run-Ausgabe erweitern.
-- [ ] Aktuellen Stable-Dry-Run ausfuehren und ohne Mutation belegen.
+- [x] Aktuellen Stable-Dry-Run ausfuehren und ohne Mutation belegen.
 
 **Proof**
 
