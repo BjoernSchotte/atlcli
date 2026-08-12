@@ -4,7 +4,7 @@
 
 **Date:** 2026-08-12
 
-**Source commit:** `882a838230cf8e96c86d250f93c42cc92a826cc9`
+**Source commit:** `a10403f172abbf2e06f466e3494608e53b180f8c`
 
 ## Environment
 
@@ -25,7 +25,7 @@ consumer output is part of this evidence commit.
 
 | Command | Result |
 | --- | --- |
-| `bun run test` | **7,971 pass, 16 explicit skip, 0 fail**, 6 snapshots and 40,179 assertions across 640 files in 431.00 seconds |
+| `bun run test` | **7,971 pass, 16 explicit skip, 0 fail**, 6 snapshots and 40,179 assertions across 640 files in 358.68 seconds |
 | `bun run typecheck` | Passed on the recorded source commit |
 | `bun run build` | Passed; all 30 Turbo tasks completed |
 | `bun run check:browser` | Passed; all 34 browser entrypoints remained free of reachable Node/Bun built-ins |
@@ -55,9 +55,9 @@ The production-output suite proved:
 - a visible, explained, inert action when a required capability is absent;
 - no search-time request and no palette long task.
 
-The final performance sample reported cold-open p95 `58.624 ms`, warm-open p95
-`5.673 ms`, maximum long task `0 ms`, search requests `0`, eager palette gzip
-`6,758 bytes`, and lazy palette gzip `81,851 bytes`. These all remain inside the
+The final post-fix performance sample reported cold-open p95 `113.483 ms`,
+warm-open p95 `13.275 ms`, maximum long task `0 ms`, search requests `0`, eager
+palette gzip `6,773 bytes`, and lazy palette gzip `81,851 bytes`. These all remain inside the
 approved AP-05 budgets.
 
 ## Production-output identity
@@ -70,6 +70,7 @@ SHA-256 identities:
 | `apps/extension/.output/chrome-mv3/manifest.json` | `9ad7e7092ee258002b733d8f4e47061d5adbf29d84087ad228184f791721af25` |
 | `apps/extension/.output/chrome-mv3/background.js` | `c930f40951b77187fe19602a98512f9bdf8dbc148c018b34ee90de9e428d9d8b` |
 | `apps/extension/.output/chrome-mv3/content-scripts/atlassian-action-palette.js` | `905fa85b9e7f5b3234630b11c776815cb4bb18a5fd965bf554f713016fd1881d` |
+| `apps/extension/.output/chrome-mv3/content-scripts/atlassian-action-palette.css` | `83162aa7fb37704c479f9ced535fb55783d78d7bd3c255368f46f581e2c96867` |
 
 This is a production WXT build directory loaded through Chrome's unpacked
 extension mechanism; it is not represented as a signed or packed CRX.

@@ -726,7 +726,7 @@ forge lint
 - [x] Update Forge documentation for the content action, static shortcut/fallback, Confluence-only scope, and absence of Forge AI/Jira in this release.
 - [x] Document the compile-time `ActionModuleV1` contribution seam and explicitly state that runtime plugins are unsupported.
 - [x] Run full root test/typecheck/build/browser/output gates and capture versions plus logs in `specs/atlassian-action-palette-mvp/evidence/AP-09-quality.md`.
-- [ ] Run accessibility and performance matrices and attach machine-readable results/screenshots without tenant or document data.
+- [x] Run accessibility and performance matrices and attach machine-readable results/screenshots without tenant or document data.
 - [ ] Run VoiceOver + Chrome on macOS and NVDA + Chrome on Windows. Record expected/actual dialog label, result count, group, active option, unavailable reason, execution status, Escape hierarchy, and returned host focus in `evidence/AP-09-screenreaders.md`.
 - [ ] Run extension E2E on profile `mayflower`, Confluence space `DOCSY`, and Jira project `ATLCLI` as applicable; create only named disposable resources and delete them after proof.
 - [ ] Verify a real PDF and DOCX artifact from the palette, durable Activity receipt, quick-AI explicit-submit path, Jira context, and sidebar continuation.

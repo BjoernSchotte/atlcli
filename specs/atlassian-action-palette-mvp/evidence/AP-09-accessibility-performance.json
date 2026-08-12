@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-12",
+  "sourceCommit": "a10403f172abbf2e06f466e3494608e53b180f8c",
+  "environment": {
+    "os": "macOS 26.4 25E246 arm64",
+    "chrome": "151.0.7922.137",
+    "playwright": "1.55.0",
+    "wxt": "0.20.27"
+  },
+  "fixture": {
+    "kind": "controlled-synthetic-atlassian-page",
+    "tenantData": false,
+    "documentData": false
+  },
+  "productionOutput": {
+    "manifestSha256": "9ad7e7092ee258002b733d8f4e47061d5adbf29d84087ad228184f791721af25",
+    "backgroundSha256": "c930f40951b77187fe19602a98512f9bdf8dbc148c018b34ee90de9e428d9d8b",
+    "contentScriptSha256": "905fa85b9e7f5b3234630b11c776815cb4bb18a5fd965bf554f713016fd1881d",
+    "contentCssSha256": "83162aa7fb37704c479f9ced535fb55783d78d7bd3c255368f46f581e2c96867"
+  },
+  "axe": {
+    "standardTags": ["wcag2a", "wcag2aa"],
+    "states": ["root", "empty", "action-panel", "input", "loading", "bounded-error", "capability-missing"],
+    "paletteViolations": 0,
+    "seriousOrCriticalPageViolations": 0
+  },
+  "hostGeometry": {
+    "viewportCssPx": { "width": 1440, "height": 1000 },
+    "iframeCssPx": { "x": 0, "y": 0, "width": 1440, "height": 1000 },
+    "regressionBeforeFixCssPx": { "x": 8, "y": 8, "width": 1424, "height": 150 }
+  },
+  "matrix": [
+    {
+      "name": "default",
+      "dialogLabel": "atlcli-Aktionen",
+      "resultCount": 8,
+      "focusedRole": "combobox",
+      "activeOption": "Export current page as PDF",
+      "forcedColors": false,
+      "reducedMotion": false,
+      "frameAnimationDuration": "0.18s",
+      "targetCount": 11,
+      "minimumTargetCssPx": { "width": 48, "height": 44 },
+      "screenshot": {
+        "file": "ap09-palette-default.png",
+        "sha256": "741bea1b5b2d0b111cdee49a83832bd5fa3cf94fbc51282c39beda0de7c13f54"
+      }
+    },
+    {
+      "name": "zoom-150",
+      "dialogLabel": "atlcli-Aktionen",
+      "resultCount": 8,
+      "focusedRole": "combobox",
+      "activeOption": "Export current page as PDF",
+      "forcedColors": false,
+      "reducedMotion": false,
+      "frameAnimationDuration": "0.18s",
+      "targetCount": 11,
+      "minimumTargetCssPx": { "width": 48, "height": 44 },
+      "screenshot": {
+        "file": "ap09-palette-zoom-150.png",
+        "sha256": "4b30de69c40b0ba31b6ebc2259ef386422992cc64e263d7e6c0a697046a6304e"
+      }
+    },
+    {
+      "name": "forced-colors",
+      "dialogLabel": "atlcli-Aktionen",
+      "resultCount": 8,
+      "focusedRole": "combobox",
+      "activeOption": "Export current page as PDF",
+      "forcedColors": true,
+      "reducedMotion": false,
+      "frameAnimationDuration": "0.18s",
+      "targetCount": 11,
+      "minimumTargetCssPx": { "width": 48, "height": 44 },
+      "screenshot": {
+        "file": "ap09-palette-forced-colors.png",
+        "sha256": "45752980c3c7c1bdfe79f53e707f879d76e53d0a81ae7eb6b65fca9d3ef030f9"
+      }
+    },
+    {
+      "name": "reduced-motion",
+      "dialogLabel": "atlcli-Aktionen",
+      "resultCount": 8,
+      "focusedRole": "combobox",
+      "activeOption": "Export current page as PDF",
+      "forcedColors": false,
+      "reducedMotion": true,
+      "frameAnimationDuration": "0.00001s",
+      "targetCount": 11,
+      "minimumTargetCssPx": { "width": 48, "height": 44 },
+      "screenshot": {
+        "file": "ap09-palette-reduced-motion.png",
+        "sha256": "5341b059248ee1e92c16ccb48b71a59ca67061500b477266f4cb811d8d5db18b"
+      }
+    }
+  ],
+  "performance": {
+    "sampleCountAfterWarmup": 30,
+    "coldP95Ms": 113.48308300000281,
+    "warmP95Ms": 13.274625000001834,
+    "maxLongTaskMs": 0,
+    "searchRequests": 0,
+    "eagerGzipBytes": 6773,
+    "lazyGzipBytes": 81851,
+    "budgets": {
+      "coldP95Ms": 200,
+      "warmP95Ms": 100,
+      "maxLongTaskMsExclusive": 50,
+      "searchRequests": 0,
+      "eagerGzipBytes": 30720,
+      "lazyGzipBytes": 184320
+    }
+  },
+  "screenshots": {
+    "committed": false,
+    "storage": "outside-repository-visualization-directory"
+  }
+}
