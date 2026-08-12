@@ -278,7 +278,7 @@ function assertNvdaSpeech() {
   const speech = readFileSync(nvdaLogPath, "utf8").toLocaleLowerCase("en-US");
   const assertions = [
     ["dialog label", "atlcli actions"],
-    ["result count", "8 results"],
+    ["result count", "8 actions available"],
     ["export group", "export"],
     ["active PDF option", "export current page as pdf"],
     ["arrow-selected DOCX option", "export current page as docx"],
@@ -319,7 +319,7 @@ try {
     fixture: { origin: "https://fixture.atlassian.net", tenantData: false },
     assertions: {
       dialogLabel: "atlcli actions",
-      resultCount: 8,
+      resultCount: { count: 8, spoken: "8 actions available" },
       groups: ["EXPORT", "AI", "NAVIGATION"],
       initialActiveOption: "Export current page as PDF",
       arrowActiveOption: "Export current page as DOCX",
