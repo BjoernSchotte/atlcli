@@ -508,7 +508,7 @@ export function validateExtensionArtifactInventory(
   return issues;
 }
 
-function collectArtifacts(root: string): OutputArtifact[] {
+export function collectArtifacts(root: string): OutputArtifact[] {
   return walk(root, [""]).map((file) => {
     const path = relative(root, file);
     // `.mjs` joins the hashed set for the vendored PDF.js runtime — see

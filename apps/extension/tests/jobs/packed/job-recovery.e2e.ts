@@ -5,9 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
+import { EXTENSION_ROOT, OUTPUT_DIR } from "../../build-helper.js";
 
-const EXTENSION_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
 const JOB_A = "123e4567-e89b-42d3-a456-426614174000";
 const JOB_B = "223e4567-e89b-42d3-a456-426614174000";
 const JOB_C = "323e4567-e89b-42d3-a456-426614174000";

@@ -8,15 +8,37 @@
  * runtime asset) is newer than the emitted manifest — otherwise a stale `.output`
  * from an earlier source revision would be asserted against.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
-export const EXTENSION_ROOT = join(import.meta.dir, "..");
-export const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
+export const EXTENSION_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const DEFAULT_OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
+
+export function resolveExtensionOutputDir(
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = environment.ATLCLI_EXTENSION_OUTPUT_DIR;
+  if (configured === undefined || configured === "") return DEFAULT_OUTPUT_DIR;
+  if (!isAbsolute(configured)) {
+    throw new Error("ATLCLI_EXTENSION_OUTPUT_DIR must be an absolute path");
+  }
+  const output = realpathSync(resolve(configured));
+  if (!statSync(output).isDirectory()) {
+    throw new Error("ATLCLI_EXTENSION_OUTPUT_DIR must resolve to a directory");
+  }
+  if (!existsSync(join(output, "manifest.json"))) {
+    throw new Error("ATLCLI_EXTENSION_OUTPUT_DIR has no root manifest.json");
+  }
+  return output;
+}
+
+export const OUTPUT_DIR = resolveExtensionOutputDir();
 export const MANIFEST_PATH = join(OUTPUT_DIR, "manifest.json");
+const USES_EXPLICIT_RELEASE_OUTPUT = OUTPUT_DIR !== DEFAULT_OUTPUT_DIR;
 const BUILD_LOCK_DIR = join(
   tmpdir(),
   `atlcli-extension-build-${createHash("sha256").update(EXTENSION_ROOT).digest("hex").slice(0, 16)}`
@@ -80,6 +102,7 @@ export function collectMtimes(path: string): number[] {
 }
 
 function outputIsStale(): boolean {
+  if (USES_EXPLICIT_RELEASE_OUTPUT) return false;
   const manifestMtime = existsSync(MANIFEST_PATH)
     ? statSync(MANIFEST_PATH).mtimeMs
     : null;
@@ -141,6 +164,9 @@ export function formatBuildFailure(status: number | null, signal: NodeJS.Signals
 
 /** Build the extension if the output is missing or stale. */
 export function ensureExtensionBuilt(): void {
+  // A release consumer path is immutable input. Never replace it with a local
+  // build, even when workspace sources are newer than the downloaded bytes.
+  if (USES_EXPLICIT_RELEASE_OUTPUT) return;
   if (!outputIsStale()) return;
 
   acquireBuildLock();

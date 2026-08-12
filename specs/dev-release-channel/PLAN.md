@@ -483,20 +483,20 @@ mit Build-ID/SHA identifiziert.
 
 **Blocks:** DR-04 bis DR-06
 
-- [ ] `scripts/verify-release-artifacts.ts` implementieren; der Verifier nimmt
+- [x] `scripts/verify-release-artifacts.ts` implementieren; der Verifier nimmt
   nur ein Asset-Verzeichnis plus Metadata und baut nichts nach.
-- [ ] CLI-Archive auf erwarteten Einzel-Entry, Modus/Executable-Bit, Pfadsicherheit,
+- [x] CLI-Archive auf erwarteten Einzel-Entry, Modus/Executable-Bit, Pfadsicherheit,
   Plattformformat, eingebettete Version/Kanal/SHA und Digest pruefen.
-- [ ] Extension-ZIP auf Root-Manifest, Traversal, absolute Pfade, Symlinks,
+- [x] Extension-ZIP auf Root-Manifest, Traversal, absolute Pfade, Symlinks,
   Duplicate Entries, verbotene Dateien und Metadata-/Tree-Digest-Paritaet pruefen.
-- [ ] `apps/extension/scripts/check-output-build.ts` gegen das entpackte ZIP
+- [x] `apps/extension/scripts/check-output-build.ts` gegen das entpackte ZIP
   aufrufen; Interface falls noetig mit Test abhaerten.
-- [ ] Packed-Extension-Suites fuer Worker, Jobs, Research, Rovo und Palette so
+- [x] Packed-Extension-Suites fuer Worker, Jobs, Research, Rovo und Palette so
   parametrisieren, dass sie einen expliziten bereits entpackten Release-Pfad
   konsumieren und keinen impliziten Rebuild ausloesen.
-- [ ] Exakt dieses Extension-Paket in persistentem Chromium laden und Version,
+- [x] Exakt dieses Extension-Paket in persistentem Chromium laden und Version,
   Service Worker, Side Panel und die bestehenden Kernprobes belegen.
-- [ ] Attestation/Metadata an Source-SHA und Asset-Digests binden; ein manipuliertes
+- [x] Attestation/Metadata an Source-SHA und Asset-Digests binden; ein manipuliertes
   Byte, falscher SHA oder fehlender Asset muss einen Negativtest ausloesen.
 
 **Proof**

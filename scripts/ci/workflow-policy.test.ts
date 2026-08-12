@@ -304,6 +304,12 @@ describe("CI workflow policy", () => {
     expect(extension.scripts["test:rovo-extension-browser"]).toBe(
       "bun run test:rovo-extension-browser:prebuilt",
     );
+    expect(extension.scripts["test:research-extension-browser:prebuilt"]).toContain(
+      "../../node_modules/@playwright/test/cli.js",
+    );
+    expect(extension.scripts["test:research-extension-browser:prebuilt"]).toContain(
+      "--conditions=development",
+    );
   });
 
   it("keeps system Chrome as a scheduled non-required neutral canary", async () => {
