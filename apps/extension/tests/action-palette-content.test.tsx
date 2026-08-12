@@ -82,14 +82,15 @@ describe("action palette content-shell protocol", () => {
     expect(handshakes).toBe(1);
   });
 
-  test("releases the retained frame transport so the next open reconnects", async () => {
+  test("awaits retained frame release before the next open is acknowledged", async () => {
     let resolveHost: ((host: { remove(): void }) => void) | undefined;
     let removals = 0;
     const pending = new Promise<{ remove(): void }>((resolve) => { resolveHost = resolve; });
 
-    expect(releaseActionPaletteHostV1(pending)).toBeNull();
+    const releasing = releaseActionPaletteHostV1(pending);
+    expect(removals).toBe(0);
     resolveHost?.({ remove: () => { removals += 1; } });
-    await Promise.resolve();
+    await releasing;
 
     expect(removals).toBe(1);
   });

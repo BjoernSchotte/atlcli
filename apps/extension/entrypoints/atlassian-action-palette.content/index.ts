@@ -107,14 +107,16 @@ export function appendActionPaletteFrameV1(
  * invalidated MessagePort can leave the retained iframe visibly blank on the
  * next shortcut; a fresh frame is cheap and gives every open a new handshake.
  */
-export function releaseActionPaletteHostV1(
+export async function releaseActionPaletteHostV1(
   host: PromiseLike<{ remove(): void }> | null,
-): null {
-  if (host) void host.then(
-    (ui) => { ui.remove(); },
-    () => undefined,
-  );
-  return null;
+): Promise<void> {
+  if (!host) return;
+  try {
+    const ui = await host;
+    ui.remove();
+  } catch {
+    // A failed mount has no retained transport to release.
+  }
 }
 
 /**
@@ -136,7 +138,7 @@ export default defineContentScript({
     let hostPromise: Promise<Awaited<ReturnType<typeof createShadowRootUi<HTMLIFrameElement>>>> | null = null;
 
     const post = (message: ContentToFrameMessageV1): void => port?.postMessage(message);
-    const close = (): void => {
+    const close = async (): Promise<void> => {
       if (!open) return;
       open = false;
       post({ kind: "action-palette-frame:close" });
@@ -146,8 +148,20 @@ export default defineContentScript({
       });
       const snapshot = focusSnapshot;
       focusSnapshot = null;
-      hostPromise = releaseActionPaletteHostV1(hostPromise);
+      const closingHost = hostPromise;
+      hostPromise = null;
       restoreFocusV1(snapshot);
+      await releaseActionPaletteHostV1(closingHost);
+      try {
+        const warmHost = await getHost();
+        if (!open) {
+          warmHost.shadowHost.style.pointerEvents = "none";
+          warmHost.shadowHost.setAttribute("aria-hidden", "true");
+        }
+      } catch {
+        // Prewarming is an optimization. A later open still retries getHost.
+        hostPromise = null;
+      }
     };
     const onPortMessage = (event: MessageEvent<unknown>): void => {
       if (!isFrameMessageV1(event.data)) return;
@@ -157,7 +171,7 @@ export default defineContentScript({
         return;
       }
       if (event.data.kind === "action-palette-frame:close") {
-        close();
+        void close();
         return;
       }
       if (!open) return;
@@ -246,7 +260,7 @@ export default defineContentScript({
         return false;
       }
       if (!isToggleMessageV1(message)) return false;
-      void (open ? Promise.resolve(close()) : show())
+      void (open ? close() : show())
         .then(() => sendResponse({
           kind: "action-palette:toggle-result",
           requestId: message.requestId,

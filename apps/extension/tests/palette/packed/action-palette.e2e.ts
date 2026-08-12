@@ -100,6 +100,32 @@ async function expectOpen(page: Page, contextLabel: RegExp): Promise<FrameLocato
   return frame;
 }
 
+async function closeWithEscape(frame: FrameLocator): Promise<void> {
+  const search = frame.getByTestId("palette-search");
+  await expect(search).toBeFocused();
+  // Schedule the event after evaluate returns. A Playwright press waits on the
+  // child execution context that the close action intentionally removes.
+  await search.evaluate((element) => {
+    setTimeout(() => element.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape",
+      code: "Escape",
+      bubbles: true,
+      cancelable: true,
+    })), 0);
+  });
+  await expect(search).toBeHidden();
+}
+
+async function closeWithBackdrop(frame: FrameLocator): Promise<void> {
+  const backdrop = frame.locator(".atlcli-action-palette-backdrop");
+  // Schedule click after evaluate returns for the same iframe lifecycle reason
+  // as closeWithEscape. Trusted pointer behavior is covered by the live probe.
+  await backdrop.evaluate((element) => {
+    setTimeout(() => (element as HTMLElement).click(), 0);
+  });
+  await expect(frame.getByTestId("palette-search")).toBeHidden();
+}
+
 async function assertFullViewportHost(page: Page): Promise<void> {
   const geometry = await page.locator("atlcli-action-palette-root").evaluate((host) => {
     const iframe = host.shadowRoot?.querySelector("iframe");
@@ -240,8 +266,7 @@ test("mounts only on Atlassian and derives every MVP context", async () => {
       const footer = frame.getByTestId("palette-footer-leading");
       await expect(footer).toContainText(assignment || "Shortcut not assigned");
     }
-    await frame.getByTestId("palette-search").press("Escape");
-    await expect(frame.getByTestId("palette-search")).toBeHidden();
+    await closeWithEscape(frame);
     await page.close();
   }
 
@@ -259,15 +284,14 @@ test("survives SPA navigation, adversarial CSS, zoom, and fifty toggle cycles", 
 
   expect(await toggle(page)).toBe(true);
   let frame = await expectOpen(page, /Confluence · DOCSY/);
-  await frame.locator(".atlcli-action-palette-backdrop").click({ position: { x: 8, y: 8 } });
-  await expect(frame.getByTestId("palette-search")).toBeHidden();
+  await closeWithBackdrop(frame);
   expect(await toggle(page)).toBe(true);
   frame = await expectOpen(page, /Confluence · DOCSY/);
   const searchBox = await frame.getByTestId("palette-search").boundingBox();
   expect(searchBox?.height).toBeGreaterThanOrEqual(24);
   expect(searchBox?.height).toBeLessThan(100);
   await assertPointerTargets(frame);
-  await frame.getByTestId("palette-search").press("Escape");
+  await closeWithEscape(frame);
   await page.evaluate(() => {
     (window as typeof window & { __hostKeydowns?: number }).__hostKeydowns = 0;
     document.addEventListener("keydown", () => {
@@ -285,13 +309,13 @@ test("survives SPA navigation, adversarial CSS, zoom, and fifty toggle cycles", 
   await page.waitForTimeout(1_100);
   expect(await toggle(page)).toBe(true);
   frame = await expectOpen(page, /Jira · ATLCLI-42/);
-  await frame.getByTestId("palette-search").press("Escape");
+  await closeWithEscape(frame);
 
   await setZoom(page, 1.5);
   expect(await toggle(page)).toBe(true);
   frame = await expectOpen(page, /Jira · ATLCLI-42/);
   await expect(frame.getByTestId("action-palette")).toBeVisible();
-  await frame.getByTestId("palette-search").press("Escape");
+  await closeWithEscape(frame);
   await setZoom(page, 1);
 
   for (let index = 0; index < 50; index += 1) {
@@ -404,7 +428,7 @@ test("preserves contenteditable focus and selection and exposes accessible neste
   });
   await test.step("close and restore selection", async () => {
     await frame.getByTestId("palette-search").fill("");
-    await frame.getByTestId("palette-search").press("Escape");
+    await closeWithEscape(frame);
 
     await expect.poll(() => page.evaluate(() => ({
       active: document.activeElement?.id,
@@ -422,13 +446,21 @@ test("keeps loading and bounded transport-error states accessible", async () => 
     candidate.url().startsWith(`chrome-extension://${extensionId}/action-palette.html`)
   );
   expect(extensionFrame).toBeDefined();
-  expect(await toggle(page)).toBe(true);
-  await extensionFrame!.evaluate(() => {
-    Object.defineProperty(navigator, "language", {
-      configurable: true,
-      get: () => "x",
-    });
+  await context.addInitScript(() => {
+    if (
+      location.pathname.endsWith("/action-palette.html") &&
+      localStorage.getItem("__atlcliE2eInvalidLocale") === "1"
+    ) {
+      Object.defineProperty(navigator, "language", {
+        configurable: true,
+        get: () => "x",
+      });
+    }
   });
+  await extensionFrame!.evaluate(() => {
+    localStorage.setItem("__atlcliE2eInvalidLocale", "1");
+  });
+  expect(await toggle(page)).toBe(true);
 
   const opening = toggle(page);
   await expect(frame.getByTestId("palette-host-loading")).toBeVisible();
@@ -438,6 +470,13 @@ test("keeps loading and bounded transport-error states accessible", async () => 
   await expect(frame.getByTestId("palette-host-error")).toBeVisible({ timeout: 4_000 });
   await assertNoSeriousOrCriticalAxe(page);
   await assertPointerTargets(frame);
+  const failedFrame = page.frames().find((candidate) =>
+    candidate.url().startsWith(`chrome-extension://${extensionId}/action-palette.html`)
+  );
+  expect(failedFrame).toBeDefined();
+  await failedFrame!.evaluate(() => {
+    localStorage.removeItem("__atlcliE2eInvalidLocale");
+  });
   expect(await toggle(page)).toBe(true);
   await page.close();
 });
@@ -456,32 +495,45 @@ test("meets cold, warm, network, long-task, and packed-size budgets", async () =
   const page = await openFixture(`${URLS.confluenceView}?warm=1`);
   expect(await toggle(page)).toBe(true);
   const frame = await expectOpen(page, /Confluence · DOCSY/);
-  const extensionFrame = page.frames().find((candidate) =>
-    candidate.url().startsWith(`chrome-extension://${extensionId}/action-palette.html`)
-  );
-  expect(extensionFrame).toBeDefined();
-  await extensionFrame!.evaluate(() => {
-    const scope = window as typeof window & { __atlcliLongTasks?: number[] };
-    scope.__atlcliLongTasks = [];
-    new PerformanceObserver((list) => {
-      scope.__atlcliLongTasks!.push(...list.getEntries().map((entry) => entry.duration));
-    }).observe({ type: "longtask", buffered: true });
-  });
   expect(await toggle(page)).toBe(true);
 
   const warmMs: number[] = [];
+  const longTasks: number[] = [];
   for (let iteration = 0; iteration < 35; iteration += 1) {
     const startedAt = performance.now();
     expect(await toggle(page)).toBe(true);
     await expect(frame.getByTestId("palette-search")).toBeFocused();
     const duration = performance.now() - startedAt;
     if (iteration >= 5) warmMs.push(duration);
+    const warmFrame = page.frames().find((candidate) =>
+      candidate.url().startsWith(`chrome-extension://${extensionId}/action-palette.html`)
+    );
+    expect(warmFrame).toBeDefined();
+    longTasks.push(...await warmFrame!.evaluate(async () => {
+      const samples: number[] = [];
+      new PerformanceObserver((list) => {
+        samples.push(...list.getEntries().map((entry) => entry.duration));
+      }).observe({ type: "longtask", buffered: true });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return samples;
+    }));
     expect(await toggle(page)).toBe(true);
     await expect(frame.getByTestId("palette-search")).toBeHidden();
   }
 
   expect(await toggle(page)).toBe(true);
   await expect(frame.getByTestId("palette-search")).toBeFocused();
+  const searchFrame = page.frames().find((candidate) =>
+    candidate.url().startsWith(`chrome-extension://${extensionId}/action-palette.html`)
+  );
+  expect(searchFrame).toBeDefined();
+  await searchFrame!.evaluate(() => {
+    const scope = window as typeof window & { __atlcliLongTasks?: number[] };
+    scope.__atlcliLongTasks = [];
+    new PerformanceObserver((list) => {
+      scope.__atlcliLongTasks!.push(...list.getEntries().map((entry) => entry.duration));
+    }).observe({ type: "longtask", buffered: true });
+  });
   let searchRequests = 0;
   const countRequest = (): void => { searchRequests += 1; };
   page.on("request", countRequest);
@@ -489,9 +541,10 @@ test("meets cold, warm, network, long-task, and packed-size budgets", async () =
     await frame.getByTestId("palette-search").fill(`local query ${iteration}`);
   }
   page.off("request", countRequest);
-  const longTasks = await extensionFrame!.evaluate(() =>
-    (window as typeof window & { __atlcliLongTasks?: number[] }).__atlcliLongTasks ?? []
-  );
+  longTasks.push(...await searchFrame!.evaluate(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return (window as typeof window & { __atlcliLongTasks?: number[] }).__atlcliLongTasks ?? [];
+  }));
   const sizes = paletteBundleSizes();
   const evidence = {
     samples: { coldMs, warmMs },
