@@ -96,7 +96,7 @@ jobs:
       - name: Upload SHA-bound CLI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-cli-${{ matrix.target }}
+          name: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}-cli-${{ matrix.target }}
           path: release/atlcli-${{ matrix.target }}.*
           if-no-files-found: error
           retention-days: 7
@@ -149,7 +149,7 @@ jobs:
       - name: Upload SHA-bound extension artifact
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-extension
+          name: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}-extension
           path: release/atlcli-extension-chrome-mv3-${{ inputs.build_id }}.zip
           if-no-files-found: error
           retention-days: 7
@@ -177,14 +177,14 @@ jobs:
       - name: Download this run's CLI artifacts only
         uses: actions/download-artifact@v8
         with:
-          pattern: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-cli-*
+          pattern: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}-cli-*
           path: bundle
           merge-multiple: true
 
       - name: Download this run's extension artifact only
         uses: actions/download-artifact@v8
         with:
-          name: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-extension
+          name: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}-extension
           path: bundle
 
       - name: Download exact-SHA security attestation
@@ -240,7 +240,7 @@ jobs:
 
       - name: Freeze run-unique bundle artifact name
         id: contract
-        run: echo "name=release-bundle-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+        run: echo "name=release-bundle-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload exact release bundle
         uses: actions/upload-artifact@v7
@@ -260,7 +260,7 @@ jobs:
       - name: Upload consumer verification receipts
         uses: actions/upload-artifact@v7
         with:
-          name: release-verification-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: release-verification-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}
           path: |
             ${{ runner.temp }}/release-bundle-assembly.json
             ${{ runner.temp }}/release-verification.json

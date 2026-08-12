@@ -121,9 +121,14 @@ describe("CI workflow policy", () => {
     const reusable = await workflow("reusable-release-artifacts.yml");
     expect(reusable).toMatch(/permissions:\n\s+contents: read/);
     expect(reusable).toContain("ref: ${{ inputs.source_sha }}");
-    expect(reusable).toContain("${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-cli-${{ matrix.target }}");
-    expect(reusable).toContain("${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-extension");
-    expect(reusable).toContain("pattern: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-cli-*");
+    expect(reusable).toContain("${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}-cli-${{ matrix.target }}");
+    expect(reusable).toContain("${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}-extension");
+    expect(reusable).toContain("pattern: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}-cli-*");
+    expect(reusable).toContain("name=release-bundle-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}");
+    expect(reusable).toContain("release-verification-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}");
+    expect(reusable).not.toContain("${{ github.run_id }}-${{ github.run_attempt }}-cli-");
+    expect(reusable).not.toContain("${{ github.run_id }}-${{ github.run_attempt }}-extension");
+    expect(reusable).not.toContain("release-bundle-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(reusable).not.toMatch(/download-artifact@v8\n\s+with:\n\s+path:/);
   });
 
