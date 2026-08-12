@@ -98,20 +98,27 @@ async function expectOpen(page: Page, contextLabel: RegExp): Promise<FrameLocato
   return frame;
 }
 
-async function closeWithEscape(frame: FrameLocator): Promise<void> {
+async function closeWithEscape(page: Page, frame: FrameLocator): Promise<void> {
   const search = frame.getByTestId("palette-search");
   await expect(search).toBeFocused();
-  // Schedule the event after evaluate returns. A Playwright press waits on the
-  // child execution context that the close action intentionally removes.
-  await search.evaluate((element) => {
-    setTimeout(() => element.dispatchEvent(new KeyboardEvent("keydown", {
-      key: "Escape",
-      code: "Escape",
-      bubbles: true,
-      cancelable: true,
-    })), 0);
-  });
-  await expect(search).toBeHidden();
+  // Schedule the event after evaluate returns. The close action intentionally
+  // hides the child execution context and can win the acknowledgement race on
+  // CI, so accept only that lifecycle error and assert from the stable host.
+  try {
+    await search.evaluate((element) => {
+      setTimeout(() => element.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Escape",
+        code: "Escape",
+        bubbles: true,
+        cancelable: true,
+      })), 0);
+    });
+  } catch (error) {
+    if (!(error instanceof Error) || !/Frame was detached|Execution context was destroyed/u.test(error.message)) {
+      throw error;
+    }
+  }
+  await expect(page.locator("atlcli-action-palette-root iframe")).toBeHidden();
 }
 
 async function closeWithBackdrop(frame: FrameLocator): Promise<void> {
@@ -264,7 +271,7 @@ test("mounts only on Atlassian and derives every MVP context", async () => {
       const footer = frame.getByTestId("palette-footer-leading");
       await expect(footer).toContainText(assignment || "Shortcut not assigned");
     }
-    await closeWithEscape(frame);
+    await closeWithEscape(page, frame);
     await page.close();
   }
 
@@ -289,7 +296,7 @@ test("survives SPA navigation, adversarial CSS, zoom, and fifty toggle cycles", 
   expect(searchBox?.height).toBeGreaterThanOrEqual(24);
   expect(searchBox?.height).toBeLessThan(100);
   await assertPointerTargets(frame);
-  await closeWithEscape(frame);
+  await closeWithEscape(page, frame);
   await page.evaluate(() => {
     (window as typeof window & { __hostKeydowns?: number }).__hostKeydowns = 0;
     document.addEventListener("keydown", () => {
@@ -307,13 +314,13 @@ test("survives SPA navigation, adversarial CSS, zoom, and fifty toggle cycles", 
   await page.waitForTimeout(1_100);
   expect(await toggle(page)).toBe(true);
   frame = await expectOpen(page, /Jira · ATLCLI-42/);
-  await closeWithEscape(frame);
+  await closeWithEscape(page, frame);
 
   await setZoom(page, 1.5);
   expect(await toggle(page)).toBe(true);
   frame = await expectOpen(page, /Jira · ATLCLI-42/);
   await expect(frame.getByTestId("action-palette")).toBeVisible();
-  await closeWithEscape(frame);
+  await closeWithEscape(page, frame);
   await setZoom(page, 1);
 
   for (let index = 0; index < 50; index += 1) {
@@ -426,7 +433,7 @@ test("preserves contenteditable focus and selection and exposes accessible neste
   });
   await test.step("close and restore selection", async () => {
     await frame.getByTestId("palette-search").fill("");
-    await closeWithEscape(frame);
+    await closeWithEscape(page, frame);
 
     await expect.poll(() => page.evaluate(() => ({
       active: document.activeElement?.id,
