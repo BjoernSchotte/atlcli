@@ -1,0 +1,73 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-04",
+  "recordedAt": "2026-08-12T15:35:05Z",
+  "proofedParentHead": "49442b2a1bd29eee680da1ce06c8b1f698471db3",
+  "authoritativePublishedArtifact": false,
+  "purpose": "mutationsfreier Struktur-, Contract- und Consumer-Graph-Beweis fuer den gemeinsamen Stable/Dev-Artifact-Workflow; Shadow- und Live-Publishing folgen in DR-09 und DR-10",
+  "workflowContract": {
+    "reusableWorkflow": ".github/workflows/reusable-release-artifacts.yml",
+    "shaBoundCheckout": true,
+    "readOnlyBuildPermissions": true,
+    "cliMatrixTargets": 5,
+    "extensionPackage": true,
+    "exactBundleVerifier": true,
+    "packedChromiumSuites": ["worker", "jobs", "research", "rovo", "palette"],
+    "artifactNamesBindSourceShaRunIdAndAttempt": true,
+    "crossRunCollectionRejectedByPolicy": true
+  },
+  "stableContract": {
+    "qualityPreflightRequired": true,
+    "securityAttestationPublished": true,
+    "cliAssetNamesChanged": false,
+    "extensionAssetAdded": true,
+    "buildMetadataAdded": true,
+    "prerelease": false,
+    "makeLatest": true,
+    "homebrewStableDispatchChanged": false,
+    "devPublishPermissionRequired": false,
+    "expectedAssetCount": 9
+  },
+  "devContract": {
+    "expectedAssetCount": 10,
+    "additionalAsset": "source-eligibility.json",
+    "stableClaimsDevEligibility": false
+  },
+  "proof": {
+    "focusedTests": {
+      "command": "bun run test scripts/release.test.ts scripts/release-artifacts.test.ts scripts/build-release-artifacts.test.ts scripts/assemble-release-bundle.test.ts scripts/verify-release-artifacts.test.ts scripts/ci/workflow-policy.test.ts scripts/bun-version-pin.test.ts",
+      "result": "success",
+      "passed": 68,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "workflowLint": {
+      "command": "actionlint .github/workflows/release.yml .github/workflows/reusable-release-artifacts.yml .github/workflows/reusable-quality.yml",
+      "result": "success"
+    },
+    "stableDryRun": {
+      "command": "bun scripts/release.ts patch --dry-run",
+      "result": "success",
+      "externalMutation": false,
+      "expectedNextVersion": "0.17.3",
+      "completeStableAssetWaitShown": true
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "success"
+    }
+  },
+  "deferredLiveProof": {
+    "workflowShadowRun": "DR-09",
+    "publishedDownloadedBytes": "DR-10",
+    "reason": "Repository policy forbids automatic release; DR-04 changes producer topology but does not authorize a stable or dev publication."
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-07",
+  "recordedAt": "2026-08-12T16:54:34Z",
+  "proofedParentHead": "282b376f3fa89605aa9058958a63c809f5630241",
+  "authoritativePublishedArtifact": false,
+  "purpose": "Implementations-, Live-Registrierungs- und lokaler Homebrew-Audit-Beweis fuer die isolierte Tap-Lane; ein konkreter atlcli-dev-Pointer und native Vierer-Live-Matrix folgen mit dem ersten echten Dev-Release in DR-10",
+  "tap": {
+    "repository": "BjoernSchotte/homebrew-tap",
+    "branch": "main",
+    "commit": "68f615ab186b4bfdb377d199ebaf4a47dec12e0f",
+    "commitUrl": "https://github.com/BjoernSchotte/homebrew-tap/commit/68f615ab186b4bfdb377d199ebaf4a47dec12e0f",
+    "workflow": {
+      "id": 332939231,
+      "name": "Update Dev Formula",
+      "path": ".github/workflows/update-dev-formula.yml",
+      "state": "active",
+      "url": "https://github.com/BjoernSchotte/homebrew-tap/blob/main/.github/workflows/update-dev-formula.yml"
+    },
+    "stableFormulaChanged": false,
+    "runtimeAllowlistedPaths": [
+      "Formula/atlcli-dev.rb",
+      "metadata/atlcli-dev.json"
+    ]
+  },
+  "tapContract": {
+    "sourceRepository": "BjoernSchotte/atlcli",
+    "immutablePrereleaseRequired": true,
+    "exactDirectTagShaRequired": true,
+    "exactTenAssetInventoryRequired": true,
+    "serverAndLocalDigestsRequired": true,
+    "greenSourceEligibilityRequired": true,
+    "securityAttestationRequired": true,
+    "stableFormulaDigestProtected": true,
+    "sameReleaseIsNoopOnlyWhenIdentityMatches": true,
+    "staleCandidateBlocked": true,
+    "rollbackRequiresExactCurrentTagFence": true,
+    "rollbackFormulaVersionRemainsMonotonic": true,
+    "conflictsWithStableFormula": true,
+    "nativeTargets": {
+      "linux-x64": "ubuntu-24.04",
+      "linux-arm64": "ubuntu-24.04-arm",
+      "darwin-x64": "macos-15-intel",
+      "darwin-arm64": "macos-15"
+    },
+    "publishNeedsAllNativeTests": true
+  },
+  "sourceOrchestration": {
+    "afterPublicReleaseVerificationOnly": true,
+    "manualHomebrewInput": true,
+    "scheduledHomebrewDefault": true,
+    "tokenProvider": "actions/create-github-app-token@v3",
+    "tokenTarget": "BjoernSchotte/homebrew-tap",
+    "tokenPermissions": {
+      "actions": "write",
+      "contents": "read"
+    },
+    "longLivedPersonalAccessTokenUsed": false,
+    "correlation": "unique run-attempt-tag request ID and exact workflow run-name",
+    "ambiguousRunBlocks": true,
+    "tapReceiptArtifactRequired": true,
+    "publishedFormulaAndPointerReReadAtCommit": true
+  },
+  "proof": {
+    "tapUnitTests": {
+      "commands": [
+        "ruby test/dev_release_test.rb",
+        "ruby test/workflow_policy_test.rb"
+      ],
+      "result": "success",
+      "passed": 7,
+      "assertions": 56,
+      "failed": 0
+    },
+    "tapRubySyntax": {
+      "command": "ruby -c scripts/dev_release.rb",
+      "result": "success"
+    },
+    "tapWorkflowLint": {
+      "command": "actionlint .github/workflows/update-dev-formula.yml",
+      "result": "success"
+    },
+    "localHomebrewAudit": {
+      "command": "brew audit --strict --formula atlcli-proof/tap/atlcli-dev",
+      "homebrewVersion": "6.0.15",
+      "result": "success",
+      "temporaryProofTapRemoved": true
+    },
+    "sourceFocusedTests": {
+      "command": "bun run test scripts/ci/homebrew-dev-dispatch.test.ts scripts/ci/workflow-policy.test.ts scripts/ci/github-release-transaction.test.ts scripts/ci/verify-native-cli.test.ts",
+      "result": "success",
+      "passed": 45,
+      "failed": 0
+    },
+    "sourceTypecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "sourceWorkflowLint": {
+      "command": "actionlint .github/workflows/dev-release.yml .github/workflows/release.yml .github/workflows/dev-release-cleanup.yml",
+      "result": "success"
+    }
+  },
+  "deferredLiveProof": {
+    "formulaAndPointerPublication": "DR-10",
+    "nativeFourRunnerInstallMatrix": "DR-10",
+    "stableDevConflictAndSwitch": "DR-10",
+    "reason": "The Tap workflow is live and callable, but it intentionally cannot render a formula until an immutable green-source GitHub dev prerelease exists."
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false,
+    "containsOnlyPublicGitHubIdentifiersAndUrls": true
+  }
+}

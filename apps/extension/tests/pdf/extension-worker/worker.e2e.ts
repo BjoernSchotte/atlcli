@@ -3,19 +3,18 @@ import {
   cpSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const EXTENSION_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
+import { OUTPUT_DIR } from "../../build-helper.js";
 
 let context: BrowserContext;
 let extensionId: string;
+let serviceWorkerUrl: string;
 let testRoot: string;
 
 function singleAsset(prefix: string, suffix: string): string {
@@ -83,12 +82,29 @@ try {
   });
   let serviceWorker = context.serviceWorkers()[0];
   serviceWorker ??= await context.waitForEvent("serviceworker", { timeout: 30_000 });
+  serviceWorkerUrl = serviceWorker.url();
   extensionId = new URL(serviceWorker.url()).host;
 });
 
 test.afterAll(async () => {
   await context?.close();
   rmSync(testRoot, { recursive: true, force: true });
+});
+
+test("loads the release manifest, service worker, and side panel from the explicit artifact", async () => {
+  const expected = JSON.parse(readFileSync(join(OUTPUT_DIR, "manifest.json"), "utf8")) as {
+    version: string;
+    version_name: string;
+    side_panel: { default_path: string };
+  };
+  expect(serviceWorkerUrl).toBe(`chrome-extension://${extensionId}/background.js`);
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/${expected.side_panel.default_path}`);
+  const loaded = await page.evaluate(() => chrome.runtime.getManifest());
+  expect(loaded.version).toBe(expected.version);
+  expect(loaded.version_name).toBe(expected.version_name);
+  expect(loaded.side_panel?.default_path).toBe(expected.side_panel.default_path);
+  await page.close();
 });
 
 test("starts PDF.js as a real module worker from chrome-extension://", async () => {

@@ -525,7 +525,11 @@ export interface BuiltinContext {
 export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
 
 // export: checkForUpdates
-export declare function checkForUpdates(): Promise<UpdateInfo>;
+export declare function checkForUpdates(options?: {
+    releaseInfo?: ReleaseInfoV1;
+    installMethod?: InstallMethod;
+    platform?: string;
+}): Promise<UpdateInfo>;
 
 // export: clearProfileAuth
 export declare function clearProfileAuth(config: Config, name: string): boolean;
@@ -590,7 +594,7 @@ export type DeploymentType = "cloud" | "data-center";
 export declare function detectImportSourceType(source: string): "directory" | "git" | "url";
 
 // export: detectInstallMethod
-export declare function detectInstallMethod(): InstallMethod;
+export declare function detectInstallMethod(binPath?: string): InstallMethod;
 
 // export: detectPlatform
 export declare function detectPlatform(): string;
@@ -724,6 +728,9 @@ export declare function getLogger(): Logger;
 // export: getProfile
 export declare function getProfile(config: Config, name: string): Profile | undefined;
 
+// export: getReleaseInfo
+export declare function getReleaseInfo(): ReleaseInfoV1;
+
 // export: getTemplatesBaseDir
 export declare function getTemplatesBaseDir(): string;
 
@@ -793,7 +800,7 @@ export interface ImportResult {
 }
 
 // export: InstallMethod
-export type InstallMethod = "script" | "homebrew" | "source" | "unknown";
+export type InstallMethod = "script" | "homebrew" | "homebrew-dev" | "source" | "unknown";
 
 // export: installUpdate
 export declare function installUpdate(version?: string): Promise<string>;
@@ -987,6 +994,20 @@ export declare function redactSensitive<T>(obj: T): T;
 
 // export: redactValue
 export declare function redactValue(value: string): string;
+
+// export: ReleaseBuildChannel
+export type ReleaseBuildChannel = "stable" | "dev" | "source";
+
+// export: ReleaseInfoV1
+export interface ReleaseInfoV1 {
+    schema: typeof RELEASE_INFO_SCHEMA;
+    version: string;
+    channel: ReleaseBuildChannel;
+    sourceSha: string;
+    buildId: string;
+    releaseTag: string | null;
+    homebrewVersion: string | null;
+}
 
 // export: removeProfile
 export declare function removeProfile(config: Config, name: string): void;
@@ -1952,7 +1973,11 @@ export interface BuiltinContext {
 export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
 
 // export: checkForUpdates
-export declare function checkForUpdates(): Promise<UpdateInfo>;
+export declare function checkForUpdates(options?: {
+    releaseInfo?: ReleaseInfoV1;
+    installMethod?: InstallMethod;
+    platform?: string;
+}): Promise<UpdateInfo>;
 
 // export: clearProfileAuth
 export declare function clearProfileAuth(config: Config, name: string): boolean;
@@ -2017,7 +2042,7 @@ export type DeploymentType = "cloud" | "data-center";
 export declare function detectImportSourceType(source: string): "directory" | "git" | "url";
 
 // export: detectInstallMethod
-export declare function detectInstallMethod(): InstallMethod;
+export declare function detectInstallMethod(binPath?: string): InstallMethod;
 
 // export: detectPlatform
 export declare function detectPlatform(): string;
@@ -2151,6 +2176,9 @@ export declare function getLogger(): Logger;
 // export: getProfile
 export declare function getProfile(config: Config, name: string): Profile | undefined;
 
+// export: getReleaseInfo
+export declare function getReleaseInfo(): ReleaseInfoV1;
+
 // export: getTemplatesBaseDir
 export declare function getTemplatesBaseDir(): string;
 
@@ -2220,7 +2248,7 @@ export interface ImportResult {
 }
 
 // export: InstallMethod
-export type InstallMethod = "script" | "homebrew" | "source" | "unknown";
+export type InstallMethod = "script" | "homebrew" | "homebrew-dev" | "source" | "unknown";
 
 // export: installUpdate
 export declare function installUpdate(version?: string): Promise<string>;
@@ -2414,6 +2442,20 @@ export declare function redactSensitive<T>(obj: T): T;
 
 // export: redactValue
 export declare function redactValue(value: string): string;
+
+// export: ReleaseBuildChannel
+export type ReleaseBuildChannel = "stable" | "dev" | "source";
+
+// export: ReleaseInfoV1
+export interface ReleaseInfoV1 {
+    schema: typeof RELEASE_INFO_SCHEMA;
+    version: string;
+    channel: ReleaseBuildChannel;
+    sourceSha: string;
+    buildId: string;
+    releaseTag: string | null;
+    homebrewVersion: string | null;
+}
 
 // export: removeProfile
 export declare function removeProfile(config: Config, name: string): void;

@@ -8,12 +8,10 @@ import {
 import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { APP_SETTINGS_STORAGE_KEY } from "../../../utils/ports/settings.js";
 import { ROVO_HIDDEN_ATTRIBUTE } from "../../../utils/rovo-visibility.js";
+import { OUTPUT_DIR } from "../../build-helper.js";
 
-const EXTENSION_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
 const CONFLUENCE_URL =
   "https://fixture.atlassian.net/wiki/spaces/DOCSY/pages/42/Rovo-test";
 const CONFLUENCE_FIXTURE = `<!doctype html>

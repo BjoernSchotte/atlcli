@@ -50,6 +50,13 @@ bun run build
 
 The load-unpacked target is **`apps/extension/.output/chrome-mv3/`**.
 
+Dev GitHub prereleases also contain a packaged
+`atlcli-extension-chrome-mv3-<dev-tag>.zip`. Verify it against the release's
+`checksums.txt`, extract it, and select the extracted directory containing the
+root `manifest.json` with **Load unpacked**. This is a developer-sideload
+artifact, not a click-installable Chrome Web Store package; it has no Web Store
+auto-update.
+
 ## Dev loop (HMR)
 
 ```bash

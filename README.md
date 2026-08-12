@@ -206,6 +206,18 @@ With Homebrew:
 brew install bjoernschotte/tap/atlcli
 ```
 
+Opt in to a green-`main` development build:
+
+```bash
+brew uninstall atlcli
+brew install bjoernschotte/tap/atlcli-dev
+atlcli release-info --json
+```
+
+The stable and dev formulae conflict intentionally because both install
+`atlcli`. See [Development releases](https://atlcli.sh/reference/dev-releases/)
+for updates, channel switching, and the packaged extension.
+
 Windows binaries, manual downloads, checksums, and platform-specific setup are
 covered in the [installation guide](https://atlcli.sh/getting-started/#installation).
 

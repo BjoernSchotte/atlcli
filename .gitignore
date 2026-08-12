@@ -4,6 +4,7 @@ dist
 .env
 .atlcli
 .tmp
+.artifacts/
 /tmp/
 .bun
 site/

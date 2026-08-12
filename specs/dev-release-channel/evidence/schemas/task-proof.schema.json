@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlcli.dev/schemas/dev-release-task-proof-v1.json",
+  "title": "atlcli dev release task proof",
+  "type": "object",
+  "required": ["schema", "recordedAt", "privacy", "proof"],
+  "properties": {
+    "schema": { "type": "string", "pattern": "^atlcli\\.dev-release-" },
+    "task": { "type": "string", "pattern": "^DR-[0-9]{2}$" },
+    "recordedAt": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T" },
+    "privacy": {
+      "type": "object",
+      "required": ["containsSecrets", "containsTenantData"],
+      "properties": {
+        "containsSecrets": { "const": false },
+        "containsTenantData": { "const": false }
+      },
+      "additionalProperties": true
+    },
+    "proof": { "type": "object", "minProperties": 1 }
+  },
+  "additionalProperties": true
+}

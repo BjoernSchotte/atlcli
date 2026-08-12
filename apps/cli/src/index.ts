@@ -8,6 +8,7 @@ import {
   Logger,
   isInteractive,
   getCurrentVersion,
+  getReleaseInfo,
   checkForUpdates,
   loadUpdateState,
   saveUpdateState,
@@ -175,6 +176,9 @@ async function main(): Promise<void> {
         break;
       case "version":
         output(versionInfo(), opts);
+        break;
+      case "release-info":
+        output(json ? getReleaseInfo() : releaseInfoText(), opts);
         break;
       case "helloworld": {
         const helloworldEnabled = await getFlagValue<boolean>("helloworld", false);
@@ -356,6 +360,16 @@ Jira and Confluence are trademarks of Atlassian Corporation Plc.
 atlcli is not affiliated with, endorsed by, or sponsored by Atlassian.`;
 }
 
+function releaseInfoText(): string {
+  const info = getReleaseInfo();
+  return `atlcli ${info.version}
+Channel: ${info.channel}
+Build: ${info.buildId}
+Source: ${info.sourceSha}
+Release tag: ${info.releaseTag ?? "n/a"}
+Homebrew version: ${info.homebrewVersion ?? "n/a"}`;
+}
+
 function rootHelp(registry: import("./plugins/loader.js").PluginRegistry): string {
   const pluginCommands = registry.getAllCommands();
   const pluginSection = pluginCommands.length > 0
@@ -384,6 +398,7 @@ Commands:
   plugin      Manage plugins
   update      Check for and install updates
   version     Show version
+  release-info Show versioned build provenance
 ${pluginSection}
 Global options:
   --profile <name>   Use specific auth profile

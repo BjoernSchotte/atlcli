@@ -18,6 +18,10 @@ import {
 } from "@atlcli/core";
 import type { OutputOptions } from "@atlcli/core";
 
+export function homebrewUpdateCommand(method: "homebrew" | "homebrew-dev"): string {
+  return `brew update && brew upgrade ${method === "homebrew-dev" ? "atlcli-dev" : "atlcli"}`;
+}
+
 export async function handleUpdate(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -35,8 +39,9 @@ export async function handleUpdate(
   const installMethod = detectInstallMethod();
 
   // Handle Homebrew installs
-  if (installMethod === "homebrew" && !targetVersion) {
+  if ((installMethod === "homebrew" || installMethod === "homebrew-dev") && !targetVersion) {
     const info = await checkForUpdates();
+    const updateCommand = homebrewUpdateCommand(installMethod);
 
     if (opts.json) {
       output(
@@ -45,8 +50,8 @@ export async function handleUpdate(
           currentVersion: info.currentVersion,
           latestVersion: info.latestVersion,
           updateAvailable: info.updateAvailable,
-          installMethod: "homebrew",
-          updateCommand: "brew update && brew upgrade atlcli",
+          installMethod,
+          updateCommand,
         },
         opts
       );
@@ -60,7 +65,7 @@ export async function handleUpdate(
     }
     output("", opts);
     output("Installed via Homebrew. To update, run:", opts);
-    output("  brew update && brew upgrade atlcli", opts);
+    output(`  ${updateCommand}`, opts);
     return;
   }
 

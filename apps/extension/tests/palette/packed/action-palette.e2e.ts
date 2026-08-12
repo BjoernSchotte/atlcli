@@ -11,11 +11,9 @@ import {
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
+import { OUTPUT_DIR } from "../../build-helper.js";
 
-const EXTENSION_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
 const ORIGIN = "https://fixture.atlassian.net";
 const URLS = {
   confluenceView: `${ORIGIN}/wiki/spaces/DOCSY/pages/42/Palette-test`,

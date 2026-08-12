@@ -36,6 +36,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Keep this literal local: the standalone attestation workflow intentionally
+// runs without `bun install`, so this script may import only Node built-ins.
+// release-artifacts.test.ts validates the same public schema value.
+const SECURITY_ATTESTATION_SCHEMA_ID = "atlcli.security-attestation/v1" as const;
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..");
 
@@ -78,6 +83,8 @@ export interface VeraPdfBaselineDelta {
 }
 
 export interface SecurityAttestation {
+  /** Versioned public contract consumed by release verification. */
+  schema: typeof SECURITY_ATTESTATION_SCHEMA_ID;
   /** The commit this attestation is bound to. */
   commit: string;
   /** The commit's own committer date (ISO 8601) — reproducible, unlike "now". */
@@ -303,6 +310,7 @@ export function buildAttestation(options: { reviewNote?: string } = {}): Securit
   });
 
   return {
+    schema: SECURITY_ATTESTATION_SCHEMA_ID,
     commit,
     date,
     veraPdfDigestOk: digest.ok,

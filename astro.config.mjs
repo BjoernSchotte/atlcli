@@ -149,6 +149,7 @@ export default defineConfig({
             { label: 'Doctor', link: '/reference/doctor/' },
             { label: 'Shell Completion', link: '/reference/shell-completions/' },
             { label: 'Updating', link: '/reference/updating/' },
+            { label: 'Development Releases', link: '/reference/dev-releases/' },
             { label: 'Logging', link: '/reference/logging/' },
             { label: 'Environment', link: '/reference/environment/' },
             { label: 'Troubleshooting', link: '/reference/troubleshooting/' },

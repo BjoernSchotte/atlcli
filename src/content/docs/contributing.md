@@ -280,7 +280,7 @@ docs: update authentication guide
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feat/my-feature`)
 3. Make your changes
-4. Run tests (`bun test`)
+4. Run tests (`bun run test`)
 5. Commit with conventional commit message
 6. Push and open a PR
 
@@ -392,6 +392,80 @@ bun scripts/release.ts minor --dry-run
 # Render the changelog entry, including the Thanks section
 bun scripts/release.ts minor --preview
 ```
+
+## Development release operations
+
+Development releases are immutable GitHub prereleases built from an exact,
+green commit on `main`. The scheduled and manual paths use the same quality,
+artifact, consumer, and publication jobs. A red, missing, pending, cancelled,
+skipped, neutral, or stale required CI result blocks that SHA. An explicitly
+advisory canary may be red, but the release receipt must then report
+`degraded`; it never substitutes for the required gate.
+
+### Prerequisites
+
+- GitHub release immutability is enabled for `BjoernSchotte/atlcli`.
+- `HOMEBREW_TAP_APP_ID` is configured as a repository variable.
+- `HOMEBREW_TAP_APP_PRIVATE_KEY` is configured as a repository secret.
+- The GitHub App is installed only where needed and can dispatch Actions in
+  `BjoernSchotte/homebrew-tap`; it has no tap contents-write permission.
+- `DEV_RELEASE_SCHEDULE_ENABLED` remains `false` until the first manual live
+  release and its consumer evidence are complete.
+
+Never print, download into the repository, or copy the App private key into an
+evidence receipt.
+
+### Run manually
+
+Open **Actions → Dev release → Run workflow**. The inputs are:
+
+| Input | Default | Meaning |
+|-------|---------|---------|
+| `source_sha` | current `main` | Optional full SHA; it must be an ancestor of current `main` and have a successful canonical `main` push run |
+| `force_rebuild` | `false` | Create a new immutable build identity for an already released SHA; never replace an existing tag or asset |
+| `publish_homebrew` | `true` | Dispatch and verify the separate `atlcli-dev` formula after GitHub publication succeeds |
+| `dry_run` | `true` | Run the exact quality/artifact/native-consumer shadow graph and record every publication mutation without creating a tag, release, or formula |
+
+For the first live publication, complete the DR-09 shadow rehearsal and obtain
+explicit maintainer approval. Record the clean source SHA, then run the manual
+workflow with Homebrew enabled and `dry_run=false`. Scheduled runs use the same
+live publication graph and are
+accepted only after `DEV_RELEASE_SCHEDULE_ENABLED=true` is set.
+
+### Diagnose and recover
+
+- **Existing successful release for the SHA:** the normal run is a no-op. Use
+  `force_rebuild=true` only when new immutable bytes are intentionally needed.
+- **Partial GitHub draft:** do not edit or publish it by hand. Preserve its run
+  evidence, correct the cause, and force a new build identity. Drafts are not
+  stable or Homebrew inputs.
+- **Failed GitHub consumer verification:** the draft remains unpublished and
+  Homebrew is not dispatched. Fix the producing SHA or workflow and create a
+  new immutable build.
+- **Failed Tap dispatch or formula matrix:** the published GitHub prerelease
+  remains available, but the live formula pointer is unchanged. Diagnose the
+  correlated Tap run, then use a new forced build after the fix; never rewrite
+  the old release.
+- **Rollback:** select a previously green `main` SHA, run with
+  `force_rebuild=true`, and publish a new forward-moving formula version that
+  references the new tag. The workflow requires the exact current formula tag
+  as a fence. It does not move the pointer backward or overwrite releases.
+
+### Retention and evidence
+
+The cleanup workflow first produces a dry-run receipt. Apply mode retains at
+least the newest 14 successful dev releases or 30 days, and never deletes the
+stable release, a draft, a release with mutable classification, or the tag
+referenced by `atlcli-dev`. Supply `proven_tag` until the first live formula
+pointer exists.
+
+Repository maintainers own this lane. Run one manual no-op or shadow trigger
+every month. Each quarter, rehearse the forward rollback and retention dry run
+without changing the stable channel. Index sanitized receipts in
+`specs/dev-release-channel/EVIDENCE.md`. Receipts may contain public URLs,
+opaque GitHub run IDs, hashes, versions, and generic error codes; they must not
+contain tokens, credentials, customer or tenant data, private identifiers, raw
+logs, source bodies, or absolute home-directory paths.
 
 ## Reporting Issues
 

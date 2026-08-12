@@ -69,9 +69,8 @@ import {
 import {
   RESEARCH_CRITIQUE_SCHEMA_V1,
 } from "@atlcli/research/browser/agent";
+import { EXTENSION_ROOT, OUTPUT_DIR } from "../../build-helper.js";
 
-const EXTENSION_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
 const SITE_ORIGIN = "https://packed-research.atlassian.net";
 const PACKED_CHAT_HOST_IDENTITY = {
   userId: "browser-principal:00000000-0000-4000-8000-000000000001",

@@ -13,15 +13,14 @@
 
 import { $ } from "bun";
 import { readFile, writeFile } from "node:fs/promises";
+import { expectedStableReleaseAssetNames } from "./release-artifacts.js";
 
 const REPO_OWNER = "BjoernSchotte";
 const REPO_NAME = "atlcli";
 const HOMEBREW_TAP = "bjoernschotte/homebrew-tap";
-const TARGETS = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"];
-
-function assetNameFor(target: string): string {
-  const ext = target.startsWith("windows-") ? "zip" : "tar.gz";
-  return `atlcli-${target}.${ext}`;
+export function stableReleaseAssetsReady(version: string, actualNames: string[]): boolean {
+  const actual = new Set(actualNames);
+  return expectedStableReleaseAssetNames(version).every((name) => actual.has(name));
 }
 
 interface Args {
@@ -116,6 +115,15 @@ Examples:
 async function validateEnvironment(dryRun: boolean): Promise<void> {
   console.log("Validating environment...");
 
+  // A dry run only renders the release plan from the checked-out package
+  // version. Keep it usable from review branches and dirty worktrees so the
+  // mandatory rehearsal can happen before the release implementation is
+  // committed. The real release path below retains every mutation precondition.
+  if (dryRun) {
+    console.log("  Dry run: mutation preconditions are not required");
+    return;
+  }
+
   // Check git status is clean
   const status = await $`git status --porcelain`.text();
   if (status.trim()) {
@@ -162,6 +170,14 @@ function bumpVersion(current: string, type: "patch" | "minor" | "major"): string
   }
 }
 
+export const RELEASE_TEST_COMMAND = ["bun", "run", "test"] as const;
+
+export function assertSuccessfulExit(label: string, exitCode: number): void {
+  if (exitCode !== 0) {
+    throw new Error(`${label} failed with exit code ${exitCode}`);
+  }
+}
+
 async function runTests(): Promise<void> {
   console.log("Running tests...");
 
@@ -169,20 +185,23 @@ async function runTests(): Promise<void> {
   console.log("  Running typecheck...");
   await $`bun run typecheck`;
 
-  // Tests - Bun test exits 1 even on success, check output for actual failures
   console.log("  Running tests...");
-  const proc = Bun.spawn(["bun", "test"], {
+  const proc = Bun.spawn([...RELEASE_TEST_COMMAND], {
     stdout: "pipe",
     stderr: "pipe",
   });
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   const output = stdout + stderr;
 
-  // Check for actual failures
-  if (output.includes("fail") && !output.includes("0 fail")) {
+  try {
+    assertSuccessfulExit("Tests", exitCode);
+  } catch (error) {
     console.error(output);
-    throw new Error("Tests failed");
+    throw error;
   }
 
   // Extract pass count
@@ -522,9 +541,9 @@ async function waitForRelease(newVersion: string): Promise<void> {
       const result = await $`gh api repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${tag}`.json();
       const release = result as { assets: { name: string }[] };
       const assets = release.assets.map((a) => a.name);
-      const expected = TARGETS.map(assetNameFor);
+      const expected = expectedStableReleaseAssetNames(newVersion);
 
-      if (expected.every((e) => assets.includes(e))) {
+      if (stableReleaseAssetsReady(newVersion, assets)) {
         console.log("  All release artifacts ready");
         return;
       }
@@ -557,14 +576,15 @@ DRY RUN - No changes will be made.
 Release plan: ${currentVersion} → ${newVersion}
 
 Steps that would be executed:
-  1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun test
+  1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun run test
   2. Update version: package.json (version: "${newVersion}")
   3. Generate changelog: bunx git-cliff --tag v${newVersion} -o CHANGELOG.md
   4. Add "New Contributors" + "Thanks" sections to CHANGELOG.md (via GitHub API)
   5. Commit: git commit -m "chore(release): v${newVersion}"
   6. Tag: git tag v${newVersion}
   7. Push: git push origin main && git push origin v${newVersion}
-  8. Wait for GitHub Actions to build release artifacts
+  8. Wait for the five CLI archives, packaged MV3 extension, checksums,
+     build metadata, and exact-SHA security receipt
   9. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
        -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME}
 

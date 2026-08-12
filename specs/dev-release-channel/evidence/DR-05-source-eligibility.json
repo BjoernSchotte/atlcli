@@ -1,0 +1,110 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-05",
+  "recordedAt": "2026-08-12T15:50:51Z",
+  "proofedParentHead": "ff24908dd58ed51bda1eb6259ba5e7b1d8abc39f",
+  "authoritativePublishedArtifact": false,
+  "purpose": "fail-closed Nightly/Manual-Orchestrierung und Live-Abgleich der exakten green-main-SHA-Eligibility; GitHub-Publishing beginnt erst in DR-06",
+  "workflow": {
+    "path": ".github/workflows/dev-release.yml",
+    "schedule": "17 2 * * *",
+    "manualTrigger": true,
+    "manualInputs": ["source_sha", "force_rebuild", "publish_homebrew"],
+    "defaultSource": "fresh origin/main",
+    "uiRefIgnored": true,
+    "concurrencyGroup": "dev-release",
+    "cancelInProgress": false,
+    "topLevelContentsReadOnly": true,
+    "publishPermissionsPresent": false,
+    "pullRequestOrForkTriggerPresent": false
+  },
+  "gateOrder": [
+    "resolve-source",
+    "publication-decision",
+    "eligible-source",
+    "SHA-bound current release preflight",
+    "shared artifact producer and exact-byte consumers"
+  ],
+  "eligibilityContract": {
+    "policyVersion": "atlcli.dev-release-eligibility/v1",
+    "workflowPath": ".github/workflows/ci.yml",
+    "event": "push",
+    "branch": "main",
+    "requiredJob": "required",
+    "latestRunAndAttemptOnly": true,
+    "pollTimeoutSeconds": 900,
+    "unknownFailedJobBlocks": true,
+    "forceRebuildBypassesGate": false,
+    "blockedConclusions": [
+      "failure",
+      "cancelled",
+      "skipped",
+      "neutral",
+      "stale",
+      "timed_out",
+      "startup_failure",
+      "action_required",
+      "missing",
+      "pending-timeout"
+    ]
+  },
+  "liveReadOnlyProof": {
+    "sourceSha": "e03755e758b5d83cd5f3c6227060fba247f89e29",
+    "workflowRunId": 31599183166,
+    "workflowRunAttempt": 1,
+    "workflowStatus": "completed",
+    "workflowConclusion": "success",
+    "workflowUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31599183166",
+    "requiredJobId": 94123595002,
+    "requiredJobStatus": "completed",
+    "requiredJobConclusion": "success",
+    "requiredJobUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31599183166/job/94123595002",
+    "localEvaluatorDecision": "eligible",
+    "localEvaluatorReason": "eligible",
+    "degraded": false,
+    "externalMutation": false,
+    "apiShapeCorrectionsDiscovered": [
+      "workflow path is returned without an @ref suffix",
+      "reusable advisory jobs carry the Product quality / prefix"
+    ]
+  },
+  "negativeProofs": {
+    "redRequiredBlocked": true,
+    "missingRunBlockedAfterTimeout": true,
+    "pendingRunBlockedAfterTimeout": true,
+    "cancelledSkippedNeutralStaleBlocked": true,
+    "oldGreenNewRedChoosesNewRed": true,
+    "sameShaPullRequestOrManualRunIgnored": true,
+    "unknownFailedJobBlocked": true,
+    "unreadableOrIncompletePriorReleaseBlocked": true,
+    "explicitAdvisoryFailureEligibleButDegraded": true,
+    "normalDuplicateShaNoop": true,
+    "forceRebuildCreatesNewIdentityWithoutGateBypass": true
+  },
+  "proof": {
+    "focusedTests": {
+      "command": "bun run test scripts/ci/release-eligibility.test.ts scripts/ci/dev-release-decision.test.ts scripts/ci/workflow-policy.test.ts scripts/release-artifacts.test.ts scripts/verify-release-artifacts.test.ts",
+      "result": "success",
+      "passed": 62,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "workflowLint": {
+      "command": "actionlint .github/workflows/dev-release.yml .github/workflows/reusable-quality.yml .github/workflows/reusable-release-artifacts.yml .github/workflows/ci.yml .github/workflows/release.yml",
+      "result": "success"
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "success"
+    }
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false,
+    "containsOnlyPublicGitHubRunAndJobIdentifiers": true
+  }
+}
