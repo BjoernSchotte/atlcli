@@ -1,0 +1,54 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index bd141c1..859763a 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -569,0 +570 @@ var ReplSession = class ReplSession {
++	toolConfig;
+@@ -787,0 +789 @@ var ReplSession = class ReplSession {
++		this.toolConfig = void 0;
+@@ -803,0 +806,3 @@ var ReplSession = class ReplSession {
++	setToolConfig(config) {
++		this.toolConfig = config;
++	}
+@@ -837 +842 @@ var ReplSession = class ReplSession {
+-						let text = extractToolText(await t.invoke(rawInput));
++						let text = extractToolText(await t.invoke(rawInput, this.toolConfig));
+@@ -1330,0 +1336 @@ function createCodeInterpreterMiddleware(options = {}) {
++			session.setToolConfig(config);
+diff --git a/dist/index.d.cts b/dist/index.d.cts
+index 05704ba..01c5820 100644
+--- a/dist/index.d.cts
++++ b/dist/index.d.cts
+@@ -3,0 +4 @@ import { StructuredToolInterface } from "@langchain/core/tools";
++import { RunnableConfig } from "@langchain/core/runnables";
+@@ -197,0 +199 @@ declare class ReplSession {
++  private toolConfig;
+@@ -267,0 +270 @@ declare class ReplSession {
++  setToolConfig(config?: RunnableConfig): void;
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 1d8125c..a17ffe2 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -3,0 +4 @@ import { StructuredToolInterface } from "@langchain/core/tools";
++import { RunnableConfig } from "@langchain/core/runnables";
+@@ -197,0 +199 @@ declare class ReplSession {
++  private toolConfig;
+@@ -267,0 +270 @@ declare class ReplSession {
++  setToolConfig(config?: RunnableConfig): void;
+diff --git a/dist/index.js b/dist/index.js
+index 6f66222..51f7a05 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -543,0 +544 @@ var ReplSession = class ReplSession {
++	toolConfig;
+@@ -761,0 +763 @@ var ReplSession = class ReplSession {
++		this.toolConfig = void 0;
+@@ -777,0 +780,3 @@ var ReplSession = class ReplSession {
++	setToolConfig(config) {
++		this.toolConfig = config;
++	}
+@@ -811 +816 @@ var ReplSession = class ReplSession {
+-						let text = extractToolText(await t.invoke(rawInput));
++						let text = extractToolText(await t.invoke(rawInput, this.toolConfig));
+@@ -1304,0 +1310 @@ function createCodeInterpreterMiddleware(options = {}) {
++			session.setToolConfig(config);
