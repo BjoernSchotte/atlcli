@@ -23,6 +23,10 @@ const sourceSha = process.env.ATLCLI_SOURCE_SHA ?? "unknown";
 const nvdaVersion = process.env.ATLCLI_NVDA_VERSION ?? "unknown";
 const nvdaInstallerSha256 = process.env.ATLCLI_NVDA_INSTALLER_SHA256 ?? "unknown";
 const browserChannel = process.env.ATLCLI_BROWSER_CHANNEL ?? "chromium";
+const browserExecutablePath = process.env.ATLCLI_BROWSER_EXECUTABLE_PATH;
+const expectedBrowserVersion = process.env.ATLCLI_BROWSER_VERSION ?? "unknown";
+const browserDownloadUrl = process.env.ATLCLI_BROWSER_DOWNLOAD_URL ?? "unknown";
+const browserArchiveSha256 = process.env.ATLCLI_BROWSER_ARCHIVE_SHA256 ?? "unknown";
 const fixtureUrl = "https://fixture.atlassian.net/wiki/spaces/DOCSY/pages/42/Palette-screenreader-test";
 const fixture = `<!doctype html>
 <html lang="en">
@@ -119,27 +123,35 @@ async function openHarness({ instrumented }) {
   stage(`open-harness:${instrumented ? "instrumented" : "production"}:copy`);
   const copied = copyExtension({ instrumented });
   stage(`open-harness:${instrumented ? "instrumented" : "production"}:launch-chrome`);
-  const context = await chromium.launchPersistentContext(copied.profileDirectory, {
-    channel: browserChannel,
-    headless: false,
-    viewport: { width: 1440, height: 1000 },
-    args: [
-      `--disable-extensions-except=${copied.extensionDirectory}`,
-      `--load-extension=${copied.extensionDirectory}`,
-      "--disable-features=Translate",
-    ],
-  });
-  stage(`open-harness:${instrumented ? "instrumented" : "production"}:chrome-launched`);
-  const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker", { timeout: 30_000 });
-  const extensionId = new URL(worker.url()).host;
-  const storagePage = await context.newPage();
-  await storagePage.goto(`chrome-extension://${extensionId}/storage-probe.html`);
-  const page = await context.newPage();
-  await page.route(fixtureUrl, (route) => route.fulfill({ status: 200, contentType: "text/html", body: fixture }));
-  await page.goto(fixtureUrl);
-  await page.bringToFront();
-  stage(`open-harness:${instrumented ? "instrumented" : "production"}:ready`);
-  return { ...copied, context, worker, storagePage, page };
+  let context;
+  try {
+    context = await chromium.launchPersistentContext(copied.profileDirectory, {
+      ...(browserExecutablePath ? { executablePath: browserExecutablePath } : { channel: browserChannel }),
+      headless: false,
+      viewport: { width: 1440, height: 1000 },
+      args: [
+        `--disable-extensions-except=${copied.extensionDirectory}`,
+        `--load-extension=${copied.extensionDirectory}`,
+        "--disable-features=Translate",
+      ],
+    });
+    stage(`open-harness:${instrumented ? "instrumented" : "production"}:chrome-launched`);
+    const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker", { timeout: 30_000 });
+    const extensionId = new URL(worker.url()).host;
+    const storagePage = await context.newPage();
+    await storagePage.goto(`chrome-extension://${extensionId}/storage-probe.html`);
+    const page = await context.newPage();
+    await page.route(fixtureUrl, (route) => route.fulfill({ status: 200, contentType: "text/html", body: fixture }));
+    await page.goto(fixtureUrl);
+    await page.bringToFront();
+    stage(`open-harness:${instrumented ? "instrumented" : "production"}:ready`);
+    return { ...copied, context, worker, storagePage, page };
+  } catch (error) {
+    stage(`open-harness:${instrumented ? "instrumented" : "production"}:failed-cleanup`);
+    if (context) await context.close();
+    rmSync(copied.root, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 async function screenshot(page, filename) {
@@ -326,20 +338,28 @@ try {
   stage("speech:assert");
   const speechAssertions = assertNvdaSpeech();
   stage("browser-version:start");
-  const browser = await chromium.launch({ channel: browserChannel, headless: true });
+  const browser = await chromium.launch({
+    ...(browserExecutablePath ? { executablePath: browserExecutablePath } : { channel: browserChannel }),
+    headless: true,
+  });
   const browserVersion = browser.version();
   await browser.close();
   stage(`browser-version:complete:${browserVersion}`);
+  if (expectedBrowserVersion !== "unknown" && browserVersion !== expectedBrowserVersion) {
+    throw new Error(`Chrome for Testing version mismatch: expected ${expectedBrowserVersion}, got ${browserVersion}.`);
+  }
   const receipt = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     sourceSha,
     os: `${process.platform} ${process.arch}`,
     browser: {
-      name: browserChannel === "chrome" ? "Google Chrome" : "Chromium",
+      name: browserChannel === "chrome-for-testing" ? "Google Chrome for Testing" : browserChannel === "chrome" ? "Google Chrome" : "Chromium",
       channel: browserChannel,
       version: browserVersion,
       headed: true,
+      downloadUrl: browserDownloadUrl,
+      archiveSha256: browserArchiveSha256,
     },
     screenReader: {
       name: "NVDA",

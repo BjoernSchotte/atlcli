@@ -39,14 +39,26 @@ jobs:
       - name: Build the production MV3 extension
         run: bun run --cwd apps/extension build
 
-      - name: Verify Google Chrome Stable
+      - name: Resolve official Chrome for Testing Stable
         shell: pwsh
         run: |
-          $chrome = Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"
-          if (-not (Test-Path $chrome)) { throw "Google Chrome Stable is not installed." }
-          $version = (Get-Item $chrome).VersionInfo.ProductVersion
-          if (-not $version) { throw "Google Chrome Stable has no readable product version." }
-          Write-Output "Google Chrome Stable $version"
+          $ErrorActionPreference = "Stop"
+          $metadataUrl = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+          $metadata = Invoke-RestMethod $metadataUrl
+          $download = $metadata.channels.Stable.downloads.chrome | Where-Object platform -eq "win64" | Select-Object -First 1
+          if (-not $download.url) { throw "Chrome for Testing Stable has no win64 download." }
+          $archive = Join-Path $env:RUNNER_TEMP "chrome-for-testing-stable.zip"
+          $root = Join-Path $env:RUNNER_TEMP "chrome-for-testing-stable"
+          Invoke-WebRequest $download.url -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $root
+          $chrome = Get-ChildItem $root -Filter chrome.exe -Recurse | Select-Object -First 1
+          if (-not $chrome) { throw "Chrome for Testing Stable executable is missing." }
+          $archiveSha256 = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "ATLCLI_BROWSER_EXECUTABLE_PATH=$($chrome.FullName)" >> $env:GITHUB_ENV
+          "ATLCLI_BROWSER_VERSION=$($metadata.channels.Stable.version)" >> $env:GITHUB_ENV
+          "ATLCLI_BROWSER_DOWNLOAD_URL=$($download.url)" >> $env:GITHUB_ENV
+          "ATLCLI_BROWSER_ARCHIVE_SHA256=$archiveSha256" >> $env:GITHUB_ENV
+          Write-Output "Chrome for Testing Stable $($metadata.channels.Stable.version) ($archiveSha256)"
 
       - name: Run NVDA against the headed production extension
         shell: pwsh
@@ -83,17 +95,16 @@ jobs:
           $env:ATLCLI_NVDA_LOG_PATH = $nvdaLog
           $env:ATLCLI_NVDA_VERSION = $version
           $env:ATLCLI_NVDA_INSTALLER_SHA256 = $actualSha256
-          $env:ATLCLI_BROWSER_CHANNEL = "chrome"
+          $env:ATLCLI_BROWSER_CHANNEL = "chrome-for-testing"
           $env:ATLCLI_SOURCE_SHA = "${{ github.event.pull_request.head.sha || github.sha }}"
           try {
-            # chrome.exe --version can open a persistent GUI process on Windows.
-            # The verification step reads file metadata instead, and this guards
-            # against any runner image process stealing Playwright's launch pipe.
-            Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force
+            Write-Output "NVDA_SETUP running headed Chrome for Testing Stable assertions"
             & node apps/extension/tests/palette/screenreader/nvda-windows.mjs
             if ($LASTEXITCODE -ne 0) { throw "NVDA screen-reader assertions failed." }
           } finally {
-            Start-Process -Wait -FilePath $nvda -ArgumentList "--quit"
+            Start-Process -FilePath $nvda -ArgumentList "--quit"
+            Start-Sleep -Seconds 2
+            Get-Process nvda -ErrorAction SilentlyContinue | Stop-Process -Force
             Remove-Item -Force -ErrorAction SilentlyContinue $nvdaLog
           }
 

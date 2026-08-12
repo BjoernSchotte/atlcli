@@ -239,18 +239,21 @@ describe("CI workflow policy", () => {
     }
   });
 
-  it("starts the NVDA Chrome evidence lane without inheriting a GUI Chrome process", async () => {
+  it("uses bounded official Chrome for Testing Stable for the NVDA evidence lane", async () => {
     const nvda = await workflow("action-palette-nvda.yml");
     const harness = await readFile(
       join(REPO_ROOT, "apps", "extension", "tests", "palette", "screenreader", "nvda-windows.mjs"),
       "utf8",
     );
 
-    expect(nvda).toContain("(Get-Item $chrome).VersionInfo.ProductVersion");
+    expect(nvda).toContain("last-known-good-versions-with-downloads.json");
+    expect(nvda).toContain("ATLCLI_BROWSER_EXECUTABLE_PATH");
+    expect(nvda).toContain('ATLCLI_BROWSER_CHANNEL = "chrome-for-testing"');
     expect(nvda).not.toContain("& $chrome --version");
-    expect(nvda).toContain("Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force");
+    expect(nvda).not.toContain("Start-Process -Wait -FilePath $nvda -ArgumentList \"--quit\"");
     expect(harness).toContain("NVDA_STAGE_TIMEOUT");
     expect(harness).toContain("process.exit(124)");
+    expect(harness).toContain("failed-cleanup");
   });
 
   it("runs the browser gate in parallel with product quality", async () => {
