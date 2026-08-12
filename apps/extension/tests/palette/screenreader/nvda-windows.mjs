@@ -214,6 +214,8 @@ async function runProductionLane(screenshotPaths) {
     await question.press("Escape");
     await search.waitFor({ state: "visible" });
     await search.press("Escape");
+    if (await search.inputValue() !== "") throw new Error("The first root Escape did not clear the query.");
+    await search.press("Escape");
     await dialog.waitFor({ state: "hidden" });
     if (await harness.page.evaluate(() => document.activeElement?.id) !== "host-button") {
       throw new Error("Escape hierarchy did not return focus to the host button.");
@@ -259,6 +261,8 @@ async function runInstrumentedLane(screenshotPaths) {
     screenshotPaths.push(await screenshot(harness.page, "ap09-nvda-completed.png"));
 
     await frame.getByTestId("palette-result-completed").press("Escape");
+    await search.press("Escape");
+    if (await search.inputValue() !== "") throw new Error("The instrumented root Escape did not clear the query.");
     await search.press("Escape");
     if (await harness.page.evaluate(() => document.activeElement?.id) !== "host-button") {
       throw new Error("Instrumented lane did not return focus to the host button.");
@@ -321,7 +325,7 @@ try {
       arrowActiveOption: "Export current page as DOCX",
       unavailableReason: "This capability is not available in the current host.",
       executionStatuses: ["queued", "failed", "completed"],
-      escapeHierarchy: ["result to root", "input to root", "root to closed"],
+      escapeHierarchy: ["result to root", "input to root", "non-empty root query to cleared query", "empty root to closed"],
       returnedHostFocus: "host-button",
       speechAssertions,
     },
