@@ -1,0 +1,71 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-08",
+  "recordedAt": "2026-08-12T17:04:09Z",
+  "proofedParentHead": "7c6feaa86804c4eb1be60b248989bca941ef6bde",
+  "authoritativePublishedArtifact": false,
+  "purpose": "Runbook, public dev-channel documentation, versioned evidence schemas, and fail-closed evidence privacy policy",
+  "contract": {
+    "sourceEligibility": "exact green canonical main push SHA",
+    "manualAndScheduledGraphDocumented": true,
+    "extensionSideloadAndNoWebStoreAutoUpdateDocumented": true,
+    "partialReleaseAndTapFailureRecoveryDocumented": true,
+    "forwardOnlyRollbackDocumented": true,
+    "retentionDocumented": true,
+    "maintenanceOwner": "repository maintainers",
+    "manualTriggerCadence": "monthly",
+    "rollbackRetentionDrillCadence": "quarterly"
+  },
+  "schemas": {
+    "taskProof": "specs/dev-release-channel/evidence/schemas/task-proof.schema.json",
+    "liveReleaseProof": "specs/dev-release-channel/evidence/schemas/live-release-proof.schema.json",
+    "liveReleaseRequiresWorkflowAndSourceIdentity": true,
+    "liveReleaseRequiresToolchainAndLockDigest": true,
+    "liveReleaseRequiresAssetDigests": true,
+    "liveReleaseRequiresExtensionConsumerProof": true,
+    "liveReleaseRequiresHomebrewCommitFormulaDigestsAndNativeMatrix": true
+  },
+  "toolchain": {
+    "bun": "1.3.14",
+    "wxt": "0.20.27",
+    "lockfileSha256": "20bc64f1db1c4bcc8250c1dddc35ff1e6e474855cd57dc3ecb9efc9ca05d1489"
+  },
+  "proof": {
+    "focusedTests": {
+      "command": "bun run test scripts/ci/dev-release-evidence-policy.test.ts scripts/ci/workflow-policy.test.ts",
+      "result": "success",
+      "passed": 34,
+      "failed": 0
+    },
+    "evidencePolicy": {
+      "command": "bun scripts/ci/dev-release-evidence-policy.ts",
+      "result": "success"
+    },
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "build": {
+      "command": "bun run build",
+      "result": "success",
+      "packages": 30,
+      "failed": 0
+    },
+    "workflowLint": {
+      "command": "actionlint .github/workflows/reusable-quality.yml .github/workflows/dev-release.yml .github/workflows/release.yml .github/workflows/dev-release-cleanup.yml",
+      "result": "success"
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "success"
+    }
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false,
+    "containsRawProviderLogs": false,
+    "containsSourceBodies": false
+  },
+  "deferredLiveProof": "DR-09 proves the mutation-free rehearsal; DR-10 supplies the real release and Homebrew consumer receipt"
+}

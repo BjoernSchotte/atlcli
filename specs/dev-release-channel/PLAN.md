@@ -713,24 +713,24 @@ Digests; `atlcli.rb` ist unveraendert.
 
 **Blocks:** DR-09, DR-10
 
-- [ ] `docs/` um Dev-Kanal, manuellen Start, Inputs, Installation, Upgrade,
+- [x] `docs/` um Dev-Kanal, manuellen Start, Inputs, Installation, Upgrade,
   Wechsel zu Stable, Rollback, Retention und Fehlerdiagnose ergaenzen.
-- [ ] Klar dokumentieren, dass das GitHub-Extension-ZIP fuer Entwickler/
+- [x] Klar dokumentieren, dass das GitHub-Extension-ZIP fuer Entwickler/
   Side-Loading gedacht ist und kein Chrome-Web-Store-Auto-Update bietet.
-- [ ] `specs/dev-release-channel/EVIDENCE.md` als Index und kleine versionierte
+- [x] `specs/dev-release-channel/EVIDENCE.md` als Index und kleine versionierte
   JSON-/Markdown-Receipt-Schemas unter `evidence/` anlegen.
-- [ ] Pro Receipt Source-SHA, Workflow/Run/Attempt/Event, Build-ID/Tag/URL,
+- [x] Pro Receipt Source-SHA, Workflow/Run/Attempt/Event, Build-ID/Tag/URL,
   Toolversionen, Lockfile-Digest, Asset-Digests, Tap-Commit, Formel-Digests und
   Teststatus verlangen. `source-eligibility.json` bindet zusaetzlich den
   kanonischen Main-Push-Run, neuesten Attempt, Aggregatjob `required`,
   Required-/Advisory-Policy-Version und Entscheidung `eligible|blocked`.
-- [ ] Evidence-Privacy-Gate implementieren: keine Tokens, Credentials, Tenant-/
+- [x] Evidence-Privacy-Gate implementieren: keine Tokens, Credentials, Tenant-/
   Kundendaten, private Identifikatoren, Rohlogs, Source-Bodies oder absolute
   Home-Pfade.
-- [ ] Runbook fuer partielle GitHub-Releases, fehlgeschlagenen Tap-Dispatch,
+- [x] Runbook fuer partielle GitHub-Releases, fehlgeschlagenen Tap-Dispatch,
   Formula-Testfehler, No-op, Force-Build und vorwaertsgerichteten Rollback
   schreiben.
-- [ ] Maintenance-Owner, monatlichen manuellen Trigger-Test und quartalsweisen
+- [x] Maintenance-Owner, monatlichen manuellen Trigger-Test und quartalsweisen
   Rollback-/Retention-Drill festlegen.
 
 **Proof**

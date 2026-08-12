@@ -59,6 +59,17 @@ After a rebuild, click the **reload** (↻) icon on the atlcli card in
 `chrome://extensions`. If you are running the HMR dev server
 (`bun run --cwd apps/extension dev`) that step is automatic.
 
+Alternatively, a dev GitHub prerelease provides a verified
+`atlcli-extension-chrome-mv3-<dev-tag>.zip`. Download its `checksums.txt`,
+verify and extract the ZIP, then choose the extracted directory with **Load
+unpacked**. See [Development releases](/reference/dev-releases/#install-the-packaged-browser-extension).
+
+:::caution[No Web Store auto-update]
+The release ZIP is for developer sideloading. It is not click-installable and
+does not receive Chrome Web Store auto-updates. Updating requires a new verified
+ZIP and a reload from `chrome://extensions`.
+:::
+
 ## Use the action palette
 
 The action palette is the fast keyboard surface for actions that do not need

@@ -72,6 +72,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Validate dev-release evidence schemas and privacy
+        if: inputs.run_static_quality
+        run: bun scripts/ci/dev-release-evidence-policy.ts
+
       - name: Check pinned ADF contract offline
         if: inputs.run_static_quality
         run: bun run check:adf-pinned

@@ -199,6 +199,8 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain("EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}");
     expect(reusable).toContain("attestation.commit !== process.env.EXPECTED_SOURCE_SHA");
     expect(reusable).toContain("security-attestation-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(reusable).toContain("Validate dev-release evidence schemas and privacy");
+    expect(reusable).toContain("bun scripts/ci/dev-release-evidence-policy.ts");
   });
 
   it("publishes dev only through exclusive draft, downloaded proof, and publish jobs", async () => {
