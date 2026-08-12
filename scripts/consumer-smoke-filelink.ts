@@ -52,6 +52,7 @@ export interface FilelinkInstallCoordinator {
   allowedPackages: ReadonlySet<string>;
   install: () => InstallResult;
   recreate: () => void;
+  delay?: (milliseconds: number) => void;
   warn?: (message: string) => void;
 }
 
@@ -74,6 +75,14 @@ const KNOWN_FILELINK_EEXIST = [
 const KNOWN_FILELINK_INSTALL_SUMMARY = /^(?:Failed to install \d+ packages?|Saved lockfile)$/;
 const SECOND_FATAL_MARKER =
   /\b(?:error|failed|panic|fatal|ENOENT|integrity|checksum|signal)\b/i;
+const TYPST_WEB_COMPILER_RELEASE_URL =
+  "https://github.com/BjoernSchotte/typst.ts/releases/download/" +
+  "web-compiler-v0.8.0-rc3.typst0151.1/" +
+  "myriaddreamin-typst-ts-web-compiler-0.8.0-rc3.typst0151.1.tgz";
+const TYPST_WEB_COMPILER_RESOLUTION_FAILURE =
+  `error: @myriaddreamin/typst-ts-web-compiler@${TYPST_WEB_COMPILER_RELEASE_URL} failed to resolve`;
+const TRANSIENT_HTTP_STATUSES = new Set([429, 502, 503, 504]);
+const MAX_TRANSIENT_INSTALL_ATTEMPTS = 3;
 
 function normalizedInstallLines(result: InstallResult): string[] {
   return `${result.stdout}\n${result.stderr}`
@@ -111,6 +120,24 @@ export function knownFilelinkEexistPackage(
   return packageName;
 }
 
+export function isKnownTransientFilelinkInstallFailure(result: InstallResult): boolean {
+  if (result.exitCode === 0) return false;
+
+  const lines = normalizedInstallLines(result);
+  const matchingFailures = lines.filter((line) => {
+    const match = /^error: GET (https:\/\/\S+) - (\d{3})$/.exec(line);
+    return match?.[1] === TYPST_WEB_COMPILER_RELEASE_URL
+      && TRANSIENT_HTTP_STATUSES.has(Number(match[2]));
+  });
+  if (matchingFailures.length !== 1) return false;
+
+  const unrelatedFatalLines = lines.filter((line) =>
+    SECOND_FATAL_MARKER.test(line)
+    && !matchingFailures.includes(line)
+    && line !== TYPST_WEB_COMPILER_RESOLUTION_FAILURE);
+  return unrelatedFatalLines.length === 0;
+}
+
 function installFailure(result: InstallResult): Error {
   return new Error(
     `bun install (filelink consumer) failed:\n${result.stdout}\n${result.stderr}`,
@@ -118,24 +145,41 @@ function installFailure(result: InstallResult): Error {
 }
 
 export function installFilelinkWithKnownRetry(coordinator: FilelinkInstallCoordinator): void {
-  const first = coordinator.install();
-  if (first.exitCode === 0) return;
+  let eexistRetried = false;
 
-  const packageName = knownFilelinkEexistPackage(
-    first,
-    coordinator.bunVersion,
-    coordinator.allowedPackages,
-  );
-  if (!packageName) throw installFailure(first);
+  for (let attempt = 1; attempt <= MAX_TRANSIENT_INSTALL_ATTEMPTS; attempt++) {
+    const result = coordinator.install();
+    if (result.exitCode === 0) return;
 
-  coordinator.warn?.(
-    `Bun ${coordinator.bunVersion} hit the known file-link EEXIST for ${packageName}; ` +
-      "recreating the throwaway consumer and retrying once",
-  );
-  coordinator.recreate();
+    const packageName = knownFilelinkEexistPackage(
+      result,
+      coordinator.bunVersion,
+      coordinator.allowedPackages,
+    );
+    if (packageName && !eexistRetried) {
+      eexistRetried = true;
+      coordinator.warn?.(
+        `Bun ${coordinator.bunVersion} hit the known file-link EEXIST for ${packageName}; ` +
+          "recreating the throwaway consumer and retrying once",
+      );
+      coordinator.recreate();
+      continue;
+    }
 
-  const second = coordinator.install();
-  if (second.exitCode !== 0) throw installFailure(second);
+    if (isKnownTransientFilelinkInstallFailure(result)
+      && attempt < MAX_TRANSIENT_INSTALL_ATTEMPTS) {
+      const delayMs = attempt * 5_000;
+      coordinator.warn?.(
+        `The pinned Typst release download failed transiently on attempt ${attempt}; ` +
+          `recreating the throwaway consumer and retrying in ${delayMs / 1_000}s`,
+      );
+      coordinator.recreate();
+      (coordinator.delay ?? Bun.sleepSync)(delayMs);
+      continue;
+    }
+
+    throw installFailure(result);
+  }
 }
 
 export async function runFilelinkSmoke(baseDir?: string): Promise<FilelinkSmokeResult> {
