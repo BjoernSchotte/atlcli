@@ -697,15 +697,15 @@ bun run typecheck
 
 **Blocks:** AP-09
 
-- [ ] In a reviewed Forge branch, explicitly exclude and preserve the pre-existing untracked `design/` directory, consume the exact AP-03A receipt, update `package.json`/lockfile, and refuse to proceed if the atlcli source is dirty, at a different SHA, has different package versions/hashes, or resolves outside the recorded `dist/` entries.
-- [ ] Extend `scripts/verify-atlcli.ts` with the handoff commit/package expectations and browser entry resolution; retain its clean-source check.
-- [ ] Add the `palette.html`/Vite/React entry and a Confluence content action with a stable medium viewport. Register only the distinct static accelerator or no accelerator chosen in AP-00; never ship the same chord as the extension when both could fire.
-- [ ] Add the two serializable Confluence export definitions and a Forge executor allowlist mapping only PDF/DOCX intents to existing modal launchers.
-- [ ] Supply Forge English/German action dictionaries (or an explicitly approved English-only beta fallback) and test key parity with the consumed definitions.
-- [ ] Extend modal origin typing with `"palette"` and keep export modal behavior unchanged.
-- [ ] Extend browser-boundary tests, `scripts/check-output.ts`, and cost invariants for the intentional third content action/sixth entry. Require a distinct emitted palette entry, an explicit size budget, and transitive scans preserving zero engine, worker, AI, extension, `@forge/api`, remote, function, storage, external-origin, or external-runtime imports.
-- [ ] Test unknown intents, missing context, double activation, modal failure, Escape/focus behavior, and keyboard navigation.
-- [ ] Deploy only to a development environment, run `forge lint`, and record menu, shortcut, PDF-modal, and DOCX-modal evidence. Do not release or deploy to production automatically.
+- [x] In a reviewed Forge branch, explicitly exclude and preserve the pre-existing untracked `design/` directory, consume the exact AP-03A receipt, update `package.json`/lockfile, and refuse to proceed if the atlcli source is dirty, at a different SHA, has different package versions/hashes, or resolves outside the recorded `dist/` entries.
+- [x] Extend `scripts/verify-atlcli.ts` with the handoff commit/package expectations and browser entry resolution; retain its clean-source check.
+- [x] Add the `palette.html`/Vite/React entry and a Confluence content action with a stable medium viewport. Register only the distinct static accelerator or no accelerator chosen in AP-00; never ship the same chord as the extension when both could fire.
+- [x] Add the two serializable Confluence export definitions and a Forge executor allowlist mapping only PDF/DOCX intents to existing modal launchers.
+- [x] Supply Forge English/German action dictionaries (or an explicitly approved English-only beta fallback) and test key parity with the consumed definitions.
+- [x] Extend modal origin typing with `"palette"` and keep export modal behavior unchanged.
+- [x] Extend browser-boundary tests, `scripts/check-output.ts`, and cost invariants for the intentional third content action/sixth entry. Require a distinct emitted palette entry, an explicit size budget, and transitive scans preserving zero engine, worker, AI, extension, `@forge/api`, remote, function, storage, external-origin, or external-runtime imports.
+- [x] Test unknown intents, missing context, double activation, modal failure, Escape/focus behavior, and keyboard navigation.
+- [x] Deploy only to a development environment, run `forge lint`, and record menu, shortcut, PDF-modal, and DOCX-modal evidence. Do not release or deploy to production automatically.
 
 **Proof in `/Users/bjoern/code/kiteweave-forge-app`**
 
