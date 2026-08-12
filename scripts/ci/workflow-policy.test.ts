@@ -99,6 +99,12 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain('--target "${{ matrix.target }}"');
     expect(reusable).toContain("--skip-extension");
     expect(reusable).toContain("--skip-cli");
+    const extensionBuild = block(reusable, /^ {2}build-extension:\s*$/, 2);
+    expect(extensionBuild).not.toBeNull();
+    expect(extensionBuild).toContain("bun run fonts:ensure");
+    expect(extensionBuild!.indexOf("bun run fonts:ensure")).toBeLessThan(
+      extensionBuild!.indexOf("bun scripts/release-artifacts.ts build"),
+    );
     expect(reusable).toContain("bun scripts/assemble-release-bundle.ts");
     expect(reusable).toContain("bun scripts/verify-release-artifacts.ts --dir bundle");
     for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {

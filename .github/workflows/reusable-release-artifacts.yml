@@ -118,6 +118,9 @@ jobs:
       - name: Install frozen dependencies
         run: bun install --frozen-lockfile
 
+      - name: Provision pinned PDF fonts
+        run: bun run fonts:ensure
+
       - name: Build deterministic extension archive
         run: |
           bun scripts/release-artifacts.ts build \
