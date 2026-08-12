@@ -261,6 +261,25 @@ describe("CI workflow policy", () => {
     expect(stable).not.toContain("softprops/action-gh-release");
   });
 
+  it("dispatches Homebrew dev only after public proof with a scoped short-lived app token", async () => {
+    const dev = await workflow("dev-release.yml");
+    const homebrew = block(dev, /^ {2}publish-homebrew-dev:\s*$/, 2);
+    expect(homebrew).toContain(
+      "needs: [resolve-source, publication-decision, create-draft, verify-published]",
+    );
+    expect(homebrew).toContain("github.event_name == 'schedule' || inputs.publish_homebrew");
+    expect(homebrew).toContain("actions/create-github-app-token@v3");
+    expect(homebrew).toContain("app-id: ${{ vars.HOMEBREW_TAP_APP_ID }}");
+    expect(homebrew).toContain("private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}");
+    expect(homebrew).toContain("repositories: homebrew-tap");
+    expect(homebrew).toContain("permission-actions: write");
+    expect(homebrew).toContain("permission-contents: read");
+    expect(homebrew).toContain("homebrew-dev-dispatch.ts");
+    expect(homebrew).toContain("HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}");
+    expect(homebrew).not.toContain("contents: write");
+    expect(homebrew).not.toContain("secrets.HOMEBREW_TAP_TOKEN");
+  });
+
   it("keeps retention dry-run read-only and rechecks fixed protection pointers before apply", async () => {
     const cleanup = await workflow("dev-release-cleanup.yml");
     const triggers = block(cleanup, /^on:\s*$/, 0);

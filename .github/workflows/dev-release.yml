@@ -534,3 +534,100 @@ jobs:
             published-verification.json
           if-no-files-found: error
           retention-days: 90
+
+  publish-homebrew-dev:
+    name: Publish and verify isolated Homebrew dev formula
+    needs: [resolve-source, publication-decision, create-draft, verify-published]
+    if: >-
+      needs.publication-decision.outputs.decision == 'create' &&
+      (github.event_name == 'schedule' || inputs.publish_homebrew)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve published control-asset digests
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEV_TAG: ${{ needs.resolve-source.outputs.build_id }}
+          SOURCE_SHA: ${{ needs.resolve-source.outputs.source_sha }}
+        run: |
+          mkdir homebrew-source
+          gh release download "$DEV_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern build-metadata.json \
+            --pattern checksums.txt \
+            --dir homebrew-source
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$DEV_TAG" > homebrew-source/release.json
+          # The single-quoted JavaScript intentionally owns its template expressions.
+          # shellcheck disable=SC2016
+          bun -e '
+            import { createHash } from "node:crypto";
+            const release = await Bun.file("homebrew-source/release.json").json();
+            const digest = async (name) => createHash("sha256")
+              .update(new Uint8Array(await Bun.file(`homebrew-source/${name}`).arrayBuffer()))
+              .digest("hex");
+            const metadata = await Bun.file("homebrew-source/build-metadata.json").json();
+            if (release.tag_name !== process.env.DEV_TAG || release.draft || !release.prerelease || !release.immutable) process.exit(1);
+            if (metadata.sourceSha !== process.env.SOURCE_SHA || metadata.releaseTag !== process.env.DEV_TAG || metadata.channel !== "dev") process.exit(1);
+            for (const name of ["build-metadata.json", "checksums.txt"]) {
+              const asset = release.assets.find((candidate) => candidate.name === name);
+              const actual = await digest(name);
+              if (!asset || asset.digest !== `sha256:${actual}`) process.exit(1);
+              console.log(`${name.replaceAll(/[-.]/g, "_")}=${actual}`);
+            }
+          ' > homebrew-source/digests.env
+          metadata_sha256="$(sed -n 's/^build_metadata_json=//p' homebrew-source/digests.env)"
+          checksums_sha256="$(sed -n 's/^checksums_txt=//p' homebrew-source/digests.env)"
+          test -n "$metadata_sha256"
+          test -n "$checksums_sha256"
+          {
+            echo "metadata_sha256=$metadata_sha256"
+            echo "checksums_sha256=$checksums_sha256"
+            echo "request_id=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${DEV_TAG}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create one-hour repository-scoped Homebrew Tap token
+        id: tap-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.HOMEBREW_TAP_APP_ID }}
+          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+          owner: BjoernSchotte
+          repositories: homebrew-tap
+          permission-actions: write
+          permission-contents: read
+
+      - name: Dispatch, correlate, await, and verify the Tap publication
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
+        run: |
+          bun scripts/ci/homebrew-dev-dispatch.ts \
+            --tag "${{ needs.resolve-source.outputs.build_id }}" \
+            --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --request-id "${{ steps.release.outputs.request_id }}" \
+            --metadata-sha256 "${{ steps.release.outputs.metadata_sha256 }}" \
+            --checksums-sha256 "${{ steps.release.outputs.checksums_sha256 }}" \
+            --out homebrew-dev-dispatch.json
+
+      - name: Upload cross-repository publication receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: homebrew-dev-publication-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: homebrew-dev-dispatch.json
+          if-no-files-found: error
+          retention-days: 90
