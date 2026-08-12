@@ -100,6 +100,29 @@ async function expectOpen(page: Page, contextLabel: RegExp): Promise<FrameLocato
   return frame;
 }
 
+async function assertFullViewportHost(page: Page): Promise<void> {
+  const geometry = await page.locator("atlcli-action-palette-root").evaluate((host) => {
+    const iframe = host.shadowRoot?.querySelector("iframe");
+    const rectangle = iframe?.getBoundingClientRect();
+    return {
+      viewportWidth: globalThis.innerWidth,
+      viewportHeight: globalThis.innerHeight,
+      iframe: rectangle ? {
+        x: rectangle.x,
+        y: rectangle.y,
+        width: rectangle.width,
+        height: rectangle.height,
+      } : null,
+    };
+  });
+  expect(geometry.iframe).not.toBeNull();
+  expect(geometry.iframe?.x).toBe(0);
+  expect(geometry.iframe?.y).toBe(0);
+  expect(geometry.iframe?.width).toBe(geometry.viewportWidth);
+  expect(geometry.iframe?.height).toBe(geometry.viewportHeight);
+  expect(geometry.iframe?.height).toBeGreaterThan(150);
+}
+
 async function assertNoSeriousOrCriticalAxe(page: Page): Promise<void> {
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(
@@ -210,6 +233,7 @@ test("mounts only on Atlassian and derives every MVP context", async () => {
     expect(await toggle(page)).toBe(true);
     const frame = await expectOpen(page, label);
     if (index === 0) {
+      await assertFullViewportHost(page);
       const assignment = await storagePage.evaluate(async () =>
         (await chrome.commands.getAll()).find((command) => command.name === "action-palette")?.shortcut ?? ""
       );
