@@ -9,6 +9,7 @@
  */
 import { defineBackground } from "wxt/utils/define-background";
 import {
+  actionPaletteErrorSummaryV1,
   createActionPaletteBackgroundHostV1,
   createExtensionActionPaletteExecutorsV1,
   type ActionPaletteExecutorEntryV1,
@@ -21,7 +22,10 @@ import {
 import type { ActionPaletteSenderV1 } from "../utils/action-palette/context.js";
 import { createActionPaletteExportRunnersV1 } from "../utils/action-palette/export-actions.js";
 import { openActionPaletteSidePanelForGestureV1 } from "../utils/action-palette/gesture.js";
-import { ACTION_PALETTE_NAVIGATION_STORAGE_KEY } from "./sidepanel/ports/surface-navigation.js";
+import {
+  ACTION_PALETTE_NAVIGATION_STORAGE_KEY,
+  queueSurfaceNavigationV1,
+} from "./sidepanel/ports/surface-navigation.js";
 import { ACTION_PALETTE_COMMAND_ID } from "./sidepanel/ports/shortcut.js";
 // Import from @atlcli/core's BROWSER entry. Presence in the bundle proves Vite
 // resolves the `browser` export condition (PLAN §6 risk 4); the Task 6 output
@@ -493,20 +497,14 @@ export default defineBackground({
     screen: "export" | "research" | "activity" | "settings",
     continuationId?: string,
   ): Promise<void> => {
-    const navigationId = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
-    const message: Extract<ActionPaletteResponseV1, { kind: "action-palette:open-surface-request" }> = {
-      kind: "action-palette:open-surface-request",
-      requestId: `navigation:${navigationId}`,
-      navigationId,
-      screen,
-      ...(continuationId ? { continuationId } : {}),
-      createdAt,
-      expiresAt: new Date(Date.now() + 120_000).toISOString(),
-    };
-    await chrome.storage.session.set({ [ACTION_PALETTE_NAVIGATION_STORAGE_KEY]: message });
-    void chrome.runtime.sendMessage(message).catch(() => {
-      // The retained storage.session mailbox supplies cold-open delivery.
+    await queueSurfaceNavigationV1(screen, continuationId, {
+      persist: (message) => chrome.storage.session.set({
+        [ACTION_PALETTE_NAVIGATION_STORAGE_KEY]: message,
+      }),
+      deliver: (message) => chrome.runtime.sendMessage(message).then(() => undefined),
+      reportError: (phase, caught) => {
+        console.error(`Action palette surface ${phase} failed`, actionPaletteErrorSummaryV1(caught));
+      },
     });
   };
 
@@ -607,6 +605,13 @@ export default defineBackground({
       const commands = await chrome.commands.getAll();
       const shortcut = commands.find((command) => command.name === ACTION_PALETTE_COMMAND_ID)?.shortcut?.trim() || null;
       return { status: shortcut ? "assigned" : "unbound", value: shortcut };
+    },
+    reportExecutionError: (caught, request) => {
+      console.error("Action palette execution failed", {
+        requestId: request.requestId,
+        actionId: request.actionId,
+        ...actionPaletteErrorSummaryV1(caught),
+      });
     },
     emitStream: async (sender, event) => {
       await chrome.tabs.sendMessage(sender.tabId, event, {
@@ -2269,8 +2274,8 @@ export default defineBackground({
     if (isActionPaletteRequestCandidateV1(message)) {
       const paletteSender = paletteSenderFromChrome(sender);
       openActionPaletteSidePanelForGestureV1(message, paletteSender, (tabId) => {
-        void chrome.sidePanel.open({ tabId }).catch(() => {
-          // The toolbar remains the visible recovery path when Chrome drops activation.
+        void chrome.sidePanel.open({ tabId }).catch((caught) => {
+          console.error("Action palette side panel open failed", actionPaletteErrorSummaryV1(caught));
         });
       });
       void actionPaletteHost.handle(message, paletteSender).then(sendResponse);

@@ -145,6 +145,10 @@ function AppBody({
   useEffect(() => {
     if (!ports.surfaceNavigation) return;
     return ports.surfaceNavigation.subscribe((request) => {
+      // A cold palette deep-link may arrive before settings.load() settles.
+      // Once a host request has selected a target, a later workspace restore
+      // must not overwrite it with the previously remembered workspace.
+      restoredWorkspace.current = true;
       const workspace = workspaceForScreen(request.screen);
       if (workspace) setActiveWorkspace(workspace);
       // Palette deep-links are transient and must not overwrite the user's

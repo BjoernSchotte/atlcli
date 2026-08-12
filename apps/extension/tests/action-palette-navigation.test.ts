@@ -10,6 +10,7 @@ import type { ActionPaletteSenderV1 } from "../utils/action-palette/context.js";
 import {
   ACTION_PALETTE_NAVIGATION_STORAGE_KEY,
   chromeSurfaceNavigationPort,
+  queueSurfaceNavigationV1,
 } from "../entrypoints/sidepanel/ports/surface-navigation.js";
 
 const chromeGlobal = globalThis as typeof globalThis & { chrome?: typeof chrome };
@@ -56,6 +57,36 @@ const exportRunner = async (): Promise<ActionResultV1> => ({
 });
 
 describe("action palette navigation", () => {
+  test("accepts either durable or live delivery and rejects only when both lanes fail", async () => {
+    const reports: string[] = [];
+    const live: unknown[] = [];
+    const durable = await queueSurfaceNavigationV1("activity", undefined, {
+      now: () => Date.parse("2026-08-11T12:00:00.000Z"),
+      randomId: () => "durable",
+      persist: async () => undefined,
+      deliver: async () => { throw new Error("no receiver"); },
+      reportError: (phase) => reports.push(phase),
+    });
+    expect(durable).toMatchObject({ navigationId: "durable", screen: "activity" });
+    expect(reports).toEqual(["deliver"]);
+
+    const delivered = await queueSurfaceNavigationV1("research", "turn-1", {
+      now: () => Date.parse("2026-08-11T12:00:00.000Z"),
+      randomId: () => "live",
+      persist: async () => { throw new Error("storage unavailable"); },
+      deliver: async (message) => { live.push(message); },
+      reportError: (phase) => reports.push(phase),
+    });
+    expect(delivered).toMatchObject({ navigationId: "live", screen: "research", continuationId: "turn-1" });
+    expect(live).toEqual([delivered]);
+    expect(reports).toEqual(["deliver", "persist"]);
+
+    await expect(queueSurfaceNavigationV1("export", undefined, {
+      persist: async () => { throw new Error("storage unavailable"); },
+      deliver: async () => { throw new Error("no receiver"); },
+    })).rejects.toThrow("could not be delivered");
+  });
+
   test("opens only explicit surface actions synchronously on the trusted top-frame gesture", () => {
     const order: string[] = [];
     const opened = openActionPaletteSidePanelForGestureV1(

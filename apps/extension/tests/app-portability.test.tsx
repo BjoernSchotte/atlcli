@@ -35,6 +35,7 @@ import type {
   HostCapability,
   PageContext,
   PdfExportPort,
+  SettingsStore,
   SurfaceNavigationRequestV1,
 } from "../utils/ports/index.js";
 import type { ResearchPort } from "../utils/research/contracts.js";
@@ -715,6 +716,45 @@ describe("the shell renders from the registry", () => {
     await act(async () => root?.unmount());
     root = null;
     expect(unsubscribed).toBe(1);
+  });
+
+  it("keeps a cold palette target when remembered workspace settings finish loading later", async () => {
+    let resolveSettings: ((settings: Awaited<ReturnType<SettingsStore["load"]>>) => void) | undefined;
+    const settings: SettingsStore = {
+      load: () => new Promise((resolve) => { resolveSettings = resolve; }),
+      save: async () => undefined,
+    };
+    const cold: SurfaceNavigationRequestV1 = {
+      id: "cold-activity-before-settings",
+      screen: "activity",
+      createdAt: "2026-08-11T12:00:00.000Z",
+      expiresAt: "2026-08-11T12:02:00.000Z",
+    };
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), {
+          settings,
+          surfaceNavigation: {
+            subscribe(listener) {
+              listener(cold);
+              return () => undefined;
+            },
+            async acknowledge() {
+              return true;
+            },
+          },
+        }, ["durable-jobs", "settings-persistence"])}
+      />,
+    );
+    expect(maybeFind("activity-screen")).not.toBeNull();
+
+    const { act } = await import("react");
+    await act(async () => {
+      resolveSettings?.({ locale: null, lastWorkspace: "ai", hideRovoEntrypoints: false });
+    });
+    await flush();
+    expect(maybeFind("activity-screen")).not.toBeNull();
+    expect(maybeFind("screen-research")).toBeNull();
   });
 
   it("disables a screen whose capability is missing and states the reason", async () => {

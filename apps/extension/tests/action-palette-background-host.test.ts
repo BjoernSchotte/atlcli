@@ -6,6 +6,7 @@ import {
   type ActionResultV1,
 } from "@atlcli/action-registry";
 import {
+  actionPaletteErrorSummaryV1,
   createActionPaletteBackgroundHostV1,
   createExtensionActionPaletteExecutorsV1,
   type ActionPaletteExecutorEntryV1,
@@ -41,7 +42,10 @@ function syntheticExecutor(
   };
 }
 
-function harness(executors: readonly ActionPaletteExecutorEntryV1[] = [syntheticExecutor()]) {
+function harness(
+  executors: readonly ActionPaletteExecutorEntryV1[] = [syntheticExecutor()],
+  reportExecutionError?: Parameters<typeof createActionPaletteBackgroundHostV1>[0]["reportExecutionError"],
+) {
   let now = Date.parse("2026-08-11T12:00:00.000Z");
   let tab: ActionPaletteTabV1 | undefined = { id: 4, url: sender.url };
   let revision = 0;
@@ -53,6 +57,7 @@ function harness(executors: readonly ActionPaletteExecutorEntryV1[] = [synthetic
     now: () => now,
     randomId: () => `revision:${++revision}`,
     leaseMs: 500,
+    ...(reportExecutionError ? { reportExecutionError } : {}),
   });
   const catalog = (requestId = "catalog:1", messageSender = sender) => host.handle({
     kind: "action-palette:catalog", requestId, locale: "en-US",
@@ -74,6 +79,16 @@ function revisionOf(response: Awaited<ReturnType<ReturnType<typeof harness>["cat
 }
 
 describe("authoritative action palette background host", () => {
+  test("redacts non-Error host rejections instead of serializing arbitrary values", () => {
+    expect(actionPaletteErrorSummaryV1(new DOMException("gesture expired", "NotAllowedError"))).toEqual({
+      errorName: "NotAllowedError",
+      errorMessage: "gesture expired",
+    });
+    expect(actionPaletteErrorSummaryV1({ pageBody: "private" })).toEqual({
+      errorName: "object",
+      errorMessage: "Non-Error rejection",
+    });
+  });
   test("keeps the production executor allowlist exhaustive and adapter-backed", () => {
     const exportRunner = async (): Promise<ActionResultV1> => ({
       status: "completed", messageKey: "atlcli.test.done",
@@ -209,6 +224,23 @@ describe("authoritative action palette background host", () => {
     const malformedResult = await h.execute(revision, "malformed-result");
     expect(malformedResult).toMatchObject({ kind: "action-palette:error", code: "execution-failed" });
     expect(JSON.stringify(malformedResult)).not.toContain("must-not-cross");
+  });
+
+  test("reports caught executor failures without adding details to the wire response", async () => {
+    const observed: Array<{ caught: unknown; requestId: string; actionId: string }> = [];
+    const failure = new Error("fixture details stay local");
+    const h = harness([syntheticExecutor(async () => { throw failure; })], (caught, request) => {
+      observed.push({ caught, ...request });
+    });
+    const result = await h.execute(revisionOf(await h.catalog()), "execute:reported");
+    expect(result).toMatchObject({
+      kind: "action-palette:error",
+      requestId: "execute:reported",
+      code: "execution-failed",
+      retryable: true,
+    });
+    expect(observed).toEqual([{ caught: failure, requestId: "execute:reported", actionId: syntheticId }]);
+    expect(JSON.stringify(result)).not.toContain(failure.message);
   });
 
   test("keeps detach non-cancelling and propagates explicit abort to an in-flight executor", async () => {

@@ -67,6 +67,10 @@ export interface ActionPaletteBackgroundDepsV1 {
     sender: ActionPaletteSenderV1,
     event: Extract<ActionPaletteResponseV1, { kind: "action-palette:stream-event" }>,
   ) => Promise<void>;
+  readonly reportExecutionError?: (
+    caught: unknown,
+    request: Pick<ActionExecutionRequestV1, "requestId" | "actionId">,
+  ) => void;
 }
 
 interface CatalogLeaseV1 {
@@ -80,6 +84,17 @@ export interface ActionPaletteBackgroundHostV1 {
   readonly capabilities: readonly string[];
   handle(message: unknown, sender: ActionPaletteSenderV1): Promise<ActionPaletteResponseV1>;
   leaseCount(): number;
+}
+
+/** Redacted host diagnostics: never serialize rejection objects or execution context. */
+export function actionPaletteErrorSummaryV1(caught: unknown): {
+  readonly errorName: string;
+  readonly errorMessage: string;
+} {
+  return {
+    errorName: caught instanceof Error ? caught.name : typeof caught,
+    errorMessage: caught instanceof Error ? caught.message : "Non-Error rejection",
+  };
 }
 
 export type QueueActionPaletteSurfaceV1 = (
@@ -333,6 +348,10 @@ export function createActionPaletteBackgroundHostV1(
       if (caught instanceof ActionPaletteContextError) {
         return error(request.requestId, caught.code, caught.code === "stale-context");
       }
+      deps.reportExecutionError?.(caught, {
+        requestId: executionRequest.requestId,
+        actionId: executionRequest.actionId,
+      });
       return error(request.requestId, "execution-failed", true);
     } finally {
       executions.delete(request.requestId);

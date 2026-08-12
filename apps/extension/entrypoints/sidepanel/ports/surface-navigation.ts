@@ -2,9 +2,63 @@ import type {
   SurfaceNavigationPort,
   SurfaceNavigationRequestV1,
 } from "../../../utils/ports/index.js";
-import type { ActionPaletteMessageV1 } from "../../../utils/action-palette/protocol.js";
+import type {
+  ActionPaletteMessageV1,
+  ActionPaletteResponseV1,
+} from "../../../utils/action-palette/protocol.js";
 
 export const ACTION_PALETTE_NAVIGATION_STORAGE_KEY = "actionPalette.navigation.v1";
+
+export interface QueueSurfaceNavigationDepsV1 {
+  readonly now?: () => number;
+  readonly randomId?: () => string;
+  readonly persist: (message: ActionPaletteNavigationMessageV1) => Promise<void>;
+  readonly deliver: (message: ActionPaletteNavigationMessageV1) => Promise<void>;
+  readonly reportError?: (phase: "persist" | "deliver", caught: unknown) => void;
+}
+
+export type ActionPaletteNavigationMessageV1 = Extract<
+  ActionPaletteResponseV1,
+  { kind: "action-palette:open-surface-request" }
+>;
+
+/**
+ * Queue a side-panel target through independent cold and live lanes. A
+ * transient storage failure must not discard a message that an already-mounted
+ * panel can receive, while a missing live receiver is safe once the mailbox is
+ * durable. Only losing both lanes rejects the action.
+ */
+export async function queueSurfaceNavigationV1(
+  screen: ActionPaletteNavigationMessageV1["screen"],
+  continuationId: string | undefined,
+  deps: QueueSurfaceNavigationDepsV1,
+): Promise<ActionPaletteNavigationMessageV1> {
+  const now = (deps.now ?? Date.now)();
+  const navigationId = (deps.randomId ?? (() => crypto.randomUUID()))();
+  const message: ActionPaletteNavigationMessageV1 = {
+    kind: "action-palette:open-surface-request",
+    requestId: `navigation:${navigationId}`,
+    navigationId,
+    screen,
+    ...(continuationId ? { continuationId } : {}),
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 120_000).toISOString(),
+  };
+  let persisted = false;
+  try {
+    await deps.persist(message);
+    persisted = true;
+  } catch (caught) {
+    deps.reportError?.("persist", caught);
+  }
+  try {
+    await deps.deliver(message);
+  } catch (caught) {
+    deps.reportError?.("deliver", caught);
+    if (!persisted) throw new Error("Action palette surface navigation could not be delivered.");
+  }
+  return message;
+}
 
 function isNavigationRequest(value: unknown): value is Extract<
   ActionPaletteMessageV1,
