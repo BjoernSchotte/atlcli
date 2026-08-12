@@ -44,6 +44,7 @@ jobs:
       version: ${{ steps.identity.outputs.version }}
       build_id: ${{ steps.identity.outputs.build_id }}
       created_at: ${{ steps.identity.outputs.created_at }}
+      release_attempt: ${{ steps.identity.outputs.release_attempt }}
       stable_latest: ${{ steps.identity.outputs.stable_latest }}
     steps:
       - uses: actions/checkout@v7
@@ -88,6 +89,7 @@ jobs:
             --run-number "$GITHUB_RUN_NUMBER" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" > dev-release-identity.json
           build_id="$(bun -e 'console.log((await Bun.file("dev-release-identity.json").json()).buildId)')"
+          release_attempt="$(bun -e 'console.log((await Bun.file("dev-release-identity.json").json()).runAttempt)')"
           stable_latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
           {
             echo "source_sha=$source_sha"
@@ -95,6 +97,7 @@ jobs:
             echo "version=$version"
             echo "build_id=$build_id"
             echo "created_at=$created_at"
+            echo "release_attempt=$release_attempt"
             echo "stable_latest=$stable_latest"
           } >> "$GITHUB_OUTPUT"
 
@@ -135,7 +138,7 @@ jobs:
             --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
             --created-at "${{ needs.resolve-source.outputs.created_at }}" \
             --run-number "$GITHUB_RUN_NUMBER" \
-            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --run-attempt "${{ needs.resolve-source.outputs.release_attempt }}" \
             --force-rebuild "${{ inputs.force_rebuild || false }}" \
             --out dev-publication-decision.json
 
@@ -218,6 +221,7 @@ jobs:
       version: ${{ needs.resolve-source.outputs.version }}
       build_id: ${{ needs.resolve-source.outputs.build_id }}
       created_at: ${{ needs.resolve-source.outputs.created_at }}
+      release_attempt: ${{ fromJSON(needs.resolve-source.outputs.release_attempt) }}
       security_attestation_artifact: security-attestation-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
       source_eligibility_artifact: source-eligibility-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
