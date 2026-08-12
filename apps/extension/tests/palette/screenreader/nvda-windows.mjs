@@ -170,8 +170,11 @@ async function runProductionLane(screenshotPaths) {
     const options = frame.getByRole("option");
     if (await options.count() !== 8) throw new Error("Expected eight production action options.");
     const groups = await frame.getByRole("group").allTextContents();
-    for (const expected of ["EXPORT", "AI", "NAVIGATION"]) {
-      if (!groups.some((value) => value.includes(expected))) throw new Error(`Missing ${expected} group.`);
+    console.log(`NVDA_PALETTE_GROUPS ${JSON.stringify(groups)}`);
+    for (const expected of ["export", "ai", "navigation"]) {
+      if (!groups.some((value) => value.toLocaleLowerCase("en-US").includes(expected))) {
+        throw new Error(`Missing ${expected} group.`);
+      }
     }
     await frame.getByTestId("palette-option-atlcli.export.pdf.current-page").getAttribute("aria-selected").then((value) => {
       if (value !== "true") throw new Error("PDF was not the active root option.");
