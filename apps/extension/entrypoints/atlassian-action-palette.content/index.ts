@@ -86,6 +86,23 @@ export function restoreFocusV1(snapshot: FocusSnapshotV1 | null): void {
 }
 
 /**
+ * Attach the frame load listener before either assigning its URL or appending
+ * it. A cached extension page may finish loading while `append()` is running;
+ * registering afterwards loses the one-shot transport handshake and leaves a
+ * permanently blank palette frame.
+ */
+export function appendActionPaletteFrameV1(
+  container: HTMLElement,
+  iframe: HTMLIFrameElement,
+  src: string,
+  onLoad: () => void,
+): void {
+  iframe.addEventListener("load", onLoad, { once: true });
+  iframe.src = src;
+  container.append(iframe);
+}
+
+/**
  * The eager content-script shell does no DOM work. It loads the React host only
  * after the service worker routes the configured extension command here.
  */
@@ -156,20 +173,23 @@ export default defineContentScript({
         onMount(container) {
           const iframe = document.createElement("iframe");
           iframe.title = "atlcli actions";
-          iframe.src = chrome.runtime.getURL("/action-palette.html");
           iframe.allow = "clipboard-write";
-          container.append(iframe);
           const channel = new MessageChannel();
           port = channel.port1;
           port.addEventListener("message", onPortMessage);
           port.start();
-          iframe.addEventListener("load", () => {
-            iframe.contentWindow?.postMessage(
-              { kind: "action-palette-frame:connect" },
-              chrome.runtime.getURL("/").slice(0, -1),
-              [channel.port2],
-            );
-          }, { once: true });
+          appendActionPaletteFrameV1(
+            container,
+            iframe,
+            chrome.runtime.getURL("/action-palette.html"),
+            () => {
+              iframe.contentWindow?.postMessage(
+                { kind: "action-palette-frame:connect" },
+                chrome.runtime.getURL("/").slice(0, -1),
+                [channel.port2],
+              );
+            },
+          );
           frame = iframe;
           return iframe;
         },

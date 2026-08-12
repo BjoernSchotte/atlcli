@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  appendActionPaletteFrameV1,
   captureFocusV1,
   isFrameMessageV1,
   isToggleMessageV1,
@@ -55,5 +56,28 @@ describe("action palette content-shell protocol", () => {
 
     expect(document.activeElement).toBe(editor);
     expect(window.getSelection()?.toString()).toBe("Editable");
+  });
+
+  test("registers the frame handshake before a cached append can complete", () => {
+    const container = document.createElement("div");
+    const iframe = document.createElement("iframe");
+    let handshakes = 0;
+    const append = container.append.bind(container);
+    container.append = (...nodes: (Node | string)[]): void => {
+      append(...nodes);
+      iframe.dispatchEvent(new Event("load"));
+    };
+
+    appendActionPaletteFrameV1(
+      container,
+      iframe,
+      "chrome-extension://fixture/action-palette.html",
+      () => { handshakes += 1; },
+    );
+    iframe.dispatchEvent(new Event("load"));
+
+    expect(container.firstElementChild).toBe(iframe);
+    expect(iframe.src).toBe("chrome-extension://fixture/action-palette.html");
+    expect(handshakes).toBe(1);
   });
 });
