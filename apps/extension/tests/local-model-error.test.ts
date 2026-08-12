@@ -21,4 +21,15 @@ describe("local Gemma host error classification", () => {
       message: "The research provider failed.",
     });
   });
+
+  it("keeps missing local runtime details generic", () => {
+    expect(classifyLocalGemmaHostErrorV1(undefined, true)).toEqual({
+      code: "provider-error",
+      message: "The research provider failed.",
+    });
+    expect(classifyLocalGemmaHostErrorV1(null, true)).toEqual({
+      code: "provider-error",
+      message: "The research provider failed.",
+    });
+  });
 });

@@ -91,6 +91,7 @@ export class CompleteToolCallStoppingCriteriaV1 extends StoppingCriteria {
     readonly maximumImplicitObjectSeparators = 0,
     readonly maximumTrailingStructuralClosers = 0,
     readonly bareStringEnumValues: ReadonlySet<string> = new Set(),
+    readonly allowTrailingCollectionCommas = false,
   ) {
     super();
     if (promptTokenCount < 1 || requiredToolName.length === 0) {
@@ -105,6 +106,7 @@ export class CompleteToolCallStoppingCriteriaV1 extends StoppingCriteria {
       this.maximumImplicitObjectSeparators,
       this.maximumTrailingStructuralClosers,
       this.bareStringEnumValues,
+      this.allowTrailingCollectionCommas,
     ));
   }
 }

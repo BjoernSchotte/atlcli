@@ -25,7 +25,13 @@ export function classifyLocalGemmaHostErrorV1(
     return classified;
   }
   const detail = redactResearchSecrets(value).trim();
-  if (!detail || detail === "[object Object]" || detail === GENERIC_PROVIDER_ERROR_V1) {
+  if (
+    !detail ||
+    detail === "undefined" ||
+    detail === "null" ||
+    detail === "[object Object]" ||
+    detail === GENERIC_PROVIDER_ERROR_V1
+  ) {
     return classified;
   }
   return {

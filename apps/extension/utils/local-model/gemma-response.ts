@@ -133,6 +133,7 @@ export function isCompleteGemmaToolCallV1(
   maximumImplicitObjectSeparators = 0,
   maximumTrailingStructuralClosers = 0,
   bareStringEnumValues: ReadonlySet<string> = new Set(),
+  allowTrailingCollectionCommas = false,
 ): boolean {
   const start = raw.lastIndexOf(TOOL_OPEN);
   if (start < 0) return false;
@@ -148,6 +149,7 @@ export function isCompleteGemmaToolCallV1(
       ),
       maximumTrailingStructuralClosers,
       bareStringEnumValues,
+      allowTrailingCollectionCommas,
     ).parse();
     return true;
   } catch {
@@ -196,6 +198,7 @@ class GemmaArgumentsParserV1 {
     readonly maximumImplicitObjectSeparators = 0,
     readonly maximumTrailingStructuralClosers = 0,
     readonly bareStringEnumValues: ReadonlySet<string> = new Set(),
+    readonly allowTrailingCollectionCommas = false,
   ) {}
 
   parse(): Record<string, unknown> {
@@ -324,7 +327,10 @@ class GemmaArgumentsParserV1 {
       if (!this.#take(":")) throw new Error("Gemma tool argument key is missing ':'.");
       object[key] = this.#value();
       if (this.#take("}")) return object;
-      if (this.#take(",")) continue;
+      if (this.#take(",")) {
+        if (this.allowTrailingCollectionCommas && this.#take("}")) return object;
+        continue;
+      }
       // Gemma 4 occasionally omits field separators in an otherwise complete
       // terminal answer object. Tolerate only this answer grammar, with a hard
       // ceiling above the maximum separators in the projected block schema.
@@ -350,6 +356,7 @@ class GemmaArgumentsParserV1 {
       array.push(this.#value());
       if (this.#take("]")) return array;
       if (!this.#take(",")) throw new Error("Gemma tool argument array is missing ','.");
+      if (this.allowTrailingCollectionCommas && this.#take("]")) return array;
     }
   }
 }
@@ -368,6 +375,7 @@ export function parseGemma4ResponseV1(input: {
   maximumImplicitObjectSeparators?: number;
   maximumTrailingStructuralClosers?: number;
   bareStringEnumValues?: ReadonlySet<string>;
+  allowTrailingCollectionCommas?: boolean;
 }): ParsedGemmaResponseV1 {
   let remaining = input.raw;
   let thought: string | undefined;
@@ -408,6 +416,7 @@ export function parseGemma4ResponseV1(input: {
         ),
         input.maximumTrailingStructuralClosers ?? 0,
         input.bareStringEnumValues,
+        input.allowTrailingCollectionCommas ?? false,
       ).parse(),
       allowedToolNames: input.allowedToolNames,
     });

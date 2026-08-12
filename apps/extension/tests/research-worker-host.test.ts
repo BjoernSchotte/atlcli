@@ -44,6 +44,16 @@ class FakeWorker {
   emitError(message: string): void {
     this.onerror?.({ message } as ErrorEvent);
   }
+
+  emitOpaqueError(filename = "chrome-extension://fixture/assets/research-agent.js"): void {
+    this.onerror?.({
+      error: undefined,
+      message: "",
+      filename,
+      lineno: 0,
+      colno: 0,
+    } as ErrorEvent);
+  }
 }
 
 const request = {
@@ -169,6 +179,34 @@ describe("dedicated research worker host", () => {
       code: "provider-error",
       message: "The research provider failed.",
     });
+  });
+
+  it("does not surface undefined when Chrome withholds local worker error details", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const channel = new MessageChannel();
+    const running = host.run({
+      runId: "chat-local-opaque-error",
+      sessionId: "chat-session:local-opaque-error",
+      turnId: "chat-turn:local-opaque-error",
+      apiKey: "",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      modelBinding: {
+        kind: "local-gemma",
+        modelId: "fixture/model",
+        port: channel.port1,
+      },
+    });
+
+    worker.emitOpaqueError();
+
+    await expect(running).rejects.toMatchObject({
+      code: "provider-error",
+      message: "Local Gemma browser host failed: Research worker failed without browser error details at chrome-extension://fixture/assets/research-agent.js:0:0.",
+    });
+    channel.port2.close();
   });
 
   it("retains a redacted local worker diagnostic across the message boundary", async () => {

@@ -40,6 +40,17 @@ interface ActiveRun {
   }>;
 }
 
+function workerErrorDetailV1(event: ErrorEvent): unknown {
+  if (event.error !== undefined && event.error !== null) return event.error;
+  if (typeof event.message === "string" && event.message.trim().length > 0) {
+    return event.message;
+  }
+  const location = typeof event.filename === "string" && event.filename.trim().length > 0
+    ? ` at ${event.filename}:${event.lineno || 0}:${event.colno || 0}`
+    : "";
+  return new Error(`Research worker failed without browser error details${location}.`);
+}
+
 interface ResearchAgentWorkerRunInput {
   runId: string;
   sessionId: string;
@@ -135,7 +146,7 @@ export class ResearchAgentWorkerHost {
       };
       worker.onerror = (event) => {
         const classified = classifyLocalGemmaHostErrorV1(
-          event.error ?? event.message,
+          workerErrorDetailV1(event),
           input.modelBinding !== undefined,
         );
         reject(new ResearchContractError(classified.code, classified.message));

@@ -331,6 +331,8 @@ async function generateV1(
       requiredToolProperties?.tasks !== undefined &&
       requiredToolProperties.code === undefined;
   const agenticProposalSeparators = agenticProposal ? 16 : 0;
+  const structuredChatPacket = typeof request.requiredToolName === "string" &&
+    /^Chat[A-Za-z0-9]+V[0-9]+$/u.test(request.requiredToolName);
   const completeRequiredToolCriterion = request.requiredToolName
     ? new CompleteToolCallStoppingCriteriaV1(
         inputTokens,
@@ -340,6 +342,7 @@ async function generateV1(
         agenticProposalSeparators,
         agenticProposal ? 2 : 0,
         bareStringEnumValues,
+        structuredChatPacket,
       )
     : undefined;
   if (cancelledRequests.has(request.requestId)) criterion.interrupt();
@@ -506,6 +509,7 @@ async function generateV1(
             agenticProposalSeparators,
             agenticProposal ? 2 : 0,
             bareStringEnumValues,
+            structuredChatPacket,
           )
         : undefined,
     });
@@ -520,6 +524,7 @@ async function generateV1(
         maximumImplicitObjectSeparators: agenticProposalSeparators,
         maximumTrailingStructuralClosers: agenticProposal ? 2 : 0,
         bareStringEnumValues,
+        allowTrailingCollectionCommas: structuredChatPacket,
       });
     } catch (error) {
       const parseErrorMessage = error instanceof Error ? error.message : String(error);

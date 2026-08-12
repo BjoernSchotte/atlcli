@@ -159,6 +159,38 @@ describe("pinned Gemma 4 response grammar", () => {
     })).toThrow("missing ','");
   });
 
+  it("accepts trailing collection commas only when a forced structured packet opts in", () => {
+    const raw = '<|tool_call>call:ChatEvidencePacketV1{sourceIds:[<|"|>wiki:1<|"|>,],claims:[{text:<|"|>Supported.<|"|>,sourceIds:[<|"|>wiki:1<|"|>],sourceRefs:[<|"|>wiki:1#section:one<|"|>],},],relationships:[],gaps:[],}';
+    expect(() => parseGemma4ResponseV1({
+      requestId: "strict-trailing-comma",
+      raw,
+      allowedToolNames: new Set(["ChatEvidencePacketV1"]),
+    })).toThrow("Invalid Gemma tool argument");
+    expect(parseGemma4ResponseV1({
+      requestId: "structured-trailing-comma",
+      raw,
+      allowedToolNames: new Set(["ChatEvidencePacketV1"]),
+      allowTrailingCollectionCommas: true,
+    }).toolCalls[0]?.arguments).toEqual({
+      sourceIds: ["wiki:1"],
+      claims: [{
+        text: "Supported.",
+        sourceIds: ["wiki:1"],
+        sourceRefs: ["wiki:1#section:one"],
+      }],
+      relationships: [],
+      gaps: [],
+    });
+    expect(isCompleteGemmaToolCallV1(
+      raw,
+      "ChatEvidencePacketV1",
+      0,
+      0,
+      new Set(),
+      true,
+    )).toBe(true);
+  });
+
   it("repairs omitted separators only when the agentic proposal projection opts in", () => {
     const raw = '<|tool_call>call:eval{tasks:[{taskId:<|"|>reader<|"|>profileId:<|"|>exact-context-reader<|"|>objective:<|"|>Read the bound page.<|"|>dependencyTaskIds:[]}]maxConcurrency:1}';
     expect(() => parseGemma4ResponseV1({
