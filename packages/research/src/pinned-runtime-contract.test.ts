@@ -80,6 +80,9 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
     expect(rootPackage.patchedDependencies?.["deepagents@1.12.1"]).toBe(
       "patches/deepagents@1.12.1.patch",
     );
+    expect(rootPackage.patchedDependencies?.["@langchain/quickjs@1.0.0"]).toBe(
+      "patches/@langchain%2Fquickjs@1.0.0.patch",
+    );
     expect(deepagentsPackage.version).toBe("1.12.1");
     expect(quickjsPackage.version).toBe("1.0.0");
     expect(lockfile).not.toContain("pkg.pr.new");
@@ -88,18 +91,30 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
     expect(lockfile).toContain(
       '"deepagents@1.12.1": "patches/deepagents@1.12.1.patch"',
     );
+    expect(lockfile).toContain(
+      '"@langchain/quickjs@1.0.0": "patches/@langchain%2Fquickjs@1.0.0.patch"',
+    );
     expect(lockfile).toContain('"@langchain/quickjs": ["@langchain/quickjs@1.0.0"');
     expect(lockfile).toContain(QUICKJS_INTEGRITY);
   });
 
   test("keeps the upstream browser config-forwarding fix pinned locally", async () => {
-    const patch = await Bun.file(
+    const deepagentsPatch = await Bun.file(
       new URL("../../../patches/deepagents@1.12.1.patch", import.meta.url),
     ).text();
+    const quickjsPatch = await Bun.file(
+      new URL(
+        "../../../patches/@langchain%252Fquickjs@1.0.0.patch",
+        import.meta.url,
+      ),
+    ).text();
 
-    expect(patch).toContain("getCurrentTaskInput(config)");
-    expect(patch).toContain("getCurrentTaskInput)(config)");
-    expect(patch).not.toContain("pkg.pr.new");
+    expect(deepagentsPatch).toContain("getCurrentTaskInput(config)");
+    expect(deepagentsPatch).toContain("getCurrentTaskInput)(config)");
+    expect(quickjsPatch).toContain("setToolConfig(config)");
+    expect(quickjsPatch).toContain("t.invoke(rawInput, this.toolConfig)");
+    expect(deepagentsPatch).not.toContain("pkg.pr.new");
+    expect(quickjsPatch).not.toContain("pkg.pr.new");
   });
 
   test("keeps the Node and browser entry points on the same typed runtime surface", () => {

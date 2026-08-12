@@ -480,6 +480,7 @@
   "patchedDependencies": {
     "deepagents@1.12.1": "patches/deepagents@1.12.1.patch",
     "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch",
+    "@langchain/quickjs@1.0.0": "patches/@langchain%2Fquickjs@1.0.0.patch",
   },
   "overrides": {
     "deepagents": "1.12.1",
