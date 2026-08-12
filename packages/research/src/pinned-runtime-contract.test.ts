@@ -64,7 +64,10 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
     ).json()) as { dependencies?: Record<string, string> };
     const rootPackage = (await Bun.file(
       new URL("../../../package.json", import.meta.url),
-    ).json()) as { overrides?: Record<string, string> };
+    ).json()) as {
+      overrides?: Record<string, string>;
+      patchedDependencies?: Record<string, string>;
+    };
     const lockfile = await Bun.file(
       new URL("../../../bun.lock", import.meta.url),
     ).text();
@@ -74,13 +77,29 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
     expect(researchPackage.dependencies?.deepagents).toBe("1.12.1");
     expect(researchPackage.dependencies?.["@langchain/quickjs"]).toBe("1.0.0");
     expect(rootPackage.overrides?.deepagents).toBe("1.12.1");
+    expect(rootPackage.patchedDependencies?.["deepagents@1.12.1"]).toBe(
+      "patches/deepagents@1.12.1.patch",
+    );
     expect(deepagentsPackage.version).toBe("1.12.1");
     expect(quickjsPackage.version).toBe("1.0.0");
     expect(lockfile).not.toContain("pkg.pr.new");
     expect(lockfile).toContain('"deepagents": ["deepagents@1.12.1"');
     expect(lockfile).toContain(DEEPAGENTS_INTEGRITY);
+    expect(lockfile).toContain(
+      '"deepagents@1.12.1": "patches/deepagents@1.12.1.patch"',
+    );
     expect(lockfile).toContain('"@langchain/quickjs": ["@langchain/quickjs@1.0.0"');
     expect(lockfile).toContain(QUICKJS_INTEGRITY);
+  });
+
+  test("keeps the upstream browser config-forwarding fix pinned locally", async () => {
+    const patch = await Bun.file(
+      new URL("../../../patches/deepagents@1.12.1.patch", import.meta.url),
+    ).text();
+
+    expect(patch).toContain("getCurrentTaskInput(config)");
+    expect(patch).toContain("getCurrentTaskInput)(config)");
+    expect(patch).not.toContain("pkg.pr.new");
   });
 
   test("keeps the Node and browser entry points on the same typed runtime surface", () => {

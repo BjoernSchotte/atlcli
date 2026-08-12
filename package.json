@@ -97,7 +97,8 @@
     "typescript": "^5.9.3"
   },
   "patchedDependencies": {
-    "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch"
+    "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch",
+    "deepagents@1.12.1": "patches/deepagents@1.12.1.patch"
   },
   "overrides": {
     "deepagents": "1.12.1"

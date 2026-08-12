@@ -478,6 +478,7 @@
     },
   },
   "patchedDependencies": {
+    "deepagents@1.12.1": "patches/deepagents@1.12.1.patch",
     "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch",
   },
   "overrides": {
