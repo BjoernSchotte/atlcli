@@ -368,15 +368,17 @@ export function planTestLanes(
       bin.safe,
     );
     if (safe) groups.push(safe);
-    const serial = executionGroup(
-      `${job}-serial`,
-      job,
-      "general",
-      "serial",
-      1,
-      bin.serial,
-    );
-    if (serial) groups.push(serial);
+    for (const [serialIndex, unit] of bin.serial.entries()) {
+      const serial = executionGroup(
+        `${job}-serial-${serialIndex + 1}`,
+        job,
+        "general",
+        "serial",
+        1,
+        [unit],
+      );
+      if (serial) groups.push(serial);
+    }
   }
 
   for (const lane of ["package-contract", "pdf-typst"] as const) {

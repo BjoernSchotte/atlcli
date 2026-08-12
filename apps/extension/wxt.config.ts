@@ -40,6 +40,15 @@ export default defineConfig({
     // supplied explicitly in both viewer and worker realms.
     minimum_chrome_version: "140",
     permissions: ["sidePanel", "offscreen", "storage", "tabs"],
+    commands: {
+      "action-palette": {
+        suggested_key: {
+          default: "Ctrl+Shift+K",
+          mac: "Command+Shift+K",
+        },
+        description: "Open the Atlassian action palette",
+      },
+    },
     // The toolbar button. Required by the `setPanelBehavior({
     // openPanelOnActionClick: true })` call the service worker already makes,
     // and by `chrome.action.setBadgeText` — the ONLY notification channel spec
@@ -56,6 +65,10 @@ export default defineConfig({
       "https://api.media.atlassian.com/*",
       "https://api.anthropic.com/*",
     ],
+    web_accessible_resources: [{
+      resources: ["action-palette.html"],
+      matches: ["https://*.atlassian.net/*"],
+    }],
     // WASM in extension pages requires 'wasm-unsafe-eval' (Chrome >= 103).
     // Deliberately NOT 'unsafe-eval' — asserted by the Task 2 test.
     content_security_policy: {

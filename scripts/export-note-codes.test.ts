@@ -99,6 +99,10 @@ const NON_EXPORT_NOTE_CODES = new Set([
   "wrong-source",
   // Zod refinement issues emitted while validating HITL question proposals.
   "custom",
+  // ActionUnavailableReasonCodeV1 is a separate palette availability
+  // taxonomy. Its helper has the generic `{ code, message }` shape that this
+  // intentionally syntax-only ExportNote scanner also recognizes.
+  "missing-capability",
 ]);
 
 const NON_EXPORT_NOTE_PREFIXES = new Set([

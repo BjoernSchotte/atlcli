@@ -36,6 +36,8 @@ export interface ScreenProps {
   retry: () => void;
   /** Move to another registered screen. */
   navigate: (id: string) => void;
+  /** Opaque, host-validated continuation selected by transient navigation. */
+  continuationId?: string;
 }
 
 /**

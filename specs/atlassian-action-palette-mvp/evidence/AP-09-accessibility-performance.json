@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-12",
+  "sourceCommit": "a10403f172abbf2e06f466e3494608e53b180f8c",
+  "environment": {
+    "os": "macOS 26.4 25E246 arm64",
+    "chrome": "151.0.7922.137",
+    "playwright": "1.55.0",
+    "wxt": "0.20.27"
+  },
+  "fixture": {
+    "kind": "controlled-synthetic-atlassian-page",
+    "tenantData": false,
+    "documentData": false
+  },
+  "productionOutput": {
+    "manifestSha256": "9ad7e7092ee258002b733d8f4e47061d5adbf29d84087ad228184f791721af25",
+    "backgroundSha256": "c930f40951b77187fe19602a98512f9bdf8dbc148c018b34ee90de9e428d9d8b",
+    "contentScriptSha256": "905fa85b9e7f5b3234630b11c776815cb4bb18a5fd965bf554f713016fd1881d",
+    "contentCssSha256": "83162aa7fb37704c479f9ced535fb55783d78d7bd3c255368f46f581e2c96867"
+  },
+  "axe": {
+    "standardTags": ["wcag2a", "wcag2aa"],
+    "states": ["root", "empty", "action-panel", "input", "loading", "bounded-error", "capability-missing"],
+    "paletteViolations": 0,
+    "seriousOrCriticalPageViolations": 0
+  },
+  "hostGeometry": {
+    "viewportCssPx": { "width": 1440, "height": 1000 },
+    "iframeCssPx": { "x": 0, "y": 0, "width": 1440, "height": 1000 },
+    "regressionBeforeFixCssPx": { "x": 8, "y": 8, "width": 1424, "height": 150 }
+  },
+  "matrix": [
+    {
+      "name": "default",
+      "dialogLabel": "atlcli-Aktionen",
+      "resultCount": 8,
+      "focusedRole": "combobox",
+      "activeOption": "Export current page as PDF",
+      "forcedColors": false,
+      "reducedMotion": false,
+      "frameAnimationDuration": "0.18s",
+      "targetCount": 11,
+      "minimumTargetCssPx": { "width": 48, "height": 44 },
+      "screenshot": {
+        "file": "ap09-palette-default.png",
+        "sha256": "741bea1b5b2d0b111cdee49a83832bd5fa3cf94fbc51282c39beda0de7c13f54"
+      }
+    },
+    {
+      "name": "zoom-150",
+      "dialogLabel": "atlcli-Aktionen",
+      "resultCount": 8,
+      "focusedRole": "combobox",
+      "activeOption": "Export current page as PDF",
+      "forcedColors": false,
+      "reducedMotion": false,
+      "frameAnimationDuration": "0.18s",
+      "targetCount": 11,
+      "minimumTargetCssPx": { "width": 48, "height": 44 },
+      "screenshot": {
+        "file": "ap09-palette-zoom-150.png",
+        "sha256": "4b30de69c40b0ba31b6ebc2259ef386422992cc64e263d7e6c0a697046a6304e"
+      }
+    },
+    {
+      "name": "forced-colors",
+      "dialogLabel": "atlcli-Aktionen",
+      "resultCount": 8,
+      "focusedRole": "combobox",
+      "activeOption": "Export current page as PDF",
+      "forcedColors": true,
+      "reducedMotion": false,
+      "frameAnimationDuration": "0.18s",
+      "targetCount": 11,
+      "minimumTargetCssPx": { "width": 48, "height": 44 },
+      "screenshot": {
+        "file": "ap09-palette-forced-colors.png",
+        "sha256": "45752980c3c7c1bdfe79f53e707f879d76e53d0a81ae7eb6b65fca9d3ef030f9"
+      }
+    },
+    {
+      "name": "reduced-motion",
+      "dialogLabel": "atlcli-Aktionen",
+      "resultCount": 8,
+      "focusedRole": "combobox",
+      "activeOption": "Export current page as PDF",
+      "forcedColors": false,
+      "reducedMotion": true,
+      "frameAnimationDuration": "0.00001s",
+      "targetCount": 11,
+      "minimumTargetCssPx": { "width": 48, "height": 44 },
+      "screenshot": {
+        "file": "ap09-palette-reduced-motion.png",
+        "sha256": "5341b059248ee1e92c16ccb48b71a59ca67061500b477266f4cb811d8d5db18b"
+      }
+    }
+  ],
+  "performance": {
+    "sampleCountAfterWarmup": 30,
+    "coldP95Ms": 113.48308300000281,
+    "warmP95Ms": 13.274625000001834,
+    "maxLongTaskMs": 0,
+    "searchRequests": 0,
+    "eagerGzipBytes": 6773,
+    "lazyGzipBytes": 81851,
+    "budgets": {
+      "coldP95Ms": 200,
+      "warmP95Ms": 100,
+      "maxLongTaskMsExclusive": 50,
+      "searchRequests": 0,
+      "eagerGzipBytes": 30720,
+      "lazyGzipBytes": 184320
+    }
+  },
+  "finalLifecycleReproof": {
+    "capturedAt": "2026-08-12",
+    "sourceCommit": "028790b7d5e9c18cfbe431f9b24d0e25d80fc35e",
+    "productionOutput": {
+      "manifestSha256": "9ad7e7092ee258002b733d8f4e47061d5adbf29d84087ad228184f791721af25",
+      "backgroundSha256": "d5dca5faabb259ea6420e8f4bc4d18a53ca65c59425f8b9c9294b94fbb54128e",
+      "contentScriptSha256": "00944a2f6a349dcab559c847a2c484b206c5c793816e5f404cc645741bd59548",
+      "contentCssSha256": "83162aa7fb37704c479f9ced535fb55783d78d7bd3c255368f46f581e2c96867"
+    },
+    "packedBrowserCases": {
+      "passed": 7,
+      "failed": 0
+    },
+    "performance": {
+      "warmupCount": 5,
+      "sampleCountAfterWarmup": 30,
+      "coldMs": [
+        62.1390420000007,
+        61.410125000000335,
+        66.22679100000096,
+        59.87841599999956,
+        61.767416999999114,
+        62.55016700000124,
+        67.1961250000004,
+        61.47225000000071,
+        59.86070800000016,
+        64.59699999999975,
+        64.18720800000119,
+        60.224333000000115,
+        67.64524999999958,
+        62.95899999999892,
+        61.8432499999999,
+        62.426124999999956,
+        62.75916700000016,
+        65.42733300000145,
+        62.480915999998615,
+        64.38370799999939,
+        64.72404099999949,
+        62.689791000000696,
+        63.816375000000335,
+        61.44379200000003,
+        61.17400000000089,
+        62.7817500000001,
+        61.89350000000013,
+        60.36133300000074,
+        59.84349999999904,
+        61.83295899999939
+      ],
+      "warmMs": [
+        9.311541000002762,
+        10.226833999997325,
+        9.809207999998762,
+        9.094792000003508,
+        10.976834000000963,
+        9.136666999998852,
+        9.462915999996767,
+        10.081458000000566,
+        9.492333000001963,
+        9.402792000000773,
+        8.442416000001685,
+        8.901207999999315,
+        8.904625000002852,
+        9.871791000001394,
+        8.406874999996944,
+        9.450417000000016,
+        8.634167000000161,
+        11.452584000002389,
+        9.827499999999418,
+        10.56341600000087,
+        8.488000000001193,
+        9.674958999999944,
+        8.494916999999987,
+        9.946332999999868,
+        9.40495799999917,
+        10.378375000000233,
+        9.188207999999577,
+        10.088332999999693,
+        10.031707999998616,
+        9.682333000000654
+      ],
+      "summary": {
+        "coldP95Ms": 67.1961250000004,
+        "warmP95Ms": 10.976834000000963,
+        "maxLongTaskMs": 0,
+        "searchRequests": 0,
+        "eagerGzipBytes": 6834,
+        "lazyGzipBytes": 81850
+      },
+      "budgets": {
+        "coldP95Ms": 200,
+        "warmP95Ms": 100,
+        "maxLongTaskMsExclusive": 50,
+        "searchRequests": 0,
+        "eagerGzipBytes": 30720,
+        "lazyGzipBytes": 184320
+      }
+    }
+  },
+  "screenshots": {
+    "committed": false,
+    "storage": "outside-repository-visualization-directory"
+  }
+}

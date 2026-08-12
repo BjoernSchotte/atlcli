@@ -51,7 +51,11 @@ export function executionPhases(groups: readonly TestExecutionGroup[]): TestExec
   if (groups.length === 0) throw new Error("logical test job has no execution groups");
   const jobs = new Set(groups.map((group) => group.job));
   if (jobs.size !== 1) throw new Error("execution groups must share one logical job");
-  if (groups.every((group) => group.workers === 1)) {
+  const requiresFreshProcess = groups.some(
+    (group) =>
+      group.atomicGroups.length > 0 || group.requirements.includes("stateful"),
+  );
+  if (groups.every((group) => group.workers === 1) && !requiresFreshProcess) {
     return [
       {
         id: groups[0]!.job,

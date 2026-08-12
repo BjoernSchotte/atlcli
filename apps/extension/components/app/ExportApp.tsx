@@ -136,10 +136,31 @@ function AppBody({
     return definition.workspace ?? "publishing";
   }, [screens]);
   const [requestedScreenId, setRequestedScreenId] = useState(initialScreen);
+  const [continuationId, setContinuationId] = useState<string | undefined>();
   const [activeWorkspace, setActiveWorkspace] = useState<AppWorkspace>(
     () => workspaceForScreen(initialScreen) ?? "ai",
   );
   const restoredWorkspace = useRef(false);
+
+  useEffect(() => {
+    if (!ports.surfaceNavigation) return;
+    return ports.surfaceNavigation.subscribe((request) => {
+      // A cold palette deep-link may arrive before settings.load() settles.
+      // Once a host request has selected a target, a later workspace restore
+      // must not overwrite it with the previously remembered workspace.
+      restoredWorkspace.current = true;
+      const workspace = workspaceForScreen(request.screen);
+      if (workspace) setActiveWorkspace(workspace);
+      // Palette deep-links are transient and must not overwrite the user's
+      // remembered workspace preference.
+      setRequestedScreenId(request.screen);
+      setContinuationId(request.continuationId);
+      void ports.surfaceNavigation?.acknowledge(request.id).catch(() => {
+        // The request is already applied; a missed acknowledgement only leaves
+        // the short-lived mailbox for the next mount to expire/deduplicate.
+      });
+    });
+  }, [ports.surfaceNavigation, workspaceForScreen]);
 
   const resolved = useMemo(
     () =>
@@ -169,12 +190,14 @@ function AppBody({
   }, [resolved]);
 
   const navigateWorkspace = useCallback((workspace: AppWorkspace): void => {
+    setContinuationId(undefined);
     setActiveWorkspace(workspace);
     setRequestedScreenId(firstScreenInWorkspace(workspace));
     void updateSettings({ lastWorkspace: workspace });
   }, [firstScreenInWorkspace, updateSettings]);
 
   const navigateScreen = useCallback((screenId: string): void => {
+    setContinuationId(undefined);
     const workspace = workspaceForScreen(screenId);
     if (workspace) {
       setActiveWorkspace(workspace);
@@ -196,6 +219,7 @@ function AppBody({
     page: state,
     retry,
     navigate: navigateScreen,
+    ...(continuationId ? { continuationId } : {}),
   };
 
   return (

@@ -17,6 +17,7 @@ contracts.
 - [Use ordinary chat from the CLI](#use-ordinary-chat-from-the-cli)
 - [Run from the CLI](#run-from-the-cli)
 - [Run from the browser extension](#run-from-the-browser-extension)
+- [Ask from the action palette](#ask-from-the-action-palette)
 - [Options](#options)
 - [Output and session workspace](#output-and-session-workspace)
 - [Shared workflow core](#shared-workflow-core)
@@ -114,6 +115,28 @@ uses that product's configured profile default as an approved seed.
 6. Follow **Live activity** for current phases, subagents, read-only tool calls,
    bounded result counts, stop reasons, durations, and validation decisions.
 7. Review the formatted report or raw Markdown, then copy or download it.
+
+## Ask from the action palette
+
+Use **Ask AI about this page** for one bounded ordinary-Chat turn without first
+opening the side panel:
+
+1. Open the [action palette](/reference/action-palette/) on a Confluence page or
+   Jira issue and select **Ask AI about this page**.
+2. Enter a 3–2,000 character question.
+3. Confirm the per-invocation disclosure that the current Atlassian context is
+   sent to the configured provider.
+4. Select **Ask AI**. No provider request occurs before this explicit submit.
+5. Review the bounded streamed result, cancel/detach if needed, or continue the
+   same conversation in **Research**.
+
+The background host re-derives and revalidates the current tab, entity, scope,
+provider, and credential. If the page changes before execution, the request
+fails closed. The palette does not persist the prompt, provider response, page
+body, or credential in its catalog, diagnostics, or action receipt.
+
+This Quick AI path is available only in the browser extension. The Forge
+action palette has no AI capability in this release.
 
 ## Options
 
@@ -219,6 +242,8 @@ stderr; remove it when it is no longer needed.
 ## Related topics
 
 - [CLI Commands](cli-commands.md)
+- [Atlassian action palette](/reference/action-palette/) — bounded Quick AI,
+  shortcuts, and host differences
 - [Authentication](../authentication.md)
 - [Configuration](../configuration.md)
 - [Environment Variables](environment.md)

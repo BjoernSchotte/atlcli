@@ -101,6 +101,51 @@ describe("built manifest.json", () => {
     }
   });
 
+  it("registers one top-frame isolated action-palette content script for Atlassian Cloud", () => {
+    const scripts: unknown = manifest.content_scripts;
+    expect(Array.isArray(scripts)).toBe(true);
+    const palette = (scripts as Array<Record<string, unknown>>).find(
+      (entry) =>
+        Array.isArray(entry.matches) &&
+        entry.matches.includes("https://*.atlassian.net/*")
+    );
+    expect(palette).toBeDefined();
+    expect(palette?.matches).toEqual(["https://*.atlassian.net/*"]);
+    expect(palette?.run_at).toBe("document_start");
+    expect(palette?.world).toBe("ISOLATED");
+    expect(palette?.all_frames ?? false).toBe(false);
+
+    const files = palette?.js;
+    expect(Array.isArray(files)).toBe(true);
+    expect((files as string[]).length).toBeGreaterThan(0);
+    for (const file of files as string[]) {
+      expect(existsSync(join(OUTPUT_DIR, file))).toBe(true);
+    }
+  });
+
+  it("declares the approved action-palette command without widening permissions", () => {
+    expect(manifest.commands).toEqual({
+      "action-palette": {
+        suggested_key: {
+          default: "Ctrl+Shift+K",
+          mac: "Command+Shift+K",
+        },
+        description: "Open the Atlassian action palette",
+      },
+    });
+  });
+
+  it("exposes only the lazy palette frame to Atlassian pages", () => {
+    const resources = manifest.web_accessible_resources as Array<Record<string, unknown>>;
+    const palette = resources.find((entry) =>
+      Array.isArray(entry.resources) && entry.resources.includes("action-palette.html")
+    );
+    expect(palette).toEqual({
+      resources: ["action-palette.html"],
+      matches: ["https://*.atlassian.net/*"],
+    });
+  });
+
   it("sets the exact normative CSP — no extra sources", () => {
     const csp: unknown = manifest.content_security_policy.extension_pages;
     expect(csp).toBe(NORMATIVE_CSP);

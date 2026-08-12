@@ -20,6 +20,8 @@ export interface SubmitExtensionDocxExportDeps
   extends CreateExtensionDocxJobRequestOptions {
   catalog: Pick<IndexedDbExportJobCatalog, "create" | "get" | "compareAndSet">;
   bytes: Pick<IndexedDbExportByteStore, "put" | "cleanupJob">;
+  /** Palette views detach after durability; Publishing keeps its cancellable default. */
+  postPersistAbortPolicy?: "cancel" | "detach";
   wake(jobIds: string[]): Promise<{ claimedJobId?: string; error?: string }>;
 }
 
@@ -61,7 +63,7 @@ export async function submitExtensionDocxExport(
     await deps.bytes.cleanupJob(requestId).catch(() => undefined);
     throw error;
   }
-  if (input.signal?.aborted) {
+  if (input.signal?.aborted && deps.postPersistAbortPolicy !== "detach") {
     const current = await deps.catalog.get(snapshot.id);
     if (current && (current.state === "queued" || current.state === "waiting")) {
       await deps.catalog.compareAndSet({

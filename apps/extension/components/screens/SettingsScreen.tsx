@@ -11,6 +11,7 @@ import type { ScreenProps } from "../../utils/screens/registry.js";
 import { useI18n } from "../../utils/i18n/context.js";
 import { isLocale, LOCALES } from "../../utils/i18n/messages.js";
 import { hasCapability } from "../../utils/ports/host.js";
+import type { ShortcutAssignmentV1 } from "../../utils/ports/action-palette.js";
 import { useAppSettings } from "../app/settings-context.js";
 import { Alert } from "../ui/alert.js";
 import { Card, CardContent } from "../ui/card.js";
@@ -40,6 +41,21 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
   const [hasApiKey, setHasApiKey] = useState(false);
   const [rememberApiKey, setRememberApiKey] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [shortcut, setShortcut] = useState<ShortcutAssignmentV1 | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!ports.shortcut) {
+      setShortcut(null);
+      return () => { cancelled = true; };
+    }
+    void ports.shortcut.getAssignment()
+      .then((assignment) => { if (!cancelled) setShortcut(assignment); })
+      .catch(() => {
+        if (!cancelled) setShortcut({ commandId: "action-palette", status: "unbound", value: null });
+      });
+    return () => { cancelled = true; };
+  }, [ports.shortcut]);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,6 +151,41 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
           <FieldHelp>{t("settings.language.help")}</FieldHelp>
         </CardContent>
       </Card>
+
+      {ports.shortcut && (
+        <Card data-testid="settings-shortcut">
+          <CardContent className="flex flex-col gap-1.5 p-3">
+            <p className="m-0 text-sm font-medium">{t("settings.shortcut.title")}</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="m-0 text-xs text-muted-foreground">
+                {shortcut?.status === "assigned"
+                  ? t("settings.shortcut.assigned")
+                  : t("settings.shortcut.unbound")}
+              </p>
+              <kbd
+                className="rounded border border-border bg-muted px-2 py-1 text-xs font-semibold"
+                data-testid="settings-shortcut-value"
+              >
+                {shortcut?.value ?? t("settings.shortcut.none")}
+              </kbd>
+            </div>
+            <FieldHelp>{t("settings.shortcut.help")}</FieldHelp>
+            <div>
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid="settings-shortcut-open"
+                onClick={() => {
+                  setFailed(false);
+                  void ports.shortcut?.openSettings().catch(() => setFailed(true));
+                }}
+              >
+                {t("settings.shortcut.open")}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card data-testid="settings-ai">
         <CardContent className="flex flex-col gap-1.5 p-3">

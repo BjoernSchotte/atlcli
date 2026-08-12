@@ -3,12 +3,18 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
     "types": ["bun-types"],
     "customConditions": ["development"]
   },
-  "include": ["apps/**/src/**/*.ts", "packages/**/src/**/*.ts", "scripts/**/*.ts"],
+  "include": [
+    "apps/**/src/**/*.ts",
+    "packages/**/src/**/*.ts",
+    "packages/**/src/**/*.tsx",
+    "scripts/**/*.ts"
+  ],
   "exclude": [
     "src",
     "astro.config.mjs",

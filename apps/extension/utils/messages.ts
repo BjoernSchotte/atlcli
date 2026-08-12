@@ -53,6 +53,7 @@ import {
   isChatPresentationStreamEventV1,
   isResearchOneShotEventV1,
 } from "./research/events.js";
+import type { ActionPaletteMessageV1 } from "./action-palette/protocol.js";
 
 /**
  * Detection payload shared by the SW push (`entity-changed`) and the
@@ -787,7 +788,8 @@ export type ExtMessage =
   | ResearchEventMessage
   | ChatPresentationMessage
   | OffscreenRequest
-  | OffscreenResponse;
+  | OffscreenResponse
+  | ActionPaletteMessageV1;
 
 /** Discriminant literal type for requests. */
 export type ExtRequestKind = ExtRequest["kind"];

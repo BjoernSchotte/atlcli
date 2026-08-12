@@ -14,6 +14,7 @@ which the CLI does not expose yet.
 
 - [Prerequisites](#prerequisites)
 - [Export a single page](#export-a-single-page)
+- [Export from the action palette](#export-from-the-action-palette)
 - [Choosing what to export](#choosing-what-to-export)
 - [Label filters](#label-filters)
 - [Dynamic macros](#dynamic-macros)
@@ -55,6 +56,27 @@ Validating PDF → Downloading*. When it finishes, a report line summarises imag
 and diagrams and breaks the time down into prepare / compile / download, so an
 image-heavy page is distinguishable from a slow compile without turning on debug
 logging.
+
+## Export from the action palette
+
+For the current published Confluence page, the palette is the shortest path to
+the same durable export queue:
+
+1. Invoke the configured palette shortcut on the page.
+2. Search for `pdf` or `docx` and press `Enter` on the selected action.
+3. Close the palette if you want; submission and progress remain in
+   **Activity**.
+4. Open **Activity** from the palette or side panel to inspect and download the
+   artifact.
+
+PDF uses the current saved publishing preferences. DOCX queues only when a
+valid template resolves; otherwise the result opens **Publishing** so you can
+choose or upload one. Use the full panel for tree/space scope, label filters,
+document settings, template management, and preview. Jira shows these
+Confluence-only actions as unavailable with a reason.
+
+See [Atlassian action palette](/reference/action-palette/) for shortcut
+remapping, Forge modal delegation, and the full host capability matrix.
 
 ## Choosing what to export
 
@@ -355,7 +377,9 @@ atlcli wiki export <pageId> --format pdf --scope tree \
 ## Related topics
 
 - [Browser extension](/extension/) — install, limits, and what leaves your
-  browser (nothing)
+  browser
+- [Atlassian action palette](/reference/action-palette/) — queue an export from
+  the current page without opening the full panel
 - [DOCX and PDF Export](/confluence/export/) — the same engines from the CLI
 - [Export template library](/confluence/export-templates/)
 - [Macro compatibility](/confluence/macro-compatibility/)
