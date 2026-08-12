@@ -100,13 +100,15 @@ import {
   type ChatRepairSkippedReasonV1,
 } from "./quality.js";
 
-const LOCAL_GEMMA_SUBAGENT_MIN_DURATION_MS_V1 = 180_000;
+const LOCAL_GEMMA_SUBAGENT_MIN_DURATION_MS_V1 = 360_000;
 
 /**
  * Local browser inference has a substantial WebGPU prefill phase that is not
  * represented by a remote provider's first-token latency. Keep the canonical
  * profile deadline for every other provider, while giving local Gemma enough
- * wall-clock time to finish the exact same admitted task contract.
+ * wall-clock time to finish the exact same admitted task contract. The bound
+ * remains below the ten-minute turn deadline and is a timeout corridor, not a
+ * token, cost, or work budget.
  */
 export function chatSubagentDispatchDurationV1(
   effectiveModelId: string,

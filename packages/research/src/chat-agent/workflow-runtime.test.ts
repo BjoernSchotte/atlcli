@@ -54,8 +54,9 @@ import {
 } from "./workflow-runtime.js";
 
 test("extends only local Gemma subagent wall-clock corridors", () => {
-  expect(chatSubagentDispatchDurationV1("fixture/local-gemma", 75_000)).toBe(180_000);
-  expect(chatSubagentDispatchDurationV1("fixture/local-gemma", 240_000)).toBe(240_000);
+  expect(chatSubagentDispatchDurationV1("fixture/local-gemma", 75_000)).toBe(360_000);
+  expect(chatSubagentDispatchDurationV1("fixture/local-gemma", 240_000)).toBe(360_000);
+  expect(chatSubagentDispatchDurationV1("fixture/local-gemma", 480_000)).toBe(480_000);
   expect(chatSubagentDispatchDurationV1("claude-sonnet-4-5", 75_000)).toBe(75_000);
 });
 
