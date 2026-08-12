@@ -4,6 +4,7 @@ import {
   FILELINK_SMOKE_ENV,
   KNOWN_FILELINK_EEXIST_BUN_VERSION,
   installFilelinkWithKnownRetry,
+  isKnownTransientFilelinkInstallFailure,
   knownFilelinkEexistPackage,
   runFilelinkSmoke,
   type InstallResult,
@@ -141,6 +142,73 @@ describe("known Bun file-link EEXIST retry", () => {
       ).toThrow();
       expect(installs).toBe(1);
     }
+  });
+});
+
+describe("pinned Typst release transport retry", () => {
+  const typstUrl =
+    "https://github.com/BjoernSchotte/typst.ts/releases/download/" +
+    "web-compiler-v0.8.0-rc3.typst0151.1/" +
+    "myriaddreamin-typst-ts-web-compiler-0.8.0-rc3.typst0151.1.tgz";
+  const transientFailure = (status = 503): InstallResult => ({
+    exitCode: 1,
+    stdout: "bun install v1.3.14\nResolving dependencies\nResolved, downloaded and extracted [39]\n",
+    stderr:
+      `error: GET ${typstUrl} - ${status}\n` +
+      `error: @myriaddreamin/typst-ts-web-compiler@${typstUrl} failed to resolve\n`,
+  });
+
+  it("recognizes only the pinned URL and bounded transient HTTP statuses", () => {
+    for (const status of [429, 502, 503, 504]) {
+      expect(isKnownTransientFilelinkInstallFailure(transientFailure(status))).toBeTrue();
+    }
+    expect(isKnownTransientFilelinkInstallFailure(transientFailure(404))).toBeFalse();
+    expect(isKnownTransientFilelinkInstallFailure({
+      ...transientFailure(),
+      stderr:
+        "error: GET https://example.com/package.tgz - 503\n" +
+        "error: @myriaddreamin/typst-ts-web-compiler@https://example.com/package.tgz failed to resolve\n",
+    })).toBeFalse();
+    expect(isKnownTransientFilelinkInstallFailure({
+      ...transientFailure(),
+      stderr: `error: GET ${typstUrl} - 503\nfatal: checksum verification failed\n`,
+    })).toBeFalse();
+  });
+
+  it("recreates with bounded backoff and succeeds on a later transport attempt", () => {
+    const attempts = [transientFailure(), transientFailure(502), success];
+    const delays: number[] = [];
+    let installs = 0;
+    let recreates = 0;
+    const warnings: string[] = [];
+    installFilelinkWithKnownRetry({
+      bunVersion: KNOWN_FILELINK_EEXIST_BUN_VERSION,
+      allowedPackages,
+      install: () => attempts[installs++]!,
+      recreate: () => recreates++,
+      delay: (milliseconds) => delays.push(milliseconds),
+      warn: (message) => warnings.push(message),
+    });
+    expect(installs).toBe(3);
+    expect(recreates).toBe(2);
+    expect(delays).toEqual([5_000, 10_000]);
+    expect(warnings).toHaveLength(2);
+    expect(warnings.join("\n")).not.toContain(typstUrl);
+  });
+
+  it("keeps the third transient failure fatal", () => {
+    let installs = 0;
+    expect(() => installFilelinkWithKnownRetry({
+      bunVersion: KNOWN_FILELINK_EEXIST_BUN_VERSION,
+      allowedPackages,
+      install: () => {
+        installs++;
+        return transientFailure();
+      },
+      recreate: () => {},
+      delay: () => {},
+    })).toThrow("bun install (filelink consumer) failed");
+    expect(installs).toBe(3);
   });
 });
 
