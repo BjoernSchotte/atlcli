@@ -100,6 +100,6 @@
     "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch"
   },
   "overrides": {
-    "deepagents": "https://pkg.pr.new/deepagents@717"
+    "deepagents": "1.12.1"
   }
 }
