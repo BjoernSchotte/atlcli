@@ -731,7 +731,7 @@ forge lint
 - [ ] Run extension E2E on profile `mayflower`, Confluence space `DOCSY`, and Jira project `ATLCLI` as applicable; create only named disposable resources and delete them after proof.
 - [ ] Verify a real PDF and DOCX artifact from the palette, durable Activity receipt, quick-AI explicit-submit path, Jira context, and sidebar continuation.
 - [ ] Run Forge development-installation E2E on a disposable Confluence page; prove both existing export modals and clean up generated attachments/pages.
-- [ ] Scan staged diffs and built output for credentials, tenant identifiers, page content, downloaded/generated artifacts, remote code, and unexpected permissions.
+- [x] Scan staged diffs and built output for credentials, tenant identifiers, page content, downloaded/generated artifacts, remote code, and unexpected permissions.
 - [ ] Update this plan's status and checkboxes only from recorded evidence. Keep unresolved gates open rather than calling the MVP complete.
 
 **Full atlcli proof**
