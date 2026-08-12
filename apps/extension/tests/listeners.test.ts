@@ -288,6 +288,19 @@ describe("handleExtMessage (background listener adapter)", () => {
 });
 
 describe("handleOffscreenMessage (offscreen listener adapter)", () => {
+  it("reports the current offscreen runtime protocol", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    expect(handleOffscreenMessage(
+      { kind: "offscreen:runtime-protocol" },
+      cap.sendResponse,
+      okOffscreenDeps,
+    )).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{
+      kind: "offscreen:runtime-protocol-result",
+      version: 1,
+    }]);
+  });
   it("returns false and never responds for non-offscreen messages", () => {
     const cap = captureResponse<OffscreenResponse>();
     const ret = handleOffscreenMessage({ kind: "ping" }, cap.sendResponse, okOffscreenDeps);
@@ -523,6 +536,46 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
     )).toBe(true);
     await cap.called;
     expect(received).toEqual(["", "chat", "local-gemma"]);
+  });
+
+  it("surfaces a redacted local host failure without weakening remote errors", async () => {
+    const request = { schema: "atlcli.research-request/v1" } as ResearchRequestV1;
+    const hostIdentity = {
+      userId: "browser-principal:synthetic-local-error",
+      providerCacheIdentity: "local:browser-principal:synthetic-local-error",
+    };
+    const run = async (modelProvider?: "anthropic" | "local-gemma") => {
+      const cap = captureResponse<OffscreenResponse>();
+      expect(handleOffscreenMessage({
+        kind: "offscreen:research-run",
+        runId: modelProvider === "local-gemma" ? "run-local-error" : "run-remote-error",
+        sessionId: modelProvider === "local-gemma"
+          ? "research-session:local-error"
+          : "research-session:remote-error",
+        turnId: modelProvider === "local-gemma"
+          ? "research-turn:local-error"
+          : "research-turn:remote-error",
+        apiKey: modelProvider === "local-gemma" ? "" : "sk-ant-test-listener",
+        ...(modelProvider ? { modelProvider } : {}),
+        mode: "chat",
+        request,
+        hostIdentity,
+      }, cap.sendResponse, {
+        ...okOffscreenDeps,
+        runResearch: async () => {
+          throw new Error("Synthetic worker bridge failed; authorization=Bearer secret");
+        },
+      })).toBe(true);
+      await cap.called;
+      return cap.values[0];
+    };
+
+    expect(await run("local-gemma")).toEqual(expect.objectContaining({
+      error: "Local Gemma browser host failed: Synthetic worker bridge failed; authorization=Bearer [REDACTED]",
+    }));
+    expect(await run()).toEqual(expect.objectContaining({
+      error: "The research provider failed.",
+    }));
   });
 
   it("returns a typed durable Chat question from the offscreen host", async () => {

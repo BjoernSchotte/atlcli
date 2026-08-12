@@ -1246,17 +1246,25 @@ describe("portable Research screen", () => {
 
   it("clears the durable direct-chat pointer when a new conversation starts", async () => {
     let resetCalls = 0;
+    let releaseReset: (() => void) | undefined;
     const port: ResearchPort = {
       hasApiKey: async () => true,
       setApiKey: async () => undefined,
       clearApiKey: async () => undefined,
       resetChatConversation: async () => {
-        resetCalls += 1;
+        throw new Error("The shared Chat port must own conversation reset.");
       },
-      resolveScope: async (request) => ({
+      resolveScope: async () => ({
         schema: "atlcli.research-scope-preflight-outcome/v1",
-        kind: "ready",
-        request,
+        kind: "clarification_required",
+        clarification: {
+          schema: "atlcli.research-clarification-required/v1",
+          reason: "incomplete",
+          mentionId: "mention:stale-scope",
+          candidateIds: [],
+          rerunGuidance: ["Pass an exact Confluence space key."],
+        },
+        candidateChoices: [],
         mentions: [],
         resolutions: [],
       }),
@@ -1269,7 +1277,14 @@ describe("portable Research screen", () => {
     };
     await dom.render(
       <I18nProvider locale="en">
-        <ResearchScreen {...screenProps(port)} />
+        <ResearchScreen {...screenProps(port, "KB", fakeChatPort({
+          async resetConversation() {
+            resetCalls += 1;
+            await new Promise<void>((resolve) => {
+              releaseReset = resolve;
+            });
+          },
+        }))} />
       </I18nProvider>,
     );
 
@@ -1277,11 +1292,16 @@ describe("portable Research screen", () => {
     await dom.toggle("research-disclosure");
     await dom.setValue("copilot-chat-textarea", "Remember this first turn.");
     await dom.click("research-run");
+    await dom.flush();
+    expect(dom.find("research-scope-clarification-required")).toBeTruthy();
     await openConversationMenu();
     await dom.click("research-new-conversation");
     await dom.flush();
 
     expect(resetCalls).toBe(1);
+    expect(dom.maybeFind("research-scope-clarification-required")).toBeNull();
+    releaseReset?.();
+    await dom.flush();
   });
 
   it("drains an ordinary queued chat message through the durable chat thread", async () => {

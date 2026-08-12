@@ -1,7 +1,7 @@
 # Browser-local Gemma 4 E4B with Transformers.js implementation plan
 
-Status: **In progress; the production Chat path is proven for one local Auto
-exact-context case, but G0 remains open until the repeated Quick, Auto, Think
+Status: **In progress; the production Chat path is proven repeatedly for local
+Quick and Auto direct/agentic cases, but G0 remains open until the repeated Think
 deeper, multi-turn, cancellation, and network/privacy gates pass.**
 
 Originally planned against repository commit `878675a3` on 2026-08-10.
@@ -145,12 +145,19 @@ G0 complete:
   Auto-direct runs with first visible answer content after approximately 34,
   42, and 45 seconds and terminal cited answers after approximately 117, 149,
   and 205 seconds;
+- the production-packed extension then completed the fixed Auto-agentic case
+  three consecutive times after one reload, with first visible answer content
+  after approximately 30, 34, and 45 seconds and terminal cited answers after
+  approximately 105, 114, and 136 seconds. Every run used the existing side-
+  panel Chat path, emitted one semantic progress sequence, returned a canonical
+  cited answer, and restored the send-ready composer without a local-model,
+  workflow, retained-turn, or terminal-contract error;
 - the late host pre-read section-reference handoff is covered by a regression
   fixture and the full Chat-agent suite is green without replaying the bound
   entity read or widening broker scope;
 - automated fixtures cover the local Quick, Auto, and Think-deeper strategy
-  semantics, but repeated live proof remains outstanding for Auto-agentic and
-  both Think-deeper trajectories.
+  semantics, but repeated live proof remains outstanding for both Think-deeper
+  trajectories.
 
 Committed plans and receipts must keep private tenant content, URLs, customer
 names, identifiers, traces, and generated answers out of Git. Live proof may use
@@ -828,7 +835,7 @@ hardening.
 - [x] Run a fixed Auto-direct case through the existing mode selector three
       consecutive times and require the direct strategy, one progress sequence,
       streamed content, and terminal cited answer on every run.
-- [ ] Run a fixed Auto-agentic case through the existing mode selector three
+- [x] Run a fixed Auto-agentic case through the existing mode selector three
       consecutive times and require the agentic strategy and workflow trajectory
       on every run.
 - [ ] Run fixed Think-deeper-direct and Think-deeper-agentic cases through the
@@ -863,8 +870,11 @@ Live proof:
 - [x] The same packed extension completes the fixed Auto-direct case three
       consecutive times with the expected direct trajectory, streamed answer,
       citations, and terminal contract.
-- [ ] The same packed extension completes Auto-agentic three times and Think-
-      deeper-direct and Think-deeper-agentic cases three times each.
+- [x] The same packed extension completes Auto-agentic three consecutive times
+      with the expected workflow trajectory, one progress sequence, streamed
+      answer, citations, and terminal contract.
+- [ ] The same packed extension completes Think-deeper-direct and Think-deeper-
+      agentic cases three times each.
 - [ ] A new local conversation completes at least one evidence-aware follow-up
       turn without losing provider identity, accepted evidence, or tool-result
       correlation; close/reopen the side panel and reopen the conversation.

@@ -38,6 +38,7 @@ import type {
 import {
   CHAT_WORKFLOW_STATE_PATH_V1,
   chatSubagentEvalAttemptLimitV1,
+  chatSubagentDispatchDurationV1,
   chatDraftDedicatedSourceIdsV1,
   chatSubagentModelOutputLimitV1,
   chatSubagentPtcCallLimitV1,
@@ -51,6 +52,12 @@ import {
   type ChatSubagentEvalDiagnosticV1,
   type ChatSubagentModelStreamEventV1,
 } from "./workflow-runtime.js";
+
+test("extends only local Gemma subagent wall-clock corridors", () => {
+  expect(chatSubagentDispatchDurationV1("fixture/local-gemma", 75_000)).toBe(180_000);
+  expect(chatSubagentDispatchDurationV1("fixture/local-gemma", 240_000)).toBe(240_000);
+  expect(chatSubagentDispatchDurationV1("claude-sonnet-4-5", 75_000)).toBe(75_000);
+});
 
 test("counts only substantive single-source blocks as dedicated comparison coverage", () => {
   const draft: ChatAgentDraftV2 = {

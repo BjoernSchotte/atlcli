@@ -16,6 +16,21 @@ export const LOCAL_GEMMA_TOOL_STOP_MARKERS_V1 = [
 ] as const;
 
 /**
+ * Force the smallest provider-owned prefix needed to keep Gemma on the
+ * selected tool grammar. Agentic eval is a local schema projection, so start
+ * its required task graph before the model can prematurely serialize only an
+ * optional retrieval plan.
+ */
+export function localGemmaRequiredToolPrefixV1(
+  requiredToolName: string,
+  agenticProposal = false,
+): string {
+  return agenticProposal
+    ? "<|tool_call>call:eval{tasks:"
+    : `<|tool_call>call:${requiredToolName}`;
+}
+
+/**
  * Enforce only a host-selected tool-call prefix. The model remains responsible
  * for producing schema-valid arguments; this mirrors provider tool_choice
  * without turning generated prose into a synthetic tool call.
@@ -73,6 +88,9 @@ export class CompleteToolCallStoppingCriteriaV1 extends StoppingCriteria {
     readonly requiredToolName: string,
     readonly decode: (tokenIds: number[]) => string,
     readonly responsePrefix = "",
+    readonly maximumImplicitObjectSeparators = 0,
+    readonly maximumTrailingStructuralClosers = 0,
+    readonly bareStringEnumValues: ReadonlySet<string> = new Set(),
   ) {
     super();
     if (promptTokenCount < 1 || requiredToolName.length === 0) {
@@ -84,6 +102,9 @@ export class CompleteToolCallStoppingCriteriaV1 extends StoppingCriteria {
     return inputIds.map((ids) => isCompleteGemmaToolCallV1(
       `${this.responsePrefix}${this.decode(ids.slice(this.promptTokenCount))}`,
       this.requiredToolName,
+      this.maximumImplicitObjectSeparators,
+      this.maximumTrailingStructuralClosers,
+      this.bareStringEnumValues,
     ));
   }
 }

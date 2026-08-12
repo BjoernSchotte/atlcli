@@ -28,6 +28,7 @@ import type {
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
 import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/research";
+import { classifyLocalGemmaHostErrorV1 } from "./local-model/error.js";
 import type {
   ChatHostIdentityV1,
   ChatInteractionControlV1,
@@ -374,6 +375,9 @@ export function handleOffscreenMessage(
   if (!isOffscreenRequest(message)) return false;
 
   switch (message.kind) {
+    case "offscreen:runtime-protocol":
+      sendResponse({ kind: "offscreen:runtime-protocol-result", version: 1 });
+      break;
     case "offscreen:wasm-add":
       deps.runWasmAdd(message.a, message.b)
         .then((result) => sendResponse({ kind: "offscreen:wasm-add-result", ok: true, result }))
@@ -458,7 +462,10 @@ export function handleOffscreenMessage(
           report,
         }))
         .catch((error) => {
-          const classified = classifyResearchError(error);
+          const classified = classifyLocalGemmaHostErrorV1(
+            error,
+            message.modelProvider === "local-gemma",
+          );
           sendResponse({
             kind: "offscreen:research-run-result",
             runId: message.runId,

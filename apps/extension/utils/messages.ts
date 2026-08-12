@@ -694,6 +694,7 @@ function isChatCheckpointResumeV1(value: unknown): value is {
  * (no self-delivery loop over the shared `chrome.runtime` message bus).
  */
 export type OffscreenRequest =
+  | { kind: "offscreen:runtime-protocol" }
   | { kind: "offscreen:wasm-add"; a: number; b: number }
   | { kind: "offscreen:local-model-prewarm" }
   | ({ kind: "offscreen:pdf-compile"; jobId: string } & PdfCompileHints)
@@ -733,6 +734,7 @@ export type OffscreenRequest =
   | { kind: "offscreen:research-pause"; runId: string }
   | { kind: "offscreen:research-cancel"; runId: string };
 export type OffscreenResponse =
+  | { kind: "offscreen:runtime-protocol-result"; version: 1 }
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
   | { kind: "offscreen:wasm-add-result"; ok: false; error: string }
   | {
@@ -1196,6 +1198,9 @@ export function isEntityChangedForWindow(
 export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { kind?: unknown; jobId?: unknown };
+  if (candidate.kind === "offscreen:runtime-protocol") {
+    return hasOnlyKeys(value, ["kind"]);
+  }
   if (candidate.kind === "offscreen:local-model-prewarm") {
     return hasOnlyKeys(value, ["kind"]);
   }

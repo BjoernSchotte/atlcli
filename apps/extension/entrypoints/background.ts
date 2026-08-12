@@ -99,7 +99,11 @@ import {
   stampChatInteractionCommandV1,
 } from "@atlcli/research/browser";
 import { handleExtMessage } from "../utils/listeners.js";
-import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
+import {
+  closeOffscreen,
+  ensureCompatibleOffscreen,
+  ensureOffscreen,
+} from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
 import { createOffscreenActivityTracker } from "../utils/pdf/offscreen-activity.js";
 import { createDurableIdleGate } from "../utils/jobs/idle-gate.js";
@@ -109,6 +113,7 @@ import {
 } from "../utils/ports/settings.js";
 import { LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1 } from "../utils/local-model/storage.js";
 import { resolveBrowserChatModelRunBindingV1 } from "../utils/local-model/run-binding.js";
+import { classifyLocalGemmaHostErrorV1 } from "../utils/local-model/error.js";
 import { recoverUnownedRunningChatTurnV1 } from "../utils/research/chat-recovery.js";
 import {
   browserChatActiveConversationStorageKeyV1,
@@ -411,7 +416,7 @@ function prewarmSelectedLocalModelV1(): Promise<void> {
     });
     offscreenActivity.begin();
     try {
-      await ensureOffscreen();
+      await ensureCompatibleOffscreen();
       const response = (await chrome.runtime.sendMessage({
         kind: "offscreen:local-model-prewarm",
       })) as OffscreenResponse | undefined;
@@ -565,7 +570,7 @@ export default defineBackground({
    */
   const pendingResearchResumes = new Map<string, string>();
 
-  const runResearch = async (
+  const runResearchUnclassified = async (
     runId: string,
     sessionId: string,
     turnId: string,
@@ -666,22 +671,34 @@ export default defineBackground({
     activeResearchRuns.set(runId, { sessionId, mode });
     offscreenActivity.begin();
     try {
-      await ensureOffscreen();
-      const response = (await chrome.runtime.sendMessage({
-        kind: "offscreen:research-run",
-        runId,
-        sessionId,
-        turnId,
-        apiKey: modelRunBinding.apiKey,
-        modelProvider: modelRunBinding.modelProvider,
-        mode,
-        request,
-        policy,
-        ...(effectiveHostIdentity ? { hostIdentity: effectiveHostIdentity } : {}),
-        ...(qualityPolicy ? { qualityPolicy } : {}),
-        ...(resumeAnswer ? { resumeAnswer } : {}),
-        ...(resumeCheckpoint ? { resumeCheckpoint } : {}),
-      })) as OffscreenResponse | undefined;
+      await ensureCompatibleOffscreen();
+      let response: OffscreenResponse | undefined;
+      try {
+        response = (await chrome.runtime.sendMessage({
+          kind: "offscreen:research-run",
+          runId,
+          sessionId,
+          turnId,
+          apiKey: modelRunBinding.apiKey,
+          modelProvider: modelRunBinding.modelProvider,
+          mode,
+          request,
+          policy,
+          ...(effectiveHostIdentity ? { hostIdentity: effectiveHostIdentity } : {}),
+          ...(qualityPolicy ? { qualityPolicy } : {}),
+          ...(resumeAnswer ? { resumeAnswer } : {}),
+          ...(resumeCheckpoint ? { resumeCheckpoint } : {}),
+        })) as OffscreenResponse | undefined;
+      } catch (error) {
+        const { classifyLocalGemmaHostErrorV1 } = await import(
+          "../utils/local-model/error.js"
+        );
+        const classified = classifyLocalGemmaHostErrorV1(
+          error,
+          modelRunBinding.modelProvider === "local-gemma",
+        );
+        throw new ResearchContractError(classified.code, classified.message);
+      }
       if (
         !response ||
         response.kind !== "offscreen:research-run-result" ||
@@ -702,6 +719,19 @@ export default defineBackground({
     } finally {
       offscreenActivity.end();
       activeResearchRuns.delete(runId);
+    }
+  };
+
+  const runResearch = async (...args: Parameters<typeof runResearchUnclassified>) => {
+    const storedSettings = await chrome.storage.local.get(APP_SETTINGS_STORAGE_KEY);
+    const localGemma = normalizeSettings(
+      storedSettings[APP_SETTINGS_STORAGE_KEY],
+    ).modelSelection.providerId === "local-gemma";
+    try {
+      return await runResearchUnclassified(...args);
+    } catch (error) {
+      const classified = classifyLocalGemmaHostErrorV1(error, localGemma);
+      throw new ResearchContractError(classified.code, classified.message);
     }
   };
 

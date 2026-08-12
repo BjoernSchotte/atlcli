@@ -37,13 +37,20 @@ export function localGemmaRouteOutputTokensV1(
 ): number {
   const roleLimit = (() => {
     switch (role) {
-      case "extraction": return 768;
+      // The provider-local prompt compacts evidence packets to the requested
+      // facets. 768 tokens truncated valid JSON in the live exact-reader,
+      // while 1536 tokens exceeded its 240-second browser deadline. One
+      // thousand tokens leaves closing-schema room inside that measured lane.
+      case "extraction": return 1_024;
+      case "critique": return 768;
+      // The local agentic root now skips private thinking and a measured
+      // five-role proposal closed at 494 tokens. One thousand tokens retains
+      // generous schema tail room while bounding a malformed browser turn.
       case "root-planning":
-      case "critique": return 1_024;
-      case "analysis": return 1_536;
+      case "analysis":
       case "drafting":
       case "repair":
-      case "synthesis": return 2_048;
+      case "synthesis": return 1_024;
     }
   })();
   return Math.min(
@@ -78,6 +85,11 @@ export function localGemmaContextOverflowMessageV1(
 }
 
 export const LOCAL_GEMMA_HARNESS_PROFILE_V1 = Object.freeze({
+  // DeepAgentsJS adds its generic summarizer to both the root and every
+  // declarative subagent. The Chat runtime already supplies a durable,
+  // authority-labelled root compressor. Keeping both makes a local child
+  // summarize its own short tool round-trip with the root reasoning model.
+  excludedMiddleware: ["SummarizationMiddleware"],
   systemPromptSuffix: [
     "Use only the tools declared for the current model call.",
     "The direct tool named `eval` executes JavaScript. `tools` is not a direct tool: the `tools.<name>(...)` namespace exists only inside the JavaScript `code` argument passed to `eval`.",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  LOCAL_GEMMA_HARNESS_PROFILE_V1,
   LOCAL_GEMMA_OPERATIONAL_PROFILE_V1,
   localGemmaContextOverflowMessageV1,
   localGemmaRouteOutputTokensV1,
@@ -22,11 +23,20 @@ describe("local Gemma operational profile", () => {
     expect(localGemmaThinkingModeV1("thorough")).toBe("enabled");
   });
 
+  it("removes only DeepAgentsJS's duplicate generic summarizer", () => {
+    expect(LOCAL_GEMMA_HARNESS_PROFILE_V1.excludedMiddleware).toEqual([
+      "SummarizationMiddleware",
+    ]);
+  });
+
   it("uses role-sized generation corridors instead of one maximal allowance", () => {
-    expect(localGemmaRouteOutputTokensV1("extraction", 4_096)).toBe(768);
+    expect(localGemmaRouteOutputTokensV1("extraction", 4_096)).toBe(1_024);
+    expect(localGemmaRouteOutputTokensV1("extraction", 1_024)).toBe(1_024);
     expect(localGemmaRouteOutputTokensV1("root-planning", 4_096)).toBe(1_024);
-    expect(localGemmaRouteOutputTokensV1("analysis", 4_096)).toBe(1_536);
-    expect(localGemmaRouteOutputTokensV1("synthesis", 4_096)).toBe(2_048);
+    expect(localGemmaRouteOutputTokensV1("root-planning", 768)).toBe(768);
+    expect(localGemmaRouteOutputTokensV1("analysis", 4_096)).toBe(1_024);
+    expect(localGemmaRouteOutputTokensV1("critique", 4_096)).toBe(768);
+    expect(localGemmaRouteOutputTokensV1("synthesis", 4_096)).toBe(1_024);
     expect(localGemmaRouteOutputTokensV1("synthesis", 512)).toBe(512);
   });
 });

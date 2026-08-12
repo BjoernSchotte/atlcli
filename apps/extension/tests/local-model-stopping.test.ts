@@ -3,12 +3,25 @@ import { Tensor } from "@huggingface/transformers";
 import {
   CompleteToolCallStoppingCriteriaV1,
   LOCAL_GEMMA_TOOL_STOP_MARKERS_V1,
+  localGemmaRequiredToolPrefixV1,
   RequiredToolPrefixLogitsProcessorV1,
   TokenSequenceStoppingCriteriaV1,
 } from
   "../utils/local-model/stopping.js";
 
 describe("Gemma required tool prefix", () => {
+  it("starts a projected agentic eval with its required task graph", () => {
+    expect(localGemmaRequiredToolPrefixV1("eval", true)).toBe(
+      "<|tool_call>call:eval{tasks:",
+    );
+    expect(localGemmaRequiredToolPrefixV1("eval")).toBe(
+      "<|tool_call>call:eval",
+    );
+    expect(localGemmaRequiredToolPrefixV1("ChatAnswerDraftV2", true)).toBe(
+      "<|tool_call>call:eval{tasks:",
+    );
+  });
+
   it("forces only the selected prefix and then releases generation", () => {
     const processor = new RequiredToolPrefixLogitsProcessorV1(3, [2, 4]);
     const first = new Tensor("float32", new Float32Array(6).fill(1), [1, 6]);
@@ -52,6 +65,25 @@ describe("Gemma native tool-call stopping", () => {
     );
 
     expect(criterion._call([[...prompt, ...[...suffix].map((value) => value.codePointAt(0)!)]])).toEqual([true]);
+  });
+
+  it("stops on a complete packet with schema-declared bare string enums", () => {
+    const prompt = [1, 2, 3];
+    const complete = '<|tool_call>call:ChatProvisionalAnswerDraftV1{blocks:[{assertion:none,markdown:<|"|>Supported.<|"|>,sourceRefs:[],scope:none}]}';
+    const criterion = new CompleteToolCallStoppingCriteriaV1(
+      prompt.length,
+      "ChatProvisionalAnswerDraftV1",
+      (tokens) => String.fromCodePoint(...tokens),
+      "",
+      0,
+      0,
+      new Set(["none"]),
+    );
+
+    expect(criterion._call([[
+      ...prompt,
+      ...[...complete].map((value) => value.codePointAt(0)!),
+    ]])).toEqual([true]);
   });
 
   it("pins the completed native tool-call marker as a terminal boundary", () => {

@@ -57,6 +57,122 @@ function requiredToolNameV1(
   return toolChoice?.name ?? toolChoice?.function?.name;
 }
 
+function implicitStructuredToolNameV1(
+  tools: readonly LocalModelToolV1[],
+  messages: readonly BaseMessage[],
+): string | undefined {
+  const structuredNames = tools
+    .map((tool) => tool.function.name)
+    .filter((name) => /^Chat[A-Za-z0-9]+V[0-9]+$/u.test(name));
+  if (structuredNames.length !== 1) return undefined;
+  const name = structuredNames[0];
+  // DeepAgentsJS structured specialist packets are exposed as one versioned
+  // Chat* tool. A pure packet call can bind immediately. A reader must first
+  // retain its acquisition tools, then binds the sole packet only after their
+  // ToolMessage exists. This mirrors provider-native structured output without
+  // skipping real host reads.
+  return tools.length === 1 || messages.some((message) => ToolMessage.isInstance(message))
+    ? name
+    : undefined;
+}
+
+function isVersionedChatStructuredToolV1(name: string): boolean {
+  return /^Chat[A-Za-z0-9]+V[0-9]+$/u.test(name);
+}
+
+function rootConstPropertiesV1(
+  parameters: Record<string, unknown>,
+): Readonly<Record<string, unknown>> {
+  if (parameters.type !== "object" || !parameters.properties ||
+      typeof parameters.properties !== "object" ||
+      Array.isArray(parameters.properties)) return {};
+  const constants: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(
+    parameters.properties as Record<string, unknown>,
+  )) {
+    if (!value || typeof value !== "object" || Array.isArray(value) ||
+        !("const" in value)) continue;
+    constants[name] = (value as { const: unknown }).const;
+  }
+  return constants;
+}
+
+/**
+ * A JSON-Schema `const` is host-owned envelope data, not a model decision.
+ * Hide those root fields from forced local packet calls so the small model
+ * cannot accidentally copy a different schema id from retained context.
+ * The original schema remains available below for lossless restoration.
+ */
+function projectStructuredRootConstsV1(
+  toolName: string,
+  parameters: Record<string, unknown>,
+  requiredToolName?: string,
+): Record<string, unknown> {
+  if (requiredToolName !== toolName || !isVersionedChatStructuredToolV1(toolName)) {
+    return parameters;
+  }
+  const constants = rootConstPropertiesV1(parameters);
+  const names = new Set(Object.keys(constants));
+  if (names.size === 0) return parameters;
+  const properties = parameters.properties as Record<string, unknown>;
+  const required = Array.isArray(parameters.required)
+    ? parameters.required.filter((name) => typeof name !== "string" || !names.has(name))
+    : parameters.required;
+  return {
+    ...parameters,
+    properties: Object.fromEntries(
+      Object.entries(properties).filter(([name]) => !names.has(name)),
+    ),
+    ...(required === undefined ? {} : { required }),
+  };
+}
+
+function enumPrimitiveTypeV1(values: readonly unknown[]): string | undefined {
+  if (values.length === 0) return undefined;
+  if (values.every((value) => typeof value === "string")) return "string";
+  if (values.every((value) => typeof value === "boolean")) return "boolean";
+  if (values.every((value) => typeof value === "number" && Number.isFinite(value))) {
+    return values.every((value) => Number.isInteger(value)) ? "integer" : "number";
+  }
+  return undefined;
+}
+
+/**
+ * Gemma's pinned Transformers.js chat template renders every property type via
+ * Jinja's `upper` filter. JSON Schema permits an enum to omit `type`, but that
+ * template does not: it throws before tokenization. Add only the primitive
+ * type already implied by a homogeneous enum. The canonical host schema and
+ * every non-local provider binding remain untouched.
+ */
+function projectLocalGemmaJsonSchemaV1(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(projectLocalGemmaJsonSchemaV1);
+  if (!value || typeof value !== "object") return value;
+  const schema = value as Record<string, unknown>;
+  const projected = Object.fromEntries(
+    Object.entries(schema).map(([key, nested]) => [
+      key,
+      projectLocalGemmaJsonSchemaV1(nested),
+    ]),
+  );
+  if (projected.type !== undefined || !Array.isArray(projected.enum)) {
+    return projected;
+  }
+  const type = enumPrimitiveTypeV1(projected.enum);
+  return type === undefined ? projected : { ...projected, type };
+}
+
+function isLocalGemmaAgenticRootV1(
+  messages: BaseMessage[],
+  options: LocalGemmaCallOptionsV1,
+): boolean {
+  return requiredToolNameV1(options.tool_choice) === undefined &&
+    messages.some((message) =>
+      message.getType() === "system" && textContentV1(message).includes(
+        "The host requires an agentic Chat workflow for this turn.",
+      )
+    );
+}
+
 function textContentV1(message: BaseMessage): string {
   if (typeof message.content === "string") return message.content;
   const text = message.content.map((block) => {
@@ -179,9 +295,116 @@ const LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 = {
   },
 } as const;
 
+const LOCAL_GEMMA_AGENTIC_EVAL_SCHEMA_V1 = {
+  type: "object",
+  additionalProperties: false,
+  required: ["tasks", "maxConcurrency"],
+  properties: {
+    tasks: {
+      type: "array",
+      minItems: 4,
+      maxItems: 9,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["taskId", "profileId", "objective", "dependencyTaskIds"],
+        properties: {
+          taskId: { type: "string", minLength: 1, maxLength: 200 },
+          profileId: { type: "string", minLength: 1, maxLength: 120 },
+          objective: { type: "string", minLength: 1, maxLength: 4_000 },
+          dependencyTaskIds: {
+            type: "array",
+            maxItems: 7,
+            items: { type: "string", minLength: 1, maxLength: 200 },
+          },
+        },
+      },
+    },
+    maxConcurrency: { type: "integer", enum: [1] },
+    retrievalPlan: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        searches: {
+          type: "array",
+          maxItems: 2,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["searchId", "product", "variants", "maxPages"],
+            properties: {
+              searchId: { type: "string", minLength: 1, maxLength: 120 },
+              product: { type: "string", enum: ["jira", "confluence"] },
+              variants: {
+                type: "array",
+                minItems: 1,
+                maxItems: 5,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["variantId", "query"],
+                  properties: {
+                    variantId: { type: "string", minLength: 1, maxLength: 120 },
+                    query: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        text: { type: "string", minLength: 1, maxLength: 500 },
+                        labels: {
+                          type: "array",
+                          minItems: 1,
+                          maxItems: 8,
+                          items: { type: "string", minLength: 1, maxLength: 255 },
+                        },
+                        ancestorId: { type: "string", minLength: 1, maxLength: 128 },
+                        parentId: { type: "string", minLength: 1, maxLength: 128 },
+                      },
+                    },
+                    expectedInformationGain: {
+                      type: "string",
+                      enum: ["high", "medium", "low"],
+                    },
+                  },
+                },
+              },
+              maxPages: { type: "integer", minimum: 1, maximum: 100 },
+            },
+          },
+        },
+        relationshipTraversals: {
+          type: "array",
+          maxItems: 2,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["traversalId", "kind", "maxDepth"],
+            properties: {
+              traversalId: { type: "string", minLength: 1, maxLength: 120 },
+              kind: {
+                type: "string",
+                enum: [
+                  "confluence-to-jira-reference",
+                  "jira-to-confluence-remote-link",
+                ],
+              },
+              maxDepth: { type: "integer", enum: [1] },
+            },
+          },
+        },
+        unresolvedTerms: {
+          type: "array",
+          maxItems: 20,
+          items: { type: "string", minLength: 1, maxLength: 160 },
+        },
+      },
+    },
+  },
+} as const;
+
 function toLocalToolsV1(
   tools: ToolDefinition[] | undefined,
   requiredToolName?: string,
+  agenticRoot = false,
 ): LocalModelToolV1[] {
   return (tools ?? []).map((tool) => {
     if (tool.type !== "function" || !tool.function?.name || !tool.function.parameters) {
@@ -191,13 +414,27 @@ function toLocalToolsV1(
       type: "function",
       function: {
         name: tool.function.name,
-        ...(requiredToolName === "ChatAnswerDraftV2"
+        ...(agenticRoot && tool.function.name === "eval"
+          ? {
+              description: [
+                "Select the bounded agentic task graph.",
+                "The local provider adapter compiles this object into the canonical eval/QuickJS workflow program.",
+              ].join(" "),
+              parameters: LOCAL_GEMMA_AGENTIC_EVAL_SCHEMA_V1,
+            }
+          : requiredToolName === "ChatAnswerDraftV2"
           ? { parameters: LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 }
           : {
               ...(tool.function.description
                 ? { description: tool.function.description }
                 : {}),
-              parameters: tool.function.parameters,
+              parameters: projectLocalGemmaJsonSchemaV1(
+                projectStructuredRootConstsV1(
+                  tool.function.name,
+                  tool.function.parameters,
+                  requiredToolName,
+                ),
+              ) as Record<string, unknown>,
             }),
       },
     };
@@ -215,6 +452,11 @@ const LOCAL_GEMMA_ANSWER_SCOPES_V1 = new Set([
   "selected-sources",
   "bound-scope",
 ]);
+const LOCAL_GEMMA_ANSWER_DRAFT_TOOLS_V1 = new Set([
+  "ChatProvisionalAnswerDraftV1",
+  "ChatRepairedAnswerDraftV1",
+  "ChatAnswerDraftV2",
+]);
 
 /**
  * Repair only the small set of schema-equivalent shortcuts observed from the
@@ -225,10 +467,66 @@ const LOCAL_GEMMA_ANSWER_SCOPES_V1 = new Set([
  */
 export function normalizeLocalGemmaToolCallV1(
   call: LocalModelToolCallV1,
+  structuredRootConstants: Readonly<Record<string, unknown>> = {},
 ): LocalModelToolCallV1 {
-  if (call.name !== "ChatAnswerDraftV2") return call;
-  const blocks = Array.isArray(call.arguments.blocks)
-    ? call.arguments.blocks.map((value) => {
+  const withStructuredEnvelope = Object.keys(structuredRootConstants).length > 0
+    ? {
+        ...call,
+        arguments: {
+          ...call.arguments,
+          ...structuredRootConstants,
+        },
+      }
+    : call;
+  if (call.name === "ChatEvidencePacketV1" &&
+      Array.isArray(withStructuredEnvelope.arguments.claims)) {
+    const relationships = Array.isArray(withStructuredEnvelope.arguments.relationships)
+      ? withStructuredEnvelope.arguments.relationships
+      : withStructuredEnvelope.arguments.relationships === undefined
+        ? []
+        : withStructuredEnvelope.arguments.relationships;
+    const gaps = Array.isArray(withStructuredEnvelope.arguments.gaps)
+      ? withStructuredEnvelope.arguments.gaps
+      : withStructuredEnvelope.arguments.gaps === undefined
+        ? []
+        : withStructuredEnvelope.arguments.gaps;
+    const sourceIds = withStructuredEnvelope.arguments.sourceIds === undefined
+      ? [...new Set([
+          ...withStructuredEnvelope.arguments.claims.flatMap((value) => {
+            if (!value || typeof value !== "object" || Array.isArray(value) ||
+                !Array.isArray((value as Record<string, unknown>).sourceIds)) return [];
+            return ((value as Record<string, unknown>).sourceIds as unknown[])
+              .filter((sourceId): sourceId is string =>
+                typeof sourceId === "string" && sourceId.length > 0
+              );
+          }),
+          ...(Array.isArray(relationships)
+            ? relationships.flatMap((value) => {
+                if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+                const relationship = value as Record<string, unknown>;
+                return [relationship.fromSourceId, relationship.toSourceId]
+                  .filter((sourceId): sourceId is string =>
+                    typeof sourceId === "string" && sourceId.length > 0
+                  );
+              })
+            : []),
+        ])]
+      : withStructuredEnvelope.arguments.sourceIds;
+    return {
+      ...withStructuredEnvelope,
+      arguments: {
+        ...withStructuredEnvelope.arguments,
+        sourceIds,
+        relationships,
+        gaps,
+      },
+    };
+  }
+  if (!LOCAL_GEMMA_ANSWER_DRAFT_TOOLS_V1.has(call.name)) {
+    return withStructuredEnvelope;
+  }
+  const blocks = Array.isArray(withStructuredEnvelope.arguments.blocks)
+    ? withStructuredEnvelope.arguments.blocks.map((value) => {
         if (!value || typeof value !== "object" || Array.isArray(value)) {
           return value;
         }
@@ -252,26 +550,104 @@ export function normalizeLocalGemmaToolCallV1(
             : block.scope;
         return { ...block, assertion, scope };
       })
-    : call.arguments.blocks;
+    : withStructuredEnvelope.arguments.blocks;
   return {
-    ...call,
+    ...withStructuredEnvelope,
     arguments: {
-      ...call.arguments,
+      ...withStructuredEnvelope.arguments,
       ...(blocks === undefined ? {} : { blocks }),
       // Gemma 4 E4B occasionally uses numeric zero as an empty collection.
       // This is unambiguous only for zero; every other non-array value remains
       // invalid and is rejected by the canonical structured-output schema.
-      ...(call.arguments.gaps === 0 || call.arguments.gaps === undefined
+      ...(withStructuredEnvelope.arguments.gaps === 0 ||
+          withStructuredEnvelope.arguments.gaps === undefined
         ? { gaps: [] }
         : {}),
     },
   };
 }
 
+/**
+ * Gemma is more reliable at producing the workflow proposal as native tool
+ * arguments than at double-encoding that same JSON inside a JavaScript string.
+ * Keep the canonical DeepAgents tool surface by compiling only this
+ * provider-local projection back into the ordinary `eval({ code })` call.
+ */
+export function normalizeLocalGemmaAgenticEvalToolCallV1(
+  call: LocalModelToolCallV1,
+): LocalModelToolCallV1 {
+  if (call.name !== "eval" || typeof call.arguments.code === "string") return call;
+  const { tasks, maxConcurrency, retrievalPlan } = call.arguments;
+  // maxConcurrency has exactly one legal value in the provider projection.
+  // Supplying that singleton when Gemma omits it does not choose workflow
+  // topology or specialist work on the model's behalf.
+  if (!Array.isArray(tasks) ||
+      (maxConcurrency !== undefined && maxConcurrency !== 1)) return call;
+  const projectedRetrievalPlan = (() => {
+    if (!retrievalPlan || typeof retrievalPlan !== "object" ||
+        Array.isArray(retrievalPlan)) return retrievalPlan;
+    const plan = retrievalPlan as Record<string, unknown>;
+    return {
+      ...(Array.isArray(plan.searches) ? { searches: plan.searches } : {}),
+      ...(Array.isArray(plan.relationshipTraversals)
+        ? {
+            relationshipTraversals: plan.relationshipTraversals.map((value) => {
+              if (!value || typeof value !== "object" || Array.isArray(value)) {
+                return value;
+              }
+              const traversal = value as Record<string, unknown>;
+              return {
+                traversalId: traversal.traversalId,
+                kind: traversal.kind,
+                // The provider schema has one legal depth. Repairing this
+                // singleton does not choose a traversal on the model's behalf.
+                maxDepth: 1,
+              };
+            }),
+          }
+        : {}),
+      ...(Array.isArray(plan.unresolvedTerms)
+        ? { unresolvedTerms: plan.unresolvedTerms }
+        : {}),
+    };
+  })();
+  const proposal = {
+    tasks,
+    maxConcurrency: 1,
+    ...(projectedRetrievalPlan === undefined
+      ? {}
+      : { retrievalPlan: projectedRetrievalPlan }),
+  };
+  return {
+    ...call,
+    arguments: {
+      code: [
+        `const proposal = ${JSON.stringify(proposal)};`,
+        "await tools.chatWorkflowPropose(proposal);",
+        "await tools.chatWorkflowRun({})",
+      ].join("\n"),
+    },
+  };
+}
+
 function normalizeLocalGemmaToolCallsV1(
   calls: LocalModelToolCallV1[],
+  agenticRoot = false,
+  originalTools: readonly ToolDefinition[] = [],
 ): LocalModelToolCallV1[] {
-  return calls.map(normalizeLocalGemmaToolCallV1);
+  return calls.map((call) => {
+    const original = originalTools.find((tool) =>
+      tool.type === "function" && tool.function?.name === call.name
+    );
+    const constants = isVersionedChatStructuredToolV1(call.name) &&
+        original?.type === "function" && original.function.parameters
+      ? rootConstPropertiesV1(original.function.parameters)
+      : {};
+    return normalizeLocalGemmaToolCallV1(
+      agenticRoot ? normalizeLocalGemmaAgenticEvalToolCallV1(call) : call,
+      constants,
+    );
+  });
 }
 
 class LocalGemmaPortClientV1 {
@@ -340,7 +716,6 @@ class LocalGemmaPortClientV1 {
         index,
         role: message.role,
         chars: message.content.length,
-        preview: message.content.slice(-240),
       })),
     });
     input.signal?.addEventListener("abort", cancel, { once: true });
@@ -487,7 +862,12 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
         timing: final.performance,
       });
     }
-    const toolCalls = normalizeLocalGemmaToolCallsV1(final.toolCalls);
+    const agenticRoot = isLocalGemmaAgenticRootV1(messages, options);
+    const toolCalls = normalizeLocalGemmaToolCallsV1(
+      final.toolCalls,
+      agenticRoot,
+      options.tools,
+    );
     if (previewMarkdown) {
       this.#publishAnswerPreview?.({
         generationId: final.requestId,
@@ -555,7 +935,12 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
             timing: response.performance,
           });
         }
-        const toolCalls = normalizeLocalGemmaToolCallsV1(response.toolCalls);
+        const agenticRoot = isLocalGemmaAgenticRootV1(messages, options);
+        const toolCalls = normalizeLocalGemmaToolCallsV1(
+          response.toolCalls,
+          agenticRoot,
+          options.tools,
+        );
         if (previewMarkdown) {
           this.#publishAnswerPreview?.({
             generationId: response.requestId,
@@ -589,8 +974,41 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
   }
 
   #call(messages: BaseMessage[], options: LocalGemmaCallOptionsV1) {
-    const requiredToolName = requiredToolNameV1(options.tool_choice);
-    const declaredTools = toLocalToolsV1(options.tools, requiredToolName);
+    const requestedToolName = requiredToolNameV1(options.tool_choice);
+    const agenticRoot = isLocalGemmaAgenticRootV1(messages, options);
+    const initiallyDeclaredTools = toLocalToolsV1(
+      options.tools,
+      requestedToolName,
+      agenticRoot,
+    );
+    const implicitStructuredToolName = requestedToolName === undefined && !agenticRoot
+      ? implicitStructuredToolNameV1(initiallyDeclaredTools, messages)
+      : undefined;
+    // The local root only serializes the already host-selected topology into
+    // one bounded eval call. Triggering Gemma's private thought channel here
+    // can consume the whole generation corridor before the JavaScript string
+    // closes. Keep provider reasoning for direct Deep turns and specialists;
+    // the agentic depth still comes from the admitted child workflow.
+    const effectiveThinkingMode = agenticRoot || implicitStructuredToolName
+      ? "disabled"
+      : this.#thinkingMode;
+    // The host has already selected the agentic path, so its only legal root
+    // transition is the bounded QuickJS evaluator. Enforce that existing
+    // DeepAgents tool instead of asking the local model to spend tokens
+    // choosing between eval and a clarification tool before serializing the
+    // model-selected task graph. Anthropic and every non-agentic route retain
+    // their canonical tool-choice behavior.
+    const requiredToolName = agenticRoot
+      ? "eval"
+      : requestedToolName ?? implicitStructuredToolName;
+    const localMessages = toLocalModelMessagesV1(messages, {
+      // Once the local provider has selected an exact output tool, previous
+      // private thought is neither evidence nor needed for routing.
+      retainPrivateThought: requiredToolName === undefined,
+    });
+    const declaredTools = requiredToolName === requestedToolName
+      ? initiallyDeclaredTools
+      : toLocalToolsV1(options.tools, requiredToolName, agenticRoot);
     const tools = requiredToolName
       ? declaredTools.filter((tool) => tool.function.name === requiredToolName)
       : declaredTools;
@@ -599,15 +1017,9 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
     }
     return this.#client.generate({
       messages: projectLocalGemmaToolProtocolV1(
-        toLocalModelMessagesV1(messages, {
-          // Once DeepAgents has selected an exact tool, the previous private
-          // thought is neither evidence nor needed for routing. Omitting it
-          // keeps the local finalization call inside the browser context
-          // envelope without changing the canonical LangChain messages.
-          retainPrivateThought: requiredToolName === undefined,
-        }),
+        localMessages,
         tools,
-        this.#thinkingMode,
+        effectiveThinkingMode,
         requiredToolName,
       ),
       tools,
@@ -621,7 +1033,7 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
       maxOutputTokens: requiredToolName === "ChatAnswerDraftV2"
         ? Math.min(this.#maxOutputTokens, 896)
         : this.#maxOutputTokens,
-      thinkingMode: this.#thinkingMode,
+      thinkingMode: effectiveThinkingMode,
       ...(options.signal ? { signal: options.signal } : {}),
     });
   }
@@ -691,7 +1103,14 @@ export function createLocalGemmaChatModelBindingV1(input: {
       modelForThinking(localGemmaThinkingModeV1(preference)),
     modelForRoute: (request) => {
       const finalizeOnly = ["drafting", "repair", "synthesis"].includes(request.role);
-      const localThinkingMode = finalizeOnly
+      // Agentic children already obtain depth from their admitted specialist
+      // roles and dependency graph. On one local WebGPU model, an additional
+      // private reasoning pass per child serializes minutes of invisible work
+      // before the typed packet. Keep direct Auto/Think-deeper routing intact;
+      // this provider-local fast corridor applies only when the host supplies
+      // a concrete child profile.
+      const localChild = request.profileId !== undefined;
+      const localThinkingMode = finalizeOnly || localChild
         ? "disabled"
         : localGemmaThinkingModeV1(request.preference);
       const maxOutputTokens = localGemmaRouteOutputTokensV1(
@@ -706,7 +1125,7 @@ export function createLocalGemmaChatModelBindingV1(input: {
         ),
         effectiveModelId: input.modelId,
         requestedPreference: request.preference,
-        effectivePreference: finalizeOnly ? "fast" : request.preference,
+        effectivePreference: finalizeOnly || localChild ? "fast" : request.preference,
         thinkingMode: localThinkingMode === "disabled"
           ? "disabled"
           : "adaptive-summary",

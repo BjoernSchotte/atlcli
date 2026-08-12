@@ -37,10 +37,10 @@ function compactKiteweaveRootPromptV1(content: string): string {
   );
   const execution = agentic
     ? [
-        "The host requires one agentic Chat workflow. Make exactly one direct `eval` call. Its `code` must use top-level await, call `tools.chatWorkflowPropose` exactly once, then `tools.chatWorkflowRun({})` exactly once, and return the run result as the final expression. The host strategy is already accepted; `chatStrategyDecide` is optional and must not delay the workflow.",
-        "Propose a `tasks` array. Every task has `{taskId, profileId, objective, dependencyTaskIds}`. Use only profiles from this exact set: " + allowedAgenticProfilesV1(content) + ".",
+        "The host requires one agentic Chat workflow. Make exactly one direct `eval` call. For this local provider, the `eval` arguments are the workflow proposal object `{tasks, maxConcurrency, retrievalPlan?}` declared by its JSON Schema; do not write JavaScript or a `code` field. Begin the argument object with `tasks`; never put `maxConcurrency` or `retrievalPlan` before it. The provider adapter compiles the accepted object into the canonical QuickJS program that calls `tools.chatWorkflowPropose` exactly once and then `tools.chatWorkflowRun({})` exactly once. The host strategy is already accepted.",
+        "Set `maxConcurrency` to exactly `1` because one local WebGPU model executes the admitted specialist calls serially. Every task has `{taskId, profileId, objective, dependencyTaskIds}`. Use only profiles from this exact set: " + allowedAgenticProfilesV1(content) + ".",
         "Build only useful tasks for the user's objective. Dependency phases are acquisition readers, parallel analysis, optional contradiction reconciliation, exactly one `answer-drafter`, exactly one independent `answer-critic`, then exactly one `chat-synthesizer`. The synthesizer depends on the draft and critic. Do not use `task`, invent another profile, answer in the supervisor, or call another tool after the workflow run.",
-        "When discovery is needed, the proposal may include `retrievalPlan` with short focused variants for the already bound Jira/Confluence scope. Never place CQL, JQL, URLs, tenants, cursors, or broader scope in the proposal.",
+        "Only when discovery is needed, append `retrievalPlan` after the complete task array with short focused variants for the already bound Jira/Confluence scope. Omit it for a sufficient bound page. Never place CQL, JQL, URLs, tenants, cursors, or broader scope in the proposal.",
       ]
     : [
         "This is direct Chat. When Atlassian evidence is needed, the direct function call is always `eval`. Its single argument is an object with a JavaScript `code` string. Host capabilities exist only inside that string and each returns a JSON string.",
@@ -106,6 +106,19 @@ function gemmaToolBoundaryV1(tools: LocalModelToolV1[]): string {
   ].join("\n");
 }
 
+function localSpecialistCorridorV1(tools: LocalModelToolV1[]): string {
+  const names = new Set(tools.map((tool) => tool.function.name));
+  if (!names.has("ChatEvidencePacketV1") && !names.has("ChatLocalEvidencePacketV1")) {
+    return "";
+  }
+  return [
+    "This local browser evidence packet must prioritize only facts that materially answer the host-bound question.",
+    "Return at most 5 `claims`, at most 3 `relationships`, and at most 2 concise `gaps`; empty arrays are valid.",
+    "Keep each claim or relationship to one concise sentence and copy only exact source references already returned by a successful read.",
+    "These are local execution bounds, not changes to the declared response schema.",
+  ].join(" ");
+}
+
 function requiredToolInstructionV1(requiredToolName: string | undefined): string {
   return requiredToolName
     ? `Return only \`<|tool_call>call:${requiredToolName}\` with its JSON arguments; ordinary prose is invalid.`
@@ -124,12 +137,24 @@ export function projectLocalGemmaToolProtocolV1(
   requiredToolName?: string,
 ): LocalModelChatMessageV1[] {
   const hasToolResult = messages.some((message) => message.role === "tool");
+  const agenticRoot = messages.some((message) =>
+    message.role === "system" && message.content.includes(
+      "The host requires an agentic Chat workflow for this turn.",
+    )
+  );
   const projected = messages.map((message) =>
     message.role === "system" && message.content.includes(KITEWEAVE_ROOT_PROMPT_MARKER_V1)
       ? {
           ...message,
           content: requiredToolName === "ChatAnswerDraftV2"
             ? compactKiteweaveTerminalPromptV1(message.content)
+            : agenticRoot
+              ? [
+                  compactKiteweaveRootPromptV1(message.content),
+                  ...(hasToolResult
+                    ? ["The preceding eval result did not complete the workflow. Return one corrected schema-valid workflow proposal through `eval`; do not answer directly or emit ad-hoc JavaScript."]
+                    : []),
+                ].join("\n\n")
             : hasToolResult
               ? compactKiteweaveFollowupPromptV1(message.content)
               : compactKiteweaveRootPromptV1(message.content),
@@ -144,6 +169,9 @@ export function projectLocalGemmaToolProtocolV1(
   if (tools.length === 0 && !thinkingInstruction) return projected;
   const boundary = [
     ...(thinkingInstruction ? [thinkingInstruction] : []),
+    ...(localSpecialistCorridorV1(tools)
+      ? [localSpecialistCorridorV1(tools)]
+      : []),
     ...(tools.length > 0 && requiredToolName === undefined
       ? [gemmaToolBoundaryV1(tools)]
       : []),

@@ -34,6 +34,7 @@ import {
 import {
   CompleteToolCallStoppingCriteriaV1,
   LOCAL_GEMMA_TOOL_STOP_MARKERS_V1,
+  localGemmaRequiredToolPrefixV1,
   TokenSequenceStoppingCriteriaV1,
 } from
   "../utils/local-model/stopping.js";
@@ -228,7 +229,6 @@ async function generateV1(
       index,
       role: message.role,
       chars: message.content.length,
-      preview: message.content.slice(-320),
     })),
   });
   if (cancelledRequests.has(request.requestId)) {
@@ -295,12 +295,51 @@ async function generateV1(
       tokenizer.encode(marker, { add_special_tokens: false })
     ),
   );
+  const requiredToolParameters = request.tools.find((tool) =>
+    tool.function.name === request.requiredToolName
+  )?.function.parameters;
+  const requiredToolProperties = requiredToolParameters &&
+      typeof requiredToolParameters.properties === "object" &&
+      requiredToolParameters.properties !== null &&
+      !Array.isArray(requiredToolParameters.properties)
+    ? requiredToolParameters.properties as Record<string, unknown>
+    : undefined;
+  const bareStringEnumValues = (() => {
+    const values = new Set<string>();
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+        return;
+      }
+      if (!value || typeof value !== "object") return;
+      const schema = value as Record<string, unknown>;
+      if (Array.isArray(schema.enum)) {
+        for (const member of schema.enum) {
+          if (typeof member === "string" &&
+              /^[A-Za-z_][A-Za-z0-9_-]*$/u.test(member) &&
+              member !== "true" && member !== "false" && member !== "null") {
+            values.add(member);
+          }
+        }
+      }
+      Object.values(schema).forEach(visit);
+    };
+    visit(requiredToolParameters);
+    return values;
+  })();
+  const agenticProposal = request.requiredToolName === "eval" &&
+      requiredToolProperties?.tasks !== undefined &&
+      requiredToolProperties.code === undefined;
+  const agenticProposalSeparators = agenticProposal ? 16 : 0;
   const completeRequiredToolCriterion = request.requiredToolName
     ? new CompleteToolCallStoppingCriteriaV1(
         inputTokens,
         request.requiredToolName,
         (tokenIds) => tokenizer.decode(tokenIds, { skip_special_tokens: false }),
         responsePrefill,
+        agenticProposalSeparators,
+        agenticProposal ? 2 : 0,
+        bareStringEnumValues,
       )
     : undefined;
   if (cancelledRequests.has(request.requestId)) criterion.interrupt();
@@ -355,14 +394,10 @@ async function generateV1(
         );
       }
       if (generatedTokens.length < nextProgressToken) return;
-      const tail = tokenizer.decode(generatedTokens.slice(-192), {
-        skip_special_tokens: false,
-      });
       console.debug("[local-gemma/worker] generation progress", {
         requestId: request.requestId,
         outputTokens: generatedTokens.length,
         durationMs: Date.now() - generationStartedAt,
-        tail: tail.slice(-1_200),
       });
       nextProgressToken = generatedTokens.length + 32;
     },
@@ -372,7 +407,10 @@ async function generateV1(
   if (request.requiredToolName && !responsePrefill) {
     logitsProcessors.push(new RequiredToolPrefixLogitsProcessorV1(
       inputTokens,
-      tokenizer.encode(`<|tool_call>call:${request.requiredToolName}`, {
+      tokenizer.encode(localGemmaRequiredToolPrefixV1(
+        request.requiredToolName,
+        agenticProposal,
+      ), {
         add_special_tokens: false,
       }),
     ));
@@ -462,10 +500,14 @@ async function generateV1(
       ),
       hasToolBoundary: LOCAL_GEMMA_TOOL_STOP_MARKERS_V1.some((marker) => raw.includes(marker)),
       hasCompleteRequiredTool: request.requiredToolName
-        ? isCompleteGemmaToolCallV1(raw, request.requiredToolName)
+        ? isCompleteGemmaToolCallV1(
+            raw,
+            request.requiredToolName,
+            agenticProposalSeparators,
+            agenticProposal ? 2 : 0,
+            bareStringEnumValues,
+          )
         : undefined,
-      rawHead: raw.slice(0, 1_200),
-      rawTail: raw.slice(-1_200),
     });
     let parsed: ReturnType<typeof parseGemma4ResponseV1>;
     try {
@@ -475,33 +517,23 @@ async function generateV1(
         allowedToolNames: new Set(
           request.tools.map((tool) => tool.function.name),
         ),
+        maximumImplicitObjectSeparators: agenticProposalSeparators,
+        maximumTrailingStructuralClosers: agenticProposal ? 2 : 0,
+        bareStringEnumValues,
       });
     } catch (error) {
       const parseErrorMessage = error instanceof Error ? error.message : String(error);
-      const parseErrorByte = /at byte (\d+)/u.exec(parseErrorMessage)?.[1];
-      const parseErrorIndex = parseErrorByte === undefined
-        ? undefined
-        : Number.parseInt(parseErrorByte, 10);
-      const parseErrorContext = parseErrorIndex === undefined ||
-          !Number.isFinite(parseErrorIndex)
-        ? raw.slice(-600)
-        : raw.slice(
-            Math.max(0, parseErrorIndex - 240),
-            Math.min(raw.length, parseErrorIndex + 360),
-          );
       console.error("[local-gemma/worker] response parse failed", {
         requestId: request.requestId,
         requiredToolName: request.requiredToolName,
         outputTokens: generatedTokens.length,
         error: parseErrorMessage,
-        rawHead: raw.slice(0, 2_000),
-        rawTail: raw.slice(-2_000),
       });
       if (!request.requiredToolName) throw error;
       throw new Error(
-        `Local Gemma diagnostic after ${generatedTokens.length} output tokens: ${
+        `Local Gemma response could not be parsed after ${generatedTokens.length} output tokens: ${
           parseErrorMessage
-        }; near=${JSON.stringify(parseErrorContext)}`,
+        }`,
       );
     }
     const performanceReceipt: LocalModelInferencePerformanceV1 = {
@@ -557,8 +589,8 @@ async function generateV1(
               markdownChars: typeof candidate.markdown === "string"
                 ? candidate.markdown.length
                 : undefined,
-              sourceRefs: Array.isArray(candidate.sourceRefs)
-                ? candidate.sourceRefs
+              sourceRefCount: Array.isArray(candidate.sourceRefs)
+                ? candidate.sourceRefs.length
                 : undefined,
               assertion: candidate.assertion,
               scope: candidate.scope,

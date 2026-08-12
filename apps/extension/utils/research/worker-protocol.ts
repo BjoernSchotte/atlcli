@@ -124,4 +124,6 @@ export type ResearchWorkerResponseV1 =
       runId: string;
       code: ResearchErrorCode;
       error: string;
+      /** Redacted diagnostic retained only for the fully local model path. */
+      localDetail?: string;
     };

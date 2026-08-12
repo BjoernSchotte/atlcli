@@ -128,6 +128,7 @@ export function createChatDurableSummarizationMiddlewareV1(
     model: BaseChatModel;
     operationalMaxInputTokens?: number;
     shortTurnPassThrough?: boolean;
+    agenticHostRunPassThrough?: boolean;
   },
 ): AgentMiddleware {
   const contextPolicy = chatSummarizationContextPolicyV1(
@@ -154,10 +155,21 @@ export function createChatDurableSummarizationMiddlewareV1(
   }
   return {
     ...native,
+    // Keep this host-owned compressor distinguishable from DeepAgentsJS's
+    // generic default so provider harnesses can exclude only the duplicate.
+    name: "ChatDurableSummarizationMiddlewareV1",
     async wrapModelCall(
       ...args: Parameters<NonNullable<typeof nativeWrapModelCall>>
     ) {
       const [request, handler] = args;
+      if (options.agenticHostRunPassThrough) {
+        // chatWorkflowRun executes the admitted graph through terminal
+        // synthesis, after which the root middleware closes deterministically.
+        // There is no subsequent root model call that could consume this
+        // summary, so compacting the large workflow result would only add an
+        // unbounded provider call on constrained local runtimes.
+        return handler(request);
+      }
       const hasPriorSummary = Boolean(
         request.state &&
           typeof request.state === "object" &&

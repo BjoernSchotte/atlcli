@@ -46,6 +46,7 @@ describe("Chat-native DeepAgentsJS summarization", () => {
       } as never,
       async () => new AIMessage("Root response."),
     );
+    expect(middleware.name).toBe("ChatDurableSummarizationMiddlewareV1");
     const activeSummary = (result as {
       update?: { _summarizationEvent?: { summaryMessage?: { content?: unknown } } };
     }).update?._summarizationEvent?.summaryMessage?.content;
@@ -103,6 +104,45 @@ describe("Chat-native DeepAgentsJS summarization", () => {
       async (request) => {
         forwarded = request.messages;
         return new AIMessage("Root response.");
+      },
+    );
+
+    expect(result).toBeInstanceOf(AIMessage);
+    expect(forwarded).toEqual(messages);
+    expect(model.callCount).toBe(0);
+    expect(await workspace.list(CHAT_DEEPAGENT_SUMMARIZATION_STORAGE_ROOT_V1))
+      .toHaveLength(0);
+  });
+
+  test("does not summarize a locally host-executed agentic graph before deterministic root closure", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const model = fakeModel().respond(new AIMessage("Must not be used."));
+    const middleware = createChatDurableSummarizationMiddlewareV1(
+      { createSummarizationMiddleware },
+      {
+        workspace,
+        model,
+        operationalMaxInputTokens: 3_072,
+        agenticHostRunPassThrough: true,
+      },
+    );
+    const messages = Array.from(
+      { length: 20 },
+      (_, index) => new HumanMessage(`Agentic workflow message ${index + 1}.`),
+    );
+    let forwarded: unknown;
+
+    const result = await middleware.wrapModelCall!(
+      {
+        messages,
+        state: {},
+        model,
+        systemMessage: undefined,
+        tools: [],
+      } as never,
+      async (request) => {
+        forwarded = request.messages;
+        return new AIMessage("Deterministic root closure.");
       },
     );
 

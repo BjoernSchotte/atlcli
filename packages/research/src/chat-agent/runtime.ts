@@ -514,7 +514,6 @@ export function createChatDirectToolSurfaceMiddlewareV1(
               index,
               role: message.getType(),
               chars: String(message.content).length,
-              preview: String(message.content).slice(-240),
             })),
           });
         }
@@ -2297,6 +2296,9 @@ export function createKiteweaveChatAgent(
             model,
             shortTurnPassThrough:
               modelBinding.qualityAdapter.providerId === "local-gemma",
+            agenticHostRunPassThrough:
+              modelBinding.qualityAdapter.providerId === "local-gemma" &&
+              strategyDecision.execution === "agentic",
             ...(modelBinding.runtimeLimits?.maxInputTokens === undefined
               ? {}
               : {

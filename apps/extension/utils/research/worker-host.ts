@@ -11,11 +11,11 @@ import {
 } from "./contracts.js";
 import {
   ChatUserQuestionRequiredError,
-  classifyResearchError,
   type ChatHostIdentityV1,
   type ChatUserQuestionAnswerV1,
   type ChatInteractionStateV1,
 } from "@atlcli/research";
+import { classifyLocalGemmaHostErrorV1 } from "../local-model/error.js";
 import type {
   ChatWorkerControlV1,
   ResearchWorkerRequestV1,
@@ -127,10 +127,17 @@ export class ResearchAgentWorkerHost {
           reject(new ChatUserQuestionRequiredError(message.question));
           return;
         }
-        reject(new ResearchContractError(message.code, message.error));
+        const classified = classifyLocalGemmaHostErrorV1(
+          message.localDetail ?? message.error,
+          input.modelBinding !== undefined,
+        );
+        reject(new ResearchContractError(classified.code, classified.message));
       };
       worker.onerror = (event) => {
-        const classified = classifyResearchError(event.error ?? event.message);
+        const classified = classifyLocalGemmaHostErrorV1(
+          event.error ?? event.message,
+          input.modelBinding !== undefined,
+        );
         reject(new ResearchContractError(classified.code, classified.message));
       };
       if (input.resume) {

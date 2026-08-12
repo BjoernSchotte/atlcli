@@ -130,6 +130,9 @@ export function projectPartialGemmaAnswerMarkdownV1(
 export function isCompleteGemmaToolCallV1(
   raw: string,
   requiredToolName: string,
+  maximumImplicitObjectSeparators = 0,
+  maximumTrailingStructuralClosers = 0,
+  bareStringEnumValues: ReadonlySet<string> = new Set(),
 ): boolean {
   const start = raw.lastIndexOf(TOOL_OPEN);
   if (start < 0) return false;
@@ -139,7 +142,12 @@ export function isCompleteGemmaToolCallV1(
   try {
     new GemmaArgumentsParserV1(
       terminalAnswerArgumentBoundaryV1(match[2], requiredToolName),
-      requiredToolName === "ChatAnswerDraftV2" ? 32 : 0,
+      Math.max(
+        requiredToolName === "ChatAnswerDraftV2" ? 32 : 0,
+        maximumImplicitObjectSeparators,
+      ),
+      maximumTrailingStructuralClosers,
+      bareStringEnumValues,
     ).parse();
     return true;
   } catch {
@@ -186,11 +194,26 @@ class GemmaArgumentsParserV1 {
   constructor(
     readonly source: string,
     readonly maximumImplicitObjectSeparators = 0,
+    readonly maximumTrailingStructuralClosers = 0,
+    readonly bareStringEnumValues: ReadonlySet<string> = new Set(),
   ) {}
 
   parse(): Record<string, unknown> {
     const value = this.#value();
     this.#space();
+    // The pinned Gemma model can emit one duplicated root boundary after a
+    // complete provider-projected workflow object. Ignore only closing
+    // structure characters at the absolute tail and only when that local
+    // projection explicitly opts in. Nested/truncated values still fail.
+    let trailingStructuralClosers = 0;
+    while (
+      trailingStructuralClosers < this.maximumTrailingStructuralClosers &&
+      (this.source[this.#index] === "}" || this.source[this.#index] === "]")
+    ) {
+      this.#index += 1;
+      trailingStructuralClosers += 1;
+      this.#space();
+    }
     if (this.#index !== this.source.length || typeof value !== "object" ||
         value === null || Array.isArray(value)) {
       throw new Error("Gemma tool arguments must be one complete object.");
@@ -224,6 +247,18 @@ class GemmaArgumentsParserV1 {
     if (number) {
       this.#index += number.length;
       return Number(number);
+    }
+    // The pinned Gemma tool template describes enum fields as STRING but the
+    // model can serialize a declared enum member without its string delimiter.
+    // Accept only an exact value from the currently bound tool schema. An
+    // arbitrary identifier is still malformed and the canonical host schema
+    // remains authoritative for the complete object.
+    const bareString = this.source.slice(this.#index).match(
+      /^[A-Za-z_][A-Za-z0-9_-]*/u,
+    )?.[0];
+    if (bareString && this.bareStringEnumValues.has(bareString)) {
+      this.#index += bareString.length;
+      return bareString;
     }
     throw new Error(`Invalid Gemma tool argument at byte ${this.#index}.`);
   }
@@ -330,6 +365,9 @@ export function parseGemma4ResponseV1(input: {
   requestId: string;
   raw: string;
   allowedToolNames: ReadonlySet<string>;
+  maximumImplicitObjectSeparators?: number;
+  maximumTrailingStructuralClosers?: number;
+  bareStringEnumValues?: ReadonlySet<string>;
 }): ParsedGemmaResponseV1 {
   let remaining = input.raw;
   let thought: string | undefined;
@@ -364,7 +402,12 @@ export function parseGemma4ResponseV1(input: {
       name: match[1],
       arguments: new GemmaArgumentsParserV1(
         terminalAnswerArgumentBoundaryV1(match[2], match[1]),
-        match[1] === "ChatAnswerDraftV2" ? 32 : 0,
+        Math.max(
+          match[1] === "ChatAnswerDraftV2" ? 32 : 0,
+          input.maximumImplicitObjectSeparators ?? 0,
+        ),
+        input.maximumTrailingStructuralClosers ?? 0,
+        input.bareStringEnumValues,
       ).parse(),
       allowedToolNames: input.allowedToolNames,
     });

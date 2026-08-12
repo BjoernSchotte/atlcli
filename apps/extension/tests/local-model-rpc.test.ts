@@ -17,6 +17,7 @@ import {
 } from "../utils/local-model/gemma-response.js";
 import {
   createLocalGemmaChatModelBindingV1,
+  normalizeLocalGemmaAgenticEvalToolCallV1,
   normalizeLocalGemmaToolCallV1,
   toLocalModelMessagesV1,
 } from "../utils/local-model/langchain-proxy.js";
@@ -99,6 +100,41 @@ describe("pinned Gemma 4 response grammar", () => {
     }]);
   });
 
+  it("accepts only schema-declared bare string enum values", () => {
+    const raw = '<|tool_call>call:ChatProvisionalAnswerDraftV1{blocks:[{assertion:none,markdown:<|"|>Supported.<|"|>,sourceRefs:[<|"|>source-1#section:one<|"|>],scope:none}]}';
+    expect(parseGemma4ResponseV1({
+      requestId: "declared-enum",
+      raw,
+      allowedToolNames: new Set(["ChatProvisionalAnswerDraftV1"]),
+      bareStringEnumValues: new Set([
+        "positive",
+        "absence",
+        "none",
+        "source",
+        "selected-sources",
+        "bound-scope",
+      ]),
+    }).toolCalls[0]?.arguments).toEqual({
+      blocks: [{
+        assertion: "none",
+        markdown: "Supported.",
+        sourceRefs: ["source-1#section:one"],
+        scope: "none",
+      }],
+    });
+    expect(() => parseGemma4ResponseV1({
+      requestId: "undeclared-enum",
+      raw: raw.replace("assertion:none", "assertion:invented"),
+      allowedToolNames: new Set(["ChatProvisionalAnswerDraftV1"]),
+      bareStringEnumValues: new Set(["none"]),
+    })).toThrow("Invalid Gemma tool argument");
+    expect(() => parseGemma4ResponseV1({
+      requestId: "no-enum-contract",
+      raw,
+      allowedToolNames: new Set(["ChatProvisionalAnswerDraftV1"]),
+    })).toThrow("Invalid Gemma tool argument");
+  });
+
   it("repairs omitted object separators only for the terminal answer", () => {
     const raw = '<|tool_call>call:ChatAnswerDraftV2{blocks:[{markdown:<|"|>Budget<|"|>sourceRefs:[] assertion:<|"|>positive<|"|>,scope:<|"|>none<|"|>}]gaps:[]}';
     expect(parseGemma4ResponseV1({
@@ -121,6 +157,52 @@ describe("pinned Gemma 4 response grammar", () => {
       raw: '<|tool_call>call:eval{code:<|"|>return 42<|"|>flags:[]}',
       allowedToolNames: new Set(["eval"]),
     })).toThrow("missing ','");
+  });
+
+  it("repairs omitted separators only when the agentic proposal projection opts in", () => {
+    const raw = '<|tool_call>call:eval{tasks:[{taskId:<|"|>reader<|"|>profileId:<|"|>exact-context-reader<|"|>objective:<|"|>Read the bound page.<|"|>dependencyTaskIds:[]}]maxConcurrency:1}';
+    expect(() => parseGemma4ResponseV1({
+      requestId: "strict-agentic-eval",
+      raw,
+      allowedToolNames: new Set(["eval"]),
+    })).toThrow("missing ','");
+    expect(parseGemma4ResponseV1({
+      requestId: "projected-agentic-eval",
+      raw,
+      allowedToolNames: new Set(["eval"]),
+      maximumImplicitObjectSeparators: 16,
+    }).toolCalls[0]?.arguments).toEqual({
+      tasks: [{
+        taskId: "reader",
+        profileId: "exact-context-reader",
+        objective: "Read the bound page.",
+        dependencyTaskIds: [],
+      }],
+      maxConcurrency: 1,
+    });
+  });
+
+  it("ignores only a duplicated terminal boundary for an opted-in agentic proposal", () => {
+    const raw = '<|tool_call>call:eval{tasks:[{taskId:<|"|>reader<|"|>,profileId:<|"|>exact-context-reader<|"|>,objective:<|"|>Read.<|"|>,dependencyTaskIds:[]}]}]}';
+    expect(() => parseGemma4ResponseV1({
+      requestId: "strict-agentic-boundary",
+      raw,
+      allowedToolNames: new Set(["eval"]),
+    })).toThrow("complete object");
+    expect(parseGemma4ResponseV1({
+      requestId: "projected-agentic-boundary",
+      raw,
+      allowedToolNames: new Set(["eval"]),
+      maximumTrailingStructuralClosers: 2,
+    }).toolCalls[0]?.arguments).toEqual({
+      tasks: [{
+        taskId: "reader",
+        profileId: "exact-context-reader",
+        objective: "Read.",
+        dependencyTaskIds: [],
+      }],
+    });
+    expect(isCompleteGemmaToolCallV1(raw, "eval", 0, 2)).toBe(true);
   });
 
   it("closes only the omitted terminal root boundary", () => {
@@ -203,6 +285,68 @@ describe("pinned Gemma 4 response grammar", () => {
 });
 
 describe("local model RPC boundary", () => {
+  it("compiles a provider-local agentic proposal into the canonical eval program", () => {
+    const normalized = normalizeLocalGemmaAgenticEvalToolCallV1({
+      id: "agentic-proposal",
+      name: "eval",
+      arguments: {
+        tasks: [{
+          taskId: "reader",
+          profileId: "exact-context-reader",
+          objective: "Read the bound page.",
+          dependencyTaskIds: [],
+        }],
+        maxConcurrency: 1,
+        description: "provider-only prose must not reach QuickJS",
+        retrievalPlan: {
+          relationshipTraversals: [{
+            traversalId: "cross-reference",
+            kind: "confluence-to-jira-reference",
+            maxDepth: 0,
+            externalId: "must-not-cross-the-adapter",
+          }],
+          relatedAnchors: [{ externalId: "must-not-cross-the-adapter" }],
+        },
+      },
+    });
+
+    expect(normalized.name).toBe("eval");
+    expect(normalized.arguments).toEqual({
+      code: expect.stringContaining("await tools.chatWorkflowPropose(proposal);"),
+    });
+    expect(String(normalized.arguments.code)).toContain(
+      "await tools.chatWorkflowRun({})",
+    );
+    expect(String(normalized.arguments.code)).toContain(
+      '\"profileId\":\"exact-context-reader\"',
+    );
+    expect(String(normalized.arguments.code)).toContain(
+      '\"maxDepth\":1',
+    );
+    expect(String(normalized.arguments.code)).not.toContain("description");
+    expect(String(normalized.arguments.code)).not.toContain("externalId");
+  });
+
+  it("supplies the singleton local concurrency without selecting model tasks", () => {
+    const normalized = normalizeLocalGemmaAgenticEvalToolCallV1({
+      id: "agentic-proposal-without-concurrency",
+      name: "eval",
+      arguments: {
+        tasks: [{
+          taskId: "reader",
+          profileId: "exact-context-reader",
+          objective: "Read the bound page.",
+          dependencyTaskIds: [],
+        }],
+      },
+    });
+
+    expect(String(normalized.arguments.code)).toContain('"maxConcurrency":1');
+    expect(String(normalized.arguments.code)).toContain(
+      '"profileId":"exact-context-reader"',
+    );
+  });
+
   it("normalizes the pinned Gemma empty-gap and omitted block metadata shortcuts", () => {
     expect(normalizeLocalGemmaToolCallV1({
       id: "answer-1",
@@ -241,6 +385,49 @@ describe("local model RPC boundary", () => {
       name: "ChatAnswerDraftV2",
       arguments: { blocks: [] },
     }).arguments.gaps).toEqual([]);
+  });
+
+  it("normalizes omitted block metadata for every local Gemma answer-draft tool", () => {
+    for (const name of [
+      "ChatProvisionalAnswerDraftV1",
+      "ChatRepairedAnswerDraftV1",
+      "ChatAnswerDraftV2",
+    ]) {
+      expect(normalizeLocalGemmaToolCallV1({
+        id: `draft-${name}`,
+        name,
+        arguments: {
+          blocks: [{
+            markdown: "A supported statement.",
+            sourceRefs: ["source-1#section:one"],
+            assertion: "positive",
+          }, {
+            markdown: "Nothing relevant was found in the selected source.",
+            sourceRefs: ["source-1#section:two"],
+            assertion: "absence",
+          }, {
+            markdown: "Summary",
+          }],
+        },
+      }).arguments).toEqual({
+        blocks: [{
+          markdown: "A supported statement.",
+          sourceRefs: ["source-1#section:one"],
+          assertion: "positive",
+          scope: "none",
+        }, {
+          markdown: "Nothing relevant was found in the selected source.",
+          sourceRefs: ["source-1#section:two"],
+          assertion: "absence",
+          scope: "source",
+        }, {
+          markdown: "Summary",
+          assertion: "none",
+          scope: "none",
+        }],
+        gaps: [],
+      });
+    }
   });
 
   it("does not normalize explicit unknown answer metadata", () => {
@@ -585,6 +772,282 @@ describe("local model RPC boundary", () => {
     channel.port2.close();
   });
 
+  it("binds a sole DeepAgents structured packet without provider thought", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "structured-packet",
+          name: "ChatAnalysisPacketV1",
+          arguments: { claimRefs: [], relationshipRefs: [], contradictions: [], gaps: [] },
+        }],
+        inputTokens: 32,
+        outputTokens: 12,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      name: "ChatAnalysisPacketV1",
+      description: "Return the analysis packet.",
+      schema: z.object({
+        claimRefs: z.array(z.unknown()),
+        relationshipRefs: z.array(z.unknown()),
+        contradictions: z.array(z.unknown()),
+        gaps: z.array(z.unknown()),
+      }),
+    }]);
+
+    await runnable.invoke([new HumanMessage("Analyze the supplied evidence.")]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "ChatAnalysisPacketV1",
+      thinkingMode: "disabled",
+      tools: [{ function: { name: "ChatAnalysisPacketV1" } }],
+    });
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("adds enum-implied types required by the Gemma tool template", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "provisional-answer",
+          name: "ChatProvisionalAnswerDraftV1",
+          arguments: {
+            blocks: [{
+              markdown: "Supported statement.",
+              sourceRefs: ["source-1#section:one"],
+              assertion: "positive",
+              scope: "none",
+            }],
+          },
+        }],
+        inputTokens: 32,
+        outputTokens: 24,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      type: "function",
+      function: {
+        name: "ChatProvisionalAnswerDraftV1",
+        description: "Return a provisional answer.",
+        parameters: {
+          type: "object",
+          required: ["blocks"],
+          properties: {
+            blocks: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["markdown", "sourceRefs", "assertion", "scope"],
+                properties: {
+                  markdown: { type: "string" },
+                  sourceRefs: { type: "array", items: { type: "string" } },
+                  assertion: { enum: ["positive", "absence", "none"] },
+                  scope: { enum: ["none", "source", "selected-sources", "bound-scope"] },
+                },
+              },
+            },
+          },
+        },
+      },
+    }], { tool_choice: "ChatProvisionalAnswerDraftV1" });
+
+    await runnable.invoke([new HumanMessage("Draft the answer.")]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "ChatProvisionalAnswerDraftV1",
+      tools: [{
+        function: {
+          parameters: {
+            properties: {
+              blocks: {
+                items: {
+                  properties: {
+                    assertion: { type: "string" },
+                    scope: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }],
+    });
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("binds the sole reader packet only after its host read result", async () => {
+    const channel = new MessageChannel();
+    const observed: LocalModelPortRequestV1[] = [];
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed.push(event.data);
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "reader-packet",
+          name: "ChatEvidencePacketV1",
+          arguments: { claims: [], relationships: [], gaps: [] },
+        }],
+        inputTokens: 32,
+        outputTokens: 12,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      name: "chat_exact_context_acquire",
+      description: "Read the exact context.",
+      schema: z.object({}),
+    }, {
+      name: "ChatEvidencePacketV1",
+      description: "Return the evidence packet.",
+      schema: z.object({
+        claims: z.array(z.unknown()),
+        relationships: z.array(z.unknown()),
+        gaps: z.array(z.unknown()),
+      }),
+    }]);
+
+    await runnable.invoke([new HumanMessage("Read first.")]);
+    await runnable.invoke([
+      new HumanMessage("Read first."),
+      new AIMessage({
+        content: "",
+        tool_calls: [{ id: "read-1", name: "chat_exact_context_acquire", args: {} }],
+      }),
+      new ToolMessage({
+        content: "Bound evidence.",
+        tool_call_id: "read-1",
+        name: "chat_exact_context_acquire",
+      }),
+    ]);
+
+    expect(observed[0]).toMatchObject({
+      kind: "generate",
+      tools: [
+        { function: { name: "chat_exact_context_acquire" } },
+        { function: { name: "ChatEvidencePacketV1" } },
+      ],
+    });
+    expect(observed[0] && "requiredToolName" in observed[0]).toBe(false);
+    expect(observed[1]).toMatchObject({
+      kind: "generate",
+      requiredToolName: "ChatEvidencePacketV1",
+      tools: [{ function: { name: "ChatEvidencePacketV1" } }],
+    });
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("restores forced structured envelope constants without repairing evidence", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "evidence-packet",
+          name: "ChatEvidencePacketV1",
+          arguments: {
+            schema: "atlcli.agentic-task-dispatch/v1",
+            claims: [{
+              text: "A supported claim.",
+              sourceIds: ["wiki:source-1"],
+              sourceRefs: ["wiki:source-1#section:one"],
+            }],
+          },
+        }],
+        inputTokens: 32,
+        outputTokens: 64,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      name: "ChatEvidencePacketV1",
+      description: "Return the evidence packet.",
+      schema: z.object({
+        schema: z.literal("atlcli.chat-evidence-packet/v1"),
+        sourceIds: z.array(z.string()),
+        claims: z.array(z.unknown()),
+        relationships: z.array(z.unknown()),
+        gaps: z.array(z.string()),
+      }),
+    }]);
+
+    const result = await runnable.invoke([new HumanMessage("Return the packet.")]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "ChatEvidencePacketV1",
+    });
+    if (!observed || observed.kind !== "generate") throw new Error("Missing request.");
+    const parameters = observed.tools[0]!.function.parameters;
+    expect((parameters.properties as Record<string, unknown>).schema).toBeUndefined();
+    expect(parameters.required).not.toContain("schema");
+    expect(result.tool_calls?.[0]?.args).toEqual({
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: ["wiki:source-1"],
+      claims: [{
+        text: "A supported claim.",
+        sourceIds: ["wiki:source-1"],
+        sourceRefs: ["wiki:source-1#section:one"],
+      }],
+      relationships: [],
+      gaps: [],
+    });
+    channel.port1.close();
+    channel.port2.close();
+  });
+
   it("publishes local answer previews without changing the canonical tool call", async () => {
     const channel = new MessageChannel();
     let observed: LocalModelPortRequestV1 | undefined;
@@ -773,7 +1236,7 @@ describe("local model RPC boundary", () => {
     expect(binding.modelForRoute?.({ role: "analysis", preference: "balanced" }))
       .toMatchObject({
         thinkingMode: "adaptive-summary",
-        model: { profile: { maxOutputTokens: 1_536 } },
+        model: { profile: { maxOutputTokens: 1_024 } },
       });
     expect(binding.modelForRoute?.({ role: "analysis", preference: "thorough" }))
       .toMatchObject({ thinkingMode: "adaptive-summary" });
@@ -781,10 +1244,19 @@ describe("local model RPC boundary", () => {
       .toMatchObject({
         thinkingMode: "disabled",
         finalizationCorridor: "finalize-only",
-        model: { profile: { maxOutputTokens: 2_048 } },
+        model: { profile: { maxOutputTokens: 1_024 } },
       });
+    expect(binding.modelForRoute?.({
+      role: "analysis",
+      preference: "thorough",
+      profileId: "relationship-tracer",
+    })).toMatchObject({
+      effectivePreference: "fast",
+      thinkingMode: "disabled",
+      model: { profile: { maxOutputTokens: 1_024 } },
+    });
     expect(binding.modelForRoute?.({ role: "extraction", preference: "fast" }))
-      .toMatchObject({ model: { profile: { maxOutputTokens: 768 } } });
+      .toMatchObject({ model: { profile: { maxOutputTokens: 1_024 } } });
     channel.port1.close();
     channel.port2.close();
   });

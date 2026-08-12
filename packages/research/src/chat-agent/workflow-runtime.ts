@@ -84,6 +84,7 @@ import {
   type ChatWorkflowProposalV1,
   type ChatWorkflowTaskProposalV1,
 } from "./workflow.js";
+
 import {
   assessChatGroundednessBeforeCriticV1,
   chatFinalGapCodeForQualityDefectV1,
@@ -98,6 +99,23 @@ import {
   type ChatQualityDispositionV1,
   type ChatRepairSkippedReasonV1,
 } from "./quality.js";
+
+const LOCAL_GEMMA_SUBAGENT_MIN_DURATION_MS_V1 = 180_000;
+
+/**
+ * Local browser inference has a substantial WebGPU prefill phase that is not
+ * represented by a remote provider's first-token latency. Keep the canonical
+ * profile deadline for every other provider, while giving local Gemma enough
+ * wall-clock time to finish the exact same admitted task contract.
+ */
+export function chatSubagentDispatchDurationV1(
+  effectiveModelId: string,
+  profileMaxDurationMs: number,
+): number {
+  return /gemma/iu.test(effectiveModelId)
+    ? Math.max(profileMaxDurationMs, LOCAL_GEMMA_SUBAGENT_MIN_DURATION_MS_V1)
+    : profileMaxDurationMs;
+}
 
 export const CHAT_WORKFLOW_STATE_PATH_V1 =
   "/.atlcli/chat/v1/workflow.json" as const;
@@ -2729,9 +2747,15 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     beforeProposal: input.beforeProposal,
     beforeAdmission: input.beforeWorkflowAdmission,
     onAccepted: async (workflow, response) => {
-      dispatch.replaceAdmissions(workflow.admissions.filter((admission) =>
-        admission.taskId !== workflow.synthesizerTaskId
-      ));
+      dispatch.replaceAdmissions(workflow.admissions
+        .filter((admission) => admission.taskId !== workflow.synthesizerTaskId)
+        .map((admission) => ({
+          ...admission,
+          maxDurationMs: chatSubagentDispatchDurationV1(
+            runtimeModelId,
+            admission.maxDurationMs,
+          ),
+        })));
       dispatch.setMaxConcurrency(workflow.compiled.maxConcurrency);
       acceptedWorkflow = workflow;
       for (const task of workflow.tasks) {
@@ -2933,7 +2957,10 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
         grantedCapabilityIds: selected.grantedCapabilityIds,
         responseSchema: selected.responseSchema,
         maxResultBytes: selected.maxResultBytes,
-        maxDurationMs: selected.maxDurationMs,
+        maxDurationMs: chatSubagentDispatchDurationV1(
+          runtimeModelId,
+          selected.maxDurationMs,
+        ),
       };
     });
     dispatch.appendAdmissions(admissions);

@@ -3339,8 +3339,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   async function startNewConversation(): Promise<void> {
     if (running) return;
-    if (chatPort) await chatPort.resetConversation();
-    else await port?.resetChatConversation?.();
     setChatThinkingMode("auto");
     selectInteractionMode("chat", "auto");
     setQuestion("");
@@ -3351,12 +3349,22 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     activeChatConversationIdRef.current = null;
     setImmediateSteering(null);
     setSubmittedRequest(null);
+    setPendingChatQuestion(null);
+    setPlanApprovalRequired(null);
+    setScopeClarification(null);
+    setBriefClarification(null);
     setReport(null);
     setError(null);
     setActivity([]);
     setProgress("");
     setActionStatus("");
     setConversationMenuOpen(false);
+    try {
+      if (chatPort) await chatPort.resetConversation();
+      else await port?.resetChatConversation?.();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    }
   }
 
   /**

@@ -57,6 +57,7 @@ import {
   browserChatProviderCacheIdentityV1,
   type BrowserModelSelectionV1,
 } from "../../../utils/local-model/selection.js";
+import { classifyLocalGemmaHostErrorV1 } from "../../../utils/local-model/error.js";
 
 const MAX_RESEARCH_RESUME_MS = 10 * 60_000;
 const CHAT_HOST_PRINCIPAL_KEY = "atlcli.chat.host-principal-id.v1";
@@ -1236,7 +1237,15 @@ export function chromeResearchPort(): ResearchPort {
           if (options?.signal?.aborted) {
             throw new ResearchContractError("cancelled", "The research run was cancelled.");
           }
-          throw error;
+          const selection = await browserChatModelSelectionV1();
+          const classified = classifyLocalGemmaHostErrorV1(
+            error,
+            selection.providerId === "local-gemma",
+          );
+          throw new ResearchContractError(
+            classified.code,
+            classified.message,
+          );
         }
         if (options?.signal?.aborted) {
           throw new ResearchContractError("cancelled", "The research run was cancelled.");

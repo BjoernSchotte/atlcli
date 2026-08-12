@@ -5,6 +5,7 @@ import {
   ResearchScopeCatalogBroker,
   ResearchContractError,
   classifyResearchError,
+  redactResearchSecrets,
   createRestResearchProviders,
   createRestScopeCatalogProviders,
   normalizeResearchOneShotPolicyV1,
@@ -46,6 +47,7 @@ import type {
 } from "../utils/research/worker-protocol.js";
 import { openDurableChatConversationWorkspaceV1 } from "../utils/research/chat-conversation.js";
 import { createLocalGemmaChatModelBindingV1 } from "../utils/local-model/langchain-proxy.js";
+import { classifyLocalGemmaHostErrorV1 } from "../utils/local-model/error.js";
 import {
   appendLocalGemmaPerformanceSamplesV1,
   type LocalGemmaPerformanceSampleV1,
@@ -411,12 +413,18 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         });
         return;
       }
-      const classified = classifyResearchError(error);
+      const classified = classifyLocalGemmaHostErrorV1(
+        error,
+        message.modelBinding?.kind === "local-gemma",
+      );
       post({
         kind: "research-worker:error",
         runId,
         code: classified.code,
         error: classified.message,
+        ...(message.modelBinding?.kind === "local-gemma"
+          ? { localDetail: redactResearchSecrets(error) }
+          : {}),
       });
     } finally {
       if (activeRun?.runId === runId) activeRun = undefined;

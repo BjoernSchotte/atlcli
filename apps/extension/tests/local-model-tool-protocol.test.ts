@@ -86,6 +86,9 @@ describe("local Gemma prompt projection", () => {
     expect(projected[0]!.content).toContain("tools.chatWorkflowPropose");
     expect(projected[0]!.content).toContain("tools.chatWorkflowRun({})");
     expect(projected[0]!.content).toContain(
+      "do not write JavaScript or a `code` field",
+    );
+    expect(projected[0]!.content).toContain(
       "exact-context-reader, comparison-analyst, answer-drafter, answer-critic, chat-synthesizer",
     );
     expect(projected[0]!.content).not.toContain("relationship-tracer");
@@ -100,6 +103,25 @@ describe("local Gemma prompt projection", () => {
 
     expect(projected[0]!.content).toStartWith(specialist);
     expect(projected[0]!.content).toContain("Local Gemma tool-call boundary");
+  });
+
+  it("compacts local evidence packets without changing the specialist schema", () => {
+    const specialist = "Read the exact sources and return ChatEvidencePacketV1.";
+    const projected = projectLocalGemmaToolProtocolV1([
+      { role: "system", content: specialist },
+      { role: "user", content: "Compare the linked pages." },
+    ], [{
+      type: "function",
+      function: {
+        name: "ChatEvidencePacketV1",
+        description: "Return the admitted evidence packet.",
+        parameters: { type: "object" },
+      },
+    }]);
+
+    expect(projected[0]!.content).toStartWith(specialist);
+    expect(projected[0]!.content).toContain("at most 5 `claims`");
+    expect(projected[0]!.content).toContain("not changes to the declared response schema");
   });
 
   it("uses a smaller finalization prompt after a tool result", () => {

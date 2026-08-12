@@ -762,27 +762,22 @@ describe("local Gemma shared Chat-agent path", () => {
       const channel = new MessageChannel();
       const requests: Extract<LocalModelPortRequestV1, { kind: "generate" }>[] =
         [];
-      const workflowCode = `
-const acceptedStrategy = JSON.parse(await tools.chatStrategyDecide({}));
-globalThis.syntheticWorkflow = JSON.parse(await tools.chatWorkflowPropose({
-  tasks: [
-    { taskId: "task:compare", profileId: "comparison-analyst", objective: "Compare the bounded synthetic positions.", dependencyTaskIds: [] },
-    { taskId: "task:contradiction", profileId: "contradiction-checker", objective: "Check the bounded synthetic positions for contradictions.", dependencyTaskIds: ["task:compare"] },
-    { taskId: "task:draft", profileId: "answer-drafter", objective: "Draft the bounded synthetic answer.", dependencyTaskIds: ["task:compare", "task:contradiction"] },
-    { taskId: "task:critic", profileId: "answer-critic", objective: "Check the bounded synthetic evidence state.", dependencyTaskIds: ["task:draft"] },
-    { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the conversational answer.", dependencyTaskIds: ["task:draft", "task:critic"] }
-  ],
-  maxConcurrency: 1
-}));
-globalThis.syntheticWorkflowRun = JSON.parse(await tools.chatWorkflowRun({}));
-syntheticWorkflowRun;`;
       const scriptedResponses = [
         {
           toolCalls: [
             {
               id: "agentic-root-eval",
               name: "eval",
-              arguments: { code: workflowCode },
+              arguments: {
+                tasks: [
+                  { taskId: "task:compare", profileId: "comparison-analyst", objective: "Compare the bounded synthetic positions.", dependencyTaskIds: [] },
+                  { taskId: "task:contradiction", profileId: "contradiction-checker", objective: "Check the bounded synthetic positions for contradictions.", dependencyTaskIds: ["task:compare"] },
+                  { taskId: "task:draft", profileId: "answer-drafter", objective: "Draft the bounded synthetic answer.", dependencyTaskIds: ["task:compare", "task:contradiction"] },
+                  { taskId: "task:critic", profileId: "answer-critic", objective: "Check the bounded synthetic evidence state.", dependencyTaskIds: ["task:draft"] },
+                  { taskId: "task:synth", profileId: "chat-synthesizer", objective: "Write the conversational answer.", dependencyTaskIds: ["task:draft", "task:critic"] },
+                ],
+                maxConcurrency: 1,
+              },
             },
           ],
         },
@@ -945,6 +940,27 @@ syntheticWorkflowRun;`;
         expect(requests[0]!.messages[0]!.content).toContain(
           "tools.chatWorkflowPropose",
         );
+        expect(requests[0]!.messages[0]!.content).toContain(
+          "Set `maxConcurrency` to exactly `1`",
+        );
+        expect(requests[0]!.thinkingMode).toBe("disabled");
+        expect(requests[0]!.messages[0]!.content).not.toContain("<|think|>");
+        expect(requests[0]!.requiredToolName).toBe("eval");
+        expect(requests[0]!.tools.map((tool) => tool.function.name)).toEqual([
+          "eval",
+        ]);
+        expect(requests[0]!.tools[0]!.function.parameters).toMatchObject({
+          required: ["tasks", "maxConcurrency"],
+          properties: {
+            maxConcurrency: { enum: [1] },
+          },
+        });
+        expect(requests[0]!.tools[0]!.function.parameters).not.toHaveProperty(
+          "properties.code",
+        );
+        expect(requests.slice(1).every((request) =>
+          request.thinkingMode === "disabled"
+        )).toBe(true);
         expect(answer).toMatchObject({
           strategy: { qualityMode: mode, path: "agentic", delegated: true },
         });
