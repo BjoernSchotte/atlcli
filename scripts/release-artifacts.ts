@@ -509,9 +509,12 @@ if (import.meta.main) {
   if (command === "build") {
     const { runReleaseArtifactBuildCli } = await import("./build-release-artifacts.js");
     await runReleaseArtifactBuildCli(process.argv.slice(3));
+  } else if (command === "rehearse") {
+    const { rehearseDevRelease } = await import("./ci/rehearse-dev-release.js");
+    process.stdout.write(canonicalJson(await rehearseDevRelease(process.argv.slice(3))));
   } else if (command !== "identity") {
     process.stderr.write(
-      "Usage: bun scripts/release-artifacts.ts <identity|build> [options]\n",
+      "Usage: bun scripts/release-artifacts.ts <identity|build|rehearse> [options]\n",
     );
     process.exit(2);
   } else {

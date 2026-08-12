@@ -127,6 +127,7 @@ describe("CI workflow policy", () => {
     expect(triggers).toContain("source_sha:");
     expect(triggers).toContain("force_rebuild:");
     expect(triggers).toContain("publish_homebrew:");
+    expect(triggers).toMatch(/dry_run:\n[\s\S]*?default: true/);
     expect(triggers).not.toContain("pull_request:");
     expect(triggers).not.toContain("pull_request_target:");
     expect(triggers).not.toMatch(/^ {2}push:/m);
@@ -149,6 +150,37 @@ describe("CI workflow policy", () => {
     expect(dev).not.toContain("attestations: write");
     expect(dev).not.toContain("softprops/action-gh-release");
     expect(dev).not.toContain("nightly-latest");
+  });
+
+  it("defaults manual dev releases to a complete mutation-free shadow graph", async () => {
+    const dev = await workflow("dev-release.yml");
+    const shadow = block(dev, /^ {2}shadow-plan:\s*$/, 2);
+    const native = block(dev, /^ {2}shadow-native-cli-consumer:\s*$/, 2);
+    const complete = block(dev, /^ {2}shadow-complete:\s*$/, 2);
+    expect(shadow).not.toBeNull();
+    expect(shadow).toContain("github.event_name == 'workflow_dispatch'");
+    expect(shadow).toContain("inputs.dry_run");
+    expect(shadow).toContain("permissions:\n      contents: read");
+    expect(shadow).toContain("verify-release-artifacts.ts --dir bundle");
+    expect(shadow).toContain("dev-release-shadow-plan.ts");
+    expect(native).not.toBeNull();
+    for (const target of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "windows-x64"]) {
+      expect(native).toContain(`target: ${target}`);
+    }
+    expect(native).toContain("verify-native-cli.ts");
+    expect(complete).toContain("no tag, release, or Tap formula was written");
+    for (const name of [
+      "create-draft",
+      "verify-downloaded-draft",
+      "native-cli-consumer",
+      "publish-draft",
+      "verify-published",
+      "publish-homebrew-dev",
+    ]) {
+      expect(block(dev, new RegExp(`^ {2}${name}:\\s*$`), 2)).toContain(
+        "github.event_name == 'schedule' || inputs.dry_run == false",
+      );
+    }
   });
 
   it("ignores the manual UI ref and accepts only a full SHA reachable from origin/main", async () => {

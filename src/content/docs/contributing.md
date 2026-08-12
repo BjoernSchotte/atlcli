@@ -424,10 +424,12 @@ Open **Actions → Dev release → Run workflow**. The inputs are:
 | `source_sha` | current `main` | Optional full SHA; it must be an ancestor of current `main` and have a successful canonical `main` push run |
 | `force_rebuild` | `false` | Create a new immutable build identity for an already released SHA; never replace an existing tag or asset |
 | `publish_homebrew` | `true` | Dispatch and verify the separate `atlcli-dev` formula after GitHub publication succeeds |
+| `dry_run` | `true` | Run the exact quality/artifact/native-consumer shadow graph and record every publication mutation without creating a tag, release, or formula |
 
 For the first live publication, complete the DR-09 shadow rehearsal and obtain
 explicit maintainer approval. Record the clean source SHA, then run the manual
-workflow with Homebrew enabled. Scheduled runs use the same defaults and are
+workflow with Homebrew enabled and `dry_run=false`. Scheduled runs use the same
+live publication graph and are
 accepted only after `DEV_RELEASE_SCHEDULE_ENABLED=true` is set.
 
 ### Diagnose and recover
