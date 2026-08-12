@@ -1,7 +1,7 @@
 import { chromium } from "@playwright/test";
+import { createHash } from "node:crypto";
 import {
   cpSync,
-  createHash,
   existsSync,
   mkdirSync,
   mkdtempSync,
