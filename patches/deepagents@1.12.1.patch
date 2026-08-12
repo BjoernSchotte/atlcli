@@ -1,0 +1,14 @@
+diff --git a/dist/langsmith-DdOXam6Z.cjs b/dist/langsmith-DdOXam6Z.cjs
+index c090b41705a055a4a2ef44a19137867f5c0ccdd2..94112c0b735b0f43dc5f0021e85c1ffaf571544d 100644
+--- a/dist/langsmith-DdOXam6Z.cjs
++++ b/dist/langsmith-DdOXam6Z.cjs
+@@ -2412 +2412 @@ function createTaskTool(options) {
+-		const subagentState = filterStateForSubagent((0, _langchain_langgraph.getCurrentTaskInput)());
++		const subagentState = filterStateForSubagent((0, _langchain_langgraph.getCurrentTaskInput)(config));
+diff --git a/dist/langsmith-DgbmWtWj.js b/dist/langsmith-DgbmWtWj.js
+index cacc475192aba4d5afce8c925170f305d86c91e1..547b56e35ce37b9d365103d4ef083b5a9e2a5f07 100644
+--- a/dist/langsmith-DgbmWtWj.js
++++ b/dist/langsmith-DgbmWtWj.js
+@@ -2388 +2388 @@ function createTaskTool(options) {
+-		const subagentState = filterStateForSubagent(getCurrentTaskInput());
++		const subagentState = filterStateForSubagent(getCurrentTaskInput(config));
