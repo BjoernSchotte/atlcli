@@ -99,6 +99,9 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain('--target "${{ matrix.target }}"');
     expect(reusable).toContain("--skip-extension");
     expect(reusable).toContain("--skip-cli");
+    expect(reusable).toContain("release_attempt:");
+    expect(reusable.match(/--run-attempt \"\$\{\{ inputs\.release_attempt \}\}\"/g)).toHaveLength(3);
+    expect(release).toContain("release_attempt: ${{ github.run_attempt }}");
     const extensionBuild = block(reusable, /^ {2}build-extension:\s*$/, 2);
     expect(extensionBuild).not.toBeNull();
     expect(extensionBuild).toContain("bun run fonts:ensure");
@@ -219,6 +222,7 @@ describe("CI workflow policy", () => {
     expect(eligibility).toContain("checks: read");
     expect(eligibility).toContain("contents: read");
     expect(eligibility).toContain("scripts/ci/release-eligibility.ts");
+    expect(dev).toContain('--run-attempt "${{ needs.resolve-source.outputs.release_attempt }}"');
     expect(eligibility).toContain('--source-sha "${{ needs.resolve-source.outputs.source_sha }}"');
     expect(preflight).not.toBeNull();
     expect(preflight).toContain("needs: [resolve-source, publication-decision, eligible-source]");

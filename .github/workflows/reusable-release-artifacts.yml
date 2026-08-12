@@ -21,6 +21,9 @@ on:
       created_at:
         required: true
         type: string
+      release_attempt:
+        required: true
+        type: number
       security_attestation_artifact:
         required: true
         type: string
@@ -75,7 +78,7 @@ jobs:
             --source-sha "${{ inputs.source_sha }}" \
             --timestamp "${{ inputs.created_at }}" \
             --run-number "$GITHUB_RUN_NUMBER" \
-            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --run-attempt "${{ inputs.release_attempt }}" \
             --target "${{ matrix.target }}" \
             --skip-extension \
             --output release \
@@ -129,7 +132,7 @@ jobs:
             --source-sha "${{ inputs.source_sha }}" \
             --timestamp "${{ inputs.created_at }}" \
             --run-number "$GITHUB_RUN_NUMBER" \
-            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --run-attempt "${{ inputs.release_attempt }}" \
             --skip-cli \
             --output release \
             --receipt build-receipt.json
@@ -208,7 +211,7 @@ jobs:
             --created-at "${{ inputs.created_at }}"
             --run-id "$GITHUB_RUN_ID"
             --run-number "$GITHUB_RUN_NUMBER"
-            --run-attempt "$GITHUB_RUN_ATTEMPT"
+            --run-attempt "${{ inputs.release_attempt }}"
             --event "$GITHUB_EVENT_NAME"
             --build-id "${{ inputs.build_id }}"
             --security-attestation bundle/security-attestation.json

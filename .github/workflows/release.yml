@@ -83,6 +83,7 @@ jobs:
       version: ${{ needs.resolve.outputs.version }}
       build_id: ${{ needs.resolve.outputs.build_id }}
       created_at: ${{ needs.resolve.outputs.created_at }}
+      release_attempt: ${{ github.run_attempt }}
       security_attestation_artifact: security-attestation-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   create-draft:
