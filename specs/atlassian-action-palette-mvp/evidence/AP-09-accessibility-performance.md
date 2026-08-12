@@ -4,7 +4,9 @@
 
 **Date:** 2026-08-12
 
-**Source commit:** `a10403f172abbf2e06f466e3494608e53b180f8c`
+**Visual-matrix source commit:** `a10403f172abbf2e06f466e3494608e53b180f8c`
+
+**Final lifecycle re-proof source commit:** `028790b7d5e9c18cfbe431f9b24d0e25d80fc35e`
 
 The machine-readable result is stored in
 `AP-09-accessibility-performance.json`. It contains no tenant identifier, page
@@ -70,3 +72,12 @@ bun run --cwd apps/extension test:palette-extension-browser:prebuilt
 Results: 7,971 root tests passed with 16 intentional skips and zero failures;
 all 30 build tasks and all 34 browser entrypoints passed; typecheck and output
 scan passed; and all seven packed-browser cases passed.
+
+The machine-readable receipt preserves the original screenshot matrix under
+its original source identity and adds a separate `finalLifecycleReproof`
+record. That final production-output run passed all seven packed-browser cases
+and retained 30 samples after five warmups: cold-open p95 was `67.196 ms`,
+warm-open p95 was `10.977 ms`, maximum long-task duration was `0 ms`, and local
+search made zero requests. Eager and lazy palette gzip sizes were `6,834` and
+`81,850` bytes respectively. No screenshot hash or visual assertion has been
+re-attributed to a source commit that did not produce it.

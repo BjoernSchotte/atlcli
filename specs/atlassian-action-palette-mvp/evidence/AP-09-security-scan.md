@@ -4,19 +4,23 @@
 
 **Date:** 2026-08-12
 
-**Scanned source commit:** `fb6efcbc3dc716590f6b63afdac95f15cfca7098`
+**Final scanned branch commit:** `a3a3d94f2925f4df66b1345ebacbe9d52320a044`
+
+**Final implementation source:** `028790b7d5e9c18cfbe431f9b24d0e25d80fc35e`
 
 **Comparison base:** `0adae61967e9c48589fe22a4404e91c748aa4b46`
 
-The scan covers the complete action-palette branch delta, the production WXT
-output rebuilt from the scanned source, and the exact staged documentation
-update that closes this gate. It records counts and classifications only; no
+The scan covers the complete action-palette branch delta through the final
+implementation and acceptance-evidence commits, the production WXT output
+rebuilt from the final implementation source, and the exact staged evidence
+update that closes this audit. It records counts and classifications only; no
 credential value, tenant URL, page content, prompt, or customer artifact is
 copied into this receipt.
 
 ## Source and staged-diff scan
 
-The branch delta contains 108 files. File-name and content scans found:
+The final branch delta plus this audit correction contains 110 files. File-name
+and content scans found:
 
 - zero tracked PDF, DOCX, ZIP, CRX, PNG/JPEG/GIF/WebP, HAR, trace, or log
   artifacts;
@@ -29,9 +33,17 @@ The branch delta contains 108 files. File-name and content scans found:
   cleaned up;
 - a clean `git diff --check` result.
 
-After staging only this receipt and the PLAN checkbox, the same artifact,
-credential, secret-signature, tenant-marker, and whitespace checks were run
-against the exact Git index and all returned zero findings.
+The 57 Atlassian URL literals resolve to six explicitly synthetic hostnames
+used by fixtures, hostile-input tests, documentation, and the search benchmark.
+The diff after the original scan introduced no Atlassian origin literal and no
+disposable tenant/resource marker. The final signature scan returned zero
+private-key blocks and zero AWS, Anthropic, OpenAI, GitHub, or Slack token
+matches.
+
+After staging only this receipt and the accessibility/performance receipt
+correction, the same artifact, credential, secret-signature, tenant-marker,
+and whitespace checks were run against the exact Git index and all returned
+zero findings.
 
 ## Production-output scan
 
