@@ -821,6 +821,13 @@ hardening.
       decision machine, each with the direct strategy, one progress sequence,
       one source-bound terminal answer, and no stop or failure state. The
       separate Think-deeper-agentic ratchet remains open.
+- [x] Complete the first production-packed Think-deeper-agentic run through the
+      existing side-panel Chat after one extension reload. The fresh,
+      provider-partitioned conversation reached terminal synthesis in
+      approximately 82 seconds on the named decision machine, covered every
+      requested answer facet, emitted one ordered progress sequence, and bound
+      its factual sections to three canonical section references. The
+      three-consecutive-run ratchet remains open.
 
 #### G0b — Prove Quick through the existing UI
 
@@ -847,7 +854,7 @@ hardening.
 - [x] Run the fixed Think-deeper-direct case through the existing mode selector
       and require the direct strategy, validation, terminal Chat events, and a
       cited canonical answer.
-- [ ] Run the fixed Think-deeper-agentic case through the existing mode selector
+- [x] Run the fixed Think-deeper-agentic case through the existing mode selector
       and require delegation, validation/repair, synthesis, and terminal Chat
       events.
 - [x] Repeat the fixed Think-deeper-direct trajectory three times and require

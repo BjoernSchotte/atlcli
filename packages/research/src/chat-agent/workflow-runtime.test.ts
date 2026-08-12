@@ -2107,9 +2107,7 @@ describe("Chat agentic workflow runtime", () => {
             title: "KiteweaveLocalExactEvidenceV1",
             required: ["claims"],
           });
-          throw new Error(
-            "Failed to parse structured output for tool 'KiteweaveExactEvidenceExtractionV1'.",
-          );
+          throw new Error("The local exact-evidence packet was malformed.");
         },
       }),
     } as unknown as BaseChatModel;
@@ -2229,6 +2227,115 @@ describe("Chat agentic workflow runtime", () => {
     expect({ exactChildAttempts, extractionAttempts, pageReads }).toEqual({
       exactChildAttempts: 1,
       extractionAttempts: 1,
+      pageReads: 1,
+    });
+  });
+
+  test("projects small complete local Gemma exact reads without a schema-only model call", async () => {
+    let pageReads = 0;
+    let exactChildAttempts = 0;
+    let extractionAttempts = 0;
+    const extractionModel = {
+      withStructuredOutput: () => ({
+        invoke: async () => {
+          extractionAttempts += 1;
+          throw new Error("Local exact extraction must not run for complete small reads.");
+        },
+      }),
+    } as unknown as BaseChatModel;
+    const exactRequest: ResearchRequestV1 = {
+      ...request,
+      question: "Summarize the attached Confluence page.",
+      scope: { ...request.scope, confluenceSpaceKeys: ["DEMO"] },
+      scopeSeeds: [{
+        binding: {
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:current:workflow-page-local-small",
+          tenantOrigin: request.scope.siteOrigin,
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:workflow-page-local-small",
+          key: "1005",
+          name: "Small attached page",
+          source: "current_context",
+          authority: "approved",
+        },
+        precedence: 300,
+      }],
+      exactContextProducts: ["confluence"],
+    };
+    const harness = createHarness({
+      researchRequest: exactRequest,
+      withRetrievalAssessment: true,
+      modelForRoute: (request) => ({
+        model: extractionModel,
+        effectiveModelId: "fixture/local-gemma",
+        requestedPreference: request.preference,
+        effectivePreference: request.preference,
+        thinkingMode: "disabled",
+        finalizationCorridor: "standard",
+      }),
+      readProviders: {
+        ...providers,
+        wiki: {
+          ...providers.wiki,
+          async getPage({ contentId }) {
+            pageReads += 1;
+            return {
+              contentId,
+              spaceKey: "DEMO",
+              title: "Small attached page",
+              content: {
+                text: "The bounded local conclusion is established.",
+                linkTargets: [],
+                truncated: false,
+                inputBytes: 44,
+              },
+            };
+          },
+        },
+      },
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-exact-context-reader-v1") {
+          exactChildAttempts += 1;
+          throw new Error("The local exact-reader child must not run.");
+        }
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [{
+        taskId: "task:exact",
+        profileId: "exact-context-reader",
+        objective: "Summarize the attached page from bounded evidence.",
+        dependencyTaskIds: [],
+      }, ...qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Analyze the bounded exact evidence.",
+        dependencyTaskIds: ["task:exact"],
+      }])],
+      maxConcurrency: 1,
+    }));
+    const exactDispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:exact"
+    );
+    if (!exactDispatch) throw new Error("missing exact dispatch");
+
+    const projected = await invokeDispatch(harness.runtime, exactDispatch) as {
+      sourceIds: string[];
+      claims: Array<{ text: string; sourceRefs: string[] }>;
+    };
+    expect(projected).toMatchObject({
+      sourceIds: ["wiki:1005"],
+      claims: [{
+        text: expect.stringContaining("bounded local conclusion"),
+        sourceRefs: ["wiki:1005"],
+      }],
+    });
+    expect({ exactChildAttempts, extractionAttempts, pageReads }).toEqual({
+      exactChildAttempts: 0,
+      extractionAttempts: 0,
       pageReads: 1,
     });
   });

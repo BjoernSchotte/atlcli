@@ -445,6 +445,47 @@ describe("local model RPC boundary", () => {
     expect(normalizeLocalGemmaToolCallV1({
       id: "critic-non-empty",
       name: "ChatCritiquePacketV1",
+      arguments: {
+        defects: [{
+          code: "unsupported-claim",
+          severity: "blocking",
+          message: "One supported semantic defect.",
+          repairAction: "resynthesize",
+        }],
+        readyForSynthesis: false,
+      },
+    }, { schema: "atlcli.chat-critique-packet/v1" }).arguments).toEqual({
+      schema: "atlcli.chat-critique-packet/v1",
+      defects: [{
+        defectId: "chat-defect:local-1",
+        code: "unsupported-claim",
+        severity: "blocking",
+        message: "One supported semantic defect.",
+        sourceIds: [],
+        repairAction: "resynthesize",
+      }],
+      readyForSynthesis: false,
+    });
+    expect(normalizeLocalGemmaToolCallV1({
+      id: "critic-explicit-invalid",
+      name: "ChatCritiquePacketV1",
+      arguments: {
+        defects: [{
+          defectId: "invalid",
+          sourceIds: "invalid",
+          code: "unknown",
+        }],
+      },
+    }).arguments).toMatchObject({
+      defects: [{
+        defectId: "invalid",
+        sourceIds: "invalid",
+        code: "unknown",
+      }],
+    });
+    expect(normalizeLocalGemmaToolCallV1({
+      id: "critic-no-readiness",
+      name: "ChatCritiquePacketV1",
       arguments: { defects: [{ code: "unsupported-claim" }] },
     }).arguments).not.toHaveProperty("readyForSynthesis");
   });
@@ -791,7 +832,7 @@ describe("local model RPC boundary", () => {
     channel.port2.close();
   });
 
-  it("leaves the local agentic root eval after its single host result", async () => {
+  it("continues an admitted local agentic workflow without proposing it again", async () => {
     const channel = new MessageChannel();
     let observed: LocalModelPortRequestV1 | undefined;
     channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
@@ -803,9 +844,9 @@ describe("local model RPC boundary", () => {
         requestId: event.data.requestId,
         text: "",
         toolCalls: [{
-          id: "agentic-root-answer",
-          name: "ChatAnswerDraftV2",
-          arguments: { blocks: [], gaps: [] },
+          id: "agentic-root-continue",
+          name: "eval",
+          arguments: {},
         }],
         inputTokens: 32,
         outputTokens: 12,
@@ -840,7 +881,12 @@ describe("local model RPC boundary", () => {
         tool_calls: [{
           id: "agentic-root-eval",
           name: "eval",
-          args: { code: "await tools.chatWorkflowRun({})" },
+          args: {
+            code: [
+              "await tools.chatWorkflowPropose(proposal);",
+              "await tools.chatWorkflowRun({})",
+            ].join("\n"),
+          },
         }],
       }),
       new ToolMessage({
@@ -852,10 +898,102 @@ describe("local model RPC boundary", () => {
 
     expect(observed).toMatchObject({
       kind: "generate",
-      requiredToolName: "ChatAnswerDraftV2",
-      tools: [{ function: { name: "ChatAnswerDraftV2" } }],
+      requiredToolName: "eval",
+      thinkingMode: "disabled",
+      tools: [{
+        function: {
+          name: "eval",
+          parameters: {
+            type: "object",
+            additionalProperties: false,
+            properties: {},
+          },
+        },
+      }],
     });
-    expect(result.tool_calls?.[0]?.name).toBe("ChatAnswerDraftV2");
+    expect(result.tool_calls?.[0]?.name).toBe("eval");
+    expect(result.tool_calls?.[0]?.args).toMatchObject({
+      code: "await tools.chatWorkflowRun({})",
+    });
+    expect(result.tool_calls?.[0]?.args.code).not.toContain("chatWorkflowPropose");
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("does not treat an unrelated retained eval result as an admitted workflow", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "agentic-root-initial",
+          name: "eval",
+          arguments: {
+            tasks: [{
+              taskId: "reader",
+              profileId: "exact-context-reader",
+              objective: "Read the bound context.",
+              dependencyTaskIds: [],
+            }],
+          },
+        }],
+        inputTokens: 32,
+        outputTokens: 12,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      name: "eval",
+      description: "Propose and run an admitted workflow.",
+      schema: z.object({ code: z.string() }),
+    }]);
+
+    const result = await runnable.invoke([
+      new SystemMessage(
+        "The host requires an agentic Chat workflow for this turn.",
+      ),
+      new HumanMessage("Use an agentic workflow."),
+      new AIMessage({
+        content: "",
+        tool_calls: [{
+          id: "strategy-eval",
+          name: "eval",
+          args: { code: "await tools.chatStrategyDecide({})" },
+        }],
+      }),
+      new ToolMessage({
+        content: "The immutable strategy is agentic.",
+        tool_call_id: "strategy-eval",
+        name: "eval",
+      }),
+    ]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "eval",
+      tools: [{
+        function: {
+          name: "eval",
+          parameters: expect.objectContaining({
+            required: expect.arrayContaining(["tasks"]),
+          }),
+        },
+      }],
+    });
+    expect(result.tool_calls?.[0]?.args.code).toContain(
+      "await tools.chatWorkflowPropose(proposal);",
+    );
     channel.port1.close();
     channel.port2.close();
   });

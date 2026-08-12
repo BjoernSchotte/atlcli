@@ -472,6 +472,8 @@ export function createChatDirectToolSurfaceMiddlewareV1(
   onDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void,
   options: {
     agenticWorkflowComplete?: () => boolean;
+    agenticWorkflowAccepted?: () => boolean;
+    continueAgenticWorkflow?: (input: { signal?: AbortSignal }) => Promise<void>;
     nativeStructuredOutput?: boolean;
     toolStructuredOutput?: boolean;
     answerOutputInstruction?: string;
@@ -487,6 +489,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
   let completedEvidenceStep = false;
   let completedFinalReview = false;
   let nativeStructuredRepairAttempts = 0;
+  let agenticWorkflowStarted = false;
   let terminalContextProjection: Promise<BaseMessage[] | undefined> | undefined;
   const modelPurpose = (): Extract<ChatAgentDiagnosticV1, { kind: "model-step" }>['purpose'] =>
     completedFinalReview || completedEvidenceStep || options.evidenceAccessAttempted?.() === true
@@ -554,6 +557,23 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         // The dedicated synthesizer is authoritative. Close the root graph
         // without paying for (or exposing) a second supervisor rewrite after
         // the final task result returns to the persistent QuickJS session.
+        const response = new AIMessage({ content: "Agentic Chat synthesis accepted." });
+        onDiagnostic?.({
+          kind: "model-step",
+          status: "completed",
+          purpose,
+          ...diagnosticMessage(response),
+        });
+        return response;
+      }
+      if (agenticWorkflowStarted && options.continueAgenticWorkflow) {
+        await options.continueAgenticWorkflow({ signal: request.runtime?.signal });
+        if (!options.agenticWorkflowComplete?.()) {
+          throw new ChatContractError(
+            "invalid-report",
+            "The host-owned Chat workflow continuation did not reach terminal synthesis.",
+          );
+        }
         const response = new AIMessage({ content: "Agentic Chat synthesis accepted." });
         onDiagnostic?.({
           kind: "model-step",
@@ -742,6 +762,9 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         // the supervisor can correct them. Close the root only after the host
         // state machine confirms that synthesis actually committed.
         completedFinalReview ||= options.agenticWorkflowComplete?.() === true;
+        agenticWorkflowStarted ||= capabilityNames.includes("chatWorkflowPropose") &&
+          capabilityNames.includes("chatWorkflowRun") &&
+          options.agenticWorkflowAccepted?.() === true;
         onDiagnostic?.({
           kind: "eval-step",
           status: "success",
@@ -2178,7 +2201,7 @@ export function createKiteweaveChatAgent(
                 ) {
                   controller.abort(new ChatContractError(
                     diagnostic.code === "timeout" ? "limit-exceeded" : "invalid-report",
-                    `A bounded Chat specialist did not complete (${diagnostic.taskId ?? "unknown"}, ${diagnostic.code ?? "unknown"}); the turn stopped before synthesis.`,
+                    `A bounded Chat specialist did not complete (${diagnostic.taskId ?? "unknown"}, ${profileId ?? "unknown-profile"}, ${diagnostic.code ?? "unknown"}, ${diagnostic.failureClass ?? "unknown-class"}); the turn stopped before synthesis.`,
                   ));
                 }
               },
@@ -2369,6 +2392,17 @@ export function createKiteweaveChatAgent(
                         return false;
                       }
                     },
+                    agenticWorkflowAccepted: () =>
+                      agenticWorkflow.acceptedWorkflow() !== undefined,
+                    ...(modelBinding.qualityAdapter.providerId === "local-gemma"
+                      ? {
+                          continueAgenticWorkflow: async ({ signal }: {
+                            signal?: AbortSignal;
+                          }) => {
+                            await agenticWorkflow.runTool.invoke({}, { signal });
+                          },
+                        }
+                      : {}),
                   }
                 : {}),
               evidenceAccessRequired: strategyDecision.requiredCapabilities.some(

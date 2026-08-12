@@ -2414,6 +2414,87 @@ describe("separate Chat root", () => {
     expect((response as AIMessage).text).toBe("Agentic Chat synthesis accepted.");
   });
 
+  test("continues a started local agentic workflow without another model call", async () => {
+    let complete = false;
+    let continuations = 0;
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      agenticWorkflowComplete: () => complete,
+      agenticWorkflowAccepted: () => true,
+      continueAgenticWorkflow: async () => {
+        continuations += 1;
+        complete = true;
+      },
+    });
+    let providerCalls = 0;
+    await middleware.wrapModelCall?.(
+      { tools: [{ name: "eval" }] } as never,
+      async () => {
+        providerCalls += 1;
+        return new AIMessage("Initial planning is still model-owned.") as never;
+      },
+    );
+    expect({ continuations, providerCalls }).toEqual({ continuations: 0, providerCalls: 1 });
+
+    await middleware.wrapToolCall?.(
+      {
+        toolCall: {
+          name: "eval",
+          args: {
+            code: [
+              "await tools.chatWorkflowPropose({});",
+              "await tools.chatWorkflowRun({})",
+            ].join("\n"),
+          },
+        },
+      } as never,
+      async () => ({ content: "Host workflow intermediate state." }) as never,
+    );
+    const response = await middleware.wrapModelCall?.(
+      { tools: [{ name: "eval" }], runtime: {} } as never,
+      async () => {
+        providerCalls += 1;
+        return new AIMessage("Provider must not be called.") as never;
+      },
+    );
+
+    expect({ continuations, providerCalls }).toEqual({ continuations: 1, providerCalls: 1 });
+    expect((response as AIMessage).text).toBe("Agentic Chat synthesis accepted.");
+  });
+
+  test("does not auto-continue a locally rejected agentic proposal", async () => {
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      agenticWorkflowComplete: () => false,
+      agenticWorkflowAccepted: () => false,
+      continueAgenticWorkflow: async () => {
+        throw new Error("Rejected workflow must not continue.");
+      },
+    });
+    await middleware.wrapToolCall?.(
+      {
+        toolCall: {
+          name: "eval",
+          args: {
+            code: [
+              "await tools.chatWorkflowPropose({});",
+              "await tools.chatWorkflowRun({})",
+            ].join("\n"),
+          },
+        },
+      } as never,
+      async () => ({ content: "Proposal rejected at host boundary." }) as never,
+    );
+    let providerCalls = 0;
+    const response = await middleware.wrapModelCall?.(
+      { tools: [{ name: "eval" }] } as never,
+      async () => {
+        providerCalls += 1;
+        return new AIMessage("Correct the rejected proposal.") as never;
+      },
+    );
+    expect(providerCalls).toBe(1);
+    expect((response as AIMessage).text).toBe("Correct the rejected proposal.");
+  });
+
   test("derives a bounded graph ceiling from the admitted PTC budget", () => {
     expect(chatRecursionLimitV1(1)).toBe(24);
     expect(chatRecursionLimitV1(16)).toBe(40);

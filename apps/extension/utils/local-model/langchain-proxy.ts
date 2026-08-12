@@ -272,12 +272,33 @@ function isLocalGemmaAgenticRootV1(
   options: LocalGemmaCallOptionsV1,
 ): boolean {
   return requiredToolNameV1(options.tool_choice) === undefined &&
-    !messages.some(ToolMessage.isInstance) &&
     messages.some((message) =>
       message.getType() === "system" && textContentV1(message).includes(
         "The host requires an agentic Chat workflow for this turn.",
       )
     );
+}
+
+type LocalGemmaAgenticRootPhaseV1 = "initial" | "continue";
+
+function localGemmaAgenticRootPhaseV1(
+  messages: BaseMessage[],
+  options: LocalGemmaCallOptionsV1,
+): LocalGemmaAgenticRootPhaseV1 | undefined {
+  if (!isLocalGemmaAgenticRootV1(messages, options)) return undefined;
+  // A retained DeepAgents thread can already contain eval ToolMessages from
+  // strategy inspection or an earlier direct evidence step. Those messages do
+  // not prove that this turn's agentic workflow was proposed. Continue only
+  // after the conversation contains the exact compiled proposal call emitted
+  // by this adapter; otherwise Gemma must still select the initial task graph.
+  const proposalAlreadyEmitted = messages.some((message) =>
+    AIMessage.isInstance(message) && message.tool_calls?.some((toolCall) =>
+      toolCall.name === "eval" &&
+      typeof toolCall.args?.code === "string" &&
+      /\bchatWorkflowPropose\s*\(/u.test(toolCall.args.code)
+    )
+  );
+  return proposalAlreadyEmitted ? "continue" : "initial";
 }
 
 function textContentV1(message: BaseMessage): string {
@@ -508,10 +529,16 @@ const LOCAL_GEMMA_AGENTIC_EVAL_SCHEMA_V1 = {
   },
 } as const;
 
+const LOCAL_GEMMA_AGENTIC_CONTINUE_SCHEMA_V1 = {
+  type: "object",
+  additionalProperties: false,
+  properties: {},
+} as const;
+
 function toLocalToolsV1(
   tools: ToolDefinition[] | undefined,
   requiredToolName?: string,
-  agenticRoot = false,
+  agenticRootPhase?: LocalGemmaAgenticRootPhaseV1,
 ): LocalModelToolV1[] {
   return (tools ?? []).map((tool) => {
     if (tool.type !== "function" || !tool.function?.name || !tool.function.parameters) {
@@ -521,13 +548,17 @@ function toLocalToolsV1(
       type: "function",
       function: {
         name: tool.function.name,
-        ...(agenticRoot && tool.function.name === "eval"
+        ...(agenticRootPhase && tool.function.name === "eval"
           ? {
-              description: [
-                "Select the bounded agentic task graph.",
-                "The local provider adapter compiles this object into the canonical eval/QuickJS workflow program.",
-              ].join(" "),
-              parameters: LOCAL_GEMMA_AGENTIC_EVAL_SCHEMA_V1,
+              description: agenticRootPhase === "initial"
+                ? [
+                    "Select the bounded agentic task graph.",
+                    "The local provider adapter compiles this object into the canonical eval/QuickJS workflow program.",
+                  ].join(" ")
+                : "Continue the already admitted bounded agentic workflow.",
+              parameters: agenticRootPhase === "initial"
+                ? LOCAL_GEMMA_AGENTIC_EVAL_SCHEMA_V1
+                : LOCAL_GEMMA_AGENTIC_CONTINUE_SCHEMA_V1,
             }
           : requiredToolName === "ChatAnswerDraftV2"
           ? { parameters: LOCAL_GEMMA_FINAL_ANSWER_SCHEMA_V1 }
@@ -637,7 +668,23 @@ export function normalizeLocalGemmaToolCallV1(
     const defects = withStructuredEnvelope.arguments.defects === 0
       ? []
       : withStructuredEnvelope.arguments.defects;
-    const readyForSynthesis = Array.isArray(defects) && defects.length === 0 &&
+    const normalizedDefects = Array.isArray(defects)
+      ? defects.map((value, index) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) {
+            return value;
+          }
+          const defect = value as Record<string, unknown>;
+          return {
+            ...defect,
+            ...(defect.defectId === undefined
+              ? { defectId: `chat-defect:local-${index + 1}` }
+              : {}),
+            ...(defect.sourceIds === undefined ? { sourceIds: [] } : {}),
+          };
+        })
+      : defects;
+    const readyForSynthesis = Array.isArray(normalizedDefects) &&
+        normalizedDefects.length === 0 &&
         withStructuredEnvelope.arguments.readyForSynthesis === undefined
       ? true
       : withStructuredEnvelope.arguments.readyForSynthesis;
@@ -645,7 +692,7 @@ export function normalizeLocalGemmaToolCallV1(
       ...withStructuredEnvelope,
       arguments: {
         ...withStructuredEnvelope.arguments,
-        ...(defects === undefined ? {} : { defects }),
+        ...(normalizedDefects === undefined ? {} : { defects: normalizedDefects }),
         ...(readyForSynthesis === undefined ? {} : { readyForSynthesis }),
       },
     };
@@ -703,8 +750,15 @@ export function normalizeLocalGemmaToolCallV1(
  */
 export function normalizeLocalGemmaAgenticEvalToolCallV1(
   call: LocalModelToolCallV1,
+  phase: LocalGemmaAgenticRootPhaseV1 = "initial",
 ): LocalModelToolCallV1 {
   if (call.name !== "eval" || typeof call.arguments.code === "string") return call;
+  if (phase === "continue") {
+    return {
+      ...call,
+      arguments: { code: "await tools.chatWorkflowRun({})" },
+    };
+  }
   const { tasks, maxConcurrency, retrievalPlan } = call.arguments;
   // maxConcurrency has exactly one legal value in the provider projection.
   // Supplying that singleton when Gemma omits it does not choose workflow
@@ -760,7 +814,7 @@ export function normalizeLocalGemmaAgenticEvalToolCallV1(
 
 function normalizeLocalGemmaToolCallsV1(
   calls: LocalModelToolCallV1[],
-  agenticRoot = false,
+  agenticRootPhase: LocalGemmaAgenticRootPhaseV1 | undefined = undefined,
   originalTools: readonly ToolDefinition[] = [],
 ): LocalModelToolCallV1[] {
   return calls.map((call) => {
@@ -772,7 +826,9 @@ function normalizeLocalGemmaToolCallsV1(
       ? rootConstPropertiesV1(original.function.parameters)
       : {};
     return normalizeLocalGemmaToolCallV1(
-      agenticRoot ? normalizeLocalGemmaAgenticEvalToolCallV1(call) : call,
+      agenticRootPhase
+        ? normalizeLocalGemmaAgenticEvalToolCallV1(call, agenticRootPhase)
+        : call,
       constants,
     );
   });
@@ -989,10 +1045,10 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
         timing: final.performance,
       });
     }
-    const agenticRoot = isLocalGemmaAgenticRootV1(messages, options);
+    const agenticRootPhase = localGemmaAgenticRootPhaseV1(messages, options);
     const toolCalls = normalizeLocalGemmaToolCallsV1(
       final.toolCalls,
-      agenticRoot,
+      agenticRootPhase,
       options.tools,
     );
     if (previewMarkdown) {
@@ -1062,10 +1118,10 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
             timing: response.performance,
           });
         }
-        const agenticRoot = isLocalGemmaAgenticRootV1(messages, options);
+        const agenticRootPhase = localGemmaAgenticRootPhaseV1(messages, options);
         const toolCalls = normalizeLocalGemmaToolCallsV1(
           response.toolCalls,
-          agenticRoot,
+          agenticRootPhase,
           options.tools,
         );
         if (previewMarkdown) {
@@ -1112,11 +1168,12 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
     );
     const requestedToolName = terminalPacketToolName ??
       requiredToolNameV1(options.tool_choice) ?? initialEvalToolName;
-    const agenticRoot = isLocalGemmaAgenticRootV1(messages, options);
+    const agenticRootPhase = localGemmaAgenticRootPhaseV1(messages, options);
+    const agenticRoot = agenticRootPhase !== undefined;
     const initiallyDeclaredTools = toLocalToolsV1(
       options.tools,
       requestedToolName,
-      agenticRoot,
+      agenticRootPhase,
     );
     const implicitStructuredToolName = requestedToolName === undefined && !agenticRoot
       ? implicitStructuredToolNameV1(initiallyDeclaredTools, messages)
@@ -1153,7 +1210,7 @@ export class LocalGemmaChatModelV1 extends BaseChatModel<LocalGemmaCallOptionsV1
     });
     const declaredTools = requiredToolName === requestedToolName
       ? initiallyDeclaredTools
-      : toLocalToolsV1(options.tools, requiredToolName, agenticRoot);
+      : toLocalToolsV1(options.tools, requiredToolName, agenticRootPhase);
     const tools = requiredToolName
       ? declaredTools.filter((tool) => tool.function.name === requiredToolName)
       : declaredTools;

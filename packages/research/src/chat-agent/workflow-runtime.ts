@@ -2218,23 +2218,29 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     tasks: readonly Readonly<ChatWorkflowTaskProposalV1>[],
     config: RunnableConfig,
   ): Promise<ChatEvidencePacketV1> => {
+    const exactRouteModelId = input.modelForRoute?.({
+      role: "extraction",
+      preference: "fast",
+      profileId: "exact-context-reader",
+    }).effectiveModelId ?? runtimeModelId;
     try {
       return await extractExactEvidence(description, config);
     } catch (error) {
-      if (!isStructuredOutputSchemaFailureV1(error)) throw error;
+      if (config.signal?.aborted) throw error;
+      const localGemma = /gemma/iu.test(exactRouteModelId);
+      if (!localGemma && !isStructuredOutputSchemaFailureV1(error)) throw error;
       const projection = hostExactEvidenceProjectionV1({
         broker: input.broker,
         tasks,
         question: input.question,
       });
       if (!projection) throw error;
-      if (/gemma/iu.test(runtimeModelId)) {
+      if (localGemma) {
         console.warn("[local-gemma/exact-evidence] used host source projection", {
-          modelId: runtimeModelId,
+          modelId: exactRouteModelId,
           claimCount: projection.claims.length,
           sourceCount: projection.sourceIds.length,
           gapCount: projection.gaps.length,
-          modelError: error instanceof Error ? error.message : String(error),
         });
       }
       return projection;
@@ -2305,6 +2311,39 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
         0,
       ) > 10_000;
       if (requiresSectionSelection || exceedsDirectProjection) return undefined;
+
+      // The host has already completed and ledgered every admitted small,
+      // complete exact read. For the local Gemma corridor, projecting those
+      // immutable source-bound records is the reliable equivalent of asking a
+      // second model call to restate the same evidence packet. This keeps the
+      // DeepAgents task graph and every downstream analysis/critique/synthesis
+      // child intact while avoiding a schema-only provider failure at task 1.
+      // Remote providers retain the model-owned extraction path below.
+      const exactRouteModelId = input.modelForRoute?.({
+        role: "extraction",
+        preference: "fast",
+        profileId: "exact-context-reader",
+      }).effectiveModelId ?? runtimeModelId;
+      if (/gemma/iu.test(exactRouteModelId)) {
+        const projection = hostExactEvidenceProjectionV1({
+          broker: input.broker,
+          tasks: exactTasks,
+          question: input.question,
+        });
+        if (!projection) {
+          throw new ChatContractError(
+            "invalid-report",
+            "The local exact evidence fast path could not project the retained reads.",
+          );
+        }
+        console.warn("[local-gemma/exact-evidence] projected retained small reads", {
+          modelId: exactRouteModelId,
+          claimCount: projection.claims.length,
+          sourceCount: projection.sourceIds.length,
+          gapCount: projection.gaps.length,
+        });
+        return projection;
+      }
 
       const description = exactEvidenceExtractionDescriptionV1({
         broker: input.broker,
