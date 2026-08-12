@@ -7,50 +7,16 @@ export interface ChatAnswerOutputContractV1 {
   maxBlocks: number;
 }
 
-const REQUEST_LIST_VERB_V1 =
-  /\b(?:antworte|beantworte|nenne|nenn|liste|liste\s+auf|gib|beschreibe|erkläre|erklaere|vergleiche|answer|name|list|state|give|provide|describe|explain|compare|include)\b/giu;
-const REQUEST_LIST_SEPARATOR_V1 = /\s*(?:,|;|\bund\b|\boder\b|\band\b|\bor\b)\s*/giu;
-const REQUEST_INTERROGATIVE_FACET_V1 =
-  /\b(?:welche(?:r|s|n|m)?|which)\s+(.+?)(?=\s+(?:und|oder|and|or)\s+(?:welche(?:r|s|n|m)?|which)\s+|[?!.]|$)/giu;
-const REQUEST_INTERROGATIVE_PREDICATE_V1 =
-  /\s+(?:gilt|gelten|ist|sind|war|waren|soll|sollen|wird|werden|trifft|treffen|applies?|is|are|was|were|should|will)(?:\s+.*)?$/iu;
-
-function compactRequestFacetV1(value: string): string | undefined {
-  const compact = value
-    .replace(/https:\/\/\S+/giu, "")
-    .replace(/^\s*(?:(?:bitte|please|mir|uns|me|us|mit|with|including)\s+)+/iu, "")
-    .replace(/[.:!?]+$/gu, "")
-    .replace(/\s+/gu, " ")
-    .trim();
-  return compact.length >= 2 && compact.length <= 180 ? compact : undefined;
-}
-
 /**
- * Preserve explicit user-authored enumerations as a small model checklist.
- * This adds no inferred requirement: every item is copied from the question.
+ * Provider-neutral semantic coverage guidance.
+ *
+ * This is deliberately not a host acceptance rule: the deterministic host
+ * validates structure and evidence, while the model/critic judges whether the
+ * answer addresses the user's meaning. In particular, no question fragments
+ * are extracted or matched against the answer.
  */
-export function deriveChatRequestChecklistV1(question: string): string[] {
-  const withoutUrls = question.replace(/https:\/\/\S+/giu, " ").replace(/\s+/gu, " ").trim();
-  const interrogative = [...withoutUrls.matchAll(REQUEST_INTERROGATIVE_FACET_V1)]
-    .map((match) => compactRequestFacetV1(
-      (match[1] ?? "").replace(REQUEST_INTERROGATIVE_PREDICATE_V1, ""),
-    ))
-    .filter((value): value is string => value !== undefined);
-  const interrogativeFacets = interrogative.length >= 2 ? interrogative : [];
-  const matches = [...withoutUrls.matchAll(REQUEST_LIST_VERB_V1)];
-  const trigger = matches.at(-1);
-  const listed = !trigger || trigger.index === undefined
-    ? []
-    : withoutUrls
-        .slice(trigger.index + trigger[0].length)
-        .replace(/^\s*[:\-–—]?\s*/u, "")
-        .trim()
-        .split(REQUEST_LIST_SEPARATOR_V1)
-        .map(compactRequestFacetV1)
-        .filter((value): value is string => value !== undefined);
-  const listedFacets = listed.length >= 2 ? listed : [];
-  return [...new Set([...interrogativeFacets, ...listedFacets])].slice(0, 8);
-}
+export const CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1 =
+  "Address each substantive request in the user's original question using supported evidence, or state a precise material gap. Judge coverage by meaning, not wording: natural paraphrases, different word order, and the user's chosen language are valid. Never copy question fragments merely to satisfy validation.";
 
 export function chatAnswerOutputContractV1(
   qualityMode: ChatQualityModeV1,
@@ -69,13 +35,11 @@ export function chatAnswerOutputInstructionV1(
     `${repair ? "REPAIR OUTPUT CONTRACT" : "OUTPUT CONTRACT"} (${qualityMode}, hard limit): at most ${contract.maxWords} visible words and ${contract.maxBlocks} blocks.`,
     "Prioritize the direct answer and the facts needed to support it; do not reproduce the source document section by section.",
     "When the question has many requested facets, compress them into short bullets or compact table rows instead of adding prose.",
-    "Before finalizing, check every explicitly requested facet in the user's question once. Cover each facet with a supported answer block or a precise typed gap; never silently omit one.",
     "Do not repeat a fact, heading, qualification, or conclusion in another block.",
-    "Return only the finished wording. Do not leave abandoned sentence alternatives, unmatched Markdown emphasis, or a lower-case continuation in a separate block.",
-    "Every factual sentence must be grammatically complete. Never end a sentence or block with an unfinished connector such as als, soll, mit, für, as, should, with, or for.",
-    "Never emit a detached lowercase continuation paragraph beginning with da, weil, obwohl, während, und, aber, because, although, whereas, which, and, or, or but; merge it into an unfinished governing sentence or rewrite it as a complete sentence.",
+    "Return only finished wording. Do not leave abandoned sentence alternatives, unmatched Markdown emphasis, or detached continuation fragments.",
+    "Write each factual block as a complete, self-contained statement in the user's language.",
     "Keep evidence classifications mutually consistent: the same values cannot be both directly measured and conjectural. If measured observations and interpretation differ, label the two groups explicitly.",
-    "Apply every user selection predicate before satisfying a requested count or ranking. If the user asks for the top N measured effects, every ranked item must have an explicit comparable measurement; place unmeasured mechanisms or hypotheses in a separate caveat and do not count them toward N. Preserve the requested order: greatest, strongest, highest, biggest, most, top, groesste, größte, staerkste, stärkste, hoechste, höchste, or wirkungsvollste means descending by the stated comparable metric unless the user explicitly requests another direction; smallest, lowest, least, kleinste, niedrigste, or geringste means ascending.",
+    "Apply every user selection predicate before satisfying a requested count or ranking. If the user asks for a ranked set of measured effects, every ranked item must have an explicit comparable measurement; place unmeasured mechanisms or hypotheses in a separate caveat and do not count them toward the requested set. Preserve the ranking direction expressed by the user.",
     "For a causal top-N of technical levers, compare isolated interventions against a stated baseline while holding the requested outcome quality and other material variables constant. Do not count a bundled configuration change or a speed result that changes answer quality as one comparable lever; report it separately as a trade-off unless the user explicitly requests raw throughput regardless of quality.",
     "For every ranked measured item, preserve each effect measure explicitly reported by the source: include its before/after values and any reported relative percentage as well as a useful absolute delta. A derived absolute delta must not replace an explicit source percentage.",
     "Finish the complete ChatAnswerDraftV2 JSON inside this limit.",
@@ -140,15 +104,9 @@ export function buildChatTurnPromptV1(input: {
   /** Host-projected bounded memory; summaries and prior answers are not evidence. */
   durableContext?: string;
 }): string {
-  const requestChecklist = deriveChatRequestChecklistV1(input.question);
   return [
     `User question: ${JSON.stringify(input.question)}`,
-    ...(requestChecklist.length > 0
-      ? [
-          `Explicit user request checklist (verbatim fragments, no added requirements): ${JSON.stringify(requestChecklist)}.`,
-          "Cover every checklist item exactly once with supported evidence or a precise gap before finalizing.",
-        ]
-      : []),
+    CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1,
     `Host-bound Jira projects: ${input.jiraProjectKeys.join(", ") || "none"}.`,
     `Host-bound Confluence spaces: ${input.confluenceSpaceKeys.join(", ") || "none"}.`,
     `Attached host-bound entities (opaque refs only): ${JSON.stringify(input.anchors)}.`,

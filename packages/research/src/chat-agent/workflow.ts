@@ -32,6 +32,7 @@ import {
   CHAT_QUALITY_DEFECT_CODES_V1,
   type ChatQualityDefectV1,
 } from "./quality.js";
+import { CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1 } from "./prompts.js";
 
 export const CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1 =
   "atlcli.chat-workflow-proposal/v1" as const;
@@ -461,7 +462,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "answer-drafter",
     phase: "drafting",
     description: "Create one provisional conversational answer for independent critique.",
-    systemPrompt: "Draft one provisional answer below 600 words from accepted evidence and analysis packets. If the task context contains explicitRequestChecklist, use every listed user-authored label verbatim exactly once as a heading or bullet label and give its supported answer or a precise evidence gap. Apply every explicit selection and ordering predicate in the user question. For a top/greatest/highest measured ranking, include only comparable measured items and order them descending by that metric unless the user explicitly requests another direction; smallest/lowest means ascending. Return ordered semantic blocks: exactly one factual paragraph, list item, or table row per block. Copy exact canonical source references into sourceRefs. Mark evidence-backed positive statements as assertion=positive and scope=none. Mark every negative or absence finding as assertion=absence and choose the narrowest truthful scope: source, selected-sources, or bound-scope. Headings and non-factual transitions use assertion=none, scope=none, and no sourceRefs. Never turn incomplete candidate coverage into whole-space, whole-project, or tenant-wide absence. Preserve explicit gaps. This draft is not user-visible and is not the final answer. Do not retrieve, delegate, or produce a Deep Research report.",
+    systemPrompt: `Draft one provisional answer below 600 words from accepted evidence and analysis packets. ${CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1} Apply every explicit selection and ordering predicate in the user question. For a top/greatest/highest measured ranking, include only comparable measured items and order them descending by that metric unless the user explicitly requests another direction; smallest/lowest means ascending. Return ordered semantic blocks: exactly one factual paragraph, list item, or table row per block. Copy exact canonical source references into sourceRefs. Mark evidence-backed positive statements as assertion=positive and scope=none. Mark every negative or absence finding as assertion=absence and choose the narrowest truthful scope: source, selected-sources, or bound-scope. Headings and non-factual transitions use assertion=none, scope=none, and no sourceRefs. Never turn incomplete candidate coverage into whole-space, whole-project, or tenant-wide absence. Preserve explicit gaps. This draft is not user-visible and is not the final answer. Do not retrieve, delegate, or produce a Deep Research report.`,
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-answer-draft/v1",
     responseSchema: Object.freeze({
@@ -479,7 +480,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "answer-critic",
     phase: "critique",
     description: "Critique answer coverage, grounding, citations, and unresolved gaps.",
-    systemPrompt: "Independently critique the provisional answer against the versioned host groundedness rubric and accepted evidence packets. The host-groundedness object embedded in the task objective is authoritative: every knownDetailedSourceId is a confirmed successful detail read, even though raw bodies are intentionally absent. Never report those sources as unread or unverified. If the task context contains explicitRequestChecklist, report question-not-answered when any listed user-authored label lacks a supported answer or precise evidence gap. Also report question-not-answered when an explicit top/greatest/highest or smallest/lowest ranking contains incomparable items or is not ordered in the direction requested by the user. Return at most four prioritized typed defects. Check question coverage, claim support, exact citation identity, source authority/freshness, contradiction handling, wrong-source risk, uncovered candidates, false completeness, and instruction isolation exactly once. Treat any whole-space, whole-project, or tenant-wide absence claim as false completeness unless every admitted candidate was detail-read and the host retrieval assessment is complete. Use only the closed defect, severity, and repair-action enums. Treat unresolved interpretation as a gap. Do not retrieve, delegate, repair, or author the final answer.",
+    systemPrompt: `Independently critique the provisional answer against the versioned host groundedness rubric and accepted evidence packets. The host-groundedness object embedded in the task objective is authoritative: every knownDetailedSourceId is a confirmed successful detail read, even though raw bodies are intentionally absent. Never report those sources as unread or unverified. ${CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1} Report question-not-answered only when a substantive request lacks a supported answer or precise material gap. Also report question-not-answered when an explicit top/greatest/highest or smallest/lowest ranking contains incomparable items or is not ordered in the direction requested by the user. Return at most four prioritized typed defects. Check question coverage, claim support, exact citation identity, source authority/freshness, contradiction handling, wrong-source risk, uncovered candidates, false completeness, and instruction isolation exactly once. Treat any whole-space, whole-project, or tenant-wide absence claim as false completeness unless every admitted candidate was detail-read and the host retrieval assessment is complete. Use only the closed defect, severity, and repair-action enums. Treat unresolved interpretation as a gap. Do not retrieve, delegate, repair, or author the final answer.`,
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-critique-packet/v1",
     responseSchema: CHAT_CRITIQUE_PACKET_SCHEMA_V1,
@@ -494,7 +495,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "answer-repairer",
     phase: "repair",
     description: "Repair only the host-selected defects in one provisional answer.",
-    systemPrompt: "Repair exactly the typed defects selected by the host. Preserve supported semantic blocks and their exact sourceRefs, remove rejected evidence, and disclose required gaps. If the task context contains explicitRequestChecklist, use every listed user-authored label verbatim exactly once and give its supported answer or a precise evidence gap. Reapply every explicit selection and ranking predicate: top/greatest/highest measured items are ordered descending by the stated comparable metric unless the user asks otherwise; smallest/lowest means ascending. Keep one factual paragraph, list item, or table row per block and preserve truthful assertion/scope values. Return one corrected provisional answer. Do not retrieve, delegate, widen scope, or write the final user answer.",
+    systemPrompt: `Repair exactly the typed defects selected by the host. Preserve supported semantic blocks and their exact sourceRefs, remove rejected evidence, and disclose required gaps. ${CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1} Reapply every explicit selection and ranking predicate: top/greatest/highest measured items are ordered descending by the stated comparable metric unless the user asks otherwise; smallest/lowest means ascending. Keep one factual paragraph, list item, or table row per block and preserve truthful assertion/scope values. Return one corrected provisional answer. Do not retrieve, delegate, widen scope, or write the final user answer.`,
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-answer-draft/v1",
     responseSchema: Object.freeze({
@@ -512,7 +513,7 @@ export const CHAT_SUBAGENT_PROFILES_V1 = Object.freeze([
     roleId: "synthesizer",
     phase: "synthesis",
     description: "Write one concise conversational answer from accepted evidence and analysis packets.",
-    systemPrompt: "Finalize the already analyzed and independently checked answer; do not re-run the analysis. Write the single final conversational answer only from accepted evidence, the provisional draft, deterministic quality state, critic defects, the optional bounded repair packet, and explicit gaps. Correct or omit every defect before writing. If the task context contains explicitRequestChecklist, use every listed user-authored label verbatim exactly once as a heading or bullet label and give its supported answer or a precise evidence gap. Reapply every explicit selection and ranking predicate in the user question: top/greatest/highest measured items are ordered descending by the stated comparable metric unless the user explicitly asks otherwise; smallest/lowest means ascending. For a comparison question, include one dedicated factual block per compared source that states its central question-relevant finding, followed by cross-source conclusions. Return ordered semantic blocks with exactly one factual paragraph, list item, or table row per block. Every factual block must answer the user's question and copy its exact canonical evidence references into sourceRefs. Use assertion=positive, scope=none for positive facts. Use assertion=absence with the narrowest truthful scope for negative findings; bound-scope is forbidden unless the supplied host retrieval assessment is complete. Headings and short non-factual transitions use assertion=none, scope=none, and no sourceRefs. Omit provenance, side facts, and technically true details that do not help answer the question. Include only material gaps that could change the answer; do not invent auxiliary gaps merely because an unrequested linked page or external reference was not read. The host quality disposition contains requiredGapMappings; include at least one gaps entry with each listed finalGapCode. Keep the complete answer below 700 words; this is normal Chat, not a research report. Never use Markdown links or a separate source list. If a factual block cannot name exact accepted sourceRefs, omit it or express the missing evidence as a typed gap. Never retrieve, delegate, invent URLs, or produce a Deep Research report.",
+    systemPrompt: `Finalize the already analyzed and independently checked answer; do not re-run the analysis. Write the single final conversational answer only from accepted evidence, the provisional draft, deterministic quality state, critic defects, the optional bounded repair packet, and explicit gaps. Correct or omit every defect before writing. ${CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1} Reapply every explicit selection and ranking predicate in the user question: top/greatest/highest measured items are ordered descending by the stated comparable metric unless the user explicitly asks otherwise; smallest/lowest means ascending. For a comparison question, include one dedicated factual block per compared source that states its central question-relevant finding, followed by cross-source conclusions. Return ordered semantic blocks with exactly one factual paragraph, list item, or table row per block. Every factual block must answer the user's question and copy its exact canonical evidence references into sourceRefs. Use assertion=positive, scope=none for positive facts. Use assertion=absence with the narrowest truthful scope for negative findings; bound-scope is forbidden unless the supplied host retrieval assessment is complete. Headings and short non-factual transitions use assertion=none, scope=none, and no sourceRefs. Omit provenance, side facts, and technically true details that do not help answer the question. Include only material gaps that could change the answer; do not invent auxiliary gaps merely because an unrequested linked page or external reference was not read. The host quality disposition contains requiredGapMappings; include at least one gaps entry with each listed finalGapCode. Keep the complete answer below 700 words; this is normal Chat, not a research report. Never use Markdown links or a separate source list. If a factual block cannot name exact accepted sourceRefs, omit it or express the missing evidence as a typed gap. Never retrieve, delegate, invent URLs, or produce a Deep Research report.`,
     grantedCapabilityIds: [],
     responseSchemaId: "atlcli.chat-answer-draft/v1",
     responseSchema: Object.freeze({
@@ -589,6 +590,7 @@ export const CHAT_WORKFLOW_NORMALIZATION_SCHEMA_V1 =
 
 export const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1 = [
   "host-exact-anchors-bound",
+  "host-required-specialists-added",
   "exact-readers-packed",
   "dominated-specialists-removed",
   "phase-dependencies-normalized",
@@ -1050,6 +1052,7 @@ function normalizeChatWorkflowProposalTasksV1(input: {
   strategy: Readonly<ChatStrategyDecisionV1>;
   tasks: readonly ChatWorkflowTaskProposalV1[];
   exactAnchorRefs?: readonly string[];
+  requiredProfileIds?: readonly ChatSubagentProfileIdV1[];
 }): {
   tasks: ChatWorkflowTaskProposalV1[];
   reasonCodes: ChatWorkflowNormalizationReasonCodeV1[];
@@ -1062,7 +1065,21 @@ function normalizeChatWorkflowProposalTasksV1(input: {
   if (dominated.length < input.tasks.length) {
     reasonCodes.push("dominated-specialists-removed");
   }
-  const bound = bindSmallHostExactAnchorsV1(dominated, input.exactAnchorRefs);
+  const existingProfiles = new Set(dominated.map((task) => task.profileId));
+  const requiredMissing = [...new Set(input.requiredProfileIds ?? [])]
+    .filter((profileId) => !existingProfiles.has(profileId));
+  const augmented = [...dominated, ...requiredMissing.map((profileId) => ({
+    taskId: `task:host-required:${profileId}`,
+    profileId,
+    objective: profileId === "contradiction-checker"
+      ? "Check the accepted evidence and analysis for contradictions required by the host strategy."
+      : `Perform the ${profileId} work required by the accepted host strategy.`,
+    dependencyTaskIds: [],
+  }))];
+  if (requiredMissing.length > 0) {
+    reasonCodes.push("host-required-specialists-added");
+  }
+  const bound = bindSmallHostExactAnchorsV1(augmented, input.exactAnchorRefs);
   if (bound.some((task, index) => task.objective !== dominated[index]?.objective)) {
     reasonCodes.push("host-exact-anchors-bound");
   }
@@ -1255,16 +1272,6 @@ export function createChatWorkflowProposalControllerV1(input: {
         `Each exact-context-reader may receive at most ${MAX_EXACT_ANCHORS_PER_CHAT_READER_V1} assigned anchorRefs. Split: ${oversizedExactTasks.map((task) => `${task.taskId} (${task.count})`).join(", ")}.`,
       );
     }
-    const proposedProfiles = new Set(proposal.tasks.map((task) => task.profileId));
-    const missingRequiredProfiles = requiredProfiles.filter((profileId) =>
-      !proposedProfiles.has(profileId)
-    );
-    if (missingRequiredProfiles.length > 0) {
-      throw new ChatContractError(
-        "invalid-request",
-        `The Chat workflow does not cover the accepted strategy. Add the required profiles: ${missingRequiredProfiles.join(", ")}.`,
-      );
-    }
     accepting = true;
     try {
       input.budget.beginPtc({ schema: CHAT_WORKFLOW_PROPOSAL_SCHEMA_V1 });
@@ -1275,6 +1282,7 @@ export function createChatWorkflowProposalControllerV1(input: {
         strategy: input.strategy,
         tasks: proposal.tasks.map((task) => ({ ...task })),
         exactAnchorRefs: input.exactAnchorRefs,
+        requiredProfileIds: requiredProfiles,
       });
       assertChatWorkflowDominanceV1({
         strategy: input.strategy,

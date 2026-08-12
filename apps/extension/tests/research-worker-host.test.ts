@@ -25,10 +25,12 @@ class FakeWorker {
     | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
   posted: ResearchWorkerRequestV1[] = [];
+  transfers: Array<Transferable[] | undefined> = [];
   terminated = false;
 
-  postMessage(message: ResearchWorkerRequestV1): void {
+  postMessage(message: ResearchWorkerRequestV1, transfer?: Transferable[]): void {
     this.posted.push(message);
+    this.transfers.push(transfer);
   }
 
   terminate(): void {
@@ -37,6 +39,20 @@ class FakeWorker {
 
   emit(message: ResearchWorkerResponseV1): void {
     this.onmessage?.({ data: message } as MessageEvent<ResearchWorkerResponseV1>);
+  }
+
+  emitError(message: string): void {
+    this.onerror?.({ message } as ErrorEvent);
+  }
+
+  emitOpaqueError(filename = "chrome-extension://fixture/assets/research-agent.js"): void {
+    this.onerror?.({
+      error: undefined,
+      message: "",
+      filename,
+      lineno: 0,
+      colno: 0,
+    } as ErrorEvent);
   }
 }
 
@@ -93,6 +109,139 @@ const qualityPolicy = {
 } as const;
 
 describe("dedicated research worker host", () => {
+  it("transfers the local model port into the existing Chat worker", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const channel = new MessageChannel();
+    const running = host.run({
+      runId: "chat-local-1",
+      sessionId: "chat-session:local",
+      turnId: "chat-turn:local",
+      apiKey: "",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      modelBinding: {
+        kind: "local-gemma",
+        modelId: "fixture/model",
+        port: channel.port1,
+      },
+    });
+    expect(worker.posted[0]).toMatchObject({
+      kind: "research-worker:run",
+      apiKey: "",
+      modelBinding: { kind: "local-gemma", modelId: "fixture/model" },
+    });
+    expect(worker.transfers[0]).toEqual([channel.port1]);
+    worker.emit({ kind: "research-worker:complete", runId: "chat-local-1", answer });
+    expect(await running).toBe(answer);
+    channel.port2.close();
+  });
+
+  it("surfaces a redacted local worker start error without weakening Anthropic errors", async () => {
+    const localWorker = new FakeWorker();
+    const localHost = new ResearchAgentWorkerHost({ createWorker: () => localWorker });
+    const localChannel = new MessageChannel();
+    const localRun = localHost.run({
+      runId: "chat-local-start-error",
+      sessionId: "chat-session:local-start-error",
+      turnId: "chat-turn:local-start-error",
+      apiKey: "",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      modelBinding: {
+        kind: "local-gemma",
+        modelId: "fixture/model",
+        port: localChannel.port1,
+      },
+    });
+    localWorker.emitError("Module startup failed with x-api-key=secret-value");
+    await expect(localRun).rejects.toMatchObject({
+      code: "provider-error",
+      message: "Local Gemma browser host failed: Module startup failed with x-api-key=[REDACTED]",
+    });
+    localChannel.port2.close();
+
+    const anthropicWorker = new FakeWorker();
+    const anthropicHost = new ResearchAgentWorkerHost({ createWorker: () => anthropicWorker });
+    const anthropicRun = anthropicHost.run({
+      runId: "chat-anthropic-start-error",
+      sessionId: "chat-session:anthropic-start-error",
+      turnId: "chat-turn:anthropic-start-error",
+      apiKey: "synthetic-key",
+      mode: "chat",
+      request,
+      qualityPolicy,
+    });
+    anthropicWorker.emitError("Module startup failed");
+    await expect(anthropicRun).rejects.toMatchObject({
+      code: "provider-error",
+      message: "The research provider failed.",
+    });
+  });
+
+  it("does not surface undefined when Chrome withholds local worker error details", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const channel = new MessageChannel();
+    const running = host.run({
+      runId: "chat-local-opaque-error",
+      sessionId: "chat-session:local-opaque-error",
+      turnId: "chat-turn:local-opaque-error",
+      apiKey: "",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      modelBinding: {
+        kind: "local-gemma",
+        modelId: "fixture/model",
+        port: channel.port1,
+      },
+    });
+
+    worker.emitOpaqueError();
+
+    await expect(running).rejects.toMatchObject({
+      code: "provider-error",
+      message: "Local Gemma browser host failed: Research worker failed without browser error details at chrome-extension://fixture/assets/research-agent.js:0:0.",
+    });
+    channel.port2.close();
+  });
+
+  it("retains a redacted local worker diagnostic across the message boundary", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const channel = new MessageChannel();
+    const running = host.run({
+      runId: "chat-local-runtime-error",
+      sessionId: "chat-session:local-runtime-error",
+      turnId: "chat-turn:local-runtime-error",
+      apiKey: "",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      modelBinding: {
+        kind: "local-gemma",
+        modelId: "fixture/model",
+        port: channel.port1,
+      },
+    });
+    worker.emit({
+      kind: "research-worker:error",
+      runId: "chat-local-runtime-error",
+      code: "provider-error",
+      error: "The research provider failed.",
+      localDetail: "Synthetic durable workspace failed with cookie=secret",
+    });
+
+    await expect(running).rejects.toMatchObject({
+      code: "provider-error",
+      message: "Local Gemma browser host failed: Synthetic durable workspace failed with cookie=[REDACTED]",
+    });
+    channel.port2.close();
+  });
+
   it("transports a typed Chat checkpoint continuation without token replay state", async () => {
     const worker = new FakeWorker();
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });

@@ -48,15 +48,35 @@ import {
   isResearchEvent,
   isResearchProgress,
 } from "../../../utils/messages.js";
+import {
+  APP_SETTINGS_STORAGE_KEY,
+  normalizeSettings,
+} from "../../../utils/ports/settings.js";
+import {
+  browserChatActiveConversationStorageKeyV1,
+  browserChatProviderCacheIdentityV1,
+  type BrowserModelSelectionV1,
+} from "../../../utils/local-model/selection.js";
+import { classifyLocalGemmaHostErrorV1 } from "../../../utils/local-model/error.js";
 
 const MAX_RESEARCH_RESUME_MS = 10 * 60_000;
-const ACTIVE_CHAT_CONVERSATION_KEY = "atlcli.research.active-chat-conversation-id.v1";
 const CHAT_HOST_PRINCIPAL_KEY = "atlcli.chat.host-principal-id.v1";
 const RESEARCH_SESSION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/;
 const CHAT_HOST_PRINCIPAL_PATTERN = /^browser-principal:[0-9a-f-]{36}$/u;
 
-async function browserChatHostIdentityV1(): Promise<ChatHostIdentityV1> {
-  const stored = await chrome.storage.local.get(CHAT_HOST_PRINCIPAL_KEY);
+async function browserChatModelSelectionV1(): Promise<BrowserModelSelectionV1> {
+  const stored = await chrome.storage.local.get(APP_SETTINGS_STORAGE_KEY);
+  return normalizeSettings(stored[APP_SETTINGS_STORAGE_KEY]).modelSelection;
+}
+
+async function browserChatContextV1(): Promise<{
+  identity: ChatHostIdentityV1;
+  activeConversationKey: string;
+}> {
+  const [stored, selection] = await Promise.all([
+    chrome.storage.local.get(CHAT_HOST_PRINCIPAL_KEY),
+    browserChatModelSelectionV1(),
+  ]);
   const storedUserId = stored[CHAT_HOST_PRINCIPAL_KEY];
   let userId: string;
   if (typeof storedUserId === "string" && CHAT_HOST_PRINCIPAL_PATTERN.test(storedUserId)) {
@@ -66,21 +86,29 @@ async function browserChatHostIdentityV1(): Promise<ChatHostIdentityV1> {
     await chrome.storage.local.set({ [CHAT_HOST_PRINCIPAL_KEY]: userId });
   }
   return {
-    userId,
-    providerCacheIdentity: `anthropic:${userId}`,
+    identity: {
+      userId,
+      providerCacheIdentity: browserChatProviderCacheIdentityV1(selection, userId),
+    },
+    activeConversationKey: browserChatActiveConversationStorageKeyV1(selection),
   };
+}
+
+async function browserChatHostIdentityV1(): Promise<ChatHostIdentityV1> {
+  return (await browserChatContextV1()).identity;
 }
 
 async function readActiveChatInteractionV1(siteOrigin: string): Promise<{
   conversationId: string;
   state: ChatInteractionStateV1;
 } | null> {
-  const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
-  const conversationId = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+  const context = await browserChatContextV1();
+  const stored = await chrome.storage.local.get(context.activeConversationKey);
+  const conversationId = stored[context.activeConversationKey];
   if (typeof conversationId !== "string" || !RESEARCH_SESSION_ID_PATTERN.test(conversationId)) {
     return null;
   }
-  const identity = await browserChatHostIdentityV1();
+  const identity = context.identity;
   const store = await IndexedDbResearchSessionStoreV1.open();
   try {
     if (!await store.read(conversationId)) return null;
@@ -110,12 +138,13 @@ async function readActiveChatReplayV1(siteOrigin: string): Promise<{
   events: ChatActivityEventV1[];
   finalAnswer?: ChatAnswerV1;
 } | null> {
-  const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
-  const conversationId = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+  const context = await browserChatContextV1();
+  const stored = await chrome.storage.local.get(context.activeConversationKey);
+  const conversationId = stored[context.activeConversationKey];
   if (typeof conversationId !== "string" || !RESEARCH_SESSION_ID_PATTERN.test(conversationId)) {
     return null;
   }
-  const identity = await browserChatHostIdentityV1();
+  const identity = context.identity;
   const store = await IndexedDbResearchSessionStoreV1.open();
   try {
     if (!await store.read(conversationId)) return null;
@@ -374,7 +403,8 @@ export function chromeResearchPort(): ResearchPort {
     },
 
     async resetChatConversation() {
-      await chrome.storage.local.remove(ACTIVE_CHAT_CONVERSATION_KEY);
+      const context = await browserChatContextV1();
+      await chrome.storage.local.remove(context.activeConversationKey);
     },
 
     async resolveScope(request, options) {
@@ -1122,23 +1152,23 @@ export function chromeResearchPort(): ResearchPort {
       }
       const runId = crypto.randomUUID();
       let sessionId = `research-session:${crypto.randomUUID()}`;
+      let hostIdentity: ChatHostIdentityV1 | undefined;
       if (options?.mode === "chat") {
-        const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
-        const retained = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+        const context = await browserChatContextV1();
+        hostIdentity = context.identity;
+        const stored = await chrome.storage.local.get(context.activeConversationKey);
+        const retained = stored[context.activeConversationKey];
         sessionId = options.conversationId ?? (
           typeof retained === "string" && RESEARCH_SESSION_ID_PATTERN.test(retained)
             ? retained
             : sessionId
         );
-        await chrome.storage.local.set({ [ACTIVE_CHAT_CONVERSATION_KEY]: sessionId });
+        await chrome.storage.local.set({ [context.activeConversationKey]: sessionId });
       }
       const turnId = options?.chatResume?.turnId ??
         options?.chatCheckpointResume?.turnId ??
         `research-turn:${crypto.randomUUID()}`;
       const policy = normalizeResearchOneShotPolicyV1(options?.policy);
-      const hostIdentity = options?.mode === "chat"
-        ? await browserChatHostIdentityV1()
-        : undefined;
       activeRunId = runId;
       options?.onSessionStart?.({ sessionId, turnId });
       const window = await chrome.windows.getCurrent();
@@ -1207,7 +1237,15 @@ export function chromeResearchPort(): ResearchPort {
           if (options?.signal?.aborted) {
             throw new ResearchContractError("cancelled", "The research run was cancelled.");
           }
-          throw error;
+          const selection = await browserChatModelSelectionV1();
+          const classified = classifyLocalGemmaHostErrorV1(
+            error,
+            selection.providerId === "local-gemma",
+          );
+          throw new ResearchContractError(
+            classified.code,
+            classified.message,
+          );
         }
         if (options?.signal?.aborted) {
           throw new ResearchContractError("cancelled", "The research run was cancelled.");
@@ -1502,9 +1540,10 @@ export function chromeChatAgentPort(research: ResearchPort): ChatAgentPortV1 {
     },
     listHistory: listChatHistoryV1,
     async replay(input) {
+      const context = await browserChatContextV1();
       const conversationId = input.conversationId ?? (
-        await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY)
-      )[ACTIVE_CHAT_CONVERSATION_KEY];
+        await chrome.storage.local.get(context.activeConversationKey)
+      )[context.activeConversationKey];
       if (typeof conversationId !== "string") return null;
       const projection = await readChatSessionProjectionV1({
         siteOrigin: input.siteOrigin,

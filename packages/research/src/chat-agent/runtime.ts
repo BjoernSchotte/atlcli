@@ -5,7 +5,12 @@ import {
   toolStrategy,
   type ModelRequest,
 } from "langchain";
-import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+  type BaseMessage,
+} from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { type ResearchPtcDiagnosticV1 } from "../agent-tools.js";
@@ -28,6 +33,7 @@ import {
 } from "../model-budget-middleware.js";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
+  ResearchContractError,
   type ChatPresentationStreamEventV1,
   type ResearchActivityCodeV1,
   type ResearchOneShotEventV1,
@@ -67,12 +73,13 @@ import {
   type ChatTurnRequestV1,
 } from "./contracts.js";
 import {
+  CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1,
   buildChatSystemPromptV1,
   buildChatTurnPromptV1,
   chatAnswerOutputInstructionV1,
-  deriveChatRequestChecklistV1,
 } from "./prompts.js";
 import { createChatPromptCacheMiddlewareV1 } from "./prompt-cache.js";
+import { createChatLocalTerminalContextMessagesV1 } from "./terminal-context.js";
 import {
   CHAT_SESSION_PATH_V1,
   CHAT_SESSION_SCHEMA_V1,
@@ -149,6 +156,9 @@ import {
 // Keep the runtime value provider-neutral so ChatAnthropic can project it to
 // `{ type: "tool", name: "eval" }` instead of forwarding an invalid envelope.
 const CHAT_EVAL_TOOL_CHOICE_V1 = "eval" as unknown as NonNullable<
+  ModelRequest["toolChoice"]
+>;
+const CHAT_ANSWER_TOOL_CHOICE_V2 = "ChatAnswerDraftV2" as unknown as NonNullable<
   ModelRequest["toolChoice"]
 >;
 
@@ -462,23 +472,85 @@ export function createChatDirectToolSurfaceMiddlewareV1(
   onDiagnostic?: (diagnostic: ChatAgentDiagnosticV1) => void,
   options: {
     agenticWorkflowComplete?: () => boolean;
+    agenticWorkflowAccepted?: () => boolean;
+    continueAgenticWorkflow?: (input: { signal?: AbortSignal }) => Promise<void>;
     nativeStructuredOutput?: boolean;
+    toolStructuredOutput?: boolean;
     answerOutputInstruction?: string;
     evidenceAccessRequired?: boolean;
     evidenceAccessAttempted?: () => boolean;
     terminalRepairOnly?: () => boolean;
+    projectTerminalContext?: (input: {
+      signal?: AbortSignal;
+    }) => Promise<BaseMessage[] | undefined>;
+    debugLocalModel?: boolean;
   } = {},
 ) {
   let completedEvidenceStep = false;
   let completedFinalReview = false;
   let nativeStructuredRepairAttempts = 0;
+  let agenticWorkflowStarted = false;
+  let terminalContextProjection: Promise<BaseMessage[] | undefined> | undefined;
   const modelPurpose = (): Extract<ChatAgentDiagnosticV1, { kind: "model-step" }>['purpose'] =>
-    completedFinalReview || completedEvidenceStep
+    completedFinalReview || completedEvidenceStep || options.evidenceAccessAttempted?.() === true
       ? "answer-drafting"
       : "planning";
   return createMiddleware({
     name: "ChatDirectToolSurfaceMiddleware",
     async wrapModelCall(request, handler) {
+      const traceStartedAt = Date.now();
+      let traceCall = 0;
+      const tracedHandler = async (
+        projectedRequest: ModelRequest,
+        stage: string,
+      ) => {
+        traceCall += 1;
+        const callStartedAt = Date.now();
+        if (options.debugLocalModel) {
+          console.debug(`[local-gemma/deepagent] model request ${JSON.stringify({
+            stage,
+            call: traceCall,
+            tools: projectedRequest.tools.map((tool) => tool.name),
+            toolChoice: projectedRequest.toolChoice,
+            systemChars: String(projectedRequest.systemMessage.content).length,
+            messages: projectedRequest.messages.map((message, index) => ({
+              index,
+              role: message.getType(),
+              chars: String(message.content).length,
+            })),
+          })}`);
+        }
+        try {
+          const response = await handler(projectedRequest);
+          if (options.debugLocalModel) {
+            const diagnostic = diagnosticMessage(response);
+            console.debug(`[local-gemma/deepagent] model response ${JSON.stringify({
+              stage,
+              call: traceCall,
+              durationMs: Date.now() - callStartedAt,
+              toolNames: diagnostic.toolNames,
+              stopReason: diagnostic.stopReason,
+              responseType: response && typeof response === "object"
+                ? response.constructor?.name
+                : typeof response,
+              contentChars: response && typeof response === "object" && "content" in response
+                ? String(response.content).length
+                : undefined,
+            })}`);
+          }
+          return response;
+        } catch (error) {
+          if (options.debugLocalModel) {
+            console.error(`[local-gemma/deepagent] model failure ${JSON.stringify({
+              stage,
+              call: traceCall,
+              durationMs: Date.now() - callStartedAt,
+              errorClass: classifyResearchError(error).code,
+            })}`);
+          }
+          throw error;
+        }
+      };
       const purpose = modelPurpose();
       onDiagnostic?.({ kind: "model-step", status: "started", purpose });
       if (options.agenticWorkflowComplete?.()) {
@@ -494,8 +566,35 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         });
         return response;
       }
+      if (agenticWorkflowStarted && options.continueAgenticWorkflow) {
+        await options.continueAgenticWorkflow({ signal: request.runtime?.signal });
+        if (!options.agenticWorkflowComplete?.()) {
+          throw new ChatContractError(
+            "invalid-report",
+            "The host-owned Chat workflow continuation did not reach terminal synthesis.",
+          );
+        }
+        const response = new AIMessage({ content: "Agentic Chat synthesis accepted." });
+        onDiagnostic?.({
+          kind: "model-step",
+          status: "completed",
+          purpose,
+          ...diagnosticMessage(response),
+        });
+        return response;
+      }
       try {
         const terminalRepairOnly = options.terminalRepairOnly?.() === true;
+        const requireTerminalAnswer = options.toolStructuredOutput === true &&
+          (terminalRepairOnly || options.evidenceAccessAttempted?.() === true);
+        if (requireTerminalAnswer && options.projectTerminalContext) {
+          terminalContextProjection ??= options.projectTerminalContext({
+            signal: request.runtime?.signal,
+          });
+        }
+        const terminalMessages = terminalContextProjection
+          ? await terminalContextProjection
+          : undefined;
         const filteredRequest = {
           ...request,
           // createDeepAgent always assembles filesystem and task scaffolding.
@@ -508,13 +607,20 @@ export function createChatDirectToolSurfaceMiddlewareV1(
             : request.tools.filter((candidate) =>
                 candidate.name === "eval" || candidate.name === "ask_user_question"
               ),
+          ...(requireTerminalAnswer
+            ? {
+                toolChoice: CHAT_ANSWER_TOOL_CHOICE_V2,
+                ...(terminalMessages ? { messages: terminalMessages } : {}),
+              }
+            : {}),
           ...(terminalRepairOnly
             ? {
                 systemMessage: request.systemMessage.concat(new SystemMessage([
                   "Terminal answer correction for this turn:",
                   "The host rejected the previous draft because its Markdown was incomplete or none of its factual blocks used an accepted detail-evidence reference.",
                   "Use only the evidence already present in this conversation. Do not call a tool, ask a question, retrieve, or broaden scope.",
-                  "Return one complete ChatAnswerDraftV2. Cover every explicitly requested facet with a supported block or a precise gap, use only the exact allowed source references supplied by the host, and emit no abandoned alternatives.",
+                  "Return one complete ChatAnswerDraftV2 using only the exact allowed source references supplied by the host, and emit no abandoned alternatives.",
+                  CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1,
                   options.answerOutputInstruction ?? "",
                 ].filter(Boolean).join("\n"))),
               }
@@ -522,7 +628,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         };
         let response;
         try {
-          response = await handler(filteredRequest);
+          response = await tracedHandler(filteredRequest, "primary");
           const calledTools = diagnosticMessage(response).toolNames;
           if (
             !terminalRepairOnly &&
@@ -530,7 +636,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
             !options.evidenceAccessAttempted?.() &&
             !calledTools.includes("eval")
           ) {
-            response = await handler({
+            response = await tracedHandler({
               ...filteredRequest,
               systemMessage: filteredRequest.systemMessage.concat(
                 new SystemMessage([
@@ -541,7 +647,7 @@ export function createChatDirectToolSurfaceMiddlewareV1(
                 ].join("\n")),
               ),
               toolChoice: CHAT_EVAL_TOOL_CHOICE_V1,
-            });
+            }, "evidence-correction");
           }
         } catch (error) {
           if (
@@ -550,14 +656,14 @@ export function createChatDirectToolSurfaceMiddlewareV1(
             !isChatAnswerStructuredOutputErrorV1(error)
           ) throw error;
           nativeStructuredRepairAttempts += 1;
-          response = await handler({
+          response = await tracedHandler({
             ...filteredRequest,
             systemPrompt: [
               filteredRequest.systemPrompt,
               "The previous terminal answer did not satisfy the required JSON schema. Retry the terminal answer exactly once from the already accepted evidence; do not call eval, ask a question, retrieve, or widen scope. Return ChatAnswerDraftV2 with ordered blocks and an actual gaps array. Put exactly one factual paragraph, list item, or table row in each block. Copy exact accepted evidence references into sourceRefs. Positive facts use assertion=positive and scope=none. Negative findings use assertion=absence and the narrowest truthful scope. Headings and non-factual transitions use assertion=none, scope=none, and no sourceRefs.",
               options.answerOutputInstruction,
             ].filter(Boolean).join("\n\n"),
-          });
+          }, "structured-output-repair");
         }
         onDiagnostic?.({
           kind: "model-step",
@@ -585,6 +691,14 @@ export function createChatDirectToolSurfaceMiddlewareV1(
           );
         }
         throw error;
+      } finally {
+        if (options.debugLocalModel) {
+          console.debug(`[local-gemma/deepagent] middleware complete ${JSON.stringify({
+            purpose,
+            calls: traceCall,
+            durationMs: Date.now() - traceStartedAt,
+          })}`);
+        }
       }
     },
     async wrapToolCall(request, handler) {
@@ -648,6 +762,9 @@ export function createChatDirectToolSurfaceMiddlewareV1(
         // the supervisor can correct them. Close the root only after the host
         // state machine confirms that synthesis actually committed.
         completedFinalReview ||= options.agenticWorkflowComplete?.() === true;
+        agenticWorkflowStarted ||= capabilityNames.includes("chatWorkflowPropose") &&
+          capabilityNames.includes("chatWorkflowRun") &&
+          options.agenticWorkflowAccepted?.() === true;
         onDiagnostic?.({
           kind: "eval-step",
           status: "success",
@@ -747,6 +864,18 @@ export interface RunChatAgentInput {
   /** Opaque host-owned principal/cache fences; never credentials or email addresses. */
   hostIdentity: ChatHostIdentityV1;
   qualityPolicy?: ChatQualityPolicyV1;
+  /**
+   * Local inference has no provider token or spend quota. This disables only
+   * the cumulative input/output/cost ceilings; model-call, context, transport,
+   * acquisition, and per-generation safety limits remain enforced.
+   */
+  modelUsageBudget?: "provider-metered" | "local-unmetered";
+  /**
+   * Remote stream interruptions remain resumable by default. A local runtime
+   * can instead surface its actionable device/model error immediately because
+   * retrying it does not risk another uncertain billable provider call.
+   */
+  modelProviderFailureMode?: "durable-resume" | "surface-terminal";
   /** Resume exactly this turn's durable askUserQuestion checkpoint. */
   resumeAnswer?: ChatUserQuestionAnswerV1;
   /** Resume the same durable model checkpoint without pretending token replay. */
@@ -817,6 +946,33 @@ export function chatRootPlanningPreferenceV1(input: {
   // reasoning because no specialist workflow follows them.
   if (input.execution === "agentic") return "balanced";
   return chatQualityPolicyV1(input.qualityMode).providerReasoningPreference;
+}
+
+/**
+ * Local browser inference must not spend a full model turn selecting an exact
+ * read that the host has already admitted. Keep this gate deliberately narrow:
+ * every ambiguous, resumable, discovery, multi-anchor, and agentic turn stays
+ * on the ordinary DeepAgents path, as do remote providers.
+ */
+export function shouldPreReadLocalExactContextV1(input: {
+  providerId: string;
+  strategy: ChatStrategyDecisionV1;
+  anchorRefs: readonly string[];
+  searchProducts: readonly ("jira" | "confluence")[];
+  resuming: boolean;
+}): boolean {
+  const allowedCapabilities = new Set(["exact-read", "chat-answer"]);
+  return input.providerId === "local-gemma" &&
+    input.strategy.execution === "direct" &&
+    input.strategy.ambiguityDisposition === "none" &&
+    input.strategy.reasonCodes.includes("single-exact-context") &&
+    input.strategy.requiredCapabilities.includes("exact-read") &&
+    input.strategy.requiredCapabilities.every((capability) =>
+      allowedCapabilities.has(capability)
+    ) &&
+    input.anchorRefs.length === 1 &&
+    input.searchProducts.length === 0 &&
+    !input.resuming;
 }
 
 const CHAT_SYNTHESIS_TIME_RESERVE_MS_V1 = 15_000;
@@ -1120,10 +1276,10 @@ export function createKiteweaveChatAgent(
 ): {
   runChatAgent(input: RunChatAgentInput): Promise<ChatAnswerV1>;
 } {
+  const registeredHarnessProfiles = new Set<string>();
   return {
     async runChatAgent(input): Promise<ChatAnswerV1> {
       const turn = normalizeChatTurnRequestV1(input.turn);
-      const requestChecklist = deriveChatRequestChecklistV1(turn.question);
       const qualityPolicy = normalizeChatQualityPolicyV1(
         input.qualityPolicy ?? chatQualityPolicyV1("auto"),
       );
@@ -1141,6 +1297,7 @@ export function createKiteweaveChatAgent(
       let resumeEnvelope: ChatResumeEnvelopeV1 | undefined;
       let modelCheckpointEntered = false;
       let resumableRootModelFailure = false;
+      let structuredAnswerPreviewUnsubscribe: (() => void) | undefined;
       let eventSequence = 0;
       const nextEventSequence = (): number => ++eventSequence;
       const emitPhase = (phase: string): void => {
@@ -1482,6 +1639,101 @@ export function createKiteweaveChatAgent(
             "The Chat host did not bind a LangChain chat model.",
           );
         }
+        const structuredAnswerPreviewState = {
+          generationId: "",
+          markdown: "",
+          started: false,
+        };
+        structuredAnswerPreviewUnsubscribe =
+          modelBinding.subscribeStructuredAnswerPreview?.((preview) => {
+            if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+              console.debug("[local-gemma/deepagent] answer preview received", {
+                generationId: preview.generationId,
+                status: preview.status,
+                markdownChars: preview.markdown.length,
+              });
+            }
+            if (preview.generationId !== structuredAnswerPreviewState.generationId) {
+              if (structuredAnswerPreviewState.markdown) {
+                input.onChatPresentation?.({
+                  kind: "chat-presentation",
+                  seq: nextEventSequence(),
+                  at: new Date(now()).toISOString(),
+                  channel: "answer-markdown",
+                  status: "reset",
+                });
+              }
+              structuredAnswerPreviewState.generationId = preview.generationId;
+              structuredAnswerPreviewState.markdown = "";
+              structuredAnswerPreviewState.started = false;
+            }
+            if (preview.status === "completed") {
+              if (structuredAnswerPreviewState.started) {
+                input.onChatPresentation?.({
+                  kind: "chat-presentation",
+                  seq: nextEventSequence(),
+                  at: new Date(now()).toISOString(),
+                  channel: "answer-markdown",
+                  status: "completed",
+                });
+                structuredAnswerPreviewState.started = false;
+              }
+              return;
+            }
+            const projected = preview.markdown.slice(0, turn.limits.maxReportChars);
+            const projection = streamedAnswerSnapshotDeltaV1(
+              structuredAnswerPreviewState.markdown,
+              projected,
+            );
+            if (!projection.delta) return;
+            if (projection.reset) {
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "answer-markdown",
+                status: "reset",
+              });
+              structuredAnswerPreviewState.started = false;
+            }
+            if (!structuredAnswerPreviewState.started) {
+              structuredAnswerPreviewState.started = true;
+              input.onChatPresentation?.({
+                kind: "chat-presentation",
+                seq: nextEventSequence(),
+                at: new Date(now()).toISOString(),
+                channel: "answer-markdown",
+                status: "started",
+              });
+            }
+            structuredAnswerPreviewState.markdown = projected;
+            input.onChatPresentation?.({
+              kind: "chat-presentation",
+              seq: nextEventSequence(),
+              at: new Date(now()).toISOString(),
+              channel: "answer-markdown",
+              status: "delta",
+              delta: projection.delta,
+            });
+            if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+              console.debug("[local-gemma/deepagent] answer preview presented", {
+                generationId: preview.generationId,
+                deltaChars: projection.delta.length,
+                totalChars: projected.length,
+                reset: projection.reset,
+              });
+            }
+          });
+        if (
+          modelBinding.harnessProfile &&
+          !registeredHarnessProfiles.has(modelBinding.harnessProfile.key)
+        ) {
+          runtime.registerHarnessProfile(
+            modelBinding.harnessProfile.key,
+            modelBinding.harnessProfile.profile,
+          );
+          registeredHarnessProfiles.add(modelBinding.harnessProfile.key);
+        }
         const rootPlanningPreference = chatRootPlanningPreferenceV1({
           qualityMode: qualityPolicy.mode,
           execution: strategyDecision.execution,
@@ -1500,6 +1752,13 @@ export function createKiteweaveChatAgent(
             qualityMode: qualityPolicy.mode,
             execution: strategyDecision.execution,
           }),
+          ...(input.modelUsageBudget === "local-unmetered"
+            ? {
+                maxTotalModelInputTokens: Number.MAX_SAFE_INTEGER,
+                maxTotalModelOutputTokens: Number.MAX_SAFE_INTEGER,
+                maxModelCostMicros: Number.MAX_SAFE_INTEGER,
+              }
+            : {}),
         });
         const modelCallObservations: ResearchModelCallObservationV1[] = [];
         const observeModelCall = async (
@@ -1663,6 +1922,7 @@ export function createKiteweaveChatAgent(
             if (
               event.delta.type === "block-delta" &&
               profileId === "chat-synthesizer" &&
+              !structuredAnswerPreviewState.markdown &&
               event.delta.fields.type === "tool_call_chunk" &&
               typeof event.delta.fields.args === "string"
             ) {
@@ -1743,6 +2003,12 @@ export function createKiteweaveChatAgent(
               ...(modelBinding.projectResponseSchema
                 ? { projectResponseSchema: modelBinding.projectResponseSchema }
                 : {}),
+              ...(modelBinding.runtimeLimits?.interpreterResultChars === undefined
+                ? {}
+                : {
+                    interpreterResultChars:
+                      modelBinding.runtimeLimits.interpreterResultChars,
+                  }),
               strategy: strategyDecision,
               budget,
               modelBudget,
@@ -1767,7 +2033,6 @@ export function createKiteweaveChatAgent(
                 ) {
                   return JSON.stringify({
                     question: turn.question,
-                    explicitRequestChecklist: requestChecklist,
                     hostGroundednessContract: {
                       invariant:
                         "Every sourceId present in a completed dependency evidence packet is a host-confirmed successful detail read. Raw bodies are intentionally absent and their absence is not a missing-detail defect.",
@@ -1936,7 +2201,7 @@ export function createKiteweaveChatAgent(
                 ) {
                   controller.abort(new ChatContractError(
                     diagnostic.code === "timeout" ? "limit-exceeded" : "invalid-report",
-                    `A bounded Chat specialist did not complete (${diagnostic.taskId ?? "unknown"}, ${diagnostic.code ?? "unknown"}); the turn stopped before synthesis.`,
+                    `A bounded Chat specialist did not complete (${diagnostic.taskId ?? "unknown"}, ${profileId ?? "unknown-profile"}, ${diagnostic.code ?? "unknown"}, ${diagnostic.failureClass ?? "unknown-class"}); the turn stopped before synthesis.`,
                   ));
                 }
               },
@@ -1992,6 +2257,27 @@ export function createKiteweaveChatAgent(
                 ...acquisition,
               ];
             })();
+        if (shouldPreReadLocalExactContextV1({
+          providerId: modelBinding.qualityAdapter.providerId,
+          strategy: strategyDecision,
+          anchorRefs: anchors.map((anchor) => anchor.anchorRef),
+          searchProducts,
+          resuming: Boolean(input.resumeAnswer || input.resumeCheckpoint),
+        })) {
+          const exactRead = ptcTools.find((candidate) =>
+            candidate.name === "atlassian_bound_read"
+          );
+          if (!exactRead) {
+            throw new ChatContractError(
+              "invalid-request",
+              "The admitted exact-context read capability is unavailable.",
+            );
+          }
+          await exactRead.invoke(
+            { anchorRef: anchors[0]!.anchorRef },
+            { signal: controller.signal },
+          );
+        }
         let structuredRepairAttempts = 0;
         const rootModelOutputTokens = chatRootOutputTokenLimitV1({
           configuredMaxOutputTokens: turn.limits.maxModelOutputTokens,
@@ -2031,6 +2317,17 @@ export function createKiteweaveChatAgent(
           createChatDurableSummarizationMiddlewareV1(runtime, {
             workspace: input.workspace,
             model,
+            shortTurnPassThrough:
+              modelBinding.qualityAdapter.providerId === "local-gemma",
+            agenticHostRunPassThrough:
+              modelBinding.qualityAdapter.providerId === "local-gemma" &&
+              strategyDecision.execution === "agentic",
+            ...(modelBinding.runtimeLimits?.maxInputTokens === undefined
+              ? {}
+              : {
+                  operationalMaxInputTokens:
+                    modelBinding.runtimeLimits.maxInputTokens,
+                }),
           });
         const checkpoint = new ChatTurnWorkspaceCheckpointerV1({
           conversationId: turn.conversationId,
@@ -2078,6 +2375,9 @@ export function createKiteweaveChatAgent(
               nativeStructuredOutput:
                 strategyDecision.execution !== "agentic" &&
                 modelBinding.structuredOutput === "native",
+              toolStructuredOutput:
+                strategyDecision.execution !== "agentic" &&
+                modelBinding.structuredOutput === "tool",
               answerOutputInstruction: chatAnswerOutputInstructionV1(
                 qualityPolicy.mode,
                 true,
@@ -2092,6 +2392,17 @@ export function createKiteweaveChatAgent(
                         return false;
                       }
                     },
+                    agenticWorkflowAccepted: () =>
+                      agenticWorkflow.acceptedWorkflow() !== undefined,
+                    ...(modelBinding.qualityAdapter.providerId === "local-gemma"
+                      ? {
+                          continueAgenticWorkflow: async ({ signal }: {
+                            signal?: AbortSignal;
+                          }) => {
+                            await agenticWorkflow.runTool.invoke({}, { signal });
+                          },
+                        }
+                      : {}),
                   }
                 : {}),
               evidenceAccessRequired: strategyDecision.requiredCapabilities.some(
@@ -2101,6 +2412,29 @@ export function createKiteweaveChatAgent(
                 broker.detailEvidenceLedger().length > 0 ||
                 budget.counts().httpCalls > 0,
               terminalRepairOnly: () => terminalAnswerRepairOnly,
+              debugLocalModel:
+                modelBinding.qualityAdapter.providerId === "local-gemma",
+              ...(strategyDecision.execution !== "agentic" &&
+                  modelBinding.qualityAdapter.providerId === "local-gemma"
+                ? {
+                    projectTerminalContext: async ({ signal }: {
+                      signal?: AbortSignal;
+                    }) => broker.detailEvidenceLedger().length === 0
+                      ? undefined
+                      : createChatLocalTerminalContextMessagesV1({
+                          model: modelForRoute({
+                            role: "extraction",
+                            preference: "fast",
+                          }).model,
+                          broker,
+                          question: turn.question,
+                          locale: turn.locale,
+                          signal,
+                          maxInputTokens:
+                            modelBinding.runtimeLimits?.maxInputTokens,
+                        }),
+                  }
+                : {}),
             }),
             durableSummarizationMiddleware,
             rootModelBudgetMiddleware,
@@ -2126,6 +2460,8 @@ export function createKiteweaveChatAgent(
               maxPtcCalls: turn.limits.maxPtcCalls,
               maxResultChars: Math.min(
                 turn.limits.maxPtcOutputBytes,
+                modelBinding.runtimeLimits?.interpreterResultChars ??
+                  Number.MAX_SAFE_INTEGER,
                 Math.max(24_000, turn.limits.maxReportChars),
               ),
               captureConsole: false,
@@ -2371,7 +2707,8 @@ export function createKiteweaveChatAgent(
             source: AsyncIterable<unknown>,
             allowed: boolean,
           ): Promise<void> => {
-            if (!allowed || modelBinding.structuredOutput !== "tool") {
+            if (!allowed || modelBinding.structuredOutput !== "tool" ||
+                structuredAnswerPreviewState.markdown) {
               for await (const _unused of source) {
                 // Drain the message event stream independently of reasoning.
               }
@@ -2519,21 +2856,35 @@ export function createKiteweaveChatAgent(
             draft: finalDraft,
             detailEvidence: broker.detailEvidenceLedger(),
             readSectionReferences: broker.readSectionReferenceLedger(),
-            requestFacets: requestChecklist,
             question: turn.question,
           });
+          if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+            console.debug("[local-gemma/host-validator] initial draft inspection", {
+              rejectionReasons: safelyNormalized.rejectionReasons,
+              detailEvidence: broker.detailEvidenceLedger().map((entry) => ({
+                sourceId: entry.source.id,
+                sectionId: entry.section?.sectionId,
+                truncated: entry.content.truncated,
+              })),
+              readSectionReferences: broker.readSectionReferenceLedger(),
+              draft: finalDraft,
+            });
+          }
           if (safelyNormalized.draft) finalDraft = safelyNormalized.draft;
         }
-        if (
-          !agenticWorkflow &&
+        const needsHostRepair = !agenticWorkflow &&
           chatDraftNeedsHostRepairV1({
             draft: finalDraft,
             detailEvidence: broker.detailEvidenceLedger(),
             readSectionReferences: broker.readSectionReferenceLedger(),
-            requestFacets: requestChecklist,
             question: turn.question,
-          })
-        ) {
+          });
+        if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+          console.debug("[local-gemma/host-validator] repair decision", {
+            needsHostRepair,
+          });
+        }
+        if (needsHostRepair) {
           terminalAnswerRepairOnly = true;
           emitActivity("repair", "started");
           input.onChatPresentation?.({
@@ -2548,7 +2899,8 @@ export function createKiteweaveChatAgent(
               typeof inspectChatDraftAfterHostRepairV1
             >["draft"];
             let repairRejectionReasons: readonly string[] = [];
-            for (let attempt = 0; attempt < 2 && !repairedDraft; attempt += 1) {
+            const maxRepairAttempts = modelBinding.structuredOutput === "tool" ? 1 : 2;
+            for (let attempt = 0; attempt < maxRepairAttempts && !repairedDraft; attempt += 1) {
               finalResult = await agent.invoke({
                 messages: [new HumanMessage([
                   attempt === 0
@@ -2563,18 +2915,13 @@ export function createKiteweaveChatAgent(
                         .map((section) => `${section.sourceId}#${section.sectionId}`),
                     ])),
                   ])}.`,
-                  ...(requestChecklist.length > 0
-                    ? [
-                        `Required user-authored facet labels: ${JSON.stringify(requestChecklist)}.`,
-                        "Use every label verbatim exactly once as a heading or bullet label, followed by its supported answer or one precise evidence gap.",
-                      ]
-                    : ["Cover every explicitly requested facet or state one precise gap."]),
+                  CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1,
                   "Do not call a tool, retrieve, ask a question, or expose an abandoned wording alternative.",
                   "Use short self-contained paragraphs or bullets. End every factual sentence with closing punctuation. If a quoted fragment would leave a sentence unfinished, omit the fragment and state only the complete supported fact.",
                   "Make every factual sentence grammatically complete; do not leave a clause ending in a connector or auxiliary verb.",
-                  "Do not leave a detached lowercase continuation paragraph beginning with da, weil, obwohl, während, und, aber, because, although, whereas, which, and, or, or but.",
+                  "Do not leave detached continuation fragments.",
                   "Do not classify the same evidence as both directly measured and conjectural. Separate observations from interpretation explicitly when the user asks for that distinction.",
-                  "Apply the user's selection predicate before its requested count: a top-N measured list may contain only explicitly comparable measured items; move unmeasured mechanisms or hypotheses to a separate caveat. For a greatest/strongest/highest/top/groesste/größte/staerkste/stärkste/hoechste/höchste ranking, calculate each comparable effect from its explicit before/after values and sort the items descending by that numeric effect unless the user explicitly asks for another direction; smallest/lowest/kleinste/niedrigste means ascending.",
+                  "Apply the user's selection predicate before its requested count: a ranked measured list may contain only explicitly comparable measured items; move unmeasured mechanisms or hypotheses to a separate caveat. Preserve the ranking direction expressed by the user and calculate comparable effects from explicit values.",
                   "For a causal top-N of technical levers, compare isolated interventions against a stated baseline while holding the requested outcome quality and other material variables constant. Do not count a bundled configuration change or a speed result that changes answer quality as one comparable lever; report it separately as a trade-off unless the user explicitly requests raw throughput regardless of quality.",
                   "For every ranked measured item, preserve each effect measure explicitly reported by the source: include its before/after values and any reported relative percentage as well as a useful absolute delta. A derived absolute delta must not replace an explicit source percentage.",
                 ].join("\n"))],
@@ -2588,9 +2935,15 @@ export function createKiteweaveChatAgent(
                 draft: chatStructuredDraftFromAgentResultV1(finalResult),
                 detailEvidence: broker.detailEvidenceLedger(),
                 readSectionReferences: broker.readSectionReferenceLedger(),
-                requestFacets: requestChecklist,
                 question: turn.question,
               });
+              if (modelBinding.qualityAdapter.providerId === "local-gemma") {
+                console.debug("[local-gemma/host-validator] repair inspection", {
+                  attempt: attempt + 1,
+                  rejectionReasons: repairedInspection.rejectionReasons,
+                  draft: chatStructuredDraftFromAgentResultV1(finalResult),
+                });
+              }
               repairedDraft = repairedInspection.draft;
               repairRejectionReasons = repairedInspection.rejectionReasons;
             }
@@ -2770,11 +3123,18 @@ export function createKiteweaveChatAgent(
           throw error;
         }
         const classified = classifyResearchError(error);
-        const terminalError = classified.code === "invalid-report" &&
-            !(error instanceof ChatContractError)
-          ? new ChatContractError("invalid-report", classified.message)
-          : error;
+        const terminalError = input.modelProviderFailureMode === "surface-terminal" &&
+            classified.code === "provider-error"
+          ? new ResearchContractError(
+              "provider-error",
+              redactResearchSecrets(error),
+            )
+          : classified.code === "invalid-report" &&
+              !(error instanceof ChatContractError)
+            ? new ChatContractError("invalid-report", classified.message)
+            : error;
         const resumableStreamFailure = Boolean(
+          input.modelProviderFailureMode !== "surface-terminal" &&
           modelCheckpointEntered &&
           resumableRootModelFailure &&
           resumeEnvelope &&
@@ -2883,6 +3243,13 @@ export function createKiteweaveChatAgent(
             // best-effort state-publication failure.
           }
         }
+        if (
+          input.modelProviderFailureMode === "surface-terminal" &&
+          classified.code === "provider-error" &&
+          !input.signal?.aborted
+        ) {
+          throw terminalError;
+        }
         if (!controller.signal.aborted) controller.abort(terminalError);
         if (controller.signal.aborted) {
           throw controller.signal.reason instanceof Error
@@ -2900,6 +3267,7 @@ export function createKiteweaveChatAgent(
         globalThis.clearTimeout(timeout);
         input.signal?.removeEventListener("abort", forwardAbort);
         controller.signal.removeEventListener("abort", onAbort);
+        structuredAnswerPreviewUnsubscribe?.();
         activeBroker?.cancel();
       }
     },

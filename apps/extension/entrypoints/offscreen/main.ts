@@ -32,6 +32,8 @@ import {
   IndexedDbResearchSessionStoreV1,
   recoverExpiredResearchSessionsAtSafeBoundaryV1,
 } from "@atlcli/research/browser";
+import { LOCAL_GEMMA_G0_MANIFEST_V1 } from "../../utils/local-model/manifest.js";
+import { withLocalRunHeartbeatV1 } from "../../utils/research/run-heartbeat.js";
 
 const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
 
@@ -58,6 +60,33 @@ async function recoverResearchSessionsAfterOffscreenStart(): Promise<void> {
 void recoverResearchSessionsAfterOffscreenStart().catch((error) =>
   console.error("Durable research recovery after offscreen startup failed", error),
 );
+
+let localModelRuntimeModulePromise: Promise<
+  typeof import("../../workers/local-model.js")
+> | undefined;
+
+function localModelRuntimeModuleV1() {
+  return localModelRuntimeModulePromise ??= import(
+    "../../workers/local-model.js"
+  );
+}
+
+async function connectInstalledLocalModelV1() {
+  // Offscreen documents expose only chrome.runtime, not chrome.storage. The
+  // background host validates the exact installed activation immediately
+  // before it sends a local-gemma run. Load ORT lazily, but execute it in this
+  // offscreen Window rather than a nested DedicatedWorker. ORT's WebGPU JSEP
+  // bridge has a distinct WorkerGlobalScope path that aborts the Gemma 4 E4B
+  // decoder in Chrome MV3 after embedding succeeds.
+  const { connectLocalModelPortV1 } = await localModelRuntimeModuleV1();
+  const channel = new MessageChannel();
+  connectLocalModelPortV1(channel.port2);
+  return {
+    kind: "local-gemma" as const,
+    modelId: LOCAL_GEMMA_G0_MANIFEST_V1.modelId,
+    port: channel.port1,
+  };
+}
 
 const pdfHost = new ChromeWorkerCompilerHost({
   createWorker: () =>
@@ -142,6 +171,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       const { runWasmAdd } = await import("../../utils/wasm-smoke.js");
       return runWasmAdd(a, b);
     },
+    prewarmLocalModel: async () => {
+      const { prewarmLocalModelRuntimeV1 } = await localModelRuntimeModuleV1();
+      const receipt = await prewarmLocalModelRuntimeV1();
+      console.info("[local-gemma/offscreen] prewarm completed", receipt);
+      return receipt;
+    },
     // The T5.3 scheduling hints ride the message (scalars only) because the
     // panel decides the job kind while the offscreen queue enforces it — see
     // `utils/pdf/compiler-host.ts`, "The job-kind scheduling contract".
@@ -175,13 +210,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       hostIdentity,
       resumeAnswer,
       resumeCheckpoint,
+      modelProvider,
     ) => {
-      const apiKey = normalizeAnthropicApiKey(key);
-      return researchHost.run({
+      const apiKey = modelProvider === "local-gemma"
+        ? ""
+        : normalizeAnthropicApiKey(key);
+      const run = async () => researchHost.run({
         runId,
         sessionId,
         turnId,
         apiKey,
+        ...(modelProvider === "local-gemma"
+          ? { modelBinding: await connectInstalledLocalModelV1() }
+          : {}),
         mode,
         request,
         policy,
@@ -211,6 +252,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
           }).catch(() => undefined);
         },
       });
+      return modelProvider === "local-gemma"
+        ? withLocalRunHeartbeatV1({
+            runId,
+            operation: run,
+            sendHeartbeat: async (activeRunId) => {
+              await chrome.runtime.sendMessage({
+                kind: "research:heartbeat",
+                runId: activeRunId,
+              });
+            },
+          })
+        : run();
     },
     resumeResearch: async (runId, sessionId, turnId, key) => {
       const apiKey = normalizeAnthropicApiKey(key);

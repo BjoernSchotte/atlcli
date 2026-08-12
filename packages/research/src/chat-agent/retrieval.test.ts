@@ -361,6 +361,145 @@ describe("Chat exact-anchor retrieval", () => {
     expect(calls).toEqual(["wiki.get:1001"]);
   });
 
+  test("returns a bounded correction for an invented section ref without invoking the broker", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.wiki.getPage = async ({ contentId }) => {
+      calls.push(`wiki.get:${contentId}`);
+      return {
+        contentId,
+        spaceKey: "~account-id",
+        title: "Navigable page",
+        content: {
+          text: "Decision\nThe decision is approved.",
+          linkTargets: [],
+          truncated: true,
+          inputBytes: 35,
+        },
+        navigation: navigateConfluenceStorageV1({
+          storage: "<h1>Decision</h1><p>The decision is approved.</p>",
+          sourceVersion: 1,
+          siteOrigin: ORIGIN,
+          projectionLimits: {
+            maxTextChars: 10,
+            maxTextBytes: 40,
+            maxLinks: 10,
+            maxNodes: 1_000,
+            maxDepth: 32,
+          },
+        }),
+      };
+    };
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({ product: "confluence", entityKind: "page", key: "1001", name: "Page", id: "page-1001" })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, {
+      createAnchorId: () => "anchor",
+      createSectionId: () => "decision-section",
+    });
+    const tools = createChatPtcToolsV1(broker);
+    const direct = tools.find((candidate) => candidate.name === "atlassian_bound_read");
+    const section = tools.find((candidate) => candidate.name === "atlassian_bound_section_read");
+    if (!direct || !section) throw new Error("missing exact read tools");
+
+    const beforeRead = JSON.parse(await section.invoke({ sectionRef: "Decision" }));
+    expect(beforeRead).toEqual({
+      schema: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1,
+      status: "rejected",
+      code: "unknown-section-ref",
+      currentSectionRefs: [],
+      action: "read-bound-entity-first",
+    });
+    expect(broker.budget.counts()).toMatchObject({ ptcCalls: 0, httpCalls: 0 });
+
+    const page = JSON.parse(await direct.invoke({
+      anchorRef: broker.exactAnchors()[0]!.anchorRef,
+    }));
+    const validSectionRef = page.document.sections[0].sectionRef;
+    const forged = JSON.parse(await section.invoke({
+      sectionRef: `${validSectionRef}-invented`,
+    }));
+    expect(forged).toEqual({
+      schema: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1,
+      status: "rejected",
+      code: "unknown-section-ref",
+      currentSectionRefs: [validSectionRef],
+      action: "retry-with-current-section-ref",
+    });
+    expect(calls).toEqual(["wiki.get:1001"]);
+    expect(broker.budget.counts()).toMatchObject({ ptcCalls: 1, httpCalls: 0 });
+
+    const accepted = JSON.parse(await section.invoke({ sectionRef: validSectionRef }));
+    expect(accepted.section.heading).toBe("Decision");
+    expect(broker.budget.counts()).toMatchObject({ ptcCalls: 2, httpCalls: 0 });
+  });
+
+  test("authorizes section refs from a host pre-read populated after tool construction", async () => {
+    const calls: string[] = [];
+    const fake = providers(calls);
+    fake.wiki.getPage = async ({ contentId }) => {
+      calls.push(`wiki.get:${contentId}`);
+      return {
+        contentId,
+        spaceKey: "~account-id",
+        title: "Pre-read navigable page",
+        content: {
+          text: "The initial projection is incomplete.",
+          linkTargets: [],
+          truncated: true,
+          inputBytes: 4_000,
+        },
+        navigation: navigateConfluenceStorageV1({
+          storage: "<h1>Decision</h1><p>The pre-read decision is approved.</p>",
+          sourceVersion: 1,
+          siteOrigin: ORIGIN,
+          projectionLimits: {
+            maxTextChars: 10,
+            maxTextBytes: 40,
+            maxLinks: 10,
+            maxNodes: 1_000,
+            maxDepth: 32,
+          },
+        }),
+      };
+    };
+    const broker = new ResearchCapabilityBroker(request({
+      seeds: [seed({
+        product: "confluence",
+        entityKind: "page",
+        key: "1001",
+        name: "Page",
+        id: "page-1001",
+      })],
+      wiki: ["~account-id"],
+      exact: ["confluence"],
+    }), fake, {
+      createAnchorId: () => "anchor",
+      createSectionId: () => "decision-section",
+    });
+    const preReadDetails = new Map<string, BoundEntityReadOutputV1>();
+    const tools = createChatPtcToolsV1(broker, { preReadDetails });
+    const section = tools.find((candidate) =>
+      candidate.name === "atlassian_bound_section_read"
+    );
+    if (!section) throw new Error("missing section read tool");
+
+    const anchorRef = broker.exactAnchors()[0]!.anchorRef;
+    const detail = await broker.readExactAnchor({
+      schema: BOUND_ENTITY_READ_INPUT_SCHEMA_V1,
+      anchorRef,
+    });
+    preReadDetails.set(anchorRef, detail);
+    const sectionRef = detail.document?.sections[0]?.sectionRef;
+    if (!sectionRef) throw new Error("missing pre-read section ref");
+
+    const accepted = JSON.parse(String(await section.invoke({ sectionRef })));
+    expect(accepted.source.sourceId).toBe("wiki:1001");
+    expect(accepted.section.heading).toBe("Decision");
+    expect(calls).toEqual(["wiki.get:1001"]);
+  });
+
   test("reads an attached Jira issue once and preserves its host canonical URL", async () => {
     const calls: string[] = [];
     const broker = new ResearchCapabilityBroker(request({

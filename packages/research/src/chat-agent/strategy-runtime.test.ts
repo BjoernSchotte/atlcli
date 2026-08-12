@@ -765,7 +765,7 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(nativeModel.callCount).toBe(1);
   });
 
-  test("retries one bounded terminal correction when the first omits a request facet", async () => {
+  test("does not retry a schema-valid answer by matching literal request fragments", async () => {
     const input = request("Antworte mit Betriebsart und Sicherheitsgrenze.");
     const workspace = createMemoryResearchWorkspace();
     const incomplete = JSON.stringify({
@@ -812,8 +812,8 @@ describe("real QuickJS Chat strategy trajectory", () => {
     });
 
     expect(answer.messageMarkdown).toContain("Betriebsart");
-    expect(answer.messageMarkdown).toContain("Sicherheitsgrenze");
-    expect(nativeModel.callCount).toBe(3);
+    expect(answer.messageMarkdown).not.toContain("Sicherheitsgrenze");
+    expect(nativeModel.callCount).toBe(1);
   });
 
   test("keeps enough root output budget for a complete Quick structured answer", () => {

@@ -627,6 +627,14 @@ export type ChatPresentationMessage = {
   runId: string;
   event: ChatPresentationStreamEventV1;
 };
+/**
+ * Transport-only keepalive emitted by the offscreen host during a silent local
+ * inference interval. It is not user-visible agent progress.
+ */
+export type ResearchHeartbeatMessage = {
+  kind: "research:heartbeat";
+  runId: string;
+};
 
 function isChatHostIdentityV1(value: unknown): value is ChatHostIdentityV1 {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -686,7 +694,9 @@ function isChatCheckpointResumeV1(value: unknown): value is {
  * (no self-delivery loop over the shared `chrome.runtime` message bus).
  */
 export type OffscreenRequest =
+  | { kind: "offscreen:runtime-protocol" }
   | { kind: "offscreen:wasm-add"; a: number; b: number }
+  | { kind: "offscreen:local-model-prewarm" }
   | ({ kind: "offscreen:pdf-compile"; jobId: string } & PdfCompileHints)
   | { kind: "offscreen:pdf-cancel"; jobId: string }
   | { kind: "offscreen:docx-prepare-runtime"; codeTheme?: CodeThemeId }
@@ -697,6 +707,7 @@ export type OffscreenRequest =
       sessionId: string;
       turnId: string;
       apiKey: string;
+      modelProvider?: "anthropic" | "local-gemma";
       mode: "chat" | "research";
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
@@ -723,8 +734,22 @@ export type OffscreenRequest =
   | { kind: "offscreen:research-pause"; runId: string }
   | { kind: "offscreen:research-cancel"; runId: string };
 export type OffscreenResponse =
+  | { kind: "offscreen:runtime-protocol-result"; version: 1 }
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
   | { kind: "offscreen:wasm-add-result"; ok: false; error: string }
+  | {
+      kind: "offscreen:local-model-prewarm-result";
+      ok: true;
+      runtimeState: "already-warm" | "prewarmed";
+      runtimeLoadMs: number;
+      compileMs: number;
+      totalMs: number;
+    }
+  | {
+      kind: "offscreen:local-model-prewarm-result";
+      ok: false;
+      error: string;
+    }
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: true }
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: false; error: string }
   | { kind: "offscreen:pdf-cancel-result"; jobId: string; cancelled: boolean }
@@ -786,6 +811,7 @@ export type ExtMessage =
   | ResearchProgressMessage
   | ResearchEventMessage
   | ChatPresentationMessage
+  | ResearchHeartbeatMessage
   | OffscreenRequest
   | OffscreenResponse;
 
@@ -1172,6 +1198,12 @@ export function isEntityChangedForWindow(
 export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { kind?: unknown; jobId?: unknown };
+  if (candidate.kind === "offscreen:runtime-protocol") {
+    return hasOnlyKeys(value, ["kind"]);
+  }
+  if (candidate.kind === "offscreen:local-model-prewarm") {
+    return hasOnlyKeys(value, ["kind"]);
+  }
   if (candidate.kind === "offscreen:pdf-compile") {
     return hasOnlyKeys(value, ["kind", "jobId", "job", "pages"]) && isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
   }
@@ -1189,12 +1221,16 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (candidate.kind === "offscreen:research-run") {
-    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; modelProvider?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "modelProvider", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
       isResearchRunId(run.runId) &&
       isResearchSessionId(run.sessionId) &&
       isResearchTurnId(run.turnId) &&
-      isResearchApiKey(run.apiKey) &&
+      (run.modelProvider === undefined || run.modelProvider === "anthropic" ||
+        run.modelProvider === "local-gemma") &&
+      (run.modelProvider === "local-gemma"
+        ? run.apiKey === "" && run.mode === "chat"
+        : isResearchApiKey(run.apiKey)) &&
       (run.mode === "chat" || run.mode === "research") &&
       typeof run.request === "object" &&
       run.request !== null &&

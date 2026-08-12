@@ -289,110 +289,7 @@ function confluenceSectionUrlV1(url: string, heading: string): string {
   return `${url.split("#", 1)[0]}#${encodeURIComponent(fragment)}`;
 }
 
-const WHOLE_DOCUMENT_SUBJECT_V1 =
-  /\b(?:complete|entire|whole)\s+(?:page|document)|\b(?:gesamte|vollst[aä]ndige|komplette)\s+(?:seite|dokument)\b/iu;
-const NEGATIVE_ABSENCE_V1 =
-  /\b(?:no|not|none|nothing|without|lacks?|missing|absent|kein(?:e[rmns]?)?|nicht|nichts|ohne|fehlt|fehlen)\b/iu;
-const ATLASSIAN_PRODUCT_SUBJECT_V1 =
-  /\b(?:jira|confluence|issues?|tickets?|vorg[aä]nge?|arbeitselemente?|wiki-?seiten?|pages?)\b/iu;
-const JIRA_CLAIM_SUBJECT_V1 =
-  /\b(?:jira|issues?|tickets?|vorg[aä]nge?|arbeitselemente?|[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]*)\b/iu;
-const CONFLUENCE_CLAIM_SUBJECT_V1 =
-  /\b(?:confluence|wiki-?seiten?|pages?|spaces?)\b/iu;
 const JIRA_ISSUE_KEY_V1 = /\b[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]*\b/gu;
-const RELATIONSHIP_SECTION_V1 =
-  /\b(?:comparison|relationship|mapping|agreement|contradiction|gap|vergleich|beziehung|zuordnung|übereinstimmung|widerspruch|lücke)\b/iu;
-const DOCUMENTATION_ABSENCE_SUBJECT_V1 =
-  /\b(?:documentation|documented|guide|instructions?|reference|configuration|setup|authentication|versioning|upgrade|environment variables?|api tokens?|dokumentiert|(?:dokumentations?|installations?|konfigurations?|authentifizierungs?|versionierungs?)[a-zäöüß-]*|anleitung|referenz|setup|upgrade|umgebungsvariablen|api-?token|befehle?)\b/iu;
-const RETRIEVAL_GAP_SUBJECT_V1 =
-  /\b(?:search|retrieval|candidate|coverage|index|suche|abruf|kandidat|abdeckung|suchindex)\b/iu;
-
-function removeUnsupportedWholeDocumentNegativesV1(
-  markdown: string,
-  hasIncompleteCitedDocument: boolean,
-  locale: string | undefined,
-  citedLinks: readonly string[],
-): string {
-  if (!hasIncompleteCitedDocument) return markdown;
-  let removed = false;
-  const retainedMarkdown = markdown
-    .split("\n")
-    .map((line) => {
-      if (!(WHOLE_DOCUMENT_SUBJECT_V1.test(line) && NEGATIVE_ABSENCE_V1.test(line))) {
-        return line;
-      }
-      const retainedSentences = line
-        .split(/(?<=[.!?])\s+/u)
-        .filter((sentence) => {
-          const unsupported = WHOLE_DOCUMENT_SUBJECT_V1.test(sentence) &&
-            NEGATIVE_ABSENCE_V1.test(sentence);
-          removed ||= unsupported;
-          return !unsupported;
-        });
-      return retainedSentences.join(" ");
-    })
-    .join("\n")
-    .replace(/\n{3,}/gu, "\n\n")
-    .trim();
-  if (!removed) return markdown;
-  const retainedProse = retainedMarkdown
-    .replace(/\[[^\]]*\]\([^)]*\)/gu, "")
-    .replace(/\s+/gu, "")
-    .trim();
-  if (retainedProse.length > 0) return retainedMarkdown;
-  const german = locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
-  const sourceSuffix = citedLinks.length > 0 ? ` ${citedLinks.join(" ")}` : "";
-  return german
-    ? `Der gelesene Inhalt erlaubt keine Aussage darüber, was auf der vollständigen Seite fehlt.${sourceSuffix}`
-    : `The content that was read does not establish what is absent from the complete page.${sourceSuffix}`;
-}
-
-function downgradeIncompleteScopeAbsenceClaimsV1(
-  markdown: string,
-  locale: string | undefined,
-): { markdown: string; downgradedClaims: number } {
-  const german = locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
-  let downgradedClaims = 0;
-  const replace = (
-    value: string,
-    pattern: RegExp,
-    replacement: string | ((substring: string, ...args: string[]) => string),
-  ): string => value.replace(pattern, (...args: string[]) => {
-    downgradedClaims += 1;
-    return typeof replacement === "string"
-      ? replacement
-      : replacement(args[0]!, ...args.slice(1));
-  });
-  const lines = markdown.split("\n").map((line) => {
-    let scoped = line;
-    if (german) {
-      scoped = replace(
-        scoped,
-        /\b(?:Im|In dem)\s+[^.!?\n|]{0,80}?\b(?:Space|Projekt)\s+(?:existiert|gibt es)\s+(kein(?:e[rmns]?)?)\s+([^.!?\n|]+)([.!?]?)/giu,
-        (_match, article, subject, punctuation) =>
-          `In den detailliert gelesenen Quellen wurde ${article} ${subject.trim()} gefunden${punctuation}`,
-      );
-      scoped = replace(
-        scoped,
-        /\bNicht\s+vorhanden\s+im\s+(?:gesamten\s+)?(?:Space|Projekt)\b/giu,
-        "In den detailliert gelesenen Quellen nicht gefunden",
-      );
-    } else {
-      scoped = replace(
-        scoped,
-        /\bNo\s+([^.!?\n|]+?)\s+(?:exists?|is present)\s+in\s+(?:the\s+)?[^.!?\n|]{0,80}?\b(?:space|project)\b/giu,
-        (_match, subject) => `No ${subject.trim()} was found in the sources read in detail`,
-      );
-      scoped = replace(
-        scoped,
-        /\bNot\s+present\s+in\s+(?:the\s+)?(?:whole\s+|entire\s+)?(?:space|project)\b/giu,
-        "Not found in the sources read in detail",
-      );
-    }
-    return scoped;
-  });
-  return { markdown: lines.join("\n"), downgradedClaims };
-}
 
 function markdownHeadingV1(line: string): { level: number; text: string } | undefined {
   const match = /^(#{1,6})\s+(.+)$/u.exec(line.trim());
@@ -462,18 +359,6 @@ function normalizeFinalMarkdownStructureV1(markdown: string): string {
   );
 }
 
-function balanceGermanClosingQuotesV1(markdown: string): string {
-  return markdown.split("\n").map((line) => {
-    const opening = [...line.matchAll(/„/gu)].length;
-    const closing = [...line.matchAll(/“/gu)].length;
-    if (opening <= closing) return line;
-    const trailingCitation = /^(.*?)(\s+(?:\[[^\]]+\]\(https?:\/\/[^)]+\)\s*)+)$/u.exec(line);
-    return trailingCitation
-      ? `${trailingCitation[1]}“${trailingCitation[2]}`
-      : `${line}“`;
-  }).join("\n");
-}
-
 function collapseRepeatedSinglePageCitationV1(
   markdown: string,
   citationKeys: readonly string[],
@@ -518,8 +403,6 @@ function removeUnbalancedStrongPresentationV1(markdown: string): string {
 }
 
 export const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1 = [
-  "incomplete-prose",
-  "observation-classification-conflict",
   "repeated-prose",
 ] as const;
 
@@ -537,46 +420,10 @@ function proseWithoutPresentationMarkupV1(value: string): string {
     .trim();
 }
 
-function containsIncompleteProseV1(markdown: string): boolean {
-  let inFence = false;
-  return markdown.split("\n").some((line) => {
-    const trimmed = line.trim();
-    if (/^```/u.test(trimmed)) {
-      inFence = !inFence;
-      return false;
-    }
-    if (
-      inFence ||
-      !trimmed ||
-      /^(?:#{1,6}\s|\||[-*+]\s+\[[ xX]\]\s|---+$)/u.test(trimmed)
-    ) return false;
-    const prose = proseWithoutPresentationMarkupV1(
-      trimmed.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/u, ""),
-    );
-    if (/^(?:da|weil|obwohl|während|indem|wobei|sodass|sofern|und|oder|aber|because|although|whereas|which|and|or|but)\b/u.test(prose)) {
-      return true;
-    }
-    if (!prose || /[.!?…:“”'"`)\]}]$/u.test(prose)) return false;
-    return /\b(?:als|soll|sollen|sollte|sollten|wird|werden|wurde|wurden|durch|mit|f[üu]r|von|zu|um|weil|dass|indem|w[äa]hrend|sowie|und|oder|aber|as|should|would|will|is|are|was|were|with|for|by|from|into|because|that|while|and|or|but)\s*$/iu.test(prose);
-  });
-}
-
-function containsObservationClassificationConflictV1(markdown: string): boolean {
-  const prose = proseWithoutPresentationMarkupV1(markdown).toLocaleLowerCase("de-DE");
-  const measured = /\b(?:direkt|explizit|tats[äa]chlich|reproduzierbar(?:e[nrms]?)?)\s+(?:gemessen|beobachtet|nachgewiesen|belegt)\b/u.test(prose) ||
-    /\b(?:messwerte?|werte)\b.{0,60}\b(?:gemessen|reproduzierbar|beobachtet|nachgewiesen)\b/u.test(prose) ||
-    /\bbelastbare[nrms]?\s+messungen\b/u.test(prose) ||
-    /\b(?:directly|explicitly|reproducibly)\s+(?:measured|observed|verified|reproduced)\b/u.test(prose);
-  if (!measured) return false;
-  return /\b(?:alle|s[äa]mtliche|diese)\s+(?:mess)?werte\b.{0,80}\b(?:sind|bleiben|gelten\s+als)\b.{0,40}\b(?:vermutung|spekulation|hypothese|hypothetisch|nicht\s+gemessen|nicht\s+belegt)\b/u.test(prose) ||
-    /\b(?:alle|s[äa]mtliche|diese)\s+(?:mess)?werte\b.{0,160}\bnicht\s+als\s+reproduzierbare\s+(?:produktiv)?messungen\b/u.test(prose) ||
-    /\b(?:all|these)\s+(?:measurements|values)\b.{0,80}\b(?:are|remain)\b.{0,40}\b(?:conjecture|speculation|hypothetical|unmeasured|unverified)\b/u.test(prose);
-}
-
 function normalizedProseTokensV1(value: string): string[] {
   return proseWithoutPresentationMarkupV1(value)
     .normalize("NFKC")
-    .toLocaleLowerCase("de-DE")
+    .toLowerCase()
     .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/u, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
@@ -682,10 +529,6 @@ export function chatMarkdownIntegrityIssuesV1(
   markdown: string,
 ): ChatMarkdownIntegrityIssueV1[] {
   const issues: ChatMarkdownIntegrityIssueV1[] = [];
-  if (containsIncompleteProseV1(markdown)) issues.push("incomplete-prose");
-  if (containsObservationClassificationConflictV1(markdown)) {
-    issues.push("observation-classification-conflict");
-  }
   if (containsRepeatedProseV1(markdown)) issues.push("repeated-prose");
   return issues;
 }
@@ -693,103 +536,10 @@ export function chatMarkdownIntegrityIssuesV1(
 function normalizedRequestFacetV1(value: string): string {
   return value
     .normalize("NFKC")
-    .toLocaleLowerCase("de-DE")
-    .replace(/^\s*(?:der|die|das|den|dem|des|the|a|an)\s+/u, "")
+    .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/gu, " ")
     .trim();
-}
-
-function requestFacetRemainderTokensV1(
-  markdown: string,
-  normalizedFacet: string,
-): Set<string> {
-  const normalized = normalizedRequestFacetV1(markdown);
-  const remainder = normalized.startsWith(normalizedFacet)
-    ? normalized.slice(normalizedFacet.length).trim()
-    : normalized;
-  return new Set(
-    remainder.split(" ").filter((token) => token.length >= 3),
-  );
-}
-
-function redundantRequestFacetAlternativeV1(
-  left: ChatAnswerBlockV2,
-  right: ChatAnswerBlockV2,
-  normalizedFacet: string,
-): boolean {
-  if (
-    left.assertion !== "none" || right.assertion !== "none" ||
-    left.sourceRefs.length > 0 || right.sourceRefs.length > 0
-  ) return false;
-  const leftTokens = requestFacetRemainderTokensV1(left.markdown, normalizedFacet);
-  const rightTokens = requestFacetRemainderTokensV1(right.markdown, normalizedFacet);
-  if (leftTokens.size === 0 || rightTokens.size === 0) return false;
-  const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
-  const union = new Set([...leftTokens, ...rightTokens]).size;
-  const containment = intersection / Math.min(leftTokens.size, rightTokens.size);
-  const jaccard = intersection / union;
-  return containment >= 0.7 && jaccard >= 0.5;
-}
-
-function requestFacetBlockIndexesV1(
-  blocks: readonly ChatAnswerBlockV2[],
-  facet: string,
-): number[] {
-  const normalizedFacet = normalizedRequestFacetV1(facet);
-  if (!normalizedFacet) return [];
-  return blocks.flatMap((block, index) =>
-    normalizedRequestFacetV1(block.markdown).startsWith(normalizedFacet)
-      ? [index]
-      : []
-  );
-}
-
-/**
- * A terminal provider repair can contain several abandoned phrasings for the
- * same explicit user facet even though each block is valid JSON and complete
- * prose. Remove only a high-confidence cluster of ungrounded alternatives and
- * retain its most informative member. Factual or materially different blocks
- * remain untouched and are rejected by the duplicate-facet guard below.
- */
-function collapseRedundantRequestFacetAlternativesV1(
-  blocks: readonly ChatAnswerBlockV2[],
-  requestFacets: readonly string[],
-): ChatAnswerBlockV2[] {
-  const removed = new Set<number>();
-  for (const facet of requestFacets) {
-    const normalizedFacet = normalizedRequestFacetV1(facet);
-    const indexes = requestFacetBlockIndexesV1(blocks, facet)
-      .filter((index) =>
-        !removed.has(index) &&
-        blocks[index]!.assertion === "none" &&
-        blocks[index]!.sourceRefs.length === 0
-      );
-    if (indexes.length < 2 || !normalizedFacet) continue;
-    const keeper = [...indexes].sort((left, right) => {
-      const tokenDelta = requestFacetRemainderTokensV1(
-        blocks[right]!.markdown,
-        normalizedFacet,
-      ).size - requestFacetRemainderTokensV1(
-        blocks[left]!.markdown,
-        normalizedFacet,
-      ).size;
-      return tokenDelta !== 0
-        ? tokenDelta
-        : blocks[right]!.markdown.length - blocks[left]!.markdown.length;
-    })[0]!;
-    for (const index of indexes) {
-      if (
-        index !== keeper &&
-        redundantRequestFacetAlternativeV1(
-          blocks[keeper]!,
-          blocks[index]!,
-          normalizedFacet,
-        )
-      ) removed.add(index);
-    }
-  }
-  return blocks.filter((_block, index) => !removed.has(index));
 }
 
 function compatibleAnswerBlockBindingV1(
@@ -812,7 +562,7 @@ function leadingCodeListSubjectV1(markdown: string): string | undefined {
   const match = markdown.match(
     /^\s*[-*+]\s+`([^`\n]{1,120})`\s*(?:[–—:-]|$)/u,
   );
-  return match?.[1]?.normalize("NFKC").toLocaleLowerCase("en-US").trim();
+  return match?.[1]?.normalize("NFKC").toLowerCase().trim();
 }
 
 interface NumberedListLeadV1 {
@@ -934,99 +684,15 @@ function collapseRedundantAnswerBlocksV1(
   return result.filter((_block, index) => !removed.has(index));
 }
 
-function escapedRegularExpressionV1(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
-function stripRequestFacetLabelV1(markdown: string, facet: string): string | undefined {
-  const exact = escapedRegularExpressionV1(facet.trim());
-  const label = new RegExp(
-    `^(\\s*(?:#{1,6}\\s+|[-*+]\\s+)?)(?:\\*\\*|__)?\\s*${exact}\\s*(?::|[–—-])?\\s*(?:\\*\\*|__)?\\s*`,
-    "iu",
-  );
-  const stripped = markdown.replace(label, "$1").trim();
-  return stripped !== markdown.trim() && stripped.length > 0 ? stripped : undefined;
-}
-
-/**
- * Distinct blocks may legitimately answer different parts of one requested
- * facet. Preserve all of their content while displaying the verbatim facet
- * label only once, preferring the evidence-bound block as its owner. Removing
- * a repeated presentation label changes neither claim text nor source binding.
- */
-function coalesceRequestFacetLabelsV1(
-  blocks: readonly ChatAnswerBlockV2[],
-  requestFacets: readonly string[],
-): ChatAnswerBlockV2[] {
-  let result = [...blocks];
-  for (const facet of requestFacets) {
-    const indexes = requestFacetBlockIndexesV1(result, facet);
-    if (indexes.length < 2) continue;
-    const owner = indexes.find((index) =>
-      result[index]!.assertion !== "none" && result[index]!.sourceRefs.length > 0
-    ) ?? indexes[0]!;
-    result = result.map((block, index) => {
-      if (index === owner || !indexes.includes(index)) return block;
-      const markdown = stripRequestFacetLabelV1(block.markdown, facet);
-      return markdown ? { ...block, markdown } : block;
-    });
-  }
-  return result;
-}
-
-function repeatedRequestFacetsV1(input: {
-  blocks: readonly ChatAnswerBlockV2[];
-  requestFacets: readonly string[];
-}): string[] {
-  return input.requestFacets.filter((facet) =>
-    requestFacetBlockIndexesV1(input.blocks, facet).length > 1
-  );
-}
-
-/**
- * Explicit enumerations copied from the user's question are a deterministic
- * completion contract. Requiring their labels in the draft lets the host catch
- * a silently omitted facet without trying to infer semantic requirements.
- */
-export function chatDraftMissingRequestFacetsV1(input: {
-  draft: unknown;
-  requestFacets: readonly string[];
-}): string[] {
-  if (input.requestFacets.length === 0) return [];
-  const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
-  if (!parsed.success) return [];
-  const markdown = normalizeChatAgentDraftV2(parsed.data).blocks
-    .map((block) => block.markdown)
-    .join("\n\n");
-  const normalizedMarkdown = normalizedRequestFacetV1(markdown);
-  return input.requestFacets.filter((facet) => {
-    const normalizedFacet = normalizedRequestFacetV1(facet);
-    return normalizedFacet.length > 0 && !normalizedMarkdown.includes(normalizedFacet);
-  });
-}
-
 export function chatDraftNeedsHostRepairV1(input: {
   draft: unknown;
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-  requestFacets?: readonly string[];
   question?: string;
 }): boolean {
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
   if (!parsed.success) return false;
   const draft = normalizeChatAgentDraftV2(parsed.data);
-  if (chatDraftMissingRequestFacetsV1({
-    draft,
-    requestFacets: input.requestFacets ?? [],
-  }).length > 0) {
-    return true;
-  }
-  if (repeatedRequestFacetsV1({
-    blocks: draft.blocks,
-    requestFacets: input.requestFacets ?? [],
-  }).length > 0) {
-    return true;
-  }
   if (collapseRedundantAnswerBlocksV1(
     draft.blocks,
     (sourceRef) => sourceReferenceIsDetailedV2(
@@ -1045,12 +711,6 @@ export function chatDraftNeedsHostRepairV1(input: {
       input.readSectionReferences ?? [],
     ),
   ).length !== draft.blocks.length) {
-    return true;
-  }
-  const rankedBlocks = normalizeMeasuredRankingBlocksV1(draft.blocks, input.question);
-  if (rankedBlocks.some((block, index) =>
-    block.id !== draft.blocks[index]?.id || block.markdown !== draft.blocks[index]?.markdown
-  )) {
     return true;
   }
   if (draft.blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
@@ -1089,7 +749,6 @@ export function chatDraftForFinalizationAfterHostRepairV1(input: {
   draft: unknown;
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-  requestFacets?: readonly string[];
   question?: string;
 }): ChatAgentDraftV2 | undefined {
   return inspectChatDraftAfterHostRepairV1(input).draft;
@@ -1100,161 +759,17 @@ export const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1 = [
   "malformed-factual-markdown",
   "missing-detailed-factual-block",
   "orphan-heading",
-  "missing-request-facet",
-  "repeated-request-facet",
   "repeated-prose",
-  "incomplete-prose",
-  "observation-classification-conflict",
 ] as const;
 
 export type ChatDraftRepairRejectionReasonV1 =
   typeof CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1[number];
-
-type ChatMeasuredRankingDirectionV1 = "ascending" | "descending";
-
-interface ChatMeasuredRankingEntryV1 {
-  block: ChatAnswerBlockV2;
-  originalIndex: number;
-  changes: ReadonlyMap<string, number>;
-}
-
-function requestedMeasuredRankingDirectionV1(
-  question: string | undefined,
-): ChatMeasuredRankingDirectionV1 | undefined {
-  if (!question) return undefined;
-  const normalized = question.toLocaleLowerCase("de-DE");
-  if (
-    /(?:aufsteigend|ascending|smallest|lowest|least|kleinste|niedrigste|geringste)/u
-      .test(normalized)
-  ) {
-    return "ascending";
-  }
-  if (
-    /(?:absteigend|descending|greatest|strongest|highest|biggest|\btop\b|groesste|größte|staerkste|stärkste|hoechste|höchste|wirkungsvollste)/u
-      .test(normalized)
-  ) {
-    return "descending";
-  }
-  return undefined;
-}
-
-function localizedDecimalV1(value: string): number | undefined {
-  const parsed = Number(value.replace(/\s/gu, "").replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function normalizeComparableUnitV1(value: string): string {
-  return value
-    .toLocaleLowerCase("en-US")
-    .replace(/tokens?/gu, "tok")
-    .replace(/\s+/gu, "");
-}
-
-function measuredChangesFromBlockV1(
-  block: ChatAnswerBlockV2,
-  originalIndex: number,
-): ChatMeasuredRankingEntryV1 | undefined {
-  if (!/^(\s*(?:[-*+]\s+)?)(?:\*\*|__)?\d+[.)](?=\s)/u.test(block.markdown)) {
-    return undefined;
-  }
-  const prose = proseWithoutPresentationMarkupV1(block.markdown);
-  const candidates = [
-    ...prose.matchAll(
-      /(?:vorher|before)[\s\S]{0,180}?(-?\d+(?:[.,]\d+)?)\s*(tok(?:ens?)?\s*\/\s*s|%)[\s\S]{0,220}?(?:nachher|after)[\s\S]{0,180}?(-?\d+(?:[.,]\d+)?)\s*(tok(?:ens?)?\s*\/\s*s|%)/giu,
-    ),
-    ...prose.matchAll(
-      /(-?\d+(?:[.,]\d+)?)\s*(tok(?:ens?)?\s*\/\s*s|%)?\s*(?:→|->|bis|to)\s*(-?\d+(?:[.,]\d+)?)\s*(tok(?:ens?)?\s*\/\s*s|%)/giu,
-    ),
-  ];
-  const byUnit = new Map<string, number[]>();
-  for (const candidate of candidates) {
-    const before = localizedDecimalV1(candidate[1] ?? "");
-    const after = localizedDecimalV1(candidate[3] ?? "");
-    const beforeUnit = candidate[2] ?? candidate[4];
-    const afterUnit = candidate[4] ?? candidate[2];
-    if (before === undefined || after === undefined || !beforeUnit || !afterUnit) {
-      continue;
-    }
-    const unit = normalizeComparableUnitV1(beforeUnit);
-    if (unit !== normalizeComparableUnitV1(afterUnit)) continue;
-    const relativeChange = before === 0
-      ? after - before
-      : (after - before) / Math.abs(before);
-    byUnit.set(unit, [...(byUnit.get(unit) ?? []), relativeChange]);
-  }
-  const changes = new Map(
-    [...byUnit].flatMap(([unit, values]) => values.length === 1
-      ? [[unit, values[0]!] as const]
-      : []),
-  );
-  return changes.size > 0 ? { block, originalIndex, changes } : undefined;
-}
-
-function renumberMeasuredRankingBlockV1(
-  block: ChatAnswerBlockV2,
-  rank: number,
-): ChatAnswerBlockV2 {
-  const markdown = block.markdown.replace(
-    /^(\s*(?:[-*+]\s+)?)(\*\*|__)?\d+([.)])(?=\s)/u,
-    (_match, prefix: string, emphasis: string | undefined, punctuation: string) =>
-      `${prefix}${emphasis ?? ""}${rank}${punctuation}`,
-  );
-  return markdown === block.markdown ? block : { ...block, markdown };
-}
-
-/**
- * When a user explicitly asks for a measured ranking and the answer itself
- * exposes comparable before/after values, their order is deterministic. Sort
- * only those already evidence-bound blocks and change no factual wording. If
- * values or units are not directly comparable, retain the model order and let
- * the normal quality boundary handle the uncertainty.
- */
-function normalizeMeasuredRankingBlocksV1(
-  blocks: readonly ChatAnswerBlockV2[],
-  question: string | undefined,
-): ChatAnswerBlockV2[] {
-  const direction = requestedMeasuredRankingDirectionV1(question);
-  if (!direction) return [...blocks];
-  const entries = blocks.flatMap((block, originalIndex) => {
-    const entry = measuredChangesFromBlockV1(block, originalIndex);
-    return entry ? [entry] : [];
-  });
-  if (entries.length < 2) {
-    return [...blocks];
-  }
-  const commonUnits = [...entries[0]!.changes.keys()].filter((unit) =>
-    entries.every((entry) => entry.changes.has(unit))
-  );
-  if (commonUnits.length !== 1) return [...blocks];
-  const unit = commonUnits[0]!;
-  const sorted = [...entries].sort((left, right) => {
-    const leftChange = left.changes.get(unit)!;
-    const rightChange = right.changes.get(unit)!;
-    const comparison = direction === "descending"
-      ? rightChange - leftChange
-      : leftChange - rightChange;
-    return comparison || left.originalIndex - right.originalIndex;
-  });
-  const rankedIndexes = entries.map((entry) => entry.originalIndex);
-  const first = Math.min(...rankedIndexes);
-  const last = Math.max(...rankedIndexes);
-  const rankedIndexSet = new Set(rankedIndexes);
-  return [
-    ...blocks.slice(0, first),
-    ...sorted.map((entry, rank) => renumberMeasuredRankingBlockV1(entry.block, rank + 1)),
-    ...blocks.slice(first, last + 1).filter((_block, offset) =>
-      !rankedIndexSet.has(first + offset)
-    ),
-    ...blocks.slice(last + 1),
-  ];
-}
 
 /** Return closed, body-free diagnostics for one rejected terminal repair. */
 export function inspectChatDraftAfterHostRepairV1(input: {
   draft: unknown;
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-  requestFacets?: readonly string[];
   question?: string;
 }): {
   draft?: ChatAgentDraftV2;
@@ -1263,47 +778,30 @@ export function inspectChatDraftAfterHostRepairV1(input: {
   const parsed = CHAT_AGENT_DRAFT_SCHEMA_V2.safeParse(input.draft);
   if (!parsed.success) return { rejectionReasons: ["invalid-schema"] };
   const draft = normalizeChatAgentDraftV2(parsed.data);
-  const balancedBlocks = draft.blocks
+  const structurallyCleanBlocks = draft.blocks
     .filter((block) =>
       !(block.assertion === "none" && strongMarkerCountV1(block.markdown) % 2 !== 0)
     )
     .map((block) => ({
       ...block,
-      // A provider can return complete structured JSON while omitting only the
-      // typographic closing quote inside one otherwise complete Markdown
-      // block. Dropping the quoted phrase used to leave a dangling factual
-      // clause (for example, one ending in "als") and made the strict repair
-      // corridor reject its own deterministic cleanup. Closing punctuation is
-      // safe here: it changes no words, evidence, assertion, or source binding.
       markdown: collapseRedundantLinesWithinAnswerBlockV1(
-        removeUnbalancedStrongPresentationV1(
-          balanceGermanClosingQuotesV1(block.markdown),
-        ),
+        removeUnbalancedStrongPresentationV1(block.markdown),
       ),
     }));
-  const blocks = normalizeMeasuredRankingBlocksV1(
-    coalesceRequestFacetLabelsV1(
-      collapseRedundantRequestFacetAlternativesV1(
-        coalesceRepeatedNumberedListItemsV1(
-          collapseRedundantAnswerBlocksV1(
-            balancedBlocks,
-            (sourceRef) => sourceReferenceIsDetailedV2(
-              sourceRef,
-              input.detailEvidence,
-              input.readSectionReferences ?? [],
-            ),
-          ),
-          (sourceRef) => sourceReferenceIsDetailedV2(
-            sourceRef,
-            input.detailEvidence,
-            input.readSectionReferences ?? [],
-          ),
-        ),
-        input.requestFacets ?? [],
+  const blocks = coalesceRepeatedNumberedListItemsV1(
+    collapseRedundantAnswerBlocksV1(
+      structurallyCleanBlocks,
+      (sourceRef) => sourceReferenceIsDetailedV2(
+        sourceRef,
+        input.detailEvidence,
+        input.readSectionReferences ?? [],
       ),
-      input.requestFacets ?? [],
     ),
-    input.question,
+    (sourceRef) => sourceReferenceIsDetailedV2(
+      sourceRef,
+      input.detailEvidence,
+      input.readSectionReferences ?? [],
+    ),
   );
   if (blocks.some((block) => strongMarkerCountV1(block.markdown) % 2 !== 0)) {
     return { rejectionReasons: ["malformed-factual-markdown"] };
@@ -1351,58 +849,25 @@ export function inspectChatDraftAfterHostRepairV1(input: {
   if (repairedBlocks.length === 0) {
     return { rejectionReasons: ["orphan-heading"] };
   }
-  const repaired = { ...draft, blocks: repairedBlocks };
-  if (chatDraftMissingRequestFacetsV1({
-    draft: repaired,
-    requestFacets: input.requestFacets ?? [],
-  }).length > 0) {
-    return { rejectionReasons: ["missing-request-facet"] };
-  }
-  if (repeatedRequestFacetsV1({
-    blocks: repaired.blocks,
-    requestFacets: input.requestFacets ?? [],
-  }).length > 0) {
-    return { rejectionReasons: ["repeated-request-facet"] };
-  }
-  return { draft: repaired, rejectionReasons: [] };
+  return { draft: { ...draft, blocks: repairedBlocks }, rejectionReasons: [] };
 }
 
 /**
- * Structured output can still contain syntactically valid JSON whose Markdown
- * prose was abandoned and regenerated inside the same response. Do not expose
- * those half-written alternatives to the user. This projection is deliberately
- * conservative: it removes only paragraphs with an unmatched strong marker and
- * joins a short, obviously lower-case continuation to the preceding paragraph.
- * It never invents or rewrites factual content.
+ * Structured output can still contain syntactically valid JSON with an
+ * abandoned Markdown alternative. Remove only paragraphs with an unmatched
+ * strong marker; do not interpret or rewrite natural-language prose.
  */
 function removeAbandonedMarkdownFragmentsV1(markdown: string): string {
-  const paragraphs = markdown
+  return markdown
     .split(/\n{2,}/gu)
     .map((paragraph) => paragraph.trimEnd())
     .filter((paragraph) => {
       if (paragraph.includes("```")) return true;
       return strongMarkerCountV1(paragraph) % 2 === 0;
-    });
-  const joined: string[] = [];
-  const continuation = /^(?:das|der|die|den|dem|ein(?:e[rmns]?)?|dies(?:e[rmns]?)?|und|aber|the|this|that|and|but|however)\b/u;
-  for (const paragraph of paragraphs) {
-    const previous = joined.at(-1);
-    const previousProse = previous === undefined
-      ? ""
-      : proseWithoutPresentationMarkupV1(previous);
-    if (
-      previous &&
-      !/[.!?…:“”'"`)\]}]$/u.test(previousProse) &&
-      continuation.test(paragraph.trimStart()) &&
-      !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||```)/u.test(previous.trimStart()) &&
-      !/```\s*$/u.test(previous.trimEnd())
-    ) {
-      joined[joined.length - 1] = `${previous.replace(/[\s.;:]+$/u, "")}; ${paragraph.trimStart()}`;
-      continue;
-    }
-    joined.push(paragraph);
-  }
-  return joined.join("\n\n").replace(/\n{3,}/gu, "\n\n").trim();
+    })
+    .join("\n\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
 }
 
 function humanizeInternalSourceIdsV1(
@@ -1415,55 +880,6 @@ function humanizeInternalSourceIdsV1(
     result = result.split(sourceId).join(source.title);
   }
   return result;
-}
-
-function removeUnsupportedMissingProductClaimsV1(
-  markdown: string,
-  missingProducts: readonly ("jira" | "confluence")[],
-): string {
-  if (missingProducts.length === 0) return markdown;
-  const missingJira = missingProducts.includes("jira");
-  const missingConfluence = missingProducts.includes("confluence");
-  const isMissingProductSubject = (value: string): boolean =>
-    (missingJira && JIRA_CLAIM_SUBJECT_V1.test(value)) ||
-    (missingConfluence && CONFLUENCE_CLAIM_SUBJECT_V1.test(value));
-  let relationshipSection = false;
-  let suppressedSectionLevel: number | undefined;
-  return markdown
-    .split("\n")
-    .filter((line) => {
-      const trimmed = line.trim();
-      const heading = markdownHeadingV1(trimmed);
-      if (heading) {
-        if (
-          suppressedSectionLevel !== undefined &&
-          heading.level > suppressedSectionLevel
-        ) {
-          return false;
-        }
-        suppressedSectionLevel = undefined;
-        if (isMissingProductSubject(heading.text)) {
-          suppressedSectionLevel = heading.level;
-          return false;
-        }
-        relationshipSection = RELATIONSHIP_SECTION_V1.test(heading.text);
-        return true;
-      }
-      if (suppressedSectionLevel !== undefined) return false;
-      // Search excerpts and candidate titles can carry plausible-looking issue
-      // keys. Without one detailed read for that product, none may survive as
-      // a factual answer claim, even when phrased positively.
-      if (isMissingProductSubject(trimmed)) return false;
-      if (!NEGATIVE_ABSENCE_V1.test(trimmed)) return true;
-      if (ATLASSIAN_PRODUCT_SUBJECT_V1.test(trimmed)) return false;
-      // A bare "none found" directly below a comparison/relationship heading
-      // is still an unsupported product-absence claim when the required
-      // product yielded no detailed evidence.
-      return !relationshipSection;
-    })
-    .join("\n")
-    .replace(/\n{3,}/gu, "\n\n")
-    .trim();
 }
 
 function missingProductNoticeV1(
@@ -1567,53 +983,6 @@ function removeUncitedJiraKeyLinesV1(
   };
 }
 
-function removeUncitedDocumentationAbsenceLinesV1(
-  markdown: string,
-): { markdown: string; removedLines: number } {
-  let removedLines = 0;
-  const lines = markdown.split("\n").filter((line) => {
-    const unsupported = NEGATIVE_ABSENCE_V1.test(line) &&
-      DOCUMENTATION_ABSENCE_SUBJECT_V1.test(line) &&
-      !RETRIEVAL_GAP_SUBJECT_V1.test(line) &&
-      chatEvidencePlaceholdersV1(line).length === 0;
-    if (unsupported) removedLines += 1;
-    return !unsupported;
-  });
-  return {
-    markdown: lines.join("\n").replace(/\n{3,}/gu, "\n\n").trim(),
-    removedLines,
-  };
-}
-
-function correctRetrievalCountLanguageV1(
-  markdown: string,
-  retrieval: NonNullable<ChatRunSummaryV1["retrieval"]>,
-  german: boolean,
-): string {
-  const detail = retrieval.detailReadCandidates;
-  const admitted = retrieval.admittedCandidates;
-  if (german) {
-    return markdown
-      .replace(
-        new RegExp(`\\binsgesamt\\s+${detail}\\s+Seiten\\s+gefunden`, "giu"),
-        `${detail} Seiten im Detail gelesen`,
-      )
-      .replace(
-        new RegExp(`\\bDa die Suche auf maximal\\s+${detail}\\s+Seiten begrenzt war`, "giu"),
-        `Da ${detail} von ${admitted} zugelassenen Kandidaten im Detail gelesen wurden`,
-      );
-  }
-  return markdown
-    .replace(
-      new RegExp(`\\ba total of\\s+${detail}\\s+pages were found`, "giu"),
-      `${detail} pages were read in detail`,
-    )
-    .replace(
-      new RegExp(`\\bBecause the search was limited to\\s+${detail}\\s+pages`, "giu"),
-      `Because ${detail} of ${admitted} admitted candidates were read in detail`,
-    );
-}
-
 export function finalizeChatAnswerV1(input: {
   draft: unknown;
   sources: readonly ResearchSourceReferenceV1[];
@@ -1714,10 +1083,6 @@ export function finalizeChatAnswerV1(input: {
     )),
   );
   messageMarkdown = jiraClaimProjection.markdown;
-  const documentationAbsenceProjection = removeUncitedDocumentationAbsenceLinesV1(
-    messageMarkdown,
-  );
-  messageMarkdown = documentationAbsenceProjection.markdown;
   messageMarkdown = removeStandaloneEvidencePlaceholderLinesV1(messageMarkdown);
   messageMarkdown = removeAbandonedMarkdownFragmentsV1(messageMarkdown);
   const integrityIssues = chatMarkdownIntegrityIssuesV1(messageMarkdown);
@@ -1817,29 +1182,8 @@ export function finalizeChatAnswerV1(input: {
       sourceIds: [],
     });
   }
-  if (documentationAbsenceProjection.removedLines > 0) {
-    const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
-    const notice = german
-      ? "Einige Aussagen über fehlende Dokumentation waren nicht direkt belegt und wurden ausgelassen."
-      : "Some claims about missing documentation lacked direct evidence and were omitted.";
-    gaps.push({
-      code: "no-detail-evidence",
-      message: notice,
-      sourceIds: [],
-    });
-  }
   if (incompleteRetrieval) {
     const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
-    messageMarkdown = correctRetrievalCountLanguageV1(
-      messageMarkdown,
-      retrieval,
-      german,
-    );
-    const scopedAbsence = downgradeIncompleteScopeAbsenceClaimsV1(
-      messageMarkdown,
-      input.locale,
-    );
-    messageMarkdown = scopedAbsence.markdown;
     const notice = german
       ? `${retrieval.detailReadCandidates} von ${retrieval.admittedCandidates} zugelassenen Kandidaten wurden im Detail gelesen. Aussagen über nicht gefundene Inhalte gelten deshalb nur für die detailliert gelesenen Quellen.`
       : `${retrieval.detailReadCandidates} of ${retrieval.admittedCandidates} admitted candidates were read in detail. Claims about content not found therefore apply only to the sources read in detail.`;
@@ -1909,19 +1253,8 @@ export function finalizeChatAnswerV1(input: {
           input.run.retrieval.deferredCandidates === 0 &&
           input.run.retrieval.admittedCandidates === input.run.retrieval.detailReadCandidates)),
   );
-  messageMarkdown = balanceGermanClosingQuotesV1(messageMarkdown);
-  const incompleteCitedDocument = [...citedCoverage.values()].some((coverage) =>
-    coverage.incomplete && !coverage.complete
-  );
-  messageMarkdown = removeUnsupportedWholeDocumentNegativesV1(
-    messageMarkdown,
-    incompleteCitedDocument,
-    input.locale,
-    citationIds.map((sourceId) => {
-      const source = sourceById.get(sourceId)!;
-      return `[${escapeMarkdownLabel(source.title)}](${source.url})`;
-    }),
-  );
+  messageMarkdown = normalizeFinalMarkdownStructureV1(messageMarkdown);
+  const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
   const missingProducts = input.strategyReview
     ? ([
         ...(input.strategyReview.unmetCapabilityClasses.includes("jira-discovery")
@@ -1932,12 +1265,6 @@ export function finalizeChatAnswerV1(input: {
           : []),
       ])
     : [];
-  messageMarkdown = removeUnsupportedMissingProductClaimsV1(
-    messageMarkdown,
-    missingProducts,
-  );
-  messageMarkdown = normalizeFinalMarkdownStructureV1(messageMarkdown);
-  const german = input.locale?.toLocaleLowerCase("en-US").startsWith("de") === true;
   const evidenceRequired = input.strategyDecision?.requiredCapabilities.some(
     (capability) => capability !== "chat-answer",
   ) === true;

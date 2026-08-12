@@ -6,6 +6,11 @@
  * Settings screen has no host knowledge at all.
  */
 import { isLocale, type Locale } from "../i18n/messages.js";
+import {
+  ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
+  normalizeBrowserModelSelectionV1,
+  type BrowserModelSelectionV1,
+} from "../local-model/selection.js";
 
 export const APP_WORKSPACES = ["ai", "publishing"] as const;
 export type AppWorkspace = (typeof APP_WORKSPACES)[number];
@@ -21,12 +26,15 @@ export interface AppSettings {
   lastWorkspace: AppWorkspace | null;
   /** Hide the two persistent Rovo entry points in the Confluence Cloud UI. */
   hideRovoEntrypoints: boolean;
+  /** Browser-only model selection. Credentials remain in their existing store. */
+  modelSelection: BrowserModelSelectionV1;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   locale: null,
   lastWorkspace: null,
   hideRovoEntrypoints: false,
+  modelSelection: ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
 };
 
 /** Shared record key used by every Chrome extension context. */
@@ -50,12 +58,14 @@ export function normalizeSettings(value: unknown): AppSettings {
     locale?: unknown;
     lastWorkspace?: unknown;
     hideRovoEntrypoints?: unknown;
+    modelSelection?: unknown;
   };
   return {
     locale: isLocale(candidate.locale) ? candidate.locale : null,
     lastWorkspace: isAppWorkspace(candidate.lastWorkspace) ? candidate.lastWorkspace : null,
     // Fail open: malformed or legacy records must never hide host UI.
     hideRovoEntrypoints: candidate.hideRovoEntrypoints === true,
+    modelSelection: normalizeBrowserModelSelectionV1(candidate.modelSelection),
   };
 }
 

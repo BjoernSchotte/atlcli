@@ -286,6 +286,7 @@ function researchActivityMessage(
 function researchActivityDetailMessages(
   events: readonly ResearchTimelineEventV1[],
   t: ReturnType<typeof useT>,
+  exactBoundLabel?: string,
 ): string[] {
   const messages = events.flatMap((event): string[] => {
     if (event.kind === "chat-presentation") return [];
@@ -293,6 +294,22 @@ function researchActivityDetailMessages(
       if (event.status === "failed") return [t("research.chat.detail.readFailed")];
       if (event.status !== "completed") return [];
       const count = String(event.itemCount ?? 0);
+      const readOutcome = (): string[] => [
+        ...(event.truncated === false
+          ? [t("research.chat.detail.readComplete")]
+          : event.truncated === true
+            ? [t("research.chat.detail.readProjected")]
+            : []),
+        ...(event.durationMs === undefined
+          ? []
+          : event.durationMs < 1_000
+            ? [t("research.chat.detail.readDurationMs", {
+                milliseconds: String(Math.max(0, Math.round(event.durationMs))),
+              })]
+            : [t("research.chat.detail.readDurationSeconds", {
+                seconds: String(Math.max(1, Math.round(event.durationMs / 1_000))),
+              })]),
+      ];
       if (event.toolId === "wiki.search" || event.toolId === "wiki.space.search") {
         if (event.itemLabels?.length) {
           return event.itemLabels.map((label) => t("research.chat.detail.foundItem", { label }));
@@ -300,13 +317,17 @@ function researchActivityDetailMessages(
         return [t("research.chat.detail.confluenceFound", { count })];
       }
       if (event.toolId === "wiki.page.get") {
-        return [t("research.chat.detail.confluenceRead")];
+        return [t("research.chat.detail.confluenceRead"), ...readOutcome()];
       }
       if (event.toolId === "atlassian.bound.read") {
-        if (event.itemLabels?.length) {
-          return event.itemLabels.map((label) => t("research.chat.detail.boundRead", { label }));
+        const labels = exactBoundLabel ? [exactBoundLabel] : event.itemLabels;
+        if (labels?.length) {
+          return [
+            ...labels.map((label) => t("research.chat.detail.boundRead", { label })),
+            ...readOutcome(),
+          ];
         }
-        return [t("research.chat.detail.boundReadGeneric")];
+        return [t("research.chat.detail.boundReadGeneric"), ...readOutcome()];
       }
       if (event.toolId === "atlassian.bound.section.read") {
         if (event.itemLabels?.length) {
@@ -321,7 +342,7 @@ function researchActivityDetailMessages(
         return [t("research.chat.detail.jiraFound", { count })];
       }
       if (event.toolId === "jira.issue.get") {
-        return [t("research.chat.detail.jiraRead")];
+        return [t("research.chat.detail.jiraRead"), ...readOutcome()];
       }
       if (event.toolId === "research.candidate.rank") {
         if (event.itemLabels?.length) {
@@ -443,6 +464,12 @@ export function researchTimelineSteps(
   running: boolean,
 ): ResearchTimelineStep[] {
   const steps: ResearchTimelineStep[] = [];
+  const repeatablePhaseKinds = new Set<ResearchTimelineStepKind>([
+    "planning",
+    "analyzing",
+    "checking",
+    "synthesizing",
+  ]);
   for (const event of events) {
     const kind = timelineStepKind(event);
     const current = steps.at(-1);
@@ -453,6 +480,18 @@ export function researchTimelineSteps(
     if (current?.kind === kind) {
       current.events.push(event);
       continue;
+    }
+    if (repeatablePhaseKinds.has(kind)) {
+      const previousIndex = steps.findIndex((step) => step.kind === kind);
+      if (previousIndex >= 0) {
+        const [previous] = steps.splice(previousIndex, 1);
+        steps.push({
+          id: `research-step:${event.seq}`,
+          kind,
+          events: [...previous!.events, event],
+        });
+        continue;
+      }
     }
     steps.push({ id: `research-step:${event.seq}`, kind, events: [event] });
   }
@@ -1187,9 +1226,11 @@ function ResearchStreamingTurn({
           const active = running && index === displaySteps.length - 1;
           const details = exactPage && step.kind === "confluence-search"
             ? [t("research.chat.detail.confluenceContextSelected")]
-            : exactPage && step.kind === "bound-read"
-              ? [t("research.chat.detail.boundRead", { label: exactPage.name })]
-              : researchActivityDetailMessages(step.events, t);
+            : researchActivityDetailMessages(
+                step.events,
+                t,
+                exactPage && step.kind === "bound-read" ? exactPage.name : undefined,
+              );
           if (step.kind === "planning") {
             details.push(exactPage
               ? t("research.chat.detail.planExactContext", { name: exactPage.name })
@@ -1298,6 +1339,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const chatPort = ports.chat;
   const site = useMemo(() => currentSite(page), [page]);
   const [hasKey, setHasKey] = useState(false);
+  const [selectedModelProvider, setSelectedModelProvider] = useState<
+    "anthropic" | "local-gemma"
+  >("anthropic");
   const [question, setQuestion] = useState("");
   const [chatTurns, setChatTurns] = useState<Array<{
     id: string;
@@ -1553,13 +1597,33 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   useEffect(() => {
     let active = true;
-    void port?.hasApiKey().then((value) => {
-      if (active) setHasKey(value);
+    let unsubscribeLocalModel: (() => void) | undefined;
+    void (async () => {
+      const settings = ports.settings ? await ports.settings.load() : undefined;
+      const provider = settings?.modelSelection.providerId ?? "anthropic";
+      let ready: boolean;
+      if (provider === "local-gemma") {
+        unsubscribeLocalModel = ports.localModel?.subscribe((state) => {
+          if (active) setHasKey(state.status === "ready");
+        });
+        ready = (await ports.localModel?.status())?.status === "ready";
+      } else {
+        ready = await port?.hasApiKey() ?? false;
+      }
+      if (!active) return;
+      setSelectedModelProvider(provider);
+      setHasKey(ready);
+      if (provider === "local-gemma") {
+        setInteractionMode((current) => current === "deep" ? "chat" : current);
+      }
+    })().catch(() => {
+      if (active) setHasKey(false);
     });
     return () => {
       active = false;
+      unsubscribeLocalModel?.();
     };
-  }, [port]);
+  }, [port, ports.localModel, ports.settings]);
 
   useEffect(() => {
     let active = true;
@@ -1932,7 +1996,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     if (!retry) setSubmittedRequest(null);
     try {
       if (!site) throw new ResearchContractError("not-atlassian", t("research.siteMissing"));
-      if (!disclosed) {
+      if (selectedModelProvider !== "local-gemma" && !disclosed) {
         throw new ResearchContractError("invalid-request", t("research.disclosure"));
       }
       const initialRequest = retry?.request ?? (() => {
@@ -2097,8 +2161,22 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           return true;
         }
       }
-      if (!hasKey) {
-        throw new ResearchContractError("missing-key", t("research.key.missing"));
+      const modelReady = selectedModelProvider === "local-gemma"
+        ? (await ports.localModel?.status())?.status === "ready"
+        : hasKey;
+      if (!modelReady) {
+        throw new ResearchContractError(
+          "missing-key",
+          t(selectedModelProvider === "local-gemma"
+            ? "research.local.notReady"
+            : "research.key.missing"),
+        );
+      }
+      if (activeInteractionMode === "deep" && selectedModelProvider === "local-gemma") {
+        throw new ResearchContractError(
+          "invalid-request",
+          t("research.local.deepUnavailable"),
+        );
       }
       const controller = new AbortController();
       abortRef.current = controller;
@@ -3261,8 +3339,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   async function startNewConversation(): Promise<void> {
     if (running) return;
-    if (chatPort) await chatPort.resetConversation();
-    else await port?.resetChatConversation?.();
     setChatThinkingMode("auto");
     selectInteractionMode("chat", "auto");
     setQuestion("");
@@ -3273,12 +3349,22 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     activeChatConversationIdRef.current = null;
     setImmediateSteering(null);
     setSubmittedRequest(null);
+    setPendingChatQuestion(null);
+    setPlanApprovalRequired(null);
+    setScopeClarification(null);
+    setBriefClarification(null);
     setReport(null);
     setError(null);
     setActivity([]);
     setProgress("");
     setActionStatus("");
     setConversationMenuOpen(false);
+    try {
+      if (chatPort) await chatPort.resetConversation();
+      else await port?.resetChatConversation?.();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : t("research.error"));
+    }
   }
 
   /**
@@ -4012,6 +4098,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                         : "text-muted-foreground hover:text-foreground",
                     )}
                     aria-pressed={interactionMode === "deep"}
+                    disabled={selectedModelProvider === "local-gemma"}
+                    title={selectedModelProvider === "local-gemma"
+                      ? t("research.local.deepUnavailable")
+                      : undefined}
                     onClick={() => selectInteractionMode("deep")}
                     data-testid="research-mode-deep"
                   >
@@ -4052,21 +4142,25 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   />
                 </div>
               </div>
-              <label className="flex cursor-pointer items-start gap-2 border-t border-border/60 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="mt-px size-3.5 shrink-0 rounded border-input accent-primary"
-                  checked={disclosed}
-                  onChange={(event) => setDisclosed(event.target.checked)}
-                  disabled={running || Boolean(pendingChatQuestion)}
-                  data-testid="research-disclosure"
-                />
-                <span>{t("research.disclosure")}</span>
-              </label>
+              {selectedModelProvider !== "local-gemma" && (
+                <label className="flex cursor-pointer items-start gap-2 border-t border-border/60 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-px size-3.5 shrink-0 rounded border-input accent-primary"
+                    checked={disclosed}
+                    onChange={(event) => setDisclosed(event.target.checked)}
+                    disabled={running || Boolean(pendingChatQuestion)}
+                    data-testid="research-disclosure"
+                  />
+                  <span>{t("research.disclosure")}</span>
+                </label>
+              )}
             </div>
           </div>
           <p className="m-0 shrink-0 px-1 text-center text-[11px] text-muted-foreground">
-            {running
+            {selectedModelProvider === "local-gemma"
+              ? t("research.local.deepUnavailable")
+              : running
               ? t("research.chat.composerHelp.running")
               : t("research.chat.composerHelp.idle")}
           </p>

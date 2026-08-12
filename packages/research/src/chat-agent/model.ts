@@ -42,6 +42,17 @@ export interface ChatModelRouteV1 {
   finalizationCorridor: ChatModelFinalizationCorridorV1;
 }
 
+/**
+ * Provider-owned projection of a still-unvalidated structured answer. The host
+ * may present it provisionally, but only the normal structured-output path can
+ * accept it as the turn result.
+ */
+export interface ChatStructuredAnswerPreviewV1 {
+  generationId: string;
+  status: "snapshot" | "completed";
+  markdown: string;
+}
+
 export interface ChatModelBindingV1 {
   model: BaseChatModel;
   modelId: string;
@@ -49,9 +60,29 @@ export interface ChatModelBindingV1 {
   structuredOutput: "native" | "tool";
   /** Explicit provider-adapter grant; absent means no reasoning text may cross the host boundary. */
   reasoningPresentation?: "summary";
+  /** Optional out-of-band preview for providers whose native tool grammar is not JSON. */
+  subscribeStructuredAnswerPreview?: (
+    listener: (preview: ChatStructuredAnswerPreviewV1) => void,
+  ) => () => void;
   /** Provider-granted prompt-cache control; absent keeps the portable no-cache path. */
   promptCache?: {
     ttl: "5m" | "1h";
+  };
+  /**
+   * Optional DeepAgentsJS harness tuning selected by the provider adapter.
+   * The host registers it before constructing root or child agents; it never
+   * changes model selection or grants capabilities.
+   */
+  harnessProfile?: {
+    key: string;
+    profile: Parameters<
+      typeof import("deepagents/browser").registerHarnessProfile
+    >[1];
+  };
+  /** Per-invocation controls for constrained runtimes, not usage quotas. */
+  runtimeLimits?: {
+    maxInputTokens?: number;
+    interpreterResultChars?: number;
   };
   /**
    * Explicit role-to-capability route. It may return the same model for every

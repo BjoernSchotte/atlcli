@@ -12,7 +12,7 @@
  *   3. zero bare node/Bun GLOBALS (`Buffer.`, `process.env`, `__dirname`, `Bun.`),
  *   4. zero string-to-code constructors (`Function(...)`, `eval(...)`) that
  *      violate Manifest V3's extension-page CSP, and
- *   5. complete, locally bundled PDF and DOCX render assets.
+ *   5. complete, locally bundled PDF, DOCX, research, and local-model assets.
  *
  * Bare node globals are
  *      invisible to an import-specifier scan — nothing is imported, the symbol is
@@ -57,6 +57,10 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { TYPST_VENDOR_PINS } from "../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
+import {
+  ORT_ASYNCIFY_FACTORY_MV3_SHA256,
+  ORT_ASYNCIFY_WASM_UPSTREAM_SHA256,
+} from "./patch-ort-jsep-csp.js";
 
 export const TYPST_COMPILER_WASM_SHA256 =
   TYPST_VENDOR_PINS["typst_ts_web_compiler_bg.wasm"]!;
@@ -258,6 +262,25 @@ const REQUIRED_RESEARCH_ARTIFACTS = [
     minimumSize: 1_000_000,
     selectedSha256:
       "3742fb828ff9841d57dd7350657e3bc9ae2ae52a1d079615f100166c1274052f",
+  },
+] as const;
+
+const REQUIRED_LOCAL_MODEL_ARTIFACTS = [
+  {
+    label: "local Gemma offscreen model host",
+    pattern: /(?:^|\/)chunks\/local-model-[^/]+[.]js$/,
+    minimumSize: 300_000,
+  },
+  {
+    label: "MV3-safe ONNX Runtime WebGPU factory",
+    pattern: /(?:^|\/)assets\/ort-wasm-simd-threaded[.]asyncify-[^/]+[.]mjs$/,
+    sha256: ORT_ASYNCIFY_FACTORY_MV3_SHA256,
+  },
+  {
+    label: "ONNX Runtime asyncify WebGPU WASM",
+    pattern: /(?:^|\/)assets\/ort-wasm-simd-threaded[.]asyncify-[^/]+[.]wasm$/,
+    minimumSize: 20_000_000,
+    sha256: ORT_ASYNCIFY_WASM_UPSTREAM_SHA256,
   },
 ] as const;
 
@@ -480,6 +503,7 @@ export function validateExtensionArtifactInventory(
   for (const requirement of [
     ...REQUIRED_PDF_ARTIFACTS,
     ...REQUIRED_RESEARCH_ARTIFACTS,
+    ...REQUIRED_LOCAL_MODEL_ARTIFACTS,
   ]) {
     const candidates = artifacts.filter((artifact) =>
       requirement.pattern.test(artifact.path)

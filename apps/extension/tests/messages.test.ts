@@ -785,6 +785,11 @@ describe("message guards", () => {
   it("isOffscreenRequest accepts offscreen-bound requests only", () => {
     const jobId = "123e4567-e89b-42d3-a456-426614174000";
     expect(isOffscreenRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(true);
+    expect(isOffscreenRequest({ kind: "offscreen:local-model-prewarm" })).toBe(true);
+    expect(isOffscreenRequest({
+      kind: "offscreen:local-model-prewarm",
+      prompt: "must-not-cross",
+    })).toBe(false);
     expect(isOffscreenRequest({ kind: "offscreen:research-pause", runId: "run-1" })).toBe(true);
     const offscreenChatRun = {
       kind: "offscreen:research-run",
@@ -826,6 +831,25 @@ describe("message guards", () => {
         providerCacheIdentity: "provider-cache:synthetic",
       },
     })).toBe(true);
+    expect(isOffscreenRequest({
+      ...offscreenChatRun,
+      apiKey: "",
+      modelProvider: "local-gemma",
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+    })).toBe(true);
+    expect(isOffscreenRequest({
+      ...offscreenChatRun,
+      apiKey: "",
+      modelProvider: "local-gemma",
+      mode: "research",
+      hostIdentity: {
+        userId: "browser-principal:synthetic",
+        providerCacheIdentity: "provider-cache:synthetic",
+      },
+    })).toBe(false);
     expect(isOffscreenRequest({
       ...offscreenChatRun,
       hostIdentity: {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { AIMessage, SystemMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
   type ChatPresentationStreamEventV1,
@@ -15,7 +15,6 @@ import { createMemoryResearchWorkspace } from "../workspace.js";
 import {
   chatMarkdownIntegrityIssuesV1,
   chatDraftForFinalizationAfterHostRepairV1,
-  chatDraftMissingRequestFacetsV1,
   chatDraftNeedsHostRepairV1,
   finalizeChatAnswerV1,
   inspectChatDraftAfterHostRepairV1,
@@ -37,6 +36,7 @@ import {
   createKiteweaveChatAgent,
   projectChatAgentDiagnosticActivityV1,
   projectChatReasoningSummaryDeltaV1,
+  shouldPreReadLocalExactContextV1,
   streamedAnswerSnapshotDeltaV1,
   streamedJsonStringFieldV1,
   streamedJsonStringFieldsV1,
@@ -47,7 +47,6 @@ import {
   CHAT_RETRIEVAL_ASSESSMENT_PATH_V1,
   CHAT_RETRIEVAL_PLAN_PATH_V1,
 } from "./retrieval-plan.js";
-import { deriveChatRequestChecklistV1 } from "./prompts.js";
 import { createKiteweaveResearchAgent } from "../agent-runtime-core.js";
 
 const turn: ChatTurnRequestV1 = {
@@ -76,6 +75,17 @@ const hostIdentity = {
   userId: "principal:synthetic-user",
   providerCacheIdentity: "provider-cache:synthetic-user",
 } as const;
+
+const exactDirectStrategy = {
+  schema: "atlcli.chat-strategy-decision/v1" as const,
+  qualityMode: "auto" as const,
+  execution: "direct" as const,
+  reasonCodes: ["single-exact-context" as const],
+  ambiguityDisposition: "none" as const,
+  requiredCapabilities: ["exact-read" as const, "chat-answer" as const],
+  expectedComplexity: "simple" as const,
+  qualityRisks: [],
+};
 
 const run = {
   model: "synthetic-model",
@@ -184,151 +194,41 @@ describe("Chat answer contract", () => {
     })).toBe(true);
   });
 
-  test("requires every explicit user-authored facet before and after terminal repair", () => {
-    const incomplete = {
-      blocks: [{
-        markdown: "**Modellgröße:** klein.\n\n**Endgeschwindigkeit:** schnell.",
-        assertion: "positive",
-        scope: "none",
-        sourceRefs: [syntheticPageSource.id],
-      }],
-      gaps: [],
-    };
-    const requestFacets = ["Modellgröße", "Endgeschwindigkeit", "die Einsatzempfehlung"];
+  test("accepts evidence-bound natural paraphrases in German, English, and French", () => {
+    const cases = [{
+      question: "Nenne den Budgetrahmen und die jährliche Basisgebühr.",
+      markdown: "Für 2026 sind netto 60.000 bis 85.000 Euro vorgesehen; danach fallen jährlich 30.000 Euro an.",
+    }, {
+      question: "State the budget range and the annual base fee.",
+      markdown: "The 2026 estimate is EUR 60,000–85,000 net, followed by EUR 30,000 per year.",
+    }, {
+      question: "Indiquez la fourchette budgétaire et les frais annuels de base.",
+      markdown: "Le coût estimé pour 2026 est de 60 000 à 85 000 EUR hors taxes, puis de 30 000 EUR par an.",
+    }];
 
-    expect(chatDraftMissingRequestFacetsV1({ draft: incomplete, requestFacets })).toEqual([
-      "die Einsatzempfehlung",
-    ]);
-    expect(chatDraftNeedsHostRepairV1({
-      draft: incomplete,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBe(true);
-    expect(chatDraftForFinalizationAfterHostRepairV1({
-      draft: incomplete,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBeUndefined();
-
-    const complete = {
-      ...incomplete,
-      blocks: [{
-        ...incomplete.blocks[0],
-        markdown: `${incomplete.blocks[0]!.markdown}\n\n**Einsatzempfehlung:** einsetzen.`,
-      }],
-    };
-    expect(chatDraftMissingRequestFacetsV1({ draft: complete, requestFacets })).toEqual([]);
-    expect(chatDraftForFinalizationAfterHostRepairV1({
-      draft: complete,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBeDefined();
-  });
-
-  test("forces repair when an interrogative or answer-with facet is omitted", () => {
-    const requestFacets = deriveChatRequestChecklistV1([
-      "Welche Betriebsart und welche Sicherheitsabwägung gilt?",
-      "Antworte mit den zentralen Einstellungen und der begründeten Einsatzgrenze.",
-    ].join(" "));
-    const incomplete = {
-      blocks: [{
-        markdown: "**Betriebsart:** lokal.\n\n**Sicherheitsabwägung:** begrenzt.",
-        assertion: "positive" as const,
-        scope: "none" as const,
-        sourceRefs: [syntheticPageSource.id],
-      }],
-      gaps: [],
-    };
-
-    expect(chatDraftMissingRequestFacetsV1({ draft: incomplete, requestFacets })).toEqual([
-      "den zentralen Einstellungen",
-      "der begründeten Einsatzgrenze",
-    ]);
-    expect(chatDraftNeedsHostRepairV1({
-      draft: incomplete,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBe(true);
-  });
-
-  test("keeps one complete phrasing when terminal repair repeats the same facet alternatives", () => {
-    const requestFacets = ["Modellgröße", "Messung und Vermutung trennen"];
-    const draft = {
-      blocks: [{
-        markdown: "**Modellgröße:** Das Modell umfasst vier Einheiten.",
-        assertion: "positive" as const,
-        scope: "none" as const,
-        sourceRefs: [syntheticPageSource.id],
-      }, {
-        markdown: "**Messung und Vermutung trennen:** Die vier Einheiten sind direkt dokumentiert; eine Aussage zur Laufzeit bleibt eine ungemessene Vermutung.",
-        assertion: "none" as const,
-        scope: "none" as const,
-        sourceRefs: [],
-      }, {
-        markdown: "**Messung und Vermutung trennen:** Direkt dokumentiert sind die vier Einheiten; die Aussage zur Laufzeit bleibt dagegen eine ungemessene Vermutung.",
-        assertion: "none" as const,
-        scope: "none" as const,
-        sourceRefs: [],
-      }, {
-        markdown: "**Messung und Vermutung trennen:** Direkt dokumentiert sind vier Einheiten; eine Aussage zur tatsächlichen Laufzeit bleibt dagegen eine ungemessene Vermutung.",
-        assertion: "none" as const,
-        scope: "none" as const,
-        sourceRefs: [],
-      }],
-      gaps: [],
-    };
-
-    expect(chatDraftNeedsHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    })).toBe(true);
-    const repaired = chatDraftForFinalizationAfterHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    });
-    expect(repaired?.blocks).toHaveLength(2);
-    expect(repaired?.blocks.filter((block) =>
-      block.markdown.includes("Messung und Vermutung trennen")
-    )).toHaveLength(1);
-    expect(repaired?.blocks[1]?.markdown).toContain("tatsächlichen Laufzeit");
-  });
-
-  test("preserves materially different repeated facet blocks while displaying their label once", () => {
-    const requestFacets = ["Modellgröße", "Messung und Vermutung trennen"];
-    const inspection = inspectChatDraftAfterHostRepairV1({
-      draft: {
+    for (const { question, markdown } of cases) {
+      const draft = {
         blocks: [{
-          markdown: "**Modellgröße:** Das Modell umfasst vier Einheiten.",
-          assertion: "positive",
-          scope: "none",
-          sourceRefs: [syntheticPageSource.id],
-        }, {
-          markdown: "**Messung und Vermutung trennen:** Die gemessene Startzeit beträgt zwölf Sekunden.",
-          assertion: "positive",
-          scope: "none",
-          sourceRefs: [syntheticPageSource.id],
-        }, {
-          markdown: "**Messung und Vermutung trennen:** Die vermutete Ursache wird in der Quelle nicht bestätigt.",
-          assertion: "positive",
-          scope: "none",
+          markdown,
+          assertion: "positive" as const,
+          scope: "none" as const,
           sourceRefs: [syntheticPageSource.id],
         }],
         gaps: [],
-      },
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      requestFacets,
-    });
-
-    expect(inspection.rejectionReasons).toEqual([]);
-    expect(inspection.draft?.blocks).toHaveLength(3);
-    expect(inspection.draft?.blocks.filter((block) =>
-      block.markdown.includes("Messung und Vermutung trennen")
-    )).toHaveLength(1);
-    expect(inspection.draft?.blocks[2]?.markdown).toBe(
-      "Die vermutete Ursache wird in der Quelle nicht bestätigt.",
-    );
+      };
+      expect(chatDraftNeedsHostRepairV1({
+        draft,
+        detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+        question,
+      })).toBe(false);
+      const inspection = inspectChatDraftAfterHostRepairV1({
+        draft,
+        detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+        question,
+      });
+      expect(inspection.rejectionReasons).toEqual([]);
+      expect(inspection.draft?.blocks[0]?.markdown).toBe(markdown);
+    }
   });
 
   test("repairs repeated evidence blocks and retains their most informative wording", () => {
@@ -531,7 +431,7 @@ describe("Chat answer contract", () => {
     expect(inspection.draft?.blocks).toHaveLength(2);
   });
 
-  test("orders an explicit measured ranking by comparable before-after deltas", () => {
+  test("does not reinterpret or reorder answer prose from language-specific ranking words", () => {
     const draft = {
       blocks: [{
         id: "rank:ram",
@@ -566,7 +466,7 @@ describe("Chat answer contract", () => {
       draft,
       detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
       question,
-    })).toBe(true);
+    })).toBe(false);
     const inspection = inspectChatDraftAfterHostRepairV1({
       draft,
       detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
@@ -574,19 +474,6 @@ describe("Chat answer contract", () => {
     });
     expect(inspection.rejectionReasons).toEqual([]);
     expect(inspection.draft?.blocks.map((block) => block.id)).toEqual([
-      "rank:direct",
-      "rank:ram",
-      "rank:uring",
-      "ranking:summary",
-    ]);
-    expect(inspection.draft?.blocks.slice(0, 3)
-      .map((block) => block.markdown.match(/^\*\*(\d+)\./u)?.[1]))
-      .toEqual(["1", "2", "3"]);
-
-    expect(inspectChatDraftAfterHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-    }).draft?.blocks.map((block) => block.id)).toEqual([
       "rank:ram",
       "rank:direct",
       "ranking:summary",
@@ -606,139 +493,36 @@ describe("Chat answer contract", () => {
         gaps: [],
       },
       detailEvidence: [],
-      requestFacets: ["First facet", "Second facet"],
     })).toEqual({ rejectionReasons: ["orphan-heading"] });
   });
 
-  test("repairs and rejects incomplete factual prose instead of publishing a dangling clause", () => {
-    const draft = {
-      blocks: [{
-        markdown: "Die Quelle bezeichnet die gemessene Einstellung selbst als",
-        assertion: "positive" as const,
-        scope: "none" as const,
-        sourceRefs: [syntheticPageSource.id],
-      }],
-      gaps: [],
-    };
+  test("does not accept or reject prose through language-specific phrase regexes", () => {
+    const cases = [
+      "Die Quelle bezeichnet die gemessene Einstellung selbst als",
+      "These values are directly measured and remain conjectural.",
+      "Puisque les valeurs sont mesurées, elles restent une hypothèse.",
+    ];
 
-    expect(chatMarkdownIntegrityIssuesV1(draft.blocks[0]!.markdown)).toEqual([
-      "incomplete-prose",
-    ]);
-    expect(chatDraftNeedsHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-    })).toBe(true);
-    expect(inspectChatDraftAfterHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-    })).toEqual({ rejectionReasons: ["incomplete-prose"] });
-    expect(() => finalizeChatAnswerV1({
-      draft,
-      sources: [syntheticPageSource],
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      qualityPolicy: chatQualityPolicyV1("quick"),
-      run,
-    })).toThrow("incomplete or contradictory prose");
-  });
-
-  test("rejects a detached lowercase continuation paragraph", () => {
-    const markdown = [
-      "Die drei Einstellungen wurden direkt gemessen.",
-      "",
-      "da der Autor die übrigen Werte nur aus der Dokumentation abgeleitet hat.",
-    ].join("\n");
-    const draft = {
-      blocks: [{
-        markdown,
-        assertion: "positive" as const,
-        scope: "none" as const,
-        sourceRefs: [syntheticPageSource.id],
-      }],
-      gaps: [],
-    };
-
-    expect(chatMarkdownIntegrityIssuesV1(markdown)).toEqual(["incomplete-prose"]);
-    expect(chatDraftNeedsHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-    })).toBe(true);
-    expect(inspectChatDraftAfterHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-    })).toEqual({ rejectionReasons: ["incomplete-prose"] });
-
-    expect(() => finalizeChatAnswerV1({
-      draft: {
-        messageMarkdown: [
-          `Die protokollierten Werte sind belastbare Messungen. [[source:${syntheticPageSource.id}]]`,
-          "",
-          "und die übrigen Einstellungen wurden nur abgeleitet.",
-        ].join("\n"),
-        citationSourceIds: [syntheticPageSource.id],
-        gaps: [],
-      },
-      sources: [syntheticPageSource],
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-      qualityPolicy: chatQualityPolicyV1("quick"),
-      run,
-    })).toThrow("incomplete or contradictory prose");
-  });
-
-  test("rejects an explicit measured-versus-conjectural self-contradiction", () => {
-    const markdown = [
-      "Die drei Werte wurden direkt gemessen.",
-      "Diese Werte sind daher eine Vermutung.",
-    ].join(" ");
-    const draft = {
-      blocks: [{
-        markdown,
-        assertion: "positive" as const,
-        scope: "none" as const,
-        sourceRefs: [syntheticPageSource.id],
-      }],
-      gaps: [],
-    };
-
-    expect(chatMarkdownIntegrityIssuesV1(markdown)).toEqual([
-      "observation-classification-conflict",
-    ]);
-    expect(chatDraftNeedsHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-    })).toBe(true);
-    expect(inspectChatDraftAfterHostRepairV1({
-      draft,
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-    })).toEqual({ rejectionReasons: ["observation-classification-conflict"] });
-
-    expect(chatMarkdownIntegrityIssuesV1([
-      "Die Werte sind belastbare Messungen.",
-      "Diese Werte sind nicht als reproduzierbare Produktivmessungen einzustufen.",
-    ].join(" "))).toEqual(["observation-classification-conflict"]);
-  });
-
-  test("allows measured observations and separately labelled interpretation", () => {
-    const markdown = [
-      "Der Durchsatz wurde direkt gemessen.",
-      "Die vermutete Ursache der Abweichung bleibt hingegen eine Hypothese.",
-    ].join(" ");
-
-    expect(chatMarkdownIntegrityIssuesV1(markdown)).toEqual([]);
-    expect(chatDraftNeedsHostRepairV1({
-      draft: {
+    for (const markdown of cases) {
+      const draft = {
         blocks: [{
           markdown,
-          assertion: "positive",
-          scope: "none",
+          assertion: "positive" as const,
+          scope: "none" as const,
           sourceRefs: [syntheticPageSource.id],
         }],
         gaps: [],
-      },
-      detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
-    })).toBe(false);
-    expect(chatMarkdownIntegrityIssuesV1(
-      "Da die Ursache nicht gemessen wurde, bleibt sie ausdrücklich eine Hypothese.",
-    )).toEqual([]);
+      };
+      expect(chatMarkdownIntegrityIssuesV1(markdown)).toEqual([]);
+      expect(chatDraftNeedsHostRepairV1({
+        draft,
+        detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      })).toBe(false);
+      expect(inspectChatDraftAfterHostRepairV1({
+        draft,
+        detailEvidence: [{ source: syntheticPageSource, content: syntheticCompleteContent }],
+      }).rejectionReasons).toEqual([]);
+    }
   });
 
   test("drops a trailing orphan heading only when the remaining answer stays complete", () => {
@@ -853,7 +637,7 @@ describe("Chat answer contract", () => {
     })).toBeUndefined();
   });
 
-  test("preserves a supported repaired block after harmless ref whitespace and balances a trailing German quote", () => {
+  test("preserves supported prose verbatim after harmless ref whitespace", () => {
     const repaired = chatDraftForFinalizationAfterHostRepairV1({
       draft: {
         blocks: [{
@@ -868,7 +652,7 @@ describe("Chat answer contract", () => {
     });
 
     expect(repaired?.blocks).toEqual([expect.objectContaining({
-      markdown: "The source recommends offline workloads. Als Profil gilt „lossless“",
+      markdown: "The source recommends offline workloads. Als Profil gilt „lossless",
       sourceRefs: [syntheticPageSource.id],
     })]);
     const answer = finalizeChatAnswerV1({
@@ -879,11 +663,11 @@ describe("Chat answer contract", () => {
       run,
     });
     expect(answer.messageMarkdown).toContain("offline workloads");
-    expect(answer.messageMarkdown).toContain("„lossless“");
+    expect(answer.messageMarkdown).toContain("„lossless");
     expect(answer.gaps).toEqual([]);
   });
 
-  test("keeps a complete evidence-bound sentence when only its German closing quote is missing", () => {
+  test("does not repair language-specific quotation punctuation", () => {
     const repaired = chatDraftForFinalizationAfterHostRepairV1({
       draft: {
         blocks: [{
@@ -898,9 +682,31 @@ describe("Chat answer contract", () => {
     });
 
     expect(repaired?.blocks).toEqual([expect.objectContaining({
-      markdown: "Die Quelle bezeichnet die Einstellung als „somwhat educated guess“",
+      markdown: "Die Quelle bezeichnet die Einstellung als „somwhat educated guess",
     })]);
     expect(chatMarkdownIntegrityIssuesV1(repaired!.blocks[0]!.markdown)).toEqual([]);
+  });
+
+  test("admits only a fresh local single-anchor direct turn to host pre-read", () => {
+    expect(shouldPreReadLocalExactContextV1({
+      providerId: "local-gemma",
+      strategy: exactDirectStrategy,
+      anchorRefs: ["research-anchor:a1"],
+      searchProducts: [],
+      resuming: false,
+    })).toBe(true);
+
+    for (const rejected of [
+      { providerId: "anthropic", anchorRefs: ["research-anchor:a1"], searchProducts: [], resuming: false },
+      { providerId: "local-gemma", anchorRefs: ["research-anchor:a1", "research-anchor:a2"], searchProducts: [], resuming: false },
+      { providerId: "local-gemma", anchorRefs: ["research-anchor:a1"], searchProducts: ["confluence" as const], resuming: false },
+      { providerId: "local-gemma", anchorRefs: ["research-anchor:a1"], searchProducts: [], resuming: true },
+    ]) {
+      expect(shouldPreReadLocalExactContextV1({
+        ...rejected,
+        strategy: exactDirectStrategy,
+      })).toBe(false);
+    }
   });
 
   test("keeps recoverable child eval retries out of user-facing activity", () => {
@@ -1075,7 +881,7 @@ describe("Chat answer contract", () => {
     });
   });
 
-  test("collapses repeated whole-page citations and balances German closing quotes", () => {
+  test("collapses repeated whole-page citations without rewriting quotation punctuation", () => {
     const answer = finalizeChatAnswerV1({
       draft: {
         messageMarkdown: [
@@ -1099,12 +905,12 @@ describe("Chat answer contract", () => {
 
     const canonical = "[Synthetic page](https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1001)";
     expect(answer.messageMarkdown.split(canonical)).toHaveLength(2);
-    expect(answer.messageMarkdown).toContain("## Zusammenfassung: „Synthetische Seite“");
-    expect(answer.messageMarkdown).toContain("einen Wert von „zwei Einheiten.“");
+    expect(answer.messageMarkdown).toContain("## Zusammenfassung: „Synthetische Seite");
+    expect(answer.messageMarkdown).toContain("einen Wert von „zwei Einheiten.");
     expect(answer.citations).toHaveLength(1);
   });
 
-  test("removes abandoned strong-emphasis alternatives and joins an obvious continuation", () => {
+  test("removes abandoned strong-emphasis alternatives without language-specific joining", () => {
     const answer = finalizeChatAnswerV1({
       draft: {
         messageMarkdown: [
@@ -1132,9 +938,8 @@ describe("Chat answer contract", () => {
 
     expect(answer.messageMarkdown).not.toContain("lossless profile");
     expect(answer.messageMarkdown).not.toContain("Der Autor empfiehlt das **");
-    expect(answer.messageMarkdown).toContain(
-      "Das Profil erreicht rund 1,2 tok/s und bleibt kohärent; das aggressivere Profil ist für offenen Chat ungeeignet.",
-    );
+    expect(answer.messageMarkdown).toContain("Das Profil erreicht rund 1,2 tok/s und bleibt kohärent");
+    expect(answer.messageMarkdown).toContain("das aggressivere Profil ist für offenen Chat ungeeignet.");
     expect(answer.messageMarkdown).toContain("[Synthetic page]");
   });
 
@@ -1933,13 +1738,17 @@ describe("Chat answer contract", () => {
     const bounded = finalizeChatAnswerV1({
       ...base,
       draft: {
-        messageMarkdown: "The complete page contains no other constraint. [[source:wiki:1001]]",
-        citationSourceIds: ["wiki:1001"],
+        blocks: [{
+          markdown: "The complete page contains no other constraint.",
+          assertion: "absence",
+          scope: "source",
+          sourceRefs: ["wiki:1001"],
+        }],
         gaps: [],
       },
     });
     expect(bounded.messageMarkdown).not.toContain("contains no other constraint");
-    expect(bounded.messageMarkdown).toContain("does not establish what is absent");
+    expect(bounded.messageMarkdown).toContain("No detail-backed claim remained");
     expect(bounded.messageMarkdown).toContain("### Limits");
     expect(bounded.gaps).toEqual([expect.objectContaining({
       code: "incomplete-coverage",
@@ -1949,8 +1758,12 @@ describe("Chat answer contract", () => {
     const answer = finalizeChatAnswerV1({
       ...base,
       draft: {
-        messageMarkdown: "The visible section supports the positive statement. [[source:wiki:1001]]",
-        citationSourceIds: ["wiki:1001"],
+        blocks: [{
+          markdown: "The visible section supports the positive statement.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: ["wiki:1001"],
+        }],
         gaps: [{
           code: "incomplete-coverage",
           message: "Three unrelated sections were not read.",
@@ -1973,11 +1786,17 @@ describe("Chat answer contract", () => {
     };
     const answer = finalizeChatAnswerV1({
       draft: {
-        messageMarkdown: [
-          "The visible section establishes the approved rollout.",
-          "The entire page has no other constraint. [[source:wiki:1001]]",
-        ].join(" "),
-        citationSourceIds: ["wiki:1001"],
+        blocks: [{
+          markdown: "The visible section establishes the approved rollout.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: ["wiki:1001"],
+        }, {
+          markdown: "The entire page has no other constraint.",
+          assertion: "absence",
+          scope: "source",
+          sourceRefs: ["wiki:1001"],
+        }],
         gaps: [],
       },
       sources: [source],
@@ -2003,29 +1822,30 @@ describe("Chat answer contract", () => {
     });
     expect(answer.messageMarkdown).toContain("visible section establishes");
     expect(answer.messageMarkdown).not.toContain("entire page has no other constraint");
-    expect(answer.messageMarkdown).toContain("included Confluence item was not resolved");
+    expect(answer.messageMarkdown).toContain(
+      "absence claims were omitted because their asserted scope was not read completely",
+    );
   });
 
-  test("preserves Markdown structure and scopes absence claims when retrieval is incomplete", () => {
+  test("preserves Markdown structure and rejects over-broad absence by structured scope", () => {
     const answer = finalizeChatAnswerV1({
       draft: {
-        messageMarkdown: [
-          "### 1. Gemeinsamkeiten",
-          "",
-          "Die gelesene Seite nennt z. B. einen Export vs. isomorphes Rendering. [[source:wiki:1001]]",
-          "",
-          "| Kriterium | Ergebnis |",
-          "|---|---|",
-          "| Installationsanleitung | Nicht vorhanden im Space [[source:wiki:1001]] |",
-          "",
-          "Im DOCSY-Space existiert keine dedizierte Installationsanleitung.",
-          "",
-          "Insgesamt 6 Seiten gefunden.",
-          "Die Konfigurationsreferenz fehlt in allen ausgewerteten Seiten.",
-          "",
-          "Da die Suche auf maximal 6 Seiten begrenzt war, kann es weitere Treffer geben.",
-        ].join("\n"),
-        citationSourceIds: ["wiki:1001"],
+        blocks: [{
+          markdown: "### 1. Gemeinsamkeiten",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }, {
+          markdown: "Die gelesene Seite nennt z. B. einen Export vs. isomorphes Rendering.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: ["wiki:1001"],
+        }, {
+          markdown: "Aucune installation dédiée n'existe dans tout l'espace.",
+          assertion: "absence",
+          scope: "bound-scope",
+          sourceRefs: ["wiki:1001"],
+        }],
         gaps: [],
       },
       sources: [syntheticPageSource],
@@ -2052,19 +1872,7 @@ describe("Chat answer contract", () => {
 
     expect(answer.messageMarkdown).toContain("### 1. Gemeinsamkeiten");
     expect(answer.messageMarkdown).toContain("z. B. einen Export vs. isomorphes Rendering");
-    expect(answer.messageMarkdown).toContain([
-      "| Kriterium | Ergebnis |",
-      "|---|---|",
-      "| Installationsanleitung | In den detailliert gelesenen Quellen nicht gefunden [Synthetic page](https://tenant-a.atlassian.net/wiki/spaces/SPACE/pages/1001) |",
-    ].join("\n"));
-    expect(answer.messageMarkdown).not.toContain("dedizierte Installationsanleitung");
-    expect(answer.messageMarkdown).not.toContain("existiert keine");
-    expect(answer.messageMarkdown).toContain("6 Seiten im Detail gelesen");
-    expect(answer.messageMarkdown).not.toContain("Konfigurationsreferenz fehlt");
-    expect(answer.messageMarkdown).toContain(
-      "Da 6 von 10 zugelassenen Kandidaten im Detail gelesen wurden",
-    );
-    expect(answer.messageMarkdown).toContain("Aussagen über fehlende Dokumentation");
+    expect(answer.messageMarkdown).not.toContain("Aucune installation");
     expect(answer.messageMarkdown).toContain("6 von 10 zugelassenen Kandidaten");
     expect(answer.gaps).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "incomplete-coverage", sourceIds: [] }),
@@ -2119,19 +1927,37 @@ describe("Chat answer contract", () => {
   test("turns a missing required product into a search gap instead of an absence claim", () => {
     const answer = finalizeChatAnswerV1({
       draft: {
-        messageMarkdown: [
-          "Die Confluence-Seite beschreibt eine belegte Maßnahme. [[source:wiki:1001]]",
-          "## Vergleich mit dem Jira-Projekt",
-          "Keine Übereinstimmungen sind feststellbar.",
-          "| Maßnahme | Jira-Status |",
-          "|---|---|",
-          "| Validierung | Kein Issue |",
-          "Im Jira-Projekt existiert kein einziges passendes Ticket.",
-          "DEMO-42 scheint die Umsetzung zu belegen.",
-          "## Verbleibende Einordnung",
-          "Die belegte Confluence-Maßnahme bleibt gültig.",
-        ].join("\n"),
-        citationSourceIds: ["wiki:1001"],
+        blocks: [{
+          markdown: "Die Confluence-Seite beschreibt eine belegte Maßnahme.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: ["wiki:1001"],
+        }, {
+          markdown: "## Vergleich mit dem Jira-Projekt",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }, {
+          markdown: "Aucun ticket correspondant n'existe.",
+          assertion: "absence",
+          scope: "bound-scope",
+          sourceRefs: ["wiki:1001"],
+        }, {
+          markdown: "DEMO-42 scheint die Umsetzung zu belegen.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: ["jira:DEMO-42"],
+        }, {
+          markdown: "## Verbleibende Einordnung",
+          assertion: "none",
+          scope: "none",
+          sourceRefs: [],
+        }, {
+          markdown: "Die belegte Confluence-Maßnahme bleibt gültig.",
+          assertion: "positive",
+          scope: "none",
+          sourceRefs: ["wiki:1001"],
+        }],
         gaps: [{
           code: "incomplete-coverage" as const,
           message: "Die Jira-Suche lieferte keine Detailbelege.",
@@ -2187,9 +2013,7 @@ describe("Chat answer contract", () => {
       run,
     });
     expect(answer.messageMarkdown).toContain("belegte Maßnahme");
-    expect(answer.messageMarkdown).not.toContain("Keine Übereinstimmungen");
-    expect(answer.messageMarkdown).not.toContain("Kein Issue");
-    expect(answer.messageMarkdown).not.toContain("kein einziges");
+    expect(answer.messageMarkdown).not.toContain("Aucun ticket");
     expect(answer.messageMarkdown).not.toContain("DEMO-42");
     expect(answer.messageMarkdown).toContain("bleibt gültig");
     expect(answer.messageMarkdown).toContain("belegt weder");
@@ -2518,6 +2342,62 @@ describe("separate Chat root", () => {
     expect((response as AIMessage).tool_calls?.[0]?.name).toBe("eval");
   });
 
+  test("selects the terminal tool after local evidence access without changing native output", async () => {
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      toolStructuredOutput: true,
+      evidenceAccessRequired: true,
+      evidenceAccessAttempted: () => true,
+    });
+    let toolChoice: unknown;
+    await middleware.wrapModelCall?.(
+      {
+        tools: [{ name: "eval" }, { name: "ask_user_question" }],
+        systemMessage: new SystemMessage("Stable Chat contract."),
+      } as never,
+      async (request) => {
+        toolChoice = request.toolChoice;
+        return new AIMessage("fixture") as never;
+      },
+    );
+    expect(toolChoice).toBe("ChatAnswerDraftV2");
+  });
+
+  test("projects a fresh terminal context once without mutating retained agent state", async () => {
+    let projectionCalls = 0;
+    const retainedMessages = [new HumanMessage("retained full conversation")];
+    const terminalMessages = [new HumanMessage(JSON.stringify({
+      schema: "atlcli.chat-terminal-context/v1",
+      question: "What is the budget?",
+    }))];
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      toolStructuredOutput: true,
+      evidenceAccessAttempted: () => true,
+      projectTerminalContext: async () => {
+        projectionCalls += 1;
+        return terminalMessages;
+      },
+    });
+    const observed: unknown[] = [];
+    const request = {
+      tools: [{ name: "eval" }, { name: "ask_user_question" }],
+      messages: retainedMessages,
+      systemMessage: new SystemMessage("Stable Chat contract."),
+    } as never;
+
+    await middleware.wrapModelCall?.(request, async (projected) => {
+      observed.push(projected.messages);
+      return new AIMessage("fixture") as never;
+    });
+    await middleware.wrapModelCall?.(request, async (projected) => {
+      observed.push(projected.messages);
+      return new AIMessage("repair fixture") as never;
+    });
+
+    expect(projectionCalls).toBe(1);
+    expect(observed).toEqual([terminalMessages, terminalMessages]);
+    expect(retainedMessages[0]!.text).toBe("retained full conversation");
+  });
+
   test("closes an accepted agentic workflow without a supervisor rewrite", async () => {
     const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
       agenticWorkflowComplete: () => true,
@@ -2534,13 +2414,94 @@ describe("separate Chat root", () => {
     expect((response as AIMessage).text).toBe("Agentic Chat synthesis accepted.");
   });
 
+  test("continues a started local agentic workflow without another model call", async () => {
+    let complete = false;
+    let continuations = 0;
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      agenticWorkflowComplete: () => complete,
+      agenticWorkflowAccepted: () => true,
+      continueAgenticWorkflow: async () => {
+        continuations += 1;
+        complete = true;
+      },
+    });
+    let providerCalls = 0;
+    await middleware.wrapModelCall?.(
+      { tools: [{ name: "eval" }] } as never,
+      async () => {
+        providerCalls += 1;
+        return new AIMessage("Initial planning is still model-owned.") as never;
+      },
+    );
+    expect({ continuations, providerCalls }).toEqual({ continuations: 0, providerCalls: 1 });
+
+    await middleware.wrapToolCall?.(
+      {
+        toolCall: {
+          name: "eval",
+          args: {
+            code: [
+              "await tools.chatWorkflowPropose({});",
+              "await tools.chatWorkflowRun({})",
+            ].join("\n"),
+          },
+        },
+      } as never,
+      async () => ({ content: "Host workflow intermediate state." }) as never,
+    );
+    const response = await middleware.wrapModelCall?.(
+      { tools: [{ name: "eval" }], runtime: {} } as never,
+      async () => {
+        providerCalls += 1;
+        return new AIMessage("Provider must not be called.") as never;
+      },
+    );
+
+    expect({ continuations, providerCalls }).toEqual({ continuations: 1, providerCalls: 1 });
+    expect((response as AIMessage).text).toBe("Agentic Chat synthesis accepted.");
+  });
+
+  test("does not auto-continue a locally rejected agentic proposal", async () => {
+    const middleware = createChatDirectToolSurfaceMiddlewareV1(undefined, {
+      agenticWorkflowComplete: () => false,
+      agenticWorkflowAccepted: () => false,
+      continueAgenticWorkflow: async () => {
+        throw new Error("Rejected workflow must not continue.");
+      },
+    });
+    await middleware.wrapToolCall?.(
+      {
+        toolCall: {
+          name: "eval",
+          args: {
+            code: [
+              "await tools.chatWorkflowPropose({});",
+              "await tools.chatWorkflowRun({})",
+            ].join("\n"),
+          },
+        },
+      } as never,
+      async () => ({ content: "Proposal rejected at host boundary." }) as never,
+    );
+    let providerCalls = 0;
+    const response = await middleware.wrapModelCall?.(
+      { tools: [{ name: "eval" }] } as never,
+      async () => {
+        providerCalls += 1;
+        return new AIMessage("Correct the rejected proposal.") as never;
+      },
+    );
+    expect(providerCalls).toBe(1);
+    expect((response as AIMessage).text).toBe("Correct the rejected proposal.");
+  });
+
   test("derives a bounded graph ceiling from the admitted PTC budget", () => {
     expect(chatRecursionLimitV1(1)).toBe(24);
     expect(chatRecursionLimitV1(16)).toBe(40);
     expect(chatRecursionLimitV1(10_000)).toBe(56);
   });
 
-  function runtimeHarness() {
+  function runtimeHarness(harnessOptions: { beforeMessages?: () => void } = {}) {
     let chatRoots = 0;
     let researchRoots = 0;
     const chatRuntime = {
@@ -2558,6 +2519,7 @@ describe("separate Chat root", () => {
         return {
           streamEvents: async () => ({
             messages: (async function* () {
+              harnessOptions.beforeMessages?.();
               yield {
                 text: (async function* () {})(),
                 reasoning: (async function* () { yield "Checking the selected evidence."; })(),
@@ -2797,6 +2759,79 @@ describe("separate Chat root", () => {
       }),
       expect.objectContaining({ channel: "answer-markdown", status: "completed" }),
     ]);
+  });
+
+  test("presents an out-of-band structured preview without replaying final tool chunks", async () => {
+    let previewListener: ((preview: {
+      generationId: string;
+      status: "snapshot" | "completed";
+      markdown: string;
+    }) => void) | undefined;
+    const harness = runtimeHarness({
+      beforeMessages: () => {
+        previewListener?.({
+          generationId: "local-final-1",
+          status: "snapshot",
+          markdown: 'No detailed "Atlassian" ',
+        });
+        previewListener?.({
+          generationId: "local-final-1",
+          status: "snapshot",
+          markdown: 'No detailed "Atlassian" evidence was needed for this response.',
+        });
+        previewListener?.({
+          generationId: "local-final-1",
+          status: "completed",
+          markdown: 'No detailed "Atlassian" evidence was needed for this response.',
+        });
+      },
+    });
+    const chat = createKiteweaveChatAgent(harness.chatRuntime);
+    const presentation: ChatPresentationStreamEventV1[] = [];
+    await chat.runChatAgent({
+      modelBinding: {
+        model: {} as BaseChatModel,
+        modelId: "synthetic-local-preview-model",
+        qualityAdapter: CAPABILITY_FREE_QUALITY_ADAPTER_V1,
+        structuredOutput: "tool",
+        subscribeStructuredAnswerPreview: (listener) => {
+          previewListener = listener;
+          return () => { previewListener = undefined; };
+        },
+      },
+      turn,
+      brokerRequest,
+      providers: {
+        jira: {
+          searchPage: async () => { throw new Error("unexpected Jira search"); },
+          getIssue: async () => { throw new Error("unexpected Jira detail"); },
+        },
+        wiki: {
+          searchPage: async () => { throw new Error("unexpected wiki search"); },
+          getPage: async () => { throw new Error("unexpected wiki detail"); },
+        },
+      },
+      workspace: createMemoryResearchWorkspace(),
+      hostIdentity,
+      qualityPolicy: chatQualityPolicyV1("quick"),
+      onChatPresentation: (event) => presentation.push(event),
+    });
+
+    expect(presentation.filter((event) => event.channel === "answer-markdown")).toEqual([
+      expect.objectContaining({ channel: "answer-markdown", status: "started" }),
+      expect.objectContaining({
+        channel: "answer-markdown",
+        status: "delta",
+        delta: 'No detailed "Atlassian" ',
+      }),
+      expect.objectContaining({
+        channel: "answer-markdown",
+        status: "delta",
+        delta: "evidence was needed for this response.",
+      }),
+      expect.objectContaining({ channel: "answer-markdown", status: "completed" }),
+    ]);
+    expect(previewListener).toBeUndefined();
   });
 
   test("rejects an incompatible persisted state before root construction", async () => {

@@ -3,7 +3,6 @@ import {
   buildChatSystemPromptV1,
   buildChatTurnPromptV1,
   chatAnswerOutputInstructionV1,
-  deriveChatRequestChecklistV1,
 } from "./prompts.js";
 
 describe("Chat supervisor prompt", () => {
@@ -93,13 +92,14 @@ describe("Chat supervisor prompt", () => {
 
     expect(repair).toContain("REPAIR OUTPUT CONTRACT (quick, hard limit)");
     expect(repair).toContain("at most 350 visible words and 16 blocks");
-    expect(repair).toContain("grammatically complete");
-    expect(repair).toContain("detached lowercase continuation paragraph");
+    expect(repair).toContain("complete, self-contained statement in the user's language");
+    expect(repair).toContain("detached continuation fragments");
     expect(repair).toContain("cannot be both directly measured and conjectural");
     expect(repair).toContain("selection predicate before satisfying a requested count or ranking");
-    expect(repair).toContain("do not count them toward N");
-    expect(repair).toContain("means descending by the stated comparable metric");
-    expect(repair).toContain("means ascending");
+    expect(repair).toContain("do not count them toward the requested set");
+    expect(repair).toContain("Preserve the ranking direction expressed by the user");
+    expect(repair).not.toContain("groesste");
+    expect(repair).not.toContain("niedrigste");
     expect(repair).toContain("compare isolated interventions against a stated baseline");
     expect(repair).toContain("holding the requested outcome quality");
     expect(repair).toContain("bundled configuration change");
@@ -127,53 +127,26 @@ describe("Chat supervisor prompt", () => {
     expect(prompt).not.toContain("architecture");
   });
 
-  test("projects explicit enumerated user facets without inventing requirements", () => {
-    const question = [
-      "Fasse ausschließlich die direkt verlinkte Seite knapp zusammen und nenne",
-      "Modellgröße, gemessene Endgeschwindigkeit und die Einsatzempfehlung:",
-      "https://tenant.invalid/wiki/spaces/SAFE/pages/100/Private-title",
-    ].join(" ");
+  test("uses the original German, English, or French question as semantic guidance", () => {
+    const questions = [
+      "Nenne den Budgetrahmen und die jährliche Basisgebühr.",
+      "State the budget range and the annual base fee.",
+      "Indiquez la fourchette budgétaire et les frais annuels de base.",
+    ];
 
-    expect(deriveChatRequestChecklistV1(question)).toEqual([
-      "Modellgröße",
-      "gemessene Endgeschwindigkeit",
-      "die Einsatzempfehlung",
-    ]);
-    const prompt = buildChatTurnPromptV1({
-      question,
-      jiraProjectKeys: [],
-      confluenceSpaceKeys: [],
-      anchors: [],
-    });
-    expect(prompt).toContain("Explicit user request checklist");
-    expect(prompt).toContain('"die Einsatzempfehlung"');
-    expect(prompt).toContain("no added requirements");
-  });
-
-  test("does not manufacture a checklist for an ordinary unenumerated question", () => {
-    expect(deriveChatRequestChecklistV1("Worum geht es auf dieser Seite?")).toEqual([]);
-  });
-
-  test("preserves repeated interrogative and answer-with facets", () => {
-    const question = [
-      "Welche Betriebsart und welche Sicherheitsabwägung gilt?",
-      "Antworte mit den zentralen Einstellungen und der begründeten Einsatzgrenze.",
-    ].join(" ");
-
-    expect(deriveChatRequestChecklistV1(question)).toEqual([
-      "Betriebsart",
-      "Sicherheitsabwägung",
-      "den zentralen Einstellungen",
-      "der begründeten Einsatzgrenze",
-    ]);
-    const prompt = buildChatTurnPromptV1({
-      question,
-      jiraProjectKeys: [],
-      confluenceSpaceKeys: [],
-      anchors: [],
-    });
-    expect(prompt).toContain('"Betriebsart"');
-    expect(prompt).toContain('"der begründeten Einsatzgrenze"');
-    expect(prompt).toContain("Cover every checklist item exactly once");
+    for (const question of questions) {
+      const prompt = buildChatTurnPromptV1({
+        question,
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+        anchors: [],
+      });
+      expect(prompt).toContain(JSON.stringify(question));
+      expect(prompt).toContain("Judge coverage by meaning, not wording");
+      expect(prompt).toContain("the user's chosen language");
+      expect(prompt).toContain("Never copy question fragments merely to satisfy validation");
+      expect(prompt).not.toContain("request checklist");
+      expect(prompt).not.toContain("verbatim fragments");
+    }
   });
 });

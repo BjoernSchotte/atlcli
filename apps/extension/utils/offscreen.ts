@@ -32,14 +32,22 @@ export interface OffscreenChrome {
   };
 }
 
+export interface CompatibleOffscreenChrome extends OffscreenChrome {
+  runtime: OffscreenChrome["runtime"] & {
+    sendMessage(message: { kind: "offscreen:runtime-protocol" }): Promise<unknown>;
+  };
+}
+
 /** Default path to the bundled offscreen document (WXT flattens dir/index.html). */
 export const OFFSCREEN_PATH = "offscreen.html";
 
 let ensuring: Promise<void> | null = null;
+let ensuringCompatible: Promise<void> | null = null;
 
 /** Test-only: reset the in-flight guard between unit tests. */
 export function __resetOffscreenState(): void {
   ensuring = null;
+  ensuringCompatible = null;
 }
 
 /**
@@ -84,6 +92,46 @@ export function ensureOffscreen(
     ensuring = null;
   });
   return ensuring;
+}
+
+async function currentProtocolMatches(deps: CompatibleOffscreenChrome): Promise<boolean> {
+  try {
+    const response = await deps.runtime.sendMessage({
+      kind: "offscreen:runtime-protocol",
+    }) as { kind?: unknown; version?: unknown } | undefined;
+    return response?.kind === "offscreen:runtime-protocol-result" &&
+      response.version === 1;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ensure the offscreen document belongs to this runtime protocol generation.
+ * Chrome can retain an offscreen document across an unpacked-extension reload;
+ * without this handshake, a current service worker may talk to stale bundled
+ * code. Replacement closes only the live execution realm. IndexedDB and the
+ * browser model cache remain intact.
+ */
+export function ensureCompatibleOffscreen(
+  deps: CompatibleOffscreenChrome = (globalThis as unknown as {
+    chrome: CompatibleOffscreenChrome;
+  }).chrome,
+): Promise<void> {
+  if (ensuringCompatible) return ensuringCompatible;
+  ensuringCompatible = (async () => {
+    await ensureOffscreen(deps);
+    if (await currentProtocolMatches(deps)) return;
+    await closeOffscreen(deps);
+    await ensureOffscreen(deps);
+    if (!(await currentProtocolMatches(deps))) {
+      throw new Error("The offscreen runtime protocol handshake failed.");
+    }
+  })().catch((error) => {
+    ensuringCompatible = null;
+    throw error;
+  });
+  return ensuringCompatible;
 }
 
 /**

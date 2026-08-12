@@ -6,6 +6,7 @@ import {
   type RovoVisibilitySettingsSource,
 } from "../utils/rovo-visibility.js";
 import type { AppSettings } from "../utils/ports/settings.js";
+import { ANTHROPIC_BROWSER_MODEL_SELECTION_V1 } from "../utils/local-model/selection.js";
 
 class FakeRoot {
   readonly attributes = new Set<string>();
@@ -23,7 +24,12 @@ class FakeRoot {
 }
 
 function settings(hideRovoEntrypoints: boolean): AppSettings {
-  return { locale: null, lastWorkspace: null, hideRovoEntrypoints };
+  return {
+    locale: null,
+    lastWorkspace: null,
+    hideRovoEntrypoints,
+    modelSelection: ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
+  };
 }
 
 async function flush(): Promise<void> {

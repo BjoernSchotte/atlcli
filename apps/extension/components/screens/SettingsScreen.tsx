@@ -12,6 +12,12 @@ import { useI18n } from "../../utils/i18n/context.js";
 import { isLocale, LOCALES } from "../../utils/i18n/messages.js";
 import { hasCapability } from "../../utils/ports/host.js";
 import { useAppSettings } from "../app/settings-context.js";
+import {
+  BROWSER_MODEL_DESCRIPTORS_V1,
+  browserModelDescriptorByKey,
+  browserModelSelectionKey,
+} from "../../utils/local-model/selection.js";
+import type { BrowserLocalModelStateV1 } from "../../utils/local-model/storage.js";
 import { Alert } from "../ui/alert.js";
 import { Card, CardContent } from "../ui/card.js";
 import { Button } from "../ui/button.js";
@@ -36,10 +42,14 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
   const { settings, update } = useAppSettings();
   const [failed, setFailed] = useState(false);
   const research = ports.research;
+  const localModel = ports.localModel;
   const [apiKey, setApiKey] = useState("");
   const [hasApiKey, setHasApiKey] = useState(false);
   const [rememberApiKey, setRememberApiKey] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [localModelState, setLocalModelState] = useState<BrowserLocalModelStateV1>({
+    status: "not-installed",
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +72,26 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
       });
     return () => { cancelled = true; };
   }, [research]);
+
+  useEffect(() => {
+    if (settings.modelSelection.providerId !== "local-gemma" || !localModel) return;
+    let cancelled = false;
+    const unsubscribe = localModel.subscribe((state) => {
+      if (!cancelled) setLocalModelState(state);
+    });
+    void localModel.status().catch((error) => {
+      if (!cancelled) {
+        setLocalModelState({
+          status: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [localModel, settings.modelSelection.providerId]);
 
   async function storeApiKey(): Promise<void> {
     const candidate = apiKey.trim();
@@ -139,66 +169,150 @@ export function SettingsScreen({ ports }: ScreenProps): React.JSX.Element {
       <Card data-testid="settings-ai">
         <CardContent className="flex flex-col gap-1.5 p-3">
           <p className="m-0 text-sm font-medium">{t("settings.ai.title")}</p>
-          <p className="m-0 text-xs text-muted-foreground">{t("settings.ai.provider.anthropic")}</p>
-          <Label htmlFor="settings-ai-key">{t("research.key")}</Label>
-          <Input
-            id="settings-ai-key"
-            data-testid="settings-ai-key"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            value={apiKey}
-            placeholder={t("research.key.placeholder")}
-            onChange={(event) => setApiKey(event.target.value)}
-            disabled={!research}
-          />
-          <FieldHelp>
-            {!research
-              ? t("settings.ai.unavailable")
-              : hasApiKey
-                ? t(
-                    rememberApiKey
-                      ? "settings.ai.keyStoredDevice"
-                      : "settings.ai.keyStoredSession",
-                  )
-                : apiKey.trim()
-                  ? t("research.key.pending")
-                  : t("research.key.missing")}
-          </FieldHelp>
-          {research && (
-            <CheckboxField
-              data-testid="settings-ai-remember-key"
-              checked={rememberApiKey}
-              label={t("settings.ai.rememberDevice")}
-              help={t("settings.ai.rememberDeviceHelp")}
-              onChange={(event) => void updateApiKeyPersistence(event.target.checked)}
-            />
-          )}
-          {(apiKey.trim() || hasApiKey) && research && (
-            <div className="flex gap-2">
-              {apiKey.trim() && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void storeApiKey()}
-                  data-testid="settings-ai-store-key"
-                >
-                  {t("research.key.store")}
-                </Button>
+          <Label htmlFor="settings-ai-model">{t("settings.ai.model.label")}</Label>
+          <Select
+            id="settings-ai-model"
+            data-testid="settings-ai-model"
+            value={browserModelSelectionKey(settings.modelSelection)}
+            onChange={(event) => {
+              const descriptor = browserModelDescriptorByKey(event.target.value);
+              if (!descriptor) return;
+              setFailed(false);
+              void update({ modelSelection: descriptor.selection }).catch(() =>
+                setFailed(true)
+              );
+            }}
+          >
+            {BROWSER_MODEL_DESCRIPTORS_V1.map((descriptor) => (
+              <option
+                key={browserModelSelectionKey(descriptor.selection)}
+                value={browserModelSelectionKey(descriptor.selection)}
+              >
+                {descriptor.label}
+              </option>
+            ))}
+          </Select>
+          <FieldHelp>{t("settings.ai.model.help")}</FieldHelp>
+
+          {settings.modelSelection.providerId === "anthropic" ? (
+            <div className="flex flex-col gap-1.5" data-testid="settings-ai-anthropic">
+              <p className="m-0 text-xs text-muted-foreground">
+                {t("settings.ai.provider.anthropic")}
+              </p>
+              <Label htmlFor="settings-ai-key">{t("research.key")}</Label>
+              <Input
+                id="settings-ai-key"
+                data-testid="settings-ai-key"
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={apiKey}
+                placeholder={t("research.key.placeholder")}
+                onChange={(event) => setApiKey(event.target.value)}
+                disabled={!research}
+              />
+              <FieldHelp>
+                {!research
+                  ? t("settings.ai.unavailable")
+                  : hasApiKey
+                    ? t(
+                        rememberApiKey
+                          ? "settings.ai.keyStoredDevice"
+                          : "settings.ai.keyStoredSession",
+                      )
+                    : apiKey.trim()
+                      ? t("research.key.pending")
+                      : t("research.key.missing")}
+              </FieldHelp>
+              {research && (
+                <CheckboxField
+                  data-testid="settings-ai-remember-key"
+                  checked={rememberApiKey}
+                  label={t("settings.ai.rememberDevice")}
+                  help={t("settings.ai.rememberDeviceHelp")}
+                  onChange={(event) => void updateApiKeyPersistence(event.target.checked)}
+                />
               )}
-              {hasApiKey && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void forgetApiKey()}
-                  data-testid="settings-ai-forget-key"
-                >
-                  {t("research.key.forget")}
-                </Button>
+              {(apiKey.trim() || hasApiKey) && research && (
+                <div className="flex gap-2">
+                  {apiKey.trim() && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void storeApiKey()}
+                      data-testid="settings-ai-store-key"
+                    >
+                      {t("research.key.store")}
+                    </Button>
+                  )}
+                  {hasApiKey && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void forgetApiKey()}
+                      data-testid="settings-ai-forget-key"
+                    >
+                      {t("research.key.forget")}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5" data-testid="settings-ai-local-gemma">
+              <p className="m-0 text-xs text-muted-foreground">
+                {t("settings.ai.provider.localGemma")}
+              </p>
+              <FieldHelp>
+                {t("settings.ai.localGemma.size", { size: "4.59 GiB" })}
+              </FieldHelp>
+              {!localModel ? (
+                <Alert role="alert" tone="danger" data-testid="settings-ai-local-error">
+                  {t("settings.ai.localGemma.unavailable")}
+                </Alert>
+              ) : localModelState.status === "ready" ? (
+                <Alert role="status" tone="success" data-testid="settings-ai-local-ready">
+                  {t("settings.ai.localGemma.ready")}
+                </Alert>
+              ) : localModelState.status === "installing" ? (
+                <div data-testid="settings-ai-local-installing">
+                  <FieldHelp>
+                    {t("settings.ai.localGemma.installing", {
+                      percent: String(Math.floor(
+                        (localModelState.receivedBytes / localModelState.totalBytes) * 100,
+                      )),
+                    })}
+                  </FieldHelp>
+                  <progress
+                    className="w-full"
+                    max={localModelState.totalBytes}
+                    value={localModelState.receivedBytes}
+                    aria-label={t("settings.ai.localGemma.installingLabel")}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {localModelState.status === "error" && (
+                    <Alert role="alert" tone="danger" data-testid="settings-ai-local-error">
+                      {localModelState.message}
+                    </Alert>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid="settings-ai-local-install"
+                    onClick={() => void localModel.install()}
+                  >
+                    {t(
+                      localModelState.status === "error"
+                        ? "settings.ai.localGemma.retry"
+                        : "settings.ai.localGemma.install",
+                    )}
+                  </Button>
+                </div>
               )}
             </div>
           )}
-          <FieldHelp>{t("settings.ai.futureLocal")}</FieldHelp>
           {aiError && (
             <Alert role="alert" tone="danger" data-testid="settings-ai-error">
               {aiError}

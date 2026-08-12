@@ -39,6 +39,7 @@ export const BUILD_INPUTS = [
   "entrypoints",
   "utils",
   "workers",
+  "scripts/patch-ort-jsep-csp.ts",
   "types",
   "../../packages/core/src",
   "../../packages/confluence/src",

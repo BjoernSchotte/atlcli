@@ -8,6 +8,15 @@ import type { AppPorts } from "../utils/ports/index.js";
 import type { ResearchPort } from "../utils/research/contracts.js";
 import type { ScreenProps } from "../utils/screens/registry.js";
 import { createReactHarness } from "./react-harness.js";
+import {
+  ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
+  browserModelSelectionKey,
+  LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+} from "../utils/local-model/selection.js";
+import type {
+  BrowserLocalModelPortV1,
+  BrowserLocalModelStateV1,
+} from "../utils/local-model/storage.js";
 
 const dom = createReactHarness();
 
@@ -15,11 +24,15 @@ beforeEach(() => dom.setup());
 afterEach(() => dom.teardown());
 afterAll(() => expect(dom.leakedGlobals()).toEqual([]));
 
-function screenProps(research: ResearchPort): ScreenProps {
+function screenProps(
+  research: ResearchPort,
+  localModel?: BrowserLocalModelPortV1,
+): ScreenProps {
   return {
     ports: {
       host: { kind: "test", name: "test", version: "1", capabilities: ["research"] },
       research,
+      localModel,
       settings: memorySettingsStore(),
     } as unknown as AppPorts,
     page: { status: "idle", token: 0, lastSeq: 0 },
@@ -66,7 +79,7 @@ describe("AI settings", () => {
 
     expect(values).toEqual([{ value: "synthetic-key", persistence: "device" }]);
     expect(dom.find("settings-ai").textContent).toContain("remembered on this device");
-    expect(dom.find("settings-ai").textContent).toContain("local-model option");
+    expect(dom.find("settings-ai-model").textContent).toContain("Gemma 4 E4B (local)");
 
     await dom.click("settings-ai-remember-key");
     expect(persistence).toBe("session");
@@ -74,5 +87,74 @@ describe("AI settings", () => {
 
     await dom.click("settings-ai-forget-key");
     expect(stored).toBe(false);
+  });
+
+  it("defaults to Anthropic and persists the exact local Gemma selection", async () => {
+    const store = memorySettingsStore();
+    let localState: BrowserLocalModelStateV1 = { status: "not-installed" };
+    const listeners = new Set<(state: BrowserLocalModelStateV1) => void>();
+    let installCalls = 0;
+    const localModel: BrowserLocalModelPortV1 = {
+      status: async () => localState,
+      install: async () => {
+        installCalls += 1;
+        localState = {
+          status: "installing",
+          receivedBytes: 1,
+          totalBytes: 2,
+          currentFile: "config.json",
+        };
+        for (const listener of listeners) listener(localState);
+        await Promise.resolve();
+        localState = { status: "ready", aggregateByteLength: 2 };
+        for (const listener of listeners) listener(localState);
+        return localState;
+      },
+      subscribe: (listener) => {
+        listeners.add(listener);
+        listener(localState);
+        return () => listeners.delete(listener);
+      },
+    };
+    const research: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async () => { throw new Error("unused"); },
+      run: async () => { throw new Error("unused"); },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <SettingsProvider store={store}>
+        <I18nProvider locale="en">
+          <SettingsScreen {...screenProps(research, localModel)} />
+        </I18nProvider>
+      </SettingsProvider>,
+    );
+
+    expect((dom.find("settings-ai-model") as HTMLSelectElement).value).toBe(
+      browserModelSelectionKey(ANTHROPIC_BROWSER_MODEL_SELECTION_V1),
+    );
+    expect(dom.maybeFind("settings-ai-anthropic")).not.toBeNull();
+
+    await dom.setValue(
+      "settings-ai-model",
+      browserModelSelectionKey(LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1),
+    );
+
+    expect(dom.maybeFind("settings-ai-anthropic")).toBeNull();
+    expect(dom.find("settings-ai-local-gemma").textContent).toContain(
+      "runs locally in this browser",
+    );
+    expect(dom.maybeFind("settings-ai-local-install")).not.toBeNull();
+    await dom.click("settings-ai-local-install");
+    expect(installCalls).toBe(1);
+    expect(dom.find("settings-ai-local-ready").textContent).toContain(
+      "installed and verified",
+    );
+    expect((await store.load()).modelSelection).toEqual(
+      LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+    );
   });
 });

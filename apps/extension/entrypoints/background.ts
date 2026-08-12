@@ -48,11 +48,11 @@ import {
   normalizeChatQualityPolicyV1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
-import { normalizeAnthropicApiKey } from "../utils/research/credential.js";
 import {
   chromeBrowserCredentialStorageV1,
   readBrowserApiKeyV1,
 } from "../utils/research/browser-credential-storage.js";
+import { normalizeAnthropicApiKey } from "../utils/research/credential.js";
 import { profileFromTabUrl } from "../utils/profile.js";
 import {
   ResearchScopeCatalogBroker,
@@ -90,16 +90,35 @@ import {
   type ResearchScopePreflightOptionsV1,
   WorkspaceChatInteractionControllerV1,
   applyChatInteractionControlV1,
+  assertChatSessionBindingV1,
   assertChatInteractionBindingV1,
+  CHAT_SESSION_PATH_V1,
   CHAT_INTERACTION_STATE_PATH_V1,
+  parseChatSessionV1,
   parseChatInteractionStateV1,
   stampChatInteractionCommandV1,
 } from "@atlcli/research/browser";
 import { handleExtMessage } from "../utils/listeners.js";
-import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
+import {
+  closeOffscreen,
+  ensureCompatibleOffscreen,
+  ensureOffscreen,
+} from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
 import { createOffscreenActivityTracker } from "../utils/pdf/offscreen-activity.js";
 import { createDurableIdleGate } from "../utils/jobs/idle-gate.js";
+import {
+  APP_SETTINGS_STORAGE_KEY,
+  normalizeSettings,
+} from "../utils/ports/settings.js";
+import { LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1 } from "../utils/local-model/storage.js";
+import { resolveBrowserChatModelRunBindingV1 } from "../utils/local-model/run-binding.js";
+import { classifyLocalGemmaHostErrorV1 } from "../utils/local-model/error.js";
+import { recoverUnownedRunningChatTurnV1 } from "../utils/research/chat-recovery.js";
+import {
+  browserChatActiveConversationStorageKeyV1,
+  browserChatProviderCacheIdentityV1,
+} from "../utils/local-model/selection.js";
 import {
   countInFlightPdfJobs,
   listPdfJobMeta,
@@ -135,7 +154,6 @@ import {
  */
 const OFFSCREEN_IDLE_MS = 5 * 60 * 1000;
 const TAB_OBSERVER_STORAGE_KEY = "tab-observer-state-v1";
-const ACTIVE_CHAT_CONVERSATION_KEY = "atlcli.research.active-chat-conversation-id.v1";
 const CHAT_HOST_PRINCIPAL_KEY = "atlcli.chat.host-principal-id.v1";
 const CHAT_HOST_PRINCIPAL_PATTERN = /^browser-principal:[0-9a-f-]{36}$/u;
 const CHAT_CONVERSATION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/u;
@@ -376,6 +394,48 @@ async function prepareDocxRuntime(codeTheme?: CodeThemeId) {
   return response.preparation;
 }
 
+let localModelPrewarmPromise: Promise<void> | undefined;
+
+function prewarmSelectedLocalModelV1(): Promise<void> {
+  if (localModelPrewarmPromise) return localModelPrewarmPromise;
+  const task = (async () => {
+    const stored = await chrome.storage.local.get([
+      APP_SETTINGS_STORAGE_KEY,
+      LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1,
+    ]);
+    const selection = normalizeSettings(
+      stored[APP_SETTINGS_STORAGE_KEY],
+    ).modelSelection;
+    if (selection.providerId !== "local-gemma") return;
+    await resolveBrowserChatModelRunBindingV1({
+      selection,
+      mode: "chat",
+      readAnthropicApiKey: async () => undefined,
+      readLocalActivation: async () =>
+        stored[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1],
+    });
+    offscreenActivity.begin();
+    try {
+      await ensureCompatibleOffscreen();
+      const response = (await chrome.runtime.sendMessage({
+        kind: "offscreen:local-model-prewarm",
+      })) as OffscreenResponse | undefined;
+      if (!response ||
+          response.kind !== "offscreen:local-model-prewarm-result") {
+        throw new Error("Offscreen local model host returned no prewarm result.");
+      }
+      if (!response.ok) throw new Error(response.error);
+      console.info("[local-gemma/background] selected runtime ready", response);
+    } finally {
+      offscreenActivity.end();
+    }
+  })();
+  localModelPrewarmPromise = task.finally(() => {
+    localModelPrewarmPromise = undefined;
+  });
+  return localModelPrewarmPromise;
+}
+
 async function runJobsWake(
   jobIds?: string[],
   options?: { resumeWaiting?: boolean },
@@ -510,7 +570,7 @@ export default defineBackground({
    */
   const pendingResearchResumes = new Map<string, string>();
 
-  const runResearch = async (
+  const runResearchUnclassified = async (
     runId: string,
     sessionId: string,
     turnId: string,
@@ -538,30 +598,107 @@ export default defineBackground({
         "The active Atlassian tab no longer matches the research site."
       );
     }
-    const apiKey = normalizeAnthropicApiKey(
-      await readBrowserApiKeyV1(chromeBrowserCredentialStorageV1()),
-    );
+    const storedSettings = await chrome.storage.local.get(APP_SETTINGS_STORAGE_KEY);
+    const modelSelection = normalizeSettings(
+      storedSettings[APP_SETTINGS_STORAGE_KEY],
+    ).modelSelection;
+    const modelRunBinding = await resolveBrowserChatModelRunBindingV1({
+      selection: modelSelection,
+      mode,
+      readAnthropicApiKey: () =>
+        readBrowserApiKeyV1(chromeBrowserCredentialStorageV1()),
+      readLocalActivation: async () => {
+        const storedActivation = await chrome.storage.local.get(
+          LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1,
+        );
+        return storedActivation[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1];
+      },
+    });
+    let effectiveHostIdentity = hostIdentity;
+    if (mode === "chat") {
+      const storedPrincipal = await chrome.storage.local.get(CHAT_HOST_PRINCIPAL_KEY);
+      const userId = storedPrincipal[CHAT_HOST_PRINCIPAL_KEY];
+      if (!hostIdentity || typeof userId !== "string" ||
+          !CHAT_HOST_PRINCIPAL_PATTERN.test(userId) || hostIdentity.userId !== userId) {
+        throw new ResearchContractError(
+          "access-denied",
+          "The browser Chat principal does not own this model run.",
+        );
+      }
+      effectiveHostIdentity = {
+        userId,
+        providerCacheIdentity: browserChatProviderCacheIdentityV1(modelSelection, userId),
+      };
+    }
     if (activeResearchRuns.has(runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
+    }
+    if (mode === "chat" && effectiveHostIdentity) {
+      if ([...activeResearchRuns.values()].some((active) =>
+        active.mode === "chat" && active.sessionId === sessionId
+      )) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "This retained Chat conversation is already active.",
+        );
+      }
+      const store = await IndexedDbResearchSessionStoreV1.open();
+      try {
+        if (await store.read(sessionId)) {
+          const workspace = await store.workspace(sessionId);
+          const serialized = await workspace.readFile(CHAT_SESSION_PATH_V1);
+          if (serialized !== undefined) {
+            const retained = parseChatSessionV1(JSON.parse(serialized));
+            assertChatSessionBindingV1({
+              session: retained,
+              conversationId: sessionId,
+              identity: effectiveHostIdentity,
+              tenantOrigin: request.scope.siteOrigin,
+            });
+            const recovered = recoverUnownedRunningChatTurnV1({
+              session: retained,
+              at: new Date().toISOString(),
+            });
+            if (recovered !== retained) {
+              await workspace.writeFile(CHAT_SESSION_PATH_V1, JSON.stringify(recovered));
+            }
+          }
+        }
+      } finally {
+        store.close();
+      }
     }
     activeResearchRuns.set(runId, { sessionId, mode });
     offscreenActivity.begin();
     try {
-      await ensureOffscreen();
-      const response = (await chrome.runtime.sendMessage({
-        kind: "offscreen:research-run",
-        runId,
-        sessionId,
-        turnId,
-        apiKey,
-        mode,
-        request,
-        policy,
-        ...(hostIdentity ? { hostIdentity } : {}),
-        ...(qualityPolicy ? { qualityPolicy } : {}),
-        ...(resumeAnswer ? { resumeAnswer } : {}),
-        ...(resumeCheckpoint ? { resumeCheckpoint } : {}),
-      })) as OffscreenResponse | undefined;
+      await ensureCompatibleOffscreen();
+      let response: OffscreenResponse | undefined;
+      try {
+        response = (await chrome.runtime.sendMessage({
+          kind: "offscreen:research-run",
+          runId,
+          sessionId,
+          turnId,
+          apiKey: modelRunBinding.apiKey,
+          modelProvider: modelRunBinding.modelProvider,
+          mode,
+          request,
+          policy,
+          ...(effectiveHostIdentity ? { hostIdentity: effectiveHostIdentity } : {}),
+          ...(qualityPolicy ? { qualityPolicy } : {}),
+          ...(resumeAnswer ? { resumeAnswer } : {}),
+          ...(resumeCheckpoint ? { resumeCheckpoint } : {}),
+        })) as OffscreenResponse | undefined;
+      } catch (error) {
+        const { classifyLocalGemmaHostErrorV1 } = await import(
+          "../utils/local-model/error.js"
+        );
+        const classified = classifyLocalGemmaHostErrorV1(
+          error,
+          modelRunBinding.modelProvider === "local-gemma",
+        );
+        throw new ResearchContractError(classified.code, classified.message);
+      }
       if (
         !response ||
         response.kind !== "offscreen:research-run-result" ||
@@ -582,6 +719,19 @@ export default defineBackground({
     } finally {
       offscreenActivity.end();
       activeResearchRuns.delete(runId);
+    }
+  };
+
+  const runResearch = async (...args: Parameters<typeof runResearchUnclassified>) => {
+    const storedSettings = await chrome.storage.local.get(APP_SETTINGS_STORAGE_KEY);
+    const localGemma = normalizeSettings(
+      storedSettings[APP_SETTINGS_STORAGE_KEY],
+    ).modelSelection.providerId === "local-gemma";
+    try {
+      return await runResearchUnclassified(...args);
+    } catch (error) {
+      const classified = classifyLocalGemmaHostErrorV1(error, localGemma);
+      throw new ResearchContractError(classified.code, classified.message);
     }
   };
 
@@ -1757,10 +1907,17 @@ export default defineBackground({
       );
     }
     const stored = await chrome.storage.local.get([
-      ACTIVE_CHAT_CONVERSATION_KEY,
+      APP_SETTINGS_STORAGE_KEY,
       CHAT_HOST_PRINCIPAL_KEY,
     ]);
-    const conversationId = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+    const modelSelection = normalizeSettings(
+      stored[APP_SETTINGS_STORAGE_KEY],
+    ).modelSelection;
+    const activeConversationKey = browserChatActiveConversationStorageKeyV1(
+      modelSelection,
+    );
+    const storedConversation = await chrome.storage.local.get(activeConversationKey);
+    const conversationId = storedConversation[activeConversationKey];
     const userId = stored[CHAT_HOST_PRINCIPAL_KEY];
     if (typeof conversationId !== "string" ||
         !CHAT_CONVERSATION_ID_PATTERN.test(conversationId) ||
@@ -1794,7 +1951,10 @@ export default defineBackground({
         conversationId,
         binding: {
           userId,
-          providerCacheIdentity: `anthropic:${userId}`,
+          providerCacheIdentity: browserChatProviderCacheIdentityV1(
+            modelSelection,
+            userId,
+          ),
           threadId: conversationId,
           tenantOrigin,
         },
@@ -2076,6 +2236,26 @@ export default defineBackground({
     }
     return handled;
   });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" ||
+        (!changes[APP_SETTINGS_STORAGE_KEY] &&
+          !changes[LOCAL_MODEL_ACTIVATION_STORAGE_KEY_V1])) return;
+    void prewarmSelectedLocalModelV1().catch((error) =>
+      console.warn("[local-gemma/background] selected runtime prewarm failed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  });
+
+  // A retained local selection should be ready before the first Chat request
+  // after browser or extension startup. Validation remains background-owned;
+  // Anthropic and incomplete local installations return before offscreen work.
+  void prewarmSelectedLocalModelV1().catch((error) =>
+    console.warn("[local-gemma/background] startup prewarm skipped", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  );
 
   // Tab switch: resolve the newly-active tab's URL, then observe it.
   chrome.tabs.onActivated.addListener((activeInfo) => {

@@ -26,6 +26,7 @@ import type { PdfExportReport } from "@atlcli/pdf/browser";
 import { ExportApp } from "../components/app/ExportApp.js";
 import type { LoadedPage } from "../utils/read-path.js";
 import { memorySettingsStore } from "../utils/ports/settings.js";
+import { ANTHROPIC_BROWSER_MODEL_SELECTION_V1 } from "../utils/local-model/selection.js";
 import type {
   AppPorts,
   DocxExportPort,
@@ -396,6 +397,7 @@ function makePorts(
       locale: null,
       lastWorkspace: "publishing",
       hideRovoEntrypoints: false,
+      modelSelection: ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
     }),
     ...overrides,
   };
@@ -606,6 +608,7 @@ describe("the shell renders from the registry", () => {
       locale: null,
       lastWorkspace: "publishing",
       hideRovoEntrypoints: false,
+      modelSelection: ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
     });
     await render(
       <ExportApp
@@ -628,6 +631,7 @@ describe("the shell renders from the registry", () => {
       locale: null,
       lastWorkspace: "ai",
       hideRovoEntrypoints: false,
+      modelSelection: ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
     });
     await render(
       <ExportApp
@@ -828,6 +832,7 @@ describe("i18n reaches the rendered app", () => {
       locale: "de",
       lastWorkspace: null,
       hideRovoEntrypoints: false,
+      modelSelection: ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
     });
   });
 
@@ -857,6 +862,7 @@ describe("i18n reaches the rendered app", () => {
       locale: null,
       lastWorkspace: null,
       hideRovoEntrypoints: true,
+      modelSelection: ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
     });
   });
 
@@ -876,6 +882,7 @@ describe("i18n reaches the rendered app", () => {
         locale: null,
         lastWorkspace: null,
         hideRovoEntrypoints: false,
+        modelSelection: ANTHROPIC_BROWSER_MODEL_SELECTION_V1,
       }),
       save: async () => {
         throw new Error("storage unavailable");

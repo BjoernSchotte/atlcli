@@ -49,6 +49,8 @@ import type {
 } from "../utils/research/contracts.js";
 import type { ScreenProps } from "../utils/screens/registry.js";
 import type { AppPorts } from "../utils/ports/index.js";
+import { DEFAULT_SETTINGS, memorySettingsStore } from "../utils/ports/settings.js";
+import { LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1 } from "../utils/local-model/selection.js";
 import { createReactHarness } from "./react-harness.js";
 
 const dom = createReactHarness();
@@ -77,6 +79,34 @@ it("keeps the visible streamed answer until a replacement generation starts", ()
     status: "delta",
     delta: "Validated replacement answer.",
   }])).toBe("Validated replacement answer.");
+});
+
+it("shows each repeatable semantic phase once while retaining its latest position", () => {
+  const events = [
+    { kind: "phase", seq: 1, at: "2026-08-03T12:00:00.000Z", phase: "analyzing" },
+    {
+      kind: "capability",
+      seq: 2,
+      at: "2026-08-03T12:00:01.000Z",
+      toolId: "atlassian.bound.read",
+      status: "completed",
+    },
+    { kind: "phase", seq: 3, at: "2026-08-03T12:00:02.000Z", phase: "analyzing" },
+    { kind: "phase", seq: 4, at: "2026-08-03T12:00:03.000Z", phase: "rendering" },
+    { kind: "phase", seq: 5, at: "2026-08-03T12:00:04.000Z", phase: "checking" },
+    { kind: "phase", seq: 6, at: "2026-08-03T12:00:05.000Z", phase: "rendering" },
+  ] as Parameters<typeof researchTimelineSteps>[0];
+
+  const steps = researchTimelineSteps(events, true);
+  expect(steps.map((step) => step.kind)).toEqual([
+    "bound-read",
+    "analyzing",
+    "checking",
+    "synthesizing",
+  ]);
+  expect(steps.filter((step) => step.kind === "analyzing")).toHaveLength(1);
+  expect(steps.filter((step) => step.kind === "synthesizing")).toHaveLength(1);
+  expect(steps.find((step) => step.kind === "analyzing")?.events).toHaveLength(2);
 });
 
 async function pressComposerKey(
@@ -380,6 +410,7 @@ function screenProps(
   port: ResearchPort,
   spaceKey = "KB",
   chat?: ChatAgentPortV1,
+  overrides: Partial<AppPorts> = {},
 ): ScreenProps {
   return {
     ports: {
@@ -389,8 +420,10 @@ function screenProps(
         version: "1",
         capabilities: ["research"],
       },
+      settings: memorySettingsStore(),
       research: port,
       ...(chat ? { chat } : {}),
+      ...overrides,
     } as unknown as AppPorts,
     page: {
       status: "loaded",
@@ -754,6 +787,170 @@ describe("portable Research screen", () => {
     expect(dom.find("research-chat-feedback-helpful").getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("runs installed local Gemma through the existing Chat surface without an API key", async () => {
+    const starts: string[] = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => report,
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    const chat = fakeChatPort({
+      async startTurn(input, stream) {
+        starts.push(input.qualityPolicy.mode);
+        stream?.onSessionStart?.({
+          conversationId: "chat-conversation:local-progress",
+          turnId: "chat-turn:local-progress",
+        });
+        stream?.onEvent?.({
+          kind: "activity",
+          seq: 1,
+          at: "2026-08-11T12:00:00.000Z",
+          code: "strategy",
+          status: "completed",
+        });
+        stream?.onEvent?.({
+          kind: "capability",
+          seq: 2,
+          at: "2026-08-11T12:00:00.001Z",
+          callId: "atlassian.bound.read:1",
+          toolId: "atlassian.bound.read",
+          inputKind: "detail",
+          status: "completed",
+          itemCount: 1,
+          itemLabels: ["Design"],
+          truncated: false,
+          durationMs: 42,
+        });
+        stream?.onEvent?.({
+          kind: "activity",
+          seq: 3,
+          at: "2026-08-11T12:00:00.043Z",
+          code: "synthesis",
+          status: "started",
+        });
+        return chatAnswer;
+      },
+    });
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port, "KB", chat, {
+          settings: memorySettingsStore({
+            ...DEFAULT_SETTINGS,
+            modelSelection: LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+          }),
+          localModel: {
+            status: async () => ({
+              status: "ready",
+              aggregateByteLength: 4_924_946_442,
+            }),
+            install: async () => ({
+              status: "ready",
+              aggregateByteLength: 4_924_946_442,
+            }),
+            subscribe: () => () => undefined,
+          },
+        })} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+    expect(dom.find("research-mode-deep").hasAttribute("disabled")).toBe(true);
+    expect(dom.container().textContent).toContain("Gemma runs Chat locally");
+    expect(dom.maybeFind("research-disclosure")).toBeNull();
+    await dom.setValue("research-chat-thinking", "quick");
+    await dom.setValue("copilot-chat-textarea", "Summarize the attached page locally.");
+    await dom.click("research-run");
+    await dom.flush();
+    expect(starts).toEqual(["quick"]);
+    expect(dom.find("research-chat-answer").textContent)
+      .toContain("The shared Chat port answered");
+    expect(dom.find("research-activity").textContent).toContain(
+      "The content and structure of “Design” are available for the answer.",
+    );
+    expect(dom.find("research-activity").textContent).toContain(
+      "The source was read completely.",
+    );
+    expect(dom.find("research-activity").textContent).toContain(
+      "Read completed in 42 ms.",
+    );
+    expect(dom.find("research-activity").textContent).not.toContain(
+      "The available evidence is being matched to the question.",
+    );
+  });
+
+  it("rechecks a completed local Gemma installation when Chat submits", async () => {
+    const starts: string[] = [];
+    let localReady = false;
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => report,
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    const chat = fakeChatPort({
+      async startTurn(input) {
+        starts.push(input.qualityPolicy.mode);
+        return chatAnswer;
+      },
+    });
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port, "KB", chat, {
+          settings: memorySettingsStore({
+            ...DEFAULT_SETTINGS,
+            modelSelection: LOCAL_GEMMA_BROWSER_MODEL_SELECTION_V1,
+          }),
+          localModel: {
+            status: async () => localReady
+              ? {
+                  status: "ready",
+                  aggregateByteLength: 4_924_946_442,
+                }
+              : { status: "not-installed" },
+            install: async () => ({
+              status: "ready",
+              aggregateByteLength: 4_924_946_442,
+            }),
+            subscribe: (listener) => {
+              listener({ status: "not-installed" });
+              return () => undefined;
+            },
+          },
+        })} />
+      </I18nProvider>,
+    );
+    await dom.flush();
+
+    localReady = true;
+    await dom.setValue("research-chat-thinking", "quick");
+    expect(dom.maybeFind("research-disclosure")).toBeNull();
+    await dom.setValue("copilot-chat-textarea", "Answer after local installation.");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect(starts).toEqual(["quick"]);
+    expect(dom.find("research-chat-answer").textContent)
+      .toContain("The shared Chat port answered");
+  });
+
   it("renders the compact chat surface and opens an intentionally empty add menu", async () => {
     const port: ResearchPort = {
       hasApiKey: async () => true,
@@ -1049,17 +1246,25 @@ describe("portable Research screen", () => {
 
   it("clears the durable direct-chat pointer when a new conversation starts", async () => {
     let resetCalls = 0;
+    let releaseReset: (() => void) | undefined;
     const port: ResearchPort = {
       hasApiKey: async () => true,
       setApiKey: async () => undefined,
       clearApiKey: async () => undefined,
       resetChatConversation: async () => {
-        resetCalls += 1;
+        throw new Error("The shared Chat port must own conversation reset.");
       },
-      resolveScope: async (request) => ({
+      resolveScope: async () => ({
         schema: "atlcli.research-scope-preflight-outcome/v1",
-        kind: "ready",
-        request,
+        kind: "clarification_required",
+        clarification: {
+          schema: "atlcli.research-clarification-required/v1",
+          reason: "incomplete",
+          mentionId: "mention:stale-scope",
+          candidateIds: [],
+          rerunGuidance: ["Pass an exact Confluence space key."],
+        },
+        candidateChoices: [],
         mentions: [],
         resolutions: [],
       }),
@@ -1072,7 +1277,14 @@ describe("portable Research screen", () => {
     };
     await dom.render(
       <I18nProvider locale="en">
-        <ResearchScreen {...screenProps(port)} />
+        <ResearchScreen {...screenProps(port, "KB", fakeChatPort({
+          async resetConversation() {
+            resetCalls += 1;
+            await new Promise<void>((resolve) => {
+              releaseReset = resolve;
+            });
+          },
+        }))} />
       </I18nProvider>,
     );
 
@@ -1080,11 +1292,16 @@ describe("portable Research screen", () => {
     await dom.toggle("research-disclosure");
     await dom.setValue("copilot-chat-textarea", "Remember this first turn.");
     await dom.click("research-run");
+    await dom.flush();
+    expect(dom.find("research-scope-clarification-required")).toBeTruthy();
     await openConversationMenu();
     await dom.click("research-new-conversation");
     await dom.flush();
 
     expect(resetCalls).toBe(1);
+    expect(dom.maybeFind("research-scope-clarification-required")).toBeNull();
+    releaseReset?.();
+    await dom.flush();
   });
 
   it("drains an ordinary queued chat message through the durable chat thread", async () => {

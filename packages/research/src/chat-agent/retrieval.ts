@@ -21,6 +21,12 @@ interface ChatPtcToolOptionsV1 extends Omit<
   ResearchPtcToolOptions,
   "onResult" | "beforeInvoke"
 > {
+  /**
+   * Host-owned exact reads completed before the model-facing tools were used.
+   * The map may be populated after tool construction by the workflow fast path;
+   * section authorization therefore refreshes from it on every invocation.
+   */
+  preReadDetails?: ReadonlyMap<string, BoundEntityReadOutputV1>;
   exactContextProducts?: readonly ResearchProduct[];
   searchProducts?: readonly ResearchProduct[];
   onResult?: (
@@ -52,12 +58,24 @@ const boundSectionReadInputSchema = z.object({
 export const CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1 =
   "atlcli.chat-ptc-reference-rejection/v1" as const;
 
-export interface ChatPtcReferenceRejectionV1 {
+export interface ChatPtcAnchorReferenceRejectionV1 {
   schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
   status: "rejected";
   code: "unknown-anchor-ref";
   currentAnchorRefs: string[];
 }
+
+export interface ChatPtcSectionReferenceRejectionV1 {
+  schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+  status: "rejected";
+  code: "unknown-section-ref";
+  currentSectionRefs: string[];
+  action: "retry-with-current-section-ref" | "read-bound-entity-first";
+}
+
+export type ChatPtcReferenceRejectionV1 =
+  | ChatPtcAnchorReferenceRejectionV1
+  | ChatPtcSectionReferenceRejectionV1;
 
 /**
  * Model-generated QuickJS must copy opaque references into PTC calls. Keep
@@ -98,12 +116,20 @@ export function createChatPtcToolsV1(
 ): DynamicStructuredTool[] {
   let sequence = 0;
   const directReadCache = new Map<string, Promise<BoundEntityReadOutputV1>>();
+  const currentSectionRefs = new Set<string>();
   const now = options.now ?? Date.now;
+  const registerPreReadSectionRefs = (): void => {
+    for (const detail of options.preReadDetails?.values() ?? []) {
+      for (const section of detail.document?.sections ?? []) {
+        currentSectionRefs.add(section.sectionRef);
+      }
+    }
+  };
   const direct = tool(async (input) => {
     const callId = `${BOUND_ENTITY_READ_CAPABILITY_ID_V1}:${++sequence}`;
     const currentAnchorRefs = broker.exactAnchors().map((anchor) => anchor.anchorRef);
     if (!currentAnchorRefs.includes(input.anchorRef)) {
-      const rejection: ChatPtcReferenceRejectionV1 = {
+      const rejection: ChatPtcAnchorReferenceRejectionV1 = {
         schema: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1,
         status: "rejected",
         code: "unknown-anchor-ref",
@@ -134,6 +160,9 @@ export function createChatPtcToolsV1(
       });
       directReadCache.set(input.anchorRef, read);
       const result = await read;
+      for (const section of result.document?.sections ?? []) {
+        currentSectionRefs.add(section.sectionRef);
+      }
       const serialized = JSON.stringify(result);
       await options.onResult?.(BOUND_ENTITY_READ_CAPABILITY_ID_V1, result, callId, input);
       options.onDiagnostic?.({
@@ -169,6 +198,20 @@ export function createChatPtcToolsV1(
   });
   const section = tool(async (input) => {
     const callId = `${BOUND_ENTITY_SECTION_READ_CAPABILITY_ID_V1}:${++sequence}`;
+    registerPreReadSectionRefs();
+    if (!currentSectionRefs.has(input.sectionRef)) {
+      const available = [...currentSectionRefs];
+      const rejection: ChatPtcSectionReferenceRejectionV1 = {
+        schema: CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1,
+        status: "rejected",
+        code: "unknown-section-ref",
+        currentSectionRefs: available,
+        action: available.length > 0
+          ? "retry-with-current-section-ref"
+          : "read-bound-entity-first",
+      };
+      return JSON.stringify(rejection);
+    }
     const startedAt = now();
     options.onDiagnostic?.({
       callId,

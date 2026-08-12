@@ -86,11 +86,39 @@ export type ResearchDispatchStatusV1 =
 
 export interface ResearchDispatchDiagnosticV1 {
   taskId?: string;
+  /** Body-free admitted specialist identity for host diagnostics. */
+  subagentType?: string;
   status: ResearchDispatchStatusV1;
   code?: ResearchDispatchErrorCodeV1;
+  /** Boundary at which a failed invocation stopped. */
+  failureStage?: "upstream" | "result-commit";
+  /** Language-independent host classification; never includes result content. */
+  failureClass?: "structured-output" | "provider" | "unknown";
   /** A body-free provider status, when an upstream invocation exposed one. */
   providerStatus?: number;
   resultBytes?: number;
+}
+
+function dispatchFailureClassV1(
+  error: unknown,
+): NonNullable<ResearchDispatchDiagnosticV1["failureClass"]> {
+  const visited = new Set<unknown>();
+  let current = error;
+  for (let depth = 0; depth < 8 && current && typeof current === "object"; depth += 1) {
+    if (visited.has(current)) break;
+    visited.add(current);
+    const candidate = current as { message?: unknown; cause?: unknown };
+    const message = typeof candidate.message === "string" ? candidate.message : "";
+    if (
+      /structured|schema|failed to parse|tool input|invalid (?:typed )?(?:packet|report)|required propert/iu
+        .test(message)
+    ) return "structured-output";
+    if (/provider|rate.?limit|overload|network|fetch|webgpu|wasm|ort(?:run)?/iu.test(message)) {
+      return "provider";
+    }
+    current = candidate.cause;
+  }
+  return "unknown";
 }
 
 export interface ResearchDispatchSnapshotV1 {
@@ -792,8 +820,11 @@ export function createAgenticDispatchInterceptionAdapter(
         : undefined;
       emit({
         taskId,
+        subagentType: admission.subagentType,
         status: "failed",
         code,
+        failureStage: "upstream",
+        failureClass: dispatchFailureClassV1(first.error),
         ...(providerStatus === undefined
           ? {}
           : { providerStatus }),
@@ -834,7 +865,20 @@ export function createAgenticDispatchInterceptionAdapter(
         throw error;
       }
       await observeUncommitted("result-commit-failed", { error });
-      emit({ taskId, status: "failed" });
+      const message = error instanceof Error ? error.message : String(error ?? "");
+      const code: ResearchDispatchErrorCodeV1 =
+        /structured|schema|invalid (?:typed )?(?:packet|report)|evidence reference|source reference/iu
+          .test(message)
+          ? "structured-output-invalid"
+          : "subagent-provider-error";
+      emit({
+        taskId,
+        subagentType: admission.subagentType,
+        status: "failed",
+        code,
+        failureStage: "result-commit",
+        failureClass: dispatchFailureClassV1(error),
+      });
       throw error;
     }
   };

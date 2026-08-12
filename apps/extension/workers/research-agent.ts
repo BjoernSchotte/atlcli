@@ -5,6 +5,7 @@ import {
   ResearchScopeCatalogBroker,
   ResearchContractError,
   classifyResearchError,
+  redactResearchSecrets,
   createRestResearchProviders,
   createRestScopeCatalogProviders,
   normalizeResearchOneShotPolicyV1,
@@ -45,6 +46,12 @@ import type {
   ResearchWorkerResponseV1,
 } from "../utils/research/worker-protocol.js";
 import { openDurableChatConversationWorkspaceV1 } from "../utils/research/chat-conversation.js";
+import { createLocalGemmaChatModelBindingV1 } from "../utils/local-model/langchain-proxy.js";
+import { classifyLocalGemmaHostErrorV1 } from "../utils/local-model/error.js";
+import {
+  appendLocalGemmaPerformanceSamplesV1,
+  type LocalGemmaPerformanceSampleV1,
+} from "../utils/local-model/performance.js";
 
 function post(message: ResearchWorkerResponseV1): void {
   globalThis.postMessage(message);
@@ -219,8 +226,28 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
               ? { exactContextProducts: request.exactContextProducts }
               : {}),
           };
+          const localPerformanceSamples: LocalGemmaPerformanceSampleV1[] = [];
           const answer = await runChatAgent({
             apiKey,
+            ...(message.modelBinding?.kind === "local-gemma"
+              ? {
+                  modelUsageBudget: "local-unmetered" as const,
+                  modelProviderFailureMode: "surface-terminal" as const,
+                }
+              : {}),
+            ...(message.modelBinding?.kind === "local-gemma"
+              ? {
+                  modelBinding: createLocalGemmaChatModelBindingV1({
+                    port: message.modelBinding.port,
+                    modelId: message.modelBinding.modelId,
+                    maxOutputTokens: request.limits.maxModelOutputTokens,
+                    onPerformanceSample: (sample) => {
+                      localPerformanceSamples.push(sample);
+                      console.info("[local-gemma/performance] inference sample", sample);
+                    },
+                  }),
+                }
+              : {}),
             turn,
             brokerRequest: request,
             providers,
@@ -246,7 +273,54 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
             onProgress,
             onEvent,
             onChatPresentation,
+            ...(message.modelBinding?.kind === "local-gemma"
+              ? {
+                  onDispatchDiagnostic: (diagnostic) => {
+                    if (diagnostic.status !== "failed" && diagnostic.status !== "cancelled") {
+                      return;
+                    }
+                    console.warn(
+                      `[local-gemma/chat] specialist dispatch ${JSON.stringify({
+                        taskId: diagnostic.taskId,
+                        subagentType: diagnostic.subagentType,
+                        status: diagnostic.status,
+                        code: diagnostic.code,
+                        failureStage: diagnostic.failureStage,
+                        failureClass: diagnostic.failureClass,
+                        providerStatus: diagnostic.providerStatus,
+                        resultBytes: diagnostic.resultBytes,
+                      })}`,
+                    );
+                  },
+                  onSubagentResultDiagnostic: (diagnostic) => {
+                    if (diagnostic.status !== "error") return;
+                    console.warn(
+                      `[local-gemma/chat] specialist result ${JSON.stringify({
+                        profileId: diagnostic.profileId,
+                        status: diagnostic.status,
+                        phase: diagnostic.phase,
+                        valueKind: diagnostic.valueKind,
+                        objectKeys: diagnostic.objectKeys,
+                        referenceKinds: diagnostic.referenceKinds,
+                        unknownReferenceKinds: diagnostic.unknownReferenceKinds,
+                      })}`,
+                    );
+                  },
+                }
+              : {}),
           });
+          if (localPerformanceSamples.length > 0) {
+            try {
+              await appendLocalGemmaPerformanceSamplesV1({
+                workspace,
+                samples: localPerformanceSamples,
+              });
+            } catch (error) {
+              console.warn("[local-gemma/performance] receipt persistence failed", {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
           post({ kind: "research-worker:complete", runId, answer });
         } finally {
           store.close();
@@ -374,12 +448,18 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         });
         return;
       }
-      const classified = classifyResearchError(error);
+      const classified = classifyLocalGemmaHostErrorV1(
+        error,
+        message.modelBinding?.kind === "local-gemma",
+      );
       post({
         kind: "research-worker:error",
         runId,
         code: classified.code,
         error: classified.message,
+        ...(message.modelBinding?.kind === "local-gemma"
+          ? { localDetail: redactResearchSecrets(error) }
+          : {}),
       });
     } finally {
       if (activeRun?.runId === runId) activeRun = undefined;

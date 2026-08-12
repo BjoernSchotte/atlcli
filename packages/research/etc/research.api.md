@@ -873,8 +873,6 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "missing-request-facet",
-    "repeated-request-facet",
     "repeated-prose",
     "incomplete-prose",
     "observation-classification-conflict"
@@ -1472,22 +1470,14 @@ export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): ChatAgentDraftV2 | undefined;
-
-// export: chatDraftMissingRequestFacetsV1
-export declare function chatDraftMissingRequestFacetsV1(input: {
-    draft: unknown;
-    requestFacets: readonly string[];
-}): string[];
 
 // export: chatDraftNeedsHostRepairV1
 export declare function chatDraftNeedsHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): boolean;
 
@@ -1633,8 +1623,17 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    subscribeStructuredAnswerPreview?: (listener: (preview: ChatStructuredAnswerPreviewV1) => void) => () => void;
     promptCache?: {
         ttl: "5m" | "1h";
+    };
+    harnessProfile?: {
+        key: string;
+        profile: Parameters<typeof import("deepagents/browser").registerHarnessProfile>[1];
+    };
+    runtimeLimits?: {
+        maxInputTokens?: number;
+        interpreterResultChars?: number;
     };
     modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
@@ -2202,6 +2201,13 @@ export interface ChatStreamInterruptionV1 {
     interruptedAt: string;
     resumeAttempts: number;
     resume: ChatResumeEnvelopeV1;
+}
+
+// export: ChatStructuredAnswerPreviewV1
+export interface ChatStructuredAnswerPreviewV1 {
+    generationId: string;
+    status: "snapshot" | "completed";
+    markdown: string;
 }
 
 // export: ChatSubagentCapabilityIdV1
@@ -2917,9 +2923,6 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
-// export: deriveChatRequestChecklistV1
-export declare function deriveChatRequestChecklistV1(question: string): string[];
-
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -3222,7 +3225,6 @@ export declare function inspectChatDraftAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): {
     draft?: ChatAgentDraftV2;
@@ -9262,8 +9264,6 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "missing-request-facet",
-    "repeated-request-facet",
     "repeated-prose",
     "incomplete-prose",
     "observation-classification-conflict"
@@ -9861,22 +9861,14 @@ export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): ChatAgentDraftV2 | undefined;
-
-// export: chatDraftMissingRequestFacetsV1
-export declare function chatDraftMissingRequestFacetsV1(input: {
-    draft: unknown;
-    requestFacets: readonly string[];
-}): string[];
 
 // export: chatDraftNeedsHostRepairV1
 export declare function chatDraftNeedsHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): boolean;
 
@@ -10022,8 +10014,17 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    subscribeStructuredAnswerPreview?: (listener: (preview: ChatStructuredAnswerPreviewV1) => void) => () => void;
     promptCache?: {
         ttl: "5m" | "1h";
+    };
+    harnessProfile?: {
+        key: string;
+        profile: Parameters<typeof import("deepagents/browser").registerHarnessProfile>[1];
+    };
+    runtimeLimits?: {
+        maxInputTokens?: number;
+        interpreterResultChars?: number;
     };
     modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
@@ -10591,6 +10592,13 @@ export interface ChatStreamInterruptionV1 {
     interruptedAt: string;
     resumeAttempts: number;
     resume: ChatResumeEnvelopeV1;
+}
+
+// export: ChatStructuredAnswerPreviewV1
+export interface ChatStructuredAnswerPreviewV1 {
+    generationId: string;
+    status: "snapshot" | "completed";
+    markdown: string;
 }
 
 // export: ChatSubagentCapabilityIdV1
@@ -11297,9 +11305,6 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
-// export: deriveChatRequestChecklistV1
-export declare function deriveChatRequestChecklistV1(question: string): string[];
-
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -11602,7 +11607,6 @@ export declare function inspectChatDraftAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): {
     draft?: ChatAgentDraftV2;
@@ -17631,8 +17635,6 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "missing-request-facet",
-    "repeated-request-facet",
     "repeated-prose",
     "incomplete-prose",
     "observation-classification-conflict"
@@ -18230,22 +18232,14 @@ export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): ChatAgentDraftV2 | undefined;
-
-// export: chatDraftMissingRequestFacetsV1
-export declare function chatDraftMissingRequestFacetsV1(input: {
-    draft: unknown;
-    requestFacets: readonly string[];
-}): string[];
 
 // export: chatDraftNeedsHostRepairV1
 export declare function chatDraftNeedsHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): boolean;
 
@@ -18391,8 +18385,17 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    subscribeStructuredAnswerPreview?: (listener: (preview: ChatStructuredAnswerPreviewV1) => void) => () => void;
     promptCache?: {
         ttl: "5m" | "1h";
+    };
+    harnessProfile?: {
+        key: string;
+        profile: Parameters<typeof import("deepagents/browser").registerHarnessProfile>[1];
+    };
+    runtimeLimits?: {
+        maxInputTokens?: number;
+        interpreterResultChars?: number;
     };
     modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
@@ -18960,6 +18963,13 @@ export interface ChatStreamInterruptionV1 {
     interruptedAt: string;
     resumeAttempts: number;
     resume: ChatResumeEnvelopeV1;
+}
+
+// export: ChatStructuredAnswerPreviewV1
+export interface ChatStructuredAnswerPreviewV1 {
+    generationId: string;
+    status: "snapshot" | "completed";
+    markdown: string;
 }
 
 // export: ChatSubagentCapabilityIdV1
@@ -19675,9 +19685,6 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
-// export: deriveChatRequestChecklistV1
-export declare function deriveChatRequestChecklistV1(question: string): string[];
-
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -19980,7 +19987,6 @@ export declare function inspectChatDraftAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): {
     draft?: ChatAgentDraftV2;
@@ -26032,8 +26038,6 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "missing-request-facet",
-    "repeated-request-facet",
     "repeated-prose",
     "incomplete-prose",
     "observation-classification-conflict"
@@ -26640,22 +26644,14 @@ export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): ChatAgentDraftV2 | undefined;
-
-// export: chatDraftMissingRequestFacetsV1
-export declare function chatDraftMissingRequestFacetsV1(input: {
-    draft: unknown;
-    requestFacets: readonly string[];
-}): string[];
 
 // export: chatDraftNeedsHostRepairV1
 export declare function chatDraftNeedsHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): boolean;
 
@@ -26801,8 +26797,17 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    subscribeStructuredAnswerPreview?: (listener: (preview: ChatStructuredAnswerPreviewV1) => void) => () => void;
     promptCache?: {
         ttl: "5m" | "1h";
+    };
+    harnessProfile?: {
+        key: string;
+        profile: Parameters<typeof import("deepagents/browser").registerHarnessProfile>[1];
+    };
+    runtimeLimits?: {
+        maxInputTokens?: number;
+        interpreterResultChars?: number;
     };
     modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
@@ -27370,6 +27375,13 @@ export interface ChatStreamInterruptionV1 {
     interruptedAt: string;
     resumeAttempts: number;
     resume: ChatResumeEnvelopeV1;
+}
+
+// export: ChatStructuredAnswerPreviewV1
+export interface ChatStructuredAnswerPreviewV1 {
+    generationId: string;
+    status: "snapshot" | "completed";
+    markdown: string;
 }
 
 // export: ChatSubagentCapabilityIdV1
@@ -28236,9 +28248,6 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
-// export: deriveChatRequestChecklistV1
-export declare function deriveChatRequestChecklistV1(question: string): string[];
-
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -28588,7 +28597,6 @@ export declare function inspectChatDraftAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): {
     draft?: ChatAgentDraftV2;
@@ -33728,6 +33736,8 @@ export interface RunChatAgentInput {
     workspace: ResearchWorkspace;
     hostIdentity: ChatHostIdentityV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    modelUsageBudget?: "provider-metered" | "local-unmetered";
+    modelProviderFailureMode?: "durable-resume" | "surface-terminal";
     resumeAnswer?: ChatUserQuestionAnswerV1;
     resumeCheckpoint?: {
         kind: "stream-interruption" | "steering";
@@ -34914,8 +34924,6 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "missing-request-facet",
-    "repeated-request-facet",
     "repeated-prose",
     "incomplete-prose",
     "observation-classification-conflict"
@@ -35522,22 +35530,14 @@ export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): ChatAgentDraftV2 | undefined;
-
-// export: chatDraftMissingRequestFacetsV1
-export declare function chatDraftMissingRequestFacetsV1(input: {
-    draft: unknown;
-    requestFacets: readonly string[];
-}): string[];
 
 // export: chatDraftNeedsHostRepairV1
 export declare function chatDraftNeedsHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): boolean;
 
@@ -35683,8 +35683,17 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    subscribeStructuredAnswerPreview?: (listener: (preview: ChatStructuredAnswerPreviewV1) => void) => () => void;
     promptCache?: {
         ttl: "5m" | "1h";
+    };
+    harnessProfile?: {
+        key: string;
+        profile: Parameters<typeof import("deepagents/browser").registerHarnessProfile>[1];
+    };
+    runtimeLimits?: {
+        maxInputTokens?: number;
+        interpreterResultChars?: number;
     };
     modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
@@ -36252,6 +36261,13 @@ export interface ChatStreamInterruptionV1 {
     interruptedAt: string;
     resumeAttempts: number;
     resume: ChatResumeEnvelopeV1;
+}
+
+// export: ChatStructuredAnswerPreviewV1
+export interface ChatStructuredAnswerPreviewV1 {
+    generationId: string;
+    status: "snapshot" | "completed";
+    markdown: string;
 }
 
 // export: ChatSubagentCapabilityIdV1
@@ -37107,9 +37123,6 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
-// export: deriveChatRequestChecklistV1
-export declare function deriveChatRequestChecklistV1(question: string): string[];
-
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -37474,7 +37487,6 @@ export declare function inspectChatDraftAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): {
     draft?: ChatAgentDraftV2;
@@ -42618,6 +42630,8 @@ export interface RunChatAgentInput {
     workspace: ResearchWorkspace;
     hostIdentity: ChatHostIdentityV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    modelUsageBudget?: "provider-metered" | "local-unmetered";
+    modelProviderFailureMode?: "durable-resume" | "surface-terminal";
     resumeAnswer?: ChatUserQuestionAnswerV1;
     resumeCheckpoint?: {
         kind: "stream-interruption" | "steering";
@@ -45844,8 +45858,6 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "missing-request-facet",
-    "repeated-request-facet",
     "repeated-prose",
     "incomplete-prose",
     "observation-classification-conflict"
@@ -46452,22 +46464,14 @@ export declare function chatDraftForFinalizationAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): ChatAgentDraftV2 | undefined;
-
-// export: chatDraftMissingRequestFacetsV1
-export declare function chatDraftMissingRequestFacetsV1(input: {
-    draft: unknown;
-    requestFacets: readonly string[];
-}): string[];
 
 // export: chatDraftNeedsHostRepairV1
 export declare function chatDraftNeedsHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): boolean;
 
@@ -46613,8 +46617,17 @@ export interface ChatModelBindingV1 {
     qualityAdapter: ProviderQualityCapabilityAdapterV1;
     structuredOutput: "native" | "tool";
     reasoningPresentation?: "summary";
+    subscribeStructuredAnswerPreview?: (listener: (preview: ChatStructuredAnswerPreviewV1) => void) => () => void;
     promptCache?: {
         ttl: "5m" | "1h";
+    };
+    harnessProfile?: {
+        key: string;
+        profile: Parameters<typeof import("deepagents/browser").registerHarnessProfile>[1];
+    };
+    runtimeLimits?: {
+        maxInputTokens?: number;
+        interpreterResultChars?: number;
     };
     modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
     modelForPreference?: (preference: ProviderReasoningPreferenceV1) => BaseChatModel;
@@ -47182,6 +47195,13 @@ export interface ChatStreamInterruptionV1 {
     interruptedAt: string;
     resumeAttempts: number;
     resume: ChatResumeEnvelopeV1;
+}
+
+// export: ChatStructuredAnswerPreviewV1
+export interface ChatStructuredAnswerPreviewV1 {
+    generationId: string;
+    status: "snapshot" | "completed";
+    markdown: string;
 }
 
 // export: ChatSubagentCapabilityIdV1
@@ -48037,9 +48057,6 @@ export declare function deriveChatAcquisitionProductsV1(input: {
 // export: deriveChatAuxiliaryReadNeedsV1
 export declare function deriveChatAuxiliaryReadNeedsV1(question: string): ChatAuxiliaryReadNeedV1[];
 
-// export: deriveChatRequestChecklistV1
-export declare function deriveChatRequestChecklistV1(question: string): string[];
-
 // export: deriveChatStrategyDecisionV1
 export declare function deriveChatStrategyDecisionV1(input: {
     qualityPolicy: ChatQualityPolicyV1;
@@ -48404,7 +48421,6 @@ export declare function inspectChatDraftAfterHostRepairV1(input: {
     draft: unknown;
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     readSectionReferences?: readonly ResearchReadSectionReferenceV1[];
-    requestFacets?: readonly string[];
     question?: string;
 }): {
     draft?: ChatAgentDraftV2;
@@ -53548,6 +53564,8 @@ export interface RunChatAgentInput {
     workspace: ResearchWorkspace;
     hostIdentity: ChatHostIdentityV1;
     qualityPolicy?: ChatQualityPolicyV1;
+    modelUsageBudget?: "provider-metered" | "local-unmetered";
+    modelProviderFailureMode?: "durable-resume" | "surface-terminal";
     resumeAnswer?: ChatUserQuestionAnswerV1;
     resumeCheckpoint?: {
         kind: "stream-interruption" | "steering";

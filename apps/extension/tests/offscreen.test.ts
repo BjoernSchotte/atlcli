@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   closeOffscreen,
+  ensureCompatibleOffscreen,
   ensureOffscreen,
   __resetOffscreenState,
+  type CompatibleOffscreenChrome,
   type OffscreenChrome,
 } from "../utils/offscreen.js";
 
@@ -140,5 +142,71 @@ describe("closeOffscreen", () => {
     expect(state.createCalls).toBe(2);
     expect(state.closeCalls).toBe(1);
     expect(state.exists).toBe(true);
+  });
+});
+
+describe("ensureCompatibleOffscreen", () => {
+  it("keeps an offscreen document with the current runtime protocol", async () => {
+    const { chrome: base, state } = makeMockChrome(true);
+    const chrome: CompatibleOffscreenChrome = {
+      ...base,
+      runtime: {
+        ...base.runtime,
+        sendMessage: async () => ({
+          kind: "offscreen:runtime-protocol-result",
+          version: 1,
+        }),
+      },
+    };
+
+    await ensureCompatibleOffscreen(chrome);
+
+    expect(state.closeCalls).toBe(0);
+    expect(state.createCalls).toBe(0);
+  });
+
+  it("replaces a stale retained document without deleting durable data", async () => {
+    const { chrome: base, state } = makeMockChrome(true);
+    let handshakes = 0;
+    const chrome: CompatibleOffscreenChrome = {
+      ...base,
+      runtime: {
+        ...base.runtime,
+        sendMessage: async () => {
+          handshakes += 1;
+          return handshakes === 1
+            ? undefined
+            : { kind: "offscreen:runtime-protocol-result", version: 1 };
+        },
+      },
+    };
+
+    await ensureCompatibleOffscreen(chrome);
+
+    expect(state.closeCalls).toBe(1);
+    expect(state.createCalls).toBe(1);
+    expect(state.exists).toBe(true);
+  });
+
+  it("coalesces concurrent protocol checks", async () => {
+    const { chrome: base } = makeMockChrome(true);
+    let handshakes = 0;
+    const chrome: CompatibleOffscreenChrome = {
+      ...base,
+      runtime: {
+        ...base.runtime,
+        sendMessage: async () => {
+          handshakes += 1;
+          return { kind: "offscreen:runtime-protocol-result", version: 1 };
+        },
+      },
+    };
+
+    await Promise.all([
+      ensureCompatibleOffscreen(chrome),
+      ensureCompatibleOffscreen(chrome),
+    ]);
+
+    expect(handshakes).toBe(1);
   });
 });

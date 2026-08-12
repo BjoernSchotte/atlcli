@@ -289,6 +289,47 @@ describe("no extension source imports a package's node barrel", () => {
   });
 });
 
+describe("browser-local model runtime dependency boundary", () => {
+  const extensionManifest = JSON.parse(
+    readFileSync(join(ROOT, "package.json"), "utf8")
+  ) as { dependencies?: Record<string, string> };
+  const researchManifest = JSON.parse(
+    readFileSync(join(REPO, "packages", "research", "package.json"), "utf8")
+  ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  const researchSources = sourceFiles(join(REPO, "packages", "research", "src"));
+  const extensionSources = ["utils", "entrypoints", "components", "workers"]
+    .flatMap((dir) => sourceFiles(join(ROOT, dir)));
+
+  it("declares Transformers.js as an exact extension runtime dependency only", () => {
+    expect(extensionManifest.dependencies?.["@huggingface/transformers"]).toBe("4.1.0");
+    expect(researchManifest.dependencies?.["@huggingface/transformers"]).toBeUndefined();
+    expect(researchManifest.devDependencies?.["@huggingface/transformers"]).toBeUndefined();
+  });
+
+  it("keeps Transformers.js and ONNX Runtime out of the provider-neutral research package", () => {
+    const offenders = researchSources.filter((file) =>
+      /(?:@huggingface\/transformers|onnxruntime-(?:web|node))/.test(
+        readFileSync(file, "utf8")
+      )
+    );
+    expect(
+      offenders.map((file) => file.slice(REPO.length + 1)),
+      "Browser inference runtime imports belong to the extension host adapter"
+    ).toEqual([]);
+  });
+
+  it("rejects Node-only Transformers.js and ONNX Runtime entry points in extension source", () => {
+    const forbidden = /(?:@huggingface\/transformers\/(?:node|src\/env)|onnxruntime-node)/;
+    const offenders = extensionSources.filter((file) =>
+      forbidden.test(readFileSync(file, "utf8"))
+    );
+    expect(
+      offenders.map((file) => file.slice(ROOT.length + 1)),
+      "The MV3 bundle must use the browser-safe Transformers.js entry point"
+    ).toEqual([]);
+  });
+});
+
 /**
  * Guard-the-guard. Both detectors are string matchers; a regression in either
  * would make the suite above pass silently, which is the failure mode this
