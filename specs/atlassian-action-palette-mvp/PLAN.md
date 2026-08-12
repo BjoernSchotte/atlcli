@@ -721,10 +721,10 @@ forge lint
 
 **Blocks:** MVP release decision
 
-- [ ] Add `src/content/docs/reference/action-palette.md` using the repository documentation template: intro, prerequisites, UI-first setup, shortcut configuration, actions, examples, troubleshooting, related topics, and feedback/edit link.
-- [ ] Update extension documentation for browser shortcut remapping, permissions, privacy, quick AI, exports, and sidebar continuation.
-- [ ] Update Forge documentation for the content action, static shortcut/fallback, Confluence-only scope, and absence of Forge AI/Jira in this release.
-- [ ] Document the compile-time `ActionModuleV1` contribution seam and explicitly state that runtime plugins are unsupported.
+- [x] Add `src/content/docs/reference/action-palette.md` using the repository documentation template: intro, prerequisites, UI-first setup, shortcut configuration, actions, examples, troubleshooting, related topics, and feedback/edit link.
+- [x] Update extension documentation for browser shortcut remapping, permissions, privacy, quick AI, exports, and sidebar continuation.
+- [x] Update Forge documentation for the content action, static shortcut/fallback, Confluence-only scope, and absence of Forge AI/Jira in this release.
+- [x] Document the compile-time `ActionModuleV1` contribution seam and explicitly state that runtime plugins are unsupported.
 - [ ] Run full root test/typecheck/build/browser/output gates and capture versions plus logs in `specs/atlassian-action-palette-mvp/evidence/AP-09-quality.md`.
 - [ ] Run accessibility and performance matrices and attach machine-readable results/screenshots without tenant or document data.
 - [ ] Run VoiceOver + Chrome on macOS and NVDA + Chrome on Windows. Record expected/actual dialog label, result count, group, active option, unavailable reason, execution status, Escape hierarchy, and returned host focus in `evidence/AP-09-screenreaders.md`.

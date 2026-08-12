@@ -128,6 +128,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: 'CLI Commands', link: '/reference/cli-commands/' },
+            { label: 'Atlassian Action Palette', link: '/reference/action-palette/' },
             { label: 'Jira and Confluence Research', link: '/reference/research/' },
             { label: 'DOCX Export Engine', link: '/reference/docx-engine/' },
             { label: 'PDF Export Engine', link: '/reference/pdf-engine/' },
