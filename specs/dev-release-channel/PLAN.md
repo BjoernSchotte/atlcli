@@ -23,6 +23,9 @@ Am Ende existiert neben dem stabilen Release-Kanal ein oeffentlicher
   `workflow_dispatch` manuell;
 - jeder Lauf baut von einem explizit validierten Commit aus `main` und erzeugt
   einen unveraenderlichen GitHub-Prerelease;
+- der konkrete Source-SHA besitzt einen abgeschlossenen, erfolgreichen
+  kanonischen `CI`-Push-Run auf `main`; ein roter, abgebrochener, uebersprungener,
+  fehlender oder noch laufender Required-Status kann niemals publiziert werden;
 - der Prerelease enthaelt alle fuenf CLI-Archive, die gepackte Chrome-MV3-
   Browser-Extension, Checksummen, Build-Metadaten und Provenienz-/Security-
   Nachweise;
@@ -103,6 +106,23 @@ dort gehoeren in einen separaten, referenzierten Commit/PR.
   `cancel-in-progress` bleibt `false`.
 - Zwischen Source-Aufloesung, Preflight, Build und Publish bleibt derselbe SHA
   gebunden. Ein Drift oder Digest-Mismatch stoppt den Lauf.
+- Vor dem Release-Preflight wartet ein `eligible-source`-Job mit begrenztem
+  Timeout auf den kanonischen `.github/workflows/ci.yml`-Run, der fuer genau
+  diesen SHA durch `push` auf `main` ausgeloest wurde. Nur dessen neuester
+  Run-Attempt mit `conclusion: success` und erfolgreichem Aggregatjob `required`
+  macht den SHA releasefaehig.
+- `failure`, `cancelled`, `skipped`, `neutral`, `stale`, `timed_out`,
+  `startup_failure`, `action_required`, fehlender Run oder ein nach Ablauf des
+  Timeouts weiterhin `queued`/`in_progress` stehender Run blockieren den Release
+  fail-closed.
+- Nur explizit im Repositoryvertrag als `advisory` klassifizierte Canaries
+  duerfen fehlschlagen. Ihr Ergebnis wird im Receipt als `degraded` erfasst;
+  beliebige rote Checks werden nicht stillschweigend zu Advisory umgedeutet.
+- `force_rebuild` umgeht weder `eligible-source` noch den anschliessenden
+  vollstaendigen SHA-gebundenen Release-Preflight.
+- Ein Roll-forward aus einem aelteren `main`-SHA verlangt sowohl dessen
+  historischen erfolgreichen kanonischen Push-Run als auch die erneute
+  erfolgreiche Ausfuehrung aller aktuellen Release-Gates.
 
 ### 4.2 Identitaet und Idempotenz
 
@@ -143,6 +163,7 @@ atlcli-extension-chrome-mv3-<build-id>.zip
 checksums.txt
 build-metadata.json
 security-attestation.json
+source-eligibility.json
 ```
 
 GitHub Artifact Attestations koennen zusaetzlich publiziert werden, ersetzen
@@ -191,7 +212,8 @@ Receipt. Dateinamen, Mengen und Digests werden als Schema getestet.
 ```mermaid
 flowchart TD
   A["schedule oder workflow_dispatch"] --> B["origin/main bzw. source_sha aufloesen"]
-  B --> C["SHA-gebundener Quality- und Security-Preflight"]
+  B --> Q["eligible-source: CI-Push-Run fuer exakt diesen SHA gruen"]
+  Q --> C["SHA-gebundener Quality- und Security-Preflight erneut ausfuehren"]
   C --> D["gemeinsamer Artefakt-Builder"]
   D --> E["CLI-Matrix: 5 Archive"]
   D --> F["Chrome MV3: WXT ZIP"]
@@ -211,6 +233,8 @@ Vorgeschlagene neue beziehungsweise erweiterte Seams:
 
 | Pfad | Verantwortung |
 |---|---|
+| `scripts/ci/release-eligibility.ts` | Kanonischen `main`-Push-Run und `required`-Aggregat fuer den Source-SHA aufloesen; fail-closed Entscheidung plus Receipt |
+| `scripts/ci/release-eligibility.test.ts` | Success-/Failure-/Pending-/Missing-/Rerun-/Advisory-Vertraege mit API-Fixtures |
 | `scripts/release-artifacts.ts` | Reine Build-ID-, Versions-, Asset-Manifest-, Checksum- und Metadata-Logik |
 | `scripts/release-artifacts.test.ts` | Grenzwerte, Determinismus, Idempotenz, Asset-/Schema-Vertraege |
 | `scripts/verify-release-artifacts.ts` | Consumer-Verifikation heruntergeladener Archive und Receipts |
@@ -257,6 +281,16 @@ einschliessen.
 Ein optionaler `source_sha` ist fuer reproduzierbare Rollbacks gedacht, nicht
 fuer beliebige Feature-Branches. Der Workflow prueft `merge-base --is-ancestor`
 gegen den frisch geholten `origin/main` und protokolliert den aufgeloesten SHA.
+
+Danach fragt `eligible-source` ueber die GitHub Actions API ausschliesslich den
+Workflow `.github/workflows/ci.yml` mit `event=push`, `branch=main` und dem exakt
+aufgeloesten `head_sha` ab. Ein erfolgreicher manueller CI-Run, ein PR-Run fuer
+denselben Commit oder ein gleichnamiger Check aus einem anderen Workflow ist
+kein Ersatz. Bei mehreren Attempts gilt nur der neueste Attempt des passenden
+Runs. Das Gate pollt mit dokumentiertem Intervall und maximalem Timeout; nach
+dem Timeout wird nicht publiziert. Das Receipt enthaelt Workflow-ID/-Pfad,
+Run-ID/-Attempt/-URL, Event, Branch, Head-SHA, Status, Conclusion,
+`required`-Job-Ergebnis und die explizit advisory klassifizierten Ergebnisse.
 
 ## 7. Retention und Rollback
 
@@ -308,7 +342,7 @@ gegen den frisch geholten `origin/main` und protokolliert den aufgeloesten SHA.
 | DR-02 | Deterministische CLI- und Extension-Pakete | DR-01 | DR-03, DR-04 |
 | DR-03 | Consumer-, Archive-, Browser- und Attestation-Gates | DR-02 | DR-04 bis DR-06 |
 | DR-04 | Wiederverwendbarer Artifact-Workflow und Stable-Integration | DR-03 | DR-05 |
-| DR-05 | Sicherer Nightly-/Manual-Dev-Workflow | DR-04 | DR-06, DR-09 |
+| DR-05 | Sicherer Nightly-/Manual-Dev-Workflow mit gruenem Source-SHA-Gate | DR-04 | DR-06, DR-09 |
 | DR-06 | GitHub-Publish, Post-Publish-Verifikation und Retention | DR-05 | DR-07, DR-09 |
 | DR-07 | Homebrew-Dev-Formel und Tap-Orchestrierung | DR-06 | DR-09, DR-10 |
 | DR-08 | Policy-Tests, Runbook, Evidence-Schema und Privacy-Gates | DR-05, DR-07 | DR-09, DR-10 |
@@ -330,6 +364,10 @@ bleiben ein separater Commit/PR im Tap-Repository.
 - [ ] Repository-HEAD, Default-Branch-SHA, aktueller Stable-Tag, Ergebnis von
   `/releases/latest`, Stable-Assetliste und Root-Version in
   `evidence/DR-00-baseline.json` erfassen.
+- [ ] Den kanonischen Source-Eligibility-Vertrag erfassen: Workflow-Pfad
+  `.github/workflows/ci.yml`, Event `push`, Branch `main`, Aggregatjob
+  `required`, aktuelle API-Berechtigungen sowie explizit nicht blockierende
+  Canaries. Check-Namen allein duerfen nicht als Identitaet dienen.
 - [ ] Tap-HEAD, `Formula/atlcli.rb`, aktueller Formel-Commit und vorhandener
   Update-Workflow revisiongebunden erfassen; keine Secrets oder lokale absolute
   Pfade aufnehmen.
@@ -363,11 +401,13 @@ noch GitHub noch den Tap und nennt alle geplanten externen Schritte.
   Validierung, Build-ID, Tag, CLI-/Extension-Version, Dateinamen und erwartete
   Asset-Menge implementieren.
 - [ ] JSON-Schema beziehungsweise Zod-Schema fuer `build-metadata.json` und
-  `security-attestation.json` definieren und versionieren.
+  `security-attestation.json` sowie `source-eligibility.json` definieren und
+  versionieren.
 - [ ] Metadatenfelder aufnehmen: Schema, Kanal, Root-Version, voller Source-SHA,
   Ref/Tag, Run-ID/-Attempt/-Event, UTC-Zeit, Bun/WXT/Runner-OS, Lockfile-Digest,
   Dateiname/Groesse/SHA-256 je Asset, sortierter Content-Tree-Digest der
-  Extension sowie Manifest-CSP-/Permission-Fingerprint.
+  Extension, Manifest-CSP-/Permission-Fingerprint sowie Digest und kanonische
+  Run-Identitaet des Eligibility-Receipts.
 - [ ] Idempotenzentscheidung als reine Funktion implementieren: create, no-op,
   force-rebuild oder hard conflict.
 - [ ] Tests fuer Datums-/Run-Grenzen, Short-SHA-Kollisionen, ungueltige/nicht von
@@ -520,6 +560,27 @@ Berechtigung ist fuer Stable-Builds erforderlich.
   frisch aufgeloesten `origin/main`-SHA setzen.
 - [ ] Optionalen SHA auf Format, Existenz und Erreichbarkeit von `origin/main`
   pruefen; UI-Branch und Checkout-Ref duerfen ihn nicht still ersetzen.
+- [ ] `scripts/ci/release-eligibility.ts` implementieren: passenden
+  `.github/workflows/ci.yml`-Run fuer `event=push`, `branch=main` und exakten
+  `head_sha` bestimmen, dessen neuesten Attempt und Aggregatjob `required`
+  abfragen und nur `success` akzeptieren.
+- [ ] Bei `queued`/`in_progress` mit begrenztem, konfiguriertem Timeout pollen.
+  Fehlend, Timeout oder jede andere Conclusion als `success` ergibt
+  `decision: blocked`; es wird weder Tag noch Draft noch Homebrew-Dispatch
+  erzeugt.
+- [ ] Einen versionierten Required-/Advisory-Vertrag definieren. Die bereits
+  nicht blockierenden Windows-/Floating-Astro-Canaries duerfen nur aufgrund
+  dieser expliziten Klassifizierung rot sein und muessen dann als `degraded`
+  im Eligibility-Receipt erscheinen.
+- [ ] `eligible-source` vor Quality-Preflight und Build in den `needs`-Graph
+  setzen. Der Publish-Job darf kein `always()` und keine Bedingung besitzen,
+  die ein nicht erfolgreiches Eligibility-/Preflight-Ergebnis uebergeht.
+- [ ] Dem Eligibility-Job nur `actions: read`, `checks: read` und
+  `contents: read` geben; Publish-Credentials bleiben unerreichbar.
+- [ ] API-Fixture-Tests fuer erfolgreichen Main-Push, roten Required-Job,
+  fehlenden Run, Pending/Timeout, Cancelled/Skipped/Neutral/Stale, alten gruenen
+  plus neueren roten Attempt, gleichnamigen PR-/Manual-Run und advisory-roten
+  Canary schreiben.
 - [ ] Einen kanalweiten Concurrency-Lock mit `cancel-in-progress: false`
   einrichten.
 - [ ] Vor dem Build ueber GitHub API pruefen, ob derselbe SHA bereits vollstaendig
@@ -529,19 +590,24 @@ Berechtigung ist fuer Stable-Builds erforderlich.
   nur in einem geschuetzten Environment und nie in Build-/PR-Jobs.
 - [ ] Keine PR-, `pull_request_target`- oder Fork-Trigger zulassen.
 - [ ] Policy-Tests fuer Trigger, Inputs/Defaults, Source-Gate, Concurrency,
-  Permission-Scope, Needs-Graph, No-op/Force und fehlende bewegliche Tags
-  schreiben.
+  Eligibility vor Preflight/Build, Permission-Scope, Needs-Graph, No-op/Force
+  ohne Gate-Bypass und fehlende bewegliche Tags schreiben.
 
 **Proof**
 
 ```bash
-bun run test scripts/ci/workflow-policy.test.ts scripts/release-artifacts.test.ts
+bun run test \
+  scripts/ci/release-eligibility.test.ts \
+  scripts/ci/workflow-policy.test.ts \
+  scripts/release-artifacts.test.ts
 bun run typecheck
 ```
 
 **Expected:** Schedule und manueller Trigger erreichen denselben reusable
 Workflow. Strukturtests schlagen bei breiterem Write-Scope, Branch-Checkout,
-fehlendem Preflight oder beweglichem Tag fehl.
+fehlendem/rotem Source-Eligibility-Gate, Gate-Bypass, fehlendem Preflight oder
+beweglichem Tag fehl. Nur ein erfolgreicher kanonischer `main`-Push-Run fuer den
+exakten Source-SHA kann den Release-Preflight freigeben.
 
 ### DR-06 - Unveraenderlicher GitHub-Prerelease, Download-Proof und Cleanup
 
@@ -603,7 +669,7 @@ hier ueber Commit-SHA/PR/Run-ID referenziert.
 - [ ] `.github/workflows/update-dev-formula.yml` mit engen Inputs anlegen:
   Source-Repo, Dev-Tag, voller SHA, Request-ID und Metadata-/Checksum-Digests.
 - [ ] Der Tap-Workflow laedt GitHub-Release-Metadaten und Assets selbst, validiert
-  Prerelease/Tag/SHA/Attestation und schreibt ausschliesslich
+  Prerelease/Tag/SHA/Attestation/Source-Eligibility und schreibt ausschliesslich
   `Formula/atlcli-dev.rb`.
 - [ ] Ein maschinenlesbarer Pointer `metadata/atlcli-dev.json` wird aus demselben
   validierten Objekt wie die Formel gerendert. Zulässige Tap-Diffs bestehen nur
@@ -652,7 +718,9 @@ Digests; `atlcli.rb` ist unveraendert.
   JSON-/Markdown-Receipt-Schemas unter `evidence/` anlegen.
 - [ ] Pro Receipt Source-SHA, Workflow/Run/Attempt/Event, Build-ID/Tag/URL,
   Toolversionen, Lockfile-Digest, Asset-Digests, Tap-Commit, Formel-Digests und
-  Teststatus verlangen.
+  Teststatus verlangen. `source-eligibility.json` bindet zusaetzlich den
+  kanonischen Main-Push-Run, neuesten Attempt, Aggregatjob `required`,
+  Required-/Advisory-Policy-Version und Entscheidung `eligible|blocked`.
 - [ ] Evidence-Privacy-Gate implementieren: keine Tokens, Credentials, Tenant-/
   Kundendaten, private Identifikatoren, Rohlogs, Source-Bodies oder absolute
   Home-Pfade.
@@ -692,6 +760,13 @@ Begriffe, niemals Werte oder lokale Pfade.
 - [ ] Einen absichtlich manipulierten Digest, eine ungueltige Extension-Version,
   einen nicht von `main` erreichbaren SHA, ein fehlendes Asset und eine simulierte
   Stable-Latest-Aenderung als fail-closed Negativproben belegen.
+- [ ] Eligibility-Negativproben belegen: roter Required-Run, fehlender Run,
+  Pending bis Timeout, Cancelled/Skipped/Neutral/Stale, neuerer roter Re-Run
+  nach einem alten gruenen Attempt sowie gleichnamiger PR-/Manual-Check. In
+  allen Faellen bleiben GitHub Release und Tap unveraendert.
+- [ ] Einen explizit advisory klassifizierten roten Canary als Positivprobe
+  ausfuehren: Release-Gates duerfen fortfahren, aber Receipt und Abschlussstatus
+  muessen eindeutig `degraded` ausweisen.
 - [ ] Stable Release Dry Run gemaess Repositoryregel erneut ausfuehren.
 - [ ] Review/Autorisation fuer den ersten echten GitHub- und Tap-Publish
   einholen; bis dahin bleibt DR-10 offen.
@@ -720,7 +795,10 @@ an der vorgesehenen Stelle, und GitHub Releases sowie Tap sind unveraendert.
   `source_sha`, mit `publish_homebrew=true` und `force_rebuild=false`.
 - [ ] Aufgeloesten `origin/main`-SHA, Workflow-Run-ID/-Attempt, Build-ID und
   unveraenderlichen Prerelease-Tag erfassen.
-- [ ] Alle neun vertraglichen Release-Assets erneut herunterladen,
+- [ ] Eligibility-Receipt fuer denselben SHA erfassen und belegen: kanonischer
+  `.github/workflows/ci.yml`-Push-Run auf `main`, neuester Attempt und Aggregatjob
+  `required` sind erfolgreich; danach ist der separate Release-Preflight gruen.
+- [ ] Alle zehn vertraglichen Release-Assets erneut herunterladen,
   `checksums.txt` validieren und den Consumer-Verifier ausfuehren.
 - [ ] CLI-Archive in der Linux-/macOS-/Windows-Matrix starten und fuer jedes
   `release-info --json` mit Kanal, Build-ID und Source-SHA belegen; zusaetzlich
@@ -770,6 +848,7 @@ Bytes, Consumer-Proofs und Tap-Formel an denselben Source-SHA.
 | Ebene | Positivbeweis | Negativbeweis |
 |---|---|---|
 | Pure Logic | Build-ID, Versionen, Assetliste, Metadata, Idempotenz | Ueberlauf, ungueltiger SHA, Extra/Missing Asset, Konflikt |
+| Source Eligibility | exakter kanonischer `main`-Push-Run und neuester `required`-Attempt erfolgreich | rot/fehlend/pending/timeout/falsches Event/alter Attempt/Gate-Bypass |
 | Archive | alle CLI-Archive und MV3-ZIP verifizierbar | Traversal, Symlink, Duplicate, falscher Digest, verbotene Datei |
 | CLI Runtime | `release-info --json` plus kompatibles `version --json` auf Linux x64/arm64, macOS x64/arm64, Windows x64 | Kanal/SHA/Build-ID-Mismatch |
 | Extension | Output-Scanner, Manifest, Worker/Jobs/Research/Rovo/Palette in Packed Chrome | Manifest-/CSP-/Permission-/Tree-Mismatch |
@@ -782,7 +861,8 @@ Bytes, Consumer-Proofs und Tap-Formel an denselben Source-SHA.
 
 - [ ] Alle Tasks DR-00 bis DR-10 sind mit revisiongebundenen Receipts abgehakt.
 - [ ] Ein realer manueller GitHub-Dev-Prerelease enthaelt alle fuenf CLI-Archive,
-  das gepackte MV3-ZIP, Checksummen, Metadata und Security-/Provenienz-Beleg.
+  das gepackte MV3-ZIP, Checksummen, Metadata, Source-Eligibility und Security-/
+  Provenienz-Beleg.
 - [ ] Die erneut heruntergeladenen Bytes bestehen Plattform-, Archive-, Digest-
   und Packed-Chromium-Consumer-Tests.
 - [ ] `atlcli-dev` referenziert genau diesen Release und ist auf macOS und Linux
@@ -791,6 +871,9 @@ Bytes, Consumer-Proofs und Tap-Formel an denselben Source-SHA.
   `Formula/atlcli.rb` sind unveraendert belegt.
 - [ ] Manueller No-op, Force-Rebuild, Rollback und ein geplanter Nightly-Lauf
   beziehungsweise dessen No-op sind bewiesen.
+- [ ] Jeder publizierte Source-SHA besitzt ein versioniertes Eligibility-Receipt
+  mit erfolgreichem kanonischem `main`-Push-Run und erfolgreichem aktuellem
+  Release-Preflight; `force_rebuild` und Rollback umgehen keines der Gates.
 - [ ] Schedule und Manual teilen denselben SHA-gebundenen reusable Workflow.
 - [ ] Es existieren weder bewegliche Release-Tags noch ueberschriebene Assets.
 - [ ] `bun run test`, `bun run typecheck` und `bun run build` sind auf dem finalen
@@ -805,6 +888,17 @@ Die Implementation oder Abnahme stoppt; der betroffene Task bleibt offen, wenn:
 
 - Release-, Updater-, CI- oder Tap-Vertraege von der DR-00-Baseline abweichen
   und die Auswirkung nicht erneut reviewt wurde;
+- fuer den Source-SHA kein abgeschlossener erfolgreicher kanonischer
+  `.github/workflows/ci.yml`-Push-Run auf `main` mit erfolgreichem neuestem
+  Attempt und Aggregatjob `required` nachgewiesen werden kann;
+- ein Required-Status `failure`, `cancelled`, `skipped`, `neutral`, `stale`,
+  `timed_out`, `startup_failure`, `action_required`, fehlend oder nach dem
+  begrenzten Timeout noch nicht abgeschlossen ist;
+- ein Check nur aufgrund seines Namens, eines PR-/Manual-Runs oder eines alten
+  gruenen Attempts als Ersatz fuer den aktuellen kanonischen Main-Push-Run
+  akzeptiert werden muesste;
+- `force_rebuild`, Rollback, `continue-on-error` oder `always()` ein Required-
+  Gate umgehen koennte;
 - Stable Latest, Stable Tags/Assets, Stable Updater oder Stable-Formel durch den
   Dev-Pfad veraendert wuerden;
 - ein beweglicher Tag, Asset-Overwrite oder paralleles Publishing noetig waere;
@@ -834,9 +928,11 @@ Ersatzbeleg verwendet werden.
 | Risiko | Gegenmassnahme | Dauerhafter Owner/Check |
 |---|---|---|
 | Schedule-Verzoegerung/-Ausfall | Manual Trigger ist gleichwertig; Runbook und monatlicher Test | Release Owner, monatlich |
+| Main-SHA rot oder CI noch laufend | `eligible-source` wartet begrenzt und akzeptiert nur den neuesten erfolgreichen kanonischen Push-Attempt; ansonsten kein Release | Release Owner, jeder Lauf |
+| Advisory-/Required-Drift | Versionierte Klassifizierung plus Workflow-Policy- und API-Fixture-Tests; unbekanntes Gate fail-closed reviewen | CI Owner, bei Workflow-Aenderung |
 | WXT-/Chrome-Versionseinschraenkung | Validierter Vier-Komponenten-Builder plus Packed-Test | Extension Owner, bei Dependency-Update |
 | Stable-/Dev-Drift | Gemeinsamer Builder plus Stable-Regressionsvertrag | Release Owner, jeder Release-PR |
-| Cross-Repo-Credential | GitHub App/feingranulares Token, Environment, getrennte Jobs | Repository Admin, quartalsweise |
+| Cross-Repo-Credential | Kurzlebiges GitHub-App-Token, Environment, getrennte Jobs | Repository Admin, quartalsweise |
 | Homebrew-Version/Rollback | monotoner Build-Zaehler; vorwaertsgerichteter Rollback | Tap Owner, jeder Rollback |
 | Unbemerkte kaputte Assets | Post-Publish-Download und Consumer-Proofs | Dev-Workflow, jeder Lauf |
 | Unbegrenzte Release-Menge | konservative Retention mit Formula-Referenzschutz | Release Owner, monatlich |
