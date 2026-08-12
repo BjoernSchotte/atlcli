@@ -79,6 +79,20 @@ function runRequiredGate(
 }
 
 describe("CI workflow policy", () => {
+  it("delegates stable CLI packaging to the shared deterministic artifact builder", async () => {
+    const release = await workflow("release.yml");
+    const build = block(release, /^ {2}build:\s*$/, 2);
+    expect(build).not.toBeNull();
+    expect(build).toContain("bun install --frozen-lockfile");
+    expect(build).toContain("bun scripts/release-artifacts.ts build");
+    expect(build).toContain("--channel stable");
+    expect(build).toContain('--target "${{ matrix.target }}"');
+    expect(build).toContain("--skip-extension");
+    expect(build).toContain("path: release/atlcli-${{ matrix.target }}.*");
+    expect(build).not.toContain("bun build apps/cli/src/index.ts");
+    expect(build).not.toMatch(/\b(?:tar|zip)\s+[-\w]/);
+  });
+
   it("emits exactly one mode-named aggregate around selectively skipped jobs", async () => {
     const ci = await workflow("ci.yml");
     expect(ci).toContain("bun scripts/ci/classify-changes.ts --full");
@@ -472,6 +486,9 @@ describe("CI workflow policy", () => {
     ].map((match) => match[1]!);
     expect(imports.length).toBeGreaterThan(0);
     expect(imports.every((specifier) => specifier.startsWith("node:"))).toBe(true);
+    expect(source).toContain(
+      'const SECURITY_ATTESTATION_SCHEMA_ID = "atlcli.security-attestation/v1" as const;',
+    );
     expect(attestation).not.toContain("bun install --frozen-lockfile");
     expect(attestation).toContain("bun scripts/security/attest.ts");
   });

@@ -57,7 +57,7 @@ describe("release identity", () => {
       releaseTag: "v0.17.2",
       cliVersion: "0.17.2",
       extensionVersion: "0.17.2",
-      extensionVersionName: "0.17.2",
+      extensionVersionName: "0.17.2-stable",
       homebrewVersion: "0.17.2",
       createdAt: "2026-08-12T02:17:45.000Z",
       runNumber: 1,

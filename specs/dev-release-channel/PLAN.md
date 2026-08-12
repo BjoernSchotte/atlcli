@@ -1,6 +1,6 @@
 # Dev-Release-Channel: Nightly und manuell ausloesbare, bewiesene Releases
 
-**Status:** Vorgeschlagen; noch nicht implementiert
+**Status:** In Umsetzung; DR-00 bis DR-02 lokal bewiesen
 
 **Planungsstand:** 2026-08-12
 
@@ -180,7 +180,10 @@ Receipt. Dateinamen, Mengen und Digests werden als Schema getestet.
 - `version_name` traegt die lesbare Identitaet, zum Beispiel
   `0.17.2-dev.20260812.418-e03755e7`.
 - WXT erzeugt das ZIP ueber einen kanonischen `wxt zip`-Pfad und ein explizites
-  Dateinamen-Template. Handgeschriebene, abweichende ZIP-Loops sind verboten.
+  Dateinamen-Template. Weil WXT 0.20.27 ZIP-Entries mit der aktuellen Zeit
+  versieht, normalisiert ein WXT-Completion-Hook denselben WXT-Output
+  deterministisch in-place. `zip:prebuilt` verwendet exakt diesen Normalizer
+  ohne zweiten Build; abweichende ZIP-Loops sind verboten.
 - `manifest.json` liegt an der ZIP-Wurzel. Absolute Pfade, `..`-Traversal,
   Symlinks, doppelte Entries, unnoetige Source-/Test-/Env-Dateien und Source
   Maps werden abgelehnt.
@@ -440,20 +443,20 @@ Identitaeten brechen vor einem Build ab; Stable-/Dev-Updaterpfade sind getrennt.
 
 **Blocks:** DR-03, DR-04
 
-- [ ] CLI-Cross-Compile-/Archivlogik aus `.github/workflows/release.yml` in einen
+- [x] CLI-Cross-Compile-/Archivlogik aus `.github/workflows/release.yml` in einen
   lokal und in CI identisch aufrufbaren Builder verschieben; die fuenf
   bestehenden Asset-Namen beibehalten.
-- [ ] `__ATLCLI_VERSION__` um die getypte Build-Identitaet erweitern, ohne
+- [x] `__ATLCLI_VERSION__` um die getypte Build-Identitaet erweitern, ohne
   reproduzierbare Plattform-Builds zu verlieren.
-- [ ] `apps/extension/wxt.config.ts` so erweitern, dass numerische `version` und
+- [x] `apps/extension/wxt.config.ts` so erweitern, dass numerische `version` und
   lesbare `version_name` ausschliesslich aus dem validierten Release-Kontext
   kommen.
-- [ ] `wxt zip` als kanonischen Packaging-Schritt mit explizitem Output-
+- [x] `wxt zip` als kanonischen Packaging-Schritt mit explizitem Output-
   Dateinamen konfigurieren; `zip:prebuilt` darf keinen zweiten, potentiell
   abweichenden Build anstossen.
-- [ ] Stable- und Dev-Kontexte lokal bauen und Manifestwerte, Rootstruktur,
+- [x] Stable- und Dev-Kontexte lokal bauen und Manifestwerte, Rootstruktur,
   Dateinamen und Content-Tree-Digest testen.
-- [ ] Reproduzierbarkeit auf demselben Runner pruefen: zwei Builds desselben
+- [x] Reproduzierbarkeit auf demselben Runner pruefen: zwei Builds desselben
   Inputs muessen denselben entpackten Content-Tree-Digest liefern. Falls ZIP-
   Container-Metadaten bytegenaue Reproduzierbarkeit verhindern, wird dies
   explizit normalisiert oder im Schema getrennt ausgewiesen; stillschweigende

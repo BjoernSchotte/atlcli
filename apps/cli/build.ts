@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { materializeQuickJsCliRuntimeAsset } from "./build-assets.js";
-import { resolveBuildReleaseInfo } from "./build-release-info.js";
+import { releaseInfoBunDefineArgs, resolveBuildReleaseInfo } from "./build-release-info.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -37,18 +37,7 @@ const args = [
   // `development` condition to `src/*.ts` (spec 009), so this build does not
   // depend on the packages' `dist/` output existing.
   "--conditions=development",
-  `--define`,
-  `__ATLCLI_VERSION__=${JSON.stringify(releaseInfo.version)}`,
-  `--define`,
-  `__ATLCLI_RELEASE_CHANNEL__=${JSON.stringify(releaseInfo.channel)}`,
-  `--define`,
-  `__ATLCLI_SOURCE_SHA__=${JSON.stringify(releaseInfo.sourceSha)}`,
-  `--define`,
-  `__ATLCLI_BUILD_ID__=${JSON.stringify(releaseInfo.buildId)}`,
-  `--define`,
-  `__ATLCLI_RELEASE_TAG__=${JSON.stringify(releaseInfo.releaseTag ?? "")}`,
-  `--define`,
-  `__ATLCLI_HOMEBREW_VERSION__=${JSON.stringify(releaseInfo.homebrewVersion ?? "")}`,
+  ...releaseInfoBunDefineArgs(releaseInfo),
 ];
 
 // Add minify flag if requested

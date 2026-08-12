@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 // dist/ and break `bun install` (postinstall: wxt prepare) on a fresh clone
 // before any build exists.
 import { DOCX_BROWSER_VITE_DEFINES } from "../../packages/docx/src/vite";
+import { resolveExtensionReleaseContext } from "./release-context";
+import { packagePrebuiltExtension } from "./scripts/package-release";
+
+const extensionRelease = resolveExtensionReleaseContext(process.env);
 
 const researchBrowserModule = (name: string): string =>
   fileURLToPath(new URL(`./utils/research/${name}.ts`, import.meta.url));
@@ -34,6 +38,8 @@ export default defineConfig({
   } as Parameters<typeof defineConfig>[0]["imports"],
   manifest: {
     name: "atlcli",
+    version: extensionRelease.version,
+    version_name: extensionRelease.versionName,
     // MV3 side panel + offscreen APIs baseline (PLAN §6 risk 1).
     // Chrome 140 is the oldest browser exercised by the real packed-extension
     // PDF.js worker test. The modern runtime's two newer standard operations are
@@ -73,6 +79,24 @@ export default defineConfig({
     // Deliberately NOT 'unsafe-eval' — asserted by the Task 2 test.
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+    },
+  },
+  zip: {
+    artifactTemplate: extensionRelease.artifactName,
+    zipSources: false,
+    compressionLevel: 9,
+  },
+  // WXT 0.20 builds and packages in one canonical `wxt zip` lifecycle, but its
+  // JSZip call stamps entries with the current time. Normalize that WXT-owned
+  // artifact in-place in the supported completion hook. `zip:prebuilt` calls
+  // the same normalizer directly and therefore never starts another build.
+  hooks: {
+    "zip:extension:done": async (wxt, zipPath) => {
+      await packagePrebuiltExtension({
+        inputDirectory: wxt.config.outDir,
+        artifactPath: zipPath,
+        environment: process.env,
+      });
     },
   },
   vite: () => ({

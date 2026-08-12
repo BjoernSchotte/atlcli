@@ -29,6 +29,7 @@ const BUILD_LOCK_INITIALIZATION_GRACE_MS = 5_000;
 /** Build inputs (relative to the extension root) that invalidate the output. */
 export const BUILD_INPUTS = [
   "wxt.config.ts",
+  "release-context.ts",
   "package.json",
   // Spec 010 Phase 0 added a components tree and a Tailwind stylesheet. Without
   // them here, editing only a component would leave a stale `.output` for every

@@ -9,6 +9,8 @@
     "dev": "wxt",
     "prebuild": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && bun run --cwd ../.. clean:extension-output",
     "build": "wxt build",
+    "zip": "wxt zip",
+    "zip:prebuilt": "bun scripts/package-release.ts",
     "prepdf:fixture": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst",
     "pdf:fixture": "bun scripts/render-pdf-fixture.ts",
     "pretest:viewer-browser": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst",

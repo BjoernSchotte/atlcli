@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveBuildReleaseInfo } from "./build-release-info";
+import { releaseInfoBunDefineArgs, resolveBuildReleaseInfo } from "./build-release-info";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 
@@ -54,5 +54,23 @@ describe("CLI build release identity", () => {
         gitSha: SHA,
       }),
     ).toThrow("buildId");
+  });
+
+  test("injects every typed release identity field into compiled binaries", () => {
+    const info = resolveBuildReleaseInfo({ environment: {}, rootVersion: "0.17.2", gitSha: SHA });
+    expect(releaseInfoBunDefineArgs(info)).toEqual([
+      "--define",
+      '__ATLCLI_VERSION__="0.17.2"',
+      "--define",
+      '__ATLCLI_RELEASE_CHANNEL__="stable"',
+      "--define",
+      `__ATLCLI_SOURCE_SHA__="${SHA}"`,
+      "--define",
+      '__ATLCLI_BUILD_ID__="v0.17.2"',
+      "--define",
+      '__ATLCLI_RELEASE_TAG__="v0.17.2"',
+      "--define",
+      '__ATLCLI_HOMEBREW_VERSION__="0.17.2"',
+    ]);
   });
 });

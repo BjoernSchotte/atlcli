@@ -41,3 +41,20 @@ export function resolveBuildReleaseInfo(input: {
       (channel === "stable" ? input.rootVersion : null),
   });
 }
+
+export function releaseInfoBunDefineArgs(releaseInfo: ReleaseInfoV1): string[] {
+  return [
+    "--define",
+    `__ATLCLI_VERSION__=${JSON.stringify(releaseInfo.version)}`,
+    "--define",
+    `__ATLCLI_RELEASE_CHANNEL__=${JSON.stringify(releaseInfo.channel)}`,
+    "--define",
+    `__ATLCLI_SOURCE_SHA__=${JSON.stringify(releaseInfo.sourceSha)}`,
+    "--define",
+    `__ATLCLI_BUILD_ID__=${JSON.stringify(releaseInfo.buildId)}`,
+    "--define",
+    `__ATLCLI_RELEASE_TAG__=${JSON.stringify(releaseInfo.releaseTag ?? "")}`,
+    "--define",
+    `__ATLCLI_HOMEBREW_VERSION__=${JSON.stringify(releaseInfo.homebrewVersion ?? "")}`,
+  ];
+}

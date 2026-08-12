@@ -57,7 +57,7 @@ const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const ASSET_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-const CLI_TARGETS = [
+export const CLI_TARGETS = [
   "darwin-arm64",
   "darwin-x64",
   "linux-arm64",
@@ -137,7 +137,7 @@ export function createReleaseIdentity(input: ReleaseIdentityInput): ReleaseIdent
       releaseTag: buildId,
       cliVersion: input.rootVersion,
       extensionVersion: `${major}.${minor}.${patch}`,
-      extensionVersionName: input.rootVersion,
+      extensionVersionName: `${input.rootVersion}-stable`,
       homebrewVersion: input.rootVersion,
       createdAt: time.iso,
       runNumber,
@@ -480,29 +480,33 @@ function arg(name: string): string | undefined {
 
 if (import.meta.main) {
   const command = process.argv[2];
-  if (command !== "identity") {
+  if (command === "build") {
+    const { runReleaseArtifactBuildCli } = await import("./build-release-artifacts.js");
+    await runReleaseArtifactBuildCli(process.argv.slice(3));
+  } else if (command !== "identity") {
     process.stderr.write(
-      "Usage: bun scripts/release-artifacts.ts identity --channel <stable|dev> --version <x.y.z> --source-sha <sha> --run-number <n> --run-attempt <n> --timestamp <iso>\n",
+      "Usage: bun scripts/release-artifacts.ts <identity|build> [options]\n",
     );
     process.exit(2);
+  } else {
+    const channel = arg("--channel");
+    const version = arg("--version");
+    const sourceSha = arg("--source-sha");
+    const timestamp = arg("--timestamp");
+    const runNumber = Number(arg("--run-number"));
+    const runAttempt = Number(arg("--run-attempt"));
+    if ((channel !== "stable" && channel !== "dev") || !version || !sourceSha || !timestamp) {
+      throw new Error("identity requires channel, version, source SHA, timestamp, run number, and run attempt");
+    }
+    const identity = createReleaseIdentity({
+      channel,
+      rootVersion: version,
+      sourceSha,
+      sourceReachableFromMain: true,
+      timestamp,
+      runNumber,
+      runAttempt,
+    });
+    process.stdout.write(canonicalJson(identity));
   }
-  const channel = arg("--channel");
-  const version = arg("--version");
-  const sourceSha = arg("--source-sha");
-  const timestamp = arg("--timestamp");
-  const runNumber = Number(arg("--run-number"));
-  const runAttempt = Number(arg("--run-attempt"));
-  if ((channel !== "stable" && channel !== "dev") || !version || !sourceSha || !timestamp) {
-    throw new Error("identity requires channel, version, source SHA, timestamp, run number, and run attempt");
-  }
-  const identity = createReleaseIdentity({
-    channel,
-    rootVersion: version,
-    sourceSha,
-    sourceReachableFromMain: true,
-    timestamp,
-    runNumber,
-    runAttempt,
-  });
-  process.stdout.write(canonicalJson(identity));
 }
