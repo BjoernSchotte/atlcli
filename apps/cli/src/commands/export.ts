@@ -70,7 +70,9 @@ import {
 import {
   buildReport,
   buildTreeExportReport,
+  classifyConfluenceSourceError,
   classifyError,
+  classifyFailedExportJob,
   emitReportOutcome,
   noteToIssue,
   type ExportOutcome,
@@ -1151,6 +1153,7 @@ async function exportDocxAsOrdinaryJob(
       : `${exportSourcePolicyFromFlag(process.env.ATLCLI_EXPORT_SOURCE)}:v1`;
     const resolveInput = createConfluenceDocxResolveInputV1({
       port: confluenceSourceResolverPortFromClientV1(args.client),
+      classifyError: classifyConfluenceSourceError,
       ...(args.request.scopeKind === "page"
         ? {}
         : {
@@ -1362,7 +1365,7 @@ async function exportDocxAsOrdinaryJob(
       },
     });
     if (execution.snapshot.state !== "succeeded" || !execution.report) {
-      const error = execution.snapshot.error;
+      const classified = classifyFailedExportJob(execution.snapshot);
       return {
         ok: false,
         report: buildReport({
@@ -1370,15 +1373,9 @@ async function exportDocxAsOrdinaryJob(
           engine: "ts",
           sourcePages: [],
           outputDetails: [],
-          issues: [{
-            code: error?.code ?? `job-${execution.snapshot.state}`,
-            severity: "error",
-            phase: "commit",
-            retryable: error?.retryable ?? false,
-            message: error?.message ?? `Export job ended as ${execution.snapshot.state}.`,
-          }],
+          issues: [classified.issue],
           timings: { totalMs: Date.now() - startedAt },
-          failureExitCode: execution.snapshot.state === "cancelled" ? 130 : 5,
+          failureExitCode: classified.exitCode,
         }),
       };
     }

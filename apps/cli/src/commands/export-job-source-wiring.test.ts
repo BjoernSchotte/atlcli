@@ -21,6 +21,8 @@ describe("ordinary CLI job source wiring", () => {
     const ordinary = command.slice(start);
 
     expect(ordinary).toContain("createConfluencePdfResolveInputV1({");
+    expect(ordinary).toContain("classifyError: classifyConfluenceSourceError");
+    expect(ordinary).toContain("classifyFailedExportJob(execution.snapshot)");
     expect(ordinary).toContain("createConfluenceSourcePlanSpoolV1(context)");
     expect(ordinary).toContain("createExportTreeBodySpoolV1(context, request.idempotencyKey)");
     expect(ordinary).toContain("resolved.chapterAnchorById,\n          context.signal,");
@@ -43,6 +45,8 @@ describe("ordinary CLI job source wiring", () => {
     );
 
     expect(ordinary).toContain("createConfluenceDocxResolveInputV1({");
+    expect(ordinary).toContain("classifyError: classifyConfluenceSourceError");
+    expect(ordinary).toContain("classifyFailedExportJob(execution.snapshot)");
     expect(ordinary).toContain("createConfluenceSourcePlanSpoolV1(context)");
     expect(ordinary).toContain("createExportTreeBodySpoolV1(context, request.idempotencyKey)");
     expect(ordinary).toContain("resolved.chapterAnchorById,\n          context.signal,");

@@ -713,29 +713,33 @@ describe.skipIf(!RUN)("wiki export --format pdf (live E2E)", () => {
     300_000
   );
 
-  it("returns exit 4 for a nonexistent page with errors populated", async () => {
+  it("returns exit 4 for a nonexistent page in PDF and DOCX", async () => {
     const dir = await mkdtemp(join(tmpdir(), "atlcli-e2e-pdf-"));
     try {
-      const { code, stdout } = await runCli([
-        "wiki", "export", "999999999999", "--format", "pdf", "--profile", PROFILE,
-        "--out-dir", dir, "--report", "json",
-      ]);
-      expect(code).toBe(4);
-      expect(JSON.parse(stdout).errors.length).toBeGreaterThan(0);
+      for (const format of ["pdf", "docx"] as const) {
+        const { code, stdout } = await runCli([
+          "wiki", "export", "999999999999", "--format", format, "--profile", PROFILE,
+          "--output", join(dir, `missing.${format}`), "--report", "json",
+        ]);
+        expect(code).toBe(4);
+        expect(JSON.parse(stdout).errors.length).toBeGreaterThan(0);
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   }, 120_000);
 
-  it("returns exit 3 for a bad token", async () => {
+  it("returns exit 3 for a bad token in PDF and DOCX", async () => {
     const dir = await mkdtemp(join(tmpdir(), "atlcli-e2e-pdf-"));
     try {
-      const proc = Bun.spawn(
-        ["bun", "--conditions=development", "run", CLI, "wiki", "export", PAGE_ID, "--format", "pdf", "--profile", PROFILE, "--out-dir", dir, "--report", "json"],
-        { stdout: "pipe", stderr: "pipe", env: { ...process.env, ATLCLI_API_TOKEN: "definitely-wrong" } }
-      );
-      const code = await proc.exited;
-      expect(code).toBe(3);
+      for (const format of ["pdf", "docx"] as const) {
+        const proc = Bun.spawn(
+          ["bun", "--conditions=development", "run", CLI, "wiki", "export", PAGE_ID, "--format", format, "--profile", PROFILE, "--output", join(dir, `unauthorized.${format}`), "--report", "json"],
+          { stdout: "pipe", stderr: "pipe", env: { ...process.env, ATLCLI_API_TOKEN: "definitely-wrong" } }
+        );
+        const code = await proc.exited;
+        expect(code).toBe(3);
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
