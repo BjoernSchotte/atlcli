@@ -686,7 +686,7 @@ function validateExecutionResult(
 function progress(
   context: ExportJobExecutionContext,
   now: () => number,
-  stage: "fetch" | "compose" | "assets" | "render" | "validate" | "commit",
+  stage: "discover" | "fetch" | "compose" | "assets" | "render" | "validate" | "commit",
   done: number,
   total: number | null,
   detail: string,
@@ -820,7 +820,7 @@ export function createTypescriptDocxExportJobExecutor(
           return result;
         }
       } else {
-        await progress(context, now, "fetch", 0, 1, "Resolving DOCX source input");
+        await progress(context, now, "discover", 0, null, "Discovering DOCX source hierarchy");
         const resolved = await options.resolveInput(request, context);
         sourcePageCount = resolved.jobTelemetry?.sourcePageCount ?? 1;
         nonNegativeSafeInteger(sourcePageCount, "telemetry.sourcePageCount");

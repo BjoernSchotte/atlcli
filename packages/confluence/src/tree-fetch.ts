@@ -489,7 +489,10 @@ function errorStatus(error: unknown): number | undefined {
 function errorRequestId(error: unknown): string | undefined {
   if (!error || typeof error !== "object" || !("requestId" in error)) return undefined;
   const requestId = (error as { requestId?: unknown }).requestId;
-  return typeof requestId === "string" && requestId.length > 0 ? requestId : undefined;
+  return typeof requestId === "string"
+    && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)
+    ? requestId
+    : undefined;
 }
 
 async function reportHierarchyFailure(

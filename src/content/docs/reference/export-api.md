@@ -145,6 +145,9 @@ See the package README for complete CLI/session/Forge examples and
   discovery falls back from `direct-children` to depth-1 `descendants` for endpoint
   compatibility failures; authentication, throttling, cancellation, and server failures
   are never hidden by that fallback. Data Center continues to use its REST v1 page tree.
+  `TreeFetchOptions.onDiagnostic` exposes a content-free operation/status/request-id
+  projection for host progress; source ids, titles, URLs, bodies, and error messages are
+  deliberately absent.
 - `fetchExportTree(source, scope, opts)` → `{ nodes, notes, complete }` — ordered DFS with
   label filtering, completeness contract (`strict`/`partial`), limits, cancellation, progress.
 - `composeChapters(nodes, opts?)` → `{ blocks, notes }` — one chapterized document with

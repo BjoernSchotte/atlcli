@@ -300,9 +300,9 @@ function validateCheckpoint(
 function progress(
   context: ExportJobExecutionContext,
   now: () => number,
-  stage: "fetch" | "compose" | "render" | "validate" | "commit",
+  stage: "discover" | "fetch" | "compose" | "render" | "validate" | "commit",
   done: number,
-  total: number,
+  total: number | null,
   detail: string,
 ): Promise<void> {
   return context.updateProgress({ stage, done, total, detail, updatedAt: now() });
@@ -682,7 +682,7 @@ export function createPdfExportJobExecutor(
           templatePack = await loadPdfTemplatePack(stored.bytes);
           throwIfAborted(context.signal);
         }
-        await progress(context, now, "fetch", 0, 1, "Resolving PDF source input");
+        await progress(context, now, "discover", 0, null, "Discovering PDF source hierarchy");
         resolved = await options.resolveInput(request, context);
         throwIfAborted(context.signal);
         if (templatePack) {

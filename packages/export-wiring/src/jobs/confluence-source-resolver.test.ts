@@ -537,6 +537,55 @@ describe("resolveConfluenceSourceV1", () => {
     expect(JSON.stringify(missing)).not.toContain("CONFIDENTIAL");
   });
 
+  it("forwards content-free hierarchy diagnostics without durable source data", async () => {
+    const diagnostics: unknown[] = [];
+    const source: TreeSource = {
+      async getPage() {
+        throw new Error("page body must not be reached");
+      },
+      async getPageVersion() {
+        return { title: "CONFIDENTIAL-TITLE", version: 1 };
+      },
+      async getChildren(_node, context) {
+        await context.onDiagnostic?.({
+          code: "hierarchy-fallback",
+          deployment: "cloud",
+          operation: "page-direct-children",
+          status: 404,
+          requestId: "request-safe",
+          fallback: "page-descendants",
+        });
+        throw new Error("CONFIDENTIAL-RESPONSE-BODY");
+      },
+      async getSpaceHomepageId() { return null; },
+    };
+    const port: ConfluenceSourceResolverPortV1 = {
+      createTreeSource() { return source; },
+    };
+
+    const failure = await resolveConfluenceSourceV1({
+      ...pageRequest(),
+      scope: { kind: "tree" },
+    }, {
+      exporter: "pdf",
+      port,
+      signal: new AbortController().signal,
+      onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); },
+    }).catch((caught: unknown) => caught);
+
+    expect(diagnostics).toEqual([{
+      code: "hierarchy-fallback",
+      deployment: "cloud",
+      operation: "page-direct-children",
+      status: 404,
+      requestId: "request-safe",
+      fallback: "page-descendants",
+    }]);
+    expect(JSON.stringify(diagnostics)).not.toContain("CONFIDENTIAL");
+    expect(failure).toBeInstanceOf(ConfluenceSourceResolutionError);
+    expect(String(failure)).not.toContain("CONFIDENTIAL");
+  });
+
   it("resolves content keys without a body read and composes one shared tree for both engines", async () => {
     const calls: string[] = [];
     const extensionContent = [{

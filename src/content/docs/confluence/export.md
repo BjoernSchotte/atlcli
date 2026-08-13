@@ -594,6 +594,11 @@ not probe Cloud-only `/api/v2` routes. On Cloud, atlcli first uses the direct-ch
 route and retries discovery through depth-1 descendants when the site reports a
 compatible endpoint error (`400`, `404`, `405`, or `501`). It does not use that
 fallback for authentication, rate limiting, cancellation, network, or server errors.
+During a queued DOCX/PDF export, hierarchy discovery is reported as the `discover`
+stage. A compatibility fallback or terminal hierarchy request prints only its
+operation, HTTP status, and request id; page titles, response bodies, credentials,
+and full URLs are never copied into job progress. Use the request id with
+`atlcli log list --type api` when deeper local diagnosis is required.
 
 ### Prerequisites
 

@@ -42,6 +42,18 @@ import {
 
 type V2FailureClassification = "adf-body-format-unsupported";
 
+/** Private v1 transport error with body-free correlation metadata. */
+class ConfluenceRequestError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly requestId: string,
+  ) {
+    super(message);
+    this.name = "ConfluenceRequestError";
+  }
+}
+
 /** Private transport error: never retains an API response body. */
 class ConfluenceV2RequestError extends Error {
   constructor(
@@ -852,7 +864,11 @@ export class ConfluenceClient {
           await this.sleep(delayMs, options.signal);
           continue;
         }
-        const error = new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
+        const error = new ConfluenceRequestError(
+          res.status,
+          `Rate limited by Confluence API after ${this.maxRetries} retries`,
+          requestId,
+        );
         logger.api("response", {
           requestId,
           status: res.status,
@@ -891,7 +907,11 @@ export class ConfluenceClient {
           : typeof data === "string"
             ? data
             : JSON.stringify(data);
-        lastError = new Error(`Confluence API error (${res.status}): ${message}`);
+        lastError = new ConfluenceRequestError(
+          res.status,
+          `Confluence API error (${res.status}): ${message}`,
+          requestId,
+        );
 
         // Retry on server errors (5xx)
         if (res.status >= 500 && attempt < this.maxRetries) {
@@ -2422,6 +2442,7 @@ export class ConfluenceClient {
     const data = (await this.request(`/content/${id}`, {
       query: { expand: "version,space,history.lastUpdated" },
       signal: options.signal,
+      logBody: "meta-only",
     })) as any;
     return {
       id: data.id,

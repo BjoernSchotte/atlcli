@@ -13,6 +13,7 @@ import {
   type PageBodyToBlocksOptions,
   type TreeSource,
   type TreeSourceClient,
+  type TreeFetchDiagnosticV1,
   type TreeSourceSummary,
   type TreeSourceVersion,
 } from "@atlcli/confluence";
@@ -97,6 +98,8 @@ export interface ResolveConfluenceSourceOptionsV1 {
   resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
   /** Job-safe aggregate progress; page titles and body data are excluded. */
   onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+  /** Content-free hierarchy diagnostics suitable for durable progress detail. */
+  onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
   /** Classify a host error without retaining its message or original cause. */
   classifyError?: (error: unknown) => ConfluenceSourceFailureKindV1;
   bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
@@ -382,6 +385,7 @@ async function resolveConfluencePageGraphUnsafeV1(
   } else if (resolved.rootId !== undefined) {
     rootSnapshot = await treeSource.getPageVersion(resolved.rootId, {
       signal: options.signal,
+      ...(options.onDiagnostic ? { onDiagnostic: options.onDiagnostic } : {}),
     });
     throwIfAborted(options.signal);
     if (
@@ -471,6 +475,7 @@ async function resolveConfluencePageGraphUnsafeV1(
             options.onProgress!({ fetched: progress.fetched, total: progress.total }),
         }
       : {}),
+    ...(options.onDiagnostic ? { onDiagnostic: options.onDiagnostic } : {}),
   });
   throwIfAborted(options.signal);
 

@@ -1,6 +1,7 @@
 import type {
   ConfluencePageDetails,
   ExportTreeBodyStoreV1,
+  TreeFetchDiagnosticV1,
 } from "@atlcli/confluence";
 import type {
   DocxExportJobRequestV1,
@@ -28,6 +29,11 @@ type SharedSourceOptionsV1 = Pick<
     request: PdfExportJobRequestV1 | DocxExportJobRequestV1,
     context: ExportJobExecutionContext,
     progress: ConfluenceSourceProgressV1,
+  ) => void | Promise<void>;
+  onDiagnostic?: (
+    request: PdfExportJobRequestV1 | DocxExportJobRequestV1,
+    context: ExportJobExecutionContext,
+    diagnostic: TreeFetchDiagnosticV1,
   ) => void | Promise<void>;
   sourcePlan?: {
     store: ConfluenceSourcePlanStoreV1;
@@ -132,6 +138,12 @@ function sourceOptions<Request extends PdfExportJobRequestV1 | DocxExportJobRequ
     ...(options.bodyOptions ? { bodyOptions: options.bodyOptions } : {}),
     ...(options.resolveExternalUrl ? { resolveExternalUrl: options.resolveExternalUrl } : {}),
     ...(options.classifyError ? { classifyError: options.classifyError } : {}),
+    ...(options.onDiagnostic
+      ? {
+          onDiagnostic: (diagnostic: TreeFetchDiagnosticV1) =>
+            options.onDiagnostic!(request, context, diagnostic),
+        }
+      : {}),
     ...(options.createBodyStore
       ? { bodyStore: options.createBodyStore(request, context) }
       : {}),

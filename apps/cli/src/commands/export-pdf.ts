@@ -95,6 +95,7 @@ import {
   runOrdinaryExportJobV1,
   writeOrdinaryExportProjectionV1,
 } from "./export-job-runtime.js";
+import { formatConfluenceHierarchyDiagnosticV1 } from "./export-job-monitor.js";
 
 // Re-export the pure sink/path surface so existing callers keep importing from
 // this module (no API change). The implementations live in export-pdf-sink.ts —
@@ -658,6 +659,15 @@ export async function exportPdfAsOrdinaryJob(
       }),
       createBodyStore: (request, context) =>
         createExportTreeBodySpoolV1(context, request.idempotencyKey),
+      onDiagnostic: (_request, context, diagnostic) => {
+        return context.updateProgress({
+          stage: "discover",
+          done: 0,
+          total: null,
+          detail: formatConfluenceHierarchyDiagnosticV1(diagnostic),
+          updatedAt: Date.now(),
+        });
+      },
       onProgress: (_request, context, progress) => {
         return context.updateProgress({
           stage: "fetch",
