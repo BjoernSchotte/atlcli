@@ -942,6 +942,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -2054,6 +2059,7 @@ export type FolderChild = {
     type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -3006,7 +3012,24 @@ export interface TreeChild {
 // export: TreeFetchContext
 export interface TreeFetchContext {
     signal?: AbortSignal;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
 }
+
+// export: TreeFetchDiagnosticV1
+export type TreeFetchDiagnosticV1 = {
+    code: "hierarchy-fallback";
+    deployment: "cloud";
+    operation: "page-direct-children";
+    status: number;
+    requestId?: string;
+    fallback: "page-descendants";
+} | {
+    code: "hierarchy-request-failed";
+    deployment: "cloud" | "data-center";
+    operation: TreeHierarchyOperationV1;
+    status?: number;
+    requestId?: string;
+};
 
 // export: TreeFetchOptions
 export interface TreeFetchOptions {
@@ -3019,6 +3042,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
@@ -3032,6 +3056,9 @@ export interface TreeFetchProgress {
     total: number | null;
     currentTitle: string;
 }
+
+// export: TreeHierarchyOperationV1
+export type TreeHierarchyOperationV1 = "page-version" | "space-homepage" | "page-direct-children" | "page-descendants" | "page-child-pages" | "folder-direct-children";
 
 // export: TreeLimitExceededError
 export declare class TreeLimitExceededError extends Error {
@@ -3096,6 +3123,17 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        position?: number | null;
+    }>>;
+    getPageDescendants?(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+        position?: number | null;
     }>>;
     getFolderChildren(folderId: string, options?: {
         signal?: AbortSignal;
@@ -3103,6 +3141,7 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        position?: number | null;
     }>>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
@@ -4205,6 +4244,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -5317,6 +5361,7 @@ export type FolderChild = {
     type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -6269,7 +6314,24 @@ export interface TreeChild {
 // export: TreeFetchContext
 export interface TreeFetchContext {
     signal?: AbortSignal;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
 }
+
+// export: TreeFetchDiagnosticV1
+export type TreeFetchDiagnosticV1 = {
+    code: "hierarchy-fallback";
+    deployment: "cloud";
+    operation: "page-direct-children";
+    status: number;
+    requestId?: string;
+    fallback: "page-descendants";
+} | {
+    code: "hierarchy-request-failed";
+    deployment: "cloud" | "data-center";
+    operation: TreeHierarchyOperationV1;
+    status?: number;
+    requestId?: string;
+};
 
 // export: TreeFetchOptions
 export interface TreeFetchOptions {
@@ -6282,6 +6344,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
@@ -6295,6 +6358,9 @@ export interface TreeFetchProgress {
     total: number | null;
     currentTitle: string;
 }
+
+// export: TreeHierarchyOperationV1
+export type TreeHierarchyOperationV1 = "page-version" | "space-homepage" | "page-direct-children" | "page-descendants" | "page-child-pages" | "folder-direct-children";
 
 // export: TreeLimitExceededError
 export declare class TreeLimitExceededError extends Error {
@@ -6359,6 +6425,17 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        position?: number | null;
+    }>>;
+    getPageDescendants?(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+        position?: number | null;
     }>>;
     getFolderChildren(folderId: string, options?: {
         signal?: AbortSignal;
@@ -6366,6 +6443,7 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        position?: number | null;
     }>>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
@@ -7468,6 +7546,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -8580,6 +8663,7 @@ export type FolderChild = {
     type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -9532,7 +9616,24 @@ export interface TreeChild {
 // export: TreeFetchContext
 export interface TreeFetchContext {
     signal?: AbortSignal;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
 }
+
+// export: TreeFetchDiagnosticV1
+export type TreeFetchDiagnosticV1 = {
+    code: "hierarchy-fallback";
+    deployment: "cloud";
+    operation: "page-direct-children";
+    status: number;
+    requestId?: string;
+    fallback: "page-descendants";
+} | {
+    code: "hierarchy-request-failed";
+    deployment: "cloud" | "data-center";
+    operation: TreeHierarchyOperationV1;
+    status?: number;
+    requestId?: string;
+};
 
 // export: TreeFetchOptions
 export interface TreeFetchOptions {
@@ -9545,6 +9646,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
@@ -9558,6 +9660,9 @@ export interface TreeFetchProgress {
     total: number | null;
     currentTitle: string;
 }
+
+// export: TreeHierarchyOperationV1
+export type TreeHierarchyOperationV1 = "page-version" | "space-homepage" | "page-direct-children" | "page-descendants" | "page-child-pages" | "folder-direct-children";
 
 // export: TreeLimitExceededError
 export declare class TreeLimitExceededError extends Error {
@@ -9622,6 +9727,17 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        position?: number | null;
+    }>>;
+    getPageDescendants?(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+        position?: number | null;
     }>>;
     getFolderChildren(folderId: string, options?: {
         signal?: AbortSignal;
@@ -9629,6 +9745,7 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        position?: number | null;
     }>>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
@@ -10425,6 +10542,11 @@ export declare class ConfluenceClient {
         limit?: number;
     }): Promise<ConfluenceSearchResult[]>;
     getPageDirectChildren(pageId: string, options?: {
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
@@ -11391,6 +11513,7 @@ export type FolderChild = {
     type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -14133,6 +14256,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -15245,6 +15373,7 @@ export type FolderChild = {
     type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -16197,7 +16326,24 @@ export interface TreeChild {
 // export: TreeFetchContext
 export interface TreeFetchContext {
     signal?: AbortSignal;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
 }
+
+// export: TreeFetchDiagnosticV1
+export type TreeFetchDiagnosticV1 = {
+    code: "hierarchy-fallback";
+    deployment: "cloud";
+    operation: "page-direct-children";
+    status: number;
+    requestId?: string;
+    fallback: "page-descendants";
+} | {
+    code: "hierarchy-request-failed";
+    deployment: "cloud" | "data-center";
+    operation: TreeHierarchyOperationV1;
+    status?: number;
+    requestId?: string;
+};
 
 // export: TreeFetchOptions
 export interface TreeFetchOptions {
@@ -16210,6 +16356,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
@@ -16223,6 +16370,9 @@ export interface TreeFetchProgress {
     total: number | null;
     currentTitle: string;
 }
+
+// export: TreeHierarchyOperationV1
+export type TreeHierarchyOperationV1 = "page-version" | "space-homepage" | "page-direct-children" | "page-descendants" | "page-child-pages" | "folder-direct-children";
 
 // export: TreeLimitExceededError
 export declare class TreeLimitExceededError extends Error {
@@ -16287,6 +16437,17 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        position?: number | null;
+    }>>;
+    getPageDescendants?(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+        position?: number | null;
     }>>;
     getFolderChildren(folderId: string, options?: {
         signal?: AbortSignal;
@@ -16294,6 +16455,7 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        position?: number | null;
     }>>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
@@ -16588,6 +16750,11 @@ export declare class ConfluenceClient {
         limit?: number;
     }): Promise<ConfluenceSearchResult[]>;
     getPageDirectChildren(pageId: string, options?: {
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;

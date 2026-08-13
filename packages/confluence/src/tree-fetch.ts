@@ -46,9 +46,40 @@ import { escapeCqlValue } from "./client.js";
 // Port
 // ---------------------------------------------------------------------------
 
-/** Context threaded through every port method — carries the abort signal. */
+/** Content-free hierarchy operation names exposed to progress/diagnostic hosts. */
+export type TreeHierarchyOperationV1 =
+  | "page-version"
+  | "space-homepage"
+  | "page-direct-children"
+  | "page-descendants"
+  | "page-child-pages"
+  | "folder-direct-children";
+
+/**
+ * A bounded, content-free hierarchy diagnostic. It deliberately carries no
+ * page id/title, URL, response body, or original error message.
+ */
+export type TreeFetchDiagnosticV1 =
+  | {
+      code: "hierarchy-fallback";
+      deployment: "cloud";
+      operation: "page-direct-children";
+      status: number;
+      requestId?: string;
+      fallback: "page-descendants";
+    }
+  | {
+      code: "hierarchy-request-failed";
+      deployment: "cloud" | "data-center";
+      operation: TreeHierarchyOperationV1;
+      status?: number;
+      requestId?: string;
+    };
+
+/** Context threaded through every port method — abort plus safe diagnostics. */
 export interface TreeFetchContext {
   signal?: AbortSignal;
+  onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
 }
 
 /** A reference to a node whose *children* are being requested. */
@@ -272,6 +303,8 @@ export interface TreeFetchOptions {
   completenessMode?: CompletenessMode;
   signal?: AbortSignal;
   onProgress?: (progress: TreeFetchProgress) => void;
+  /** Content-free hierarchy diagnostics suitable for a durable job monitor. */
+  onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
   /** Common representation-neutral decoder options; page provenance is owned here. */
   bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
   /**
@@ -451,6 +484,30 @@ function errorStatus(error: unknown): number | undefined {
   const message = error instanceof Error ? error.message : String(error);
   const match = message.match(/\((\d{3})\)/);
   return match ? Number.parseInt(match[1]!, 10) : undefined;
+}
+
+function errorRequestId(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("requestId" in error)) return undefined;
+  const requestId = (error as { requestId?: unknown }).requestId;
+  return typeof requestId === "string" && requestId.length > 0 ? requestId : undefined;
+}
+
+async function reportHierarchyFailure(
+  context: TreeFetchContext,
+  deployment: "cloud" | "data-center",
+  operation: TreeHierarchyOperationV1,
+  error: unknown,
+): Promise<void> {
+  if (!context.onDiagnostic) return;
+  const status = errorStatus(error);
+  const requestId = errorRequestId(error);
+  await context.onDiagnostic({
+    code: "hierarchy-request-failed",
+    deployment,
+    operation,
+    ...(status !== undefined ? { status } : {}),
+    ...(requestId ? { requestId } : {}),
+  });
 }
 
 function isUnreadable(status: number | undefined): boolean {
@@ -1016,7 +1073,10 @@ export async function fetchExportTree(
   opts: TreeFetchOptions = {}
 ): Promise<FetchExportTreeResult> {
   const signal = opts.signal;
-  const context: TreeFetchContext = { signal };
+  const context: TreeFetchContext = {
+    signal,
+    ...(opts.onDiagnostic ? { onDiagnostic: opts.onDiagnostic } : {}),
+  };
   const maxPages = opts.maxPages ?? DEFAULT_MAX_PAGES;
   const maxFolders = opts.maxFolders ?? DEFAULT_MAX_FOLDERS;
   const concurrency = opts.concurrency ?? DEFAULT_CONCURRENCY;
@@ -1719,11 +1779,15 @@ export interface TreeSourceClient {
   getPageDirectChildren(
     pageId: string,
     options?: { signal?: AbortSignal }
-  ): Promise<Array<{ id: string; title: string; type: string }>>;
+  ): Promise<Array<{ id: string; title: string; type: string; position?: number | null }>>;
+  getPageDescendants?(
+    pageId: string,
+    options?: { depth?: number; limit?: number; signal?: AbortSignal }
+  ): Promise<Array<{ id: string; title: string; type: string; position?: number | null }>>;
   getFolderChildren(
     folderId: string,
     options?: { signal?: AbortSignal }
-  ): Promise<Array<{ id: string; title: string; type: string }>>;
+  ): Promise<Array<{ id: string; title: string; type: string; position?: number | null }>>;
   getSpaceHomepageId(
     spaceKey: string,
     options?: { signal?: AbortSignal }
@@ -1782,8 +1846,18 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
     },
 
     async getPageVersion(id, context) {
-      const v = await client.getPageVersion(id, { signal: context.signal });
-      return { version: v.version, title: v.title };
+      try {
+        const v = await client.getPageVersion(id, { signal: context.signal });
+        return { version: v.version, title: v.title };
+      } catch (error) {
+        await reportHierarchyFailure(
+          context,
+          client.deploymentType === "data-center" ? "data-center" : "cloud",
+          "page-version",
+          error,
+        );
+        throw error;
+      }
     },
 
     async getChildren(nodeRef, context) {
@@ -1795,9 +1869,15 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
         if (nodeRef.kind === "folder") {
           throw new TypeError("Data Center tree traversal cannot descend into Cloud folder nodes.");
         }
-        const children = await client.getChildrenWithPosition(nodeRef.id, {
-          signal: context.signal,
-        });
+        let children: Awaited<ReturnType<TreeSourceClient["getChildrenWithPosition"]>>;
+        try {
+          children = await client.getChildrenWithPosition(nodeRef.id, {
+            signal: context.signal,
+          });
+        } catch (error) {
+          await reportHierarchyFailure(context, "data-center", "page-child-pages", error);
+          throw error;
+        }
         return children.map((child) => ({
           id: child.id,
           title: child.title,
@@ -1808,20 +1888,62 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
       }
 
       if (nodeRef.kind === "folder") {
-        const children = await client.getFolderChildren(nodeRef.id, { signal: context.signal });
+        let children: Awaited<ReturnType<TreeSourceClient["getFolderChildren"]>>;
+        try {
+          children = await client.getFolderChildren(nodeRef.id, { signal: context.signal });
+        } catch (error) {
+          await reportHierarchyFailure(context, "cloud", "folder-direct-children", error);
+          throw error;
+        }
         return children.map((child) => ({
           id: child.id,
           title: child.title,
           kind: classifyKind(child.type),
           ...(classifyKind(child.type) === "unsupported" ? { unsupportedKind: child.type } : {}),
-          // getFolderChildren carries no position/version field.
-          position: null,
+          position: child.position ?? null,
         }));
       }
 
-      // Page parent: discover kinds, then re-fetch page positions/versions.
-      const discovered = await client.getPageDirectChildren(nodeRef.id, { signal: context.signal });
-      const positioned = await client.getChildrenWithPosition(nodeRef.id, { signal: context.signal });
+      // Page parent: discover kinds, falling back from the newer direct-children
+      // route only for endpoint/capability failures. Authentication, throttling,
+      // transport, cancellation, and server failures must retain their semantics.
+      let discovered: Awaited<ReturnType<TreeSourceClient["getPageDirectChildren"]>>;
+      try {
+        discovered = await client.getPageDirectChildren(nodeRef.id, { signal: context.signal });
+      } catch (error) {
+        context.signal?.throwIfAborted();
+        const status = errorStatus(error);
+        const fallbackStatuses = new Set([400, 404, 405, 501]);
+        if (status === undefined || !fallbackStatuses.has(status) || !client.getPageDescendants) {
+          await reportHierarchyFailure(context, "cloud", "page-direct-children", error);
+          throw error;
+        }
+        await context.onDiagnostic?.({
+          code: "hierarchy-fallback",
+          deployment: "cloud",
+          operation: "page-direct-children",
+          status,
+          ...(errorRequestId(error) ? { requestId: errorRequestId(error) } : {}),
+          fallback: "page-descendants",
+        });
+        try {
+          discovered = await client.getPageDescendants(nodeRef.id, {
+            depth: 1,
+            signal: context.signal,
+          });
+        } catch (fallbackError) {
+          await reportHierarchyFailure(context, "cloud", "page-descendants", fallbackError);
+          throw fallbackError;
+        }
+      }
+
+      let positioned: Awaited<ReturnType<TreeSourceClient["getChildrenWithPosition"]>>;
+      try {
+        positioned = await client.getChildrenWithPosition(nodeRef.id, { signal: context.signal });
+      } catch (error) {
+        await reportHierarchyFailure(context, "cloud", "page-child-pages", error);
+        throw error;
+      }
       const byId = new Map(positioned.map((p) => [p.id, p]));
 
       return discovered.map((child): TreeChild => {
@@ -1832,25 +1954,40 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
             id: child.id,
             title: child.title,
             kind: "page",
-            position: pos?.position ?? null,
+            position: pos?.position ?? child.position ?? null,
             observedVersion: pos?.version,
           };
         }
         if (kind === "folder") {
-          return { id: child.id, title: child.title, kind: "folder", position: null };
+          return {
+            id: child.id,
+            title: child.title,
+            kind: "folder",
+            position: child.position ?? null,
+          };
         }
         return {
           id: child.id,
           title: child.title,
           kind: "unsupported",
           unsupportedKind: child.type,
-          position: null,
+          position: child.position ?? null,
         };
       });
     },
 
     async getSpaceHomepageId(spaceKey, context) {
-      return client.getSpaceHomepageId(spaceKey, { signal: context.signal });
+      try {
+        return await client.getSpaceHomepageId(spaceKey, { signal: context.signal });
+      } catch (error) {
+        await reportHierarchyFailure(
+          context,
+          client.deploymentType === "data-center" ? "data-center" : "cloud",
+          "space-homepage",
+          error,
+        );
+        throw error;
+      }
     },
 
     async searchPages(cql, context) {

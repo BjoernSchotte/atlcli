@@ -48,6 +48,7 @@ class ConfluenceV2RequestError extends Error {
     public readonly status: number,
     message: string,
     public readonly classification?: V2FailureClassification,
+    public readonly requestId?: string,
   ) {
     super(message);
     this.name = "ConfluenceV2RequestError";
@@ -370,6 +371,8 @@ export type FolderChild = {
   type: "page" | "folder" | (string & {});
   spaceId?: string;
   parentId?: string | null;
+  /** UI child position when the endpoint exposes it (for example descendants). */
+  position?: number | null;
   url?: string;
 };
 
@@ -1013,6 +1016,8 @@ export class ConfluenceClient {
         const error = new ConfluenceV2RequestError(
           res.status,
           `Rate limited by Confluence API after ${this.maxRetries} retries`,
+          undefined,
+          requestId,
         );
         logger.api("response", {
           requestId,
@@ -1046,6 +1051,7 @@ export class ConfluenceClient {
           res.status,
           `Confluence API v2 error (${res.status}): ${message}`,
           classifyV2Failure(path, options.query, res.status, data),
+          requestId,
         );
 
         if (res.status >= 500 && attempt < this.maxRetries) {
@@ -1989,9 +1995,12 @@ export class ConfluenceClient {
           token === undefined
             ? await this.request(
                 `/content/${parentId}/child/page?expand=extensions.position,version,ancestors&limit=${limit}`,
-                { signal: options.signal }
+                { signal: options.signal, logBody: "meta-only" }
               )
-            : await this.request(token.replace(/^\/rest\/api/, ""), { signal: options.signal });
+            : await this.request(token.replace(/^\/rest\/api/, ""), {
+                signal: options.signal,
+                logBody: "meta-only",
+              });
 
         const items = (Array.isArray(data.results) ? data.results : []).map((item: any) => {
           const ancestors = Array.isArray(item.ancestors)
@@ -2083,6 +2092,7 @@ export class ConfluenceClient {
       const data = (await this.requestV2(`/pages/${pageId}/direct-children`, {
         query,
         signal: options.signal,
+        logBody: "meta-only",
       })) as any;
 
       const results = Array.isArray(data.results) ? data.results : [];
@@ -2094,9 +2104,51 @@ export class ConfluenceClient {
         type: item.type,
         spaceId: item.spaceId,
         parentId: pageId,
+        position: typeof item.childPosition === "number" ? item.childPosition : null,
         url: this.buildWebUrl(item._links?.webui),
       }));
 
+      return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+    });
+  }
+
+  /**
+   * Get mixed direct descendants of a Cloud page through the descendants API.
+   *
+   * `depth=1` is intentionally fixed by the tree adapter: deeper descendants
+   * are walked recursively so folder/page ordering and cycle guards stay owned
+   * by one traversal implementation.
+   *
+   * GET /api/v2/pages/{id}/descendants?depth=1
+   */
+  async getPageDescendants(
+    pageId: string,
+    options: { depth?: number; limit?: number; signal?: AbortSignal } = {}
+  ): Promise<FolderChild[]> {
+    const { depth = 1, limit = 100 } = options;
+    if (!Number.isSafeInteger(depth) || depth !== 1) {
+      throw new RangeError("Page descendant traversal depth must be exactly 1.");
+    }
+
+    return drainPaginated<FolderChild>(async (cursor) => {
+      const query: Record<string, string | number | undefined> = { depth, limit };
+      if (cursor) query.cursor = cursor;
+
+      const data = (await this.requestV2(`/pages/${pageId}/descendants`, {
+        query,
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const results = Array.isArray(data.results) ? data.results : [];
+      const items: FolderChild[] = results.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        type: item.type,
+        spaceId: item.spaceId,
+        parentId: item.parentId ?? pageId,
+        position: typeof item.childPosition === "number" ? item.childPosition : null,
+        url: this.buildWebUrl(item._links?.webui),
+      }));
       return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
     });
   }
@@ -4119,6 +4171,7 @@ export class ConfluenceClient {
       const data = (await this.requestV2(`/folders/${folderId}/direct-children`, {
         query,
         signal: options.signal,
+        logBody: "meta-only",
       })) as any;
 
       const results = Array.isArray(data.results) ? data.results : [];
@@ -4128,6 +4181,7 @@ export class ConfluenceClient {
         type: item.type,
         spaceId: item.spaceId,
         parentId: folderId,
+        position: typeof item.childPosition === "number" ? item.childPosition : null,
         url: this.buildWebUrl(item._links?.webui),
       }));
 
@@ -4397,6 +4451,7 @@ export class ConfluenceClient {
     const data = (await this.request(`/space/${spaceKey}`, {
       query: { expand: "homepage.id" },
       signal: options.signal,
+      logBody: "meta-only",
     })) as { homepage?: { id?: string } };
     return data?.homepage?.id ?? null;
   }

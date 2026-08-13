@@ -690,6 +690,39 @@ describe("ConfluenceClient", () => {
         "https://confluence.example.com/confluence/spaces/TEST/pages/999/Child"
       );
     });
+
+    test("Cloud descendants keeps large page ids as strings and maps child positions", async () => {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(new Response(JSON.stringify({
+          results: [{
+            id: "2819653637",
+            title: "Child",
+            type: "page",
+            parentId: "2819653636",
+            childPosition: 9,
+          }],
+        }), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const children = await client.getPageDescendants("2819653636");
+
+      const url = new URL(capturedUrl);
+      expect(url.pathname).toBe("/wiki/api/v2/pages/2819653636/descendants");
+      expect(url.searchParams.get("depth")).toBe("1");
+      expect(url.searchParams.get("limit")).toBe("100");
+      expect(children).toEqual([{
+        id: "2819653637",
+        title: "Child",
+        type: "page",
+        spaceId: undefined,
+        parentId: "2819653636",
+        position: 9,
+        url: undefined,
+      }]);
+    });
   });
 
   describe("label operations", () => {

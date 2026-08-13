@@ -590,7 +590,10 @@ no hosted job to poll and no data egress to third parties. Automation is the CLI
 Hierarchy discovery follows the configured deployment: Confluence Cloud keeps
 mixed page/folder discovery through REST v2, while Data Center reads page children
 through its supported REST v1 hierarchy endpoint. Data Center exports therefore do
-not probe Cloud-only `/api/v2` routes.
+not probe Cloud-only `/api/v2` routes. On Cloud, atlcli first uses the direct-children
+route and retries discovery through depth-1 descendants when the site reports a
+compatible endpoint error (`400`, `404`, `405`, or `501`). It does not use that
+fallback for authentication, rate limiting, cancellation, network, or server errors.
 
 ### Prerequisites
 

@@ -153,6 +153,9 @@ export function sessionTreeSourceForProfile(
     getPageVersion: (id, request) => client.getPageVersion(id, request),
     getChildrenWithPosition: (id, request) => client.getChildrenWithPosition(id, request),
     getPageDirectChildren: (id, request) => client.getPageDirectChildren(id, request),
+    ...(client.getPageDescendants
+      ? { getPageDescendants: (id, request) => client.getPageDescendants!(id, request) }
+      : {}),
     getFolderChildren: (id, request) => client.getFolderChildren(id, request),
     getSpaceHomepageId: (key, request) => client.getSpaceHomepageId(key, request),
     searchPages: (cql, limit, request) => client.searchPages(cql, limit, request),

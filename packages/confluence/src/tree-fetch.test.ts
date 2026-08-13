@@ -1517,4 +1517,151 @@ describe("fetchExportTree — representation-neutral sources", () => {
     ]);
     expect(calls).toEqual(["direct:root", "positions:root"]);
   });
+
+  test("Cloud traversal falls back to depth-1 descendants for a large page id", async () => {
+    const calls: string[] = [];
+    const diagnostics: unknown[] = [];
+    const directFailure = Object.assign(new Error("private response body"), {
+      status: 404,
+      requestId: "request-direct",
+    });
+    const source = confluenceTreeSource({
+      deploymentType: "cloud",
+      async getPageDetails(id: string) {
+        return { id, title: id, storage: `<p>${id}</p>`, version: 1 };
+      },
+      async getPageVersion() { return { title: "Title", version: 1 }; },
+      async getChildrenWithPosition(id: string) {
+        calls.push(`positions:${id}`);
+        return [{ id: "page", title: "Page", version: 4, position: 2 }];
+      },
+      async getPageDirectChildren(id: string) {
+        calls.push(`direct:${id}`);
+        throw directFailure;
+      },
+      async getPageDescendants(id: string, options) {
+        calls.push(`descendants:${id}:depth=${options?.depth}`);
+        return [
+          { id: "page", title: "Page", type: "page", position: 8 },
+          { id: "folder", title: "Folder", type: "folder", position: 3 },
+        ];
+      },
+      async getFolderChildren() { return []; },
+      async getSpaceHomepageId() { return null; },
+      async searchPages() { return []; },
+    });
+
+    await expect(source.getChildren(
+      { id: "2819653636", kind: "page" },
+      { onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); } },
+    )).resolves.toEqual([
+      { id: "page", title: "Page", kind: "page", position: 2, observedVersion: 4 },
+      { id: "folder", title: "Folder", kind: "folder", position: 3 },
+    ]);
+    expect(calls).toEqual([
+      "direct:2819653636",
+      "descendants:2819653636:depth=1",
+      "positions:2819653636",
+    ]);
+    expect(diagnostics).toEqual([{
+      code: "hierarchy-fallback",
+      deployment: "cloud",
+      operation: "page-direct-children",
+      status: 404,
+      requestId: "request-direct",
+      fallback: "page-descendants",
+    }]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private response body");
+  });
+
+  test.each([401, 403, 429, 500])(
+    "Cloud traversal does not hide a %d direct-children failure behind fallback",
+    async (status) => {
+      const calls: string[] = [];
+      const diagnostics: unknown[] = [];
+      const failure = Object.assign(new Error("private response body"), {
+        status,
+        requestId: `request-${status}`,
+      });
+      const source = confluenceTreeSource({
+        deploymentType: "cloud",
+        async getPageDetails(id: string) {
+          return { id, title: id, storage: "", version: 1 };
+        },
+        async getPageVersion() { return { title: "Title", version: 1 }; },
+        async getChildrenWithPosition() { return []; },
+        async getPageDirectChildren() { throw failure; },
+        async getPageDescendants() {
+          calls.push("descendants");
+          return [];
+        },
+        async getFolderChildren() { return []; },
+        async getSpaceHomepageId() { return null; },
+        async searchPages() { return []; },
+      });
+
+      await expect(source.getChildren(
+        { id: "root", kind: "page" },
+        { onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); } },
+      )).rejects.toBe(failure);
+      expect(calls).toEqual([]);
+      expect(diagnostics).toEqual([{
+        code: "hierarchy-request-failed",
+        deployment: "cloud",
+        operation: "page-direct-children",
+        status,
+        requestId: `request-${status}`,
+      }]);
+      expect(JSON.stringify(diagnostics)).not.toContain("private response body");
+    },
+  );
+
+  test("Cloud traversal reports a failed descendants fallback without retaining response data", async () => {
+    const diagnostics: unknown[] = [];
+    const fallbackFailure = Object.assign(new Error("private descendants response"), {
+      status: 404,
+      requestId: "request-descendants",
+    });
+    const source = confluenceTreeSource({
+      deploymentType: "cloud",
+      async getPageDetails(id: string) {
+        return { id, title: id, storage: "", version: 1 };
+      },
+      async getPageVersion() { return { title: "Title", version: 1 }; },
+      async getChildrenWithPosition() { return []; },
+      async getPageDirectChildren() {
+        throw Object.assign(new Error("private direct response"), {
+          status: 404,
+          requestId: "request-direct",
+        });
+      },
+      async getPageDescendants() { throw fallbackFailure; },
+      async getFolderChildren() { return []; },
+      async getSpaceHomepageId() { return null; },
+      async searchPages() { return []; },
+    });
+
+    await expect(source.getChildren(
+      { id: "root", kind: "page" },
+      { onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); } },
+    )).rejects.toBe(fallbackFailure);
+    expect(diagnostics).toEqual([
+      {
+        code: "hierarchy-fallback",
+        deployment: "cloud",
+        operation: "page-direct-children",
+        status: 404,
+        requestId: "request-direct",
+        fallback: "page-descendants",
+      },
+      {
+        code: "hierarchy-request-failed",
+        deployment: "cloud",
+        operation: "page-descendants",
+        status: 404,
+        requestId: "request-descendants",
+      },
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private");
+  });
 });
