@@ -633,26 +633,26 @@ exakten Source-SHA kann den Release-Preflight freigeben.
 
 **Blocks:** DR-07, DR-09
 
-- [ ] Publish-Job erstellt exakt den Dev-Tag am gebundenen Source-SHA und einen
+- [x] Publish-Job erstellt exakt den Dev-Tag am gebundenen Source-SHA und einen
   Prerelease mit `make_latest=false`.
-- [ ] Stable- und Dev-Publisher auf „Draft erstellen, vollstaendige Asset-Menge
+- [x] Stable- und Dev-Publisher auf „Draft erstellen, vollstaendige Asset-Menge
   hochladen/pruefen, Draft veroeffentlichen“ umstellen. Bestehende Releases
   werden niemals als Update-Ziel verwendet.
-- [ ] Vor Upload prueft der Job die exakte Asset-Menge, alle Digests und die
+- [x] Vor Upload prueft der Job die exakte Asset-Menge, alle Digests und die
   Metadata-/Attestation-Bindung; partielle Releases gelten als Fehler.
-- [ ] Nach Upload laedt ein separater Verify-Job alle Assets ueber die Release-
+- [x] Nach Upload laedt ein separater Verify-Job alle Assets ueber die Release-
   API erneut herunter und fuehrt `verify-release-artifacts.ts` plus
   Plattform-/Browser-Consumer-Proofs gegen diese Bytes aus.
-- [ ] Der Verify-Job prueft Release-Tag-Target, `prerelease=true`,
+- [x] Der Verify-Job prueft Release-Tag-Target, `prerelease=true`,
   `draft=false`, `make_latest=false`, Source-SHA und unveraenderte Stable-
   `/releases/latest`-Antwort.
-- [ ] Teilfehler bleiben sichtbar und werden nicht durch Ueberschreiben repariert;
+- [x] Teilfehler bleiben sichtbar und werden nicht durch Ueberschreiben repariert;
   ein neuer Force-Build ist der Recovery-Pfad.
-- [ ] Retention/Cleanup aus Abschnitt 7 mit Dry Run, Schutz der aktuellen
+- [x] Retention/Cleanup aus Abschnitt 7 mit Dry Run, Schutz der aktuellen
   Homebrew-Referenz und strukturellen Negativtests implementieren.
-- [ ] GitHub-Prerelease-URL, Run-ID/-Attempt, Source-SHA, Assetliste und Digests
+- [x] GitHub-Prerelease-URL, Run-ID/-Attempt, Source-SHA, Assetliste und Digests
   als maschinenlesbares Receipt exportieren.
-- [ ] Nach einem gruenen Stable-Dry-Run und Dev-Shadow-Run GitHub Release
+- [x] Nach einem gruenen Stable-Dry-Run und Dev-Shadow-Run GitHub Release
   Immutability repositoryweit aktivieren; danach im Live-Proof `gh release
   verify` und mindestens ein `gh release verify-asset` ausfuehren. Bis diese
   Einstellung aktiv und belegt ist, darf die Dokumentation nur von eindeutigen,
