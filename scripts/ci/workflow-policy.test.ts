@@ -320,6 +320,10 @@ describe("CI workflow policy", () => {
     expect(published).toContain("verify-release-artifacts.ts --dir published-download");
     expect(dev.match(/contents: write/g)).toHaveLength(2);
     expect(dev).not.toContain("--clobber");
+    expect(dev).toContain('gh release verify "$DEV_TAG"');
+    expect(dev).toContain('gh release verify-asset "$DEV_TAG" published-download/build-metadata.json');
+    expect(dev).toContain("github-release-attestation.json");
+    expect(dev).toContain("github-release-asset-attestation.json");
     expect(dev).not.toContain("softprops/action-gh-release");
   });
 

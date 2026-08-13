@@ -377,6 +377,9 @@ export async function downloadAndVerifyRelease(input: {
     prerelease: input.channel === "dev",
     expectedNames: expected,
   });
+  if (input.operation === "verify-published" && input.channel === "dev" && release.immutable !== true) {
+    throw new Error("published dev release is not immutable");
+  }
   const ref = await input.api.reference(input.tag);
   if (!ref || await input.api.referenceCommit(ref) !== input.sourceSha) {
     throw new Error("release tag is not bound to the exact source SHA");
@@ -486,6 +489,9 @@ export async function publishDraftRelease(input: {
   sourceSha: string;
   releaseId: number;
   stableLatestBefore: string | null;
+  immutablePollIntervalMs?: number;
+  immutableTimeoutMs?: number;
+  sleep?: (milliseconds: number) => Promise<void>;
 }): Promise<ReleaseTransactionReceipt> {
   const ref = await input.api.reference(input.tag);
   if (!ref || await input.api.referenceCommit(ref) !== input.sourceSha) {
@@ -499,7 +505,7 @@ export async function publishDraftRelease(input: {
     prerelease: input.channel === "dev",
     expectedNames: expectedNames(input.channel, input.version, input.tag, input.sourceSha),
   });
-  const published = await input.api.publish(
+  let published = await input.api.publish(
     input.releaseId,
     input.channel === "dev",
     input.channel === "stable",
@@ -511,6 +517,22 @@ export async function publishDraftRelease(input: {
     prerelease: input.channel === "dev",
     expectedNames: expectedNames(input.channel, input.version, input.tag, input.sourceSha),
   });
+  if (input.channel === "dev" && published.immutable !== true) {
+    const sleep = input.sleep ?? ((milliseconds: number) => Bun.sleep(milliseconds));
+    const deadline = Date.now() + (input.immutableTimeoutMs ?? 2 * 60 * 1_000);
+    do {
+      if (Date.now() >= deadline) throw new Error("published dev release did not become immutable before timeout");
+      await sleep(input.immutablePollIntervalMs ?? 5_000);
+      published = await input.api.release(input.releaseId);
+      assertRelease({
+        release: published,
+        tag: input.tag,
+        draft: false,
+        prerelease: true,
+        expectedNames: expectedNames(input.channel, input.version, input.tag, input.sourceSha),
+      });
+    } while (published.immutable !== true);
+  }
   const latest = (await input.api.latestStable())?.tag_name ?? null;
   if (input.channel === "dev" && latest !== input.stableLatestBefore) {
     throw new Error("stable latest changed while publishing dev prerelease");

@@ -98,6 +98,7 @@ class FakeApi implements ReleaseApi {
   async publish(_releaseId: number, _prerelease: boolean, makeLatest: boolean) {
     this.publishCalls++;
     this.draft.draft = false;
+    this.draft.immutable = true;
     if (makeLatest) this.latest = this.draft.tag_name;
     return structuredClone(this.draft);
   }
@@ -268,6 +269,74 @@ describe("exclusive GitHub release transaction", () => {
       stableLatestBefore: STABLE,
     })).rejects.toThrow("state");
     expect(api.publishCalls).toBe(1);
+  });
+
+  test("waits for GitHub to enforce dev release immutability and fails closed on timeout", async () => {
+    const requested = identity();
+    const delayed = new FakeApi();
+    await createDraftRelease({
+      api: delayed,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      directory: assetDirectory(),
+      title: requested.releaseTag,
+      body: "",
+      stableLatestBefore: STABLE,
+    });
+    let polls = 0;
+    delayed.publish = async function(_releaseId: number, _prerelease: boolean, _makeLatest: boolean) {
+      this.publishCalls++;
+      this.draft.draft = false;
+      this.draft.immutable = false;
+      return structuredClone(this.draft);
+    };
+    delayed.release = async function() {
+      polls++;
+      if (this.publishCalls > 0 && polls >= 2) this.draft.immutable = true;
+      return structuredClone(this.draft);
+    };
+    const result = await publishDraftRelease({
+      api: delayed,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      releaseId: 77,
+      stableLatestBefore: STABLE,
+      immutablePollIntervalMs: 0,
+      immutableTimeoutMs: 1_000,
+      sleep: async () => {},
+    });
+    expect(result.immutable).toBe(true);
+
+    const never = new FakeApi();
+    await createDraftRelease({
+      api: never,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      directory: assetDirectory(),
+      title: requested.releaseTag,
+      body: "",
+      stableLatestBefore: STABLE,
+    });
+    never.publish = delayed.publish;
+    never.release = async function() { return structuredClone(this.draft); };
+    await expect(publishDraftRelease({
+      api: never,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      releaseId: 77,
+      stableLatestBefore: STABLE,
+      immutablePollIntervalMs: 0,
+      immutableTimeoutMs: 0,
+      sleep: async () => {},
+    })).rejects.toThrow("did not become immutable");
   });
 
   test("downloads one native archive only after rechecking the complete draft", async () => {
