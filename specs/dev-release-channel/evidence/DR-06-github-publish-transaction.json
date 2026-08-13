@@ -1,10 +1,10 @@
 {
   "schema": "atlcli.dev-release-task-proof/v1",
   "task": "DR-06",
-  "recordedAt": "2026-08-12T16:36:02Z",
-  "proofedParentHead": "54d19b907f1ecde0844e8c3c3a0c5f81a9ce9268",
-  "authoritativePublishedArtifact": false,
-  "purpose": "mutationsfreier Implementations- und Regressionsbeweis fuer die Draft-first GitHub-Transaktion, native CLI-/Browser-Consumer und den geschuetzten Cleanup; der oeffentliche immutable Prerelease-Beweis folgt in DR-10",
+  "recordedAt": "2026-08-13T11:17:00Z",
+  "proofedParentHead": "8bea69a68358621bb0503d7032289f4b4e23554e",
+  "authoritativePublishedArtifact": true,
+  "purpose": "Live-Beweis fuer die Draft-first GitHub-Transaktion, den immutable Prerelease, exakte erneut heruntergeladene CLI-/MV3-Bytes, native Consumer und Stable-Latest-Isolation",
   "publishContract": {
     "devTagCreatedAtExactSourceSha": true,
     "existingDevTagRejected": true,
@@ -95,12 +95,31 @@
       "result": "success"
     }
   },
-  "deferredLiveProof": {
-    "workflowShadowRun": "DR-09",
-    "publishedImmutableRelease": "DR-10",
-    "ghReleaseVerify": "DR-10",
-    "ghReleaseVerifyAsset": "DR-10",
-    "reason": "Repository policy requires the complete dry-run and explicit first-publication gate before a live release mutation."
+  "livePublication": {
+    "sourceSha": "8bea69a68358621bb0503d7032289f4b4e23554e",
+    "canonicalMainCiRun": 31693374962,
+    "canonicalMainCiUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31693374962",
+    "sourceRun": 31693920643,
+    "sourceRunAttempt": 1,
+    "sourceRunUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31693920643",
+    "tag": "dev-20260813.26.1-8bea69a6",
+    "releaseUrl": "https://github.com/BjoernSchotte/atlcli/releases/tag/dev-20260813.26.1-8bea69a6",
+    "publishedAt": "2026-08-13T11:10:37Z",
+    "immutable": true,
+    "prerelease": true,
+    "draft": false,
+    "assetCount": 10,
+    "metadataSha256": "d9886a859f4178b86f40290244f76a9d502f4a88dde7a54ac90e8afb73b49c3b",
+    "checksumsSha256": "ab168cb905590892b45b8bb25243675bdc7be5233e83164877d6e6811b0c2e22",
+    "extensionSha256": "29022dec7caa5ca6ce55737a9ab26f2e05aff8de620d184a5cb54bf76455be67",
+    "extensionManifestSha256": "5f79d07215422e27917b05620a76f0baa48cb7d61fab5ccfc858ac339d6ef625",
+    "extensionContentTreeSha256": "07e25cfba5b004f2ed76da60d0f3529446da853fcd457e94b48aacb11d793dd5",
+    "downloadedVerifier": "success",
+    "nativeCliTargets": ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"],
+    "ghReleaseVerify": "success",
+    "ghReleaseVerifyAsset": "atlcli-linux-x64.tar.gz",
+    "stableLatestTag": "v0.17.2",
+    "stableLatestUrl": "https://github.com/BjoernSchotte/atlcli/releases/tag/v0.17.2"
   },
   "privacy": {
     "containsSecrets": false,

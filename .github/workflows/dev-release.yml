@@ -818,7 +818,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.resolve-source.outputs.source_sha }}
+          # Product artifacts remain bound to source_sha, but cross-repository
+          # orchestration must use the current trusted workflow implementation.
+          # Otherwise a rollback also resurrects obsolete publishing code.
+          ref: main
           persist-credentials: false
 
       - name: Setup Bun
