@@ -435,6 +435,9 @@ jobs:
       - name: Reverify before any GitHub write
         run: bun scripts/verify-release-artifacts.ts --dir bundle > pre-upload-verification.json
 
+      - name: Remove owned verification extraction before GitHub write
+        run: bun scripts/verify-release-artifacts.ts cleanup-extension --out bundle/extension
+
       - name: Write dev release notes
         env:
           PUBLISH_HOMEBREW_REQUESTED: ${{ github.event_name == 'schedule' || inputs.publish_homebrew }}
