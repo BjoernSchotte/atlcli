@@ -119,6 +119,14 @@ export async function releaseActionPaletteHostV1(
   }
 }
 
+/** Keep the prewarmed full-viewport host out of layout and accessibility. */
+export function setActionPaletteHostVisibleV1(host: HTMLElement, visible: boolean): void {
+  host.style.pointerEvents = visible ? "auto" : "none";
+  host.toggleAttribute("hidden", !visible);
+  if (visible) host.removeAttribute("aria-hidden");
+  else host.setAttribute("aria-hidden", "true");
+}
+
 /**
  * The eager content-script shell does no DOM work. It loads the React host only
  * after the service worker routes the configured extension command here.
@@ -143,8 +151,7 @@ export default defineContentScript({
       open = false;
       post({ kind: "action-palette-frame:close" });
       if (hostPromise) void hostPromise.then((ui) => {
-        ui.shadowHost.style.pointerEvents = "none";
-        ui.shadowHost.setAttribute("aria-hidden", "true");
+        setActionPaletteHostVisibleV1(ui.shadowHost, false);
       });
       const snapshot = focusSnapshot;
       focusSnapshot = null;
@@ -155,8 +162,7 @@ export default defineContentScript({
       try {
         const warmHost = await getHost();
         if (!open) {
-          warmHost.shadowHost.style.pointerEvents = "none";
-          warmHost.shadowHost.setAttribute("aria-hidden", "true");
+          setActionPaletteHostVisibleV1(warmHost.shadowHost, false);
         }
       } catch {
         // Prewarming is an optimization. A later open still retries getHost.
@@ -243,8 +249,7 @@ export default defineContentScript({
       focusSnapshot = captureFocusV1();
       open = true;
       const ui = await getHost();
-      ui.shadowHost.style.pointerEvents = "auto";
-      ui.shadowHost.removeAttribute("aria-hidden");
+      setActionPaletteHostVisibleV1(ui.shadowHost, true);
       frame?.focus({ preventScroll: true });
       if (frameReady) post({ kind: "action-palette-frame:open" });
     };

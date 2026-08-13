@@ -6,6 +6,7 @@ import {
   isToggleMessageV1,
   releaseActionPaletteHostV1,
   restoreFocusV1,
+  setActionPaletteHostVisibleV1,
 } from "../entrypoints/atlassian-action-palette.content/index.js";
 import { createReactHarness } from "./react-harness.js";
 
@@ -93,5 +94,19 @@ describe("action palette content-shell protocol", () => {
     await releasing;
 
     expect(removals).toBe(1);
+  });
+
+  test("keeps the prewarmed full-viewport host visually and accessibly hidden", () => {
+    const host = document.createElement("div");
+
+    setActionPaletteHostVisibleV1(host, false);
+    expect(host.style.pointerEvents).toBe("none");
+    expect(host.hidden).toBe(true);
+    expect(host.getAttribute("aria-hidden")).toBe("true");
+
+    setActionPaletteHostVisibleV1(host, true);
+    expect(host.style.pointerEvents).toBe("auto");
+    expect(host.hidden).toBe(false);
+    expect(host.hasAttribute("aria-hidden")).toBe(false);
   });
 });
