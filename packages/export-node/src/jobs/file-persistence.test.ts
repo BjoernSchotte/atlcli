@@ -74,6 +74,13 @@ function pdfPackRequest(
 }
 async function* bytes(value: string): AsyncIterable<Uint8Array> { yield new TextEncoder().encode(value); }
 async function all(source: AsyncIterable<Uint8Array>): Promise<string> { const chunks: number[] = []; for await (const chunk of source) chunks.push(...chunk); return new TextDecoder().decode(Uint8Array.from(chunks)); }
+async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(`condition was not satisfied within ${timeoutMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 describe("file export persistence", () => {
   it("shares verified template packs across restarts and reconciles only complete-scan orphans", async () => {
@@ -609,9 +616,12 @@ describe("file export persistence", () => {
     const runtime = createFileExportExecutionContext({ claimed, jobs: owner.jobs, spool: owner.spool, artifacts: owner.artifacts, spoolLimits: owner.spoolLimits, heartbeatIntervalMs: 5_000, cancelPollMs: 10 });
     const before = (await import("node:fs/promises")).readdir(join(dir, "journal")).then((values) => values.length);
     const latest = (await controller.jobs.get(claimed.id))!; await controller.jobs.compareAndSet({ kind: "transition", id: latest.id, expectedRevision: latest.revision, to: "cancelling", at: Date.now() });
-    await new Promise((resolve) => setTimeout(resolve, 40)); expect(runtime.context.signal.aborted).toBe(true);
-    const after = (await import("node:fs/promises")).readdir(join(dir, "journal")).then((values) => values.length); expect((await after) - (await before)).toBeLessThanOrEqual(2);
-    await runtime.stop();
+    try {
+      await waitUntil(() => runtime.context.signal.aborted); expect(runtime.context.signal.aborted).toBe(true);
+      const after = (await import("node:fs/promises")).readdir(join(dir, "journal")).then((values) => values.length); expect((await after) - (await before)).toBeLessThanOrEqual(2);
+    } finally {
+      await runtime.stop();
+    }
   });
 
   it("persists execution-context statistics and bounded stage/progress events", async () => {
