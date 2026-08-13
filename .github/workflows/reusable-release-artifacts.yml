@@ -64,6 +64,12 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Restore pinned PDF fonts
+        uses: actions/cache@v6
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
+
       - name: Install frozen dependencies
         run: bash scripts/ci/install-frozen-dependencies.sh
 
@@ -117,6 +123,12 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Restore pinned PDF fonts
+        uses: actions/cache@v6
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
 
       - name: Install frozen dependencies
         run: bash scripts/ci/install-frozen-dependencies.sh
