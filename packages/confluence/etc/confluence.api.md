@@ -815,7 +815,7 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -3059,6 +3059,7 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    readonly deploymentType?: "cloud" | "data-center";
     getExportPageDetailsWithMedia?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -4077,7 +4078,7 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -6321,6 +6322,7 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    readonly deploymentType?: "cloud" | "data-center";
     getExportPageDetailsWithMedia?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -7339,7 +7341,7 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -9583,6 +9585,7 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    readonly deploymentType?: "cloud" | "data-center";
     getExportPageDetailsWithMedia?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -10298,7 +10301,7 @@ export interface ConflictRegion {
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -14003,7 +14006,7 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -16247,6 +16250,7 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    readonly deploymentType?: "cloud" | "data-center";
     getExportPageDetailsWithMedia?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -16460,7 +16464,7 @@ export interface XmlText {
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;

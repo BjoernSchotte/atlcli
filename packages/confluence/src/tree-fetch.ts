@@ -1694,6 +1694,8 @@ async function resolveLabels(
 
 /** The subset of `ConfluenceClient` the adapter needs (keeps this isomorphic). */
 export interface TreeSourceClient {
+  /** Selects the hierarchy API without probing unsupported deployment routes. */
+  readonly deploymentType?: "cloud" | "data-center";
   getExportPageDetailsWithMedia?(
     id: string,
     options?: { signal?: AbortSignal }
@@ -1785,6 +1787,26 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
     },
 
     async getChildren(nodeRef, context) {
+      // Data Center has no Confluence Cloud REST v2 hierarchy API. Its v1
+      // child-page endpoint already returns the complete traversable page set
+      // with position/version metadata, so use it directly and never probe
+      // `/api/v2/.../direct-children` on an on-premises deployment.
+      if (client.deploymentType === "data-center") {
+        if (nodeRef.kind === "folder") {
+          throw new TypeError("Data Center tree traversal cannot descend into Cloud folder nodes.");
+        }
+        const children = await client.getChildrenWithPosition(nodeRef.id, {
+          signal: context.signal,
+        });
+        return children.map((child) => ({
+          id: child.id,
+          title: child.title,
+          kind: "page" as const,
+          position: child.position,
+          observedVersion: child.version,
+        }));
+      }
+
       if (nodeRef.kind === "folder") {
         const children = await client.getFolderChildren(nodeRef.id, { signal: context.signal });
         return children.map((child) => ({

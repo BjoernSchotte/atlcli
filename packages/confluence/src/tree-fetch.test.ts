@@ -1417,4 +1417,104 @@ describe("fetchExportTree — representation-neutral sources", () => {
     ]);
     expect(calls).toEqual(["storage:1", "export:2", "media:3"]);
   });
+
+  test.each([
+    ["tree", { kind: "tree", rootPageId: "root" } as const],
+    ["space", { kind: "space", spaceKey: "DOCS" } as const],
+  ])("Data Center %s traversal uses only the v1 page hierarchy", async (_name, scope) => {
+    const calls: string[] = [];
+    const pages = new Map([
+      ["root", { title: "Root", version: 2 }],
+      ["child", { title: "Child", version: 3 }],
+    ]);
+    const source = confluenceTreeSource({
+      deploymentType: "data-center",
+      async getPageDetails(id: string) {
+        const page = pages.get(id)!;
+        return {
+          id,
+          title: page.title,
+          version: page.version,
+          storage: `<p>${page.title}</p>`,
+          labels: [],
+          spaceKey: "DOCS",
+        };
+      },
+      async getPageVersion(id: string) {
+        calls.push(`version:${id}`);
+        return pages.get(id)!;
+      },
+      async getChildrenWithPosition(id: string) {
+        calls.push(`v1-children:${id}`);
+        return id === "root"
+          ? [{ id: "child", title: "Child", version: 3, position: 7 }]
+          : [];
+      },
+      async getPageDirectChildren() {
+        calls.push("cloud-direct-children");
+        throw new Error("Cloud REST v2 must not be called for Data Center");
+      },
+      async getFolderChildren() {
+        calls.push("cloud-folder-children");
+        throw new Error("Cloud REST v2 must not be called for Data Center");
+      },
+      async getSpaceHomepageId(key: string) {
+        calls.push(`homepage:${key}`);
+        return "root";
+      },
+      async searchPages() { return []; },
+    });
+
+    const result = await fetchExportTree(source, scope);
+
+    expect(result.nodes.map((node) => node.kind === "page" ? node.pageId : node.folderId))
+      .toEqual(["root", "child"]);
+    expect(calls).not.toContain("cloud-direct-children");
+    expect(calls).not.toContain("cloud-folder-children");
+    expect(calls.filter((call) => call.startsWith("v1-children:")))
+      .toEqual(["v1-children:root", "v1-children:child"]);
+    if (scope.kind === "space") expect(calls).toContain("homepage:DOCS");
+  });
+
+  test("Cloud traversal preserves mixed direct-child kinds and page positions", async () => {
+    const calls: string[] = [];
+    const source = confluenceTreeSource({
+      deploymentType: "cloud",
+      async getPageDetails(id: string) {
+        return { id, title: id, storage: `<p>${id}</p>`, version: 1 };
+      },
+      async getPageVersion() { return { title: "Title", version: 1 }; },
+      async getChildrenWithPosition(id: string) {
+        calls.push(`positions:${id}`);
+        return [{ id: "page", title: "Page", version: 4, position: 2 }];
+      },
+      async getPageDirectChildren(id: string) {
+        calls.push(`direct:${id}`);
+        return [
+          { id: "page", title: "Page", type: "page" },
+          { id: "folder", title: "Folder", type: "folder" },
+          { id: "board", title: "Board", type: "whiteboard" },
+        ];
+      },
+      async getFolderChildren(id: string) {
+        calls.push(`folder:${id}`);
+        return [];
+      },
+      async getSpaceHomepageId() { return null; },
+      async searchPages() { return []; },
+    });
+
+    await expect(source.getChildren({ id: "root", kind: "page" }, {})).resolves.toEqual([
+      { id: "page", title: "Page", kind: "page", position: 2, observedVersion: 4 },
+      { id: "folder", title: "Folder", kind: "folder", position: null },
+      {
+        id: "board",
+        title: "Board",
+        kind: "unsupported",
+        unsupportedKind: "whiteboard",
+        position: null,
+      },
+    ]);
+    expect(calls).toEqual(["direct:root", "positions:root"]);
+  });
 });

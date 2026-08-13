@@ -148,6 +148,7 @@ export function sessionTreeSourceForProfile(
   // fork: the same browser-safe TreeSource/dispatcher contracts are already
   // used by the shared core and will be enabled at the WP8 host boundary.
   const storageCompatibilityClient: TreeSourceClient = {
+    deploymentType: client.deploymentType,
     getPageDetails: (id, request) => client.getPageDetails(id, request),
     getPageVersion: (id, request) => client.getPageVersion(id, request),
     getChildrenWithPosition: (id, request) => client.getChildrenWithPosition(id, request),

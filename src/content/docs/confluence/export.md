@@ -587,6 +587,11 @@ The same fetch → compose → serialize pipeline is the library API, and the CL
 `--json` reports and deterministic exit codes is the automation interface: there is
 no hosted job to poll and no data egress to third parties. Automation is the CLI.
 
+Hierarchy discovery follows the configured deployment: Confluence Cloud keeps
+mixed page/folder discovery through REST v2, while Data Center reads page children
+through its supported REST v1 hierarchy endpoint. Data Center exports therefore do
+not probe Cloud-only `/api/v2` routes.
+
 ### Prerequisites
 
 - Authenticated profile (`atlcli auth login`)

@@ -532,7 +532,8 @@ const retrySchedulerHook = Symbol.for("atlcli.confluence.retry-scheduler.test-ho
 
 export class ConfluenceClient {
   private confluenceBaseUrl: string;
-  private deploymentType: DeploymentType;
+  /** Hosting model exposed to capability adapters such as tree traversal. */
+  public readonly deploymentType: DeploymentType;
   private capabilityOrigin: string;
   private authHeader: string;
   private useSession: boolean;
