@@ -316,8 +316,9 @@ describe("CI workflow policy", () => {
     expect(verify).toContain("GitHub exposes draft releases only to repository writers");
     expect(verify).toContain("github-release-transaction.ts download-draft");
     expect(verify).toContain("verify-release-artifacts.ts --dir downloaded");
-    for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
-      expect(verify).toContain(`test:${suite}-extension-browser:prebuilt`);
+    expect(verify).toContain("test:worker-extension-browser:prebuilt");
+    for (const suite of ["jobs", "research", "rovo", "palette"]) {
+      expect(verify).not.toContain(`test:${suite}-extension-browser:prebuilt`);
     }
     for (const [target, runner] of [
       ["linux-x64", "ubuntu-24.04"],
@@ -362,7 +363,12 @@ describe("CI workflow policy", () => {
     expect(create!.indexOf(stableCleanup)).toBeLessThan(
       create!.indexOf("github-release-transaction.ts create-draft"),
     );
-    expect(block(stable, /^ {2}verify-downloaded-draft:\s*$/, 2)).toContain("download-draft");
+    const verify = block(stable, /^ {2}verify-downloaded-draft:\s*$/, 2);
+    expect(verify).toContain("download-draft");
+    expect(verify).toContain("test:worker-extension-browser:prebuilt");
+    for (const suite of ["jobs", "research", "rovo", "palette"]) {
+      expect(verify).not.toContain(`test:${suite}-extension-browser:prebuilt`);
+    }
     const native = block(stable, /^ {2}native-cli-consumer:\s*$/, 2);
     expect(native).toContain("download-native-asset");
     expect(native).toContain("verify-native-cli.ts");
