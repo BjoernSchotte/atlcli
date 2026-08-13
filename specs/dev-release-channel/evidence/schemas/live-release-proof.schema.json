@@ -34,7 +34,7 @@
     },
     "release": {
       "type": "object",
-      "required": ["buildId", "tag", "url", "prerelease", "draft", "immutable", "stableLatestUnchanged"],
+      "required": ["buildId", "tag", "url", "prerelease", "draft", "immutable", "stableLatestUnchanged", "attestation"],
       "properties": {
         "buildId": { "type": "string", "minLength": 1 },
         "tag": { "type": "string", "pattern": "^dev-" },
@@ -42,7 +42,19 @@
         "prerelease": { "const": true },
         "draft": { "const": false },
         "immutable": { "const": true },
-        "stableLatestUnchanged": { "const": true }
+        "stableLatestUnchanged": { "const": true },
+        "attestation": {
+          "type": "object",
+          "required": ["predicateType", "signer", "verifiedAt", "assetCount", "buildMetadataSha256"],
+          "properties": {
+            "predicateType": { "const": "https://in-toto.io/attestation/release/v0.2" },
+            "signer": { "const": "https://dotcom.releases.github.com" },
+            "verifiedAt": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T" },
+            "assetCount": { "type": "integer", "minimum": 10 },
+            "buildMetadataSha256": { "$ref": "#/$defs/sha256" }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": true
     },

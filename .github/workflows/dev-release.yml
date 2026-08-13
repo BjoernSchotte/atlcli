@@ -719,6 +719,28 @@ jobs:
             --out published-release-receipt.json
           bun scripts/verify-release-artifacts.ts --dir published-download > published-verification.json
 
+      - name: Verify GitHub release and downloaded asset attestations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEV_TAG: ${{ needs.resolve-source.outputs.build_id }}
+        run: |
+          for attempt in $(seq 1 12); do
+            if gh release verify "$DEV_TAG" --repo "$GITHUB_REPOSITORY" --format json > github-release-attestation.json 2>/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "GitHub release attestation was not verifiable before timeout" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          gh release verify-asset "$DEV_TAG" published-download/build-metadata.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --format json > github-release-asset-attestation.json
+          test -s github-release-attestation.json
+          test -s github-release-asset-attestation.json
+
       - name: Upload public release verification receipt
         uses: actions/upload-artifact@v7
         with:
@@ -726,6 +748,8 @@ jobs:
           path: |
             published-release-receipt.json
             published-verification.json
+            github-release-attestation.json
+            github-release-asset-attestation.json
           if-no-files-found: error
           retention-days: 90
 

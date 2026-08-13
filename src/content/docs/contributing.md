@@ -487,6 +487,8 @@ bun scripts/ci/build-live-release-proof.ts \
   --release-verification <published-verification.json> \
   --release-receipt <published-release-receipt.json> \
   --release-run <release-run.json> \
+  --github-release-attestation <github-release-attestation.json> \
+  --github-asset-attestation <github-release-asset-attestation.json> \
   --native-cli-dir <native-cli-receipts-directory> \
   --homebrew-dispatch <homebrew-dev-dispatch.json> \
   --homebrew-native-dir <homebrew-native-receipts-directory> \
@@ -495,8 +497,10 @@ bun scripts/ci/build-live-release-proof.ts \
   --out specs/dev-release-channel/evidence/live-release-proof.json
 ```
 
-The builder fails closed unless every source, release, CLI, extension, Tap,
-and Homebrew identity resolves to the same immutable tag and source SHA. The
+The builder fails closed unless GitHub's cryptographically verified in-toto
+statement binds the repository, release tag, source commit, and every downloaded
+asset SHA-256, and every source, release, CLI, extension, Tap, and Homebrew
+identity resolves to the same immutable tag and source SHA. The
 repository evidence policy validates the resulting file against the dedicated
 live-proof schema and scans it for sensitive material.
 

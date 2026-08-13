@@ -93,6 +93,18 @@ interface WorkflowRun {
   jobs: { name: string; conclusion: string }[];
 }
 
+interface GitHubReleaseAttestation {
+  verificationResult: {
+    signature: { certificate: { subjectAlternativeName: string } };
+    statement: {
+      predicateType: string;
+      predicate: { repository: string; tag: string };
+      subject: { name?: string; uri?: string; digest: { sha1?: string; sha256?: string } }[];
+    };
+    verifiedTimestamps: { timestamp: string; type: string; uri: string }[];
+  };
+}
+
 const SHA256 = /^[0-9a-f]{64}$/;
 const SHA = /^[0-9a-f]{40}$/;
 const CLI_TARGETS = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"];
@@ -138,12 +150,58 @@ function sameIdentity(value: { sourceSha: string; releaseTag: string; buildId?: 
   ) throw new Error("live proof input identity mismatch");
 }
 
+function verifyGitHubAttestation(
+  receipt: GitHubReleaseAttestation,
+  metadata: BuildMetadata,
+  assets: { filename: string; size: number; sha256: string }[],
+): { predicateType: string; signer: string; verifiedAt: string; assetCount: number; buildMetadataSha256: string } {
+  const result = receipt.verificationResult;
+  const statement = result?.statement;
+  const expectedPurl = `pkg:github/BjoernSchotte/atlcli@${metadata.releaseTag}`;
+  const source = statement?.subject?.find((subject) => subject.uri === expectedPurl);
+  if (
+    statement?.predicateType !== "https://in-toto.io/attestation/release/v0.2" ||
+    statement.predicate.repository !== "BjoernSchotte/atlcli" ||
+    statement.predicate.tag !== metadata.releaseTag ||
+    source?.digest.sha1 !== metadata.sourceSha
+  ) throw new Error("GitHub release attestation identity mismatch");
+
+  const attestedAssets = statement.subject
+    .filter((subject): subject is { name: string; digest: { sha256: string } } =>
+      typeof subject.name === "string" && typeof subject.digest.sha256 === "string")
+    .map((subject) => ({ filename: subject.name, sha256: subject.digest.sha256 }))
+    .sort((a, b) => a.filename.localeCompare(b.filename));
+  const expectedAssets = assets
+    .map(({ filename, sha256 }) => ({ filename, sha256 }))
+    .sort((a, b) => a.filename.localeCompare(b.filename));
+  if (canonicalJson(attestedAssets) !== canonicalJson(expectedAssets)) {
+    throw new Error("GitHub release attestation asset inventory mismatch");
+  }
+
+  const signer = result.signature?.certificate?.subjectAlternativeName;
+  const timestamp = result.verifiedTimestamps?.find(({ type }) => type === "TimestampAuthority");
+  if (signer !== "https://dotcom.releases.github.com" || !timestamp || Number.isNaN(Date.parse(timestamp.timestamp))) {
+    throw new Error("GitHub release attestation trust identity mismatch");
+  }
+  const buildMetadata = attestedAssets.find(({ filename }) => filename === "build-metadata.json");
+  if (!buildMetadata) throw new Error("GitHub release attestation does not bind build-metadata.json");
+  return {
+    predicateType: statement.predicateType,
+    signer,
+    verifiedAt: timestamp.timestamp,
+    assetCount: attestedAssets.length,
+    buildMetadataSha256: buildMetadata.sha256,
+  };
+}
+
 export function buildLiveReleaseProof(input: {
   releaseDir: string;
   releaseVerification: ReleaseVerification;
   releaseReceipt: ReleaseReceipt;
   eligibility: SourceEligibility;
   releaseRun: WorkflowRun;
+  githubReleaseAttestation: GitHubReleaseAttestation;
+  githubAssetAttestation: GitHubReleaseAttestation;
   nativeReceipts: NativeReceipt[];
   homebrewDispatch: HomebrewDispatch;
   homebrewNativeReceipts: HomebrewNativeReceipt[];
@@ -195,6 +253,15 @@ export function buildLiveReleaseProof(input: {
   });
   const receiptAssets = input.releaseReceipt.assets.map(({ name, ...asset }) => ({ filename: name, ...asset })).sort((a, b) => a.filename.localeCompare(b.filename));
   if (canonicalJson(assets) !== canonicalJson(receiptAssets)) throw new Error("public release receipt differs from downloaded bytes");
+  const githubAttestation = verifyGitHubAttestation(input.githubReleaseAttestation, metadata, assets);
+  const githubAssetAttestation = verifyGitHubAttestation(input.githubAssetAttestation, metadata, assets);
+  if (canonicalJson(input.githubReleaseAttestation.verificationResult.statement) !== canonicalJson(input.githubAssetAttestation.verificationResult.statement)) {
+    throw new Error("GitHub release and asset attestation statements differ");
+  }
+  const downloadedMetadataSha256 = assets.find(({ filename }) => filename === "build-metadata.json")?.sha256;
+  if (githubAssetAttestation.buildMetadataSha256 !== downloadedMetadataSha256) {
+    throw new Error("GitHub asset attestation does not match downloaded build-metadata.json");
+  }
 
   const nativeMatrix = exactTargets(input.nativeReceipts, CLI_TARGETS, "native CLI");
   for (const receipt of Object.values(nativeMatrix)) sameIdentity(receipt.releaseInfo, metadata);
@@ -240,6 +307,7 @@ export function buildLiveReleaseProof(input: {
       draft: false,
       immutable: true,
       stableLatestUnchanged: true,
+      attestation: githubAttestation,
     },
     toolchain: {
       bun: metadata.toolchain.bun,
@@ -269,6 +337,8 @@ export function buildLiveReleaseProof(input: {
       nativeCliMatrix: "success",
       homebrewAuditInstallTestSwitchMatrix: "success",
       stableLatestIsolation: "success",
+      githubReleaseAttestation: "success",
+      githubBuildMetadataAssetAttestation: "success",
     },
     privacy: { containsSecrets: false, containsTenantData: false, containsAbsoluteHomePaths: false, containsRawLogs: false },
   };
@@ -290,6 +360,8 @@ if (import.meta.main) {
     releaseReceipt: json(arg("--release-receipt")),
     eligibility: json(join(releaseDir, "source-eligibility.json")),
     releaseRun: json(arg("--release-run")),
+    githubReleaseAttestation: json(arg("--github-release-attestation")),
+    githubAssetAttestation: json(arg("--github-asset-attestation")),
     nativeReceipts: files(arg("--native-cli-dir"), "native-cli-verification.json").map((path) => json<NativeReceipt>(path)),
     homebrewDispatch: json(arg("--homebrew-dispatch")),
     homebrewNativeReceipts: files(arg("--homebrew-native-dir"), "native-verification.json").map((path) => json<HomebrewNativeReceipt>(path)),
