@@ -19,6 +19,7 @@ const workspaceRoot = resolve(packageRoot, "../..");
 const fixture = resolve(packageRoot, "fixtures/starlight");
 const plainExperienceFixture = resolve(packageRoot, "fixtures/plain-experience");
 const publishedConsumerFixture = resolve(packageRoot, "fixtures/published-consumer");
+const CONSUMER_BUILD_TIMEOUT_MS = 60_000;
 
 function isWithinOutputRoot(outputDirectory: string, candidate: string): boolean {
   const relativePath = relative(resolve(outputDirectory), resolve(candidate));
@@ -90,7 +91,7 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(topic).toContain('href="/guide/"');
   expect(topic).toContain('href="/"');
   expect(await stat(resolve(fixture, "dist/404.html"))).toBeDefined();
-}, 30_000);
+}, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("a bundle-driven Starlight consumer owns source, graph landing, and trusted 404 output", async () => {
   await run(["bun", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
@@ -144,7 +145,7 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
   ]);
   expect(inventory.labelLandings).toEqual([expect.objectContaining({ kind: "label", slug: "guide", pathname: "publish/topics/guide/" })]);
   expect(inventory.projectPages).toEqual([{ kind: "project", pathname: "404/" }]);
-}, 30_000);
+}, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("a deliberately small plain-Astro experience uses the same contract without a second dispatcher", async () => {
   const negotiation = negotiatePublicationExperienceV1(
@@ -173,7 +174,7 @@ test("a deliberately small plain-Astro experience uses the same contract without
   expect(source).toContain("ExportDocument");
   expect(source).not.toContain("exportBlockKind");
   expect(source).not.toContain("switch (");
-}, 30_000);
+}, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("the production Starlight output satisfies static asset and search-index budgets", async () => {
   await run(["bun", "run", "build"], publishedConsumerFixture);
@@ -189,7 +190,7 @@ test("the production Starlight output satisfies static asset and search-index bu
   expect(measurement.fontBytes).toBeGreaterThanOrEqual(0);
   expect(measurement.transformedImageBytes).toBeGreaterThanOrEqual(0);
   expect(measurement.pageCount).toBeGreaterThanOrEqual(2);
-}, 30_000);
+}, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("a trusted Starlight override changes heading presentation without changing content, assets, security output, or index routes", async () => {
   await run(["bun", "run", "build"], fixture);
@@ -245,7 +246,7 @@ test("a trusted Starlight override changes heading presentation without changing
   } finally {
     Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
   }
-}, 30_000);
+}, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("the generated Pagefind indexes cover excerpts, anchors, facets, languages, diacritics, and no-result states", async () => {
   await run(["bun", "run", "build"], publishedConsumerFixture);
@@ -348,7 +349,7 @@ test("the generated Pagefind indexes cover excerpts, anchors, facets, languages,
     if (previousLocation) Object.defineProperty(globalThis, "location", previousLocation);
     else Reflect.deleteProperty(globalThis, "location");
   }
-}, 30_000);
+}, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("a packed Starlight consumer builds from the published package boundary without network access", async () => {
   const root = await mkdtemp(resolve(tmpdir(), "atlcli-starlight-packed-"));

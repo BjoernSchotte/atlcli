@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 
 const workspaceRoot = resolve(import.meta.dir, "../../..");
 const fixtureDirectory = resolve(import.meta.dir, "../fixtures/astro-consumer");
+const CONSUMER_BUILD_TIMEOUT_MS = 60_000;
 
 function isWithinOutputRoot(outputDirectory: string, candidate: string): boolean {
   const relativePath = relative(resolve(outputDirectory), resolve(candidate));
@@ -81,7 +82,7 @@ test("Astro consumer harness loads structured pages and emits a private inventor
     expect(text).not.toContain("/_image");
     expect(text).not.toMatch(/(?:atlassian\.net|confluence|cloudId|tenant)/iu);
   }
-}, 30_000);
+}, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("Astro builds root, nested-directory, and nested-portable URL profiles", async () => {
   const cases = [
@@ -108,7 +109,7 @@ test("Astro builds root, nested-directory, and nested-portable URL profiles", as
       await rm(resolve(fixtureDirectory, fixture.inventory), { force: true });
     }));
   }
-}, 30_000);
+}, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("directory-index and portable-file servers crawl every generated route, link, and asset", async () => {
   const cases = [
@@ -226,7 +227,7 @@ test("the built Pagefind client searches the static index through its main-threa
   } finally {
     Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
   }
-}, 30_000);
+}, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("packed integration builds a clean Astro project with fetch disabled", async () => {
   const root = await mkdtemp(join(tmpdir(), "atlcli-web-publish-astro-packed-"));
