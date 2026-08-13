@@ -294,6 +294,14 @@ describe("CI workflow policy", () => {
     expect(create).toContain("contents: write");
     expect(create).toContain("github-release-transaction.ts create-draft");
     expect(create).toContain("verify-release-artifacts.ts --dir bundle");
+    const devVerify = "bun scripts/verify-release-artifacts.ts --dir bundle > pre-upload-verification.json";
+    const devCleanup = "bun scripts/verify-release-artifacts.ts cleanup-extension --out bundle/extension";
+    expect(create).toContain(devVerify);
+    expect(create).toContain(devCleanup);
+    expect(create!.indexOf(devVerify)).toBeLessThan(create!.indexOf(devCleanup));
+    expect(create!.indexOf(devCleanup)).toBeLessThan(
+      create!.indexOf("github-release-transaction.ts create-draft"),
+    );
     expect(verify).toContain("contents: read");
     expect(verify).toContain("github-release-transaction.ts download-draft");
     expect(verify).toContain("verify-release-artifacts.ts --dir downloaded");
@@ -332,7 +340,16 @@ describe("CI workflow policy", () => {
 
   it("uses the same draft-first release transaction for stable", async () => {
     const stable = await workflow("release.yml");
-    expect(block(stable, /^ {2}create-draft:\s*$/, 2)).toContain("contents: write");
+    const create = block(stable, /^ {2}create-draft:\s*$/, 2);
+    expect(create).toContain("contents: write");
+    const stableVerify = "bun scripts/verify-release-artifacts.ts --dir release > pre-upload-verification.json";
+    const stableCleanup = "bun scripts/verify-release-artifacts.ts cleanup-extension --out release/extension";
+    expect(create).toContain(stableVerify);
+    expect(create).toContain(stableCleanup);
+    expect(create!.indexOf(stableVerify)).toBeLessThan(create!.indexOf(stableCleanup));
+    expect(create!.indexOf(stableCleanup)).toBeLessThan(
+      create!.indexOf("github-release-transaction.ts create-draft"),
+    );
     expect(block(stable, /^ {2}verify-downloaded-draft:\s*$/, 2)).toContain("download-draft");
     const native = block(stable, /^ {2}native-cli-consumer:\s*$/, 2);
     expect(native).toContain("download-native-asset");

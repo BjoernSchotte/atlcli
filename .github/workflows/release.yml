@@ -134,6 +134,9 @@ jobs:
       - name: Reverify complete bundle before GitHub write
         run: bun scripts/verify-release-artifacts.ts --dir release > pre-upload-verification.json
 
+      - name: Remove owned verification extraction before GitHub write
+        run: bun scripts/verify-release-artifacts.ts cleanup-extension --out release/extension
+
       - name: Generate changelog
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
