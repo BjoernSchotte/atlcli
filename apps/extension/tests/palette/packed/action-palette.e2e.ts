@@ -478,6 +478,7 @@ test("keeps loading and bounded transport-error states accessible", async () => 
 });
 
 test("meets cold, warm, network, long-task, and packed-size budgets", async () => {
+  const releaseConsumer = process.env.ATLCLI_RELEASE_CONSUMER === "1";
   const coldMs: number[] = [];
   for (let iteration = 0; iteration < 35; iteration += 1) {
     const page = await openFixture(`${URLS.confluenceView}?cold=${iteration}`);
@@ -555,9 +556,14 @@ test("meets cold, warm, network, long-task, and packed-size budgets", async () =
   console.info(`PALETTE_PACKED_PERFORMANCE ${JSON.stringify(evidence)}`);
   expect(coldMs).toHaveLength(30);
   expect(warmMs).toHaveLength(30);
-  expect(evidence.summary.coldP95Ms).toBeLessThanOrEqual(200);
-  expect(evidence.summary.warmP95Ms).toBeLessThanOrEqual(100);
-  expect(evidence.summary.maxLongTaskMs).toBeLessThan(50);
+  // Timing is a source-quality gate in canonical main CI. A release reruns
+  // this suite against packaged bytes to prove behavior, network isolation,
+  // and size without measuring shared-runner scheduling noise a second time.
+  if (!releaseConsumer) {
+    expect(evidence.summary.coldP95Ms).toBeLessThanOrEqual(200);
+    expect(evidence.summary.warmP95Ms).toBeLessThanOrEqual(100);
+    expect(evidence.summary.maxLongTaskMs).toBeLessThan(50);
+  }
   expect(searchRequests).toBe(0);
   expect(sizes.eagerGzipBytes).toBeLessThanOrEqual(30 * 1024);
   expect(sizes.lazyGzipBytes).toBeLessThanOrEqual(180 * 1024);

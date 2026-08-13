@@ -231,6 +231,7 @@ jobs:
       - name: Run all packed extension consumers against bundle bytes
         env:
           ATLCLI_EXTENSION_OUTPUT_DIR: ${{ github.workspace }}/bundle/extension
+          ATLCLI_RELEASE_CONSUMER: "1"
         run: |
           bun run --cwd apps/extension test:worker-extension-browser:prebuilt
           bun run --cwd apps/extension test:jobs-extension-browser:prebuilt
