@@ -137,6 +137,10 @@ describe("CI workflow policy", () => {
     expect(reusable).not.toContain("${{ github.run_id }}-${{ github.run_attempt }}-extension");
     expect(reusable).not.toContain("release-bundle-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(reusable).not.toMatch(/download-artifact@v8\n\s+with:\n\s+path:/);
+    const fontCacheKey = "key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}";
+    expect(reusable.split("- name: Restore pinned PDF fonts")).toHaveLength(3);
+    expect(reusable.split("uses: actions/cache@v6")).toHaveLength(3);
+    expect(reusable.split(fontCacheKey)).toHaveLength(3);
   });
 
   it("uses one fail-closed scheduled and manual dev-release graph", async () => {
