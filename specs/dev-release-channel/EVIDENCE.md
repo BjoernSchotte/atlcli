@@ -32,10 +32,11 @@ test validates schemas and scans receipts before publication.
 | DR-06 | [`evidence/DR-06-github-publish-transaction.json`](evidence/DR-06-github-publish-transaction.json) | Transaction implementation proven; live release deferred to DR-10 |
 | DR-07 | [`evidence/DR-07-homebrew-dev-lane.json`](evidence/DR-07-homebrew-dev-lane.json) | Tap lane registered and audited; live formula pointer deferred to DR-10 |
 | DR-08 | [`evidence/DR-08-docs-evidence-policy.json`](evidence/DR-08-docs-evidence-policy.json) | Runbook, schemas, and privacy policy proven |
+| DR-09 | [`evidence/DR-09-shadow-rehearsal.json`](evidence/DR-09-shadow-rehearsal.json) | Full manual shadow release proven with zero publication writes |
 
 ## Final live receipts
 
-DR-09 adds the mutation-free rehearsal receipt. DR-10 must add a receipt that
+DR-09 is proven by the mutation-free rehearsal receipt above. DR-10 must add a receipt that
 validates against
 [`evidence/schemas/live-release-proof.schema.json`](evidence/schemas/live-release-proof.schema.json)
 and links one real immutable GitHub dev prerelease plus the exact published
