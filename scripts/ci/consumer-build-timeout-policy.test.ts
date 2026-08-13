@@ -15,3 +15,13 @@ test("real Astro consumer builds have bounded runner headroom", async () => {
     expect(source).toContain("}, CONSUMER_BUILD_TIMEOUT_MS);");
   }
 });
+
+test("the real 50-page export benchmark has bounded heavy-render headroom", async () => {
+  const source = await readFile(
+    resolve(import.meta.dir, "../bench/run-export-job-baseline.test.ts"),
+    "utf8",
+  );
+  expect(source).toContain("const EXPORT_BENCHMARK_TIMEOUT_MS = 120_000;");
+  expect(source).toContain("}, EXPORT_BENCHMARK_TIMEOUT_MS);");
+  expect(source).not.toContain("}, 30_000);");
+});

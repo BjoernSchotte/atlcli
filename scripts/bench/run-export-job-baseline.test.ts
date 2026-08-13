@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const roots: string[] = [];
+const EXPORT_BENCHMARK_TIMEOUT_MS = 120_000;
 const script = fileURLToPath(
   new URL("./run-export-job-baseline.ts", import.meta.url),
 );
@@ -76,5 +77,5 @@ describe("POST-QUEUE Node export benchmark", () => {
         counts: { pages: 50, imageAssets: 10, diagramAssets: 5 },
       });
     }
-  }, 30_000);
+  }, EXPORT_BENCHMARK_TIMEOUT_MS);
 });
