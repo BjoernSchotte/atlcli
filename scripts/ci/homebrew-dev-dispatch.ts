@@ -241,7 +241,7 @@ export class GitHubTapApi implements TapApi {
 
   async downloadArtifact(artifact: WorkflowArtifact): Promise<Uint8Array> {
     const response = await this.request(artifact.archive_download_url, {
-      headers: this.headers("application/octet-stream"),
+      headers: this.headers(),
       redirect: "follow",
     });
     if (!response.ok) throw new Error(`GitHub tap artifact download failed: ${response.status}`);
