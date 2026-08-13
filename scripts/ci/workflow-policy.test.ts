@@ -118,6 +118,7 @@ describe("CI workflow policy", () => {
     }
     const cleanup = "bun scripts/verify-release-artifacts.ts cleanup-extension --out bundle/extension";
     expect(reusable).toContain(cleanup);
+    expect(reusable).toContain('ATLCLI_RELEASE_CONSUMER: "1"');
     expect(reusable.indexOf(cleanup)).toBeLessThan(reusable.indexOf("- name: Upload exact release bundle"));
     expect(reusable).not.toContain("bun build apps/cli/src/index.ts");
     expect(reusable).not.toMatch(/^\s+(?:tar|zip)\s+/m);
