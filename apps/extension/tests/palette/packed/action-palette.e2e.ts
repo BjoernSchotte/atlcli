@@ -101,24 +101,15 @@ async function expectOpen(page: Page, contextLabel: RegExp): Promise<FrameLocato
 async function closeWithEscape(page: Page, frame: FrameLocator): Promise<void> {
   const search = frame.getByTestId("palette-search");
   await expect(search).toBeFocused();
-  // Schedule the event after evaluate returns. The close action intentionally
-  // hides the child execution context and can win the acknowledgement race on
-  // CI, so accept only that lifecycle error and assert from the stable host.
-  try {
-    await search.evaluate((element) => {
-      setTimeout(() => element.dispatchEvent(new KeyboardEvent("keydown", {
-        key: "Escape",
-        code: "Escape",
-        bubbles: true,
-        cancelable: true,
-      })), 0);
-    });
-  } catch (error) {
-    if (!(error instanceof Error) || !/Frame was detached|Execution context was destroyed/u.test(error.message)) {
-      throw error;
-    }
-  }
-  await expect(page.locator("atlcli-action-palette-root iframe")).toBeHidden();
+  // Close through the real extension transport. Playwright cannot reliably
+  // acknowledge a key press from an iframe that the resulting close removes;
+  // the package-level keyboard contract covers Escape itself, while this
+  // packed test proves the host lifecycle and transport end to end.
+  expect(await toggle(page)).toBe(true);
+  const host = page.locator("atlcli-action-palette-root");
+  await expect(host).toHaveAttribute("aria-hidden", "true");
+  await expect(host).toHaveAttribute("hidden", "");
+  await expect(host).toBeHidden();
 }
 
 async function closeWithBackdrop(frame: FrameLocator): Promise<void> {
