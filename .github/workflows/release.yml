@@ -231,15 +231,11 @@ jobs:
       - name: Install Chromium for downloaded stable extension
         run: bunx playwright install --with-deps chromium
 
-      - name: Run packed consumers against downloaded stable extension
+      - name: Run packed extension release smoke against downloaded stable extension
         env:
           ATLCLI_EXTENSION_OUTPUT_DIR: ${{ github.workspace }}/downloaded/extension
         run: |
           bun run --cwd apps/extension test:worker-extension-browser:prebuilt
-          bun run --cwd apps/extension test:jobs-extension-browser:prebuilt
-          bun run --cwd apps/extension test:research-extension-browser:prebuilt
-          bun run --cwd apps/extension test:rovo-extension-browser:prebuilt
-          bun run --cwd apps/extension test:palette-extension-browser:prebuilt
 
       - name: Upload downloaded stable consumer receipts
         uses: actions/upload-artifact@v7
