@@ -56,6 +56,7 @@ export interface ReleaseTransactionReceipt {
     | "download-draft"
     | "download-native-asset"
     | "publish-draft"
+    | "rollback-draft"
     | "verify-published";
   releaseId: number;
   releaseUrl: string;
@@ -603,6 +604,59 @@ export async function publishDraftRelease(input: {
   };
 }
 
+export async function rollbackDraftRelease(input: {
+  api: ReleaseApi;
+  channel: ReleaseChannel;
+  version: string;
+  tag: string;
+  sourceSha: string;
+  releaseId: number;
+  stableLatestBefore: string | null;
+}): Promise<ReleaseTransactionReceipt> {
+  const reference = await input.api.reference(input.tag);
+  if (!reference || await input.api.referenceCommit(reference) !== input.sourceSha) {
+    throw new Error("rollback refused because the release tag is not owned by this transaction");
+  }
+  const draft = await input.api.release(input.releaseId);
+  assertRelease({
+    release: draft,
+    tag: input.tag,
+    draft: true,
+    prerelease: input.channel === "dev",
+    expectedNames: expectedNames(input.channel, input.version, input.tag, input.sourceSha),
+  });
+  const latestBefore = (await input.api.latestStable())?.tag_name ?? null;
+  if (latestBefore !== input.stableLatestBefore) {
+    throw new Error("stable latest changed before draft rollback");
+  }
+  await input.api.deleteDraft(input.releaseId);
+  await input.api.deleteReference(input.tag);
+  if (await input.api.reference(input.tag)) {
+    throw new Error("release tag still exists after draft rollback");
+  }
+  const latestAfter = (await input.api.latestStable())?.tag_name ?? null;
+  if (latestAfter !== input.stableLatestBefore) {
+    throw new Error("stable latest changed during draft rollback");
+  }
+  return {
+    schema: "atlcli.github-release-transaction/v1",
+    operation: "rollback-draft",
+    releaseId: draft.id,
+    releaseUrl: draft.html_url,
+    channel: input.channel,
+    tag: input.tag,
+    sourceSha: input.sourceSha,
+    draft: true,
+    prerelease: input.channel === "dev",
+    makeLatest: false,
+    immutable: false,
+    assets: assetReceipt(draft.assets),
+    stableLatestBefore: input.stableLatestBefore,
+    stableLatestAfter: latestAfter,
+    run: actionsRun(),
+  };
+}
+
 function value(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   return index < 0 ? undefined : args[index + 1];
@@ -659,9 +713,14 @@ if (import.meta.main) {
       ...common,
       releaseId: Number(required("--release-id")),
     });
+  } else if (command === "rollback-draft") {
+    result = await rollbackDraftRelease({
+      ...common,
+      releaseId: Number(required("--release-id")),
+    });
   } else {
     throw new Error(
-      "command must be create-draft, download-draft, download-native-asset, publish-draft, or verify-published",
+      "command must be create-draft, download-draft, download-native-asset, publish-draft, rollback-draft, or verify-published",
     );
   }
   const output = canonicalJson(result);
