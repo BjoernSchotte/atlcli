@@ -159,14 +159,19 @@ describe("CI workflow policy", () => {
       "resolve-source",
       "publication-decision",
       "eligible-source",
-      "verify-downloaded-draft",
-      "native-cli-consumer",
       "verify-published",
     ]) {
       expect(block(dev, new RegExp(`^ {2}${name}:\\s*$`), 2)).not.toContain("contents: write");
     }
     expect(block(dev, /^ {2}create-draft:\s*$/, 2)).toContain("contents: write");
+    expect(block(dev, /^ {2}verify-downloaded-draft:\s*$/, 2)).toContain("contents: write");
+    expect(block(dev, /^ {2}native-cli-consumer:\s*$/, 2)).toContain("contents: write");
     expect(block(dev, /^ {2}publish-draft:\s*$/, 2)).toContain("contents: write");
+    const rollback = block(dev, /^ {2}rollback-unpublished-draft:\s*$/, 2);
+    expect(rollback).toContain("contents: write");
+    expect(rollback).toContain("always()");
+    expect(rollback).toContain("needs.publish-draft.result != 'success'");
+    expect(rollback).toContain("github-release-transaction.ts rollback-draft");
     expect(dev).not.toContain("id-token: write");
     expect(dev).not.toContain("attestations: write");
     expect(dev).not.toContain("softprops/action-gh-release");
@@ -302,7 +307,8 @@ describe("CI workflow policy", () => {
     expect(create!.indexOf(devCleanup)).toBeLessThan(
       create!.indexOf("github-release-transaction.ts create-draft"),
     );
-    expect(verify).toContain("contents: read");
+    expect(verify).toContain("contents: write");
+    expect(verify).toContain("GitHub exposes draft releases only to repository writers");
     expect(verify).toContain("github-release-transaction.ts download-draft");
     expect(verify).toContain("verify-release-artifacts.ts --dir downloaded");
     for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
@@ -320,7 +326,8 @@ describe("CI workflow policy", () => {
     }
     expect(native).toContain("github-release-transaction.ts download-native-asset");
     expect(native).toContain("verify-native-cli.ts");
-    expect(native).toContain("contents: read");
+    expect(native).toContain("contents: write");
+    expect(native).toContain("not present while the downloaded CLI itself executes");
     expect(publish).toContain(
       "needs: [resolve-source, publication-decision, create-draft, verify-downloaded-draft, native-cli-consumer]",
     );
@@ -329,7 +336,7 @@ describe("CI workflow policy", () => {
     expect(published).toContain("contents: read");
     expect(published).toContain("github-release-transaction.ts verify-published");
     expect(published).toContain("verify-release-artifacts.ts --dir published-download");
-    expect(dev.match(/contents: write/g)).toHaveLength(2);
+    expect(dev.match(/contents: write/g)).toHaveLength(5);
     expect(dev).not.toContain("--clobber");
     expect(dev).toContain('gh release verify "$DEV_TAG"');
     expect(dev).toContain('gh release verify-asset "$DEV_TAG" published-download/build-metadata.json');

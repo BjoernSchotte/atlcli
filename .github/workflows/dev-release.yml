@@ -486,8 +486,10 @@ jobs:
       needs.publication-decision.outputs.decision == 'create' &&
       (github.event_name == 'schedule' || inputs.dry_run == false)
     runs-on: ubuntu-latest
+    # GitHub exposes draft releases only to repository writers. The exact-SHA
+    # script is read-only and receives the token only for the download step.
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -568,8 +570,10 @@ jobs:
             runner: windows-2025
             archive: atlcli-windows-x64.zip
     runs-on: ${{ matrix.runner }}
+    # GitHub exposes draft releases only to repository writers. The token is
+    # not present while the downloaded CLI itself executes.
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -681,6 +685,49 @@ jobs:
         with:
           name: dev-publish-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: publish-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  rollback-unpublished-draft:
+    name: Remove transaction-owned draft after failed consumer proof
+    needs: [resolve-source, publication-decision, create-draft, verify-downloaded-draft, native-cli-consumer, publish-draft]
+    if: >-
+      always() &&
+      needs.publication-decision.outputs.decision == 'create' &&
+      needs.create-draft.result == 'success' &&
+      needs.publish-draft.result != 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Delete only the exact transaction-owned draft and tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts rollback-draft \
+            --channel dev \
+            --version "${{ needs.resolve-source.outputs.version }}" \
+            --tag "${{ needs.resolve-source.outputs.build_id }}" \
+            --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --release-id "${{ needs.create-draft.outputs.release_id }}" \
+            --stable-latest-before "${{ needs.resolve-source.outputs.stable_latest }}" \
+            --out rollback-draft-receipt.json
+
+      - name: Upload rollback receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-rollback-draft-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: rollback-draft-receipt.json
           if-no-files-found: error
           retention-days: 30
 

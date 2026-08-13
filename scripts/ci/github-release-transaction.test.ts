@@ -14,6 +14,7 @@ import {
   downloadNativeReleaseAsset,
   GitHubReleaseApi,
   publishDraftRelease,
+  rollbackDraftRelease,
   type ReleaseApi,
 } from "./github-release-transaction";
 
@@ -320,6 +321,83 @@ describe("exclusive GitHub release transaction", () => {
       stableLatestBefore: STABLE,
     })).rejects.toThrow("state");
     expect(api.publishCalls).toBe(1);
+  });
+
+  test("rolls back only the complete draft and exact transaction-owned tag", async () => {
+    const api = new FakeApi();
+    const requested = identity();
+    await createDraftRelease({
+      api,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      directory: assetDirectory(),
+      title: requested.releaseTag,
+      body: "",
+      stableLatestBefore: STABLE,
+    });
+    const result = await rollbackDraftRelease({
+      api,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      releaseId: 77,
+      stableLatestBefore: STABLE,
+    });
+    expect(result).toMatchObject({ operation: "rollback-draft", draft: true, stableLatestAfter: STABLE });
+    expect(result.assets).toHaveLength(10);
+    expect(api.deletedDrafts).toEqual([77]);
+    expect(api.deletedTags).toEqual([requested.releaseTag]);
+
+    const moved = new FakeApi();
+    await createDraftRelease({
+      api: moved,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      directory: assetDirectory(),
+      title: requested.releaseTag,
+      body: "",
+      stableLatestBefore: STABLE,
+    });
+    moved.tag!.object.sha = "f".repeat(40);
+    await expect(rollbackDraftRelease({
+      api: moved,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      releaseId: 77,
+      stableLatestBefore: STABLE,
+    })).rejects.toThrow("not owned");
+    expect(moved.deletedDrafts).toEqual([]);
+
+    const published = new FakeApi();
+    await createDraftRelease({
+      api: published,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      directory: assetDirectory(),
+      title: requested.releaseTag,
+      body: "",
+      stableLatestBefore: STABLE,
+    });
+    published.draft.draft = false;
+    await expect(rollbackDraftRelease({
+      api: published,
+      channel: "dev",
+      version: "0.17.2",
+      tag: requested.releaseTag,
+      sourceSha: SHA,
+      releaseId: 77,
+      stableLatestBefore: STABLE,
+    })).rejects.toThrow("state");
+    expect(published.deletedDrafts).toEqual([]);
   });
 
   test("waits for GitHub to enforce dev release immutability and fails closed on timeout", async () => {
