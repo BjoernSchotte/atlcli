@@ -1,6 +1,6 @@
 # Dev-Release-Channel: Nightly und manuell ausloesbare, bewiesene Releases
 
-**Status:** In Umsetzung; DR-00 bis DR-05 bewiesen
+**Status:** In Umsetzung; DR-00 bis DR-05 und DR-08/DR-09 bewiesen; Live-Abnahme fuer DR-06/DR-07/DR-10 offen
 
 **Planungsstand:** 2026-08-12
 
@@ -752,26 +752,26 @@ Begriffe, niemals Werte oder lokale Pfade.
 
 **Blocks:** DR-10
 
-- [ ] `bun install --frozen-lockfile`, vollstaendigen Testlauf, Typecheck und
+- [x] `bun install --frozen-lockfile`, vollstaendigen Testlauf, Typecheck und
   Build von sauberem Checkout ausfuehren.
-- [ ] Lokalen Dev-Build mit festem Test-SHA/-Run zweimal erzeugen und
+- [x] Lokalen Dev-Build mit festem Test-SHA/-Run zweimal erzeugen und
   Determinismus/No-op-Entscheidung pruefen.
-- [ ] Alle CLI-Archive und das Extension-ZIP durch den Consumer-Verifier sowie
+- [x] Alle CLI-Archive und das Extension-ZIP durch den Consumer-Verifier sowie
   die Plattform-/Packed-Browser-Matrix schicken.
-- [ ] GitHub- und Tap-Publish-Schritte im Dry-Run/Shadow-Modus ausfuehren; jeder
+- [x] GitHub- und Tap-Publish-Schritte im Dry-Run/Shadow-Modus ausfuehren; jeder
   geplante externe API-Write muss im Receipt erscheinen, ohne ihn auszufuehren.
-- [ ] Einen absichtlich manipulierten Digest, eine ungueltige Extension-Version,
+- [x] Einen absichtlich manipulierten Digest, eine ungueltige Extension-Version,
   einen nicht von `main` erreichbaren SHA, ein fehlendes Asset und eine simulierte
   Stable-Latest-Aenderung als fail-closed Negativproben belegen.
-- [ ] Eligibility-Negativproben belegen: roter Required-Run, fehlender Run,
+- [x] Eligibility-Negativproben belegen: roter Required-Run, fehlender Run,
   Pending bis Timeout, Cancelled/Skipped/Neutral/Stale, neuerer roter Re-Run
   nach einem alten gruenen Attempt sowie gleichnamiger PR-/Manual-Check. In
   allen Faellen bleiben GitHub Release und Tap unveraendert.
-- [ ] Einen explizit advisory klassifizierten roten Canary als Positivprobe
+- [x] Einen explizit advisory klassifizierten roten Canary als Positivprobe
   ausfuehren: Release-Gates duerfen fortfahren, aber Receipt und Abschlussstatus
   muessen eindeutig `degraded` ausweisen.
-- [ ] Stable Release Dry Run gemaess Repositoryregel erneut ausfuehren.
-- [ ] Review/Autorisation fuer den ersten echten GitHub- und Tap-Publish
+- [x] Stable Release Dry Run gemaess Repositoryregel erneut ausfuehren.
+- [x] Review/Autorisation fuer den ersten echten GitHub- und Tap-Publish
   einholen; bis dahin bleibt DR-10 offen.
 
 **Proof**
