@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
@@ -19,6 +19,7 @@ import {
   releaseTreeDigest,
 } from "./release-archive";
 import {
+  cleanupVerifiedExtractionDirectory,
   emitReleaseVerificationReceipt,
   inspectSingleBinaryTarGz,
   inspectZipCentralDirectory,
@@ -190,6 +191,32 @@ function replaceAscii(bytes: Uint8Array, from: string, to: string): Uint8Array {
 }
 
 describe("release artifact verifier", () => {
+  test("removes only verifier-owned consumer extraction bytes", async () => {
+    const root = await writeFixture();
+    const extracted = join(root, "consumer-extension");
+    const marker = `${extracted}.atlcli-release-extraction-v1`;
+    try {
+      await verifyReleaseArtifacts({
+        directory: root,
+        extractExtensionDirectory: extracted,
+        verifyExtensionRuntime: false,
+      });
+      expect(existsSync(extracted)).toBe(true);
+      expect(existsSync(marker)).toBe(true);
+      cleanupVerifiedExtractionDirectory(extracted);
+      expect(existsSync(extracted)).toBe(false);
+      expect(existsSync(marker)).toBe(false);
+
+      const unowned = join(root, "unowned-extension");
+      mkdirSync(unowned);
+      expect(() => cleanupVerifiedExtractionDirectory(unowned)).toThrow("unowned extraction directory");
+      expect(existsSync(unowned)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(marker, { force: true });
+    }
+  });
+
   test("verifies exact CLI, extension, metadata, eligibility, and attestation bytes", async () => {
     const root = await writeFixture();
     try {
