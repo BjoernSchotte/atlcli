@@ -74,4 +74,13 @@ describe("dev-release evidence policy", () => {
     );
     expect((await evaluateEvidencePolicy(root)).some((issue) => issue.reason.startsWith("task receipt schema:"))).toBe(true);
   });
+
+  it("validates the final live proof against its dedicated schema", async () => {
+    const root = await fixture();
+    await writeFile(
+      join(root, "evidence", "live-release-proof.json"),
+      JSON.stringify({ schema: "atlcli.dev-release-live-proof/v1" }),
+    );
+    expect((await evaluateEvidencePolicy(root)).some((issue) => issue.reason.startsWith("live receipt schema:"))).toBe(true);
+  });
 });

@@ -117,6 +117,15 @@ export interface ReleaseVerificationReceipt {
   };
 }
 
+export function emitReleaseVerificationReceipt(
+  receipt: ReleaseVerificationReceipt,
+  output?: string,
+): string {
+  const serialized = canonicalJson(receipt);
+  if (output) writeFileSync(resolve(output), serialized);
+  return serialized;
+}
+
 function sha256(bytes: Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -635,5 +644,5 @@ if (import.meta.main) {
   const directory = value("--dir");
   if (!directory) throw new Error("Usage: bun scripts/verify-release-artifacts.ts --dir <assets>");
   const receipt = await verifyReleaseArtifacts({ directory });
-  process.stdout.write(canonicalJson(receipt));
+  process.stdout.write(emitReleaseVerificationReceipt(receipt, value("--out")));
 }

@@ -19,6 +19,7 @@ import {
   releaseTreeDigest,
 } from "./release-archive";
 import {
+  emitReleaseVerificationReceipt,
   inspectSingleBinaryTarGz,
   inspectZipCentralDirectory,
   verifyReleaseArtifacts,
@@ -201,6 +202,8 @@ describe("release artifact verifier", () => {
       expect(receipt.verifiedArtifacts).toHaveLength(8);
       expect(receipt.extension.entryCount).toBe(2);
       expect(receipt.extension.outputScan).toBe("not-run");
+      const output = join(root, "published-verification.json");
+      expect(emitReleaseVerificationReceipt(receipt, output)).toBe(readFileSync(output, "utf8"));
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(`${join(root, "extracted")}.atlcli-release-extraction-v1`, { force: true });

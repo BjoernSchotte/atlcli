@@ -462,6 +462,40 @@ App installation quarterly.
 
 ### Retention and evidence
 
+After a live run, download the ten public release assets, the source run's
+public-release, native-CLI, and Homebrew-dispatch receipts, and the correlated
+Tap run's four native receipts. Verify and extract the exact downloaded release
+bytes first, preserving its receipt as `published-verification.json`:
+
+```bash
+bun scripts/verify-release-artifacts.ts \
+  --dir <downloaded-release-directory> \
+  --out <published-verification.json>
+```
+
+Then build the final proof from those consumer inputs. The builder consumes the
+verifier-owned `<downloaded-release-directory>/extension` extraction and rejects
+a verifier receipt whose artifact inventory differs from `build-metadata.json`:
+
+```bash
+bun scripts/ci/build-live-release-proof.ts \
+  --release-dir <downloaded-release-directory> \
+  --release-verification <published-verification.json> \
+  --release-receipt <published-release-receipt.json> \
+  --release-run <release-run.json> \
+  --native-cli-dir <native-cli-receipts-directory> \
+  --homebrew-dispatch <homebrew-dev-dispatch.json> \
+  --homebrew-native-dir <homebrew-native-receipts-directory> \
+  --homebrew-pointer <atlcli-dev.json> \
+  --homebrew-formula <atlcli-dev.rb> \
+  --out specs/dev-release-channel/evidence/live-release-proof.json
+```
+
+The builder fails closed unless every source, release, CLI, extension, Tap,
+and Homebrew identity resolves to the same immutable tag and source SHA. The
+repository evidence policy validates the resulting file against the dedicated
+live-proof schema and scans it for sensitive material.
+
 The cleanup workflow first produces a dry-run receipt. Apply mode retains at
 least the newest 14 successful dev releases or 30 days, and never deletes the
 stable release, a draft, a release with mutable classification, or the tag

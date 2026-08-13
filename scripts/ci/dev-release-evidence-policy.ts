@@ -86,7 +86,7 @@ export async function evaluateEvidencePolicy(root = DEFAULT_EVIDENCE_ROOT): Prom
   const schema = JSON.parse(await readFile(schemaPath, "utf8")) as object;
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   const validateTaskProof = ajv.compile(schema);
-  ajv.compile(JSON.parse(await readFile(liveSchemaPath, "utf8")) as object);
+  const validateLiveProof = ajv.compile(JSON.parse(await readFile(liveSchemaPath, "utf8")) as object);
   const issues: EvidencePolicyIssue[] = [];
 
   for (const path of allFiles) {
@@ -118,6 +118,9 @@ export async function evaluateEvidencePolicy(root = DEFAULT_EVIDENCE_ROOT): Prom
 
     if (/^DR-[0-9]{2}-.+\.json$/.test(basename(path)) && !validateTaskProof(value)) {
       issues.push({ file, reason: `task receipt schema: ${ajvErrors(validateTaskProof.errors)}` });
+    }
+    if (basename(path) === "live-release-proof.json" && !validateLiveProof(value)) {
+      issues.push({ file, reason: `live receipt schema: ${ajvErrors(validateLiveProof.errors)}` });
     }
   }
 
