@@ -1,15 +1,15 @@
 {
   "schema": "atlcli.dev-release-task-proof/v1",
   "task": "DR-07",
-  "recordedAt": "2026-08-12T16:54:34Z",
-  "proofedParentHead": "282b376f3fa89605aa9058958a63c809f5630241",
-  "authoritativePublishedArtifact": false,
-  "purpose": "Implementations-, Live-Registrierungs- und lokaler Homebrew-Audit-Beweis fuer die isolierte Tap-Lane; ein konkreter atlcli-dev-Pointer und native Vierer-Live-Matrix folgen mit dem ersten echten Dev-Release in DR-10",
+  "recordedAt": "2026-08-13T11:20:00Z",
+  "proofedParentHead": "8bea69a68358621bb0503d7032289f4b4e23554e",
+  "authoritativePublishedArtifact": true,
+  "purpose": "Live-Beweis fuer App-dispatchte atlcli-dev-Publikation, unveraenderliche Release-Bindung, vier native Homebrew-Installationen sowie Konflikt- und Kanalwechsel",
   "tap": {
     "repository": "BjoernSchotte/homebrew-tap",
     "branch": "main",
-    "commit": "68f615ab186b4bfdb377d199ebaf4a47dec12e0f",
-    "commitUrl": "https://github.com/BjoernSchotte/homebrew-tap/commit/68f615ab186b4bfdb377d199ebaf4a47dec12e0f",
+    "commit": "a550c74b44a102837feb5d19bc9af2d949552c27",
+    "commitUrl": "https://github.com/BjoernSchotte/homebrew-tap/commit/a550c74b44a102837feb5d19bc9af2d949552c27",
     "workflow": {
       "id": 332939231,
       "name": "Update Dev Formula",
@@ -17,7 +17,9 @@
       "state": "active",
       "url": "https://github.com/BjoernSchotte/homebrew-tap/blob/main/.github/workflows/update-dev-formula.yml"
     },
-    "stableFormulaChanged": false,
+    "stableFormulaChangedByReleaseRun": false,
+    "stableFormulaSha256": "15c218cc2a94a6172f4aee91dda712aa719c1e8ef22c6768918fc37151a5eaaa",
+    "reciprocalConflictBootstrapCommit": "296965dedada68b5355c6e20f53ec8fbd2aebcf1",
     "runtimeAllowlistedPaths": [
       "Formula/atlcli-dev.rb",
       "metadata/atlcli-dev.json"
@@ -101,11 +103,24 @@
       "result": "success"
     }
   },
-  "deferredLiveProof": {
-    "formulaAndPointerPublication": "DR-10",
-    "nativeFourRunnerInstallMatrix": "DR-10",
-    "stableDevConflictAndSwitch": "DR-10",
-    "reason": "The Tap workflow is live and callable, but it intentionally cannot render a formula until an immutable green-source GitHub dev prerelease exists."
+  "livePublication": {
+    "sourceRun": 31693920643,
+    "sourceRunUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31693920643",
+    "tapRun": 31694419916,
+    "tapRunAttempt": 1,
+    "tapRunUrl": "https://github.com/BjoernSchotte/homebrew-tap/actions/runs/31694419916",
+    "requestId": "31693920643-1-dev-20260813.26.1-8bea69a6",
+    "sourceSha": "8bea69a68358621bb0503d7032289f4b4e23554e",
+    "tag": "dev-20260813.26.1-8bea69a6",
+    "formulaVersion": "20260813110455.26.1",
+    "tapCommit": "a550c74b44a102837feb5d19bc9af2d949552c27",
+    "formulaSha256": "1bf08057eac0f83ee99cf9f6d648d479e9df0f93ef25597e6fa15b532926a886",
+    "pointerSha256": "47df456c136c8930d1b0d311307188ac5b3797596c8d72c5dcc3b72337caba18",
+    "appDispatchReceiptDownloaded": true,
+    "nativeTargets": ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"],
+    "installedVersion": "0.17.2-dev.20260813.26.1+8bea69a6",
+    "conflictEnforcedOnEveryTarget": true,
+    "channelSwitchIdentityStable": true
   },
   "privacy": {
     "containsSecrets": false,

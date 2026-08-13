@@ -30,7 +30,7 @@ test validates schemas and scans receipts before publication.
 | DR-04 | [`evidence/DR-04-reusable-artifact-workflow.json`](evidence/DR-04-reusable-artifact-workflow.json) | Shared workflow policy proven |
 | DR-05 | [`evidence/DR-05-source-eligibility.json`](evidence/DR-05-source-eligibility.json) | Green-main eligibility contract proven |
 | DR-06 | [`evidence/DR-06-github-publish-transaction.json`](evidence/DR-06-github-publish-transaction.json) | Immutable GitHub prerelease and downloaded-byte consumers proven live |
-| DR-07 | [`evidence/DR-07-homebrew-dev-lane.json`](evidence/DR-07-homebrew-dev-lane.json) | Tap lane registered and audited; live formula pointer deferred to DR-10 |
+| DR-07 | [`evidence/DR-07-homebrew-dev-lane.json`](evidence/DR-07-homebrew-dev-lane.json) | App-dispatched formula publication and four native Homebrew consumers proven live |
 | DR-08 | [`evidence/DR-08-docs-evidence-policy.json`](evidence/DR-08-docs-evidence-policy.json) | Runbook, schemas, and privacy policy proven |
 | DR-09 | [`evidence/DR-09-shadow-rehearsal.json`](evidence/DR-09-shadow-rehearsal.json) | Full manual shadow release proven with zero publication writes |
 
