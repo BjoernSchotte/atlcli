@@ -34,6 +34,7 @@ jobs:
       source_sha: ${{ steps.identity.outputs.source_sha }}
       source_ref: ${{ steps.identity.outputs.source_ref }}
       created_at: ${{ steps.identity.outputs.created_at }}
+      release_attempt: ${{ steps.identity.outputs.release_attempt }}
       stable_latest: ${{ steps.identity.outputs.stable_latest }}
     steps:
       - uses: actions/checkout@v7
@@ -69,6 +70,7 @@ jobs:
             echo "source_sha=$GITHUB_SHA"
             echo "source_ref=$GITHUB_REF"
             echo "created_at=$(git show -s --format=%cI "$GITHUB_SHA")"
+            echo "release_attempt=$GITHUB_RUN_ATTEMPT"
             echo "stable_latest=$stable_latest"
           } >> "$GITHUB_OUTPUT"
 
@@ -83,8 +85,8 @@ jobs:
       version: ${{ needs.resolve.outputs.version }}
       build_id: ${{ needs.resolve.outputs.build_id }}
       created_at: ${{ needs.resolve.outputs.created_at }}
-      release_attempt: ${{ github.run_attempt }}
-      security_attestation_artifact: security-attestation-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      release_attempt: ${{ fromJSON(needs.resolve.outputs.release_attempt) }}
+      security_attestation_artifact: security-attestation-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ needs.resolve.outputs.release_attempt }}
 
   create-draft:
     name: Create complete stable draft

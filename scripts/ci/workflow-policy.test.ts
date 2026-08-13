@@ -84,7 +84,10 @@ describe("CI workflow policy", () => {
     const release = await workflow("release.yml");
     const reusable = await workflow("reusable-release-artifacts.yml");
     expect(release).toContain("uses: ./.github/workflows/reusable-release-artifacts.yml");
-    expect(release).toContain("security_attestation_artifact: security-attestation-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(release).toContain("release_attempt: ${{ steps.identity.outputs.release_attempt }}");
+    expect(release).toContain('echo "release_attempt=$GITHUB_RUN_ATTEMPT"');
+    expect(release).toContain("release_attempt: ${{ fromJSON(needs.resolve.outputs.release_attempt) }}");
+    expect(release).toContain("security_attestation_artifact: security-attestation-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ needs.resolve.outputs.release_attempt }}");
     expect(release).toContain("name: ${{ needs.artifacts.outputs.bundle_artifact }}");
     expect(release).toContain("scripts/ci/github-release-transaction.ts create-draft");
     expect(release).toContain("scripts/ci/github-release-transaction.ts download-draft");
@@ -102,7 +105,6 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain("--skip-cli");
     expect(reusable).toContain("release_attempt:");
     expect(reusable.match(/--run-attempt \"\$\{\{ inputs\.release_attempt \}\}\"/g)).toHaveLength(3);
-    expect(release).toContain("release_attempt: ${{ github.run_attempt }}");
     const extensionBuild = block(reusable, /^ {2}build-extension:\s*$/, 2);
     expect(extensionBuild).not.toBeNull();
     expect(extensionBuild).toContain("bun run fonts:ensure");
@@ -236,7 +238,11 @@ describe("CI workflow policy", () => {
     expect(preflight).not.toContain("always()");
     expect(artifacts).not.toBeNull();
     expect(artifacts).toContain("needs: [resolve-source, publication-decision, eligible-source, preflight]");
-    expect(artifacts).toContain("source_eligibility_artifact: source-eligibility-");
+    expect(eligibility).toContain("source-eligibility-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ needs.resolve-source.outputs.release_attempt }}");
+    expect(artifacts).toContain("security-attestation-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ needs.resolve-source.outputs.release_attempt }}");
+    expect(artifacts).toContain("source-eligibility-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ needs.resolve-source.outputs.release_attempt }}");
+    expect(artifacts).not.toContain("security-attestation-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(artifacts).not.toContain("source-eligibility-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(artifacts).not.toContain("always()");
   });
 
