@@ -113,12 +113,12 @@ describe("CI workflow policy", () => {
     );
     expect(reusable).toContain("bun scripts/assemble-release-bundle.ts");
     expect(reusable).toContain("bun scripts/verify-release-artifacts.ts --dir bundle");
-    for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
-      expect(reusable).toContain(`test:${suite}-extension-browser:prebuilt`);
+    expect(reusable).toContain("test:worker-extension-browser:prebuilt");
+    for (const suite of ["jobs", "research", "rovo", "palette"]) {
+      expect(reusable).not.toContain(`test:${suite}-extension-browser:prebuilt`);
     }
     const cleanup = "bun scripts/verify-release-artifacts.ts cleanup-extension --out bundle/extension";
     expect(reusable).toContain(cleanup);
-    expect(reusable).toContain('ATLCLI_RELEASE_CONSUMER: "1"');
     expect(reusable.indexOf(cleanup)).toBeLessThan(reusable.indexOf("- name: Upload exact release bundle"));
     expect(reusable).not.toContain("bun build apps/cli/src/index.ts");
     expect(reusable).not.toMatch(/^\s+(?:tar|zip)\s+/m);
@@ -624,16 +624,17 @@ describe("CI workflow policy", () => {
     const browser = ci.slice(ci.indexOf("  browser-export-harness:"), ci.indexOf("  required:"));
 
     expect(browser.match(/bun run --cwd apps\/extension build/g)).toHaveLength(1);
-    expect(browser).toContain("test:worker-extension-browser:prebuilt");
-    expect(browser).toContain("test:jobs-extension-browser:prebuilt");
-    expect(browser).toContain("test:rovo-extension-browser:prebuilt");
-    expect(browser).not.toMatch(/test:(?:worker|jobs|rovo)-extension-browser\s*$/m);
+    for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
+      expect(browser).toContain(`test:${suite}-extension-browser:prebuilt`);
+    }
+    expect(browser).not.toMatch(/test:(?:worker|jobs|research|rovo|palette)-extension-browser\s*$/m);
 
     // Local commands remain self-contained; CI alone opts into the prebuilt
     // variants after its one explicit build.
     expect(extension.scripts["pretest:worker-extension-browser"]).toBe("bun run build");
     expect(extension.scripts["pretest:jobs-extension-browser"]).toBe("bun run build");
     expect(extension.scripts["pretest:rovo-extension-browser"]).toBe("bun run build");
+    expect(extension.scripts["pretest:palette-extension-browser"]).toBe("bun run build");
     expect(extension.scripts["test:worker-extension-browser"]).toBe(
       "bun run test:worker-extension-browser:prebuilt",
     );
@@ -642,6 +643,9 @@ describe("CI workflow policy", () => {
     );
     expect(extension.scripts["test:rovo-extension-browser"]).toBe(
       "bun run test:rovo-extension-browser:prebuilt",
+    );
+    expect(extension.scripts["test:palette-extension-browser"]).toBe(
+      "bun run test:palette-extension-browser:prebuilt",
     );
     expect(extension.scripts["test:research-extension-browser:prebuilt"]).toContain(
       "../../node_modules/@playwright/test/cli.js",

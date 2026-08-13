@@ -188,8 +188,12 @@ Receipt. Dateinamen, Mengen und Digests werden als Schema getestet.
   Symlinks, doppelte Entries, unnoetige Source-/Test-/Env-Dateien und Source
   Maps werden abgelehnt.
 - Nach dem Entpacken laufen Output-Scanner, Manifest-/CSP-/Permission-Gates und
-  Packed-Chromium-Tests gegen **diesen Download**, nicht gegen einen separaten
-  `.output/chrome-mv3`-Build.
+  ein fokussierter Packed-Chromium-Release-Smoke gegen **diesen Download**, nicht
+  gegen einen separaten `.output/chrome-mv3`-Build. Die vollstaendigen
+  Worker-/Jobs-/Research-/Rovo-/Palette-Suiten laufen genau einmal im fuer
+  dasselbe Source-SHA verpflichtenden `main`-CI. Der Release-Smoke beweist die
+  packaging-spezifischen Risiken: Manifest, MV3-Service-Worker, Side Panel und
+  PDF.js als echter Modul-Worker sowie ueber den offiziellen Fallback.
 
 ### 4.6 Homebrew
 
@@ -502,6 +506,11 @@ mit Build-ID/SHA identifiziert.
   konsumieren und keinen impliziten Rebuild ausloesen.
 - [x] Exakt dieses Extension-Paket in persistentem Chromium laden und Version,
   Service Worker, Side Panel und die bestehenden Kernprobes belegen.
+- Release-Entscheidung nach der ersten Live-Rehearsal: Der Release-Workflow ist
+  auf den fokussierten Worker-/Manifest-/PDF.js-Smoke begrenzt; die vollstaendige
+  Produktmatrix bleibt das einmalige Gate des exakt gebundenen gruenen `main`-CI.
+  Ein zweiter Shared-Runner-Durchlauf derselben Timing- und Worker-Recreation-
+  Szenarien ist kein Release-Gate.
 - [x] Attestation/Metadata an Source-SHA und Asset-Digests binden; ein manipuliertes
   Byte, falscher SHA oder fehlender Asset muss einen Negativtest ausloesen.
 
@@ -812,8 +821,10 @@ an der vorgesehenen Stelle, und GitHub Releases sowie Tap sind unveraendert.
 - [ ] CLI-Archive in der Linux-/macOS-/Windows-Matrix starten und fuer jedes
   `release-info --json` mit Kanal, Build-ID und Source-SHA belegen; zusaetzlich
   den bestehenden `version --json`-Kompatibilitaetstest ausfuehren.
-- [ ] Genau das heruntergeladene Extension-ZIP entpacken, Scanner und Packed-
-  Chromium-Suites ausfuehren und Manifest-`version`/`version_name` belegen.
+- [ ] Genau das heruntergeladene Extension-ZIP entpacken, Scanner und den
+  fokussierten Packed-Chromium-Release-Smoke ausfuehren, Manifest-`version`/
+  `version_name` belegen und den erfolgreichen vollstaendigen Packed-Suite-Beleg
+  des exakt gleichen Source-SHA aus dem kanonischen `main`-CI referenzieren.
 - [ ] GitHub API pruefen: korrekter Tag-Target-SHA, `prerelease=true`,
   `make_latest=false`, exakte Asset-Menge; Stable `/releases/latest` entspricht
   DR-00.
@@ -860,7 +871,7 @@ Bytes, Consumer-Proofs und Tap-Formel an denselben Source-SHA.
 | Source Eligibility | exakter kanonischer `main`-Push-Run und neuester `required`-Attempt erfolgreich | rot/fehlend/pending/timeout/falsches Event/alter Attempt/Gate-Bypass |
 | Archive | alle CLI-Archive und MV3-ZIP verifizierbar | Traversal, Symlink, Duplicate, falscher Digest, verbotene Datei |
 | CLI Runtime | `release-info --json` plus kompatibles `version --json` auf Linux x64/arm64, macOS x64/arm64, Windows x64 | Kanal/SHA/Build-ID-Mismatch |
-| Extension | Output-Scanner, Manifest, Worker/Jobs/Research/Rovo/Palette in Packed Chrome | Manifest-/CSP-/Permission-/Tree-Mismatch |
+| Extension | Vollstaendige Worker/Jobs/Research/Rovo/Palette-Matrix im exakten `main`-CI; Output-Scanner, Manifest und fokussierter Worker-/Side-Panel-/PDF.js-Smoke auf den finalen Release-Bytes | Manifest-/CSP-/Permission-/Tree-Mismatch |
 | Workflow | Schedule und Manual gleicher Graph, Source-Gate, Concurrency, engste Permissions | PR/Fork, fremder Branch, paralleles Publish, beweglicher Tag |
 | GitHub Release | immutable Prerelease, exakte Assets, Download-Verifikation | Partial Publish, Latest-Aenderung, Asset-Overwrite |
 | Homebrew | audit/install/test auf macOS und Linux, korrekte Identitaet | URL/SHA-Mismatch, Stable-Formel-Aenderung, unsicherer Konflikt |
@@ -873,7 +884,8 @@ Bytes, Consumer-Proofs und Tap-Formel an denselben Source-SHA.
   das gepackte MV3-ZIP, Checksummen, Metadata, Source-Eligibility und Security-/
   Provenienz-Beleg.
 - [ ] Die erneut heruntergeladenen Bytes bestehen Plattform-, Archive-, Digest-
-  und Packed-Chromium-Consumer-Tests.
+  und fokussierten Packed-Chromium-Release-Smoke; die vollstaendige
+  Packed-Consumer-Matrix ist fuer exakt dasselbe Source-SHA im `main`-CI gruen.
 - [ ] `atlcli-dev` referenziert genau diesen Release und ist auf macOS und Linux
   via Homebrew installiert und getestet.
 - [ ] Stable `/releases/latest`, Stable-Updater, Stable Asset-Namen und
