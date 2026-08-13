@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 import {
   dispatchAndVerifyHomebrewDev,
+  GitHubTapApi,
   type TapApi,
 } from "./homebrew-dev-dispatch";
 
@@ -86,6 +87,22 @@ async function fixtureApi(options: { conclusion?: string; duplicate?: boolean; d
 }
 
 describe("Homebrew dev cross-repository dispatch", () => {
+  test("downloads the Actions artifact with GitHub's versioned API media type", async () => {
+    const request = Object.assign(async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(url).toBe("https://api.github.test/artifact.zip");
+      expect(new Headers(init?.headers).get("Accept")).toBe("application/vnd.github+json");
+      expect(init?.redirect).toBe("follow");
+      return new Response(new Uint8Array([1, 2, 3]));
+    }, { preconnect: () => {} }) as typeof fetch;
+    const api = new GitHubTapApi("test-token", request);
+    await expect(api.downloadArtifact({
+      id: 9,
+      name: "receipt",
+      expired: false,
+      archive_download_url: "https://api.github.test/artifact.zip",
+    })).resolves.toEqual(new Uint8Array([1, 2, 3]));
+  });
+
   test("correlates one successful run and verifies its exact committed bytes", async () => {
     const receipt = await dispatchAndVerifyHomebrewDev({
       api: await fixtureApi(),
