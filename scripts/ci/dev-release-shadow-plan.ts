@@ -3,10 +3,11 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { canonicalJson } from "../release-artifacts.js";
+import { CLI_TARGETS, canonicalJson, cliAssetName } from "../release-artifacts.js";
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const TAG_PATTERN = /^dev-[0-9]{8}\.[1-9][0-9]*\.[1-9][0-9]*-[0-9a-f]{8}$/;
+const EXTENSION_MARKER_SUFFIX = ".atlcli-release-extraction-v1";
 
 export interface ShadowAsset {
   filename: string;
@@ -35,6 +36,26 @@ export interface DevReleaseShadowPlan {
   executedPublicationMutations: [];
 }
 
+function expectedAssetNames(tag: string): string[] {
+  return [
+    ...CLI_TARGETS.map(cliAssetName),
+    `atlcli-extension-chrome-mv3-${tag}.zip`,
+    "checksums.txt",
+    "build-metadata.json",
+    "security-attestation.json",
+    "source-eligibility.json",
+  ].sort();
+}
+
+export function collectShadowAssets(directory: string): ShadowAsset[] {
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !entry.name.endsWith(EXTENSION_MARKER_SUFFIX))
+    .map((entry) => {
+      const path = join(directory, entry.name);
+      return { filename: basename(path), size: statSync(path).size, sha256: digestFile(path) };
+    });
+}
+
 export function createDevReleaseShadowPlan(input: {
   sourceSha: string;
   tag: string;
@@ -48,8 +69,16 @@ export function createDevReleaseShadowPlan(input: {
   }
   if (!input.stableLatestBefore) throw new Error("stable latest baseline is required");
   const assets = [...input.assets].sort((left, right) => left.filename.localeCompare(right.filename));
-  if (assets.length !== 10 || new Set(assets.map(({ filename }) => filename)).size !== assets.length) {
-    throw new Error("shadow publication requires exactly ten unique release assets");
+  const actualNames = assets.map(({ filename }) => filename);
+  const expectedNames = expectedAssetNames(input.tag);
+  if (new Set(actualNames).size !== actualNames.length || JSON.stringify(actualNames) !== JSON.stringify(expectedNames)) {
+    const actualSet = new Set(actualNames);
+    const expectedSet = new Set(expectedNames);
+    const missing = expectedNames.filter((name) => !actualSet.has(name));
+    const extra = actualNames.filter((name) => !expectedSet.has(name));
+    throw new Error(
+      `shadow release asset contract mismatch; missing=[${missing.join(", ")}], extra=[${extra.join(", ")}]`,
+    );
   }
   for (const asset of assets) {
     if (!asset.filename || !Number.isSafeInteger(asset.size) || asset.size < 1 || !/^[0-9a-f]{64}$/.test(asset.sha256)) {
@@ -80,7 +109,7 @@ export function createDevReleaseShadowPlan(input: {
       precondition: `server digest must equal sha256:${asset.sha256}`,
     })),
     {
-      order: 13,
+      order: assets.length + 3,
       system: "github",
       operation: "publish-prerelease",
       target: input.tag,
@@ -88,16 +117,17 @@ export function createDevReleaseShadowPlan(input: {
     },
   ];
   if (input.publishHomebrew) {
+    const firstHomebrewOrder = assets.length + 4;
     mutations.push(
       {
-        order: 14,
+        order: firstHomebrewOrder,
         system: "homebrew-tap",
         operation: "dispatch-update-dev-formula",
         target: "BjoernSchotte/homebrew-tap/.github/workflows/update-dev-formula.yml",
         precondition: "public immutable prerelease reverified and scoped App token available",
       },
       {
-        order: 15,
+        order: firstHomebrewOrder + 1,
         system: "homebrew-tap",
         operation: "commit-formula-and-pointer",
         target: "Formula/atlcli-dev.rb,metadata/atlcli-dev.json",
@@ -138,12 +168,7 @@ function digestFile(path: string): string {
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const directory = resolve(required(args, "--dir"));
-  const assets = readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => {
-      const path = join(directory, entry.name);
-      return { filename: basename(path), size: statSync(path).size, sha256: digestFile(path) };
-    });
+  const assets = collectShadowAssets(directory);
   const result = createDevReleaseShadowPlan({
     sourceSha: required(args, "--source-sha"),
     tag: required(args, "--tag"),

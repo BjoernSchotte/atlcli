@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { createDevReleaseShadowPlan, type ShadowAsset } from "./dev-release-shadow-plan";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  collectShadowAssets,
+  createDevReleaseShadowPlan,
+  type ShadowAsset,
+} from "./dev-release-shadow-plan";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const TAG = "dev-20260812.418.1-01234567";
@@ -65,7 +72,14 @@ describe("dev release shadow plan", () => {
       stableLatestBefore: "v0.17.2",
       assets: assets().slice(1),
       publishHomebrew: true,
-    })).toThrow("exactly ten");
+    })).toThrow("asset contract mismatch");
+    expect(() => createDevReleaseShadowPlan({
+      sourceSha: SHA,
+      tag: TAG,
+      stableLatestBefore: "v0.17.2",
+      assets: assets().map((asset, index) => index === 0 ? { ...asset, filename: "unexpected.zip" } : asset),
+      publishHomebrew: true,
+    })).toThrow("missing=[atlcli-linux-x64.tar.gz], extra=[unexpected.zip]");
     expect(() => createDevReleaseShadowPlan({
       sourceSha: SHA,
       tag: TAG,
@@ -73,5 +87,28 @@ describe("dev release shadow plan", () => {
       assets: assets().map((asset, index) => index === 0 ? { ...asset, sha256: "bad" } : asset),
       publishHomebrew: true,
     })).toThrow("invalid shadow asset");
+  });
+
+  it("does not mistake the extension verification marker for a release asset", () => {
+    const directory = mkdtempSync(join(tmpdir(), "atlcli-shadow-assets-"));
+    try {
+      for (const asset of assets()) writeFileSync(join(directory, asset.filename), asset.filename);
+      writeFileSync(join(directory, "extension.atlcli-release-extraction-v1"), "verified");
+
+      const collected = collectShadowAssets(directory);
+
+      expect(collected.map(({ filename }) => filename).sort()).toEqual(
+        assets().map(({ filename }) => filename).sort(),
+      );
+      expect(() => createDevReleaseShadowPlan({
+        sourceSha: SHA,
+        tag: TAG,
+        stableLatestBefore: "v0.17.2",
+        assets: collected,
+        publishHomebrew: true,
+      })).not.toThrow();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
