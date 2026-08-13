@@ -273,6 +273,10 @@ on:
         required: true
         type: boolean
         default: false
+      rollback_from_tag:
+        required: false
+        type: string
+        default: ""
 ```
 
 `02:17 UTC` ist absichtlich nicht zur vollen Stunde. GitHub-Schedules koennen
@@ -283,6 +287,8 @@ einschliessen.
 
 Ein optionaler `source_sha` ist fuer reproduzierbare Rollbacks gedacht, nicht
 fuer beliebige Feature-Branches. Der Workflow prueft `merge-base --is-ancestor`
+und akzeptiert `rollback_from_tag` nur bei einem manuellen Live-Lauf mit einem
+expliziten aelteren `source_sha`, `force_rebuild=true` und aktiviertem Homebrew.
 gegen den frisch geholten `origin/main` und protokolliert den aufgeloesten SHA.
 
 Danach fragt `eligible-source` ueber die GitHub Actions API ausschliesslich den

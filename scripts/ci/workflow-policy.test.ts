@@ -144,6 +144,7 @@ describe("CI workflow policy", () => {
     expect(triggers).toContain("source_sha:");
     expect(triggers).toContain("force_rebuild:");
     expect(triggers).toContain("publish_homebrew:");
+    expect(triggers).toContain("rollback_from_tag:");
     expect(triggers).toMatch(/dry_run:\n[\s\S]*?default: true/);
     expect(triggers).not.toContain("pull_request:");
     expect(triggers).not.toContain("pull_request_target:");
@@ -211,6 +212,13 @@ describe("CI workflow policy", () => {
     expect(resolve).toContain('git merge-base --is-ancestor "$source_sha" origin/main');
     expect(resolve).toContain('git checkout --detach "$source_sha"');
     expect(resolve).not.toContain("github.ref");
+    expect(resolve).toContain('test "$EVENT_NAME" = "workflow_dispatch"');
+    expect(resolve).toContain('test -n "$source_sha"');
+    expect(resolve).toContain('test "$source_sha" != "$main_sha"');
+    expect(resolve).toContain('test "$FORCE_REBUILD" = "true"');
+    expect(resolve).toContain('test "$PUBLISH_HOMEBREW" = "true"');
+    expect(resolve).toContain('test "$DRY_RUN" = "false"');
+    expect(resolve).toContain('[[ "$ROLLBACK_FROM_TAG" =~ ^dev-');
   });
 
   it("puts no-op inspection and green exact-SHA eligibility before every dev build", async () => {
@@ -346,6 +354,7 @@ describe("CI workflow policy", () => {
     expect(homebrew).toContain("permission-actions: write");
     expect(homebrew).toContain("permission-contents: read");
     expect(homebrew).toContain("homebrew-dev-dispatch.ts");
+    expect(homebrew).toContain('--rollback-from-tag "${{ inputs.rollback_from_tag || \'\' }}"');
     expect(homebrew).toContain("HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}");
     expect(homebrew).not.toContain("contents: write");
     expect(homebrew).not.toContain("secrets.HOMEBREW_TAP_TOKEN");

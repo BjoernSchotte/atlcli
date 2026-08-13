@@ -11,7 +11,7 @@ const REQUEST = "31599183166-1-dev-20260812.418.2-01234567";
 const METADATA = "a".repeat(64);
 const CHECKSUMS = "b".repeat(64);
 
-async function fixtureApi(options: { conclusion?: string; duplicate?: boolean; drift?: boolean } = {}) {
+async function fixtureApi(options: { conclusion?: string; duplicate?: boolean; drift?: boolean; rollbackFromTag?: string } = {}) {
   const pointer = {
     schema: "atlcli.homebrew-dev-pointer/v1" as const,
     sourceRepository: "BjoernSchotte/atlcli",
@@ -24,7 +24,7 @@ async function fixtureApi(options: { conclusion?: string; duplicate?: boolean; d
     requestId: REQUEST,
     releaseUrl: `https://github.com/BjoernSchotte/atlcli/releases/tag/${TAG}`,
     releasePublishedAt: "2026-08-12T16:00:00Z",
-    rollbackFromTag: null,
+    rollbackFromTag: options.rollbackFromTag ?? null,
     archives: {
       "atlcli-darwin-arm64.tar.gz": "1".repeat(64),
       "atlcli-darwin-x64.tar.gz": "2".repeat(64),
@@ -61,6 +61,7 @@ async function fixtureApi(options: { conclusion?: string; duplicate?: boolean; d
   const api: TapApi = {
     async dispatch(inputs) {
       expect(inputs.dev_tag).toBe(TAG);
+      expect(inputs.rollback_from_tag).toBe(options.rollbackFromTag ?? "");
       dispatched = true;
     },
     async runs() {
@@ -100,6 +101,22 @@ describe("Homebrew dev cross-repository dispatch", () => {
     expect(receipt.tapCommit).toBe("f".repeat(40));
   });
 
+  test("passes and verifies the exact current tag as a rollback fence", async () => {
+    const rollbackFromTag = "dev-20260811.400.1-89abcdef";
+    const receipt = await dispatchAndVerifyHomebrewDev({
+      api: await fixtureApi({ rollbackFromTag }),
+      tag: TAG,
+      sourceSha: SHA,
+      requestId: REQUEST,
+      metadataSha256: METADATA,
+      checksumsSha256: CHECKSUMS,
+      rollbackFromTag,
+      pollIntervalMs: 0,
+      sleep: async () => {},
+    });
+    expect(receipt.pointer.rollbackFromTag).toBe(rollbackFromTag);
+  });
+
   test("blocks red, ambiguous, and remotely drifted workflows", async () => {
     for (const options of [{ conclusion: "failure" }, { duplicate: true }, { drift: true }]) {
       await expect(dispatchAndVerifyHomebrewDev({
@@ -124,5 +141,17 @@ describe("Homebrew dev cross-repository dispatch", () => {
       metadataSha256: METADATA,
       checksumsSha256: CHECKSUMS,
     })).rejects.toThrow("request ID");
+  });
+
+  test("rejects a malformed rollback fence before dispatch", async () => {
+    await expect(dispatchAndVerifyHomebrewDev({
+      api: await fixtureApi(),
+      tag: TAG,
+      sourceSha: SHA,
+      requestId: REQUEST,
+      metadataSha256: METADATA,
+      checksumsSha256: CHECKSUMS,
+      rollbackFromTag: "latest",
+    })).rejects.toThrow("rollback fence tag");
   });
 });

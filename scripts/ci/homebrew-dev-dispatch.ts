@@ -75,6 +75,7 @@ function validateRequest(input: {
   requestId: string;
   metadataSha256: string;
   checksumsSha256: string;
+  rollbackFromTag?: string;
 }): void {
   if (!/^dev-\d{8}\.\d+\.\d+-[0-9a-f]{8}$/.test(input.tag)) throw new Error("invalid dev tag");
   if (!/^[0-9a-f]{40}$/.test(input.sourceSha)) throw new Error("invalid source SHA");
@@ -82,6 +83,9 @@ function validateRequest(input: {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.requestId)) throw new Error("invalid request ID");
   if (!/^[0-9a-f]{64}$/.test(input.metadataSha256)) throw new Error("invalid metadata SHA-256");
   if (!/^[0-9a-f]{64}$/.test(input.checksumsSha256)) throw new Error("invalid checksums SHA-256");
+  if (input.rollbackFromTag && !/^dev-\d{8}\.\d+\.\d+-[0-9a-f]{8}$/.test(input.rollbackFromTag)) {
+    throw new Error("invalid rollback fence tag");
+  }
 }
 
 function assertPublishedContent(input: {
@@ -93,6 +97,7 @@ function assertPublishedContent(input: {
   requestId: string;
   metadataSha256: string;
   checksumsSha256: string;
+  rollbackFromTag?: string;
 }): void {
   const { receipt } = input;
   if (receipt.schema !== "atlcli.homebrew-dev-publication/v1") throw new Error("tap receipt schema mismatch");
@@ -107,7 +112,7 @@ function assertPublishedContent(input: {
     pointer.requestId !== input.requestId ||
     pointer.metadataSha256 !== input.metadataSha256 ||
     pointer.checksumsSha256 !== input.checksumsSha256 ||
-    pointer.rollbackFromTag !== null
+    pointer.rollbackFromTag !== (input.rollbackFromTag || null)
   ) {
     throw new Error("published Homebrew pointer does not match the dispatched release");
   }
@@ -130,6 +135,7 @@ export async function dispatchAndVerifyHomebrewDev(input: {
   requestId: string;
   metadataSha256: string;
   checksumsSha256: string;
+  rollbackFromTag?: string;
   pollIntervalMs?: number;
   timeoutMs?: number;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -146,7 +152,7 @@ export async function dispatchAndVerifyHomebrewDev(input: {
     request_id: input.requestId,
     metadata_sha256: input.metadataSha256,
     checksums_sha256: input.checksumsSha256,
-    rollback_from_tag: "",
+    rollback_from_tag: input.rollbackFromTag ?? "",
   });
   const sleep = input.sleep ?? ((milliseconds) => Bun.sleep(milliseconds));
   const timeoutMs = input.timeoutMs ?? 60 * 60 * 1_000;
@@ -272,6 +278,7 @@ if (import.meta.main) {
     requestId: required("--request-id"),
     metadataSha256: required("--metadata-sha256"),
     checksumsSha256: required("--checksums-sha256"),
+    rollbackFromTag: value(args, "--rollback-from-tag") || undefined,
   });
   const output = canonicalJson(receipt);
   writeFileSync(resolve(value(args, "--out") ?? "homebrew-dev-dispatch.json"), output);
