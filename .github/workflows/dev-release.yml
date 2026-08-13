@@ -195,7 +195,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: source-eligibility-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          # release_attempt is frozen by resolve-source. On "rerun failed jobs",
+          # GitHub increments github.run_attempt without rerunning this already
+          # successful producer, so downstream consumers must keep addressing
+          # the original proof identity.
+          name: source-eligibility-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ needs.resolve-source.outputs.release_attempt }}
           path: source-eligibility.json
           if-no-files-found: error
           retention-days: 30
@@ -222,8 +226,8 @@ jobs:
       build_id: ${{ needs.resolve-source.outputs.build_id }}
       created_at: ${{ needs.resolve-source.outputs.created_at }}
       release_attempt: ${{ fromJSON(needs.resolve-source.outputs.release_attempt) }}
-      security_attestation_artifact: security-attestation-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-      source_eligibility_artifact: source-eligibility-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      security_attestation_artifact: security-attestation-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ needs.resolve-source.outputs.release_attempt }}
+      source_eligibility_artifact: source-eligibility-${{ needs.resolve-source.outputs.source_sha }}-${{ github.run_id }}-${{ needs.resolve-source.outputs.release_attempt }}
 
   shadow-plan:
     name: Verify bundle and plan publication without writes
