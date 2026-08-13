@@ -338,6 +338,7 @@ describe("CI workflow policy", () => {
       "needs: [resolve-source, publication-decision, create-draft, verify-published]",
     );
     expect(homebrew).toContain("github.event_name == 'schedule' || inputs.publish_homebrew");
+    expect(homebrew).toContain("environment: dev-release");
     expect(homebrew).toContain("actions/create-github-app-token@v3");
     expect(homebrew).toContain("app-id: ${{ vars.HOMEBREW_TAP_APP_ID }}");
     expect(homebrew).toContain("private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}");
@@ -348,6 +349,20 @@ describe("CI workflow policy", () => {
     expect(homebrew).toContain("HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}");
     expect(homebrew).not.toContain("contents: write");
     expect(homebrew).not.toContain("secrets.HOMEBREW_TAP_TOKEN");
+    for (const name of [
+      "resolve-source",
+      "publication-decision",
+      "eligible-source",
+      "preflight",
+      "artifacts",
+      "create-draft",
+      "verify-downloaded-draft",
+      "native-cli-consumer",
+      "publish-draft",
+      "verify-published",
+    ]) {
+      expect(block(dev, new RegExp(`^ {2}${name}:\\s*$`), 2)).not.toContain("environment: dev-release");
+    }
   });
 
   it("keeps retention dry-run read-only and rechecks fixed protection pointers before apply", async () => {

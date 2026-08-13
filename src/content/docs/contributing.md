@@ -432,6 +432,15 @@ workflow with Homebrew enabled and `dry_run=false`. Scheduled runs use the same
 live publication graph and are
 accepted only after `DEV_RELEASE_SCHEDULE_ENABLED=true` is set.
 
+The cross-repository Homebrew job is the only job bound to the `dev-release`
+GitHub Environment. Store `HOMEBREW_TAP_APP_PRIVATE_KEY` as an Environment
+secret and restrict the Environment deployment branch to `main`. The first
+live run requires the explicit maintainer authorization recorded with DR-09.
+After that one-time gate, do not configure permanent required reviewers: a
+reviewer gate would leave every scheduled nightly waiting for manual approval.
+Repository administrators own App-key rotation and review the Environment and
+App installation quarterly.
+
 ### Diagnose and recover
 
 - **Existing successful release for the SHA:** the normal run is a no-op. Use

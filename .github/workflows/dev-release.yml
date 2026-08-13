@@ -718,6 +718,7 @@ jobs:
       (github.event_name == 'schedule' || inputs.dry_run == false) &&
       (github.event_name == 'schedule' || inputs.publish_homebrew)
     runs-on: ubuntu-24.04
+    environment: dev-release
     permissions:
       contents: read
     steps:
