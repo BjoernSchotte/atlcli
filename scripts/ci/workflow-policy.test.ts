@@ -148,6 +148,7 @@ describe("CI workflow policy", () => {
     const triggers = block(dev, /^on:\s*$/, 0);
     expect(triggers).not.toBeNull();
     expect(triggers).toContain('cron: "17 2 * * *"');
+    expect(triggers).toContain('cron: "15 0 14 8 *"');
     expect(triggers).toContain("workflow_dispatch:");
     expect(triggers).toContain("source_sha:");
     expect(triggers).toContain("force_rebuild:");
