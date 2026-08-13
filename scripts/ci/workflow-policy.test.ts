@@ -389,6 +389,8 @@ describe("CI workflow policy", () => {
     );
     expect(homebrew).toContain("github.event_name == 'schedule' || inputs.publish_homebrew");
     expect(homebrew).toContain("environment: dev-release");
+    expect(homebrew).toContain("ref: main");
+    expect(homebrew).not.toContain("ref: ${{ needs.resolve-source.outputs.source_sha }}");
     expect(homebrew).toContain("actions/create-github-app-token@v3");
     expect(homebrew).toContain("app-id: ${{ vars.HOMEBREW_TAP_APP_ID }}");
     expect(homebrew).toContain("private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}");
