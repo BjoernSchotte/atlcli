@@ -20,6 +20,11 @@ on:
         required: false
         type: boolean
         default: true
+      rollback_from_tag:
+        description: Optional exact current atlcli-dev tag fencing a manual forward rollback
+        required: false
+        type: string
+        default: ""
       dry_run:
         description: Run the complete source/artifact shadow graph and record all publication writes without executing them
         required: false
@@ -62,11 +67,25 @@ jobs:
         id: identity
         env:
           REQUESTED_SOURCE_SHA: ${{ inputs.source_sha || '' }}
+          ROLLBACK_FROM_TAG: ${{ inputs.rollback_from_tag || '' }}
+          FORCE_REBUILD: ${{ inputs.force_rebuild || false }}
+          PUBLISH_HOMEBREW: ${{ inputs.publish_homebrew || false }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+          EVENT_NAME: ${{ github.event_name }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git fetch --no-tags origin main
           main_sha="$(git rev-parse origin/main)"
           source_sha="$REQUESTED_SOURCE_SHA"
+          if [ -n "$ROLLBACK_FROM_TAG" ]; then
+            test "$EVENT_NAME" = "workflow_dispatch"
+            test -n "$source_sha"
+            test "$source_sha" != "$main_sha"
+            test "$FORCE_REBUILD" = "true"
+            test "$PUBLISH_HOMEBREW" = "true"
+            test "$DRY_RUN" = "false"
+            [[ "$ROLLBACK_FROM_TAG" =~ ^dev-[0-9]{8}\.[0-9]+\.[0-9]+-[0-9a-f]{8}$ ]]
+          fi
           if [ -z "$source_sha" ]; then
             source_sha="$main_sha"
           fi
@@ -799,6 +818,7 @@ jobs:
             --request-id "${{ steps.release.outputs.request_id }}" \
             --metadata-sha256 "${{ steps.release.outputs.metadata_sha256 }}" \
             --checksums-sha256 "${{ steps.release.outputs.checksums_sha256 }}" \
+            --rollback-from-tag "${{ inputs.rollback_from_tag || '' }}" \
             --out homebrew-dev-dispatch.json
 
       - name: Upload cross-repository publication receipt

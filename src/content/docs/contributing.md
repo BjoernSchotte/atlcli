@@ -406,7 +406,7 @@ advisory canary may be red, but the release receipt must then report
 
 - GitHub release immutability is enabled for `BjoernSchotte/atlcli`.
 - `HOMEBREW_TAP_APP_ID` is configured as a repository variable.
-- `HOMEBREW_TAP_APP_PRIVATE_KEY` is configured as a repository secret.
+- `HOMEBREW_TAP_APP_PRIVATE_KEY` is configured as a `dev-release` Environment secret.
 - The GitHub App is installed only where needed and can dispatch Actions in
   `BjoernSchotte/homebrew-tap`; it has no tap contents-write permission.
 - `DEV_RELEASE_SCHEDULE_ENABLED` remains `false` until the first manual live
@@ -424,6 +424,7 @@ Open **Actions → Dev release → Run workflow**. The inputs are:
 | `source_sha` | current `main` | Optional full SHA; it must be an ancestor of current `main` and have a successful canonical `main` push run |
 | `force_rebuild` | `false` | Create a new immutable build identity for an already released SHA; never replace an existing tag or asset |
 | `publish_homebrew` | `true` | Dispatch and verify the separate `atlcli-dev` formula after GitHub publication succeeds |
+| `rollback_from_tag` | empty | Exact currently published `atlcli-dev` tag authorizing a forward rollback; requires an older explicit `source_sha`, `force_rebuild=true`, `publish_homebrew=true`, and `dry_run=false` |
 | `dry_run` | `true` | Run the exact quality/artifact/native-consumer shadow graph and record every publication mutation without creating a tag, release, or formula |
 
 For the first live publication, complete the DR-09 shadow rehearsal and obtain
@@ -456,9 +457,12 @@ App installation quarterly.
   correlated Tap run, then use a new forced build after the fix; never rewrite
   the old release.
 - **Rollback:** select a previously green `main` SHA, run with
-  `force_rebuild=true`, and publish a new forward-moving formula version that
-  references the new tag. The workflow requires the exact current formula tag
-  as a fence. It does not move the pointer backward or overwrite releases.
+  `force_rebuild=true`, `publish_homebrew=true`, `dry_run=false`, and set
+  `rollback_from_tag` to the exact current formula tag. The workflow rejects an
+  implicit/current `source_sha`; the selected older SHA must still pass its
+  canonical green-main eligibility gate. It publishes a new forward-moving
+  formula version referencing a new immutable tag. It does not move the pointer
+  backward or overwrite releases.
 
 ### Retention and evidence
 
