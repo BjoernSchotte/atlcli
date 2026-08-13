@@ -224,12 +224,17 @@ jobs:
           retention-days: 30
 
   preflight:
-    name: SHA-bound current release preflight
+    name: SHA-bound release attestation
     needs: [resolve-source, publication-decision, eligible-source]
     if: needs.publication-decision.outputs.decision == 'create'
     uses: ./.github/workflows/reusable-quality.yml
     with:
       source_sha: ${{ needs.resolve-source.outputs.source_sha }}
+      # Product quality is already fail-closed by eligible-source against the
+      # newest canonical main-push required aggregate for this exact SHA.
+      run_static_quality: false
+      run_tests: false
+      run_astro_platform: false
       emit_security_attestation: true
 
   artifacts:

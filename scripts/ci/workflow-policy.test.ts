@@ -251,6 +251,10 @@ describe("CI workflow policy", () => {
     expect(preflight).not.toBeNull();
     expect(preflight).toContain("needs: [resolve-source, publication-decision, eligible-source]");
     expect(preflight).toContain("source_sha: ${{ needs.resolve-source.outputs.source_sha }}");
+    expect(preflight).toContain("run_static_quality: false");
+    expect(preflight).toContain("run_tests: false");
+    expect(preflight).toContain("run_astro_platform: false");
+    expect(preflight).toContain("emit_security_attestation: true");
     expect(preflight).not.toContain("always()");
     expect(artifacts).not.toBeNull();
     expect(artifacts).toContain("needs: [resolve-source, publication-decision, eligible-source, preflight]");
