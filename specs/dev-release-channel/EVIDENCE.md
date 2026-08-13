@@ -36,10 +36,20 @@ test validates schemas and scans receipts before publication.
 
 ## Final live receipts
 
-DR-09 is proven by the mutation-free rehearsal receipt above. DR-10 must add a receipt that
-validates against
-[`evidence/schemas/live-release-proof.schema.json`](evidence/schemas/live-release-proof.schema.json)
-and links one real immutable GitHub dev prerelease plus the exact published
-`atlcli-dev` formula commit. DR-10 remains open until downloaded CLI binaries,
-the downloaded extension ZIP, stable-latest isolation, macOS/Linux Homebrew
-install/test, manual-trigger parity, and schedule activation are all proven.
+| Receipt | Bound result | Status |
+|---------|--------------|--------|
+| [`evidence/DR-10-live-release-proof.json`](evidence/DR-10-live-release-proof.json) | Immutable ten-asset prerelease [`dev-20260813.32.1-18184731`](https://github.com/BjoernSchotte/atlcli/releases/tag/dev-20260813.32.1-18184731), exact downloaded-byte verification, five native CLI consumers, full packed-Chromium matrix and four native Homebrew consumers at tap commit [`050ac914`](https://github.com/BjoernSchotte/homebrew-tap/commit/050ac914d6db5d0e4fb0f3b448bc2199bfe57bc7) | Live proven |
+| [`evidence/DR-10-operations-proof.json`](evidence/DR-10-operations-proof.json) | Manual default-source No-op, forced rebuild, forward rollback plus recovery, retention dry run, operator configuration and pinned-font cache hit | Live proven except scheduled-event gate |
+
+The selected final release binds source SHA
+`18184731cf128bf06ccc8a3c287a6b026f41b658` to canonical main CI run
+[`31700826175`](https://github.com/BjoernSchotte/atlcli/actions/runs/31700826175),
+dev-release run [`31701377742`](https://github.com/BjoernSchotte/atlcli/actions/runs/31701377742)
+and Homebrew tap run
+[`31701894788`](https://github.com/BjoernSchotte/homebrew-tap/actions/runs/31701894788).
+GitHub stable latest remains [`v0.17.2`](https://github.com/BjoernSchotte/atlcli/releases/tag/v0.17.2).
+
+The nightly variable is enabled and the deployed cron is `17 2 * * *`. DR-10
+remains open only until one real `schedule` event has traversed the same graph
+and produced the expected immutable No-op receipt. A manually dispatched run is
+not substituted for that time-bound proof.
