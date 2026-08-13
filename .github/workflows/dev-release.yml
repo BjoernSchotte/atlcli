@@ -2,7 +2,9 @@ name: Dev Release
 
 on:
   schedule:
-    - cron: "17 2 * * *"
+    # One-shot live acceptance run: 2026-08-13 23:30 UTC. Restore the regular
+    # nightly schedule after the resulting schedule-event receipt is captured.
+    - cron: "30 23 13 8 *"
   workflow_dispatch:
     inputs:
       source_sha:
