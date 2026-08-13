@@ -238,6 +238,9 @@ jobs:
           bun run --cwd apps/extension test:rovo-extension-browser:prebuilt
           bun run --cwd apps/extension test:palette-extension-browser:prebuilt
 
+      - name: Remove owned consumer extraction from release bundle
+        run: bun scripts/verify-release-artifacts.ts cleanup-extension --out bundle/extension
+
       - name: Freeze run-unique bundle artifact name
         id: contract
         run: echo "name=release-bundle-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}" >> "$GITHUB_OUTPUT"

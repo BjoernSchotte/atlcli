@@ -116,6 +116,9 @@ describe("CI workflow policy", () => {
     for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
       expect(reusable).toContain(`test:${suite}-extension-browser:prebuilt`);
     }
+    const cleanup = "bun scripts/verify-release-artifacts.ts cleanup-extension --out bundle/extension";
+    expect(reusable).toContain(cleanup);
+    expect(reusable.indexOf(cleanup)).toBeLessThan(reusable.indexOf("- name: Upload exact release bundle"));
     expect(reusable).not.toContain("bun build apps/cli/src/index.ts");
     expect(reusable).not.toMatch(/^\s+(?:tar|zip)\s+/m);
   });

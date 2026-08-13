@@ -271,6 +271,16 @@ function prepareExtractionDirectory(directory: string): string {
   return output;
 }
 
+export function cleanupVerifiedExtractionDirectory(directory: string): void {
+  const output = resolve(directory);
+  const marker = `${output}${EXTENSION_MARKER_SUFFIX}`;
+  if (!existsSync(output) || !existsSync(marker)) {
+    throw new Error(`refusing to remove unowned extraction directory: ${output}`);
+  }
+  rmSync(output, { recursive: true, force: true });
+  rmSync(marker, { force: true });
+}
+
 export async function extractVerifiedZip(bytes: Uint8Array, directory: string): Promise<ZipCentralEntry[]> {
   const entries = inspectZipCentralDirectory(bytes);
   const output = prepareExtractionDirectory(directory);
@@ -629,6 +639,14 @@ function value(name: string): string | undefined {
 
 if (import.meta.main) {
   const command = process.argv[2];
+  if (command === "cleanup-extension") {
+    const output = value("--out");
+    if (!output) {
+      throw new Error("Usage: bun scripts/verify-release-artifacts.ts cleanup-extension --out <dir>");
+    }
+    cleanupVerifiedExtractionDirectory(output);
+    process.exit(0);
+  }
   if (command === "extension") {
     const zipPath = value("--zip");
     const output = value("--out");
