@@ -12,6 +12,7 @@ import {
   createDraftRelease,
   downloadAndVerifyRelease,
   downloadNativeReleaseAsset,
+  GitHubReleaseApi,
   publishDraftRelease,
   type ReleaseApi,
 } from "./github-release-transaction";
@@ -71,6 +72,8 @@ class FakeApi implements ReleaseApi {
   publishCalls = 0;
   corruptUpload = false;
   corruptDownload = false;
+  deletedDrafts: number[] = [];
+  deletedTags: string[] = [];
 
   async reference() { return this.tag; }
   async referenceCommit(reference: NonNullable<FakeApi["tag"]>) { return reference.object.sha; }
@@ -79,6 +82,14 @@ class FakeApi implements ReleaseApi {
     return this.tag;
   }
   async createDraft() { return structuredClone(this.draft); }
+  async deleteDraft(releaseId: number) {
+    this.deletedDrafts.push(releaseId);
+    this.draft.assets = [];
+  }
+  async deleteReference(tag: string) {
+    this.deletedTags.push(tag);
+    this.tag = null;
+  }
   async uploadAsset(_uploadUrl: string, name: string, bytes: Uint8Array) {
     const stored = new Uint8Array(bytes);
     const asset = {
@@ -172,6 +183,46 @@ describe("exclusive GitHub release transaction", () => {
       body: "",
       stableLatestBefore: STABLE,
     })).rejects.toThrow("upload digest mismatch");
+    expect(corrupt.deletedDrafts).toEqual([77]);
+    expect(corrupt.deletedTags).toEqual([requested.releaseTag]);
+    expect(corrupt.tag).toBeNull();
+  });
+
+  test("sends release bytes with Content-Type and preserves GitHub upload diagnostics", async () => {
+    const requests: { url: string; init: RequestInit }[] = [];
+    const request = async (url: string | URL | Request, init?: RequestInit) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      return new Response(JSON.stringify({
+        id: 1,
+        name: "artifact.tar.gz",
+        size: 3,
+        digest: `sha256:${"0".repeat(64)}`,
+        state: "uploaded",
+        url: "https://api.github.test/assets/1",
+        browser_download_url: "https://github.test/artifact.tar.gz",
+      }), { status: 201, headers: { "Content-Type": "application/json" } });
+    };
+    const api = new GitHubReleaseApi("owner/repo", "token", "https://api.github.test", request as typeof fetch);
+    await api.uploadAsset(
+      "https://uploads.github.test/releases/77/assets{?name,label}",
+      "artifact.tar.gz",
+      new Uint8Array([1, 2, 3]),
+    );
+    expect(requests[0]?.url).toBe("https://uploads.github.test/releases/77/assets?name=artifact.tar.gz");
+    expect(new Headers(requests[0]?.init.headers).get("Accept")).toBe("application/vnd.github+json");
+    expect(new Headers(requests[0]?.init.headers).get("Content-Type")).toBe("application/gzip");
+
+    const failing = new GitHubReleaseApi(
+      "owner/repo",
+      "token",
+      "https://api.github.test",
+      (async () => new Response('{"message":"bad content type"}', { status: 400 })) as unknown as typeof fetch,
+    );
+    await expect(failing.uploadAsset(
+      "https://uploads.github.test/releases/77/assets{?name,label}",
+      "artifact.zip",
+      new Uint8Array([1]),
+    )).rejects.toThrow('400 for artifact.zip: {"message":"bad content type"}');
   });
 
   test("downloads every draft asset again and blocks byte or stable-latest drift", async () => {

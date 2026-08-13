@@ -83,6 +83,8 @@ export interface ReleaseApi {
     body: string;
     prerelease: boolean;
   }): Promise<GitHubRelease>;
+  deleteDraft(releaseId: number): Promise<void>;
+  deleteReference(tag: string): Promise<void>;
   uploadAsset(uploadUrl: string, name: string, bytes: Uint8Array): Promise<ReleaseAsset>;
   release(releaseId: number): Promise<GitHubRelease>;
   publish(releaseId: number, prerelease: boolean, makeLatest: boolean): Promise<GitHubRelease>;
@@ -133,6 +135,14 @@ export class GitHubReleaseApi implements ReleaseApi {
     });
     if (!response.ok) throw new Error(`GitHub API ${response.status} for ${init.method ?? "GET"} ${path}`);
     return await response.json() as T;
+  }
+
+  private async delete(path: string): Promise<void> {
+    const response = await this.request(`${this.apiUrl}${path}`, {
+      method: "DELETE",
+      headers: this.headers(),
+    });
+    if (!response.ok) throw new Error(`GitHub API ${response.status} for DELETE ${path}`);
   }
 
   async reference(tag: string): Promise<GitReference | null> {
@@ -187,11 +197,22 @@ export class GitHubReleaseApi implements ReleaseApi {
     const body = Uint8Array.from(bytes).buffer;
     const response = await this.request(`${endpoint}?name=${encodeURIComponent(name)}`, {
       method: "POST",
-      headers: this.headers(contentType(name)),
+      headers: { ...this.headers(), "Content-Type": contentType(name) },
       body,
     });
-    if (!response.ok) throw new Error(`GitHub upload API ${response.status} for ${name}`);
+    if (!response.ok) {
+      const detail = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 500);
+      throw new Error(`GitHub upload API ${response.status} for ${name}${detail ? `: ${detail}` : ""}`);
+    }
     return await response.json() as ReleaseAsset;
+  }
+
+  async deleteDraft(releaseId: number): Promise<void> {
+    await this.delete(`/repos/${this.repository}/releases/${releaseId}`);
+  }
+
+  async deleteReference(tag: string): Promise<void> {
+    await this.delete(`/repos/${this.repository}/git/refs/tags/${encodeURIComponent(tag)}`);
   }
 
   async release(releaseId: number): Promise<GitHubRelease> {
@@ -301,30 +322,53 @@ export async function createDraftRelease(input: {
   const expected = expectedNames(input.channel, input.version, input.tag, input.sourceSha);
   const assets = localAssets(input.directory, expected);
   const existingRef = await input.api.reference(input.tag);
-  if (!existingRef) {
+  const createdReference = !existingRef;
+  if (createdReference) {
     await input.api.createReference(input.tag, input.sourceSha);
   } else if (input.channel === "dev") {
     throw new Error(`immutable dev tag already exists: ${input.tag}`);
   } else if (await input.api.referenceCommit(existingRef) !== input.sourceSha) {
     throw new Error("stable release tag does not point at the exact source SHA");
   }
-  const draft = await input.api.createDraft({
-    tag: input.tag,
-    sourceSha: input.sourceSha,
-    title: input.title,
-    body: input.body,
-    prerelease: input.channel === "dev",
-  });
-  if (!draft.draft || draft.tag_name !== input.tag || draft.assets.length !== 0) {
-    throw new Error("new release was not an empty exclusive draft");
-  }
-  for (const asset of assets) {
-    const uploaded = await input.api.uploadAsset(draft.upload_url, asset.name, asset.bytes);
-    const digest = uploaded.digest?.replace(/^sha256:/, "");
-    if (uploaded.name !== asset.name || uploaded.size !== asset.bytes.byteLength || digest !== sha256(asset.bytes)) {
-      throw new Error(`server upload digest mismatch: ${asset.name}`);
+  let draft: GitHubRelease | null = null;
+  try {
+    draft = await input.api.createDraft({
+      tag: input.tag,
+      sourceSha: input.sourceSha,
+      title: input.title,
+      body: input.body,
+      prerelease: input.channel === "dev",
+    });
+    if (!draft.draft || draft.tag_name !== input.tag || draft.assets.length !== 0) {
+      throw new Error("new release was not an empty exclusive draft");
     }
+    for (const asset of assets) {
+      const uploaded = await input.api.uploadAsset(draft.upload_url, asset.name, asset.bytes);
+      const digest = uploaded.digest?.replace(/^sha256:/, "");
+      if (uploaded.name !== asset.name || uploaded.size !== asset.bytes.byteLength || digest !== sha256(asset.bytes)) {
+        throw new Error(`server upload digest mismatch: ${asset.name}`);
+      }
+    }
+  } catch (error) {
+    try {
+      const reference = await input.api.reference(input.tag);
+      if (!createdReference || !reference || await input.api.referenceCommit(reference) !== input.sourceSha) {
+        throw new Error("rollback refused because the release tag is not owned by this transaction");
+      }
+      if (draft) {
+        const current = await input.api.release(draft.id);
+        if (!current.draft || current.tag_name !== input.tag || current.id !== draft.id) {
+          throw new Error("rollback refused because the release draft is no longer exclusively owned");
+        }
+        await input.api.deleteDraft(draft.id);
+      }
+      await input.api.deleteReference(input.tag);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], "release creation failed and safe rollback did not complete");
+    }
+    throw error;
   }
+  if (!draft) throw new Error("release draft was not created");
   const complete = await input.api.release(draft.id);
   assertRelease({
     release: complete,
