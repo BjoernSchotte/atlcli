@@ -360,7 +360,17 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
         if (canonical(existing) !== canonical({ checkpoint: input.checkpoint, manifestRef: input.manifestRef })) throw new FileExportJobStoreConflict("checkpoint-conflict", "Checkpoint key was reused with different input.");
         return { result: clone(existing.checkpoint as T), changed: false };
       }
-      const next = checkpointExportJob(current, { expectedRevision: current.revision, leaseEpoch: input.leaseEpoch, at: input.at, observedAt: this.#now(), checkpointRef: input.checkpoint.ref });
+      // The checkpoint timestamp is captured before this journal lock is won.
+      // A heartbeat/progress write may commit while it waits, so normalize the
+      // host timestamp against the durable record instead of rejecting a valid
+      // same-lease checkpoint as if it came from an older owner.
+      const at = Math.max(
+        input.at,
+        current.lease?.acquiredAt ?? input.at,
+        current.lease?.heartbeatAt ?? input.at,
+        current.progress?.updatedAt ?? input.at,
+      );
+      const next = checkpointExportJob(current, { expectedRevision: current.revision, leaseEpoch: input.leaseEpoch, at, observedAt: this.#now(), checkpointRef: input.checkpoint.ref });
       catalog.executorCheckpoints[input.key] = { checkpoint: clone(input.checkpoint), manifestRef: clone(input.manifestRef) }; this.#replace(catalog, current, next);
       return { result: clone(input.checkpoint), changed: true };
     });
