@@ -1166,6 +1166,10 @@ export const EXPORT_NOTE_CODES = [
   "root-filter-bypassed",
   "folder-position-unknown",
   "unsupported-child-type",
+  // A hierarchy listing reported a child whose status is not "current" (draft,
+  // archived, …). Exports ship published pages only; the child is skipped with
+  // this note instead of 404-ing one request later on the by-id version read.
+  "child-not-current",
   "link-anchor-missing",
   "link-outside-scope",
   "link-target-ambiguous",

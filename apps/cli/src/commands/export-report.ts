@@ -23,6 +23,7 @@ import {
 import type { ExportNote, PdfExportReport } from "@atlcli/pdf";
 import { PdfExportError, type PdfExportErrorPhase } from "@atlcli/pdf";
 import type { PdfCompilerDiagnostic } from "@atlcli/pdf";
+import type { ExportJobSnapshotV1 } from "@atlcli/export-jobs";
 
 /** The stable report schema string. Additive changes only; breaking bumps this. */
 export const EXPORT_REPORT_SCHEMA = "atlcli.export-report/1";
@@ -377,6 +378,83 @@ export function classifyError(error: unknown): { exitCode: number; issue: Issue 
       phase: "unknown",
       retryable: false,
       message: error instanceof Error ? error.message : String(error),
+    },
+  };
+}
+
+/** Transient source classification passed into the shared Confluence resolver. */
+export function classifyConfluenceSourceError(
+  error: unknown,
+): "authentication" | "not-found" | "unknown" {
+  const classified = classifyError(error);
+  if (classified.exitCode === EXPORT_EXIT.AUTH) return "authentication";
+  if (classified.issue.status === 404) return "not-found";
+  return "unknown";
+}
+
+/**
+ * Recover the public export error classification after the durable runtime has
+ * converted an executor exception into terminal job state.
+ *
+ * The runtime persists only a redacted, structured failure. Classify from its
+ * category and stage so PDF and DOCX preserve the same documented exit codes
+ * without re-reading Confluence or retaining the original response body.
+ */
+export function classifyFailedExportJob(
+  snapshot: Pick<ExportJobSnapshotV1, "state" | "error">
+): ReturnType<typeof classifyError> {
+  if (snapshot.state === "cancelled") {
+    return {
+      exitCode: EXPORT_EXIT.CANCELLED,
+      issue: {
+        code: "cancelled",
+        severity: "error",
+        phase: "commit",
+        retryable: false,
+        message: "Export job was cancelled.",
+      },
+    };
+  }
+  const error = snapshot.error;
+  if (error?.category === "auth" || error?.category === "permission") {
+    return {
+      exitCode: EXPORT_EXIT.AUTH,
+      issue: {
+        code: error.code,
+        severity: "error",
+        phase: error.stage ?? "fetch",
+        retryable: error.retryable,
+        message: error.message,
+      },
+    };
+  }
+  if (
+    error?.category === "network" ||
+    error?.category === "rate-limit" ||
+    error?.category === "source"
+  ) {
+    return {
+      exitCode: EXPORT_EXIT.REMOTE,
+      issue: {
+        code: error.code,
+        severity: "error",
+        phase: error.stage ?? "fetch",
+        retryable: error.retryable,
+        message: error.message,
+      },
+    };
+  }
+  if (error && /\(\d{3}\)/u.test(error.message)) {
+    return classifyError(new Error(error.message));
+  }
+  return {
+    exitCode: EXPORT_EXIT.COMPILE,
+    issue: {
+      code: error?.code ?? `job-${snapshot.state}`,
+      severity: "error",
+      phase: error?.stage ?? "commit",
+      retryable: error?.retryable ?? false,
+      message: error?.message ?? `Export job ended as ${snapshot.state}.`,
     },
   };
 }

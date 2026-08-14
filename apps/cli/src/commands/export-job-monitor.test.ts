@@ -1,10 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import {
+  createEmptyExportJobStatsV1,
   InMemoryExportJobStore,
   type DocxExportJobRequestV1,
 } from "@atlcli/export-jobs";
 import {
   EXPORT_JOB_MONITOR_EVENT_SCHEMA_V1,
+  formatConfluenceHierarchyDiagnosticV1,
+  formatExportJobStatusLineV1,
   watchExportJobV1,
 } from "./export-job-monitor.js";
 
@@ -40,6 +43,73 @@ function capture(): { writer: { write(chunk: string): void }; read(): string } {
 }
 
 describe("watchExportJobV1", () => {
+  it("renders safe hierarchy diagnostics and progress detail without source content", () => {
+    const fallback = formatConfluenceHierarchyDiagnosticV1({
+      code: "hierarchy-fallback",
+      deployment: "cloud",
+      operation: "page-direct-children",
+      status: 404,
+      requestId: "request-123",
+      fallback: "page-descendants",
+    });
+    expect(fallback).toBe(
+      "Cloud hierarchy: operation=page-direct-children status=404 fallback=page-descendants depth=1 request=request-123",
+    );
+
+    // The node role pinpoints WHICH traversal request failed: a page-version
+    // 404 on the root is a broken source, on a child a single broken page.
+    const childFailure = formatConfluenceHierarchyDiagnosticV1({
+      code: "hierarchy-request-failed",
+      deployment: "cloud",
+      operation: "page-version",
+      status: 404,
+      requestId: "request-456",
+      node: "child",
+    });
+    expect(childFailure).toBe(
+      "Cloud hierarchy request failed: operation=page-version status=404 node=child request=request-456",
+    );
+    expect(formatConfluenceHierarchyDiagnosticV1({
+      code: "hierarchy-request-failed",
+      deployment: "cloud",
+      operation: "page-version",
+      status: 404,
+    })).toBe("Cloud hierarchy request failed: operation=page-version status=404");
+
+    const line = formatExportJobStatusLineV1({
+      schema: "atlcli.export-job/1",
+      id: "job",
+      revision: 1,
+      requestRef: "request",
+      format: "docx",
+      renderer: "docx-typescript",
+      summary: {
+        displayName: "Documentation",
+        sourceLabel: "Confluence",
+        siteOrigin: "https://example.atlassian.net",
+        scopeKind: "tree",
+      },
+      queue: { priority: "interactive", enqueuedAt: 1, groupKey: "group" },
+      state: "running",
+      attempt: 1,
+      recoveryCount: 0,
+      leaseEpoch: 1,
+      stats: createEmptyExportJobStatsV1(),
+      createdAt: 1,
+      stage: "discover",
+      progress: {
+        stage: "discover",
+        done: 0,
+        total: null,
+        detail: fallback,
+        updatedAt: 1,
+      },
+    });
+    expect(line).toContain("stage=discover progress=0/? detail=Cloud hierarchy:");
+    expect(line).not.toContain("page title");
+    expect(line).not.toContain("response body");
+  });
+
   it("polls an externally owned job and emits stable non-TTY lines", async () => {
     const store = new InMemoryExportJobStore({ now: () => 10 });
     await store.create({ request: request("job") });

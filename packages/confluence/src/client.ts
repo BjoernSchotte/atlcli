@@ -42,12 +42,25 @@ import {
 
 type V2FailureClassification = "adf-body-format-unsupported";
 
+/** Private v1 transport error with body-free correlation metadata. */
+class ConfluenceRequestError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly requestId: string,
+  ) {
+    super(message);
+    this.name = "ConfluenceRequestError";
+  }
+}
+
 /** Private transport error: never retains an API response body. */
 class ConfluenceV2RequestError extends Error {
   constructor(
     public readonly status: number,
     message: string,
     public readonly classification?: V2FailureClassification,
+    public readonly requestId?: string,
   ) {
     super(message);
     this.name = "ConfluenceV2RequestError";
@@ -368,8 +381,17 @@ export type FolderChild = {
   id: string;
   title: string;
   type: "page" | "folder" | (string & {});
+  /**
+   * Raw content status when the listing endpoint reports one ("current",
+   * "draft", "archived", …). Hierarchy listings can include children that a
+   * direct by-id read would 404 on (drafts, archived pages); callers filter on
+   * this instead of discovering the mismatch one request later.
+   */
+  status?: string;
   spaceId?: string;
   parentId?: string | null;
+  /** UI child position when the endpoint exposes it (for example descendants). */
+  position?: number | null;
   url?: string;
 };
 
@@ -532,7 +554,8 @@ const retrySchedulerHook = Symbol.for("atlcli.confluence.retry-scheduler.test-ho
 
 export class ConfluenceClient {
   private confluenceBaseUrl: string;
-  private deploymentType: DeploymentType;
+  /** Hosting model exposed to capability adapters such as tree traversal. */
+  public readonly deploymentType: DeploymentType;
   private capabilityOrigin: string;
   private authHeader: string;
   private useSession: boolean;
@@ -848,7 +871,11 @@ export class ConfluenceClient {
           await this.sleep(delayMs, options.signal);
           continue;
         }
-        const error = new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
+        const error = new ConfluenceRequestError(
+          res.status,
+          `Rate limited by Confluence API after ${this.maxRetries} retries`,
+          requestId,
+        );
         logger.api("response", {
           requestId,
           status: res.status,
@@ -887,7 +914,11 @@ export class ConfluenceClient {
           : typeof data === "string"
             ? data
             : JSON.stringify(data);
-        lastError = new Error(`Confluence API error (${res.status}): ${message}`);
+        lastError = new ConfluenceRequestError(
+          res.status,
+          `Confluence API error (${res.status}): ${message}`,
+          requestId,
+        );
 
         // Retry on server errors (5xx)
         if (res.status >= 500 && attempt < this.maxRetries) {
@@ -1012,6 +1043,8 @@ export class ConfluenceClient {
         const error = new ConfluenceV2RequestError(
           res.status,
           `Rate limited by Confluence API after ${this.maxRetries} retries`,
+          undefined,
+          requestId,
         );
         logger.api("response", {
           requestId,
@@ -1045,6 +1078,7 @@ export class ConfluenceClient {
           res.status,
           `Confluence API v2 error (${res.status}): ${message}`,
           classifyV2Failure(path, options.query, res.status, data),
+          requestId,
         );
 
         if (res.status >= 500 && attempt < this.maxRetries) {
@@ -1988,9 +2022,12 @@ export class ConfluenceClient {
           token === undefined
             ? await this.request(
                 `/content/${parentId}/child/page?expand=extensions.position,version,ancestors&limit=${limit}`,
-                { signal: options.signal }
+                { signal: options.signal, logBody: "meta-only" }
               )
-            : await this.request(token.replace(/^\/rest\/api/, ""), { signal: options.signal });
+            : await this.request(token.replace(/^\/rest\/api/, ""), {
+                signal: options.signal,
+                logBody: "meta-only",
+              });
 
         const items = (Array.isArray(data.results) ? data.results : []).map((item: any) => {
           const ancestors = Array.isArray(item.ancestors)
@@ -2082,6 +2119,7 @@ export class ConfluenceClient {
       const data = (await this.requestV2(`/pages/${pageId}/direct-children`, {
         query,
         signal: options.signal,
+        logBody: "meta-only",
       })) as any;
 
       const results = Array.isArray(data.results) ? data.results : [];
@@ -2091,11 +2129,55 @@ export class ConfluenceClient {
         // Preserve the raw type (open union): whiteboards/databases/embeds must
         // NOT be widened into "page" — the caller maps them to "unsupported".
         type: item.type,
+        ...(typeof item.status === "string" ? { status: item.status } : {}),
         spaceId: item.spaceId,
         parentId: pageId,
+        position: typeof item.childPosition === "number" ? item.childPosition : null,
         url: this.buildWebUrl(item._links?.webui),
       }));
 
+      return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+    });
+  }
+
+  /**
+   * Get mixed direct descendants of a Cloud page through the descendants API.
+   *
+   * `depth=1` is intentionally fixed by the tree adapter: deeper descendants
+   * are walked recursively so folder/page ordering and cycle guards stay owned
+   * by one traversal implementation.
+   *
+   * GET /api/v2/pages/{id}/descendants?depth=1
+   */
+  async getPageDescendants(
+    pageId: string,
+    options: { depth?: number; limit?: number; signal?: AbortSignal } = {}
+  ): Promise<FolderChild[]> {
+    const { depth = 1, limit = 100 } = options;
+    if (!Number.isSafeInteger(depth) || depth !== 1) {
+      throw new RangeError("Page descendant traversal depth must be exactly 1.");
+    }
+
+    return drainPaginated<FolderChild>(async (cursor) => {
+      const query: Record<string, string | number | undefined> = { depth, limit };
+      if (cursor) query.cursor = cursor;
+
+      const data = (await this.requestV2(`/pages/${pageId}/descendants`, {
+        query,
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const results = Array.isArray(data.results) ? data.results : [];
+      const items: FolderChild[] = results.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        type: item.type,
+        ...(typeof item.status === "string" ? { status: item.status } : {}),
+        spaceId: item.spaceId,
+        parentId: item.parentId ?? pageId,
+        position: typeof item.childPosition === "number" ? item.childPosition : null,
+        url: this.buildWebUrl(item._links?.webui),
+      }));
       return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
     });
   }
@@ -2366,9 +2448,37 @@ export class ConfluenceClient {
     id: string,
     options: { signal?: AbortSignal } = {}
   ): Promise<PageChangeInfo> {
+    if (this.deploymentType === "cloud") {
+      const data = (await this.requestV2(`/pages/${id}`, {
+        query: { "include-version": "true" },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const version = data?.version?.number;
+      if (!Number.isSafeInteger(version) || version < 1) {
+        throw new TypeError(
+          "Confluence Cloud returned a page snapshot without a valid current version."
+        );
+      }
+      if (typeof data?.title !== "string" || data.title.length === 0) {
+        throw new TypeError(
+          "Confluence Cloud returned a page snapshot without a valid title."
+        );
+      }
+      return {
+        id: typeof data.id === "string" ? data.id : id,
+        title: data.title,
+        version,
+        ...(typeof data.version?.createdAt === "string"
+          ? { lastModified: data.version.createdAt }
+          : {}),
+      };
+    }
+
     const data = (await this.request(`/content/${id}`, {
       query: { expand: "version,space,history.lastUpdated" },
       signal: options.signal,
+      logBody: "meta-only",
     })) as any;
     return {
       id: data.id,
@@ -2377,6 +2487,63 @@ export class ConfluenceClient {
       lastModified: data.history?.lastUpdated?.when,
       spaceKey: data.space?.key,
     };
+  }
+
+  /**
+   * Bulk page-version snapshots through the Cloud REST v2 pages listing.
+   *
+   * GET /api/v2/pages?id=a,b,c&include-version=true
+   *
+   * Returns only pages the caller can read; ids missing from the result
+   * (restricted, draft-only, deleted, or not a page) are simply absent — the
+   * caller decides whether that is a completeness event. Ids are chunked so a
+   * large tree never composes an unbounded query string.
+   */
+  async getPageVersions(
+    ids: readonly string[],
+    options: { signal?: AbortSignal } = {}
+  ): Promise<Map<string, PageChangeInfo>> {
+    if (this.deploymentType !== "cloud") {
+      throw new TypeError("Bulk page-version snapshots require Confluence Cloud REST v2.");
+    }
+    const found = new Map<string, PageChangeInfo>();
+    const unique = [...new Set(ids)].filter((id) => /^\d+$/.test(id));
+    const CHUNK = 250;
+    for (let start = 0; start < unique.length; start += CHUNK) {
+      const chunk = unique.slice(start, start + CHUNK);
+      const results = await drainPaginated<PageChangeInfo>(async (cursor) => {
+        const query: Record<string, string | number | undefined> = {
+          id: chunk.join(","),
+          "include-version": "true",
+          limit: CHUNK,
+        };
+        if (cursor) query.cursor = cursor;
+        const data = (await this.requestV2(`/pages`, {
+          query,
+          signal: options.signal,
+          logBody: "meta-only",
+        })) as any;
+        const rows = Array.isArray(data.results) ? data.results : [];
+        const items: PageChangeInfo[] = [];
+        for (const row of rows) {
+          const id = typeof row?.id === "string" ? row.id : undefined;
+          const version = row?.version?.number;
+          if (!id || !Number.isSafeInteger(version) || version < 1) continue;
+          if (typeof row?.title !== "string" || row.title.length === 0) continue;
+          items.push({
+            id,
+            title: row.title,
+            version,
+            ...(typeof row.version?.createdAt === "string"
+              ? { lastModified: row.version.createdAt }
+              : {}),
+          });
+        }
+        return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+      });
+      for (const item of results) found.set(item.id, item);
+    }
+    return found;
   }
 
   /**
@@ -4118,6 +4285,7 @@ export class ConfluenceClient {
       const data = (await this.requestV2(`/folders/${folderId}/direct-children`, {
         query,
         signal: options.signal,
+        logBody: "meta-only",
       })) as any;
 
       const results = Array.isArray(data.results) ? data.results : [];
@@ -4125,8 +4293,10 @@ export class ConfluenceClient {
         id: item.id,
         title: item.title,
         type: item.type,
+        ...(typeof item.status === "string" ? { status: item.status } : {}),
         spaceId: item.spaceId,
         parentId: folderId,
+        position: typeof item.childPosition === "number" ? item.childPosition : null,
         url: this.buildWebUrl(item._links?.webui),
       }));
 
@@ -4380,11 +4550,12 @@ export class ConfluenceClient {
   /**
    * Resolve a space's homepage page id in a **single** round-trip.
    *
-   * Uses `GET /space/{spaceKey}?expand=homepage.id` (mirrors
-   * {@link getSpaceHomepageStorage}'s `expand=homepage.body.storage`) rather
-   * than `getSpaceFolders`' CQL-search-then-N-sequential-`getPage()` homepage
-   * detection, which costs up to 51 requests for a one-call lookup. Backs the
-   * `space` export scope (spec 002): the homepage is the tree root.
+   * Cloud uses `GET /api/v2/spaces?keys={spaceKey}` and reads `homepageId` from
+   * the exact-key result. Data Center keeps the v1
+   * `GET /space/{spaceKey}?expand=homepage.id` route. Both avoid
+   * `getSpaceFolders`' CQL-search-then-N-sequential-`getPage()` homepage
+   * detection, which costs up to 51 requests for a one-call lookup. This backs
+   * the `space` export scope (spec 002): the homepage is the tree root.
    *
    * @returns The homepage id, or `null` when the space has no classic homepage
    *   (e.g. a folder-only space root) — the caller reports actionable guidance.
@@ -4393,9 +4564,23 @@ export class ConfluenceClient {
     spaceKey: string,
     options: { signal?: AbortSignal } = {}
   ): Promise<string | null> {
+    if (this.deploymentType === "cloud") {
+      const data = (await this.requestV2("/spaces", {
+        query: { keys: [spaceKey], limit: 2, status: "current" },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const results = Array.isArray(data?.results) ? data.results : [];
+      const space = results.find((item: any) => item?.key === spaceKey);
+      return typeof space?.homepageId === "string" && space.homepageId.length > 0
+        ? space.homepageId
+        : null;
+    }
+
     const data = (await this.request(`/space/${spaceKey}`, {
       query: { expand: "homepage.id" },
       signal: options.signal,
+      logBody: "meta-only",
     })) as { homepage?: { id?: string } };
     return data?.homepage?.id ?? null;
   }

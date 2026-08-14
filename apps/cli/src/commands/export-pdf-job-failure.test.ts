@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { ExportJobSnapshotV1 } from "@atlcli/export-jobs";
-import { classifyFailedPdfJob } from "./export-pdf.js";
+import {
+  classifyConfluenceSourceError,
+  classifyFailedExportJob,
+} from "./export-report.js";
 
 function failed(message: string): Pick<ExportJobSnapshotV1, "state" | "error"> {
   return {
@@ -16,10 +19,17 @@ function failed(message: string): Pick<ExportJobSnapshotV1, "state" | "error"> {
   };
 }
 
-describe("durable PDF job failure classification", () => {
+describe("durable export job failure classification", () => {
+  test("classifies source errors before the resolver redacts their details", () => {
+    expect(classifyConfluenceSourceError({ status: 401 })).toBe("authentication");
+    expect(classifyConfluenceSourceError({ statusCode: 403 })).toBe("authentication");
+    expect(classifyConfluenceSourceError({ status: 404 })).toBe("not-found");
+    expect(classifyConfluenceSourceError(new Error("socket closed"))).toBe("unknown");
+  });
+
   test("preserves auth and remote exit codes from redacted Confluence failures", () => {
     expect(
-      classifyFailedPdfJob(
+      classifyFailedExportJob(
         {
           state: "failed",
           error: {
@@ -37,7 +47,7 @@ describe("durable PDF job failure classification", () => {
       },
     });
     expect(
-      classifyFailedPdfJob({
+      classifyFailedExportJob({
         state: "failed",
         error: {
           ...failed("redacted").error!,
@@ -55,14 +65,14 @@ describe("durable PDF job failure classification", () => {
   });
 
   test("does not misclassify an executor or compiler failure as remote", () => {
-    expect(classifyFailedPdfJob(failed("Typst compile failed"))).toMatchObject({
+    expect(classifyFailedExportJob(failed("Typst compile failed"))).toMatchObject({
       exitCode: 5,
       issue: { code: "executor.failed", phase: "fetch" },
     });
   });
 
   test("keeps cancellation on the documented exit code", () => {
-    expect(classifyFailedPdfJob({ state: "cancelled" })).toMatchObject({
+    expect(classifyFailedExportJob({ state: "cancelled" })).toMatchObject({
       exitCode: 130,
       issue: { code: "cancelled" },
     });

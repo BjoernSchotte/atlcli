@@ -20,7 +20,7 @@
 export type ExportScope =
   | { kind: "page"; pageId: string }
   | { kind: "tree"; rootPageId: string; includeRoot?: boolean; maxDepth?: number }
-  | { kind: "space"; spaceKey: string };
+  | { kind: "space"; spaceKey: string; maxDepth?: number };
 
 /**
  * Label-based pruning, applied after the ordering walk and before body fetch.
@@ -79,6 +79,13 @@ export function validateExportScope(scope: ExportScope): ExportScope {
     case "space":
       if (!isNonEmptyString(scope.spaceKey)) {
         throw new ExportScopeError("A space scope requires a non-empty spaceKey.");
+      }
+      if (scope.maxDepth !== undefined) {
+        if (!Number.isInteger(scope.maxDepth) || scope.maxDepth < 0) {
+          throw new ExportScopeError(
+            `A space scope maxDepth must be a non-negative integer (got ${scope.maxDepth}).`
+          );
+        }
       }
       return scope;
     default: {

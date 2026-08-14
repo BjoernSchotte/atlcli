@@ -822,6 +822,111 @@ describe("file export persistence", () => {
     );
   });
 
+  it("finalizes after a heartbeat when the wall clock moves backwards", async () => {
+    let now = 20;
+    const dir = await root();
+    const persistence = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    await persistence.jobs.create({ request: request("runtime-clock-regression") });
+    const claimed = (await persistence.jobs.claimNext({
+      ownerId: "worker",
+      now: 10,
+      leaseDurationMs: 10_000,
+    }))!;
+
+    const finished = await runClaimedFileExportJob({
+      claimed,
+      jobs: persistence.jobs,
+      spool: persistence.spool,
+      artifacts: persistence.artifacts,
+      spoolLimits: persistence.spoolLimits,
+      executor: {
+        format: "docx",
+        async execute(_request, context) {
+          const stagedArtifact = await context.artifacts.stage({
+            mediaType:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename: "clock-regression.docx",
+            byteLength: 3,
+            sha256:
+              "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            bytes: bytes("abc"),
+          });
+          const beforeHeartbeat = await persistence.jobs.get(context.jobId);
+          if (!beforeHeartbeat?.lease) throw new Error("Expected a running lease.");
+          now = 30;
+          await persistence.jobs.compareAndSet({
+            kind: "heartbeat",
+            id: beforeHeartbeat.id,
+            expectedRevision: beforeHeartbeat.revision,
+            ownerId: beforeHeartbeat.lease.ownerId,
+            leaseEpoch: beforeHeartbeat.leaseEpoch,
+            now,
+            leaseDurationMs: 10_000,
+          });
+          // Simulate an NTP/system-clock correction after the durable heartbeat.
+          now = 20;
+          return {
+            stagedArtifact,
+            reportRef: "report:runtime-clock-regression",
+          };
+        },
+      },
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+
+    expect(finished).toMatchObject({
+      state: "succeeded",
+      finishedAt: 30,
+      artifact: { filename: "clock-regression.docx", committedAt: 30 },
+    });
+  });
+
+  it("commits a prepared checkpoint captured before the latest heartbeat", async () => {
+    let now = 20;
+    const dir = await root();
+    const persistence = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    await persistence.jobs.create({ request: request("checkpoint-heartbeat-race") });
+    const claimed = (await persistence.jobs.claimNext({
+      ownerId: "worker",
+      now: 10,
+      leaseDurationMs: 10_000,
+    }))!;
+    now = 30;
+    const heartbeated = await persistence.jobs.compareAndSet({
+      kind: "heartbeat",
+      id: claimed.id,
+      expectedRevision: claimed.revision,
+      ownerId: claimed.lease!.ownerId,
+      leaseEpoch: claimed.leaseEpoch,
+      now,
+      leaseDurationMs: 10_000,
+    });
+
+    const checkpoint = await persistence.jobs.commitExecutorCheckpoint<{ ref: string }>({
+      key: "docx:checkpoint-heartbeat-race",
+      jobId: claimed.id,
+      leaseEpoch: claimed.leaseEpoch,
+      checkpoint: { ref: "ready-docx:checkpoint-heartbeat-race" },
+      manifestRef: {
+        jobId: claimed.id,
+        leaseEpoch: claimed.leaseEpoch,
+        namespace: "ready-docx",
+        key: "manifest",
+      },
+      // Captured immediately before the heartbeat won the journal lock.
+      at: 20,
+    });
+
+    expect(checkpoint.ref).toBe("ready-docx:checkpoint-heartbeat-race");
+    expect(await persistence.jobs.get(claimed.id)).toMatchObject({
+      revision: heartbeated.revision + 1,
+      checkpointRef: checkpoint.ref,
+      lease: { heartbeatAt: 30 },
+    });
+  });
+
   it("returns ascending event pages after a cursor", async () => {
     let now = 1_000;
     const dir = await root(); const p = createFileExportJobPersistence({ rootDir: dir, now: () => now }); await p.jobs.create({ request: request("events") });

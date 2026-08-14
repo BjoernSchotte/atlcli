@@ -1028,6 +1028,7 @@ export type ExportScope = {
     maxDepth?: number;
 } | {
     kind: "space";
+    maxDepth?: number;
 };
 
 // export: ExportSourceV1

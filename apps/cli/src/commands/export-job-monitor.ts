@@ -5,6 +5,7 @@ import {
   type ExportJobSnapshotV1,
   type ExportJobStore,
 } from "@atlcli/export-jobs";
+import type { TreeFetchDiagnosticV1 } from "@atlcli/confluence";
 
 export const EXPORT_JOB_MONITOR_EVENT_SCHEMA_V1 = "atlcli.export-job-event/1" as const;
 
@@ -46,6 +47,20 @@ function progressText(snapshot: ExportJobSnapshotV1): string | undefined {
   return `${progress.done}/${total}`;
 }
 
+/** Stable, content-free wording shared by DOCX/PDF durable progress. */
+export function formatConfluenceHierarchyDiagnosticV1(
+  diagnostic: TreeFetchDiagnosticV1,
+): string {
+  const request = diagnostic.requestId ? ` request=${diagnostic.requestId}` : "";
+  if (diagnostic.code === "hierarchy-fallback") {
+    return `Cloud hierarchy: operation=${diagnostic.operation} status=${diagnostic.status} fallback=${diagnostic.fallback} depth=1${request}`;
+  }
+  const deployment = diagnostic.deployment === "data-center" ? "Data Center" : "Cloud";
+  const status = diagnostic.status === undefined ? "unknown" : String(diagnostic.status);
+  const node = diagnostic.node ? ` node=${diagnostic.node}` : "";
+  return `${deployment} hierarchy request failed: operation=${diagnostic.operation} status=${status}${node}${request}`;
+}
+
 /** One compact, stable status projection shared by TTY and non-TTY monitors. */
 export function formatExportJobStatusLineV1(snapshot: ExportJobSnapshotV1): string {
   const fields = [
@@ -54,6 +69,7 @@ export function formatExportJobStatusLineV1(snapshot: ExportJobSnapshotV1): stri
     `format=${snapshot.format}`,
     snapshot.stage ? `stage=${snapshot.stage}` : undefined,
     progressText(snapshot) ? `progress=${progressText(snapshot)}` : undefined,
+    snapshot.progress?.detail ? `detail=${snapshot.progress.detail}` : undefined,
     snapshot.waiting ? `waiting=${snapshot.waiting.reason}` : undefined,
     snapshot.error ? `error=${snapshot.error.code}` : undefined,
   ].filter((value): value is string => value !== undefined);
@@ -70,7 +86,8 @@ export function formatExportJobEventLineV1(jobId: string, event: ExportJobEventV
         return event.stage;
       case "progress": {
         const total = event.progress.total === null ? "?" : String(event.progress.total);
-        return `${event.progress.stage} ${event.progress.done}/${total}`;
+        const detail = event.progress.detail ? ` ${event.progress.detail}` : "";
+        return `${event.progress.stage} ${event.progress.done}/${total}${detail}`;
       }
       case "retry":
         return event.code;

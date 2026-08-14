@@ -565,6 +565,81 @@ describe("ConfluenceClient", () => {
 
     const pageBody = { id: "123", title: "Test", version: { number: 1 }, space: { key: "TEST" } };
 
+    test("Cloud page-version snapshots use REST v2 and keep large ids as strings", async () => {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(new Response(JSON.stringify({
+          id: "2819653636",
+          title: "Design specification",
+          version: { number: 17, createdAt: "2026-08-14T05:00:00.000Z" },
+        }), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      const snapshot = await new ConfluenceClient(mockProfile).getPageVersion("2819653636");
+
+      const url = new URL(capturedUrl);
+      expect(url.pathname).toBe("/wiki/api/v2/pages/2819653636");
+      expect(url.searchParams.get("include-version")).toBe("true");
+      expect(snapshot).toEqual({
+        id: "2819653636",
+        title: "Design specification",
+        version: 17,
+        lastModified: "2026-08-14T05:00:00.000Z",
+      });
+    });
+
+    test("Cloud page-version snapshots reject a response without a current version", async () => {
+      globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({
+        id: "2819653636",
+        title: "Design specification",
+      }), { status: 200 }))) as unknown as typeof fetch;
+
+      await expect(
+        new ConfluenceClient(mockProfile).getPageVersion("2819653636")
+      ).rejects.toThrow("without a valid current version");
+    });
+
+    test("Data Center page-version snapshots stay on REST v1", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/confluence",
+        pageBody,
+        (client) => client.getPageVersion("123"),
+        { deploymentType: "data-center" },
+      );
+      expect(url).toContain("/confluence/rest/api/content/123");
+      expect(url).not.toContain("/api/v2/");
+    });
+
+    test("Cloud space homepage resolution uses REST v2", async () => {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(new Response(JSON.stringify({
+          results: [{ id: "space-1", key: "DOCSY", name: "Docs", homepageId: "2819653636" }],
+          _links: {},
+        }), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      await expect(new ConfluenceClient(mockProfile).getSpaceHomepageId("DOCSY"))
+        .resolves.toBe("2819653636");
+      const url = new URL(capturedUrl);
+      expect(url.pathname).toBe("/wiki/api/v2/spaces");
+      expect(url.searchParams.getAll("keys")).toEqual(["DOCSY"]);
+      expect(url.searchParams.get("status")).toBe("current");
+    });
+
+    test("Data Center space homepage resolution stays on REST v1", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/confluence",
+        { homepage: { id: "123" } },
+        (client) => client.getSpaceHomepageId("DOCS"),
+        { deploymentType: "data-center" },
+      );
+      expect(url).toContain("/confluence/rest/api/space/DOCS");
+      expect(url).not.toContain("/api/v2/");
+    });
+
     // REST v1 path building: Cloud appends /wiki; a DC context path is honored
     // verbatim; trailing slashes are normalized.
     for (const { name, baseUrl } of [
@@ -688,6 +763,104 @@ describe("ConfluenceClient", () => {
 
       expect(children[0]?.url).toBe(
         "https://confluence.example.com/confluence/spaces/TEST/pages/999/Child"
+      );
+    });
+
+    test("Cloud descendants keeps large page ids as strings and maps child positions", async () => {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(new Response(JSON.stringify({
+          results: [{
+            id: "2819653637",
+            title: "Child",
+            type: "page",
+            parentId: "2819653636",
+            childPosition: 9,
+          }],
+        }), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const children = await client.getPageDescendants("2819653636");
+
+      const url = new URL(capturedUrl);
+      expect(url.pathname).toBe("/wiki/api/v2/pages/2819653636/descendants");
+      expect(url.searchParams.get("depth")).toBe("1");
+      expect(url.searchParams.get("limit")).toBe("100");
+      expect(children).toEqual([{
+        id: "2819653637",
+        title: "Child",
+        type: "page",
+        spaceId: undefined,
+        parentId: "2819653636",
+        position: 9,
+        url: undefined,
+      }]);
+    });
+
+    test("Cloud direct-children preserves the child content status", async () => {
+      globalThis.fetch = mock(() =>
+        Promise.resolve(new Response(JSON.stringify({
+          results: [
+            { id: "1", title: "Published", type: "page", status: "current", childPosition: 1 },
+            { id: "2", title: "Draft", type: "page", status: "draft", childPosition: 2 },
+            { id: "3", title: "Untyped", type: "page", childPosition: 3 },
+          ],
+        }), { status: 200 }))
+      ) as unknown as typeof fetch;
+
+      const children = await new ConfluenceClient(mockProfile).getPageDirectChildren("123");
+      expect(children.map((child) => ({ id: child.id, status: child.status }))).toEqual([
+        { id: "1", status: "current" },
+        { id: "2", status: "draft" },
+        { id: "3", status: undefined },
+      ]);
+    });
+
+    test("Cloud bulk page-version snapshots batch ids through the v2 pages listing", async () => {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(new Response(JSON.stringify({
+          results: [
+            {
+              id: "2819653637",
+              title: "Child A",
+              version: { number: 4, createdAt: "2026-08-14T05:00:00.000Z" },
+            },
+            // "2819653638" (restricted / draft-only) is deliberately absent.
+          ],
+        }), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      const versions = await new ConfluenceClient(mockProfile)
+        .getPageVersions(["2819653637", "2819653638"]);
+
+      const url = new URL(capturedUrl);
+      expect(url.pathname).toBe("/wiki/api/v2/pages");
+      expect(url.searchParams.get("id")).toBe("2819653637,2819653638");
+      expect(url.searchParams.get("include-version")).toBe("true");
+      expect(versions.get("2819653637")).toEqual({
+        id: "2819653637",
+        title: "Child A",
+        version: 4,
+        lastModified: "2026-08-14T05:00:00.000Z",
+      });
+      expect(versions.has("2819653638")).toBe(false);
+    });
+
+    test("bulk page-version snapshots refuse to run against Data Center", async () => {
+      globalThis.fetch = mock(() => {
+        throw new Error("no request must be issued");
+      }) as unknown as typeof fetch;
+      const client = new ConfluenceClient({
+        ...mockProfile,
+        baseUrl: "https://confluence.example.com/confluence",
+        deploymentType: "data-center",
+      } as Profile);
+      await expect(client.getPageVersions(["123"])).rejects.toThrow(
+        "Bulk page-version snapshots require Confluence Cloud REST v2."
       );
     });
   });

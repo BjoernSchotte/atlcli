@@ -424,6 +424,7 @@ export interface ResolveConfluenceSourceOptionsV1 {
     signal: AbortSignal;
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
     onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     classifyError?: (error: unknown) => ConfluenceSourceFailureKindV1;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
     sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
@@ -1187,6 +1188,7 @@ export interface ResolveConfluenceSourceOptionsV1 {
     signal: AbortSignal;
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
     onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     classifyError?: (error: unknown) => ConfluenceSourceFailureKindV1;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
     sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;

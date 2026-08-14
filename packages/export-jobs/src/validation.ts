@@ -177,6 +177,9 @@ function validateSource(value: unknown, path: string): void {
     onlyKeys(scope, ["kind", "includeRoot", "maxDepth"], `${path}.scope`);
     if (scope.includeRoot !== undefined) boolean(scope.includeRoot, `${path}.scope.includeRoot`);
     optionalInteger(scope.maxDepth, `${path}.scope.maxDepth`, { max: MAX_DEPTH });
+  } else if (scopeKind === "space") {
+    onlyKeys(scope, ["kind", "maxDepth"], `${path}.scope`);
+    optionalInteger(scope.maxDepth, `${path}.scope.maxDepth`, { max: MAX_DEPTH });
   } else {
     onlyKeys(scope, ["kind"], `${path}.scope`);
   }

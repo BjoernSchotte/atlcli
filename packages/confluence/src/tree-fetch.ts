@@ -46,9 +46,53 @@ import { escapeCqlValue } from "./client.js";
 // Port
 // ---------------------------------------------------------------------------
 
-/** Context threaded through every port method — carries the abort signal. */
+/** Content-free hierarchy operation names exposed to progress/diagnostic hosts. */
+export type TreeHierarchyOperationV1 =
+  | "page-version"
+  | "space-homepage"
+  | "page-direct-children"
+  | "page-descendants"
+  | "page-child-pages"
+  | "folder-direct-children";
+
+/**
+ * A bounded, content-free hierarchy diagnostic. It deliberately carries no
+ * page id/title, URL, response body, or original error message.
+ */
+export type TreeFetchDiagnosticV1 =
+  | {
+      code: "hierarchy-fallback";
+      deployment: "cloud";
+      operation: "page-direct-children";
+      status: number;
+      requestId?: string;
+      fallback: "page-descendants";
+    }
+  | {
+      code: "hierarchy-request-failed";
+      deployment: "cloud" | "data-center";
+      operation: TreeHierarchyOperationV1;
+      status?: number;
+      requestId?: string;
+      /**
+       * Which traversal node the failed request served. Content-free but
+       * decisive for triage: a failing `page-version` on the *root* means the
+       * export source itself is unreadable, while on a *child* it points at one
+       * page inside an otherwise healthy tree (issue #153 took two diagnostic
+       * round-trips without this field).
+       */
+      node?: "root" | "child";
+    };
+
+/** Context threaded through every port method — abort plus safe diagnostics. */
 export interface TreeFetchContext {
   signal?: AbortSignal;
+  onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
+  /**
+   * Role of the traversal node the current request serves, when the caller
+   * knows it. Copied verbatim into `hierarchy-request-failed` diagnostics.
+   */
+  hierarchyNode?: "root" | "child";
 }
 
 /** A reference to a node whose *children* are being requested. */
@@ -110,6 +154,12 @@ export interface TreeChild {
   title: string;
   kind: "page" | "folder" | "unsupported";
   unsupportedKind?: string;
+  /**
+   * Raw content status when the listing reported a non-`current` one (draft,
+   * archived, …). Such children arrive as `kind: "unsupported"`: exports ship
+   * published pages only, and a by-id version read on a draft would 404.
+   */
+  status?: string;
   position: number | null;
   observedVersion?: number;
 }
@@ -272,6 +322,8 @@ export interface TreeFetchOptions {
   completenessMode?: CompletenessMode;
   signal?: AbortSignal;
   onProgress?: (progress: TreeFetchProgress) => void;
+  /** Content-free hierarchy diagnostics suitable for a durable job monitor. */
+  onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
   /** Common representation-neutral decoder options; page provenance is owned here. */
   bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
   /**
@@ -451,6 +503,34 @@ function errorStatus(error: unknown): number | undefined {
   const message = error instanceof Error ? error.message : String(error);
   const match = message.match(/\((\d{3})\)/);
   return match ? Number.parseInt(match[1]!, 10) : undefined;
+}
+
+function errorRequestId(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("requestId" in error)) return undefined;
+  const requestId = (error as { requestId?: unknown }).requestId;
+  return typeof requestId === "string"
+    && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)
+    ? requestId
+    : undefined;
+}
+
+async function reportHierarchyFailure(
+  context: TreeFetchContext,
+  deployment: "cloud" | "data-center",
+  operation: TreeHierarchyOperationV1,
+  error: unknown,
+): Promise<void> {
+  if (!context.onDiagnostic) return;
+  const status = errorStatus(error);
+  const requestId = errorRequestId(error);
+  await context.onDiagnostic({
+    code: "hierarchy-request-failed",
+    deployment,
+    operation,
+    ...(status !== undefined ? { status } : {}),
+    ...(requestId ? { requestId } : {}),
+    ...(context.hierarchyNode ? { node: context.hierarchyNode } : {}),
+  });
 }
 
 function isUnreadable(status: number | undefined): boolean {
@@ -668,6 +748,18 @@ function compareChildren(a: TreeChild, b: TreeChild): number {
 }
 
 function unsupportedChildNote(child: TreeChild): ExportNote {
+  if (child.status !== undefined) {
+    // Not a foreign *type* — a page/folder whose status makes it unexportable
+    // (draft, archived). Named separately so report consumers can distinguish
+    // "you have a whiteboard" from "you have an unpublished child".
+    return {
+      level: "warning",
+      code: "child-not-current",
+      message:
+        `Child "${child.title}" (${child.id}) has status "${child.status}" ` +
+        `and was skipped; only current (published) pages are exported.`,
+    };
+  }
   const kind = child.unsupportedKind ?? "unknown";
   if (kind.toLowerCase() === "whiteboard") {
     return {
@@ -730,7 +822,7 @@ function normalizedScopeKey(scope: ExportScope): string {
           scope.maxDepth ?? null,
         ]);
       case "space":
-        return JSON.stringify(["space", scope.spaceKey]);
+        return JSON.stringify(["space", scope.spaceKey, scope.maxDepth ?? null]);
     }
   } catch {
     throw new ExportTreePlanError("Recovered export tree plan contains an invalid scope.");
@@ -749,7 +841,11 @@ function clonePlanScope(scope: ExportScope): ExportScope {
         ...(scope.maxDepth !== undefined ? { maxDepth: scope.maxDepth } : {}),
       };
     case "space":
-      return { kind: "space", spaceKey: scope.spaceKey };
+      return {
+        kind: "space",
+        spaceKey: scope.spaceKey,
+        ...(scope.maxDepth !== undefined ? { maxDepth: scope.maxDepth } : {}),
+      };
   }
 }
 
@@ -1016,7 +1112,10 @@ export async function fetchExportTree(
   opts: TreeFetchOptions = {}
 ): Promise<FetchExportTreeResult> {
   const signal = opts.signal;
-  const context: TreeFetchContext = { signal };
+  const context: TreeFetchContext = {
+    signal,
+    ...(opts.onDiagnostic ? { onDiagnostic: opts.onDiagnostic } : {}),
+  };
   const maxPages = opts.maxPages ?? DEFAULT_MAX_PAGES;
   const maxFolders = opts.maxFolders ?? DEFAULT_MAX_FOLDERS;
   const concurrency = opts.concurrency ?? DEFAULT_CONCURRENCY;
@@ -1069,6 +1168,7 @@ export async function fetchExportTree(
     const resolved = await source.getSpaceHomepageId(scope.spaceKey, context);
     if (!resolved) throw new SpaceHomepageError(scope.spaceKey);
     rootId = resolved;
+    maxDepth = scope.maxDepth;
   }
 
   // ---- Phase 1: ordering walk ----
@@ -1116,7 +1216,38 @@ export async function fetchExportTree(
       let title = knownTitle;
       let version = observedVersion;
       if (title === undefined || version === undefined) {
-        const snapshot = await source.getPageVersion(ref.id, context);
+        const isRoot = ref.id === rootId;
+        let snapshot: TreeSourceVersion;
+        try {
+          snapshot = await source.getPageVersion(ref.id, {
+            ...context,
+            hierarchyNode: isRoot ? "root" : "child",
+          });
+        } catch (error) {
+          throwIfAborted(signal);
+          // A failing *root* stays fatal — the export source itself is
+          // unreadable. A failing child is a per-page completeness event, the
+          // same contract phase 2 applies to body reads: listings can include
+          // children a by-id read 404s on (view-restricted pages — Cloud masks
+          // missing permission as 404 — or a racing delete). One such child
+          // must not abort the whole hierarchy export (#153).
+          const status = errorStatus(error);
+          if (isRoot || (!isUnreadable(status) && !isAmbiguous404(status))) throw error;
+          const affected = [{ id: ref.id, title: knownTitle ?? ref.id }];
+          const code: CompletenessCode = isUnreadable(status)
+            ? "page-unreadable"
+            : "page-ambiguous-404";
+          if (mode === "strict") throw new ExportCompletenessError(code, affected);
+          treeNotes.push({
+            level: "warning",
+            code,
+            message:
+              `Page "${knownTitle ?? ref.id}" (${ref.id}) could not be read (${status}); ` +
+              `the page and its subtree were omitted.`,
+          });
+          partialComplete();
+          return;
+        }
         if (title === undefined) title = snapshot.title;
         if (version === undefined) version = snapshot.version;
       }
@@ -1694,6 +1825,8 @@ async function resolveLabels(
 
 /** The subset of `ConfluenceClient` the adapter needs (keeps this isomorphic). */
 export interface TreeSourceClient {
+  /** Selects the hierarchy API without probing unsupported deployment routes. */
+  readonly deploymentType?: "cloud" | "data-center";
   getExportPageDetailsWithMedia?(
     id: string,
     options?: { signal?: AbortSignal }
@@ -1710,6 +1843,16 @@ export interface TreeSourceClient {
     id: string,
     options?: { signal?: AbortSignal }
   ): Promise<{ title: string; version: number }>;
+  /**
+   * Optional bulk version snapshot (Cloud REST v2 `GET /pages?id=…`). When
+   * present, the adapter resolves child-page versions in one round-trip per
+   * listing instead of one `getPageVersion` call per child; ids missing from
+   * the map fall back to the per-page path (and its completeness handling).
+   */
+  getPageVersions?(
+    ids: readonly string[],
+    options?: { signal?: AbortSignal }
+  ): Promise<ReadonlyMap<string, { title: string; version: number }>>;
   getChildrenWithPosition(
     parentId: string,
     options?: { signal?: AbortSignal }
@@ -1717,11 +1860,15 @@ export interface TreeSourceClient {
   getPageDirectChildren(
     pageId: string,
     options?: { signal?: AbortSignal }
-  ): Promise<Array<{ id: string; title: string; type: string }>>;
+  ): Promise<Array<{ id: string; title: string; type: string; status?: string; position?: number | null }>>;
+  getPageDescendants?(
+    pageId: string,
+    options?: { depth?: number; limit?: number; signal?: AbortSignal }
+  ): Promise<Array<{ id: string; title: string; type: string; status?: string; position?: number | null }>>;
   getFolderChildren(
     folderId: string,
     options?: { signal?: AbortSignal }
-  ): Promise<Array<{ id: string; title: string; type: string }>>;
+  ): Promise<Array<{ id: string; title: string; type: string; status?: string; position?: number | null }>>;
   getSpaceHomepageId(
     spaceKey: string,
     options?: { signal?: AbortSignal }
@@ -1736,16 +1883,85 @@ export interface TreeSourceClient {
 /**
  * Node adapter: maps the {@link TreeSource} port 1:1 onto a `ConfluenceClient`.
  *
- * `getChildren` first discovers child *kinds* via `getPageDirectChildren` (a
- * page parent) — the only call that reports mixed page/folder/whiteboard
- * children in one round-trip — then re-fetches real positions for page children
- * via `getChildrenWithPosition`, and recurses folder children via
- * `getFolderChildren` (a folder parent). Anything outside page/folder is mapped
- * honestly to `kind: "unsupported"` with the raw type, never cast into a page.
+ * On Cloud, `getChildren` discovers child *kinds* and `childPosition` through
+ * `getPageDirectChildren` (a page parent) — the only call that reports mixed
+ * page/folder/whiteboard children in one round-trip — and recurses folder
+ * children through `getFolderChildren` (a folder parent). Page versions are
+ * snapshotted through Cloud REST v2 by `getPageVersion`; Cloud traversal never
+ * depends on the v1 child-page listing. Data Center uses only its v1 page tree.
+ * Anything outside page/folder is mapped honestly to `kind: "unsupported"`
+ * with the raw type, never cast into a page.
  */
 export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
   const classifyKind = (type: string): "page" | "folder" | "unsupported" =>
     type === "page" ? "page" : type === "folder" ? "folder" : "unsupported";
+
+  // Map one Cloud listing entry to a TreeChild. A non-"current" status (draft,
+  // archived) downgrades the child to "unsupported" carrying that status: a
+  // by-id follow-up read on such content 404s (#153), and exports ship
+  // published pages only.
+  const mapCloudChild = (child: {
+    id: string;
+    title: string;
+    type: string;
+    status?: string;
+    position?: number | null;
+  }): TreeChild => {
+    const kind = classifyKind(child.type);
+    if (
+      kind !== "unsupported" &&
+      typeof child.status === "string" &&
+      child.status !== "current"
+    ) {
+      return {
+        id: child.id,
+        title: child.title,
+        kind: "unsupported",
+        unsupportedKind: child.type,
+        status: child.status,
+        position: child.position ?? null,
+      };
+    }
+    return {
+      id: child.id,
+      title: child.title,
+      kind,
+      ...(kind === "unsupported" ? { unsupportedKind: child.type } : {}),
+      position: child.position ?? null,
+    };
+  };
+
+  // Best-effort bulk version snapshot for Cloud child pages: one listing
+  // round-trip instead of one `getPageVersion` per child. Ids the bulk read
+  // does not return (restricted, deleted) keep `observedVersion` undefined and
+  // fall back to the per-page snapshot, whose completeness handling then
+  // classifies the failure. Bulk errors never fail discovery for the same
+  // reason — the per-page path is the authoritative one.
+  const attachObservedVersions = async (
+    children: TreeChild[],
+    context: TreeFetchContext,
+  ): Promise<TreeChild[]> => {
+    if (!client.getPageVersions) return children;
+    const pending = children.filter(
+      (child) => child.kind === "page" && child.observedVersion === undefined,
+    );
+    if (pending.length === 0) return children;
+    let versions: ReadonlyMap<string, { title: string; version: number }>;
+    try {
+      versions = await client.getPageVersions(
+        pending.map((child) => child.id),
+        { signal: context.signal },
+      );
+    } catch {
+      context.signal?.throwIfAborted();
+      return children;
+    }
+    return children.map((child) => {
+      if (child.kind !== "page" || child.observedVersion !== undefined) return child;
+      const snapshot = versions.get(child.id);
+      return snapshot ? { ...child, observedVersion: snapshot.version } : child;
+    });
+  };
 
   return {
     async getPage(id, context) {
@@ -1780,55 +1996,106 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
     },
 
     async getPageVersion(id, context) {
-      const v = await client.getPageVersion(id, { signal: context.signal });
-      return { version: v.version, title: v.title };
+      try {
+        const v = await client.getPageVersion(id, { signal: context.signal });
+        return { version: v.version, title: v.title };
+      } catch (error) {
+        await reportHierarchyFailure(
+          context,
+          client.deploymentType === "data-center" ? "data-center" : "cloud",
+          "page-version",
+          error,
+        );
+        throw error;
+      }
     },
 
     async getChildren(nodeRef, context) {
-      if (nodeRef.kind === "folder") {
-        const children = await client.getFolderChildren(nodeRef.id, { signal: context.signal });
+      // Data Center has no Confluence Cloud REST v2 hierarchy API. Its v1
+      // child-page endpoint already returns the complete traversable page set
+      // with position/version metadata, so use it directly and never probe
+      // `/api/v2/.../direct-children` on an on-premises deployment.
+      if (client.deploymentType === "data-center") {
+        if (nodeRef.kind === "folder") {
+          throw new TypeError("Data Center tree traversal cannot descend into Cloud folder nodes.");
+        }
+        let children: Awaited<ReturnType<TreeSourceClient["getChildrenWithPosition"]>>;
+        try {
+          children = await client.getChildrenWithPosition(nodeRef.id, {
+            signal: context.signal,
+          });
+        } catch (error) {
+          await reportHierarchyFailure(context, "data-center", "page-child-pages", error);
+          throw error;
+        }
         return children.map((child) => ({
           id: child.id,
           title: child.title,
-          kind: classifyKind(child.type),
-          ...(classifyKind(child.type) === "unsupported" ? { unsupportedKind: child.type } : {}),
-          // getFolderChildren carries no position/version field.
-          position: null,
+          kind: "page" as const,
+          position: child.position,
+          observedVersion: child.version,
         }));
       }
 
-      // Page parent: discover kinds, then re-fetch page positions/versions.
-      const discovered = await client.getPageDirectChildren(nodeRef.id, { signal: context.signal });
-      const positioned = await client.getChildrenWithPosition(nodeRef.id, { signal: context.signal });
-      const byId = new Map(positioned.map((p) => [p.id, p]));
+      if (nodeRef.kind === "folder") {
+        let children: Awaited<ReturnType<TreeSourceClient["getFolderChildren"]>>;
+        try {
+          children = await client.getFolderChildren(nodeRef.id, { signal: context.signal });
+        } catch (error) {
+          await reportHierarchyFailure(context, "cloud", "folder-direct-children", error);
+          throw error;
+        }
+        return attachObservedVersions(children.map(mapCloudChild), context);
+      }
 
-      return discovered.map((child): TreeChild => {
-        const kind = classifyKind(child.type);
-        if (kind === "page") {
-          const pos = byId.get(child.id);
-          return {
-            id: child.id,
-            title: child.title,
-            kind: "page",
-            position: pos?.position ?? null,
-            observedVersion: pos?.version,
-          };
+      // Page parent: discover kinds, falling back from the newer direct-children
+      // route only for endpoint/capability failures. Authentication, throttling,
+      // transport, cancellation, and server failures must retain their semantics.
+      let discovered: Awaited<ReturnType<TreeSourceClient["getPageDirectChildren"]>>;
+      try {
+        discovered = await client.getPageDirectChildren(nodeRef.id, { signal: context.signal });
+      } catch (error) {
+        context.signal?.throwIfAborted();
+        const status = errorStatus(error);
+        const fallbackStatuses = new Set([400, 404, 405, 501]);
+        if (status === undefined || !fallbackStatuses.has(status) || !client.getPageDescendants) {
+          await reportHierarchyFailure(context, "cloud", "page-direct-children", error);
+          throw error;
         }
-        if (kind === "folder") {
-          return { id: child.id, title: child.title, kind: "folder", position: null };
+        await context.onDiagnostic?.({
+          code: "hierarchy-fallback",
+          deployment: "cloud",
+          operation: "page-direct-children",
+          status,
+          ...(errorRequestId(error) ? { requestId: errorRequestId(error) } : {}),
+          fallback: "page-descendants",
+        });
+        try {
+          discovered = await client.getPageDescendants(nodeRef.id, {
+            depth: 1,
+            signal: context.signal,
+          });
+        } catch (fallbackError) {
+          await reportHierarchyFailure(context, "cloud", "page-descendants", fallbackError);
+          throw fallbackError;
         }
-        return {
-          id: child.id,
-          title: child.title,
-          kind: "unsupported",
-          unsupportedKind: child.type,
-          position: null,
-        };
-      });
+      }
+
+      return attachObservedVersions(discovered.map(mapCloudChild), context);
     },
 
     async getSpaceHomepageId(spaceKey, context) {
-      return client.getSpaceHomepageId(spaceKey, { signal: context.signal });
+      try {
+        return await client.getSpaceHomepageId(spaceKey, { signal: context.signal });
+      } catch (error) {
+        await reportHierarchyFailure(
+          context,
+          client.deploymentType === "data-center" ? "data-center" : "cloud",
+          "space-homepage",
+          error,
+        );
+        throw error;
+      }
     },
 
     async searchPages(cql, context) {

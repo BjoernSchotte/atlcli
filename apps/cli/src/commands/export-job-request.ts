@@ -50,7 +50,10 @@ export function buildCliExportSource(
             includeRoot: request.includeRoot,
             ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
           }
-        : { kind: "space" };
+        : {
+            kind: "space",
+            ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
+          };
   return {
     kind: "confluence",
     siteOrigin: siteOrigin(profile),

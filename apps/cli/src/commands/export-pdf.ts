@@ -48,7 +48,6 @@ import {
 } from "@atlcli/pdf";
 import type {
   ExportJobDerivationV1,
-  ExportJobSnapshotV1,
   PdfExportJobRequestV1,
   ResourceEstimateV1,
 } from "@atlcli/export-jobs";
@@ -56,7 +55,9 @@ import { createFileExportJobPersistence } from "@atlcli/export-node";
 import {
   buildReport,
   buildTreeExportReport,
+  classifyConfluenceSourceError,
   classifyError,
+  classifyFailedExportJob,
   noteToIssue,
   pdfReportContributions,
   type ExportOutcome,
@@ -94,79 +95,13 @@ import {
   runOrdinaryExportJobV1,
   writeOrdinaryExportProjectionV1,
 } from "./export-job-runtime.js";
+import { formatConfluenceHierarchyDiagnosticV1 } from "./export-job-monitor.js";
 
 // Re-export the pure sink/path surface so existing callers keep importing from
 // this module (no API change). The implementations live in export-pdf-sink.ts —
 // a deliberately dependency-free module (no wasm/font imports) whose tests run
 // on Windows CI where `packages/pdf/.fonts/` is not materialized.
 export { PdfUsageError, derivePdfOutputPath, filePdfOutputSink, sanitizePathComponent };
-
-/**
- * Recover the public export error classification after the durable runtime has
- * converted an executor exception into terminal job state.
- *
- * The file runtime intentionally persists a redacted generic error. Its message
- * still carries the Confluence HTTP status, which is enough to preserve the
- * command's documented auth/remote exit codes without re-reading the source.
- */
-export function classifyFailedPdfJob(
-  snapshot: Pick<ExportJobSnapshotV1, "state" | "error">
-): ReturnType<typeof classifyError> {
-  if (snapshot.state === "cancelled") {
-    return {
-      exitCode: 130,
-      issue: {
-        code: "cancelled",
-        severity: "error",
-        phase: "commit",
-        retryable: false,
-        message: "Export job was cancelled.",
-      },
-    };
-  }
-  const error = snapshot.error;
-  if (error?.category === "auth" || error?.category === "permission") {
-    return {
-      exitCode: 3,
-      issue: {
-        code: error.code,
-        severity: "error",
-        phase: error.stage ?? "fetch",
-        retryable: error.retryable,
-        message: error.message,
-      },
-    };
-  }
-  if (
-    error?.category === "network" ||
-    error?.category === "rate-limit" ||
-    error?.category === "source"
-  ) {
-    return {
-      exitCode: 4,
-      issue: {
-        code: error.code,
-        severity: "error",
-        phase: error.stage ?? "fetch",
-        retryable: error.retryable,
-        message: error.message,
-      },
-    };
-  }
-  if (error && /\(\d{3}\)/u.test(error.message)) {
-    return classifyError(new Error(error.message));
-  }
-  return {
-    exitCode: 5,
-    issue: {
-      code: error?.code ?? `job-${snapshot.state}`,
-      severity: "error",
-      phase: error?.stage ?? "commit",
-      retryable: error?.retryable ?? false,
-      message: error?.message ?? `Export job ended as ${snapshot.state}.`,
-    },
-  };
-}
 
 /**
  * The CLI's token-auth {@link PdfAssetResolver}. Reuses `tokenAssetFetcher` +
@@ -716,12 +651,7 @@ export async function exportPdfAsOrdinaryJob(
       : `${exportSourcePolicyFromFlag(process.env.ATLCLI_EXPORT_SOURCE)}:v1`;
     const resolveInput = createConfluencePdfResolveInputV1({
       port: confluenceSourceResolverPortFromClientV1(args.client),
-      classifyError: (error) => {
-        const classified = classifyError(error);
-        if (classified.exitCode === 3) return "authentication";
-        if (classified.issue.status === 404) return "not-found";
-        return "unknown";
-      },
+      classifyError: classifyConfluenceSourceError,
       resolveExternalUrl: cliConfluenceExternalUrlResolver(args.profile),
       createSourcePlan: (_request, context) => ({
         store: createConfluenceSourcePlanSpoolV1(context),
@@ -729,6 +659,15 @@ export async function exportPdfAsOrdinaryJob(
       }),
       createBodyStore: (request, context) =>
         createExportTreeBodySpoolV1(context, request.idempotencyKey),
+      onDiagnostic: (_request, context, diagnostic) => {
+        return context.updateProgress({
+          stage: "discover",
+          done: 0,
+          total: null,
+          detail: formatConfluenceHierarchyDiagnosticV1(diagnostic),
+          updatedAt: Date.now(),
+        });
+      },
       onProgress: (_request, context, progress) => {
         return context.updateProgress({
           stage: "fetch",
@@ -851,7 +790,7 @@ export async function exportPdfAsOrdinaryJob(
       },
     });
     if (execution.snapshot.state !== "succeeded" || !execution.report) {
-      const classified = classifyFailedPdfJob(execution.snapshot);
+      const classified = classifyFailedExportJob(execution.snapshot);
       return {
         ok: false,
         report: buildReport({

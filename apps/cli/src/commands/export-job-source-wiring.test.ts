@@ -21,8 +21,13 @@ describe("ordinary CLI job source wiring", () => {
     const ordinary = command.slice(start);
 
     expect(ordinary).toContain("createConfluencePdfResolveInputV1({");
+    expect(ordinary).toContain("classifyError: classifyConfluenceSourceError");
+    expect(ordinary).toContain("classifyFailedExportJob(execution.snapshot)");
     expect(ordinary).toContain("createConfluenceSourcePlanSpoolV1(context)");
     expect(ordinary).toContain("createExportTreeBodySpoolV1(context, request.idempotencyKey)");
+    expect(ordinary).toContain("onDiagnostic: (_request, context, diagnostic) => {");
+    expect(ordinary).toContain("formatConfluenceHierarchyDiagnosticV1(diagnostic)");
+    expect(ordinary).toContain('stage: "discover"');
     expect(ordinary).toContain("resolved.chapterAnchorById,\n          context.signal,");
     expect(ordinary).toContain('stage: "fetch"');
     expect(ordinary).toContain("resolveInput,");
@@ -43,8 +48,13 @@ describe("ordinary CLI job source wiring", () => {
     );
 
     expect(ordinary).toContain("createConfluenceDocxResolveInputV1({");
+    expect(ordinary).toContain("classifyError: classifyConfluenceSourceError");
+    expect(ordinary).toContain("classifyFailedExportJob(execution.snapshot)");
     expect(ordinary).toContain("createConfluenceSourcePlanSpoolV1(context)");
     expect(ordinary).toContain("createExportTreeBodySpoolV1(context, request.idempotencyKey)");
+    expect(ordinary).toContain("onDiagnostic: (_request, context, diagnostic) => {");
+    expect(ordinary).toContain("formatConfluenceHierarchyDiagnosticV1(diagnostic)");
+    expect(ordinary).toContain('stage: "discover"');
     expect(ordinary).toContain("resolved.chapterAnchorById,\n          context.signal,");
     expect(ordinary).toContain('stage: "fetch"');
     expect(ordinary).toContain("resolveInput,");

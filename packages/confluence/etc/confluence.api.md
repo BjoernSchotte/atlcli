@@ -815,7 +815,7 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -942,6 +942,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -976,6 +981,9 @@ export declare class ConfluenceClient {
     getPageVersion(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<PageChangeInfo>;
+    getPageVersions(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, PageChangeInfo>>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -1497,6 +1505,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "root-filter-bypassed",
     "folder-position-unknown",
     "unsupported-child-type",
+    "child-not-current",
     "link-anchor-missing",
     "link-outside-scope",
     "link-target-ambiguous",
@@ -1896,6 +1905,7 @@ export type ExportScope = {
 } | {
     kind: "space";
     spaceKey: string;
+    maxDepth?: number;
 };
 
 // export: ExportScopeError
@@ -2052,8 +2062,10 @@ export type FolderChild = {
     id: string;
     title: string;
     type: "page" | "folder" | (string & {});
+    status?: string;
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -2999,6 +3011,7 @@ export interface TreeChild {
     title: string;
     kind: "page" | "folder" | "unsupported";
     unsupportedKind?: string;
+    status?: string;
     position: number | null;
     observedVersion?: number;
 }
@@ -3006,7 +3019,26 @@ export interface TreeChild {
 // export: TreeFetchContext
 export interface TreeFetchContext {
     signal?: AbortSignal;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
+    hierarchyNode?: "root" | "child";
 }
+
+// export: TreeFetchDiagnosticV1
+export type TreeFetchDiagnosticV1 = {
+    code: "hierarchy-fallback";
+    deployment: "cloud";
+    operation: "page-direct-children";
+    status: number;
+    requestId?: string;
+    fallback: "page-descendants";
+} | {
+    code: "hierarchy-request-failed";
+    deployment: "cloud" | "data-center";
+    operation: TreeHierarchyOperationV1;
+    status?: number;
+    requestId?: string;
+    node?: "root" | "child";
+};
 
 // export: TreeFetchOptions
 export interface TreeFetchOptions {
@@ -3019,6 +3051,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
@@ -3032,6 +3065,9 @@ export interface TreeFetchProgress {
     total: number | null;
     currentTitle: string;
 }
+
+// export: TreeHierarchyOperationV1
+export type TreeHierarchyOperationV1 = "page-version" | "space-homepage" | "page-direct-children" | "page-descendants" | "page-child-pages" | "folder-direct-children";
 
 // export: TreeLimitExceededError
 export declare class TreeLimitExceededError extends Error {
@@ -3059,6 +3095,7 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    readonly deploymentType?: "cloud" | "data-center";
     getExportPageDetailsWithMedia?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -3081,6 +3118,12 @@ export interface TreeSourceClient {
         title: string;
         version: number;
     }>;
+    getPageVersions?(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ReadonlyMap<string, {
+        title: string;
+        version: number;
+    }>>;
     getChildrenWithPosition(parentId: string, options?: {
         signal?: AbortSignal;
     }): Promise<Array<{
@@ -3095,6 +3138,19 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        status?: string;
+        position?: number | null;
+    }>>;
+    getPageDescendants?(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+        status?: string;
+        position?: number | null;
     }>>;
     getFolderChildren(folderId: string, options?: {
         signal?: AbortSignal;
@@ -3102,6 +3158,8 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        status?: string;
+        position?: number | null;
     }>>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
@@ -4077,7 +4135,7 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -4204,6 +4262,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -4238,6 +4301,9 @@ export declare class ConfluenceClient {
     getPageVersion(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<PageChangeInfo>;
+    getPageVersions(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, PageChangeInfo>>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -4759,6 +4825,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "root-filter-bypassed",
     "folder-position-unknown",
     "unsupported-child-type",
+    "child-not-current",
     "link-anchor-missing",
     "link-outside-scope",
     "link-target-ambiguous",
@@ -5158,6 +5225,7 @@ export type ExportScope = {
 } | {
     kind: "space";
     spaceKey: string;
+    maxDepth?: number;
 };
 
 // export: ExportScopeError
@@ -5314,8 +5382,10 @@ export type FolderChild = {
     id: string;
     title: string;
     type: "page" | "folder" | (string & {});
+    status?: string;
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -6261,6 +6331,7 @@ export interface TreeChild {
     title: string;
     kind: "page" | "folder" | "unsupported";
     unsupportedKind?: string;
+    status?: string;
     position: number | null;
     observedVersion?: number;
 }
@@ -6268,7 +6339,26 @@ export interface TreeChild {
 // export: TreeFetchContext
 export interface TreeFetchContext {
     signal?: AbortSignal;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
+    hierarchyNode?: "root" | "child";
 }
+
+// export: TreeFetchDiagnosticV1
+export type TreeFetchDiagnosticV1 = {
+    code: "hierarchy-fallback";
+    deployment: "cloud";
+    operation: "page-direct-children";
+    status: number;
+    requestId?: string;
+    fallback: "page-descendants";
+} | {
+    code: "hierarchy-request-failed";
+    deployment: "cloud" | "data-center";
+    operation: TreeHierarchyOperationV1;
+    status?: number;
+    requestId?: string;
+    node?: "root" | "child";
+};
 
 // export: TreeFetchOptions
 export interface TreeFetchOptions {
@@ -6281,6 +6371,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
@@ -6294,6 +6385,9 @@ export interface TreeFetchProgress {
     total: number | null;
     currentTitle: string;
 }
+
+// export: TreeHierarchyOperationV1
+export type TreeHierarchyOperationV1 = "page-version" | "space-homepage" | "page-direct-children" | "page-descendants" | "page-child-pages" | "folder-direct-children";
 
 // export: TreeLimitExceededError
 export declare class TreeLimitExceededError extends Error {
@@ -6321,6 +6415,7 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    readonly deploymentType?: "cloud" | "data-center";
     getExportPageDetailsWithMedia?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -6343,6 +6438,12 @@ export interface TreeSourceClient {
         title: string;
         version: number;
     }>;
+    getPageVersions?(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ReadonlyMap<string, {
+        title: string;
+        version: number;
+    }>>;
     getChildrenWithPosition(parentId: string, options?: {
         signal?: AbortSignal;
     }): Promise<Array<{
@@ -6357,6 +6458,19 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        status?: string;
+        position?: number | null;
+    }>>;
+    getPageDescendants?(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+        status?: string;
+        position?: number | null;
     }>>;
     getFolderChildren(folderId: string, options?: {
         signal?: AbortSignal;
@@ -6364,6 +6478,8 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        status?: string;
+        position?: number | null;
     }>>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
@@ -7339,7 +7455,7 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -7466,6 +7582,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -7500,6 +7621,9 @@ export declare class ConfluenceClient {
     getPageVersion(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<PageChangeInfo>;
+    getPageVersions(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, PageChangeInfo>>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -8021,6 +8145,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "root-filter-bypassed",
     "folder-position-unknown",
     "unsupported-child-type",
+    "child-not-current",
     "link-anchor-missing",
     "link-outside-scope",
     "link-target-ambiguous",
@@ -8420,6 +8545,7 @@ export type ExportScope = {
 } | {
     kind: "space";
     spaceKey: string;
+    maxDepth?: number;
 };
 
 // export: ExportScopeError
@@ -8576,8 +8702,10 @@ export type FolderChild = {
     id: string;
     title: string;
     type: "page" | "folder" | (string & {});
+    status?: string;
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -9523,6 +9651,7 @@ export interface TreeChild {
     title: string;
     kind: "page" | "folder" | "unsupported";
     unsupportedKind?: string;
+    status?: string;
     position: number | null;
     observedVersion?: number;
 }
@@ -9530,7 +9659,26 @@ export interface TreeChild {
 // export: TreeFetchContext
 export interface TreeFetchContext {
     signal?: AbortSignal;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
+    hierarchyNode?: "root" | "child";
 }
+
+// export: TreeFetchDiagnosticV1
+export type TreeFetchDiagnosticV1 = {
+    code: "hierarchy-fallback";
+    deployment: "cloud";
+    operation: "page-direct-children";
+    status: number;
+    requestId?: string;
+    fallback: "page-descendants";
+} | {
+    code: "hierarchy-request-failed";
+    deployment: "cloud" | "data-center";
+    operation: TreeHierarchyOperationV1;
+    status?: number;
+    requestId?: string;
+    node?: "root" | "child";
+};
 
 // export: TreeFetchOptions
 export interface TreeFetchOptions {
@@ -9543,6 +9691,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
@@ -9556,6 +9705,9 @@ export interface TreeFetchProgress {
     total: number | null;
     currentTitle: string;
 }
+
+// export: TreeHierarchyOperationV1
+export type TreeHierarchyOperationV1 = "page-version" | "space-homepage" | "page-direct-children" | "page-descendants" | "page-child-pages" | "folder-direct-children";
 
 // export: TreeLimitExceededError
 export declare class TreeLimitExceededError extends Error {
@@ -9583,6 +9735,7 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    readonly deploymentType?: "cloud" | "data-center";
     getExportPageDetailsWithMedia?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -9605,6 +9758,12 @@ export interface TreeSourceClient {
         title: string;
         version: number;
     }>;
+    getPageVersions?(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ReadonlyMap<string, {
+        title: string;
+        version: number;
+    }>>;
     getChildrenWithPosition(parentId: string, options?: {
         signal?: AbortSignal;
     }): Promise<Array<{
@@ -9619,6 +9778,19 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        status?: string;
+        position?: number | null;
+    }>>;
+    getPageDescendants?(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+        status?: string;
+        position?: number | null;
     }>>;
     getFolderChildren(folderId: string, options?: {
         signal?: AbortSignal;
@@ -9626,6 +9798,8 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        status?: string;
+        position?: number | null;
     }>>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
@@ -10298,7 +10472,7 @@ export interface ConflictRegion {
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -10425,6 +10599,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -10459,6 +10638,9 @@ export declare class ConfluenceClient {
     getPageVersion(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<PageChangeInfo>;
+    getPageVersions(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, PageChangeInfo>>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -10994,6 +11176,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "root-filter-bypassed",
     "folder-position-unknown",
     "unsupported-child-type",
+    "child-not-current",
     "link-anchor-missing",
     "link-outside-scope",
     "link-target-ambiguous",
@@ -11386,8 +11569,10 @@ export type FolderChild = {
     id: string;
     title: string;
     type: "page" | "folder" | (string & {});
+    status?: string;
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -14003,7 +14188,7 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -14130,6 +14315,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -14164,6 +14354,9 @@ export declare class ConfluenceClient {
     getPageVersion(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<PageChangeInfo>;
+    getPageVersions(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, PageChangeInfo>>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -14685,6 +14878,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "root-filter-bypassed",
     "folder-position-unknown",
     "unsupported-child-type",
+    "child-not-current",
     "link-anchor-missing",
     "link-outside-scope",
     "link-target-ambiguous",
@@ -15084,6 +15278,7 @@ export type ExportScope = {
 } | {
     kind: "space";
     spaceKey: string;
+    maxDepth?: number;
 };
 
 // export: ExportScopeError
@@ -15240,8 +15435,10 @@ export type FolderChild = {
     id: string;
     title: string;
     type: "page" | "folder" | (string & {});
+    status?: string;
     spaceId?: string;
     parentId?: string | null;
+    position?: number | null;
     url?: string;
 };
 
@@ -16187,6 +16384,7 @@ export interface TreeChild {
     title: string;
     kind: "page" | "folder" | "unsupported";
     unsupportedKind?: string;
+    status?: string;
     position: number | null;
     observedVersion?: number;
 }
@@ -16194,7 +16392,26 @@ export interface TreeChild {
 // export: TreeFetchContext
 export interface TreeFetchContext {
     signal?: AbortSignal;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
+    hierarchyNode?: "root" | "child";
 }
+
+// export: TreeFetchDiagnosticV1
+export type TreeFetchDiagnosticV1 = {
+    code: "hierarchy-fallback";
+    deployment: "cloud";
+    operation: "page-direct-children";
+    status: number;
+    requestId?: string;
+    fallback: "page-descendants";
+} | {
+    code: "hierarchy-request-failed";
+    deployment: "cloud" | "data-center";
+    operation: TreeHierarchyOperationV1;
+    status?: number;
+    requestId?: string;
+    node?: "root" | "child";
+};
 
 // export: TreeFetchOptions
 export interface TreeFetchOptions {
@@ -16207,6 +16424,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
@@ -16220,6 +16438,9 @@ export interface TreeFetchProgress {
     total: number | null;
     currentTitle: string;
 }
+
+// export: TreeHierarchyOperationV1
+export type TreeHierarchyOperationV1 = "page-version" | "space-homepage" | "page-direct-children" | "page-descendants" | "page-child-pages" | "folder-direct-children";
 
 // export: TreeLimitExceededError
 export declare class TreeLimitExceededError extends Error {
@@ -16247,6 +16468,7 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    readonly deploymentType?: "cloud" | "data-center";
     getExportPageDetailsWithMedia?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -16269,6 +16491,12 @@ export interface TreeSourceClient {
         title: string;
         version: number;
     }>;
+    getPageVersions?(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ReadonlyMap<string, {
+        title: string;
+        version: number;
+    }>>;
     getChildrenWithPosition(parentId: string, options?: {
         signal?: AbortSignal;
     }): Promise<Array<{
@@ -16283,6 +16511,19 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        status?: string;
+        position?: number | null;
+    }>>;
+    getPageDescendants?(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+        status?: string;
+        position?: number | null;
     }>>;
     getFolderChildren(folderId: string, options?: {
         signal?: AbortSignal;
@@ -16290,6 +16531,8 @@ export interface TreeSourceClient {
         id: string;
         title: string;
         type: string;
+        status?: string;
+        position?: number | null;
     }>>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
@@ -16460,7 +16703,7 @@ export interface XmlText {
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
-    private deploymentType;
+    readonly deploymentType: DeploymentType;
     private capabilityOrigin;
     private authHeader;
     private useSession;
@@ -16587,6 +16830,11 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageDescendants(pageId: string, options?: {
+        depth?: number;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
     bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
@@ -16621,6 +16869,9 @@ export declare class ConfluenceClient {
     getPageVersion(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<PageChangeInfo>;
+    getPageVersions(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, PageChangeInfo>>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;

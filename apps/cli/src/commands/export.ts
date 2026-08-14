@@ -70,7 +70,9 @@ import {
 import {
   buildReport,
   buildTreeExportReport,
+  classifyConfluenceSourceError,
   classifyError,
+  classifyFailedExportJob,
   emitReportOutcome,
   noteToIssue,
   type ExportOutcome,
@@ -82,6 +84,7 @@ import {
   runOrdinaryExportJobV1,
   writeOrdinaryExportProjectionV1,
 } from "./export-job-runtime.js";
+import { formatConfluenceHierarchyDiagnosticV1 } from "./export-job-monitor.js";
 import {
   checkpointDocxAssetsV1,
   confluenceSourceResolverPortFromClientV1,
@@ -630,7 +633,8 @@ function parsedRequestFromJob(request: ExportJobRequestV1): ParsedExportRequest 
     ...(pageRef ? { pageRef } : {}),
     ...(spaceKey ? { spaceKey } : {}),
     includeRoot: source.scope.kind === "tree" ? source.scope.includeRoot !== false : true,
-    ...(source.scope.kind === "tree" && source.scope.maxDepth !== undefined
+    ...((source.scope.kind === "tree" || source.scope.kind === "space") &&
+      source.scope.maxDepth !== undefined
       ? { maxDepth: source.scope.maxDepth }
       : {}),
     ...(source.maxPages !== undefined ? { maxPages: source.maxPages } : {}),
@@ -1151,6 +1155,7 @@ async function exportDocxAsOrdinaryJob(
       : `${exportSourcePolicyFromFlag(process.env.ATLCLI_EXPORT_SOURCE)}:v1`;
     const resolveInput = createConfluenceDocxResolveInputV1({
       port: confluenceSourceResolverPortFromClientV1(args.client),
+      classifyError: classifyConfluenceSourceError,
       ...(args.request.scopeKind === "page"
         ? {}
         : {
@@ -1183,6 +1188,15 @@ async function exportDocxAsOrdinaryJob(
       }),
       createBodyStore: (request, context) =>
         createExportTreeBodySpoolV1(context, request.idempotencyKey),
+      onDiagnostic: (_request, context, diagnostic) => {
+        return context.updateProgress({
+          stage: "discover",
+          done: 0,
+          total: null,
+          detail: formatConfluenceHierarchyDiagnosticV1(diagnostic),
+          updatedAt: Date.now(),
+        });
+      },
       onProgress: (_request, context, progress) => {
         return context.updateProgress({
           stage: "fetch",
@@ -1362,7 +1376,7 @@ async function exportDocxAsOrdinaryJob(
       },
     });
     if (execution.snapshot.state !== "succeeded" || !execution.report) {
-      const error = execution.snapshot.error;
+      const classified = classifyFailedExportJob(execution.snapshot);
       return {
         ok: false,
         report: buildReport({
@@ -1370,15 +1384,9 @@ async function exportDocxAsOrdinaryJob(
           engine: "ts",
           sourcePages: [],
           outputDetails: [],
-          issues: [{
-            code: error?.code ?? `job-${execution.snapshot.state}`,
-            severity: "error",
-            phase: "commit",
-            retryable: error?.retryable ?? false,
-            message: error?.message ?? `Export job ended as ${execution.snapshot.state}.`,
-          }],
+          issues: [classified.issue],
           timings: { totalMs: Date.now() - startedAt },
-          failureExitCode: execution.snapshot.state === "cancelled" ? 130 : 5,
+          failureExitCode: classified.exitCode,
         }),
       };
     }

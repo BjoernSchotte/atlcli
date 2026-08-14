@@ -208,6 +208,19 @@ async function appendCommittedEvent(
   });
 }
 
+function leasedWriteTime(
+  snapshot: ExportJobSnapshotV1,
+  candidate: number,
+  ...minimums: number[]
+): number {
+  return Math.max(
+    candidate,
+    snapshot.lease?.acquiredAt ?? candidate,
+    snapshot.lease?.heartbeatAt ?? candidate,
+    ...minimums,
+  );
+}
+
 /** Execute and fence-finalize exactly one claimed job. Errors become durable terminal state. */
 export async function runClaimedFileExportJob(options: RunClaimedFileExportJobOptionsV1): Promise<ExportJobSnapshotV1> {
   const runtime = createFileExportExecutionContext(options); const now = options.now ?? Date.now;
@@ -216,7 +229,9 @@ export async function runClaimedFileExportJob(options: RunClaimedFileExportJobOp
     if (request.format !== options.executor.format) throw new Error("Executor format does not match the claimed request.");
     const result: ExportJobExecutionResultV1 = await options.executor.execute(request, runtime.context);
     const current = await runtime.snapshot();
-    const finishedAt = now();
+    // Wall clocks can move backwards during long exports. Lease writes must
+    // still remain monotonic relative to the durable heartbeat and staged bytes.
+    const finishedAt = leasedWriteTime(current, now(), result.stagedArtifact.stagedAt);
     const finalized = await options.jobs.finalizeArtifact({ id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, stagedArtifact: result.stagedArtifact, reportRef: result.reportRef, reportSummary: result.reportSummary, finishedAt });
     await appendCommittedEvent(options.jobs, finalized, { kind: "state", at: finishedAt, from: "running", to: "succeeded" });
     await appendCommittedEvent(options.jobs, finalized, { kind: "artifact", at: finishedAt, artifact: finalized.artifact! });
@@ -225,13 +240,13 @@ export async function runClaimedFileExportJob(options: RunClaimedFileExportJobOp
     const current = await options.jobs.get(options.claimed.id); if (!current) throw error;
     if (current.state === "succeeded" || current.state === "failed" || current.state === "cancelled" || current.state === "interrupted") return current;
     if (current.state === "cancelling") {
-      const at = now();
+      const at = leasedWriteTime(current, now());
       const cancelled = await options.jobs.compareAndSet({ kind: "transition", id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, to: "cancelled", at });
       await appendCommittedEvent(options.jobs, cancelled, { kind: "state", at, from: "cancelling", to: "cancelled" });
       return cancelled;
     }
     if (current.state === "running") {
-      const at = now();
+      const at = leasedWriteTime(current, now());
       const durableError = durableExecutorFailure(error, current.stage, at);
       const failed = await options.jobs.compareAndSet({ kind: "transition", id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, to: "failed", at, error: durableError });
       await appendCommittedEvent(options.jobs, failed, { kind: "state", at, from: "running", to: "failed" });
