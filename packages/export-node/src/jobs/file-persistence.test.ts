@@ -904,7 +904,7 @@ describe("file export persistence", () => {
       leaseDurationMs: 10_000,
     });
 
-    const checkpoint = await persistence.jobs.commitExecutorCheckpoint({
+    const checkpoint = await persistence.jobs.commitExecutorCheckpoint<{ ref: string }>({
       key: "docx:checkpoint-heartbeat-race",
       jobId: claimed.id,
       leaseEpoch: claimed.leaseEpoch,
