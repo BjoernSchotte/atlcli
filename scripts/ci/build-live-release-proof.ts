@@ -107,6 +107,7 @@ interface GitHubReleaseAttestation {
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const SHA = /^[0-9a-f]{40}$/;
+const EXTENSION_MARKER_SUFFIX = ".atlcli-release-extraction-v1";
 const CLI_TARGETS = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"];
 const BREW_TARGETS = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"];
 const PACKED_SUITES = ["worker", "jobs", "research", "rovo", "palette"];
@@ -244,7 +245,9 @@ export function buildLiveReleaseProof(input: {
   } as ReleaseIdentity;
   const expectedNames = expectedReleaseAssetNames(identity);
   const actualFiles = readdirSync(input.releaseDir)
-    .filter((name) => statSync(join(input.releaseDir, name)).isFile())
+    .filter((name) =>
+      statSync(join(input.releaseDir, name)).isFile() && !name.endsWith(EXTENSION_MARKER_SUFFIX)
+    )
     .sort();
   if (JSON.stringify(actualFiles) !== JSON.stringify(expectedNames)) throw new Error("downloaded live asset inventory mismatch");
   const assets = actualFiles.map((filename) => {

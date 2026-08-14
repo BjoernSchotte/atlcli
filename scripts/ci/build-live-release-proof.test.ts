@@ -32,6 +32,7 @@ function fixture() {
     requiredJob: { conclusion: "success" as const },
   };
   for (const name of assetNames) writeFileSync(join(root, name), name);
+  writeFileSync(join(root, "extension.atlcli-release-extraction-v1"), "owned by atlcli release verifier\n");
   writeFileSync(join(root, "build-metadata.json"), canonicalJson(metadata));
   writeFileSync(join(root, "source-eligibility.json"), canonicalJson(eligibility));
   writeFileSync(join(root, "extension", "manifest.json"), JSON.stringify({ version: "0.17.2.12" }));

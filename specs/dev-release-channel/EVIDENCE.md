@@ -36,10 +36,26 @@ test validates schemas and scans receipts before publication.
 
 ## Final live receipts
 
-DR-09 is proven by the mutation-free rehearsal receipt above. DR-10 must add a receipt that
-validates against
-[`evidence/schemas/live-release-proof.schema.json`](evidence/schemas/live-release-proof.schema.json)
-and links one real immutable GitHub dev prerelease plus the exact published
-`atlcli-dev` formula commit. DR-10 remains open until downloaded CLI binaries,
-the downloaded extension ZIP, stable-latest isolation, macOS/Linux Homebrew
-install/test, manual-trigger parity, and schedule activation are all proven.
+| Receipt | Bound result | Status |
+|---------|--------------|--------|
+| [`evidence/DR-10-live-release-proof.json`](evidence/DR-10-live-release-proof.json) | Immutable ten-asset prerelease [`dev-20260813.32.1-18184731`](https://github.com/BjoernSchotte/atlcli/releases/tag/dev-20260813.32.1-18184731), exact downloaded-byte verification, five native CLI consumers, full packed-Chromium matrix and four native Homebrew consumers at tap commit [`050ac914`](https://github.com/BjoernSchotte/homebrew-tap/commit/050ac914d6db5d0e4fb0f3b448bc2199bfe57bc7) | Live proven |
+| [`evidence/DR-10-scheduled-live-release-proof.json`](evidence/DR-10-scheduled-live-release-proof.json) | Real `schedule` event, immutable ten-asset prerelease [`dev-20260814.34.1-e439c62f`](https://github.com/BjoernSchotte/atlcli/releases/tag/dev-20260814.34.1-e439c62f), exact downloaded-byte verification, five native CLI consumers, full packed-Chromium matrix and four native Homebrew consumers at tap commit [`b94a1934`](https://github.com/BjoernSchotte/homebrew-tap/commit/b94a1934bee2e02a3e6cfc017eac0ffd8b10871b) | Scheduled live proven |
+| [`evidence/DR-10-operations-proof.json`](evidence/DR-10-operations-proof.json) | Manual default-source No-op, forced rebuild, forward rollback plus recovery, retention dry run, operator configuration, pinned-font cache hit and later scheduled immutable No-op | Live proven |
+
+The selected final scheduled release binds source SHA
+`e439c62f318bee363045ef8beab62800704213f0` to canonical main CI run
+[`31755459683`](https://github.com/BjoernSchotte/atlcli/actions/runs/31755459683),
+scheduled dev-release run
+[`31764529357`](https://github.com/BjoernSchotte/atlcli/actions/runs/31764529357)
+and Homebrew tap run
+[`31764886975`](https://github.com/BjoernSchotte/homebrew-tap/actions/runs/31764886975).
+The later scheduled run
+[`31769502152`](https://github.com/BjoernSchotte/atlcli/actions/runs/31769502152)
+selected the same immutable tag and completed through the explicit No-op path
+without a new release or formula commit.
+GitHub stable latest remains [`v0.17.2`](https://github.com/BjoernSchotte/atlcli/releases/tag/v0.17.2).
+
+The nightly variable is enabled and the deployed cron is `17 2 * * *`. The
+temporary acceptance retry cron was removed after the real scheduled build and
+scheduled No-op were captured. DR-10 is complete; the manual run was not used
+as a substitute for the time-bound schedule proof.

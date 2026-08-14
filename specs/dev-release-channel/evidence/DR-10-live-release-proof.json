@@ -1,0 +1,179 @@
+{
+  "assets": [
+    {
+      "filename": "atlcli-darwin-arm64.tar.gz",
+      "sha256": "3d9e5cea4347e23436caede7b0c5a96198fe1b3ff83f418069c86831bdde88c3",
+      "size": 46555835
+    },
+    {
+      "filename": "atlcli-darwin-x64.tar.gz",
+      "sha256": "2c7cc70aa897c1c5e823d4193eafc6f69130367d43475217c50938642f4ba994",
+      "size": 48536685
+    },
+    {
+      "filename": "atlcli-extension-chrome-mv3-dev-20260813.32.1-18184731.zip",
+      "sha256": "e251cfb492cf5526274f0eeaf25a5ef961f2780dc14861376c5842902ad27e8b",
+      "size": 21350791
+    },
+    {
+      "filename": "atlcli-linux-arm64.tar.gz",
+      "sha256": "65c11a26e13209273a3cf064e917535c89164733152ec39d480d1b01da9abec9",
+      "size": 57628133
+    },
+    {
+      "filename": "atlcli-linux-x64.tar.gz",
+      "sha256": "3dd7aea094103dc35e2a7756449e4543275ac412ec06ed67ec98db1235a207b5",
+      "size": 57935546
+    },
+    {
+      "filename": "atlcli-windows-x64.zip",
+      "sha256": "282df158e7fe42c6322130fc8f062d32571e9cf133faf044e4bb5b476425f419",
+      "size": 60343287
+    },
+    {
+      "filename": "build-metadata.json",
+      "sha256": "94c2fe674a57b2177ffc43ac355748b3d48ba06c4f77fef5ef5652cd075776de",
+      "size": 2409
+    },
+    {
+      "filename": "checksums.txt",
+      "sha256": "0e12dbf928ad572ee27a099fb2a5500af62e98699c4746422de87d93ee6504a9",
+      "size": 762
+    },
+    {
+      "filename": "security-attestation.json",
+      "sha256": "607ce9842495b942be096200a77dc99745181022f19b0a381957c752f9764e3c",
+      "size": 1273
+    },
+    {
+      "filename": "source-eligibility.json",
+      "sha256": "a05d41ddff7442f644cc9f43961816d4c99164160a10a976a5da1c993f37a5b9",
+      "size": 734
+    }
+  ],
+  "extension": {
+    "archiveSha256": "e251cfb492cf5526274f0eeaf25a5ef961f2780dc14861376c5842902ad27e8b",
+    "inventorySha256": "9242912128d6c502575aa6e8df907a0188433ed83ce87d9e5b421b136493ea3e",
+    "manifestVersion": "0.17.2.32",
+    "packedChromiumSuites": {
+      "jobs": "success",
+      "palette": "success",
+      "research": "success",
+      "rovo": "success",
+      "worker": "success"
+    }
+  },
+  "homebrew": {
+    "formulaSha256": "3e6fcb32ce3f5dd03e1868daba8b933edca256faf0a703a4ca5d5e50b811320d",
+    "installedReleaseInfo": {
+      "buildId": "dev-20260813.32.1-18184731",
+      "channel": "dev",
+      "homebrewVersion": "20260813124329.32.1",
+      "releaseTag": "dev-20260813.32.1-18184731",
+      "schema": "atlcli.release-info/v1",
+      "sourceSha": "18184731cf128bf06ccc8a3c287a6b026f41b658",
+      "version": "0.17.2-dev.20260813.32.1+18184731"
+    },
+    "nativeMatrix": {
+      "darwin-arm64": {
+        "hostCpu": "arm64",
+        "result": "success",
+        "rubyPlatform": "arm64-darwin24"
+      },
+      "darwin-x64": {
+        "hostCpu": "x86_64",
+        "result": "success",
+        "rubyPlatform": "x86_64-darwin23"
+      },
+      "linux-arm64": {
+        "hostCpu": "aarch64",
+        "result": "success",
+        "rubyPlatform": "aarch64-linux-gnu"
+      },
+      "linux-x64": {
+        "hostCpu": "x86_64",
+        "result": "success",
+        "rubyPlatform": "x86_64-linux-gnu"
+      }
+    },
+    "pointerSha256": "745c77fb3e70b6ebade50dd0b9694bb9fba3a6bc6f5ec333fc34d5e2015b8fe2",
+    "releaseTag": "dev-20260813.32.1-18184731",
+    "tapCommit": "050ac914d6db5d0e4fb0f3b448bc2199bfe57bc7",
+    "tapCommitUrl": "https://github.com/BjoernSchotte/homebrew-tap/commit/050ac914d6db5d0e4fb0f3b448bc2199bfe57bc7"
+  },
+  "privacy": {
+    "containsAbsoluteHomePaths": false,
+    "containsRawLogs": false,
+    "containsSecrets": false,
+    "containsTenantData": false
+  },
+  "recordedAt": "2026-08-13T12:58:39.428Z",
+  "release": {
+    "attestation": {
+      "assetCount": 10,
+      "buildMetadataSha256": "94c2fe674a57b2177ffc43ac355748b3d48ba06c4f77fef5ef5652cd075776de",
+      "predicateType": "https://in-toto.io/attestation/release/v0.2",
+      "signer": "https://dotcom.releases.github.com",
+      "verifiedAt": "2026-08-13T12:48:43Z"
+    },
+    "buildId": "dev-20260813.32.1-18184731",
+    "draft": false,
+    "immutable": true,
+    "prerelease": true,
+    "stableLatestUnchanged": true,
+    "tag": "dev-20260813.32.1-18184731",
+    "url": "https://github.com/BjoernSchotte/atlcli/releases/tag/dev-20260813.32.1-18184731"
+  },
+  "schema": "atlcli.dev-release-live-proof/v1",
+  "source": {
+    "advisoryPolicyVersion": "atlcli.dev-release-eligibility/v1",
+    "canonicalMainPushAttempt": 1,
+    "canonicalMainPushRunId": 31700826175,
+    "decision": "eligible",
+    "requiredAggregate": "success",
+    "requiredPolicyVersion": "atlcli.dev-release-eligibility/v1",
+    "sha": "18184731cf128bf06ccc8a3c287a6b026f41b658"
+  },
+  "tests": {
+    "exactDownloadedAssetVerifier": "success",
+    "githubBuildMetadataAssetAttestation": "success",
+    "githubReleaseAttestation": "success",
+    "homebrewAuditInstallTestSwitchMatrix": "success",
+    "nativeCliMatrix": "success",
+    "packedChromium": "success",
+    "stableLatestIsolation": "success"
+  },
+  "toolchain": {
+    "bun": "1.3.14",
+    "lockfileSha256": "500af2791c63aa4a80934cc03491f47b3536164b484d92090db757cd89624f6d",
+    "runnerImages": {
+      "darwin-arm64": {
+        "arch": "arm64",
+        "platform": "darwin"
+      },
+      "darwin-x64": {
+        "arch": "x64",
+        "platform": "darwin"
+      },
+      "linux-arm64": {
+        "arch": "arm64",
+        "platform": "linux"
+      },
+      "linux-x64": {
+        "arch": "x64",
+        "platform": "linux"
+      },
+      "windows-x64": {
+        "arch": "x64",
+        "platform": "win32"
+      }
+    },
+    "wxt": "0.20.27"
+  },
+  "workflow": {
+    "attempt": 1,
+    "event": "workflow_dispatch",
+    "runId": 31701377742,
+    "url": "https://github.com/BjoernSchotte/atlcli/actions/runs/31701377742"
+  }
+}

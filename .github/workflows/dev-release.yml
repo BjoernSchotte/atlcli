@@ -2,12 +2,7 @@ name: Dev Release
 
 on:
   schedule:
-    # Normal nightly dev channel.
     - cron: "17 2 * * *"
-    # One-shot acceptance retry: the 2026-08-13 23:30 UTC event was not
-    # created by GitHub's scheduler. Remove this line after the scheduled
-    # release proof has been captured.
-    - cron: "15 0 14 8 *"
   workflow_dispatch:
     inputs:
       source_sha:
