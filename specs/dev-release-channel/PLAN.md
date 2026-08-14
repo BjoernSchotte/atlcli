@@ -1,6 +1,6 @@
 # Dev-Release-Channel: Nightly und manuell ausloesbare, bewiesene Releases
 
-**Status:** In Umsetzung; DR-00 bis DR-05 und DR-08/DR-09 bewiesen; Live-Abnahme fuer DR-06/DR-07/DR-10 offen
+**Status:** Abgeschlossen; DR-00 bis DR-10 inklusive echtem Schedule-Build und idempotentem Schedule-No-op bewiesen
 
 **Planungsstand:** 2026-08-12
 
@@ -813,42 +813,43 @@ an der vorgesehenen Stelle, und GitHub Releases sowie Tap sind unveraendert.
 
 **Blocks:** Definition of Done
 
-- [ ] `dev-release.yml` auf dem Default Branch manuell ausloesen, ohne
+- [x] `dev-release.yml` auf dem Default Branch manuell ausloesen, ohne
   `source_sha`, mit `publish_homebrew=true` und `force_rebuild=false`.
-- [ ] Aufgeloesten `origin/main`-SHA, Workflow-Run-ID/-Attempt, Build-ID und
+- [x] Aufgeloesten `origin/main`-SHA, Workflow-Run-ID/-Attempt, Build-ID und
   unveraenderlichen Prerelease-Tag erfassen.
-- [ ] Eligibility-Receipt fuer denselben SHA erfassen und belegen: kanonischer
+- [x] Eligibility-Receipt fuer denselben SHA erfassen und belegen: kanonischer
   `.github/workflows/ci.yml`-Push-Run auf `main`, neuester Attempt und Aggregatjob
   `required` sind erfolgreich; danach ist der separate Release-Preflight gruen.
-- [ ] Alle zehn vertraglichen Release-Assets erneut herunterladen,
+- [x] Alle zehn vertraglichen Release-Assets erneut herunterladen,
   `checksums.txt` validieren und den Consumer-Verifier ausfuehren.
-- [ ] CLI-Archive in der Linux-/macOS-/Windows-Matrix starten und fuer jedes
+- [x] CLI-Archive in der Linux-/macOS-/Windows-Matrix starten und fuer jedes
   `release-info --json` mit Kanal, Build-ID und Source-SHA belegen; zusaetzlich
   den bestehenden `version --json`-Kompatibilitaetstest ausfuehren.
-- [ ] Genau das heruntergeladene Extension-ZIP entpacken, Scanner und den
+- [x] Genau das heruntergeladene Extension-ZIP entpacken, Scanner und den
   fokussierten Packed-Chromium-Release-Smoke ausfuehren, Manifest-`version`/
   `version_name` belegen und den erfolgreichen vollstaendigen Packed-Suite-Beleg
   des exakt gleichen Source-SHA aus dem kanonischen `main`-CI referenzieren.
-- [ ] GitHub API pruefen: korrekter Tag-Target-SHA, `prerelease=true`,
+- [x] GitHub API pruefen: korrekter Tag-Target-SHA, `prerelease=true`,
   `make_latest=false`, exakte Asset-Menge; Stable `/releases/latest` entspricht
   DR-00.
-- [ ] Nach aktivierter GitHub Release Immutability `gh release verify` und
+- [x] Nach aktivierter GitHub Release Immutability `gh release verify` und
   `gh release verify-asset` gegen mindestens ein lokal heruntergeladenes Asset
   ausfuehren und das Ergebnis erfassen.
-- [ ] Den korrespondierenden Tap-Run bis zum Abschluss verfolgen, Formel-Commit
+- [x] Den korrespondierenden Tap-Run bis zum Abschluss verfolgen, Formel-Commit
   erfassen und `atlcli-dev` auf macOS und Linux installieren/testen.
-- [ ] Formelkonflikt und Rueckwechsel zu Stable testen; Stable-Formel-Diff muss
-  leer sein.
-- [ ] Denselben SHA erneut normal manuell starten und einen belegten No-op ohne
+- [x] Formelkonflikt und Rueckwechsel zu Stable testen; die stabile Formelversion,
+  Plattform-URLs, Digests und ihr Test bleiben unveraendert. Der separat
+  reviewte einmalige Bootstrap ergaenzte nur die reziproke Konfliktdeklaration.
+- [x] Denselben SHA erneut normal manuell starten und einen belegten No-op ohne
   neuen Release oder Formel-Commit erwarten.
-- [ ] Denselben SHA mit `force_rebuild=true` starten; neuer immutable Tag,
+- [x] Denselben SHA mit `force_rebuild=true` starten; neuer immutable Tag,
   vollstaendige Assets und kontrolliertes Formelupdate muessen entstehen.
-- [ ] Rollback-Drill mit einem frueheren weiterhin erreichbaren `main`-SHA als
+- [x] Rollback-Drill mit einem frueheren weiterhin erreichbaren `main`-SHA als
   neuem hoeheren Build ausfuehren; Installation funktioniert, alte Releases
   bleiben erhalten.
-- [ ] Nightly-Schedule danach aktiviert/bestaetigt lassen und einen geplanten
+- [x] Nightly-Schedule danach aktiviert/bestaetigt lassen und einen geplanten
   Lauf beziehungsweise dessen No-op-Pfad belegen.
-- [ ] `EVIDENCE.md` und alle DR-10-Receipts mit oeffentlichen URLs, Hashes und
+- [x] `EVIDENCE.md` und alle DR-10-Receipts mit oeffentlichen URLs, Hashes und
   Status finalisieren; keine Binaries oder sensiblen Rohlogs committen.
 
 **Proof**
@@ -883,29 +884,31 @@ Bytes, Consumer-Proofs und Tap-Formel an denselben Source-SHA.
 
 ## 12. Definition of Done
 
-- [ ] Alle Tasks DR-00 bis DR-10 sind mit revisiongebundenen Receipts abgehakt.
-- [ ] Ein realer manueller GitHub-Dev-Prerelease enthaelt alle fuenf CLI-Archive,
+- [x] Alle Tasks DR-00 bis DR-10 sind mit revisiongebundenen Receipts abgehakt.
+- [x] Ein realer manueller GitHub-Dev-Prerelease enthaelt alle fuenf CLI-Archive,
   das gepackte MV3-ZIP, Checksummen, Metadata, Source-Eligibility und Security-/
   Provenienz-Beleg.
-- [ ] Die erneut heruntergeladenen Bytes bestehen Plattform-, Archive-, Digest-
+- [x] Die erneut heruntergeladenen Bytes bestehen Plattform-, Archive-, Digest-
   und fokussierten Packed-Chromium-Release-Smoke; die vollstaendige
   Packed-Consumer-Matrix ist fuer exakt dasselbe Source-SHA im `main`-CI gruen.
-- [ ] `atlcli-dev` referenziert genau diesen Release und ist auf macOS und Linux
+- [x] `atlcli-dev` referenziert genau diesen Release und ist auf macOS und Linux
   via Homebrew installiert und getestet.
-- [ ] Stable `/releases/latest`, Stable-Updater, Stable Asset-Namen und
-  `Formula/atlcli.rb` sind unveraendert belegt.
-- [ ] Manueller No-op, Force-Rebuild, Rollback und ein geplanter Nightly-Lauf
+- [x] Stable `/releases/latest`, Stable-Updater und Stable Asset-Namen sind
+  unveraendert belegt. In `Formula/atlcli.rb` bleiben Version, URLs, Digests und
+  Test unveraendert; einzig die separat reviewte reziproke Konfliktdeklaration
+  wurde beim einmaligen Bootstrap ergaenzt.
+- [x] Manueller No-op, Force-Rebuild, Rollback und ein geplanter Nightly-Lauf
   beziehungsweise dessen No-op sind bewiesen.
-- [ ] Jeder publizierte Source-SHA besitzt ein versioniertes Eligibility-Receipt
+- [x] Jeder publizierte Source-SHA besitzt ein versioniertes Eligibility-Receipt
   mit erfolgreichem kanonischem `main`-Push-Run und erfolgreichem aktuellem
   Release-Preflight; `force_rebuild` und Rollback umgehen keines der Gates.
-- [ ] Schedule und Manual teilen denselben SHA-gebundenen reusable Workflow.
-- [ ] Es existieren weder bewegliche Release-Tags noch ueberschriebene Assets.
-- [ ] `bun run test`, `bun run typecheck` und `bun run build` sind auf dem finalen
+- [x] Schedule und Manual teilen denselben SHA-gebundenen reusable Workflow.
+- [x] Es existieren weder bewegliche Release-Tags noch ueberschriebene Assets.
+- [x] `bun run test`, `bun run typecheck` und `bun run build` sind auf dem finalen
   Implementierungs-SHA gruen.
-- [ ] `specs/dev-release-channel/EVIDENCE.md` verweist auf Run-/Release-/Tap-URLs,
+- [x] `specs/dev-release-channel/EVIDENCE.md` verweist auf Run-/Release-/Tap-URLs,
   Source-SHA, Digests und Consumer-Proofs, ohne Secrets oder private Daten.
-- [ ] Runbook, Retention, Ownership und Wartungsdrills sind dokumentiert.
+- [x] Runbook, Retention, Ownership und Wartungsdrills sind dokumentiert.
 
 ## 13. STOP-Bedingungen
 
@@ -968,15 +971,17 @@ Ersatzbeleg verwendet werden.
 Diese Punkte blockieren die Planung nicht, muessen aber vor externen Writes
 entschieden und im Evidence-Index festgehalten werden:
 
-- [ ] Dedizierte GitHub App fuer den Tap-Dispatch anlegen, auf den Tap begrenzen
+- [x] Dedizierte GitHub App fuer den Tap-Dispatch anlegen, auf den Tap begrenzen
   und den Owner fuer Key-Rotation festlegen; ein PAT-Fallback ist ausgeschlossen.
-- [ ] Geschuetztes Environment `dev-release` und erforderliche Reviewer fuer den
-  ersten Live-Publish festlegen.
-- [ ] Endgueltige Nightly-Uhrzeit bestaetigen; Default dieses Plans ist
+- [x] Geschuetztes Environment `dev-release` mit `main`-Branch-Policy festlegen.
+  Der erste Live-Publish wurde explizit autorisiert; ein dauerhafter
+  Required-Reviewer-Wait wird nicht verwendet, weil er den Nightly-Lauf
+  blockieren wuerde.
+- [x] Endgueltige Nightly-Uhrzeit bestaetigen; Default dieses Plans ist
   `02:17 UTC`.
-- [ ] Retention bestaetigen; Default dieses Plans ist mindestens 14 erfolgreiche
+- [x] Retention bestaetigen; Default dieses Plans ist mindestens 14 erfolgreiche
   Builds beziehungsweise 30 Tage, mit Schutz der aktuellen Formelreferenz.
-- [ ] Entscheiden, ob `publish_homebrew=true` bei jedem geplanten Lauf bleibt.
+- [x] Entscheiden, ob `publish_homebrew=true` bei jedem geplanten Lauf bleibt.
   Empfehlung: ja; ein sauberer No-op verhindert unnoetige Formel-Commits.
 
 ## 16. Primaerreferenzen

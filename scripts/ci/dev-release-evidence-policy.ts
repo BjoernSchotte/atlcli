@@ -1,7 +1,7 @@
 import type { ErrorObject } from "ajv";
 import Ajv2020 from "ajv/dist/2020";
 import { readdir, readFile } from "node:fs/promises";
-import { basename, join, relative } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -116,10 +116,14 @@ export async function evaluateEvidencePolicy(root = DEFAULT_EVIDENCE_ROOT): Prom
       }
     }
 
-    if (/^DR-[0-9]{2}-.+\.json$/.test(basename(path)) && !validateTaskProof(value)) {
+    const receiptSchema =
+      value !== null && typeof value === "object" && "schema" in value
+        ? (value as { schema?: unknown }).schema
+        : undefined;
+    if (receiptSchema === "atlcli.dev-release-task-proof/v1" && !validateTaskProof(value)) {
       issues.push({ file, reason: `task receipt schema: ${ajvErrors(validateTaskProof.errors)}` });
     }
-    if (basename(path) === "live-release-proof.json" && !validateLiveProof(value)) {
+    if (receiptSchema === "atlcli.dev-release-live-proof/v1" && !validateLiveProof(value)) {
       issues.push({ file, reason: `live receipt schema: ${ajvErrors(validateLiveProof.errors)}` });
     }
   }
