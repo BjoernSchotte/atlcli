@@ -1,8 +1,8 @@
 {
   "schema": "atlcli.dev-release-task-proof/v1",
   "task": "DR-10",
-  "recordedAt": "2026-08-13T13:06:00Z",
-  "proofedImplementationSha": "18184731cf128bf06ccc8a3c287a6b026f41b658",
+  "recordedAt": "2026-08-14T07:58:00Z",
+  "proofedImplementationSha": "e439c62f318bee363045ef8beab62800704213f0",
   "authoritativePublishedArtifact": true,
   "proof": {
     "manualDefaultSourceNoop": {
@@ -56,17 +56,32 @@
       "result": "success"
     },
     "finalCurrentMainRelease": {
-      "runId": 31701377742,
+      "runId": 31764529357,
       "attempt": 1,
-      "url": "https://github.com/BjoernSchotte/atlcli/actions/runs/31701377742",
-      "canonicalMainCiRunId": 31700826175,
-      "sourceSha": "18184731cf128bf06ccc8a3c287a6b026f41b658",
-      "tag": "dev-20260813.32.1-18184731",
-      "releaseUrl": "https://github.com/BjoernSchotte/atlcli/releases/tag/dev-20260813.32.1-18184731",
+      "event": "schedule",
+      "url": "https://github.com/BjoernSchotte/atlcli/actions/runs/31764529357",
+      "canonicalMainCiRunId": 31755459683,
+      "sourceSha": "e439c62f318bee363045ef8beab62800704213f0",
+      "tag": "dev-20260814.34.1-e439c62f",
+      "releaseUrl": "https://github.com/BjoernSchotte/atlcli/releases/tag/dev-20260814.34.1-e439c62f",
       "immutable": true,
       "assetCount": 10,
-      "tapRunId": 31701894788,
-      "tapCommit": "050ac914d6db5d0e4fb0f3b448bc2199bfe57bc7",
+      "tapRunId": 31764886975,
+      "tapCommit": "b94a1934bee2e02a3e6cfc017eac0ffd8b10871b",
+      "result": "success"
+    },
+    "scheduledNoop": {
+      "runId": 31769502152,
+      "attempt": 1,
+      "event": "schedule",
+      "url": "https://github.com/BjoernSchotte/atlcli/actions/runs/31769502152",
+      "sourceSha": "e439c62f318bee363045ef8beab62800704213f0",
+      "forceRebuild": false,
+      "decision": "noop",
+      "reason": "source-already-proven",
+      "selectedTag": "dev-20260814.34.1-e439c62f",
+      "newReleaseCreated": false,
+      "newFormulaCommitCreated": false,
       "result": "success"
     },
     "retentionDryRun": {
@@ -99,7 +114,7 @@
       "scheduleEnabledVariable": true,
       "scheduledHomebrewDefault": true
     },
-    "remainingGate": "one actual schedule-event run and its immutable no-op receipt"
+    "remainingGate": null
   },
   "privacy": {
     "containsSecrets": false,

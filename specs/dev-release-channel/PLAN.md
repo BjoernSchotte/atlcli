@@ -1,6 +1,6 @@
 # Dev-Release-Channel: Nightly und manuell ausloesbare, bewiesene Releases
 
-**Status:** In Umsetzung; DR-00 bis DR-09 und alle manuellen DR-10-Live-Gates bewiesen; erster echter Schedule-Lauf offen
+**Status:** Abgeschlossen; DR-00 bis DR-10 inklusive echtem Schedule-Build und idempotentem Schedule-No-op bewiesen
 
 **Planungsstand:** 2026-08-12
 
@@ -847,9 +847,9 @@ an der vorgesehenen Stelle, und GitHub Releases sowie Tap sind unveraendert.
 - [x] Rollback-Drill mit einem frueheren weiterhin erreichbaren `main`-SHA als
   neuem hoeheren Build ausfuehren; Installation funktioniert, alte Releases
   bleiben erhalten.
-- [ ] Nightly-Schedule danach aktiviert/bestaetigt lassen und einen geplanten
+- [x] Nightly-Schedule danach aktiviert/bestaetigt lassen und einen geplanten
   Lauf beziehungsweise dessen No-op-Pfad belegen.
-- [ ] `EVIDENCE.md` und alle DR-10-Receipts mit oeffentlichen URLs, Hashes und
+- [x] `EVIDENCE.md` und alle DR-10-Receipts mit oeffentlichen URLs, Hashes und
   Status finalisieren; keine Binaries oder sensiblen Rohlogs committen.
 
 **Proof**
@@ -884,7 +884,7 @@ Bytes, Consumer-Proofs und Tap-Formel an denselben Source-SHA.
 
 ## 12. Definition of Done
 
-- [ ] Alle Tasks DR-00 bis DR-10 sind mit revisiongebundenen Receipts abgehakt.
+- [x] Alle Tasks DR-00 bis DR-10 sind mit revisiongebundenen Receipts abgehakt.
 - [x] Ein realer manueller GitHub-Dev-Prerelease enthaelt alle fuenf CLI-Archive,
   das gepackte MV3-ZIP, Checksummen, Metadata, Source-Eligibility und Security-/
   Provenienz-Beleg.
@@ -897,16 +897,16 @@ Bytes, Consumer-Proofs und Tap-Formel an denselben Source-SHA.
   unveraendert belegt. In `Formula/atlcli.rb` bleiben Version, URLs, Digests und
   Test unveraendert; einzig die separat reviewte reziproke Konfliktdeklaration
   wurde beim einmaligen Bootstrap ergaenzt.
-- [ ] Manueller No-op, Force-Rebuild, Rollback und ein geplanter Nightly-Lauf
+- [x] Manueller No-op, Force-Rebuild, Rollback und ein geplanter Nightly-Lauf
   beziehungsweise dessen No-op sind bewiesen.
 - [x] Jeder publizierte Source-SHA besitzt ein versioniertes Eligibility-Receipt
   mit erfolgreichem kanonischem `main`-Push-Run und erfolgreichem aktuellem
   Release-Preflight; `force_rebuild` und Rollback umgehen keines der Gates.
 - [x] Schedule und Manual teilen denselben SHA-gebundenen reusable Workflow.
 - [x] Es existieren weder bewegliche Release-Tags noch ueberschriebene Assets.
-- [ ] `bun run test`, `bun run typecheck` und `bun run build` sind auf dem finalen
+- [x] `bun run test`, `bun run typecheck` und `bun run build` sind auf dem finalen
   Implementierungs-SHA gruen.
-- [ ] `specs/dev-release-channel/EVIDENCE.md` verweist auf Run-/Release-/Tap-URLs,
+- [x] `specs/dev-release-channel/EVIDENCE.md` verweist auf Run-/Release-/Tap-URLs,
   Source-SHA, Digests und Consumer-Proofs, ohne Secrets oder private Daten.
 - [x] Runbook, Retention, Ownership und Wartungsdrills sind dokumentiert.
 
