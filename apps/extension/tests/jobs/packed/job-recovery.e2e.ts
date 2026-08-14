@@ -200,6 +200,36 @@ async function installOffscreenFetchStub(
           message: "body-format atlas_doc_format is unsupported by this synthetic host"
         }), { status: 400, headers: { "content-type": "application/json" } });
       }
+      if (adfPage && !url.searchParams.has("body-format")) {
+        const pageId = decodeURIComponent(adfPage[1]);
+        if (authFailures.has(pageId)) {
+          return new Response(JSON.stringify({ message: "session expired" }), {
+            status: 401,
+            headers: { "content-type": "application/json" }
+          });
+        }
+        return new Response(JSON.stringify({
+          id: pageId,
+          title: "Packed page " + pageId,
+          status: "current",
+          version: { number: 1, createdAt: "2026-07-23T00:00:00.000Z" },
+          _links: {}
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (/\\/api\\/v2\\/pages$/.test(url.pathname) && url.searchParams.get("id")) {
+        const bulkIds = url.searchParams.get("id").split(",")
+          .filter((id) => !authFailures.has(id));
+        return new Response(JSON.stringify({
+          results: bulkIds.map((id) => ({
+            id,
+            title: "Packed page " + id,
+            status: "current",
+            version: { number: 1, createdAt: "2026-07-23T00:00:00.000Z" },
+            _links: {}
+          })),
+          _links: {}
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
       const match = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)/);
       if (!match) return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
       const pageId = decodeURIComponent(match[1]);
@@ -357,6 +387,29 @@ function installBrowserRestartFetchStub(): void {
         return new Response(JSON.stringify({
           message: "body-format atlas_doc_format is unsupported by this synthetic host"
         }), { status: 400, headers: { "content-type": "application/json" } });
+      }
+      if (adfPage && !url.searchParams.has("body-format")) {
+        const pageId = decodeURIComponent(adfPage[1]);
+        return new Response(JSON.stringify({
+          id: pageId,
+          title: "Packed page " + pageId,
+          status: "current",
+          version: { number: 1, createdAt: "2026-07-23T00:00:00.000Z" },
+          _links: {}
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (/\\/api\\/v2\\/pages$/.test(url.pathname) && url.searchParams.get("id")) {
+        const bulkIds = url.searchParams.get("id").split(",");
+        return new Response(JSON.stringify({
+          results: bulkIds.map((id) => ({
+            id,
+            title: "Packed page " + id,
+            status: "current",
+            version: { number: 1, createdAt: "2026-07-23T00:00:00.000Z" },
+            _links: {}
+          })),
+          _links: {}
+        }), { status: 200, headers: { "content-type": "application/json" } });
       }
       const match = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)/);
       if (!match) {
