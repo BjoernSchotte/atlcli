@@ -683,6 +683,21 @@ describe("fetchExportTree — space scope", () => {
     expect(titles(result)).toEqual(["Home", "A"]);
   });
 
+  test("honors maxDepth for a space rooted at its homepage", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "home", kind: "page", title: "Home", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "home", position: 0, observedVersion: 1 },
+      { id: "a1", kind: "page", title: "A1", parent: "a", position: 0, observedVersion: 1 },
+    ];
+    const source = inMemoryTreeSource(fixture, { spaceHomepage: { DOCSY: "home" } });
+    const result = await fetchExportTree(source, {
+      kind: "space",
+      spaceKey: "DOCSY",
+      maxDepth: 0,
+    });
+    expect(titles(result)).toEqual(["Home"]);
+  });
+
   test("errors with guidance when a space has no homepage", async () => {
     const source = inMemoryTreeSource([], { spaceHomepage: { EMPTY: null } });
     await expect(

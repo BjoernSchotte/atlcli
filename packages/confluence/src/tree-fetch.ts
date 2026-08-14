@@ -790,7 +790,7 @@ function normalizedScopeKey(scope: ExportScope): string {
           scope.maxDepth ?? null,
         ]);
       case "space":
-        return JSON.stringify(["space", scope.spaceKey]);
+        return JSON.stringify(["space", scope.spaceKey, scope.maxDepth ?? null]);
     }
   } catch {
     throw new ExportTreePlanError("Recovered export tree plan contains an invalid scope.");
@@ -809,7 +809,11 @@ function clonePlanScope(scope: ExportScope): ExportScope {
         ...(scope.maxDepth !== undefined ? { maxDepth: scope.maxDepth } : {}),
       };
     case "space":
-      return { kind: "space", spaceKey: scope.spaceKey };
+      return {
+        kind: "space",
+        spaceKey: scope.spaceKey,
+        ...(scope.maxDepth !== undefined ? { maxDepth: scope.maxDepth } : {}),
+      };
   }
 }
 
@@ -1132,6 +1136,7 @@ export async function fetchExportTree(
     const resolved = await source.getSpaceHomepageId(scope.spaceKey, context);
     if (!resolved) throw new SpaceHomepageError(scope.spaceKey);
     rootId = resolved;
+    maxDepth = scope.maxDepth;
   }
 
   // ---- Phase 1: ordering walk ----

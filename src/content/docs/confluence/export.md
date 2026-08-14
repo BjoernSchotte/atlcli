@@ -470,7 +470,7 @@ These flags turn a single-page export into a tree or whole-space export. See
 |--------|------|---------|-------------|
 | `--scope` | `page` \| `tree` \| `space` | `page` | What to export |
 | `--space <KEY>` | string | — | Export a whole space (implies `--scope space`); the homepage is the root chapter. Takes **no** positional page reference |
-| `--max-depth <n>` | integer ≥ 0 | unbounded | Cap traversal depth (root = depth 0, so `0` exports the root page only) |
+| `--max-depth <n>` | integer ≥ 0 | unbounded | Cap tree or space traversal depth (root/homepage = depth 0, so `0` exports only the root page) |
 | `--max-pages <n>` | integer ≥ 1 | `500` | Hard page cap; the export aborts early with a suggestion when exceeded |
 | `--max-folders <n>` | integer ≥ 1 | `200` | Hard folder cap; same early-abort behavior for folder-heavy trees |
 | `--label-include <a,b>` | comma list | — | Keep only pages carrying **any** of these labels (OR) |

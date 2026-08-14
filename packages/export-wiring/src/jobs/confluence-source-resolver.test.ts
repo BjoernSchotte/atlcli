@@ -153,6 +153,49 @@ function pageRequest(locator: ExportSourceV1["locator"] = {
 }
 
 describe("resolveConfluencePageGraphV1", () => {
+  it("preserves a space maxDepth limit through durable source resolution", async () => {
+    const calls: string[] = [];
+    const pages: readonly FixturePage[] = [
+      {
+        id: "home",
+        title: "Home",
+        version: 1,
+        parent: null,
+        position: 0,
+        source: adfSource("home"),
+      },
+      {
+        id: "child",
+        title: "Child",
+        version: 1,
+        parent: "home",
+        position: 0,
+        source: adfSource("child"),
+      },
+    ];
+    const graph = await resolveConfluencePageGraphV1(
+      {
+        kind: "confluence",
+        siteOrigin: "https://tenant.invalid",
+        locator: { kind: "space-key", spaceKey: "DOCS" },
+        scope: { kind: "space", maxDepth: 0 },
+      },
+      {
+        exporter: "pdf",
+        port: fixturePort(pages, {
+          spaceHomepage: "home",
+          onCall(method, id) {
+            calls.push(`${method}:${id}`);
+          },
+        }),
+        signal: new AbortController().signal,
+      },
+    );
+
+    expect(graph.pages.map((page) => page.id)).toEqual(["home"]);
+    expect(calls).not.toContain("getChildren:home");
+  });
+
   it("returns the ordered page/folder graph before composition in one fetch pass", async () => {
     const calls: string[] = [];
     const pages: readonly FixturePage[] = [

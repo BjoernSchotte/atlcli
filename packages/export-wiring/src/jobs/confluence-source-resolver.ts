@@ -276,7 +276,15 @@ async function resolveScope(
     if (source.scope.kind !== "space") {
       throw new TypeError("A Confluence space-key locator requires a space scope.");
     }
-    return { scope: { kind: "space", spaceKey: source.locator.spaceKey } };
+    return {
+      scope: {
+        kind: "space",
+        spaceKey: source.locator.spaceKey,
+        ...(source.scope.maxDepth !== undefined
+          ? { maxDepth: source.scope.maxDepth }
+          : {}),
+      },
+    };
   }
 
   if (source.scope.kind === "space") {

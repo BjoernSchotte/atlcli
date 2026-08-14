@@ -30,6 +30,18 @@ describe("durable CLI export job requests", () => {
     });
   });
 
+  test("keeps max-depth on an unresolved space source", () => {
+    const parsed = parseExportRequest(undefined, {
+      scope: "space",
+      space: "DOCS",
+      "max-depth": "0",
+    });
+    expect(buildCliExportSource(parsed, profile)).toMatchObject({
+      locator: { kind: "space-key", spaceKey: "DOCS" },
+      scope: { kind: "space", maxDepth: 0 },
+    });
+  });
+
   test("pins DOCX replay and legacy replace authorization but never the token", () => {
     const request = buildCliDocxJobRequest({
       id: "job-1", idempotencyKey: "key-1", createdAt: 10,

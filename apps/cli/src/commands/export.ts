@@ -633,7 +633,8 @@ function parsedRequestFromJob(request: ExportJobRequestV1): ParsedExportRequest 
     ...(pageRef ? { pageRef } : {}),
     ...(spaceKey ? { spaceKey } : {}),
     includeRoot: source.scope.kind === "tree" ? source.scope.includeRoot !== false : true,
-    ...(source.scope.kind === "tree" && source.scope.maxDepth !== undefined
+    ...((source.scope.kind === "tree" || source.scope.kind === "space") &&
+      source.scope.maxDepth !== undefined
       ? { maxDepth: source.scope.maxDepth }
       : {}),
     ...(source.maxPages !== undefined ? { maxPages: source.maxPages } : {}),

@@ -5,7 +5,7 @@ export type ExportFormat = "docx" | "pdf";
 export type ExportScope =
   | { kind: "page" }
   | { kind: "tree"; includeRoot?: boolean; maxDepth?: number }
-  | { kind: "space" };
+  | { kind: "space"; maxDepth?: number };
 
 /** Serializable label filter, structurally compatible with Confluence label filters. */
 export interface LabelFilter {

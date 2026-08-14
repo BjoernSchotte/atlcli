@@ -11,7 +11,7 @@ describe("validateExportScope", () => {
   test("accepts valid scopes and returns them unchanged", () => {
     const page: ExportScope = { kind: "page", pageId: "123" };
     const tree: ExportScope = { kind: "tree", rootPageId: "123", includeRoot: false, maxDepth: 2 };
-    const space: ExportScope = { kind: "space", spaceKey: "DOCSY" };
+    const space: ExportScope = { kind: "space", spaceKey: "DOCSY", maxDepth: 2 };
     expect(validateExportScope(page)).toBe(page);
     expect(validateExportScope(tree)).toBe(tree);
     expect(validateExportScope(space)).toBe(space);
@@ -30,8 +30,12 @@ describe("validateExportScope", () => {
     expect(() => validateExportScope({ kind: "tree", rootPageId: "1", maxDepth: 1.5 })).toThrow(
       ExportScopeError
     );
+    expect(() => validateExportScope({ kind: "space", spaceKey: "DOCS", maxDepth: -1 })).toThrow(
+      ExportScopeError
+    );
     // 0 is allowed (root-only tree).
     expect(validateExportScope({ kind: "tree", rootPageId: "1", maxDepth: 0 }).kind).toBe("tree");
+    expect(validateExportScope({ kind: "space", spaceKey: "DOCS", maxDepth: 0 }).kind).toBe("space");
   });
 });
 

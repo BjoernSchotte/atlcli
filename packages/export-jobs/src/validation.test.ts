@@ -30,7 +30,7 @@ function pdfRequest(): PdfExportJobRequestV1 {
       kind: "confluence",
       siteOrigin: "https://example.atlassian.net",
       locator: { kind: "space-key", spaceKey: "DOCS" },
-      scope: { kind: "space" },
+      scope: { kind: "space", maxDepth: 2 },
       maxPages: 500,
       maxFolders: 200,
     },
