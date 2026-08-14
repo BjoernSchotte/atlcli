@@ -1679,3 +1679,275 @@ describe("fetchExportTree — representation-neutral sources", () => {
     expect(JSON.stringify(diagnostics)).not.toContain("private");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Child snapshot failures & non-current children (issue #153)
+// ---------------------------------------------------------------------------
+
+describe("fetchExportTree — child version snapshot failures (#153)", () => {
+  // "hidden" carries no observedVersion, so the ordering walk must backfill it
+  // via getPageVersion — the exact request that 404s on a view-restricted or
+  // racing-deleted child in Confluence Cloud.
+  const fixture: FixtureNode[] = [
+    { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+    { id: "ok", kind: "page", title: "Readable", parent: "root", position: 0, observedVersion: 1 },
+    { id: "hidden", kind: "page", title: "Hidden", parent: "root", position: 1 },
+    { id: "hidden-child", kind: "page", title: "Hidden child", parent: "hidden", position: 0, observedVersion: 1 },
+  ];
+
+  const failingVersionSource = (status: number): { source: TreeSource; base: ReturnType<typeof inMemoryTreeSource> } => {
+    const base = inMemoryTreeSource(fixture);
+    const source: TreeSource = {
+      ...base,
+      async getPageVersion(id, context) {
+        if (id === "hidden") throw statusError(status);
+        return base.getPageVersion(id, context);
+      },
+    };
+    return { source, base };
+  };
+
+  test("strict mode reports the failing child as page-ambiguous-404, not a resolution crash", async () => {
+    const { source } = failingVersionSource(404);
+    const failure = await fetchExportTree(source, tree("root")).then(
+      () => { throw new Error("expected the export to fail"); },
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ExportCompletenessError);
+    expect((failure as ExportCompletenessError).code).toBe("page-ambiguous-404");
+    expect((failure as ExportCompletenessError).affected).toEqual([
+      { id: "hidden", title: "Hidden" },
+    ]);
+  });
+
+  test("partial mode skips the failing child and its subtree with a note", async () => {
+    const { source, base } = failingVersionSource(404);
+    const result = await fetchExportTree(source, tree("root"), { completenessMode: "partial" });
+    expect(titles(result)).toEqual(["Root", "Readable"]);
+    expect(result.complete).toBe(false);
+    expect(result.notes.some(
+      (note) => note.code === "page-ambiguous-404" && note.message.includes("(hidden)"),
+    )).toBe(true);
+    // Neither the failing page nor its subtree may reach body fetch.
+    expect(base.getPageIds).not.toContain("hidden");
+    expect(base.getPageIds).not.toContain("hidden-child");
+  });
+
+  test("a 403 child snapshot is classified page-unreadable", async () => {
+    const { source } = failingVersionSource(403);
+    const failure = await fetchExportTree(source, tree("root")).then(
+      () => { throw new Error("expected the export to fail"); },
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ExportCompletenessError);
+    expect((failure as ExportCompletenessError).code).toBe("page-unreadable");
+  });
+
+  test("server errors on a child snapshot keep their semantics (no downgrade)", async () => {
+    const { source } = failingVersionSource(500);
+    const failure = await fetchExportTree(source, tree("root")).then(
+      () => { throw new Error("expected the export to fail"); },
+      (error: unknown) => error,
+    );
+    expect(failure).not.toBeInstanceOf(ExportCompletenessError);
+    expect((failure as Error).message).toContain("(500)");
+  });
+
+  test("a failing ROOT snapshot stays fatal even in partial mode", async () => {
+    const base = inMemoryTreeSource([
+      { id: "root", kind: "page", title: "Root", parent: null },
+      { id: "ok", kind: "page", title: "Readable", parent: "root", position: 0, observedVersion: 1 },
+    ]);
+    const source: TreeSource = {
+      ...base,
+      async getPageVersion(id, context) {
+        if (id === "root") throw statusError(404);
+        return base.getPageVersion(id, context);
+      },
+    };
+    const failure = await fetchExportTree(source, tree("root"), { completenessMode: "partial" }).then(
+      () => { throw new Error("expected the export to fail"); },
+      (error: unknown) => error,
+    );
+    expect(failure).not.toBeInstanceOf(ExportCompletenessError);
+    expect((failure as Error).message).toContain("(404)");
+  });
+});
+
+describe("confluenceTreeSource — non-current children & bulk snapshots (#153)", () => {
+  const stubClient = () => ({
+    deploymentType: "cloud" as const,
+    async getPageDetails(id: string) {
+      return { id, title: id, storage: `<p>${id}</p>`, version: 1 };
+    },
+    async getPageVersion(id: string) {
+      return { title: id, version: 1 };
+    },
+    async getChildrenWithPosition(): Promise<never> {
+      throw new Error("Cloud hierarchy must not call REST v1 page children");
+    },
+    async getFolderChildren() { return []; },
+    async getSpaceHomepageId() { return null; },
+    async searchPages() { return []; },
+  });
+
+  test("draft and archived children are skipped with a note instead of 404-ing the export", async () => {
+    const versionCalls: string[] = [];
+    const source = confluenceTreeSource({
+      ...stubClient(),
+      async getPageVersion(id: string) {
+        versionCalls.push(id);
+        return { title: id, version: 1 };
+      },
+      async getPageDirectChildren(id: string) {
+        return id === "root"
+          ? [
+              { id: "published", title: "Published", type: "page", status: "current", position: 1 },
+              { id: "draft", title: "Draft", type: "page", status: "draft", position: 2 },
+              { id: "archived", title: "Old", type: "page", status: "archived", position: 3 },
+            ]
+          : [];
+      },
+    });
+
+    const result = await fetchExportTree(source, tree("root"));
+    expect(result.nodes.map((node) => nodeId(node))).toEqual(["root", "published"]);
+    expect(result.complete).toBe(true);
+    const skips = result.notes.filter((note) => note.code === "child-not-current");
+    expect(skips.map((note) => note.message)).toEqual([
+      expect.stringContaining('"Draft" (draft) has status "draft"'),
+      expect.stringContaining('"Old" (archived) has status "archived"'),
+    ]);
+    // The draft/archived ids must never reach a by-id version read (the #153 404).
+    expect(versionCalls).not.toContain("draft");
+    expect(versionCalls).not.toContain("archived");
+  });
+
+  test("bulk snapshots resolve child versions without per-child page-version calls", async () => {
+    const versionCalls: string[] = [];
+    const bulkCalls: string[][] = [];
+    const source = confluenceTreeSource({
+      ...stubClient(),
+      async getPageDetails(id: string) {
+        return { id, title: id, storage: `<p>${id}</p>`, version: 7 };
+      },
+      async getPageVersion(id: string) {
+        versionCalls.push(id);
+        return { title: id, version: 7 };
+      },
+      async getPageVersions(ids: readonly string[]) {
+        bulkCalls.push([...ids]);
+        return new Map(ids.map((id) => [id, { title: id, version: 7 }]));
+      },
+      async getPageDirectChildren(id: string) {
+        return id === "root"
+          ? [
+              { id: "a", title: "A", type: "page", status: "current", position: 1 },
+              { id: "b", title: "B", type: "page", status: "current", position: 2 },
+            ]
+          : [];
+      },
+    });
+
+    const result = await fetchExportTree(source, tree("root"));
+    expect(result.nodes.map((node) => nodeId(node))).toEqual(["root", "a", "b"]);
+    expect(bulkCalls).toEqual([["a", "b"]]);
+    // Only the root needed an individual snapshot; children came from the bulk read.
+    expect(versionCalls).toEqual(["root"]);
+    const children = result.nodes.filter(
+      (node): node is ExportPageNode => node.kind === "page" && node.pageId !== "root",
+    );
+    expect(children.map((node) => node.meta.observedVersion)).toEqual([7, 7]);
+  });
+
+  test("a child missing from the bulk snapshot falls back to the per-page path", async () => {
+    const versionCalls: string[] = [];
+    const source = confluenceTreeSource({
+      ...stubClient(),
+      async getPageVersion(id: string) {
+        versionCalls.push(id);
+        if (id === "restricted") throw statusError(404);
+        return { title: id, version: 1 };
+      },
+      async getPageVersions(ids: readonly string[]) {
+        return new Map(
+          ids.filter((id) => id !== "restricted").map((id) => [id, { title: id, version: 3 }]),
+        );
+      },
+      async getPageDirectChildren(id: string) {
+        return id === "root"
+          ? [
+              { id: "a", title: "A", type: "page", status: "current", position: 1 },
+              { id: "restricted", title: "Restricted", type: "page", status: "current", position: 2 },
+            ]
+          : [];
+      },
+    });
+
+    const result = await fetchExportTree(source, tree("root"), { completenessMode: "partial" });
+    expect(result.nodes.map((node) => nodeId(node))).toEqual(["root", "a"]);
+    expect(result.complete).toBe(false);
+    expect(result.notes.some((note) => note.code === "page-ambiguous-404")).toBe(true);
+    expect(versionCalls).toContain("restricted");
+  });
+
+  test("a failing bulk snapshot degrades to per-child snapshots, not a failed export", async () => {
+    const versionCalls: string[] = [];
+    const source = confluenceTreeSource({
+      ...stubClient(),
+      async getPageDetails(id: string) {
+        return { id, title: id, storage: `<p>${id}</p>`, version: 2 };
+      },
+      async getPageVersion(id: string) {
+        versionCalls.push(id);
+        return { title: id, version: 2 };
+      },
+      async getPageVersions(): Promise<never> {
+        throw statusError(500);
+      },
+      async getPageDirectChildren(id: string) {
+        return id === "root"
+          ? [{ id: "a", title: "A", type: "page", status: "current", position: 1 }]
+          : [];
+      },
+    });
+
+    const result = await fetchExportTree(source, tree("root"));
+    expect(result.nodes.map((node) => nodeId(node))).toEqual(["root", "a"]);
+    expect(versionCalls).toContain("a");
+  });
+
+  test("a failing child snapshot reports a node=child diagnostic", async () => {
+    const diagnostics: unknown[] = [];
+    const source = confluenceTreeSource({
+      ...stubClient(),
+      async getPageVersion(id: string) {
+        if (id === "restricted") {
+          throw Object.assign(new Error("private response body"), {
+            status: 404,
+            requestId: "request-child",
+          });
+        }
+        return { title: id, version: 1 };
+      },
+      async getPageDirectChildren(id: string) {
+        return id === "root"
+          ? [{ id: "restricted", title: "Restricted", type: "page", status: "current", position: 1 }]
+          : [];
+      },
+    });
+
+    await expect(fetchExportTree(source, tree("root"), {
+      onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); },
+    })).rejects.toBeInstanceOf(ExportCompletenessError);
+    expect(diagnostics).toEqual([{
+      code: "hierarchy-request-failed",
+      deployment: "cloud",
+      operation: "page-version",
+      status: 404,
+      requestId: "request-child",
+      node: "child",
+    }]);
+    expect(JSON.stringify(diagnostics)).not.toContain("private response body");
+  });
+});

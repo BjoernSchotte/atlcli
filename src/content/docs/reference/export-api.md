@@ -147,8 +147,17 @@ See the package README for complete CLI/session/Forge examples and
   `descendants` for endpoint compatibility failures; authentication, throttling,
   cancellation, and server failures are never hidden by that fallback. Data Center
   continues to use its REST v1 page tree.
+  Listed children with a non-`current` status (draft, archived) are mapped to
+  `kind: "unsupported"` carrying that `status`, so traversal never issues a by-id
+  read that would 404. Child versions resolve through the optional bulk
+  `getPageVersions` client method (one REST v2 listing per discovery round); ids
+  absent from the bulk result fall back to `getPageVersion`, and a failing child
+  snapshot (401/403/404) is a per-page completeness event
+  (`page-unreadable`/`page-ambiguous-404`), not a discovery abort — a failing
+  **root** snapshot stays fatal.
   `TreeFetchOptions.onDiagnostic` exposes a content-free operation/status/request-id
-  projection for host progress; source ids, titles, URLs, bodies, and error messages are
+  projection for host progress, plus the traversal `node` role (`root`/`child`) for
+  page-version snapshots; source ids, titles, URLs, bodies, and error messages are
   deliberately absent.
 - `fetchExportTree(source, scope, opts)` → `{ nodes, notes, complete }` — ordered DFS with
   label filtering, completeness contract (`strict`/`partial`), limits, cancellation, progress.

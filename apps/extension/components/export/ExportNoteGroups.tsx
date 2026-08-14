@@ -51,6 +51,7 @@ const CONTENT_CODES = new Set<ExportNoteCode>([
   "page-ambiguous-404",
   "page-version-changed",
   "unsupported-child-type",
+  "child-not-current",
   "empty-include-result",
   "asset-budget-exceeded",
   "space-homepage-missing",

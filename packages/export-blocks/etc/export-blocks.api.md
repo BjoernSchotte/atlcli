@@ -327,6 +327,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "root-filter-bypassed",
     "folder-position-unknown",
     "unsupported-child-type",
+    "child-not-current",
     "link-anchor-missing",
     "link-outside-scope",
     "link-target-ambiguous",

@@ -394,6 +394,7 @@ async function resolveConfluencePageGraphUnsafeV1(
     rootSnapshot = await treeSource.getPageVersion(resolved.rootId, {
       signal: options.signal,
       ...(options.onDiagnostic ? { onDiagnostic: options.onDiagnostic } : {}),
+      hierarchyNode: "root",
     });
     throwIfAborted(options.signal);
     if (

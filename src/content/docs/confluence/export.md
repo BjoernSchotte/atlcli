@@ -594,10 +594,29 @@ not probe Cloud-only `/api/v2` routes. On Cloud, atlcli first uses the direct-ch
 route and retries discovery through depth-1 descendants when the site reports a
 compatible endpoint error (`400`, `404`, `405`, or `501`). It does not use that
 fallback for authentication, rate limiting, cancellation, network, or server errors.
+
+Cloud listings can include children that a by-id read would reject:
+
+- **Draft and archived children** (any listing `status` other than `current`) are
+  skipped up front with a `child-not-current` note — exports ship published pages
+  only, and following such a child would end in a spurious 404.
+- **A child page that cannot be read by id** (view restrictions are masked as 404
+  by Confluence Cloud, or the page was deleted mid-walk) is a per-page
+  completeness event (`page-unreadable` / `page-ambiguous-404`) that names the
+  affected page — under `--completeness strict` the export aborts with that
+  precise error, under `--completeness partial` the page and its subtree are
+  skipped with a note. A single unreadable child no longer fails hierarchy
+  discovery as a whole. The export **root** must always be readable.
+- Child page **versions are resolved in one bulk REST v2 request per listing**
+  instead of one request per child; ids the bulk read does not return fall back
+  to the per-page path above.
+
 During a queued DOCX/PDF export, hierarchy discovery is reported as the `discover`
 stage. A compatibility fallback or terminal hierarchy request prints only its
-operation, HTTP status, and request id; page titles, response bodies, credentials,
-and full URLs are never copied into job progress. Use the request id with
+operation, HTTP status, request id, and the traversal node role
+(`node=root` — the export source itself is unreadable — or `node=child` — one
+page inside the tree); page titles, response bodies, credentials, and full URLs
+are never copied into job progress. Use the request id with
 `atlcli log list --type api` when deeper local diagnosis is required.
 
 ### Prerequisites
@@ -733,6 +752,7 @@ Missing chapters are never a silent bug — they are always explained by a note.
 | `root-filter-bypassed` | `info` | The root would have been filtered out but was kept as structure |
 | `tree-cycle` | `warning` | A cycle was detected and the repeated node skipped |
 | `unsupported-child-type` | `warning` | A whiteboard/database/embed child was skipped — content you asked for is missing from the export |
+| `child-not-current` | `warning` | A hierarchy listing reported a child with a non-`current` status (draft, archived); only published pages are exported, so it was skipped |
 | `folder-position-unknown` | `info` | A folder has no UI position; ordered by title |
 | `heading-depth-clamped` | `warning` | A heading exceeded level 6 after the chapter shift |
 | `link-outside-scope` | `info` | A cross-page link points outside the export; linked absolutely |

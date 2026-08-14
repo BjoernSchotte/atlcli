@@ -57,7 +57,8 @@ export function formatConfluenceHierarchyDiagnosticV1(
   }
   const deployment = diagnostic.deployment === "data-center" ? "Data Center" : "Cloud";
   const status = diagnostic.status === undefined ? "unknown" : String(diagnostic.status);
-  return `${deployment} hierarchy request failed: operation=${diagnostic.operation} status=${status}${request}`;
+  const node = diagnostic.node ? ` node=${diagnostic.node}` : "";
+  return `${deployment} hierarchy request failed: operation=${diagnostic.operation} status=${status}${node}${request}`;
 }
 
 /** One compact, stable status projection shared by TTY and non-TTY monitors. */

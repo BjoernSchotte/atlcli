@@ -381,6 +381,13 @@ export type FolderChild = {
   id: string;
   title: string;
   type: "page" | "folder" | (string & {});
+  /**
+   * Raw content status when the listing endpoint reports one ("current",
+   * "draft", "archived", …). Hierarchy listings can include children that a
+   * direct by-id read would 404 on (drafts, archived pages); callers filter on
+   * this instead of discovering the mismatch one request later.
+   */
+  status?: string;
   spaceId?: string;
   parentId?: string | null;
   /** UI child position when the endpoint exposes it (for example descendants). */
@@ -2122,6 +2129,7 @@ export class ConfluenceClient {
         // Preserve the raw type (open union): whiteboards/databases/embeds must
         // NOT be widened into "page" — the caller maps them to "unsupported".
         type: item.type,
+        ...(typeof item.status === "string" ? { status: item.status } : {}),
         spaceId: item.spaceId,
         parentId: pageId,
         position: typeof item.childPosition === "number" ? item.childPosition : null,
@@ -2164,6 +2172,7 @@ export class ConfluenceClient {
         id: item.id,
         title: item.title,
         type: item.type,
+        ...(typeof item.status === "string" ? { status: item.status } : {}),
         spaceId: item.spaceId,
         parentId: item.parentId ?? pageId,
         position: typeof item.childPosition === "number" ? item.childPosition : null,
@@ -2478,6 +2487,63 @@ export class ConfluenceClient {
       lastModified: data.history?.lastUpdated?.when,
       spaceKey: data.space?.key,
     };
+  }
+
+  /**
+   * Bulk page-version snapshots through the Cloud REST v2 pages listing.
+   *
+   * GET /api/v2/pages?id=a,b,c&include-version=true
+   *
+   * Returns only pages the caller can read; ids missing from the result
+   * (restricted, draft-only, deleted, or not a page) are simply absent — the
+   * caller decides whether that is a completeness event. Ids are chunked so a
+   * large tree never composes an unbounded query string.
+   */
+  async getPageVersions(
+    ids: readonly string[],
+    options: { signal?: AbortSignal } = {}
+  ): Promise<Map<string, PageChangeInfo>> {
+    if (this.deploymentType !== "cloud") {
+      throw new TypeError("Bulk page-version snapshots require Confluence Cloud REST v2.");
+    }
+    const found = new Map<string, PageChangeInfo>();
+    const unique = [...new Set(ids)].filter((id) => /^\d+$/.test(id));
+    const CHUNK = 250;
+    for (let start = 0; start < unique.length; start += CHUNK) {
+      const chunk = unique.slice(start, start + CHUNK);
+      const results = await drainPaginated<PageChangeInfo>(async (cursor) => {
+        const query: Record<string, string | number | undefined> = {
+          id: chunk.join(","),
+          "include-version": "true",
+          limit: CHUNK,
+        };
+        if (cursor) query.cursor = cursor;
+        const data = (await this.requestV2(`/pages`, {
+          query,
+          signal: options.signal,
+          logBody: "meta-only",
+        })) as any;
+        const rows = Array.isArray(data.results) ? data.results : [];
+        const items: PageChangeInfo[] = [];
+        for (const row of rows) {
+          const id = typeof row?.id === "string" ? row.id : undefined;
+          const version = row?.version?.number;
+          if (!id || !Number.isSafeInteger(version) || version < 1) continue;
+          if (typeof row?.title !== "string" || row.title.length === 0) continue;
+          items.push({
+            id,
+            title: row.title,
+            version,
+            ...(typeof row.version?.createdAt === "string"
+              ? { lastModified: row.version.createdAt }
+              : {}),
+          });
+        }
+        return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+      });
+      for (const item of results) found.set(item.id, item);
+    }
+    return found;
   }
 
   /**
@@ -4227,6 +4293,7 @@ export class ConfluenceClient {
         id: item.id,
         title: item.title,
         type: item.type,
+        ...(typeof item.status === "string" ? { status: item.status } : {}),
         spaceId: item.spaceId,
         parentId: folderId,
         position: typeof item.childPosition === "number" ? item.childPosition : null,
