@@ -56,28 +56,18 @@ const pageBody = (id: string, title: string, version: number, storage = "<p>hi</
 /**
  * A three-page site: root `1` with children `2` ("Alpha", UI position 0) and
  * `3` ("Beta", UI position 1). The v2 `direct-children` listing deliberately
- * returns them in the OPPOSITE order, so "UI order" can only come from the
- * positions the adapter carries through.
+ * returns them in the OPPOSITE order, so "UI order" can only come from its
+ * `childPosition` values.
  */
 function siteRouter(url: URL): Response {
   const path = url.pathname.replace(`/wiki`, "");
-  const expand = url.searchParams.get("expand") ?? "";
 
   if (path === "/api/v2/pages/1/direct-children") {
     return json({
       results: [
-        { id: "3", title: "Beta", type: "page" },
-        { id: "2", title: "Alpha", type: "page" },
+        { id: "3", title: "Beta", type: "page", childPosition: 1 },
+        { id: "2", title: "Alpha", type: "page", childPosition: 0 },
         { id: "9", title: "Sketches", type: "whiteboard" },
-      ],
-      _links: {},
-    });
-  }
-  if (path === "/rest/api/content/1/child/page") {
-    return json({
-      results: [
-        { id: "2", title: "Alpha", version: { number: 5 }, extensions: { position: 0 } },
-        { id: "3", title: "Beta", version: { number: 7 }, extensions: { position: 1 } },
       ],
       _links: {},
     });
@@ -85,14 +75,21 @@ function siteRouter(url: URL): Response {
   if (path === "/api/v2/pages/2/direct-children" || path === "/api/v2/pages/3/direct-children") {
     return json({ results: [], _links: {} });
   }
-  if (path === "/rest/api/content/2/child/page" || path === "/rest/api/content/3/child/page") {
-    return json({ results: [], _links: {} });
-  }
-  if (path === "/rest/api/space/DOCSY") {
-    return json({ homepage: { id: "1" } });
+  if (path === "/api/v2/spaces") {
+    return json({
+      results: [{ id: "space-1", key: "DOCSY", name: "Docs", homepageId: "1" }],
+      _links: {},
+    });
   }
   if (path === "/rest/api/content/search") {
     return json({ results: [{ id: "2", title: "Alpha", type: "page" }], _links: {} });
+  }
+  const cloudPage = path.match(/^\/api\/v2\/pages\/(\d+)$/);
+  if (cloudPage) {
+    const id = cloudPage[1]!;
+    const titles: Record<string, string> = { "1": "Root", "2": "Alpha", "3": "Beta" };
+    const versions: Record<string, number> = { "1": 3, "2": 5, "3": 7 };
+    return json({ id, title: titles[id] ?? id, version: { number: versions[id] ?? 1 } });
   }
   const page = path.match(/^\/rest\/api\/content\/(\d+)$/);
   if (page) {
@@ -100,9 +97,7 @@ function siteRouter(url: URL): Response {
     const titles: Record<string, string> = { "1": "Root", "2": "Alpha", "3": "Beta" };
     const versions: Record<string, number> = { "1": 3, "2": 5, "3": 7 };
     const body = pageBody(id, titles[id] ?? id, versions[id] ?? 1);
-    // `getPageVersion` asks for a lighter expand than `getPageDetails`; both hit
-    // the same path, so route on the expand that carries the body.
-    return json(expand.includes("body.storage") ? body : { ...body, body: undefined });
+    return json(body);
   }
   return json({ message: `unrouted ${path}` }, 404);
 }
@@ -143,14 +138,14 @@ describe("sessionTreeSource — session-backed port methods", () => {
     const children = await sessionTreeSource(PAGE_URL).getChildren({ id: "1", kind: "page" }, {});
 
     expect(children).toEqual([
-      { id: "3", title: "Beta", kind: "page", position: 1, observedVersion: 7 },
-      { id: "2", title: "Alpha", kind: "page", position: 0, observedVersion: 5 },
+      { id: "3", title: "Beta", kind: "page", position: 1 },
+      { id: "2", title: "Alpha", kind: "page", position: 0 },
       { id: "9", title: "Sketches", kind: "unsupported", unsupportedKind: "whiteboard", position: null },
     ]);
   });
 
   it("produces UI order end-to-end through fetchExportTree", async () => {
-    route(siteRouter);
+    const calls = route(siteRouter);
     const result = await fetchExportTree(
       sessionTreeSource(PAGE_URL),
       { kind: "tree", rootPageId: "1", maxDepth: 1 },
@@ -160,6 +155,7 @@ describe("sessionTreeSource — session-backed port methods", () => {
     // Listing order was Beta-then-Alpha; UI position order is Alpha-then-Beta.
     expect(result.nodes.map((n) => n.title)).toEqual(["Root", "Alpha", "Beta"]);
     expect(result.complete).toBe(true);
+    expect(calls.some((call) => call.url.includes("/rest/api/content/1/child/page"))).toBe(false);
     // The whiteboard child is reported, never cast into a page.
     expect(result.notes.some((n) => n.code === "unsupported-child-type")).toBe(true);
   });
@@ -181,11 +177,14 @@ describe("sessionTreeSource — session-backed port methods", () => {
   });
 
   it("getPageVersion returns the lightweight snapshot", async () => {
-    route(siteRouter);
+    const calls = route(siteRouter);
     expect(await sessionTreeSource(PAGE_URL).getPageVersion("2", {})).toEqual({
       version: 5,
       title: "Alpha",
     });
+    const url = new URL(calls[0]!.url);
+    expect(url.pathname).toBe("/wiki/api/v2/pages/2");
+    expect(url.searchParams.get("include-version")).toBe("true");
   });
 });
 

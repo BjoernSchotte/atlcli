@@ -1484,14 +1484,14 @@ describe("fetchExportTree — representation-neutral sources", () => {
         return { id, title: id, storage: `<p>${id}</p>`, version: 1 };
       },
       async getPageVersion() { return { title: "Title", version: 1 }; },
-      async getChildrenWithPosition(id: string) {
-        calls.push(`positions:${id}`);
-        return [{ id: "page", title: "Page", version: 4, position: 2 }];
+      async getChildrenWithPosition() {
+        calls.push("v1-page-children");
+        throw new Error("Cloud hierarchy must not call REST v1 page children");
       },
       async getPageDirectChildren(id: string) {
         calls.push(`direct:${id}`);
         return [
-          { id: "page", title: "Page", type: "page" },
+          { id: "page", title: "Page", type: "page", position: 2 },
           { id: "folder", title: "Folder", type: "folder" },
           { id: "board", title: "Board", type: "whiteboard" },
         ];
@@ -1505,7 +1505,7 @@ describe("fetchExportTree — representation-neutral sources", () => {
     });
 
     await expect(source.getChildren({ id: "root", kind: "page" }, {})).resolves.toEqual([
-      { id: "page", title: "Page", kind: "page", position: 2, observedVersion: 4 },
+      { id: "page", title: "Page", kind: "page", position: 2 },
       { id: "folder", title: "Folder", kind: "folder", position: null },
       {
         id: "board",
@@ -1515,7 +1515,7 @@ describe("fetchExportTree — representation-neutral sources", () => {
         position: null,
       },
     ]);
-    expect(calls).toEqual(["direct:root", "positions:root"]);
+    expect(calls).toEqual(["direct:root"]);
   });
 
   test("Cloud traversal falls back to depth-1 descendants for a large page id", async () => {
@@ -1531,9 +1531,9 @@ describe("fetchExportTree — representation-neutral sources", () => {
         return { id, title: id, storage: `<p>${id}</p>`, version: 1 };
       },
       async getPageVersion() { return { title: "Title", version: 1 }; },
-      async getChildrenWithPosition(id: string) {
-        calls.push(`positions:${id}`);
-        return [{ id: "page", title: "Page", version: 4, position: 2 }];
+      async getChildrenWithPosition() {
+        calls.push("v1-page-children");
+        throw new Error("Cloud hierarchy must not call REST v1 page children");
       },
       async getPageDirectChildren(id: string) {
         calls.push(`direct:${id}`);
@@ -1555,13 +1555,12 @@ describe("fetchExportTree — representation-neutral sources", () => {
       { id: "2819653636", kind: "page" },
       { onDiagnostic: (diagnostic) => { diagnostics.push(diagnostic); } },
     )).resolves.toEqual([
-      { id: "page", title: "Page", kind: "page", position: 2, observedVersion: 4 },
+      { id: "page", title: "Page", kind: "page", position: 8 },
       { id: "folder", title: "Folder", kind: "folder", position: 3 },
     ]);
     expect(calls).toEqual([
       "direct:2819653636",
       "descendants:2819653636:depth=1",
-      "positions:2819653636",
     ]);
     expect(diagnostics).toEqual([{
       code: "hierarchy-fallback",

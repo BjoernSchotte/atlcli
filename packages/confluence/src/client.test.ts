@@ -565,6 +565,81 @@ describe("ConfluenceClient", () => {
 
     const pageBody = { id: "123", title: "Test", version: { number: 1 }, space: { key: "TEST" } };
 
+    test("Cloud page-version snapshots use REST v2 and keep large ids as strings", async () => {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(new Response(JSON.stringify({
+          id: "2819653636",
+          title: "Design specification",
+          version: { number: 17, createdAt: "2026-08-14T05:00:00.000Z" },
+        }), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      const snapshot = await new ConfluenceClient(mockProfile).getPageVersion("2819653636");
+
+      const url = new URL(capturedUrl);
+      expect(url.pathname).toBe("/wiki/api/v2/pages/2819653636");
+      expect(url.searchParams.get("include-version")).toBe("true");
+      expect(snapshot).toEqual({
+        id: "2819653636",
+        title: "Design specification",
+        version: 17,
+        lastModified: "2026-08-14T05:00:00.000Z",
+      });
+    });
+
+    test("Cloud page-version snapshots reject a response without a current version", async () => {
+      globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({
+        id: "2819653636",
+        title: "Design specification",
+      }), { status: 200 }))) as unknown as typeof fetch;
+
+      await expect(
+        new ConfluenceClient(mockProfile).getPageVersion("2819653636")
+      ).rejects.toThrow("without a valid current version");
+    });
+
+    test("Data Center page-version snapshots stay on REST v1", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/confluence",
+        pageBody,
+        (client) => client.getPageVersion("123"),
+        { deploymentType: "data-center" },
+      );
+      expect(url).toContain("/confluence/rest/api/content/123");
+      expect(url).not.toContain("/api/v2/");
+    });
+
+    test("Cloud space homepage resolution uses REST v2", async () => {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(new Response(JSON.stringify({
+          results: [{ id: "space-1", key: "DOCSY", name: "Docs", homepageId: "2819653636" }],
+          _links: {},
+        }), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      await expect(new ConfluenceClient(mockProfile).getSpaceHomepageId("DOCSY"))
+        .resolves.toBe("2819653636");
+      const url = new URL(capturedUrl);
+      expect(url.pathname).toBe("/wiki/api/v2/spaces");
+      expect(url.searchParams.getAll("keys")).toEqual(["DOCSY"]);
+      expect(url.searchParams.get("status")).toBe("current");
+    });
+
+    test("Data Center space homepage resolution stays on REST v1", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/confluence",
+        { homepage: { id: "123" } },
+        (client) => client.getSpaceHomepageId("DOCS"),
+        { deploymentType: "data-center" },
+      );
+      expect(url).toContain("/confluence/rest/api/space/DOCS");
+      expect(url).not.toContain("/api/v2/");
+    });
+
     // REST v1 path building: Cloud appends /wiki; a DC context path is honored
     // verbatim; trailing slashes are normalized.
     for (const { name, baseUrl } of [

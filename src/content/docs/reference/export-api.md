@@ -141,10 +141,12 @@ See the package README for complete CLI/session/Forge examples and
 
 - `TreeSource` — the fetch port (`getPage`, `getChildren`, `getPageVersion`,
   `getSpaceHomepageId`, optional `searchPages`). `confluenceTreeSource(client)` adapts a
-  `ConfluenceClient`; in-memory implementations are legitimate ports. Cloud mixed-content
-  discovery falls back from `direct-children` to depth-1 `descendants` for endpoint
-  compatibility failures; authentication, throttling, cancellation, and server failures
-  are never hidden by that fallback. Data Center continues to use its REST v1 page tree.
+  `ConfluenceClient`; in-memory implementations are legitimate ports. Cloud hierarchy
+  discovery, page-version snapshots, child positions, and space-homepage resolution use
+  REST v2. Mixed-content discovery falls back from `direct-children` to depth-1
+  `descendants` for endpoint compatibility failures; authentication, throttling,
+  cancellation, and server failures are never hidden by that fallback. Data Center
+  continues to use its REST v1 page tree.
   `TreeFetchOptions.onDiagnostic` exposes a content-free operation/status/request-id
   projection for host progress; source ids, titles, URLs, bodies, and error messages are
   deliberately absent.

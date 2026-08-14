@@ -2439,6 +2439,33 @@ export class ConfluenceClient {
     id: string,
     options: { signal?: AbortSignal } = {}
   ): Promise<PageChangeInfo> {
+    if (this.deploymentType === "cloud") {
+      const data = (await this.requestV2(`/pages/${id}`, {
+        query: { "include-version": "true" },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const version = data?.version?.number;
+      if (!Number.isSafeInteger(version) || version < 1) {
+        throw new TypeError(
+          "Confluence Cloud returned a page snapshot without a valid current version."
+        );
+      }
+      if (typeof data?.title !== "string" || data.title.length === 0) {
+        throw new TypeError(
+          "Confluence Cloud returned a page snapshot without a valid title."
+        );
+      }
+      return {
+        id: typeof data.id === "string" ? data.id : id,
+        title: data.title,
+        version,
+        ...(typeof data.version?.createdAt === "string"
+          ? { lastModified: data.version.createdAt }
+          : {}),
+      };
+    }
+
     const data = (await this.request(`/content/${id}`, {
       query: { expand: "version,space,history.lastUpdated" },
       signal: options.signal,
@@ -4456,11 +4483,12 @@ export class ConfluenceClient {
   /**
    * Resolve a space's homepage page id in a **single** round-trip.
    *
-   * Uses `GET /space/{spaceKey}?expand=homepage.id` (mirrors
-   * {@link getSpaceHomepageStorage}'s `expand=homepage.body.storage`) rather
-   * than `getSpaceFolders`' CQL-search-then-N-sequential-`getPage()` homepage
-   * detection, which costs up to 51 requests for a one-call lookup. Backs the
-   * `space` export scope (spec 002): the homepage is the tree root.
+   * Cloud uses `GET /api/v2/spaces?keys={spaceKey}` and reads `homepageId` from
+   * the exact-key result. Data Center keeps the v1
+   * `GET /space/{spaceKey}?expand=homepage.id` route. Both avoid
+   * `getSpaceFolders`' CQL-search-then-N-sequential-`getPage()` homepage
+   * detection, which costs up to 51 requests for a one-call lookup. This backs
+   * the `space` export scope (spec 002): the homepage is the tree root.
    *
    * @returns The homepage id, or `null` when the space has no classic homepage
    *   (e.g. a folder-only space root) — the caller reports actionable guidance.
@@ -4469,6 +4497,19 @@ export class ConfluenceClient {
     spaceKey: string,
     options: { signal?: AbortSignal } = {}
   ): Promise<string | null> {
+    if (this.deploymentType === "cloud") {
+      const data = (await this.requestV2("/spaces", {
+        query: { keys: [spaceKey], limit: 2, status: "current" },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const results = Array.isArray(data?.results) ? data.results : [];
+      const space = results.find((item: any) => item?.key === spaceKey);
+      return typeof space?.homepageId === "string" && space.homepageId.length > 0
+        ? space.homepageId
+        : null;
+    }
+
     const data = (await this.request(`/space/${spaceKey}`, {
       query: { expand: "homepage.id" },
       signal: options.signal,

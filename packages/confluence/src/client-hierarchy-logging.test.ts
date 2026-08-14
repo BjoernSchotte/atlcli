@@ -37,6 +37,23 @@ describe("Confluence hierarchy logging", () => {
     Logger.configure({ level: "debug", sink, enableGlobal: false, enableProject: false });
     globalThis.fetch = (async (input: string | URL | Request) => {
       const url = String(input);
+      if (url.includes("/api/v2/pages/2819653636?") && !url.includes("/direct-children")) {
+        return new Response(JSON.stringify({
+          id: "2819653636",
+          title: sentinel,
+          version: { number: 1 },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/api/v2/spaces?")) {
+        return new Response(JSON.stringify({
+          results: [{
+            id: "space-1",
+            key: "DOCSY",
+            name: sentinel,
+            homepageId: "2819653636",
+          }],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
       if (url.includes("/rest/api/space/")) {
         return new Response(JSON.stringify({ homepage: { id: "2819653636", title: sentinel } }), {
           status: 200,
@@ -66,6 +83,7 @@ describe("Confluence hierarchy logging", () => {
   test.each([
     ["direct children", (client: ConfluenceClient) => client.getPageDirectChildren("2819653636")],
     ["page children", (client: ConfluenceClient) => client.getChildrenWithPosition("2819653636")],
+    ["page version", (client: ConfluenceClient) => client.getPageVersion("2819653636")],
   ])("%s failures expose only status/request correlation", async (_name, call) => {
     const sentinel = "CONFIDENTIAL-HIERARCHY-ERROR-DO-NOT-LOG";
     const sink = new CaptureSink();

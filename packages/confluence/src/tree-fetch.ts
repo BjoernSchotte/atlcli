@@ -1805,12 +1805,14 @@ export interface TreeSourceClient {
 /**
  * Node adapter: maps the {@link TreeSource} port 1:1 onto a `ConfluenceClient`.
  *
- * `getChildren` first discovers child *kinds* via `getPageDirectChildren` (a
- * page parent) — the only call that reports mixed page/folder/whiteboard
- * children in one round-trip — then re-fetches real positions for page children
- * via `getChildrenWithPosition`, and recurses folder children via
- * `getFolderChildren` (a folder parent). Anything outside page/folder is mapped
- * honestly to `kind: "unsupported"` with the raw type, never cast into a page.
+ * On Cloud, `getChildren` discovers child *kinds* and `childPosition` through
+ * `getPageDirectChildren` (a page parent) — the only call that reports mixed
+ * page/folder/whiteboard children in one round-trip — and recurses folder
+ * children through `getFolderChildren` (a folder parent). Page versions are
+ * snapshotted through Cloud REST v2 by `getPageVersion`; Cloud traversal never
+ * depends on the v1 child-page listing. Data Center uses only its v1 page tree.
+ * Anything outside page/folder is mapped honestly to `kind: "unsupported"`
+ * with the raw type, never cast into a page.
  */
 export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
   const classifyKind = (type: string): "page" | "folder" | "unsupported" =>
@@ -1940,25 +1942,14 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
         }
       }
 
-      let positioned: Awaited<ReturnType<TreeSourceClient["getChildrenWithPosition"]>>;
-      try {
-        positioned = await client.getChildrenWithPosition(nodeRef.id, { signal: context.signal });
-      } catch (error) {
-        await reportHierarchyFailure(context, "cloud", "page-child-pages", error);
-        throw error;
-      }
-      const byId = new Map(positioned.map((p) => [p.id, p]));
-
       return discovered.map((child): TreeChild => {
         const kind = classifyKind(child.type);
         if (kind === "page") {
-          const pos = byId.get(child.id);
           return {
             id: child.id,
             title: child.title,
             kind: "page",
-            position: pos?.position ?? child.position ?? null,
-            observedVersion: pos?.version,
+            position: child.position ?? null,
           };
         }
         if (kind === "folder") {
