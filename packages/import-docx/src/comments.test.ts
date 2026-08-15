@@ -78,6 +78,18 @@ describe("comment import", () => {
     expect(doc.issues.some((i) => i.code === "docx-import/comment-threads-unavailable")).toBe(true);
   });
 
+  it("records the owning top-level block for anchored comments (split placement)", () => {
+    const doc = parseDocx(fixture());
+    const ownerBlock = doc.commentOwners.get("1");
+    expect(ownerBlock).toBeDefined();
+    // The owner is the paragraph containing the range start — findable by
+    // identity in the block list.
+    expect(doc.blocks.includes(ownerBlock!)).toBe(true);
+    expect(JSON.stringify(ownerBlock)).toContain("The revenue was ");
+    // Unanchored comment 3 has no owner block.
+    expect(doc.commentOwners.has("3")).toBe(false);
+  });
+
   it("documents without comments have an empty comment list", () => {
     const doc = parseDocx(buildDocxFixture({ body: p(r("plain")) }));
     expect(doc.comments).toEqual([]);

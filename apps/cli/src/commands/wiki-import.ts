@@ -43,6 +43,7 @@ import {
   splitDocument,
   type AdfMediaResolution,
   type ImportPagePlan,
+  type ImportBlock,
   type ImportComment,
   type ImportedDocument,
   type SplitResult,
@@ -345,15 +346,6 @@ export async function handleWikiImport(
     try {
       split = splitDocument(doc, { level: level as 1 | 2 | 3 | 4 | 5 | 6, rootTitle: title }, titleConflict);
       doc.issues.push(...split.issues);
-      if (doc.comments.length > 0) {
-        doc.issues.push({
-          code: "docx-import/comments-not-imported-in-split",
-          severity: "warning",
-          outcome: "reported",
-          message: "Word comments are not imported for --split page trees yet; import without --split to keep them.",
-          context: { occurrences: doc.comments.length },
-        });
-      }
     } catch (err) {
       if (err instanceof SplitTitleConflictError) {
         fail(opts, 1, ERROR_CODES.VALIDATION, err.message, { duplicates: err.duplicates });
@@ -530,7 +522,10 @@ export async function handleWikiImport(
       : undefined;
 
     if (split) {
-      rootResult = await publishTree(client, space.id, split, effectiveParent, createdPageIds, rootOptions);
+      rootResult = await publishTree(client, space.id, split, effectiveParent, createdPageIds, rootOptions, {
+        doc,
+        mode: policy.options.comments,
+      });
     } else {
       // Single pages seal a plan-006 baseline so they can be updated in
       // place later. Trees stay baseline-free (tree update is a later plan).
@@ -886,8 +881,13 @@ async function handleBatchImport(
     const createdPageIds: string[] = [];
     try {
       const root = plan.split
-        ? await publishTree(client, space.id, plan.split, parentId, createdPageIds)
-        : await publishOnePage(client, space.id, plan.title, parentId, plan.doc.blocks, plan.doc.assets, createdPageIds);
+        ? await publishTree(client, space.id, plan.split, parentId, createdPageIds, undefined, {
+            doc: plan.doc,
+            mode: policy.options.comments,
+          })
+        : await publishOnePage(client, space.id, plan.title, parentId, plan.doc.blocks, plan.doc.assets, createdPageIds, {
+            comments: { list: plan.doc.comments, mode: policy.options.comments, issues: plan.doc.issues },
+          });
       results.push({
         file: plan.file,
         title: plan.title,
@@ -1317,7 +1317,7 @@ export async function publishOnePage(
     };
   } = {},
 ): Promise<PublishedPageReport> {
-  const pageDoc: ImportedDocument = { blocks, assets, comments: [], issues: [] };
+  const pageDoc: ImportedDocument = { blocks, assets, comments: [], commentOwners: new Map(), issues: [] };
   const hasAssets = assets.length > 0;
   const useShell = hasAssets || options.forceShell === true;
   const page = await client.createPageAdf({
@@ -1522,7 +1522,7 @@ export async function finalizePageContent(
   assets: ImportedDocument["assets"],
   encode: { anchors?: ReadonlyMap<string, string> },
 ): Promise<{ page: PublishedPageReport; readbackValue: string }> {
-  const pageDoc: ImportedDocument = { blocks, assets, comments: [], issues: [] };
+  const pageDoc: ImportedDocument = { blocks, assets, comments: [], commentOwners: new Map(), issues: [] };
   let media: Map<string, AdfMediaResolution> | undefined;
   if (assets.length > 0) {
     for (const asset of assets) {
@@ -1605,8 +1605,34 @@ export async function publishTree(
   parentId: string | undefined,
   createdPageIds: string[],
   rootOptions?: Parameters<typeof publishOnePage>[7],
+  commentsCtx?: {
+    doc: ImportedDocument;
+    mode: "auto" | "inline" | "footer" | "skip";
+  },
 ): Promise<PublishedPageReport> {
   const shells = new Map<ImportPagePlan, { id: string; url?: string }>();
+
+  // Comment → page assignment (plan 009 rule 8): a comment lands on the
+  // page owning the top-level block where its range starts; the heading
+  // that BECAME a page title maps to that page; everything else (no
+  // anchor, owner block inside a nested structure) falls back to the root.
+  const commentsByPage = new Map<ImportPagePlan, ImportComment[]>();
+  if (commentsCtx && commentsCtx.doc.comments.length > 0) {
+    const blockOwner = new Map<ImportBlock, ImportPagePlan>();
+    const indexBlocks = (plan: ImportPagePlan): void => {
+      if (plan.sourceHeading) blockOwner.set(plan.sourceHeading, plan);
+      for (const block of plan.blocks) blockOwner.set(block, plan);
+      for (const child of plan.children) indexBlocks(child);
+    };
+    indexBlocks(split.root);
+    for (const comment of commentsCtx.doc.comments) {
+      const ownerBlock = commentsCtx.doc.commentOwners.get(comment.id);
+      const page = (ownerBlock ? blockOwner.get(ownerBlock) : undefined) ?? split.root;
+      const list = commentsByPage.get(page) ?? [];
+      list.push(comment);
+      commentsByPage.set(page, list);
+    }
+  }
 
   const createShells = async (plan: ImportPagePlan, parent: string | undefined): Promise<void> => {
     const page = await client.createPageAdf({
@@ -1637,6 +1663,10 @@ export async function publishTree(
         anchors,
       });
       page = { ...finalized.page, url: finalized.page.url ?? shell.url };
+    }
+    const pageComments = commentsByPage.get(plan);
+    if (commentsCtx && pageComments && pageComments.length > 0) {
+      await publishComments(client, shell.id, pageComments, commentsCtx.mode, commentsCtx.doc.issues);
     }
     const children: PublishedPageReport[] = [];
     for (const child of plan.children) children.push(await finalize(child));

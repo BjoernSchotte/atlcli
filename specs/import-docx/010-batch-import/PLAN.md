@@ -221,7 +221,7 @@ Acceptance/tests:
 ### Task 2 — Compose global batch plan
 
 - [x] Invoke the Plan 009 file-to-subtree planner for each item; `splitHeading` absent uses its one-page/root contract.
-- [x] Apply Plan 003 budgets and Plan 005 governance without copying their logic. *(Editability in preview; staging root via the plan-005 restriction path.)*
+- [x] Apply Plan 003 budgets and Plan 005 governance without copying their logic. *(Editability in preview; staging root via the plan-005 restriction path; defaults.recipe resolves through the plan-007 policy chain incl. comment mode.)*
 - [x] Resolve directory parent nodes, whole-batch titles, and relative cross-file links. *(Folder pages + per-item title policy; cross-FILE links still open — cross-page links within one document ship via plan 009.)*
 - [ ] Produce aggregate preview/report/plan digest with file→page→node/asset issue locations.
 

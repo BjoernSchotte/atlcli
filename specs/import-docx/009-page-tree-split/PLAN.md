@@ -206,7 +206,7 @@ Acceptance:
 
 - [x] Implement split semantics and stable node IDs in a single deterministic document-order traversal.
 - [x] Consume Plan 002 heading-title projection and Plan 003 assessment; do not duplicate either algorithm.
-- [x] Build block/note/comment/asset ownership maps and issue codes. *(Blocks/assets/bookmarks; comments n/a.)*
+- [x] Build block/note/comment/asset ownership maps and issue codes. *(Blocks/assets/bookmarks/comments — anchored comments land on the page owning their range-start block, unanchored on the root; live-proven.)*
 
 Acceptance/tests:
 
@@ -241,7 +241,7 @@ Acceptance/tests:
 
 - [x] Add typed page-tree port; create shells parent-before-child and track IDs immediately.
 - [ ] Upload root source artifact and page-owned content assets.
-- [x] Finalize bodies with page-ID link map; create comments/provenance/labels; verify full hierarchy/semantics. *(Bodies + links + per-page verify; comments n/a.)*
+- [x] Finalize bodies with page-ID link map; create comments/provenance/labels; verify full hierarchy/semantics. *(Bodies + links + per-page verify + per-page comment placement.)*
 - [x] Roll back reverse-order by owned IDs with failure injection at every transition. *(Reverse-order rollback shipped since the slice; formal per-transition injection suite still open.)*
 
 Acceptance/tests:

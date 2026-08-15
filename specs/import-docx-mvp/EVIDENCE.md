@@ -303,3 +303,20 @@ Proof matrix (plan §6), all pages deleted afterwards with a verified 404:
 - Client fix: inlineCommentProperties are only sent on top-level inline
   comments (replies inherit the parent anchor).
 - Cleanup: page deleted; follow-up GET returned **404**.
+
+## 2026-08-15 — Comments in split trees and batches, live Cloud (closing the open points)
+
+- Parser records the owning top-level block of every anchored comment
+  range (unit-tested by identity).
+- Split placement (plan 009 rule 8): 3-page tree — the anchored comment
+  published as an INLINE comment on page Beta (owner of its range-start
+  block: {root:0/1 footer, alpha:0/0, beta:1 inline/0}); the unanchored
+  comment landed as a footer comment on the root. Pages `1198162016`
+  (root), `1197801584` (Alpha), `1197965451` (Beta).
+- Batch: a plain directory batch published the comment fixture with
+  1 inline + 1 footer comment on its page (`1197965486`) through the
+  same per-page pipeline; the manifest batch now also APPLIES
+  `defaults.recipe` (previously parsed but unused — found while wiring
+  comments) through the plan-007 policy chain, including
+  `options.comments`, style mappings, and revisions.
+- All four E2E pages deleted; follow-up GET returned **404**.

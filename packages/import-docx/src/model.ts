@@ -141,5 +141,10 @@ export interface ImportedDocument {
   assets: ImportAsset[];
   /** Word comments in document order (top-level; replies nested). */
   comments: ImportComment[];
+  /**
+   * Comment id → top-level block owning its range start. Used by the split
+   * publisher to place each comment on the page that carries its anchor.
+   */
+  commentOwners: Map<string, ImportBlock>;
   issues: ImportIssue[];
 }

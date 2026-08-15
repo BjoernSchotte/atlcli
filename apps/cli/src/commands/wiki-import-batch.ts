@@ -50,6 +50,8 @@ import {
   publishOnePage,
   publishTree,
 } from "./wiki-import.js";
+import { loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
+import { resolveImportPolicy, recipeApplicability } from "@atlcli/import-docx";
 
 /** True only when the page exists AND is current (not trashed). */
 async function pageIsCurrent(client: ConfluenceClient, pageId: string): Promise<boolean> {
@@ -93,6 +95,25 @@ export async function handleManifestBatch(
   const baseDir = dirname(resolve(manifestPath));
   const statePath = getFlag(flags, "state") ?? `${resolve(manifestPath)}.state.json`;
 
+  // defaults.recipe: catalog id, or a path relative to the manifest.
+  let recipeLayer;
+  if (manifest.defaults.recipe) {
+    const ref = manifest.defaults.recipe;
+    const result = ref.includes("/") || ref.includes(".")
+      ? await loadRecipeFile(join(baseDir, ref))
+      : await loadRecipeById(ref);
+    if (!result.entry) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, `Manifest recipe "${ref}" is invalid:\n  ${result.errors.join("\n  ")}`, {});
+    }
+    const applicability = recipeApplicability(result.entry.parsed!.recipe, "cloud");
+    if (applicability) fail(opts, 1, ERROR_CODES.VALIDATION, applicability, {});
+    recipeLayer = result.entry.parsed!.policyLayer;
+  }
+  const { policy, errors: policyErrors } = resolveImportPolicy({ recipe: recipeLayer });
+  if (policyErrors.length > 0) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Manifest recipe policy invalid:\n  ${policyErrors.join("\n  ")}`, {});
+  }
+
   // Load or initialize the checkpoint state.
   let state: DocxBatchStateV1 = {
     schema: "atlcli.docx-batch-state/1",
@@ -126,7 +147,10 @@ export async function handleManifestBatch(
   for (const docSpec of manifest.documents) {
     try {
       const bytes = new Uint8Array(readFileSync(join(baseDir, docSpec.sourcePath)));
-      const doc = parseDocx(bytes);
+      const doc = parseDocx(bytes, {
+        styleMappings: policy.styleMappings,
+        revisions: policy.options.revisions,
+      });
       const title =
         docSpec.title ?? doc.titleCandidate ?? docSpec.sourcePath.replace(/^.*\//, "").replace(/\.docx$/i, "");
       const splitLevel = docSpec.splitHeading ?? manifest.defaults.splitHeading;
@@ -310,8 +334,13 @@ export async function handleManifestBatch(
       let root;
       try {
         root = plan.split
-          ? await publishTree(client, space.id, plan.split, parentId, createdPageIds)
-          : await publishOnePage(client, space.id, plan.title, parentId, plan.doc.blocks, plan.doc.assets, createdPageIds);
+          ? await publishTree(client, space.id, plan.split, parentId, createdPageIds, undefined, {
+              doc: plan.doc,
+              mode: policy.options.comments,
+            })
+          : await publishOnePage(client, space.id, plan.title, parentId, plan.doc.blocks, plan.doc.assets, createdPageIds, {
+              comments: { list: plan.doc.comments, mode: policy.options.comments, issues: plan.doc.issues },
+            });
         if (plan.labels.length > 0) {
           await client.addLabels(root.id, plan.labels);
         }

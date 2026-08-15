@@ -310,8 +310,11 @@ and in-place updates):
 - Commenting is not editing: inline-comment annotations are normalized out
   of the update divergence check, so a colleague commenting on the page
   does not block your next update.
-- Not yet covered: comments in `--split` page trees and plain batch mode
-  (reported as an explicit issue).
+- With `--split`, each comment lands on the **page that owns its anchored
+  text** (unanchored comments go to the root page); batch imports (plain
+  and manifest) publish comments the same way, and a manifest's
+  `defaults.recipe` policy (including `options.comments`) now applies to
+  every document in the batch.
 
 ## Visibility, staging, and metadata
 

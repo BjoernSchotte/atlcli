@@ -83,6 +83,10 @@ interface ParseContext {
   openCommentAnchors: Map<string, string>;
   /** Finished comment ranges (id → exact anchored text). */
   commentAnchors: Map<string, string>;
+  /** Comment ids whose range STARTED in the current paragraph. */
+  pendingCommentStarts: string[];
+  /** Comment id → the top-level block owning its range start (split owner). */
+  commentOwnerBlocks: Map<string, ImportBlock>;
   /** footnote id → `<w:footnote>` element from word/footnotes.xml. */
   footnotes: Map<string, XmlElement>;
   /** Footnote ids in first-reference order (1-based numbering source). */
@@ -544,7 +548,10 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
       }
       case "commentRangeStart": {
         const id = attr(child, "id", W_NS);
-        if (id) ctx.openCommentAnchors.set(id, "");
+        if (id) {
+          ctx.openCommentAnchors.set(id, "");
+          ctx.pendingCommentStarts.push(id);
+        }
         break;
       }
       case "commentRangeEnd": {
@@ -942,15 +949,24 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
         // importing them as list items would destroy the document structure
         // (specs/import-docx/002-heading-numbering).
         const bookmarks = ctx.pendingBookmarks.splice(0, ctx.pendingBookmarks.length);
+        const commentStarts = ctx.pendingCommentStarts.splice(0, ctx.pendingCommentStarts.length);
+        const ownBlock = (block: ImportBlock): ImportBlock => {
+          for (const id of commentStarts) {
+            if (!ctx.commentOwnerBlocks.has(id)) ctx.commentOwnerBlocks.set(id, block);
+          }
+          return block;
+        };
         if (level !== undefined) {
           flushPending();
-          blocks.push({
-            type: "heading",
-            level: level as 1 | 2 | 3 | 4 | 5 | 6,
-            runs,
-            ...(label ? { label } : {}),
-            ...(bookmarks.length > 0 ? { bookmarks } : {}),
-          });
+          blocks.push(
+            ownBlock({
+              type: "heading",
+              level: level as 1 | 2 | 3 | 4 | 5 | 6,
+              runs,
+              ...(label ? { label } : {}),
+              ...(bookmarks.length > 0 ? { bookmarks } : {}),
+            }),
+          );
           blocks.push(...images);
           break;
         }
@@ -984,11 +1000,13 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
         if (runs.length > 0 || (tableDepth > 0 && images.length === 0)) {
           // Keep empty paragraphs inside table cells (cell shape), drop empty
           // body paragraphs (Word's spacing artifacts).
-          blocks.push({
-            type: "paragraph",
-            runs,
-            ...(bookmarks.length > 0 ? { bookmarks } : {}),
-          });
+          blocks.push(
+            ownBlock({
+              type: "paragraph",
+              runs,
+              ...(bookmarks.length > 0 ? { bookmarks } : {}),
+            }),
+          );
         } else if (bookmarks.length > 0) {
           // Bookmark on a dropped empty paragraph: re-queue for the next block.
           ctx.pendingBookmarks.push(...bookmarks);
@@ -1085,6 +1103,8 @@ export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): Impo
     pendingBookmarks: [],
     openCommentAnchors: new Map(),
     commentAnchors: new Map(),
+    pendingCommentStarts: [],
+    commentOwnerBlocks: new Map(),
     footnotes: parseFootnotes(readOptional("word/footnotes.xml")),
     footnoteRefs: [],
     reported: new Map(),
@@ -1159,5 +1179,12 @@ export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): Impo
     ctx,
   );
 
-  return { titleCandidate, blocks, assets: [...ctx.assets.values()], comments, issues: ctx.issues };
+  return {
+    titleCandidate,
+    blocks,
+    assets: [...ctx.assets.values()],
+    comments,
+    commentOwners: ctx.commentOwnerBlocks,
+    issues: ctx.issues,
+  };
 }
