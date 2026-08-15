@@ -123,6 +123,36 @@ exact same preview/confirm pipeline as a local file. The publish report
 records the source page, attachment id, and attachment version for
 provenance.
 
+## Splitting into a page tree
+
+A long document can become a navigable page hierarchy instead of one huge
+page — split at Word heading levels with `--split`:
+
+```bash
+atlcli wiki import handbook.docx --space TEAM --split 2
+```
+
+```text
+Page tree (--split 2, 4 pages):
+• Employee Handbook (1 blocks)
+  └ 1 Getting started (3 blocks, 1 attachment(s))
+    └ 1.1 First week (2 blocks)
+  └ 2 Working hours (2 blocks)
+```
+
+- `--split 1`: every Heading 1 becomes a child page of the root
+- `--split 2`: Heading 1 → children, Heading 2 → grandchildren
+- The splitting heading becomes the page **title** (numbering label
+  included) and is removed from the page body; content before the first
+  splitting heading stays on the root page
+- Images travel with the section that references them
+- Duplicate resulting titles are rejected **before** the preview — rename
+  the headings or import without `--split`
+- Before publishing, every planned title is checked against the target
+  space; existing pages with the same title block the run
+- Publication is transactional: if any page of the tree fails, **all**
+  pages created by the run are rolled back
+
 ## Options
 
 | Option | Type | Default | Description |
@@ -132,6 +162,7 @@ provenance.
 | `--space <KEY>` | string | profile space | Target space key |
 | `--title <title>` | string | first H1, else file name | Page title |
 | `--parent <id>` | string | space root | Parent page id |
+| `--split <1\|2>` | number | off | Split into a page tree at heading levels 1 (or 1+2) |
 | `--confirm` | flag | off | Actually create the page; without it the command only previews |
 | `--profile <name>` | string | active profile | Auth profile |
 | `--json` | flag | off | Machine-readable output (preview or publish report) |

@@ -28,6 +28,13 @@ export {
   type AdfNode,
 } from "./adf.js";
 export {
+  SplitTitleConflictError,
+  countPages,
+  splitDocument,
+  type ImportPagePlan,
+  type SplitOptions,
+} from "./split.js";
+export {
   buildImportPreview,
   renderImportPreview,
   type ImportPreview,

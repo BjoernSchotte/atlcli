@@ -97,3 +97,20 @@ Fixture: 2,528-byte DOCX with an inline DrawingML picture (1×1 PNG,
   zero issues). The report records the source identity
   (`kind: attachment`, pageId, attachmentId, version 1).
 - Cleanup: both pages deleted; follow-up GETs returned **404**.
+
+## 2026-08-15 — Page-tree split E2E, live Cloud (plan 009 slice) + §2.12 title preflight
+
+- Fixture: preamble, H1 "Intro" (with H2 "Background" carrying an embedded
+  PNG), H1 "Usage".
+- Preview with `--split 2` rendered the exact 4-page tree (root + 2 children
+  + 1 grandchild) with per-page block/attachment counts.
+- `--confirm` published the tree depth-first: root `1198227457`, children
+  `1197998087` (Intro) and `1198227478` (Usage), grandchild `1198161935`
+  (Background, version 2 with the image attached to THAT page). Every page
+  readback-verified; report shows the nested structure, `pagesCreated: 4`,
+  zero issues.
+- Title preflight: all 4 planned titles checked against DOCSY via the direct
+  content endpoint before the first write.
+- Split-time duplicate titles and `--split` values outside 1|2 fail closed
+  (unit-tested); tree-wide rollback deletes children before parents.
+- Cleanup: all 4 pages deleted; root and grandchild GETs returned **404**.

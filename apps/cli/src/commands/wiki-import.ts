@@ -22,11 +22,15 @@ import {
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
+  SplitTitleConflictError,
   buildImportPreview,
+  countPages,
   documentToAdf,
   parseDocx,
   renderImportPreview,
+  splitDocument,
   type AdfMediaResolution,
+  type ImportPagePlan,
   type ImportedDocument,
 } from "@atlcli/import-docx";
 import { assertCliAuthSupported } from "./session-guard.js";
@@ -132,13 +136,37 @@ export async function handleWikiImport(
   const title = getFlag(flags, "title") ?? doc.titleCandidate ?? basename(sourceName, ".docx");
   const parentId = getFlag(flags, "parent");
 
+  // Optional page-tree split (specs/import-docx/009, slice): heading levels
+  // 1..N become their own pages below the root. Title conflicts inside the
+  // resulting tree block before any preview is shown.
+  const splitFlag = getFlag(flags, "split");
+  let tree: ImportPagePlan | undefined;
+  if (splitFlag !== undefined) {
+    const level = Number(splitFlag);
+    if (level !== 1 && level !== 2) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, "--split must be 1 or 2 (heading levels that open new pages).", {});
+    }
+    try {
+      tree = splitDocument(doc, { level: level as 1 | 2, rootTitle: title });
+    } catch (err) {
+      if (err instanceof SplitTitleConflictError) {
+        fail(opts, 1, ERROR_CODES.VALIDATION, err.message, { duplicates: err.duplicates });
+      }
+      throw err;
+    }
+  }
+
   const preview = await buildImportPreview(doc, { spaceKey, title, parentId });
 
   if (!confirm) {
     if (opts.json) {
-      output({ mode: "preview", source, preview }, opts);
+      output({ mode: "preview", source, ...(tree ? { tree: treeSummary(tree) } : {}), preview }, opts);
     } else {
       output(renderImportPreview(preview), opts);
+      if (tree) {
+        output(`\nPage tree (--split ${splitFlag}, ${countPages(tree)} pages):`, opts);
+        output(renderTree(tree, 0), opts);
+      }
       output("\nDry preview only — nothing was published. Re-run with --confirm to create the page.", opts);
     }
     return;
@@ -153,74 +181,68 @@ export async function handleWikiImport(
     });
   }
 
-  // Publication transaction. With assets the page is created as an empty
-  // shell first (attachments need a page id), assets are uploaded, and the
-  // final ADF — identical to the preview except for substituted media
-  // identities — lands as version 2. Any failure rolls the page back.
-  const hasAssets = doc.assets.length > 0;
-  const page = await client.createPageAdf({
-    spaceId: space.id,
-    title,
-    adf: hasAssets ? { version: 1, type: "doc", content: [] } : documentToAdf(doc),
-    parentId,
-  });
+  // Title preflight (§2.12): every page title this run would create must be
+  // free in the target space BEFORE the first write.
+  const plannedTitles: string[] = [];
+  if (tree) collectTreeTitles(tree, plannedTitles);
+  else plannedTitles.push(title);
+  const conflicts: string[] = [];
+  for (const planned of plannedTitles) {
+    const matches = await client.findPagesByTitle(planned, { spaceKey });
+    if (matches.length > 0) conflicts.push(planned);
+  }
+  if (conflicts.length > 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `These titles already exist in ${spaceKey}: ${conflicts.join(", ")}. ` +
+        `Use --title, rename the headings, or remove the existing pages.`,
+      { conflicts },
+    );
+  }
 
-  let adf = documentToAdf(doc);
-  let finalPage = page;
+  // Publication transaction. Every created page id is tracked; any failure
+  // rolls back ALL pages created by this run (children before parents).
+  const createdPageIds: string[] = [];
+  let rootResult: PublishedPageReport;
   try {
-    if (hasAssets) {
-      for (const asset of doc.assets) {
-        await client.uploadAttachment({
-          pageId: page.id,
-          filename: asset.fileName,
-          data: asset.bytes,
-          mimeType: asset.mediaType,
-        });
-      }
-      const mediaList = await client.listPageAttachmentMedia(page.id);
-      const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
-      const media = new Map<string, AdfMediaResolution>();
-      for (const asset of doc.assets) {
-        const fileId = fileIdByName.get(asset.fileName);
-        if (!fileId) {
-          throw new Error(`uploaded attachment ${asset.fileName} has no resolvable media fileId`);
-        }
-        media.set(asset.id, { fileId, collection: `contentId-${page.id}` });
-      }
-      adf = documentToAdf(doc, { media });
-      finalPage = await client.updatePageAdf({ id: page.id, title, adf, version: 2 });
-      finalPage = { ...finalPage, url: finalPage.url ?? page.url };
-    }
-
-    // Verify by readback; a page that cannot be verified is rolled back.
-    const readback = await client.getPageAdf(page.id);
-    const published = JSON.parse(readback.body.value) as {
-      content?: { type?: string }[];
-    };
-    const expectedTypes = adf.content.map((n) => n.type).join(",");
-    const actualTypes = (published.content ?? []).map((n) => n.type).join(",");
-    if (expectedTypes !== actualTypes) {
-      throw new Error(
-        `published block sequence [${actualTypes}] does not match the previewed plan [${expectedTypes}]`,
+    if (tree) {
+      rootResult = await publishTree(client, space.id, tree, parentId, createdPageIds);
+    } else {
+      rootResult = await publishOnePage(
+        client,
+        space.id,
+        title,
+        parentId,
+        doc.blocks,
+        doc.assets,
+        createdPageIds,
       );
     }
   } catch (err) {
-    try {
-      await client.deletePage(page.id);
-    } catch {
+    const failedRollbacks: string[] = [];
+    for (const id of [...createdPageIds].reverse()) {
+      try {
+        await client.deletePage(id);
+      } catch {
+        failedRollbacks.push(id);
+      }
+    }
+    if (failedRollbacks.length > 0) {
       fail(
         opts,
         1,
         ERROR_CODES.API,
-        `Publication verification failed AND rollback failed — page ${page.id} needs manual cleanup: ${(err as Error).message}`,
-        { pageId: page.id },
+        `Publication failed AND rollback failed for page(s) ${failedRollbacks.join(", ")} — manual cleanup needed: ${(err as Error).message}`,
+        { pageIds: failedRollbacks },
       );
     }
     fail(
       opts,
       1,
       ERROR_CODES.API,
-      `Publication could not be verified; the page was rolled back: ${(err as Error).message}`,
+      `Publication could not be completed/verified; all ${createdPageIds.length} created page(s) were rolled back: ${(err as Error).message}`,
       {},
     );
   }
@@ -230,7 +252,8 @@ export async function handleWikiImport(
       {
         mode: "published",
         source,
-        page: { id: finalPage.id, title: finalPage.title, url: finalPage.url, version: finalPage.version },
+        page: rootResult,
+        pagesCreated: createdPageIds.length,
         adfDigest: preview.adfDigest,
         attachments: preview.assets,
         issues: doc.issues,
@@ -238,12 +261,134 @@ export async function handleWikiImport(
       opts,
     );
   } else {
-    output(`Created page "${finalPage.title}" (${finalPage.id})`, opts);
-    if (finalPage.url) output(finalPage.url, opts);
+    output(`Created ${createdPageIds.length} page(s), root "${rootResult.title}" (${rootResult.id})`, opts);
+    if (rootResult.url) output(rootResult.url, opts);
     if (doc.issues.length > 0) {
       output(`${doc.issues.length} issue(s) — run without --confirm to review them in the preview.`, opts);
     }
   }
+}
+
+interface PublishedPageReport {
+  id: string;
+  title: string;
+  url?: string;
+  version?: number;
+  children?: PublishedPageReport[];
+}
+
+/**
+ * Publish one page: shell-create when assets exist (attachments need a page
+ * id), upload assets, substitute media identities into the final ADF, and
+ * verify the readback block sequence. Registers the created id BEFORE any
+ * follow-up call so the caller's rollback always sees it.
+ */
+async function publishOnePage(
+  client: ConfluenceClient,
+  spaceId: string,
+  title: string,
+  parentId: string | undefined,
+  blocks: ImportedDocument["blocks"],
+  assets: ImportedDocument["assets"],
+  createdPageIds: string[],
+): Promise<PublishedPageReport> {
+  const pageDoc: ImportedDocument = { blocks, assets, issues: [] };
+  const hasAssets = assets.length > 0;
+  const page = await client.createPageAdf({
+    spaceId,
+    title,
+    adf: hasAssets ? { version: 1, type: "doc", content: [] } : documentToAdf(pageDoc),
+    parentId,
+  });
+  createdPageIds.push(page.id);
+
+  let adf = documentToAdf(pageDoc);
+  let finalPage = page;
+  if (hasAssets) {
+    for (const asset of assets) {
+      await client.uploadAttachment({
+        pageId: page.id,
+        filename: asset.fileName,
+        data: asset.bytes,
+        mimeType: asset.mediaType,
+      });
+    }
+    const mediaList = await client.listPageAttachmentMedia(page.id);
+    const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
+    const media = new Map<string, AdfMediaResolution>();
+    for (const asset of assets) {
+      const fileId = fileIdByName.get(asset.fileName);
+      if (!fileId) {
+        throw new Error(`uploaded attachment ${asset.fileName} has no resolvable media fileId`);
+      }
+      media.set(asset.id, { fileId, collection: `contentId-${page.id}` });
+    }
+    adf = documentToAdf(pageDoc, { media });
+    finalPage = await client.updatePageAdf({ id: page.id, title, adf, version: 2 });
+    finalPage = { ...finalPage, url: finalPage.url ?? page.url };
+  }
+
+  const readback = await client.getPageAdf(page.id);
+  const published = JSON.parse(readback.body.value) as { content?: { type?: string }[] };
+  const expectedTypes = adf.content.map((n) => n.type).join(",");
+  const actualTypes = (published.content ?? []).map((n) => n.type).join(",");
+  if (expectedTypes !== actualTypes) {
+    throw new Error(
+      `page "${title}": published block sequence [${actualTypes}] does not match the previewed plan [${expectedTypes}]`,
+    );
+  }
+  return { id: finalPage.id, title: finalPage.title, url: finalPage.url, version: finalPage.version };
+}
+
+/** Publish a split tree depth-first: each page before its children. */
+async function publishTree(
+  client: ConfluenceClient,
+  spaceId: string,
+  plan: ImportPagePlan,
+  parentId: string | undefined,
+  createdPageIds: string[],
+): Promise<PublishedPageReport> {
+  const page = await publishOnePage(
+    client,
+    spaceId,
+    plan.title,
+    parentId,
+    plan.blocks,
+    plan.assets,
+    createdPageIds,
+  );
+  const children: PublishedPageReport[] = [];
+  for (const child of plan.children) {
+    children.push(await publishTree(client, spaceId, child, page.id, createdPageIds));
+  }
+  return children.length > 0 ? { ...page, children } : page;
+}
+
+function collectTreeTitles(plan: ImportPagePlan, into: string[]): void {
+  into.push(plan.title);
+  for (const child of plan.children) collectTreeTitles(child, into);
+}
+
+function treeSummary(plan: ImportPagePlan): {
+  title: string;
+  blocks: number;
+  assets: string[];
+  children: ReturnType<typeof treeSummary>[];
+} {
+  return {
+    title: plan.title,
+    blocks: plan.blocks.length,
+    assets: plan.assets.map((a) => a.fileName),
+    children: plan.children.map(treeSummary),
+  };
+}
+
+function renderTree(plan: ImportPagePlan, depth: number): string {
+  const lines = [
+    `${"  ".repeat(depth)}${depth === 0 ? "•" : "└"} ${plan.title} (${plan.blocks.length} blocks${plan.assets.length ? `, ${plan.assets.length} attachment(s)` : ""})`,
+  ];
+  for (const child of plan.children) lines.push(renderTree(child, depth + 1));
+  return lines.join("\n");
 }
 
 function importHelp(): string {
@@ -262,7 +407,8 @@ Options:
   --space <KEY>     Target space key (default: profile space)
   --title <title>   Page title (default: first Heading 1, else file name)
   --parent <id>     Parent page id
-  --confirm         Actually create the page
+  --split <1|2>     Split into a page tree at heading levels 1 (or 1+2)
+  --confirm         Actually create the page(s)
   --profile <name>  Use a specific auth profile
   --json            JSON output
 

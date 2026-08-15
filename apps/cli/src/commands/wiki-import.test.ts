@@ -65,6 +65,66 @@ describe("wiki import (preview mode, offline)", () => {
     expect(text).toContain("--confirm");
   });
 
+  it("previews a --split page tree with per-page block counts", async () => {
+    const file = join(dir, "split.docx");
+    writeFileSync(
+      file,
+      buildDocxFixture({
+        body:
+          p(r("Preamble")) +
+          p(r("Intro"), { style: "Heading1" }) +
+          p(r("Intro text")) +
+          p(r("Background"), { style: "Heading2" }) +
+          p(r("Background text")) +
+          p(r("Usage"), { style: "Heading1" }) +
+          p(r("Usage text")),
+      }),
+    );
+
+    await handleWikiImport(
+      [file],
+      { space: "DOCSY", title: "Guide", split: "2", json: true },
+      { json: true },
+    );
+
+    const parsed = JSON.parse(stdout.join(""));
+    expect(parsed.mode).toBe("preview");
+    expect(parsed.tree.title).toBe("Guide");
+    expect(parsed.tree.children.map((c: { title: string }) => c.title)).toEqual([
+      "Intro",
+      "Usage",
+    ]);
+    expect(parsed.tree.children[0].children[0].title).toBe("Background");
+  });
+
+  it("rejects a --split that would produce duplicate titles", async () => {
+    const file = join(dir, "dupes.docx");
+    writeFileSync(
+      file,
+      buildDocxFixture({
+        body:
+          p(r("Setup"), { style: "Heading1" }) + p(r("x")) + p(r("Setup"), { style: "Heading1" }),
+      }),
+    );
+
+    let exitCode: number | undefined;
+    const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    }) as never);
+    try {
+      await handleWikiImport(
+        [file],
+        { space: "DOCSY", split: "1", json: true },
+        { json: true },
+      ).catch(() => {});
+      expect(exitCode).toBe(1);
+      expect(stdout.join("")).toContain("same title");
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
   it("falls back to the file name when the document has no level-1 heading", async () => {
     const file = join(dir, "notes.docx");
     writeFileSync(file, buildDocxFixture({ body: p(r("just text")) }));
