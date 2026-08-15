@@ -339,3 +339,31 @@ Proof matrix (plan §6), all pages deleted afterwards with a verified 404:
   workers keyed by sourcePath (manifest order preserved); target
   mutations remain strictly sequential (bound = 1) by design.
 - Cleanup: all four pages deleted; follow-up GET returned **404**.
+
+## 2026-08-15 — Data Center contract track (MVP §2.1 / Task 13)
+
+- Storage encoder (`documentToStorage`): headings incl. numbering
+  labels, marks, links, nested lists, header tables, blockquotes, code
+  macro with CDATA-safe escaping, and `ac:image` referencing attachments
+  by FILENAME (the v1 contract — no upload-time identity in the body).
+  XML escaping golden-tested.
+- DC publication path (`publishOnePageDc`): v1 shell → attachment
+  uploads → full Storage body as version 2 → structural tag-sequence
+  readback verification → labels with readback; ids tracked for the
+  caller's v1 DELETE rollback.
+- Deterministic local contract suite (3 tests) against a fake DC behind
+  the context path `/confluence`: asserts the EXACT wire sequence
+  (POST /content → POST child/attachment → PUT content → GET content →
+  label POST/GET), bearer-PAT auth on every call, multipart with
+  `X-Atlassian-Token: nocheck` and correct bytes, `"representation":
+  "storage"` bodies containing `ri:filename="image1.png"`, and the
+  rollback contract (failure → throw with tracked id → v1 DELETE).
+  Found/kept honest: the client transparently retries 5xx (the injected
+  failure had to be a 400 to stay non-retryable — retry behavior itself
+  is a proven part of the contract).
+- CLI: DC profiles now run the single-page path (incl. --from-page,
+  policies/recipes, labels, rename preflight); Cloud-only flags fail
+  closed with an explicit list; comments on DC surface as a reported
+  issue honoring unsupported=fail.
+- Explicitly NOT claimed: live certification against a real DC tenant
+  (per plan, community-operated validation stays optional/additive).

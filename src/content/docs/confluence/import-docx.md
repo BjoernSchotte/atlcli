@@ -12,10 +12,11 @@ published before anything touches Confluence, and it only publishes with an
 explicit `--confirm`.
 
 > **Scope.** DOCX import is under active development
-> (`specs/import-docx-mvp`). Current coverage: single pages, page-tree
-> splitting, batch imports with resume, importing from Confluence
-> attachments, and in-place updates of existing pages — Cloud only.
-> Data Center support is a planned follow-up.
+> (`specs/import-docx-mvp`). Cloud (live-certified): single pages,
+> page-tree splitting, batch imports with resume, importing from
+> Confluence attachments, in-place updates, comments, recipes,
+> governance. Data Center (contract-tested, not live-certified):
+> single-page imports with images and labels over REST v1 Storage.
 
 ## On this page
 
@@ -36,14 +37,15 @@ explicit `--confirm`.
 - [Options](#options)
 - [Advanced example](#advanced-example)
 - [No silent loss: import issues](#no-silent-loss-import-issues)
+- [Data Center](#data-center)
 - [Publication safety](#publication-safety)
 - [Troubleshooting](#troubleshooting)
 - [Related topics](#related-topics)
 
 ## Prerequisites
 
-- A configured **Confluence Cloud** profile (`atlcli auth login`); Data
-  Center profiles are rejected with a clear error for now
+- A configured Confluence profile (`atlcli auth login`) — Cloud for the
+  full feature set, or Data Center for single-page imports (see below)
 - Permission to create pages (and attachments, for documents with images) in
   the target space
 - A `.docx` file — the binary `.doc` format is not supported
@@ -551,13 +553,34 @@ publishing.
 - Documents with images publish in one transaction: page shell → attachment
   uploads → final content; any failure rolls the whole page back
 
+## Data Center
+
+Data Center profiles publish through the documented REST v1 contracts:
+the page body is Storage XHTML, images reference their attachment **by
+filename** (`<ac:image><ri:attachment ri:filename="…"/></ac:image>`), and
+context paths (e.g. `https://confluence.example.com/confluence`) are
+honored on every call. The transaction mirrors the Cloud shape: empty
+shell → attachment uploads → full body as version 2 → structural readback
+verification → labels with readback; any failure rolls the page back.
+
+Supported on DC: single-page imports (local file or `--from-page`),
+images, labels, title preflight with `--title-conflict rename`, policies
+and recipes. Cloud-only (rejected with a clear error): `--split`,
+`--update-page`, `--restriction`/`--staging-parent`,
+`--content-property`, and comment import.
+
+This path is **contract-tested against the documented v1 REST contracts**
+(a deterministic local suite covering auth, context path, multipart CSRF
+header, storage bodies, readback, and rollback) — it is not certified
+against a specific live Data Center installation.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `Rejected DOCX package: …` | File is `.doc`, corrupted, or contains active content | Re-save as `.docx` in Word; remove macros |
 | `Space XYZ not found or not accessible` | Wrong key or missing permission | Check `--space`; verify the profile can see the space |
-| `wiki import currently supports Confluence Cloud profiles only` | Data Center profile | Use a Cloud profile; DC support is a planned follow-up |
+| `Data Center import supports single pages only; unsupported here: …` | A Cloud-only flag on a DC profile | Drop the listed flags, or use a Cloud profile |
 | Headings imported as plain paragraphs | Text styled manually (big/bold) instead of Word heading styles | Apply real heading styles in Word and re-import |
 | List numbers restart or nest oddly | Document uses manual numbering, not Word list formatting | Reformat with Word's list styles |
 | `Publication could not be verified; the page was rolled back` | Confluence normalized the content unexpectedly | Re-run with `--json`, file the reported sequences as a bug |

@@ -2139,6 +2139,16 @@ Expected: exit 0; all live cases pass; cleanup assertions pass. If auth/network 
 
 ### Task 13 — Prove Data Center contracts and provide optional community validation
 
+> Status 2026-08-15: DC single-page publication is implemented
+> (Storage encoder, v1 transaction with filename-referenced images,
+> labels, rollback) and certified by a deterministic local contract
+> suite (`apps/cli/src/commands/wiki-import-dc.contract.test.ts`)
+> covering bearer auth, a non-root context path, the multipart
+> `X-Atlassian-Token: nocheck` upload, versioned Storage updates,
+> readback, and v1 DELETE rollback. Cloud-only features fail closed on
+> DC profiles with an explicit list. No live DC certification is
+> claimed; the optional community harness remains open.
+
 **Depends on:** Tasks 0–11. Task 12 Cloud live certification is independent and may run in parallel.
 
 **Files:** `packages/confluence/src/import-dc-contract.test.ts`, CLI DC contract/build-mode tests, shared optional live E2E path, sanitized community-evidence schema/inspector, docs, `EVIDENCE.md`.

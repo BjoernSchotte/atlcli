@@ -93,6 +93,7 @@ export {
   type EditabilityLevel,
 } from "./assess.js";
 export { extractDocxEntriesFromZip, type BatchZipEntry } from "./batch-zip.js";
+export { documentToStorage, storageTagSequence, type StorageEncodeOptions } from "./storage.js";
 export {
   SplitTitleConflictError,
   collectAnchorRefs,

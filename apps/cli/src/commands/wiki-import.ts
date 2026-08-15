@@ -43,7 +43,9 @@ import {
   splitDocument,
   type AdfMediaResolution,
   type ImportPagePlan,
+  documentToStorage,
   extractDocxEntriesFromZip,
+  storageTagSequence,
   type ImportBlock,
   type ImportComment,
   type ImportedDocument,
@@ -261,13 +263,24 @@ export async function handleWikiImport(
     }
     assertCliAuthSupported(profile, opts);
     if ((confirm || fromPage || updatePageId) && resolveDeploymentType(profile) !== "cloud") {
-      fail(
-        opts,
-        1,
-        ERROR_CODES.VALIDATION,
-        "wiki import currently supports Confluence Cloud profiles only (Data Center follows the plan's contract track).",
-        { profile: profile.name },
-      );
+      // Data Center path (contract-tested, not project-live-certified,
+      // MVP §2.1): single-page Storage publication via REST v1. Features
+      // that depend on Cloud v2 contracts stay Cloud-only and fail closed.
+      const dcBlockers: string[] = [];
+      if (updatePageId) dcBlockers.push("--update-page (baseline properties use REST v2)");
+      if (getFlag(flags, "split")) dcBlockers.push("--split (tree publication uses REST v2)");
+      if (getFlag(flags, "restriction")) dcBlockers.push("--restriction (Cloud restriction contract)");
+      if (getFlag(flags, "staging-parent")) dcBlockers.push("--staging-parent");
+      if (getFlags(flags, "content-property").length > 0) dcBlockers.push("--content-property (v2)");
+      if (dcBlockers.length > 0) {
+        fail(
+          opts,
+          1,
+          ERROR_CODES.VALIDATION,
+          `Data Center import supports single pages only; unsupported here: ${dcBlockers.join(", ")}.`,
+          { profile: profile.name },
+        );
+      }
     }
   }
 
@@ -432,6 +445,63 @@ export async function handleWikiImport(
   enforceUnsupportedPolicy(doc, policy, opts);
 
   const client = new ConfluenceClient(profile!);
+
+  if (resolveDeploymentType(profile!) !== "cloud") {
+    // Data Center publication: REST v1 Storage, attachment references by
+    // filename, labels via v1. No baseline (v2 property) — reported.
+    if (doc.comments.length > 0 && policy.options.comments !== "skip") {
+      doc.issues.push({
+        code: "docx-import/comments-unsupported-on-dc",
+        severity: "warning",
+        outcome: "reported",
+        message: "Word comments are not imported on Data Center (Cloud v2 comment contract).",
+        context: { occurrences: doc.comments.length },
+      });
+      enforceUnsupportedPolicy(doc, policy, opts);
+    }
+    const matches = await client.findPagesByTitle(title, { spaceKey });
+    if (matches.length > 0) {
+      if (titleConflict === "rename") {
+        title = await findFreeTitle(client, spaceKey, title);
+        output(`Title exists — renamed to "${title}".`, opts);
+      } else {
+        fail(opts, 1, ERROR_CODES.VALIDATION, `Title "${title}" already exists in ${spaceKey}.`, {});
+      }
+    }
+    const dcCreated: string[] = [];
+    let dcResult: PublishedPageReport;
+    try {
+      dcResult = await publishOnePageDc(client, spaceKey, title, parentId, doc, governance.labels, dcCreated);
+    } catch (err) {
+      for (const id of [...dcCreated].reverse()) {
+        try {
+          await client.deletePage(id);
+        } catch {
+          fail(opts, 1, ERROR_CODES.API, `DC publication failed AND rollback failed for page ${id}: ${(err as Error).message}`, { pageId: id });
+        }
+      }
+      fail(opts, 1, ERROR_CODES.API, `DC publication could not be verified; the page was rolled back: ${(err as Error).message}`, {});
+    }
+    if (opts.json) {
+      output(
+        {
+          mode: "published",
+          deployment: "data-center",
+          source,
+          page: dcResult,
+          adfDigest: preview.adfDigest,
+          attachments: preview.assets,
+          issues: doc.issues,
+        },
+        opts,
+      );
+    } else {
+      output(`Created page "${dcResult.title}" (${dcResult.id}) [data-center]`, opts);
+      if (dcResult.url) output(dcResult.url, opts);
+    }
+    return;
+  }
+
   const spacePage = await client.listSpacesV2({ keys: [spaceKey], limit: 1 });
   const space = spacePage.spaces.find((s) => s.key === spaceKey);
   if (!space) {
@@ -1509,6 +1579,55 @@ export async function publishComments(
     }
   }
   return bindings;
+}
+
+/**
+ * Data Center single-page publication (MVP §2.1 contract track): create a
+ * v1 Storage shell, upload attachments (referenced by FILENAME in the
+ * body), publish the full Storage body as version 2, verify the readback
+ * structural tag sequence, and apply/verify labels. Every created id is
+ * registered before follow-up calls so the caller's rollback sees it.
+ */
+export async function publishOnePageDc(
+  client: ConfluenceClient,
+  spaceKey: string,
+  title: string,
+  parentId: string | undefined,
+  doc: ImportedDocument,
+  labels: string[],
+  createdPageIds: string[],
+): Promise<PublishedPageReport> {
+  const page = await client.createPage({ spaceKey, title, storage: "<p/>", parentId });
+  createdPageIds.push(page.id);
+
+  for (const asset of doc.assets) {
+    await client.uploadAttachment({
+      pageId: page.id,
+      filename: asset.fileName,
+      data: asset.bytes,
+      mimeType: asset.mediaType,
+    });
+  }
+
+  const storage = documentToStorage(doc);
+  const updated = await client.updatePage({ id: page.id, title, storage, version: 2 });
+
+  const details = await client.getPageDetails(page.id);
+  const expected = storageTagSequence(storage).join(",");
+  const actual = storageTagSequence(details.storage ?? "").join(",");
+  if (expected !== actual) {
+    throw new Error(
+      `page "${title}": readback structural sequence [${actual}] does not match the plan [${expected}]`,
+    );
+  }
+
+  if (labels.length > 0) {
+    await client.addLabels(page.id, labels);
+    const effective = new Set((await client.getLabels(page.id)).map((l) => l.name));
+    const missing = labels.filter((l) => !effective.has(l));
+    if (missing.length > 0) throw new Error(`label readback failed: missing ${missing.join(", ")}`);
+  }
+  return { id: updated.id, title: updated.title, url: updated.url ?? page.url, version: updated.version };
 }
 
 /** Read back a page and verify its block sequence against the plan. */
