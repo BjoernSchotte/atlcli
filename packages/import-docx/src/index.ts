@@ -21,6 +21,22 @@ export type {
 } from "./model.js";
 export { parseDocx, type ParseDocxPolicy } from "./parse.js";
 export {
+  BASELINE_PROPERTY_KEY,
+  BASELINE_SCHEMA,
+  buildBaseline,
+  canonicalJson,
+  digestAdfValue,
+  validateBaseline,
+  type BaselineAssetBinding,
+  type ImportedPageBaselineV1,
+} from "./baseline.js";
+export {
+  diffAdfBlocks,
+  renderSemanticDiffLines,
+  type SemanticDiffEntry,
+  type SemanticDiffV1,
+} from "./diff.js";
+export {
   RECIPE_SCHEMA,
   canonicalRecipeJson,
   parseRecipe,

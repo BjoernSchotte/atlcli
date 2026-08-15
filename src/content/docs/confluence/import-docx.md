@@ -337,15 +337,28 @@ atlcli wiki import spec-v2.docx --update-page 123456
 atlcli wiki import spec-v2.docx --update-page 123456 --confirm --expect-version 7
 ```
 
-`--expect-version` is mandatory on a confirmed update: if the page changed
-since your preview (someone edited it concurrently), the run fails instead
-of overwriting their work. Same-name attachments are updated in place; if
-the post-update verification fails, the previous content is automatically
-**restored as a new version**.
+Updates are guarded by an **import baseline** the importer seals on every
+single-page import (page property `atlcli.import.baseline`, digest-signed):
 
-Word of caution: inline comments anchored to text that changed may lose
-their anchors — the preview says so explicitly. `--update-page` cannot be
-combined with `--split` or `--parent`.
+- Only pages **created by `wiki import`** can be updated — a page without a
+  valid baseline is rejected.
+- If anyone edited the page since the import, the update fails with
+  `target-diverged` and shows the diff. There is deliberately **no force
+  flag** — reconcile manually or import as a new page.
+- The preview shows a semantic block diff (added/changed/removed/unchanged)
+  between the current page and the new plan; re-uploaded attachment
+  identities never count as changes.
+- Attachments are reconciled by content digest: unchanged images are not
+  re-uploaded, changed ones are updated in place, and images no longer in
+  the document are deleted **after** the new body verifies (a failed
+  deletion becomes an explicit orphan warning, never a rollback).
+- Pages carrying inline comments are blocked by default (anchors to changed
+  text cannot be proven to survive); pass `--accept-anchor-loss` to proceed.
+- If post-update verification fails, the previous content is automatically
+  **restored as a new version**, and the baseline is resealed after every
+  successful update.
+- `--expect-version <n>` remains available as an additional guard.
+  `--update-page` cannot be combined with `--split` or `--parent`.
 
 ## Batch import
 

@@ -1981,12 +1981,35 @@ export class ConfluenceClient {
 
   /** Read a v2 page property by key; undefined when absent. */
   async getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined> {
+    return (await this.getPageProperty(pageId, key))?.value;
+  }
+
+  /** Read a v2 page property with its identity/version; undefined when absent. */
+  async getPageProperty(
+    pageId: string,
+    key: string,
+  ): Promise<{ id: string; version: number; value: unknown } | undefined> {
     const data = (await this.requestV2(`/pages/${pageId}/properties`, {
       query: { key },
       logBody: "meta-only",
     })) as any;
     const hit = (data?.results ?? []).find((r: any) => r.key === key);
-    return hit?.value;
+    if (!hit) return undefined;
+    return { id: String(hit.id), version: hit.version?.number ?? 1, value: hit.value };
+  }
+
+  /** Create or update a v2 page property (upsert by key). */
+  async upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void> {
+    const existing = await this.getPageProperty(pageId, key);
+    if (!existing) {
+      await this.createPageProperty(pageId, key, value);
+      return;
+    }
+    await this.requestV2(`/pages/${pageId}/properties/${existing.id}`, {
+      method: "PUT",
+      body: { key, value, version: { number: existing.version + 1 } },
+      logBody: "meta-only",
+    });
   }
 
   /**

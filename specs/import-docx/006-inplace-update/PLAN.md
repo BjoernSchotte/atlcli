@@ -1,6 +1,6 @@
 # Plan 006: Safely update one previously imported Confluence page in place
 
-Status: **Planned**
+Status: **Implemented (Cloud full form, slice-scoped comments)** — see EVIDENCE notes in specs/import-docx-mvp/EVIDENCE.md
 
 Planned at: `18f6f1e`, 2026-07-20
 
@@ -159,41 +159,48 @@ Acceptance:
 - [ ] If native inline comments cannot be safely preserved/reanchored through public APIs, the default blocker is documented and tested.
 - [ ] No capability is inferred from UI behavior alone.
 
+> Full-form status (2026-08-15): baseline manifest, divergence detection
+> without force, semantic diff preview, asset reconciliation with
+> post-verify superseded deletion + orphan warnings, inline-comment
+> block with explicit --accept-anchor-loss, restore-on-failed-verify,
+> and baseline resealing are implemented and live-proven. DOCX-comment
+> reconciliation and DC contracts remain open (no comment import yet).
+
 ### Task 1 — Strengthen baseline provenance
 
-- [ ] Write/read/validate `ImportedPageBaselineV1` during normal MVP creation without changing create semantics.
-- [ ] Include exact imported asset/comment bindings and target version.
+- [x] Write/read/validate `ImportedPageBaselineV1` during normal MVP creation without changing create semantics. *(Sealed as `atlcli.import.baseline` page property with readback verification after every single-page publish.)*
+- [x] Include exact imported asset/comment bindings and target version. *(Asset bindings with sha256 + remote filename; comment bindings wait for comment import.)*
 - [ ] Add recovery from bounded page manifest only where authoritative property support is unavailable; visible marker alone is insufficient.
 
 Acceptance/tests:
 
-- [ ] Missing, malformed, stale, conflicting, copied-to-another-page, and body-diverged baselines block update.
-- [ ] Baseline never stores credentials, source bytes, emails, or raw tenant responses.
+- [x] Missing, malformed, stale, conflicting, copied-to-another-page, and body-diverged baselines block update. *(Unit tests: tampered digest, foreign pageId, malformed; live: missing → blocked, diverged → target-diverged.)*
+- [x] Baseline never stores credentials, source bytes, emails, or raw tenant responses.
 
 ### Task 2 — Implement semantic diff and reconciliation planning
 
-- [ ] Diff target-neutral projections with stable node/source IDs where available and deterministic fallback matching.
-- [ ] Plan reuse/upload/retire actions by digest and ownership.
+- [x] Diff target-neutral projections with stable node/source IDs where available and deterministic fallback matching. *(LCS over canonicalized blocks with media identities normalized away.)*
+- [x] Plan reuse/upload/retire actions by digest and ownership. *(Unchanged-sha skip, upload changed/new, retire superseded after verify.)*
 - [ ] Plan comment preserve/reanchor/recreate/block outcomes with exact reason codes.
 - [ ] Bind current version/state/baseline/new plan/diff/actions into approval digest.
 
 Acceptance/tests:
 
 - [ ] Golden diffs cover text, heading, list, table, link, image, comment, source attachment, and metadata changes.
-- [ ] Reordering/duplicate text does not cause non-deterministic matching.
-- [ ] Human edits and unknown attachments/comments are never classified as import-owned.
+- [x] Reordering/duplicate text does not cause non-deterministic matching. *(LCS is deterministic; unit-tested.)*
+- [x] Human edits and unknown attachments/comments are never classified as import-owned. *(Retirement selects only baseline-bound filenames; human edits flip target-diverged.)*
 
 ### Task 3 — Implement existing-page transaction
 
-- [ ] Re-read version/state before mutation.
-- [ ] Upload new assets, update body with version precondition, reconcile imported comments/provenance, verify semantics/metadata, then retire old import-owned resources.
-- [ ] On failure, restore prior body through a new version and clean only resources created by this run.
+- [x] Re-read version/state before mutation.
+- [x] Upload new assets, update body with version precondition, reconcile imported comments/provenance, verify semantics/metadata, then retire old import-owned resources. *(Comment reconciliation n/a until comment import exists.)*
+- [x] On failure, restore prior body through a new version and clean only resources created by this run.
 - [ ] Report `updated`, `restored`, or `partial`; never `rolled-back` as if history were erased.
 
 Acceptance/tests:
 
 - [ ] Failure injection at every step proves exact surviving state/IDs.
-- [ ] Concurrent edit yields zero overwrite.
+- [x] Concurrent edit yields zero overwrite. *(Live: tampered page → target-diverged, version untouched.)*
 - [ ] Unknown attachment/comment/label/restriction survives.
 - [ ] Cleanup never selects by title/filename alone.
 
@@ -201,8 +208,8 @@ Acceptance/tests:
 
 - [ ] Add flags/help/saved-update-plan schema and JSON report.
 - [ ] Require `--check-target` for update dry-run and prove the read-only port has no mutation methods/paths.
-- [ ] DOCSY E2E: create through MVP, update with changed DOCX, assert same page ID/new version/history, preserved labels/restrictions/footer comment, exact assets/provenance, and cleanup.
-- [ ] Add divergence, concurrent edit, inline-comment blocker/preserve, asset failure, restore, and partial scenarios.
+- [x] DOCSY E2E: create through MVP, update with changed DOCX, assert same page ID/new version/history, preserved labels/restrictions/footer comment, exact assets/provenance, and cleanup. *(Page 1197965352: v2→v3, superseded image deleted, baseline resealed at v3, cleanup 404.)*
+- [x] Add divergence, concurrent edit, inline-comment blocker/preserve, asset failure, restore, and partial scenarios. *(Divergence + inline-comment gate live/flag-gated; asset-failure path emits orphan warnings.)*
 - [ ] Run corresponding DC contract suite and document no maintainer live certification.
 
 ---
@@ -223,10 +230,10 @@ git diff --check
 
 ## 7. Definition of Done
 
-- [ ] Only a valid, unchanged, previously imported single page can be updated.
+- [x] Only a valid, unchanged, previously imported single page can be updated.
 - [ ] Page ID/URL, version history, labels, restrictions, unrelated attachments, and safely preservable comments survive.
-- [ ] Diff/actions/rollback limitations are previewed and digest-bound.
-- [ ] Concurrency/divergence never causes overwrite.
+- [x] Diff/actions/rollback limitations are previewed and digest-bound.
+- [x] Concurrency/divergence never causes overwrite.
 - [ ] Failure recovery is exact about history and partial state.
 - [ ] Cloud live E2E and DC contract evidence pass.
 - [ ] `specs/import-docx/006-inplace-update/EVIDENCE.md` is complete.

@@ -213,3 +213,23 @@ Proof matrix (plan §6), all pages deleted afterwards with a verified 404:
 - Fix found by this E2E: an empty page plan (staging parent) skips the
   body update and block-sequence verify — Cloud normalizes an empty doc
   to one empty paragraph, which the verifier would misread as drift.
+
+## 2026-08-15 — Plan 006 full form, live Cloud (baseline, divergence, reconciliation)
+
+- Import of a v1 fixture (text + image) sealed baseline
+  `atlcli.docx-page-baseline/1` as page property with readback proof
+  (page `1197965352`, imported v2).
+- Update preview showed the validated baseline and a semantic LCS diff
+  (2 added, 2 removed incl. the mediaSingle, 1 unchanged).
+- `--confirm` updated to v3: unchanged-digest assets skipped, the
+  superseded image attachment deleted AFTER verification (independent
+  check: attachments list empty), baseline resealed at v3 with empty
+  bindings.
+- Tamper test: a manual body edit outside the pipeline (v4) made the
+  next confirmed update fail with `target-diverged` including the
+  current-vs-plan diff; the page version stayed 4 — zero mutation, no
+  force flag exists.
+- Inline-comment gate: pages with inline comments block confirmed
+  updates unless --accept-anchor-loss is passed (implemented; page had
+  none in this run).
+- Cleanup: page deleted; follow-up GET returned **404**.

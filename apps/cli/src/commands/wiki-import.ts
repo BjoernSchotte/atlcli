@@ -20,6 +20,7 @@ import {
   loadConfig,
   output,
   resolveDeploymentType,
+  sha256Hex,
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
@@ -47,7 +48,18 @@ import {
 import { assertCliAuthSupported } from "./session-guard.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { handleRecipeCommand, loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
-import { parseRecipe, recipeApplicability } from "@atlcli/import-docx";
+import {
+  BASELINE_PROPERTY_KEY,
+  buildBaseline,
+  diffAdfBlocks,
+  digestAdfValue,
+  parseRecipe,
+  recipeApplicability,
+  renderSemanticDiffLines,
+  validateBaseline,
+  type AdfNode,
+  type ImportedPageBaselineV1,
+} from "@atlcli/import-docx";
 
 interface RecipeInfo {
   id: string;
@@ -296,7 +308,7 @@ export async function handleWikiImport(
   }
 
   if (updatePageId) {
-    await handleUpdateImport(updatePageId, doc, source, flags, opts, profile!, confirm);
+    await handleUpdateImport(updatePageId, doc, bytes, source, flags, opts, profile!, confirm);
     return;
   }
 
@@ -477,6 +489,9 @@ export async function handleWikiImport(
     if (tree) {
       rootResult = await publishTree(client, space.id, tree, effectiveParent, createdPageIds, rootOptions);
     } else {
+      // Single pages seal a plan-006 baseline so they can be updated in
+      // place later. Trees stay baseline-free (tree update is a later plan).
+      const sourceSha256 = await sha256Hex(bytes);
       rootResult = await publishOnePage(
         client,
         space.id,
@@ -485,7 +500,10 @@ export async function handleWikiImport(
         doc.blocks,
         doc.assets,
         createdPageIds,
-        rootOptions,
+        {
+          ...rootOptions,
+          baseline: { sourceSha256, importPlanDigest: preview.adfDigest },
+        },
       );
     }
 
@@ -884,6 +902,7 @@ async function handleBatchImport(
 async function handleUpdateImport(
   pageId: string,
   doc: ImportedDocument,
+  sourceBytes: Uint8Array,
   source: unknown,
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions,
@@ -893,20 +912,52 @@ async function handleUpdateImport(
   const client = new ConfluenceClient(profile);
   const current = await client.getPage(pageId);
   const currentAdfPage = await client.getPageAdf(pageId);
-  const currentAdf = JSON.parse(currentAdfPage.body.value) as { content?: { type?: string }[] };
-  const currentTypes = (currentAdf.content ?? []).map((n) => n.type ?? "?");
+  const currentAdf = JSON.parse(currentAdfPage.body.value) as { content?: AdfNode[] };
+
+  // Update authority (plan 006 invariants 1-3): the page must carry a
+  // validated import baseline, and its current body must still match the
+  // baseline body digest. Divergence shows a diff and never mutates —
+  // there is deliberately no force flag.
+  const storedBaseline = await client.getPagePropertyByKey(pageId, BASELINE_PROPERTY_KEY);
+  if (storedBaseline === undefined) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `Page ${pageId} has no AtlCLI import baseline. In-place updates are only supported for pages created by \`wiki import\` (with baseline); import as a new page instead.`,
+      { pageId },
+    );
+  }
+  const baselineCheck = await validateBaseline(storedBaseline, pageId);
+  if (!baselineCheck.baseline) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Page ${pageId} baseline is invalid: ${baselineCheck.reason}.`, {
+      pageId,
+    });
+  }
+  const baseline = baselineCheck.baseline;
 
   const title = getFlag(flags, "title") ?? current.title;
   const newAdf = documentToAdf(doc);
-  const newTypes = newAdf.content.map((n) => n.type);
+  const diff = diffAdfBlocks(currentAdf.content ?? [], newAdf.content);
+
+  const currentBodyDigest = await digestAdfValue(currentAdfPage.body.value);
+  const diverged = currentBodyDigest !== baseline.bodyDigest;
+
+  const inlineComments = await client.getInlineComments(pageId);
+  const acceptAnchorLoss = hasFlag(flags, "accept-anchor-loss");
 
   const summary = {
     pageId,
     title,
     currentVersion: currentAdfPage.version,
     newVersion: currentAdfPage.version + 1,
-    currentBlocks: countTypes(currentTypes),
-    newBlocks: countTypes(newTypes),
+    baseline: {
+      importedPageVersion: baseline.importedPageVersion,
+      sourceSha256: baseline.sourceSha256,
+      diverged,
+    },
+    inlineComments: inlineComments.length,
+    diff,
     attachments: doc.assets.map((a) => a.fileName),
   };
 
@@ -916,45 +967,67 @@ async function handleUpdateImport(
     } else {
       output(`Update preview for page ${pageId} ("${current.title}")`, opts);
       output(`  Version:  ${summary.currentVersion} → ${summary.newVersion}`, opts);
-      output(`  Current:  ${formatTypeCounts(summary.currentBlocks)}`, opts);
-      output(`  New:      ${formatTypeCounts(summary.newBlocks)}`, opts);
-      if (summary.attachments.length > 0) {
-        output(`  Attachments to upload/update: ${summary.attachments.join(", ")}`, opts);
+      output(`  Baseline: imported at v${baseline.importedPageVersion}, source sha256:${baseline.sourceSha256.slice(0, 12)}…`, opts);
+      if (diverged) {
+        output(`  ⚠ TARGET DIVERGED: the page was edited since the import — a confirmed update will be BLOCKED.`, opts);
       }
-      output(`  Note: inline comments anchored to changed text may lose their anchors.`, opts);
-      output(
-        `\nDry preview only — re-run with --confirm --expect-version ${summary.currentVersion} to update the page.`,
-        opts,
-      );
+      output(`  Diff:     ${renderSemanticDiffLines(diff).join("\n  ")}`, opts);
+      if (summary.attachments.length > 0) {
+        output(`  Attachments to reconcile: ${summary.attachments.join(", ")}`, opts);
+      }
+      if (inlineComments.length > 0) {
+        output(
+          `  ⚠ ${inlineComments.length} inline comment(s) on this page — anchors to changed text cannot be preserved; a confirmed update requires --accept-anchor-loss.`,
+          opts,
+        );
+      }
+      output(`\nDry preview only — re-run with --confirm to update the page.`, opts);
     }
     return;
   }
 
-  const expectFlag = getFlag(flags, "expect-version");
-  if (expectFlag === undefined) {
+  if (diverged) {
     fail(
       opts,
       1,
       ERROR_CODES.VALIDATION,
-      `--update-page --confirm requires --expect-version <n> (current version is ${currentAdfPage.version}). This guards against overwriting concurrent edits you have not reviewed.`,
+      `target-diverged: page ${pageId} was edited since the import (baseline v${baseline.importedPageVersion}); its current body no longer matches the import baseline. There is no force override — reconcile manually or import as a new page.\nDiff (current vs. new plan):\n  ${renderSemanticDiffLines(diff).join("\n  ")}`,
+      { pageId, code: "target-diverged" },
+    );
+  }
+  if (inlineComments.length > 0 && !acceptAnchorLoss) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `Page ${pageId} carries ${inlineComments.length} inline comment(s) whose anchors cannot be proven to survive a body replace. Re-run with --accept-anchor-loss to proceed anyway (comments stay, anchors may detach).`,
+      { pageId, inlineComments: inlineComments.length },
+    );
+  }
+  // Optional extra guard on top of the digest check.
+  const expectFlag = getFlag(flags, "expect-version");
+  if (expectFlag !== undefined && Number(expectFlag) !== currentAdfPage.version) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `Page ${pageId} is at version ${currentAdfPage.version}, not ${expectFlag}.`,
       { currentVersion: currentAdfPage.version },
     );
   }
-  if (Number(expectFlag) !== currentAdfPage.version) {
-    fail(
-      opts,
-      1,
-      ERROR_CODES.VALIDATION,
-      `Page ${pageId} is at version ${currentAdfPage.version}, not ${expectFlag} — it changed since your review. Re-run the preview and update --expect-version.`,
-      { currentVersion: currentAdfPage.version, expected: Number(expectFlag) },
-    );
-  }
 
-  // Upload/update assets first (same-name attachments are upserted; page
-  // body still shows the old content until the PUT below).
+  // Asset reconciliation (invariants 6/7): unchanged assets (same sha256 as
+  // the baseline binding) skip the upload; new/changed ones upload under
+  // their import-owned filename; superseded import-owned attachments are
+  // deleted only AFTER the new body verifies.
+  const bindingBySourceId = new Map(baseline.assetBindings.map((b) => [b.sourceAssetId, b]));
+  const assetShas = new Map<string, string>();
+  for (const asset of doc.assets) assetShas.set(asset.id, await sha256Hex(asset.bytes));
   let finalAdf = newAdf;
   if (doc.assets.length > 0) {
     for (const asset of doc.assets) {
+      const binding = bindingBySourceId.get(asset.id);
+      if (binding && binding.sha256 === assetShas.get(asset.id)) continue; // unchanged
       await client.uploadAttachment({
         pageId,
         filename: asset.fileName,
@@ -980,6 +1053,7 @@ async function handleUpdateImport(
     version: currentAdfPage.version + 1,
   });
 
+  const orphanWarnings: string[] = [];
   try {
     const readback = await client.getPageAdf(pageId);
     const published = JSON.parse(readback.body.value) as { content?: { type?: string }[] };
@@ -989,6 +1063,39 @@ async function handleUpdateImport(
       throw new Error(
         `published block sequence [${actualTypes}] does not match the reviewed plan [${expectedTypes}]`,
       );
+    }
+
+    // Seal the successor baseline before any destructive cleanup.
+    const assetBindings = doc.assets.map((a) => ({
+      sourceAssetId: a.id,
+      remoteFilename: a.fileName,
+      sha256: assetShas.get(a.id)!,
+    }));
+    const nextBaseline = await buildBaseline({
+      pageId,
+      sourceSha256: await sha256Hex(sourceBytes),
+      importPlanDigest: await digestAdfValue(JSON.stringify(newAdf)),
+      bodyDigest: await digestAdfValue(readback.body.value),
+      importedPageVersion: readback.version,
+      assetBindings,
+    });
+    await client.upsertPageProperty(pageId, BASELINE_PROPERTY_KEY, nextBaseline);
+
+    // Delete superseded import-owned attachments AFTER everything verified;
+    // a deletion failure is an explicit orphan warning, never a rollback.
+    const currentSourceIds = new Set(doc.assets.map((a) => a.id));
+    const superseded = baseline.assetBindings.filter((b) => !currentSourceIds.has(b.sourceAssetId));
+    if (superseded.length > 0) {
+      const attachments = await client.listAttachments(pageId);
+      for (const b of superseded) {
+        const match = attachments.find((a) => a.filename === b.remoteFilename);
+        if (!match) continue;
+        try {
+          await client.deleteAttachment(match.id);
+        } catch (err) {
+          orphanWarnings.push(`orphaned attachment ${b.remoteFilename} (${match.id}): ${(err as Error).message}`);
+        }
+      }
     }
   } catch (err) {
     // Restore the previous body as a NEW version — history is preserved and
@@ -1025,7 +1132,9 @@ async function handleUpdateImport(
         source,
         page: { id: updated.id, title: updated.title, url: updated.url, version: updated.version },
         previousVersion: currentAdfPage.version,
+        diff,
         attachments: doc.assets.map((a) => a.fileName),
+        ...(orphanWarnings.length > 0 ? { orphanWarnings } : {}),
         issues: doc.issues,
       },
       opts,
@@ -1033,6 +1142,7 @@ async function handleUpdateImport(
   } else {
     output(`Updated page "${updated.title}" (${updated.id}) to version ${updated.version}`, opts);
     if (updated.url) output(updated.url, opts);
+    for (const warning of orphanWarnings) output(`  ⚠ ${warning}`, opts);
   }
 }
 
@@ -1079,6 +1189,11 @@ async function publishOnePage(
      * the restriction-before-sensitive-content hook. A throw rolls back.
      */
     afterShell?: (pageId: string) => Promise<void>;
+    /**
+     * Seal an import baseline (plan 006) after verification: sha256 of the
+     * source bytes + the plan digest. Required for later in-place updates.
+     */
+    baseline?: { sourceSha256: string; importPlanDigest: string };
   } = {},
 ): Promise<PublishedPageReport> {
   const pageDoc: ImportedDocument = { blocks, assets, issues: [] };
@@ -1137,7 +1252,48 @@ async function publishOnePage(
       `page "${title}": published block sequence [${actualTypes}] does not match the previewed plan [${expectedTypes}]`,
     );
   }
+
+  if (options.baseline) {
+    await sealBaseline(client, page.id, readback.body.value, finalPage.version ?? readback.version, assets, options.baseline);
+  }
   return { id: finalPage.id, title: finalPage.title, url: finalPage.url, version: finalPage.version };
+}
+
+/**
+ * Seal the plan-006 import baseline as a page property AND read it back.
+ * The body digest comes from the verified readback ADF, so a later update
+ * can detect any human edit as a pure digest comparison.
+ */
+async function sealBaseline(
+  client: ConfluenceClient,
+  pageId: string,
+  readbackAdfValue: string,
+  pageVersion: number | undefined,
+  assets: ImportedDocument["assets"],
+  seed: { sourceSha256: string; importPlanDigest: string },
+): Promise<void> {
+  const bodyDigest = await digestAdfValue(readbackAdfValue);
+  const assetBindings = await Promise.all(
+    assets.map(async (a) => ({
+      sourceAssetId: a.id,
+      remoteFilename: a.fileName,
+      sha256: await sha256Hex(a.bytes),
+    })),
+  );
+  const baseline = await buildBaseline({
+    pageId,
+    sourceSha256: seed.sourceSha256,
+    importPlanDigest: seed.importPlanDigest,
+    bodyDigest,
+    importedPageVersion: pageVersion ?? 1,
+    assetBindings,
+  });
+  await client.upsertPageProperty(pageId, BASELINE_PROPERTY_KEY, baseline);
+  const stored = await client.getPagePropertyByKey(pageId, BASELINE_PROPERTY_KEY);
+  const check = await validateBaseline(stored, pageId);
+  if (!check.baseline || check.baseline.provenanceDigest !== baseline.provenanceDigest) {
+    throw new Error(`baseline readback failed on page ${pageId}: ${check.reason ?? "digest mismatch"}`);
+  }
 }
 
 /** Publish a split tree depth-first: each page before its children. */
