@@ -915,6 +915,12 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    createPageAdf(params: {
+        spaceId: string;
+        title: string;
+        adf: unknown;
+        parentId?: string;
+    }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;
         title: string;
@@ -4233,6 +4239,12 @@ export declare class ConfluenceClient {
         spaceKey: string;
         title: string;
         storage: string;
+        parentId?: string;
+    }): Promise<ConfluencePage>;
+    createPageAdf(params: {
+        spaceId: string;
+        title: string;
+        adf: unknown;
         parentId?: string;
     }): Promise<ConfluencePage>;
     updatePage(params: {
@@ -7555,6 +7567,12 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    createPageAdf(params: {
+        spaceId: string;
+        title: string;
+        adf: unknown;
+        parentId?: string;
+    }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;
         title: string;
@@ -10570,6 +10588,12 @@ export declare class ConfluenceClient {
         spaceKey: string;
         title: string;
         storage: string;
+        parentId?: string;
+    }): Promise<ConfluencePage>;
+    createPageAdf(params: {
+        spaceId: string;
+        title: string;
+        adf: unknown;
         parentId?: string;
     }): Promise<ConfluencePage>;
     updatePage(params: {
@@ -14288,6 +14312,12 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    createPageAdf(params: {
+        spaceId: string;
+        title: string;
+        adf: unknown;
+        parentId?: string;
+    }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;
         title: string;
@@ -16801,6 +16831,12 @@ export declare class ConfluenceClient {
         spaceKey: string;
         title: string;
         storage: string;
+        parentId?: string;
+    }): Promise<ConfluencePage>;
+    createPageAdf(params: {
+        spaceId: string;
+        title: string;
+        adf: unknown;
         parentId?: string;
     }): Promise<ConfluencePage>;
     updatePage(params: {

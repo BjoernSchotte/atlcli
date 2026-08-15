@@ -16,6 +16,14 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
     cwd,
     stdout: "pipe",
     stderr: "pipe",
+    env: {
+      ...process.env,
+      // Isolate from host git config: options like tag.forceSignAnnotated or
+      // commit.gpgSign would otherwise change plain `git tag`/`git commit`
+      // behavior inside the fixture repo.
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_SYSTEM: "/dev/null",
+    },
   });
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();

@@ -1912,6 +1912,44 @@ export class ConfluenceClient {
     };
   }
 
+  /**
+   * Create a page with an atlas_doc_format (ADF) body via REST v2.
+   *
+   * Cloud-only: REST v2 and ADF are not part of the supported Data Center
+   * contract (import plan §2.1); callers gate on deployment type first.
+   * The ADF value is serialized here so callers hand over a structured
+   * document, never a pre-encoded string.
+   */
+  async createPageAdf(params: {
+    spaceId: string;
+    title: string;
+    adf: unknown;
+    parentId?: string;
+  }): Promise<ConfluencePage> {
+    const data = (await this.requestV2(`/pages`, {
+      method: "POST",
+      body: {
+        spaceId: params.spaceId,
+        status: "current",
+        title: params.title,
+        ...(params.parentId ? { parentId: params.parentId } : {}),
+        body: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify(params.adf),
+        },
+      },
+      logBody: "meta-only",
+    })) as any;
+
+    return {
+      id: String(data.id),
+      title: data.title,
+      url: this.buildWebUrl(data._links?.webui),
+      version: data.version?.number,
+      parentId: data.parentId ? String(data.parentId) : null,
+    };
+  }
+
   async updatePage(params: {
     id: string;
     title: string;
