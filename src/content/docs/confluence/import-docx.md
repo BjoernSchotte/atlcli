@@ -13,7 +13,7 @@ explicit `--confirm`.
 
 > **Scope.** DOCX import is under active development
 > (`specs/import-docx-mvp`). Current coverage: single pages, page-tree
-> splitting, batch imports with resume, and importing from Confluence
+> splitting, batch imports with resume, importing from Confluence
 > attachments, and in-place updates of existing pages — Cloud only.
 > Data Center support is a planned follow-up.
 
