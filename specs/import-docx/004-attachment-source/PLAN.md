@@ -8,7 +8,7 @@ Priority: **P1** · Effort: **M** · Risk: **MEDIUM**
 
 Depends on: completed `specs/import-docx-mvp/PLAN.md`
 
-> **Executor instructions:** Keep the core byte-oriented and host-neutral. This plan adds an imperative source adapter; it must not teach the parser about URLs, credentials, REST clients, or browser sessions. Record Cloud seed/source/destination IDs, digests, transport fixtures, and cleanup in `specs/004-import-docx/EVIDENCE.md`.
+> **Executor instructions:** Keep the core byte-oriented and host-neutral. This plan adds an imperative source adapter; it must not teach the parser about URLs, credentials, REST clients, or browser sessions. Record Cloud seed/source/destination IDs, digests, transport fixtures, and cleanup in `specs/import-docx/004-attachment-source/EVIDENCE.md`.
 
 ---
 
@@ -217,7 +217,7 @@ git diff --check
 - [ ] Replay and pre-write checks detect source drift.
 - [ ] Retained-original behavior is explicit and byte-proven.
 - [ ] Cloud live E2E cleans every source/destination resource; DC is contract-tested only.
-- [ ] `specs/004-import-docx/EVIDENCE.md` is complete.
+- [ ] `specs/import-docx/004-attachment-source/EVIDENCE.md` is complete.
 
 ## 8. STOP conditions
 

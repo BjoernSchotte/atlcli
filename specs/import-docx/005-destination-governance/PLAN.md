@@ -8,9 +8,9 @@ Priority: **P1** · Effort: **L** · Risk: **HIGH**
 
 Depends on: completed `specs/import-docx-mvp/PLAN.md`
 
-Unblocks: `specs/010-import-docx/PLAN.md`
+Unblocks: `specs/import-docx/010-batch-import/PLAN.md`
 
-> **Executor instructions:** Confluence access control is security-sensitive and edition-specific. Use stable target identities and proven APIs only. Never infer a Confluence account/group from a DOCX author, display name, email, or Word protection setting. Record sanitized capability probes, effective-access assertions, page IDs, and cleanup in `specs/005-import-docx/EVIDENCE.md`.
+> **Executor instructions:** Confluence access control is security-sensitive and edition-specific. Use stable target identities and proven APIs only. Never infer a Confluence account/group from a DOCX author, display name, email, or Word protection setting. Record sanitized capability probes, effective-access assertions, page IDs, and cleanup in `specs/import-docx/005-destination-governance/EVIDENCE.md`.
 
 ---
 
@@ -212,7 +212,7 @@ git diff --check
 - [ ] No Word identity/permission is mapped to a Confluence principal.
 - [ ] Batch plan 010 can reuse the staging/governance contract unchanged.
 - [ ] Cloud live proof and DC contract proof use exact evidence labels.
-- [ ] `specs/005-import-docx/EVIDENCE.md` is complete.
+- [ ] `specs/import-docx/005-destination-governance/EVIDENCE.md` is complete.
 
 ## 9. STOP conditions
 

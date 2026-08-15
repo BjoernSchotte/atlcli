@@ -8,7 +8,7 @@ Priority: **P1** · Effort: **XL** · Risk: **HIGH**
 
 Depends on: completed `specs/import-docx-mvp/PLAN.md`
 
-> **Executor instructions:** This is not “overwrite by title”. Preserve page identity/history and block whenever prior AtlCLI ownership, current content, comment anchors, or attachment reconciliation cannot be proven. Record before/after versions and digests, comment/attachment decisions, failure injection, Cloud IDs, and cleanup/restoration in `specs/006-import-docx/EVIDENCE.md`.
+> **Executor instructions:** This is not “overwrite by title”. Preserve page identity/history and block whenever prior AtlCLI ownership, current content, comment anchors, or attachment reconciliation cannot be proven. Record before/after versions and digests, comment/attachment decisions, failure injection, Cloud IDs, and cleanup/restoration in `specs/import-docx/006-inplace-update/EVIDENCE.md`.
 
 ---
 
@@ -229,7 +229,7 @@ git diff --check
 - [ ] Concurrency/divergence never causes overwrite.
 - [ ] Failure recovery is exact about history and partial state.
 - [ ] Cloud live E2E and DC contract evidence pass.
-- [ ] `specs/006-import-docx/EVIDENCE.md` is complete.
+- [ ] `specs/import-docx/006-inplace-update/EVIDENCE.md` is complete.
 
 ## 8. STOP conditions
 

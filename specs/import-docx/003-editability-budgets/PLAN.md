@@ -10,7 +10,7 @@ Depends on: completed `specs/import-docx-mvp/PLAN.md`
 
 Unblocks: Plans `009` and `010`
 
-> **Executor instructions:** Treat this as an evidence-calibrated guardrail, not a promise that a numeric score predicts every Confluence editor. Record benchmark inputs, encoded sizes, target responses, browser observations where available, thresholds, overrides, and cleanup in `specs/003-import-docx/EVIDENCE.md`.
+> **Executor instructions:** Treat this as an evidence-calibrated guardrail, not a promise that a numeric score predicts every Confluence editor. Record benchmark inputs, encoded sizes, target responses, browser observations where available, thresholds, overrides, and cleanup in `specs/import-docx/003-editability-budgets/EVIDENCE.md`.
 
 ---
 
@@ -221,7 +221,7 @@ git diff --check
 - [ ] Approval/saved-plan semantics cover policy drift.
 - [ ] Cloud evidence and DC contract evidence use accurate support labels.
 - [ ] Plans 009/010 can consume the stable assessment without duplicating counters.
-- [ ] `specs/003-import-docx/EVIDENCE.md` is complete.
+- [ ] `specs/import-docx/003-editability-budgets/EVIDENCE.md` is complete.
 
 ## 9. STOP conditions
 

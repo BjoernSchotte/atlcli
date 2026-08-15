@@ -9,11 +9,11 @@ Priority: **P0** · Effort: **XL** · Risk: **HIGH**
 Depends on:
 
 - completed `specs/import-docx-mvp/PLAN.md`;
-- completed `specs/003-import-docx/PLAN.md` editability/budget contract;
-- completed `specs/005-import-docx/PLAN.md` governance/staging contract;
-- completed `specs/009-import-docx/PLAN.md` file-to-subtree contract.
+- completed `specs/import-docx/003-editability-budgets/PLAN.md` editability/budget contract;
+- completed `specs/import-docx/005-destination-governance/PLAN.md` governance/staging contract;
+- completed `specs/import-docx/009-page-tree-split/PLAN.md` file-to-subtree contract.
 
-> **Executor instructions:** A batch is a resumable set of independently auditable document-subtree transactions, not one opaque “import everything” call. Plan all inputs and hierarchy before writes, persist checkpoints atomically without secrets, and verify remote state before skipping work on resume. Record manifests/state digests, per-item IDs/results, failure/retry evidence, Cloud cleanup, and DC contract output in `specs/010-import-docx/EVIDENCE.md`.
+> **Executor instructions:** A batch is a resumable set of independently auditable document-subtree transactions, not one opaque “import everything” call. Plan all inputs and hierarchy before writes, persist checkpoints atomically without secrets, and verify remote state before skipping work on resume. Record manifests/state digests, per-item IDs/results, failure/retry evidence, Cloud cleanup, and DC contract output in `specs/import-docx/010-batch-import/EVIDENCE.md`.
 
 ---
 
@@ -313,7 +313,7 @@ Large-corpus benchmarks run with explicit fixture/threshold commands recorded in
 - [ ] Checkpoint/resume never skips unverified state or duplicates content.
 - [ ] Per-document rollback and aggregate partial status are exact.
 - [ ] Cloud failure/resume E2E cleans every resource; DC full contract suite passes.
-- [ ] `specs/010-import-docx/EVIDENCE.md` is complete.
+- [ ] `specs/import-docx/010-batch-import/EVIDENCE.md` is complete.
 
 ## 10. STOP conditions
 

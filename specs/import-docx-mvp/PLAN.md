@@ -89,24 +89,17 @@ The import core must never emit “generic Confluence HTML” and hope both plat
 
 ### 2.3 Parser selection
 
-Use an exact, lockfile-pinned version of `@office-open/docx` as the first parser adapter. The research baseline was `0.10.13`, but the executor must confirm the then-current version, commit, license, transitive dependency tree, and package contents before adding it.
+> **Superseded 2026-08-15 — see `DRIFT.md` §1.1.** No external parser
+> dependency is used. `@atlcli/import-docx` implements its own `document.xml`
+> body walk on top of the hardened in-repo archive boundary
+> (`@atlcli/docx/scan` `unzipDocx`) and the vendored streaming XML runtime,
+> consuming `@atlcli/docx-template-intake` facts for styles, numbering, and
+> sections. `@office-open/docx` and Mammoth are dropped; the parser-port
+> abstraction (`parser-port.ts`) remains so the walk stays swappable and its
+> types never leak into the public IR.
 
-Why it leads:
-
-- returns structured document JSON rather than flattening immediately to HTML;
-- locally proved exact `commentRangeStart` / `commentRangeEnd` markers and comment bodies;
-- locally proved structured insertion and deletion nodes;
-- parsed the repository’s real golden DOCX under Bun and Node;
-- browser-target build was substantially smaller than the universal OfficeParser bundle and had no required DOM.
-
-Why it is hidden behind an adapter:
-
-- it is a young `0.x` dependency with a small maintainer footprint;
-- reply/thread metadata may require reading `commentsExtended.xml` directly;
-- browser packaging still needs permanent runtime evidence;
-- raw library types must not leak into AtlCLI’s public contract.
-
-Mammoth is not a production dependency for this MVP. It may be used temporarily during the spike as a comparison oracle, but it must not define the IR or target output because its HTML path loses exact comment ranges and tracked-deletion semantics.
+The original external-library evaluation is preserved in git history at
+`e77a1002` for provenance.
 
 ### 2.4 No silent loss
 
@@ -248,7 +241,7 @@ export interface ResolvedTitlePlanV1 {
 - The publisher creates only the exact `resolved` title approved in `PreparedImport`. A 409 or newly observed conflict after approval stops, rolls back any shell/resources owned by this run, returns `title-conflict-race`, and asks the operator to rebuild/review the plan. It never selects the next suffix after approval.
 - `--from-plan` regenerates the title lookup and fails stale before mutation when the collision set or resolved title changed.
 - The default offline `--dry-run` performs no target lookup and records `availability: "unchecked"`, `title-availability-unchecked`, and `review.publishable: false`; this is analysis evidence, not publication approval. `--dry-run --check-target` may perform only the bounded read-only capability/title lookup and remains zero-write. A replayable `--plan-out` requires a checked target; with offline dry-run it fails with an actionable usage error rather than serializing a falsely approved destination.
-- Existing-page `replace`, `append`, `merge`, delete/recreate, and child deletion remain outside this MVP and are specified separately in `specs/006-import-docx/PLAN.md`.
+- Existing-page `replace`, `append`, `merge`, delete/recreate, and child deletion remain outside this MVP and are specified separately in `specs/import-docx/006-inplace-update/PLAN.md`.
 
 Research basis:
 
@@ -283,19 +276,27 @@ Plans `002` through `008` may start in parallel after the MVP evidence ledger is
 
 | Follow-on plan | Research decision from the 2026 review | Execution wave |
 |---|---|---|
-| `specs/002-import-docx/PLAN.md` | Candidate 4 — numbered headings | A, parallel |
-| `specs/003-import-docx/PLAN.md` | Candidate 3 — editability budgets | A, parallel |
-| `specs/004-import-docx/PLAN.md` | Candidate 5 — existing attachment as source | A, parallel |
-| `specs/005-import-docx/PLAN.md` | Candidate 7 — destination restrictions/private staging | A, parallel |
-| `specs/006-import-docx/PLAN.md` | Candidate 8 — safe single-page update-in-place | A, parallel |
-| `specs/007-import-docx/PLAN.md` | Candidate 9 — shared transformation recipes | A, parallel |
-| `specs/008-import-docx/PLAN.md` | Candidate 10 — deterministic equation rendering | A, parallel |
-| `specs/009-import-docx/PLAN.md` | Candidate 2 — one DOCX to page tree | B, after 002+003 |
-| `specs/010-import-docx/PLAN.md` | Candidate 6 — batch/folder/resume | C, after 003+005+009 |
+| `specs/import-docx/002-heading-numbering/PLAN.md` | Candidate 4 — numbered headings | A, parallel |
+| `specs/import-docx/003-editability-budgets/PLAN.md` | Candidate 3 — editability budgets | A, parallel |
+| `specs/import-docx/004-attachment-source/PLAN.md` | Candidate 5 — existing attachment as source | A, parallel |
+| `specs/import-docx/005-destination-governance/PLAN.md` | Candidate 7 — destination restrictions/private staging | A, parallel |
+| `specs/import-docx/006-inplace-update/PLAN.md` | Candidate 8 — safe single-page update-in-place | A, parallel |
+| `specs/import-docx/007-import-recipes/PLAN.md` | Candidate 9 — shared transformation recipes | A, parallel |
+| `specs/import-docx/008-equations/PLAN.md` | Candidate 10 — deterministic equation rendering | A, parallel |
+| `specs/import-docx/009-page-tree-split/PLAN.md` | Candidate 2 — one DOCX to page tree | B, after 002+003 |
+| `specs/import-docx/010-batch-import/PLAN.md` | Candidate 6 — batch/folder/resume | C, after 003+005+009 |
 
 ---
 
 ## 3. Current repository state and drift check
+
+> **Drift executed 2026-08-15:** the mandatory check in §3.2 fired against
+> `main@690a3974`. Findings and superseding decisions live in `DRIFT.md`;
+> the table below describes the repository at the original planned SHA and is
+> kept for provenance. Key deltas: the archive/XML preflight and style/OPC
+> facts now exist in `@atlcli/docx` and `@atlcli/docx-template-intake`
+> (reused, not duplicated), the external parser dependency is dropped, and the
+> follow-up specs moved to `specs/import-docx/NNN-<slug>/`.
 
 ### 3.1 Relevant existing seams
 
@@ -479,6 +480,8 @@ apps/browser-export-harness ---> @atlcli/import-docx/browser
 Allowed dependency edges:
 
 - `@atlcli/import-docx -> @atlcli/core` for shared result/error primitives only when browser-safe;
+- `@atlcli/import-docx -> @atlcli/docx` for the hardened archive boundary (`unzipDocx`, budgets) only — no export-side helpers (DRIFT.md §1.1);
+- `@atlcli/import-docx -> @atlcli/docx-template-intake` for OPC/style/numbering/section facts and the streaming XML runtime;
 - `@atlcli/import-docx -> @atlcli/confluence` for typed target body/capability contracts, never the concrete Node client;
 - `@atlcli/cli -> @atlcli/import-docx`, `@atlcli/confluence`, and CLI-owned file/stdin adapters;
 - existing browser conformance harness -> public browser subpath only.

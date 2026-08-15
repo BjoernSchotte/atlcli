@@ -8,9 +8,9 @@ Priority: **P1** · Effort: **M** · Risk: **MEDIUM**
 
 Depends on: `specs/import-docx-mvp/PLAN.md` completed with evidence
 
-Unblocks: `specs/009-import-docx/PLAN.md` (DOCX → page tree)
+Unblocks: `specs/import-docx/009-page-tree-split/PLAN.md` (DOCX → page tree)
 
-> **Executor instructions:** Read this file and the completed MVP plan/evidence before editing code. Run each verification gate and record commands, fixture digests, output snapshots, Cloud page IDs, and cleanup in `specs/002-import-docx/EVIDENCE.md`. A checkbox means the evidence exists. STOP rather than inventing a numbering rule or target macro.
+> **Executor instructions:** Read this file and the completed MVP plan/evidence before editing code. Run each verification gate and record commands, fixture digests, output snapshots, Cloud page IDs, and cleanup in `specs/import-docx/002-heading-numbering/EVIDENCE.md`. A checkbox means the evidence exists. STOP rather than inventing a numbering rule or target macro.
 
 ---
 
@@ -243,7 +243,7 @@ All must exit 0. The built CLI E2E uses profile `mayflower`, space `DOCSY`, reco
 - [ ] Policy and resolved label are digest-bound and replay-safe.
 - [ ] Plan 009 can consume `HeadingTitleProjection` without OOXML knowledge.
 - [ ] Cloud is live-proven; DC is contract-tested and not mislabeled live-certified.
-- [ ] `specs/002-import-docx/EVIDENCE.md` contains current proof.
+- [ ] `specs/import-docx/002-heading-numbering/EVIDENCE.md` contains current proof.
 
 ## 9. STOP conditions
 

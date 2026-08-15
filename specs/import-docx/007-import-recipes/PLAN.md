@@ -8,7 +8,7 @@ Priority: **P2** · Effort: **M** · Risk: **MEDIUM**
 
 Depends on: completed `specs/import-docx-mvp/PLAN.md`
 
-> **Executor instructions:** Reuse the MVP override schema and semantic allowlist. A recipe is portable data, not executable configuration and not a raw ADF/Storage/macro escape hatch. Record canonical recipe fixtures, security cases, runtime parity, and example imports in `specs/007-import-docx/EVIDENCE.md`.
+> **Executor instructions:** Reuse the MVP override schema and semantic allowlist. A recipe is portable data, not executable configuration and not a raw ADF/Storage/macro escape hatch. Record canonical recipe fixtures, security cases, runtime parity, and example imports in `specs/import-docx/007-import-recipes/EVIDENCE.md`.
 
 ---
 
@@ -183,7 +183,7 @@ git diff --check
 - [ ] Catalog lookup cannot escape roots or silently shadow duplicates.
 - [ ] Runtime parity and Cloud/DC applicability tests pass.
 - [ ] No Requirements-specific or arbitrary macro payload enters the core.
-- [ ] `specs/007-import-docx/EVIDENCE.md` is complete.
+- [ ] `specs/import-docx/007-import-recipes/EVIDENCE.md` is complete.
 
 ## 8. STOP conditions
 

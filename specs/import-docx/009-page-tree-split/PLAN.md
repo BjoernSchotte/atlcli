@@ -9,12 +9,12 @@ Priority: **P0** · Effort: **XL** · Risk: **HIGH**
 Depends on:
 
 - completed `specs/import-docx-mvp/PLAN.md`;
-- completed `specs/002-import-docx/PLAN.md` heading-title projection;
-- completed `specs/003-import-docx/PLAN.md` editability assessment.
+- completed `specs/import-docx/002-heading-numbering/PLAN.md` heading-title projection;
+- completed `specs/import-docx/003-editability-budgets/PLAN.md` editability assessment.
 
-Unblocks: `specs/010-import-docx/PLAN.md`
+Unblocks: `specs/import-docx/010-batch-import/PLAN.md`
 
-> **Executor instructions:** This plan turns one approved publication into a multi-page transaction. Resolve the complete tree, titles, cross-references, page ownership, comments, assets, and rollback before the first write. Record outline/plan digests, created IDs/parent relationships, link targets, failure injection, Cloud evidence, and cleanup in `specs/009-import-docx/EVIDENCE.md`.
+> **Executor instructions:** This plan turns one approved publication into a multi-page transaction. Resolve the complete tree, titles, cross-references, page ownership, comments, assets, and rollback before the first write. Record outline/plan digests, created IDs/parent relationships, link targets, failure injection, Cloud evidence, and cleanup in `specs/import-docx/009-page-tree-split/EVIDENCE.md`.
 
 ---
 
@@ -295,7 +295,7 @@ git diff --check
 - [ ] Multi-page transaction/readback/rollback pass failure injection.
 - [ ] Cloud live E2E cleans every resource; DC is contract-tested, not live-certified.
 - [ ] Plan 010 can compose one file into one subtree through a stable public/internal contract.
-- [ ] `specs/009-import-docx/EVIDENCE.md` is complete.
+- [ ] `specs/import-docx/009-page-tree-split/EVIDENCE.md` is complete.
 
 ## 11. STOP conditions
 

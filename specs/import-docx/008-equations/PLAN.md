@@ -8,7 +8,7 @@ Priority: **P2** · Effort: **L** · Risk: **HIGH**
 
 Depends on: completed `specs/import-docx-mvp/PLAN.md`
 
-> **Executor instructions:** Mathematical meaning is more important than visual similarity. Preserve source OMML provenance, accessible text, and a deterministic fallback. Never emit raw OMML, active SVG, arbitrary LaTeX macros, or a Marketplace equation macro without a proven typed capability. Record dependency/version/license/bundle evidence, math corpus results, output digests, Cloud IDs, and cleanup in `specs/008-import-docx/EVIDENCE.md`.
+> **Executor instructions:** Mathematical meaning is more important than visual similarity. Preserve source OMML provenance, accessible text, and a deterministic fallback. Never emit raw OMML, active SVG, arbitrary LaTeX macros, or a Marketplace equation macro without a proven typed capability. Record dependency/version/license/bundle evidence, math corpus results, output digests, Cloud IDs, and cleanup in `specs/import-docx/008-equations/EVIDENCE.md`.
 
 ---
 
@@ -233,7 +233,7 @@ git diff --check
 - [ ] New dependencies/fonts are exact-pinned and auditable.
 - [ ] Cloud/DC bodies/readback never silently lose equations.
 - [ ] Marketplace/native macros are not required.
-- [ ] `specs/008-import-docx/EVIDENCE.md` is complete.
+- [ ] `specs/import-docx/008-equations/EVIDENCE.md` is complete.
 
 ## 9. STOP conditions
 
