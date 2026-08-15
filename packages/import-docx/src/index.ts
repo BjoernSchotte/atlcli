@@ -19,7 +19,18 @@ export type {
   ImportTableRow,
   ImportedDocument,
 } from "./model.js";
-export { parseDocx } from "./parse.js";
+export { parseDocx, type ParseDocxPolicy } from "./parse.js";
+export {
+  STYLE_MAPPING_TARGETS,
+  renderPolicySummary,
+  resolveImportPolicy,
+  type DocxImportOptionsV1,
+  type DocxImportOverridesV1,
+  type PolicyLayerInput,
+  type PolicySource,
+  type ResolvedImportPolicy,
+  type StyleMappingTarget,
+} from "./overrides.js";
 export {
   documentToAdf,
   type AdfDocument,

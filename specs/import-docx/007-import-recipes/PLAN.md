@@ -119,14 +119,22 @@ Preview/report list recipe ID/version/digest, source path category (repo/user/ex
 
 ### Task 0 — Reconcile the baseline override contract
 
-- [ ] Inventory every baseline option/override and classify it as safe reusable, source-bound, target-bound, or forbidden in recipes.
+> Slice note (2026-08-15): the MVP slice had no override layer yet, so this
+> task BUILT the baseline instead of reconciling it —
+> `atlcli.docx-import-overrides/1` in
+> `packages/import-docx/src/overrides.ts` (styleMappings to
+> paragraph/heading-1..6/blockquote/code; options revisions/unsupported)
+> with layered precedence `default < recipe < cli < override-file`,
+> per-decision provenance, and fail-closed explicit-layer conflicts.
+
+- [x] Inventory every baseline option/override and classify it as safe reusable, source-bound, target-bound, or forbidden in recipes. *(All current baseline knobs — styleMappings, revisions, unsupported — are safe reusable; source-bound node overrides do not exist in the slice and stay excluded until built.)*
 - [ ] Freeze `atlcli.docx-import-recipe/1`, limits, precedence, and canonicalization in API docs.
 - [ ] Create minimal, advanced, Cloud-only, DC-only, stale capability, source-bound, and hostile fixtures.
 
 Acceptance:
 
 - [ ] Recipe schema contains no raw target fragment or executable field.
-- [ ] Every baseline override either has a recipe policy or explicit exclusion.
+- [x] Every baseline override either has a recipe policy or explicit exclusion.
 
 ### Task 1 — Implement pure parsing/resolution
 

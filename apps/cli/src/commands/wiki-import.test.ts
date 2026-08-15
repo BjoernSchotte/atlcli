@@ -232,6 +232,64 @@ describe("wiki import (preview mode, offline)", () => {
     }
   });
 
+  it("applies an override file plus CLI flags with provenance in the preview", async () => {
+    const file = join(dir, "policy.docx");
+    writeFileSync(
+      file,
+      buildDocxFixture({ body: p(r("Doc"), { style: "Heading1" }) + p(r("plain")) }),
+    );
+    const overrides = join(dir, "overrides.yaml");
+    writeFileSync(
+      overrides,
+      `schema: atlcli.docx-import-overrides/1\noptions:\n  revisions: reject\nstyleMappings:\n  Hinweis: blockquote\n`,
+    );
+
+    await handleWikiImport(
+      [file],
+      { space: "DOCSY", overrides, "map-style": ["Legacy=code"], json: true },
+      { json: true },
+    );
+
+    const parsed = JSON.parse(stdout.join(""));
+    expect(parsed.policy.options.revisions).toBe("reject");
+    expect(parsed.policy.provenance["options.revisions"]).toBe("override-file");
+    expect(parsed.policy.styleMappings).toEqual({ hinweis: "blockquote", legacy: "code" });
+    expect(parsed.policy.provenance["style:legacy"]).toBe("cli");
+    // Unmatched mappings surface as info issues, not silence.
+    expect(
+      parsed.preview.issues.some(
+        (i: { code: string }) => i.code === "docx-import/style-mapping-unmatched",
+      ),
+    ).toBe(true);
+  });
+
+  it("fails closed on explicit CLI vs override-file conflicts", async () => {
+    const file = join(dir, "conflict.docx");
+    writeFileSync(file, buildDocxFixture({ body: p(r("Doc")) }));
+    const overrides = join(dir, "conflict.yaml");
+    writeFileSync(
+      overrides,
+      `schema: atlcli.docx-import-overrides/1\noptions:\n  revisions: reject\n`,
+    );
+
+    let exitCode: number | undefined;
+    const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    }) as never);
+    try {
+      await handleWikiImport(
+        [file],
+        { space: "DOCSY", overrides, revisions: "accept", json: true },
+        { json: true },
+      ).catch(() => {});
+      expect(exitCode).toBe(1);
+      expect(stdout.join("")).toContain("Conflicting explicit settings");
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
   it("falls back to the file name when the document has no level-1 heading", async () => {
     const file = join(dir, "notes.docx");
     writeFileSync(file, buildDocxFixture({ body: p(r("just text")) }));

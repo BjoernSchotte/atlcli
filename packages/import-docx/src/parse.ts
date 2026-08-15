@@ -22,6 +22,7 @@ import type {
   ImportedDocument,
 } from "./model.js";
 import { attr, childElements, firstChild, parseXmlTree, textContent, type XmlElement } from "./xml.js";
+import type { StyleMappingTarget } from "./overrides.js";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -61,6 +62,8 @@ const IGNORED_BODY_MARKERS = new Set(["sectPr", "bookmarkStart", "bookmarkEnd", 
 
 interface ParseContext {
   issues: ImportIssue[];
+  /** Effective revisions policy (plan 007 options). */
+  revisions: "accept" | "reject";
   /** styleId → heading level (1-6). */
   styles: ParagraphStyles;
   /** numId → ilvl → resolved level definition. */
@@ -119,9 +122,23 @@ interface ParagraphStyles {
 const QUOTE_STYLE_NAME = /^(intense\s+)?quote$|^(intensives\s+)?zitat$|^block\s*quote/i;
 const CODE_STYLE_NAME = /^(source\s+)?code|^html\s+preformatted|^preformatted|^macro\s*text/i;
 
-/** Parse `word/styles.xml` into heading/quote/code paragraph-style maps. */
-function parseParagraphStyles(stylesXml: string | undefined): ParagraphStyles {
-  const styles: ParagraphStyles = { headings: new Map(), quotes: new Set(), code: new Set() };
+/**
+ * Parse `word/styles.xml` into heading/quote/code paragraph-style maps.
+ *
+ * Explicit style mappings (plan 007 baseline overrides, keyed by lowercased
+ * styleId OR display name) win over the built-in heuristics; `paragraph`
+ * suppresses a heuristic classification entirely.
+ */
+function parseParagraphStyles(
+  stylesXml: string | undefined,
+  styleMappings: Record<string, StyleMappingTarget> = {},
+): ParagraphStyles & { matchedMappingKeys: Set<string> } {
+  const styles: ParagraphStyles & { matchedMappingKeys: Set<string> } = {
+    headings: new Map(),
+    quotes: new Set(),
+    code: new Set(),
+    matchedMappingKeys: new Set(),
+  };
   if (!stylesXml) return styles;
   const root = parseXmlTree(stylesXml);
   for (const style of childElements(root)) {
@@ -130,6 +147,20 @@ function parseParagraphStyles(stylesXml: string | undefined): ParagraphStyles {
     if (!styleId) continue;
     const name = firstChild(style, "name");
     const nameVal = name ? (attr(name, "val", W_NS) ?? "") : "";
+
+    const mappingKey = [styleId.toLowerCase(), nameVal.toLowerCase()].find(
+      (key) => key && key in styleMappings,
+    );
+    if (mappingKey) {
+      styles.matchedMappingKeys.add(mappingKey);
+      const target = styleMappings[mappingKey];
+      const headingMatch = /^heading-([1-6])$/.exec(target);
+      if (headingMatch) styles.headings.set(styleId, Number(headingMatch[1]));
+      else if (target === "blockquote") styles.quotes.add(styleId);
+      else if (target === "code") styles.code.add(styleId);
+      // "paragraph": no classification — heuristic suppressed.
+      continue;
+    }
 
     let level: number | undefined;
     const pPr = firstChild(style, "pPr");
@@ -447,7 +478,16 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
         break;
       }
       case "ins":
-        // Accepted insertion: content survives, provenance is out of slice scope.
+        if (ctx.revisions === "reject") {
+          report(
+            ctx,
+            "docx-import/revision-insertion-rejected",
+            "warning",
+            "reported",
+            "Tracked insertions were rejected (policy revisions=reject); the inserted text is not imported.",
+          );
+          break;
+        }
         report(
           ctx,
           "docx-import/revision-insertion-accepted",
@@ -458,6 +498,17 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
         runs.push(...parseRuns(child, ctx, inherited));
         break;
       case "del":
+        if (ctx.revisions === "reject") {
+          report(
+            ctx,
+            "docx-import/revision-deletion-kept",
+            "info",
+            "approximated",
+            "Tracked deletions were kept (policy revisions=reject); the deleted text remains in the content.",
+          );
+          runs.push(...parseRuns(child, ctx, inherited));
+          break;
+        }
         report(
           ctx,
           "docx-import/revision-deletion-dropped",
@@ -553,7 +604,8 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
       case "softHyphen":
         break;
       case "delText":
-        // Only reachable inside w:del, which is dropped before runs are read.
+        // Only reachable inside w:del when revisions=reject keeps deletions.
+        runs.push({ kind: "text", text: textContent(child), marks: cleaned });
         break;
       case "commentReference":
         report(
@@ -881,16 +933,24 @@ function runsPlainText(runs: ImportRun[]): string {
  * @throws DocxError (from `unzipDocx`) for oversized, non-zip, non-DOCX, or
  * active-content packages — these are `rejected` outcomes, the import stops.
  */
-export function parseDocx(bytes: Uint8Array): ImportedDocument {
+export interface ParseDocxPolicy {
+  /** Lowercased style key (styleId or name) → mapping target (plan 007). */
+  styleMappings?: Record<string, StyleMappingTarget>;
+  revisions?: "accept" | "reject";
+}
+
+export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): ImportedDocument {
   const zip = unzipDocx(bytes, DOCX_TEMPLATE_INTAKE_BUDGET);
 
   const readOptional = (part: string): string | undefined =>
     zip.file(part) ? readPartText(zip, part) : undefined;
 
   const rels = parseDocumentRels(readOptional("word/_rels/document.xml.rels"));
+  const styles = parseParagraphStyles(readOptional("word/styles.xml"), policy.styleMappings ?? {});
   const ctx: ParseContext = {
     issues: [],
-    styles: parseParagraphStyles(readOptional("word/styles.xml")),
+    revisions: policy.revisions ?? "accept",
+    styles,
     numbering: parseNumbering(readOptional("word/numbering.xml")),
     numberingCounters: new Map(),
     hyperlinks: rels.hyperlinks,
@@ -906,6 +966,19 @@ export function parseDocx(bytes: Uint8Array): ImportedDocument {
     footnoteRefs: [],
     reported: new Map(),
   };
+
+  for (const key of Object.keys(policy.styleMappings ?? {})) {
+    if (!styles.matchedMappingKeys.has(key)) {
+      report(
+        ctx,
+        "docx-import/style-mapping-unmatched",
+        "info",
+        "reported",
+        `Style mapping "${key}" matched no paragraph style in this document.`,
+        { style: key },
+      );
+    }
+  }
 
   const documentXml = readPartText(zip, "word/document.xml");
   const root = parseXmlTree(documentXml);

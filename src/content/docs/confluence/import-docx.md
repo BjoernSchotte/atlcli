@@ -27,6 +27,7 @@ explicit `--confirm`.
 - [Importing from a Confluence attachment](#importing-from-a-confluence-attachment)
 - [Editability check](#editability-check)
 - [Splitting into a page tree](#splitting-into-a-page-tree)
+- [Import policy: style mappings and options](#import-policy-style-mappings-and-options)
 - [Visibility, staging, and metadata](#visibility-staging-and-metadata)
 - [Updating an existing page](#updating-an-existing-page)
 - [Batch import](#batch-import)
@@ -179,6 +180,49 @@ Page tree (--split 2, 4 pages):
 - Publication is transactional: if any page of the tree fails, **all**
   pages created by the run are rolled back
 
+## Import policy: style mappings and options
+
+The built-in style heuristics (Quote → blockquote, Code → code block, …)
+can be steered per organization with a typed policy — no code, no regex:
+
+```bash
+# Map custom Word styles (by styleId or display name, case-insensitive)
+atlcli wiki import spec.docx --space TEAM \
+  --map-style "Hinweis=blockquote" --map-style "Listing=code" \
+  --revisions reject --unsupported fail
+
+# Or keep the policy in a reviewable file
+atlcli wiki import spec.docx --space TEAM --overrides import-policy.yaml
+```
+
+```yaml
+# import-policy.yaml
+schema: atlcli.docx-import-overrides/1
+options:
+  revisions: accept      # accept|reject tracked changes
+  unsupported: report    # report|fail on lossy constructs
+styleMappings:
+  Hinweis: blockquote
+  Listing: code
+  Untertitel: heading-2
+  Kleingedrucktes: paragraph   # suppress a heuristic classification
+```
+
+Rules:
+
+- Mapping targets: `paragraph`, `heading-1`…`heading-6`, `blockquote`,
+  `code`. Mappings that match no style in the document produce an info
+  issue instead of silently doing nothing.
+- Precedence is layered and **visible**: built-in defaults < recipe <
+  CLI flags < override file. The preview's `Policy:` section shows every
+  non-default decision with the layer that set it.
+- A direct conflict between CLI flags and the override file fails closed —
+  nothing silently wins.
+- `--revisions reject` mirrors Word's "reject all changes": tracked
+  insertions are dropped, tracked deletions are kept (each reported).
+- `--unsupported fail` blocks a confirmed publish while any construct
+  would be lost (reported warnings); previews still work.
+
 ## Visibility, staging, and metadata
 
 Where imported content lands and **who can see it** is part of the reviewed
@@ -292,6 +336,10 @@ interrupted batch continues without duplicating verified content.
 | `--staging-parent <title>` | string | — | Create a private import-owned parent and import below it |
 | `--label <name>` | string, repeatable | — | Labels applied and verified on the root page |
 | `--content-property <k=v>` | string, repeatable | — | `atlcli.*` namespaced page metadata (max 20, value ≤ 2048 chars) |
+| `--map-style <s>=<t>` | string, repeatable | — | Map a Word style to `paragraph`/`heading-1..6`/`blockquote`/`code` |
+| `--revisions <mode>` | string | `accept` | `accept` or `reject` tracked changes |
+| `--unsupported <mode>` | string | `report` | `fail` blocks confirmed publishes on lossy constructs |
+| `--overrides <file>` | string | — | Policy file (`atlcli.docx-import-overrides/1`, YAML or JSON) |
 | `--confirm` | flag | off | Actually create the page; without it the command only previews |
 | `--profile <name>` | string | active profile | Auth profile |
 | `--json` | flag | off | Machine-readable output (preview or publish report) |

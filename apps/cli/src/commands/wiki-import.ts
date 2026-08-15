@@ -31,6 +31,10 @@ import {
   principalId,
   renderGovernanceSummary,
   type DestinationGovernance,
+  renderPolicySummary,
+  resolveImportPolicy,
+  type PolicyLayerInput,
+  type ResolvedImportPolicy,
   countPages,
   documentToAdf,
   parseDocx,
@@ -41,6 +45,91 @@ import {
   type ImportedDocument,
 } from "@atlcli/import-docx";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { parse as parseYaml } from "yaml";
+
+/**
+ * Resolve the layered import policy from CLI flags and an optional override
+ * file (plan 007 baseline: defaults < recipe < CLI < override file).
+ * Fails closed on any validation or precedence conflict.
+ */
+function resolvePolicyFromFlags(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  recipeLayer?: PolicyLayerInput,
+): ResolvedImportPolicy {
+  const cli: PolicyLayerInput = {};
+  const revisions = getFlag(flags, "revisions");
+  const unsupported = getFlag(flags, "unsupported");
+  if (revisions || unsupported) {
+    cli.options = {
+      ...(revisions ? { revisions: revisions as never } : {}),
+      ...(unsupported ? { unsupported: unsupported as never } : {}),
+    };
+  }
+  const mapStyles = getFlags(flags, "map-style");
+  if (mapStyles.length > 0) {
+    cli.styleMappings = {};
+    for (const pair of mapStyles) {
+      const eq = pair.indexOf("=");
+      if (eq <= 0) {
+        fail(opts, 1, ERROR_CODES.VALIDATION, `Invalid --map-style "${pair}": expected <style>=<target>.`, {});
+      }
+      cli.styleMappings[pair.slice(0, eq)] = pair.slice(eq + 1);
+    }
+  }
+
+  let overrideFile: PolicyLayerInput | undefined;
+  const overridesPath = getFlag(flags, "overrides");
+  if (overridesPath) {
+    let parsed: unknown;
+    try {
+      const text = readFileSync(overridesPath, "utf8");
+      parsed = overridesPath.endsWith(".json") ? JSON.parse(text) : parseYaml(text, { uniqueKeys: true });
+    } catch (err) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, `Cannot read override file: ${(err as Error).message}`, {
+        file: overridesPath,
+      });
+    }
+    const obj = parsed as { schema?: string; styleMappings?: Record<string, string>; options?: Record<string, string> };
+    if (obj?.schema !== "atlcli.docx-import-overrides/1") {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.VALIDATION,
+        `Override file must declare schema: atlcli.docx-import-overrides/1 (got ${JSON.stringify(obj?.schema)}).`,
+        { file: overridesPath },
+      );
+    }
+    overrideFile = { styleMappings: obj.styleMappings, options: obj.options as never };
+  }
+
+  const { policy, errors } = resolveImportPolicy({ recipe: recipeLayer, cli, overrideFile });
+  if (errors.length > 0) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Invalid import policy:\n  ${errors.join("\n  ")}`, { errors });
+  }
+  return policy;
+}
+
+/** Enforce options.unsupported=fail at confirm time (plan 007 options). */
+function enforceUnsupportedPolicy(
+  doc: ImportedDocument,
+  policy: ResolvedImportPolicy,
+  opts: OutputOptions,
+): void {
+  if (policy.options.unsupported !== "fail") return;
+  const blocking = doc.issues.filter((i) => i.severity === "warning" && i.outcome === "reported");
+  if (blocking.length > 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `Policy unsupported=fail: ${blocking.length} construct(s) would be lost:\n  ${blocking
+        .map((i) => `${i.code}: ${i.message}`)
+        .join("\n  ")}`,
+      { issues: blocking.map((i) => i.code) },
+    );
+  }
+}
 
 export async function handleWikiImport(
   args: string[],
@@ -141,9 +230,13 @@ export async function handleWikiImport(
     source = { kind: "file", path: file! };
   }
 
+  const policy = resolvePolicyFromFlags(flags, opts);
   let doc: ImportedDocument;
   try {
-    doc = parseDocx(bytes);
+    doc = parseDocx(bytes, {
+      styleMappings: policy.styleMappings,
+      revisions: policy.options.revisions,
+    });
   } catch (err) {
     fail(opts, 1, ERROR_CODES.VALIDATION, `Rejected DOCX package: ${(err as Error).message}`, {
       file: sourceName,
@@ -203,11 +296,17 @@ export async function handleWikiImport(
   if (!confirm) {
     if (opts.json) {
       output(
-        { mode: "preview", source, governance, ...(tree ? { tree: treeSummary(tree) } : {}), preview },
+        { mode: "preview", source, policy, governance, ...(tree ? { tree: treeSummary(tree) } : {}), preview },
         opts,
       );
     } else {
       output(renderImportPreview(preview), opts);
+      const policyLines = renderPolicySummary(policy);
+      if (policyLines.length > 0) {
+        output("", opts);
+        output("Policy:", opts);
+        for (const line of policyLines) output(`  ${line}`, opts);
+      }
       if (governanceHasEffects(governance)) {
         output("", opts);
         output("Governance:", opts);
@@ -224,6 +323,8 @@ export async function handleWikiImport(
     }
     return;
   }
+
+  enforceUnsupportedPolicy(doc, policy, opts);
 
   const client = new ConfluenceClient(profile!);
   const spacePage = await client.listSpacesV2({ keys: [spaceKey], limit: 1 });
@@ -467,10 +568,15 @@ async function handleBatchImport(
   const parentId = getFlag(flags, "parent");
 
   // Plan every file up front — the whole batch is reviewed before any write.
+  const policy = resolvePolicyFromFlags(flags, opts);
+  const parsePolicy = {
+    styleMappings: policy.styleMappings,
+    revisions: policy.options.revisions,
+  };
   const plans: BatchItemPlan[] = [];
   for (const file of files) {
     try {
-      const doc = parseDocx(new Uint8Array(readFileSync(file)));
+      const doc = parseDocx(new Uint8Array(readFileSync(file)), parsePolicy);
       const title = doc.titleCandidate ?? basename(file, ".docx");
       const tree =
         splitLevel !== undefined
@@ -553,6 +659,18 @@ async function handleBatchImport(
     if (plan.parseError || !plan.doc || !plan.title) {
       results.push({ file: plan.file, status: "failed", error: plan.parseError ?? "unparsed" });
       continue;
+    }
+    if (policy.options.unsupported === "fail") {
+      const blocking = plan.doc.issues.filter((i) => i.severity === "warning" && i.outcome === "reported");
+      if (blocking.length > 0) {
+        results.push({
+          file: plan.file,
+          title: plan.title,
+          status: "failed",
+          error: `policy unsupported=fail: ${blocking.map((i) => i.code).join(", ")}`,
+        });
+        continue;
+      }
     }
     const titles: string[] = [];
     if (plan.tree) collectTreeTitles(plan.tree, titles);
@@ -1053,6 +1171,11 @@ Options:
   --staging-parent <t>    Create a private import-owned parent titled <t>
   --label <name>          Repeatable; applied and verified on the root page
   --content-property k=v  Repeatable; atlcli.* namespaced page metadata
+  --map-style <s>=<t>     Repeatable; map a Word style (id or name) to
+                          paragraph|heading-1..6|blockquote|code
+  --revisions <mode>      accept|reject tracked changes (default accept)
+  --unsupported <mode>    report|fail on lossy constructs (default report)
+  --overrides <file>      Override file (atlcli.docx-import-overrides/1, YAML/JSON)
   --confirm         Actually create/update the page(s)
   --profile <name>  Use a specific auth profile
   --json            JSON output
