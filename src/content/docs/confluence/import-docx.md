@@ -392,6 +392,47 @@ the command exits non-zero if anything failed.
 titles already exist in the space are skipped instead of failing, so an
 interrupted batch continues without duplicating verified content.
 
+### Manifest batches with checkpoint/resume
+
+For larger migrations, describe the whole batch in a versioned manifest —
+per-document titles, split levels, labels, and a **folder hierarchy** that
+becomes a page hierarchy:
+
+```yaml
+# batch.yaml
+schema: atlcli.docx-batch-manifest/1
+batchId: wave-1
+destination:
+  spaceKey: TEAM
+  staging: private        # everything lands under a private batch root
+defaults:
+  titleConflict: rename
+documents:
+  - sourcePath: docs/intro.docx
+  - sourcePath: docs/guides/admin.docx
+    relativeParentPath: Guides     # folder page, created on demand
+    labels: [imported]
+  - sourcePath: docs/guides/handbook.docx
+    relativeParentPath: Guides
+    splitHeading: 1                # this one becomes a page tree
+```
+
+```bash
+atlcli wiki import --manifest batch.yaml --confirm          # first run
+atlcli wiki import --manifest batch.yaml --confirm --resume # continue later
+```
+
+- Every document is its own transaction; a failure rolls back only that
+  document's pages and the batch continues to an exact
+  complete/skipped/failed report.
+- A checkpoint state file (`batch.yaml.state.json`, written atomically
+  after every item) records page ids and content digests.
+- `--resume` **verifies the remote state** before skipping anything: an
+  item only skips when its recorded root page still exists (not trashed)
+  and its body digest matches — a page someone deleted is re-imported,
+  everything else is left alone. A changed manifest invalidates the state
+  file instead of being silently reinterpreted.
+
 ## Options
 
 | Option | Type | Default | Description |

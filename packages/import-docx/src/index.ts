@@ -21,6 +21,16 @@ export type {
 } from "./model.js";
 export { parseDocx, type ParseDocxPolicy } from "./parse.js";
 export {
+  BATCH_MANIFEST_SCHEMA,
+  BATCH_STATE_SCHEMA,
+  parseBatchManifest,
+  validateBatchState,
+  type BatchManifestDocumentV1,
+  type BatchStateItemV1,
+  type DocxBatchManifestV1,
+  type DocxBatchStateV1,
+} from "./batch-manifest.js";
+export {
   BASELINE_PROPERTY_KEY,
   BASELINE_SCHEMA,
   buildBaseline,

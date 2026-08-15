@@ -49,6 +49,7 @@ import {
 import { assertCliAuthSupported } from "./session-guard.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { handleRecipeCommand, loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
+import { handleManifestBatch } from "./wiki-import-batch.js";
 import {
   BASELINE_PROPERTY_KEY,
   buildBaseline,
@@ -197,6 +198,12 @@ export async function handleWikiImport(
       return;
     }
     await handleRecipeCommand(args.slice(1), flags, opts);
+    return;
+  }
+
+  const manifestPath = getFlag(flags, "manifest");
+  if (manifestPath) {
+    await handleManifestBatch(manifestPath, flags, opts);
     return;
   }
 
@@ -1191,7 +1198,7 @@ interface PublishedPageReport {
  * verify the readback block sequence. Registers the created id BEFORE any
  * follow-up call so the caller's rollback always sees it.
  */
-async function publishOnePage(
+export async function publishOnePage(
   client: ConfluenceClient,
   spaceId: string,
   title: string,
@@ -1273,7 +1280,7 @@ async function verifyPageContent(
  * media identities and (optionally) cross-page anchor links, PUT it as
  * version 2, and verify the readback.
  */
-async function finalizePageContent(
+export async function finalizePageContent(
   client: ConfluenceClient,
   pageId: string,
   title: string,
@@ -1355,7 +1362,7 @@ async function sealBaseline(
  * exist for the whole tree), then finalize each page's content with the
  * bookmark→page-URL map so cross-page references become real links.
  */
-async function publishTree(
+export async function publishTree(
   client: ConfluenceClient,
   spaceId: string,
   split: SplitResult,
@@ -1407,7 +1414,7 @@ async function publishTree(
  * always included in both operations — a policy that locks the importer out
  * would break the rest of the transaction and strand the page.
  */
-async function applyRestriction(
+export async function applyRestriction(
   client: ConfluenceClient,
   pageId: string,
   governance: DestinationGovernance,
@@ -1482,7 +1489,7 @@ function collectTreeTitles(plan: ImportPagePlan, into: string[]): void {
 }
 
 /** Find a free " (n)" title variant in the space (plan 009 rename mode). */
-async function findFreeTitle(
+export async function findFreeTitle(
   client: ConfluenceClient,
   spaceKey: string,
   baseTitle: string,

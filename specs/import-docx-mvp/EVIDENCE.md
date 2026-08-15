@@ -252,3 +252,27 @@ Proof matrix (plan §6), all pages deleted afterwards with a verified 404:
 - Level-gap and empty-section policies unit-tested (H1→H3 attach to
   nearest ancestor with `page-tree-heading-level-gap`).
 - Cleanup: all 8 pages of both trees deleted; title search returned 0.
+
+## 2026-08-15 — Plan 010 full form, live Cloud (manifest, hierarchy, checkpoint/resume)
+
+- Manifest `e2e-wave-1`: 3 documents, one with `relativeParentPath:
+  Guides` + labels, one with `splitHeading: 1`, destination staging
+  private, titleConflict rename.
+- Run 1: private staging root `1198096487` (restriction-first, proven),
+  folder page "Guides" `1198096523` under it, all 3 items complete
+  (handbook as a 3-page tree). Hierarchy verified: Admin Guide
+  parentId=Guides, Guides parentId=staging root.
+- Resume run: all 3 skipped via REMOTE verification (page current +
+  canonicalized body digest matches the checkpoint).
+- Deletion test: after remotely deleting the admin root page, resume
+  re-imported ONLY that item (new id `1197998201`) and skipped the rest.
+  This E2E exposed and fixed a real bug: v2 getPageAdf still serves
+  TRASHED pages, so existence checks now go through v1 (status=current
+  404s for trash).
+- All-skip runs now normalize and persist the state (skipped →
+  complete), fixing a second found-by-E2E bug where `continue` bypassed
+  the per-item checkpoint.
+- State file is atomic (tmp+rename); manifest-digest drift blocks
+  --resume (unit-tested).
+- Cleanup: all batch pages incl. staging root and folder page deleted;
+  staging-root title search returned 0.

@@ -1,6 +1,6 @@
 # Plan 010: Import DOCX batches and folder trees with checkpoints and resume
 
-Status: **Planned**
+Status: **Implemented (Cloud full form: manifest, hierarchy, checkpoint/resume; ZIP/cross-file-links/concurrency residuals open)** — evidence in specs/import-docx-mvp/EVIDENCE.md
 
 Planned at: `18f6f1e`, 2026-07-20
 
@@ -209,9 +209,9 @@ Acceptance:
 
 ### Task 1 — Safe discovery and manifest validation
 
-- [ ] Implement strict schema/canonicalization, relative-root resolution, no-follow symlink policy, deterministic ordering, and safe outer ZIP inspection/extraction.
-- [ ] Reject duplicate normalized paths/item IDs/title-map conflicts before parsing/publication.
-- [ ] Acquire/hash/preflight every DOCX through the baseline safety pipeline.
+- [x] Implement strict schema/canonicalization, relative-root resolution, no-follow symlink policy, deterministic ordering, and safe outer ZIP inspection/extraction. *(Manifest schema hardened + canonical digest; sourcePath traversal rejected; ZIP source still open.)*
+- [x] Reject duplicate normalized paths/item IDs/title-map conflicts before parsing/publication.
+- [x] Acquire/hash/preflight every DOCX through the baseline safety pipeline.
 
 Acceptance/tests:
 
@@ -220,9 +220,9 @@ Acceptance/tests:
 
 ### Task 2 — Compose global batch plan
 
-- [ ] Invoke the Plan 009 file-to-subtree planner for each item; `splitHeading` absent uses its one-page/root contract.
-- [ ] Apply Plan 003 budgets and Plan 005 governance without copying their logic.
-- [ ] Resolve directory parent nodes, whole-batch titles, and relative cross-file links.
+- [x] Invoke the Plan 009 file-to-subtree planner for each item; `splitHeading` absent uses its one-page/root contract.
+- [x] Apply Plan 003 budgets and Plan 005 governance without copying their logic. *(Editability in preview; staging root via the plan-005 restriction path.)*
+- [x] Resolve directory parent nodes, whole-batch titles, and relative cross-file links. *(Folder pages + per-item title policy; cross-FILE links still open — cross-page links within one document ship via plan 009.)*
 - [ ] Produce aggregate preview/report/plan digest with file→page→node/asset issue locations.
 
 Acceptance/tests:
@@ -234,22 +234,22 @@ Acceptance/tests:
 
 ### Task 3 — Atomic checkpoint and resume engine
 
-- [ ] Implement safe atomic state writes, schema/digest validation, permissions, symlink defense, and transition rules.
-- [ ] Checkpoint immediately after every remote ID and verification result.
-- [ ] On resume, validate manifest/capability/source and read back remote ownership/semantics before skipping/retrying.
+- [x] Implement safe atomic state writes, schema/digest validation, permissions, symlink defense, and transition rules. *(tmp+rename after every item; schema/batchId/manifest-digest validation on load.)*
+- [x] Checkpoint immediately after every remote ID and verification result. *(Staging root, each folder page, and each item checkpoint separately.)*
+- [x] On resume, validate manifest/capability/source and read back remote ownership/semantics before skipping/retrying. *(Manifest digest + source sha + remote status/current + body-digest readback; live-proven incl. the trashed-page case.)*
 
 Acceptance/tests:
 
 - [ ] Kill/interrupt simulation after every transition resumes without duplicate pages.
-- [ ] Tampered/truncated/stale/wrong-site state blocks before mutation.
-- [ ] Missing/diverged remote page is never silently recreated over an unrelated title.
+- [x] Tampered/truncated/stale/wrong-site state blocks before mutation. *(Schema/batch/manifest-digest mismatches block; unit-tested.)*
+- [x] Missing/diverged remote page is never silently recreated over an unrelated title. *(Re-import runs the normal title preflight; live: deleted item recreated cleanly, others untouched.)*
 
 ### Task 4 — Batch publisher, failure scheduling, and cross-file links
 
-- [ ] Create/restrict/read back staging root.
+- [x] Create/restrict/read back staging root.
 - [ ] Execute item subtrees with bounded mutation concurrency and deterministic events.
 - [ ] Coordinate shell ID maps for cross-file links and completion dependencies.
-- [ ] Roll back failed item resources only; retain verified items under staging and report partial state.
+- [x] Roll back failed item resources only; retain verified items under staging and report partial state.
 - [ ] Implement `stop|continue` and retry only proven operations/items.
 
 Acceptance/tests:
