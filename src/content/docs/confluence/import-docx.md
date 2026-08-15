@@ -109,10 +109,26 @@ Not imported (each produces an explicit issue): EMF/WMF vector formats,
 legacy VML pictures, embedded OLE objects, charts/shapes without a bitmap,
 and images linked from external URLs.
 
+## Importing from a Confluence attachment
+
+A DOCX that already lives as an attachment on a Confluence page can be
+imported directly — no manual download:
+
+```bash
+atlcli wiki import --from-page 123456 --attachment handbook.docx --space TEAM
+```
+
+The attachment is downloaded with the active profile, then runs through the
+exact same preview/confirm pipeline as a local file. The publish report
+records the source page, attachment id, and attachment version for
+provenance.
+
 ## Options
 
 | Option | Type | Default | Description |
 |---|---|---|---|
+| `--from-page <id>` | string | — | Import the source DOCX from this page's attachments (instead of a local file) |
+| `--attachment <name>` | string | — | Exact attachment file name on `--from-page` |
 | `--space <KEY>` | string | profile space | Target space key |
 | `--title <title>` | string | first H1, else file name | Page title |
 | `--parent <id>` | string | space root | Parent page id |

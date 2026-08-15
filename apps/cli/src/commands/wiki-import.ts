@@ -37,37 +37,32 @@ export async function handleWikiImport(
   opts: OutputOptions,
 ): Promise<void> {
   const [file] = args;
-  if (!file || hasFlag(flags, "help")) {
+  const fromPage = getFlag(flags, "from-page");
+  const attachmentName = getFlag(flags, "attachment");
+
+  if (hasFlag(flags, "help") || (!file && !fromPage)) {
     output(importHelp(), opts);
     return;
   }
-  if (!file.toLowerCase().endsWith(".docx")) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, "Only .docx files are supported.", { file });
+  if (file && fromPage) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Give either a local file OR --from-page, not both.", {});
   }
-
-  let bytes: Uint8Array;
-  try {
-    bytes = new Uint8Array(readFileSync(file));
-  } catch (err) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, `Cannot read file: ${(err as Error).message}`, { file });
+  if (fromPage && !attachmentName) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--from-page requires --attachment <filename>.", {});
   }
-
-  let doc: ImportedDocument;
-  try {
-    doc = parseDocx(bytes);
-  } catch (err) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, `Rejected DOCX package: ${(err as Error).message}`, {
-      file,
-    });
+  const sourceName = file ?? attachmentName!;
+  if (!sourceName.toLowerCase().endsWith(".docx")) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Only .docx files are supported.", { file: sourceName });
   }
 
   const confirm = hasFlag(flags, "confirm");
   const spaceFlag = getFlag(flags, "space");
 
-  // The preview is a purely local projection: no config, profile, or network
-  // access unless the run publishes or needs the profile's default space.
+  // The preview of a local file is a purely local projection: no config,
+  // profile, or network access unless the run publishes, needs the profile's
+  // default space, or downloads its source from Confluence.
   let profile: Awaited<ReturnType<typeof getActiveProfile>> | undefined;
-  if (confirm || !spaceFlag) {
+  if (confirm || !spaceFlag || fromPage) {
     const config = await loadConfig();
     const profileName = getFlag(flags, "profile");
     profile = getActiveProfile(config, profileName);
@@ -77,7 +72,7 @@ export async function handleWikiImport(
       });
     }
     assertCliAuthSupported(profile, opts);
-    if (confirm && resolveDeploymentType(profile) !== "cloud") {
+    if ((confirm || fromPage) && resolveDeploymentType(profile) !== "cloud") {
       fail(
         opts,
         1,
@@ -88,18 +83,60 @@ export async function handleWikiImport(
     }
   }
 
+  // Acquire source bytes. The parser stays byte-oriented; the imperative
+  // shell owns file/network acquisition (plan 004 source adapter).
+  let bytes: Uint8Array;
+  let source: { kind: "file"; path: string } | { kind: "attachment"; pageId: string; attachmentId: string; version: number };
+  if (fromPage) {
+    const sourceClient = new ConfluenceClient(profile!);
+    const attachments = await sourceClient.listAttachments(fromPage);
+    const attachment = attachments.find((a) => a.filename === attachmentName);
+    if (!attachment) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.API,
+        `Attachment "${attachmentName}" not found on page ${fromPage}.`,
+        { pageId: fromPage, available: attachments.map((a) => a.filename).slice(0, 20) },
+      );
+    }
+    bytes = await sourceClient.downloadAttachment(attachment);
+    source = {
+      kind: "attachment",
+      pageId: fromPage,
+      attachmentId: attachment.id,
+      version: attachment.version,
+    };
+  } else {
+    try {
+      bytes = new Uint8Array(readFileSync(file!));
+    } catch (err) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, `Cannot read file: ${(err as Error).message}`, { file });
+    }
+    source = { kind: "file", path: file! };
+  }
+
+  let doc: ImportedDocument;
+  try {
+    doc = parseDocx(bytes);
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Rejected DOCX package: ${(err as Error).message}`, {
+      file: sourceName,
+    });
+  }
+
   const spaceKey = spaceFlag ?? profile?.space;
   if (!spaceKey) {
     fail(opts, 1, ERROR_CODES.VALIDATION, "No space given. Use --space <KEY> or set a profile space.", {});
   }
-  const title = getFlag(flags, "title") ?? doc.titleCandidate ?? basename(file, ".docx");
+  const title = getFlag(flags, "title") ?? doc.titleCandidate ?? basename(sourceName, ".docx");
   const parentId = getFlag(flags, "parent");
 
   const preview = await buildImportPreview(doc, { spaceKey, title, parentId });
 
   if (!confirm) {
     if (opts.json) {
-      output({ mode: "preview", preview }, opts);
+      output({ mode: "preview", source, preview }, opts);
     } else {
       output(renderImportPreview(preview), opts);
       output("\nDry preview only — nothing was published. Re-run with --confirm to create the page.", opts);
@@ -192,6 +229,7 @@ export async function handleWikiImport(
     output(
       {
         mode: "published",
+        source,
         page: { id: finalPage.id, title: finalPage.title, url: finalPage.url, version: finalPage.version },
         adfDigest: preview.adfDigest,
         attachments: preview.assets,
@@ -210,13 +248,17 @@ export async function handleWikiImport(
 
 function importHelp(): string {
   return `atlcli wiki import <file.docx> [options]
+atlcli wiki import --from-page <id> --attachment <name.docx> [options]
 
 Semantic DOCX import to a new Confluence Cloud page (review-first).
 
 Without --confirm the command only previews: block counts, heading outline,
 issues, and the digest of the exact ADF payload a confirmed run publishes.
+The source is a local file, or a DOCX already attached to a Confluence page.
 
 Options:
+  --from-page <id>       Source: page id carrying the DOCX attachment
+  --attachment <name>    Source: exact attachment file name on that page
   --space <KEY>     Target space key (default: profile space)
   --title <title>   Page title (default: first Heading 1, else file name)
   --parent <id>     Parent page id

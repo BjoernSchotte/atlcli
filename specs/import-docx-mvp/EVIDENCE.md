@@ -85,3 +85,15 @@ Fixture: 2,528-byte DOCX with an inline DrawingML picture (1×1 PNG,
   readback block-sequence verification (incl. `mediaSingle`) passed,
   zero issues.
 - Cleanup: page deleted; follow-up GET returned **404**.
+
+## 2026-08-15 — Attachment-source import E2E, live Cloud (plan 004 slice)
+
+- Seed: page `1197801482` created in DOCSY with `source.docx`
+  (`att1198194689`) attached — a DOCX containing H1, paragraph, and an
+  embedded PNG.
+- `wiki import --from-page 1197801482 --attachment source.docx --confirm
+  --json` downloaded the attachment with the profile, ran the standard
+  pipeline, and published page `1198194695` (version 2, image attached,
+  zero issues). The report records the source identity
+  (`kind: attachment`, pageId, attachmentId, version 1).
+- Cleanup: both pages deleted; follow-up GETs returned **404**.
