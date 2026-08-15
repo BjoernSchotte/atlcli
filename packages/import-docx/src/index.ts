@@ -28,6 +28,12 @@ export {
   type AdfNode,
 } from "./adf.js";
 export {
+  EDITABILITY_BUDGETS,
+  assessEditability,
+  type EditabilityAssessment,
+  type EditabilityLevel,
+} from "./assess.js";
+export {
   SplitTitleConflictError,
   countPages,
   splitDocument,

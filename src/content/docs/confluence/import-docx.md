@@ -12,9 +12,10 @@ published before anything touches Confluence, and it only publishes with an
 explicit `--confirm`.
 
 > **Scope.** DOCX import is under active development
-> (`specs/import-docx-mvp`). The current release covers single-page Cloud
-> imports; page-tree splitting, batch imports, updating existing pages, and
-> Data Center support are planned follow-ups.
+> (`specs/import-docx-mvp`). Current coverage: single pages, page-tree
+> splitting, and importing from Confluence attachments — Cloud only.
+> Batch imports, updating existing pages, and Data Center support are
+> planned follow-ups.
 
 ## On this page
 
@@ -23,6 +24,9 @@ explicit `--confirm`.
 - [How the preview works](#how-the-preview-works)
 - [What gets imported](#what-gets-imported)
 - [Images and attachments](#images-and-attachments)
+- [Importing from a Confluence attachment](#importing-from-a-confluence-attachment)
+- [Editability check](#editability-check)
+- [Splitting into a page tree](#splitting-into-a-page-tree)
 - [Options](#options)
 - [Advanced example](#advanced-example)
 - [No silent loss: import issues](#no-silent-loss-import-issues)
@@ -122,6 +126,22 @@ The attachment is downloaded with the active profile, then runs through the
 exact same preview/confirm pipeline as a local file. The publish report
 records the source page, attachment id, and attachment version for
 provenance.
+
+## Editability check
+
+Very large single pages can be created successfully and still freeze the
+Confluence editor. The preview estimates that risk from the encoded payload
+(bytes, node count, table cells) and flags it:
+
+```text
+Editability: RISK — 3184 KiB payload, 24802 nodes, 11040 table cells
+  This page is likely to freeze or time out in the Confluence editor. Split it into a page tree (--split 1 or --split 2) before publishing.
+```
+
+With `--split`, every planned page is assessed individually and flagged in
+the tree preview. The thresholds are calibrated soft budgets, not hard API
+limits — the check warns and recommends, it never blocks a publish on its
+own.
 
 ## Splitting into a page tree
 

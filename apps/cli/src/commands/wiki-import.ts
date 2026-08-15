@@ -23,6 +23,7 @@ import {
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
   SplitTitleConflictError,
+  assessEditability,
   buildImportPreview,
   countPages,
   documentToAdf,
@@ -373,19 +374,23 @@ function treeSummary(plan: ImportPagePlan): {
   title: string;
   blocks: number;
   assets: string[];
+  editability: ReturnType<typeof assessEditability>;
   children: ReturnType<typeof treeSummary>[];
 } {
   return {
     title: plan.title,
     blocks: plan.blocks.length,
     assets: plan.assets.map((a) => a.fileName),
+    editability: assessEditability(plan.blocks),
     children: plan.children.map(treeSummary),
   };
 }
 
 function renderTree(plan: ImportPagePlan, depth: number): string {
+  const level = assessEditability(plan.blocks).level;
+  const marker = level === "ok" ? "" : ` [editability: ${level.toUpperCase()}]`;
   const lines = [
-    `${"  ".repeat(depth)}${depth === 0 ? "•" : "└"} ${plan.title} (${plan.blocks.length} blocks${plan.assets.length ? `, ${plan.assets.length} attachment(s)` : ""})`,
+    `${"  ".repeat(depth)}${depth === 0 ? "•" : "└"} ${plan.title} (${plan.blocks.length} blocks${plan.assets.length ? `, ${plan.assets.length} attachment(s)` : ""})${marker}`,
   ];
   for (const child of plan.children) lines.push(renderTree(child, depth + 1));
   return lines.join("\n");

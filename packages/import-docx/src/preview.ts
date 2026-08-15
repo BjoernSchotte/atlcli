@@ -8,6 +8,7 @@
 import { sha256Hex } from "@atlcli/core";
 import type { ImportBlock, ImportRun, ImportedDocument } from "./model.js";
 import { documentToAdf } from "./adf.js";
+import { assessEditability, type EditabilityAssessment } from "./assess.js";
 
 export interface ImportTarget {
   spaceKey: string;
@@ -28,6 +29,8 @@ export interface ImportPreview {
   outline: { level: number; text: string }[];
   /** Attachments a confirmed run uploads, with content digests. */
   assets: ImportPreviewAsset[];
+  /** Practical-editability estimate for the resulting single page. */
+  editability: EditabilityAssessment;
   issues: ImportedDocument["issues"];
   /**
    * sha256 over the canonical ADF payload with media ids in placeholder form
@@ -85,7 +88,8 @@ export async function buildImportPreview(
   );
 
   const adfDigest = await sha256Hex(new TextEncoder().encode(JSON.stringify(documentToAdf(doc))));
-  return { target, counts, outline, assets, issues: doc.issues, adfDigest };
+  const editability = assessEditability(doc.blocks);
+  return { target, counts, outline, assets, editability, issues: doc.issues, adfDigest };
 }
 
 export function renderImportPreview(preview: ImportPreview): string {
@@ -102,6 +106,15 @@ export function renderImportPreview(preview: ImportPreview): string {
     .map(([k, v]) => `${v} ${k}${v === 1 ? "" : "s"}`)
     .join(", ");
   lines.push(`Content: ${countLine || "empty document"}`);
+
+  const e = preview.editability;
+  if (e.level !== "ok") {
+    lines.push("");
+    lines.push(
+      `Editability: ${e.level.toUpperCase()} — ${Math.round(e.adfBytes / 1024)} KiB payload, ${e.nodeCount} nodes${e.tableCells ? `, ${e.tableCells} table cells` : ""}`,
+    );
+    if (e.recommendation) lines.push(`  ${e.recommendation}`);
+  }
 
   if (preview.outline.length > 0) {
     lines.push("");
