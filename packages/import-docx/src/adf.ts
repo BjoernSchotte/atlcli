@@ -101,8 +101,14 @@ function encodeImage(block: ImportImageBlock, options: AdfEncodeOptions): AdfNod
 
 function encodeBlock(block: ImportBlock, options: AdfEncodeOptions): AdfNode {
   switch (block.type) {
-    case "heading":
-      return { type: "heading", attrs: { level: block.level }, content: encodeRuns(block.runs) };
+    case "heading": {
+      // The resolved numbering label becomes literal heading text: Confluence
+      // has no native multilevel heading numbering, and the label is the
+      // citable section identifier.
+      const content = encodeRuns(block.runs);
+      if (block.label) content.unshift({ type: "text", text: `${block.label} ` });
+      return { type: "heading", attrs: { level: block.level }, content };
+    }
     case "paragraph":
       return encodeParagraph(block.runs);
     case "list":

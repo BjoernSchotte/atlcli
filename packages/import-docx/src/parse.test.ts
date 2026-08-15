@@ -171,6 +171,76 @@ describe("parseDocx", () => {
     expect(codes).toContain("docx-import/image-part-missing");
   });
 
+  const HEADING_NUMBERING = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="5">
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1"/></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2"/></w:lvl>
+  </w:abstractNum>
+  <w:abstractNum w:abstractNumId="6">
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%1.%2)"/></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="10"><w:abstractNumId w:val="5"/></w:num>
+  <w:num w:numId="11"><w:abstractNumId w:val="6"/></w:num>
+</w:numbering>`;
+
+  it("keeps numbered headings as headings and resolves multilevel labels", () => {
+    const bytes = buildDocxFixture({
+      body:
+        p(r("Einleitung"), { style: "Heading1", numId: "10", ilvl: 0 }) +
+        p(r("Kontext"), { style: "Heading2", numId: "10", ilvl: 1 }) +
+        p(r("Abgrenzung"), { style: "Heading2", numId: "10", ilvl: 1 }) +
+        p(r("Anforderungen"), { style: "Heading1", numId: "10", ilvl: 0 }) +
+        p(r("Fachlich"), { style: "Heading2", numId: "10", ilvl: 1 }),
+      numbering: HEADING_NUMBERING,
+    });
+    const doc = parseDocx(bytes);
+    // No list blocks — heading semantics win over w:numPr list membership.
+    expect(doc.blocks.map((b) => b.type)).toEqual([
+      "heading", "heading", "heading", "heading", "heading",
+    ]);
+    const labels = doc.blocks.map((b) => (b.type === "heading" ? b.label : undefined));
+    expect(labels).toEqual(["1", "1.1", "1.2", "2", "2.1"]);
+    // The page-title candidate carries the citable identifier.
+    expect(doc.titleCandidate).toBe("1 Einleitung");
+  });
+
+  it("renders letter and roman numbering formats", () => {
+    const bytes = buildDocxFixture({
+      body:
+        p(r("First"), { style: "Heading1", numId: "11", ilvl: 0 }) +
+        p(r("Sub a"), { style: "Heading2", numId: "11", ilvl: 1 }) +
+        p(r("Sub b"), { style: "Heading2", numId: "11", ilvl: 1 }) +
+        p(r("Fourth"), { style: "Heading1", numId: "11", ilvl: 0 }) +
+        p(r("Fifth"), { style: "Heading1", numId: "11", ilvl: 0 }) +
+        p(r("Sixth"), { style: "Heading1", numId: "11", ilvl: 0 }),
+      numbering: HEADING_NUMBERING,
+    });
+    const doc = parseDocx(bytes);
+    const labels = doc.blocks.map((b) => (b.type === "heading" ? b.label : undefined));
+    // Trailing "." is trimmed ("I." → "I"); other suffixes like ")" stay.
+    expect(labels).toEqual(["I", "I.a)", "I.b)", "II", "III", "IV"]);
+  });
+
+  it("advances heading counters across interleaved list numbering without cross-talk", () => {
+    const bytes = buildDocxFixture({
+      body:
+        p(r("One"), { style: "Heading1", numId: "10", ilvl: 0 }) +
+        p(r("item"), { numId: "2", ilvl: 0 }) +
+        p(r("Two"), { style: "Heading1", numId: "10", ilvl: 0 }),
+      numbering:
+        HEADING_NUMBERING.replace(
+          "</w:numbering>",
+          `<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/></w:lvl></w:abstractNum><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num></w:numbering>`,
+        ),
+    });
+    const doc = parseDocx(bytes);
+    expect(doc.blocks.map((b) => b.type)).toEqual(["heading", "list", "heading"]);
+    const labels = doc.blocks.flatMap((b) => (b.type === "heading" ? [b.label] : []));
+    expect(labels).toEqual(["1", "2"]);
+  });
+
   it("rejects packages that are not DOCX", () => {
     expect(() => parseDocx(new TextEncoder().encode("not a zip"))).toThrow();
   });

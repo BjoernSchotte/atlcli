@@ -70,7 +70,10 @@ export async function buildImportPreview(
 
   const outline = doc.blocks
     .filter((b): b is Extract<ImportBlock, { type: "heading" }> => b.type === "heading")
-    .map((h) => ({ level: h.level, text: runsText(h.runs) }));
+    .map((h) => ({
+      level: h.level,
+      text: h.label ? `${h.label} ${runsText(h.runs)}` : runsText(h.runs),
+    }));
 
   const assets = await Promise.all(
     doc.assets.map(async (asset) => ({

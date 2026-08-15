@@ -63,8 +63,10 @@ interface ParseContext {
   issues: ImportIssue[];
   /** styleId → heading level (1-6). */
   headingStyles: Map<string, number>;
-  /** numId → ilvl → ordered? */
-  numbering: Map<string, Map<number, boolean>>;
+  /** numId → ilvl → resolved level definition. */
+  numbering: Map<string, Map<number, NumberingLevel>>;
+  /** numId → live counters (index = ilvl), advanced in document order. */
+  numberingCounters: Map<string, number[]>;
   /** relationship id → external URL. */
   hyperlinks: Map<string, string>;
   /** relationship id → internal image part path (word/-relative resolved). */
@@ -129,24 +131,48 @@ function parseHeadingStyles(stylesXml: string | undefined): Map<string, number> 
   return map;
 }
 
-/** Parse `word/numbering.xml` into numId → ilvl → ordered?. */
-function parseNumbering(numberingXml: string | undefined): Map<string, Map<number, boolean>> {
-  const map = new Map<string, Map<number, boolean>>();
+/** One resolved `w:lvl` definition. */
+interface NumberingLevel {
+  /** False for `bullet`/`none` formats. */
+  ordered: boolean;
+  /** OOXML `numFmt` value (`decimal`, `lowerLetter`, `upperRoman`, …). */
+  numFmt: string;
+  /** `lvlText` pattern with `%1`…`%9` placeholders, when declared. */
+  lvlText?: string;
+  /** Counter start value (default 1). */
+  start: number;
+}
+
+/** Parse `word/numbering.xml` into numId → ilvl → level definition. */
+function parseNumbering(
+  numberingXml: string | undefined,
+): Map<string, Map<number, NumberingLevel>> {
+  const map = new Map<string, Map<number, NumberingLevel>>();
   if (!numberingXml) return map;
   const root = parseXmlTree(numberingXml);
 
-  const abstractLevels = new Map<string, Map<number, boolean>>();
+  const abstractLevels = new Map<string, Map<number, NumberingLevel>>();
   for (const el of childElements(root)) {
     if (el.local === "abstractNum") {
       const id = attr(el, "abstractNumId", W_NS);
       if (!id) continue;
-      const levels = new Map<number, boolean>();
+      const levels = new Map<number, NumberingLevel>();
       for (const lvl of childElements(el)) {
         if (lvl.local !== "lvl") continue;
         const ilvl = Number(attr(lvl, "ilvl", W_NS));
-        const numFmt = firstChild(lvl, "numFmt");
-        const fmt = numFmt ? attr(numFmt, "val", W_NS) : undefined;
-        if (Number.isInteger(ilvl)) levels.set(ilvl, fmt !== "bullet" && fmt !== "none");
+        if (!Number.isInteger(ilvl)) continue;
+        const fmtEl = firstChild(lvl, "numFmt");
+        const numFmt = (fmtEl ? attr(fmtEl, "val", W_NS) : undefined) ?? "decimal";
+        const lvlTextEl = firstChild(lvl, "lvlText");
+        const lvlText = lvlTextEl ? attr(lvlTextEl, "val", W_NS) : undefined;
+        const startEl = firstChild(lvl, "start");
+        const startVal = startEl ? Number(attr(startEl, "val", W_NS)) : NaN;
+        levels.set(ilvl, {
+          ordered: numFmt !== "bullet" && numFmt !== "none",
+          numFmt,
+          lvlText,
+          start: Number.isInteger(startVal) && startVal >= 0 ? startVal : 1,
+        });
       }
       abstractLevels.set(id, levels);
     }
@@ -162,6 +188,81 @@ function parseNumbering(numberingXml: string | undefined): Map<string, Map<numbe
     }
   }
   return map;
+}
+
+const ROMAN_NUMERALS: [number, string][] = [
+  [1000, "m"], [900, "cm"], [500, "d"], [400, "cd"], [100, "c"], [90, "xc"],
+  [50, "l"], [40, "xl"], [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"],
+];
+
+/** Render one counter value in an OOXML `numFmt`. */
+function formatCounter(numFmt: string, value: number): string {
+  const n = Math.max(1, value);
+  switch (numFmt) {
+    case "lowerLetter":
+    case "upperLetter": {
+      // 1→a … 26→z, 27→aa (OOXML wraps alphabetically).
+      let out = "";
+      let v = n;
+      while (v > 0) {
+        out = String.fromCharCode(97 + ((v - 1) % 26)) + out;
+        v = Math.floor((v - 1) / 26);
+      }
+      return numFmt === "upperLetter" ? out.toUpperCase() : out;
+    }
+    case "lowerRoman":
+    case "upperRoman": {
+      let out = "";
+      let v = n;
+      for (const [num, sym] of ROMAN_NUMERALS) {
+        while (v >= num) {
+          out += sym;
+          v -= num;
+        }
+      }
+      return numFmt === "upperRoman" ? out.toUpperCase() : out;
+    }
+    default:
+      return String(n);
+  }
+}
+
+/**
+ * Advance the numbering state for one numbered paragraph and return its
+ * visible label, or undefined for bullet/undefined levels.
+ *
+ * Word restarts deeper levels whenever a shallower level advances; shallower
+ * placeholders that were never hit render at their start value.
+ */
+function advanceNumbering(ctx: ParseContext, numId: string, ilvl: number): string | undefined {
+  const levels = ctx.numbering.get(numId);
+  if (!levels) return undefined;
+
+  let counters = ctx.numberingCounters.get(numId);
+  if (!counters) {
+    counters = Array.from({ length: 9 }, (_, i) => (levels.get(i)?.start ?? 1) - 1);
+    ctx.numberingCounters.set(numId, counters);
+  }
+  counters[ilvl] += 1;
+  for (let i = ilvl + 1; i < counters.length; i++) {
+    counters[i] = (levels.get(i)?.start ?? 1) - 1;
+  }
+
+  const level = levels.get(ilvl);
+  if (!level || !level.ordered) return undefined;
+
+  const pattern = level.lvlText ?? `%${ilvl + 1}.`;
+  const label = pattern
+    .replace(/%(\d)/g, (_, digit: string) => {
+      const idx = Number(digit) - 1;
+      const fmt = levels.get(idx)?.numFmt ?? "decimal";
+      const value = Math.max(counters![idx], levels.get(idx)?.start ?? 1);
+      return formatCounter(fmt, value);
+    })
+    .trim();
+  // Word suffixes most heading patterns with a trailing dot; the citable
+  // identifier is the bare label ("1.2", not "1.2.").
+  return label.replace(/\.$/, "") || undefined;
 }
 
 interface DocumentRels {
@@ -462,7 +563,7 @@ interface NumberedParagraph {
 function paragraphNumbering(
   p: XmlElement,
   ctx: ParseContext,
-): { ilvl: number; ordered: boolean } | undefined {
+): { numId: string; ilvl: number; ordered: boolean } | undefined {
   const pPr = firstChild(p, "pPr");
   const numPr = pPr ? firstChild(pPr, "numPr") : undefined;
   if (!numPr) return undefined;
@@ -471,10 +572,10 @@ function paragraphNumbering(
   const numId = numIdEl ? attr(numIdEl, "val", W_NS) : undefined;
   // numId 0 means "no numbering" (an override that removes list membership).
   if (!numId || numId === "0") return undefined;
-  const ilvl = ilvlEl ? Number(attr(ilvlEl, "val", W_NS)) : 0;
-  const levels = ctx.numbering.get(numId);
-  const ordered = levels?.get(Number.isInteger(ilvl) ? ilvl : 0);
-  if (ordered === undefined) {
+  const rawIlvl = ilvlEl ? Number(attr(ilvlEl, "val", W_NS)) : 0;
+  const ilvl = Number.isInteger(rawIlvl) && rawIlvl >= 0 ? rawIlvl : 0;
+  const level = ctx.numbering.get(numId)?.get(ilvl);
+  if (level === undefined) {
     report(
       ctx,
       "docx-import/unknown-numbering-definition",
@@ -483,7 +584,7 @@ function paragraphNumbering(
       "A list level had no numbering definition; it was imported as a bullet list.",
     );
   }
-  return { ilvl: Number.isInteger(ilvl) && ilvl >= 0 ? ilvl : 0, ordered: ordered ?? false };
+  return { numId, ilvl, ordered: level?.ordered ?? false };
 }
 
 function headingLevel(p: XmlElement, ctx: ParseContext): number | undefined {
@@ -581,12 +682,35 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
     switch (child.local) {
       case "p": {
         const numbering = paragraphNumbering(child, ctx);
+        const level = headingLevel(child, ctx);
         const runs = parseRuns(child, ctx);
         // Images are block-level in the IR: a paragraph's embedded drawings
         // surface as image blocks right after (or instead of) the paragraph.
         const images = ctx.pendingImages.splice(0, ctx.pendingImages.length);
+
+        // A numbered paragraph advances the shared counters regardless of
+        // whether the label is used (heading) or rendered natively (list).
+        const label = numbering
+          ? advanceNumbering(ctx, numbering.numId, numbering.ilvl)
+          : undefined;
+
+        // Heading semantics win over list membership: Word's multilevel
+        // heading numbering attaches w:numPr to heading paragraphs, and
+        // importing them as list items would destroy the document structure
+        // (specs/import-docx/002-heading-numbering).
+        if (level !== undefined) {
+          flushList();
+          blocks.push({
+            type: "heading",
+            level: level as 1 | 2 | 3 | 4 | 5 | 6,
+            runs,
+            ...(label ? { label } : {}),
+          });
+          blocks.push(...images);
+          break;
+        }
         if (numbering) {
-          pendingList.push({ ...numbering, runs });
+          pendingList.push({ ilvl: numbering.ilvl, ordered: numbering.ordered, runs });
           if (images.length > 0) {
             flushList();
             blocks.push(...images);
@@ -594,10 +718,7 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
           break;
         }
         flushList();
-        const level = headingLevel(child, ctx);
-        if (level !== undefined) {
-          blocks.push({ type: "heading", level: level as 1 | 2 | 3 | 4 | 5 | 6, runs });
-        } else if (runs.length > 0 || (tableDepth > 0 && images.length === 0)) {
+        if (runs.length > 0 || (tableDepth > 0 && images.length === 0)) {
           // Keep empty paragraphs inside table cells (cell shape), drop empty
           // body paragraphs (Word's spacing artifacts).
           blocks.push({ type: "paragraph", runs });
@@ -668,6 +789,7 @@ export function parseDocx(bytes: Uint8Array): ImportedDocument {
     issues: [],
     headingStyles: parseHeadingStyles(readOptional("word/styles.xml")),
     numbering: parseNumbering(readOptional("word/numbering.xml")),
+    numberingCounters: new Map(),
     hyperlinks: rels.hyperlinks,
     imageRels: rels.images,
     assets: new Map(),
@@ -690,7 +812,12 @@ export function parseDocx(bytes: Uint8Array): ImportedDocument {
   const firstH1 = blocks.find(
     (b): b is Extract<ImportBlock, { type: "heading" }> => b.type === "heading" && b.level === 1,
   );
-  const titleCandidate = firstH1 ? runsPlainText(firstH1.runs) || undefined : undefined;
+  const firstH1Text = firstH1 ? runsPlainText(firstH1.runs) : "";
+  const titleCandidate = firstH1 && firstH1Text
+    ? firstH1.label
+      ? `${firstH1.label} ${firstH1Text}`
+      : firstH1Text
+    : undefined;
 
   return { titleCandidate, blocks, assets: [...ctx.assets.values()], issues: ctx.issues };
 }

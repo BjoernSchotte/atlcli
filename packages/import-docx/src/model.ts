@@ -44,7 +44,19 @@ export interface ImportTableRow {
 }
 
 export type ImportBlock =
-  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; runs: ImportRun[] }
+  | {
+      type: "heading";
+      level: 1 | 2 | 3 | 4 | 5 | 6;
+      runs: ImportRun[];
+      /**
+       * Resolved visible numbering label (e.g. `1.2`, `A`, `IV`) when the
+       * source heading is numbered via OOXML numbering. Word generates these
+       * at render time; losing them breaks the section identifiers people
+       * cite, so the import resolves and preserves them explicitly
+       * (specs/import-docx/002-heading-numbering).
+       */
+      label?: string;
+    }
   | { type: "paragraph"; runs: ImportRun[] }
   | ImportListBlock
   | { type: "table"; rows: ImportTableRow[] }
