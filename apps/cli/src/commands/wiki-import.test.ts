@@ -342,6 +342,37 @@ describe("wiki import (preview mode, offline)", () => {
     expect(validated.id).toBe("dc-only");
   });
 
+  it("exports the resolved policy as a recipe that round-trips through import", async () => {
+    const out = join(dir, "exported.yaml");
+    await handleWikiImport(
+      ["recipe", "export"],
+      {
+        id: "team-conventions",
+        version: "1.2",
+        title: "Team conventions",
+        output: out,
+        "map-style": ["Hinweis=blockquote"],
+        unsupported: "fail",
+        json: true,
+      },
+      { json: true },
+    );
+    const exported = JSON.parse(stdout.join(""));
+    expect(exported.file).toBe(out);
+    expect(exported.digest).toMatch(/^[0-9a-f]{64}$/);
+
+    // The exported recipe drives an import preview with recipe provenance.
+    stdout.length = 0;
+    const file = join(dir, "rt.docx");
+    writeFileSync(file, buildDocxFixture({ body: p(r("Doc"), { style: "Heading1" }) }));
+    await handleWikiImport([file], { space: "DOCSY", recipe: out, json: true }, { json: true });
+    const parsed = JSON.parse(stdout.join(""));
+    expect(parsed.recipe.id).toBe("team-conventions");
+    expect(parsed.recipe.digest).toBe(exported.digest);
+    expect(parsed.policy.provenance["style:hinweis"]).toBe("recipe");
+    expect(parsed.policy.provenance["options.unsupported"]).toBe("recipe");
+  });
+
   it("falls back to the file name when the document has no level-1 heading", async () => {
     const file = join(dir, "notes.docx");
     writeFileSync(file, buildDocxFixture({ body: p(r("just text")) }));

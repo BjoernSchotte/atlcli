@@ -1,6 +1,6 @@
 # Plan 007: Add versioned, shareable DOCX import recipes
 
-Status: **Planned**
+Status: **Implemented (Cloud slice)** — see `EVIDENCE.md`; open residuals are marked below
 
 Planned at: `18f6f1e`, 2026-07-20
 
@@ -162,10 +162,10 @@ Acceptance/tests:
 
 ### Task 3 — Documentation and end-to-end proof
 
-- [ ] Add minimal and realistic recipes for code/panel/expand mappings without arbitrary macros.
-- [ ] Prove the same recipe produces the same Cloud/DC semantic plan where supported and named capability differences where not.
-- [ ] Use built CLI in DOCSY for one recipe-guided import, readback, and cleanup; use DC contract for target-specific mapping.
-- [ ] Document code review/versioning guidance for repository recipes.
+- [x] Add minimal and realistic recipes for code/panel/expand mappings without arbitrary macros. *(Minimal + realistic examples in the user docs; panel/expand targets wait for those mapping targets.)*
+- [ ] Prove the same recipe produces the same Cloud/DC semantic plan where supported and named capability differences where not. *(Cloud-only slice; DC recipes validate but are rejected at import time.)*
+- [x] Use built CLI in DOCSY for one recipe-guided import, readback, and cleanup; use DC contract for target-specific mapping. *(Cloud E2E done — page 1198194793, verified 404 cleanup; DC contract deferred.)*
+- [x] Document code review/versioning guidance for repository recipes. *(Docs: commit recipes to `.atlcli/import-recipes/`, digest-bound provenance.)*
 
 ---
 
@@ -186,12 +186,12 @@ git diff --check
 
 ## 7. Definition of Done
 
-- [ ] Recipes are safe, typed, canonical, versioned, digest-bound, and reviewable.
-- [ ] Precedence/provenance are visible for every effective decision.
-- [ ] Catalog lookup cannot escape roots or silently shadow duplicates.
-- [ ] Runtime parity and Cloud/DC applicability tests pass.
-- [ ] No Requirements-specific or arbitrary macro payload enters the core.
-- [ ] `specs/import-docx/007-import-recipes/EVIDENCE.md` is complete.
+- [x] Recipes are safe, typed, canonical, versioned, digest-bound, and reviewable.
+- [x] Precedence/provenance are visible for every effective decision.
+- [x] Catalog lookup cannot escape roots or silently shadow duplicates.
+- [ ] Runtime parity and Cloud/DC applicability tests pass. *(Applicability unit-tested; explicit Node/browser parity runs and DC-side proof deferred.)*
+- [x] No Requirements-specific or arbitrary macro payload enters the core.
+- [x] `specs/import-docx/007-import-recipes/EVIDENCE.md` is complete.
 
 ## 8. STOP conditions
 

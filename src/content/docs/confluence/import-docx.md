@@ -255,6 +255,12 @@ atlcli wiki import handbook.docx --space TEAM --recipe ./my-recipe.yaml
 atlcli wiki import recipe validate my-recipe.yaml
 atlcli wiki import recipe list
 atlcli wiki import recipe show company-handbook
+
+# Distill your current flags into a committable recipe
+atlcli wiki import recipe export --id company-handbook \
+  --title "Firmenhandbuch-Konventionen" \
+  --map-style "Hinweis=blockquote" --map-style "Listing=code" \
+  --unsupported fail
 ```
 
 - **Catalogs are explicit:** `--recipe <file>` reads a file;

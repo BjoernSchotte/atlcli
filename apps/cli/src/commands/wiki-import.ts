@@ -7,8 +7,8 @@
  * new Cloud page, verifies the readback, and rolls the page back if
  * publication cannot be verified.
  */
-import { basename, join } from "node:path";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -45,9 +45,9 @@ import {
   type ImportedDocument,
 } from "@atlcli/import-docx";
 import { assertCliAuthSupported } from "./session-guard.js";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { handleRecipeCommand, loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
-import { recipeApplicability } from "@atlcli/import-docx";
+import { parseRecipe, recipeApplicability } from "@atlcli/import-docx";
 
 interface RecipeInfo {
   id: string;
@@ -179,6 +179,10 @@ export async function handleWikiImport(
   opts: OutputOptions,
 ): Promise<void> {
   if (args[0] === "recipe") {
+    if (args[1] === "export") {
+      await handleRecipeExport(flags, opts);
+      return;
+    }
     await handleRecipeCommand(args.slice(1), flags, opts);
     return;
   }
@@ -537,6 +541,64 @@ export async function handleWikiImport(
     if (doc.issues.length > 0) {
       output(`${doc.issues.length} issue(s) — run without --confirm to review them in the preview.`, opts);
     }
+  }
+}
+
+/**
+ * `wiki import recipe export` (plan 007): distill the CURRENT resolved
+ * policy (CLI flags + optional --overrides file) into a reusable recipe
+ * file. Only non-default decisions are exported; there are no
+ * source-digest-bound node overrides in the slice, so nothing document-
+ * specific can leak. The written file is re-parsed as a self-test and
+ * written atomically (tmp + rename).
+ */
+async function handleRecipeExport(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Usage: wiki import recipe export --id <id> [--version v] [--title t] [--output file] [policy flags]", {});
+  }
+  const version = getFlag(flags, "version") ?? "1.0";
+  const title = getFlag(flags, "title") ?? id;
+  const outputPath = getFlag(flags, "output") ?? join(".atlcli", "import-recipes", `${id}.yaml`);
+
+  const policy = resolvePolicyFromFlags(flags, opts);
+  const options: Record<string, string> = {};
+  for (const key of ["revisions", "unsupported"] as const) {
+    if (policy.provenance[`options.${key}`] !== "default") options[key] = policy.options[key];
+  }
+  const recipe = {
+    schema: "atlcli.docx-import-recipe/1",
+    id,
+    version,
+    title,
+    targets: ["cloud"],
+    ...(Object.keys(options).length > 0 ? { options } : {}),
+    ...(Object.keys(policy.styleMappings).length > 0
+      ? { overrides: { styleMappings: policy.styleMappings } }
+      : {}),
+  };
+  const yamlText = stringifyYaml(recipe);
+
+  // Self-test: what we wrote must round-trip through the hardened parser.
+  const check = await parseRecipe(yamlText);
+  if (!check.parsed) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Exported recipe failed validation:\n  ${check.errors.join("\n  ")}`, {
+      errors: check.errors,
+    });
+  }
+
+  mkdirSync(dirname(outputPath), { recursive: true });
+  const tmpPath = `${outputPath}.tmp-${process.pid}`;
+  writeFileSync(tmpPath, yamlText, "utf8");
+  renameSync(tmpPath, outputPath);
+
+  if (opts.json) {
+    output({ file: outputPath, id, version, digest: check.parsed.digest }, opts);
+  } else {
+    output(`Exported ${id}@${version} to ${outputPath} (sha256:${check.parsed.digest.slice(0, 16)}…)`, opts);
   }
 }
 
