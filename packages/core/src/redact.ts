@@ -11,6 +11,8 @@ const SENSITIVE_KEY_PATTERNS = [
   "secret",
   "apikey",
   "api_key",
+  "api-key",
+  "anthropic-key",
   "authorization",
   "credential",
 ];
@@ -20,7 +22,7 @@ const SENSITIVE_KEY_PATTERNS = [
  */
 export function isSensitiveKey(key: string): boolean {
   const lowerKey = key.toLowerCase();
-  return SENSITIVE_KEY_PATTERNS.some((pattern) => lowerKey.includes(pattern));
+  return lowerKey === "key" || SENSITIVE_KEY_PATTERNS.some((pattern) => lowerKey.includes(pattern));
 }
 
 /**

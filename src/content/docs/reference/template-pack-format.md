@@ -12,6 +12,11 @@ API [`wiki.pdf-template/v1`](pdf-template-contract.md)) and a Word template
 (`engine.kind: "docx"`, API `wiki.docx-template/v1`). Only the *container* is
 shared — never the render contract.
 
+For PDF export, a pack is not a free-Typst plugin. The PDF runtime accepts only
+the canonical `atlcli.typ` source generated from a validated design snapshot.
+Use `atlcli pdf-template build`; editing or substituting Typst source makes the
+pack fail before compilation.
+
 The reader, packer, and validator live in the isomorphic package
 `@atlcli/template-pack` (browser-safe, pure byte-in/byte-out functions). This
 package is the canonical owner of the size-cap constants.
@@ -21,6 +26,7 @@ package is the canonical owner of the size-cap constants.
 - [Prerequisites](#prerequisites)
 - [Container layout](#container-layout)
 - [Manifest schema](#manifest-schema)
+- [Recipe V2 materialization](#recipe-v2-materialization)
 - [Deterministic packing](#deterministic-packing)
 - [Payload hash vs archive hash](#payload-hash-vs-archive-hash)
 - [Size caps](#size-caps)
@@ -45,7 +51,7 @@ payload files:
 
 ```text
 wiki-pdf-template.json     ← the manifest (always first)
-template.typ               ← engine.entry for a typst pack
+atlcli.typ                 ← canonical engine.entry for an executable PDF pack
 …any additional assets…
 ```
 
@@ -55,13 +61,16 @@ For a `docx` pack the entry is `template.docx` instead.
 
 The manifest file is `wiki-pdf-template.json`:
 
-```json
+```jsonc
 {
   "schemaVersion": 1,
   "id": "com.acme.tech-doc",
   "name": "Acme Tech Doc",
   "version": "1.0.0",
-  "engine": { "kind": "typst", "api": "wiki.pdf-template/v1", "entry": "template.typ", "compilerRange": ">=0.14 <0.15" },
+  "engine": { "kind": "typst", "api": "wiki.pdf-template/v1", "entry": "atlcli.typ", "compilerRange": ">=0.14 <0.15" },
+  "capabilityCatalog": { "id": "atlcli.pdf-template", "version": 1, "digest": "…" },
+  "canonicalSource": { "api": "wiki.pdf-canonical-typst", "revision": "2" },
+  "design": { "/* complete catalog-owned design */": "…" },
   "requiredFonts": [{ "family": "Source Sans 3", "style": "normal", "weight": 400 }],
   "settings": { "cover": { "type": "boolean", "default": true } },
   "provenance": { "payloadSha256": "…", "createdWith": "atlcli 0.x" }
@@ -77,9 +86,13 @@ The manifest file is `wiki-pdf-template.json`:
 | `engine.kind` | `"typst" \| "docx"` | Yes | Selects the render contract. |
 | `engine.api` | `string` | Yes | `wiki.pdf-template/v1` (typst) or `wiki.docx-template/v1` (docx). |
 | `engine.entry` | `string` | Yes | Payload file to render; must exist in the archive. |
-| `engine.compilerRange` | `string` | Typst only | Semver range, e.g. `">=0.14 <0.15"`. |
+| `engine.compilerRange` | `string` | Typst only | Semver range, currently `">=0.15.1 <0.16"`. |
 | `requiredFonts` | `RequiredFont[]` | Optional | `{ family, style, weight }` per face. Declarative only — availability is **not** cross-checked in this format. |
 | `settings` | `Record<string, ManifestSetting>` | Optional | Open, typed dictionary of Level-B settings. Setting `type` is one of `text \| boolean \| choice \| color \| number \| asset`. |
+| `capabilityCatalog` | object | Executable PDF | Exact catalog id, version, and digest used to validate the complete design. |
+| `canonicalSource` | object | Executable PDF | Generator API and supported revision used to reproduce `atlcli.typ` byte-identically. |
+| `design` | object | Executable PDF | Complete catalog-owned PDF design; unknown, missing, or unwritten capabilities fail. |
+| `assetDescriptors` / `assets` / `decorations` | objects/array | When graphics are accepted | Content hashes, media facts, semantic roles, writers, accessibility, scopes, and placement. |
 | `provenance.payloadSha256` | `string` | Optional | Digest of the payload members (see below). |
 | `provenance.createdWith` | `string` | Optional | Tool identifier. |
 
@@ -88,6 +101,29 @@ The manifest's open `settings` map is **not** the same shape as the built-in
 [PDF Template Settings](pdf-template-settings.md)). The two stay separate in
 v1: threading manifest-declared settings into a render call needs host-side
 Level-B loading glue that is out of scope for this format.
+
+## Recipe V2 materialization
+
+Recipe V2 is authoring input, not a second archive format. The CLI resolves the
+exact installed baseline, validates sparse overrides, preflights assets, and
+writes the same deterministic `.wiki-pdf-template` container:
+
+```text
+Recipe V2 + installed digest-pinned baseline
+  -> complete Catalog V3 design
+  -> canonical revision-5 atlcli.typ
+  -> pack / unpack / repack / load / compile proof
+  -> wiki.pdf-template/v1 archive
+```
+
+Current Recipe V2 packs declare Catalog V3, canonical revision 5, and compiler
+range `>=0.15.1 <0.16`. They contain the complete resolved design and hashed
+assets, never the sparse overlay, a baseline URL, `latest`, or arbitrary Typst.
+Historical Catalog V1/V2 and revisions 1-4 retain their pinned source evidence;
+an old archive whose range excludes 0.15.1 must be rebuilt from its recipe.
+
+PDF/A/PDF/UA output standards are not manifest fields. They are strict export
+policy and are validated against emitted bytes in the export lane.
 
 ## Deterministic packing
 
@@ -187,7 +223,7 @@ host can render an upgrade/downgrade hint:
 |--------|---------|
 | `unknown-schema-version` | `schemaVersion` is anything other than `1`. |
 | `unknown-api` | `engine.api` is not the known value for the declared `engine.kind`. |
-| `compiler-range-mismatch` | For a `typst` pack, the pinned Typst compiler version does not satisfy `engine.compilerRange`. |
+| `compiler-range-mismatch` | The pack does not accept Typst 0.15.1. Migrate the original recipe with `atlcli pdf-template migrate-runtime <recipe.yaml> --output <recipe.typst-0.15.1.yaml>` and build that distinct output. |
 | `shape-error` | A required field is missing or mistyped, or `compilerRange` uses an unsupported form. |
 
 The compiler-range check is a pure semver comparison against the pinned compiler
@@ -198,6 +234,13 @@ a deferred Level-B host follow-up.
 returns a typed report `{ ok, manifest?, scanReport?, issues }`. It throws
 **only** on package corruption (the `TemplatePackError`s above); manifest-gate
 failures and engine-hook problems are surfaced as `issues` with `ok: false`.
+
+PDF export adds a stricter execution gate after the generic container gate. It
+requires the current capability catalog, a complete validated design, a
+supported canonical-source revision, byte-identical regeneration of
+`atlcli.typ`, exact hashes for all accepted assets, safe raster/SVG complexity,
+and valid decoration writers and scopes. A locally edited Typst member fails as
+`non-canonical-template-source`; it is never compiled as user code.
 
 ## DOCX scan policy
 
@@ -216,35 +259,20 @@ Warnings keep `ok: true`; only errors flip it to `false`.
 
 ## Minimal example (Typst)
 
-A minimal Typst pack manifest — one entry, no custom settings:
+Build an executable PDF pack through the reviewed authoring boundary:
 
-```json
-{
-  "schemaVersion": 1,
-  "id": "com.example.minimal",
-  "name": "Minimal",
-  "version": "1.0.0",
-  "engine": {
-    "kind": "typst",
-    "api": "wiki.pdf-template/v1",
-    "entry": "template.typ"
-  }
-}
+```bash
+atlcli pdf-template import ./brand.docx
+atlcli pdf-template review ./brand-pdf-template
+atlcli pdf-template preview ./brand-pdf-template
+atlcli pdf-template build ./brand-pdf-template \
+  --output ./brand.wiki-pdf-template
 ```
 
-Packed and read back:
-
-```ts
-import { packTemplate, validatePack } from "@atlcli/template-pack";
-
-const bytes = await packTemplate({
-  manifest,
-  files: { "template.typ": templateSource },
-});
-
-const report = validatePack(bytes);
-// report.ok === true, report.issues === []
-```
+The final command performs deterministic packing, round-trip validation, and a
+real feature-zoo compile. Calling low-level `packTemplate()` with arbitrary
+Typst can prove only the generic ZIP/container contract; the resulting archive
+is deliberately not accepted by the PDF execution gate.
 
 ## Advanced example (DOCX)
 
@@ -290,3 +318,7 @@ const report = validatePack(docxPackBytes);
   (distinct from a manifest's open `settings` map).
 - [PDF Export Engine](pdf-engine.md) — the pipeline that consumes a resolved
   template.
+- [Create a PDF template from Word](/confluence/pdf-template-from-word/) —
+  guided authoring and graphics review.
+- [PDF Template Authoring CLI](pdf-template-authoring-cli.md) — command,
+  machine-output, and project-state reference.

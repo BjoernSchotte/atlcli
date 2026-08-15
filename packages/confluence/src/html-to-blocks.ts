@@ -30,6 +30,7 @@
  */
 import {
   parseXml,
+  normalizeExportColor,
   type ExportBlock,
   type ExportNote,
   type ImageSource,
@@ -41,6 +42,7 @@ import {
   type XmlElement,
   type XmlNode,
 } from "./export-blocks.js";
+import { UNSAFE_LINK_NOTE_CODE, isSafeLinkScheme } from "./link-safety.js";
 
 /** Conservative caps for untrusted third-party HTML. */
 export interface HtmlConversionLimits {
@@ -111,6 +113,8 @@ interface Budget {
   nodes: number;
   blocks: number;
   truncated: boolean;
+  /** Links whose target the shared scheme policy refused (spec 011). */
+  unsafeLinks: number;
 }
 
 function isEl(node: XmlNode): node is XmlElement {
@@ -143,11 +147,18 @@ export function htmlToExportBlocks(
     return { blocks: [], notes: [degraded("export_view HTML could not be parsed; macro skipped.")] };
   }
 
-  const budget: Budget = { limits: merged, nodes: 0, blocks: 0, truncated: false };
+  const budget: Budget = { limits: merged, nodes: 0, blocks: 0, truncated: false, unsafeLinks: 0 };
   const blocks = walkBlocks(tree, budget, 0);
 
   if (budget.truncated) {
     notes.push(degraded("export_view HTML exceeded a conversion limit and was truncated."));
+  }
+  if (budget.unsafeLinks > 0) {
+    notes.push({
+      level: "warning",
+      code: UNSAFE_LINK_NOTE_CODE,
+      message: `${budget.unsafeLinks} link target${budget.unsafeLinks === 1 ? "" : "s"} in macro HTML used a blocked scheme (only http, https and mailto are allowed); the text was kept without a clickable target.`,
+    });
   }
   return { blocks, notes };
 }
@@ -350,9 +361,21 @@ function walkInlineElement(el: XmlElement, budget: Budget, marks: InlineMark[]):
         },
       ];
     }
-    // Unsafe scheme → keep the text, drop the target (with an implicit note via
-    // the general degrade path is overkill; the text simply survives unlinked).
+    // Unsafe scheme → keep the text, drop the target. Counted so the caller can
+    // emit one `unsafe-link-skipped` note: silently unlinking text made the
+    // control invisible to the user (spec 011).
+    budget.unsafeLinks += 1;
     return content;
+  }
+
+  if (name === "span") {
+    const style = attrsOf(el, budget).style ?? "";
+    const color = inlineCssColor(style, "color");
+    const backgroundColor = inlineCssColor(style, "background-color");
+    const content = walkInlineNodes(el.children, budget, marks);
+    return color || backgroundColor
+      ? applyInlineColors(content, { color, backgroundColor })
+      : content;
   }
 
   const mark = INLINE_MARK[name];
@@ -360,27 +383,31 @@ function walkInlineElement(el: XmlElement, budget: Budget, marks: InlineMark[]):
   return walkInlineNodes(el.children, budget, nextMarks);
 }
 
-/**
- * Allowlist matching the PDF serializer's `resolveLink` (spec 004 note).
- *
- * Control characters ANYWHERE in the href are stripped before scheme
- * detection, not just trimmed at the edges: browsers strip C0 controls and
- * space when parsing URLs, so `"java\tscript:alert(1)"` (trivially produced by
- * entity-decoded third-party HTML) IS `javascript:` to a URL parser — an
- * edge-trim-only check would misclassify it as relative and let it through to
- * a live DOCX HYPERLINK field.
- */
-export function isSafeLinkScheme(href: string): boolean {
-  // eslint-disable-next-line no-control-regex
-  const normalized = href.replace(/[\u0000-\u0020\u007F]/g, "").toLowerCase();
-  if (normalized === "") return false;
-  // Relative URLs (no scheme) are same-origin by construction → allowed.
-  if (!/^[a-z][a-z0-9+.-]*:/.test(normalized)) return true;
-  return (
-    normalized.startsWith("http:") ||
-    normalized.startsWith("https:") ||
-    normalized.startsWith("mailto:")
-  );
+function inlineCssColor(style: string, property: "color" | "background-color"): string | undefined {
+  const escaped = property.replace("-", "\\-");
+  const value = style.match(new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, "i"))?.[1];
+  return normalizeExportColor(value);
+}
+
+function applyInlineColors(
+  nodes: InlineNode[],
+  colors: { color?: string; backgroundColor?: string }
+): InlineNode[] {
+  return nodes.map((node) => {
+    if (node.type === "text") {
+      return {
+        ...node,
+        ...(colors.color && !node.color ? { color: colors.color } : {}),
+        ...(colors.backgroundColor && !node.backgroundColor
+          ? { backgroundColor: colors.backgroundColor }
+          : {}),
+      };
+    }
+    if (node.type === "link") {
+      return { ...node, content: applyInlineColors(node.content, colors) };
+    }
+    return node;
+  });
 }
 
 // ---- Helpers --------------------------------------------------------------

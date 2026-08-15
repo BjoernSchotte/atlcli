@@ -1,6 +1,6 @@
 # 008 — PDF CLI & headless export
 
-Status: Plan. Covers Lane K of `specs/export-expansion/UMSETZUNGSPLAN.md`
+Status: **Implemented**, 2026-07-20 (PR #53). Merged to `main`; gated PDF E2E verified against DOCSY. Includes the deferred 002 PDF-CLI hand-off. Covers Lane K of `specs/export-expansion/UMSETZUNGSPLAN.md`
 (T3.1–T3.5): the PDF compile port for Bun, `atlcli wiki export --format pdf`,
 scope/label flags for both engines, CI/CD developer experience, and the
 preparation to make the ts DOCX engine the CLI default.
@@ -453,7 +453,8 @@ process, with the port shape committed. Timebox: 2 days.
       fetch in flight when the user hits Ctrl-C keeps running, and its
       eventual `AbortError` is caught by the generic image-error handler
       (`packages/pdf/src/prepare.ts:218-243`, verified) and downgraded to
-      a soft `pdf-image-skipped` note instead of aborting the export. Add
+      a soft `pdf-image-skipped` note (renamed to `image-embed-failed` by
+      spec 010's vocabulary unification) instead of aborting the export. Add
       `resolve(ref, { signal })` to `PdfAssetResolver`, thread `signal`
       through `preparePdfDocument`'s call sites, and have the image-error
       handler rethrow `AbortError` instead of swallowing it. Build the

@@ -301,7 +301,8 @@ Every task is sized for one reviewable commit inside the single T0 PR.
       `resolveExportMentions` unconditionally on every walked block *today*
       — so adding an `unknown` case here would make the existing PDF export
       path start issuing live `getUsersBulk` calls (and possibly surface a
-      new `pdf-mention-unresolved`/`pdf-mention-resolution-failed` note) for
+      new `pdf-mention-unresolved` — renamed to `mention-unresolved` by spec
+      010's vocabulary unification — /`pdf-mention-resolution-failed` note) for
       mentions buried in macro bodies nobody renders yet, breaking this PR's
       own "no user-visible feature ships here" / report-identical goal.
       Traversing `unknown.body` belongs with T1.7 (Lane E), once a macro
@@ -700,7 +701,8 @@ E2E — real Confluence (profile `mayflower`, space `DOCSY`):
   `unknown.body` is populated unconditionally by the capture task — so any
   mention buried in a macro body nobody renders yet would start triggering
   live `getUsersBulk` lookups (and possibly a new-looking
-  `pdf-mention-unresolved`/`pdf-mention-resolution-failed` note) purely from
+  `pdf-mention-unresolved` (now `mention-unresolved`, spec
+  010)/`pdf-mention-resolution-failed` note) purely from
   this PR landing, contradicting "no user-visible feature ships here."
   Fixed by scoping T0's resolver-switch task to `orientation`/`caption`
   only and adding a negative regression test. Lane E (T1.7) is the right

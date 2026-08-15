@@ -85,6 +85,7 @@ describe("exportDocx — STYLEREF invariants (spec 006 G1)", () => {
     // Invariant 2: the H1 heading carries the exact style id whose NAME the field
     // references (Scroll Heading 1 → SH1).
     const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain('<w:headerReference w:type="default" r:id="rIdH1"/>');
     expect(doc).toContain('<w:pStyle w:val="SH1"/>');
     // Invariant 3: settings.xml forces a field refresh on open.
     expect(readPart(bytes, "word/settings.xml")).toContain('<w:updateFields w:val="true"/>');

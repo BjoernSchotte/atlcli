@@ -1,0 +1,33 @@
+/*
+ * Hide only the two persistent Rovo entry points requested by the user.
+ *
+ * These are Atlassian-owned DOM identifiers rather than a supported API, so
+ * keep them explicit and covered by the packed-extension test plus live-tenant
+ * selector inspection. Do not broaden this to visible text, hashed classes,
+ * SVG paths, or a generic `[data-testid*="rovo"]`: those would hide unrelated
+ * product functionality.
+ */
+html[data-kiteweave-hide-rovo]
+  [data-testid="app-navigation-ai-mate"],
+html[data-kiteweave-hide-rovo]
+  [data-testid="atlassian-navigation.ui.conversation-assistant.app-navigation-ai-mate"],
+html[data-kiteweave-hide-rovo]
+  button[data-testid="platform-ai-button"],
+html[data-kiteweave-hide-rovo]
+  [data-spotlight-target="rovo-ai-button"],
+html[data-kiteweave-hide-rovo]
+  [id="rovo-button-onboarding-spotlight"],
+html[data-kiteweave-hide-rovo]
+  [id="rovo-button-onboarding-spotlight-live-or-edit"] {
+  display: none !important;
+}
+
+/* Remove a dedicated floating-button wrapper without relying on `last-child`. */
+html[data-kiteweave-hide-rovo]
+  [data-testid="layout-controller.ui.bottom-right-corner.container.styled-container"]
+  > div:has(button[data-testid="platform-ai-button"]),
+html[data-kiteweave-hide-rovo]
+  [data-testid="object-sidebar-container"]
+  > div:has(button[data-testid="platform-ai-button"]) {
+  display: none !important;
+}

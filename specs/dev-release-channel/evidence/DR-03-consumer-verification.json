@@ -1,0 +1,136 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-03",
+  "recordedAt": "2026-08-12T15:19:08Z",
+  "proofedParentHead": "6606ba55",
+  "authoritativePublishedArtifact": false,
+  "purpose": "exact consumer verification of the real DR-02 working-tree artifacts; DR-10 repeats all gates against downloaded published bytes",
+  "fullDirectoryVerifier": {
+    "command": "bun scripts/verify-release-artifacts.ts --dir <ignored-local-proof-bundle>",
+    "result": "success",
+    "schema": "atlcli.release-verification/v1",
+    "sourceSha": "4747fa39956f9cffd0059c3143292535318437fa",
+    "buildId": "dev-20260812.418.2-4747fa39",
+    "topLevelAssetCount": 10,
+    "digestBoundPayloadCount": 8,
+    "cliArchiveCount": 5,
+    "extensionEntryCount": 471,
+    "extensionOutputScan": "success",
+    "metadataAndEligibility": "synthetic local binding fixture, explicitly non-authoritative and excluded from Git",
+    "publicationEligibilityProven": false
+  },
+  "realArtifacts": [
+    {
+      "name": "atlcli-darwin-arm64.tar.gz",
+      "size": 46555853,
+      "sha256": "0c9b474c819ef7b7f7187c350c31ef6533dd6e0d4dc4691502ebf69d83b74744"
+    },
+    {
+      "name": "atlcli-darwin-x64.tar.gz",
+      "size": 48536687,
+      "sha256": "a0d3225b274ba7363404f75ea85e2613d36e8e6d3acf850f902f8c78bfd3ba52"
+    },
+    {
+      "name": "atlcli-extension-chrome-mv3-dev-20260812.418.2-4747fa39.zip",
+      "size": 21350775,
+      "sha256": "8b1d6c3f897d079b86bc169f332abbe8ebfc41c9e777c19454b2d5a19f71d73a"
+    },
+    {
+      "name": "atlcli-linux-arm64.tar.gz",
+      "size": 57628134,
+      "sha256": "880a91653d13c7cb9b560d31b25750ad89dd26cca47e6eb0b9c9362d7562cb4a"
+    },
+    {
+      "name": "atlcli-linux-x64.tar.gz",
+      "size": 57935565,
+      "sha256": "1c8e565f55745fd6b9a2d48a462cd4766bf461b21e8262b2a93e7237a5f09798"
+    },
+    {
+      "name": "atlcli-windows-x64.zip",
+      "size": 60343290,
+      "sha256": "b81d39d3b311dd56036d99cc4ead9fd9767f8cc2944cbc778d910465bbb4d047"
+    }
+  ],
+  "cli": {
+    "archiveContract": "one regular binary entry; Unix mode 0755; Windows ZIP contains only atlcli.exe",
+    "allArchivesContainedTypedIdentity": true,
+    "nativeConsumer": {
+      "platform": "darwin-arm64",
+      "command": "<extracted-cli> release-info --json --no-log",
+      "result": "success",
+      "channel": "dev",
+      "version": "0.17.2-dev.20260812.418.2+4747fa39",
+      "sourceSha": "4747fa39956f9cffd0059c3143292535318437fa",
+      "buildId": "dev-20260812.418.2-4747fa39",
+      "homebrewVersion": "20260812021745.418.2"
+    }
+  },
+  "extension": {
+    "archiveSha256": "8b1d6c3f897d079b86bc169f332abbe8ebfc41c9e777c19454b2d5a19f71d73a",
+    "contentTreeSha256": "afea49833c303b79192f5091d9a80a033dc1ef9632350a52026e3f017f9d5b78",
+    "manifestSha256": "65c82cd79c8c79585f98ee63757caccc3792d6c4a53d913417fea30a2729cc69",
+    "cspSha256": "096546d7025f877b502d75779c957264af31307b86f0534c2794197a43db0127",
+    "permissionsSha256": "b4aad71d762d8dcedf10cea8724904f58d2246cd85a518bf7e23ffd90460e914",
+    "version": "0.17.2.418",
+    "versionName": "0.17.2-dev.20260812.418.2-4747fa39",
+    "rootManifest": true,
+    "outputScan": "success",
+    "explicitOutputPathPreventedRebuild": true
+  },
+  "archiveNegativeProofs": {
+    "pathTraversalRejected": true,
+    "absoluteAndDrivePathsRejected": true,
+    "duplicateEntriesRejected": true,
+    "portablePathCollisionsRejected": true,
+    "symlinksRejected": true,
+    "entryAndTotalSizeLimitsEnforced": true,
+    "compressionRatioLimitEnforced": true,
+    "missingRootManifestRejected": true,
+    "forbiddenSourceAndEnvironmentFilesRejected": true,
+    "changedArtifactByteRejected": true,
+    "wrongSourceShaRejected": true,
+    "failedSecurityCheckRejected": true,
+    "missingAssetRejected": true
+  },
+  "packedChromium": {
+    "explicitExtractedReleasePath": true,
+    "buildCommandsInvoked": 0,
+    "browser": "Chromium 140.0.7339.16",
+    "playwright": "1.55.0",
+    "worker": { "passed": 3, "failed": 0 },
+    "jobs": { "passed": 24, "failed": 0 },
+    "research": { "passed": 45, "failed": 0 },
+    "rovo": { "passed": 2, "failed": 0 },
+    "palette": { "passed": 7, "failed": 0 },
+    "total": { "passed": 81, "failed": 0 },
+    "manifestVersionServiceWorkerAndSidePanelAsserted": true,
+    "sandboxNote": "The first local worker launch was blocked by macOS Crashpad sandbox permissions; the identical command succeeded outside the filesystem sandbox."
+  },
+  "proof": {
+    "focusedTests": {
+      "command": "bun run test scripts/verify-release-artifacts.test.ts apps/extension/tests/build-helper.test.ts scripts/ci/workflow-policy.test.ts",
+      "result": "success",
+      "passed": 38,
+      "failed": 0
+    },
+    "manifestAndOutputTests": {
+      "command": "bun run test apps/extension/tests/manifest.test.ts apps/extension/tests/output-scan.test.ts",
+      "result": "success",
+      "passed": 69,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "success"
+    }
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false
+  }
+}

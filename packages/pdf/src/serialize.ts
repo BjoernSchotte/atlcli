@@ -1,8 +1,44 @@
-import type { Caption, CaptionKind, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
-import { computeHeadingOffset, uniqueAnchorId } from "@atlcli/confluence";
+import type {
+  AdfAnnotationIdentity,
+  BlockPresentation,
+  CaptionKind,
+  ExportNote,
+  InlineNode,
+  LinkTarget,
+  SmartCardSemantics,
+  TablePresentation,
+} from "@atlcli/confluence";
+import {
+  validatePdfTemplateDesignV3,
+  type DesignComponentsV3,
+  type WikiPdfTemplateDesignV3,
+} from "@atlcli/template-pack";
+import {
+  UNSAFE_LINK_NOTE_CODE,
+  computeHeadingOffset,
+  formatAdfDateTimestamp,
+  inlineMediaDisplayText,
+  mediaFallbackDisplayText,
+  isSafeLinkScheme,
+  mentionDisplayText,
+  resolveCalloutIcon,
+  smartCardDisplayText,
+  statusDisplayText,
+  uniqueAnchorId,
+} from "@atlcli/confluence";
+import { normalizeRasterAssetV1, resolveEffectivePpi } from "@atlcli/export-media";
+import {
+  DEFAULT_CODE_THEME,
+  resolveCodeTheme,
+} from "@atlcli/code-highlight/registry";
+import { readPdfDesignCapability } from "./design-catalog.js";
+import { resolvePdfCatalogRuntime } from "./catalog-runtime.js";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
-import { resolvePdfSettings, typstSettingsDict } from "./settings.js";
+import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
+import { createAtlcliTypstTemplateV5 } from "./template-v5.js";
+import { resolvePdfFontRequirementsV1 } from "./font-requirements.js";
+import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import {
   pdfColorContrast,
   pdfTableCellForeground,
@@ -16,10 +52,12 @@ import type {
   PdfTheme,
   PreparedPdfAsset,
   PreparedPdfBlock,
+  PreparedPdfCaption,
   PreparedPdfDocument,
+  PreparedPdfInlineNode,
 } from "./types.js";
 
-function inlinePlainText(nodes: InlineNode[]): string {
+function inlinePlainText(nodes: PreparedPdfInlineNode[]): string {
   return nodes
     .map((node) => {
       switch (node.type) {
@@ -28,9 +66,17 @@ function inlinePlainText(nodes: InlineNode[]): string {
         case "link":
           return inlinePlainText(node.content);
         case "mention":
-          return `@${node.displayName ?? node.accountId}`;
+          return `@${mentionDisplayText(node)}`;
+        case "date":
+          return formatAdfDateTimestamp(node.timestamp);
         case "status":
-          return node.text;
+          return statusDisplayText(node);
+        case "smartCard":
+          return smartCardDisplayText(node.card);
+        case "media":
+          return inlineMediaDisplayText(node);
+        case "placeholder":
+          return "";
         case "lineBreak":
           return " ";
         default: {
@@ -130,25 +176,40 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
         case "paragraph":
           return inlinePlainText(block.content);
         case "codeBlock":
-          return block.code;
+          return [block.title, block.code].filter(Boolean).join(" ");
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           return blocksPlainText(block.content);
         case "list":
           return block.items.map((item) => blocksPlainText(item.content)).join(" ");
+        case "layout":
+          return block.columns.map((column) => blocksPlainText(column.content)).join(" ");
         case "table":
           return block.rows
             .flatMap((row) => row.cells.map((cell) => blocksPlainText(cell.content)))
             .join(" ");
         case "image":
           return block.alt ?? block.fallbackLabel;
+        case "mediaFallback":
+          return block.alt ?? block.label;
+        case "smartCard":
+          return smartCardDisplayText(block.card);
+        case "chart":
+          return chartPlainText(block.chart);
         case "diagram":
           return block.alt ?? "Diagram";
         case "divider":
           return "";
         case "unknown":
-          return block.macroName;
+          return block.extensionFrames
+            ? block.extensionFrames
+              .map((frame) => blocksPlainText(frame.content))
+              .join(" ")
+            : block.body
+              ? blocksPlainText(block.body)
+              : block.macroName;
         case "pageBreak":
         case "anchor":
           return "";
@@ -231,16 +292,48 @@ function tableColumns(
   return `(${tracks.join(", ")},)`;
 }
 
+function tableWidthPt(
+  presentation: TablePresentation | undefined,
+  availableWidthPt: number,
+): number | undefined {
+  const width = presentation?.width;
+  if (width === undefined || !Number.isFinite(width) || width <= 0) return undefined;
+  return Math.max(0.75, Math.min(availableWidthPt, width * 0.75));
+}
+
+function tableAlignment(presentation: TablePresentation | undefined): "start" | "center" | "end" | undefined {
+  switch (presentation?.layout) {
+    case "align-start":
+      return "start";
+    case "align-end":
+      return "end";
+    case "default":
+    case "wide":
+    case "full-width":
+    case "center":
+      return "center";
+    default:
+      return presentation?.width !== undefined ? "center" : undefined;
+  }
+}
+
 function resolveLink(target: LinkTarget, labels: Map<string, string>): string | null {
   switch (target.kind) {
     case "external":
+      // Shared scheme policy (spec 011): this used to be a third, independent
+      // `/^(https?:|mailto:)/i` test that disagreed with the DOCX and walker
+      // checks (it never stripped control characters). It now delegates, so the
+      // two engines cannot drift. PDF additionally requires an ABSOLUTE target
+      // — a relative href the policy allows has no base URL to resolve against
+      // in a standalone document, so it degrades to `pdf-link-unresolved`.
+      if (!isSafeLinkScheme(target.href)) return null;
       return /^(https?:|mailto:)/i.test(target.href) ? target.href : null;
     case "anchor":
       return labels.get(target.anchor) ? `<${labels.get(target.anchor)}>` : null;
     case "page":
-      return null;
     case "attachment":
-      return null;
+      if (!target.href || !isSafeLinkScheme(target.href)) return null;
+      return /^(https?:|mailto:)/i.test(target.href) ? target.href : null;
     default: {
       const exhaustive: never = target;
       return exhaustive;
@@ -248,13 +341,77 @@ function resolveLink(target: LinkTarget, labels: Map<string, string>): string | 
   }
 }
 
+function designColor(catalogDesign: ResolvedPdfDesign, key: string): string {
+  return readPdfDesignCapability<string>(catalogDesign, `tokens.colors.${key}`);
+}
+
+function designLength(catalogDesign: ResolvedPdfDesign, key: string): string {
+  return readPdfDesignCapability<string>(catalogDesign, `tokens.layout.${key}`);
+}
+
+function serializeSmartCardInline(
+  card: SmartCardSemantics,
+  labels: Map<string, string>,
+  catalogDesign: ResolvedPdfDesign,
+): string {
+  const label = literalText(smartCardDisplayText(card));
+  const content =
+    card.appearance === "inline"
+      ? `#box(fill: rgb(${typstString(designColor(catalogDesign, "smartCardInlineBackground"))}), ` +
+        `inset: (x: ${designLength(catalogDesign, "smartCardInlineInsetX")}, ` +
+        `y: ${designLength(catalogDesign, "smartCardInlineInsetY")}), ` +
+        `radius: ${designLength(catalogDesign, "smartCardInlineRadius")})[${label}]`
+      : label;
+  const href = card.target ? resolveLink(card.target, labels) : null;
+  if (!href) return content;
+  return href.startsWith("<")
+    ? `#link(${href})[${content}]`
+    : `#link(${typstString(href)})[${content}]`;
+}
+
 type TableDensity = "normal" | "dense";
 
 /** The layout container the current block renders inside (spec 003 C5/C6). */
 type RenderContainer = "body" | "tableCell" | "calloutCell";
 
+class PdfCommentRegistry {
+  private readonly byMarkerRef = new Map<string, {
+    number: number;
+    annotation: AdfAnnotationIdentity & { comment: NonNullable<AdfAnnotationIdentity["comment"]> };
+  }>();
+
+  register(annotation: AdfAnnotationIdentity): number | undefined {
+    if (!annotation.comment) return undefined;
+    const existing = this.byMarkerRef.get(annotation.id);
+    if (existing) return existing.number;
+    const number = this.byMarkerRef.size + 1;
+    this.byMarkerRef.set(annotation.id, {
+      number,
+      annotation: annotation as AdfAnnotationIdentity & {
+        comment: NonNullable<AdfAnnotationIdentity["comment"]>;
+      },
+    });
+    return number;
+  }
+
+  entries(): Array<{
+    number: number;
+    annotation: AdfAnnotationIdentity & { comment: NonNullable<AdfAnnotationIdentity["comment"]> };
+  }> {
+    return [...this.byMarkerRef.values()];
+  }
+}
+
 interface RenderContext {
   tableDensity: TableDensity;
+  /**
+   * A wrap-left/right media block may enter a serializer-owned side-by-side
+   * grid with its following paragraph. Typst has no native contour wrapping;
+   * the bounded grid keeps source order and approximates the authored intent.
+   */
+  mediaInWrapGrid?: boolean;
+  /** Override authored media width after the grid has allocated its column. */
+  mediaWidthOverride?: string;
   inTable?: boolean;
   availableWidth?: string;
   coloredCell?: {
@@ -275,9 +432,26 @@ interface RenderContext {
    * against the landscape text area, not the portrait one. Undefined → portrait.
    */
   layoutWidthPt?: number;
+  /**
+   * The ACTIVE template design (spec 012). Serializer-emitted presentation
+   * (table stroke/header fill, mention ink, placeholder ink, cell insets, the
+   * status palette) reads from here, so a second curated template's tokens
+   * genuinely apply instead of silently rendering the built-in's.
+   */
+  catalogDesign: ResolvedPdfDesign;
+  /** BCP-47 locale for semantic inline dates. */
+  locale: string;
+  comments: PdfCommentRegistry;
 }
 
-const NORMAL_RENDER_CONTEXT: RenderContext = { tableDensity: "normal" };
+/** The root render context for a catalog-projected document design. */
+function rootContext(
+  catalogDesign: ResolvedPdfDesign,
+  locale = "en",
+  comments = new PdfCommentRegistry(),
+): RenderContext {
+  return { tableDensity: "normal", catalogDesign, locale, comments };
+}
 const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 
 // ---- Wide-table layout classification (spec 003 T1.6) ---------------------
@@ -285,9 +459,13 @@ const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 /** Escalation tiers for a table that may not fit its available width. */
 export type TableLayoutClass = "normal" | "dense" | "scaled" | "overflow-warned";
 
-/** Usable text width (pt) of the built-in A4 template, portrait / landscape. */
-const PORTRAIT_TEXT_WIDTH_PT = 470;
-const LANDSCAPE_TEXT_WIDTH_PT = 717;
+/**
+ * Usable text width (pt) of the built-in A4 template, portrait / landscape.
+ * Exported (package-internal) because the image-profile normalizer uses them
+ * as the conservative render-envelope cap (issue #118 Phase 1).
+ */
+export const PORTRAIT_TEXT_WIDTH_PT = 470;
+export const LANDSCAPE_TEXT_WIDTH_PT = 717;
 /** Table cell font size (pt) at normal and the practical readability floor. */
 const TABLE_FONT_SIZE_PT = 9;
 const MIN_TABLE_FONT_SIZE_PT = 7;
@@ -391,22 +569,23 @@ function typstFigureKind(kind: CaptionKind): string {
  * walker-normalized {@link CaptionKind}, so DOCX SEQ labels and PDF figure kinds
  * agree and C2's `#outline(target: figure.where(kind: …))` groups correctly.
  */
-function captionFigureArgs(caption: Caption, writer: Writer): string {
-  const inline = serializeInline(caption.content, writer.labels, writer.notes);
+function captionFigureArgs(caption: PreparedPdfCaption, writer: Writer): string {
+  const inline = serializeInline(
+    caption.content,
+    writer.labels,
+    writer.notes,
+    rootContext(writer.catalogDesign, writer.locale, writer.comments),
+  );
   return `caption: [${inline}], kind: ${typstFigureKind(caption.kind)}`;
 }
 const DENSE_BREAK_OPPORTUNITY = "\u200B";
 const DENSE_ATOMIC_RUN_LENGTH = 4;
 const DENSE_STATUS_RUN_LENGTH = 2;
 
-const CONFLUENCE_STATUS_COLORS: Readonly<Record<string, string>> = {
-  grey: "#42526E",
-  gray: "#42526E",
-  red: "#DE350B",
-  yellow: "#FF991F",
-  green: "#00875A",
-  blue: "#0052CC",
-};
+// Serializer-emitted presentation values come from the ACTIVE template design
+// (spec 012) \u2014 no bare literals in this file, and no silent fallback to the
+// built-in: a second curated template's tokens genuinely apply. The design
+// travels on the writer (block scope) and the render context (inline scope).
 
 function denseAtomicToken(value: string, runLength = DENSE_ATOMIC_RUN_LENGTH): string {
   return value
@@ -424,19 +603,57 @@ function denseStatusLabel(value: string): string {
   return value.replace(/\S+/gu, (token) => denseAtomicToken(token, DENSE_STATUS_RUN_LENGTH));
 }
 
-function statusColor(value: string | undefined): string {
+function statusColor(value: string | undefined, catalogDesign: ResolvedPdfDesign): string {
   const semantic = value?.trim().toLowerCase();
-  return (semantic && CONFLUENCE_STATUS_COLORS[semantic]) ?? safeColor(value);
+  const authoredColor = safeColor(value, "");
+  return (
+    authoredColor ||
+    (semantic && catalogDesign.semanticPalettes.statuses[semantic]) ||
+    catalogDesign.semanticPalettes.statuses.default ||
+    catalogDesign.tokens.colors.neutral ||
+    safeColor(value)
+  );
+}
+
+/** Legacy Storage code-macro title as a header row above code or diagram output. */
+function serializeCodeTitle(
+  title: string | undefined,
+  catalogDesign: ResolvedPdfDesign,
+): string {
+  if (!title) return "";
+  return (
+    `#block(width: 100%, fill: rgb(${typstString(catalogDesign.tokens.colors.codeBackground)}), ` +
+    `inset: ${catalogDesign.tokens.layout.codeInset}, radius: ${catalogDesign.tokens.layout.codeRadius}, ` +
+    `below: ${designLength(catalogDesign, "codeTitleBelow")})[#strong[${literalText(title)}]]\n`
+  );
+}
+
+function serializeDate(
+  node: Extract<InlineNode, { type: "date" }>,
+  context: RenderContext,
+): string {
+  const label = formatAdfDateTimestamp(node.timestamp, context.locale);
+  const tokens = context.catalogDesign.tokens;
+  return `#box(
+  fill: rgb(${typstString(tokens.colors.codeBackground)}),
+  inset: (x: ${tokens.layout.inlineCodeInsetX}, y: ${tokens.layout.inlineCodeInsetY}),
+  radius: ${tokens.layout.inlineCodeRadius},
+)[${literalText(label)}]`;
 }
 
 function denseHostLabel(value: string): string {
   return denseAtomicToken(value);
 }
 
-function plainUnmarkedText(nodes: InlineNode[]): string | null {
+function plainUnmarkedText(nodes: PreparedPdfInlineNode[]): string | null {
   if (nodes.length !== 1) return null;
   const [node] = nodes;
-  if (node?.type !== "text" || node.color || (node.marks?.length ?? 0) > 0) return null;
+  if (
+    node?.type !== "text" ||
+    node.color ||
+    node.backgroundColor ||
+    (node.marks?.length ?? 0) > 0
+  ) return null;
   return node.text;
 }
 
@@ -474,6 +691,14 @@ function effectiveCellTextColor(sourceColor: string | undefined, context: Render
   return preservePdfSourceCellColor(sourceColor, cell.background, cell.theme) ?? cell.foreground;
 }
 
+/** External PDF links remain recognizable in print-like document designs. */
+function styledExternalLink(link: string, context: RenderContext): string {
+  const color =
+    effectiveCellTextColor(context.catalogDesign.branding.accent, context) ??
+    context.catalogDesign.branding.accent;
+  return `#text(fill: rgb(${typstString(color)}))[#underline[${link}]]`;
+}
+
 function styledText(value: string, node: TextInlineNode, context: RenderContext): string {
   let out = literalText(value);
   for (const mark of node.marks ?? []) {
@@ -507,6 +732,10 @@ function styledText(value: string, node: TextInlineNode, context: RenderContext)
   }
   const color = effectiveCellTextColor(node.color, context);
   if (color) out = `#text(fill: rgb(${typstString(color)}))[${out}]`;
+  const backgroundColor = node.backgroundColor ? safeColor(node.backgroundColor) : undefined;
+  if (backgroundColor) {
+    out = `#highlight(fill: rgb(${typstString(backgroundColor)}))[${out}]`;
+  }
   return out;
 }
 
@@ -527,8 +756,10 @@ function serializeMention(
   node: Extract<InlineNode, { type: "mention" }>,
   context: RenderContext
 ): string {
-  const label = node.displayName ?? node.accountId;
-  const color = effectiveCellTextColor("#0747A6", context) ?? "#0747A6";
+  const label = mentionDisplayText(node);
+  const color =
+    effectiveCellTextColor(context.catalogDesign.tokens.colors.mention, context) ??
+    context.catalogDesign.tokens.colors.mention;
   if (!context.availableWidth) {
     return `#text(fill: rgb(${typstString(color)}))[${literalText(`@${label}`)}]`;
   }
@@ -545,39 +776,156 @@ function serializeMention(
   return `#text(fill: rgb(${typstString(color)}))[${content}]`;
 }
 
+function annotationMarkers(
+  annotations: readonly AdfAnnotationIdentity[] | undefined,
+  comments: PdfCommentRegistry,
+): string {
+  const numbers = (annotations ?? [])
+    .map((annotation) => comments.register(annotation))
+    .filter((number): number is number => number !== undefined);
+  return numbers.map((number) =>
+    `#super[${literalText(`[${number}]`)}]`
+  ).join("");
+}
+
+function endingAnnotations(
+  nodes: readonly PreparedPdfInlineNode[],
+  index: number,
+): readonly AdfAnnotationIdentity[] | undefined {
+  const node = nodes[index];
+  if (!node || !("annotations" in node) || !node.annotations) return undefined;
+  const next = nodes[index + 1];
+  const nextIds = new Set(
+    next && "annotations" in next
+      ? (next.annotations ?? []).map((annotation) => annotation.id)
+      : [],
+  );
+  return node.annotations.filter((annotation) => !nextIds.has(annotation.id));
+}
+
+function serializeCommentAppendix(
+  comments: PdfCommentRegistry,
+  catalogDesign: ResolvedPdfDesign,
+): string {
+  const entries = comments.entries();
+  if (entries.length === 0) return "";
+  const replyIndent = designLength(catalogDesign, "listBodyIndent");
+  const itemSpacing = designLength(catalogDesign, "paragraphSpacing");
+  const items = entries.map(({ number, annotation }) => {
+    const resource = annotation.comment;
+    const status = resource.status === "resolved" ? "Resolved — " : "";
+    const replies = resource.replies
+      .map((reply) =>
+        `#block(inset: (left: ${replyIndent}))[#emph[Reply:] ${literalText(reply.bodyText)}]`
+      )
+      .join("\n");
+    return `#block(above: ${itemSpacing})[#strong[${literalText(`[${number}]`)}] ` +
+      `${literalText(`${status}${resource.bodyText}`)}${replies ? `\n${replies}` : ""}]`;
+  }).join("\n");
+  return `\n#pagebreak()\n#heading(level: 1, outlined: false)[Comments]\n${items}\n`;
+}
+
 function serializeInline(
-  nodes: InlineNode[],
+  nodes: PreparedPdfInlineNode[],
   labels: Map<string, string>,
   notes: ExportNote[],
-  context: RenderContext = NORMAL_RENDER_CONTEXT
+  context: RenderContext
 ): string {
   return nodes
-    .map((node) => {
+    .map((node, index) => {
       switch (node.type) {
         case "text": {
-          return serializeText(node, context);
+          return serializeText(node, context) +
+            annotationMarkers(endingAnnotations(nodes, index), context.comments);
         }
         case "lineBreak":
           return "#linebreak()";
         case "mention": {
           return serializeMention(node, context);
         }
+        case "date":
+          return serializeDate(node, context);
         case "status": {
-          const label = node.text || node.color;
-          const color = statusColor(node.color);
+          const label = statusDisplayText(node);
+          const color = statusColor(node.color, context.catalogDesign);
           if (context.availableWidth) {
             return `#dense-status-badge(${context.availableWidth}, ${typstString(label)}, ${typstString(denseStatusLabel(label))}, color: ${typstString(color)})`;
           }
           return `#status-badge(${typstString(label)}, color: ${typstString(color)})`;
         }
+        case "smartCard":
+          return serializeSmartCardInline(node.card, labels, context.catalogDesign);
+        case "media": {
+          let rendered: string;
+          if (node.assetPath) {
+            const dimensions = [
+              node.width !== undefined ? `width: ${node.width * 0.75}pt` : undefined,
+              node.height !== undefined ? `height: ${node.height * 0.75}pt` : undefined,
+            ].filter((value): value is string => value !== undefined);
+            const image =
+              `#image(${typstString(node.assetPath)}, alt: ${typstString(node.alt ?? node.fallbackLabel)}` +
+              `${dimensions.length ? `, ${dimensions.join(", ")}` : ""})`;
+            const border = node.border
+              ? `, stroke: ${node.border.size}pt + rgb(${typstString(node.border.color.slice(0, 7))})`
+              : "";
+            const drawing =
+              `#box(baseline: ${designLength(context.catalogDesign, "inlineMediaBaseline")}${border}, ` +
+              `inset: ${designLength(context.catalogDesign, "inlineMediaInset")})[${image}]`;
+            if (!node.link) rendered = drawing;
+            else {
+              const href = resolveLink(node.link.target, labels);
+              rendered = href
+              ? href.startsWith("<")
+                ? `#link(${href})[${drawing}]`
+                : `#link(${typstString(href)})[${drawing}]`
+              : drawing;
+            }
+            return rendered + annotationMarkers(
+              endingAnnotations(nodes, index),
+              context.comments,
+            );
+          }
+          const label = literalText(`[${inlineMediaDisplayText(node)}]`);
+          const color = node.border?.color.slice(0, 7) ?? context.catalogDesign.tokens.colors.hairline;
+          const size = node.border?.size ?? 1;
+          const chip =
+            `#box(stroke: ${size}pt + rgb(${typstString(color)}), ` +
+            `inset: (x: ${designLength(context.catalogDesign, "inlineMediaChipInsetX")}, ` +
+            `y: ${designLength(context.catalogDesign, "inlineMediaChipInsetY")}), ` +
+            `radius: ${designLength(context.catalogDesign, "inlineMediaChipRadius")})` +
+            `[${label}]`;
+          if (!node.link) rendered = chip;
+          else {
+            const href = resolveLink(node.link.target, labels);
+            rendered = href
+            ? href.startsWith("<")
+              ? `#link(${href})[${chip}]`
+              : `#link(${typstString(href)})[${chip}]`
+            : chip;
+          }
+          return rendered + annotationMarkers(
+            endingAnnotations(nodes, index),
+            context.comments,
+          );
+        }
+        case "placeholder":
+          return "";
         case "link": {
           const content = serializeInline(node.content, labels, notes, context);
           const href = resolveLink(node.target, labels);
           if (!href) {
+            // Distinguish "blocked by the shared scheme policy" from "merely
+            // not representable in a standalone PDF" (spec 011): the first is a
+            // security decision the user should see as a warning, the second is
+            // an informational limitation.
+            const blocked =
+              node.target.kind === "external" && !isSafeLinkScheme(node.target.href);
             notes.push({
-              level: "info",
-              code: "pdf-link-unresolved",
-              message: `Link target could not be represented in PDF: ${inlinePlainText(node.content) || "link"}`,
+              level: blocked ? "warning" : "info",
+              code: blocked ? UNSAFE_LINK_NOTE_CODE : "pdf-link-unresolved",
+              message: blocked
+                ? `A link used a blocked scheme and was kept as plain text without a clickable target: ${inlinePlainText(node.content) || "link"}`
+                : `Link target could not be represented in PDF: ${inlinePlainText(node.content) || "link"}`,
             });
             return content;
           }
@@ -586,10 +934,13 @@ function serializeInline(
             const label = plainUnmarkedText(node.content);
             const denseLabels = label === null ? null : denseRawUrlLabels(href, label);
             if (denseLabels !== null) {
-              return `#dense-link(${context.availableWidth}, ${typstString(href)}, ${typstString(label!)}, ${typstString(denseLabels.compact)}, ${typstString(denseLabels.host)})`;
+              return styledExternalLink(
+                `#dense-link(${context.availableWidth}, ${typstString(href)}, ${typstString(label!)}, ${typstString(denseLabels.compact)}, ${typstString(denseLabels.host)})`,
+                context
+              );
             }
           }
-          return `#link(${typstString(href)})[${content}]`;
+          return styledExternalLink(`#link(${typstString(href)})[${content}]`, context);
         }
         default: {
           const exhaustive: never = node;
@@ -640,12 +991,16 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
           break;
         }
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walkSlugs(block.content);
           break;
         case "list":
           for (const item of block.items) walkSlugs(item.content);
+          break;
+        case "layout":
+          for (const column of block.columns) walkSlugs(column.content);
           break;
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walkSlugs(cell.content);
@@ -679,12 +1034,16 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
           break;
         }
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walkAnchors(block.content);
           break;
         case "list":
           for (const item of block.items) walkAnchors(item.content);
+          break;
+        case "layout":
+          for (const column of block.columns) walkAnchors(column.content);
           break;
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walkAnchors(cell.content);
@@ -708,6 +1067,52 @@ interface Writer {
   headingCounts: Map<string, number>;
   theme: PdfTheme;
   contrastWarnings: Set<string>;
+  /** The ACTIVE template design driving serializer-emitted presentation. */
+  catalogDesign: ResolvedPdfDesign;
+  /** Revision-5 semantic component policy; absent keeps revisions 1-4 exact. */
+  componentsV5?: DesignComponentsV3;
+  /** BCP-47 locale for semantic inline dates. */
+  locale: string;
+  comments: PdfCommentRegistry;
+}
+
+function resolveComponentsV5(
+  options: PdfSerializeOptions,
+): DesignComponentsV3 | undefined {
+  const manifest = options.templatePack?.manifest ?? options.templateManifest;
+  if (manifest?.canonicalSource?.revision !== "5" || !manifest.design) {
+    return undefined;
+  }
+  return validatePdfTemplateDesignV3(
+    manifest.design as WikiPdfTemplateDesignV3,
+  ).components;
+}
+
+function serializeDecisionItem(
+  sourceState: string | undefined,
+  content: string,
+  writer: Writer,
+): string {
+  const state = sourceState ?? "";
+  const decided = state.toUpperCase() === "DECIDED";
+  const marker = decided ? "◆" : "◇";
+  const stateLabel = decided ? "" : `#text(${typstString(`[${state}] `)})`;
+  const role = writer.catalogDesign.typography.roles.taskMarker!;
+  const fontRole = role.font ?? "heading";
+  const font = writer.catalogDesign.typography.fonts[fontRole];
+  const weight = role.weight ? `, weight: ${typstString(role.weight)}` : "";
+  return `#grid(
+  columns: (${writer.catalogDesign.tokens.layout.taskGridMarker}, 1fr),
+  column-gutter: ${writer.catalogDesign.tokens.layout.taskGridGutter},
+  align: top,
+  text(
+    font: (${typstString(font)}, "Noto Sans Symbols2", "Noto Emoji"),
+    size: ${role.size}${weight},
+    fill: rgb(${typstString(writer.catalogDesign.tokens.colors.taskChecked)}),
+    ${typstString(marker)},
+  ),
+  [${stateLabel}${content}],
+)`;
 }
 
 function noteLowCellContrast(
@@ -729,7 +1134,7 @@ function noteLowCellContrast(
 }
 
 function serializeParagraphInline(
-  content: InlineNode[],
+  content: PreparedPdfInlineNode[],
   writer: Writer,
   context: RenderContext,
   wrapInParagraph: boolean
@@ -747,15 +1152,213 @@ function serializeParagraphInline(
   return wrapInParagraph ? `#par[${inline}]` : inline;
 }
 
+function applyBlockPresentation(
+  value: string,
+  presentation: BlockPresentation | undefined,
+  catalogDesign: ResolvedPdfDesign,
+): string {
+  if (!presentation) return value;
+  let presented = value;
+  if (presentation.alignment !== undefined) {
+    presented = `#align(${presentation.alignment})[${presented}]`;
+  }
+  if (presentation.fontSize === "small") {
+    const smallTextSize = readPdfDesignCapability<string>(
+      catalogDesign,
+      "typography.roles.adfSmallText.size"
+    );
+    presented = `#text(size: ${smallTextSize})[${presented}]`;
+  }
+  if (presentation.indentation !== undefined) {
+    const level = Math.max(1, Math.min(6, presentation.indentation));
+    presented =
+      `#block(inset: (left: ${catalogDesign.tokens.layout.adfBlockIndentStep} * ${level}))[${presented}]`;
+  }
+  return presented;
+}
+
+/** Match DOCX's Shiki normalization: canonical RGB, dropping an alpha byte. */
+function shikiRgb(value: string, fallback: string): string {
+  const raw = value.startsWith("#") ? value : `#${value}`;
+  const alpha = raw.match(/^(#[0-9a-f]{6})[0-9a-f]{2}$/i);
+  return alpha ? alpha[1]!.toUpperCase() : safeColor(raw, fallback);
+}
+
+function softCodeTokenSource(
+  value: string,
+  render: (chunk: string) => string,
+): string {
+  if (![...value].some((_, index) => index >= 24) || /\s/u.test(value)) {
+    return render(value);
+  }
+  const characters = [...value];
+  const chunks: string[] = [];
+  for (let index = 0; index < characters.length; index += 12) {
+    chunks.push(render(characters.slice(index, index + 12).join("")));
+  }
+  // Zero-width weak spacing creates renderer-owned emergency line-break
+  // opportunities without adding extractable characters to the source text.
+  return chunks.join("#h(0 * 1pt, weak: true)");
+}
+
+/**
+ * Render the shared Shiki projection without asking Typst to choose syntax
+ * colors. Each source line remains a distinct grid row, including trailing
+ * empty lines, while token text stays literal and copyable.
+ */
+function serializeHighlightedCodeBlock(
+  block: Extract<PreparedPdfBlock, { type: "codeBlock" }>,
+  writer: Writer,
+): string {
+  const mono = writer.catalogDesign.typography.fonts.mono;
+  const size = writer.catalogDesign.typography.roles.code!.size;
+  const softWrap = writer.componentsV5 !== undefined &&
+    (block.wrap ?? writer.componentsV5.codeBlock.wrap === "soft");
+  const firstLineNumber = block.firstLineNumber ?? 1;
+  const showLineNumbers = block.hideLineNumbers === undefined
+    ? writer.componentsV5?.codeBlock.lineNumbers === "show"
+    : block.hideLineNumbers === false;
+  const lastLineNumber = firstLineNumber + Math.max(0, block.highlight.lines.length - 1);
+  const lineNumberWidth = String(lastLineNumber).length;
+  const rows = block.highlight.lines.map((tokens, index) => {
+    const spans = tokens.length === 0 || tokens.every((token) => token.text.length === 0)
+      ? `#box(height: ${size})[]`
+      : tokens.map((token) => {
+          const color = shikiRgb(
+            token.color ?? block.highlight.theme.foreground,
+            block.highlight.theme.foreground,
+          );
+          const render = (text: string): string =>
+            `#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(
+              color,
+            )}), ${typstString(text)})`;
+          return softWrap ? softCodeTokenSource(token.text, render) : render(token.text);
+        }).join("");
+    const body = `#box(width: 100%)[${spans}]`;
+    if (!showLineNumbers) return `[${body}]`;
+    const number = String(firstLineNumber + index).padStart(lineNumberWidth);
+    return `[#grid(columns: (auto, 1fr), column-gutter: ${writer.catalogDesign.tokens.layout.codeInset}, ` +
+      `[${`#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}), ${typstString(number)})`}], ` +
+      `[${body}])]`;
+  });
+  const background = writer.componentsV5?.codeBlock.backgroundColor
+    ? componentColorV5(
+        writer,
+        writer.componentsV5.codeBlock.backgroundColor,
+        "codeBackground",
+      )
+    : shikiRgb(
+        block.highlight.theme.background,
+        block.highlight.theme.background,
+      );
+  return (
+    `block(width: 100%, fill: rgb(${typstString(background)}), ` +
+    `inset: ${writer.catalogDesign.tokens.layout.codeInset}, ` +
+    `radius: ${writer.catalogDesign.tokens.layout.codeRadius})[` +
+    `#grid(columns: (1fr), row-gutter: ${size} * 0.35, ${rows.join(", ")})]`
+  );
+}
+
+function componentColorV5(
+  writer: Writer,
+  token: string | undefined,
+  fallback: string,
+): string {
+  const name = token ?? fallback;
+  const color = writer.catalogDesign.tokens.colors[name];
+  if (color === undefined) {
+    throw new Error(`PDF component policy references missing color token "${name}".`);
+  }
+  return color;
+}
+
+function tableFillSourceV5(
+  writer: Writer,
+  leadingHeaderCount: number,
+): string | undefined {
+  const table = writer.componentsV5?.table;
+  if (!table || table.banding === "none") return undefined;
+  const color = componentColorV5(writer, table.bandColor, "codeBackground");
+  return table.banding === "rows"
+    ? `(x, y) => if y >= ${leadingHeaderCount} and calc.odd(y - ${leadingHeaderCount}) { rgb(${typstString(color)}) } else { none }`
+    : `(x, y) => if calc.odd(x) { rgb(${typstString(color)}) } else { none }`;
+}
+
+function tableStrokeSourceV5(
+  writer: Writer,
+  columnCount: number,
+  rowCount: number,
+): string | undefined {
+  const table = writer.componentsV5?.table;
+  if (!table) return undefined;
+  if (table.borders === "none") return "none";
+  const color = componentColorV5(writer, table.borderColor, "tableStroke");
+  const paint = `rgb(${typstString(color)})`;
+  if (table.borders === "all") return paint;
+  if (table.borders === "horizontal") {
+    return `(x, y) => (top: ${paint}, bottom: ${paint})`;
+  }
+  return `(x, y) => (top: if y == 0 { ${paint} } else { none }, bottom: if y == ${Math.max(0, rowCount - 1)} { ${paint} } else { none }, left: if x == 0 { ${paint} } else { none }, right: if x == ${Math.max(0, columnCount - 1)} { ${paint} } else { none })`;
+}
+
 function serializeBlocks(
   blocks: PreparedPdfBlock[],
   writer: Writer,
   parentPath = "blocks",
-  context: RenderContext = NORMAL_RENDER_CONTEXT
+  context: RenderContext = rootContext(writer.catalogDesign, writer.locale, writer.comments),
+  startIndex = 0,
 ): string {
-  return blocks
-    .map((block, index) => serializeBlock(block, writer, `${parentPath}[${index}]`, context))
-    .join("\n");
+  const serialized: string[] = [];
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index]!;
+    const path = `${parentPath}[${index + startIndex}]`;
+    const presentation =
+      block.type === "image" || block.type === "mediaFallback"
+        ? block.mediaPresentation
+        : undefined;
+    const layout = presentation?.layout;
+    const following = blocks[index + 1];
+    if (
+      (block.type === "image" || block.type === "mediaFallback") &&
+      (layout === "wrap-left" || layout === "wrap-right") &&
+      following?.type === "paragraph" &&
+      !context.inTable
+    ) {
+      const mediaTrack =
+        presentation?.widthType === "pixel" && presentation.width !== undefined
+          ? `${presentation.width * 0.75}pt`
+          : presentation?.width !== undefined
+            ? `${presentation.width}%`
+            : "40%";
+      const boundedContext = {
+        ...context,
+        mediaInWrapGrid: true,
+        mediaWidthOverride: "100%",
+      };
+      const media = serializeBlock(block, writer, path, boundedContext);
+      const paragraph = serializeBlock(
+        following,
+        writer,
+        `${parentPath}[${index + 1 + startIndex}]`,
+        boundedContext,
+      );
+      const cells =
+        layout === "wrap-left"
+          ? `[${media}], [${paragraph}]`
+          : `[${paragraph}], [${media}]`;
+      const columns =
+        layout === "wrap-left"
+          ? `(${mediaTrack}, 1fr)`
+          : `(1fr, ${mediaTrack})`;
+      serialized.push(
+        `#grid(columns: ${columns}, column-gutter: ${designLength(context.catalogDesign, "mediaWrapColumnGutter")}, ${cells})`,
+      );
+      index += 1;
+      continue;
+    }
+    serialized.push(serializeBlock(block, writer, path, context));
+  }
+  return serialized.join("\n");
 }
 
 function writeMapped(block: PreparedPdfBlock, writer: Writer, path: string, value: string, summary?: string): string {
@@ -829,7 +1432,8 @@ function serializeBlock(
   let summary: string | undefined;
   switch (block.type) {
     case "heading": {
-      summary = inlinePlainText(block.content);
+      const navigationTitle = inlinePlainText(block.content);
+      summary = navigationTitle;
       // Explicit anchor (spec 002) → the heading emits the sanitized, deduped
       // label the collect pass assigned (the same one links resolve to).
       // Anchor-less headings keep the text-slug label + dedup counter, so
@@ -844,7 +1448,8 @@ function serializeBlock(
         label = count === 1 ? base : `${base}-${count}`;
       }
       const level = Math.max(1, Math.min(6, block.level - writer.headingOffset));
-      const heading = (content: string): string => `#heading(level: ${level}, outlined: true)[${content}]`;
+      const heading = (content: string): string =>
+        `#atlcli-outline-title.update(${typstString(navigationTitle)})#heading(level: ${level}, outlined: true)[${content}]`;
       if (context.inTable) {
         const availableWidth = "available-width";
         const content = serializeInline(block.content, writer.labels, writer.notes, {
@@ -855,32 +1460,73 @@ function serializeBlock(
       } else {
         value = `${heading(serializeInline(block.content, writer.labels, writer.notes, context))} <${label}>`;
       }
+      value = applyBlockPresentation(value, block.presentation, writer.catalogDesign);
       break;
     }
     case "paragraph":
-      value = serializeParagraphInline(block.content, writer, context, true);
+      value = applyBlockPresentation(
+        serializeParagraphInline(block.content, writer, context, true),
+        block.presentation,
+        writer.catalogDesign,
+      );
       break;
+    case "smartCard": {
+      const prefix = block.card.appearance === "embed" ? "Embedded content: " : "";
+      value =
+        `#block(width: 100%, fill: rgb(${typstString(designColor(writer.catalogDesign, "smartCardBlockBackground"))}), ` +
+        `stroke: rgb(${typstString(designColor(writer.catalogDesign, "smartCardBlockStroke"))}), ` +
+        `radius: ${designLength(writer.catalogDesign, "smartCardBlockRadius")}, ` +
+        `inset: ${designLength(writer.catalogDesign, "smartCardBlockInset")})[#strong[${literalText(prefix)}]` +
+        `${serializeSmartCardInline(block.card, writer.labels, writer.catalogDesign)}]`;
+      break;
+    }
     case "codeBlock": {
-      // NOTE: inside `#figure(...)` arguments Typst is in CODE mode, where a
-      // leading `#` is a syntax error ("the character `#` is not valid in
-      // code") — the figure body must be the bare `raw(...)` expression.
-      const rawExpr = `raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
-      // Only CAPTIONED code becomes a figure — caption-less code keeps today's
-      // rendering so C2's `figure.where(kind: raw)` outline never lists every
-      // code block (spec 003 C3).
-      value = block.caption
-        ? `#figure(${rawExpr}, ${captionFigureArgs(block.caption, writer)})`
-        : `#${rawExpr}`;
+      if (block.initiallyCollapsed === true) {
+        writer.notes.push({
+          level: "info",
+          code: "code-collapse-static",
+          message:
+            "A code block was initially collapsed in Confluence; the static PDF export rendered its complete source.",
+          source: { blockPath: path },
+        });
+      }
+      if (block.wrap === false) {
+        writer.notes.push({
+          level: "info",
+          code: "code-nowrap-page-bounded",
+          message:
+            "A code block requested no wrapping; the bounded PDF page keeps all source text and may wrap long lines instead of clipping them.",
+          source: { blockPath: path },
+        });
+      }
+      // The figure body is a bare expression because figure arguments are
+      // Typst code mode. Colors and fill come exclusively from the prepared
+      // Shiki projection; no renderer-specific `raw(lang:)` highlighting runs.
+      const highlighted = serializeHighlightedCodeBlock(block, writer);
+      const code = block.caption
+        ? `#figure(${highlighted}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${highlighted}`;
+      value = serializeCodeTitle(block.title, writer.catalogDesign) + code;
       break;
     }
     case "diagram": {
+      if (block.initiallyCollapsed === true) {
+        writer.notes.push({
+          level: "info",
+          code: "code-collapse-static",
+          message:
+            "A code block was initially collapsed in Confluence; the static PDF export rendered its complete diagram.",
+          source: { blockPath: path },
+        });
+      }
       // Keep exported content in source order. `placement: auto` turns figures
       // into top/bottom floats, which can move a diagram before its heading or
       // collect multiple headings away from their diagrams in real documents.
       const img = `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? "Diagram")})`;
-      value = block.caption
+      const diagram = block.caption
         ? `#figure(${img}, ${captionFigureArgs(block.caption, writer)})`
         : `#figure(${img})`;
+      value = serializeCodeTitle(block.title, writer.catalogDesign) + diagram;
       break;
     }
     case "image":
@@ -902,16 +1548,55 @@ function serializeBlock(
             message: `${block.fallbackLabel} uses a technical filename fallback for alternative text.`,
           });
         }
-        const img = `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)})`;
+        const width = mediaImageWidth(block, context);
+        const img =
+          `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)}` +
+          `${width ? `, width: ${width}` : ""})`;
         value = block.caption
           ? `#figure(${img}, ${captionFigureArgs(block.caption, writer)})`
           : `#figure(${img})`;
       }
       break;
+    case "mediaFallback": {
+      const fallbackExpr =
+        `emph[${literalText(`[${mediaFallbackDisplayText(block)}]`)}]`;
+      value = block.caption
+        ? `#figure(${fallbackExpr}, ${captionFigureArgs(block.caption, writer)})`
+        : `#par[#${fallbackExpr}]`;
+      break;
+    }
     case "callout": {
       const title = block.title ? `[${literalText(block.title)}]` : "none";
+      const panelColor =
+        block.panelColor && /^#[0-9a-f]{6}$/iu.test(block.panelColor)
+          ? safeColor(block.panelColor)
+          : undefined;
+      const resolvedIcon = resolveCalloutIcon(block);
+      const icon =
+        resolvedIcon?.source === "explicit"
+          ? `, icon: [${literalText(resolvedIcon.text)}]`
+          : resolvedIcon?.source === "semantic-default"
+            ? (
+                `, icon: [${literalText(resolvedIcon.icon.symbol)}]` +
+                `, icon_alt: ${typstString(resolvedIcon.icon.label)}`
+              )
+            : "";
+      const presentation =
+        (panelColor ? `, custom_color: rgb(${typstString(panelColor)})` : "")
+        + icon;
       const calloutContext: RenderContext = { ...context, container: "calloutCell" };
-      value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
+      value = `#callout(kind: ${typstString(block.kind)}, title: ${title}${presentation})[\n${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
+      break;
+    }
+    case "expand": {
+      const titleText = block.title === undefined ? "[-]" : `[-] ${block.title}`;
+      const calloutContext: RenderContext = { ...context, container: "calloutCell" };
+      const disclosure =
+        `#callout(kind: "panel", title: [${literalText(titleText)}])[\n` +
+        `${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
+      value = block.nested
+        ? `#block(inset: (left: ${writer.catalogDesign.tokens.layout.adfBlockIndentStep}))[${disclosure}]`
+        : disclosure;
       break;
     }
     case "blockquote":
@@ -919,7 +1604,10 @@ function serializeBlock(
       break;
     case "list": {
       const fn = block.ordered ? "enum" : "list";
-      const isTaskList = !block.ordered && block.items.some((item) => item.checked !== undefined);
+      const isSemanticList = !block.ordered && (
+        block.listKind !== undefined ||
+        block.items.some((item) => item.kind !== undefined || item.checked !== undefined)
+      );
       const items = block.items.map((item, index) => {
         const itemPath = `${path}.items[${index}].content`;
         const [first, ...rest] = item.content;
@@ -931,17 +1619,85 @@ function serializeBlock(
             `${itemPath}[0]`,
             serializeParagraphInline(first.content, writer, context, false)
           );
-          const tail = rest.length > 0 ? serializeBlocks(rest, writer, itemPath, context) : "";
+          const tail = rest.length > 0 ? serializeBlocks(rest, writer, itemPath, context, 1) : "";
           content = `${inline}${tail}`;
         } else {
           content = serializeBlocks(item.content, writer, itemPath, context);
         }
-        if (!isTaskList) return `[${content}]`;
-        const checked = item.checked === true ? "true" : "false";
-        return `[#task-item(${checked})[${content}]]`;
+        if (!isSemanticList) return `[${content}]`;
+        if (item.kind === "decision") {
+          return `[${serializeDecisionItem(item.state, content, writer)}]`;
+        }
+        if (item.kind === "task" || item.checked !== undefined) {
+          const checked = (item.checked ?? (item.state === "DONE")) ? "true" : "false";
+          return `[#task-item(${checked})[${content}]]`;
+        }
+        return `[${content}]`;
       });
-      const options = isTaskList ? "marker: none, body-indent: 0pt, " : "";
+      const options = isSemanticList
+        ? `marker: none, body-indent: ${writer.catalogDesign.tokens.layout.taskListBodyIndent}, `
+        : block.ordered && block.start !== undefined
+          ? `start: ${block.start}, `
+          : "";
       value = `#${fn}(${options}\n${items.join(",\n")}\n)`;
+      break;
+    }
+    case "layout": {
+      if (block.columns.length === 0) {
+        writer.notes.push({
+          level: "warning",
+          code: "layout-geometry-fallback",
+          message: "An empty page layout produced no visible columns.",
+          source: { blockPath: path },
+        });
+        value = "";
+        break;
+      }
+      const positiveWidths = block.columns.map((column) =>
+        Number.isFinite(column.width) && column.width > 0 ? column.width : 0
+      );
+      const total = positiveWidths.reduce((sum, width) => sum + width, 0);
+      const visibleMinimum = total > 0
+        ? Math.max(total / 1_000, 0.001)
+        : 1;
+      const weights = total > 0
+        ? positiveWidths.map((width) => width > 0 ? width : visibleMinimum)
+        : positiveWidths.map(() => 1);
+      const columns = weights.map((weight) => `${Number(weight.toFixed(6))}fr`).join(", ");
+      // Layout tokens were added after wiki.pdf-template/v1 shipped. Preserve
+      const columnGutter = designLength(
+        writer.catalogDesign,
+        "pageLayoutColumnGutter"
+      );
+      const insetX = designLength(writer.catalogDesign, "pageLayoutInsetX");
+      const cellContext: RenderContext = {
+        ...context,
+        container: "tableCell",
+        inTable: false,
+        tableDensity: "normal",
+      };
+      const cells = block.columns.map((column, index) => {
+        const content = serializeBlocks(
+          column.content,
+          writer,
+          `${path}.columns[${index}].content`,
+          cellContext,
+        );
+        const alignment = column.verticalAlignment === "middle"
+          ? "horizon"
+          : column.verticalAlignment;
+        return alignment
+          ? `grid.cell(align: ${alignment})[\n${content}\n]`
+          : `[\n${content}\n]`;
+      });
+      value =
+        `#grid(\n` +
+        `  columns: (${columns}),\n` +
+        `  column-gutter: ${columnGutter},\n` +
+        `  inset: (left: ${insetX}, right: ${insetX}),\n` +
+        `  stroke: none,\n` +
+        `  ${cells.join(",\n  ")},\n` +
+        `)`;
       break;
     }
     case "table": {
@@ -976,11 +1732,16 @@ function serializeBlock(
         tableDensity: isDense ? "dense" : "normal",
         inTable: true,
         container: "tableCell",
+        catalogDesign: context.catalogDesign,
+        locale: context.locale,
+        comments: context.comments,
       };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const serializedRows = grid.rows.map((row, rowIndex) => {
         const cells = row.map(({ cell, cellIndex, columnIndex }) => {
-          const backgroundColor = cell.backgroundColor ?? (cell.header ? "#F4F5F7" : undefined);
+          const backgroundColor =
+            cell.backgroundColor ??
+            (cell.header ? writer.catalogDesign.tokens.colors.tableHeaderBackground : undefined);
           const foregroundColor = cell.backgroundColor
             ? pdfTableCellForeground(cell.backgroundColor, writer.theme)
             : undefined;
@@ -993,6 +1754,9 @@ function serializeBlock(
             cell.colspan > 1 ? `colspan: ${cell.colspan}` : "",
             cell.rowspan > 1 ? `rowspan: ${cell.rowspan}` : "",
             backgroundColor ? `fill: rgb(${typstString(backgroundColor)})` : "",
+            cell.verticalAlignment
+              ? `align: ${cell.verticalAlignment === "middle" ? "horizon" : cell.verticalAlignment}`
+              : "",
           ].filter(Boolean);
           const content = serializeBlocks(
             cell.content,
@@ -1028,11 +1792,19 @@ function serializeBlock(
           .flatMap((row) => row.cells);
         // `repeat: true` is Typst's default, but pin it explicitly so the golden
         // proves header rows repeat on every page across a break (spec 003 T1.6).
-        rows.push(`table.header(repeat: true, ${headerCells.join(", ")})`);
+        rows.push(
+          `table.header(repeat: ${writer.componentsV5?.table.repeatHeader === false ? "false" : "true"}, ${headerCells.join(", ")})`,
+        );
       }
       rows.push(...serializedRows.slice(leadingHeaderCount).map((row) => row.cells.join(", ")));
       const horizontalInset = layout === "normal" ? NORMAL_CELL_INSET_PT : DENSE_CELL_INSET_PT;
-      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)`;
+      const fillV5 = tableFillSourceV5(writer, leadingHeaderCount);
+      const strokeV5 = tableStrokeSourceV5(
+        writer,
+        columnCount,
+        serializedRows.length,
+      );
+      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: ${writer.catalogDesign.tokens.layout.tableCellInsetY}),${fillV5 ? ` fill: ${fillV5},` : ""} stroke: ${strokeV5 ?? `rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)})`},\n${rows.join(",\n")}\n)`;
       // "scaled"/"overflow-warned" render body text at the readability floor
       // (accept wrap/clip over losing content).
       const scaled = layout === "scaled" || layout === "overflow-warned";
@@ -1042,23 +1814,81 @@ function serializeBlock(
       // Figure arguments are CODE context: the body must be the bare
       // `block(...)` call — a leading `#` there is a Typst syntax error. The
       // `[...]` content argument re-enters markup, so the inner `#table` stays valid.
-      const tableBlockExpr = `block(width: 100%)[\n${tableBody}\n]`;
+      const authoredWidthPt = tableWidthPt(
+        block.presentation,
+        context.layoutWidthPt ?? PORTRAIT_TEXT_WIDTH_PT,
+      );
+      const width = authoredWidthPt !== undefined ? `${Number(authoredWidthPt.toFixed(3))}pt` : "100%";
+      const blockExpr = `block(width: ${width})[\n${tableBody}\n]`;
+      const alignment = tableAlignment(block.presentation);
+      const tableBlockExpr = alignment ? `align(${alignment}, ${blockExpr})` : blockExpr;
       value = block.caption
         ? `#figure(${tableBlockExpr}, ${captionFigureArgs(block.caption, writer)})`
         : `#${tableBlockExpr}`;
       break;
     }
+    case "chart": {
+      // Embed the shared deterministic SVG visual and retain the semantic table
+      // immediately below it for tagged-PDF consumers and copy/paste fallback.
+      const rows = chartRows(block.chart);
+      const columns = Math.max(1, rows.reduce((max, row) => Math.max(max, row.length), 0));
+      // `table(...)` arguments are Typst code mode. Each cell therefore needs
+      // a content block around its markup expression; emitting a bare
+      // `#text(...)` here makes Typst reject the `#` as invalid code.
+      const cells = rows.flatMap((row) => Array.from(
+        { length: columns },
+        (_, index) => `[${literalText(row[index] ?? "")}]`,
+      ));
+      const table = `#table(columns: ${columns}, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}), ${cells.join(", ")})`;
+      const title = block.chart.title ? `#par[${literalText(block.chart.title)}]\n` : "";
+      const subtitleSize = readPdfDesignCapability<string>(
+        writer.catalogDesign,
+        "typography.roles.adfSmallText.size",
+      );
+      const subtitle = block.chart.subtitle
+        ? `#par[#text(size: ${subtitleSize}, style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}))[${literalText(block.chart.subtitle)}]]\n`
+        : "";
+      const warningPalette = writer.catalogDesign.semanticPalettes.callouts.warning;
+      const diagnostics = block.diagnostics?.length
+        ? `#block(width: 100%, inset: (x: ${designLength(writer.catalogDesign, "calloutInsetX")}, y: ${designLength(writer.catalogDesign, "calloutInsetY")}), fill: rgb(${typstString(warningPalette.background)}), stroke: rgb(${typstString(warningPalette.foreground)}), radius: ${designLength(writer.catalogDesign, "calloutRadius")})[#text(weight: "bold", fill: rgb(${typstString(warningPalette.foreground)}))[${literalText(`Chart data note: ${block.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}`)}]]\n`
+        : "";
+      const visual = block.visualAssetPath
+        ? `#image(${typstString(block.visualAssetPath)}, width: 100%, alt: ${typstString(block.chart.title ?? "Chart") })\n`
+        : "";
+      const figureBody = `block(width: 100%)[\n${visual}${table}\n]`;
+      value = title + subtitle + diagnostics + (block.caption
+        ? `#figure(${figureBody}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${figureBody}`);
+      break;
+    }
     case "divider":
-      value = `#line(length: 100%, stroke: rgb(\"#DFE1E6\"))`;
+      value = `#line(length: 100%, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}))`;
       break;
     case "unknown": {
       // Placeholder floor (spec 004): render a visible placeholder line, then
       // the preserved body/plainBody, instead of silently omitting content.
-      const placeholder = `#text(style: "italic", fill: rgb("#97A0AF"))[${escapeTypstContent(
-        `[${block.macroName} macro not rendered]`
+      const fallbackLabel = block.unsupportedAdf
+        ? `Unsupported ADF block: ${block.unsupportedAdf.nodeType}`
+        : block.adfExtension
+        ? `Extension: ${block.adfExtension.extensionKey}`
+        : `${block.macroName} macro not rendered`;
+      const placeholder = `#text(style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.placeholder)}))[${escapeTypstContent(
+        `[${fallbackLabel}]`
       )}]`;
       const parts = [`#par[${placeholder}]`];
-      if (block.body && block.body.length > 0) {
+      if (block.extensionFrames) {
+        block.extensionFrames.forEach((frame, index) => {
+          parts.push(
+            `#par[#text(style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}))[${literalText(`Frame ${index + 1}`)}]]`,
+          );
+          parts.push(serializeBlocks(
+            frame.content,
+            writer,
+            `${path}.extensionFrames[${index}].content`,
+            context,
+          ));
+        });
+      } else if (block.body && block.body.length > 0) {
         parts.push(serializeBlocks(block.body, writer, `${path}.body`, context));
       } else if (block.plainBody) {
         const MAX_PLAIN = 20000;
@@ -1073,7 +1903,15 @@ function serializeBlock(
           });
         }
         parts.push(
-          serializeBlocks([{ type: "codeBlock", code: text }], writer, `${path}.plainBody`, context)
+          serializeBlocks([{
+            type: "codeBlock",
+            code: text,
+            highlight: block.plainBodyHighlight ?? {
+              theme: resolveCodeTheme(DEFAULT_CODE_THEME),
+              lines: text.split("\n").map((line) => [{ text: line }]),
+              skipped: null,
+            },
+          }], writer, `${path}.plainBody`, context)
         );
       }
       value = parts.join("\n");
@@ -1135,7 +1973,128 @@ function serializeBlock(
       return exhaustive;
     }
   }
+  if (block.type === "image" || block.type === "mediaFallback") {
+    value = mediaFrame(value, block, context);
+  }
+  if ((block.type === "image" || block.type === "mediaFallback") && block.link) {
+    const href = resolveLink(block.link.target, writer.labels);
+    if (href) {
+      value = href.startsWith("<")
+        ? `#link(${href})[${value}]`
+        : `#link(${typstString(href)})[${value}]`;
+    } else {
+      const blocked =
+        block.link.target.kind === "external" &&
+        !isSafeLinkScheme(block.link.target.href);
+      writer.notes.push({
+        level: blocked ? "warning" : "info",
+        code: blocked ? UNSAFE_LINK_NOTE_CODE : "pdf-link-unresolved",
+        message: blocked
+          ? `A media link used a blocked scheme and was kept without a clickable target: ${blocksPlainText([block])}`
+          : `Media link target could not be represented in PDF: ${blocksPlainText([block])}`,
+        source: { blockPath: path },
+      });
+    }
+  }
+  if (block.type === "image" || block.type === "mediaFallback") {
+    value += annotationMarkers(block.annotations, context.comments);
+  }
   return writeMapped(block, writer, path, value, summary);
+}
+
+function chartPlainText(chart: import("@atlcli/export-blocks").ChartModelV1): string {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [chart.title, ...data.labels, ...data.series.flatMap((series) => [series.label, ...series.values.map(String)])]
+      .filter(Boolean).join(" ");
+  }
+  if (data.mode === "points") {
+    return [chart.title, ...data.series.flatMap((series) => [series.label, ...series.points.flatMap((point) => [String(point.x), String(point.y)])])]
+      .filter(Boolean).join(" ");
+  }
+  return [chart.title, ...data.tasks.flatMap((task) => [task.label, task.start, task.end, task.progress === undefined ? "" : `${task.progress * 100}%`])]
+    .filter(Boolean).join(" ");
+}
+
+function chartRows(chart: import("@atlcli/export-blocks").ChartModelV1): string[][] {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [
+      ["Label", ...data.series.map((series) => series.label)],
+      ...data.labels.map((label, index) => [label, ...data.series.map((series) => String(series.values[index] ?? ""))]),
+    ];
+  }
+  if (data.mode === "points") {
+    const keys = [...new Set(data.series.flatMap((series) => series.points.map((point) => `${typeof point.x}:${String(point.x)}`)))];
+    const valueAt = (series: (typeof data.series)[number], key: string): string | number => {
+      const point = series.points.find((candidate) => `${typeof candidate.x}:${String(candidate.x)}` === key);
+      return point?.y ?? "";
+    };
+    return [
+      ["X", ...data.series.map((series) => series.label)],
+      ...keys.map((key) => [
+        key.slice(key.indexOf(":") + 1),
+        ...data.series.map((series) => String(valueAt(series, key))),
+      ]),
+    ];
+  }
+  return [
+    ["Task", "Start", "End", "Progress"],
+    ...data.tasks.map((task) => [task.label, task.start, task.end, task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`]),
+  ];
+}
+
+function mediaImageWidth(
+  block: Extract<PreparedPdfBlock, { type: "image" }>,
+  context: RenderContext,
+): string | undefined {
+  if (context.mediaWidthOverride) return context.mediaWidthOverride;
+  const presentation = block.mediaPresentation;
+  if (presentation?.layout === "wide" || presentation?.layout === "full-width") {
+    return "100%";
+  }
+  if (presentation?.width !== undefined) {
+    return presentation.widthType === "pixel"
+      ? `${presentation.width * 0.75}pt`
+      : `${presentation.width}%`;
+  }
+  return block.width !== undefined ? `${block.width * 0.75}pt` : undefined;
+}
+
+function mediaFrame(
+  value: string,
+  block: Extract<PreparedPdfBlock, { type: "image" | "mediaFallback" }>,
+  context: RenderContext,
+): string {
+  let framed = value;
+  if (block.border || block.mediaGroup) {
+    const color = block.border?.color.slice(0, 7) ?? context.catalogDesign.tokens.colors.hairline;
+    const size =
+      block.border?.size !== undefined
+        ? `${block.border.size}pt`
+        : designLength(context.catalogDesign, "mediaFrameDefaultStroke");
+    framed =
+      `#block(stroke: ${size} + rgb(${typstString(color)}), ` +
+      `inset: ${designLength(context.catalogDesign, "mediaFrameInset")}` +
+      `${block.mediaGroup
+        ? `, fill: rgb(${typstString(designColor(context.catalogDesign, "mediaGroupBackground"))})`
+        : ""})` +
+      `[${framed}]`;
+  }
+  const layout = block.mediaPresentation?.layout;
+  if (layout === "wrap-left" || layout === "wrap-right") {
+    const side = layout === "wrap-left" ? "left" : "right";
+    return context.mediaInWrapGrid ? framed : `#align(${side})[${framed}]`;
+  }
+  const alignment =
+    layout === "align-start"
+      ? "left"
+      : layout === "align-end"
+        ? "right"
+        : layout
+          ? "center"
+          : undefined;
+  return alignment ? `#align(${alignment})[${framed}]` : framed;
 }
 
 function typstDate(date: Date): string {
@@ -1152,12 +2111,35 @@ function exportedDateLabel(date: Date, language?: string, region?: string): stri
   }).format(date);
 }
 
+function documentLocale(language?: string, region?: string): string {
+  const requested = language
+    ? region && !language.includes("-") ? `${language}-${region}` : language
+    : "en";
+  try {
+    new Intl.DateTimeFormat(requested);
+    return requested;
+  } catch {
+    return "en";
+  }
+}
+
 export function serializePdfDocument(
   document: PreparedPdfDocument,
   options: PdfSerializeOptions
 ): PdfSourceBundle {
   const theme = resolvePdfTheme(options.theme);
+  // Settings resolve BEFORE the writer: the resolved design drives both the
+  // generated template and the serializer's own emitted presentation, so the
+  // active (possibly non-built-in) template's tokens reach every emission site.
+  const settings = resolvePdfSettings(options.settings, {
+    ...(options.metadata.language !== undefined ? { locale: options.metadata.language } : {}),
+    ...(options.metadata.region !== undefined ? { region: options.metadata.region } : {}),
+    ...(options.theme !== undefined ? { theme: options.theme } : {}),
+    ...(options.templateManifest !== undefined ? { manifest: options.templateManifest } : {}),
+    ...(options.templatePack !== undefined ? { templatePack: options.templatePack } : {}),
+  });
   const collected = collectHeadingLabels(document.blocks);
+  const componentsV5 = resolveComponentsV5(options);
   const writer: Writer = {
     sourceMap: [],
     notes: [...document.notes],
@@ -1167,24 +2149,74 @@ export function serializePdfDocument(
     headingCounts: new Map(),
     theme,
     contrastWarnings: new Set(),
+    catalogDesign: componentsV5
+      ? settings.design
+      : resolvePdfCatalogRuntime(settings.capabilityCatalog).project(settings.design),
+    ...(componentsV5 === undefined ? {} : { componentsV5 }),
+    locale: documentLocale(options.metadata.language, options.metadata.region),
+    comments: new PdfCommentRegistry(),
   };
-  const body = serializeBlocks(document.blocks, writer);
-  const settings = resolvePdfSettings(options.settings);
+  const body = serializeBlocks(
+    document.blocks,
+    writer,
+    "blocks",
+    rootContext(writer.catalogDesign, writer.locale, writer.comments),
+  );
+  const commentAppendix = serializeCommentAppendix(writer.comments, writer.catalogDesign);
   // The validated logo travels as a virtual asset file the compiler maps into
   // its filesystem — the same path-emission pattern prepared image assets use.
   // The "atlcli-logo" name cannot collide with prepared assets, whose paths
   // always carry a numeric index and content hash.
-  const logoAsset: PreparedPdfAsset | undefined = settings.logo
+  // Issue #118 Phase 1: the settings logo is the fourth asset source (it
+  // bypasses preparation), so an explicit profile normalizes it here — same
+  // pinned pipeline, SVG logos stay untouched by construction. Template-pack
+  // logos are curated, hash-verified payloads and are never re-encoded.
+  const logoPpi = options.imageQuality ? resolveEffectivePpi(options.imageQuality) : null;
+  const normalizedLogo =
+    settings.logo && logoPpi !== null && settings.logo.mediaType === "image/png"
+      ? normalizeRasterAssetV1({
+          bytes: settings.logo.bytes,
+          mediaType: settings.logo.mediaType,
+          renderEnvelopeWidthPt: PORTRAIT_TEXT_WIDTH_PT,
+          ppi: logoPpi,
+        })
+      : null;
+  const packLogo =
+    options.settings?.logo === undefined
+      ? options.templatePack?.assets["asset.logo"]
+      : undefined;
+  const logoAsset: PreparedPdfAsset | undefined = packLogo
     ? {
-        path: settings.logo.mediaType === "image/png" ? "assets/atlcli-logo.png" : "assets/atlcli-logo.svg",
-        bytes: settings.logo.bytes,
+        path: packLogo.vfsPath,
+        bytes: packLogo.bytes,
+        mediaType: packLogo.descriptor.mediaType,
+      }
+    : settings.logo
+    ? {
+        path:
+          settings.logo.mediaType === "image/png"
+            ? "assets/atlcli-logo.png"
+            : "assets/atlcli-logo.svg",
+        bytes:
+          normalizedLogo?.kind === "normalized" ? normalizedLogo.bytes : settings.logo.bytes,
         mediaType: settings.logo.mediaType,
       }
     : undefined;
+  const templateAssets: PreparedPdfAsset[] = [];
+  const mounted = new Set<string>(logoAsset ? [logoAsset.path] : []);
+  for (const asset of Object.values(options.templatePack?.assets ?? {})) {
+    if (!asset || mounted.has(asset.vfsPath)) continue;
+    mounted.add(asset.vfsPath);
+    templateAssets.push({
+      path: asset.vfsPath,
+      bytes: asset.bytes,
+      mediaType: asset.descriptor.mediaType,
+    });
+  }
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
-  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge, table-par, dense-token, dense-link, dense-status-badge, task-item
+  const main = String.raw`#import "atlcli.typ": atlcli-doc, atlcli-outline-title, callout, status-badge, table-par, dense-token, dense-link, dense-status-badge, task-item
 
 #show: atlcli-doc.with(meta: (
   title: ${typstString(meta.title)},
@@ -1194,19 +2226,53 @@ export function serializePdfDocument(
   exporter: ${typstString(meta.exporter ?? author)},
   language: ${typstString(meta.language ?? "en")},
   region: ${meta.region ? typstString(meta.region) : "none"},
-  exported-at: ${typstDate(meta.exportedAt)},
+${meta.direction === undefined ? "" : `  direction: ${meta.direction},\n`}  exported-at: ${typstDate(meta.exportedAt)},
   exported-label: ${typstString(exportedLabel)},
 ), settings: ${typstSettingsDict(settings, { logoPath: logoAsset?.path })})
 
-${body}
+${body}${commentAppendix}
 `;
 
   return {
     main,
-    template: createAtlcliTypstTemplate(options.theme),
-    assets: logoAsset ? [...document.assets, logoAsset] : document.assets,
+    // A pack reaches this branch only after the loader regenerated and
+    // byte-compared its canonical source. Locale labels and declared runtime
+    // bindings travel through `settings`; the static source is never generated
+    // again per document locale.
+    template:
+      options.templatePack?.canonicalSource.source ??
+      (options.templateManifest?.canonicalSource?.revision === "5"
+        ? createAtlcliTypstTemplateV5(
+            validatePdfTemplateDesignV3(
+              options.templateManifest.design as WikiPdfTemplateDesignV3,
+              "design",
+              { availableFonts: PDF_RUNTIME_ASSETS.fonts },
+            ),
+            settings.labels,
+            settings.templateVisuals,
+          )
+        : createAtlcliTypstTemplate(
+            settings.design,
+            settings.labels,
+            settings.templateVisuals,
+          )),
+    assets: [
+      ...document.assets,
+      ...(logoAsset ? [logoAsset] : []),
+      ...templateAssets,
+    ],
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,
+    fontRequirements: resolvePdfFontRequirementsV1({
+      document,
+      metadata: options.metadata,
+      settings,
+      ...(options.templatePack?.manifest
+        ? { manifest: options.templatePack.manifest }
+        : options.templateManifest
+          ? { manifest: options.templateManifest }
+          : {}),
+    }),
   };
 }
 

@@ -56,6 +56,12 @@ describe("Comments Utilities", () => {
     test("handles empty content", () => {
       expect(commentBodyToText("")).toBe("");
     });
+
+    test("preserves literal Markdown punctuation escaped by the Storage converter", () => {
+      expect(
+        commentBodyToText("<p>literal * star, ` tick, _ underscore, and ~ tilde</p>")
+      ).toBe("literal * star, ` tick, _ underscore, and ~ tilde");
+    });
   });
 
   describe("countComments", () => {

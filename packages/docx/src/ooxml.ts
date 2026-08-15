@@ -12,7 +12,8 @@
  * `AtlcliCode` paragraph style; callouts are self-styled single-cell tables.
  */
 import type { CaptionKind, ExportNote } from "@atlcli/confluence";
-import { normalizeExportColor } from "@atlcli/confluence";
+import { isSafeLinkScheme, normalizeExportColor } from "@atlcli/confluence";
+import { CODE_FONT_FAMILY } from "./font-embedding.js";
 import { encodeXmlText } from "./ooxml-text.js";
 
 /** Resolved caption locale (spec 003 C3). Only the two shipped label sets. */
@@ -137,7 +138,7 @@ export function codeStyleXml(): string {
     `<w:name w:val="Atlcli Code"/>` +
     `<w:pPr><w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>` +
     `<w:spacing w:before="0" w:after="0"/></w:pPr>` +
-    `<w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/><w:sz w:val="18"/></w:rPr>` +
+    `<w:rPr><w:rFonts w:ascii="${CODE_FONT_FAMILY}" w:hAnsi="${CODE_FONT_FAMILY}" w:cs="${CODE_FONT_FAMILY}"/><w:sz w:val="18"/></w:rPr>` +
     `</w:style>`
   );
 }
@@ -156,6 +157,20 @@ export interface RunStyle {
   superscript?: boolean;
   /** Hex color without leading `#`. */
   color?: string;
+  /** Arbitrary run shading color; unlike `w:highlight`, this preserves `#RRGGBB`. */
+  backgroundColor?: string;
+  /** Optional inline border color without leading `#`. */
+  borderColor?: string;
+  /** OOXML eighth-point border size. */
+  borderSize?: number;
+  /** Explicit OOXML half-point size, used for bounded source typography semantics. */
+  fontSizeHalfPoints?: number;
+}
+
+function fontSizeHalfPointsXml(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return "";
+  const size = Math.max(1, Math.min(3276, Math.round(value)));
+  return `<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>`;
 }
 
 function runPropsXml(style: RunStyle): string {
@@ -166,8 +181,25 @@ function runPropsXml(style: RunStyle): string {
   if (style.underline) parts.push('<w:u w:val="single"/>');
   if (style.subscript) parts.push('<w:vertAlign w:val="subscript"/>');
   if (style.superscript) parts.push('<w:vertAlign w:val="superscript"/>');
-  if (style.code) parts.push('<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>');
+  if (style.borderColor) {
+    const size = Math.max(2, Math.min(96, Math.round(style.borderSize ?? 8)));
+    parts.push(
+      `<w:bdr w:val="single" w:sz="${size}" w:space="1" w:color="${normalizeColor(style.borderColor)}"/>`,
+    );
+  }
+  if (style.code) {
+    parts.push(
+      `<w:rFonts w:ascii="${CODE_FONT_FAMILY}" w:hAnsi="${CODE_FONT_FAMILY}" w:cs="${CODE_FONT_FAMILY}"/>`,
+    );
+  }
   if (style.color) parts.push(`<w:color w:val="${normalizeColor(style.color)}"/>`);
+  const fontSize = fontSizeHalfPointsXml(style.fontSizeHalfPoints);
+  if (fontSize) parts.push(fontSize);
+  if (style.backgroundColor) {
+    parts.push(
+      `<w:shd w:val="clear" w:color="auto" w:fill="${normalizeColor(style.backgroundColor)}"/>`
+    );
+  }
   return parts.length ? `<w:rPr>${parts.join("")}</w:rPr>` : "";
 }
 
@@ -232,25 +264,20 @@ export function escapeFieldArgument(value: string): string {
 }
 
 /**
- * Defense-in-depth scheme allowlist for {@link hyperlinkField} (spec 004).
- * Mirrors `isSafeLinkScheme` in `@atlcli/confluence`'s html-to-blocks: control
- * characters ANYWHERE in the URL are stripped before scheme detection (a URL
- * parser strips C0 controls and space, so `java\tscript:` IS `javascript:`);
- * scheme-less (relative) URLs and `http(s):`/`mailto:` pass, everything else
- * fails. The converters upstream already enforce this — the re-check here means
- * a future caller (or a bypassed converter) can never turn `javascript:`/`file:`
- * into a live Word HYPERLINK field.
+ * Defense-in-depth scheme allowlist for {@link hyperlinkField}.
+ *
+ * A THIN WRAPPER over the canonical policy in `@atlcli/confluence`'s
+ * `link-safety` module (spec 011) — it used to be a hand-copied duplicate of
+ * `isSafeLinkScheme`, which meant two policies that could silently drift apart.
+ * The name is kept because callers and the published API surface depend on it.
+ *
+ * The converters upstream already degrade unsafe targets to plain text and emit
+ * an `unsafe-link-skipped` note; this re-check means a future caller (or a
+ * bypassed converter) can still never turn `javascript:`/`file:` into a live
+ * Word HYPERLINK field.
  */
 export function isSafeHyperlinkUrl(url: string): boolean {
-  // eslint-disable-next-line no-control-regex
-  const normalized = url.replace(/[\u0000-\u0020\u007F]/g, "").toLowerCase();
-  if (normalized === "") return false;
-  if (!/^[a-z][a-z0-9+.-]*:/.test(normalized)) return true; // relative
-  return (
-    normalized.startsWith("http:") ||
-    normalized.startsWith("https:") ||
-    normalized.startsWith("mailto:")
-  );
+  return isSafeLinkScheme(url);
 }
 
 /**
@@ -260,12 +287,15 @@ export function isSafeHyperlinkUrl(url: string): boolean {
  * URLs failing {@link isSafeHyperlinkUrl} degrade to the plain inner runs —
  * the link text survives, the live field target does not.
  */
-export function hyperlinkField(url: string, innerRuns: string): string {
+export function hyperlinkField(url: string, innerRuns: string, tooltip?: string): string {
   if (!isSafeHyperlinkUrl(url)) return innerRuns;
   const instr = esc(escapeFieldArgument(url));
+  const screenTip = tooltip !== undefined
+    ? ` \\o "${esc(escapeFieldArgument(tooltip))}"`
+    : "";
   return (
     `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
-    `<w:r><w:instrText xml:space="preserve"> HYPERLINK "${instr}" </w:instrText></w:r>` +
+    `<w:r><w:instrText xml:space="preserve"> HYPERLINK "${instr}"${screenTip} </w:instrText></w:r>` +
     `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
     innerRuns +
     `<w:r><w:fldChar w:fldCharType="end"/></w:r>`
@@ -293,8 +323,13 @@ export function bookmarkEnd(id: number): string {
  * (spec 002 anchor rewrite). Previously internal links were only styled blue —
  * they now navigate.
  */
-export function internalHyperlink(anchor: string, innerRuns: string): string {
-  return `<w:hyperlink w:anchor="${esc(anchor)}" w:history="1">${innerRuns}</w:hyperlink>`;
+export function internalHyperlink(
+  anchor: string,
+  innerRuns: string,
+  tooltip?: string,
+): string {
+  const screenTip = tooltip !== undefined ? ` w:tooltip="${esc(tooltip)}"` : "";
+  return `<w:hyperlink w:anchor="${esc(anchor)}" w:history="1"${screenTip}>${innerRuns}</w:hyperlink>`;
 }
 
 /** A hard page break paragraph (`pageBreak` block → `<w:br w:type="page"/>`). */
@@ -353,22 +388,47 @@ export function captionSeqLabel(kind: CaptionKind, lang: CaptionLang): string {
 
 /**
  * A caption paragraph: `<pStyle Caption>` + `"<Label> "` + a live SEQ field
- * (`SEQ <name> \* ARABIC`, so Word numbers it natively and it refreshes on
- * open via `ensureUpdateFields`) + `": "` + the caption's inline runs.
+ * (`SEQ <name> \* ARABIC`, so Word owns the numbering natively and a manual F9
+ * still produces the right answer) + `": "` + the caption's inline runs.
+ *
+ * `ordinal` is the field's CACHED RESULT — the number between `fldChar
+ * separate` and `fldChar end`. It used to be hard-coded to `1`, which made a
+ * document with three tables read "Table 1" three times until someone pressed
+ * F9, and made every export with a single caption ask its reader to refresh
+ * (see {@link import("./scan.js").REFRESH_SENSITIVE_FIELDS}).
+ *
+ * The cached result is not a cosmetic detail. It is what Word shows before any
+ * refresh, and it is all a consumer that reads `<w:t>` runs without evaluating
+ * fields ever sees — pandoc, python-docx, most search indexers. MEASURED on a
+ * real three-caption export: `pandoc -f docx -t plain` printed "Tabelle 1"
+ * three times from the old output and "Tabelle 1/2/3" from this one.
+ * LibreOffice is NOT such a consumer, and an earlier version of this comment
+ * wrongly named it: LibreOffice recomputes `SEQ` on import, and its converted
+ * PDF read correctly even from the old, all-`1` file.
+ *
+ * The FIELD stays: replacing it with a plain number would break cross-references
+ * (`REF`), Word's own caption tooling and a table of figures. Only the cached
+ * result changes. The caller ({@link import("./serialize.js").serializeBlocks})
+ * owns one counter per sequence name, incremented in document order.
  */
 export function captionParagraph(
   styleId: string,
   kind: CaptionKind,
   lang: CaptionLang,
-  contentRunsXml: string
+  contentRunsXml: string,
+  ordinal: number
 ): string {
   const label = captionSeqLabel(kind, lang);
   const seqName = captionSeqName(kind);
+  // A non-positive or non-finite ordinal would put `NaN`/`0`/`-1` in front of a
+  // reader as if it were a caption number. Fall back to Word's own first value
+  // rather than emit nonsense; the serializer never produces one.
+  const cached = Number.isFinite(ordinal) && ordinal >= 1 ? String(Math.trunc(ordinal)) : "1";
   const seqField =
     `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
     `<w:r><w:instrText xml:space="preserve"> SEQ ${esc(seqName)} \\* ARABIC </w:instrText></w:r>` +
     `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
-    `<w:r><w:t>1</w:t></w:r>` +
+    `<w:r><w:t>${cached}</w:t></w:r>` +
     `<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
   return (
     `<w:p><w:pPr><w:pStyle w:val="${esc(styleId)}"/></w:pPr>` +
@@ -470,17 +530,51 @@ export function dividerParagraph(): string {
 export function calloutTable(
   kind: string,
   titleRunsXml: string | null,
-  bodyParagraphs: string
+  bodyParagraphs: string,
+  custom?: { color?: string; iconRunsXml?: string | null },
 ): string {
   const palette: Record<string, { fill: string; accent: string }> = {
     info: { fill: "DEEBFF", accent: "2684FF" },
     note: { fill: "EAE6FF", accent: "6554C0" },
     warning: { fill: "FFFAE6", accent: "FFAB00" },
     tip: { fill: "E3FCEF", accent: "36B37E" },
+    success: { fill: "E3FCEF", accent: "36B37E" },
+    error: { fill: "FFEBE6", accent: "DE350B" },
     panel: { fill: "F4F5F7", accent: "97A0AF" },
   };
-  const c = palette[kind] ?? palette.panel;
-  const title = titleRunsXml ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${titleRunsXml}</w:p>` : "";
+  const sourceColor =
+    custom?.color && /^#[0-9A-F]{6}$/u.test(custom.color) ? custom.color.slice(1) : undefined;
+  const tint = (hex: string): string =>
+    [0, 2, 4]
+      .map((offset) => {
+        const channel = Number.parseInt(hex.slice(offset, offset + 2), 16);
+        return Math.round(channel * 0.15 + 255 * 0.85).toString(16).padStart(2, "0");
+      })
+      .join("")
+      .toUpperCase();
+  const c = sourceColor
+    ? { fill: tint(sourceColor), accent: sourceColor }
+    : palette[kind] ?? palette.panel;
+  const icon = custom?.iconRunsXml ?? "";
+  const gap = icon ? `<w:r><w:t xml:space="preserve"> </w:t></w:r>` : "";
+  const title =
+    titleRunsXml
+      ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${icon}${gap}${titleRunsXml}</w:p>`
+      : "";
+  let body = cellBodyXml(bodyParagraphs);
+  if (icon && !titleRunsXml) {
+    const prefix = icon + gap;
+    if (/^<w:p(?:\s|>)/u.test(body)) {
+      body = /^(<w:p(?:\s[^>]*)?>\s*<w:pPr>[\s\S]*?<\/w:pPr>)/u.test(body)
+        ? body.replace(
+            /^(<w:p(?:\s[^>]*)?>\s*<w:pPr>[\s\S]*?<\/w:pPr>)/u,
+            `$1${prefix}`,
+          )
+        : body.replace(/^(<w:p(?:\s[^>]*)?>)/u, `$1${prefix}`);
+    } else {
+      body = `<w:p>${prefix}</w:p>${body}`;
+    }
+  }
   return (
     `<w:tbl>` +
     `<w:tblPr><w:tblW w:w="9000" w:type="dxa"/>` +
@@ -491,7 +585,7 @@ export function calloutTable(
     `<w:tr><w:tc>` +
     `<w:tcPr><w:tcW w:w="9000" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${c.fill}"/></w:tcPr>` +
     title +
-    (bodyParagraphs || "<w:p/>") +
+    body +
     `</w:tc></w:tr>` +
     `</w:tbl>`
   );
@@ -513,6 +607,16 @@ export interface TableStyleSource {
 export interface DataTableOptions {
   /** Per-column `w:gridCol` widths in dxa (spec 006 G3). Absent → even split. */
   widthsDxa?: number[];
+  /** Total portable table width in dxa. Defaults to the historical 9000. */
+  widthDxa?: number;
+  /** Logical source alignment retained for bidirectional Word documents. */
+  alignment?: "start" | "center" | "end";
+  /** Preserve an explicit fixed-column display mode without authored tracks. */
+  fixedLayout?: boolean;
+  /** Presentational page layout: omit semantic table styling and borders. */
+  borderless?: boolean;
+  /** Symmetric left/right cell gutter for a borderless layout table. */
+  cellMarginDxa?: number;
   /** Table style source (spec 006 G3b). Defaults to `"confluence"`. */
   tableStyle?: TableStyleSource;
 }
@@ -520,30 +624,49 @@ export interface DataTableOptions {
 /**
  * Build a data table from row/cell OOXML. With `widthsDxa` (spec 006 G3) the
  * `w:tblGrid` carries real per-column widths and a `w:tblLayout w:type="fixed"`
- * so Word does not re-autofit; without it the grid is an even 9000-dxa split
- * (pre-006 behavior). The table style is either the built-in confluence grid or
+ * so Word does not re-autofit; an explicit fixed display mode does the same
+ * without authored tracks. Otherwise the grid is an even split of `widthDxa`
+ * (9000 by default). The table style is either the built-in confluence grid or
  * a template style (spec 006 G3b).
  */
 export function dataTable(gridCols: number, rowsXml: string, opts: DataTableOptions = {}): string {
   const cols = Math.max(1, gridCols);
   const widths = opts.widthsDxa;
-  const even = Math.floor(9000 / cols);
+  const widthDxa =
+    Number.isSafeInteger(opts.widthDxa) && (opts.widthDxa ?? 0) > 0
+      ? opts.widthDxa!
+      : 9000;
+  const even = Math.max(1, Math.floor(widthDxa / cols));
   const grid = Array.from({ length: cols }, (_, i) => `<w:gridCol w:w="${widths?.[i] ?? even}"/>`).join("");
-  const fixedLayout = widths ? `<w:tblLayout w:type="fixed"/>` : "";
+  const fixedLayout = widths || opts.fixedLayout ? `<w:tblLayout w:type="fixed"/>` : "";
+  const alignment = opts.alignment ? `<w:jc w:val="${opts.alignment}"/>` : "";
   const style = opts.tableStyle ?? { source: "confluence" as const };
   let tblPrInner: string;
-  if (style.source === "template" && style.styleId) {
+  if (opts.borderless) {
+    const margin =
+      Number.isSafeInteger(opts.cellMarginDxa) && (opts.cellMarginDxa ?? 0) >= 0
+        ? opts.cellMarginDxa!
+        : 120;
+    tblPrInner =
+      `<w:tblW w:w="${widthDxa}" w:type="dxa"/>` +
+      alignment +
+      fixedLayout +
+      `<w:tblCellMar><w:left w:w="${margin}" w:type="dxa"/><w:right w:w="${margin}" w:type="dxa"/></w:tblCellMar>` +
+      `<w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="1" w:noVBand="1"/>`;
+  } else if (style.source === "template" && style.styleId) {
     // Template style controls borders/shading; emit only the style ref + look.
     tblPrInner =
       `<w:tblStyle w:val="${esc(style.styleId)}"/>` +
-      `<w:tblW w:w="9000" w:type="dxa"/>` +
+      `<w:tblW w:w="${widthDxa}" w:type="dxa"/>` +
+      alignment +
       fixedLayout +
       `<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>`;
   } else {
     // Schema order matters (CT_TblPrBase, ECMA-376 §17.4.60): tblBorders (seq 11)
     // MUST precede tblLayout (seq 13), so fixedLayout goes AFTER tblBorders here.
     tblPrInner =
-      `<w:tblStyle w:val="TableGrid"/><w:tblW w:w="9000" w:type="dxa"/>` +
+      `<w:tblStyle w:val="TableGrid"/><w:tblW w:w="${widthDxa}" w:type="dxa"/>` +
+      alignment +
       `<w:tblBorders>` +
       `<w:top w:val="single" w:sz="4" w:color="AAAAAA"/><w:left w:val="single" w:sz="4" w:color="AAAAAA"/>` +
       `<w:bottom w:val="single" w:sz="4" w:color="AAAAAA"/><w:right w:val="single" w:sz="4" w:color="AAAAAA"/>` +
@@ -574,6 +697,7 @@ export function tableCell(
     header?: boolean;
     backgroundColor?: string;
     widthDxa?: number;
+    verticalAlignment?: "top" | "middle" | "bottom";
   } = {}
 ): string {
   const props: string[] = [];
@@ -583,13 +707,28 @@ export function tableCell(
   if (opts.vMerge) props.push(`<w:vMerge w:val="${opts.vMerge}"/>`);
   const fill = normalizeExportColor(opts.backgroundColor)?.slice(1) ?? (opts.header ? "F4F5F7" : undefined);
   if (fill) props.push(`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`);
-  const body = paragraphsXml || "<w:p/>";
+  if (opts.verticalAlignment) {
+    const value = opts.verticalAlignment === "middle" ? "center" : opts.verticalAlignment;
+    props.push(`<w:vAlign w:val="${value}"/>`);
+  }
+  const body = cellBodyXml(paragraphsXml);
   return `<w:tc><w:tcPr>${props.join("")}</w:tcPr>${body}</w:tc>`;
 }
 
+/**
+ * WordprocessingML table cells need a terminal paragraph after a nested table
+ * for portable round-tripping. Word repairs the omission permissively, while
+ * LibreOffice can lift the following sibling table into plain paragraphs.
+ */
+function cellBodyXml(xml: string): string {
+  if (!xml) return "<w:p/>";
+  return /<\/w:tbl>\s*$/u.test(xml) ? `${xml}<w:p/>` : xml;
+}
+
 /** Status badge as a shaded, colored inline run inside its own paragraph. */
-export function statusBadgeRun(text: string, color: string): string {
+export function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?: number): string {
   const fillByColor: Record<string, string> = {
+    neutral: "DFE1E6",
     grey: "DFE1E6",
     gray: "DFE1E6",
     green: "E3FCEF",
@@ -599,16 +738,46 @@ export function statusBadgeRun(text: string, color: string): string {
     purple: "EAE6FF",
   };
   const fill = fillByColor[color.toLowerCase()] ?? "DFE1E6";
+  const fontSize = fontSizeHalfPointsXml(fontSizeHalfPoints);
   return (
-    `<w:r><w:rPr><w:b/><w:shd w:val="clear" w:color="auto" w:fill="${fill}"/></w:rPr>` +
+    `<w:r><w:rPr><w:b/>${fontSize}<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/></w:rPr>` +
     `<w:t xml:space="preserve"> ${esc(text)} </w:t></w:r>`
   );
 }
 
-/** One colored code line: a paragraph in the code style with per-token runs. */
-export function codeLineParagraph(tokens: { text: string; color?: string }[]): string {
-  const runs = tokens
-    .map((t) => run(t.text, { code: true, color: t.color }))
+/**
+ * One colored code line: a paragraph in the code style with per-token runs.
+ * The optional line number is presentation-only and is deliberately emitted
+ * as a separate muted run so copying the neutral source never acquires it.
+ */
+export function codeLineParagraph(
+  tokens: { text: string; color?: string }[],
+  lineNumber?: number,
+  lineNumberWidth = 1,
+  theme?: { background: string; foreground: string },
+): string {
+  const gutter =
+    lineNumber === undefined
+      ? ""
+      : (
+          run(String(lineNumber).padStart(lineNumberWidth), {
+            code: true,
+            color: "#6B778C",
+          }) +
+          "<w:r><w:tab/></w:r>"
+        );
+  const runs = gutter + tokens
+    .map((t) => run(t.text, { code: true, color: t.color ?? theme?.foreground }))
     .join("");
-  return paragraph(runs || run("", { code: true }), { styleId: CODE_STYLE_ID });
+  return paragraph(runs || run("", { code: true }), {
+    styleId: CODE_STYLE_ID,
+    extraPPr:
+      (theme
+        ? `<w:shd w:val="clear" w:color="auto" w:fill="${normalizeColor(theme.background)}"/>`
+        : "") +
+      (lineNumber === undefined
+        ? ""
+        : '<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs>' +
+          '<w:ind w:start="480" w:hanging="480"/>'),
+  });
 }

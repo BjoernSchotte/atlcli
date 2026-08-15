@@ -10,34 +10,51 @@
 
 ### Entry point `. (browser)` — stable
 
-- exported symbols (27): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, ResolveDeps, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, runExport
-- same-package closure references: 23
-- reaches `@atlcli/confluence` (frozen): ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportProgressCallback
+- exported symbols (39): AssetFetcher, AssetRef, CurrentUser, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxMediaPartV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, StreamedDocxExportResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, renderPreparedDocxExportStream, runExport
+- same-package closure references: 31
+- reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportPageSource, ExportProgressCallback, InlineComment
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
+- reaches `@atlcli/export-blocks` (0.x — frozen-by-closure): ExportBlock, ExportNote
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
 - reachable-but-unexported gaps: none
 
 ### Entry point `. (default)` — stable
 
-- exported symbols (33): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
-- same-package closure references: 24
-- reaches `@atlcli/confluence` (frozen): ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportProgressCallback
+- exported symbols (45): AssetFetcher, AssetRef, CurrentUser, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxMediaPartV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, StreamedDocxExportResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, renderPreparedDocxExportStream, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
+- same-package closure references: 32
+- reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportPageSource, ExportProgressCallback, InlineComment
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
+- reaches `@atlcli/export-blocks` (0.x — frozen-by-closure): ExportBlock, ExportNote
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
 - reachable-but-unexported gaps: none
 
 ### Entry point `./browser` — stable
 
-- exported symbols (27): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, ResolveDeps, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, runExport
-- same-package closure references: 23
-- reaches `@atlcli/confluence` (frozen): ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportProgressCallback
+- exported symbols (39): AssetFetcher, AssetRef, CurrentUser, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxMediaPartV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, StreamedDocxExportResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, renderPreparedDocxExportStream, runExport
+- same-package closure references: 31
+- reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportPageSource, ExportProgressCallback, InlineComment
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
+- reaches `@atlcli/export-blocks` (0.x — frozen-by-closure): ExportBlock, ExportNote
+- reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
+- reachable-but-unexported gaps: none
+
+### Entry point `./browser-entry` — stable
+
+- exported symbols (50): ArchiveBudget, AssetFetcher, AssetRef, CanvasRasterizerTiming, CanvasSvgRasterizerOptions, CurrentUser, DocxByteHelpers, DocxErrorKind, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxMediaPartV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, StreamedDocxExportResult, SvgRasterizer, TemplateMeta, TemplateSource, canvasSvgRasterizer, exportDocx, installDocxBrowserRuntime, memoryTemplateSource, prepareDocxCodeHighlighting, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, renderPreparedDocxExportStream, runExport, scanTemplate, unzipDocx
+- same-package closure references: 34
+- reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportPageSource, ExportProgressCallback, InlineComment
+- reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
+- reaches `@atlcli/export-blocks` (0.x — frozen-by-closure): ExportBlock, ExportNote
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
 - reachable-but-unexported gaps: none
 
 ### Entry point `./browser-runtime` — experimental
 
-- exported symbols (6): CanvasRasterizerTiming, CanvasSvgRasterizerOptions, DocxByteHelpers, canvasSvgRasterizer, installDocxBrowserRuntime, memoryTemplateSource
+- exported symbols (10): CanvasRasterizerTiming, CanvasSvgRasterizerOptions, DocxByteHelpers, DocxExportRuntimePreparation, PrepareDocxExportRuntimeOptions, canvasSvgRasterizer, installDocxBrowserRuntime, memoryTemplateSource, prepareDocxCodeHighlighting, prepareDocxExportRuntime
 
 ### Entry point `./fixtures` — internal
 
@@ -45,20 +62,22 @@
 
 ### Entry point `./internal` — internal
 
-- exported symbols (134): CAPTION_STYLE_ID, CODE_STYLE_ID, CaptionLang, CodeBlock, CurrentUser, DataTableOptions, DateFormatResult, DiagramEmbedOutcome, DiagramEmbedSeam, DocxError, DocxRenderError, DrawingParams, EMU_PER_PX, EmbedImageOptions, EmbedSvgOptions, ExportInput, ExportReport, ExportResult, ExportTimings, Fetched, ImageBlock, ImageEmbedError, ImageEmbedOutcome, ImageEmbedSeam, ImageEmbedder, ImageEmbedderOptions, ImageFormat, ImageInfo, IncludeLookupIo, IncludeLookupOutcome, IncludePageRef, LIST_PARAGRAPH_STYLE_ID, LogoArgs, MAX_CONTENT_WIDTH_PX, MAX_ILVL, MAX_IMAGE_BYTES, MAX_NUM_INSTANCES, MAX_RASTER_AXIS_PX, MAX_RASTER_PIXELS, MAX_TEMPLATE_BYTES, NumberingAllocator, NumberingBase, NumberingXml, PLACEHOLDER_RE, PageOwner, PagePropertyArgs, PlaceholderClass, PlaceholderDependency, PlaceholderStatus, ResolveContext, ResolveDeps, ResolveResult, RunStyle, ScanHit, ScanResult, SerializeContext, SerializeResult, TableStyleSource, TargetSize, TemplateMeta, bookmarkEnd, bookmarkStart, boundRasterTarget, buildGetIncludedPage, calloutTable, captionParagraph, captionSeqLabel, captionSeqName, captionStyleXml, classifyIncludeError, classifyPlaceholder, coalesceSectPrParagraphs, codeLineParagraph, codeStyleXml, collectStylerefFields, columnWidthsDxa, dataTable, decodeImageInfo, dividerParagraph, documentPartNames, encodeXmlText, ensureCaptionStyle, ensureCodeStyle, ensureContentTypeDefault, ensureListParagraphStyle, ensureNumberingPart, ensureUpdateFields, esc, escapeFieldArgument, exportDocx, formatDatePlaceholder, formatSimpleDate, hyperlinkField, inlineImageParagraph, inspectNumberingPart, internalHyperlink, isSafeHyperlinkUrl, isSvg, lineBreakRun, listParagraphStyleXml, mergeTrailingRegionSectPr, normalizeColor, pageBreakParagraph, paragraph, parseIncludePageArgs, parseLogoArgs, parsePagePropertyArgs, parseStyleNames, parseSvgSize, placeholderBase, preprocessScrollText, pxToEmu, readBodySectPr, relsPathFor, resolveCaptionLang, resolveCaptionStyleId, resolveHeadingStyleId, resolveListStyleId, resolveOne, resolvePlaceholders, resolveTargetSize, run, scanTemplate, scanZip, sectPrParagraph, serializeBlocks, serializeInline, statusBadgeRun, synthesizeA4SectPr, tableCell, toDownloadFilename, toLandscapeSectPr, toPortraitSectPr, unzipDocx
+- exported symbols (186): ArchiveBudget, CAPTION_STYLE_ID, CODE_FONT_FAMILY, CODE_FONT_FILE, CODE_FONT_KEY, CODE_FONT_SHA256, CODE_STYLE_ID, CalloutIconEmbedSeam, CaptionLang, CodeBlock, CurrentUser, DOCX_ARCHIVE_BUDGET, DOCX_TEMPLATE_INTAKE_BUDGET, DataTableOptions, DateFormatResult, DiagramEmbedOutcome, DiagramEmbedSeam, DocxError, DocxErrorKind, DocxFontEmbeddingError, DocxRenderError, DrawingParams, EMU_PER_PX, EmbedImageOptions, EmbedSvgOptions, ExportInput, ExportReport, ExportResult, ExportTimings, FOREIGN_PLACEHOLDER_RE, Fetched, FieldRefreshOptions, FieldUse, ImageBlock, ImageEmbedError, ImageEmbedOutcome, ImageEmbedSeam, ImageEmbedder, ImageEmbedderOptions, ImageFormat, ImageInfo, IncludeLookupIo, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, InlineImageNode, LIST_PARAGRAPH_STYLE_ID, LogoArgs, MAX_CONTENT_WIDTH_PX, MAX_FOREIGN_PLACEHOLDERS, MAX_ILVL, MAX_IMAGE_BYTES, MAX_NUM_INSTANCES, MAX_RASTER_AXIS_PX, MAX_RASTER_PIXELS, MAX_TEMPLATE_BYTES, NumberingAllocator, NumberingBase, NumberingXml, PLACEHOLDER_RE, PageOwner, PagePropertyArgs, PlaceholderClass, PlaceholderDependency, PlaceholderStatus, PreparedDocxExportV1, PreparedDocxMediaPartV1, PreparedDocxRenderStateV1, REFRESH_SENSITIVE_FIELDS, RenderPreparedDocxExportInput, ResolveContext, ResolveDeps, ResolveResult, RunStyle, ScanHit, ScanResult, SerializeContext, SerializeResult, StreamedDocxExportResult, TableStyleSource, TargetSize, TemplateMeta, WordCommentRegistry, assertArchiveBudget, assertBundledCodeFont, assertEmbeddableSfnt, assertNoActiveContent, assertPlausibleCompression, assertSafeDocxEntryName, auditImageAltText, bookmarkEnd, bookmarkStart, boundRasterTarget, buildGetIncludedPage, calloutTable, captionParagraph, captionSeqLabel, captionSeqName, captionStyleXml, classifyIncludeError, classifyPlaceholder, coalesceSectPrParagraphs, codeLineParagraph, codeStyleXml, collectFieldInstructions, collectFieldKeywords, collectFieldUses, collectForeignPlaceholders, collectRiskyFieldInstructions, collectSeqSequenceNames, collectStylerefFields, columnWidthsDxa, configureBundledCodeFontLoader, dataTable, decodeImageInfo, dividerParagraph, documentPartNames, encodeXmlText, ensureCaptionStyle, ensureCodeStyle, ensureCommentsPart, ensureContentTypeDefault, ensureEmbeddedCodeFont, ensureListParagraphStyle, ensureNumberingPart, ensureUpdateFields, esc, escapeFieldArgument, exportDocx, findActiveContentRelationship, formatDatePlaceholder, formatSimpleDate, hasAltChunkRelationship, hyperlinkField, inlineImageParagraph, inlineImageRun, inspectNumberingPart, internalHyperlink, isMissingAltText, isSafeHyperlinkUrl, isSvg, lineBreakRun, listParagraphStyleXml, loadBundledCodeFont, loadValidatedBundledCodeFont, mergeTrailingRegionSectPr, needsFieldRefresh, normalizeColor, obfuscateFont, pageBreakParagraph, paragraph, parseIncludePageArgs, parseLogoArgs, parsePagePropertyArgs, parseStyleNames, parseSvgSize, placeholderBase, prepareDocxExport, preprocessScrollText, pxToEmu, readBodySectPr, readPartText, relsPathFor, renderPreparedDocxExport, renderPreparedDocxExportStream, resolveCaptionLang, resolveCaptionStyleId, resolveHeadingStyleId, resolveListStyleId, resolveOne, resolvePlaceholders, resolveTargetSize, run, scanTemplate, scanZip, sectPrParagraph, seqSequenceName, serializeBlocks, serializeInline, statusBadgeRun, synthesizeA4SectPr, tableCell, toDownloadFilename, toLandscapeSectPr, toPortraitSectPr, unzipDocx
 
 ### Entry point `./node` — stable
 
-- exported symbols (33): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
-- same-package closure references: 24
-- reaches `@atlcli/confluence` (frozen): ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportProgressCallback
+- exported symbols (45): AssetFetcher, AssetRef, CurrentUser, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxMediaPartV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, StreamedDocxExportResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, renderPreparedDocxExportStream, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
+- same-package closure references: 32
+- reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportPageSource, ExportProgressCallback, InlineComment
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
+- reaches `@atlcli/export-blocks` (0.x — frozen-by-closure): ExportBlock, ExportNote
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
 - reachable-but-unexported gaps: none
 
 ### Entry point `./scan` — internal
 
-- exported symbols (10): DocxError, MAX_TEMPLATE_BYTES, PLACEHOLDER_RE, ScanHit, ScanResult, collectStylerefFields, documentPartNames, scanTemplate, scanZip, unzipDocx
+- exported symbols (34): ArchiveBudget, DOCX_ARCHIVE_BUDGET, DOCX_TEMPLATE_INTAKE_BUDGET, DocxError, DocxErrorKind, FOREIGN_PLACEHOLDER_RE, FieldRefreshOptions, FieldUse, MAX_FOREIGN_PLACEHOLDERS, MAX_TEMPLATE_BYTES, PLACEHOLDER_RE, REFRESH_SENSITIVE_FIELDS, ScanHit, ScanResult, assertArchiveBudget, assertNoActiveContent, assertPlausibleCompression, assertSafeDocxEntryName, collectFieldInstructions, collectFieldKeywords, collectFieldUses, collectForeignPlaceholders, collectRiskyFieldInstructions, collectSeqSequenceNames, collectStylerefFields, documentPartNames, findActiveContentRelationship, hasAltChunkRelationship, needsFieldRefresh, readPartText, scanTemplate, scanZip, seqSequenceName, unzipDocx
 
 ### Entry point `./vite` — experimental
 

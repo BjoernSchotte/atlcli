@@ -2,14 +2,23 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://atlcli.dev/schemas/export-report-1.json",
   "title": "atlcli.export-report/1",
-  "description": "The stable machine-readable report emitted by `atlcli wiki export` under --json / --report json. Additive changes only; a breaking change bumps the schema string.",
+  "description": "The stable machine-readable report emitted by `atlcli wiki export` under --json / --report json. Additive changes only; a breaking change bumps the schema string. Note the one widening within /1: issue.severity gained `info` when severity started honouring the engine note level, so informational notes stopped inflating `warnings[]` and `--strict`.",
   "type": "object",
   "required": ["schema", "format", "sourcePages", "outputDetails", "outputs", "issues", "warnings", "errors", "timings", "exitCode"],
   "additionalProperties": false,
   "properties": {
     "schema": { "const": "atlcli.export-report/1" },
     "format": { "enum": ["pdf", "docx"] },
-    "engine": { "enum": ["python", "ts"] },
+    "engine": {
+      "enum": ["python", "ts"],
+      "description": "Current producers emit `ts`; `python` remains accepted so archived atlcli.export-report/1 documents stay valid."
+    },
+    "codeTheme": {
+      "type": "string",
+      "description": "Effective bundled Shiki theme used for code blocks."
+    },
+    "outputPolicy": { "$ref": "#/definitions/outputPolicy" },
+    "outputStandardEvidence": { "$ref": "#/definitions/outputStandardEvidence" },
     "sourcePages": {
       "type": "array",
       "description": "One entry per source page — provenance/fetch-and-compose status only, NO per-page metrics.",
@@ -41,8 +50,8 @@
       }
     },
     "outputs": { "type": "array", "items": { "type": "string" } },
-    "issues": { "type": "array", "items": { "$ref": "#/definitions/issue" } },
-    "warnings": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Convenience view: issues with severity==warning." },
+    "issues": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Every issue, at every severity. There is no `infos` convenience view — read severity==info off here or off notesByCode." },
+    "warnings": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Convenience view: issues with severity==warning. Informational notes are NOT included (they were, before severity honoured the engine note level)." },
     "errors": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Convenience view: issues with severity==error." },
     "timings": { "type": "object", "additionalProperties": { "type": "number" } },
     "exitCode": {
@@ -81,13 +90,60 @@
     }
   },
   "definitions": {
+    "outputPolicy": {
+      "type": "object",
+      "required": ["schema", "standards"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": { "const": "atlcli.pdf-output-policy/1" },
+        "standards": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["a-1b", "a-1a", "a-2b", "a-2u", "a-2a", "a-3b", "a-3u", "a-3a", "a-4", "a-4f", "a-4e", "ua-1"] }
+        }
+      }
+    },
+    "outputStandardEvidence": {
+      "type": "object",
+      "required": ["schema", "requestedStandard", "basePdfVersion", "hasDocumentIdentifier", "tagged", "hasLang", "embeddedFontFiles"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": { "const": "atlcli.pdf-output-standard-evidence/1" },
+        "requestedStandard": { "enum": ["a-1b", "a-1a", "a-2b", "a-2u", "a-2a", "a-3b", "a-3u", "a-3a", "a-4", "a-4f", "a-4e", "ua-1"] },
+        "basePdfVersion": { "enum": ["1.4", "1.5", "1.6", "1.7", "2.0"] },
+        "pdfa": {
+          "type": "object",
+          "required": ["part"],
+          "additionalProperties": false,
+          "properties": {
+            "part": { "enum": ["1", "2", "3", "4"] },
+            "conformance": { "enum": ["A", "B", "E", "F", "U"] }
+          }
+        },
+        "pdfua": {
+          "type": "object",
+          "required": ["part"],
+          "additionalProperties": false,
+          "properties": { "part": { "const": "1" } }
+        },
+        "hasDocumentIdentifier": { "type": "boolean" },
+        "tagged": { "type": "boolean" },
+        "hasLang": { "type": "boolean" },
+        "embeddedFontFiles": { "type": "integer", "minimum": 1 }
+      }
+    },
     "issue": {
       "type": "object",
       "required": ["code", "severity", "phase", "retryable"],
       "additionalProperties": false,
       "properties": {
         "code": { "type": "string" },
-        "severity": { "enum": ["error", "warning"] },
+        "severity": {
+          "enum": ["error", "warning", "info"],
+          "description": "`info` mirrors an engine note with level==info (an observation about a correct export). Added in the same change that made severity honour the note level; a consumer pinned to an older copy of this file must widen its enum."
+        },
         "phase": { "type": "string" },
         "retryable": { "type": "boolean" },
         "message": { "type": "string" },

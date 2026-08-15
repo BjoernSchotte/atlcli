@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildDocx } from "./fixtures.js";
+import { buildDocx, para, readPart } from "./fixtures.js";
 
 /**
  * Reproducible-build guard (spec 009): PizZip stamps each entry with
@@ -21,5 +21,41 @@ describe("buildDocx date pinning", () => {
     const late = buildDocx({ ...opts, date: new Date("2021-06-15T12:00:00.000Z") });
     // Different pinned timestamps → different bytes, proving the date is not ignored.
     expect(early).not.toEqual(late);
+  });
+});
+
+describe("buildDocx story relationships", () => {
+  it("attaches the styles part consumed by every generated document", () => {
+    const bytes = buildDocx({ body: para("body") });
+    const relationships = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(relationships).toContain('Id="rIdStyles"');
+    expect(relationships).toContain("relationships/styles");
+    expect(relationships).toContain('Target="styles.xml"');
+  });
+
+  it("attaches header and footer parts to the document section", () => {
+    const bytes = buildDocx({
+      body: para("body"),
+      header: para("header"),
+      footer: para("footer"),
+    });
+
+    const document = readPart(bytes, "word/document.xml");
+    const relationships = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(document).toContain(
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+    );
+    expect(document).toContain('<w:headerReference w:type="default" r:id="rIdH1"/>');
+    expect(document).toContain('<w:footerReference w:type="default" r:id="rIdF2"/>');
+    expect(relationships).toContain('Id="rIdH1"');
+    expect(relationships).toContain('Id="rIdF2"');
+  });
+
+  it("uses the actual footer relationship id when no header exists", () => {
+    const bytes = buildDocx({ body: para("body"), footer: para("footer") });
+    const document = readPart(bytes, "word/document.xml");
+
+    expect(document).not.toContain("w:headerReference");
+    expect(document).toContain('<w:footerReference w:type="default" r:id="rIdF1"/>');
   });
 });

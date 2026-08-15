@@ -1,0 +1,118 @@
+---
+import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
+import StaticChart from "@atlcli/export-blocks-astro/components/StaticChart.astro";
+import InteractiveChart from "@atlcli/export-blocks-astro/components/InteractiveChart.astro";
+import { chartWorldClassBlocksV1 } from "@atlcli/export-fixtures";
+import BrandedHeading from "../components/BrandedHeading.astro";
+import "@atlcli/export-blocks-astro/styles.css";
+import "../styles/fixture.css";
+import {
+  EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+  EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1,
+  EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1,
+} from "@atlcli/export-blocks-astro/fixtures";
+
+const normalizedChartBlock = EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1.find((block) => block.type === "chart");
+if (!normalizedChartBlock || normalizedChartBlock.type !== "chart") throw new TypeError("chart fixture missing");
+const WORLD_CLASS_CHART_BLOCKS_V1 = chartWorldClassBlocksV1();
+
+const STATIC_ONLY_CHART_CONTEXT_V1 = {
+  ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+  chartPolicy: {
+    strict: true,
+    acquisition: { maxDurationMs: 300_000, maxAggregateBytes: 16_777_216 },
+    normalization: { maxRows: 2_000, maxSeries: 64, maxPoints: 20_000, maxBytes: 524_288 },
+    static: { maxSvgNodes: 100_000, maxSvgBytes: 2_097_152, maxRenderMs: 2_000 },
+    island: { enabled: false, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536, maxMountMs: 250 },
+  },
+};
+
+const PARTIAL_BUDGET_FALLBACK_CONTEXT_V1 = {
+  ...STATIC_ONLY_CHART_CONTEXT_V1,
+  chartPolicy: {
+    ...STATIC_ONLY_CHART_CONTEXT_V1.chartPolicy,
+    strict: false,
+    static: { maxSvgNodes: 1, maxSvgBytes: 2_097_152, maxRenderMs: 2_000 },
+  },
+};
+
+const HOSTILE_RENDERER_CONTEXT_V1 = {
+  ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+  assets: {
+    ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1.assets,
+    "attachment::hostile.svg": {
+      src: "data:image/svg+xml,<svg onload=alert(1) />",
+      mediaType: "image/svg+xml",
+      srcset: [{ src: "javascript:alert(1)", width: 320, mediaType: "image/svg+xml" }],
+      downloadHref: "https://evil.test/private.svg",
+    },
+  },
+};
+
+const HOSTILE_RENDERER_BLOCKS_V1 = [{
+  type: "paragraph" as const,
+  content: [
+    { type: "text" as const, text: 'Escaped literal: <img src=x onerror="alert(1)">', color: "red;background:url(https://evil.test/x)" },
+    { type: "link" as const, target: { kind: "external" as const, href: "java\tscript:alert(1)" }, content: [{ type: "text" as const, text: "Synthetic unsafe link (must remain inert)" }] },
+    { type: "smartCard" as const, card: { appearance: "inline" as const, source: "datasource" as const, title: "Synthetic datasource-card fallback", datasource: { secret: "opaque-datasource-secret" } } },
+  ],
+}, {
+  type: "image" as const,
+  source: { kind: "attachment" as const, filename: "hostile.svg" },
+  alt: "hostile asset",
+}, {
+  type: "chart" as const,
+  chart: {
+    schema: "atlcli.chart/1" as const,
+    kind: "bar" as const,
+    title: "Hostile \"><img src=x onerror=alert(2)>",
+    data: {
+      mode: "categories" as const,
+      labels: ["</text><script>alert(3)</script>"],
+      series: [{ id: "hostile", label: "\"><foreignObject>", values: [1] }],
+    },
+    source: { kind: "cloud-adf" as const, macroName: "chart" as const },
+  },
+}];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" />
+  </head>
+  <body>
+    <ExportDocument
+      blocks={EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1}
+      context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1}
+      overrides={{ heading: BrandedHeading }}
+    />
+    <ExportDocument
+      blocks={WORLD_CLASS_CHART_BLOCKS_V1}
+      context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1}
+    />
+    <StaticChart chart={{
+      title: "Published pages",
+      labels: ["Jan", "Feb"],
+      series: [{ name: "Pages", values: [12, 18] }],
+    }} />
+    <InteractiveChart enabled chart={{
+      title: "Interactive published pages",
+      labels: ["January", "February", "March"],
+      series: [{ name: "Pages", values: [12, 18, 21] }],
+    }} />
+    <InteractiveChart enabled block={normalizedChartBlock} context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1} />
+    <InteractiveChart block={normalizedChartBlock} context={STATIC_ONLY_CHART_CONTEXT_V1} />
+    <ExportDocument blocks={[WORLD_CLASS_CHART_BLOCKS_V1[0]!]} context={PARTIAL_BUDGET_FALLBACK_CONTEXT_V1} />
+    <section data-fixture-security-proof aria-labelledby="fixture-security-proof-heading">
+      <h2 id="fixture-security-proof-heading">Synthetic security escaping proof</h2>
+      <p>These deliberately hostile values must remain inert text and safe fallbacks. They are not publication content.</p>
+      <ExportDocument blocks={HOSTILE_RENDERER_BLOCKS_V1} context={HOSTILE_RENDERER_CONTEXT_V1} />
+    </section>
+    <ExportDocument
+      blocks={EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1}
+      context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, direction: "rtl" }}
+    />
+  </body>
+</html>

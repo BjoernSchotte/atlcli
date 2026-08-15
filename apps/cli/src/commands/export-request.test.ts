@@ -27,9 +27,9 @@ describe("parseExportRequest — valid combinations", () => {
     expect: Partial<ParsedExportRequest>;
   }> = [
     {
-      name: "bare page id (python default)",
+      name: "bare page id (TypeScript default)",
       argv: ["12345"],
-      expect: { scopeKind: "page", engine: "python", pageRef: "12345" },
+      expect: { scopeKind: "page", engine: "ts", pageRef: "12345" },
     },
     {
       name: "page id with --engine ts",
@@ -52,9 +52,9 @@ describe("parseExportRequest — valid combinations", () => {
       expect: { scopeKind: "tree", usedIncludeChildrenAlias: true },
     },
     {
-      name: "--include-children legacy (python)",
+      name: "--include-children alias with implicit TypeScript engine",
       argv: ["12345", "--include-children"],
-      expect: { scopeKind: "tree", engine: "python", usedIncludeChildrenAlias: true },
+      expect: { scopeKind: "tree", engine: "ts", usedIncludeChildrenAlias: true },
     },
     {
       name: "--scope space --space",
@@ -186,14 +186,16 @@ describe("parseExportRequest — rejected combinations", () => {
       match: /must not exceed/i,
     },
     { name: "max-folders with page scope", argv: ["12345", "--scope", "page", "--engine", "ts", "--max-folders", "5"], match: /only valid with --scope tree or --scope space/i },
-    { name: "python + max-folders", argv: ["12345", "--include-children", "--max-folders", "5"], match: /require --engine ts/i },
     { name: "label empty entry (double comma)", argv: ["12345", "--scope", "tree", "--engine", "ts", "--label-include", "a,,b"], match: /empty label entry/i },
     { name: "label trailing comma", argv: ["12345", "--scope", "tree", "--engine", "ts", "--label-exclude", "a,"], match: /empty label entry/i },
-    { name: "python + explicit scope tree", argv: ["12345", "--scope", "tree", "--engine", "python"], match: /require --engine ts/i },
-    { name: "python + space", argv: ["--scope", "space", "--space", "DOCSY", "--engine", "python"], match: /require --engine ts/i },
-    { name: "python + labels", argv: ["12345", "--label-exclude", "x"], match: /require --engine ts/i },
     { name: "unknown scope", argv: ["12345", "--scope", "foo", "--engine", "ts"], match: /Unknown --scope/i },
     { name: "unknown engine", argv: ["12345", "--engine", "java"], match: /Unknown --engine/i },
+    // `python` must NOT reach the generic "Unknown --engine" branch above: the
+    // person typing it is migrating off the removed exporter and needs to be
+    // told what happened to it, not which values are legal.
+    { name: "removed engine: python", argv: ["12345", "--engine", "python"], match: /Python DOCX exporter has been removed/i },
+    { name: "removed engine names the replacement", argv: ["12345", "--engine", "python"], match: /TypeScript DOCX engine is the default/i },
+    { name: "removed engine names the template migration", argv: ["12345", "--engine", "python"], match: /\$scroll\.\* placeholders/i },
     { name: "max-depth with page scope", argv: ["12345", "--scope", "page", "--engine", "ts", "--max-depth", "3"], match: /only valid with --scope tree or --scope space/i },
     { name: "labels with page scope", argv: ["12345", "--scope", "page", "--engine", "ts", "--label-include", "a"], match: /only valid with --scope tree or --scope space/i },
     { name: "completeness with page scope", argv: ["12345", "--scope", "page", "--engine", "ts", "--completeness", "partial"], match: /only valid with --scope tree or --scope space/i },

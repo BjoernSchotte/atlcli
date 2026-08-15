@@ -1,0 +1,22 @@
+{
+  "name": "@atlcli/web-publish-astro-plain-t0",
+  "version": "0.0.0-t0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "build": "astro build",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@atlcli/export-blocks-astro": "workspace:*",
+    "@atlcli/web-publish-astro-spike": "workspace:*",
+    "astro": "7.1.6",
+    "sharp": "0.34.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.6",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3"
+  }
+}

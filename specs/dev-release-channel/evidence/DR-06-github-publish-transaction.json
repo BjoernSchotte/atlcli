@@ -1,0 +1,130 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-06",
+  "recordedAt": "2026-08-13T11:17:00Z",
+  "proofedParentHead": "8bea69a68358621bb0503d7032289f4b4e23554e",
+  "authoritativePublishedArtifact": true,
+  "purpose": "Live-Beweis fuer die Draft-first GitHub-Transaktion, den immutable Prerelease, exakte erneut heruntergeladene CLI-/MV3-Bytes, native Consumer und Stable-Latest-Isolation",
+  "publishContract": {
+    "devTagCreatedAtExactSourceSha": true,
+    "existingDevTagRejected": true,
+    "draftStartsWithoutAssets": true,
+    "exactAssetsUploadedBeforePublish": true,
+    "serverSha256Required": true,
+    "draftAssetsRedownloadedAndConsumed": true,
+    "tagShaRecheckedImmediatelyBeforePublish": true,
+    "prerelease": true,
+    "makeLatest": false,
+    "stableLatestInvariant": true,
+    "publishedReleaseNeverEdited": true,
+    "stablePublisherUsesSameDraftFirstTransaction": true
+  },
+  "consumerContract": {
+    "nativeCliTargets": {
+      "linux-x64": "ubuntu-24.04",
+      "linux-arm64": "ubuntu-24.04-arm",
+      "darwin-x64": "macos-15-intel",
+      "darwin-arm64": "macos-15",
+      "windows-x64": "windows-2025"
+    },
+    "runnerLabelsVerifiedAgainst": [
+      "https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
+      "https://github.com/actions/runner-images"
+    ],
+    "runtimeReceiptSchema": "atlcli.native-cli-verification/v1",
+    "runtimeIdentityFields": [
+      "version",
+      "channel",
+      "sourceSha",
+      "buildId",
+      "releaseTag",
+      "homebrewVersion"
+    ],
+    "packedChromiumSuites": ["worker", "jobs", "research", "rovo", "palette"]
+  },
+  "retentionContract": {
+    "defaultRetainSuccessful": 14,
+    "defaultRetainDays": 30,
+    "dryRunIsReadOnly": true,
+    "applyRequiresFrozenExactPlan": true,
+    "protectsStableLatest": true,
+    "protectsLiveHomebrewDevTag": true,
+    "protectsDraftsForOperatorReview": true,
+    "protectsMutableHistoricalReleases": true,
+    "applyRechecksPointersAndProvenTag": true,
+    "tagNamesNeverReused": true,
+    "githubImmutableReleaseDeletionContract": "release may be deleted; tag can then be deleted but its name can never be reused",
+    "githubDocumentation": "https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases"
+  },
+  "proof": {
+    "focusedTests": {
+      "command": "bun run test scripts/ci/github-release-transaction.test.ts scripts/ci/verify-native-cli.test.ts scripts/ci/dev-release-retention.test.ts scripts/ci/workflow-policy.test.ts",
+      "result": "success",
+      "passed": 46,
+      "failed": 0
+    },
+    "fullTests": {
+      "command": "bun run test",
+      "result": "success",
+      "passed": 8078,
+      "skipped": 16,
+      "failed": 0,
+      "files": 657
+    },
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "build": {
+      "command": "bun run build",
+      "result": "success",
+      "packagesSuccessful": 30
+    },
+    "workflowLint": {
+      "command": "actionlint .github/workflows/dev-release.yml .github/workflows/release.yml .github/workflows/dev-release-cleanup.yml",
+      "result": "success"
+    },
+    "stableDryRun": {
+      "command": "bun scripts/release.ts patch --dry-run",
+      "result": "success",
+      "externalMutation": false,
+      "expectedNextVersion": "0.17.3"
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "success"
+    }
+  },
+  "livePublication": {
+    "sourceSha": "8bea69a68358621bb0503d7032289f4b4e23554e",
+    "canonicalMainCiRun": 31693374962,
+    "canonicalMainCiUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31693374962",
+    "sourceRun": 31693920643,
+    "sourceRunAttempt": 1,
+    "sourceRunUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31693920643",
+    "tag": "dev-20260813.26.1-8bea69a6",
+    "releaseUrl": "https://github.com/BjoernSchotte/atlcli/releases/tag/dev-20260813.26.1-8bea69a6",
+    "publishedAt": "2026-08-13T11:10:37Z",
+    "immutable": true,
+    "prerelease": true,
+    "draft": false,
+    "assetCount": 10,
+    "metadataSha256": "d9886a859f4178b86f40290244f76a9d502f4a88dde7a54ac90e8afb73b49c3b",
+    "checksumsSha256": "ab168cb905590892b45b8bb25243675bdc7be5233e83164877d6e6811b0c2e22",
+    "extensionSha256": "29022dec7caa5ca6ce55737a9ab26f2e05aff8de620d184a5cb54bf76455be67",
+    "extensionManifestSha256": "5f79d07215422e27917b05620a76f0baa48cb7d61fab5ccfc858ac339d6ef625",
+    "extensionContentTreeSha256": "07e25cfba5b004f2ed76da60d0f3529446da853fcd457e94b48aacb11d793dd5",
+    "downloadedVerifier": "success",
+    "nativeCliTargets": ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"],
+    "ghReleaseVerify": "success",
+    "ghReleaseVerifyAsset": "atlcli-linux-x64.tar.gz",
+    "stableLatestTag": "v0.17.2",
+    "stableLatestUrl": "https://github.com/BjoernSchotte/atlcli/releases/tag/v0.17.2"
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false,
+    "containsOnlyPublicDocumentationUrls": true
+  }
+}

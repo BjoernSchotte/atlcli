@@ -13,7 +13,7 @@
  */
 import { lstat, open, rename, link, unlink } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import type { PdfOutputSink } from "@atlcli/pdf";
+import type { PdfBytesHandle, PdfOutputSink } from "@atlcli/pdf";
 
 /**
  * A thrown error that maps to a specific usage/config exit (1) — for local input
@@ -43,8 +43,15 @@ export class PdfUsageError extends Error {
  */
 export function filePdfOutputSink(targetPath: string, opts: { force?: boolean } = {}): PdfOutputSink {
   return {
-    async emit(_name: string, bytes: Uint8Array, context?: { signal?: AbortSignal }): Promise<void> {
+    async emit(
+      _name: string,
+      source: PdfBytesHandle,
+      context?: { signal?: AbortSignal }
+    ): Promise<void> {
       context?.signal?.throwIfAborted();
+      // For the default array-backed handle this is the compiler's own buffer,
+      // not a copy (spec 010, T5.6).
+      const bytes = await source.asUint8Array();
       const path = resolve(targetPath);
       const dir = dirname(path);
 

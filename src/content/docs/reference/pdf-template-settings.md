@@ -18,6 +18,13 @@ silently clamps an out-of-range value. Host-supplied strings are escaped before
 they reach the generated document, so a header or watermark string can never
 inject template source.
 
+:::note[Output standards are not template settings]
+`--pdf-standard` belongs to the export request and compiler policy. It is not a
+Recipe V2, pack-manifest, theme, or Level-A settings field. Templates control
+design; only validation of the emitted bytes can provide PDF/A or PDF/UA
+evidence.
+:::
+
 ## On this page
 
 - [Prerequisites](#prerequisites)
@@ -74,6 +81,15 @@ The default accent color is the built-in Editorial Indigo. The default page is
 A4 portrait with the cover and outline sections both enabled — identical to the
 document produced when no settings are supplied.
 
+:::note[The running head is not a Level-A setting]
+Whether the running head shows the document title, the **current chapter**, or a
+fixed string is a *template design* decision (`design.features.header.mode` in
+the manifest), not a per-export field. `headerText` above still wins over
+whatever mode the template declares. See
+[Running-head modes](pdf-template-contract.md#running-head-modes) — including
+the DOCX `STYLEREF` equivalent.
+:::
+
 Rendered behavior:
 
 - `page` / `orientation` set the page geometry for the whole document
@@ -81,8 +97,9 @@ Rendered behavior:
 - `cover: false` and `outline: false` each remove exactly one page — the
   section *and* its trailing page break — never leaving a blank page behind.
   The closing document-integrity page always renders.
-- `headerText` replaces the default running header (page title and space key)
-  on body pages. `footerText` renders left of the centered page number.
+- `headerText` replaces the running header on body pages, and outranks the
+  template's own running-head mode. `footerText` renders left of the centered
+  page number.
 - `accentColor` recolors every accent the template draws: the cover eyebrow
   and rule, and the closing-page accents.
 - `organizationName` renders in uppercase before the space label on the cover

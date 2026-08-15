@@ -169,3 +169,61 @@ allowlist rather than recorded above:
 `wiki.pdf-template/v1` manifest design-token fields. It inherits this file as
 its migration inventory and the lint stub as its "no new unledgered
 hardcoding" guard. See that plan's Reference and Goal sections.
+
+---
+
+## Spec 012 migration status — COMPLETE (2026-07-20)
+
+Every presentation literal in the tables above has been migrated out of
+`template.ts`/`serialize.ts` and into the built-in template's validated
+`wiki.pdf-template/v1` design manifest:
+
+- **Destination**: `packages/pdf/src/builtin-template.ts`
+  (`BUILTIN_PDF_TEMPLATE_MANIFEST.design`). Fonts → `typography.fonts`;
+  typography sizes/weights/tracking → `typography.roles`; color tokens →
+  `tokens.colors`; component spacing/geometry → `tokens.layout`; block-width
+  and lighten percentages → `tokens.ratios`; callout/status palettes →
+  `semanticPalettes`; page margins → `page.margin`; feature toggles →
+  `features`; accent → `branding.accent`. Document-facing labels
+  (`Version`/`Exported`/`Contents`/… and the German bundle) → `localization`.
+- **How the engine consumes it**: static design is interpolated when
+  `createAtlcliTypstTemplate(design)` generates the Typst string; the
+  settings-driven subset (accent, page size/orientation, cover/outline,
+  organization name) and the labels are read from the emitted
+  `settings.design`/`settings.labels` dict at Typst runtime. `serialize.ts`
+  sources its emitted colors/lengths from the same built-in design.
+- **Proof of non-regression**: the default built-in output is byte-identical
+  before and after the migration — see
+  `packages/pdf-compiler-browser/src/template-migration-parity.test.ts`
+  (sha256 pinned against the pre-migration engine, real Typst compiler).
+
+### Engine-invariant allowlist (CI-enforced)
+
+`packages/pdf/scripts/check-hardcoding-ledger.ts` is now a CI-enforced lint
+(companion test `check-hardcoding-ledger.test.ts`). It scans **both**
+`template.ts` and `serialize.ts`, blanks `${…}` interpolation spans (design
+reads, not literals), and fails on any remaining bare hex color, `pt`/`mm`/`em`
+length, or `font: "…"` family that is not on the reviewed engine-invariant
+allowlist. That allowlist currently has exactly one entry, each requiring a
+one-line structural justification:
+
+| Literal | Justification |
+|---------|---------------|
+| `1pt` | Unit-conversion multiplier `settings…watermark.size * 1pt` — turns a numeric setting into a Typst length. Structural, not a presentation size. |
+
+Presentation values (colors, sizes, fonts, labels) must never be added to this
+allowlist; migrate them into the manifest instead (spec 012 STOP condition).
+
+### Accepted limits of the lint
+
+The lint is a heuristic review aid, not a Typst/TypeScript parser. These
+bypasses are known and accepted — all are contrived, and the byte-parity gate
+(`template-migration-parity.test.ts`) plus code review are the real backstop:
+
+- a literal hidden inside its own `${…}` interpolation (the blanking step
+  removes the span, so the literal inside it is not scanned);
+- non-6-digit hex (`#abc`, `#aabbccdd`) and non-`pt`/`mm`/`em` units
+  (`cm`, `in`, `%`);
+- multi-family font stacks and `font:` values built by concatenation.
+
+Tightening any of these is cheap follow-up work if a real case appears; none has.

@@ -14,6 +14,7 @@ import {
   loadConfig,
   output,
   readTextFile,
+  resolveDeploymentType,
   resolveDefaults,
   slugify,
   writeTextFile,
@@ -185,6 +186,22 @@ function formatTimeAgo(isoDate: string): string {
 }
 
 /**
+ * Machine-readable form of a validation run, shared by `docs check --json` and
+ * `docs push --validate --json` so both report issues in the same shape.
+ */
+function validationPayload(result: ValidationResult): Record<string, unknown> {
+  const filesWithIssues = result.files.filter((f) => f.issues.length > 0);
+  return {
+    passed: result.passed,
+    totalErrors: result.totalErrors,
+    totalWarnings: result.totalWarnings,
+    filesChecked: result.filesChecked,
+    filesWithIssues: filesWithIssues.length,
+    files: filesWithIssues.map((f) => ({ path: f.path, issues: f.issues })),
+  };
+}
+
+/**
  * Check if a path is inside the atlcli source tree.
  * Used to warn about stale test data that might interfere with operations.
  */
@@ -296,12 +313,43 @@ export async function findMarkdownFileByFrontmatterId(
   return null;
 }
 
+/**
+ * @internal
+ * Check whether one specific markdown file carries a given page ID.
+ *
+ * The cheap counterpart to findMarkdownFileByFrontmatterId() for when a
+ * candidate path is already known - no tree walk, no ignore-file loading.
+ */
+async function markdownFileHasPageId(absolutePath: string, pageId: string): Promise<boolean> {
+  try {
+    const { frontmatter } = parseFrontmatter(await readTextFile(absolutePath));
+    return frontmatter?.id === pageId;
+  } catch {
+    return false;
+  }
+}
+
+
+/**
+ * Subcommands that render their own `--help` text instead of the shared
+ * `docsHelp()` overview.
+ *
+ * `sync` has ~15 options of its own (`--dry-run`, `--on-conflict`,
+ * `--poll-interval`, the webhook flags …) documented in `syncHelp()`. This
+ * dispatcher used to swallow `--help` for every subcommand, so `atlcli wiki
+ * docs sync --help` — the command `docsHelp()` itself tells users to run —
+ * printed the overview and `syncHelp()` was dead code. None of those flags were
+ * discoverable from the CLI.
+ */
+const SELF_DOCUMENTING_SUBCOMMANDS = new Set(["sync"]);
 
 export async function handleDocs(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  // Show help if --help or -h flag is set
+  // Show help if --help or -h flag is set, unless the subcommand documents itself
   if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
-    output(docsHelp(), opts);
-    return;
+    if (!args[0] || !SELF_DOCUMENTING_SUBCOMMANDS.has(args[0])) {
+      output(docsHelp(), opts);
+      return;
+    }
   }
 
   const sub = args[0];
@@ -348,6 +396,7 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
 type ClientWithDefaults = {
   client: ConfluenceClient;
   defaults: { project?: string; space?: string; board?: number };
+  deploymentType: "cloud" | "data-center";
 };
 
 async function getClient(
@@ -373,7 +422,11 @@ async function getClient(
   assertCliAuthSupported(profile, opts);
   const client = new ConfluenceClient(profile);
   if (withDefaults) {
-    return { client, defaults: resolveDefaults(config, profile) };
+    return {
+      client,
+      defaults: resolveDefaults(config, profile),
+      deploymentType: resolveDeploymentType(profile),
+    };
   }
   return client;
 }
@@ -392,7 +445,7 @@ function buildConversionOptions(baseUrl?: string): ConversionOptions {
  * Creates .atlcli/ with config.json, state.json, and cache/ directory.
  */
 async function handleInit(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const dir = args[0] || ".";
+  const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
 
   if (isInitialized(dir)) {
     fail(opts, 1, ERROR_CODES.USAGE, `Directory already initialized: ${dir}/.atlcli/`);
@@ -483,7 +536,10 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
 }
 
 async function handlePull(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const outDirArg = args[0] || getFlag(flags, "out") || ".";
+  // Target directory precedence: positional > --dir > --out (legacy alias) > cwd.
+  // `--dir` is the spelling the help preamble promises for every subcommand;
+  // `--out` predates it and is kept working (and documented) for scripts.
+  const outDirArg = args[0] ?? getFlag(flags, "dir") ?? getFlag(flags, "out") ?? ".";
   const outDir = resolve(outDirArg); // Resolve to absolute path
   const limit = Number(getFlag(flags, "limit") ?? 50);
   const force = hasFlag(flags, "force");
@@ -531,7 +587,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required (or run 'docs init' first).");
   }
 
-  const client = await getClient(flags, opts);
+  const { client, deploymentType } = await getClient(flags, opts, true);
 
   // For single page or tree scope without space, auto-detect space from page
   if (!space && (scope.type === "page" || scope.type === "tree")) {
@@ -665,8 +721,8 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     }
   }
 
-  // Detect and fetch folders (Confluence Cloud feature)
-  // Folders are detected by checking if page parents are not in the page set
+  // Detect and fetch folders (Confluence Cloud feature). Data Center has no
+  // folders, so never probe its nonexistent v2 folder endpoints.
   let folders: ConfluenceFolder[] = [];
   const pageIdSet = new Set(pageDetails.map((p) => p.id));
   const potentialFolderIds = new Set<string>();
@@ -685,7 +741,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   }
 
   // Fetch folder details for potential folder IDs
-  if (potentialFolderIds.size > 0) {
+  if (deploymentType === "cloud" && potentialFolderIds.size > 0) {
     for (const folderId of potentialFolderIds) {
       try {
         const folder = await client.getFolder(folderId);
@@ -702,7 +758,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const folderIdSet = new Set(folders.map((f) => f.id));
   const EMPTY_FOLDER_SCAN_THRESHOLD = 100;
 
-  if (pageDetails.length < EMPTY_FOLDER_SCAN_THRESHOLD) {
+  if (deploymentType === "cloud" && pageDetails.length < EMPTY_FOLDER_SCAN_THRESHOLD) {
     for (const page of pageDetails) {
       try {
         const children = await client.getPageDirectChildren(page.id);
@@ -909,11 +965,23 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     }
   }
 
-  // Compute nested paths
+  // Compute nested paths. pathOwners keeps an already-tracked page on the path
+  // it is stored at instead of uniquifying it against its own file.
   const pathMap = buildPathMap(hierarchyPages, {
     existingPaths,
     rootAncestorId: homePageId,
+    pathOwners: state?.pathIndex,
   });
+
+  /**
+   * Path each page/folder was actually written to, keyed by ID.
+   *
+   * The computed path is only a proposal: a page that has not moved keeps the
+   * path it already has. sync.db must record what the pull did, not what
+   * buildPathMap() suggested - otherwise the next pull looks for the page at a
+   * path that has no file and writes a duplicate there.
+   */
+  const resolvedPaths = new Map<string, string>();
 
   let pulled = 0;
   let skipped = 0;
@@ -922,6 +990,10 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   // Check if attachments are enabled (default: true)
   const pullAttachments = !hasFlag(flags, "no-attachments");
   let attachmentsPulled = 0;
+  /** Attachments left untouched because of local modifications (needs --force). */
+  let attachmentsSkipped = 0;
+  /** Attachments where local and remote both changed; remote saved alongside. */
+  let attachmentsConflicted = 0;
 
   // Check if comments should be pulled
   const pullComments = hasFlag(flags, "comments");
@@ -938,7 +1010,9 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     // Get computed path for this page
     const computed = pathMap.get(detail.id);
     if (!computed) {
-      output(`Warning: Could not compute path for page ${detail.id}`, opts);
+      if (!opts.json) {
+        output(`Warning: Could not compute path for page ${detail.id}`, opts);
+      }
       skipped++;
       continue;
     }
@@ -973,37 +1047,61 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
       } else {
         // Keep existing path if not moved
         relativePath = existingState.path;
-      }
 
-      // Check if local has modifications
-      if (!force) {
-        const localPath = join(atlcliDir!, relativePath);
-        try {
-          const localContent = await readTextFile(localPath);
-          const { content: localWithoutFrontmatter } = parseFrontmatter(localContent);
-          const localHash = hashContent(normalizeMarkdown(localWithoutFrontmatter));
-
-          if (localHash !== existingState.baseHash) {
-            // Local has modifications, skip unless --force
-            output(`Skipping ${relativePath} (local modifications, use --force)`, opts);
-            skipped++;
-            getLogger().sync({
-              eventType: "status",
-              file: relativePath,
-              pageId: detail.id,
-              title: `Skipped: local modifications`,
-            });
-            continue;
-          }
-        } catch {
-          // File doesn't exist, will be re-created
+        // Heal a stale record: earlier versions stored a uniquified alias
+        // ({slug}-2.md) for pages that never moved. If the recorded file is
+        // gone but the computed path holds this very page, adopt it instead of
+        // writing a duplicate next to it.
+        if (
+          relativePath !== computed.relativePath &&
+          !existsSync(join(outDir, toPlatformPath(relativePath))) &&
+          (await markdownFileHasPageId(join(outDir, toPlatformPath(computed.relativePath)), detail.id))
+        ) {
+          relativePath = computed.relativePath;
         }
+      }
+    }
+
+    // Record the path this pull settled on, before any early exit below.
+    resolvedPaths.set(detail.id, relativePath);
+
+    // Check if local has modifications
+    if (existingState && !force) {
+      const localPath = join(atlcliDir!, relativePath);
+      try {
+        const localContent = await readTextFile(localPath);
+        const { content: localWithoutFrontmatter } = parseFrontmatter(localContent);
+        const localHash = hashContent(normalizeMarkdown(localWithoutFrontmatter));
+
+        if (localHash !== existingState.baseHash) {
+          // Local has modifications, skip unless --force
+          if (!opts.json) {
+            output(`Skipping ${relativePath} (local modifications, use --force)`, opts);
+          }
+          skipped++;
+          getLogger().sync({
+            eventType: "status",
+            file: relativePath,
+            pageId: detail.id,
+            title: `Skipped: local modifications`,
+          });
+          continue;
+        }
+      } catch {
+        // File doesn't exist, will be re-created
       }
     }
 
     const filePath = join(outDir, relativePath);
     const pageFilename = basename(relativePath);
     const pageDir = dirname(filePath);
+
+    /**
+     * Attachment IDs whose local bytes were deliberately kept (skipped or
+     * conflicted). Their state must NOT be refreshed from disk below, or the
+     * next pull would treat the local edit as the new base and overwrite it.
+     */
+    const attachmentsPreserved = new Set<string>();
 
     // Fetch and download attachments if enabled
     let attachments: AttachmentInfo[] = [];
@@ -1036,44 +1134,89 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
           try {
             const data = await client.downloadAttachment(attachment);
             const attachmentPath = join(attachmentsDir, attachment.filename);
+            const attachmentLabel = join(getAttachmentsDirName(pageFilename), attachment.filename);
             const remoteHash = hashContent(Buffer.from(data).toString("base64"));
 
-            // Check for conflict with local changes
+            // Compare the file on disk against the recorded base, exactly as the
+            // markdown half does. Without this the download below overwrote a
+            // locally edited attachment with no warning and no --force.
             const existingAttState = state?.pages[detail.id]?.attachments?.[attachment.id];
-            if (existingAttState && existsSync(attachmentPath)) {
-              // Read local file to get current hash
+            if (existsSync(attachmentPath) && !force) {
               const localData = await readFile(attachmentPath);
               const localHash = hashContent(localData.toString("base64"));
+              const baseHash = existingAttState?.baseHash;
 
-              const syncState = computeAttachmentSyncState(
-                localHash,
-                remoteHash,
-                existingAttState.baseHash
-              );
+              if (baseHash) {
+                const syncState = computeAttachmentSyncState(localHash, remoteHash, baseHash);
 
-              if (syncState === "conflict") {
-                // Both local and remote changed - save remote as conflict file
-                const conflictFilename = generateConflictFilename(attachment.filename);
-                const conflictPath = join(attachmentsDir, conflictFilename);
-                await writeFile(conflictPath, data);
+                if (syncState === "conflict") {
+                  // Both local and remote changed - save remote as conflict file
+                  const conflictFilename = generateConflictFilename(attachment.filename);
+                  const conflictPath = join(attachmentsDir, conflictFilename);
+                  await writeFile(conflictPath, data);
 
-                if (!opts.json) {
-                  output(`Conflict: ${attachment.filename} - saved remote as ${conflictFilename}`, opts);
+                  if (!opts.json) {
+                    output(`Conflict: ${attachment.filename} - saved remote as ${conflictFilename}`, opts);
+                  }
+
+                  // Update state to mark as conflict
+                  if (state) {
+                    updateAttachmentState(state, detail.id, attachment.id, {
+                      localHash,
+                      remoteHash,
+                      syncState: "conflict",
+                      lastSyncedAt: new Date().toISOString(),
+                    });
+                  }
+                  attachmentsPreserved.add(attachment.id);
+                  attachmentsConflicted++;
+                  continue; // Don't overwrite local file
                 }
 
-                // Update state to mark as conflict
-                if (state) {
-                  updateAttachmentState(state, detail.id, attachment.id, {
-                    remoteHash,
-                    syncState: "conflict",
-                    lastSyncedAt: new Date().toISOString(),
+                if (syncState === "local-modified") {
+                  // Local edits, remote unchanged: the markdown path skips here,
+                  // so the attachment path must too.
+                  if (!opts.json) {
+                    output(`Skipping ${attachmentLabel} (local modifications, use --force)`, opts);
+                  }
+                  if (state) {
+                    updateAttachmentState(state, detail.id, attachment.id, {
+                      localHash,
+                      remoteHash,
+                      syncState: "local-modified",
+                    });
+                  }
+                  attachmentsPreserved.add(attachment.id);
+                  attachmentsSkipped++;
+                  getLogger().sync({
+                    eventType: "status",
+                    file: attachmentLabel,
+                    pageId: detail.id,
+                    title: `Skipped attachment: local modifications`,
                   });
+                  continue;
                 }
-                continue; // Don't overwrite local file
+              } else if (localHash !== remoteHash) {
+                // A file sits at the destination but nothing recorded a base for
+                // it (never tracked, state reset, or replaced remotely under a
+                // new attachment ID). Modified-vs-stale is indistinguishable
+                // here, so keep the bytes and let the user decide.
+                if (!opts.json) {
+                  output(`Skipping ${attachmentLabel} (untracked local file, use --force)`, opts);
+                }
+                attachmentsPreserved.add(attachment.id);
+                attachmentsSkipped++;
+                getLogger().sync({
+                  eventType: "status",
+                  file: attachmentLabel,
+                  pageId: detail.id,
+                  title: `Skipped attachment: untracked local file`,
+                });
+                continue;
               }
             }
 
-            // No conflict - write normally
+            // No local modifications (or --force) - write normally
             await writeFile(attachmentPath, data);
             attachmentsPulled++;
           } catch (err) {
@@ -1142,6 +1285,10 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
 
       // Update attachment state
       for (const attachment of attachments) {
+        // Skipped/conflicted attachments keep the state written when they were
+        // preserved; re-hashing the local file here would silently promote the
+        // local edit to "synced" and lose the signal `status` reports.
+        if (attachmentsPreserved.has(attachment.id)) continue;
         try {
           const attachmentPath = join(pageDir, getAttachmentsDirName(pageFilename), attachment.filename);
           const attachmentData = await readFile(attachmentPath);
@@ -1271,6 +1418,8 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
       folderRelativePath = existingFolderState.path;
     }
 
+    resolvedPaths.set(folder.id, folderRelativePath);
+
     // Recompute folderPath and folderDir based on final path
     const finalFolderPath = join(outDir, folderRelativePath);
     const finalFolderDir = dirname(finalFolderPath);
@@ -1332,27 +1481,28 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     try {
       // Upsert all pages to sync.db (populates last_modified for stale detection)
       for (const detail of pageDetails) {
-        const computed = pathMap.get(detail.id);
-        if (!computed) continue;
+        // The path the pull used, not the one buildPathMap proposed.
+        const pagePath = resolvedPaths.get(detail.id) ?? pathMap.get(detail.id)?.relativePath;
+        if (!pagePath) continue;
 
         const pageRecord = createPageRecord({
           pageId: detail.id,
-          path: computed.relativePath,
+          path: pagePath,
           title: detail.title,
           spaceKey: detail.spaceKey,
           version: detail.version,
           lastSyncedAt: new Date().toISOString(),
           localHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
             storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
-            basename(computed.relativePath, ".md")
+            basename(pagePath, ".md")
           ))),
           remoteHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
             storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
-            basename(computed.relativePath, ".md")
+            basename(pagePath, ".md")
           ))),
           baseHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
             storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
-            basename(computed.relativePath, ".md")
+            basename(pagePath, ".md")
           ))),
           syncState: "synced",
           parentId: detail.parentId,
@@ -1370,12 +1520,12 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
 
       // Upsert folder records to sync.db
       for (const folder of folders) {
-        const computed = pathMap.get(folder.id);
-        if (!computed) continue;
+        const folderPath = resolvedPaths.get(folder.id) ?? pathMap.get(folder.id)?.relativePath;
+        if (!folderPath) continue;
 
         const folderRecord = createPageRecord({
           pageId: folder.id,
-          path: computed.relativePath,
+          path: folderPath,
           title: folder.title,
           spaceKey: space!,
           version: 1,
@@ -1500,6 +1650,12 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   if (pullAttachments && attachmentsPulled > 0) {
     pullResults.attachments = attachmentsPulled;
   }
+  if (pullAttachments && attachmentsSkipped > 0) {
+    pullResults.attachmentsSkipped = attachmentsSkipped;
+  }
+  if (pullAttachments && attachmentsConflicted > 0) {
+    pullResults.attachmentsConflicted = attachmentsConflicted;
+  }
   if (pullComments && commentsPulled > 0) {
     pullResults.comments = commentsPulled;
   }
@@ -1540,6 +1696,53 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     },
     opts
   );
+}
+
+/**
+ * @internal
+ * Validate exactly the files a push is about to send.
+ *
+ * `validateDirectory` walks a directory itself, which ignores both the file
+ * argument and the .atlcliignore filtering already applied to the push set.
+ * This aggregates per-file results the same way so the report shape stays
+ * identical, but over the real target list.
+ *
+ * Unreadable files are left out; the push itself reports those.
+ */
+export async function validatePushTargets(
+  files: string[],
+  state: AtlcliState | null,
+  atlcliDir: string | null,
+  options: Parameters<typeof validateFile>[4] = {}
+): Promise<ValidationResult> {
+  const results = [];
+
+  for (const filePath of files) {
+    let content: string;
+    try {
+      content = await readTextFile(filePath);
+    } catch {
+      continue;
+    }
+    results.push(validateFile(filePath, content, state, atlcliDir, options));
+  }
+
+  const totalErrors = results.reduce(
+    (sum, r) => sum + r.issues.filter((i) => i.severity === "error").length,
+    0
+  );
+  const totalWarnings = results.reduce(
+    (sum, r) => sum + r.issues.filter((i) => i.severity === "warning").length,
+    0
+  );
+
+  return {
+    files: results,
+    filesChecked: results.length,
+    totalErrors,
+    totalWarnings,
+    passed: totalErrors === 0,
+  };
 }
 
 async function handlePush(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -1614,29 +1817,53 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
   }
 
 
-  // Run validation if --validate flag is set
-  if (hasFlag(flags, "validate") && atlcliDir) {
+  // Validation carried into the final push document so `--json` consumers see
+  // the warnings we pushed through instead of a stray human-readable report.
+  let validation: Record<string, unknown> | null = null;
+
+  // Run validation if --validate flag is set.
+  //
+  // Validation covers exactly the files this push will send - a single file for
+  // `push <file>` / `--page-id`, the collected (ignore-filtered) set for a
+  // directory push. It used to validate the whole `.atlcli` tree regardless of
+  // the argument, so a clean file could be blocked by an unrelated file's
+  // errors, and it was gated on `atlcliDir` so `--validate` outside an
+  // initialized tree silently did nothing at all.
+  if (hasFlag(flags, "validate")) {
     const strict = hasFlag(flags, "strict");
-    const result = await validateDirectory(atlcliDir, state ?? null, atlcliDir, {
+    const result = await validatePushTargets(files, state ?? null, atlcliDir, {
       checkBrokenLinks: true,
       checkMacroSyntax: true,
       checkPageSize: true,
       maxPageSizeKb: 500,
     });
 
+    // In JSON mode the report goes into the single result/error document, never
+    // as its own stringified document ahead of it.
+    const reportIfHuman = () => {
+      if (!opts.json) output(formatValidationReport(result), opts);
+    };
+
     if (!result.passed) {
-      output(formatValidationReport(result), opts);
-      fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed - push aborted");
+      reportIfHuman();
+      fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed - push aborted", validationPayload(result));
     }
 
     if (result.totalWarnings > 0) {
-      output(formatValidationReport(result), opts);
+      reportIfHuman();
       if (strict) {
-        fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed (strict mode: warnings are errors) - push aborted");
+        fail(
+          opts,
+          1,
+          ERROR_CODES.VALIDATION,
+          "Validation failed (strict mode: warnings are errors) - push aborted",
+          validationPayload(result)
+        );
       }
       if (!opts.json) {
         output("Proceeding with push despite warnings...\n", opts);
       }
+      validation = validationPayload(result);
     }
   }
 
@@ -1791,7 +2018,7 @@ atlcli:
     const result = updated > 0 ? "updated" : created > 0 ? "created" : "skipped";
     output(
       opts.json
-        ? { schemaVersion: "1", file: files[0], result }
+        ? { schemaVersion: "1", file: files[0], result, ...(validation ? { validation } : {}) }
         : `${basename(files[0])}: ${result}`,
       opts
     );
@@ -1804,6 +2031,7 @@ atlcli:
       {
         schemaVersion: "1",
         results,
+        ...(validation ? { validation } : {}),
         note: "Frontmatter stripped before push. State saved to .atlcli/",
       },
       opts
@@ -2786,6 +3014,19 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     untracked: 0,
   };
 
+  /**
+   * Attachments are tracked separately from markdown files: they have their own
+   * base hashes in state, and reporting them inside the file counters would
+   * make "N files" wrong. Before this existed, `status` answered "synced" for a
+   * tree whose attachment had local edits - right before `pull` destroyed them.
+   */
+  const attachmentStats = {
+    synced: 0,
+    localModified: 0,
+    conflict: 0,
+    missing: 0,
+  };
+
   const conflicts: { file: string; id?: string }[] = [];
   const modified: { file: string; type: string }[] = [];
   const untracked: string[] = [];
@@ -2859,6 +3100,35 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
       // Has frontmatter but no state - assume synced
       stats.synced++;
     }
+
+    // Attachment state for this page (same base-hash comparison as pages).
+    if (pageState?.attachments) {
+      for (const att of Object.values(pageState.attachments)) {
+        if (!att?.localPath) continue;
+        const attAbsolute = join(dirname(filePath), toPlatformPath(att.localPath));
+        const attRelative = atlcliDir ? getRelativePath(atlcliDir, attAbsolute) : attAbsolute;
+
+        if (!existsSync(attAbsolute)) {
+          attachmentStats.missing++;
+          modified.push({ file: attRelative, type: "attachment deleted locally" });
+          continue;
+        }
+
+        const attLocalHash = hashContent((await readFile(attAbsolute)).toString("base64"));
+        if (att.syncState === "conflict") {
+          // Deliberately not added to `conflicts`: that list feeds `docs
+          // resolve`, which only understands markdown files. An attachment
+          // conflict is resolved by picking one of the two files on disk.
+          attachmentStats.conflict++;
+          modified.push({ file: attRelative, type: "attachment conflict" });
+        } else if (att.baseHash && attLocalHash !== att.baseHash) {
+          attachmentStats.localModified++;
+          modified.push({ file: attRelative, type: "attachment local changes" });
+        } else {
+          attachmentStats.synced++;
+        }
+      }
+    }
   }
 
   // Detect link changes if --links flag is set
@@ -2912,6 +3182,7 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
       schemaVersion: "1",
       dir,
       stats,
+      attachmentStats,
       folderCount,
       editorFormat: editorStats,
       legacyPages: legacyPages.length > 0 ? legacyPages : undefined,
@@ -2947,6 +3218,19 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     output(`  conflict:        ${stats.conflict} files`, opts);
     output(`  untracked:       ${stats.untracked} files`, opts);
     output(`  folders:         ${folderCount}`, opts);
+
+    const totalAttachments =
+      attachmentStats.synced +
+      attachmentStats.localModified +
+      attachmentStats.conflict +
+      attachmentStats.missing;
+    if (totalAttachments > 0) {
+      output(`\nAttachments:`, opts);
+      output(`  synced:          ${attachmentStats.synced}`, opts);
+      output(`  local-modified:  ${attachmentStats.localModified}`, opts);
+      output(`  conflict:        ${attachmentStats.conflict}`, opts);
+      output(`  missing:         ${attachmentStats.missing}`, opts);
+    }
 
     // Editor format stats
     const totalEditorPages = editorStats.v2 + editorStats.v1 + editorStats.unknown;
@@ -3055,12 +3339,17 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
                      content.includes(">>>>>>> REMOTE");
 
   if (!hasMarkers) {
-    if (isEnhancedMeta(meta) && meta.syncState === "conflict") {
-      // No markers but marked as conflict - might have been manually edited
-      output("File was marked as conflict but has no conflict markers.", opts);
-    } else {
-      output("File has no conflicts to resolve.", opts);
-    }
+    // No markers but marked as conflict - might have been manually edited
+    const staleConflict = isEnhancedMeta(meta) && meta.syncState === "conflict";
+    const message = staleConflict
+      ? "File was marked as conflict but has no conflict markers."
+      : "File has no conflicts to resolve.";
+    output(
+      opts.json
+        ? { schemaVersion: "1", file: filePath, resolved: false, staleConflict, message }
+        : message,
+      opts
+    );
     return;
   }
 
@@ -3085,6 +3374,11 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
       localHash: hashContent(normalizeMarkdown(resolved)),
     };
     await writeMeta(filePath, updatedMeta);
+  }
+
+  if (opts.json) {
+    output({ schemaVersion: "1", file: filePath, resolved: true, accept }, opts);
+    return;
   }
 
   output(`Resolved conflicts in ${filePath} using ${accept} version.`, opts);
@@ -3190,11 +3484,15 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
 }
 
 async function handleCheck(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const targetPath = args[0] || ".";
+  const targetPath = args[0] ?? getFlag(flags, "dir") ?? ".";
   const strict = hasFlag(flags, "strict");
 
   // Resolve to absolute path
   const absPath = resolve(targetPath);
+
+  if (!existsSync(absPath)) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Path not found: ${absPath}`, { path: absPath });
+  }
 
   // Find .atlcli directory if it exists
   const atlcliDir = findAtlcliDir(absPath);
@@ -3215,6 +3513,19 @@ async function handleCheck(args: string[], flags: Record<string, string | boolea
     checkPageSize: true,
     maxPageSizeKb: 500,
   });
+
+  // Validating nothing is never a pass. A `check` that walked an empty (or
+  // wrong) directory used to print "Checking 0 files... 0 errors" and exit 0,
+  // which makes a CI gate green by validating nothing at all.
+  if (result.filesChecked === 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `No markdown files found in ${absPath} - nothing was validated. Pass the directory explicitly (path argument or --dir).`,
+      { path: absPath, filesChecked: 0 }
+    );
+  }
 
   // Run folder validation
   const folderIssues = validateFolders(absPath);
@@ -3238,33 +3549,33 @@ async function handleCheck(args: string[], flags: Record<string, string | boolea
     }
   }
 
-  // JSON output
+  // Reason for a non-zero exit, if any: errors always fail, warnings only in
+  // strict mode.
+  const failureMessage = !result.passed
+    ? "Validation failed"
+    : strict && result.totalWarnings > 0
+      ? "Validation failed (strict mode: warnings are errors)"
+      : null;
+
+  // JSON output. The error is folded into the report so `--json` always emits
+  // exactly one document that JSON.parse() can read - calling fail() here would
+  // print a second, separate {"error": ...} document to the same stream.
   if (opts.json) {
     output({
       schemaVersion: "1",
-      passed: result.passed,
-      totalErrors: result.totalErrors,
-      totalWarnings: result.totalWarnings,
-      filesChecked: result.filesChecked,
-      filesWithIssues: result.files.filter((f) => f.issues.length > 0).length,
-      files: result.files.filter((f) => f.issues.length > 0).map((f) => ({
-        path: f.path,
-        issues: f.issues,
-      })),
+      ...validationPayload(result),
+      ...(failureMessage
+        ? { error: { code: ERROR_CODES.VALIDATION, message: failureMessage, details: {} } }
+        : {}),
     }, opts);
-  } else {
-    // Human-readable output
-    output(formatValidationReport(result), opts);
+    if (failureMessage) process.exit(1);
+    return;
   }
 
-  // Exit with error if validation failed
-  if (!result.passed) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed");
-  }
-
-  // Exit with error in strict mode if there are warnings
-  if (strict && result.totalWarnings > 0) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed (strict mode: warnings are errors)");
+  // Human-readable output
+  output(formatValidationReport(result), opts);
+  if (failureMessage) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, failureMessage);
   }
 }
 
@@ -3282,7 +3593,7 @@ async function handleDocsConvert(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const targetPath = args[0] || ".";
+  const targetPath = args[0] ?? getFlag(flags, "dir") ?? ".";
   const toNewEditor = hasFlag(flags, "to-new-editor");
   const toLegacyEditor = hasFlag(flags, "to-legacy-editor");
   const dryRun = hasFlag(flags, "dry-run");
@@ -3419,7 +3730,7 @@ Commands:
   status [dir] [--links]                             Show sync state (--links for link analysis)
   resolve <file> --accept local|remote|merged        Resolve conflicts
   diff <file>                                        Compare local vs remote
-  check [path] [--strict] [--json]                   Validate markdown files
+  check [path] [--strict] [--json]                   Validate markdown files (fails if nothing to check)
   convert <path> --to-new-editor [--dry-run]         Convert to new editor (v2)
   convert <path> --to-legacy-editor [--confirm]      Convert to legacy editor (v1)
 
@@ -3430,12 +3741,15 @@ Scope options (one required for init/pull/sync):
 
 Options:
   --profile <name>   Use a specific auth profile
+  --dir <path>       Target directory (alias for the positional path argument;
+                     accepted by init/pull/push/watch/sync/status/check/convert)
+  --out <path>       Legacy alias for --dir on pull
   --json             JSON output (watch/sync emit JSON lines)
-  --force            Overwrite local modifications
+  --force            Overwrite local modifications, including attachments
   --label <label>    Only sync pages with this label
   --comments         Pull page comments to .comments.json files
   --no-attachments   Skip downloading attachments
-  --validate         Run validation before push (fail on errors)
+  --validate         Validate the files being pushed before pushing (fail on errors)
   --strict           Treat warnings as errors (for check and --validate)
   --delete-folders   Confirm deletion of folders removed locally (push)
   --no-auto-create-folders  Don't auto-create folders for directories without index.md
@@ -3468,6 +3782,7 @@ Examples:
   atlcli wiki docs init ./docs --page-id 67890           Initialize for single page
   atlcli wiki docs pull                                  Pull into the current directory
   atlcli wiki docs pull ./docs                           Pull into ./docs
+  atlcli wiki docs pull --dir ./docs                     Same, from an unrelated cwd
   atlcli wiki docs pull ./docs --ancestor 99999          Override scope for this pull
   atlcli wiki docs pull ./docs --label architecture      Pull only pages with label
   atlcli wiki docs pull ./docs --comments                Pull pages with comments
@@ -3479,6 +3794,7 @@ Examples:
   atlcli wiki docs push --validate --strict              Fail on warnings too
   atlcli wiki docs diff ./docs/page.md                   Show local vs remote diff
   atlcli wiki docs check ./docs                          Check for broken links
+  atlcli wiki docs check --dir ./docs                    Same, from an unrelated cwd
   atlcli wiki docs check ./docs --strict                 Treat warnings as errors
   atlcli wiki docs check ./docs --json                   JSON output for CI/agents
   atlcli wiki docs convert ./docs/page.md --to-new-editor Convert single page

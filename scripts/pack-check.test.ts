@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PDF_RUNTIME_ASSETS } from "../packages/pdf/src/runtime-assets.js";
-import { PATCH_MARKER } from "../packages/pdf-compiler-browser/scripts/vendor-typst.js";
+import {
+  TYPST_CORE_COMMIT,
+  TYPST_TS_SOURCE_COMMIT,
+} from "../packages/pdf-compiler-browser/scripts/vendor-typst.js";
 import { runStripDevCondition } from "./strip-dev-condition.js";
 
 /**
@@ -20,7 +23,7 @@ import { runStripDevCondition } from "./strip-dev-condition.js";
  * workspace-only `development` export condition, every exports target
  * resolvable inside the tarball, the exact sha-pinned PDF font set present
  * even though `.fonts/` is gitignored (`files` wins over .gitignore —
- * verified, not trusted), and the vendored PATCHED typst glue + wasm inside
+ * verified, not trusted), and the provenance-bound typst glue + WASM inside
  * `@atlcli/pdf-compiler-browser`.
  */
 
@@ -281,6 +284,66 @@ describe("pack-check (spec 009)", () => {
     }
   });
 
+  it("@atlcli/code-highlight packs only fine-grained Shiki runtime loaders", () => {
+    const { entries, manifest, tarball } = packageOf(
+      packages.find((p) => p.name === "@atlcli/code-highlight") ??
+        (undefined as never),
+    );
+    const runtime = entries
+      .filter((entry) => entry.startsWith("package/dist/") && entry.endsWith(".js"))
+      .map((entry) => tarExtract(tarball, entry))
+      .join("\n");
+    for (const forbidden of [
+      'from "shiki"',
+      '"shiki/langs"',
+      '"shiki/themes"',
+      "bundle_full_exports",
+      "langs-bundle-full",
+    ]) {
+      expect(runtime).not.toContain(forbidden);
+    }
+    expect(runtime).toContain('import("@shikijs/langs/typescript")');
+    expect(runtime).toContain('import("@shikijs/themes/github-light")');
+    expect(manifest.dependencies).toMatchObject({
+      shiki: "4.3.1",
+      "@shikijs/langs": "4.3.1",
+      "@shikijs/themes": "4.3.1",
+    });
+  });
+
+  it("packed DOCX/PDF entries keep the concrete highlighter behind the lazy contract", () => {
+    const codeHighlight = packageOf(
+      packages.find((p) => p.name === "@atlcli/code-highlight") ??
+        (undefined as never),
+    );
+    const docx = packageOf(
+      packages.find((p) => p.name === "@atlcli/docx") ??
+        (undefined as never),
+    );
+    const pdf = packageOf(
+      packages.find((p) => p.name === "@atlcli/pdf") ??
+        (undefined as never),
+    );
+    const contract = tarExtract(
+      codeHighlight.tarball,
+      "package/dist/contract.js",
+    );
+    const gatedConsumers = [
+      tarExtract(docx.tarball, "package/dist/export.js"),
+      tarExtract(docx.tarball, "package/dist/serialize.js"),
+      tarExtract(docx.tarball, "package/dist/code-highlighting.js"),
+      tarExtract(pdf.tarball, "package/dist/prepare.js"),
+    ];
+
+    expect(contract).toContain('import("@atlcli/code-highlight")');
+    expect(contract).not.toContain("loaders.generated");
+    expect(contract).not.toContain("shiki/");
+    for (const source of gatedConsumers) {
+      expect(source).not.toContain('from "@atlcli/code-highlight";');
+      expect(source).not.toContain("loaders.generated");
+    }
+  });
+
   it("@atlcli/pdf ships exactly the PDF_RUNTIME_ASSETS font set plus the OFL licenses (files beats .gitignore)", () => {
     const { entries } = packageOf(
       packages.find((p) => p.name === "@atlcli/pdf") ?? (undefined as never),
@@ -303,7 +366,32 @@ describe("pack-check (spec 009)", () => {
     }
   });
 
-  it("@atlcli/pdf-compiler-browser ships the vendored PATCHED glue + wasm + LICENSE/NOTICE", () => {
+  it("@atlcli/docx ships the ordered browser entry, maps, font licenses, and Node loader", () => {
+    const { entries, manifest } = packageOf(
+      packages.find((p) => p.name === "@atlcli/docx") ?? (undefined as never),
+    );
+    for (const required of [
+      "package/fonts/JetBrainsMono-Regular.ttf",
+      "package/fonts/LICENSE-JetBrainsMono.txt",
+      "package/dist/browser-entry.js",
+      "package/dist/browser-entry.js.map",
+      "package/dist/browser-entry.d.ts",
+      "package/dist/browser-entry.d.ts.map",
+      "package/dist/font-embedding.js",
+      "package/dist/node-code-font.js",
+    ]) {
+      expect(entries.includes(required), `@atlcli/docx: missing ${required}`).toBe(true);
+    }
+    expect(manifest.license).toBe("Apache-2.0");
+    expect(manifest.exports).toMatchObject({
+      "./browser-entry": {
+        types: "./dist/browser-entry.d.ts",
+        default: "./dist/browser-entry.js",
+      },
+    });
+  });
+
+  it("@atlcli/pdf-compiler-browser ships CSP-safe glue, WASM, types, and fork provenance", () => {
     const { entries, tarball } = packageOf(
       packages.find((p) => p.name === "@atlcli/pdf-compiler-browser") ?? (undefined as never),
     );
@@ -312,14 +400,25 @@ describe("pack-check (spec 009)", () => {
     for (const required of [
       glueEntry,
       wasmEntry,
+      "package/vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler.d.ts",
+      "package/vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler_bg.wasm.d.ts",
       "package/vendor/typst-ts-web-compiler/LICENSE",
       "package/vendor/typst-ts-web-compiler/NOTICE",
+      "package/vendor/typst-ts-web-compiler/PROVENANCE.json",
     ]) {
       expect(entries.includes(required), `missing ${required}`).toBe(true);
     }
 
     const glue = tarExtract(tarball, glueEntry);
-    expect(glue.split(PATCH_MARKER).length - 1).toBeGreaterThanOrEqual(2);
-    expect(glue).not.toContain("new Function(");
+    expect(glue).not.toMatch(/\bnew\s+Function\s*\(/);
+    expect(glue).not.toMatch(/(?:^|[=(:,;]\s*)Function\s*\(/m);
+    expect(glue).not.toMatch(/(?:^|[^\w$.])eval\s*\(/m);
+    expect(entries.some((entry) => entry.includes("wasm-pack-shim"))).toBe(false);
+
+    const provenance = JSON.parse(
+      tarExtract(tarball, "package/vendor/typst-ts-web-compiler/PROVENANCE.json"),
+    ) as { source?: { commit?: string }; typstCore?: { forkCommit?: string } };
+    expect(provenance.source?.commit).toBe(TYPST_TS_SOURCE_COMMIT);
+    expect(provenance.typstCore?.forkCommit).toBe(TYPST_CORE_COMMIT);
   }, 60000);
 });

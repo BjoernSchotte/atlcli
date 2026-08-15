@@ -9,18 +9,22 @@ import type { MacroRenderer, MacroRendererRegistry } from "./types.js";
 import type {
   ExtractMacroBodyDep,
   HtmlToExportBlocksDep,
+  NormalizeChartMacroDep,
   ParsePagePropertiesDep,
   StorageToBlocksDep,
 } from "./deps.js";
 import { tocRenderer } from "./toc.js";
 import { jiraMacroRenderer } from "./jira.js";
+import { confluenceListRenderer } from "./confluence-list.js";
 import { diagramMacroRenderer } from "./diagram.js";
 import { multiexcerptIncludeRenderer } from "./multiexcerpt.js";
 import { scrollTableLayoutRenderer } from "./table-layout.js";
 import { childrenRenderer } from "./children.js";
 import { includeRenderer, excerptIncludeRenderer, excerptRenderer } from "./include-excerpt.js";
 import { pagePropertiesReportRenderer } from "./page-properties-report.js";
+import { whiteboardRenderer } from "./whiteboard.js";
 import { exportViewFallbackRenderer } from "./export-view.js";
+import { chartMacroRenderer } from "./chart.js";
 
 /**
  * Dependencies the E1/E4/E5 renderers need, injected rather than imported at
@@ -33,6 +37,7 @@ export interface DefaultRegistryDeps {
   htmlToExportBlocks: HtmlToExportBlocksDep;
   parsePageProperties: ParsePagePropertiesDep;
   extractMacroBody: ExtractMacroBodyDep;
+  normalizeChartMacro?: NormalizeChartMacroDep;
 }
 
 /**
@@ -120,14 +125,16 @@ function validateRenderers(
 
 /**
  * Assemble the standard renderer order: TOC first (pure reference renderer),
- * then the specific renderers (Jira, diagram, multiexcerpt-include,
- * scroll-tablelayout, children, include/excerpt, page-properties-report),
+ * then the specific renderers (Jira, Confluence list, diagram,
+ * multiexcerpt-include, scroll-tablelayout, children, include/excerpt,
+ * page-properties-report), the pure embedded-Whiteboard link renderer, then
  * `exportViewFallbackRenderer` last as the `"*"` catch-all.
  */
 export function defaultRegistry(deps: DefaultRegistryDeps): MacroRendererRegistry {
   return createRegistry([
     tocRenderer(),
     jiraMacroRenderer(),
+    confluenceListRenderer(),
     diagramMacroRenderer(),
     multiexcerptIncludeRenderer({
       storageToBlocks: deps.storageToBlocks,
@@ -145,6 +152,8 @@ export function defaultRegistry(deps: DefaultRegistryDeps): MacroRendererRegistr
       storageToBlocks: deps.storageToBlocks,
       parsePageProperties: deps.parsePageProperties,
     }),
+    ...(deps.normalizeChartMacro ? [chartMacroRenderer({ normalizeChartMacro: deps.normalizeChartMacro })] : []),
+    whiteboardRenderer(),
     exportViewFallbackRenderer({ htmlToExportBlocks: deps.htmlToExportBlocks }),
   ]);
 }

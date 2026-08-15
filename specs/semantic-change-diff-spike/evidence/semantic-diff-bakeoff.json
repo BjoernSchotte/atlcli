@@ -1,0 +1,1555 @@
+{
+  "bundles": {
+    "config": "Bun.build target=browser format=esm packages=bundle splitting=false minify=true sourcemap=none env=disable; gzip level 9",
+    "gzipLevel": 9,
+    "owned": {
+      "deterministic": true,
+      "digest": "cd210f2f97035b6c9d54d68022176b565d203707043a5e0357fe55f6649a0f87",
+      "gzipBytes": 8292,
+      "rawBytes": 26500
+    },
+    "promotedCandidate": {
+      "deterministic": true,
+      "digest": "ee023c27f92f56c730ca3f69c42ca22f6f3511ba33485fd3f3c1bab99d7db31e",
+      "gzipBytes": 13520,
+      "rawBytes": 44146
+    },
+    "signedDelta": {
+      "gzipBytes": 5228,
+      "rawBytes": 17646
+    },
+    "under50KiBGzipGate": true
+  },
+  "dependency": {
+    "name": "jsondiffpatch",
+    "scope": "packages/change-set devDependency only",
+    "version": "0.7.6"
+  },
+  "determinism": {
+    "bunDigest": "d9ea6b89bd7da049cf24fc96c2fd703dbd245d96dee017c4ba3908df34b8ba01",
+    "bunRepeatedOutputs": true,
+    "nodeCompatibleRuntime": true,
+    "nodeDigest": "d9ea6b89bd7da049cf24fc96c2fd703dbd245d96dee017c4ba3908df34b8ba01"
+  },
+  "environment": {
+    "arch": "arm64",
+    "bun": "1.3.14",
+    "cpuModel": "Apple M5 Max",
+    "logicalCpus": 18,
+    "node": "v22.18.0",
+    "platform": "darwin",
+    "release": "25.4.0",
+    "totalMemoryBytes": 137438953472
+  },
+  "gates": {
+    "correctnessBlockingPass": true,
+    "ownedApprovedNoiseNoOp": true,
+    "ownedCandidateBudgetRespected": true,
+    "ownedFalsePositiveMovesZero": true,
+    "ownedMeaningChangesDetected": true,
+    "ownedSourceCompleteness": true,
+    "repeatedBytesIdentical": true,
+    "stress100kAdditionalRssUnder256MiB": true,
+    "stress100kUnder2s": true,
+    "stress10kUnder250ms": true
+  },
+  "generatedAt": "2026-08-10T11:21:33.016Z",
+  "observations": [
+    {
+      "additionalPeakRssBytes": 4587520,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 7,
+        "target": 7
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/1/children/0",
+        "/children/2/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-ambiguous-duplicates",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 228,
+        "target": 228
+      },
+      "moveClaims": 0,
+      "outputDigest": "7341bb37033c91e31cc41fe260dd0a7de7ba2ba35058f3fbf424d92adc61e3fd",
+      "peakRssBytes": 86032384,
+      "preparationMs": 2.46,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.44,
+        "p95": 2.06,
+        "samples": [
+          2.06,
+          0.44,
+          0.45,
+          0.36,
+          0.19
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 6373376,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 16,
+      "canonicalNodesPerSide": {
+        "baseline": 7,
+        "target": 7
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/content/1",
+        "/content/2"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "ambiguous-match",
+        "ambiguous-match"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-ambiguous-duplicates",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 228,
+        "target": 228
+      },
+      "moveClaims": 0,
+      "outputDigest": "933c607d996b68e9d3434126c3682ccd9ab0337e1f7e5f9ac79fe0df9f094ed2",
+      "peakRssBytes": 89587712,
+      "preparationMs": 2.11,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 1.24,
+        "p95": 9.5,
+        "samples": [
+          9.5,
+          1.61,
+          1.24,
+          1.05,
+          0.98
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 3538944,
+      "approvedNoise": true,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0/children/0/attributes/marks/0",
+        "/children/0/children/0/attributes/marks/1"
+      ],
+      "correctnessPass": false,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": false,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-approved-structural-noise",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 212,
+        "target": 144
+      },
+      "moveClaims": 0,
+      "outputDigest": "c4b6df4e094fd01e746c3220063c0a43a6d256337b350421571f25be31b70df8",
+      "peakRssBytes": 85803008,
+      "preparationMs": 2.77,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.29,
+        "p95": 1.28,
+        "samples": [
+          1.28,
+          0.29,
+          0.3,
+          0.17,
+          0.11
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 3817472,
+      "approvedNoise": true,
+      "candidate": "owned",
+      "candidateComparisons": 4,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [],
+      "correctnessPass": true,
+      "detectedChange": false,
+      "deterministic": true,
+      "diagnostics": [
+        "policy-noise",
+        "policy-noise"
+      ],
+      "expectedChange": false,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-approved-structural-noise",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 212,
+        "target": 144
+      },
+      "moveClaims": 0,
+      "outputDigest": "8bfeb083abf58fe90ec7c38b06a875e16efe9dc9a3782e6bfb01bf2de46bdbcb",
+      "peakRssBytes": 89407488,
+      "preparationMs": 2.98,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.52,
+        "p95": 3.66,
+        "samples": [
+          3.66,
+          1.76,
+          0.52,
+          0.35,
+          0.36
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 1884160,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [],
+      "correctnessPass": true,
+      "detectedChange": false,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": false,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-identical",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 131,
+        "target": 131
+      },
+      "moveClaims": 0,
+      "outputDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "peakRssBytes": 85491712,
+      "preparationMs": 2.4,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.18,
+        "p95": 1.62,
+        "samples": [
+          1.62,
+          0.31,
+          0.18,
+          0.13,
+          0.09
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 4587520,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 4,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [],
+      "correctnessPass": true,
+      "detectedChange": false,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": false,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-identical",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 131,
+        "target": 131
+      },
+      "moveClaims": 0,
+      "outputDigest": "4268e1dd7c13844d5fc909a2c05a3b1023dc980082d2a79feb17e16ac9f06389",
+      "peakRssBytes": 86654976,
+      "preparationMs": 2.1,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.53,
+        "p95": 4.03,
+        "samples": [
+          4.03,
+          1.95,
+          0.53,
+          0.49,
+          0.5
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 2424832,
+      "approvedNoise": true,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0"
+      ],
+      "correctnessPass": false,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": false,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-identity-only-change",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 276,
+        "target": 276
+      },
+      "moveClaims": 0,
+      "outputDigest": "a73d4951c4c5146d9fc9a23940d8cdfd2b99c79789e7504bf7e8560d7b2bb8e0",
+      "peakRssBytes": 84197376,
+      "preparationMs": 2.87,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.11,
+        "p95": 1.16,
+        "samples": [
+          1.16,
+          0.11,
+          0.08,
+          0.11,
+          0.13
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 4440064,
+      "approvedNoise": true,
+      "candidate": "owned",
+      "candidateComparisons": 8,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [],
+      "correctnessPass": true,
+      "detectedChange": false,
+      "deterministic": true,
+      "diagnostics": [
+        "policy-noise",
+        "policy-noise"
+      ],
+      "expectedChange": false,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-identity-only-change",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 276,
+        "target": 276
+      },
+      "moveClaims": 0,
+      "outputDigest": "42edfffab2c7bef09d4992521c61fc9a11fb029857456e8584c70fbcc8361834",
+      "peakRssBytes": 88965120,
+      "preparationMs": 2.52,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.75,
+        "p95": 3.48,
+        "samples": [
+          3.48,
+          2.84,
+          0.73,
+          0.49,
+          0.75
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 3948544,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-link-target-change",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 232,
+        "target": 231
+      },
+      "moveClaims": 0,
+      "outputDigest": "3b4146ccf58b29c10aea589e5dcef8f4b694abe9956b288e53be99517e55ae76",
+      "peakRssBytes": 87982080,
+      "preparationMs": 2.45,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.23,
+        "p95": 1.45,
+        "samples": [
+          1.45,
+          0.23,
+          0.44,
+          0.21,
+          0.16
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 4538368,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 4,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/content/0/content/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-link-target-change",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 232,
+        "target": 231
+      },
+      "moveClaims": 0,
+      "outputDigest": "27744800d727c89fe991dc3450ea0c378c58c978364cbaae458706be245119ad",
+      "peakRssBytes": 87670784,
+      "preparationMs": 3.45,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.79,
+        "p95": 5.49,
+        "samples": [
+          5.49,
+          1.35,
+          0.78,
+          0.79,
+          0.69
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 3162112,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-mark-change",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 165,
+        "target": 161
+      },
+      "moveClaims": 0,
+      "outputDigest": "cc53f1e68a2c28dfac5e63c0a00a634bb0597c7402295d2cee640089dedd5141",
+      "peakRssBytes": 87670784,
+      "preparationMs": 2.41,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.28,
+        "p95": 1.48,
+        "samples": [
+          1.48,
+          0.28,
+          0.34,
+          0.17,
+          0.13
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 5177344,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 4,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/content/0/content/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-mark-change",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 165,
+        "target": 161
+      },
+      "moveClaims": 0,
+      "outputDigest": "cbfc136f65f3fd694fd2d950e35a29b56764e2eeada6a00de12ff9c78f54c5e4",
+      "peakRssBytes": 87851008,
+      "preparationMs": 2.39,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.75,
+        "p95": 5.6,
+        "samples": [
+          5.6,
+          1.06,
+          0.7,
+          0.75,
+          0.7
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 2785280,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 7,
+        "target": 7
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/1"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-stable-block-move",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 290,
+        "target": 290
+      },
+      "moveClaims": 1,
+      "outputDigest": "46852501957799ec9be6f3186f7b7dda7ff9bf4d969425a36d5ee41d2c7f24fe",
+      "peakRssBytes": 86753280,
+      "preparationMs": 2.39,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.39,
+        "p95": 2.38,
+        "samples": [
+          2.38,
+          0.61,
+          0.39,
+          0.18,
+          0.12
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 6569984,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 18,
+      "canonicalNodesPerSide": {
+        "baseline": 7,
+        "target": 7
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/content/0",
+        "/content/1"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-stable-block-move",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 290,
+        "target": 290
+      },
+      "moveClaims": 2,
+      "outputDigest": "5f8ad175eb33ddb3de1fc5e33d018637ea9072981927ad76f2ff2e235ad51dbe",
+      "peakRssBytes": 87785472,
+      "preparationMs": 2.04,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 1.18,
+        "p95": 6.92,
+        "samples": [
+          6.92,
+          1.47,
+          1.18,
+          0.91,
+          1.16
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 1315504128,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 100000,
+        "target": 100000
+      },
+      "category": "stress",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/24999/children/0"
+      ],
+      "correctnessPass": false,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native",
+        "rss-gate-exceeded-postrun"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-stress-100k",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 8249889,
+        "target": 8249889
+      },
+      "moveClaims": 0,
+      "outputDigest": "e6c8600f5901af9eb950b5ae825cbf20899ce3d75622d563db7bf60ffdfe3eb1",
+      "peakRssBytes": 1398620160,
+      "preparationMs": 555.56,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 422.6,
+        "p95": 453.35,
+        "samples": [
+          453.35,
+          422.6
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 251772928,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 50002,
+      "canonicalNodesPerSide": {
+        "baseline": 100000,
+        "target": 100000
+      },
+      "category": "stress",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/content/24999/content/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-stress-100k",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 8249889,
+        "target": 8249889
+      },
+      "moveClaims": 0,
+      "outputDigest": "c7207e207a0e9b19a751d0716b0c87b658c32b89dd5fdbb0ce006761b0845ead",
+      "peakRssBytes": 399294464,
+      "preparationMs": 28.87,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 1827.57,
+        "p95": 1836.19,
+        "samples": [
+          1836.19,
+          1827.57
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 171229184,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 10000,
+        "target": 10000
+      },
+      "category": "stress",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/2499/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-stress-10k",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 584937,
+        "target": 584937
+      },
+      "moveClaims": 0,
+      "outputDigest": "b57447deb57899690e95acafd7cf518f1fb5691906a255efc780700e4d38512e",
+      "peakRssBytes": 253722624,
+      "preparationMs": 64.55,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 49.4,
+        "p95": 52.07,
+        "samples": [
+          52.07,
+          49.4,
+          43.66
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 97026048,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 5002,
+      "canonicalNodesPerSide": {
+        "baseline": 10000,
+        "target": 10000
+      },
+      "category": "stress",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/content/2499/content/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-stress-10k",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 584937,
+        "target": 584937
+      },
+      "moveClaims": 0,
+      "outputDigest": "83a56f193a947a999b0d616b8a19cf28120fe4d7cc04f1803aba6dd93f7b42e0",
+      "peakRssBytes": 184729600,
+      "preparationMs": 2.79,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 181.6,
+        "p95": 183.25,
+        "samples": [
+          180.58,
+          183.25,
+          181.6
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 2326528,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-text-change",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 137,
+        "target": 136
+      },
+      "moveClaims": 0,
+      "outputDigest": "f58282a8db0a9e04e3672ca3c078ad060dd62985ccc023e85e5a561c543bae2b",
+      "peakRssBytes": 83296256,
+      "preparationMs": 2.57,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.29,
+        "p95": 1.71,
+        "samples": [
+          1.71,
+          0.37,
+          0.29,
+          0.17,
+          0.12
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 4816896,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 4,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/content/0/content/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-text-change",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 137,
+        "target": 136
+      },
+      "moveClaims": 0,
+      "outputDigest": "2f5a629d9751235da50d56ea255fe5fff61d493a6d253031e437cba16016961f",
+      "peakRssBytes": 88391680,
+      "preparationMs": 2.14,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.68,
+        "p95": 7.01,
+        "samples": [
+          7.01,
+          1.05,
+          0.68,
+          0.56,
+          0.54
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 2768896,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 2,
+        "target": 2
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-unknown-attribute",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 93,
+        "target": 92
+      },
+      "moveClaims": 0,
+      "outputDigest": "2cff178c67c547167c70c1a426b72ea518d84f8c56937eab9f1c45c1c0e6e444",
+      "peakRssBytes": 88129536,
+      "preparationMs": 2.08,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": true,
+      "wallTimeMs": {
+        "p50": 0.22,
+        "p95": 1.89,
+        "samples": [
+          1.89,
+          0.22,
+          0.16,
+          0.15,
+          0.28
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 3817472,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 2,
+      "canonicalNodesPerSide": {
+        "baseline": 2,
+        "target": 2
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/content/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "opaque-source-change"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "adf-unknown-attribute",
+      "format": "adf",
+      "inputBytesPerSide": {
+        "baseline": 93,
+        "target": 92
+      },
+      "moveClaims": 0,
+      "outputDigest": "c1b1112d2663146972c183c7b6598e065eb6aa7c309bd2e997c10c509f46858b",
+      "peakRssBytes": 89866240,
+      "preparationMs": 1.9,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": true,
+      "wallTimeMs": {
+        "p50": 0.77,
+        "p95": 5.72,
+        "samples": [
+          5.72,
+          1.04,
+          0.77,
+          0.6,
+          0.51
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 1785856,
+      "approvedNoise": true,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [],
+      "correctnessPass": true,
+      "detectedChange": false,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": false,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-approved-noise",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 91,
+        "target": 28
+      },
+      "moveClaims": 0,
+      "outputDigest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "peakRssBytes": 86933504,
+      "preparationMs": 1.6,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.23,
+        "p95": 1.22,
+        "samples": [
+          1.22,
+          0.23,
+          0.33,
+          0.21,
+          0.08
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 3473408,
+      "approvedNoise": true,
+      "candidate": "owned",
+      "candidateComparisons": 4,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [],
+      "correctnessPass": true,
+      "detectedChange": false,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": false,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-approved-noise",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 91,
+        "target": 28
+      },
+      "moveClaims": 0,
+      "outputDigest": "5113ea7da2a558f132ca0a864e0154a366b4215230568ccf2a2cbf3fbfb4e352",
+      "peakRssBytes": 84934656,
+      "preparationMs": 2.03,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.49,
+        "p95": 3.17,
+        "samples": [
+          3.17,
+          1.61,
+          0.49,
+          0.35,
+          0.32
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 1102872576,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 100000,
+        "target": 100000
+      },
+      "category": "stress",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/24999/children/0"
+      ],
+      "correctnessPass": false,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native",
+        "rss-gate-exceeded-postrun"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-stress-100k",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 7899847,
+        "target": 7899847
+      },
+      "moveClaims": 0,
+      "outputDigest": "10e2fb451c9d5f01e714f0880e29515a3692278775374e60d069f686f90ba558",
+      "peakRssBytes": 1184940032,
+      "preparationMs": 289.8,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 478.09,
+        "p95": 500.3,
+        "samples": [
+          478.09,
+          500.3
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 248365056,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 50002,
+      "canonicalNodesPerSide": {
+        "baseline": 100000,
+        "target": 100000
+      },
+      "category": "stress",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/24999/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-stress-100k",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 7899847,
+        "target": 7899847
+      },
+      "moveClaims": 0,
+      "outputDigest": "66aa628df110e55052647a395d3742a593e9083b96053abc25e8d738c118e07d",
+      "peakRssBytes": 368738304,
+      "preparationMs": 12.92,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 1526.1,
+        "p95": 1586.88,
+        "samples": [
+          1526.1,
+          1586.88
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 153829376,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 10000,
+        "target": 10000
+      },
+      "category": "stress",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/2499/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-stress-10k",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 269951,
+        "target": 269951
+      },
+      "moveClaims": 0,
+      "outputDigest": "c7f87687c9c8f49a377b4fe619ce5dd637b51aabff9213b30e8c7be138b4d69b",
+      "peakRssBytes": 237486080,
+      "preparationMs": 33.3,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 54.6,
+        "p95": 55.79,
+        "samples": [
+          55.79,
+          54.6,
+          41.95
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 83148800,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 5002,
+      "canonicalNodesPerSide": {
+        "baseline": 10000,
+        "target": 10000
+      },
+      "category": "stress",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/2499/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-stress-10k",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 269951,
+        "target": 269951
+      },
+      "moveClaims": 0,
+      "outputDigest": "42bd1594522becdb8b46d4ff7d1347a05a7db56da9ade840e181f43b48dab017",
+      "peakRssBytes": 165822464,
+      "preparationMs": 1.62,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 148.79,
+        "p95": 149.52,
+        "samples": [
+          149.52,
+          148.79,
+          146.57
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 2637824,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-text-change",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 36,
+        "target": 35
+      },
+      "moveClaims": 0,
+      "outputDigest": "6f4f2a4c71e60848c19be002f10e3d34ee762cbc5fec83de3980775ccb451dda",
+      "peakRssBytes": 82493440,
+      "preparationMs": 1.56,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.34,
+        "p95": 1.84,
+        "samples": [
+          1.84,
+          0.4,
+          0.34,
+          0.23,
+          0.14
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 4734976,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 4,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-text-change",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 36,
+        "target": 35
+      },
+      "moveClaims": 0,
+      "outputDigest": "908edccc53f32bd8925c1678f0a07067b026b44628d162f9f826d977c806e8c9",
+      "peakRssBytes": 88752128,
+      "preparationMs": 1.53,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": null,
+      "wallTimeMs": {
+        "p50": 0.78,
+        "p95": 5.24,
+        "samples": [
+          5.24,
+          1.31,
+          0.78,
+          0.59,
+          0.55
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 2555904,
+      "approvedNoise": false,
+      "candidate": "jsondiffpatch",
+      "candidateComparisons": null,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "candidate-comparisons-unavailable",
+        "source-completeness-not-native"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-unknown-element",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 59,
+        "target": 58
+      },
+      "moveClaims": 0,
+      "outputDigest": "e6555cd763e848f56b12b6e3acb0d53afcc0e7db7db69ff7ed74842a52a6db62",
+      "peakRssBytes": 84836352,
+      "preparationMs": 1.54,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": null,
+      "unknownPreserved": true,
+      "wallTimeMs": {
+        "p50": 0.19,
+        "p95": 2.25,
+        "samples": [
+          2.25,
+          0.19,
+          0.1,
+          0.19,
+          0.14
+        ]
+      }
+    },
+    {
+      "additionalPeakRssBytes": 3948544,
+      "approvedNoise": false,
+      "candidate": "owned",
+      "candidateComparisons": 4,
+      "canonicalNodesPerSide": {
+        "baseline": 3,
+        "target": 3
+      },
+      "category": "correctness",
+      "changedPathsTruncated": false,
+      "changedSemanticPaths": [
+        "/children/0"
+      ],
+      "correctnessPass": true,
+      "detectedChange": true,
+      "deterministic": true,
+      "diagnostics": [
+        "opaque-source-change"
+      ],
+      "expectedChange": true,
+      "falsePositiveMoves": 0,
+      "fixture": "storage-unknown-element",
+      "format": "storage",
+      "inputBytesPerSide": {
+        "baseline": 59,
+        "target": 58
+      },
+      "moveClaims": 0,
+      "outputDigest": "6aac8f20266a074f184665db7465d756789debe7110ab4245b98d79299727493",
+      "peakRssBytes": 84623360,
+      "preparationMs": 1.55,
+      "schema": "atlcli.semantic-diff-candidate-observation/1",
+      "sourceCompleteness": true,
+      "unknownPreserved": true,
+      "wallTimeMs": {
+        "p50": 0.98,
+        "p95": 4.49,
+        "samples": [
+          4.49,
+          0.86,
+          2.4,
+          0.98,
+          0.62
+        ]
+      }
+    }
+  ],
+  "retainedTreeReference100kProfile": {
+    "baselineDigestMs": 517.62,
+    "candidateComparisons": 299998,
+    "completeDiffMs": 2274.86,
+    "fixture": "adf-stress-100k",
+    "inputBytesPerSide": 8249889,
+    "peakRssBytes": 1030324224,
+    "preparationMs": 549.02,
+    "retainedRssAfterDigestsBytes": 815267840,
+    "retainedRssAfterPreparationBytes": 502153216,
+    "sourceNodesPerSide": 100000,
+    "targetDigestMs": 519.34
+  },
+  "schema": "atlcli.semantic-diff-bakeoff-evidence/1",
+  "verdict": "keep-owned",
+  "verdictReasons": [
+    "The owned matcher is the only candidate with bounded candidate-comparison instrumentation and mechanical exact-source coverage.",
+    "jsondiffpatch failed 4 candidate observation(s): adf-approved-structural-noise, adf-identity-only-change, adf-stress-100k, storage-stress-100k.",
+    "A generic jsondiffpatch delta is not the owned ChangeSetV1 product contract and would require a separately tested adapter.",
+    "The dependency remains benchmark-only even if its isolated bundle delta passes the size gate."
+  ]
+}

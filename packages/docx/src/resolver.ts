@@ -26,6 +26,9 @@ import {
   parsePageProperties,
   type ConfluencePageDetails,
   type ConfluenceSpace,
+  type ExportPageSource,
+  type AdfMediaAttachment,
+  type InlineComment,
   type ExportNote,
   type PagePropertiesMacro,
 } from "@atlcli/confluence";
@@ -57,6 +60,15 @@ export interface ResolveContext {
   exportDate: Date;
 }
 
+/** Include page metadata with an optional representation-neutral export source. */
+export type IncludePageDetails = ConfluencePageDetails & {
+  exportSource?: ExportPageSource;
+  mediaAttachments?: AdfMediaAttachment[];
+  mediaAttachmentsComplete?: boolean;
+  inlineComments?: InlineComment[];
+  inlineCommentsComplete?: boolean;
+};
+
 /**
  * The result of a `$scroll.includepage.(…)` lookup (spec 005 D1). A
  * discriminated union rather than a bare `ConfluencePageDetails | null` so the
@@ -79,8 +91,8 @@ export interface ResolveContext {
  * into an outcome.
  */
 export type IncludeLookupOutcome =
-  | { kind: "resolved"; page: ConfluencePageDetails }
-  | { kind: "ambiguous"; count: number; page: ConfluencePageDetails }
+  | { kind: "resolved"; page: IncludePageDetails }
+  | { kind: "ambiguous"; count: number; page: IncludePageDetails }
   | { kind: "not-found-or-forbidden" }
   | { kind: "auth-failed" }
   | { kind: "rate-limited" }

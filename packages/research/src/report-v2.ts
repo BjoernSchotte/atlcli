@@ -1,0 +1,840 @@
+import {
+  RESEARCH_REPORT_SCHEMA_V1,
+  RESEARCH_REPORT_SCHEMA_V2,
+  ResearchContractError,
+  type ResearchReportClaimV2,
+  type ResearchReportReconciliationV2,
+  type ResearchReportSourceAuthorityV2,
+  type ResearchReportSectionV2,
+  type ResearchReportV1,
+  type ResearchReportV2,
+  type ResearchRequestV1,
+  type ResearchRunSummaryV1,
+  type ResearchSourceReferenceV1,
+} from "./contracts.js";
+import type { ResearchClaimLedgerV1, ResearchClaimV1 } from "./claim-ledger.js";
+import type { ResearchEvidenceRecordV1, ResearchEvidenceStoreV1 } from "./evidence-store.js";
+import type { ResearchOutlineV1 } from "./outline.js";
+import type {
+  ResearchReconciliationDefectV1,
+  ResearchReconciliationDispositionV1,
+} from "./workflow-contracts.js";
+import { finalizeResearchReportV1, renderResearchReportWithFindingSectionsMarkdown } from "./report.js";
+import {
+  localizeResearchLimitationV1,
+  researchReportCopyV1,
+} from "./report-locale.js";
+
+const CLAIM_ID = /^claim:[a-f0-9]{48}$/;
+const MAXIMUM_REPORT_CLAIMS = 96;
+const MAXIMUM_REPORT_SECTIONS = 24;
+const MAXIMUM_RECONCILIATION_OUTCOMES = 16;
+
+function invalid(message: string): never {
+  throw new ResearchContractError("invalid-report", message);
+}
+
+function boundedText(value: unknown, label: string, maximum: number): string {
+  if (typeof value !== "string" || value.trim().length === 0 || value.length > maximum || value.includes("\u0000")) {
+    invalid(`${label} is invalid.`);
+  }
+  return value;
+}
+
+function distinctClaimIds(value: readonly string[], label: string): string[] {
+  if (!Array.isArray(value) || value.length > MAXIMUM_REPORT_CLAIMS || value.some((id) => !CLAIM_ID.test(id))) {
+    invalid(`${label} is invalid.`);
+  }
+  if (new Set(value).size !== value.length) invalid(`${label} contains duplicates.`);
+  return [...value];
+}
+
+/**
+ * The ledger and outline retain the complete accepted evidence boundary. The
+ * published report is a question-directed projection of that boundary: when a
+ * synthesizer supplies an explicit selection, publish exactly that validated
+ * subset instead of appending every background or superseded repair claim.
+ * Coverage is recalculated later and therefore still exposes any omitted
+ * required target as a deterministic limitation.
+ */
+export function completeResearchReportClaimSelectionV2(input: {
+  acceptedClaimIds: readonly string[];
+  selectedClaimIds?: readonly string[];
+  outlineClaimIds: readonly string[];
+  /**
+   * Question-directed outline sections are an authoritative completeness
+   * boundary. The synthesizer may choose the smallest useful subset, but it
+   * cannot silently omit an entire planned section. Host fallback/background
+   * sections are deliberately not supplied here.
+   */
+  requiredOutlineClaimGroups?: readonly (readonly string[])[];
+  supersededClaimIds?: readonly string[];
+}): string[] {
+  const accepted = distinctClaimIds(input.acceptedClaimIds, "Accepted V2 report claim IDs");
+  const selected = input.selectedClaimIds === undefined
+    ? accepted
+    : distinctClaimIds(input.selectedClaimIds, "Synthesizer-selected V2 report claim IDs");
+  const outlined = distinctClaimIds(input.outlineClaimIds, "Outlined V2 report claim IDs");
+  const superseded = input.supersededClaimIds === undefined
+    ? []
+    : distinctClaimIds(input.supersededClaimIds, "Superseded V2 report claim IDs");
+  const requiredGroups = (input.requiredOutlineClaimGroups ?? []).map((group) =>
+    distinctClaimIds(group, "Required outline claim group")
+  );
+  const acceptedSet = new Set(accepted);
+  if ([
+    ...selected,
+    ...outlined,
+    ...superseded,
+    ...requiredGroups.flat(),
+  ].some((claimId) => !acceptedSet.has(claimId))) {
+    invalid("V2 report claim selection references a claim outside accepted evidence.");
+  }
+  const supersededSet = new Set(superseded);
+  if (input.selectedClaimIds !== undefined) {
+    const completed = selected.filter((claimId) => !supersededSet.has(claimId));
+    const completedSet = new Set(completed);
+    for (const group of requiredGroups) {
+      const eligible = group.filter((claimId) => !supersededSet.has(claimId));
+      if (eligible.length === 0 || eligible.some((claimId) => completedSet.has(claimId))) {
+        continue;
+      }
+      completed.push(eligible[0]!);
+      completedSet.add(eligible[0]!);
+    }
+    return completed;
+  }
+  return (outlined.length > 0 ? outlined : accepted).filter(
+    (claimId) => !supersededSet.has(claimId),
+  );
+}
+
+function sameSource(left: ResearchSourceReferenceV1, right: ResearchSourceReferenceV1): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sourceIdsForClaim(
+  claim: ResearchClaimV1,
+  records: ReadonlyMap<string, ResearchEvidenceRecordV1>,
+): string[] {
+  const sourceIds = claim.evidenceIds.map((evidenceId) => {
+    const record = records.get(evidenceId);
+    if (!record) invalid("A current claim references evidence that is not retained.");
+    return record.source.id;
+  });
+  return [...new Set(sourceIds)].sort();
+}
+
+function sectionsFor(
+  outline: ResearchOutlineV1 | undefined,
+  claimIds: readonly string[],
+): ResearchReportSectionV2[] {
+  if (!outline) {
+    return [{
+      id: "report-section:validated-findings",
+      title: "Evidence-backed findings",
+      question: "What do the currently validated claims establish?",
+      claimIds: [...claimIds],
+      coverageTargetIds: [],
+    }];
+  }
+  const selected = new Set(claimIds);
+  const sections = outline.sections
+    .map((section): ResearchReportSectionV2 => ({
+      id: section.id,
+      title: section.title,
+      question: section.question,
+      claimIds: section.claimIds.filter((id) => selected.has(id)),
+      coverageTargetIds: [...section.coverageTargetIds],
+    }))
+    .filter((section) => section.claimIds.length > 0)
+    .sort((left, right) => {
+      const leftFallback = left.id === "outline-section:host-unassigned" ? 1 : 0;
+      const rightFallback = right.id === "outline-section:host-unassigned" ? 1 : 0;
+      return leftFallback - rightFallback;
+    });
+  const assigned = new Set(sections.flatMap((section) => section.claimIds));
+  const unassigned = claimIds.filter((id) => !assigned.has(id));
+  if (unassigned.length > 0) {
+    sections.push({
+      id: "report-section:unassigned-validated-claims",
+      title: "Additional evidence-backed findings",
+      question: "What additional evidence-backed findings matter to the question?",
+      claimIds: unassigned,
+      coverageTargetIds: [],
+    });
+  }
+  if (sections.length > MAXIMUM_REPORT_SECTIONS) invalid("Report contains too many sections.");
+  return sections;
+}
+
+function coverageMarkdown(report: ResearchReportV2, language: ResearchRequestV1["reportLanguage"]): string[] {
+  if (report.coverage.length === 0) return [];
+  const copy = researchReportCopyV1(language);
+  return [
+    `## ${copy.evidenceCoverage}`,
+    "",
+    ...report.coverage.map((entry) =>
+      `- \`${entry.targetId}\`: ${entry.status}; ${entry.distinctSourceCount} distinct retained ${entry.distinctSourceCount === 1 ? "source" : "sources"}.`,
+    ),
+    "",
+  ];
+}
+
+function incompleteCoverageLimitations(
+  coverage: readonly Pick<ResearchReportV2["coverage"][number], "targetId" | "status" | "distinctSourceCount">[],
+  language: ResearchRequestV1["reportLanguage"],
+): string[] {
+  return coverage
+    .filter((entry) => entry.status !== "covered")
+    .map((entry) => language === "de"
+      ? `Die Evidenzabdeckung für ${entry.targetId} ist ${entry.status} (${entry.distinctSourceCount} unterschiedliche erhaltene ${entry.distinctSourceCount === 1 ? "Quelle" : "Quellen"}); der Bericht ist für dieses Ziel nicht erschöpfend.`
+      : `Evidence coverage for ${entry.targetId} is ${entry.status} (${entry.distinctSourceCount} distinct retained ${entry.distinctSourceCount === 1 ? "source" : "sources"}); the report is not exhaustive for this target.`);
+}
+
+function markdownText(value: string): string {
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/([`*_[\]<>])/g, "\\$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * V2 does not publish a free-form relationship list. A direct cross-product
+ * relationship is therefore established only when one published claim retains
+ * evidence from both products. Make the absence of that proof explicit for a
+ * cross-product scope instead of relying on a generic coverage limitation.
+ */
+function unresolvedCrossProductRelationshipSection(
+  report: Omit<ResearchReportV2, "markdown">,
+  language: ResearchRequestV1["reportLanguage"],
+): { title: string; paragraphs: string[] }[] {
+  if (report.scope.jiraProjectKeys.length === 0 || report.scope.confluenceSpaceKeys.length === 0) {
+    return [];
+  }
+  const sourcesById = new Map(report.sources.map((source) => [source.id, source]));
+  const hasDirectCrossProductSupport = report.claims.some((claim) => {
+    const products = new Set(claim.sourceIds.map((sourceId) => sourcesById.get(sourceId)?.product));
+    return products.has("jira") && products.has("confluence");
+  });
+  if (hasDirectCrossProductSupport) return [];
+  const copy = researchReportCopyV1(language);
+  return [{
+    title: copy.unresolvedRelationships,
+    paragraphs: [copy.unresolvedCrossProductRelationship],
+  }];
+}
+
+function renderMarkdown(
+  report: Omit<ResearchReportV2, "markdown">,
+  language: ResearchRequestV1["reportLanguage"],
+): string {
+  const claimsById = new Map(report.claims.map((claim) => [claim.id, claim]));
+  const sections = report.sections.map((section) => ({
+    title: section.title,
+    findings: section.claimIds.map((id, index) => {
+      const claim = claimsById.get(id);
+      if (!claim) invalid("V2 report section references an unavailable claim.");
+      return {
+        id: `${section.id}:finding:${index + 1}`,
+        classification: claim.classification,
+        summary: claim.statement,
+        sourceIds: claim.sourceIds,
+      };
+    }),
+  }));
+  const executiveSummary = report.executiveSummaryClaimIds.length === 0
+    ? "No current, evidence-backed claim was available for publication."
+    : report.executiveSummaryClaimIds
+      .map((id) => claimsById.get(id)?.statement)
+      .filter((statement): statement is string => statement !== undefined)
+      .join(" ");
+  const legacy: Omit<ResearchReportV1, "markdown"> = {
+    schema: RESEARCH_REPORT_SCHEMA_V1,
+    title: report.title,
+    question: report.question,
+    scope: report.scope,
+    executiveSummary,
+    findings: [],
+    relationships: [],
+    limitations: report.limitations,
+    sources: report.sources,
+    run: report.run,
+  };
+  const exactSourceIds = new Set(
+    (report.sourceAuthorities ?? [])
+      .filter((entry) => entry.authorityClasses.includes("exact_entity"))
+      .map((entry) => entry.sourceId),
+  );
+  const exactJiraProjectKeys = report.sources
+    .filter((source) => exactSourceIds.has(source.id) && source.product === "jira")
+    .map((source) => source.projectKey!);
+  const exactConfluenceSpaceKeys = report.sources
+    .filter((source) => exactSourceIds.has(source.id) && source.product === "confluence")
+    .map((source) => source.spaceKey!);
+  const validationScope = {
+    ...legacy.scope,
+    jiraProjectKeys: [...new Set([...legacy.scope.jiraProjectKeys, ...exactJiraProjectKeys])],
+    confluenceSpaceKeys: [
+      ...new Set([...legacy.scope.confluenceSpaceKeys, ...exactConfluenceSpaceKeys]),
+    ],
+  };
+  // Reuse the legacy contract validator for source URLs and run metadata, then
+  // project the host-approved outline through the same safe Markdown helpers.
+  // Exact-entity evidence is admitted by its host-retained authority record,
+  // not by widening the report's whole-space scope. The temporary validation
+  // scope exists only for the legacy source-metadata validator.
+  finalizeResearchReportV1({ ...legacy, scope: validationScope });
+  return [
+    ...renderResearchReportWithFindingSectionsMarkdown({
+      ...legacy,
+      sections,
+      additionalSections: unresolvedCrossProductRelationshipSection(report, language),
+      language,
+    }).trimEnd().split("\n"),
+    ...coverageMarkdown({ ...report, markdown: "" }, language),
+  ].join("\n");
+}
+
+function reconciliationOutcome(value: unknown): ResearchReportReconciliationV2 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) invalid("V2 report reconciliation outcome is invalid.");
+  const outcome = value as Partial<ResearchReportReconciliationV2>;
+  const target = outcome.target;
+  if (typeof outcome.defectId !== "string" || outcome.defectId.length === 0 || outcome.defectId.length > 160 ||
+      !target || typeof target !== "object" ||
+      !["finding", "relationship", "claim", "section", "node", "coverage"].includes(target.kind ?? "") ||
+      typeof target.id !== "string" || target.id.length === 0 || target.id.length > 160 ||
+      (outcome.defectCode !== undefined &&
+        !["unsupported", "contradicted", "missing_coverage", "overstated", "instruction_mismatch", "duplicate", "stale"].includes(outcome.defectCode)) ||
+      (outcome.gapIds !== undefined &&
+        (!Array.isArray(outcome.gapIds) || outcome.gapIds.length > 16 ||
+          outcome.gapIds.some((gapId) => typeof gapId !== "string" || gapId.length === 0 || gapId.length > 160) ||
+          new Set(outcome.gapIds).size !== outcome.gapIds.length)) ||
+      !["reject_defect", "revise", "downgrade", "add_follow_up", "abstain", "no_change"].includes(outcome.decision ?? "") ||
+      !["invalid_reference", "already_resolved", "supported_by_evidence", "material_defect", "insufficient_budget", "outside_approval_envelope"].includes(outcome.reasonCode ?? "")) {
+    invalid("V2 report reconciliation outcome is invalid.");
+  }
+  return {
+    defectId: outcome.defectId,
+    target: { kind: target.kind, id: target.id },
+    ...(outcome.defectCode === undefined ? {} : { defectCode: outcome.defectCode }),
+    ...(outcome.gapIds === undefined ? {} : { gapIds: [...outcome.gapIds] }),
+    decision: outcome.decision,
+    reasonCode: outcome.reasonCode,
+  } as ResearchReportReconciliationV2;
+}
+
+function sourceAuthorityEntries(value: unknown, sourceIds: ReadonlySet<string>): ResearchReportSourceAuthorityV2[] {
+  if (!Array.isArray(value) || value.length !== sourceIds.size || value.length > MAXIMUM_REPORT_CLAIMS) {
+    invalid("V2 report source authority projection is invalid.");
+  }
+  const seen = new Set<string>();
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      invalid("V2 report source authority projection is invalid.");
+    }
+    const candidate = entry as Partial<ResearchReportSourceAuthorityV2>;
+    if (typeof candidate.sourceId !== "string" || !sourceIds.has(candidate.sourceId) ||
+        seen.has(candidate.sourceId) || !Array.isArray(candidate.authorityClasses) ||
+        candidate.authorityClasses.length === 0 || candidate.authorityClasses.length > 2 ||
+        candidate.authorityClasses.some((authority) => authority !== "whole_scope" && authority !== "exact_entity") ||
+        new Set(candidate.authorityClasses).size !== candidate.authorityClasses.length) {
+      invalid("V2 report source authority projection is invalid.");
+    }
+    seen.add(candidate.sourceId);
+    return {
+      sourceId: candidate.sourceId,
+      authorityClasses: [...candidate.authorityClasses].sort(),
+    } as ResearchReportSourceAuthorityV2;
+  }).sort((left, right) => left.sourceId.localeCompare(right.sourceId));
+}
+
+/**
+ * Reject malformed V2 reports before they reach a renderer or future exporter.
+ * This intentionally validates structure and provenance, not model prose: V2
+ * factual statements are copied from the host claim ledger by the finalizer.
+ */
+export function assertResearchReportV2(value: unknown): asserts value is ResearchReportV2 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) invalid("V2 report is invalid.");
+  const report = value as Partial<ResearchReportV2>;
+  if (report.schema !== RESEARCH_REPORT_SCHEMA_V2 || !Array.isArray(report.claims) || !Array.isArray(report.sections) ||
+      !Array.isArray(report.coverage) || !Array.isArray(report.limitations) || !Array.isArray(report.sources) || !Array.isArray(report.executiveSummaryClaimIds)) {
+    invalid("V2 report schema is invalid.");
+  }
+  if (report.reconciliation !== undefined &&
+      (!Array.isArray(report.reconciliation) || report.reconciliation.length > MAXIMUM_RECONCILIATION_OUTCOMES)) {
+    invalid("V2 report reconciliation is invalid.");
+  }
+  boundedText(report.title, "V2 report title", 300);
+  boundedText(report.question, "V2 report question", 4_000);
+  if (report.claims.length > MAXIMUM_REPORT_CLAIMS ||
+      (report.claims.length > 0 && report.sections.length === 0) ||
+      report.sections.length > MAXIMUM_REPORT_SECTIONS) {
+    invalid("V2 report claim or section count is invalid.");
+  }
+  const claims = new Map<string, ResearchReportClaimV2>();
+  for (const claim of report.claims) {
+    if (!claim || typeof claim !== "object" || !CLAIM_ID.test(claim.id) ||
+        (claim.classification !== "fact" && claim.classification !== "inference") || claim.freshness !== "current" ||
+        !Array.isArray(claim.evidenceIds) || claim.evidenceIds.length === 0 || !Array.isArray(claim.sourceIds) || claim.sourceIds.length === 0) {
+      invalid("V2 report claim is invalid.");
+    }
+    boundedText(claim.statement, "V2 report claim statement", 2_000);
+    if (claims.has(claim.id)) invalid("V2 report contains duplicate claim IDs.");
+    claims.set(claim.id, claim);
+  }
+  const sourceIds = new Set(report.sources.map((source) => source.id));
+  for (const claim of claims.values()) {
+    if (claim.sourceIds.some((sourceId) => !sourceIds.has(sourceId))) invalid("V2 report claim source is missing.");
+  }
+  if (report.sourceAuthorities !== undefined) {
+    sourceAuthorityEntries(report.sourceAuthorities, sourceIds);
+  }
+  const summaries = distinctClaimIds(report.executiveSummaryClaimIds, "V2 report executive summary claims");
+  if (summaries.some((id) => !claims.has(id))) invalid("V2 report executive summary references an unknown claim.");
+  const sectionIds = new Set<string>();
+  for (const section of report.sections) {
+    if (!section || typeof section !== "object" || typeof section.id !== "string" || sectionIds.has(section.id) ||
+        !Array.isArray(section.claimIds) || !Array.isArray(section.coverageTargetIds)) {
+      invalid("V2 report section is invalid.");
+    }
+    sectionIds.add(section.id);
+    boundedText(section.title, "V2 report section title", 240);
+    boundedText(section.question, "V2 report section question", 1_200);
+    const ids = distinctClaimIds(section.claimIds, "V2 report section claim IDs");
+    if (ids.some((id) => !claims.has(id))) invalid("V2 report section references an unknown claim.");
+  }
+  const evidenceIds = new Set(report.claims.flatMap((claim) => claim.evidenceIds));
+  for (const coverage of report.coverage) {
+    if (!coverage || typeof coverage !== "object" ||
+        !["covered", "partial", "uncovered"].includes(coverage.status) ||
+        !Array.isArray(coverage.claimIds) || !Array.isArray(coverage.evidenceIds) ||
+        !Number.isSafeInteger(coverage.distinctSourceCount) || coverage.distinctSourceCount < 0) {
+      invalid("V2 report coverage is invalid.");
+    }
+    const coverageClaimIds = distinctClaimIds(coverage.claimIds, "V2 report coverage claim IDs");
+    if (coverageClaimIds.some((id) => !claims.has(id)) || coverage.evidenceIds.some((id) => !evidenceIds.has(id))) {
+      invalid("V2 report coverage references unavailable support.");
+    }
+  }
+  const reconciliationDefectIds = new Set<string>();
+  for (const outcome of report.reconciliation ?? []) {
+    const validated = reconciliationOutcome(outcome);
+    if (reconciliationDefectIds.has(validated.defectId)) invalid("V2 report reconciliation defect is duplicated.");
+    reconciliationDefectIds.add(validated.defectId);
+  }
+  if (!report.run || typeof report.run !== "object" || typeof report.markdown !== "string") invalid("V2 report run or Markdown is invalid.");
+}
+
+export interface FinalizeResearchReportV2Input {
+  request: ResearchRequestV1;
+  claimLedger: ResearchClaimLedgerV1;
+  evidenceStore: ResearchEvidenceStoreV1;
+  /** Explicit host-selected claims; omitted means the authoritative outline set. */
+  claimIds?: readonly string[];
+  /** Must have passed `ResearchOutlineStoreV1.validateCurrent()` before use. */
+  outline?: ResearchOutlineV1;
+  title?: string;
+  /** Host-authored, evidence-state limitations only; model prose is not accepted here. */
+  limitations?: readonly string[];
+  /**
+   * Optional source focus selected by the schema-bound synthesizer. Each ID is
+   * checked against the current claim/evidence set before it can affect which
+   * host-validated claims are published; the synthesizer never supplies the
+   * factual report prose.
+   */
+  selectedSourceIds?: readonly string[];
+  /** Host-recorded reconciliation results; never critic prose or source support. */
+  reconciliation?: readonly ResearchReportReconciliationV2[];
+  /** Accepted brief targets used only to name unresolved coverage gaps. */
+  coverageTargets?: readonly { id: string; question: string }[];
+  /**
+   * Host-accepted packet gaps. They remain non-evidence metadata and are
+   * rendered only when an accepted reconciliation defect names their ID.
+   */
+  acceptedGaps?: readonly {
+    id: string;
+    summary: string;
+    targetId?: string;
+    sourceIds: readonly string[];
+  }[];
+  run: ResearchRunSummaryV1;
+  checkedAt: string;
+}
+
+function selectedSourceSet(value: readonly string[] | undefined): Set<string> | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > MAXIMUM_REPORT_CLAIMS) {
+    invalid("V2 report selected source IDs are invalid.");
+  }
+  return new Set(value.map((sourceId) =>
+    boundedText(sourceId, "V2 report selected source ID", 320)
+  ));
+}
+
+function normalizedReconciliation(
+  value: readonly ResearchReportReconciliationV2[] | undefined,
+): ResearchReportReconciliationV2[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAXIMUM_RECONCILIATION_OUTCOMES) {
+    invalid("V2 report reconciliation is invalid.");
+  }
+  const outcomes = value.map(reconciliationOutcome);
+  if (new Set(outcomes.map((outcome) => outcome.defectId)).size !== outcomes.length) {
+    invalid("V2 report reconciliation defect is duplicated.");
+  }
+  return outcomes.map((outcome) => structuredClone(outcome));
+}
+
+function unresolvedReconciliationLimitations(
+  outcomes: readonly ResearchReportReconciliationV2[],
+  language: ResearchRequestV1["reportLanguage"],
+  context: {
+    claims: readonly ResearchReportClaimV2[];
+    sections: readonly ResearchReportSectionV2[];
+    coverageTargets?: readonly { id: string; question: string }[];
+    acceptedGaps?: readonly {
+      id: string;
+      summary: string;
+      targetId?: string;
+      sourceIds: readonly string[];
+    }[];
+    reportSourceIds: ReadonlySet<string>;
+  },
+): string[] {
+  const unresolved = outcomes.filter((outcome) =>
+    outcome.decision === "add_follow_up" || outcome.decision === "abstain"
+  );
+  const claimsById = new Map(context.claims.map((claim) => [claim.id, claim]));
+  const sectionsById = new Map(context.sections.map((section) => [section.id, section]));
+  const coverageById = new Map(
+    (context.coverageTargets ?? []).map((target) => [target.id, target]),
+  );
+  const acceptedCoverageTargetIds = new Set(coverageById.keys());
+  const safeGapSummary = (value: string): string => {
+    const withoutLinks = value
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "external reference")
+      .replace(/[.!?]+$/g, "");
+    return markdownText(withoutLinks).slice(0, 500).trimEnd();
+  };
+  const gapsById = new Map<string, { id: string; summary: string }>();
+  for (const gap of context.acceptedGaps ?? []) {
+    if (gapsById.has(gap.id) || gap.id.length === 0 || gap.id.length > 160 ||
+        gap.summary.length === 0 || gap.summary.length > 600 || gap.summary.includes("\u0000") ||
+        (gap.targetId !== undefined && !acceptedCoverageTargetIds.has(gap.targetId)) ||
+        gap.sourceIds.length > 12 || new Set(gap.sourceIds).size !== gap.sourceIds.length ||
+        gap.sourceIds.some((sourceId) => !context.reportSourceIds.has(sourceId))) {
+      continue;
+    }
+    const summary = safeGapSummary(gap.summary);
+    if (summary.length > 0) gapsById.set(gap.id, { id: gap.id, summary });
+  }
+  const concise = (value: string, maximum = 360): string => {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    return normalized.length <= maximum
+      ? normalized
+      : `${normalized.slice(0, maximum - 1).trimEnd()}…`;
+  };
+  const subjectFor = (outcome: ResearchReportReconciliationV2): string => {
+    if (outcome.target.kind === "claim") {
+      const claim = claimsById.get(outcome.target.id);
+      if (claim) return language === "de"
+        ? `die Aussage „${concise(claim.statement)}“`
+        : `the statement “${concise(claim.statement)}”`;
+    }
+    if (outcome.target.kind === "section") {
+      const section = sectionsById.get(outcome.target.id);
+      if (section) return language === "de"
+        ? `der Berichtsteil „${concise(section.title, 220)}“`
+        : `the report section “${concise(section.title, 220)}”`;
+    }
+    if (outcome.target.kind === "coverage") {
+      const target = coverageById.get(outcome.target.id);
+      if (target) return language === "de"
+        ? `der Fragenaspekt „${concise(target.question)}“`
+        : `the question aspect “${concise(target.question)}”`;
+      const section = context.sections.find((candidate) =>
+        candidate.coverageTargetIds.includes(outcome.target.id)
+      );
+      if (section) return language === "de"
+        ? `der Fragenaspekt im Berichtsteil „${concise(section.title, 220)}“`
+        : `the question aspect in report section “${concise(section.title, 220)}”`;
+    }
+    const fallback = language === "de"
+      ? {
+          finding: "ein angeforderter Befund",
+          relationship: "eine angeforderte Jira-↔-Confluence-Verbindung",
+          node: "ein erforderlicher Rechercheschritt",
+          claim: "eine zentrale Aussage",
+          section: "ein angeforderter Berichtsteil",
+          coverage: "ein erforderlicher Fragenaspekt",
+        }
+      : {
+          finding: "a requested finding",
+          relationship: "a requested Jira-to-Confluence relationship",
+          node: "a required research step",
+          claim: "a central statement",
+          section: "a requested report section",
+          coverage: "a required question aspect",
+        };
+    return fallback[outcome.target.kind];
+  };
+  const concreteGapOutcomeKeys = new Set(
+    unresolved
+      .filter((outcome) =>
+        (outcome.gapIds ?? []).some((gapId) => gapsById.has(gapId))
+      )
+      .map((outcome) =>
+        `${outcome.target.kind}:${outcome.target.id}:${outcome.defectCode ?? "unsupported"}`
+      ),
+  );
+  const concreteGapDefectCodes = new Set(
+    unresolved
+      .filter((outcome) =>
+        (outcome.gapIds ?? []).some((gapId) => gapsById.has(gapId))
+      )
+      .map((outcome) => outcome.defectCode ?? "unsupported"),
+  );
+  return unresolved.flatMap((outcome) => {
+    const concreteGaps = (outcome.gapIds ?? [])
+      .map((gapId) => gapsById.get(gapId))
+      .filter((gap): gap is { id: string; summary: string } => gap !== undefined);
+    if (concreteGaps.length > 0) {
+      return concreteGaps.map((gap) => language === "de"
+        ? `Offen bleibt: ${gap.summary}.`
+        : `Open point: ${gap.summary}.`);
+    }
+    const outcomeKey =
+      `${outcome.target.kind}:${outcome.target.id}:${outcome.defectCode ?? "unsupported"}`;
+    if (concreteGapOutcomeKeys.has(outcomeKey)) {
+      return [];
+    }
+    // A node is an internal workflow step, not a user-facing report subject.
+    // When the critic also supplied concrete gaps for the same defect class,
+    // those gaps are the actionable limitation and the node-level fallback is
+    // redundant. Keep an isolated node defect visible when no concrete gap
+    // explains it, so genuine orchestration failures are never hidden.
+    if (
+      outcome.target.kind === "node" &&
+      concreteGapDefectCodes.has(outcome.defectCode ?? "unsupported")
+    ) {
+      return [];
+    }
+    const subject = subjectFor(outcome);
+    const sentenceSubject = `${subject.charAt(0).toLocaleUpperCase(language === "de" ? "de-DE" : "en-US")}${subject.slice(1)}`;
+    if (outcome.reasonCode === "insufficient_budget") {
+      return [language === "de"
+        ? `Das festgelegte Zeit- oder Kostenlimit wurde erreicht, bevor ${subject} abschließend geprüft werden konnte.`
+        : `The configured time or cost limit was reached before ${subject} could be checked conclusively.`];
+    }
+    if (outcome.reasonCode === "outside_approval_envelope") {
+      return [language === "de"
+        ? `Für ${subject} wären zusätzliche, nicht freigegebene Quellen erforderlich; der Punkt bleibt deshalb offen.`
+        : `Resolving ${subject} requires additional sources outside the approved scope, so the item remains open.`];
+    }
+    const action = language === "de"
+      ? {
+          unsupported: `${sentenceSubject} ist durch die gelesenen Detailbelege nicht ausreichend gestützt.`,
+          contradicted: `Zu ${subject} bestehen weiterhin widersprüchliche Belege.`,
+          missing_coverage: `${sentenceSubject} wurde mit den gelesenen Quellen nicht vollständig beantwortet.`,
+          overstated: `${sentenceSubject} lässt sich nur eingeschränkt belegen und darf nicht stärker formuliert werden.`,
+          instruction_mismatch: `${sentenceSubject} wurde im bisherigen Rechercheergebnis nicht wie angefordert behandelt.`,
+          duplicate: `${sentenceSubject} konnte nicht als eigenständiger, ausreichend belegter Punkt bestätigt werden.`,
+          stale: `Für ${subject} liegt kein ausreichend aktueller Detailbeleg vor.`,
+        }
+      : {
+          unsupported: `${sentenceSubject} is not sufficiently supported by the detail evidence that was read.`,
+          contradicted: `The available evidence for ${subject} remains contradictory.`,
+          missing_coverage: `${sentenceSubject} was not fully answered by the sources that were read.`,
+          overstated: `${sentenceSubject} has only limited support and must not be stated more strongly.`,
+          instruction_mismatch: `${sentenceSubject} was not addressed as requested in the current research result.`,
+          duplicate: `${sentenceSubject} could not be confirmed as a distinct, sufficiently supported item.`,
+          stale: `No sufficiently current detail evidence is available for ${subject}.`,
+        };
+    return [action[outcome.defectCode ?? "unsupported"]];
+  });
+}
+
+/**
+ * Project host-accepted reconciliation outcomes for operator visibility. The
+ * critic's explanation and support references deliberately do not cross this
+ * boundary: neither is report evidence nor report prose.
+ */
+export function projectResearchReportReconciliationV2(
+  defects: readonly ResearchReconciliationDefectV1[],
+  dispositions: readonly ResearchReconciliationDispositionV1[],
+): ResearchReportReconciliationV2[] {
+  const dispositionsByDefectId = new Map(
+    dispositions.map((disposition) => [disposition.defectId, disposition]),
+  );
+  if (defects.length !== dispositionsByDefectId.size) {
+    invalid("Every reconciliation defect requires one host-recorded disposition.");
+  }
+  return normalizedReconciliation(defects.map((defect) => {
+    const disposition = dispositionsByDefectId.get(defect.id);
+    if (!disposition) invalid("A reconciliation disposition is missing its defect.");
+    const decision =
+      disposition.decision === "add_follow_up" && disposition.resultingNodeId
+        ? "revise"
+        : disposition.decision;
+    return {
+      defectId: defect.id,
+      target: structuredClone(defect.target),
+      defectCode: defect.code,
+      ...(defect.gapIds === undefined ? {} : { gapIds: [...defect.gapIds] }),
+      decision,
+      reasonCode: disposition.reasonCode,
+    };
+  }));
+}
+
+/**
+ * Finalize a V2 report from private host ledgers. Every published statement is
+ * copied from a `current` claim after its exact evidence spans were refreshed.
+ * The function deliberately accepts no model-authored Markdown or findings.
+ */
+export async function finalizeResearchReportV2(
+  input: FinalizeResearchReportV2Input,
+): Promise<ResearchReportV2> {
+  if (!Number.isFinite(Date.parse(input.checkedAt))) invalid("V2 report freshness check time is invalid.");
+  const selectedSources = selectedSourceSet(input.selectedSourceIds);
+  const requestedIds = input.claimIds === undefined
+    ? input.outline
+      ? [...new Set([
+          ...input.outline.sections.flatMap((section) => section.claimIds),
+          ...input.outline.coverage.flatMap((entry) => entry.claimIds),
+        ])]
+      : []
+    : distinctClaimIds(input.claimIds, "V2 report claim IDs");
+  if (requestedIds.length > MAXIMUM_REPORT_CLAIMS) invalid("V2 report contains too many requested claims.");
+  const claims: ResearchClaimV1[] = [];
+  const staleLimitations: string[] = [];
+  const records = new Map<string, ResearchEvidenceRecordV1>();
+  const sources = new Map<string, ResearchSourceReferenceV1>();
+  for (const claimId of requestedIds) {
+    const claim = await input.claimLedger.refresh(claimId, input.checkedAt);
+    if (!claim) invalid("V2 report references a claim that is not retained.");
+    if (claim.freshness !== "current") {
+      staleLimitations.push("A selected claim was excluded because its evidence is no longer current.");
+      continue;
+    }
+    for (const evidenceId of claim.evidenceIds) {
+      const record = await input.evidenceStore.get(evidenceId);
+      if (!record || record.identity.tenantOrigin !== input.request.scope.siteOrigin) {
+        invalid("V2 report claim evidence is unavailable or outside the approved tenant.");
+      }
+      records.set(evidenceId, record);
+      const existing = sources.get(record.source.id);
+      if (existing && !sameSource(existing, record.source)) {
+        invalid("V2 report has inconsistent source metadata for one source ID.");
+      }
+      sources.set(record.source.id, structuredClone(record.source));
+    }
+    claims.push(claim);
+  }
+  if (selectedSources && [...selectedSources].some((sourceId) => !sources.has(sourceId))) {
+    invalid("V2 report selects a source outside its current evidence.");
+  }
+  const selectedClaims = selectedSources === undefined
+    ? claims
+    : claims.filter((claim) => sourceIdsForClaim(claim, records)
+      .some((sourceId) => selectedSources.has(sourceId)));
+  const reportClaims: ResearchReportClaimV2[] = selectedClaims.map((claim) => ({
+    id: claim.id,
+    classification: claim.classification,
+    statement: claim.statement,
+    freshness: "current",
+    evidenceIds: [...claim.evidenceIds],
+    sourceIds: sourceIdsForClaim(claim, records),
+  }));
+  const currentClaimIds = new Set(reportClaims.map((claim) => claim.id));
+  const currentEvidenceIds = new Set(reportClaims.flatMap((claim) => claim.evidenceIds));
+  const reportSourceIds = new Set(reportClaims.flatMap((claim) => claim.sourceIds));
+  const authorityClassesBySourceId = new Map<string, Set<"whole_scope" | "exact_entity">>();
+  for (const evidenceId of currentEvidenceIds) {
+    const record = records.get(evidenceId);
+    if (!record || !reportSourceIds.has(record.source.id)) continue;
+    const authorities = authorityClassesBySourceId.get(record.source.id) ?? new Set();
+    authorities.add(record.authority.authorityClass);
+    authorityClassesBySourceId.set(record.source.id, authorities);
+  }
+  const questionDirectedSections = (input.outline?.sections ?? []).filter(
+    (section) => section.id !== "outline-section:host-unassigned",
+  );
+  const claimsById = new Map(reportClaims.map((claim) => [claim.id, claim]));
+  const coverage = (input.outline?.coverage ?? []).map((entry) => {
+    const explicitlyTargetedSections = questionDirectedSections.filter((section) =>
+      section.coverageTargetIds.includes(entry.targetId)
+    );
+    const relevantSections = explicitlyTargetedSections.length > 0
+      ? explicitlyTargetedSections
+      : questionDirectedSections;
+    const claimIds = [...new Set(relevantSections.flatMap((section) =>
+      section.claimIds.filter((id) => currentClaimIds.has(id))
+    ))];
+    const evidenceIds = [...new Set(claimIds.flatMap((id) =>
+      claimsById.get(id)?.evidenceIds ?? []
+    ))];
+    const distinctSourceCount = new Set(evidenceIds.map((id) => records.get(id)?.identity.canonicalId)).size;
+    const everySectionRepresented = relevantSections.length > 0 && relevantSections.every((section) =>
+      section.claimIds.some((id) => currentClaimIds.has(id))
+    );
+    return {
+      targetId: entry.targetId,
+      status: everySectionRepresented && distinctSourceCount >= entry.distinctSourceCount
+        ? entry.status
+        : evidenceIds.length === 0 ? "uncovered" as const : "partial" as const,
+      claimIds,
+      evidenceIds,
+      distinctSourceCount,
+    };
+  });
+  const reconciliation = normalizedReconciliation(input.reconciliation);
+  const reportSections = sectionsFor(
+    input.outline,
+    reportClaims.map((claim) => claim.id),
+  );
+  const report = {
+    schema: RESEARCH_REPORT_SCHEMA_V2,
+    title: input.title === undefined ? "Evidence-backed research" : boundedText(input.title, "V2 report title", 300),
+    question: input.request.question,
+    scope: structuredClone(input.request.scope),
+    executiveSummaryClaimIds: reportClaims.slice(0, 4).map((claim) => claim.id),
+    claims: reportClaims,
+    sections: reportSections,
+    coverage,
+    reconciliation,
+    sourceAuthorities: [...reportSourceIds]
+      .map((sourceId) => ({
+        sourceId,
+        authorityClasses: [...(authorityClassesBySourceId.get(sourceId) ?? new Set())].sort(),
+      }))
+      .sort((left, right) => left.sourceId.localeCompare(right.sourceId)),
+    limitations: [...new Set([
+      ...(input.limitations ?? []).map((value) => localizeResearchLimitationV1(
+        input.request.reportLanguage,
+        boundedText(value, "V2 report limitation", 700),
+      )),
+      ...input.run.warnings.map((value) => boundedText(value, "V2 report run warning", 700)),
+      ...staleLimitations.map((value) => localizeResearchLimitationV1(input.request.reportLanguage, value)),
+      ...incompleteCoverageLimitations(coverage, input.request.reportLanguage),
+      ...unresolvedReconciliationLimitations(reconciliation, input.request.reportLanguage, {
+        claims: reportClaims,
+        sections: reportSections,
+        coverageTargets: input.coverageTargets,
+        acceptedGaps: input.acceptedGaps,
+        reportSourceIds,
+      }),
+    ])].slice(0, 12),
+    sources: [...new Set(reportClaims.flatMap((claim) => claim.sourceIds))]
+      .map((sourceId) => sources.get(sourceId)!)
+      .sort((left, right) => left.id.localeCompare(right.id)),
+    run: structuredClone(input.run),
+  } satisfies Omit<ResearchReportV2, "markdown">;
+  const finalized: ResearchReportV2 = { ...report, markdown: renderMarkdown(report, input.request.reportLanguage) };
+  assertResearchReportV2(finalized);
+  return finalized;
+}

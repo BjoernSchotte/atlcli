@@ -1,0 +1,21 @@
+{
+  "schema": "atlcli.publication-bundle/1-t0",
+  "revision": "t0-collision-r1",
+  "providerOrigins": [],
+  "pages": [
+    {
+      "id": "page-reserved",
+      "route": "/reserved",
+      "title": "Collision",
+      "description": "Must collide with a handwritten route.",
+      "locale": "en",
+      "direction": "ltr",
+      "spaceKey": "PUB",
+      "labels": [],
+      "contentType": "page",
+      "position": 0,
+      "headings": [],
+      "blocks": [{ "type": "paragraph", "content": [{ "type": "text", "text": "collision" }] }]
+    }
+  ]
+}

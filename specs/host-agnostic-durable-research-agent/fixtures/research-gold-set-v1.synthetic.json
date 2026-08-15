@@ -1,0 +1,114 @@
+{
+  "schema": "atlcli.research-gold-set/v1",
+  "id": "synthetic-demo-kb-cross-product",
+  "createdAt": "2026-07-31T10:00:00.000Z",
+  "asOf": "2026-07-31T10:00:00.000Z",
+  "question": "Which DEMO issues are implemented by KB pages, where do the sources conflict, and what remains unknown?",
+  "scope": {
+    "siteOrigin": "https://example.atlassian.net",
+    "jiraProjectKeys": ["DEMO"],
+    "confluenceSpaceKeys": ["KB"],
+    "timeWindow": {
+      "from": "2026-07-01",
+      "to": "2026-07-31"
+    }
+  },
+  "permissionContext": {
+    "label": "synthetic-visible-fixture",
+    "visibleOnly": true,
+    "accountFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "sources": [
+    {
+      "id": "jira:DEMO-1",
+      "product": "jira",
+      "canonicalUrl": "https://example.atlassian.net/browse/DEMO-1",
+      "title": "Implement the bounded pagination design",
+      "versionRef": "updated:2026-07-30T10:00:00.000Z",
+      "updatedAt": "2026-07-30T10:00:00.000Z",
+      "snapshotSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "snapshotPath": "snapshots/jira-DEMO-1.json"
+    },
+    {
+      "id": "wiki:1001",
+      "product": "confluence",
+      "canonicalUrl": "https://example.atlassian.net/wiki/spaces/KB/pages/1001",
+      "title": "Bounded pagination design",
+      "versionRef": "version:3",
+      "updatedAt": "2026-07-30T09:00:00.000Z",
+      "snapshotSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "snapshotPath": "snapshots/wiki-1001.json"
+    }
+  ],
+  "gold": {
+    "relevantSourceIds": ["jira:DEMO-1", "wiki:1001"],
+    "requiredDetailSourceIds": ["jira:DEMO-1", "wiki:1001"],
+    "claims": [
+      {
+        "id": "claim:bounded-pagination",
+        "summary": "The issue implements the bounded pagination design.",
+        "sourceIds": ["jira:DEMO-1", "wiki:1001"]
+      }
+    ],
+    "verifiedRelationships": [
+      {
+        "id": "relationship:DEMO-1:1001",
+        "summary": "The issue and page explicitly link to one another.",
+        "sourceIds": ["jira:DEMO-1", "wiki:1001"]
+      }
+    ],
+    "abstentions": [
+      {
+        "questionId": "question:production-budget",
+        "expected": true
+      }
+    ],
+    "completenessCriteria": [
+      "jira-pagination-exhausted",
+      "wiki-pagination-exhausted",
+      "required-details-attempted",
+      "limitations-disclosed"
+    ],
+    "requiredBranchIds": [
+      "jira-research",
+      "wiki-research",
+      "cross-product-verification",
+      "self-critique",
+      "synthesis"
+    ],
+    "expectedScopeEntityIds": ["jira:project:DEMO", "wiki:space:KB"],
+    "catalogEntityIds": ["jira:project:DEMO", "wiki:space:KB"],
+    "necessaryScopeExpansionIds": [],
+    "adversarialConditions": [
+      "source-instruction-remains-data",
+      "foreign-scope-link-rejected",
+      "no-answer-abstention"
+    ]
+  },
+  "comparison": {
+    "systems": [
+      "native-jira-confluence",
+      "issue-138-poc",
+      "s0",
+      "s1",
+      "s2",
+      "s3",
+      "rovo",
+      "rovo-deep-research"
+    ],
+    "budget": {
+      "maxRunMs": 600000,
+      "maxModelCostUsd": 2,
+      "maxModelInputTokens": 100000,
+      "maxModelOutputTokens": 12000,
+      "maxHttpCalls": 128,
+      "maxPtcCalls": 64
+    }
+  },
+  "reviewPolicy": {
+    "blind": true,
+    "minimumReviewers": 1,
+    "minimumRepeats": 3,
+    "maximumRepeats": 5
+  }
+}

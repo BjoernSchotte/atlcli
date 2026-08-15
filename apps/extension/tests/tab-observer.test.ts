@@ -22,6 +22,101 @@ const FOREIGN_CONFLUENCE_SHAPE =
 const WINDOW_A = 7;
 const WINDOW_B = 8;
 
+/** This extension's own origin, as `chrome.runtime.getURL("/")` returns it. */
+const OWN_ORIGIN = "chrome-extension://ifgomchmeaolmleampgdonakpbghinhn/";
+const OWN_PREVIEW_PAGE = `${OWN_ORIGIN}preview.html`;
+
+/**
+ * Opening our own large-preview tab must not look like leaving the page.
+ *
+ * `window.open("preview.html")` puts a new tab in the SAME Chrome window and
+ * activates it, so `chrome.tabs.onActivated` fires with a `chrome-extension:`
+ * URL. Before this rule, that was folded in as an ordinary tab switch: a
+ * null-entity detection with a HIGHER seq, pushed to every listener in the
+ * window. Two things broke at once — the preview tab pulled that null detection
+ * and so never had a page to preview (it rendered its "open a Confluence page"
+ * state, which reads as a blank tab), and the side panel behind it lost its page
+ * too.
+ *
+ * A FOREIGN page — including another extension's — still clears the context.
+ * The panel going idle when you genuinely navigate away is correct behaviour,
+ * and is pinned by the neighbouring tests; the exemption is only for surfaces
+ * this extension itself owns.
+ */
+describe("our own extension pages are not a page change", () => {
+  const withPage = observeTab(initialObserverState(), WINDOW_A, PAGE_URL).state;
+
+  it("does not emit — or forget the page — when our preview tab is activated", () => {
+    const result = observeTab(withPage, WINDOW_A, OWN_PREVIEW_PAGE, OWN_ORIGIN);
+    expect(result.message).toBeNull();
+    expect(result.state).toEqual(withPage);
+  });
+
+  it("answers a pull FROM that tab with the page the window is still showing", () => {
+    const { detection } = currentDetection(withPage, WINDOW_A, OWN_PREVIEW_PAGE, OWN_ORIGIN);
+    expect(detection.url).toBe(PAGE_URL);
+    expect(detection.entity).toEqual({
+      product: "confluence",
+      type: "page",
+      pageId: "12345",
+      spaceKey: "DOCSY",
+    });
+  });
+
+  it("still reports no page when the window never had one", () => {
+    const { detection } = currentDetection(
+      initialObserverState(),
+      WINDOW_A,
+      OWN_PREVIEW_PAGE,
+      OWN_ORIGIN
+    );
+    expect(detection.url).toBeNull();
+    expect(detection.entity).toBeNull();
+  });
+
+  it("does NOT exempt another extension's page", () => {
+    const foreign = "chrome-extension://someotherextensionidhereokay/index.html";
+    const result = observeTab(withPage, WINDOW_A, foreign, OWN_ORIGIN);
+    expect(result.message).not.toBeNull();
+    expect(result.message?.detection.entity).toBeNull();
+  });
+
+  it("does not exempt anything when no own origin is supplied", () => {
+    // The pure core must not guess at its own identity — a host that forgets to
+    // pass the origin gets exactly the old behaviour, visibly.
+    const result = observeTab(withPage, WINDOW_A, OWN_PREVIEW_PAGE);
+    expect(result.message).not.toBeNull();
+  });
+
+  /**
+   * The consumption-site check, and the reason this block exists at all.
+   *
+   * `ownOrigin` is optional, so the entire fix above is inert unless the service
+   * worker actually passes it — and "an option nothing reads" is precisely the
+   * defect that produced this bug in the first place (`containerWidth` on
+   * `renderPage` had a call site count of zero for the same reason). The pure
+   * tests cannot see that; they hand in the argument themselves.
+   *
+   * `feed` and `getCurrentEntity` are closures inside `defineBackground`, so
+   * there is nothing to import and drive. Reading the source is the honest
+   * option — a weaker check than a behavioural one, but a real one, and far
+   * better than trusting that the wiring stayed.
+   */
+  it("is actually wired: the service worker passes its own origin to both call sites", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("../entrypoints/background.ts", import.meta.url),
+      "utf8"
+    );
+    expect(source).toContain('chrome.runtime.getURL("/")');
+    const calls = [...source.matchAll(/\b(observeTab|currentDetection)\s*\(([^)]*)\)/g)];
+    expect(calls.length, "no observeTab/currentDetection call found in background.ts").toBe(2);
+    for (const [, name, args] of calls) {
+      expect(args, `${name}(...) in background.ts must pass ownOrigin`).toContain("ownOrigin");
+    }
+  });
+});
+
 describe("classifyUrl (URL → entity, origin-gated)", () => {
   it("resolves a Confluence page URL to a page entity", () => {
     expect(classifyUrl(PAGE_URL)).toEqual({

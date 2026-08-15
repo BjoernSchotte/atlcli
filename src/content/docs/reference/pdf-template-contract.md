@@ -20,10 +20,12 @@ of symbols generated content depends on, and the versioning policy. It is
 ## On this page
 
 - [Prerequisites](#prerequisites)
+- [Authoring and export policy boundaries](#authoring-and-export-policy-boundaries)
 - [The render surface](#the-render-surface)
 - [Required meta keys](#required-meta-keys)
 - [The settings dictionary](#the-settings-dictionary)
 - [The defensive-read rule](#the-defensive-read-rule)
+- [Running-head modes](#running-head-modes)
 - [The stable v1 hook set](#the-stable-v1-hook-set)
 - [Versioning policy](#versioning-policy)
 - [Example](#example)
@@ -59,6 +61,27 @@ The engine invokes it from the generated `main.typ`:
 
 `settings: (:)` as the default is itself the backward-compatibility guarantee:
 a caller that passes no `settings` keeps compiling unchanged.
+
+## Authoring and export policy boundaries
+
+The stable archive/render API remains `wiki.pdf-template/v1`; authoring recipe
+versions do not change it. Recipe V2 (`wiki.pdf-template-recipe/v2`) resolves an
+exact installed baseline plus sparse overrides into a complete Catalog V3
+manifest and canonical source revision 5 before packing. The resulting archive
+is self-contained and never fetches its baseline at export time.
+
+The three ownership planes are intentionally separate:
+
+| Plane | Owns | Does not own |
+|---|---|---|
+| Recipe and pack | Reusable design, semantic components, paints, relative asset declarations | Tenant metadata, PDF-standard claims, raw Typst |
+| Export request | Document metadata, language/region, requested PDF/A or PDF/UA standard | Reusable brand geometry |
+| Renderer | Catalog/compiler availability, canonical source, output evidence | Author assets or certification claims |
+
+`--pdf-standard` therefore cannot appear in a recipe or pack. Conversely,
+running heads, component styles, and paints cannot be selected through the PDF
+output-policy contract. A successful template compile is evidence that the
+design executes; it is not PDF/A or PDF/UA certification.
 
 ## Required meta keys
 
@@ -119,6 +142,117 @@ This is what keeps sparse dictionaries and older callers compiling: a key that
 is absent falls back to its default rather than raising a missing-field error. A
 template that reads `settings.page` directly is **not** conforming — it breaks
 the moment a caller omits that key.
+
+## Running-head modes
+
+The running head (German: *Kolumnentitel*) is the line at the top of every body
+page. Which text it carries is a **template design decision**, declared in the
+manifest at `design.features.header.mode` — not a Level-A setting.
+
+| Mode | Running head shows | Use it for |
+|------|--------------------|------------|
+| `"title"` *(default)* | Document title (left) + space key (right) | Single-page and short exports. |
+| `"chapter"` | The level-1 heading that owns the page — the **first** chapter beginning on it, else the chapter still running (left) + space key (right) | Book-like documents and page-tree exports. |
+| `"custom"` | The `headerText` setting | A fixed legal or classification line. |
+
+The field is **optional**. A manifest that omits it — including every manifest
+written before the mode existed — behaves exactly as `"title"`, so adding the
+field changed no existing output. Invalid values are rejected by the manifest
+import gate at `design.features.header.mode`, never coerced.
+
+**Precedence.** An explicit `headerText` setting wins in *every* mode. `"custom"`
+therefore documents a template's intent rather than changing resolution order,
+and falls back to the document title when no `headerText` is supplied.
+
+### Why `chapter` exists
+
+With `"title"`, a 57-page page-tree export repeats the root page's title on all
+57 pages, which tells the reader nothing about where they are. `"chapter"` names
+the section instead:
+
+```typst
+let chapters = query(heading.where(level: 1)).filter(h => h.outlined)
+let opening = chapters.filter(h => h.location().page() == here().page())
+let running = chapters.filter(h => h.location().page() < here().page())
+let chapter-head = if opening.len() > 0 {
+  opening.first().body
+} else if running.len() > 0 {
+  running.last().body
+} else {
+  meta.title
+}
+grid(columns: (1fr, auto), chapter-head, meta.space)
+```
+
+In words: **the first chapter that begins on this page; if none begins here, the
+chapter still running.** Three details of that resolution are load-bearing, and
+all three were verified against the pinned compiler
+(`typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1`):
+
+- **A chapter opening on this page counts.** Inside a page header, `here()`
+  resolves to the *top* of the page, so a `.before(here())` selector excludes a
+  chapter that opens on that very page — the head would lag one page behind at
+  every chapter opening. Matching this page's own page index is what picks the
+  chapter that actually owns the page.
+- **`h.outlined` filter.** `outline()` renders its own level-1 heading for the
+  "Contents" title. It is the only heading with `outlined: false`, and "appears
+  in the table of contents" is precisely what makes a heading a chapter — without
+  the filter, every page of every document would be headed *Contents*.
+- **First on the page, not last.** When several short chapters begin on one page,
+  the head names the **first** of them. The head sits at the top of the page and
+  the content directly beneath it starts with that first chapter, so naming a
+  later one would contradict what the reader sees. This also matches Word's
+  default `STYLEREF` behavior — see [DOCX equivalence](#docx-equivalence). It
+  only ever applies to pages that open more than one chapter: with at most one
+  chapter per page, "first opening here" and "last at or before here" are the
+  same heading, which is why the refinement left ordinary output byte-identical.
+
+Pages before the first chapter heading (a cover, the table of contents, front
+matter) fall back to the **document title**, never to an empty head. The space
+key on the right and the hairline rule below are identical in all three modes.
+
+:::note[Several chapters per page is not the usual layout]
+`composeChapters` inserts a page break per chapter by default, so a tree or space
+export puts exactly one chapter on each page and the first-on-page rule never
+fires. It matters for documents assembled without those breaks
+(`chapterBreak: "none"`) or with very short chapters.
+:::
+
+Of the two curated built-in templates, **Manuscript** ships `"chapter"` (it is a
+book-like design) and **Editorial Indigo** stays on the default `"title"`.
+
+### DOCX equivalence
+
+The DOCX engine has the same capability, expressed the way Word expresses it: a
+user template puts a `STYLEREF` field in its header
+(`STYLEREF "Scroll Heading 1" \* MERGEFORMAT`) and the engine keeps it resolving
+— field instructions survive byte-exactly, headings carry the exact `w:pStyle`
+id the field names, and `updateFields` prompts Word to refresh on open.
+
+**The two engines resolve the head the same way.** For a `STYLEREF` field in a
+header, Word searches the current page from the **top down** and takes the
+**first** paragraph in the named style; if the style does not occur on the page
+at all, it searches back from the top of the page toward the beginning of the
+document, i.e. it keeps showing the chapter that is still running. That is
+exactly the PDF resolution above. The `\l` switch
+(`STYLEREF "Scroll Heading 1" \l`) reverses the on-page search to **bottom-up**,
+making Word take the **last** heading beginning on the page instead — the two
+directions together are how Word builds dictionary-style headers, one plain field
+for the first entry on the page and one `\l` field for the last. PDF's `chapter`
+mode corresponds to the **default** (no `\l`) behavior; there is no PDF analogue
+of `\l` today.
+
+Sources for that: Microsoft's ECMA-376 implementation notes state that `\l` in a
+header "causes the search to go from the bottom of the page to the beginning of
+the document" and has no effect elsewhere
+([MS-OI29500 §17.16.5.59](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/0f5599c3-3b12-4970-931d-659e489369f4)).
+
+The two engines differ in **where the decision lives**, not in what it does: PDF
+declares the mode in a validated manifest field, DOCX inherits it from whatever
+field the user's `.docx` template already contains. See
+[Running headers (STYLEREF)](docx-engine.md#running-headers-styleref), including
+the `styleref-style-unused-in-export` promotion trap, which has no PDF analogue
+because the PDF query names no style.
 
 ## The stable v1 hook set
 
@@ -206,4 +340,8 @@ defensive reads:
   and their validation.
 - [Template Pack Format](template-pack-format.md) — the `.wiki-pdf-template`
   container, manifest schema, and import gate.
+- [PDF Template Authoring CLI](pdf-template-authoring-cli.md) — the reviewed
+  Word-to-pack workflow and machine contracts.
 - [PDF Export Engine](pdf-engine.md) — the pipeline this contract renders in.
+- [DOCX Export Engine](docx-engine.md#running-headers-styleref) — the DOCX
+  equivalent of a chapter running head (`STYLEREF` in a user template).

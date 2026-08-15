@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { htmlToExportBlocks, isSafeLinkScheme } from "./html-to-blocks.js";
+import { htmlToExportBlocks } from "./html-to-blocks.js";
+// The predicate moved to the canonical `link-safety` module (spec 011); this
+// suite keeps exercising it through its original call site.
+import { isSafeLinkScheme } from "./link-safety.js";
 import type { ExportBlock } from "./export-blocks.js";
 
 describe("htmlToExportBlocks — basic subset", () => {
@@ -11,6 +14,31 @@ describe("htmlToExportBlocks — basic subset", () => {
     const p = blocks[1] as Extract<ExportBlock, { type: "paragraph" }>;
     expect(p.content.some((n) => n.type === "text" && n.marks?.includes("bold"))).toBe(true);
     expect(p.content.some((n) => n.type === "text" && n.marks?.includes("italic"))).toBe(true);
+  });
+
+  test("preserves arbitrary inline background colors from export_view HTML", () => {
+    const { blocks } = htmlToExportBlocks(
+      '<p><span style="background-color: rgb(186, 243, 219);">plain</span>' +
+        '<span style="color: #403294; background-color: #EED7FC"><a href="https://example.com">linked</a></span></p>'
+    );
+    const content = (blocks[0] as Extract<ExportBlock, { type: "paragraph" }>).content;
+    expect(content).toContainEqual({
+      type: "text",
+      text: "plain",
+      backgroundColor: "#BAF3DB",
+    });
+    expect(content).toContainEqual({
+      type: "link",
+      target: { kind: "external", href: "https://example.com" },
+      content: [
+        {
+          type: "text",
+          text: "linked",
+          color: "#403294",
+          backgroundColor: "#EED7FC",
+        },
+      ],
+    });
   });
 
   test("tables with header cells", () => {

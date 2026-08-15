@@ -32,7 +32,32 @@ export const MAX_PAGES_LIMIT = 100_000;
 export const MAX_FOLDERS_LIMIT = 10_000;
 
 export type ExportScopeKind = "page" | "tree" | "space";
-export type ExportEngine = "python" | "ts";
+
+/**
+ * The DOCX rendering engine. One value — the isomorphic `@atlcli/docx` engine.
+ *
+ * `--engine` survives its own obsolescence on purpose: it is documented, it is
+ * in people's scripts and CI pipelines, and `--engine ts` costing them a run is
+ * a worse outcome than a flag with exactly one legal value.
+ */
+export type ExportEngine = "ts";
+
+/**
+ * Engines that existed and no longer do, mapped to what to do instead.
+ *
+ * Kept separate from {@link ExportEngine} so the type system knows there is one
+ * engine while the CLI still recognizes the retired spelling. Letting `python`
+ * fall through to the generic "Unknown --engine" branch would be a regression in
+ * everything except tidiness: the person typing it is mid-migration and needs
+ * the sentence below, not a list of valid values.
+ */
+const REMOVED_ENGINES = new Map<string, string>([
+  [
+    "python",
+    "The Python DOCX exporter has been removed. Drop `--engine python`; the TypeScript DOCX engine is the default. " +
+      "Templates must use $scroll.* placeholders — docxtpl/Jinja ({{ … }}) placeholders are left as literal text.",
+  ],
+]);
 
 /** The parsed, validated result — everything the handler needs to proceed. */
 export interface ParsedExportRequest {
@@ -139,9 +164,13 @@ export function parseExportRequest(
   flags: Flags
 ): ParsedExportRequest {
   // --- engine ---
-  const engine = (getFlag(flags, "engine") ?? "python") as string;
-  if (engine !== "python" && engine !== "ts") {
-    fail(`Unknown --engine "${engine}". Use "ts" or "python".`);
+  const engine = getFlag(flags, "engine") ?? "ts";
+  const removed = REMOVED_ENGINES.get(engine);
+  if (removed !== undefined) {
+    fail(removed);
+  }
+  if (engine !== "ts") {
+    fail(`Unknown --engine "${engine}". Use "ts".`);
   }
 
   // --- raw scope inputs ---
@@ -200,9 +229,6 @@ export function parseExportRequest(
   if (hasFlag(flags, "label-exclude-mode") && excludeModeRaw === undefined) {
     fail(`--label-exclude-mode requires a value ("prune-subtree" or "page-only").`);
   }
-  const labelFlagsPresent =
-    include !== undefined || exclude !== undefined || hasFlag(flags, "label-exclude-mode");
-
   const completenessRaw = getFlag(flags, "completeness");
   if (
     completenessRaw !== undefined &&
@@ -225,25 +251,6 @@ export function parseExportRequest(
     if (excludeModeRaw) labels.excludeMode = excludeModeRaw as LabelFilter["excludeMode"];
   } else if (excludeModeRaw !== undefined) {
     fail("--label-exclude-mode has no effect without --label-exclude.");
-  }
-
-  // --- python engine only supports the legacy single-page / --include-children path ---
-  if (engine === "python") {
-    const usesNewFlags =
-      rawScope === "tree" ||
-      rawScope === "space" ||
-      spacePresent ||
-      labelFlagsPresent ||
-      hasFlag(flags, "completeness") ||
-      maxDepth !== undefined ||
-      maxPages !== undefined ||
-      maxFolders !== undefined;
-    if (usesNewFlags) {
-      fail(
-        "Scope, label, completeness and traversal flags require --engine ts " +
-          "(the python engine only supports single-page export and the legacy --include-children merge)."
-      );
-    }
   }
 
   // --- per-scope validation of the flags that only make sense for a tree/space ---
@@ -342,4 +349,44 @@ export function buildExportScope(
         ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
       };
   }
+}
+
+/** The report's scope-traceability pair (spec 002 A5), as emitted under `--json`. */
+export interface ScopeReportFields {
+  requestedScope: Record<string, unknown>;
+  resolvedScope: Record<string, unknown>;
+}
+
+/**
+ * The ONE construction site for the report's `requestedScope`/`resolvedScope`
+ * traceability pair (spec 002 A5), shared by the DOCX (`export.ts`) and PDF
+ * (`export-pdf.ts`) tree/space paths so both formats emit an IDENTICAL field set
+ * for the same logical request.
+ *
+ * `requestedScope` mirrors the flags as given (a `--scope space --space DOCSY`
+ * request stays visible as `kind: "space"`); `resolvedScope` is the
+ * {@link buildExportScope} output, so the space→tree-at-homepage resolution is
+ * traceable in the `--json` report rather than being silently collapsed.
+ *
+ * Pure: no IO, no network. Both fields are plain JSON-serializable records that
+ * validate against `export-report.schema.json`'s open `requestedScope`/
+ * `resolvedScope` objects.
+ */
+export function buildScopeReportFields(
+  request: ParsedExportRequest,
+  resolvedScope: ExportScope
+): ScopeReportFields {
+  return {
+    requestedScope: {
+      kind: request.scopeKind,
+      ...(request.pageRef ? { pageRef: request.pageRef } : {}),
+      ...(request.spaceKey ? { spaceKey: request.spaceKey } : {}),
+      ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
+      ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
+      ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+      ...(request.labels ? { labels: request.labels } : {}),
+      completeness: request.completenessMode,
+    },
+    resolvedScope: { ...resolvedScope },
+  };
 }

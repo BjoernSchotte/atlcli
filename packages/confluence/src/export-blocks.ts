@@ -6,7 +6,8 @@
  * colspan/rowspan, loses status colors, and cannot express Word heading styles.
  * Rich exporters (DOCX, PDF/Typst) instead walk a **structured intermediate
  * model** — {@link ExportBlock}[] with typed inline runs — that both serializers
- * consume. This module owns that model and the storage→blocks walker.
+ * consume. `@atlcli/export-blocks` owns and this module compatibility-re-exports
+ * that model; this module owns only the Storage→blocks adapter.
  *
  * Design constraints:
  * - **Isomorphic.** No `node:`/`bun:` specifiers; buildable for the browser
@@ -25,388 +26,88 @@
  */
 
 import { decodeHTML } from "entities";
-import { KNOWN_MACROS } from "./markdown.js";
+import { KNOWN_MACROS } from "./known-macros.js";
+import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
+import { translateDatasourceLink } from "./datasource.js";
+import { normalizeChartMacro } from "./chart-macro.js";
+import type { AdfJsonValue } from "./adf-types.js";
+import type { BlocksResult } from "./page-body.js";
+import {
+  isColonEmojiShortName,
+  projectTypedEmoji,
+  type PortableEmojiProjection,
+} from "./emoji-projection.js";
 
-// ---------------------------------------------------------------------------
-// Model
-// ---------------------------------------------------------------------------
+import {
+  EXPORT_NOTE_CODES,
+  RETIRED_EXPORT_NOTE_CODES,
+  SEMANTIC_CALLOUT_ICONS,
+  canonicalExportNoteCode,
+  formatAdfDateTimestamp,
+  inlineMediaDisplayText,
+  macroParamText,
+  materializeTable,
+  mediaFallbackDisplayText,
+  mentionDisplayText,
+  panelIconDisplayText,
+  parseAdfDateTimestamp,
+  resolveCalloutIcon,
+  smartCardDisplayText,
+  statusDisplayText,
+  type AdfAnnotationComment,
+  type AdfAnnotationIdentity,
+  type AdfAnnotationReply,
+  type AdfDataConsumerProvenance,
+  type AdfExtensionFrame,
+  type AdfExtensionIdentity,
+  type AdfFragmentIdentity,
+  type AdfLinkAttributes,
+  type AdfUnsupportedAttribute,
+  type AdfUnsupportedMark,
+  type AdfUnsupportedNodeProvenance,
+  type BlockPresentation,
+  type CalloutKind,
+  type Caption,
+  type CaptionKind,
+  type EmojiSemantics,
+  type ExportBlock,
+  type ExportLink,
+  type ExportNote,
+  type ExportNoteCode,
+  type ExportNoteSource,
+  type ImageSource,
+  type InlineMark,
+  type InlineNode,
+  type LayoutBreakout,
+  type LayoutColumn,
+  type LinkTarget,
+  type ListItem,
+  type MacroParameter,
+  type MacroParamRef,
+  type MaterializedTable,
+  type MediaBorder,
+  type MediaGroupPosition,
+  type MediaLayout,
+  type MediaPresentation,
+  type PageLayout,
+  type ResolvedCalloutIcon,
+  type SemanticCalloutIcon,
+  type SmartCardAppearance,
+  type SmartCardSemantics,
+  type StandardCalloutKind,
+  type SyncedContentProvenance,
+  type TableCell,
+  type TableDisplayMode,
+  type TableLayout,
+  type TablePresentation,
+  type TableRow,
+  type TableVerticalAlignment,
+  type UnresolvedMediaIdentity,
+} from "@atlcli/export-blocks";
 
-/** Inline text formatting marks. Modeled as a set, not pre-rendered delimiters. */
-export type InlineMark =
-  | "bold"
-  | "italic"
-  | "code"
-  | "strike"
-  | "underline"
-  | "subscript"
-  | "superscript";
+export * from "@atlcli/export-blocks";
 
-/** Where a link points. External URLs, Confluence page refs, attachments, in-page anchors. */
-export type LinkTarget =
-  | { kind: "external"; href: string }
-  /**
-   * A link to another Confluence page. `contentId` is the `ri:content-id`
-   * attribute Confluence emits for links created via its page picker; it is the
-   * most reliable target key when duplicate page titles exist (spec 002 anchor
-   * rewrite resolves by `contentId` first). Optional + backwards compatible:
-   * hand-authored `ri:content-title`-only links leave it unset.
-   */
-  | { kind: "page"; contentTitle: string; contentId?: string; spaceKey?: string; anchor?: string }
-  | { kind: "attachment"; filename: string }
-  | { kind: "anchor"; anchor: string };
-
-/**
- * A typed inline node. Serializers render these to runs/spans; the model never
- * pre-renders formatting into strings.
- */
-export type InlineNode =
-  | { type: "text"; text: string; marks?: InlineMark[]; color?: string }
-  | { type: "link"; target: LinkTarget; content: InlineNode[] }
-  /**
-   * A user mention. Carries `accountId` always; `displayName` is optional and is
-   * the clean slot for the upcoming display-name resolution feature — when the
-   * storage lacks a name the serializer/resolver fills it from `accountId`.
-   */
-  | { type: "mention"; accountId: string; displayName?: string }
-  | { type: "status"; text: string; color: string }
-  | { type: "lineBreak" };
-
-/** A table cell. Confluence `<th>` → `header: true`. colspan/rowspan default to 1. */
-export interface TableCell {
-  header: boolean;
-  colspan: number;
-  rowspan: number;
-  /** Canonical source background color (`#RRGGBB`), when Confluence supplied one. */
-  backgroundColor?: string;
-  content: ExportBlock[];
-}
-
-export interface TableRow {
-  cells: TableCell[];
-}
-
-/**
- * A list item. `checked` is present only for task-list items (`true`/`false`);
- * a normal bullet/number item leaves it `undefined`.
- */
-export interface ListItem {
-  content: ExportBlock[];
-  checked?: boolean;
-}
-
-/** Where an image's bytes come from. */
-export type ImageSource =
-  /**
-   * A page attachment. `pageId` is the id of the page the attachment lives on;
-   * it lets a multi-page (tree/space) export resolve an attachment against the
-   * right page instead of a `filename@pageId` multiplexing hack (spec 002,
-   * A1(c)). Optional and backwards compatible: single-page export leaves it
-   * unset (set by `fetchExportTree` via {@link StorageToBlocksOptions.pageContext}).
-   */
-  | { kind: "attachment"; filename: string; pageId?: string }
-  /**
-   * An external image URL. `trust` marks provenance (spec 004): `"page"`
-   * (default/absent) is a page-author `<ac:image>` external ref on today's asset
-   * path; `"export-view"` is a URL rendered by a third-party app's macro HTML
-   * (untrusted) — the asset seam routes it through the stricter
-   * `ExternalAssetFetcher`/`ExternalAssetPolicy`. Set to `"export-view"` only by
-   * {@link htmlToExportBlocks}.
-   */
-  | { kind: "external"; url: string; trust?: "page" | "export-view" };
-
-/** Confluence callout kinds plus the generic titled panel. */
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
-
-/** What a {@link Caption} labels — drives the serializer's numbering prefix (Figure/Table/…). */
-export type CaptionKind = "figure" | "table" | "code" | "equation";
-
-/**
- * A caption attached to a captionable block (figure/table/code/equation). Its
- * `content` is typed inline nodes so a mention inside a caption resolves the
- * same way as anywhere else (see `resolve-mentions.ts`). No walker emits a
- * caption yet — that arrives with `scroll-title` (T1.4).
- */
-export interface Caption {
-  kind: CaptionKind;
-  content: InlineNode[];
-}
-
-/**
- * A structured reference captured from a macro parameter's `ri:*` child
- * element (never raw XML — a typed projection of the five reference shapes
- * the markdown→storage converter and hand-authored storage both emit:
- * `ri:page`, `ri:attachment`, `ri:url`, `ri:user`, `ri:space`).
- */
-export type MacroParamRef =
-  | { kind: "page"; contentId?: string; contentTitle?: string; spaceKey?: string; anchor?: string }
-  | { kind: "attachment"; filename: string }
-  | { kind: "url"; value: string }
-  | { kind: "user"; accountId: string }
-  | { kind: "space"; spaceKey: string };
-
-/**
- * One `<ac:parameter>`. `name` is the lowercased `ac:name` attribute — the
- * empty string for the unnamed first parameter some macros use (e.g.
- * `include`/`excerpt-include`'s page ref, `markdown.ts:333`). `text` holds
- * trimmed text content when present (today's `elementText` semantics);
- * `refs` holds every `ri:*` child in document order — most parameters have
- * at most one, but `spaces` (`blog-posts`) can carry several sibling
- * `ri:space` refs under a single parameter. A parameter can have `text`,
- * `refs`, both (mixed content), or neither (empty parameter).
- */
-export interface MacroParameter {
-  name: string;
-  text?: string;
-  refs?: MacroParamRef[];
-}
-
-/**
- * Case-insensitive convenience lookup for a parameter's plain-text value only
- * (mirrors the internal `macroParam` helper). Returns `undefined` for
- * ref-only or absent parameters — callers that need `ri:*` data read `refs`
- * directly. When duplicate names exist, the first match wins.
- */
-export function macroParamText(
-  params: MacroParameter[] | undefined,
-  name: string
-): string | undefined {
-  if (!params) return undefined;
-  const target = name.toLowerCase();
-  for (const p of params) {
-    if (p.name.toLowerCase() === target) return p.text;
-  }
-  return undefined;
-}
-
-/**
- * A block-level element. Discriminated on `type`. This is the unit both the
- * DOCX and Typst serializers iterate.
- *
- * The `pageBreak`, `orientation` and `anchor` variants are fed by the
- * `scroll-pagebreak`/`scroll-landscape`/`scroll-bookmark` walker features
- * (T1.4); until the engines learn real rendering (T1.3/T1.5) both serializers
- * render them as no-ops (`pageBreak`/`anchor` → nothing, `orientation` →
- * its `content` children rendered transparently, never dropped).
- */
-export type ExportBlock =
-  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; content: InlineNode[]; explicitAnchor?: string }
-  | { type: "paragraph"; content: InlineNode[] }
-  | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
-  | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
-  | { type: "list"; ordered: boolean; items: ListItem[] }
-  | { type: "table"; rows: TableRow[]; columnWidths?: number[]; caption?: Caption }
-  | { type: "image"; source: ImageSource; alt?: string; width?: number; height?: number; caption?: Caption }
-  | { type: "blockquote"; content: ExportBlock[] }
-  | { type: "divider" }
-  /** A hard page break (`scroll-pagebreak`). Engines render nothing until T1.3/T1.5. */
-  | { type: "pageBreak" }
-  /**
-   * A page-orientation region (`scroll-landscape`). `content` is walked
-   * recursively; engines render the children transparently (no real
-   * orientation switch) until T1.5, so no content is ever lost.
-   */
-  | { type: "orientation"; landscape: boolean; content: ExportBlock[] }
-  /** A named in-page anchor / bookmark (`scroll-bookmark`). No nested content. */
-  | { type: "anchor"; name: string }
-  /**
-   * An unrecognized macro. Never carries raw XML — the captured parameters and
-   * body are structured data (typed refs + walked blocks), not passthrough. All
-   * enrichment fields are optional so the block stays backward-compatible with
-   * `{ type: "unknown", macroName }`.
-   */
-  | { type: "unknown"; macroName: string;
-      /** Every `<ac:parameter>`, in document order, losslessly typed. */
-      params?: MacroParameter[];
-      /** `<ac:rich-text-body>`, recursively walked. */
-      body?: ExportBlock[];
-      /** `<ac:plain-text-body>` text, verbatim. */
-      plainBody?: string;
-      /** The `ac:macro-id` attribute. */
-      macroId?: string;
-      /**
-       * Notes the scratch walk of `body` produced but did NOT merge into the
-       * top-level report — preserved on the block for a later consumer (Lane E,
-       * T1.7) to promote rather than silently discarded.
-       */
-      bodyNotes?: ExportNote[];
-      /**
-       * The page this macro was found on, in a multi-page (tree/space) export.
-       * Cross-plan sync point for specs 004 (macro renderer) and 010 (extension
-       * `export_view` page-context resolution): a macro resolved against the
-       * wrong source page is a silent correctness bug. Set by `fetchExportTree`
-       * via {@link StorageToBlocksOptions.pageContext}; unset for single-page
-       * export. Backwards compatible (optional).
-       */
-      sourcePage?: { id: string; version?: number; spaceKey?: string } };
-
-/**
- * Provenance of an {@link ExportNote} — where in a (possibly multi-page) export
- * the observation originated. Additive optional field (spec 003, owner of the
- * contract) that 011-quality-gates' cross-engine report-parity check reads and
- * 004-macro-renderer adopts for its own note codes. Every field is optional so
- * a single-page export (no page context, no path threading) leaves it absent
- * and stays byte-identical to before.
- */
-export interface ExportNoteSource {
-  /** The source page's id (from {@link StorageToBlocksOptions.pageContext}). */
-  pageId?: string;
-  /** The source page's title, when the host threads it. */
-  pageTitle?: string;
-  /** The source page's canonical URL, when the host threads it. */
-  pageUrl?: string;
-  /** The emitting block's position in the tree (e.g. `blocks[3].content[0]`). */
-  blockPath?: string;
-  /** The name of an asset the note is about (image/attachment filename). */
-  assetName?: string;
-}
-
-/**
- * Every stable machine code an {@link ExportNote} can carry (spec 009,
- * "Stabilize ExportNote.code"). This is the single registry: renaming or
- * removing a member is a breaking API change (it shows up in the api-report
- * diff), and emitting a code that is not listed here is a type error at the
- * call site plus a failure of `scripts/export-note-codes.test.ts`, which
- * walks every real emission site in the repo. Grouped by emitter.
- */
-export const EXPORT_NOTE_CODES = [
-  // Confluence storage walk (storageToBlocks)
-  "unknown-macro",
-  "macro-not-rendered",
-  "image-unresolved",
-  "inline-image-skipped",
-  // Scope orchestration / tree fetch (spec 002)
-  "page-unreadable",
-  "subtree-unreadable",
-  "tree-cycle",
-  "page-ambiguous-404",
-  "page-version-changed",
-  "label-filtered",
-  "root-filter-bypassed",
-  "folder-position-unknown",
-  "unsupported-child-type",
-  "link-anchor-missing",
-  "link-outside-scope",
-  "link-target-ambiguous",
-  "mention-unresolved",
-  "heading-depth-clamped",
-  // Content features / scroll-* compat (spec 003)
-  "caption-kind-unknown",
-  "caption-kind-unsupported",
-  "caption-lang-fallback",
-  "scroll-title-caption-fallback",
-  "scroll-ignore-applied",
-  "scroll-ignore-skipped-other-exporter",
-  "scroll-ignore-unknown-exporter",
-  "scroll-only-unknown-exporter",
-  "scroll-only-applied",
-  "scroll-only-skipped-other-exporter",
-  "export-controls-passthrough",
-  "table-overflow-warned",
-  "table-text-scaled",
-  "orientation-marker-unmatched",
-  "orientation-marker-unterminated",
-  "orientation-nested-collapsed",
-  "orientation-suppressed-in-container",
-  "pagebreak-suppressed-in-container",
-  // Macro renderer registry (spec 004)
-  "macro-degraded",
-  "macro-rendered-via",
-  "macro-skipped-by-config",
-  "macro-body-truncated",
-  // includepage / metadata placeholders (spec 005)
-  "includepage-ambiguous-title",
-  "includepage-budget-exceeded",
-  "includepage-cycle",
-  "includepage-invalid-context",
-  "includepage-transient-error",
-  "includepage-unresolved",
-  "includepage-auth-failed",
-  "includepage-rate-limited",
-  // Word quality: numbering, tables, SVG, StyleRef (spec 006)
-  "image-svg-default-size",
-  "image-svg-no-rasterizer",
-  "image-svg-oversized",
-  "list-nesting-clamped",
-  "numbering-cap-reached",
-  "styleref-style-not-in-template",
-  "styleref-style-unused-in-export",
-  "table-geometry-clamped",
-  "table-style-missing",
-  // Template pack validation (spec 007)
-  "docx-scan-failed",
-  "never-placeholders",
-  // Scope orchestration follow-ups (spec 002)
-  "empty-include-result",
-  // CLI report/error taxonomy (spec 008)
-  "usage-error",
-  "cancelled",
-  "asset-budget-exceeded",
-  "space-homepage-missing",
-  "auth-error",
-  "remote-error",
-  "unexpected-error",
-  // Generic fallback used by scope/CLI error paths
-  "other",
-  // DOCX placeholder resolver / export pipeline (@atlcli/docx)
-  "date-format-unknown",
-  "pageproperty-no-key",
-  "placeholder-empty",
-  "placeholder-substituted",
-  "placeholder-unsupported",
-  "placeholder-never",
-  "space-fetch-failed",
-  "space-unavailable",
-  "user-fetch-failed",
-  "user-unavailable",
-  "owner-fetch-failed",
-  "owner-unavailable",
-  "homepage-fetch-failed",
-  "homepage-unavailable",
-  "no-content-placeholder",
-  "logo-skipped",
-  "logo-embed-failed",
-  "perf-timing",
-  // DOCX block serializer (@atlcli/docx)
-  "code-highlight-skipped",
-  "image-skipped",
-  "image-embed-failed",
-  "diagram-skipped",
-  "diagram-unsupported",
-  "diagram-render-failed",
-  "table-shape-approximated",
-  // PDF pipeline (@atlcli/pdf)
-  "pdf-image-skipped",
-  "pdf-image-alt-fallback",
-  "pdf-diagram-unsupported",
-  "pdf-diagram-failed",
-  "pdf-link-unresolved",
-  "pdf-table-cell-contrast-low",
-  "pdf-unknown-block",
-  // Host-emitted source notes (extension panel / conformance harness)
-  "pdf-mention-unresolved",
-  "pdf-mention-resolution-failed",
-  "browser-harness",
-] as const;
-
-/** Stable machine code of an {@link ExportNote} — a member of {@link EXPORT_NOTE_CODES}. */
-export type ExportNoteCode = (typeof EXPORT_NOTE_CODES)[number];
-
-/** A non-fatal observation surfaced in the export report (never thrown). */
-export interface ExportNote {
-  level: "info" | "warning";
-  /** Stable machine code, e.g. `"unknown-macro"`, `"inline-image-skipped"`. */
-  code: ExportNoteCode;
-  message: string;
-  macroName?: string;
-  /** Where the note originated (spec 003 provenance contract). */
-  source?: ExportNoteSource;
-}
-
-/** Result of {@link storageToBlocks}: the block tree plus report notes. */
-export interface StorageToBlocksResult {
-  blocks: ExportBlock[];
-  notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 /** Options for {@link storageToBlocks}. */
 export interface StorageToBlocksOptions {
@@ -417,7 +118,7 @@ export interface StorageToBlocksOptions {
    * unconditionally (a macro's `exporter` param cannot mismatch an absent
    * identity), matching the pre-003 default.
    */
-  exporter?: "pdf" | "word";
+  exporter?: "pdf" | "word" | "web";
   /**
    * Whether the export-control macros (`scroll-only`/`scroll-ignore`, spec 003
    * C4) filter at all. `"apply"` (default) runs the C4 truth table; the
@@ -439,6 +140,12 @@ export interface StorageToBlocksOptions {
    * them, every {@link ExportNote.source} carries `pageTitle`/`pageUrl` too.
    */
   pageContext?: { id: string; version?: number; spaceKey?: string; title?: string; url?: string };
+  /**
+   * Override the {@link DEFAULT_STORAGE_PARSE_BUDGET} applied while parsing this
+   * page's storage (spec 011). Exceeding it throws a {@link StorageParseError},
+   * which a tree export can catch per page and degrade to a note.
+   */
+  parseBudget?: StorageParseBudget;
 }
 
 // ---------------------------------------------------------------------------
@@ -456,6 +163,111 @@ export interface XmlElement {
   children: XmlNode[];
 }
 export type XmlNode = XmlText | XmlElement;
+
+/**
+ * Resource budget for {@link parseXml} (spec 011 security hardening).
+ *
+ * `maxPages` (spec 002) bounds how many pages a tree export walks; it says
+ * nothing about ONE pathological page. Before this budget existed, a single
+ * page whose storage nested 50 000 elements deep would recurse
+ * {@link storageToBlocks}'s walkers past the JS stack limit and take the whole
+ * process down with a `RangeError` no caller could meaningfully catch.
+ *
+ * Capping DEPTH at the parse boundary is what makes the walkers safe: the
+ * walkers (`walkBlocks` / `handleBlockElement` / `walkInline`) recurse strictly
+ * along the tree `parseXml` produced, so a tree that cannot exceed
+ * {@link maxDepth} cannot drive them past a few thousand frames. They need no
+ * depth counter of their own.
+ */
+export interface StorageParseBudget {
+  /** Maximum total nodes (elements + text) materialized. */
+  maxNodes: number;
+  /** Maximum element nesting depth. */
+  maxDepth: number;
+  /** Maximum cumulative decoded text length across all text nodes. */
+  maxTextLength: number;
+}
+
+/**
+ * Default {@link StorageParseBudget}.
+ *
+ * The budget MUST clear anything Confluence itself accepts. A limit below the
+ * platform's own is not a security control, it is an availability bug: an
+ * ordinary page that exported yesterday starts throwing, and in a tree export
+ * one such page can take the whole run with it.
+ *
+ * `maxNodes` is therefore DERIVED from measured density rather than guessed.
+ * Node counts for 1 MiB of each realistic storage shape, counting exactly what
+ * {@link parseXml} materializes (elements + non-empty text nodes):
+ *
+ * | Shape                              | nodes / MiB |
+ * |------------------------------------|-------------|
+ * | Colour-span-heavy prose            |      56 375 |
+ * | Rich text (marks + links)          |      74 415 |
+ * | Nested lists                       |     109 553 |
+ * | Tables (3 columns)                 |     126 333 |
+ * | Dense tables (4 narrow columns)    |     177 029 |
+ *
+ * Confluence Cloud accepts a page body of roughly 5 MB. At the densest measured
+ * shape that is 177 029 x 5 = 885 145 nodes, so:
+ *
+ *   maxNodes = 2 000 000  (~2.3x the worst realistic 5 MB page)
+ *
+ * The previous value of 400 000 sat BELOW the platform limit and rejected a
+ * 4 MiB table-heavy page outright — measured, not theorised.
+ *
+ * The other two:
+ *  - `maxDepth: 256` — the deepest real storage is a layout > table > cell >
+ *    list > list chain around 20 levels. 256 is far beyond any authored page and
+ *    keeps walker recursion in the low thousands of frames. This is the limit
+ *    that actually prevents the stack overflow; `maxNodes` only bounds memory.
+ *  - `maxTextLength: 16 MiB` — above the platform body limit, so it only fires
+ *    on input that was never a real page.
+ *
+ * At 2 000 000 nodes the materialized tree can reach a few hundred MB, which is
+ * the honest cost of accepting every page the platform accepts. Callers that
+ * want a tighter bound pass their own budget via
+ * {@link StorageToBlocksOptions.parseBudget}.
+ */
+export const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget = {
+  maxNodes: 2_000_000,
+  maxDepth: 256,
+  maxTextLength: 16 * 1024 * 1024,
+};
+
+/** Which {@link StorageParseBudget} limit a {@link StorageParseError} hit. */
+export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
+/**
+ * Thrown by {@link parseXml} when a storage fragment exceeds
+ * {@link StorageParseBudget}. A typed, catchable error on purpose: a host can
+ * degrade one bad page to a visible note and keep exporting the rest of the
+ * tree, which a stack overflow never allowed.
+ */
+export class StorageParseError extends Error {
+  constructor(
+    readonly kind: StorageParseErrorKind,
+    message: string
+  ) {
+    super(message);
+    this.name = "StorageParseError";
+  }
+}
+
+/**
+ * Characters that are illegal in XML 1.0 text: the C0 controls except tab (09),
+ * line feed (0A) and carriage return (0D), plus DEL and the two permanently
+ * unassigned noncharacters.
+ *
+ * Confluence storage can carry these via numeric charrefs (`&#x1;`), and they
+ * survive entity decoding. They are dropped HERE, at the single parse boundary,
+ * because every downstream serializer would otherwise emit them verbatim: an
+ * unescaped U+0001 inside a `<w:t>` run produces a `.docx` Word refuses to open
+ * with "unreadable content", which is a corrupt-output bug reachable from page
+ * content alone.
+ */
+// eslint-disable-next-line no-control-regex
+const XML_ILLEGAL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\ufffe\uffff]/g;
 
 /**
  * Decode the XML/HTML entities that appear in Confluence storage.
@@ -485,17 +297,71 @@ function decodeEntities(text: string): string {
  * the close tag of a *nested* macro and silently mis-slices the outer one — the
  * same class of bug that the non-greedy `<w:p>` regex caused in the DOCX text-box
  * finding. Reuse this instead of writing another matcher.
+ *
+ * Bounded by {@link StorageParseBudget} (spec 011): node count, nesting depth
+ * and cumulative text length. Text is additionally stripped of characters
+ * illegal in XML 1.0 (see {@link XML_ILLEGAL_CHARS}).
+ *
+ * @throws {StorageParseError} when the fragment exceeds `budget`.
  */
-export function parseXml(input: string): XmlNode[] {
+export function parseXml(
+  input: string,
+  budget: StorageParseBudget = DEFAULT_STORAGE_PARSE_BUDGET
+): XmlNode[] {
+  const nodes: XmlNode[] = [];
+  visitXmlTopLevel(input, budget, (node) => nodes.push(node));
+  return nodes;
+}
+
+/**
+ * Parse one top-level Storage node at a time. Nested state is retained only
+ * until its top-level owner closes; callers can spill that node immediately.
+ */
+export function visitXmlTopLevel(
+  input: string,
+  budget: StorageParseBudget,
+  visitor: (node: XmlNode, index: number) => void,
+): void {
   const root: XmlElement = { type: "element", name: "#root", attrs: {}, children: [] };
   const stack: XmlElement[] = [root];
   let i = 0;
   const n = input.length;
+  let nodeCount = 0;
+  let textLength = 0;
+  let topLevelIndex = 0;
+
+  const emitTopLevel = (node: XmlNode): void => {
+    visitor(node, topLevelIndex);
+    topLevelIndex += 1;
+  };
+
+  const countNode = () => {
+    if (++nodeCount > budget.maxNodes) {
+      throw new StorageParseError(
+        "too-many-nodes",
+        `Page storage exceeds the ${budget.maxNodes}-node parse limit.`
+      );
+    }
+  };
 
   const pushText = (raw: string, literal: boolean) => {
     if (raw === "") return;
-    const text = literal ? raw : decodeEntities(raw);
-    stack[stack.length - 1].children.push({ type: "text", text });
+    const decoded = literal ? raw : decodeEntities(raw);
+    // Strip AFTER decoding: a control character smuggled in as `&#x1;` is only
+    // a control character once decoded.
+    const text = decoded.replace(XML_ILLEGAL_CHARS, "");
+    if (text === "") return;
+    textLength += text.length;
+    if (textLength > budget.maxTextLength) {
+      throw new StorageParseError(
+        "text-too-long",
+        `Page storage exceeds the ${budget.maxTextLength}-character text limit.`
+      );
+    }
+    countNode();
+    const node: XmlText = { type: "text", text };
+    if (stack.length === 1) emitTopLevel(node);
+    else stack[stack.length - 1].children.push(node);
   };
 
   while (i < n) {
@@ -540,7 +406,13 @@ export function parseXml(input: string): XmlNode[] {
       // Pop to the matching open element if present; ignore stray closers.
       for (let d = stack.length - 1; d >= 1; d--) {
         if (stack[d].name === name) {
-          stack.length = d;
+          if (d === 1) {
+            const completed = stack[1]!;
+            stack.length = 1;
+            emitTopLevel(completed);
+          } else {
+            stack.length = d;
+          }
           break;
         }
       }
@@ -559,13 +431,26 @@ export function parseXml(input: string): XmlNode[] {
     }
     const name = nameMatch[1].toLowerCase();
     const attrs = parseAttributes(tag.slice(nameMatch[1].length));
+    countNode();
     const el: XmlElement = { type: "element", name, attrs, children: [] };
-    stack[stack.length - 1].children.push(el);
-    if (!selfClosing && !VOID_ELEMENTS.has(name)) stack.push(el);
+    if (stack.length > 1) stack[stack.length - 1].children.push(el);
+    if (!selfClosing && !VOID_ELEMENTS.has(name)) {
+      stack.push(el);
+      // `stack` includes the synthetic `#root`, so its length is depth + 1.
+      if (stack.length - 1 > budget.maxDepth) {
+        throw new StorageParseError(
+          "too-deep",
+          `Page storage nests deeper than the ${budget.maxDepth}-level parse limit.`
+        );
+      }
+    } else if (stack.length === 1) {
+      emitTopLevel(el);
+    }
     i = gt + 1;
   }
-
-  return root.children;
+  // The compatibility parser tolerates unclosed tags. Emit the still-open
+  // top-level owner at EOF with its accumulated children.
+  if (stack.length > 1) emitTopLevel(stack[1]!);
 }
 
 /** HTML void elements that never have a closing tag. */
@@ -580,7 +465,9 @@ function parseAttributes(source: string): Record<string, string> {
     const key = m[1].toLowerCase();
     let value = m[2] ?? "";
     if (value && (value[0] === '"' || value[0] === "'")) value = value.slice(1, -1);
-    attrs[key] = decodeEntities(value);
+    // Same XML-1.0 normalization as text nodes: attribute values reach
+    // serializers too (link hrefs, macro parameters, anchor names).
+    attrs[key] = decodeEntities(value).replace(XML_ILLEGAL_CHARS, "");
   }
   return attrs;
 }
@@ -598,7 +485,7 @@ function parseAttributes(source: string): Record<string, string> {
 interface WalkCtx {
   notes: ExportNote[];
   /** Exporter identity (from options); undefined for hosts that don't set it. */
-  exporter?: "pdf" | "word";
+  exporter?: "pdf" | "word" | "web";
   /**
    * Export-control filtering mode (from options). `"apply"` (default) runs the
    * C4 truth table; `"passthrough"` keeps both `scroll-only`/`scroll-ignore`
@@ -610,6 +497,10 @@ interface WalkCtx {
    * Threaded into attachment {@link ImageSource}s and `unknown` blocks.
    */
   pageContext?: { id: string; version?: number; spaceKey?: string; title?: string; url?: string };
+  /** True while walking direct content of a Storage table cell/header. */
+  inTableCell?: boolean;
+  /** True while walking the rich-text body of a Storage expand macro. */
+  inExpand?: boolean;
   /**
    * The tree position of the block currently being walked (spec 003
    * provenance), e.g. `blocks[3]` / `blocks[3].content[0]`. Maintained by
@@ -658,6 +549,7 @@ const INLINE_TAGS = new Set([
   "br",
   "ac:link",
   "ac:emoticon",
+  "ac:placeholder",
   "time",
 ]);
 
@@ -665,7 +557,6 @@ const INLINE_TAGS = new Set([
 const TRANSPARENT_BLOCK_TAGS = new Set([
   "div",
   "ac:layout",
-  "ac:layout-section",
   "ac:layout-cell",
   "ac:adf-extension",
   "ac:adf-node",
@@ -689,9 +580,14 @@ export function storageToBlocks(
     exportControls: options?.exportControls ?? "apply",
     pageContext: options?.pageContext,
   };
-  const nodes = parseXml(storage);
+  const nodes = parseXml(storage, options?.parseBudget ?? DEFAULT_STORAGE_PARSE_BUDGET);
   const blocks = walkBlocks(nodes, ctx);
   return { blocks, notes: ctx.notes };
+}
+
+/** Flatten an inline list to its plain text (for note messages). */
+function inlineText(nodes: InlineNode[]): string {
+  return nodes.map((n) => (n.type === "text" ? n.text : "")).join("");
 }
 
 /** True if the inline list has any renderable content (not just whitespace). */
@@ -746,6 +642,23 @@ function walkBlocks(nodes: XmlNode[], ctx: WalkCtx): ExportBlock[] {
 
   for (const node of nodes) {
     if (node.type === "text") {
+      inlineBuf.push(node);
+      continue;
+    }
+    // A datasource smart link is block-level content wearing an `<a>` tag
+    // (`data-card-appearance="block"`). It has to be intercepted HERE, before
+    // the inline classification below claims it: the inline `<a>` handler is
+    // exactly what produced the raw percent-encoded URL blob this feature
+    // replaces. Flushing first keeps any surrounding prose in its own
+    // paragraph, the same way an `<ac:image>` inside a `<p>` is split out.
+    if (isDatasourceLink(node)) {
+      flush();
+      ctx.blockPath = `${parentPath}[${out.length}]`;
+      out.push(...walkDatasourceLink(node, ctx));
+      ctx.blockPath = savedPath;
+      continue;
+    }
+    if (node.name === "ac:adf-node" && storageAdfNodeIsInline(node)) {
       inlineBuf.push(node);
       continue;
     }
@@ -835,14 +748,19 @@ function normalizeOrientationMarkers(blocks: ExportBlock[], ctx: WalkCtx): Expor
 const INLINE_SCROLL_MACROS = new Set(["scroll-only-inline", "scroll-ignore-inline"]);
 
 /**
- * Inline-level structured macros: the `status` badge and the C4 export-control
- * inline variants (`scroll-only-inline`/`scroll-ignore-inline`). A block-level
- * walk buffers these into the enclosing implicit paragraph instead of flushing.
+ * Inline-level structured macros: `status`, legacy `date`, and the C4
+ * export-control inline variants (`scroll-only-inline`/`scroll-ignore-inline`).
+ * A block-level walk buffers these into the enclosing implicit paragraph
+ * instead of flushing.
  */
 function isInlineMacro(node: XmlElement): boolean {
   if (node.name !== "ac:structured-macro") return false;
   const name = (node.attrs["ac:name"] ?? "").toLowerCase();
-  return name === "status" || INLINE_SCROLL_MACROS.has(name);
+  return name === "status" || name === "date" || INLINE_SCROLL_MACROS.has(name);
+}
+
+function storageLocalId(el: XmlElement): string | undefined {
+  return el.attrs["ac:local-id"] ?? el.attrs["local-id"];
 }
 
 /** Dispatch a single block-level element to zero or more {@link ExportBlock}s. */
@@ -851,11 +769,24 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
 
   const headingLevel = HEADING_TAGS[name];
   if (headingLevel) {
-    return [{ type: "heading", level: headingLevel, content: trimInline(walkInline(el.children, ctx)) }];
+    const localId = storageLocalId(el);
+    return [{
+      type: "heading",
+      level: headingLevel,
+      content: trimInline(walkInline(el.children, ctx)),
+      ...(localId !== undefined ? { localId } : {}),
+    }];
   }
 
   switch (name) {
-    case "p":
+    case "p": {
+      const blocks = walkBlocks(el.children, ctx);
+      const localId = storageLocalId(el);
+      if (localId !== undefined && blocks.length === 1 && blocks[0]?.type === "paragraph") {
+        return [{ ...blocks[0], localId }];
+      }
+      return blocks;
+    }
     case "ac:layout-cell":
       // A paragraph is a transparent block container: this splits an image (or
       // any embedded block) inside a <p> out into its own block while a plain
@@ -866,6 +797,8 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
       return [walkList(el, ctx)];
     case "ac:task-list":
       return [walkTaskList(el, ctx)];
+    case "ac:layout-section":
+      return [walkLayoutSection(el, ctx)];
     case "table":
       return [walkTable(el, ctx)];
     case "blockquote":
@@ -875,14 +808,169 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     case "ac:image":
       return walkImage(el, ctx);
     case "pre":
-      return [{ type: "codeBlock", code: elementText(el) }];
+      // Plain Storage <pre> has no line-number control and historically renders
+      // without a gutter. Materialize that source-specific default instead of
+      // letting the renderer confuse it with ADF's opposite default.
+      return [{ type: "codeBlock", code: elementText(el), hideLineNumbers: true }];
     case "ac:structured-macro":
       return walkMacro(el, ctx);
+    case "ac:adf-node":
+      return [walkUnsupportedStorageAdfBlock(el, ctx)];
     default:
       if (TRANSPARENT_BLOCK_TAGS.has(name)) return walkBlocks(el.children, ctx);
       // Unknown block-level element: descend rather than drop its content.
       return walkBlocks(el.children, ctx);
   }
+}
+
+function storageAdfNodeType(el: XmlElement): string {
+  return el.attrs.type?.trim() || "ac:adf-node";
+}
+
+function storageAdfNodeIsInline(el: XmlElement): boolean {
+  const type = storageAdfNodeType(el).toLowerCase();
+  return type === "unsupportedinline" ||
+    type === "inlineextension" ||
+    type === "inlinecard" ||
+    type === "mediainline";
+}
+
+function storageAdfValue(el: XmlElement): AdfJsonValue {
+  const structured = el.children.filter(
+    (child): child is XmlElement =>
+      child.type === "element" &&
+      (child.name === "ac:adf-attribute" || child.name === "ac:adf-parameter"),
+  );
+  if (structured.length === 0) return elementText(el);
+  return structured.map((child) => ({
+    name: child.attrs.key ?? child.attrs["ac:key"] ?? "",
+    value: storageAdfValue(child),
+  }));
+}
+
+function storageAdfProvenance(el: XmlElement): AdfUnsupportedNodeProvenance {
+  const attributes: AdfUnsupportedAttribute[] = [];
+  for (const [name, value] of Object.entries(el.attrs)) {
+    if (name !== "type") attributes.push({ name, value });
+  }
+  for (const child of el.children) {
+    if (child.type !== "element" || child.name !== "ac:adf-attribute") continue;
+    attributes.push({
+      name: child.attrs.key ?? child.attrs["ac:key"] ?? "",
+      value: storageAdfValue(child),
+    });
+  }
+  return {
+    nodeType: storageAdfNodeType(el),
+    sourceRepresentation: "storage",
+    ...(attributes.length > 0 ? { attributes } : {}),
+  };
+}
+
+function storageAdfContent(el: XmlElement): XmlNode[] {
+  const wrapper = childByName(el, "ac:adf-content");
+  if (wrapper) return wrapper.children;
+  return el.children.filter(
+    (child) => child.type !== "element" || child.name !== "ac:adf-attribute",
+  );
+}
+
+function reportUnsupportedStorageAdf(
+  el: XmlElement,
+  ctx: WalkCtx,
+  placement: "block" | "inline",
+): void {
+  ctx.notes.push(withSource(ctx, {
+    level: "warning",
+    code: "adf-node-degraded",
+    message:
+      `Storage ADF ${placement} wrapper ${storageAdfNodeType(el)} retained its ` +
+      "typed provenance and visible fallback.",
+  }));
+}
+
+function walkUnsupportedStorageAdfBlock(el: XmlElement, ctx: WalkCtx): Extract<ExportBlock, { type: "unknown" }> {
+  reportUnsupportedStorageAdf(el, ctx, "block");
+  const body = walkBlocks(storageAdfContent(el), ctx);
+  return {
+    type: "unknown",
+    macroName: storageAdfNodeType(el),
+    unsupportedAdf: storageAdfProvenance(el),
+    ...(body.length > 0 ? { body } : {}),
+  };
+}
+
+function walkUnsupportedStorageAdfInline(el: XmlElement, ctx: WalkCtx): InlineNode[] {
+  reportUnsupportedStorageAdf(el, ctx, "inline");
+  const provenance = storageAdfProvenance(el);
+  const content = walkInline(storageAdfContent(el), ctx);
+  let attached = false;
+  const visit = (nodes: InlineNode[]): InlineNode[] =>
+    nodes.map((node): InlineNode => {
+      if (attached) return node;
+      if (node.type === "text") {
+        attached = true;
+        return {
+          ...node,
+          unsupportedAdf: [...(node.unsupportedAdf ?? []), provenance],
+        };
+      }
+      if (node.type === "link") return { ...node, content: visit(node.content) };
+      return node;
+    });
+  const retained = visit(content);
+  return attached
+    ? retained
+    : [{
+        type: "text",
+        text: `[Unsupported ADF inline: ${provenance.nodeType}]`,
+        unsupportedAdf: [provenance],
+      }, ...retained];
+}
+
+const STORAGE_LAYOUT_WIDTHS: Readonly<Record<string, readonly number[]>> = {
+  single: [100],
+  two_equal: [50, 50],
+  two_left_sidebar: [30, 70],
+  two_right_sidebar: [70, 30],
+  three_equal: [100 / 3, 100 / 3, 100 / 3],
+  three_with_sidebars: [20, 60, 20],
+};
+
+function walkLayoutSection(el: XmlElement, ctx: WalkCtx): ExportBlock {
+  const cells = childrenByName(el, "ac:layout-cell");
+  const layoutType = el.attrs["ac:type"]?.trim().toLowerCase();
+  const authoredWidths = layoutType ? STORAGE_LAYOUT_WIDTHS[layoutType] : undefined;
+  const widths = authoredWidths?.length === cells.length
+    ? authoredWidths
+    : cells.length > 0
+      ? Array.from({ length: cells.length }, () => 100 / cells.length)
+      : [];
+  if (!authoredWidths || authoredWidths.length !== cells.length) {
+    ctx.notes.push(withSource(ctx, {
+      level: "warning",
+      code: "layout-geometry-fallback",
+      message: layoutType
+        ? `Storage layout "${layoutType}" has ${cells.length} cells; equal portable widths were used.`
+        : "Storage layout has no recognized type; equal portable widths were used.",
+    }));
+  }
+  return {
+    type: "layout",
+    columns: cells.map((cell, index) => ({
+      width: widths[index] ?? 0,
+      ...(tableCellVerticalAlignment(cell)
+        ? { verticalAlignment: tableCellVerticalAlignment(cell) }
+        : {}),
+      ...(cell.attrs["ac:local-id"] !== undefined
+        ? { localId: cell.attrs["ac:local-id"] }
+        : {}),
+      content: walkBlocks(cell.children, ctx),
+    })),
+    ...(el.attrs["ac:local-id"] !== undefined
+      ? { localId: el.attrs["ac:local-id"] }
+      : {}),
+  };
 }
 
 /** Collect the concatenated raw text of an element subtree (for code bodies). */
@@ -1015,13 +1103,15 @@ export function normalizeCaptionKind(
 // ---- Exporter-parameter matching (C4) -------------------------------------
 
 /** Normalize a macro `exporter` parameter value to a known exporter or null. */
-function normalizeExporterValue(raw: string): "pdf" | "word" | null {
+function normalizeExporterValue(raw: string): "pdf" | "word" | "web" | null {
   const key = raw.trim().toLowerCase();
   switch (key) {
     case "pdf":
     case "scroll-pdf":
     case "scrollpdf":
       return "pdf";
+    case "web":
+      return "web";
     case "word":
     case "office":
     case "scroll-word":
@@ -1059,9 +1149,20 @@ function walkList(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const ordered = el.name === "ol";
   const items: ListItem[] = [];
   for (const li of childrenByName(el, "li")) {
-    items.push({ content: walkBlocks(li.children, ctx) });
+    const localId = storageLocalId(li);
+    items.push({
+      content: walkBlocks(li.children, ctx),
+      ...(localId !== undefined ? { localId } : {}),
+    });
   }
-  return { type: "list", ordered, items };
+  const rawStart = ordered ? el.attrs.start?.trim() : undefined;
+  const parsedStart = rawStart !== undefined && /^\d+$/u.test(rawStart)
+    ? Number.parseInt(rawStart, 10)
+    : undefined;
+  const start = parsedStart !== undefined && Number.isSafeInteger(parsedStart) && parsedStart <= 2_147_483_647
+    ? parsedStart
+    : undefined;
+  return { type: "list", ordered, items, ...(start !== undefined && start !== 1 ? { start } : {}) };
 }
 
 function walkTaskList(el: XmlElement, ctx: WalkCtx): ExportBlock {
@@ -1071,9 +1172,25 @@ function walkTaskList(el: XmlElement, ctx: WalkCtx): ExportBlock {
     const statusText = (statusEl ? elementText(statusEl) : "").trim().toLowerCase();
     const body = childByName(task, "ac:task-body");
     const content = body ? walkBlocks(body.children, ctx) : [];
-    items.push({ content, checked: statusText === "complete" });
+    const checked = statusText === "complete";
+    const localIdEl = childByName(task, "ac:task-id");
+    const localId = localIdEl ? elementText(localIdEl).trim() : "";
+    items.push({
+      content,
+      kind: "task",
+      state: checked ? "DONE" : "TODO",
+      ...(localId ? { localId } : {}),
+      checked,
+    });
   }
-  return { type: "list", ordered: false, items };
+  const localId = el.attrs["ac:local-id"]?.trim();
+  return {
+    type: "list",
+    ordered: false,
+    listKind: "task",
+    ...(localId ? { localId } : {}),
+    items,
+  };
 }
 
 // ---- Tables ---------------------------------------------------------------
@@ -1183,6 +1300,28 @@ function tableCellBackground(cell: XmlElement): string | undefined {
   );
 }
 
+function tableCellVerticalAlignment(cell: XmlElement): TableVerticalAlignment | undefined {
+  const styleAlignment = (cell.attrs.style ?? "")
+    .match(/(?:^|;)\s*vertical-align\s*:\s*([^;]+)/i)?.[1]
+    ?.trim()
+    .toLowerCase();
+  const value = (cell.attrs.valign ?? styleAlignment)?.trim().toLowerCase();
+  if (value === "top" || value === "middle" || value === "bottom") return value;
+  return undefined;
+}
+
+function tableLayout(value: string | undefined): TableLayout | undefined {
+  if (
+    value === "default" ||
+    value === "wide" ||
+    value === "full-width" ||
+    value === "center" ||
+    value === "align-start" ||
+    value === "align-end"
+  ) return value;
+  return undefined;
+}
+
 function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const rows: TableRow[] = [];
   const rowEls: XmlElement[] = [];
@@ -1202,18 +1341,37 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
       if (cell.type !== "element") continue;
       if (cell.name !== "td" && cell.name !== "th") continue;
       const backgroundColor = tableCellBackground(cell);
+      const verticalAlignment = tableCellVerticalAlignment(cell);
       cells.push({
         header: cell.name === "th",
         colspan: parsePositiveInt(cell.attrs.colspan) ?? 1,
         rowspan: parsePositiveInt(cell.attrs.rowspan) ?? 1,
         ...(backgroundColor ? { backgroundColor } : {}),
-        content: walkBlocks(cell.children, ctx),
+        ...(verticalAlignment ? { verticalAlignment } : {}),
+        ...(cell.attrs["ac:local-id"] !== undefined ? { localId: cell.attrs["ac:local-id"] } : {}),
+        ...(cell.attrs.title !== undefined ? { title: cell.attrs.title } : {}),
+        content: walkBlocks(cell.children, { ...ctx, inTableCell: true }),
       });
     }
-    rows.push({ cells });
+    rows.push({
+      cells,
+      ...(tr.attrs["ac:local-id"] !== undefined ? { localId: tr.attrs["ac:local-id"] } : {}),
+    });
   }
   const columnWidths = tableColumnWidths(el);
-  return { type: "table", rows, ...(columnWidths ? { columnWidths } : {}) };
+  const layout = tableLayout(el.attrs["data-layout"]);
+  const localId = el.attrs["ac:local-id"];
+  const presentation: TablePresentation = {
+    ...(layout !== undefined ? { layout } : {}),
+    ...(localId !== undefined ? { localId } : {}),
+    ...(el.attrs.id !== undefined ? { sourceId: el.attrs.id } : {}),
+  };
+  return {
+    type: "table",
+    rows,
+    ...(columnWidths ? { columnWidths } : {}),
+    ...(Object.keys(presentation).length > 0 ? { presentation } : {}),
+  };
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {
@@ -1256,20 +1414,56 @@ function walkImage(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
 
 // ---- Macros (block) -------------------------------------------------------
 
-const CALLOUT_KINDS = new Set<CalloutKind>(["info", "note", "warning", "tip", "panel"]);
+const CALLOUT_KINDS = new Set<CalloutKind>([
+  "info",
+  "note",
+  "warning",
+  "tip",
+  "success",
+  "error",
+  "panel",
+]);
 
 function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
   const macroName = (el.attrs["ac:name"] ?? "").toLowerCase();
+
+  if (macroName === "chart") {
+    const body = childByName(el, "ac:rich-text-body");
+    const bodyBlocks = body ? walkBlocks(body.children, ctx) : [];
+    const result = normalizeChartMacro(captureMacroParams(el), bodyBlocks, "dc-storage");
+    for (const diagnostic of result.diagnostics) {
+      ctx.notes.push(withSource(ctx, {
+        level: "warning",
+        code: "macro-not-rendered",
+        message: `Chart macro: ${diagnostic.message}`,
+        macroName: "chart",
+      }));
+    }
+    if (result.model) {
+      return [{
+        type: "chart",
+        chart: result.model,
+        ...(result.diagnostics.length > 0 ? { diagnostics: result.diagnostics } : {}),
+        ...(storageLocalId(el) !== undefined ? { localId: storageLocalId(el) } : {}),
+      }];
+    }
+    // No semantic table data remained (usually an attachment was not acquired).
+    // Continue through the normal unknown-macro capture so the source remains
+    // visible and a future macro resolver can still inspect it.
+  }
 
   // Callouts + generic panel.
   if (CALLOUT_KINDS.has(macroName as CalloutKind)) {
     const body = childByName(el, "ac:rich-text-body");
     const title = macroParam(el, "title");
+    const suppressDefaultIcon =
+      macroName !== "panel" && macroParam(el, "icon")?.trim().toLowerCase() === "false";
     return [
       {
         type: "callout",
         kind: macroName as CalloutKind,
-        title: title || undefined,
+        ...(title ? { title } : {}),
+        ...(suppressDefaultIcon ? { suppressDefaultIcon: true } : {}),
         content: body ? walkBlocks(body.children, ctx) : [],
       },
     ];
@@ -1280,11 +1474,56 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     const bodyEl = childByName(el, "ac:plain-text-body") ?? childByName(el, "ac:rich-text-body");
     const code = bodyEl ? elementText(bodyEl) : "";
     const language = macroName === "code" ? macroParam(el, "language") : undefined;
-    return [{ type: "codeBlock", language: language || undefined, code }];
+    const title = macroName === "code" ? macroParam(el, "title") : undefined;
+    const collapse = macroName === "code" ? macroParam(el, "collapse") : undefined;
+    const lineNumbers = macroName === "code" && macroParam(el, "linenumbers")?.toLowerCase() === "true";
+    const firstLineNumber =
+      lineNumbers ? parsePositiveInt(macroParam(el, "firstline")) ?? 1 : undefined;
+    return [{
+      type: "codeBlock",
+      language: language || undefined,
+      code,
+      ...(title !== undefined ? { title } : {}),
+      ...(collapse !== undefined
+        ? { initiallyCollapsed: collapse.trim().toLowerCase() === "true" }
+        : {}),
+      hideLineNumbers: !lineNumbers,
+      ...(firstLineNumber !== undefined ? { firstLineNumber } : {}),
+      ...(storageLocalId(el) !== undefined ? { localId: storageLocalId(el) } : {}),
+    }];
   }
 
-  // Expand: no dedicated block type — surface its body transparently.
+  // Expand: retain the disclosure boundary and title. Static targets render
+  // the body open; an expand inside a table cell or another expand is the
+  // Storage counterpart of ADF `nestedExpand`.
   if (macroName === "expand") {
+    const body = childByName(el, "ac:rich-text-body");
+    ctx.notes.push(withSource(ctx, {
+      level: "info",
+      code: "expand-static",
+      message: "Interactive expand content was rendered open in the static export.",
+    }));
+    return [{
+      type: "expand",
+      nested: ctx.inTableCell === true || ctx.inExpand === true,
+      ...(macroParam(el, "title") !== undefined ? { title: macroParam(el, "title") } : {}),
+      ...(el.attrs["ac:local-id"] !== undefined
+        ? { localId: el.attrs["ac:local-id"] }
+        : {}),
+      ...(el.attrs["ac:macro-id"] !== undefined
+        ? { macroId: el.attrs["ac:macro-id"] }
+        : {}),
+      content: body ? walkBlocks(body.children, { ...ctx, inExpand: true }) : [],
+    }];
+  }
+
+  // Legacy Confluence layout macros are structural containers, not document
+  // content. Flatten them exactly like modern `<ac:layout>` cells: a `section`
+  // contains one or more `column` macros, and each column contributes its rich
+  // body in source order. Sending either wrapper through the unknown-macro
+  // fallback leaked user-visible "[section/column macro not rendered]" lines
+  // into DOCX/PDF even though all nested content was available.
+  if (macroName === "section" || macroName === "column") {
     const body = childByName(el, "ac:rich-text-body");
     return body ? walkBlocks(body.children, ctx) : [];
   }
@@ -1384,6 +1623,111 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     };
   }
 
+  return [block];
+}
+
+// ---------------------------------------------------------------------------
+// Datasource smart links
+// ---------------------------------------------------------------------------
+
+/** True for an `<a>` carrying a non-empty `data-datasource` attribute. */
+function isDatasourceLink(node: XmlElement): boolean {
+  return node.name === "a" && (node.attrs["data-datasource"] ?? "").trim() !== "";
+}
+
+/**
+ * Render a datasource smart link's fallback: the link itself, exactly as the
+ * inline `<a>` handler would have produced it (same scheme policy, same display
+ * text). Used both as the degradation output and as the `body` of the emitted
+ * macro block — so if the macro chain later cannot reach Jira, the placeholder
+ * floor still shows the user a working link instead of a bare placeholder.
+ */
+function datasourceFallbackBlocks(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
+  const href = el.attrs.href ?? "";
+  const inner = walkInline(el.children, ctx);
+  const display = hasMeaningfulInline(inner) ? inner : [{ type: "text" as const, text: href }];
+  const verdict = sanitizeLinkHref(href);
+  if (!verdict.safe) {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "warning",
+        code: UNSAFE_LINK_NOTE_CODE,
+        message: unsafeLinkMessage(verdict, inlineText(display)),
+      })
+    );
+    return hasMeaningfulInline(display) ? [{ type: "paragraph", content: display }] : [];
+  }
+  return [
+    {
+      type: "paragraph",
+      content: [{ type: "link", target: { kind: "external", href }, content: display }],
+    },
+  ];
+}
+
+/**
+ * Walk an `<a data-datasource>` element (spec SUPPORT-DATASOURCE-JIRA).
+ *
+ * A supported provider becomes the SAME `{ type: "unknown", macroName, params }`
+ * shape the macro extractor emits, so the existing spec-004 fallback chain —
+ * renderer, `sourcePage` binding, dedup cache, circuit breaker, session ports —
+ * renders it with no second code path. Everything else keeps the link and says
+ * why in a typed note; nothing here is ever silent, and nothing here throws.
+ */
+function walkDatasourceLink(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
+  const href = el.attrs.href ?? "";
+  const outcome = translateDatasourceLink(el.attrs["data-datasource"] ?? "", href);
+
+  if (outcome.kind === "degrade") {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: outcome.level,
+        code: outcome.code,
+        message: outcome.message,
+        ...(outcome.provider ? { macroName: outcome.provider.macroName ?? outcome.provider.id } : {}),
+      })
+    );
+    return datasourceFallbackBlocks(el, ctx);
+  }
+
+  const macroName = outcome.macroName;
+  // The macro-resolution pass pairs the i-th walker macro note with the i-th
+  // `unknown` block POSITIONALLY (`resolve.ts`, reconcileNotes). Emitting an
+  // unknown block without its paired note here would shift every later macro's
+  // note onto the wrong instance — so this note is structural, not decorative.
+  //
+  // Always the RECOGNIZED-macro note: this branch is reachable only for a
+  // `supported` provider, i.e. only when a renderer for `macroName` exists by
+  // construction. `KNOWN_MACROS` is deliberately NOT consulted — it is the
+  // *markdown* converter's vocabulary of real Confluence macros, and
+  // `confluence-list` is a synthetic routing name with no macro behind it.
+  ctx.notes.push(
+    withSource(ctx, {
+      level: "info",
+      code: "macro-not-rendered",
+      message: `A datasource smart link was captured as a "${macroName}" macro; it renders as a live table when dynamic macro resolution runs.`,
+      macroName,
+    })
+  );
+
+  const block: Extract<ExportBlock, { type: "unknown" }> = {
+    type: "unknown",
+    macroName,
+    params: outcome.params,
+    // Deliberately the link, not an empty body: this is what the placeholder
+    // floor renders when Jira is unreachable or `--no-live-macros` is set, and
+    // it is never worse than the pre-change output.
+    body: datasourceFallbackBlocks(el, ctx),
+  };
+  // No `macroId`: a datasource is not a macro server-side, so the export_view
+  // catch-all must not try to fetch one (it skips on a missing macroId).
+  if (ctx.pageContext) {
+    block.sourcePage = {
+      id: ctx.pageContext.id,
+      ...(ctx.pageContext.version !== undefined ? { version: ctx.pageContext.version } : {}),
+      ...(ctx.pageContext.spaceKey !== undefined ? { spaceKey: ctx.pageContext.spaceKey } : {}),
+    };
+  }
   return [block];
 }
 
@@ -1525,17 +1869,24 @@ function stripNestedOrientation(blocks: ExportBlock[]): { blocks: ExportBlock[];
           found = true;
           return walk(block.content);
         case "callout":
+        case "expand":
         case "blockquote":
           return [{ ...block, content: walk(block.content) }];
         case "list":
           return [
             { ...block, items: block.items.map((item) => ({ ...item, content: walk(item.content) })) },
           ];
+        case "layout":
+          return [{
+            ...block,
+            columns: block.columns.map((column) => ({ ...column, content: walk(column.content) })),
+          }];
         case "table":
           return [
             {
               ...block,
               rows: block.rows.map((row) => ({
+                ...row,
                 cells: row.cells.map((cell) => ({ ...cell, content: walk(cell.content) })),
               })),
             },
@@ -1706,8 +2057,55 @@ function walkInline(nodes: XmlNode[], ctx: WalkCtx): InlineNode[] {
   return out;
 }
 
+/** Normalize Storage's calendar-date representations to ADF epoch milliseconds. */
+function storageDateTimestamp(value: string): string {
+  const source = value.trim();
+  if (parseAdfDateTimestamp(source)) return source;
+  const calendar = source.match(/^(\d{4})-(\d{2})-(\d{2})$/u);
+  if (calendar) {
+    const year = Number(calendar[1]);
+    const month = Number(calendar[2]);
+    const day = Number(calendar[3]);
+    const date = new Date(0);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCFullYear(year, month - 1, day);
+    const milliseconds = date.getTime();
+    if (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    ) {
+      return String(milliseconds);
+    }
+  }
+  // Accept only ISO timestamps with an explicit zone. Date.parse() also
+  // accepts locale-shaped and implementation-specific values (for example
+  // 03/04/2024), which would make an export depend on the host environment.
+  const zonedIso =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
+  if (!zonedIso.test(source)) return source;
+  const milliseconds = Date.parse(source);
+  return Number.isFinite(milliseconds) ? String(milliseconds) : source;
+}
+
+function storageDateInline(value: string, ctx: WalkCtx): InlineNode[] {
+  const source = value.trim();
+  if (!source) return [];
+  const timestamp = storageDateTimestamp(source);
+  if (!parseAdfDateTimestamp(timestamp)) {
+    ctx.notes.push(withSource(ctx, {
+      level: "warning",
+      code: "date-invalid",
+      message: "A semantic date timestamp was invalid; its exact source text was preserved.",
+    }));
+  }
+  return [{ type: "date", timestamp }];
+}
+
 function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   const name = el.name;
+
+  if (name === "ac:adf-node") return walkUnsupportedStorageAdfInline(el, ctx);
 
   const mark = MARK_TAGS[name];
   if (mark) return addMark(walkInline(el.children, ctx), mark);
@@ -1715,34 +2113,109 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   if (name === "br") return [{ type: "lineBreak" }];
 
   if (name === "span") {
-    const colorMatch = (el.attrs.style ?? "").match(/color:\s*([^;]+)/i);
-    const color = colorMatch ? colorMatch[1].trim() : undefined;
+    const style = el.attrs.style ?? "";
+    const color = inlineCssColor(style, "color");
+    const backgroundColor = inlineCssColor(style, "background-color");
     const inner = walkInline(el.children, ctx);
-    return color ? inner.map((n) => (n.type === "text" ? { ...n, color } : n)) : inner;
+    return color || backgroundColor
+      ? applyInlineColors(inner, { color, backgroundColor })
+      : inner;
   }
 
   if (name === "a") {
     const href = el.attrs.href ?? "";
     const content = walkInline(el.children, ctx);
-    return [
-      {
-        type: "link",
-        target: { kind: "external", href },
-        content: hasMeaningfulInline(content) ? content : [{ type: "text", text: href }],
-      },
-    ];
+    const display = hasMeaningfulInline(content) ? content : [{ type: "text" as const, text: href }];
+    // Shared scheme policy (spec 011). Storage `<a href>` used to flow verbatim
+    // into a live Word HYPERLINK field / Typst #link(); the DOCX and PDF
+    // serializers each re-check as defense in depth, but degrading HERE is what
+    // makes the two engines agree and what produces a note the user can see.
+    const verdict = sanitizeLinkHref(href);
+    if (!verdict.safe) {
+      ctx.notes.push(
+        withSource(ctx, {
+          level: "warning",
+          code: UNSAFE_LINK_NOTE_CODE,
+          message: unsafeLinkMessage(verdict, inlineText(display)),
+        })
+      );
+      return display;
+    }
+    const authoredAppearance = el.attrs["data-card-appearance"];
+    if (
+      authoredAppearance === "inline" ||
+      authoredAppearance === "block" ||
+      authoredAppearance === "embed"
+    ) {
+      return [{
+        type: "smartCard",
+        card: {
+          appearance: authoredAppearance,
+          source: "url",
+          url: href,
+          target: { kind: "external", href },
+          ...(inlineText(display).trim() ? { title: inlineText(display).trim() } : {}),
+          ...(el.attrs["local-id"] !== undefined
+            ? { localId: el.attrs["local-id"] }
+            : {}),
+        },
+      }];
+    }
+    return [{ type: "link", target: { kind: "external", href }, content: display }];
   }
 
   if (name === "ac:link") return walkAcLink(el, ctx);
 
   if (name === "ac:emoticon") {
-    const emoji = el.attrs["ac:emoji-fallback"] ?? el.attrs["ac:name"] ?? "";
-    return emoji ? [{ type: "text", text: emoji }] : [];
+    // The explicit short-name is authoritative. Only when it is absent may
+    // the legacy ac:name identity participate in catalog normalization.
+    const sourceShortName =
+      el.attrs["ac:emoji-shortname"] ??
+      el.attrs["ac:name"] ??
+      "";
+    // Empty is schema-representable but is not an emoji notation. Keep the
+    // existing visible invalid-node floor in parity with the ADF decoder.
+    const shortName = sourceShortName || "[emoji]";
+    const sourceText = el.attrs["ac:emoji-fallback"];
+    const result = projectTypedEmoji({ shortName, sourceText });
+    const renderedFrom =
+      result.kind === "source-text"
+        ? "source-text"
+        : result.kind === "known"
+          ? "catalog-projection"
+          : "short-name";
+    const text = result.text;
+    if (!text) return [];
+    if (result.kind === "unresolved") {
+      ctx.notes.push(withSource(ctx, {
+        level: "warning",
+        code: "emoji-text-fallback",
+        message: "An emoji had no portable Unicode text; its textual short-name fallback was preserved.",
+      }));
+    }
+    return [{
+      type: "text",
+      text,
+      emoji: {
+        shortName,
+        ...(sourceText !== undefined ? { text: sourceText } : {}),
+        renderedFrom,
+        ...(result.kind === "known" ? { projection: result.projection } : {}),
+      },
+    }];
   }
 
   if (name === "time") {
     const datetime = el.attrs.datetime ?? elementText(el).trim();
-    return datetime ? [{ type: "text", text: datetime }] : [];
+    return storageDateInline(datetime, ctx);
+  }
+
+  if (name === "ac:placeholder") {
+    return [{
+      type: "placeholder",
+      text: elementText(el),
+      ...(el.attrs["ac:type"] !== undefined ? { placeholderType: el.attrs["ac:type"] } : {}),
+    }];
   }
 
   if (name === "ac:structured-macro") {
@@ -1750,7 +2223,22 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
     if (macroName === "status") {
       const color = (macroParam(el, "colour") ?? macroParam(el, "color") ?? "grey").toLowerCase();
       const title = macroParam(el, "title") ?? "";
-      return [{ type: "status", text: title, color }];
+      const style =
+        macroParam(el, "style") ??
+        (macroParam(el, "subtle")?.toLowerCase() === "true" ? "subtle" : undefined);
+      return [{
+        type: "status",
+        text: title,
+        color,
+        ...(style !== undefined ? { style } : {}),
+      }];
+    }
+    if (macroName === "date") {
+      const value =
+        macroParam(el, "date") ??
+        macroParam(el, "") ??
+        elementText(el);
+      return storageDateInline(value, ctx);
     }
     if (INLINE_SCROLL_MACROS.has(macroName)) {
       return walkInlineExportControlMacro(
@@ -1776,14 +2264,15 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
 }
 
 /**
- * Resolve an `<ac:link>` to inline node(s): user mention, page link, attachment
- * link, or in-page anchor. Body text comes from `<ac:plain-text-link-body>` or
- * `<ac:link-body>`.
+ * Resolve an `<ac:link>` to inline node(s): user mention, page, attachment,
+ * external URL, or in-page anchor. Body text comes from
+ * `<ac:plain-text-link-body>` or `<ac:link-body>`.
  */
 function walkAcLink(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   const user = childByName(el, "ri:user");
   const page = childByName(el, "ri:page");
   const attachment = childByName(el, "ri:attachment");
+  const url = childByName(el, "ri:url");
   const anchorAttr = el.attrs["ac:anchor"];
 
   const plainBody = childByName(el, "ac:plain-text-link-body");
@@ -1818,6 +2307,33 @@ function walkAcLink(el: XmlElement, ctx: WalkCtx): InlineNode[] {
     const filename = attachment.attrs["ri:filename"] ?? "";
     const content = hasMeaningfulInline(bodyInline) ? bodyInline : [{ type: "text" as const, text: filename }];
     return [{ type: "link", target: { kind: "attachment", filename }, content }];
+  }
+
+  // Confluence represents pasted / editor-created external links as
+  // `<ac:link><ri:url ri:value="…"/>…</ac:link>` as well as ordinary HTML
+  // `<a href="…">`. Without this branch the target element was ignored and
+  // only `bodyInline` survived, so both PDF and DOCX received plain text even
+  // though the link was clickable on the source page.
+  if (url) {
+    const href = url.attrs["ri:value"] ?? "";
+    const verdict = sanitizeLinkHref(href);
+    if (!verdict.safe) {
+      const content = hasMeaningfulInline(bodyInline)
+        ? bodyInline
+        : [{ type: "text" as const, text: href }];
+      ctx.notes.push(
+        withSource(ctx, {
+          level: "warning",
+          code: UNSAFE_LINK_NOTE_CODE,
+          message: unsafeLinkMessage(verdict, inlineText(content)),
+        })
+      );
+      return content;
+    }
+    const content = hasMeaningfulInline(bodyInline)
+      ? bodyInline
+      : [{ type: "text" as const, text: verdict.href }];
+    return [{ type: "link", target: { kind: "external", href: verdict.href }, content }];
   }
 
   if (anchorAttr) {
@@ -1927,6 +2443,34 @@ function addMark(nodes: InlineNode[], mark: InlineMark): InlineNode[] {
     }
     if (node.type === "link") {
       return { ...node, content: addMark(node.content, mark) };
+    }
+    return node;
+  });
+}
+
+function inlineCssColor(style: string, property: "color" | "background-color"): string | undefined {
+  const escaped = property.replace("-", "\\-");
+  const value = style.match(new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, "i"))?.[1];
+  return normalizeExportColor(value);
+}
+
+/** Apply span colors to every nested text run, including link labels. */
+function applyInlineColors(
+  nodes: InlineNode[],
+  colors: { color?: string; backgroundColor?: string }
+): InlineNode[] {
+  return nodes.map((node) => {
+    if (node.type === "text") {
+      return {
+        ...node,
+        ...(colors.color && !node.color ? { color: colors.color } : {}),
+        ...(colors.backgroundColor && !node.backgroundColor
+          ? { backgroundColor: colors.backgroundColor }
+          : {}),
+      };
+    }
+    if (node.type === "link") {
+      return { ...node, content: applyInlineColors(node.content, colors) };
     }
     return node;
   });

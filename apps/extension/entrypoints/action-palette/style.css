@@ -1,0 +1,43 @@
+:root {
+  color-scheme: light dark;
+  background: transparent;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.atlcli-action-palette-host-status {
+  display: flex;
+  min-height: 15rem;
+  padding: 2.5rem;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.atlcli-action-palette-host-status h1 {
+  margin: 1rem 0 0.35rem;
+  font-size: 1.1rem;
+  line-height: 1.35;
+}
+
+.atlcli-action-palette-host-status p {
+  max-width: 30rem;
+  margin: 0;
+  color: var(--atlcli-palette-text-muted);
+  font-size: 0.875rem;
+}
+
+.atlcli-action-palette-host-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}

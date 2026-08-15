@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, test, expect, afterAll, beforeEach, afterEach, mock } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -41,6 +41,15 @@ const { ERROR_CODES, getFlag, hasFlag, normalizeBaseUrl, slugify } = utils;
  * factory always carries the full real surface plus the intended overrides.
  */
 const actualCore = await import("@atlcli/core");
+
+/**
+ * A snapshot of the REAL exports, taken before `mock.module` runs.
+ *
+ * `actualCore` is a live module namespace, so spreading it *after* mocking
+ * would copy the stubs back out again. This eager copy is what `afterAll`
+ * below restores.
+ */
+const realCoreSnapshot = { ...actualCore };
 
 let config: Config;
 
@@ -117,6 +126,18 @@ mock.module("@atlcli/core", () => ({
 }));
 
 const { handleAuth } = await import("./auth.js");
+
+/**
+ * `mock.module` mutates the PROCESS-WIDE module registry, so these overrides
+ * outlive this file and leak into every test that runs after it. The
+ * `getLogger` stub above is the sharpest edge: it returns a logger with only an
+ * `auth` method, so any later test exercising a real API client dies on
+ * `logger.api is not a function`. Put the genuine barrel back when this file is
+ * done.
+ */
+afterAll(() => {
+  mock.module("@atlcli/core", () => realCoreSnapshot);
+});
 
 const opts = { json: true };
 

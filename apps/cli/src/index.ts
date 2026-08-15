@@ -8,6 +8,7 @@ import {
   Logger,
   isInteractive,
   getCurrentVersion,
+  getReleaseInfo,
   checkForUpdates,
   loadUpdateState,
   saveUpdateState,
@@ -26,7 +27,18 @@ import { handleLog } from "./commands/log.js";
 import { handlePlugin } from "./commands/plugin.js";
 import { handleJira } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
+import {
+  chatHelp,
+  handleChat,
+  handleResearch,
+  researchHelp,
+} from "./commands/research.js";
 import { handleAudit } from "./commands/audit.js";
+import {
+  handlePdfTemplate,
+  pdfTemplateHelp,
+  ReportedPdfTemplateCliError,
+} from "./commands/pdf-template.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
 
 const VERSION = getCurrentVersion();
@@ -70,8 +82,9 @@ async function main(): Promise<void> {
   await initializePlugins();
   const registry = getPluginRegistry();
 
-  // Global version: show version if --version/-v flag
-  if (versionRequested) {
+  // Global version: only treat --version/-v as the root command shortcut.
+  // Subcommands such as `wiki page diff --version 3` own their flag value.
+  if (versionRequested && !command) {
     output(versionInfo(), opts);
     return;
   }
@@ -140,8 +153,17 @@ async function main(): Promise<void> {
       case "jira":
         await handleJira(rest, parsed.flags, opts);
         break;
+      case "research":
+        await handleResearch(rest, parsed.flags, opts);
+        break;
+      case "chat":
+        await handleChat(rest, parsed.flags, opts);
+        break;
       case "audit":
         await handleAudit(rest, parsed.flags, opts);
+        break;
+      case "pdf-template":
+        await handlePdfTemplate(rest, parsed.flags, opts);
         break;
       case "log":
         await handleLog(rest, parsed.flags, opts);
@@ -154,6 +176,9 @@ async function main(): Promise<void> {
         break;
       case "version":
         output(versionInfo(), opts);
+        break;
+      case "release-info":
+        output(json ? getReleaseInfo() : releaseInfoText(), opts);
         break;
       case "helloworld": {
         const helloworldEnabled = await getFlagValue<boolean>("helloworld", false);
@@ -245,6 +270,15 @@ function showCommandHelp(
     case "jira":
       handleJira(subArgs, helpFlags, opts);
       break;
+    case "research":
+      output(researchHelp(), opts);
+      break;
+    case "chat":
+      output(chatHelp(), opts);
+      break;
+    case "pdf-template":
+      output(pdfTemplateHelp(), opts);
+      break;
     case "log":
       handleLog(subArgs, helpFlags, opts);
       break;
@@ -326,6 +360,16 @@ Jira and Confluence are trademarks of Atlassian Corporation Plc.
 atlcli is not affiliated with, endorsed by, or sponsored by Atlassian.`;
 }
 
+function releaseInfoText(): string {
+  const info = getReleaseInfo();
+  return `atlcli ${info.version}
+Channel: ${info.channel}
+Build: ${info.buildId}
+Source: ${info.sourceSha}
+Release tag: ${info.releaseTag ?? "n/a"}
+Homebrew version: ${info.homebrewVersion ?? "n/a"}`;
+}
+
 function rootHelp(registry: import("./plugins/loader.js").PluginRegistry): string {
   const pluginCommands = registry.getAllCommands();
   const pluginSection = pluginCommands.length > 0
@@ -347,10 +391,14 @@ Commands:
   flag        Manage feature flags
   wiki        Confluence operations (page, space, docs, search)
   jira        Jira operations (issue, board, sprint, epic)
+  research    Run bounded read-only Jira + Confluence research
+  chat        Ask a read-only Jira or Confluence question
+  pdf-template Create reviewed PDF template packs from Word documents
   log         Query and manage logs
   plugin      Manage plugins
   update      Check for and install updates
   version     Show version
+  release-info Show versioned build provenance
 ${pluginSection}
 Global options:
   --profile <name>   Use specific auth profile
@@ -389,8 +437,12 @@ async function checkAndNotifyUpdate(): Promise<void> {
   }
 }
 
-main().catch((err) => {
+await main().catch((err) => {
+  if (err instanceof ReportedPdfTemplateCliError) {
+    process.exitCode = err.exitCode;
+    return;
+  }
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`${message}\n`);
-  process.exit(1);
+  process.exitCode = 1;
 });

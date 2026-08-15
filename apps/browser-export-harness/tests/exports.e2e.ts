@@ -8,19 +8,27 @@ const DIGEST_MANIFEST = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../test-results/digests.json",
 );
+const HARNESS_ORIGIN =
+  `http://127.0.0.1:${process.env.ATLCLI_HARNESS_PORT ?? "4179"}`;
 
 test("every registered conformance case passes from nested production output", async ({ page }) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
   const foreignRequests: string[] = [];
+  const fontRequests: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("console", (entry) => {
     if (entry.type() === "error") consoleErrors.push(entry.text());
   });
   page.on("requestfailed", (request) => failedRequests.push(`${request.url()}: ${request.failure()?.errorText}`));
   page.on("request", (request) => {
-    if (new URL(request.url()).origin !== "http://127.0.0.1:4179") foreignRequests.push(request.url());
+    if (/\.(?:ttf|otf)(?:$|\?)/i.test(request.url())) {
+      fontRequests.push(request.url());
+    }
+    if (new URL(request.url()).origin !== HARNESS_ORIGIN) {
+      foreignRequests.push(request.url());
+    }
   });
 
   const response = await page.goto("./");
@@ -33,6 +41,7 @@ test("every registered conformance case passes from nested production output", a
 
   for (const meta of CONFORMANCE_MANIFEST) {
     await test.step(`case ${meta.id}`, async () => {
+      const fontRequestStart = fontRequests.length;
       await page.getByTestId(`run-${meta.id}`).click();
       // PDF compiles can be slow (real Typst WASM); give them room.
       await expect(page.getByTestId(`${meta.id}-state`)).toHaveText("passed", { timeout: 90_000 });
@@ -45,6 +54,15 @@ test("every registered conformance case passes from nested production output", a
         expect(result.compilerVersion, `case ${meta.id} must expose compilerVersion`).toBeTruthy();
         digestManifest[meta.id] = result;
       }
+      if (meta.id === "pdf") {
+        const requestedFonts = new Set(fontRequests.slice(fontRequestStart));
+        expect(result.fullBundleFallback).toBe(false);
+        expect(result.fontRequirementCount).toBeLessThan(12);
+        expect(result.registeredFontAssetIds).toHaveLength(
+          result.fontRequirementCount,
+        );
+        expect(requestedFonts.size).toBe(result.fontRequirementCount);
+      }
     });
   }
 
@@ -56,12 +74,113 @@ test("every registered conformance case passes from nested production output", a
   expect(docx.byteLength).toBeGreaterThan(1_000);
   expect(docx.mediaParts.length).toBeGreaterThan(0);
 
+  const docxJobParity = JSON.parse(
+    (await page.getByTestId("docx-job-parity-result").textContent()) ?? "null",
+  );
+  expect(docxJobParity.partsIdentical).toBe(true);
+  expect(docxJobParity.mediaIdentical).toBe(true);
+  expect(docxJobParity.reportIdentical).toBe(true);
+  expect(docxJobParity.usedRealExecutor).toBe(true);
+  expect(docxJobParity.usedIndependentRasterizers).toBe(true);
+  expect(docxJobParity.ownedIndependentBytes).toBe(true);
+  expect(docxJobParity.renderAttempts).toBe(1);
+  expect(docxJobParity.reservationReleased).toBe(true);
+  expect(docxJobParity.templateResolutions).toBe(1);
+
   const pdf = JSON.parse((await page.getByTestId("pdf-result").textContent()) ?? "null");
   expect(pdf.byteIdenticalWarmRepeat).toBe(true);
   expect(pdf.tagged).toBe(true);
   expect(pdf.hasOutline).toBe(true);
   expect(pdf.embeddedFontFiles).toBeGreaterThan(0);
   expect(pdf.diagnosticCount).toBeGreaterThan(0);
+  expect(pdf.fontRequirementCount).toBeLessThan(12);
+  expect(pdf.fullBundleFallback).toBe(false);
+
+  const pdfJobParity = JSON.parse(
+    (await page.getByTestId("pdf-job-parity-result").textContent()) ?? "null",
+  );
+  expect(pdfJobParity.byteIdentical).toBe(true);
+  expect(pdfJobParity.reportIdentical).toBe(true);
+  expect(pdfJobParity.usedRealExecutor).toBe(true);
+  expect(pdfJobParity.usedRealWorker).toBe(true);
+  expect(pdfJobParity.jobCompileCalls).toBe(1);
+  expect(pdfJobParity.renderAttempts).toBe(1);
+  expect(pdfJobParity.reservationReleased).toBe(true);
+
+  const blocks = JSON.parse(
+    (await page.getByTestId("blocks-result").textContent()) ?? "null",
+  );
+  expect(blocks.docxHasCodeTitle).toBe(true);
+  expect(blocks.pdfHasCodeCollapseProjection).toBe(true);
+  expect(blocks.docxHasCodeCollapseProjection).toBe(true);
+
+  const charts = JSON.parse(
+    (await page.getByTestId("charts-result").textContent()) ?? "null",
+  );
+  expect(charts.shapes).toHaveLength(12);
+  expect(charts.docx).toMatchObject({
+    svgParts: 12,
+    pngFallbackParts: 12,
+    titlesInDocument: 12,
+    complete: true,
+  });
+  expect(charts.pdf).toMatchObject({
+    svgAssets: 12,
+    titlesInTypstSource: 12,
+    complete: true,
+  });
+  expect(charts.docx.byteLength).toBeGreaterThan(1_000);
+  expect(charts.pdf.byteLength).toBeGreaterThan(1_000);
+
+  const adfSource = JSON.parse(
+    (await page.getByTestId("adf-source-result").textContent()) ?? "null",
+  );
+  expect(adfSource.pdfJobArtifactAndReportParity).toBe(true);
+  expect(adfSource.docxJobArtifactAndReportParity).toBe(true);
+  expect(adfSource.neutralHasDateStatusPlaceholderSemantics).toBe(true);
+  expect(adfSource.docxHasDateStatusPlaceholderSemantics).toBe(true);
+  expect(adfSource.neutralHasAnnotationAndFragmentIdentity).toBe(true);
+  expect(adfSource.reportHasFragmentProjectionFact).toBe(true);
+  expect(adfSource.neutralHasDataConsumerProvenance).toBe(true);
+  expect(adfSource.neutralHasSyncedContentSemantics).toBe(true);
+  expect(adfSource.neutralHasUnsupportedAdfProvenance).toBe(true);
+  expect(adfSource.neutralHasBreakoutSemantics).toBe(true);
+  expect(adfSource.reportHasAllBreakoutProjectionFacts).toBe(true);
+  expect(adfSource.docxHasSyncedContentProjection).toBe(true);
+  expect(adfSource.docxHasUnsupportedAdfFallback).toBe(true);
+  expect(adfSource.neutralHasBlockLocalIdentities).toBe(true);
+  expect(adfSource.neutralHasCodeBlockSemantics).toBe(true);
+  expect(adfSource.docxHasInlineCode).toBe(true);
+  expect(adfSource.pdfHasInlineMediaPresentation).toBe(true);
+  expect(adfSource.docxHasMediaPresentation).toBe(true);
+  expect(adfSource.docxHasEmbeddedCodeFont).toBe(true);
+  expect(adfSource.docxHasCodeLineNumbers).toBe(true);
+  expect(adfSource.neutralHasAllSupportedEmojiProjections).toBe(true);
+  expect(adfSource.docxHasAllSupportedEmojiProjections).toBe(true);
+  expect(adfSource.docxKnownEmojiShortNamesDoNotLeak).toBe(true);
+  expect(adfSource.docxPreservesEmojiControlsAndUnicode).toBe(true);
+  expect(adfSource.neutralHasCustomPanelSemantics).toBe(true);
+  expect(adfSource.docxHasCustomPanelPresentation).toBe(true);
+  expect(adfSource.neutralHasMentionSemantics).toBe(true);
+  expect(adfSource.docxHasMentionPresentation).toBe(true);
+  expect(adfSource.neutralHasSmartCardSemantics).toBe(true);
+  expect(adfSource.neutralHasMultiBodiedExtensionSemantics).toBe(true);
+  expect(adfSource.docxHasSmartCardPresentation).toBe(true);
+  expect(adfSource.docxHasMultiBodiedExtensionProjection).toBe(true);
+  expect(adfSource.neutralHasTablePresentation).toBe(true);
+  expect(adfSource.neutralHasLayoutPresentation).toBe(true);
+  expect(adfSource.docxHasTablePresentation).toBe(true);
+  expect(adfSource.docxHasLayoutPresentation).toBe(true);
+
+  const macros = JSON.parse(
+    (await page.getByTestId("macros-result").textContent()) ?? "null",
+  );
+  expect(macros.adfExportResolved).toBe(true);
+  expect(macros.docxHasAdfExport).toBe(true);
+  expect(macros.docxHasInlineAdfExport).toBe(true);
+  expect(macros.whiteboardLinkedCard).toBe(true);
+  expect(macros.pdfWhiteboardLink).toBe(true);
+  expect(macros.docxWhiteboardLink).toBe(true);
 
   mkdirSync(dirname(DIGEST_MANIFEST), { recursive: true });
   writeFileSync(DIGEST_MANIFEST, JSON.stringify(digestManifest, null, 2));

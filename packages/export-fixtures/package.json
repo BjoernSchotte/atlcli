@@ -10,6 +10,13 @@
   "dependencies": {
     "@atlcli/confluence": "workspace:*",
     "@atlcli/docx": "workspace:*",
-    "@atlcli/pdf": "workspace:*"
+    "@atlcli/export-macros": "workspace:*",
+    "@atlcli/export-media": "workspace:*",
+    "@atlcli/pdf": "workspace:*",
+    "@atlcli/template-pack": "workspace:*",
+    "pizzip": "^3.2.0"
+  },
+  "devDependencies": {
+    "@atlcli/export-charts-tanstack": "workspace:*"
   }
 }

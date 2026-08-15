@@ -6,6 +6,7 @@
  * never fails.
  */
 import type { ExportBlock, InlineNode, ListItem } from "@atlcli/confluence";
+import { formatAdfDateTimestamp, statusDisplayText } from "@atlcli/confluence";
 import type { MacroExportContext, MacroInstance, MacroRenderer, MacroRenderResult } from "./types.js";
 
 /** Flatten an inline node's plain text (for heading-derived anchor slugs). */
@@ -19,11 +20,16 @@ function inlinePlainText(nodes: InlineNode[]): string {
       case "link":
         out += inlinePlainText(n.content);
         break;
+      case "date":
+        out += formatAdfDateTimestamp(n.timestamp);
+        break;
       case "status":
-        out += n.text;
+        out += statusDisplayText(n);
         break;
       case "mention":
         out += n.displayName ?? n.accountId;
+        break;
+      case "placeholder":
         break;
       default:
         break;
@@ -125,6 +131,7 @@ export function tocRenderer(): MacroRenderer {
     id: "toc",
     macros: ["toc"],
     requiresLivePort: false,
+    webRenderModel: { kind: "toc", dependencies: [] },
     async render(m: MacroInstance, ctx: MacroExportContext): Promise<MacroRenderResult> {
       // When the DOCX template already carries a native TOC field, suppress the
       // macro's body-TOC so the export never shows a duplicate table of contents.

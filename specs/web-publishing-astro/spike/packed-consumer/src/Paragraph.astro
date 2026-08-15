@@ -1,0 +1,10 @@
+---
+import InlineNode from "@atlcli/export-blocks-astro/inline";
+
+const { block } = Astro.props;
+const content = Array.isArray(block?.content) ? block.content : [];
+---
+
+<p data-packed-consumer-override>
+  {content.map((node) => <InlineNode node={node} />)}
+</p>

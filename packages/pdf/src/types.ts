@@ -1,4 +1,23 @@
-import type { Caption, ExportBlock, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import type {
+  AdfExtensionFrame,
+  Caption,
+  ExportBlock,
+  ExportLink,
+  ExportNote,
+  InlineNode,
+  LinkTarget,
+  ListItem,
+  LayoutColumn,
+  TableCell,
+  TableRow,
+} from "@atlcli/confluence";
+import type {
+  AnyPdfTemplateManifest,
+  ValidatedPdfTemplatePackV1,
+} from "./template-pack.js";
+import type { ResolvedPdfFontRequirementsV1 } from "./font-requirements.js";
+import type { HighlightedCode } from "@atlcli/code-highlight/contract";
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 
 export interface PdfExportMetadata {
   title: string;
@@ -8,6 +27,8 @@ export interface PdfExportMetadata {
   exporter?: string;
   language?: string;
   region?: string;
+  /** Resolved document direction from source/export metadata, never template locale. */
+  direction?: "ltr" | "rtl";
   exportedAt: Date;
 }
 
@@ -52,26 +73,107 @@ export interface PreparedPdfAsset {
   mediaType: string;
 }
 
+export type PreparedPdfInlineNode =
+  | Exclude<InlineNode, { type: "link" | "media" }>
+  | (Omit<Extract<InlineNode, { type: "link" }>, "content"> & {
+      content: PreparedPdfInlineNode[];
+    })
+  | (Extract<InlineNode, { type: "media" }> & {
+      /** Packed asset path when a correlated inline image resolved successfully. */
+      assetPath?: string;
+      /** Deterministic visible fallback retained when the asset cannot be embedded. */
+      fallbackLabel: string;
+    });
+
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+  content: PreparedPdfInlineNode[];
+};
+
 export type PreparedPdfBlock =
-  | Exclude<ExportBlock, { type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown" }>
+  | Exclude<ExportBlock, { type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart" }>
+  | (Omit<Extract<ExportBlock, { type: "heading" }>, "content"> & {
+      content: PreparedPdfInlineNode[];
+    })
+  | (Omit<Extract<ExportBlock, { type: "paragraph" }>, "content"> & {
+      content: PreparedPdfInlineNode[];
+    })
   /**
    * An unresolved macro (spec 004 placeholder floor). `body` is prepared
    * recursively so images/tables inside an unresolved third-party macro still
    * render; `plainBody` is the verbatim plain-text body.
    */
-  | { type: "unknown"; macroName: string; body?: PreparedPdfBlock[]; plainBody?: string }
-  | { type: "callout"; kind: Extract<ExportBlock, { type: "callout" }>["kind"]; title?: string; content: PreparedPdfBlock[] }
-  | { type: "list"; ordered: boolean; items: Array<{ content: PreparedPdfBlock[]; checked?: boolean }> }
-  | {
-      type: "table";
-      rows: Array<{ cells: Array<{ header: boolean; colspan: number; rowspan: number; backgroundColor?: string; content: PreparedPdfBlock[] }> }>;
-      columnWidths?: number[];
-      caption?: Caption;
+  | (Omit<Extract<ExportBlock, { type: "unknown" }>, "body" | "extensionFrames"> & {
+      body?: PreparedPdfBlock[];
+      /** Shared projection for the verbatim fallback when no rich body exists. */
+      plainBodyHighlight?: HighlightedCode;
+      extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
+        content: PreparedPdfBlock[];
+      }>;
+    })
+  | Omit<Extract<ExportBlock, { type: "callout" }>, "content"> & {
+      content: PreparedPdfBlock[];
     }
-  | { type: "image"; assetPath?: string; alt?: string; width?: number; height?: number; fallbackLabel: string; caption?: Caption }
+  | Omit<Extract<ExportBlock, { type: "expand" }>, "content"> & {
+      content: PreparedPdfBlock[];
+    }
+  | Omit<Extract<ExportBlock, { type: "list" }>, "items"> & {
+      items: Array<Omit<ListItem, "content"> & { content: PreparedPdfBlock[] }>;
+    }
+  | Omit<Extract<ExportBlock, { type: "layout" }>, "columns"> & {
+      columns: Array<Omit<LayoutColumn, "content"> & { content: PreparedPdfBlock[] }>;
+    }
+  | Omit<Extract<ExportBlock, { type: "table" }>, "caption" | "rows"> & {
+      caption?: PreparedPdfCaption;
+      rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & { content: PreparedPdfBlock[] }>;
+      }>;
+    }
+  | (Omit<Extract<ExportBlock, { type: "chart" }>, "caption"> & {
+      caption?: PreparedPdfCaption;
+      /** Deterministic SVG visual embedded before the accessible data table. */
+      visualAssetPath?: string;
+    })
+  | {
+      type: "image";
+      assetPath?: string;
+      alt?: string;
+      width?: number;
+      height?: number;
+      fallbackLabel: string;
+      media?: Extract<ExportBlock, { type: "image" }>["media"];
+      mediaPresentation?: Extract<ExportBlock, { type: "image" }>["mediaPresentation"];
+      mediaGroup?: Extract<ExportBlock, { type: "image" }>["mediaGroup"];
+      border?: Extract<ExportBlock, { type: "image" }>["border"];
+      annotations?: Extract<ExportBlock, { type: "image" }>["annotations"];
+      caption?: PreparedPdfCaption;
+      link?: ExportLink;
+    }
+  | (Omit<Extract<ExportBlock, { type: "mediaFallback" }>, "caption"> & {
+      caption?: PreparedPdfCaption;
+    })
   | { type: "blockquote"; content: PreparedPdfBlock[] }
-  | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
-  | { type: "diagram"; assetPath: string; alt?: string; source: string; caption?: Caption }
+  | (Omit<Extract<ExportBlock, { type: "codeBlock" }>, "caption"> & {
+      caption?: PreparedPdfCaption;
+      /** Shared Shiki projection prepared before Typst serialization. */
+      highlight: HighlightedCode;
+    })
+  | {
+      type: "diagram";
+      assetPath: string;
+      alt?: string;
+      source: string;
+      caption?: PreparedPdfCaption;
+      /** Retained from an ADF code block even when Mermaid becomes a diagram. */
+      wrap?: boolean;
+      hideLineNumbers?: boolean;
+      firstLineNumber?: number;
+      /** Legacy Storage code-macro header retained when Mermaid becomes a diagram. */
+      title?: string;
+      /** Legacy Storage collapse intent retained for the static-projection report. */
+      initiallyCollapsed?: boolean;
+      localId?: string;
+      uniqueId?: string;
+    }
   | { type: "orientation"; landscape: boolean; content: PreparedPdfBlock[] };
 
 export interface PreparedPdfDocument {
@@ -96,8 +198,18 @@ export interface PdfSourceBundle {
   assets: PreparedPdfAsset[];
   sourceMap: PdfSourceMapEntry[];
   notes: ExportNote[];
+  /**
+   * Deterministic semantic font subset for this fully resolved document.
+   * Legacy hand-built bundles may omit it; compiler adapters must then retain
+   * full-bundle compatibility.
+   */
+  fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
+/**
+ * @deprecated Legacy rendering/report label. It does not request PDF/UA
+ * conformance. Use `PdfOutputPolicyV1` for a strict output-standard request.
+ */
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
 export type PdfTableCellTextMode = "auto" | "source";
@@ -194,6 +306,24 @@ export interface PdfSerializeOptions {
   profile?: PdfProfile;
   theme?: PdfThemeOptions;
   settings?: PdfTemplateSettings;
+  /**
+   * The curated template manifest to render with (spec 012). Its `design`,
+   * `bindings`, and `localization` drive the resolver and the generated Typst
+   * template. Defaults to the built-in "Editorial Indigo". A second curated
+   * template (e.g. "Manuscript") renders through the identical engine code path
+   * — only this manifest differs. Host UI for selecting a template is folder
+   * 010's job; this field is the data seam it drives.
+   */
+  templateManifest?: AnyPdfTemplateManifest;
+  /**
+   * Explicit image-quality request (issue #118 Phase 1), applied here ONLY
+   * to the template logo — the fourth asset source, which bypasses
+   * `PdfAssetResolver` and preparation. Prepared assets normalize inside
+   * `preparePdfDocument`.
+   */
+  imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
+  /** Fully validated template pack including resolved visual payloads. */
+  templatePack?: ValidatedPdfTemplatePackV1;
 }
 
 export interface PdfExportTimings {
@@ -203,15 +333,40 @@ export interface PdfExportTimings {
   totalMs: number;
 }
 
+export interface PdfFontLoadEvidenceV1 {
+  schema: "atlcli.pdf-font-load-evidence/1";
+  requirementKey: string;
+  registeredAssetIds: readonly string[];
+  loadedFontNames: readonly string[];
+  /** True only for a legacy hand-built bundle without semantic requirements. */
+  fullBundleFallback: boolean;
+}
+
 export interface PdfExportReport {
+  /** Effective bundled Shiki theme used by code blocks. */
+  codeTheme: CodeThemeId;
   filename: string;
   profile: PdfProfile;
+  /** Explicit achieved-by-compiler standard request; absent is legacy tagged output. */
+  outputPolicy?: import("./output-policy.js").PdfOutputPolicyV1;
+  /** Standard evidence inspected from the emitted compiler bytes. */
+  outputStandardEvidence?: import("./output-policy.js").PdfOutputStandardEvidenceV1;
   compilerVersion: string;
   pageCount?: number;
   embeddedImages: number;
   renderedDiagrams: number;
   skippedAssets: number;
   notes: ExportNote[];
+  /**
+   * The SOURCE half of {@link notes} — the host's `sourceNotes` — AFTER
+   * dynamic-macro reconciliation (spec 010). A host that builds a
+   * per-source-page view of the report must project THIS rather than the notes
+   * it walked itself: the walker's `macro-not-rendered`/`unknown-macro` is
+   * provisional, and only this pass knows it became `macro-rendered-via`.
+   * Always set by `runPdfExport`; optional so hand-built report literals stay
+   * additive.
+   */
+  sourceNotes?: ExportNote[];
   /**
    * False when the composed document omitted content (partial-mode unreadable
    * pages, spec 002). Single-page/normal exports are `true`.
@@ -225,6 +380,9 @@ export interface PdfExportReport {
    * a clean compile); optional so hand-built report literals stay additive.
    */
   compilerDiagnostics?: PdfCompilerDiagnostic[];
+  /** Exact font requirements and compiler registration evidence for this run. */
+  fontRequirements?: ResolvedPdfFontRequirementsV1;
+  fontEvidence?: PdfFontLoadEvidenceV1;
   timings: PdfExportTimings;
 }
 

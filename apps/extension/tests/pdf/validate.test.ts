@@ -11,7 +11,17 @@ describe("validatePdfOutput", () => {
       validatePdfOutput(
         fixture("/Type /Page /Type/Page /StructTreeRoot /MarkInfo /Outlines /FontFile2")
       )
-    ).toEqual({ pageCount: 2, tagged: true, hasOutline: true, embeddedFontFiles: 1 });
+    ).toEqual({ pageCount: 2, tagged: true, hasOutline: true, embeddedFontFiles: 1, hasLang: false });
+  });
+
+  it("reports the document language the extension's own exports declare (spec 011)", () => {
+    // The extension consumes the same structural gate as the CLI, so the
+    // PDF/UA language property must be visible on this side of the seam too.
+    expect(
+      validatePdfOutput(
+        fixture("/Type/Page /Type /Catalog /Lang (de-DE) /StructTreeRoot /MarkInfo /FontFile2")
+      ).hasLang
+    ).toBe(true);
   });
 
   it.each([

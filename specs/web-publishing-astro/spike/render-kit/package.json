@@ -1,0 +1,37 @@
+{
+  "name": "@atlcli/export-blocks-astro",
+  "version": "0.0.0-t0",
+  "private": true,
+  "description": "Private T0 feasibility spike for the standalone Astro render-kit boundary",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "peerDependencies": {
+    "astro": ">=7.1.6 <8"
+  },
+  "files": [
+    "components",
+    "styles",
+    "contract.mjs",
+    "index.d.ts",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./contract.mjs"
+    },
+    "./block": "./components/Block.astro",
+    "./document": "./components/ExportDocument.astro",
+    "./inline": "./components/InlineNode.astro",
+    "./chart": "./components/StaticChart.astro",
+    "./chart-island": "./components/ChartIsland.astro",
+    "./styles.css": "./styles/base.css"
+  },
+  "sideEffects": [
+    "./components/*.astro",
+    "./styles/*.css"
+  ]
+}

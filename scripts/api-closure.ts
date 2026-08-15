@@ -38,6 +38,86 @@ export interface FreezeDecision {
  * Recorded here as the single source the closure files render from.
  */
 export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
+  "@atlcli/action-palette-react": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the host-neutral React presenter for the first action-palette " +
+      "MVP. Keep it experimental while extension and Forge consumers prove focus, accessibility, " +
+      "localization, input, and result contracts across release and host-runtime upgrades.",
+  },
+  "@atlcli/action-registry": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the serializable, host-neutral action definition and catalog " +
+      "contract for the first palette MVP. Keep it experimental until additional build-time " +
+      "contributors and hosts prove versioning, validation, capability, and execution seams.",
+  },
+  "@atlcli/change-set": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the dependency-free, host- and renderer-neutral semantic " +
+      "change contract. Keep it experimental while Confluence ADF/Storage adapters, Jira " +
+      "planning, and a real browser consumer prove the versioned contract and digest policy.",
+  },
+  "@atlcli/export-blocks": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: extracted as the dependency-free, consumer-neutral document model for " +
+      "DOCX, PDF, and web publishing. Keep it experimental while the first standalone " +
+      "Astro renderer and an external package consumer prove the separated contract.",
+  },
+  "@atlcli/export-blocks-astro": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: theme-neutral Astro render-kit for the dependency-free ExportBlock model. " +
+      "Keep it experimental until exhaustive block/macro rendering, a packed plain-Astro consumer, " +
+      "and Starlight-independent accessibility/security evidence prove its public component contract.",
+  },
+  "@atlcli/export-charts-tanstack": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: pinned TanStack Charts adapter shared by Astro, DOCX, and PDF chart " +
+      "projections. Keep it experimental while the upstream 0.x API and the all-shapes " +
+      "scene/SVG contract mature through real publication consumers.",
+  },
+  "@atlcli/web-publish": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the mostly isomorphic publication project, bundle, " +
+      "experience, and build contract layer. Keep it experimental while Astro/Starlight " +
+      "adapters and a second experience consumer prove capability negotiation and closure.",
+  },
+  "@atlcli/web-publish-astro": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: Node-only Astro structured-data loader and static integration introduced " +
+      "for web publishing. Keep it experimental until packed clean-project, Starlight, and " +
+      "real Cloud/Data Center publication artifacts prove the integration contract.",
+  },
+  "@atlcli/web-publish-starlight": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: first supported Starlight publishing experience, deliberately separated " +
+      "from acquisition, build execution, and ExportBlock rendering. Keep it experimental until " +
+      "a production Starlight artifact and a non-Starlight experience prove the slot and theme contract.",
+  },
+  "@atlcli/code-highlight": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced for issue 102 as the shared lazy Shiki catalogue and tokenizer " +
+      "for DOCX, PDF, extension, CLI, and browser hosts. Keep it experimental while catalogue " +
+      "upgrade and downstream host compatibility policy are proven across a release cycle.",
+  },
   "@atlcli/confluence": {
     version: "1.0.0",
     frozen: true,
@@ -46,6 +126,15 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "TreeSource/fetchExportTree/composeChapters from spec 002) — designed, documented, and " +
       "regression-guarded (api-report + conformance suites). The non-frozen sync machinery " +
       "lives behind ./internal.",
+  },
+  "@atlcli/export-media": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced for issue 118 Phase 1 as the shared deterministic image " +
+      "inspection/normalization codec (extracted from @atlcli/docx, consumed by the PDF and " +
+      "DOCX engines). Keep it experimental until the standard/print PPI pins survive a " +
+      "release cycle of measured corpus results.",
   },
   "@atlcli/docx": {
     version: "1.0.0",
@@ -71,6 +160,22 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "sha256-pinned vendored compiler; consumed identically by CLI, extension, harness, and " +
       "the spec 011 parity harness.",
   },
+  "@atlcli/pdf-template-authoring": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced by the PDF-template DOCX-intake vertical slice as the shared " +
+      "browser-safe authoring and journey core. Keep it experimental until the CLI shape " +
+      "and a browser host have both exercised the versioned reducers, ports, and views.",
+  },
+  "@atlcli/docx-template-intake": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced by the PDF-template DOCX-intake vertical slice as the " +
+      "browser-safe OPC/OOXML facts boundary. Keep it experimental until matching, " +
+      "asset extraction, CLI review, and a browser host have exercised the complete flow.",
+  },
   "@atlcli/export-macros": {
     version: "1.0.0",
     frozen: true,
@@ -79,6 +184,23 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "MacroResolutionOptions — freezing them requires freezing this contract too. The " +
       "renderer SET may still grow (additive, non-breaking); the registry/resolve contract " +
       "itself is what freezes.",
+  },
+  "@atlcli/export-wiring": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: created in spec 010 by promoting the CLI's host-wiring module into a package " +
+      "so the extension stops carrying a second copy. Its shape follows the hosts (client " +
+      "construction, origin allowlists, session latching are all still moving); freeze it only " +
+      "once a third shell — Forge or Tauri — has consumed it unchanged.",
+  },
+  "@atlcli/export-jobs": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: the versioned lifecycle contracts begin in spec 013, but the reducers, " +
+      "host stores, and second engine/host consumers have not landed yet. Keep the package " +
+      "experimental until DOCX and PDF both pass CLI and packed-browser parity/recovery gates.",
   },
   "@atlcli/export-node": {
     version: "0.x",
@@ -113,6 +235,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
     version: "0.x",
     frozen: false,
     reasoning: "STAYS 0.x: never API-reviewed; the plugin loader story predates the freeze work.",
+  },
+  "@atlcli/research": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: the host-neutral research contracts, scope discovery, and dynamic graph " +
+      "composition are being proven by the issue 138 CLI and browser-extension spike. Keep " +
+      "the surface experimental until both host shapes complete their acceptance gates.",
   },
   "@atlcli/template-pack": {
     version: "0.x",

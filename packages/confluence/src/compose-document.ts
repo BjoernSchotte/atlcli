@@ -26,6 +26,16 @@ import type {
   ExportNote,
   InlineNode,
   LinkTarget,
+  PageLinkResolver,
+  SmartCardSemantics,
+} from "./export-blocks.js";
+import {
+  createPageLinkResolver,
+  formatAdfDateTimestamp,
+  inlineMediaDisplayText,
+  mentionDisplayText,
+  smartCardDisplayText,
+  statusDisplayText,
 } from "./export-blocks.js";
 import type {
   ExportNode,
@@ -52,6 +62,7 @@ export interface HeadingScanBlock {
   readonly rows?: readonly {
     readonly cells: readonly { readonly content: readonly unknown[] }[];
   }[];
+  readonly columns?: readonly { readonly content: readonly unknown[] }[];
 }
 
 /** Smallest heading `level` anywhere in the tree, or `Infinity` if none. */
@@ -63,6 +74,7 @@ export function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number {
         if (typeof block.level === "number" && block.level < min) min = block.level;
         break;
       case "callout":
+      case "expand":
       case "blockquote":
       case "orientation":
         if (block.content) {
@@ -82,6 +94,13 @@ export function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number {
             for (const cell of row.cells) {
               min = Math.min(min, minHeadingLevel(cell.content as readonly HeadingScanBlock[]));
             }
+          }
+        }
+        break;
+      case "layout":
+        if (block.columns) {
+          for (const column of block.columns) {
+            min = Math.min(min, minHeadingLevel(column.content as readonly HeadingScanBlock[]));
           }
         }
         break;
@@ -287,6 +306,18 @@ export interface ComposeOptions {
 export interface ComposeResult {
   blocks: ExportBlock[];
   notes: ExportNote[];
+  /**
+   * Page/folder id → the in-document anchor its chapter was given.
+   *
+   * Composition's own in-scope answer, published so consumers that run AFTER it
+   * can reach the same decision. The macro-resolution pass is exactly that
+   * consumer: both engines resolve macros on the already-composed tree, so a
+   * renderer listing other Confluence pages (the Confluence-list datasource)
+   * cannot emit `{ kind: "page" }` targets and expect them to be rewritten — it
+   * reads this map instead, linking into the document rather than out to the
+   * web. An id absent from the map is outside the export scope.
+   */
+  chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -304,10 +335,21 @@ function inlinePlainText(nodes: readonly InlineNode[]): string {
         out += inlinePlainText(node.content);
         break;
       case "mention":
-        out += node.displayName ?? "";
+        out += mentionDisplayText(node);
+        break;
+      case "date":
+        out += formatAdfDateTimestamp(node.timestamp);
         break;
       case "status":
-        out += node.text;
+        out += statusDisplayText(node);
+        break;
+      case "smartCard":
+        out += smartCardDisplayText(node.card);
+        break;
+      case "media":
+        out += inlineMediaDisplayText(node);
+        break;
+      case "placeholder":
         break;
       case "lineBreak":
         out += " ";
@@ -354,6 +396,7 @@ function registerPageAnchors(
           break;
         }
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);
@@ -364,9 +407,16 @@ function registerPageAnchors(
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
+        case "chart":
+          break;
+        case "layout":
+          for (const column of block.columns) walk(column.content);
+          break;
         case "paragraph":
+        case "smartCard":
         case "codeBlock":
         case "image":
+        case "mediaFallback":
         case "divider":
         case "pageBreak":
         case "unknown":
@@ -382,68 +432,12 @@ function registerPageAnchors(
 }
 
 // ---------------------------------------------------------------------------
-// Emit pass: link resolution
-// ---------------------------------------------------------------------------
-
-type Resolution =
-  | { kind: "resolved"; targetId: string }
-  | { kind: "ambiguous" }
-  | { kind: "out-of-scope" };
-
-interface PageIndex {
-  byId: Map<string, ExportPageNode>;
-  bySpaceTitle: Map<string, ExportPageNode[]>;
-}
-
-/** Unambiguous composite key for (spaceKey, title) lookups. */
-function spaceTitleKey(spaceKey: string, title: string): string {
-  return JSON.stringify([spaceKey, title]);
-}
-
-function buildPageIndex(pages: readonly ExportPageNode[]): PageIndex {
-  const byId = new Map<string, ExportPageNode>();
-  const bySpaceTitle = new Map<string, ExportPageNode[]>();
-  for (const page of pages) {
-    byId.set(page.pageId, page);
-    const space = page.meta.spaceKey;
-    if (space) {
-      const key = spaceTitleKey(space, page.title);
-      const list = bySpaceTitle.get(key);
-      if (list) list.push(page);
-      else bySpaceTitle.set(key, [page]);
-    }
-  }
-  return { byId, bySpaceTitle };
-}
-
-function resolvePageLink(
-  target: Extract<LinkTarget, { kind: "page" }>,
-  currentSpaceKey: string | undefined,
-  index: PageIndex
-): Resolution {
-  // (1) contentId exact match.
-  if (target.contentId) {
-    const node = index.byId.get(target.contentId);
-    if (node) return { kind: "resolved", targetId: node.pageId };
-    return { kind: "out-of-scope" };
-  }
-  // (2)/(3) title within a space: the link's own space, else the current page's.
-  const space = target.spaceKey ?? currentSpaceKey;
-  if (space) {
-    const cands = index.bySpaceTitle.get(spaceTitleKey(space, target.contentTitle)) ?? [];
-    if (cands.length === 1) return { kind: "resolved", targetId: cands[0]!.pageId };
-    if (cands.length > 1) return { kind: "ambiguous" };
-  }
-  return { kind: "out-of-scope" };
-}
-
-// ---------------------------------------------------------------------------
 // Emit pass: inline + block transform
 // ---------------------------------------------------------------------------
 
 interface EmitCtx {
   page: ExportPageNode;
-  index: PageIndex;
+  pageLinkResolver: PageLinkResolver;
   registry: AnchorRegistry;
   chapterDestById: Map<string, string>;
   destByBlock: DestByBlock;
@@ -459,14 +453,31 @@ function transformInline(nodes: readonly InlineNode[], ctx: EmitCtx): InlineNode
     switch (node.type) {
       case "text":
       case "mention":
+      case "date":
       case "status":
+      case "placeholder":
       case "lineBreak":
         out.push(node);
         break;
+      case "smartCard":
+        out.push({ ...node, card: rewriteSmartCard(node.card, ctx) });
+        break;
+      case "media": {
+        const link = node.link ? rewriteExportLink(node.link, ctx) : undefined;
+        const rewritten = { ...node };
+        if (link) rewritten.link = link;
+        else delete rewritten.link;
+        out.push(rewritten);
+        break;
+      }
       case "link": {
         const content = transformInline(node.content, ctx);
         const rewritten = rewriteLink(node.target, content, ctx);
-        out.push(...rewritten);
+        out.push(...rewritten.map((item) =>
+          item.type === "link" && node.adfAttributes !== undefined
+            ? { ...item, adfAttributes: node.adfAttributes }
+            : item
+        ));
         break;
       }
       default: {
@@ -476,6 +487,21 @@ function transformInline(nodes: readonly InlineNode[], ctx: EmitCtx): InlineNode
     }
   }
   return out;
+}
+
+function rewriteSmartCard(card: SmartCardSemantics, ctx: EmitCtx): SmartCardSemantics {
+  if (!card.target) return card;
+  const content: InlineNode[] = [{ type: "text", text: smartCardDisplayText(card) }];
+  const rewritten = rewriteLink(card.target, content, ctx);
+  const rewrittenTarget =
+    rewritten.length === 1 && rewritten[0]?.type === "link"
+      ? rewritten[0].target
+      : undefined;
+  const { target: _sourceTarget, ...rest } = card;
+  return {
+    ...rest,
+    ...(rewrittenTarget ? { target: rewrittenTarget } : {}),
+  };
 }
 
 /** Rewrite a single link node; may unwrap it to page-only text (its content). */
@@ -504,32 +530,36 @@ function rewriteLink(
       return [{ type: "link", target: { kind: "anchor", anchor: dest }, content }];
     }
     case "page": {
-      const resolution = resolvePageLink(target, ctx.page.meta.spaceKey, ctx.index);
+      const resolution = ctx.pageLinkResolver.resolve(target, ctx.page.meta.spaceKey);
       if (resolution.kind === "ambiguous") {
         ctx.notes.push({
-          level: "warning",
+          level: target.href ? "info" : "warning",
           code: "link-target-ambiguous",
-          message: `Link to page "${target.contentTitle}" is ambiguous (multiple in-scope pages share that title); rendered as plain text.`,
+          message: `Link to page "${target.contentTitle}" is ambiguous (multiple in-scope pages share that title); ${
+            target.href ? "the exact source URL was retained" : "rendered as plain text"
+          }.`,
         });
-        return content;
+        return target.href
+          ? [{ type: "link", target: { kind: "external", href: target.href }, content }]
+          : content;
       }
       if (resolution.kind === "out-of-scope") {
+        const href = target.href ?? ctx.options.resolveExternalUrl?.(
+          {
+            ...(target.contentId ? { contentId: target.contentId } : {}),
+            contentTitle: target.contentTitle,
+            ...(target.spaceKey ? { spaceKey: target.spaceKey } : {}),
+          },
+          target.anchor,
+        );
         ctx.notes.push({
           level: "info",
           code: "link-outside-scope",
           message: `Link to page "${target.contentTitle}" points outside the export scope; ${
-            ctx.options.resolveExternalUrl ? "linked to its absolute URL" : "rendered as plain text"
+            href ? "linked to its absolute URL" : "rendered as plain text"
           }.`,
         });
-        if (ctx.options.resolveExternalUrl) {
-          const href = ctx.options.resolveExternalUrl(
-            {
-              ...(target.contentId ? { contentId: target.contentId } : {}),
-              contentTitle: target.contentTitle,
-              ...(target.spaceKey ? { spaceKey: target.spaceKey } : {}),
-            },
-            target.anchor
-          );
+        if (href) {
           return [{ type: "link", target: { kind: "external", href }, content }];
         }
         return content;
@@ -560,14 +590,27 @@ function rewriteLink(
   }
 }
 
+function rewriteExportLink(
+  link: NonNullable<Extract<ExportBlock, { type: "image" }>["link"]>,
+  ctx: EmitCtx,
+): typeof link | undefined {
+  const rewritten = rewriteLink(link.target, [], ctx);
+  const node = rewritten.find((candidate) => candidate.type === "link");
+  return node?.type === "link"
+    ? {
+        target: node.target,
+        ...(link.adfAttributes !== undefined ? { adfAttributes: link.adfAttributes } : {}),
+      }
+    : undefined;
+}
+
 /**
  * A caption's `content` is typed inline nodes — including links — so it goes
- * through the same rewrite pass as any other inline content (no walker emits
- * captions yet, spec 003/T1.4, but the seam is wired so the gap can't ship
- * silently once one does).
+ * through the same rewrite pass as any other inline content. Native ADF media
+ * captions and Storage `scroll-title` captions share this path.
  */
 function transformCaption(caption: Caption, ctx: EmitCtx): Caption {
-  return { kind: caption.kind, content: transformInline(caption.content, ctx) };
+  return { ...caption, content: transformInline(caption.content, ctx) };
 }
 
 /** Deep-transform one block: shift heading levels + rewrite links/anchors. */
@@ -586,7 +629,7 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
       if (level < 1) level = 1;
       const dest = ctx.destByBlock.get(block);
       return {
-        type: "heading",
+        ...block,
         level: level as 1 | 2 | 3 | 4 | 5 | 6,
         content: transformInline(block.content, ctx),
         ...(dest ? { explicitAnchor: dest } : {}),
@@ -597,12 +640,17 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
       return { type: "anchor", name: dest ?? block.name };
     }
     case "paragraph":
-      return { type: "paragraph", content: transformInline(block.content, ctx) };
+      return { ...block, content: transformInline(block.content, ctx) };
+    case "smartCard":
+      return { ...block, card: rewriteSmartCard(block.card, ctx) };
     case "callout":
       return {
-        type: "callout",
-        kind: block.kind,
-        ...(block.title !== undefined ? { title: block.title } : {}),
+        ...block,
+        content: block.content.map((b) => transformBlock(b, ctx)),
+      };
+    case "expand":
+      return {
+        ...block,
         content: block.content.map((b) => transformBlock(b, ctx)),
       };
     case "blockquote":
@@ -615,11 +663,18 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
       };
     case "list":
       return {
-        type: "list",
-        ordered: block.ordered,
+        ...block,
         items: block.items.map((item) => ({
+          ...item,
           content: item.content.map((b) => transformBlock(b, ctx)),
-          ...(item.checked !== undefined ? { checked: item.checked } : {}),
+        })),
+      };
+    case "layout":
+      return {
+        ...block,
+        columns: block.columns.map((column) => ({
+          ...column,
+          content: column.content.map((child) => transformBlock(child, ctx)),
         })),
       };
     case "table":
@@ -631,21 +686,37 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
             colspan: cell.colspan,
             rowspan: cell.rowspan,
             ...(cell.backgroundColor !== undefined ? { backgroundColor: cell.backgroundColor } : {}),
+            ...(cell.columnWidths !== undefined ? { columnWidths: cell.columnWidths } : {}),
+            ...(cell.verticalAlignment !== undefined ? { verticalAlignment: cell.verticalAlignment } : {}),
+            ...(cell.localId !== undefined ? { localId: cell.localId } : {}),
             content: cell.content.map((b) => transformBlock(b, ctx)),
           })),
+          ...(row.localId !== undefined ? { localId: row.localId } : {}),
         })),
         ...(block.columnWidths !== undefined ? { columnWidths: block.columnWidths } : {}),
+        ...(block.presentation !== undefined ? { presentation: block.presentation } : {}),
         ...(block.caption !== undefined ? { caption: transformCaption(block.caption, ctx) } : {}),
+        ...(block.fragments !== undefined ? { fragments: block.fragments } : {}),
       };
     case "codeBlock":
       // Only the caption carries inline nodes (and thus rewritable links).
       return block.caption !== undefined
         ? { ...block, caption: transformCaption(block.caption, ctx) }
         : block;
-    case "image":
+    case "chart":
       return block.caption !== undefined
         ? { ...block, caption: transformCaption(block.caption, ctx) }
         : block;
+    case "image":
+    case "mediaFallback": {
+      const { link: sourceLink, ...rest } = block;
+      const link = sourceLink ? rewriteExportLink(sourceLink, ctx) : undefined;
+      return {
+        ...rest,
+        ...(block.caption !== undefined ? { caption: transformCaption(block.caption, ctx) } : {}),
+        ...(link ? { link } : {}),
+      };
+    }
     case "divider":
     case "pageBreak":
     case "unknown":
@@ -699,7 +770,11 @@ export function composeChapters(
   }
 
   const pages = nodes.filter((n): n is ExportPageNode => n.kind === "page");
-  const index = buildPageIndex(pages);
+  const pageLinkResolver = createPageLinkResolver(pages.map((page) => ({
+    id: page.pageId,
+    title: page.title,
+    ...(page.meta.spaceKey ? { spaceKey: page.meta.spaceKey } : {}),
+  })));
 
   // ---- Pass 2: emit blocks (document order) ----
   const blocks: ExportBlock[] = [];
@@ -730,7 +805,7 @@ export function composeChapters(
         const shift = chapterLevel - offset;
         const ctx: EmitCtx = {
           page: node,
-          index,
+          pageLinkResolver,
           registry,
           chapterDestById,
           destByBlock,
@@ -768,7 +843,7 @@ export function composeChapters(
     }
   }
 
-  return { blocks, notes };
+  return { blocks, notes, chapterAnchorById: chapterDestById };
 }
 
 // Re-export the node types for consumers importing composition from one place.

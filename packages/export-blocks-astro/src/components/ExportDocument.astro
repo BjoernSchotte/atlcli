@@ -1,0 +1,19 @@
+---
+import type { ExportBlock } from "@atlcli/export-blocks";
+import Block from "./Block.astro";
+import type { AstroExportBlockOverridesV1, AstroExportBlockRenderContextV1 } from "../index.js";
+
+interface Props {
+  blocks: readonly ExportBlock[];
+  context: AstroExportBlockRenderContextV1;
+  overrides?: AstroExportBlockOverridesV1;
+  /** Visitor-compatible path of the block collection being rendered. */
+  path?: string;
+}
+
+const { blocks, context, overrides, path = "$blocks" } = Astro.props;
+---
+
+<article data-atlcli-document data-atlcli-block-count={blocks.length} lang={context.locale} dir={context.direction}>
+  {blocks.map((block, index) => <Block block={block} blockPath={`${path}[${index}]`} context={context} overrides={overrides} />)}
+</article>

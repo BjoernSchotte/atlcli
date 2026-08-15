@@ -4,6 +4,7 @@ dist
 .env
 .atlcli
 .tmp
+.artifacts/
 /tmp/
 .bun
 site/
@@ -29,3 +30,22 @@ packages/pdf-compiler-browser/vendor/
 coverage/
 .scannerwork/
 scripts/bench/out/
+scripts/bench/history/
+scripts/verapdf/out/
+
+# HEAD-bound security attestation (spec 011) — a CI artifact, never committed:
+# it describes one commit's state and would be stale the moment it landed.
+security-attestation.json
+# Scheduled/read-only ADF drift reports
+/artifacts/adf-drift/
+
+# Private research evaluation material. Real gold sets, run envelopes, reports,
+# and provider transcripts must stay outside the repository.
+/.atlcli-research-private/
+*.research-gold.private.json
+*.research-run.private.json
+*.research-report.private.md
+*.rovo-transcript.private.json
+
+# Generated image-heavy benchmark corpus (issue #118 Phase 0) — reproduced from (seed, scale)
+apps/extension/tests/pdf/memory/public/image-heavy/

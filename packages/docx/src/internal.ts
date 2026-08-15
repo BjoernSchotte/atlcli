@@ -20,4 +20,5 @@ export * from "./placeholder-map.js";
 export * from "./dateformat.js";
 export * from "./image.js";
 export * from "./numbering.js";
+export * from "./font-embedding.js";
 export * from "./export.js";

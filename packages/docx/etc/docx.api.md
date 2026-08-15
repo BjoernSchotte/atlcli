@@ -27,6 +27,14 @@ export interface CurrentUser {
     email?: string;
 }
 
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
@@ -47,6 +55,7 @@ export interface ExportEnv {
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -54,6 +63,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -68,10 +78,12 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -80,6 +92,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -95,6 +108,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;
@@ -112,11 +130,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -126,6 +144,15 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -139,22 +166,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -183,6 +211,75 @@ export interface PageOwner {
 
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
+
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
+    archiveDateMs?: number;
+    filename: string;
+    codeTheme: CodeThemeId;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
+    signal?: AbortSignal;
+}
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
+}
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -219,6 +316,15 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
+    riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
+}
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
 }
 
 // export: SvgRasterizer
@@ -226,7 +332,7 @@ export interface SvgRasterizer {
     rasterize(svg: string, target: {
         widthPx: number;
         heightPx: number;
-    }): Promise<Uint8Array>;
+    }, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: TemplateMeta
@@ -237,7 +343,7 @@ export interface TemplateMeta {
 
 // export: TemplateSource
 export interface TemplateSource {
-    getBytes(id: string): Promise<Uint8Array>;
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
 }
 ```
 
@@ -267,6 +373,14 @@ export interface CurrentUser {
     email?: string;
 }
 
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
@@ -287,6 +401,7 @@ export interface ExportEnv {
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -294,6 +409,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -308,10 +424,12 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -320,6 +438,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -335,6 +454,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;
@@ -358,11 +482,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -372,6 +496,15 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -385,22 +518,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -429,6 +563,75 @@ export interface PageOwner {
 
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
+
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
+    archiveDateMs?: number;
+    filename: string;
+    codeTheme: CodeThemeId;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
+    signal?: AbortSignal;
+}
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
+}
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -475,6 +678,15 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
+    riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
+}
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
 }
 
 // export: SvgRasterizer
@@ -482,7 +694,7 @@ export interface SvgRasterizer {
     rasterize(svg: string, target: {
         widthPx: number;
         heightPx: number;
-    }): Promise<Uint8Array>;
+    }, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: TemplateMeta
@@ -493,7 +705,7 @@ export interface TemplateMeta {
 
 // export: TemplateSource
 export interface TemplateSource {
-    getBytes(id: string): Promise<Uint8Array>;
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: unsupportedAssetFetcher
@@ -523,6 +735,14 @@ export interface CurrentUser {
     email?: string;
 }
 
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
@@ -543,6 +763,7 @@ export interface ExportEnv {
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -550,6 +771,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -564,10 +786,12 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -576,6 +800,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -591,6 +816,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;
@@ -608,11 +838,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -622,6 +852,15 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -635,22 +874,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -679,6 +919,75 @@ export interface PageOwner {
 
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
+
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
+    archiveDateMs?: number;
+    filename: string;
+    codeTheme: CodeThemeId;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
+    signal?: AbortSignal;
+}
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
+}
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -715,6 +1024,15 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
+    riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
+}
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
 }
 
 // export: SvgRasterizer
@@ -722,7 +1040,7 @@ export interface SvgRasterizer {
     rasterize(svg: string, target: {
         widthPx: number;
         heightPx: number;
-    }): Promise<Uint8Array>;
+    }, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: TemplateMeta
@@ -733,8 +1051,404 @@ export interface TemplateMeta {
 
 // export: TemplateSource
 export interface TemplateSource {
-    getBytes(id: string): Promise<Uint8Array>;
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
 }
+```
+
+### Entry point `./browser-entry`
+
+```ts
+// export: ArchiveBudget
+export interface ArchiveBudget {
+    maxEntryCount: number;
+    maxUncompressedBytes: number;
+    maxSingleEntryUncompressedBytes: number;
+    maxXmlPartUncompressedBytes?: number;
+    maxXmlPartCharacters?: number;
+}
+
+// export: AssetFetcher
+export interface AssetFetcher {
+    fetch(ref: AssetRef, context?: HostCallContext): Promise<Uint8Array>;
+}
+
+// export: AssetRef
+export interface AssetRef {
+    url: string;
+    pageId?: string;
+    filename?: string;
+    trust?: "page" | "export-view";
+}
+
+// export: CanvasRasterizerTiming
+export interface CanvasRasterizerTiming {
+    decodeMs: number;
+    drawMs: number;
+    encodeMs: number;
+}
+
+// export: canvasSvgRasterizer
+export declare function canvasSvgRasterizer(options?: CanvasSvgRasterizerOptions): SvgRasterizer;
+
+// export: CanvasSvgRasterizerOptions
+export interface CanvasSvgRasterizerOptions {
+    document?: Document;
+    decodeTimeoutMs?: number;
+    onTiming?: (timing: CanvasRasterizerTiming) => void;
+}
+
+// export: CurrentUser
+export interface CurrentUser {
+    accountId: string;
+    displayName: string;
+    email?: string;
+}
+
+// export: DocxByteHelpers
+export interface DocxByteHelpers {
+    from(value: ArrayLike<number> | ArrayBuffer | string, encoding?: string): Uint8Array;
+    alloc(size: number): Uint8Array;
+    isBuffer(value: unknown): boolean;
+}
+
+// export: DocxErrorKind
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "xml-part-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
+
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
+// export: DocxRenderError
+export declare class DocxRenderError extends Error {
+    readonly details: string[];
+    constructor(message: string, details: string[]);
+}
+
+// export: exportDocx
+export declare function exportDocx(input: ExportInput): Promise<ExportResult>;
+
+// export: ExportEnv
+export interface ExportEnv {
+    templates: TemplateSource;
+    assets?: AssetFetcher;
+    rasterizer?: SvgRasterizer;
+    macros?: MacroResolutionOptions;
+    output: OutputSink;
+}
+
+// export: ExportInput
+export interface ExportInput {
+    codeTheme?: CodeThemeId;
+    templateBytes: Uint8Array;
+    details: ConfluencePageDetails;
+    blocks?: ExportBlock[];
+    sourceNotes?: ExportNote[];
+    complete?: boolean;
+    signal?: AbortSignal;
+    onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
+    template: TemplateMeta;
+    exportDate?: Date;
+    deps?: ResolveDeps;
+    assets?: AssetFetcher;
+    embedImages?: boolean;
+    rasterizer?: SvgRasterizer;
+    diagramTheme?: DiagramTheme;
+    captionLang?: string;
+    exportControls?: "apply" | "passthrough";
+    macros?: MacroResolutionOptions;
+    tableStyle?: {
+        source: "template" | "confluence";
+        styleId?: string;
+    };
+    updateFields?: "auto" | "always" | "never";
+}
+
+// export: ExportReport
+export interface ExportReport {
+    codeTheme: CodeThemeId;
+    resolvedCount: number;
+    unsupportedNames: string[];
+    skippedImages: number;
+    embeddedImages: number;
+    renderedDiagrams: number;
+    durationMs: number;
+    filename: string;
+    notes: ExportNote[];
+    sourceNotes?: ExportNote[];
+    complete: boolean;
+    scan: ScanResult;
+    timings: ExportTimings;
+}
+
+// export: ExportResult
+export interface ExportResult {
+    bytes: Uint8Array;
+    report: ExportReport;
+}
+
+// export: ExportTimings
+export interface ExportTimings {
+    resolveMs: number;
+    bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
+    logoFetchMs: number;
+    includeFetchMs: number;
+    renderMs: number;
+    imageFetchMs: number;
+    imageFetches: number;
+    diagramRenderMs: number;
+    diagramRasterMs: number;
+}
+
+// export: HostCallContext
+export interface HostCallContext {
+    signal?: AbortSignal;
+}
+
+// export: IncludeLookupOutcome
+export type IncludeLookupOutcome = {
+    kind: "resolved";
+    page: IncludePageDetails;
+} | {
+    kind: "ambiguous";
+    count: number;
+    page: IncludePageDetails;
+} | {
+    kind: "not-found-or-forbidden";
+} | {
+    kind: "auth-failed";
+} | {
+    kind: "rate-limited";
+} | {
+    kind: "transient-error";
+    message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
+};
+
+// export: IncludePageRef
+export interface IncludePageRef {
+    spaceKey?: string;
+    title?: string;
+    pageId?: string;
+}
+
+// export: installDocxBrowserRuntime
+export declare function installDocxBrowserRuntime(): void;
+
+// export: memoryTemplateSource
+export declare function memoryTemplateSource(bytes: ArrayBuffer | Uint8Array): TemplateSource;
+
+// export: NumberingAllocator
+export declare class NumberingAllocator {
+    private readonly base;
+    private readonly bulletAbstractId;
+    private nextAbstractId;
+    private nextNumId;
+    private bulletNumId;
+    private readonly orderedInstances;
+    private lastNumId;
+    private used;
+    private capReached;
+    constructor(base: NumberingBase);
+    get isUsed(): boolean;
+    get capExceeded(): boolean;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
+    private allocNumId;
+    private tryAllocNumId;
+    toXml(): NumberingXml;
+    private bulletAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
+}
+
+// export: NumberingBase
+export interface NumberingBase {
+    abstractNumId: number;
+    numId: number;
+}
+
+// export: NumberingXml
+export interface NumberingXml {
+    abstractNums: string;
+    nums: string;
+}
+
+// export: OutputSink
+export interface OutputSink {
+    emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
+}
+
+// export: PageOwner
+export interface PageOwner {
+    accountId?: string;
+    displayName: string;
+    email?: string;
+}
+
+// export: PlaceholderStatus
+export type PlaceholderStatus = "supported" | "unsupported" | "never";
+
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
+    archiveDateMs?: number;
+    filename: string;
+    codeTheme: CodeThemeId;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
+}
+
+// export: prepareDocxCodeHighlighting
+export declare function prepareDocxCodeHighlighting(blocks: readonly ExportBlock[], options?: {
+    codeTheme?: CodeThemeId;
+}): Promise<void>;
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
+    signal?: AbortSignal;
+}
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
+}
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
+
+// export: ResolveDeps
+export interface ResolveDeps {
+    getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
+    getCurrentUser?: () => Promise<CurrentUser>;
+    getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
+    getSpaceHomepageStorage?: (spaceKey: string) => Promise<string | null>;
+    getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
+    getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
+}
+
+// export: runExport
+export declare function runExport(input: RunExportInput, env: ExportEnv): Promise<ExportReport>;
+
+// export: RunExportInput
+export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
+    templateId?: string;
+}
+
+// export: ScanHit
+export interface ScanHit {
+    base: string;
+    status: PlaceholderStatus;
+    count: number;
+    raw: string[];
+    reason?: string;
+}
+
+// export: ScanResult
+export interface ScanResult {
+    supported: ScanHit[];
+    unsupported: ScanHit[];
+    never: ScanHit[];
+    parts: string[];
+    hasContentPlaceholder: boolean;
+    stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
+    riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
+}
+
+// export: scanTemplate
+export declare function scanTemplate(bytes: Uint8Array): ScanResult;
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
+}
+
+// export: SvgRasterizer
+export interface SvgRasterizer {
+    rasterize(svg: string, target: {
+        widthPx: number;
+        heightPx: number;
+    }, context?: HostCallContext): Promise<Uint8Array>;
+}
+
+// export: TemplateMeta
+export interface TemplateMeta {
+    name: string;
+    modificationDate: Date;
+}
+
+// export: TemplateSource
+export interface TemplateSource {
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
+}
+
+// export: unzipDocx
+export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;
 ```
 
 ### Entry point `./browser-runtime`
@@ -764,11 +1478,34 @@ export interface DocxByteHelpers {
     isBuffer(value: unknown): boolean;
 }
 
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
 // export: installDocxBrowserRuntime
 export declare function installDocxBrowserRuntime(): void;
 
 // export: memoryTemplateSource
 export declare function memoryTemplateSource(bytes: ArrayBuffer | Uint8Array): TemplateSource;
+
+// export: prepareDocxCodeHighlighting
+export declare function prepareDocxCodeHighlighting(blocks: readonly ExportBlock[], options?: {
+    codeTheme?: CodeThemeId;
+}): Promise<void>;
+
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
+    signal?: AbortSignal;
+}
 ```
 
 ### Entry point `./fixtures`
@@ -843,6 +1580,45 @@ export declare function textBoxTitlePara(text: string): string;
 ### Entry point `./internal`
 
 ```ts
+// export: ArchiveBudget
+export interface ArchiveBudget {
+    maxEntryCount: number;
+    maxUncompressedBytes: number;
+    maxSingleEntryUncompressedBytes: number;
+    maxXmlPartUncompressedBytes?: number;
+    maxXmlPartCharacters?: number;
+}
+
+// export: assertArchiveBudget
+export declare function assertArchiveBudget(zip: PizZip, budget?: ArchiveBudget): void;
+
+// export: assertBundledCodeFont
+export declare function assertBundledCodeFont(bytes: Uint8Array): Promise<void>;
+
+// export: assertEmbeddableSfnt
+export declare function assertEmbeddableSfnt(bytes: Uint8Array): void;
+
+// export: assertNoActiveContent
+export declare function assertNoActiveContent(zip: PizZip): void;
+
+// export: assertPlausibleCompression
+export declare function assertPlausibleCompression(entry: {
+    name: string;
+    _data?: {
+        compressedSize?: number;
+    };
+}, declared: number): void;
+
+// export: assertSafeDocxEntryName
+export declare function assertSafeDocxEntryName(name: string): void;
+
+// export: auditImageAltText
+export declare function auditImageAltText(input: {
+    alt?: string;
+    name: string;
+    pageId?: string;
+}): ExportNote | null;
+
 // export: bookmarkEnd
 export declare function bookmarkEnd(id: number): string;
 
@@ -855,8 +1631,16 @@ export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
 // export: buildGetIncludedPage
 export declare function buildGetIncludedPage(io: IncludeLookupIo): (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 
+// export: CalloutIconEmbedSeam
+export interface CalloutIconEmbedSeam {
+    embed(icon: SemanticCalloutIcon): string;
+}
+
 // export: calloutTable
-export declare function calloutTable(kind: string, titleRunsXml: string | null, bodyParagraphs: string): string;
+export declare function calloutTable(kind: string, titleRunsXml: string | null, bodyParagraphs: string, custom?: {
+    color?: string;
+    iconRunsXml?: string | null;
+}): string;
 
 // export: CAPTION_STYLE_ID
 export declare const CAPTION_STYLE_ID = "Caption";
@@ -865,7 +1649,7 @@ export declare const CAPTION_STYLE_ID = "Caption";
 export type CaptionLang = "en" | "de";
 
 // export: captionParagraph
-export declare function captionParagraph(styleId: string, kind: CaptionKind, lang: CaptionLang, contentRunsXml: string): string;
+export declare function captionParagraph(styleId: string, kind: CaptionKind, lang: CaptionLang, contentRunsXml: string, ordinal: number): string;
 
 // export: captionSeqLabel
 export declare function captionSeqLabel(kind: CaptionKind, lang: CaptionLang): string;
@@ -885,6 +1669,18 @@ export declare function classifyPlaceholder(raw: string): PlaceholderClass;
 // export: coalesceSectPrParagraphs
 export declare function coalesceSectPrParagraphs(xml: string): string;
 
+// export: CODE_FONT_FAMILY
+export declare const CODE_FONT_FAMILY = "JetBrains Mono";
+
+// export: CODE_FONT_FILE
+export declare const CODE_FONT_FILE = "JetBrainsMono-Regular.ttf";
+
+// export: CODE_FONT_KEY
+export declare const CODE_FONT_KEY = "{001B70DC-AA60-4AD5-90EC-18A0948E1EAE}";
+
+// export: CODE_FONT_SHA256
+export declare const CODE_FONT_SHA256 = "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f";
+
 // export: CODE_STYLE_ID
 export declare const CODE_STYLE_ID = "AtlcliCode";
 
@@ -897,16 +1693,40 @@ export type CodeBlock = Extract<ExportBlock, {
 export declare function codeLineParagraph(tokens: {
     text: string;
     color?: string;
-}[]): string;
+}[], lineNumber?: number, lineNumberWidth?: number, theme?: {
+    background: string;
+    foreground: string;
+}): string;
 
 // export: codeStyleXml
 export declare function codeStyleXml(): string;
+
+// export: collectFieldInstructions
+export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
+
+// export: collectFieldKeywords
+export declare function collectFieldKeywords(xml: string): string[];
+
+// export: collectFieldUses
+export declare function collectFieldUses(xml: string): FieldUse[];
+
+// export: collectForeignPlaceholders
+export declare function collectForeignPlaceholders(text: string): string[];
+
+// export: collectRiskyFieldInstructions
+export declare function collectRiskyFieldInstructions(xml: string): string[];
+
+// export: collectSeqSequenceNames
+export declare function collectSeqSequenceNames(xml: string): string[];
 
 // export: collectStylerefFields
 export declare function collectStylerefFields(xml: string): string[];
 
 // export: columnWidthsDxa
-export declare function columnWidthsDxa(columnWidths: number[] | undefined, gridCols: number): number[] | undefined;
+export declare function columnWidthsDxa(columnWidths: number[] | undefined, gridCols: number, tableWidthDxa?: number): number[] | undefined;
+
+// export: configureBundledCodeFontLoader
+export declare function configureBundledCodeFontLoader(loader: BundledCodeFontLoader): void;
 
 // export: CurrentUser
 export interface CurrentUser {
@@ -921,6 +1741,11 @@ export declare function dataTable(gridCols: number, rowsXml: string, opts?: Data
 // export: DataTableOptions
 export interface DataTableOptions {
     widthsDxa?: number[];
+    widthDxa?: number;
+    alignment?: "start" | "center" | "end";
+    fixedLayout?: boolean;
+    borderless?: boolean;
+    cellMarginDxa?: number;
     tableStyle?: TableStyleSource;
 }
 
@@ -959,10 +1784,25 @@ export declare function dividerParagraph(): string;
 // export: documentPartNames
 export declare function documentPartNames(zip: PizZip): string[];
 
+// export: DOCX_ARCHIVE_BUDGET
+export declare const DOCX_ARCHIVE_BUDGET: ArchiveBudget;
+
+// export: DOCX_TEMPLATE_INTAKE_BUDGET
+export declare const DOCX_TEMPLATE_INTAKE_BUDGET: ArchiveBudget;
+
 // export: DocxError
 export declare class DocxError extends Error {
-    readonly kind: "not-zip" | "not-docx" | "too-large";
-    constructor(kind: "not-zip" | "not-docx" | "too-large", message: string);
+    readonly kind: DocxErrorKind;
+    readonly path?: string | undefined;
+    constructor(kind: DocxErrorKind, message: string, path?: string | undefined);
+}
+
+// export: DocxErrorKind
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "xml-part-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
+
+// export: DocxFontEmbeddingError
+export declare class DocxFontEmbeddingError extends Error {
+    constructor(message: string);
 }
 
 // export: DocxRenderError
@@ -976,32 +1816,55 @@ export interface DrawingParams {
     relId: string;
     docPrId: number;
     name: string;
-    descr: string;
+    accessibility: {
+        kind: "labelled";
+        description: string;
+    } | {
+        kind: "decorative";
+    };
     cxEmu: number;
     cyEmu: number;
+    wrap?: "left" | "right";
     pPrXml?: string;
     svgRelId?: string;
+    border?: MediaBorder;
 }
 
 // export: EmbedImageOptions
 export interface EmbedImageOptions {
     alt?: string;
+    accessibility?: {
+        kind: "labelled";
+        description: string;
+    } | {
+        kind: "decorative";
+    };
     name?: string;
     widthPx?: number;
     heightPx?: number;
+    wrap?: "left" | "right";
     partPath?: string;
     pPrXml?: string;
+    border?: MediaBorder;
 }
 
 // export: EmbedSvgOptions
 export interface EmbedSvgOptions {
     alt?: string;
+    accessibility?: {
+        kind: "labelled";
+        description: string;
+    } | {
+        kind: "decorative";
+    };
     name?: string;
     widthPx: number;
     heightPx: number;
+    wrap?: "left" | "right";
     partPath?: string;
     pPrXml?: string;
     origin?: "image" | "diagram";
+    border?: MediaBorder;
 }
 
 // export: EMU_PER_PX
@@ -1016,8 +1879,14 @@ export declare function ensureCaptionStyle(zip: PizZip): void;
 // export: ensureCodeStyle
 export declare function ensureCodeStyle(zip: PizZip): void;
 
+// export: ensureCommentsPart
+export declare function ensureCommentsPart(zip: PizZip, comments: WordCommentRegistry): void;
+
 // export: ensureContentTypeDefault
 export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
+
+// export: ensureEmbeddedCodeFont
+export declare function ensureEmbeddedCodeFont(zip: PizZip, fontBytes: Uint8Array): void;
 
 // export: ensureListParagraphStyle
 export declare function ensureListParagraphStyle(zip: PizZip): void;
@@ -1039,6 +1908,7 @@ export declare function exportDocx(input: ExportInput): Promise<ExportResult>;
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -1046,6 +1916,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -1060,10 +1931,12 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -1072,6 +1945,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -1087,6 +1961,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;
@@ -1104,14 +1983,35 @@ export interface Fetched {
     homepageProperties?: PagePropertiesMacro[];
 }
 
+// export: FieldRefreshOptions
+export interface FieldRefreshOptions {
+    trustedSeqSequences?: ReadonlySet<string>;
+    additionalXmlParts?: readonly string[];
+}
+
+// export: FieldUse
+export interface FieldUse {
+    keyword: string;
+    instruction: string;
+}
+
+// export: findActiveContentRelationship
+export declare function findActiveContentRelationship(relsXml: string): string | undefined;
+
+// export: FOREIGN_PLACEHOLDER_RE
+export declare const FOREIGN_PLACEHOLDER_RE: RegExp;
+
 // export: formatDatePlaceholder
 export declare function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult;
 
 // export: formatSimpleDate
 export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
 
+// export: hasAltChunkRelationship
+export declare function hasAltChunkRelationship(relsXml: string): boolean;
+
 // export: hyperlinkField
-export declare function hyperlinkField(url: string, innerRuns: string): string;
+export declare function hyperlinkField(url: string, innerRuns: string, tooltip?: string): string;
 
 // export: ImageBlock
 export type ImageBlock = Extract<ExportBlock, {
@@ -1131,7 +2031,12 @@ export declare class ImageEmbedder {
     get embeddedCount(): number;
     get diagramCount(): number;
     embed(bytes: Uint8Array, opts?: EmbedImageOptions): string;
+    embedInline(bytes: Uint8Array, opts?: EmbedImageOptions): string;
+    embedCalloutIconInline(bytes: Uint8Array, opts: EmbedImageOptions): string;
+    private embedRaster;
     embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
+    embedSvgInline(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
+    private embedSvgDrawing;
     private findOrCreateMedia;
     private writeMedia;
     private ensureRelationship;
@@ -1162,7 +2067,15 @@ export type ImageEmbedOutcome = {
 // export: ImageEmbedSeam
 export interface ImageEmbedSeam {
     embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+    embedGeneratedSvg?(svg: string, options: {
+        name: string;
+        alt: string;
+        widthPx: number;
+        heightPx: number;
+    }): Promise<ImageEmbedOutcome>;
+    embedInline?(node: InlineImageNode): Promise<ImageEmbedOutcome>;
     prefetch?(block: ImageBlock): void;
+    prefetchInline?(node: InlineImageNode): void;
 }
 
 // export: ImageFormat
@@ -1179,7 +2092,7 @@ export interface ImageInfo {
 
 // export: IncludeLookupIo
 export interface IncludeLookupIo {
-    getPage: (id: string) => Promise<ConfluencePageDetails>;
+    getPage: (id: string) => Promise<IncludePageDetails>;
     findPagesByTitle: (title: string, spaceKey?: string) => Promise<Array<{
         id: string;
     }>>;
@@ -1189,11 +2102,11 @@ export interface IncludeLookupIo {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -1205,6 +2118,15 @@ export type IncludeLookupOutcome = {
     message: string;
 };
 
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
+};
+
 // export: IncludePageRef
 export interface IncludePageRef {
     spaceKey?: string;
@@ -1212,8 +2134,20 @@ export interface IncludePageRef {
     pageId?: string;
 }
 
+// export: InlineImageNode
+export type InlineImageNode = Extract<InlineNode, {
+    type: "media";
+}> & {
+    source: NonNullable<Extract<InlineNode, {
+        type: "media";
+    }>["source"]>;
+};
+
 // export: inlineImageParagraph
 export declare function inlineImageParagraph(p: DrawingParams): string;
+
+// export: inlineImageRun
+export declare function inlineImageRun(p: DrawingParams): string;
 
 // export: inspectNumberingPart
 export declare function inspectNumberingPart(zip: PizZip): {
@@ -1222,7 +2156,10 @@ export declare function inspectNumberingPart(zip: PizZip): {
 };
 
 // export: internalHyperlink
-export declare function internalHyperlink(anchor: string, innerRuns: string): string;
+export declare function internalHyperlink(anchor: string, innerRuns: string, tooltip?: string): string;
+
+// export: isMissingAltText
+export declare function isMissingAltText(alt: string | undefined): boolean;
 
 // export: isSafeHyperlinkUrl
 export declare function isSafeHyperlinkUrl(url: string): boolean;
@@ -1239,6 +2176,12 @@ export declare const LIST_PARAGRAPH_STYLE_ID = "ListParagraph";
 // export: listParagraphStyleXml
 export declare function listParagraphStyleXml(): string;
 
+// export: loadBundledCodeFont
+export declare function loadBundledCodeFont(): Promise<Uint8Array>;
+
+// export: loadValidatedBundledCodeFont
+export declare function loadValidatedBundledCodeFont(): Promise<Uint8Array>;
+
 // export: LogoArgs
 export interface LogoArgs {
     heightPx?: number;
@@ -1247,6 +2190,9 @@ export interface LogoArgs {
 
 // export: MAX_CONTENT_WIDTH_PX
 export declare const MAX_CONTENT_WIDTH_PX = 600;
+
+// export: MAX_FOREIGN_PLACEHOLDERS
+export declare const MAX_FOREIGN_PLACEHOLDERS = 20;
 
 // export: MAX_ILVL
 export declare const MAX_ILVL = 8;
@@ -1269,6 +2215,9 @@ export declare const MAX_TEMPLATE_BYTES: number;
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
+// export: needsFieldRefresh
+export declare function needsFieldRefresh(zip: PizZip, opts?: FieldRefreshOptions): boolean;
+
 // export: normalizeColor
 export declare function normalizeColor(color: string): string;
 
@@ -1276,22 +2225,23 @@ export declare function normalizeColor(color: string): string;
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -1305,6 +2255,9 @@ export interface NumberingXml {
     abstractNums: string;
     nums: string;
 }
+
+// export: obfuscateFont
+export declare function obfuscateFont(bytes: Uint8Array, fontKey?: string): Uint8Array;
 
 // export: pageBreakParagraph
 export declare function pageBreakParagraph(): string;
@@ -1365,6 +2318,51 @@ export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" |
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
 
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
+    archiveDateMs?: number;
+    filename: string;
+    codeTheme: CodeThemeId;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
 // export: preprocessScrollText
 export declare function preprocessScrollText(zip: PizZip, values: Map<string, string>): void;
 
@@ -1374,8 +2372,28 @@ export declare function pxToEmu(px: number): number;
 // export: readBodySectPr
 export declare function readBodySectPr(zip: PizZip): string | undefined;
 
+// export: readPartText
+export declare function readPartText(zip: PizZip, part: string): string;
+
+// export: REFRESH_SENSITIVE_FIELDS
+export declare const REFRESH_SENSITIVE_FIELDS: ReadonlySet<string>;
+
 // export: relsPathFor
 export declare function relsPathFor(partPath: string): string;
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
+}
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: resolveCaptionLang
 export declare function resolveCaptionLang(raw: string | undefined): {
@@ -1445,6 +2463,10 @@ export interface RunStyle {
     subscript?: boolean;
     superscript?: boolean;
     color?: string;
+    backgroundColor?: string;
+    borderColor?: string;
+    borderSize?: number;
+    fontSizeHalfPoints?: number;
 }
 
 // export: ScanHit
@@ -1464,6 +2486,9 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
+    riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: scanTemplate
@@ -1475,32 +2500,49 @@ export declare function scanZip(zip: PizZip): ScanResult;
 // export: sectPrParagraph
 export declare function sectPrParagraph(sectPr: string): string;
 
+// export: seqSequenceName
+export declare function seqSequenceName(instruction: string): string | undefined;
+
 // export: serializeBlocks
 export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeContext): Promise<SerializeResult>;
 
 // export: SerializeContext
 export interface SerializeContext {
+    codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
+    highlightTimings?: DocxCodeHighlightTimingCollector;
     styleNames: Map<string, string>;
     numbering?: NumberingAllocator;
+    comments?: WordCommentRegistry;
     images?: ImageEmbedSeam;
     diagrams?: DiagramEmbedSeam;
+    calloutIcons?: CalloutIconEmbedSeam;
     bodySectPr?: string;
     captionLang?: CaptionLang;
+    dateLocale?: string;
     tableStyle?: TableStyleSource;
 }
 
 // export: serializeInline
-export declare function serializeInline(nodes: InlineNode[], defaultTextColor?: string): string;
+export declare function serializeInline(nodes: InlineNode[], defaultTextColor?: string, fontSizeHalfPoints?: number, dateLocale?: string): string;
 
 // export: SerializeResult
 export interface SerializeResult {
     xml: string;
     notes: ExportNote[];
     headingStyleIds: string[];
+    comments: WordCommentRegistry;
+    highlightTimings: DocxCodeHighlightTimingCollector;
 }
 
 // export: statusBadgeRun
-export declare function statusBadgeRun(text: string, color: string): string;
+export declare function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?: number): string;
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
+}
 
 // export: synthesizeA4SectPr
 export declare function synthesizeA4SectPr(): string;
@@ -1512,6 +2554,7 @@ export declare function tableCell(paragraphsXml: string, opts?: {
     header?: boolean;
     backgroundColor?: string;
     widthDxa?: number;
+    verticalAlignment?: "top" | "middle" | "bottom";
 }): string;
 
 // export: TableStyleSource
@@ -1542,7 +2585,15 @@ export declare function toLandscapeSectPr(baseSectPr: string): string;
 export declare function toPortraitSectPr(baseSectPr: string): string;
 
 // export: unzipDocx
-export declare function unzipDocx(bytes: Uint8Array): PizZip;
+export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;
+
+// export: WordCommentRegistry
+export declare class WordCommentRegistry {
+    private readonly byMarkerRef;
+    register(annotation: AdfAnnotationIdentity): number | undefined;
+    get isUsed(): boolean;
+    toXml(): string;
+}
 ```
 
 ### Entry point `./node`
@@ -1571,6 +2622,14 @@ export interface CurrentUser {
     email?: string;
 }
 
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
@@ -1591,6 +2650,7 @@ export interface ExportEnv {
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -1598,6 +2658,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -1612,10 +2673,12 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -1624,6 +2687,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -1639,6 +2703,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;
@@ -1662,11 +2731,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -1676,6 +2745,15 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -1689,22 +2767,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -1733,6 +2812,75 @@ export interface PageOwner {
 
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
+
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
+    archiveDateMs?: number;
+    filename: string;
+    codeTheme: CodeThemeId;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
+    signal?: AbortSignal;
+}
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
+}
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -1779,6 +2927,15 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
+    riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
+}
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
 }
 
 // export: SvgRasterizer
@@ -1786,7 +2943,7 @@ export interface SvgRasterizer {
     rasterize(svg: string, target: {
         widthPx: number;
         heightPx: number;
-    }): Promise<Uint8Array>;
+    }, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: TemplateMeta
@@ -1797,7 +2954,7 @@ export interface TemplateMeta {
 
 // export: TemplateSource
 export interface TemplateSource {
-    getBytes(id: string): Promise<Uint8Array>;
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: unsupportedAssetFetcher
@@ -1807,23 +2964,110 @@ export declare function unsupportedAssetFetcher(reason?: string): AssetFetcher;
 ### Entry point `./scan`
 
 ```ts
+// export: ArchiveBudget
+export interface ArchiveBudget {
+    maxEntryCount: number;
+    maxUncompressedBytes: number;
+    maxSingleEntryUncompressedBytes: number;
+    maxXmlPartUncompressedBytes?: number;
+    maxXmlPartCharacters?: number;
+}
+
+// export: assertArchiveBudget
+export declare function assertArchiveBudget(zip: PizZip, budget?: ArchiveBudget): void;
+
+// export: assertNoActiveContent
+export declare function assertNoActiveContent(zip: PizZip): void;
+
+// export: assertPlausibleCompression
+export declare function assertPlausibleCompression(entry: {
+    name: string;
+    _data?: {
+        compressedSize?: number;
+    };
+}, declared: number): void;
+
+// export: assertSafeDocxEntryName
+export declare function assertSafeDocxEntryName(name: string): void;
+
+// export: collectFieldInstructions
+export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
+
+// export: collectFieldKeywords
+export declare function collectFieldKeywords(xml: string): string[];
+
+// export: collectFieldUses
+export declare function collectFieldUses(xml: string): FieldUse[];
+
+// export: collectForeignPlaceholders
+export declare function collectForeignPlaceholders(text: string): string[];
+
+// export: collectRiskyFieldInstructions
+export declare function collectRiskyFieldInstructions(xml: string): string[];
+
+// export: collectSeqSequenceNames
+export declare function collectSeqSequenceNames(xml: string): string[];
+
 // export: collectStylerefFields
 export declare function collectStylerefFields(xml: string): string[];
 
 // export: documentPartNames
 export declare function documentPartNames(zip: PizZip): string[];
 
+// export: DOCX_ARCHIVE_BUDGET
+export declare const DOCX_ARCHIVE_BUDGET: ArchiveBudget;
+
+// export: DOCX_TEMPLATE_INTAKE_BUDGET
+export declare const DOCX_TEMPLATE_INTAKE_BUDGET: ArchiveBudget;
+
 // export: DocxError
 export declare class DocxError extends Error {
-    readonly kind: "not-zip" | "not-docx" | "too-large";
-    constructor(kind: "not-zip" | "not-docx" | "too-large", message: string);
+    readonly kind: DocxErrorKind;
+    readonly path?: string | undefined;
+    constructor(kind: DocxErrorKind, message: string, path?: string | undefined);
 }
+
+// export: DocxErrorKind
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "xml-part-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
+
+// export: FieldRefreshOptions
+export interface FieldRefreshOptions {
+    trustedSeqSequences?: ReadonlySet<string>;
+    additionalXmlParts?: readonly string[];
+}
+
+// export: FieldUse
+export interface FieldUse {
+    keyword: string;
+    instruction: string;
+}
+
+// export: findActiveContentRelationship
+export declare function findActiveContentRelationship(relsXml: string): string | undefined;
+
+// export: FOREIGN_PLACEHOLDER_RE
+export declare const FOREIGN_PLACEHOLDER_RE: RegExp;
+
+// export: hasAltChunkRelationship
+export declare function hasAltChunkRelationship(relsXml: string): boolean;
+
+// export: MAX_FOREIGN_PLACEHOLDERS
+export declare const MAX_FOREIGN_PLACEHOLDERS = 20;
 
 // export: MAX_TEMPLATE_BYTES
 export declare const MAX_TEMPLATE_BYTES: number;
 
+// export: needsFieldRefresh
+export declare function needsFieldRefresh(zip: PizZip, opts?: FieldRefreshOptions): boolean;
+
 // export: PLACEHOLDER_RE
 export declare const PLACEHOLDER_RE: RegExp;
+
+// export: readPartText
+export declare function readPartText(zip: PizZip, part: string): string;
+
+// export: REFRESH_SENSITIVE_FIELDS
+export declare const REFRESH_SENSITIVE_FIELDS: ReadonlySet<string>;
 
 // export: ScanHit
 export interface ScanHit {
@@ -1842,6 +3086,9 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
+    riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: scanTemplate
@@ -1850,8 +3097,11 @@ export declare function scanTemplate(bytes: Uint8Array): ScanResult;
 // export: scanZip
 export declare function scanZip(zip: PizZip): ScanResult;
 
+// export: seqSequenceName
+export declare function seqSequenceName(instruction: string): string | undefined;
+
 // export: unzipDocx
-export declare function unzipDocx(bytes: Uint8Array): PizZip;
+export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;
 ```
 
 ### Entry point `./vite`

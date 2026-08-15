@@ -5,9 +5,10 @@ description: "How external projects install and use the @atlcli/* export package
 
 # Consuming the `@atlcli/*` Packages
 
-The eleven publishable packages — `@atlcli/plugin-api`, `@atlcli/core`, `@atlcli/diagram`,
-`@atlcli/jira`, `@atlcli/confluence`, `@atlcli/export-macros`, `@atlcli/template-pack`,
-`@atlcli/docx`, `@atlcli/pdf`, `@atlcli/pdf-compiler-browser`, and `@atlcli/export-node` —
+The fourteen publishable packages — `@atlcli/plugin-api`, `@atlcli/core`, `@atlcli/diagram`,
+`@atlcli/jira`, `@atlcli/confluence`, `@atlcli/code-highlight`, `@atlcli/export-jobs`,
+`@atlcli/export-macros`, `@atlcli/export-wiring`, `@atlcli/template-pack`, `@atlcli/docx`,
+`@atlcli/pdf`, `@atlcli/pdf-compiler-browser`, and `@atlcli/export-node` —
 ship compiled ESM (`dist/*.js` + `.d.ts`) and can be consumed by any repo outside this
 monorepo through **two supported install paths**, neither of which needs a package registry.
 
@@ -40,7 +41,7 @@ monorepo through **two supported install paths**, neither of which needs a packa
   the vendored PDF compiler is regenerated from).
 - `bun run build` (or `bunx turbo run build --filter=./packages/*`) so every package has its
   `dist/` output; the `@atlcli/pdf` prepack additionally verifies the sha256-pinned font set
-  and `@atlcli/pdf-compiler-browser` vendors the patched typst.ts glue + wasm.
+  and `@atlcli/pdf-compiler-browser` vendors provenance-bound typst.ts glue + WASM.
 
 ## Runtime support matrix
 
@@ -54,10 +55,13 @@ Declared per package via `engines` and verified by the consumer-smoke suites
 | `@atlcli/diagram` | Node ≥ 20, Bun, browsers | Isomorphic; mermaid renderer lazy-loaded |
 | `@atlcli/jira` | **Bun only** (≥ 1.3) | The barrel's webhook server is `Bun.serve`-native |
 | `@atlcli/confluence` | Node ≥ 20, Bun, browsers | The default barrel is isomorphic; the non-frozen `./internal` subpath (sync-db, webhook-server, …) is **Bun-only** |
-| `@atlcli/docx` | Node ≥ 20, Bun, browsers | Browser hosts import `./browser-runtime` first |
+| `@atlcli/code-highlight` | Node ≥ 20, Bun, browsers | Node/Bun installs Oniguruma; browser conditions install the JavaScript RegExp engine; languages/themes use generated direct loaders |
+| `@atlcli/docx` | Node ≥ 20, Bun, browsers | Browser intent hosts import the ordered `./browser-entry`; legacy split subpaths remain compatible |
 | `@atlcli/pdf` | Node ≥ 20, Bun, browsers | Fully isomorphic |
 | `@atlcli/pdf-compiler-browser` | Node ≥ 20, Bun, browsers | Needs `WebAssembly`; wasm/fonts supplied by the host |
+| `@atlcli/export-jobs` | Node ≥ 20, Bun, browsers | Durable job records, validation, and host-injected persistence ports |
 | `@atlcli/export-macros` | Node ≥ 20, Bun, browsers | Isomorphic; hosts inject walker/client ports |
+| `@atlcli/export-wiring` | Node ≥ 20, Bun, browsers | Isomorphic host wiring: macro ports over a real client, the external-asset policy/fetcher, and the trust routers |
 | `@atlcli/template-pack` | Node ≥ 20, Bun, browsers | Pure byte-in/byte-out (PizZip + WebCrypto) |
 | `@atlcli/export-node` | Node ≥ 20, Bun | The batteries-included Node starting point |
 
@@ -128,8 +132,14 @@ The engine is driven through injected host seams (`ExportEnv`) — no filesystem
 assumptions:
 
 ```ts
-import { runExport } from "@atlcli/docx";
+import { prepareDocxExportRuntime, runExport } from "@atlcli/docx";
+import { storageToBlocks } from "@atlcli/confluence";
 import { readFile, writeFile } from "node:fs/promises";
+
+// Start after explicit DOCX intent. Explicit font preload is optional; without
+// it the renderer loads the installed font only if completed OOXML needs it.
+const { blocks } = storageToBlocks(pageDetails.storage ?? "");
+await prepareDocxExportRuntime(blocks, { preloadCodeFont: true });
 
 const report = await runExport(
   {
@@ -165,8 +175,9 @@ await runPdfExport({ blocks: doc.blocks, metadata, filename: "handbook.pdf" },
 ```
 
 `nodePdfEnv` wires the token-auth asset resolver (verified disk cache under
-`~/.atlcli/cache/assets`), the CSP-patched wasm compiler with the ten canonical fonts (all
-resolved from the installed packages), and a directory output sink. For DOCX with zero
+`~/.atlcli/cache/assets`), the CSP-safe wasm compiler with twelve canonical
+fonts exposed as hash-bound lazy sources, and a directory output sink. Each
+compile reads only its resolved subset from the installed packages. For DOCX with zero
 template setup, `nodeDocxEnv({ outPath })` resolves a programmatically built default template
 (`bundledDefaultTemplate()` — no binary asset shipped); pass `templatePath` to use your own.
 
@@ -176,7 +187,7 @@ PDF needs a compiler port plus wasm + font bytes. In a **Node-ish host**, resolv
 the installed packages:
 
 ```ts
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runPdfExport, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
@@ -195,7 +206,9 @@ await runPdfExport(
   {
     assets: { resolve: async () => { throw new Error("no attachments wired"); } },
     compiler,
-    output: { emit: async (name, bytes) => { /* write or stream */ } },
+    // `bytes` is a PdfBytesHandle, not a Uint8Array: ask it for the shape you
+    // need instead of copying the document. See the Public Export API.
+    output: { emit: async (name, bytes) => writeFileSync(name, await bytes.asUint8Array()) },
   },
 );
 ```
@@ -207,7 +220,8 @@ snippet):
 ```ts
 import wasmUrl from "@atlcli/pdf-compiler-browser/wasm?url";
 import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
-// …one import per font in PDF_RUNTIME_ASSETS.fonts, fetched at runtime
+// …one import per font in PDF_RUNTIME_ASSETS.fonts; wrap each URL in a lazy
+// BrowserPdfCompilerFontSourceV1 so only the resolved subset is fetched
 ```
 
 ## Troubleshooting
@@ -217,11 +231,13 @@ import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
 | `Cannot find module '@atlcli/core'` during install | An internal range hit the registry (where `@atlcli/*` does not exist) | Add the package to `overrides` (and `pnpm.overrides`) pointing at your local dir/tarball |
 | Imports resolve to `src/*.ts` under Bun | You ran with `--conditions=development` (or a bundler dev server applied the `development` condition) | Drop the flag / use a production build, or consume tarballs (their manifests are stripped) |
 | `Cannot find module 'bun:sqlite'` under Node | You imported `@atlcli/confluence/internal` | Only the default barrel is Node-clean; the internal sync machinery is Bun-only |
-| PDF compile throws `Blocked unexpected dynamic function` | Working as designed — the CSP-hardened compiler refuses non-allowlisted dynamic code | Report it; do not swap in the unpatched upstream glue |
+| `bytes.slice is not a function` (or `bytes.length` is `undefined`) inside a `PdfOutputSink` | The PDF sink is handed a `PdfBytesHandle`, not a `Uint8Array` | `await bytes.asUint8Array()` for the array, or `asBlob()`/`objectUrl()` for a download — see [Emitting compiled bytes](/reference/export-api/#emitting-compiled-bytes-pdfoutputsink--pdfbyteshandle) |
+| PDF runtime provenance mismatch | Installed glue and WASM do not come from the same pinned fork artifact | Reinstall from the lockfile; do not substitute upstream glue or WASM |
 | Missing fonts at pack time | `packages/pdf/.fonts/` not populated | Run `bun run fonts:ensure` at the repo root (prepack does this automatically) |
 
 ## Related topics
 
+- [Public Export API (v1)](/reference/export-api/) — the frozen seams these examples drive
 - [Export Asset Contract](/reference/asset-contract/) — stable asset subpaths and `?url` wiring
 - [Package Versioning](/reference/versioning/) — semver policy for these artifacts
 - [DOCX Export Engine](/reference/docx-engine/) · [PDF Export Engine](/reference/pdf-engine/)

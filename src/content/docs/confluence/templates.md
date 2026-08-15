@@ -158,6 +158,39 @@ atlcli stores templates at three levels with precedence (space > profile > globa
 └── team-specific.md
 ```
 
+## Selecting a Level
+
+The same template name can exist at several levels. `show`, `create`, `edit`, `delete`, `rename`, `validate <name>`, `render`, `list`, and `export` all select the level the same way:
+
+| Flag | Effect |
+|------|--------|
+| `--level global\|profile\|space` | Use that level exactly |
+| `--profile <name>` | Use the profile level, for that profile (implies `--level profile`) |
+| `--space <key>` | Use the space level, for that space (implies `--level space`) |
+| *(none)* | Reads resolve by precedence (space > profile > global); `create` targets the current space, else global |
+
+Three rules keep a named level from turning into a different one:
+
+- **A named level is never a fallback.** `--level profile` reads, writes, and deletes at the profile level only. If the template is not there, the command fails with `Template 'x' not found at profile:work.` — it does not quietly use the space or global copy.
+- **Contradictory flags fail.** `--level global --profile work`, `--level space --profile work`, and `--profile work --space TEAM` each name two levels, so the command exits `1` instead of picking one.
+- **Config defaults supply coordinates, not levels.** An active profile and a default space fill in the *which profile* / *which space* for a level you named. They never select the level themselves. Naming a level with no context available — `--level profile` with no active profile, `--level space` with no default space — is a usage error.
+
+```bash
+# Delete the profile copy; the space and global copies are untouched
+atlcli wiki template delete standup --level profile --force
+
+# Read the global copy even though a space copy shadows it
+atlcli wiki template show meeting-notes --level global
+
+# Rejected: two different levels named
+atlcli wiki template show meeting-notes --level global --profile work
+# → --level global conflicts with --profile work.
+```
+
+:::caution
+**Behaviour change.** Earlier releases accepted `--level profile` and `--level space` but ignored them: only `--level global` was honoured, and the other two fell back to precedence resolution. `atlcli wiki template delete <name> --level profile --force` could therefore delete the **space-level** template and report success. If you have scripts that relied on that fallback, they now fail loudly instead of acting on the wrong file.
+:::
+
 ## Commands
 
 ### List Templates
@@ -187,12 +220,16 @@ atlcli wiki template list --json
 ### Show Template
 
 ```bash
-# Show template details and content
+# Show template details and content (precedence: space > profile > global)
 atlcli wiki template show meeting-notes
 
-# Show from specific level
+# Show from a specific level
 atlcli wiki template show standup --profile work
+atlcli wiki template show meeting-notes --level global
+atlcli wiki template show runbook --level space
 ```
+
+See [Selecting a Level](#selecting-a-level) for how `--level`, `--profile`, and `--space` interact.
 
 ### Create Template
 
@@ -206,9 +243,14 @@ atlcli wiki template create meeting-notes
 # Interactive wizard
 atlcli wiki template create --interactive
 
-# Create at specific level
+# Create at a specific level
 atlcli wiki template create standup --profile work --file ./standup.md
 atlcli wiki template create runbook --space TEAM --file ./runbook.md
+atlcli wiki template create shared --level global --file ./shared.md
+
+# Without a level flag, create targets the current space if there is one,
+# otherwise global. Name the level when it matters.
+atlcli wiki template create standup --level profile --file ./standup.md
 
 # Overwrite existing
 atlcli wiki template create meeting-notes --file ./updated.md --force
@@ -220,9 +262,12 @@ atlcli wiki template create meeting-notes --file ./updated.md --force
 # Opens in $EDITOR
 atlcli wiki template edit meeting-notes
 
-# Edit at specific level
+# Edit at a specific level
 atlcli wiki template edit standup --profile work
+atlcli wiki template edit meeting-notes --level global
 ```
+
+`edit` saves back to the level it read from, so naming the level decides which file you change.
 
 ### Delete Template
 
@@ -233,16 +278,22 @@ atlcli wiki template delete meeting-notes
 # Force delete
 atlcli wiki template delete meeting-notes --force
 
-# Delete from specific level
+# Delete from a specific level
 atlcli wiki template delete standup --profile work --force
+atlcli wiki template delete meeting-notes --level global --force
 ```
+
+Without a level flag, `delete` removes whatever precedence resolves to — the space copy first. The command reports the level it deleted from, e.g. `Deleted template 'standup' from [profile:work].`
 
 ### Rename Template
 
 ```bash
 atlcli wiki template rename old-name new-name
 atlcli wiki template rename standup daily-standup --profile work
+atlcli wiki template rename runbook ops-runbook --level space
 ```
+
+Renaming affects one level only; same-named templates at other levels keep their name.
 
 ### Validate Template
 
@@ -250,12 +301,35 @@ atlcli wiki template rename standup daily-standup --profile work
 # Validate specific template
 atlcli wiki template validate meeting-notes
 
+# Validate a template at a specific level
+atlcli wiki template validate standup --level profile
+
 # Validate from file
 atlcli wiki template validate --file ./template.md
 
 # Validate all templates
 atlcli wiki template validate --all
 ```
+
+**Exit codes** — `validate` is a CI gate:
+
+| Outcome | Exit code |
+|---------|-----------|
+| Valid, no warnings | `0` |
+| Valid, with warnings (e.g. undeclared variable) | `0` |
+| Invalid (e.g. unclosed `{{#if}}`) | `1` |
+| Template or file not found | `1` |
+
+The report is written to stdout either way; with `--json` it stays a single JSON document whose `valid` field carries the verdict.
+
+```bash
+# Fail a pipeline on any invalid template
+atlcli wiki template validate --all || exit 1
+```
+
+:::caution
+**Behaviour change.** `validate` used to exit `0` even when a template was invalid, which made it useless as a gate. Pipelines that ran it for its output only will now fail on invalid templates.
+:::
 
 ### Render Template
 
@@ -319,8 +393,11 @@ atlcli wiki template export meeting-notes
 # Export single to file
 atlcli wiki template export meeting-notes -o ./meeting-notes.md
 
-# Export from specific level
+# Export from a specific level
 atlcli wiki template export --profile work -o ./work-templates
+
+# Export one template from a named level
+atlcli wiki template export meeting-notes --level global
 ```
 
 **Export directory structure:**
@@ -462,6 +539,30 @@ This is published content.
 **Cause**: Template doesn't exist at any storage level.
 
 **Fix**: List available templates with `atlcli wiki template list --all` and check the name.
+
+### Template Not Found at a Named Level
+
+**Symptom**: `Template 'name' not found at profile:work.`
+
+**Cause**: The template exists, but not at the level you named. atlcli does not fall back to another level — that is what used to delete the wrong file.
+
+**Fix**: Run `atlcli wiki template list --all` to see which level holds it, then name that level, drop the level flag to resolve by precedence, or copy it across with `atlcli wiki template copy <name> --from-level global --to-profile work`.
+
+### Level Flags Conflict
+
+**Symptom**: `--level global conflicts with --profile work.` or `--profile work and --space TEAM name different levels. Pass only one.`
+
+**Cause**: The flags name two different levels, so there is no single target.
+
+**Fix**: Pass one level. Use `--level profile --profile work` to name the level and the profile together, or just `--profile work`.
+
+### No Profile or Space Context
+
+**Symptom**: `No profile context for the profile level. Pass --profile <name> or set an active profile.`
+
+**Cause**: You named a level whose coordinate is unknown — no `--profile`/`--space` flag, and no active profile or default space in config.
+
+**Fix**: Pass the coordinate explicitly (`--profile work`, `--space TEAM`), or set it in config with `atlcli auth switch <name>` for the profile, or a default space in `~/.atlcli/config.json` (`global.space`).
 
 ## Related Topics
 

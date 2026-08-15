@@ -210,28 +210,74 @@ Rendered as a Confluence date picker showing the specified date.
 
 ## Emoticons
 
-Use emoji shortcodes:
+Use one of the supported emoji shortcodes when authoring Markdown:
 
 ```markdown
 :smile: :thumbsup: :warning: :star:
 ```
 
+atlcli converts these authoring tokens to typed Confluence emoticons. During
+DOCX/PDF export, only typed ADF `emoji`, Body Storage `ac:emoticon`, or typed
+custom-panel icon metadata is projected to a graphical character. Ordinary
+stored text such as `:warning:` remains literal. Unknown or site-custom emoji
+also remain visible as their short name and produce an export note.
+
+Cloud exports use ADF as their primary source. Data Center exports use the
+shared Body Storage adapter. Both source paths use the same typed resolver and
+catalog when no usable Unicode text is already present; existing source
+Unicode remains exact.
+Confluence Cloud may rewrite a typed legacy value to a product-owned short
+name such as `:check_mark:` or `:light_bulb_on:` during ADF read-back. The
+export adapter recognizes those spellings, but they are not additional
+Markdown authoring aliases and are therefore not listed below.
+
+The table below is the complete Markdown/legacy authoring catalog, not a limit
+on Confluence Cloud's native emoji picker. A live Cloud picker inventory on
+2026-07-24 contained 50 unique entries: 44 standard emoji carried exact Unicode
+in ADF `emoji.attrs.text`, while six product-owned assets used colon text.
+Those six portable read-back projections are `:check_mark:` → ✓,
+`:warning:` → ⚠, `:minus:` → −, `:question_mark:` → ❓,
+`:cross_mark:` → ✕, and `:info:` → ℹ. Standard Unicode remains byte-for-byte
+unchanged. The Body Storage/Data Center `ac:emoticon` adapter applies the same
+resolver when `ac:emoji-fallback` contains one of those typed short names and
+preserves a usable Unicode fallback exactly.
+
 ### Supported Emoticons
 
-| Shortcode | Aliases |
-|-----------|---------|
-| `:smile:` | `:)` |
-| `:sad:` | `:(` |
-| `:thumbs-up:` | `:+1:`, `:thumbsup:` |
-| `:thumbs-down:` | `:-1:`, `:thumbsdown:` |
-| `:star:` | |
-| `:warning:` | `:warn:` |
-| `:info:` | `:information:` |
-| `:tick:` | `:check:`, `:checkmark:` |
-| `:cross:` | `:x:`, `:error:` |
-| `:light-on:` | `:bulb:`, `:idea:` |
-| `:heart:` | `:love:` |
-| `:question:` | `:?:` |
+| Canonical shortcode | Graphical export | Supported aliases |
+|---------------------|------------------|-------------------|
+| `:smile:` | ☺ | `:grinning:`, `:grin:`, `:smiley:` |
+| `:sad:` | ☹ | `:disappointed:`, `:cry:` |
+| `:cheeky:` | 😛 | `:stuck_out_tongue:` |
+| `:laugh:` | 😄 | `:joy:`, `:laughing:` |
+| `:wink:` | 😉 | — |
+| `:thumbs-up:` | 👍 | `:+1:`, `:thumbsup:` |
+| `:thumbs-down:` | 👎 | `:-1:`, `:thumbsdown:` |
+| `:tick:` | ✓ | `:check:`, `:white_check_mark:`, `:heavy_check_mark:` |
+| `:cross:` | ✕ | `:x:`, `:heavy_multiplication_x:` |
+| `:warning:` | ⚠ | `:warn:`, `:alert:` |
+| `:information:` | ℹ | `:info:` |
+| `:question:` | ❓ | — |
+| `:light-on:` | 💡 | `:bulb:`, `:idea:`, `:lightbulb:` |
+| `:light-off:` | ○ | — |
+| `:yellow-star:` | Y★ | `:star:` |
+| `:red-star:` | R★ | — |
+| `:green-star:` | G★ | — |
+| `:blue-star:` | B★ | — |
+| `:heart:` | ♥ | `:love:`, `:red_heart:` |
+| `:broken-heart:` | 💔 | — |
+| `:plus:` | ✚ | — |
+| `:minus:` | − | — |
+
+The graphical export is a portable monochrome projection, not a claim of
+pixel parity with Confluence's color emoji. PDF bundles and checks the required
+fonts. DOCX stores the exact projected Unicode, but the receiving application
+still chooses the display font. Arbitrary source-provided Unicode sequences
+are preserved exactly; glyph availability for those sequences depends on the
+recipient. The 50-entry live picker corpus rendered completely in Microsoft
+Word; LibreOffice retained the exact DOCX text but did not provide every
+platform color-emoji glyph. Site-custom emoji are not fetched because Atlassian does not expose
+a documented, authorized portable asset contract for this export path.
 
 ## User Mentions
 

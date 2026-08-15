@@ -12,12 +12,16 @@
  * `@atlcli/pdf/fonts/*.ttf?url` exactly like
  * apps/browser-export-harness/src/pdf-worker.ts, bundles the full compile
  * pipeline (runPdfExport + BrowserPdfCompiler + storageToBlocks) from the
- * installed packages, and exposes a hook on globalThis. After the build the
- * driver asserts the `?url` imports resolved to real hashed files in the
- * build output (nothing falling through to a src/ path or workspace
+ * installed packages, imports the background executor from the packed
+ * `@atlcli/export-wiring/jobs` subpath (which also carries the DOCX engine's
+ * package-relative JetBrains Mono face), and exposes a hook on globalThis. After
+ * the build the driver asserts the `?url` imports resolved to real hashed files
+ * in the build output (nothing falling through to a src/ path or workspace
  * symlink), then imports the PRODUCTION chunk under Bun (headless — a real
  * browser Worker adds nothing to the packaging proof) and compiles a fixture
- * to real, validated PDF bytes using the EMITTED wasm + font assets.
+ * to real, validated PDF bytes using the EMITTED wasm + font assets — through
+ * the `PdfBytesHandle` the sink is handed since spec 010 T5.6, exercising the
+ * `asBlob()`/`objectUrl()` half a browser host actually uses.
  */
 import {
   existsSync,
@@ -30,6 +34,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildDocx, para } from "../packages/docx/src/fixtures.js";
 import {
   atlcliClosure,
   buildPackages,
@@ -38,9 +43,17 @@ import {
   type SmokeRunResult,
 } from "./consumer-smoke.js";
 
-/** pdf + pdf-compiler-browser roots; the transitive @atlcli closure is
- *  derived from the real manifests (never a hardcoded list). */
-const VITE_ROOTS = ["@atlcli/pdf", "@atlcli/pdf-compiler-browser"];
+/** Browser DOCX/PDF roots plus background wiring; the transitive @atlcli
+ * closure is derived from the real manifests (never a hardcoded list). */
+const VITE_ROOTS = [
+  "@atlcli/docx",
+  "@atlcli/pdf",
+  "@atlcli/pdf-compiler-browser",
+  "@atlcli/export-wiring",
+];
+const DOCX_TEMPLATE_BYTES = buildDocx({
+  body: para("$scroll.title") + para("$scroll.content"),
+});
 
 const VITE_VERSION = "8.1.4"; // same major the harness builds with
 
@@ -52,6 +65,7 @@ const INDEX_HTML = `<!doctype html>
 `;
 
 const VITE_CONFIG = `import { defineConfig } from "vite";
+import { DOCX_BROWSER_VITE_DEFINES } from "@atlcli/docx/vite";
 
 export default defineConfig({
   base: "./",
@@ -59,6 +73,9 @@ export default defineConfig({
     // Same preference as apps/browser-export-harness — but NO "development":
     // this build must prove the packed tarballs' dist/ exports.
     conditions: ["browser"],
+  },
+  define: {
+    ...DOCX_BROWSER_VITE_DEFINES,
   },
   build: {
     target: "es2022",
@@ -74,6 +91,13 @@ export default defineConfig({
 
 /** Mirrors apps/browser-export-harness/src/pdf-worker.ts's ?url imports. */
 const ENTRY_TS = `
+// This must be the first DOCX-related edge: export-wiring/jobs also reaches
+// the engine graph, so the canonical entry has to establish its runtime first.
+import {
+  memoryTemplateSource,
+  runExport as runDocxExport,
+  unzipDocx,
+} from "@atlcli/docx/browser-entry";
 import wasmUrl from "@atlcli/pdf-compiler-browser/wasm?url";
 import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
 import sansItalicUrl from "@atlcli/pdf/fonts/SourceSans3-It.ttf?url";
@@ -85,10 +109,21 @@ import serifSemiBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Semibold.ttf?url";
 import serifBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Bold.ttf?url";
 import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
-import { runPdfExport, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
+import arabicRegularUrl from "@atlcli/pdf/fonts/NotoSansArabic-Regular.ttf?url";
+import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
+import emojiRegularUrl from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf?url";
+import { runPdfExport, isPdfBytesHandle, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
+import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
-import { storageToBlocks } from "@atlcli/confluence";
+import {
+  createPageAttachmentWriterV1,
+  storageToBlocks,
+} from "@atlcli/confluence/browser";
+import {
+  createPdfExportJobExecutor,
+  createTypescriptDocxExportJobExecutor,
+} from "@atlcli/export-wiring/jobs";
 
 const fontUrls: Record<string, string> = {
   "SourceSans3-Regular.ttf": sansRegularUrl,
@@ -101,6 +136,9 @@ const fontUrls: Record<string, string> = {
   "SourceSerif4-Bold.ttf": serifBoldUrl,
   "SourceCodePro-Regular.ttf": codeRegularUrl,
   "SourceCodePro-Bold.ttf": codeBoldUrl,
+  "NotoSansArabic-Regular.ttf": arabicRegularUrl,
+  "NotoSansSymbols2-Regular.ttf": symbolsRegularUrl,
+  "NotoEmoji-wght.ttf": emojiRegularUrl,
 };
 
 type LoadBytes = (url: string) => Promise<Uint8Array>;
@@ -109,6 +147,100 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
   wasmUrl,
   fontUrls,
   expectedFonts: PDF_RUNTIME_ASSETS.fonts.map((font) => font.fileName),
+  jobsEntrypointLoaded:
+    typeof createPdfExportJobExecutor === "function" &&
+    typeof createTypescriptDocxExportJobExecutor === "function",
+  async attachmentContract() {
+    let calls = 0;
+    let createPath = "";
+    let contentTypeIntroduced = false;
+    let authorizationIntroduced = false;
+    let minorEdit = "";
+    let fileSize = -1;
+    const writer = createPageAttachmentWriterV1(async (path, init) => {
+      calls++;
+      if (init?.method === "GET") {
+        return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      }
+      createPath = path;
+      const headers = new Headers(init?.headers);
+      contentTypeIntroduced = headers.has("Content-Type");
+      authorizationIntroduced = headers.has("Authorization");
+      const form = init?.body as FormData;
+      minorEdit = String(form.get("minorEdit"));
+      fileSize = (form.get("file") as File).size;
+      return new Response(JSON.stringify({
+        results: [{
+          id: "packed-att-1",
+          title: "packed.pdf",
+          metadata: { mediaType: "application/pdf" },
+          extensions: { fileSize },
+          version: { number: 1 },
+          _links: { download: "/download/attachments/123/packed.pdf" },
+        }],
+      }), { status: 200 });
+    });
+    const attachment = await writer.create({
+      pageId: "123",
+      filename: "packed.pdf",
+      body: new Blob(["packed-pdf"], { type: "application/pdf" }),
+      mimeType: "application/pdf",
+    });
+    return {
+      calls,
+      createPath,
+      contentTypeIntroduced,
+      authorizationIntroduced,
+      minorEdit,
+      fileSize,
+      attachmentId: attachment.id,
+    };
+  },
+  async compileDocx() {
+    // Test setup injects a known-good binary fixture. The production consumer
+    // imports only the stable browser entry, not the fixture subpath.
+    const templateBytes = new Uint8Array(${JSON.stringify([...DOCX_TEMPLATE_BYTES])});
+    let emitted: Uint8Array | undefined;
+    const report = await runDocxExport(
+      {
+        details: {
+          id: "browser-entry-smoke",
+          title: "Combined Browser Entry",
+          url: "https://example.invalid/wiki/browser-entry-smoke",
+          version: 1,
+          spaceKey: "SMOKE",
+          storage: "<h1>Vite DOCX Heading</h1><p>One ordered browser entry.</p>",
+          created: "2026-07-01T08:00:00.000Z",
+          modified: "2026-07-02T09:00:00.000Z",
+          createdBy: { displayName: "Smoke Author" },
+          modifiedBy: { displayName: "Smoke Editor" },
+          labels: [],
+        },
+        template: {
+          name: "browser-entry-smoke.docx",
+          modificationDate: new Date("2026-07-10T00:00:00.000Z"),
+        },
+        exportDate: new Date("2026-07-15T10:00:00.000Z"),
+      },
+      {
+        templates: memoryTemplateSource(templateBytes),
+        output: {
+          emit: async (_name, bytes) => {
+            emitted = bytes;
+          },
+        },
+      },
+    );
+    if (!emitted) throw new Error("combined DOCX browser entry emitted nothing");
+    const bytes: Uint8Array = emitted;
+    const documentXml = unzipDocx(bytes).file("word/document.xml")?.asText() ?? "";
+    return {
+      byteLength: bytes.byteLength,
+      filename: report.filename,
+      hasHeading: documentXml.includes("Vite DOCX Heading"),
+      hasBody: documentXml.includes("One ordered browser entry."),
+    };
+  },
   async compile(loadBytes: LoadBytes) {
     const wasm = await loadBytes(wasmUrl);
     const fonts = await Promise.all(
@@ -119,7 +251,11 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       fonts,
     });
     const { blocks } = storageToBlocks("<h1>Vite Smoke Heading</h1><p>Bundled tarball compile.</p>");
-    let outBytes: Uint8Array | undefined;
+    // Since spec 010 T5.6 the sink is handed a PdfBytesHandle, not a
+    // Uint8Array. This is the BROWSER position, where the handle's reason for
+    // existing lives: the download path wants a Blob/object URL and must get
+    // one without the whole document being materialized a second time.
+    let emitted: PdfBytesHandle | undefined;
     await runPdfExport(
       {
         blocks,
@@ -134,15 +270,43 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
         },
         compiler,
         output: {
-          emit: async (_name: string, bytes: Uint8Array) => {
-            outBytes = bytes;
+          emit: async (_name: string, handle: PdfBytesHandle) => {
+            emitted = handle;
           },
         },
       },
     );
-    if (!outBytes) throw new Error("runPdfExport emitted nothing");
-    const inspection = validatePdfOutput(outBytes);
-    return { byteLength: outBytes.byteLength, pageCount: inspection.pageCount, tagged: inspection.tagged };
+    if (!emitted) throw new Error("runPdfExport emitted nothing");
+    const handle: PdfBytesHandle = emitted;
+    // The guard travels in the bundled browser barrel too; a revert to raw
+    // bytes fails here rather than three assertions later with a stranger error.
+    const isHandle = isPdfBytesHandle(handle);
+    if (!isHandle) {
+      throw new Error("PdfOutputSink.emit did not hand over a PdfBytesHandle (spec 010, T5.6)");
+    }
+    const bytes = await handle.asUint8Array();
+    const borrowed = (await handle.asUint8Array()) === bytes;
+    const blob = await handle.asBlob();
+    const blobMemoized = (await handle.asBlob()) === blob;
+    const objectUrl = await handle.objectUrl();
+    const urlMemoized = (await handle.objectUrl()) === objectUrl;
+    const inspection = validatePdfOutput(bytes);
+    const result = {
+      byteLength: bytes.byteLength,
+      handleSize: handle.size,
+      mimeType: handle.mimeType,
+      pageCount: inspection.pageCount,
+      tagged: inspection.tagged,
+      isHandle,
+      borrowed,
+      blobSize: blob.size,
+      blobType: blob.type,
+      blobMemoized,
+      objectUrlScheme: objectUrl.slice(0, 5),
+      urlMemoized,
+    };
+    handle.release();
+    return result;
   },
 };
 `;
@@ -151,6 +315,20 @@ export interface ViteSmokeResult {
   projectDir: string;
   viteVersion: string;
   smokes: SmokeRunResult;
+}
+
+async function withBrowserBufferScope<T>(action: () => Promise<T>): Promise<T> {
+  // The built chunk is imported under Bun only to keep this smoke headless.
+  // Mask Bun's Node-compatible Buffer global while PizZip detects its host so
+  // the bundle executes the same Uint8Array path as an actual browser.
+  const scope = globalThis as Record<string, unknown>;
+  const originalBuffer = scope.Buffer;
+  scope.Buffer = undefined;
+  try {
+    return await action();
+  } finally {
+    scope.Buffer = originalBuffer;
+  }
 }
 
 export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
@@ -205,12 +383,28 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   if (wasmAssets.length !== 1) {
     throw new Error(`expected exactly one hashed .wasm asset, found: ${wasmAssets.join(", ")}`);
   }
-  if (ttfAssets.length !== 10) {
-    throw new Error(`expected 10 hashed .ttf assets, found ${ttfAssets.length}: ${ttfAssets.join(", ")}`);
-  }
 
-  const chunkName = assets.find((a) => a.endsWith(".js"));
-  if (!chunkName) throw new Error(`no built js chunk in ${assetsDir}`);
+  const javaScriptAssets = assets.filter((asset) => asset.endsWith(".js"));
+  for (const asset of javaScriptAssets) {
+    const source = readFileSync(join(assetsDir, asset), "utf8");
+    if (
+      /engine-oniguruma/i.test(asset) ||
+      source.includes("findNextOnigScannerMatch") ||
+      source.includes("Must invoke loadWasm first.")
+    ) {
+      throw new Error(
+        `packed browser consumer emitted an Oniguruma/Shiki-WASM chunk: ${asset}`,
+      );
+    }
+  }
+  const chunkName = javaScriptAssets.find((asset) =>
+    readFileSync(join(assetsDir, asset), "utf8").includes("__ATLCLI_VITE_SMOKE"),
+  );
+  if (!chunkName) {
+    throw new Error(
+      `no built entry chunk installed __ATLCLI_VITE_SMOKE; inspected: ${javaScriptAssets.join(", ")}`,
+    );
+  }
   const chunkPath = join(assetsDir, chunkName);
   const chunkSource = readFileSync(chunkPath, "utf8");
   // Nothing may fall through to a source path or workspace symlink: the
@@ -222,18 +416,95 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   }
 
   // --- Execute the PRODUCTION chunk and compile with the EMITTED assets. ---
-  await import(chunkPath);
-  const hook = (globalThis as Record<string, unknown>).__ATLCLI_VITE_SMOKE as {
-    wasmUrl: string;
-    fontUrls: Record<string, string>;
-    expectedFonts: string[];
-    compile(load: (url: string) => Promise<Uint8Array>): Promise<{
-      byteLength: number;
-      pageCount: number;
-      tagged: boolean;
-    }>;
-  };
-  if (!hook) throw new Error("built chunk did not install the smoke hook — wrong chunk executed?");
+  const { hook, docxResult, attachmentResult } = await withBrowserBufferScope(async () => {
+    await import(chunkPath);
+    const hook = (globalThis as Record<string, unknown>).__ATLCLI_VITE_SMOKE as {
+      wasmUrl: string;
+      fontUrls: Record<string, string>;
+      expectedFonts: string[];
+      jobsEntrypointLoaded: boolean;
+      attachmentContract(): Promise<{
+        calls: number;
+        createPath: string;
+        contentTypeIntroduced: boolean;
+        authorizationIntroduced: boolean;
+        minorEdit: string;
+        fileSize: number;
+        attachmentId: string;
+      }>;
+      compileDocx(): Promise<{
+        byteLength: number;
+        filename: string;
+        hasHeading: boolean;
+        hasBody: boolean;
+      }>;
+      compile(load: (url: string) => Promise<Uint8Array>): Promise<{
+        byteLength: number;
+        handleSize: number;
+        mimeType: string;
+        pageCount: number;
+        tagged: boolean;
+        isHandle: boolean;
+        borrowed: boolean;
+        blobSize: number;
+        blobType: string;
+        blobMemoized: boolean;
+        objectUrlScheme: string;
+        urlMemoized: boolean;
+      }>;
+    };
+    if (!hook) throw new Error("built chunk did not install the smoke hook — wrong chunk executed?");
+    if (!hook.jobsEntrypointLoaded) {
+      throw new Error(
+        "packed @atlcli/export-wiring/jobs did not expose both PDF and TypeScript DOCX executors",
+      );
+    }
+    return {
+      hook,
+      docxResult: await hook.compileDocx(),
+      attachmentResult: await hook.attachmentContract(),
+    };
+  });
+  if (
+    docxResult.byteLength < 1_000
+    || !docxResult.hasHeading
+    || !docxResult.hasBody
+    || !docxResult.filename.endsWith(".docx")
+  ) {
+    throw new Error(
+      `vite smoke combined DOCX entry produced implausible output: ${JSON.stringify(docxResult)}`,
+    );
+  }
+  if (
+    attachmentResult.calls !== 2
+    || attachmentResult.createPath !== "/wiki/rest/api/content/123/child/attachment"
+    || attachmentResult.contentTypeIntroduced
+    || attachmentResult.authorizationIntroduced
+    || attachmentResult.minorEdit !== "true"
+    || attachmentResult.fileSize !== 10
+    || attachmentResult.attachmentId !== "packed-att-1"
+  ) {
+    throw new Error(
+      `vite smoke attachment writer contract failed: ${JSON.stringify(attachmentResult)}`,
+    );
+  }
+  const docxCodeFontAssets = ttfAssets.filter((asset) =>
+    /^JetBrainsMono-Regular-[A-Za-z0-9_-]+\.ttf$/u.test(asset),
+  );
+  if (docxCodeFontAssets.length !== 1) {
+    throw new Error(
+      `expected one hashed JetBrains Mono DOCX code font, found: ${docxCodeFontAssets.join(", ")}`,
+    );
+  }
+  if (ttfAssets.length !== hook.expectedFonts.length + docxCodeFontAssets.length) {
+    throw new Error(
+      `expected ${hook.expectedFonts.length} PDF fonts plus one DOCX code font, ` +
+      `found ${ttfAssets.length}: ${ttfAssets.join(", ")}`,
+    );
+  }
+  if (!chunkSource.includes(docxCodeFontAssets[0]!)) {
+    throw new Error("the packed production chunk does not reference its emitted DOCX code font");
+  }
 
   const resolveAsset = (url: string): string => {
     // With base "./" Vite computes asset URLs at runtime relative to
@@ -263,11 +534,42 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     throw new Error(`vite smoke compile produced implausible output: ${JSON.stringify(result)}`);
   }
 
+  // --- The PdfOutputSink.emit contract from the bundled consumer's position
+  // (spec 010, T5.6). Asserted HERE, not only inside the built chunk, so a
+  // silently-degraded hook (fewer fields) fails instead of passing vacuously.
+  if (!result.isHandle) {
+    throw new Error("the vite consumer's sink was not handed a PdfBytesHandle (spec 010, T5.6)");
+  }
+  if (result.handleSize !== result.byteLength) {
+    throw new Error(`handle.size ${result.handleSize} != asUint8Array().byteLength ${result.byteLength}`);
+  }
+  if (result.mimeType !== "application/pdf") {
+    throw new Error(`handle.mimeType is "${result.mimeType}", expected application/pdf`);
+  }
+  if (!result.borrowed) {
+    throw new Error("asUint8Array() copied the document instead of lending it");
+  }
+  // The Blob path is the whole reason the handle exists: the download must get
+  // a Blob of the SAME bytes without a second full copy of the document.
+  if (result.blobSize !== result.byteLength || result.blobType !== "application/pdf") {
+    throw new Error(`asBlob() produced ${result.blobSize} bytes of "${result.blobType}"`);
+  }
+  if (!result.blobMemoized) {
+    throw new Error("asBlob() built a second copy instead of memoizing");
+  }
+  if (result.objectUrlScheme !== "blob:") {
+    throw new Error(`objectUrl() did not return a blob: URL (got "${result.objectUrlScheme}…")`);
+  }
+  if (!result.urlMemoized) {
+    throw new Error("objectUrl() minted a second URL — the first one leaked");
+  }
+
   return {
     projectDir,
     viteVersion: VITE_VERSION,
     smokes: {
-      docx: "(not part of the vite smoke)",
+      docx:
+        `DOCX_SMOKE_OK ${docxResult.filename} bytes=${docxResult.byteLength}`,
       pdf: `PDF_SMOKE_OK vite-smoke.pdf pages=${result.pageCount} bytes=${result.byteLength}`,
     },
   };
@@ -276,5 +578,6 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
 if (import.meta.main) {
   const { projectDir, viteVersion, smokes } = await runViteSmoke();
   console.log(`vite tarball smoke OK in ${projectDir} (vite ${viteVersion})`);
+  console.log(smokes.docx);
   console.log(smokes.pdf);
 }

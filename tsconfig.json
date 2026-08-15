@@ -3,11 +3,23 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
     "types": ["bun-types"],
     "customConditions": ["development"]
   },
-  "include": ["apps/**/src/**/*.ts", "packages/**/src/**/*.ts"],
-  "exclude": ["src", "astro.config.mjs", "apps/browser-export-harness"]
+  "include": [
+    "apps/**/src/**/*.ts",
+    "packages/**/src/**/*.ts",
+    "packages/**/src/**/*.tsx",
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "src",
+    "astro.config.mjs",
+    "apps/browser-export-harness",
+    "packages/web-publish-astro/fixtures/**",
+    "packages/export-blocks-astro/fixtures/**"
+  ]
 }

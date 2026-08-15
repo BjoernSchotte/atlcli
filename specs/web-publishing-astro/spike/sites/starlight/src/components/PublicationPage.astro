@@ -1,0 +1,88 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import type { CollectionEntry } from "astro:content";
+import { Picture } from "astro:assets";
+import ExportDocument from "@atlcli/export-blocks-astro/document";
+import "@atlcli/export-blocks-astro/styles.css";
+import responsiveProofImage from "../../../../../../../packages/export-media/src/__fixtures__/real-imageio-16x12.png";
+import StarlightCode from "./StarlightCode.astro";
+import StarlightParagraph from "./StarlightParagraph.astro";
+
+interface Props {
+  entry: CollectionEntry<"publicationPages">;
+  navigation: readonly { label: string; link: string; locale: string; position: number }[];
+  breadcrumbs: readonly { label: string; link: string }[];
+  related: readonly { label: string; link: string; score: number; position: number }[];
+}
+
+const { breadcrumbs, entry, navigation, related } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/u, "");
+const withBase = (path: string) => `${base}${path}`;
+const page = entry.data;
+const sidebar = [
+  {
+    label: "Publication",
+    items: navigation.map(({ label, link }) => ({ label, link })),
+  },
+];
+---
+
+<StarlightPage
+  frontmatter={{
+    title: page.title,
+    description: page.description,
+    editUrl: page.editUrl ?? false,
+    pagefind: true,
+  }}
+  headings={[...page.headings]}
+  sidebar={sidebar}
+  lang={page.locale}
+  dir={page.direction}
+>
+  <article
+    data-page-title={page.title}
+    data-pagefind-meta="title[data-page-title]"
+  >
+    <div hidden aria-hidden="true" data-pagefind-ignore>
+      <span data-pagefind-filter={`language:${page.locale}`}></span>
+      <span data-pagefind-filter={`space:${page.spaceKey}`}></span>
+      <span data-pagefind-filter={`content-type:${page.contentType}`}></span>
+      {page.labels.map((label) => <span data-pagefind-filter={`label:${label}`}></span>)}
+    </div>
+    <nav aria-label="Breadcrumb" data-publication-breadcrumb data-pagefind-ignore>
+      <ol>
+        {breadcrumbs.map((breadcrumb, index) => (
+          <li>
+            {index === breadcrumbs.length - 1
+              ? <span aria-current="page">{breadcrumb.label}</span>
+              : <a href={withBase(breadcrumb.link)}>{breadcrumb.label}</a>}
+          </li>
+        ))}
+      </ol>
+    </nav>
+    <ExportDocument
+      blocks={page.blocks}
+      context={{ locale: page.locale, resolvedAssets: page.resolvedAssets }}
+      overrides={{ codeBlock: StarlightCode, paragraph: StarlightParagraph }}
+    />
+    {page.id === "page-home" && (
+      <figure data-t0-responsive-image-proof>
+        <Picture
+          src={responsiveProofImage}
+          alt="Locally transformed responsive image proof"
+          formats={["avif", "webp"]}
+          widths={[8, 16]}
+          sizes="(max-width: 30rem) 8px, 16px"
+          loading="lazy"
+        />
+        <figcaption>Astro transforms a vendored source image during the network-disabled build.</figcaption>
+      </figure>
+    )}
+    {related.length > 0 && (
+      <aside aria-labelledby="related-pages" data-related-pages data-pagefind-ignore>
+        <h2 id="related-pages">Related pages</h2>
+        <ul>{related.map((item) => <li><a href={withBase(item.link)}>{item.label}</a></li>)}</ul>
+      </aside>
+    )}
+  </article>
+</StarlightPage>

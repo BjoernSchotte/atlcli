@@ -18,10 +18,21 @@ function sourceFiles(path: string): string[] {
 }
 
 describe("browser harness boundaries", () => {
-  it("bootstraps the DOCX runtime before dynamically loading the app graph", () => {
-    const source = read("src/main.ts");
-    expect(source.indexOf(`@atlcli/docx/browser-runtime`)).toBeLessThan(source.indexOf(`import("./app.js")`));
-    expect(source).not.toMatch(/from\s+["']@atlcli\/docx\/browser["']/);
+  it("loads one combined DOCX entry inside the explicit app-intent graph", () => {
+    const main = read("src/main.ts");
+    const app = read("src/app.ts");
+    const combined = sourceFiles("src")
+      .map((path) => readFileSync(path, "utf8"))
+      .join("\n");
+    expect(main).toContain(`import("./app.js")`);
+    expect(main).not.toContain("@atlcli/docx/browser-runtime");
+    expect(main).not.toContain("@atlcli/docx/browser-entry");
+    expect(app.split("\n").find((line) => line.startsWith("import "))).toBe(
+      'import { runExport } from "@atlcli/docx/browser-entry";',
+    );
+    expect(combined).not.toMatch(
+      /from\s+["']@atlcli\/docx\/(?:browser|browser-runtime|scan)["']/,
+    );
   });
 
   it("uses relative Vite output and the package-owned DOCX defines", () => {
@@ -52,6 +63,15 @@ describe("browser harness boundaries", () => {
       .sort();
     expect(staticFontImports).toEqual(PDF_RUNTIME_ASSETS.fonts.map((asset) => asset.fileName).sort());
     expect(worker).toContain("assertStaticAssetParity");
+  });
+
+  it("compares browser output against the same demand-aware compiler shape", () => {
+    const parity = read("scripts/check-parity.ts");
+    expect(parity).toContain("BrowserPdfCompilerFontSourceV1");
+    expect(parity).toContain("assetId: font.assetId");
+    expect(parity).toContain("sha256: font.sha256");
+    expect(parity).toContain('load: () => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)');
+    expect(parity).not.toContain("const [wasm, ...fonts]");
   });
 
   it("serves a restrictive CSP without unsafe-eval", () => {

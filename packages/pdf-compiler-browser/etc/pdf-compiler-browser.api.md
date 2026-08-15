@@ -10,22 +10,39 @@
 // export: BrowserPdfCompiler
 export declare class BrowserPdfCompiler {
     private readonly assets;
-    readonly version = "typst.ts 0.7.0 / Typst 0.14.2";
+    readonly version = "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1";
     private compiler;
+    private compilerKey;
+    private registeredAssetIds;
     private initPromise;
+    private runtimePromise;
+    private compileTail;
     constructor(assets: BrowserPdfCompilerAssets);
+    private enqueue;
+    private claimGlobalCompiler;
+    private selection;
     private initialize;
-    compile(bundle: PdfSourceBundle): Promise<PdfCompileResult>;
+    private compileExclusive;
+    compile(bundle: PdfSourceBundle, context?: PdfCompileContext): Promise<PdfCompileResult>;
     getLoadedFonts(): Promise<string[]>;
+    getRegisteredFontAssetIds(): readonly string[];
+    private dropCompiler;
     reset(): Promise<void>;
 }
 
 // export: BrowserPdfCompilerAssets
 export interface BrowserPdfCompilerAssets {
     wasm: ArrayBuffer | URL | Response;
-    fonts: Uint8Array[];
+    fonts: readonly Uint8Array[] | readonly BrowserPdfCompilerFontSourceV1[];
+}
+
+// export: BrowserPdfCompilerFontSourceV1
+export interface BrowserPdfCompilerFontSourceV1 {
+    assetId: string;
+    sha256: string;
+    load(context?: PdfCompileContext): Promise<Uint8Array> | Uint8Array;
 }
 
 // export: PDF_BROWSER_COMPILER_VERSION
-export declare const PDF_BROWSER_COMPILER_VERSION = "typst.ts 0.7.0 / Typst 0.14.2";
+export declare const PDF_BROWSER_COMPILER_VERSION = "typst.ts 0.8.0-rc3.typst0151.1 / Typst 0.15.1";
 ```

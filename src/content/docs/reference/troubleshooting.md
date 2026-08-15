@@ -7,6 +7,17 @@ description: "Troubleshooting - atlcli documentation"
 
 Common issues and solutions for atlcli.
 
+## On this page
+
+- [Authentication errors](#authentication-errors)
+- [Connection errors](#connection-errors)
+- [Confluence issues](#confluence-issues)
+- [Export jobs](#export-jobs)
+- [Jira issues](#jira-issues)
+- [Performance](#performance)
+- [Debug mode](#debug-mode)
+- [Getting help](#getting-help)
+
 ## Authentication Errors
 
 ### 401 Unauthorized
@@ -100,6 +111,30 @@ Conflict: file.md was modified both locally and on Confluence
 2. Merge manually
 3. Force push: `atlcli wiki docs push --force`
 
+### Duplicate `-2.md` Files After Pulling
+
+A page you pull repeatedly shows up twice: `page.md` **and** `page-2.md`, each with the
+same `id` in its frontmatter, plus a second `page-2.attachments/` directory.
+
+**Cause:**
+Older versions recorded a uniquified filename in `.atlcli/sync.db` for pages that had
+not moved, so the next `pull` treated that alias as the page's location.
+
+**Solutions:**
+1. Upgrade and pull again — `atlcli wiki docs pull` re-adopts the original file and
+   corrects the recorded path, as long as only one of the two files exists.
+2. If both files are already on disk, delete the `-2` copy (and its
+   `-2.attachments/` directory) after checking it holds no edits of yours, then pull
+   again:
+   ```bash
+   atlcli wiki docs diff page-2.md   # confirm there is nothing to keep
+   rm -r page-2.md page-2.attachments
+   atlcli wiki docs pull
+   ```
+
+Note that a genuine `-2` suffix is also how atlcli keeps two *different* pages with the
+same title apart — check the `id` in the frontmatter before deleting anything.
+
 ### Page Not Found
 
 ```
@@ -113,6 +148,67 @@ Error: Page not found (404)
 **Solutions:**
 1. Re-pull directory: `atlcli wiki docs pull`
 2. Remove stale local file
+
+## Export Jobs
+
+### An extension export stopped after Chrome quit
+
+The extension queue is local to Chrome. It continues across tab changes, panel
+closure, service-worker suspension, and offscreen-document restart, but no code
+runs while Chrome itself is closed. Start Chrome again: queued or checkpointed
+work is reclaimed automatically. If the Confluence session expired, sign in to
+the same site and select **Resume after sign-in** in **Activity**.
+
+### A CLI export appears stuck or its terminal disappeared
+
+Open another terminal and inspect the durable job:
+
+```bash
+atlcli wiki export jobs list --status running,waiting
+atlcli wiki export jobs show <job-id>
+atlcli wiki export jobs watch <job-id>
+```
+
+The ordinary CLI command is the runner; there is no detached daemon. If that
+process ended, a stale lease is reconciled the next time an export-jobs command
+opens the journal. Use `retry` for a resulting interrupted/failed job. If a
+recoverable checkpoint was returned to `queued`, reclaim that same row and its
+checkpoint explicitly:
+
+```bash
+atlcli wiki export jobs resume <queued-job-id>
+```
+
+### A job is waiting
+
+Open its detail or run `jobs show`. The waiting reason distinguishes:
+
+- `auth`: in the extension, sign in and choose **Resume after sign-in**; for the
+  CLI, refresh the profile before an explicit foreground Retry;
+- `backoff`: a bounded automatic retry is waiting for its deadline;
+- `quota` or `resource`: free browser/disk space or narrow the export;
+- `host`: the local browser runner is not currently available.
+
+Do not repeatedly create new jobs for an automatic backoff. The existing row
+retains its queue position and protocol.
+
+### An export exceeds storage or memory limits
+
+Narrow the tree with `--max-depth`, labels, or a smaller scope; downscale large
+attachments; then retry. The browser checks product caps and origin quota before
+heavy rendering. It fails closed rather than leaving a partial download.
+Current browser caps are 128 MiB per spool object, 256 MiB spool per job,
+512 MiB common spool total, and 64 MiB for the final DOCX/PDF artifact.
+
+### A finished result is no longer downloadable
+
+Succeeded-undelivered artifacts are protected. After download or dismissal,
+artifact bytes are eligible for release after 24 hours. Full reports remain for
+7 days; compact history may remain without the artifact. Use **Run again** in
+the extension or `jobs rerun` in the CLI to create a new linked export.
+
+See [Export Jobs & Operations](/reference/export-jobs/) for the complete
+lifecycle and diagnostic procedure.
 
 ## Jira Issues
 

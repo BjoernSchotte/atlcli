@@ -1,5 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { composeChapters, storageToBlocks, type ExportBlock, type ExportNode, type InlineNode } from "@atlcli/confluence";
+import { createHash } from "node:crypto";
+import {
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
+  composeChapters,
+  storageToBlocks,
+  type ExportBlock,
+  type ExportNode,
+  type InlineNode,
+} from "@atlcli/confluence";
+import { CHART_KINDS_V1 } from "@atlcli/export-blocks";
 import {
   columnWidthsDxa,
   serializeBlocks,
@@ -7,12 +16,270 @@ import {
   type CodeBlock,
   type DiagramEmbedOutcome,
   type DiagramEmbedSeam,
+  type ImageEmbedSeam,
 } from "./serialize.js";
 import { renderDiagram } from "@atlcli/diagram";
+import {
+  plainCodeHighlight,
+  type CodeHighlightRuntime,
+} from "@atlcli/code-highlight/contract";
 import { dataTable, parseStyleNames, resolveCaptionLang } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
+import { collectDocxCodeHighlightUsage } from "./code-highlighting.js";
 
 const noStyles = new Map<string, string>();
+
+const NON_CHART_REGRESSION_BLOCKS_V1: ExportBlock[] = [
+  { type: "heading", level: 2, content: [{ type: "text", text: "Stable guide" }] },
+  { type: "paragraph", content: [{ type: "text", text: "Existing exports must not enter the chart rendering path." }] },
+  {
+    type: "list", ordered: false, items: [
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "First" }] }] },
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "Second" }] }] },
+    ],
+  },
+  {
+    type: "table", rows: [{ cells: [
+      { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Key" }] }] },
+      { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }] },
+    ] }],
+  },
+];
+
+it("pins a chart-free DOCX structure golden and never calls the chart SVG seam", async () => {
+  let generatedSvgCalls = 0;
+  const result = await serializeBlocks(NON_CHART_REGRESSION_BLOCKS_V1, {
+    styleNames: noStyles,
+    images: {
+      embed: async () => { throw new Error("non-chart fixture attempted an image embed"); },
+      embedGeneratedSvg: async () => {
+        generatedSvgCalls += 1;
+        throw new Error("non-chart fixture entered the generated SVG path");
+      },
+    },
+  });
+  expect(generatedSvgCalls).toBe(0);
+  expect(result.notes).toEqual([]);
+  expect(createHash("sha256").update(result.xml).digest("hex")).toBe("06e68599315fdb01080fa9cf08d851023b6d3514775ff3a3a5aa5824830fe48d");
+});
+
+it("serializes a chart ExportBlock as a deterministic accessible data table", async () => {
+  const result = await serializeBlocks([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      subtitle: "FY 2026 plan",
+      data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+    diagnostics: [{ code: "skipped-row", message: "One malformed row was skipped.", row: 3 }],
+  }], { styleNames: noStyles });
+  expect(result.xml).toContain("Revenue");
+  expect(result.xml).toContain("FY 2026 plan");
+  expect(result.xml).toContain('<w:color w:val="5E6C84"/>');
+  expect(result.xml).toContain('<w:i/>');
+  expect(result.xml).toContain("Chart data note: One malformed row was skipped.");
+  expect(result.xml).toContain('<w:color w:val="B54708"/>');
+  expect(result.xml).toContain("Jan");
+  expect(result.xml).toContain("20");
+  expect(result.xml).toContain("<w:tbl");
+});
+
+it("embeds the shared chart SVG visual before the accessible table when the host provides the SVG seam", async () => {
+  const svgs: string[] = [];
+  const images: ImageEmbedSeam = {
+    embed: async () => ({ ok: false, reason: "not used" }),
+    embedGeneratedSvg: async (svg) => {
+      svgs.push(svg);
+      return { ok: true, xml: "<w:p><w:drawing data-chart-svg=\"true\"/></w:p>" };
+    },
+  };
+  const result = await serializeBlocks([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { styleNames: noStyles, images });
+  expect(svgs).toHaveLength(1);
+  expect(svgs[0]).toContain('class="ts-chart"');
+  expect(svgs[0]).toContain("ts-chart__bar");
+  expect(svgs[0]).toContain('role="img"');
+  expect(result.xml).toContain("data-chart-svg=\"true\"");
+  expect(result.xml.indexOf("data-chart-svg")).toBeLessThan(result.xml.indexOf("<w:tbl"));
+});
+
+it("keeps sparse XY series aligned by their own x keys", async () => {
+  const result = await serializeBlocks([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1", kind: "xyLine", title: "Sparse",
+      data: { mode: "points", series: [
+        { id: "a", label: "A", points: [{ x: 1, y: 10 }, { x: 2, y: 20 }] },
+        { id: "b", label: "B", points: [{ x: 2, y: 30 }] },
+      ] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { styleNames: noStyles });
+  expect(result.xml).toContain(">2<");
+  expect(result.xml).toContain(">20<");
+  expect(result.xml).toContain(">30<");
+});
+
+it("projects every normalized chart shape into a non-empty DOCX table", async () => {
+  const blocks: ExportBlock[] = CHART_KINDS_V1.map((kind) => ({
+    type: "chart" as const,
+    chart: kind === "gantt"
+      ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "gantt" as const, tasks: [{ id: "t", label: "Task", start: "2026-01-01", end: "2026-01-02" }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+      : ["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"].includes(kind)
+        ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "points" as const, series: [{ id: "s", label: "Value", points: [{ x: kind === "timeSeries" ? "2026-01-01" : 1, y: 2 }] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+        : { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "categories" as const, labels: ["A"], series: [{ id: "s", label: "Value", values: [2] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } },
+  }));
+  const result = await serializeBlocks(blocks, { styleNames: noStyles });
+  for (const kind of CHART_KINDS_V1) expect(result.xml).toContain(`shape-${kind}`);
+});
+
+describe("DOCX code-highlighting preparation", () => {
+  it("collects nested aliases once, counts blocks, and excludes Mermaid", () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "list",
+        ordered: false,
+        items: [{
+          content: [
+            { type: "codeBlock", language: "ts", code: "const x = 1;" },
+            { type: "codeBlock", language: "typescript", code: "const y = 2;" },
+          ],
+        }],
+      },
+      {
+        type: "table",
+        rows: [{
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [
+              { type: "codeBlock", language: "python", code: "x = 1" },
+              { type: "codeBlock", language: "unknown-test-language", code: "x" },
+              { type: "codeBlock", language: "mermaid", code: "graph TD; A-->B" },
+            ],
+          }],
+        }],
+      },
+      { type: "codeBlock", code: "plain" },
+      {
+        type: "unknown",
+        macroName: "nested-code",
+        body: [
+          { type: "codeBlock", language: "TS", code: "const z = 3;" },
+        ],
+        extensionFrames: [{
+          content: [
+            { type: "codeBlock", language: "rust", code: "let z = 3;" },
+          ],
+        }],
+      },
+    ];
+
+    expect(collectDocxCodeHighlightUsage(blocks)).toEqual({
+      codeBlocks: 7,
+      languages: ["typescript", "python", "rust"],
+    });
+  });
+
+  it("loads one injected runtime after usage and prepares canonical languages once", async () => {
+    let loaderCalls = 0;
+    const preparations: Array<{ languages: readonly string[]; theme?: string }> = [];
+    const highlights: Array<string | undefined> = [];
+    const runtime: CodeHighlightRuntime = {
+      prepare: async (languages, theme) => {
+        preparations.push({ languages: [...languages], theme });
+      },
+      highlight: async (code, language, theme) => {
+        highlights.push(language);
+        return plainCodeHighlight(code, theme);
+      },
+    };
+
+    await serializeBlocks([
+      { type: "codeBlock", language: "TS", code: "const x = 1;" },
+      {
+        type: "callout",
+        kind: "info",
+        content: [
+          { type: "codeBlock", language: "python", code: "x = 1" },
+          { type: "codeBlock", language: "typescript", code: "const y = 2;" },
+        ],
+      },
+    ], {
+      styleNames: noStyles,
+      codeTheme: "dracula",
+      codeHighlightRuntimeLoader: async () => {
+        loaderCalls += 1;
+        return runtime;
+      },
+    });
+
+    expect(loaderCalls).toBe(1);
+    expect(preparations).toEqual([{
+      languages: ["typescript", "python"],
+      theme: "dracula",
+    }]);
+    expect(highlights).toEqual(["typescript", "python", "typescript"]);
+  });
+
+  it("keeps no-code, missing, unknown, and Mermaid-only input runtime-free", async () => {
+    let loaderCalls = 0;
+    const result = await serializeBlocks([
+      { type: "paragraph", content: [{ type: "text", text: "No code" }] },
+      { type: "codeBlock", code: "plain" },
+      { type: "codeBlock", language: "not-a-language", code: "plain" },
+      { type: "codeBlock", language: "mermaid", code: "graph TD; A-->B" },
+    ], {
+      styleNames: noStyles,
+      codeHighlightRuntimeLoader: async () => {
+        loaderCalls += 1;
+        throw new Error("runtime must stay gated");
+      },
+    });
+
+    expect(loaderCalls).toBe(0);
+    expect(result.xml).toContain("No code");
+    expect(result.xml).toContain("plain");
+    expect(result.xml).toContain("graph TD; A--&gt;B");
+  });
+
+  it("has no static package-root edge from DOCX export or serialization", async () => {
+    const [exportSource, serializeSource] = await Promise.all([
+      Bun.file(new URL("./export.ts", import.meta.url)).text(),
+      Bun.file(new URL("./serialize.ts", import.meta.url)).text(),
+    ]);
+
+    for (const source of [exportSource, serializeSource]) {
+      expect(source).not.toContain('from "@atlcli/code-highlight";');
+    }
+  });
+
+  it("reports tokenization counts without changing serialized source", async () => {
+    const result = await serializeBlocks([
+      { type: "codeBlock", language: "ts", code: "const x = 1;\n\n" },
+      { type: "codeBlock", language: "definitely-unknown", code: "plain" },
+    ], { styleNames: noStyles });
+
+    expect(result.highlightTimings.codeBlocks).toBe(2);
+    expect([...result.highlightTimings.languages]).toEqual(["typescript"]);
+    expect(result.highlightTimings.tokenizeMs).toBeGreaterThanOrEqual(0);
+    expect(result.xml).toContain(">const</w:t>");
+    expect(result.xml).toContain(">x</w:t>");
+    expect(result.xml).toContain("plain");
+  });
+});
 
 /** A diagram seam over an inline embed function (test double for the wiring). */
 function diagramSeamOver(
@@ -21,16 +288,79 @@ function diagramSeamOver(
   return { embed };
 }
 
+describe("ADF inline comments", () => {
+  it("emits native Word ranges and a deduplicated comments part model", async () => {
+    const annotation = {
+      id: "opaque-marker-not-rendered",
+      annotationType: "inlineComment" as const,
+      comment: {
+        bodyText: "Review <this> value",
+        status: "resolved" as const,
+        created: "2026-01-01T00:00:00.000Z",
+        replies: [{ bodyText: "Updated & verified" }],
+      },
+    };
+    const { xml, comments } = await serializeBlocks([{
+      type: "paragraph",
+      content: [
+        { type: "text", text: "first", annotations: [annotation] },
+        { type: "text", text: " second", annotations: [annotation] },
+      ],
+    }], { styleNames: noStyles });
+
+    expect(xml.match(/<w:commentRangeStart w:id="0"\/>/g)).toHaveLength(1);
+    expect(xml.match(/<w:commentReference w:id="0"\/>/g)).toHaveLength(1);
+    const commentsXml = comments.toXml();
+    expect(commentsXml.match(/<w:comment w:id="0"/g)).toHaveLength(1);
+    expect(commentsXml).toContain("[Resolved] Review &lt;this&gt; value");
+    expect(commentsXml).toContain("Reply: Updated &amp; verified");
+    expect(commentsXml).not.toContain("opaque-marker-not-rendered");
+  });
+});
+
 describe("serializeInline", () => {
-  it("emits marks and colors as run properties", () => {
+  it("emits marks, foreground colors, and arbitrary background colors as run properties", () => {
     const xml = serializeInline([
       { type: "text", text: "bold", marks: ["bold"] },
       { type: "text", text: "red", color: "#ff0000" },
+      { type: "text", text: "highlighted", backgroundColor: "#BAF3DB" },
       { type: "lineBreak" },
     ]);
     expect(xml).toContain("<w:b/>");
     expect(xml).toContain('<w:color w:val="FF0000"/>');
+    expect(xml).toContain(
+      '<w:shd w:val="clear" w:color="auto" w:fill="BAF3DB"/>'
+    );
     expect(xml).toContain("<w:br/>");
+  });
+
+  it("renders inline code as an exact monospace token with default shading", () => {
+    const xml = serializeInline([
+      { type: "text", text: "before " },
+      { type: "text", text: "CONFIG_TOKEN_A", marks: ["code"] },
+      { type: "text", text: " after" },
+    ]);
+    expect(xml).toContain(
+      '<w:rFonts w:ascii="JetBrains Mono" w:hAnsi="JetBrains Mono" w:cs="JetBrains Mono"/>'
+    );
+    expect(xml).toContain(
+      '<w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>'
+    );
+    expect(xml).toContain(">CONFIG_TOKEN_A</w:t>");
+    expect(xml).not.toContain("CONFIG TOKEN A");
+  });
+
+  it("lets an explicit source highlight override the inline-code default", () => {
+    const xml = serializeInline([
+      {
+        type: "text",
+        text: "code",
+        marks: ["code"],
+        backgroundColor: "#BAF3DB",
+      },
+    ]);
+    expect(xml).toContain('w:fill="BAF3DB"');
+    expect(xml).not.toContain('w:fill="F4F5F7"');
   });
 
   it("renders an external link as a HYPERLINK field", () => {
@@ -41,9 +371,52 @@ describe("serializeInline", () => {
     expect(xml).toContain("https://x.com");
   });
 
-  it("renders a mention with @ and no literal accountId leak when named", () => {
-    const xml = serializeInline([{ type: "mention", accountId: "u1", displayName: "Jo" }]);
+  it("renders an inline Smart Card as a safe clickable chip", () => {
+    const xml = serializeInline([{
+      type: "smartCard",
+      card: {
+        appearance: "inline",
+        source: "data",
+        url: "https://example.invalid/card",
+        target: { kind: "external", href: "https://example.invalid/card" },
+        title: "Visible card",
+        data: { name: "Visible card", provider: { name: "Example" } },
+      },
+    }]);
+    expect(xml).toContain('HYPERLINK "https://example.invalid/card"');
+    expect(xml).toContain(">Visible card</w:t>");
+    expect(xml).toContain('w:fill="E9F2FF"');
+  });
+
+  it("renders resolved and unresolved mentions without leaking account IDs", () => {
+    const xml = serializeInline([
+      { type: "mention", accountId: "private-user-id", displayName: "Jo" },
+      { type: "mention", accountId: "private-unresolved-id" },
+      { type: "mention", accountId: "private-app-id", userType: "APP" },
+    ]);
     expect(xml).toContain("@Jo");
+    expect(xml).toContain("@Unknown user");
+    expect(xml).toContain("@Unknown app");
+    expect(xml).not.toContain("private-user-id");
+    expect(xml).not.toContain("private-unresolved-id");
+    expect(xml).not.toContain("private-app-id");
+  });
+
+  it("renders localized date and semantic status chips while hiding template placeholders", () => {
+    const xml = serializeInline([
+      { type: "date", timestamp: "1709510400000", localId: "date-1" },
+      { type: "status", text: "Ready", color: "purple" },
+      { type: "status", text: "Keep Case", color: "neutral", style: "mixedCase" },
+      { type: "placeholder", text: "editor-only", localId: "placeholder-1" },
+    ], undefined, undefined, "de-DE");
+
+    expect(xml).toContain("> 4. März 2024 </w:t>");
+    expect(xml).toContain('w:fill="DFE1E6"');
+    expect(xml).toContain("> READY </w:t>");
+    expect(xml).toContain('w:fill="EAE6FF"');
+    expect(xml).toContain("> Keep Case </w:t>");
+    expect(xml).not.toContain("editor-only");
+    expect(xml).not.toContain("1709510400000");
   });
 
   it("round-trips named HTML entities from storage into real UTF-8 <w:t> text", () => {
@@ -56,6 +429,59 @@ describe("serializeInline", () => {
     expect(xml).toContain("drei überlappende äpfel — café");
     // No surviving named-entity literals leak into the OOXML text run.
     expect(xml).not.toMatch(/&[a-zA-Z][a-zA-Z0-9]*;/);
+  });
+});
+
+describe("serializeBlocks — Smart Cards", () => {
+  it("renders block and embed cards as bordered clickable static projections", async () => {
+    const { xml } = await serializeBlocks([
+      {
+        type: "smartCard",
+        card: {
+          appearance: "block",
+          source: "url",
+          url: "https://example.invalid/block",
+          target: { kind: "external", href: "https://example.invalid/block" },
+        },
+      },
+      {
+        type: "smartCard",
+        card: {
+          appearance: "embed",
+          source: "url",
+          url: "https://example.invalid/embed",
+          target: { kind: "external", href: "https://example.invalid/embed" },
+          layout: "full-width",
+          width: 80,
+          originalHeight: 720,
+          originalWidth: 1280,
+        },
+      },
+    ], { styleNames: noStyles });
+
+    expect(xml).toContain('HYPERLINK "https://example.invalid/block"');
+    expect(xml).toContain('HYPERLINK "https://example.invalid/embed"');
+    expect(xml).toContain(">Embedded content: </w:t>");
+    expect(xml.match(/<w:pBdr>/gu)).toHaveLength(2);
+    expect(xml.match(/w:fill="F4F5F7"/gu)).toHaveLength(2);
+  });
+
+  it("keeps the Whiteboard card label and canonical target clickable", async () => {
+    const url = "https://tenant.invalid/wiki/spaces/TEST/whiteboard/41";
+    const { xml } = await serializeBlocks([{
+      type: "smartCard",
+      card: {
+        appearance: "block",
+        source: "url",
+        url,
+        target: { kind: "external", href: url },
+        title: "Atlassian Whiteboard",
+      },
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain(`HYPERLINK "${url}"`);
+    expect(xml).toContain(">Atlassian Whiteboard</w:t>");
+    expect(xml).toContain("<w:u");
   });
 });
 
@@ -81,6 +507,64 @@ describe("serializeBlocks — heading style mapping", () => {
     const { xml } = await serializeBlocks(heading, { styleNames: noStyles });
     // Promoted: lone H2 → builtin Heading1 (not Heading2).
     expect(xml).toContain('<w:pStyle w:val="Heading1"/>');
+  });
+});
+
+describe("serializeBlocks — ADF block presentation", () => {
+  it("renders logical alignment and bounded indentation on paragraphs and headings", async () => {
+    const { xml } = await serializeBlocks([
+      {
+        type: "paragraph",
+        presentation: { alignment: "center", indentation: 2, fontSize: "small" },
+        content: [
+          { type: "text", text: "Centered" },
+          { type: "text", text: "TOKEN", marks: ["code"] },
+          { type: "mention", accountId: "account-1", displayName: "Jo" },
+          { type: "status", text: "Ready", color: "green" },
+          {
+            type: "link",
+            target: { kind: "external", href: "https://example.invalid/docs" },
+            content: [{ type: "text", text: "Docs" }],
+          },
+        ],
+      },
+      {
+        type: "heading",
+        level: 2,
+        presentation: { alignment: "end", indentation: 6 },
+        content: [{ type: "text", text: "Logical end" }],
+      },
+    ], { styleNames: noStyles });
+
+    expect(xml).toContain(
+      '<w:pPr><w:ind w:start="1440"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>',
+    );
+    expect(xml).toContain(
+      '<w:rFonts w:ascii="JetBrains Mono" w:hAnsi="JetBrains Mono" w:cs="JetBrains Mono"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
+    );
+    expect(xml).toContain(
+      '<w:color w:val="0747A6"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
+    );
+    expect(xml).toContain(
+      '<w:b/><w:sz w:val="18"/><w:szCs w:val="18"/><w:shd',
+    );
+    expect(xml).toContain(
+      '<w:u w:val="single"/><w:color w:val="0563C1"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
+    );
+    expect(xml).toContain(
+      '<w:pStyle w:val="Heading1"/><w:ind w:start="4320"/><w:jc w:val="end"/><w:outlineLvl w:val="0"/>',
+    );
+  });
+
+  it("bounds explicit run sizes and never emits non-finite OOXML values", () => {
+    expect(serializeInline([{ type: "text", text: "small" }], undefined, 18.4)).toContain(
+      '<w:sz w:val="18"/><w:szCs w:val="18"/>',
+    );
+    expect(serializeInline([{ type: "text", text: "bounded" }], undefined, 99_999)).toContain(
+      '<w:sz w:val="3276"/><w:szCs w:val="3276"/>',
+    );
+    expect(serializeInline([{ type: "text", text: "finite" }], undefined, Number.NaN))
+      .not.toContain("<w:sz");
   });
 });
 
@@ -250,15 +734,250 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain("danger");
   });
 
+  it("renders success and error callouts with distinct semantic palettes", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "callout",
+        kind: "success",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Passed" }] }],
+      },
+      {
+        type: "callout",
+        kind: "error",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Failed" }] }],
+      },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain('w:fill="E3FCEF"');
+    expect(xml).toContain('w:color="36B37E"');
+    expect(xml).toContain('w:fill="FFEBE6"');
+    expect(xml).toContain('w:color="DE350B"');
+    expect(xml).toContain("Passed");
+    expect(xml).toContain("Failed");
+  });
+
+  it("routes all six defaults through the labelled icon seam and preserves explicit/suppressed precedence", async () => {
+    const embeddedKinds: string[] = [];
+    const standardKinds = ["info", "note", "warning", "tip", "success", "error"] as const;
+    const blocks: ExportBlock[] = [
+      ...standardKinds.map((kind) => ({
+        type: "callout" as const,
+        kind,
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: `${kind} body` }],
+        }],
+      })),
+      {
+        type: "callout",
+        kind: "warning",
+        panelIcon: ":warning:",
+        panelIconText: "🧭",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "explicit body" }] }],
+      },
+      {
+        type: "callout",
+        kind: "warning",
+        suppressDefaultIcon: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "suppressed body" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "panel body" }] }],
+      },
+    ];
+
+    const { xml } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      calloutIcons: {
+        embed(icon) {
+          embeddedKinds.push(icon.kind);
+          return `<w:r><w:drawing data-callout-kind="${icon.kind}"/></w:r>`;
+        },
+      },
+    });
+
+    expect(embeddedKinds).toEqual([...standardKinds]);
+    expect(xml.match(/data-callout-kind=/g)).toHaveLength(6);
+    expect(xml).toContain(
+      '<w:drawing data-callout-kind="info"/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r><w:r><w:t xml:space="preserve">info body</w:t>',
+    );
+    expect(xml).toContain("🧭");
+    expect(xml).not.toContain(":warning:");
+    expect(xml).toContain("suppressed body");
+    expect(xml).toContain("panel body");
+  });
+
+  it("renders portable custom-panel color and icon text while retaining target-safe contrast", async () => {
+    const { xml } = await serializeBlocks([{
+      type: "callout",
+      kind: "panel",
+      localId: "panel-local",
+      panelColor: "#123456",
+      panelIcon: ":star:",
+      panelIconId: "icon-id",
+      panelIconText: "★",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS["yellow-star"],
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Custom body" }] }],
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain('w:fill="DBE1E6"');
+    expect(xml).toContain('w:color="123456"');
+    expect(xml).toContain("★");
+    expect(xml).not.toContain("Y★");
+    expect(xml).not.toContain(":star:");
+    expect(xml).toContain("Custom body");
+  });
+
+  it("uses adapter-projected panel icons without resolving raw colon text", async () => {
+    const { xml } = await serializeBlocks([
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        panelIconText: "",
+        panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Projected" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Raw" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: "🦜",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Unicode" }] }],
+      },
+    ], { styleNames: noStyles });
+
+    expect(xml).toContain("⚠");
+    expect(xml).toContain(":warning:");
+    expect(xml).toContain("🦜");
+  });
+
+  it("renders expand and nested-expand bodies open with a visible disclosure title", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "expand",
+      nested: false,
+      title: "Outer details",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Outer body" }] },
+        {
+          type: "expand",
+          nested: true,
+          title: "",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Nested body" }],
+          }],
+        },
+      ],
+    }];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+
+    expect(xml.match(/<w:tbl>/g)).toHaveLength(2);
+    expect(xml).toContain("[-] Outer details");
+    expect(xml).toContain("[-] ");
+    expect(xml).toContain("Outer body");
+    expect(xml).toContain("Nested body");
+    expect(xml.indexOf("Outer body")).toBeLessThan(xml.indexOf("Nested body"));
+  });
+
   it("colors code via Shiki (multiple colored runs)", async () => {
     const blocks: ExportBlock[] = [
       { type: "codeBlock", language: "ts", code: 'const x: number = 1;\nconsole.log(x);' },
     ];
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
     expect(xml).toContain('<w:pStyle w:val="AtlcliCode"/>');
-    expect(xml).toContain("Consolas");
+    expect(xml).toContain("JetBrains Mono");
+    // github-light remains byte-compatible: its white background is the page
+    // background, so only non-default themes need an explicit paragraph fill.
+    expect(xml).not.toContain("<w:shd");
     // At least one syntax color was applied.
     expect(/<w:color w:val="[0-9A-F]{6}"\/>/.test(xml)).toBe(true);
+  });
+
+  it("applies the selected dark theme background to every code paragraph", async () => {
+    const { xml } = await serializeBlocks(
+      [{ type: "codeBlock", language: "ts", code: "const x = 1;\n" }],
+      { styleNames: noStyles, codeTheme: "github-dark" },
+    );
+    expect(xml.match(/<w:shd w:val="clear" w:color="auto" w:fill="24292E"\/>/g)).toHaveLength(2);
+    expect(xml).toContain('<w:color w:val="E1E4E8"/>');
+  });
+
+  it("renders authored code line numbers and reports the bounded no-wrap policy", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "codeBlock",
+      code: "first\nsecond\n",
+      hideLineNumbers: false,
+      firstLineNumber: 7,
+      wrap: false,
+      localId: "code-local",
+      uniqueId: "code-unique",
+    }];
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+
+    expect(xml).toContain('<w:color w:val="6B778C"/>');
+    expect(xml).toContain('<w:t xml:space="preserve">7</w:t>');
+    expect(xml).toContain('<w:t xml:space="preserve">8</w:t>');
+    expect(xml).toContain('<w:t xml:space="preserve">9</w:t>');
+    expect(xml).toContain('<w:tab w:val="left" w:pos="480"/>');
+    expect(xml).toContain('<w:ind w:start="480" w:hanging="480"/>');
+    expect(xml).toContain("first");
+    expect(xml).toContain("second");
+    expect(notes.map((note) => note.code)).toContain("code-nowrap-page-bounded");
+  });
+
+  it("renders a legacy code title above the complete body and reports static expansion", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "codeBlock",
+      code: "deploy();",
+      title: "Deployment <safe>",
+      initiallyCollapsed: true,
+      hideLineNumbers: true,
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain("<w:keepNext/>");
+    expect(xml).toContain('<w:shd w:val="clear" w:color="auto" w:fill="DFE1E6"/>');
+    expect(xml).toContain("Deployment &lt;safe&gt;");
+    expect(xml).toContain("deploy();");
+    expect(xml.indexOf("Deployment &lt;safe&gt;")).toBeLessThan(xml.indexOf("deploy();"));
+    expect(notes).toContainEqual(expect.objectContaining({
+      level: "info",
+      code: "code-collapse-static",
+    }));
+  });
+
+  it("keeps the legacy code title when Mermaid renders as a diagram", async () => {
+    const diagrams = diagramSeamOver(async () => ({
+      ok: true,
+      xml: "<w:p><w:r><w:t>DIAGRAM</w:t></w:r></w:p>",
+    }));
+    const { xml } = await serializeBlocks([{
+      type: "codeBlock",
+      language: "mermaid",
+      code: "flowchart LR\nA --> B",
+      title: "System flow",
+    }], { styleNames: noStyles, diagrams });
+
+    expect(xml).toContain("System flow");
+    expect(xml).toContain("DIAGRAM");
+    expect(xml.indexOf("System flow")).toBeLessThan(xml.indexOf("DIAGRAM"));
+  });
+
+  it("keeps internal and Storage-default code blocks free of an invented gutter", async () => {
+    const { xml } = await serializeBlocks(
+      [{ type: "codeBlock", code: "plain", hideLineNumbers: true }],
+      { styleNames: noStyles },
+    );
+
+    expect(xml).toContain("plain");
+    expect(xml).not.toContain('<w:color w:val="6B778C"/>');
   });
 
   it("falls back to uncolored code for an unknown language", async () => {
@@ -306,6 +1025,151 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
     expect(xml).toContain('<w:vMerge w:val="restart"/>');
     expect(xml).toContain('<w:vMerge w:val="continue"/>');
+  });
+
+  it("renders ADF table width, alignment, fixed mode, numbered rows, and vertical cell alignment", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "table",
+      presentation: {
+        width: 480,
+        layout: "align-end",
+        displayMode: "fixed",
+        numberedColumn: true,
+      },
+      columnWidths: [200, 280],
+      rows: [
+        {
+          cells: [
+            {
+              header: true,
+              colspan: 1,
+              rowspan: 1,
+              verticalAlignment: "middle",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Name" }] }],
+            },
+            {
+              header: true,
+              colspan: 1,
+              rowspan: 1,
+              verticalAlignment: "bottom",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }],
+            },
+          ],
+        },
+        {
+          cells: [
+            {
+              header: false,
+              colspan: 1,
+              rowspan: 1,
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Ada" }] }],
+            },
+            {
+              header: false,
+              colspan: 1,
+              rowspan: 1,
+              content: [{ type: "paragraph", content: [{ type: "text", text: "42" }] }],
+            },
+          ],
+        },
+      ],
+    }];
+
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain('<w:tblW w:w="7200" w:type="dxa"/>');
+    expect(xml).toContain('<w:jc w:val="end"/>');
+    expect(xml).toContain('<w:tblLayout w:type="fixed"/>');
+    expect(xml).toContain('<w:gridCol w:w="655"/>');
+    expect(xml).toContain('<w:vAlign w:val="center"/>');
+    expect(xml).toContain('<w:vAlign w:val="bottom"/>');
+    expect(xml).toContain(">1</w:t>");
+    expect(xml).toContain(">2</w:t>");
+  });
+
+  it("renders page layouts as borderless fixed columns with authored proportions and vertical alignment", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "layout",
+      localId: "layout-1",
+      breakout: { mode: "wide", width: 960 },
+      columns: [
+        {
+          width: 30,
+          verticalAlignment: "middle",
+          localId: "left",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Sidebar" }] }],
+        },
+        {
+          width: 70,
+          verticalAlignment: "bottom",
+          localId: "right",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Main" }] }],
+        },
+      ],
+    }];
+
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain('<w:tblW w:w="9000" w:type="dxa"/>');
+    expect(xml).toContain('<w:gridCol w:w="2700"/>');
+    expect(xml).toContain('<w:gridCol w:w="6300"/>');
+    expect(xml).toContain('<w:tblLayout w:type="fixed"/>');
+    expect(xml).toContain('<w:vAlign w:val="center"/>');
+    expect(xml).toContain('<w:vAlign w:val="bottom"/>');
+    expect(xml).toContain("Sidebar");
+    expect(xml).toContain("Main");
+    expect(xml).not.toContain('<w:tblStyle w:val="TableGrid"/>');
+    expect(xml).not.toContain("<w:tblBorders>");
+    expect(notes).toEqual([]);
+  });
+
+  it("keeps a layout table after a nested expand interoperable with LibreOffice", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "expand",
+        nested: false,
+        content: [{
+          type: "expand",
+          nested: true,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Nested" }] }],
+        }],
+      },
+      {
+        type: "layout",
+        columns: [
+          {
+            width: 50,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Left" }] }],
+          },
+          {
+            width: 50,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Right" }] }],
+          },
+        ],
+      },
+    ];
+
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain("</w:tbl><w:p/></w:tc></w:tr></w:tbl><w:tbl>");
+    expect(xml).toContain('<w:gridCol w:w="4500"/><w:gridCol w:w="4500"/>');
+  });
+
+  it("keeps a schema-valid zero-width layout column visible with an exact table width", async () => {
+    const { xml } = await serializeBlocks([{
+      type: "layout",
+      columns: [
+        {
+          width: 100,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Main" }] }],
+        },
+        {
+          width: 0,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Minimum" }] }],
+        },
+      ],
+    }], { styleNames: noStyles });
+    expect(xml).toContain('<w:tblW w:w="9000" w:type="dxa"/>');
+    expect(xml).toContain('<w:gridCol w:w="8999"/>');
+    expect(xml).toContain('<w:gridCol w:w="1"/>');
+    expect(xml).toContain("Minimum");
   });
 
   it("preserves source cell backgrounds, readable text, and shading across rowspans", async () => {
@@ -364,6 +1228,72 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(note!.message).toContain("diagram.png");
   });
 
+  it("embeds correlated inline media between adjacent text runs with link and fallback safety", async () => {
+    const embedded: string[] = [];
+    const blocks: ExportBlock[] = [{
+      type: "paragraph",
+      content: [
+        { type: "text", text: "before" },
+        {
+          type: "media",
+          media: { mediaType: "image", id: "inline-1", filename: "inline.png" },
+          source: { kind: "attachment", filename: "inline.png" },
+          alt: "Inline architecture",
+          width: 40,
+          height: 20,
+          border: { color: "#0052CC", size: 2 },
+          link: { target: { kind: "external", href: "https://example.invalid/inline" } },
+        },
+        { type: "text", text: "after" },
+      ],
+    }];
+    const { xml, notes } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: {
+        embed: async () => ({ ok: false, reason: "not used" }),
+        embedInline: async (node) => {
+          embedded.push(
+            node.source.kind === "attachment" ? node.source.filename : node.source.url,
+          );
+          return { ok: true, xml: '<w:r><w:drawing data-inline="true"/></w:r>' };
+        },
+      },
+    });
+
+    expect(embedded).toEqual(["inline.png"]);
+    expect(xml.indexOf("before")).toBeLessThan(xml.indexOf('data-inline="true"'));
+    expect(xml.indexOf('data-inline="true"')).toBeLessThan(xml.indexOf("after"));
+    expect(xml).toContain('HYPERLINK "https://example.invalid/inline"');
+    expect(xml).not.toContain("[Inline architecture]");
+    expect(notes).toEqual([]);
+  });
+
+  it("keeps the typed inline-media chip and reports a failed correlated embed", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "paragraph",
+      content: [{
+        type: "media",
+        media: { mediaType: "image", id: "inline-1", filename: "inline.png" },
+        source: { kind: "attachment", filename: "inline.png" },
+        alt: "Inline architecture",
+      }],
+    }];
+    const { xml, notes } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: {
+        embed: async () => ({ ok: false, reason: "not used" }),
+        embedInline: async () => ({ ok: false, reason: "offline" }),
+      },
+    });
+
+    expect(xml).toContain("[Inline architecture]");
+    expect(xml).not.toContain("<w:drawing");
+    expect(notes).toContainEqual(expect.objectContaining({
+      code: "image-embed-failed",
+      message: expect.stringContaining("offline"),
+    }));
+  });
+
   it("emits every cell of a ragged rowspan table (never drops a carried column)", async () => {
     // Regression (#1): <td rowspan=2>A</td><td>B</td> / <td>C</td><td>D</td>.
     // The grid width must account for the carried rowspan or D is dropped.
@@ -403,6 +1333,37 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain("\\\\l");
     // The raw, un-neutralized switch must not appear.
     expect(xml).not.toContain('" \\l "');
+  });
+
+  it("keeps ADF page and attachment href fallbacks clickable with a safe title tooltip", () => {
+    const xml = serializeInline([
+      {
+        type: "link",
+        target: {
+          kind: "page",
+          contentTitle: "Remote page",
+          contentId: "123",
+          href: "https://example.invalid/wiki/pages/123/Remote",
+        },
+        adfAttributes: { title: 'Open "Remote"' },
+        content: [{ type: "text", text: "page" }],
+      },
+      {
+        type: "link",
+        target: {
+          kind: "attachment",
+          filename: "guide.pdf",
+          href: "https://example.invalid/wiki/download/attachments/123/guide.pdf",
+        },
+        content: [{ type: "text", text: "file" }],
+      },
+    ]);
+
+    expect(xml).toContain('HYPERLINK "https://example.invalid/wiki/pages/123/Remote"');
+    expect(xml).toContain(' \\o "Open \\"Remote\\"" ');
+    expect(xml).toContain(
+      'HYPERLINK "https://example.invalid/wiki/download/attachments/123/guide.pdf"',
+    );
   });
 
   it("indents a blockquote paragraph that already has a pPr — e.g. a heading (#5)", async () => {
@@ -547,13 +1508,14 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
     expect(xml).toContain("top");
     expect(xml).toContain("nested");
-    // Native numbering: the outer bullet is ilvl 0, the nested <ol> is ilvl 1
-    // and gets its OWN (decimal) numId, distinct from the bullet's.
+    // Every list node owns one self-contained level-0 definition. Nesting is
+    // encoded in that definition's indent, so renderers do not have to resolve
+    // a sparse multilevel definition inherited from an unrelated parent list.
     const numIds = [...xml.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => m[1]);
     expect(numIds).toHaveLength(2);
     expect(new Set(numIds).size).toBe(2);
-    expect(xml).toContain('<w:ilvl w:val="0"/>');
-    expect(xml).toContain('<w:ilvl w:val="1"/>');
+    expect(xml.match(/<w:ilvl w:val="0"\/>/g)).toHaveLength(2);
+    expect(xml).not.toContain('<w:ilvl w:val="1"/>');
     expect(xml).not.toContain("•");
   });
 });
@@ -627,6 +1589,107 @@ describe("serializeBlocks — new ExportBlock variants (spec 002 real renderings
     // into the orientation region.
     expect(imagePrefetched).toEqual(["nested.png"]);
     expect(diagramPrefetched).toEqual(["graph TD\n A-->B"]);
+  });
+
+  it("prefetches assets nested inside page-layout columns", async () => {
+    const imagePrefetched: string[] = [];
+    const diagramPrefetched: string[] = [];
+    const blocks: ExportBlock[] = [{
+      type: "layout",
+      columns: [{
+        width: 100,
+        content: [
+          { type: "image", source: { kind: "attachment", filename: "column.png" }, alt: "n" },
+          { type: "codeBlock", language: "mermaid", code: "graph TD\n L-->R" },
+        ],
+      }],
+    }];
+    await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: {
+        embed: async () => ({ ok: false, reason: "unused" }),
+        prefetch: (block) =>
+          imagePrefetched.push(block.source.kind === "attachment" ? block.source.filename : block.source.url),
+      },
+      diagrams: {
+        embed: async () => ({ ok: false, route: "failed", reason: "unused" }),
+        prefetch: (block) => diagramPrefetched.push(block.code),
+      },
+    });
+    expect(imagePrefetched).toEqual(["column.png"]);
+    expect(diagramPrefetched).toEqual(["graph TD\n L-->R"]);
+  });
+
+  it("prefetches real assets through expands but never treats unresolved media as fetchable", async () => {
+    const imagePrefetched: string[] = [];
+    const blocks: ExportBlock[] = [{
+      type: "expand",
+      nested: false,
+      content: [
+        {
+          type: "image",
+          source: { kind: "attachment", filename: "expand.png" },
+          alt: "Embedded",
+        },
+        {
+          type: "mediaFallback",
+          label: "unresolved-media",
+          media: { mediaType: "file", id: "media-1" },
+          caption: {
+            kind: "figure",
+            content: [{ type: "text", text: "Unavailable" }],
+          },
+        },
+      ],
+    }];
+
+    await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: {
+        embed: async () => ({ ok: false, reason: "unused" }),
+        prefetch: (block) =>
+          imagePrefetched.push(
+            block.source.kind === "attachment" ? block.source.filename : block.source.url,
+          ),
+      },
+    });
+
+    expect(imagePrefetched).toEqual(["expand.png"]);
+  });
+
+  it("renders ADF media links around embedded drawings and visible fallbacks", async () => {
+    const link = {
+      target: { kind: "external" as const, href: "https://example.invalid/media" },
+      adfAttributes: { title: "Open media" },
+    };
+    const { xml } = await serializeBlocks([
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "linked.png" },
+        alt: "Linked image",
+        link,
+      },
+      {
+        type: "mediaFallback",
+        label: "unresolved",
+        media: { mediaType: "file", id: "media-1" },
+        link,
+      },
+    ], {
+      styleNames: noStyles,
+      images: {
+        prefetch: () => {},
+        embed: async () => ({
+          ok: true,
+          xml: "<w:p><w:r><w:drawing/></w:r></w:p>",
+        }),
+      },
+    });
+
+    expect(xml.match(/HYPERLINK "https:\/\/example\.invalid\/media"/gu)).toHaveLength(2);
+    expect(xml).toContain("<w:drawing/>");
+    expect(xml).toContain("[Media unavailable: unresolved]");
+    expect(xml).toContain(' \\o "Open media" ');
   });
 });
 
@@ -854,11 +1917,45 @@ describe("serializeBlocks — C6 orientation region", () => {
   });
 });
 
+/**
+ * Every caption SEQ field's SEQUENCE NAME and CACHED RESULT, in document order.
+ *
+ * The cached result is the number between `fldChar separate` and `fldChar end` —
+ * what Word shows before anyone presses F9, and the only number a consumer that
+ * reads `<w:t>` without evaluating fields (pandoc, python-docx, a search
+ * indexer) ever sees. Asserting on `toContain("SEQ Figure")` (what the caption
+ * tests did before) proves the field exists and says nothing about the number in
+ * it, which is how three tables came to read "Tabelle 1" three times.
+ */
+function seqCachedResults(xml: string): [sequence: string, cached: string][] {
+  // The gap-crossing guards matter: without them a field whose cached result is
+  // formatted differently lets the scan run on into the NEXT field's number and
+  // report a pairing that is not in the file.
+  const gap = String.raw`(?:(?!fldCharType="end")[\s\S])*?`;
+  const re = new RegExp(
+    String.raw`SEQ (\w+) \\\* ARABIC${gap}fldCharType="separate"${gap}<w:t[^>]*>(\d+)</w:t>`,
+    "g"
+  );
+  return [...xml.matchAll(re)].map((m) => [m[1], m[2]]);
+}
+
 describe("serializeBlocks — C3 captions", () => {
   const captionedImage = (): ExportBlock => ({
     type: "image",
     source: { kind: "attachment", filename: "arch.png" },
     caption: { kind: "figure", content: [{ type: "text", text: "Architecture" }] },
+  });
+
+  const captionedTable = (title: string): ExportBlock => ({
+    type: "table",
+    rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [] }] }],
+    caption: { kind: "table", content: [{ type: "text", text: title }] },
+  });
+
+  const captionedCode = (kind: "code" | "equation"): ExportBlock => ({
+    type: "codeBlock",
+    code: "x = 1",
+    caption: { kind, content: [{ type: "text", text: kind }] },
   });
 
   it("emits a Caption-styled SEQ paragraph for a table (English, above the table)", async () => {
@@ -906,6 +2003,29 @@ describe("serializeBlocks — C3 captions", () => {
     expect(xml).toContain('<w:pStyle w:val="MyCaption"/>');
   });
 
+  it("aligns an image caption with its ADF mediaSingle layout", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        ...captionedImage(),
+        mediaPresentation: { layout: "center" },
+      } as ExportBlock,
+      {
+        ...captionedImage(),
+        mediaPresentation: { layout: "align-end" },
+      } as ExportBlock,
+    ];
+    const { xml } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+    });
+    const captionParagraphs = [
+      ...xml.matchAll(/<w:p><w:pPr><w:pStyle w:val="Caption"\/>([\s\S]*?)<\/w:p>/g),
+    ];
+    expect(captionParagraphs).toHaveLength(2);
+    expect(captionParagraphs[0]?.[1]).toContain('<w:jc w:val="center"/>');
+    expect(captionParagraphs[1]?.[1]).toContain('<w:jc w:val="right"/>');
+  });
+
   it("a captioned image with a failed embed still emits a numbered caption + placeholder", async () => {
     const { xml, notes } = await serializeBlocks([captionedImage()], {
       styleNames: noStyles,
@@ -923,6 +2043,464 @@ describe("serializeBlocks — C3 captions", () => {
     expect(xml).toContain("[Image unavailable: arch.png]");
     expect(xml).toContain("SEQ Figure");
     expect(notes.map((n) => n.code)).toContain("image-skipped");
+  });
+
+  it("keeps an unresolved ADF media caption attached to its visible placeholder", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "mediaFallback",
+      label: "media-1",
+      media: { mediaType: "file", id: "media-1" },
+      alt: "Architecture",
+      caption: {
+        kind: "figure",
+        localId: "",
+        content: [{ type: "text", text: "System overview" }],
+      },
+    }], { styleNames: noStyles, captionLang: "en" });
+
+    expect(xml).toContain("[Media unavailable: Architecture]");
+    expect(xml).toContain("System overview");
+    expect(seqCachedResults(xml)).toEqual([["Figure", "1"]]);
+    expect(notes).toEqual([]);
+  });
+
+  it("renders ADF media geometry, borders, groups, inline chips, and typed files", async () => {
+    const { xml, notes } = await serializeBlocks([
+      {
+        type: "paragraph",
+        content: [{
+          type: "media",
+          media: {
+            mediaType: "image",
+            id: "inline-1",
+            filename: "inline.png",
+          },
+          alt: "Inline architecture",
+          border: { color: "#0052CC", size: 1 },
+          link: { target: { kind: "external", href: "https://example.invalid/inline" } },
+        }],
+      },
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "architecture.png" },
+        mediaPresentation: {
+          layout: "wrap-right",
+          width: 40,
+          widthType: "percentage",
+        },
+        mediaGroup: { index: 0, size: 2 },
+        border: { color: "#091E4224", size: 2 },
+      },
+      {
+        type: "mediaFallback",
+        label: "runbook.pdf",
+        media: {
+          mediaType: "file",
+          filename: "runbook.pdf",
+          attachmentMediaType: "application/pdf",
+        },
+        mediaGroup: { index: 1, size: 2 },
+      },
+    ], {
+      styleNames: noStyles,
+      images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+    });
+
+    expect(xml).toContain("[Inline architecture]");
+    expect(xml).toContain('w:color="0052CC"');
+    expect(xml).toContain('HYPERLINK "https://example.invalid/inline"');
+    expect(xml).toContain('<w:jc w:val="right"/>');
+    expect(xml).toContain('w:color="091E42"');
+    expect(xml).toContain('w:fill="F7F8F9"');
+    expect(xml).toContain("[Attachment: runbook.pdf (application/pdf)]");
+    expect(notes).toEqual([]);
+  });
+
+  it("keeps dataConsumer provenance non-visual and never publishes source ids", async () => {
+    const base: ExportBlock = {
+      type: "mediaFallback",
+      label: "runbook.pdf",
+      media: { mediaType: "file", filename: "runbook.pdf" },
+    };
+    const withProvenance: ExportBlock = {
+      ...base,
+      media: {
+        ...base.media,
+        dataConsumers: [
+          { sources: ["consumer-source-a", ""] },
+          { sources: ["consumer-source-b"] },
+        ],
+      },
+    };
+    const plain = await serializeBlocks([base], { styleNames: noStyles });
+    const retained = await serializeBlocks([withProvenance], { styleNames: noStyles });
+
+    expect(retained.xml).toBe(plain.xml);
+    expect(retained.xml).not.toContain("consumer-source");
+    expect(retained.notes).toEqual([]);
+  });
+
+  it("keeps fragment provenance non-visual and never invents document bookmarks", async () => {
+    const baseExtension: Extract<ExportBlock, { type: "unknown" }> = {
+      type: "unknown",
+      macroName: "fragmented-extension",
+      body: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Visible extension body" }],
+      }],
+    };
+    const baseTable: Extract<ExportBlock, { type: "table" }> = {
+      type: "table",
+      rows: [{
+        cells: [{
+          header: false,
+          colspan: 1,
+          rowspan: 1,
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Visible table cell" }],
+          }],
+        }],
+      }],
+    };
+    const plain = await serializeBlocks([baseExtension, baseTable], { styleNames: noStyles });
+    const retained = await serializeBlocks([
+      {
+        ...baseExtension,
+        fragments: [{ localId: "opaque-extension-fragment", name: "extension-fragment" }],
+      },
+      {
+        ...baseTable,
+        fragments: [{ localId: "opaque-table-fragment", name: "" }],
+      },
+    ], { styleNames: noStyles });
+
+    expect(retained.xml).toBe(plain.xml);
+    expect(retained.xml).toContain("Visible extension body");
+    expect(retained.xml).toContain("Visible table cell");
+    expect(retained.xml).not.toContain("opaque-");
+    expect(retained.xml).not.toContain("extension-fragment");
+    expect(retained.notes).toEqual(plain.notes);
+  });
+
+  it("renders typed unsupported ADF fallback without publishing opaque attributes", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "unknown",
+      macroName: "unsupportedBlock",
+      unsupportedAdf: {
+        nodeType: "unsupportedBlock",
+        sourceRepresentation: "atlas_doc_format",
+        attributes: [{ name: "originalValue", value: "opaque-source-value" }],
+      },
+      body: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Visible unsupported body",
+          unsupportedAdf: [{
+            nodeType: "unsupportedInline",
+            sourceRepresentation: "atlas_doc_format",
+            attributes: [{ name: "identity", value: "opaque-inline-value" }],
+          }],
+        }],
+      }],
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain("Unsupported ADF block: unsupportedBlock");
+    expect(xml).toContain("Visible unsupported body");
+    expect(xml).not.toContain("opaque-source-value");
+    expect(xml).not.toContain("opaque-inline-value");
+    expect(notes).toEqual([]);
+  });
+
+  it("renders a bounded ADF extension fallback with its rich body", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "unknown",
+      macroName: "forge-widget",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "forge-widget",
+        localId: "opaque-forge-local-id",
+      },
+      params: [{ name: "private-mode", text: "opaque-parameter-value" }],
+      body: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Visible extension body" }],
+      }],
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain("Extension: forge-widget");
+    expect(xml).toContain("Visible extension body");
+    expect(xml).not.toContain("opaque-forge-local-id");
+    expect(xml).not.toContain("opaque-parameter-value");
+    expect(xml).not.toContain("macro not rendered");
+    expect(notes).toEqual([]);
+  });
+
+  it("renders ordered Stage-0 extension frames without publishing opaque provenance", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "unknown",
+      macroName: "multi-frame",
+      adfExtension: {
+        extensionType: "com.example.stage0",
+        extensionKey: "multi-frame",
+        localId: "opaque-multi-local",
+      },
+      extensionFrames: [
+        {
+          fragments: [{ localId: "opaque-fragment", name: "opaque-name" }],
+          dataConsumers: [{ sources: ["opaque-consumer"] }],
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Visible frame one" }],
+          }],
+        },
+        {
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Visible frame two" }],
+          }],
+        },
+      ],
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain("Extension: multi-frame");
+    expect(xml).toContain("Frame 1");
+    expect(xml).toContain("Visible frame one");
+    expect(xml).toContain("Frame 2");
+    expect(xml).toContain("Visible frame two");
+    expect(xml).not.toContain("opaque-multi-local");
+    expect(xml).not.toContain("opaque-fragment");
+    expect(xml).not.toContain("opaque-consumer");
+    expect(notes).toEqual([]);
+  });
+
+  it("renders synced-content projections without publishing opaque identity", async () => {
+    const snapshot: ExportBlock = {
+      type: "callout",
+      kind: "panel",
+      title: "Synced content snapshot",
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Embedded synced snapshot" }],
+      }],
+      syncedContent: {
+        resourceId: "opaque-snapshot-resource",
+        localId: "opaque-snapshot-local",
+        projection: "embedded-snapshot",
+        breakout: { mode: "wide", width: 720 },
+      },
+    };
+    const reference: ExportBlock = {
+      type: "callout",
+      kind: "panel",
+      title: "Synced content",
+      content: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Synced content is unavailable in this static export.",
+        }],
+      }],
+      syncedContent: {
+        resourceId: "opaque-reference-resource",
+        localId: "opaque-reference-local",
+        projection: "unresolved-reference",
+        breakout: { mode: "full-width" },
+      },
+    };
+    const withoutProvenance = [snapshot, reference].map((block) => {
+      const { syncedContent: _syncedContent, ...plain } = block;
+      return plain;
+    });
+    const plain = await serializeBlocks(withoutProvenance, { styleNames: noStyles });
+    const retained = await serializeBlocks([snapshot, reference], { styleNames: noStyles });
+
+    expect(retained.xml).toBe(plain.xml);
+    expect(retained.xml).toContain("Synced content snapshot");
+    expect(retained.xml).toContain("Embedded synced snapshot");
+    expect(retained.xml).toContain("Synced content is unavailable in this static export.");
+    expect(retained.xml).not.toContain("opaque-");
+    expect(retained.notes).toEqual([]);
+  });
+
+  it("keeps root code and expand breakout intent non-visual and page-bounded", async () => {
+    const baseCode: Extract<ExportBlock, { type: "codeBlock" }> = {
+      type: "codeBlock",
+      code: "const wide = true;",
+      hideLineNumbers: false,
+    };
+    const baseExpand: Extract<ExportBlock, { type: "expand" }> = {
+      type: "expand",
+      nested: false,
+      title: "Wide details",
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Expanded body" }],
+      }],
+    };
+    const base: ExportBlock[] = [baseCode, baseExpand];
+    const withBreakout: ExportBlock[] = [
+      { ...baseCode, breakout: { mode: "wide", width: 880 } },
+      { ...baseExpand, breakout: { mode: "full-width", width: 1024 } },
+    ];
+    const plain = await serializeBlocks(base, { styleNames: noStyles });
+    const retained = await serializeBlocks(withBreakout, { styleNames: noStyles });
+
+    expect(retained.xml).toBe(plain.xml);
+    expect(retained.xml).toContain("const wide = true;");
+    expect(retained.xml).toContain("Wide details");
+    expect(retained.xml).toContain("Expanded body");
+    expect(retained.xml).not.toContain("1024");
+    expect(retained.notes).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Caption ordinals — the SEQ field's CACHED RESULT
+  //
+  // Every caption used to cache `1`, so a document with three tables read
+  // "Tabelle 1" three times until the reader pressed F9 — and every export with
+  // a single caption paid an "update fields?" prompt to fix numbers that were
+  // wrong only because we wrote them wrong.
+  // -------------------------------------------------------------------------
+
+  it("numbers repeated captions of one sequence 1, 2, 3 — not 1, 1, 1", async () => {
+    const { xml } = await serializeBlocks(
+      [captionedTable("First"), captionedTable("Second"), captionedTable("Third")],
+      { styleNames: noStyles, captionLang: "de" }
+    );
+    expect(seqCachedResults(xml)).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+      ["Table", "3"],
+    ]);
+    // The FIELD survives: cross-references, a table of figures and a manual F9
+    // all still work — only the cached result changed.
+    expect(xml).toContain(' SEQ Table \\* ARABIC ');
+    expect(xml).toContain('<w:fldChar w:fldCharType="begin"/>');
+  });
+
+  it("counts each sequence independently, in document order", async () => {
+    const { xml } = await serializeBlocks(
+      [captionedImage(), captionedTable("T1"), captionedImage(), captionedTable("T2")],
+      {
+        styleNames: noStyles,
+        images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+      }
+    );
+    expect(seqCachedResults(xml)).toEqual([
+      ["Figure", "1"],
+      ["Table", "1"],
+      ["Figure", "2"],
+      ["Table", "2"],
+    ]);
+  });
+
+  it("shares ONE counter between code and equation captions (Word's SEQ scoping)", async () => {
+    // Both kinds emit `SEQ Listing`, so Word counts them together — the labels
+    // differ, the sequence does not. Counting per CaptionKind would cache 1, 1, 2
+    // where Word computes 1, 2, 3.
+    const { xml } = await serializeBlocks(
+      [captionedCode("code"), captionedCode("equation"), captionedCode("code")],
+      { styleNames: noStyles }
+    );
+    expect(seqCachedResults(xml)).toEqual([
+      ["Listing", "1"],
+      ["Listing", "2"],
+      ["Listing", "3"],
+    ]);
+    expect(xml).toContain("Equation ");
+    expect(xml).toContain("Listing ");
+  });
+
+  it("restarts at 1 for the next document in the same process", async () => {
+    // A module-level counter would pass every test above and then number the
+    // SECOND export in a long-lived process from wherever the first stopped —
+    // exactly the shape of a tree export following a single-page one.
+    const blocks = [captionedTable("First"), captionedTable("Second")];
+    const first = await serializeBlocks(blocks, { styleNames: noStyles });
+    const second = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(seqCachedResults(first.xml)).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+    ]);
+    expect(seqCachedResults(second.xml)).toEqual(seqCachedResults(first.xml));
+  });
+
+  it("numbers a caption nested in a callout in document order with the rest", async () => {
+    // Containers get a DERIVED context (`{ ...ctx, container: … }`), so the
+    // counters have to be a shared mutable reference — a plain number field
+    // would be copied and the nested caption would restart at 1.
+    const { xml } = await serializeBlocks(
+      [
+        captionedTable("Outer"),
+        { type: "callout", kind: "info", content: [captionedTable("Inside a callout")] },
+        captionedTable("Last"),
+      ],
+      { styleNames: noStyles }
+    );
+    expect(seqCachedResults(xml)).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+      ["Table", "3"],
+    ]);
+  });
+
+  it("a figure that failed to embed still consumes its number", async () => {
+    // The degraded path emits the same caption paragraph, so the numbering the
+    // reader sees matches the numbering Word would compute on refresh.
+    let first = true;
+    const { xml } = await serializeBlocks([captionedImage(), captionedImage()], {
+      styleNames: noStyles,
+      images: {
+        embed: async () => {
+          const ok = !first;
+          first = false;
+          return ok ? { ok: true as const, xml: "<w:p>IMG</w:p>" } : { ok: false as const, reason: "404" };
+        },
+      },
+    });
+    expect(xml).toContain("[Image unavailable: arch.png]");
+    expect(seqCachedResults(xml)).toEqual([
+      ["Figure", "1"],
+      ["Figure", "2"],
+    ]);
+  });
+
+  it("continues numbering across the pages of a composed tree document", async () => {
+    // A tree/space export is ONE document made of many pages, so its captions
+    // are one sequence: page 2's first table is "Table 2", not a second "Table 1".
+    const pageNode = (id: string, title: string): ExportNode => ({
+      kind: "page",
+      pageId: id,
+      title,
+      depth: 0,
+      effectiveDepth: 0,
+      parentId: null,
+      position: null,
+      blocks: [captionedTable(`${title} table`)],
+      notes: [],
+      meta: { labels: [], spaceKey: "ENG" },
+    });
+    const composed = composeChapters([pageNode("1", "Alpha"), pageNode("2", "Beta")]);
+    const { xml } = await serializeBlocks(composed.blocks, { styleNames: noStyles });
+    expect(seqCachedResults(xml)).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+    ]);
+  });
+
+  it("localizes to German without changing the ordinals", async () => {
+    const { xml } = await serializeBlocks([captionedImage(), captionedImage()], {
+      styleNames: noStyles,
+      captionLang: "de",
+      images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+    });
+    expect(seqCachedResults(xml)).toEqual([
+      ["Figure", "1"],
+      ["Figure", "2"],
+    ]);
+    expect(xml).toContain("Abbildung ");
   });
 
   it("regression: scroll macros no longer reach the unknown-placeholder path in DOCX", async () => {
@@ -1023,6 +2601,7 @@ describe("resolveCaptionLang", () => {
 describe("columnWidthsDxa (spec 006 G3)", () => {
   it("scales ratios [100, 300] to gridCol 2250/6750 (PDF-parity numbers)", () => {
     expect(columnWidthsDxa([100, 300], 2)).toEqual([2250, 6750]);
+    expect(columnWidthsDxa([100, 300], 2, 7200)).toEqual([1800, 5400]);
   });
 
   it("even-splits (undefined) on a length mismatch", () => {
@@ -1181,5 +2760,12 @@ describe("dataTable — tblPr schema child order (spec 006 G3)", () => {
     expect(iStyle).toBeLessThan(iW);
     expect(iW).toBeLessThan(iLayout);
     expect(iLayout).toBeLessThan(iLook);
+  });
+
+  it("keeps every fallback grid track positive for a schema-valid sub-pixel authored width", () => {
+    const xml = dataTable(2, row, { widthDxa: 1 });
+    expect(xml).toContain('<w:tblW w:w="1" w:type="dxa"/>');
+    expect(xml.match(/<w:gridCol w:w="1"\/>/g)).toHaveLength(2);
+    expect(xml).not.toContain('<w:gridCol w:w="0"/>');
   });
 });

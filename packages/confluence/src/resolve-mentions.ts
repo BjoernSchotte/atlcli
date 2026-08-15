@@ -28,6 +28,7 @@ function collectUnresolvedMentionIds(blocks: ExportBlock[]): string[] {
           visitInline(block.content);
           break;
         case "callout":
+        case "expand":
         case "blockquote":
           visitBlocks(block.content);
           break;
@@ -37,6 +38,9 @@ function collectUnresolvedMentionIds(blocks: ExportBlock[]): string[] {
         case "list":
           for (const item of block.items) visitBlocks(item.content);
           break;
+        case "layout":
+          for (const column of block.columns) visitBlocks(column.content);
+          break;
         case "table":
           for (const row of block.rows) {
             for (const cell of row.cells) visitBlocks(cell.content);
@@ -45,6 +49,7 @@ function collectUnresolvedMentionIds(blocks: ExportBlock[]): string[] {
           break;
         case "codeBlock":
         case "image":
+        case "mediaFallback":
           if (block.caption) visitInline(block.caption.content);
           break;
         case "unknown":
@@ -89,6 +94,7 @@ function resolveBlockMentions(
       case "paragraph":
         return { ...block, content: resolveInlineMentions(block.content, displayNames) };
       case "callout":
+      case "expand":
       case "blockquote":
         return { ...block, content: resolveBlockMentions(block.content, displayNames) };
       case "orientation":
@@ -99,6 +105,14 @@ function resolveBlockMentions(
           items: block.items.map((item) => ({
             ...item,
             content: resolveBlockMentions(item.content, displayNames),
+          })),
+        };
+      case "layout":
+        return {
+          ...block,
+          columns: block.columns.map((column) => ({
+            ...column,
+            content: resolveBlockMentions(column.content, displayNames),
           })),
         };
       case "table":
@@ -115,6 +129,7 @@ function resolveBlockMentions(
         };
       case "codeBlock":
       case "image":
+      case "mediaFallback":
         return block.caption ? { ...block, caption: resolveCaption(block.caption) } : block;
       case "unknown":
         // spec 004: `unknown.body` is now rendered by the placeholder floor, so

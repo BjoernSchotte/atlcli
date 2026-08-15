@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 54" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Kiteweave icon</title>
+  <desc id="desc">A blue and green Kiteweave kite.</desc>
+  <path fill="#0C66E4" d="M24 3 6 24l18 20V3Z"/>
+  <path fill="#00875A" d="m24 3 18 21-18 20V3Z"/>
+  <path fill="none" stroke="#FFF" stroke-linecap="round" stroke-width="2" d="M6 24h36M24 44c5 3 1 6 5 8"/>
+</svg>

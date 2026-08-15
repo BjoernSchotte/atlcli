@@ -1,0 +1,17 @@
+---
+import Block from "./Block.astro";
+
+const {
+  blocks,
+  context = { locale: "en" },
+  overrides = {},
+} = Astro.props;
+
+if (!Array.isArray(blocks)) throw new TypeError("ExportDocument blocks must be an array");
+const direction = context?.direction === "rtl" ? "rtl" : "ltr";
+const locale = typeof context?.locale === "string" && context.locale.trim() ? context.locale : "en";
+---
+
+<section data-atlcli-export-document data-render-model="export-blocks-t0" lang={locale} dir={direction}>
+  {blocks.map((block) => <Block block={block} context={context} overrides={overrides} />)}
+</section>

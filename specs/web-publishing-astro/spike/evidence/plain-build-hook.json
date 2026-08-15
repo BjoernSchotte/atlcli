@@ -1,0 +1,85 @@
+{
+  "schema": "atlcli.astro-build-hook-manifest/1-t0",
+  "outputRoot": "<private>",
+  "pages": [
+    "",
+    "ar/publish/start/",
+    "de/publish/einstieg/",
+    "publish/",
+    "publish/charts/",
+    "publish/guide/",
+    "publish/reserved/"
+  ],
+  "routes": [
+    {
+      "type": "page"
+    },
+    {
+      "pathname": "/_image",
+      "type": "endpoint"
+    },
+    {
+      "type": "page"
+    },
+    {
+      "type": "page"
+    },
+    {
+      "pathname": "/publish/reserved",
+      "type": "page"
+    },
+    {
+      "type": "page"
+    },
+    {
+      "pathname": "/",
+      "type": "page"
+    },
+    {
+      "pathname": "/404",
+      "type": "page"
+    }
+  ],
+  "output": [
+    {
+      "path": "ar/publish/start/index.html",
+      "bytes": 3414,
+      "sha256": "884b5ea3208f064051eda76b120cea0d7f88cb70ab335f484789cc33309514b2"
+    },
+    {
+      "path": "de/publish/einstieg/index.html",
+      "bytes": 3417,
+      "sha256": "1fe980d63ac607f93d4f6f3f4559fadc41202d97b5b5c64081704c3cadff5e31"
+    },
+    {
+      "path": "index.html",
+      "bytes": 376,
+      "sha256": "f85c7b2c496fe8fdfda679df239deb821f496c926e86db3f8c277c9e7bb5376a"
+    },
+    {
+      "path": "publish-assets/coverage.svg",
+      "bytes": 646,
+      "sha256": "98393846938a2a8ff2826e5773eb9ecd3affee928e61169baca4b527cdbe3301"
+    },
+    {
+      "path": "publish/charts/index.html",
+      "bytes": 6270,
+      "sha256": "9f63535526999daaf60aa76ce3d233e5f4d7480a126f1e4d7b88761ee66d5527"
+    },
+    {
+      "path": "publish/guide/index.html",
+      "bytes": 5980,
+      "sha256": "0de2ad28fe92b6f2777d8abb5ef85c9cf088f536cfa5c2a278f8509db6a027e7"
+    },
+    {
+      "path": "publish/index.html",
+      "bytes": 3646,
+      "sha256": "e86baa8f79cde735b28d5d5a42fd2178a773392223e04e628811db6107e010b1"
+    },
+    {
+      "path": "publish/reserved/index.html",
+      "bytes": 86,
+      "sha256": "38c395277be2f4d53a38050f480b74ad7aaa5a2b600c1f1f94164e00587214a5"
+    }
+  ]
+}

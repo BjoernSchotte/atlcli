@@ -5,6 +5,11 @@
  * or a stale expectation before merge. Wired into the `browser-export-harness`
  * CI job alongside the Playwright run.
  */
+// This guard imports the pure MANIFEST only (no DOM/engine code), so it checks
+// id-set drift, not that every id has a run function. That runner-presence check
+// lives in `conformance-registry.ts`, whose `RUNNERS[meta.id]` lookup throws at
+// construction ("No run function registered for …") — exercised whenever the
+// registry is imported (the app + the Playwright loop both do so).
 import { CONFORMANCE_MANIFEST, EXPECTED_LANDED_CASE_IDS } from "../src/conformance-manifest.js";
 
 function fail(message: string): never {

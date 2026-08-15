@@ -15,13 +15,16 @@ inject.
 
 - [Architecture](#architecture)
 - [Host ports](#host-ports)
+- [Templates the engine can fill](#templates-the-engine-can-fill)
 - [Browser hosts](#browser-hosts)
 - [Lists and numbering](#lists-and-numbering)
 - [Tables](#tables)
+- [Code highlighting](#code-highlighting)
 - [Image embedding](#image-embedding)
 - [SVG attachments](#svg-attachments)
 - [Mermaid diagrams](#mermaid-diagrams)
 - [Running headers (STYLEREF)](#running-headers-styleref)
+- [The field-refresh flag](#the-field-refresh-flag)
 - [Plugging in a new surface](#plugging-in-a-new-surface)
 - [Performance model](#performance-model)
 - [Guarantees and gates](#guarantees-and-gates)
@@ -41,13 +44,86 @@ Entry points (package `exports` conditions, mirroring `@atlcli/core`):
 | Import | Resolves to | Use |
 |--------|-------------|-----|
 | `@atlcli/docx` | Node barrel | engine + Node filesystem adapters |
-| `@atlcli/docx/browser` | browser barrel | engine only (no `node:` imports, CI-gated) |
-| `@atlcli/docx/browser-runtime` | browser support | byte compatibility bootstrap plus memory/canvas adapters |
+| `@atlcli/docx/browser-entry` | ordered browser entry | canonical intent graph: runtime bootstrap, engine, preparation, template helpers, and memory/canvas adapters |
+| `@atlcli/docx/browser` | compatibility browser barrel | engine only (no `node:` imports, CI-gated) |
+| `@atlcli/docx/browser-runtime` | compatibility browser support | byte compatibility bootstrap plus memory/canvas adapters |
 | `@atlcli/docx/vite` | Vite defines | build-time replacements required by PizZip/docxtemplater |
 | `@atlcli/docx/scan` | scan module | lightweight template scan without pulling the full engine |
 
 DOCX and PDF deliberately remain separate engines. They share the structured Confluence
 `ExportBlock[]` input model, not a generic export runner, report, or output sink.
+
+## Code highlighting
+
+`ExportInput.codeTheme` selects a stable ID from `@atlcli/code-highlight`; omission
+resolves to `github-light`. The shared package lazily loads the chosen bundled
+Shiki theme and each encountered language grammar. DOCX writes both token
+foregrounds and the theme background into OOXML, and `ExportReport.codeTheme`
+records the effective ID. Unknown languages stay readable as plain code with a
+report note.
+
+The RegExp implementation is selected by the host entrypoint, not by runtime
+capability detection. Node/Bun imports install Oniguruma. Browser-conditioned
+imports and `@atlcli/docx/browser-entry` install only Shiki's JavaScript
+RegExp engine; no browser module imports `shiki/wasm` or the Oniguruma adapter.
+The concrete engine modules remain separate so Vite cannot discover and emit
+an unused WASM chunk. Once the first highlighter initializes, the engine is
+locked because its grammar and highlighter caches cannot safely be reused by a
+different implementation.
+
+After explicit DOCX intent, every host can start awaitable runtime preparation:
+
+```ts
+const { prepareDocxExportRuntime } =
+  await import("@atlcli/docx/browser-entry");
+
+const preparation = await prepareDocxExportRuntime(blocks, {
+  codeTheme: "github-light",
+  preloadCodeFont: true,
+  signal: dialogSignal,
+});
+```
+
+The preparation walks nested callouts, lists, layouts, tables, block quotes,
+expands, and orientation regions. It canonicalizes aliases, ignores unknown
+languages and Mermaid, and loads each known grammar once. The explicit
+`preloadCodeFont` option also loads, validates, and caches the pinned
+`JetBrainsMono-Regular.ttf` in parallel. Without that option, empty and no-code
+preparation reports zero font bytes/time. Rendering remains authoritative: it
+stages and embeds the font only after macro/include resolution proves completed
+OOXML uses the code face.
+
+Concurrent and repeated calls share the same cache promises. A failed load is
+retryable. Aborting `signal` cancels only that caller's wait, not shared
+initialization. `preparation` reports `totalMs`, `highlightingMs`, `codeFontMs`,
+and `codeFontBytes`; these local intent-to-ready timings are separate from
+`ExportReport.timings`. Start this from a DOCX modal, Word-template selection,
+or explicit export action. Do not run it on ordinary page attachment.
+
+Hosts must pin the resolved theme in durable requests before preparation.
+Historical prepared `/1` checkpoints without the additive field resume as
+`github-light`.
+
+`ExportReport.timings` exposes the work that previously appeared only in
+`bodyMs`:
+
+| Field | Meaning |
+|-------|---------|
+| `highlightEngineInitMs` | Newly performed Shiki core, theme, and RegExp-engine initialization |
+| `highlightGrammarLoadMs` | Wall time from the first requested grammar import through the newly loaded and deterministically compiled grammar batch; this overlaps cold engine initialization |
+| `highlightTokenizeMs` | Real source-code tokenization only |
+| `highlightCodeBlocks` | Non-Mermaid code blocks seen across the body and included pages |
+| `highlightLanguageCount` | Distinct known canonical languages across the export |
+
+`highlightEngineInitMs` and `highlightGrammarLoadMs` are independent wall-time
+diagnostics. Cold requests start both phases together, so do not add them.
+
+Preloaded engine/grammar time is zero during the later export; tokenization
+remains measured because every code block still produces tokens. The
+highlighter verifies that token text reconstructs the exact source and restores
+trailing empty lines if Shiki omits them. The exporter starts preload before
+the document-order walk, so grammar work and later tokenization may overlap;
+these fields describe work and are not an additive critical-path total.
 
 ## Host ports
 
@@ -77,13 +153,57 @@ interface ExportEnv {
 
 `AssetFetcher` drives image embedding (spec 005). It is optional: a host that omits it gets the
 pre-005 behavior — every image degrades to an `image-skipped` report note instead of embedding.
+That note is `info`-level and DOCX-only: it says *this export had no image pipeline*, which is a
+configuration fact, not a defect. It is **not** the same condition as `image-embed-failed` below,
+despite the similar name — see
+[Note codes are shared across formats](/confluence/export/#note-codes-are-shared-across-formats).
 
 `SvgRasterizer` drives mermaid diagram embedding (spec 005a) — it supplies the mandatory PNG
 fallback Word needs next to the vector SVG. Also optional: a host that omits it exports mermaid
 blocks as readable source code blocks with a `diagram-skipped` report note. Two implementations
-ship: the neutral browser canvas rasterizer (`@atlcli/docx/browser-runtime`) and a Node
+ship: the neutral browser canvas rasterizer (`@atlcli/docx/browser-entry`) and a Node
 rasterizer over the WebAssembly build of resvg (`resvgSvgRasterizer` in
 `packages/docx/src/node-adapters.ts`) that the CLI uses.
+
+## Templates the engine can fill
+
+The engine fills **`$scroll.*` placeholders only** (the Scroll Word Exporter vocabulary — see
+[Scroll Word Exporter compatibility](/confluence/export/#scroll-word-exporter-compatibility)).
+Everything else in a template
+is carried through byte-for-byte on purpose: docxtemplater runs with a Unicode Private-Use
+delimiter pair, so a template's own `{`, `}` and `{foo}` are never treated as tags.
+
+### Foreign (docxtpl/Jinja) placeholders
+
+That pass-through guarantee has a sharp edge for anyone migrating from the removed Python engine:
+a **docxtpl template** handed to the DOCX engine renders its `{{ … }}` / `{% … %}` placeholders as
+**visible literal text** in the finished document. Nothing fills them, and nothing fails.
+
+The template scan therefore inventories that syntax and the report names it:
+
+```
+warning  template-foreign-placeholders
+Template uses Jinja/docxtpl placeholders ({{ title }}, {{ author }}, {{ spaceName }});
+the ts engine fills $scroll.* placeholders and will leave these in the document as
+literal text. Rewrite them as $scroll.* placeholders, or start from the bundled default
+template; the Python/docxtpl exporter has been removed and is not available as a fallback.
+```
+
+- **`warning`, so `--strict` catches it** in CI. An `info` note would be reported and ignored,
+  which is how the original 62-page document with seven unfilled placeholders shipped.
+- **Not a refusal.** A hybrid template that deliberately keeps Jinja for a later docxtpl pass is a
+  real workflow; the export completes and the note says exactly what happened.
+- **Template-only, by construction.** The scan runs on the template archive before the serialized
+  page body is rendered in, so a *page* that documents Jinja syntax (`{{ title }}` in prose or a
+  code block) never triggers the note — and its braces reach the output untouched.
+
+### The bundled default template
+
+`--template` is **optional**. Omit it and the export uses the bundled default
+template from `@atlcli/export-node` (`bundledDefaultTemplate()`): a title heading, an export-date
+line, the `$scroll.content` body anchor and the Scroll heading styles — built programmatically
+from OOXML parts, byte-deterministic, with its zip timestamps pinned to a fixed epoch. A
+`template-default-used` **info** note records that it was used, so the output is never mysterious.
 
 ## Lists and numbering
 
@@ -159,7 +279,9 @@ inline `<w:drawing>` with unique element ids and alt text. Details that matter t
 - **Sizing:** page-set width/height (`ac:width`) wins over the intrinsic size; everything is
   capped to the content width (600 px at 96 dpi) preserving aspect ratio.
 - **Failure is never fatal:** a failed fetch/decode/oversized image produces an
-  `image-embed-failed` warning note and no OOXML — never a dangling relationship.
+  `image-embed-failed` warning note and no OOXML — never a dangling relationship. The PDF engine
+  reports the same condition under the same code, so a report consumer needs one key, not one
+  per format.
 - **`AssetRef` shape:** attachment refs carry a wiki-base-relative `url`
   (`/download/attachments/{pageId}/{filename}`) plus `pageId`/`filename`; external images carry
   their absolute URL. A session host (the extension) prefixes its Confluence root and rides the
@@ -245,6 +367,24 @@ for its ~1.5 MB elkjs layout chunk; the SVG → PNG rasterization is the host's 
 - **Licensing note:** beautiful-mermaid is MIT; its layout dependency `elkjs` is **EPL-2.0**
   (weak copyleft, satisfied by attribution); resvg is **MPL-2.0**; the bundled Inter and
   JetBrains Mono fonts are **SIL OFL 1.1** — see the repository `NOTICE` file.
+
+### Portable inline and block code
+
+Inline code and code blocks use the committed JetBrains Mono regular face. If a
+document contains either form, the TypeScript engine validates the font's
+OpenType embedding rights and pinned SHA-256 digest, then adds an obfuscated
+font part plus the standard Word font-table relationships. The recipient
+therefore does not need a system copy of JetBrains Mono. Documents without code
+omit those parts.
+
+The package entry point loads the face from `@atlcli/docx/fonts/` under
+Node/Bun; browser bundlers emit one same-origin local asset, and the compiled
+CLI passes its embedded copy into the same engine. The render path validates
+that exact loader on demand;
+`prepareDocxExportRuntime(blocks, { preloadCodeFont: true })` can warm the same
+single-flight work earlier. Inline code keeps its distinct background and exact
+text, while block code retains the separate full-width style and syntax
+coloring.
 
 ### Logo placeholders
 
@@ -333,12 +473,38 @@ minutes later.
 Templates commonly put the current chapter heading into the running header via a `STYLEREF`
 field (`STYLEREF "Scroll Heading 1" \* MERGEFORMAT`). The engine keeps this working:
 
+> **PDF equivalent.** The PDF engine offers the same capability as a declared template
+> design field, `design.features.header.mode: "chapter"` — see
+> [Running-head modes](pdf-template-contract.md#running-head-modes). Same result (each page
+> headed by the first H1 beginning on it, or by the chapter still running if none begins
+> there), different declaration point: DOCX inherits the field from the user's `.docx`,
+> PDF validates a manifest enum.
+
+
 - Field **instructions survive byte-exactly** — the preprocessor and docxtemplater never touch
   them (only a field's cached *result* runs are rewritten).
 - Headings carry the **exact `w:pStyle` id** whose style *name* the field references
   (`resolveHeadingStyleId` against the template's `word/styles.xml`).
 - `word/settings.xml` gets `<w:updateFields w:val="true"/>` so Word offers to refresh fields on
-  open.
+  open. `STYLEREF` is one of the field types that earns this — see
+  [The field-refresh flag](#the-field-refresh-flag).
+
+**Which heading a page gets.** By default Word searches the page from the **top down** and
+shows the **first** paragraph in the named style; if the style does not occur on the page, it
+searches back toward the start of the document, so the chapter still running stays in the
+header. The `\l` switch (`STYLEREF "Scroll Heading 1" \l`) reverses the on-page search to
+bottom-up and shows the **last** such heading instead — the pair is how Word builds
+dictionary-style headers. With one chapter per page (what `composeChapters` produces by
+default) both directions give the same heading.
+
+:::note[The scan records style names only]
+`collectStylerefFields` matches `STYLEREF "<style name>"` and captures the name; it does not
+parse switches, so `\l` — like `\* MERGEFORMAT` and the numbering switches — is ignored. That
+is intentional for a diagnostic whose only question is *does this export emit the style the
+field names*, and it means the notes below read the same for `\l` and non-`\l` fields. Nothing
+in the engine reorders, rewrites, or depends on a field's search direction: the instruction
+survives byte-exactly and Word alone resolves it.
+:::
 
 Two diagnostics flag a field that will not resolve as intended (they change nothing — the export
 still succeeds):
@@ -357,26 +523,74 @@ but not sufficient. Once per release, confirm in Word 365:
 1. Export a multi-page document whose template header carries the STYLEREF field.
 2. Open in Word 365. If the header shows a **stale** chapter, press **F9** (or reopen) to refresh
    fields — `updateFields` prompts this automatically on first open.
-3. Confirm each page's header shows the **last H1 that began on or before that page**.
+3. Confirm each page's header shows the **first H1 beginning on that page**, or — on a page
+   where no H1 begins — the chapter still running from an earlier page. (With one chapter per
+   page these coincide; they differ only where a page opens several chapters, and a `\l` field
+   would show the last one instead.)
 4. If it stays blank or stale after refresh, check the report for a `styleref-*` note — a
    warning means promotion left the referenced style unused (fix the template's field to name the
    effective heading style), an info means the style name is not in the template.
 
+## The field-refresh flag
+
+`<w:updateFields w:val="true"/>` in `word/settings.xml` makes Word offer to refresh the
+document's fields every time it is opened. The engine writes it **only when a refresh would
+change what the reader sees**, decided from the FINISHED archive — the template's own fields plus
+everything the export injected.
+
+**Where it looks.** Every WordprocessingML part in the package, not just `word/document.xml`: a
+TOC in a header, a `SEQ` in a footnote and a `STYLEREF` in a footer are ordinary authoring.
+Both encodings count — `<w:fldSimple w:instr="…">` and the `fldChar`/`instrText` run sequence —
+and an instruction Word split across several `<w:instrText>` runs (` TO` + `C \o "1-3"`) is
+reassembled inside its own field before the keyword is read. The keyword is taken positionally,
+from the front of each field's own instruction, so a `HYPERLINK` whose URL happens to contain
+`/seq/` or `index.html` is not mistaken for a `SEQ` or an `INDEX` field.
+
+**What counts.** See the table in
+[DOCX Export → Field update behavior](../confluence/export.md#field-update-behavior). The rule
+behind it: does setting the flag change what the reader sees, *compared to not setting it*.
+`TOC`/`SEQ`/`REF`/`PAGEREF`/`STYLEREF` qualify; `HYPERLINK` does not (its display text is
+static), and neither does `PAGE`/`NUMPAGES` (Word recomputes those during pagination regardless).
+The full reasoning, type by type including the deliberate exclusions, lives on
+`REFRESH_SENSITIVE_FIELDS` in `packages/docx/src/scan.ts`.
+
+**Host control** — `ExportInput.updateFields`:
+
+| Value | Behavior |
+|-------|----------|
+| `"auto"` (default) | Set the flag when a refresh-sensitive field is present. A template's own `<w:updateFields>` is left untouched when nothing needs a refresh — the author may know about a field type the engine does not classify. |
+| `"never"` | Never set it, and pin a template's own setting to `false`, so "Word will not prompt" actually holds. Emits a `field-refresh-suppressed` note if the document did contain such fields. The CLI's `--no-field-update-prompt`. |
+| `"always"` | Unconditional, the pre-policy behavior. |
+
+`DDE`/`DDEAUTO` deliberately do **not** appear on the refresh-sensitive list, and that is not a
+loophole: a template carrying either is refused outright at import (`assertNoActiveContent`),
+independently of this flag. A `DDE` field fires on any field refresh — the reader pressing F9,
+printing — not only the one this flag requests.
+
 ## Browser hosts
 
-Browser consumers install the DOCX-specific compatibility layer before importing the engine:
+Browser consumers load one ordered graph after explicit DOCX intent:
 
 ```ts
-import "@atlcli/docx/browser-runtime";
-
-const { runExport } = await import("@atlcli/docx/browser");
+const {
+  canvasSvgRasterizer,
+  memoryTemplateSource,
+  prepareDocxExportRuntime,
+  runExport,
+  scanTemplate,
+} = await import("@atlcli/docx/browser-entry");
 ```
 
-`installDocxBrowserRuntime()` installs namespaced `Uint8Array` helpers; it does not create a
-fake global `Buffer`. `memoryTemplateSource()` and `canvasSvgRasterizer()` provide neutral DOM
-adapters. Storage, authenticated asset fetching, download/save behavior, and UI remain owned by
-the consuming host. Vite hosts also spread `docxViteDefines` from `@atlcli/docx/vite` into their
-`define` configuration.
+The entry evaluates `installDocxBrowserRuntime()` before the
+PizZip/docxtemplater engine graph. It installs namespaced `Uint8Array` helpers
+and does not create a fake global `Buffer`. `memoryTemplateSource()` and
+`canvasSvgRasterizer()` provide neutral DOM adapters. Storage, authenticated
+asset fetching, download/save behavior, and UI remain owned by the consuming
+host. Vite hosts also spread `DOCX_BROWSER_VITE_DEFINES` from
+`@atlcli/docx/vite` into their `define` configuration.
+
+The compatibility `./browser` and `./browser-runtime` subpaths remain
+available, but new hosts must not recreate the old sequential import chain.
 
 `apps/browser-export-harness` is the permanent package-conformance consumer. Its production
 build runs the real engine and canvas path in Chromium without extension APIs or native Node
@@ -445,12 +659,14 @@ latency plus the heaviest CPU leg:
   occurrences of the exact same Mermaid source share one preparation. Embedding still happens
   in document order, so relationship ids and media numbering never depend on completion timing
   (pinned by the determinism regression tests in `export.test.ts`).
-- **Syntax highlighting warms early and picks the fastest engine.** Code-block languages found
+- **Syntax highlighting warms early through explicit host adapters.** Code-block languages found
   during the prefetch pass start their grammar loads immediately; aliases such as `ts` and
-  `typescript` share one canonical grammar load. Hosts that may compile WebAssembly (CLI, Node,
-  Tauri) get Shiki's Oniguruma engine (~30 ms for the TypeScript grammar); the MV3 panel (no
-  `wasm-unsafe-eval`) keeps the JavaScript engine and never fetches the wasm chunk — the choice
-  is made by an 8-byte compile probe at runtime.
+  `typescript` share one canonical grammar load. The Node/Bun package entry installs Shiki's
+  Oniguruma/WASM engine. Browser, MV3, and embedded browser entries install the CSP-safe
+  JavaScript RegExp engine and never discover the Oniguruma module or `shiki/wasm`. A generated
+  registry maps each canonical language and theme ID to a literal direct module import, so the
+  active path requests only the selected runtime modules. Engine choice is made by the imported
+  host entry before first use, never by a runtime capability probe.
 - **The CLI overlaps its own legs too.** The page fetch runs concurrently with template
   read/scan; a quick local template scan pre-starts exactly the resolver round-trips the template
   needs, and page-dependent space/homepage calls start as soon as the page yields its space key.
@@ -471,7 +687,9 @@ latency plus the heaviest CPU leg:
 ## Guarantees and gates
 
 - **Isomorphism:** `packages/docx/src/index.browser.ts` is one of the CI-gated browser
-  entrypoints (`bun run check:browser`) — a `node:`/`bun:` specifier anywhere in its graph fails CI.
+  entrypoints (`bun run check:browser`) — a Node/Bun builtin anywhere in its transitive source
+  graph fails CI in either spelling (`node:fs` **and** the legacy bare `fs`), as does a surviving
+  `Bun.*` call left behind by an erased `import type … from "bun"`.
 - **Golden-file equality:** `packages/docx/src/golden.test.ts` pins the engine's output to the
   pre-extraction extension export; `node-consumer.test.ts` proves the identical output under Node
   filesystem adapters.

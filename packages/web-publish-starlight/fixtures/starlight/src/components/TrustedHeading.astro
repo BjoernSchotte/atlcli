@@ -1,0 +1,8 @@
+---
+import type { ExportBlock } from "@atlcli/export-blocks";
+
+const { block } = Astro.props as { block: Extract<ExportBlock, { type: "heading" }> };
+const text = block.content.map((node) => node.type === "text" ? node.text : "[inline]").join("");
+---
+
+<h2 id={block.explicitAnchor} data-atlcli-block="heading" data-fixture-trusted-heading>{text}</h2>

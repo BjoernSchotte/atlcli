@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlcli.dev/schemas/dev-release-live-proof-v1.json",
+  "title": "atlcli dev release live proof",
+  "type": "object",
+  "required": ["schema", "recordedAt", "source", "workflow", "release", "toolchain", "assets", "extension", "homebrew", "tests", "privacy"],
+  "properties": {
+    "schema": { "const": "atlcli.dev-release-live-proof/v1" },
+    "recordedAt": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T" },
+    "source": {
+      "type": "object",
+      "required": ["sha", "canonicalMainPushRunId", "canonicalMainPushAttempt", "requiredAggregate", "requiredPolicyVersion", "advisoryPolicyVersion", "decision"],
+      "properties": {
+        "sha": { "$ref": "#/$defs/sha" },
+        "canonicalMainPushRunId": { "type": "integer", "minimum": 1 },
+        "canonicalMainPushAttempt": { "type": "integer", "minimum": 1 },
+        "requiredAggregate": { "const": "success" },
+        "requiredPolicyVersion": { "type": "string", "minLength": 1 },
+        "advisoryPolicyVersion": { "type": "string", "minLength": 1 },
+        "decision": { "enum": ["eligible", "degraded"] }
+      },
+      "additionalProperties": true
+    },
+    "workflow": {
+      "type": "object",
+      "required": ["runId", "attempt", "event", "url"],
+      "properties": {
+        "runId": { "type": "integer", "minimum": 1 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "event": { "enum": ["workflow_dispatch", "schedule"] },
+        "url": { "$ref": "#/$defs/httpsUrl" }
+      },
+      "additionalProperties": true
+    },
+    "release": {
+      "type": "object",
+      "required": ["buildId", "tag", "url", "prerelease", "draft", "immutable", "stableLatestUnchanged", "attestation"],
+      "properties": {
+        "buildId": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "pattern": "^dev-" },
+        "url": { "$ref": "#/$defs/httpsUrl" },
+        "prerelease": { "const": true },
+        "draft": { "const": false },
+        "immutable": { "const": true },
+        "stableLatestUnchanged": { "const": true },
+        "attestation": {
+          "type": "object",
+          "required": ["predicateType", "signer", "verifiedAt", "assetCount", "buildMetadataSha256"],
+          "properties": {
+            "predicateType": { "const": "https://in-toto.io/attestation/release/v0.2" },
+            "signer": { "const": "https://dotcom.releases.github.com" },
+            "verifiedAt": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T" },
+            "assetCount": { "type": "integer", "minimum": 10 },
+            "buildMetadataSha256": { "$ref": "#/$defs/sha256" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "toolchain": {
+      "type": "object",
+      "required": ["bun", "wxt", "runnerImages", "lockfileSha256"],
+      "properties": {
+        "bun": { "type": "string", "minLength": 1 },
+        "wxt": { "type": "string", "minLength": 1 },
+        "runnerImages": { "type": "object", "minProperties": 1 },
+        "lockfileSha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": true
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": ["filename", "size", "sha256"],
+        "properties": {
+          "filename": { "type": "string", "minLength": 1 },
+          "size": { "type": "integer", "minimum": 1 },
+          "sha256": { "$ref": "#/$defs/sha256" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "extension": {
+      "type": "object",
+      "required": ["archiveSha256", "manifestVersion", "inventorySha256", "packedChromiumSuites"],
+      "properties": {
+        "archiveSha256": { "$ref": "#/$defs/sha256" },
+        "manifestVersion": { "type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+){0,3}$" },
+        "inventorySha256": { "$ref": "#/$defs/sha256" },
+        "packedChromiumSuites": { "type": "object", "minProperties": 5 }
+      },
+      "additionalProperties": true
+    },
+    "homebrew": {
+      "type": "object",
+      "required": ["tapCommit", "tapCommitUrl", "formulaSha256", "pointerSha256", "releaseTag", "nativeMatrix", "installedReleaseInfo"],
+      "properties": {
+        "tapCommit": { "$ref": "#/$defs/sha" },
+        "tapCommitUrl": { "$ref": "#/$defs/httpsUrl" },
+        "formulaSha256": { "$ref": "#/$defs/sha256" },
+        "pointerSha256": { "$ref": "#/$defs/sha256" },
+        "releaseTag": { "type": "string", "pattern": "^dev-" },
+        "nativeMatrix": { "type": "object", "minProperties": 4 },
+        "installedReleaseInfo": {
+          "type": "object",
+          "required": ["channel", "sourceSha", "releaseTag"],
+          "properties": {
+            "channel": { "const": "dev" },
+            "sourceSha": { "$ref": "#/$defs/sha" },
+            "releaseTag": { "type": "string", "pattern": "^dev-" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "tests": { "type": "object", "minProperties": 1 },
+    "privacy": {
+      "type": "object",
+      "required": ["containsSecrets", "containsTenantData", "containsAbsoluteHomePaths", "containsRawLogs"],
+      "properties": {
+        "containsSecrets": { "const": false },
+        "containsTenantData": { "const": false },
+        "containsAbsoluteHomePaths": { "const": false },
+        "containsRawLogs": { "const": false }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "httpsUrl": { "type": "string", "pattern": "^https://\\S+$" }
+  },
+  "additionalProperties": false
+}

@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureExtensionBuilt, MANIFEST_PATH, OUTPUT_DIR } from "./build-helper.js";
 
+const EXTENSION_BUILD_TIMEOUT_MS = 180_000;
+
 /**
  * The exact, normative extension-pages CSP from PLAN §2.3. The test asserts the
  * built manifest carries THIS string verbatim — no extra sources permitted
@@ -31,7 +33,7 @@ describe("built manifest.json", () => {
   beforeAll(() => {
     ensureExtensionBuilt();
     manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
-  });
+  }, EXTENSION_BUILD_TIMEOUT_MS);
 
   it("is Manifest V3", () => {
     expect(manifest.manifest_version).toBe(3);
@@ -47,13 +49,14 @@ describe("built manifest.json", () => {
     );
   });
 
-  it("declares atlassian.net + media-CDN host permissions", () => {
+  it("declares only Atlassian, media-CDN and Anthropic host permissions", () => {
     // api.media.atlassian.com: attachment downloads 302 to the media CDN;
     // without this host permission the redirect hop falls back to normal CORS
     // and its wildcard ACAO rejects the credentialed session fetch (spec 005).
     expect(manifest.host_permissions).toEqual([
       "*://*.atlassian.net/*",
       "https://api.media.atlassian.com/*",
+      "https://api.anthropic.com/*",
     ]);
   });
 
@@ -75,14 +78,82 @@ describe("built manifest.json", () => {
     expect(existsSync(join(OUTPUT_DIR, path as string))).toBe(true);
   });
 
+  it("registers the Rovo content script only on Confluence Cloud wiki pages", () => {
+    const scripts: unknown = manifest.content_scripts;
+    expect(Array.isArray(scripts)).toBe(true);
+    const rovo = (scripts as Array<Record<string, unknown>>).find(
+      (entry) =>
+        Array.isArray(entry.matches) &&
+        entry.matches.includes("https://*.atlassian.net/wiki/*")
+    );
+    expect(rovo).toBeDefined();
+    expect(rovo?.matches).toEqual(["https://*.atlassian.net/wiki/*"]);
+    expect(rovo?.run_at).toBe("document_start");
+    expect(rovo?.world).toBe("ISOLATED");
+
+    for (const kind of ["js", "css"] as const) {
+      const files = rovo?.[kind];
+      expect(Array.isArray(files)).toBe(true);
+      expect((files as string[]).length).toBeGreaterThan(0);
+      for (const file of files as string[]) {
+        expect(existsSync(join(OUTPUT_DIR, file))).toBe(true);
+      }
+    }
+  });
+
+  it("registers one top-frame isolated action-palette content script for Atlassian Cloud", () => {
+    const scripts: unknown = manifest.content_scripts;
+    expect(Array.isArray(scripts)).toBe(true);
+    const palette = (scripts as Array<Record<string, unknown>>).find(
+      (entry) =>
+        Array.isArray(entry.matches) &&
+        entry.matches.includes("https://*.atlassian.net/*")
+    );
+    expect(palette).toBeDefined();
+    expect(palette?.matches).toEqual(["https://*.atlassian.net/*"]);
+    expect(palette?.run_at).toBe("document_start");
+    expect(palette?.world).toBe("ISOLATED");
+    expect(palette?.all_frames ?? false).toBe(false);
+
+    const files = palette?.js;
+    expect(Array.isArray(files)).toBe(true);
+    expect((files as string[]).length).toBeGreaterThan(0);
+    for (const file of files as string[]) {
+      expect(existsSync(join(OUTPUT_DIR, file))).toBe(true);
+    }
+  });
+
+  it("declares the approved action-palette command without widening permissions", () => {
+    expect(manifest.commands).toEqual({
+      "action-palette": {
+        suggested_key: {
+          default: "Ctrl+Shift+K",
+          mac: "Command+Shift+K",
+        },
+        description: "Open the Atlassian action palette",
+      },
+    });
+  });
+
+  it("exposes only the lazy palette frame to Atlassian pages", () => {
+    const resources = manifest.web_accessible_resources as Array<Record<string, unknown>>;
+    const palette = resources.find((entry) =>
+      Array.isArray(entry.resources) && entry.resources.includes("action-palette.html")
+    );
+    expect(palette).toEqual({
+      resources: ["action-palette.html"],
+      matches: ["https://*.atlassian.net/*"],
+    });
+  });
+
   it("sets the exact normative CSP — no extra sources", () => {
     const csp: unknown = manifest.content_security_policy.extension_pages;
     expect(csp).toBe(NORMATIVE_CSP);
     expect(isNormativeCsp(csp)).toBe(true);
   });
 
-  it("pins a minimum chrome version for sidePanel/offscreen APIs", () => {
-    expect(manifest.minimum_chrome_version).toBe("116");
+  it("pins the oldest Chrome version exercised by the MV3 PDF.js worker test", () => {
+    expect(manifest.minimum_chrome_version).toBe("140");
   });
 });
 

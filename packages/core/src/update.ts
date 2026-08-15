@@ -12,6 +12,14 @@ import { join } from "node:path";
 import { homedir, tmpdir, platform, arch } from "node:os";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
+import {
+  getCurrentVersion,
+  getReleaseInfo,
+  type ReleaseInfoV1,
+} from "./release-info.js";
+
+export { getCurrentVersion, getReleaseInfo } from "./release-info.js";
+export type { ReleaseBuildChannel, ReleaseInfoV1 } from "./release-info.js";
 
 // GitHub repository for releases
 const GITHUB_REPO = "BjoernSchotte/atlcli";
@@ -27,7 +35,7 @@ const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /**
  * Installation method detection.
  */
-export type InstallMethod = "script" | "homebrew" | "source" | "unknown";
+export type InstallMethod = "script" | "homebrew" | "homebrew-dev" | "source" | "unknown";
 
 /**
  * Update state persisted to disk.
@@ -70,24 +78,13 @@ interface GitHubRelease {
   assets: GitHubAsset[];
 }
 
-// Version injected at build time via --define
-declare const __ATLCLI_VERSION__: string;
-
-/**
- * Get the current atlcli version.
- * Injected at build time from package.json.
- */
-export function getCurrentVersion(): string {
-  // __ATLCLI_VERSION__ is defined at build time via bun build --define
-  // Falls back to "dev" when running directly from source without building
-  return typeof __ATLCLI_VERSION__ !== "undefined" ? __ATLCLI_VERSION__ : "dev";
-}
-
 /**
  * Detect how atlcli was installed.
  */
-export function detectInstallMethod(): InstallMethod {
-  const binPath = process.execPath;
+export function detectInstallMethod(binPath = process.execPath): InstallMethod {
+  if (/[/\\](?:Cellar|homebrew)[/\\]atlcli-dev[/\\]/.test(binPath)) {
+    return "homebrew-dev";
+  }
 
   // Homebrew: /opt/homebrew/bin/atlcli or /usr/local/bin/atlcli (symlink to Cellar)
   if (binPath.includes("/homebrew/") || binPath.includes("/Cellar/")) {
@@ -241,32 +238,76 @@ function parseVersion(version: string): string {
   return version.startsWith("v") ? version.slice(1) : version;
 }
 
+interface ParsedSemver {
+  core: [number, number, number];
+  prerelease: string[];
+}
+
+function parseSemver(version: string): ParsedSemver {
+  const normalized = parseVersion(version);
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(
+    normalized,
+  );
+  if (!match) throw new Error(`Invalid semantic version: ${version}`);
+  return {
+    core: [Number(match[1]), Number(match[2]), Number(match[3])],
+    prerelease: match[4]?.split(".") ?? [],
+  };
+}
+
 /**
  * Compare two semantic versions.
  * Returns: -1 if a < b, 0 if a == b, 1 if a > b
  */
 export function compareVersions(a: string, b: string): number {
-  const partsA = parseVersion(a).split(".").map(Number);
-  const partsB = parseVersion(b).split(".").map(Number);
-
-  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
-    const partA = partsA[i] || 0;
-    const partB = partsB[i] || 0;
-
-    if (partA < partB) return -1;
-    if (partA > partB) return 1;
+  const left = parseSemver(a);
+  const right = parseSemver(b);
+  for (let index = 0; index < 3; index++) {
+    if (left.core[index]! < right.core[index]!) return -1;
+    if (left.core[index]! > right.core[index]!) return 1;
   }
-
+  if (left.prerelease.length === 0 && right.prerelease.length > 0) return 1;
+  if (left.prerelease.length > 0 && right.prerelease.length === 0) return -1;
+  for (let index = 0; index < Math.max(left.prerelease.length, right.prerelease.length); index++) {
+    const leftPart = left.prerelease[index];
+    const rightPart = right.prerelease[index];
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+    if (leftPart === rightPart) continue;
+    const leftNumeric = /^\d+$/.test(leftPart);
+    const rightNumeric = /^\d+$/.test(rightPart);
+    if (leftNumeric && rightNumeric) return Number(leftPart) < Number(rightPart) ? -1 : 1;
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return leftPart < rightPart ? -1 : 1;
+  }
   return 0;
 }
 
 /**
  * Check for available updates.
  */
-export async function checkForUpdates(): Promise<UpdateInfo> {
-  const currentVersion = getCurrentVersion();
-  const installMethod = detectInstallMethod();
-  const platform = detectPlatform();
+export async function checkForUpdates(options: {
+  releaseInfo?: ReleaseInfoV1;
+  installMethod?: InstallMethod;
+  platform?: string;
+} = {}): Promise<UpdateInfo> {
+  const releaseInfo = options.releaseInfo ?? getReleaseInfo();
+  const currentVersion = releaseInfo.version;
+  const installMethod = options.installMethod ?? detectInstallMethod();
+
+  // Dev and source builds have no stable-updater relationship. Homebrew owns
+  // dev upgrades through atlcli-dev; source builds are updated through git.
+  if (releaseInfo.channel !== "stable") {
+    return {
+      currentVersion,
+      latestVersion: currentVersion,
+      updateAvailable: false,
+      downloadUrl: null,
+      checksum: null,
+      installMethod,
+    };
+  }
+  const platform = options.platform ?? detectPlatform();
 
   // For non-script installs, we can still check but won't provide download info
   if (installMethod !== "script") {
@@ -405,8 +446,8 @@ export async function installUpdate(version?: string): Promise<string> {
   if (installMethod !== "script") {
     throw new Error(
       `Cannot auto-update: installed via ${installMethod}. ` +
-        (installMethod === "homebrew"
-          ? "Run: brew update && brew upgrade atlcli"
+        (installMethod === "homebrew" || installMethod === "homebrew-dev"
+          ? `Run: brew update && brew upgrade ${installMethod === "homebrew-dev" ? "atlcli-dev" : "atlcli"}`
           : installMethod === "source"
             ? "Run: git pull && bun run build"
             : "Please reinstall using the install script.")

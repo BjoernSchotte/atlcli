@@ -2,6 +2,63 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [Unreleased]
+
+### BREAKING CHANGES
+
+- **export:** Remove the Python DOCX exporter (`packages/export`). `--engine
+  python` stops the export with a migration message instead of selecting it;
+  `--engine ts` is still accepted, and omitting `--engine` is unchanged. Python
+  and `uv` are no longer part of the developer or CI toolchain — `bun install`
+  is the whole setup. Templates written for the old exporter must be ported
+  from docxtpl/Jinja (`{{ … }}`) to `$scroll.*` placeholders; unported
+  placeholders render as literal text and are reported as a
+  `template-foreign-placeholders` warning, so `--strict` fails the run. The
+  `engine` field in `atlcli.export-report/1` is unchanged in shape and now only
+  ever carries `"ts"`. See
+  [Migrating from the Python exporter](https://atlcli.sh/confluence/export/#migrating-from-the-python-exporter).
+
+### Features
+
+- **publish:** Add the `wiki publish plan|refresh|build|verify|run|status|prune`
+  lifecycle for immutable Confluence page, tree, and space bundles; verified
+  Astro 7.1/Starlight output; local Pagefind search; navigation, SEO, i18n/RTL,
+  privacy-safe analytics, and optional provider-validated edit links.
+- **charts:** Normalize all twelve Confluence Chart macro shapes from Cloud ADF
+  and Data Center Storage into a source-neutral model. Astro, DOCX, and PDF use
+  one pinned TanStack scene/SVG adapter, retain exact-value tables, and add
+  bounded keyboard-accessible Bar/XY Bar islands without making JavaScript a
+  content dependency.
+- **export:** Run DOCX and PDF through one durable, bounded job queue in the CLI
+  and Chrome extension. Exports are recorded before the first source read,
+  survive panel, service-worker, offscreen-document, and full browser restarts,
+  expose shared Activity/history with statistics and bounded events, and
+  support Cancel, Retry, Run again, resume after sign-in, download,
+  acknowledgement, dismissal, and retention-safe cleanup.
+- **extension:** Show active export counts on the toolbar badge (`9+` maximum),
+  durable success/failure indicators, and an optional bounded completion pulse.
+  Full DOCX and Typst/WASM PDF execution now continues outside the side panel.
+- **cli:** Add `wiki export jobs list|show|watch|cancel|resume|retry|rerun|clear` while
+  keeping ordinary exports foreground and scriptable. There is intentionally no
+  daemon or detached mode.
+
+### Changed
+
+- **export:** Use the TypeScript DOCX engine exclusively (completed by the
+  removal noted under Breaking Changes above).
+- **export:** Buffer large tree/space exports through bounded, restartable
+  source and content-addressed asset checkpoints. One global heavy-render slot
+  prevents DOCX and PDF memory peaks from overlapping.
+
+### Documentation
+
+- Add the complete Web Publishing operator journey, schema-tested project
+  example, CLI/configuration reference, Starlight/adapter guide, chart
+  cross-output matrix, search, security/privacy, operations/rollback, and
+  troubleshooting documentation.
+- Document export-job lifecycle, monitoring, recovery, retention, storage
+  limits, privacy boundaries, and browser/CLI operational procedures.
+
 ## [0.17.2] - 2026-07-10
 
 ### Bug Fixes
@@ -493,4 +550,3 @@ A big thank you to everyone who helped shape this release 🙏
 
 - Add plugin-git for git integration([71b7a24](https://github.com/bjoernschotte/atlcli/commit/71b7a244cab8e1fb9e92b6e0962fd52c53e22cf2))
 ## [0.1.0] - 2026-01-10
-

@@ -99,10 +99,9 @@ function jsDocAnnotations(decl: ts.Declaration, symbolName: string): string[] {
       lines.push(`// @${tagName} ${path}${comment ? ` — ${comment}` : ""}`.trimEnd());
     }
     node.forEachChild((child) => {
-      const name =
-        (child as { name?: ts.Node }).name && ts.isIdentifier((child as { name: ts.Node }).name as ts.Node)
-          ? ((child as { name: ts.Identifier }).name.text as string)
-          : undefined;
+      // Not every node carries a `name`, so probe for it as an optional property.
+      const nameNode = (child as { name?: ts.Node }).name;
+      const name = nameNode && ts.isIdentifier(nameNode) ? nameNode.text : undefined;
       collect(child, name ? `${path}.${name}` : path);
     });
   };

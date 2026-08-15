@@ -1,5 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { PdfSettingsError, resolvePdfSettings, typstSettingsDict } from "./settings.js";
+import {
+  applyBindings,
+  PdfSettingsError,
+  resolvePdfSettings,
+  resolveTemplateLabels,
+  typstSettingsDict,
+} from "./settings.js";
+import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
+import {
+  PDF_TEMPLATE_CAPABILITIES_V2,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+} from "./design-catalog.js";
 import type { PdfLogoAsset } from "./types.js";
 
 function pngBytes(): Uint8Array {
@@ -12,6 +23,32 @@ function pngBytes(): Uint8Array {
 
 function svgBytes(inner = ""): Uint8Array {
   return new TextEncoder().encode(`<svg xmlns="http://www.w3.org/2000/svg">${inner}</svg>`);
+}
+
+function revision4Manifest(closingEnabled: boolean) {
+  const manifest = structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST);
+  manifest.id = "fixture.settings-v4";
+  manifest.design!.features.closingPage.enabled = closingEnabled;
+  manifest.design!.compositions = {
+    cover: { kind: "standard", logo: "hide" },
+    closingPage: {
+      kind: "document-summary",
+      logo: "hide",
+      website: "hide",
+      legalNotice: "hide",
+      align: "left",
+    },
+  };
+  manifest.canonicalSource = {
+    api: "wiki.pdf-canonical-typst",
+    revision: "4",
+  };
+  manifest.capabilityCatalog = {
+    id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+    version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+  };
+  return manifest;
 }
 
 function expectSettingsError(run: () => unknown, path: string): PdfSettingsError {
@@ -29,13 +66,20 @@ function expectSettingsError(run: () => unknown, path: string): PdfSettingsError
 
 describe("resolvePdfSettings defaults", () => {
   it("fills every Level-A default when nothing is supplied", () => {
-    expect(resolvePdfSettings()).toEqual({
+    const resolved = resolvePdfSettings();
+    expect(resolved).toMatchObject({
       page: "a4",
       orientation: "portrait",
       cover: true,
       outline: true,
       accentColor: "#4B57A3",
     });
+    // The resolved design carries the built-in defaults (bindings applied) and
+    // the labels resolve to the fallback locale.
+    expect(resolved.design.branding.accent).toBe("#4B57A3");
+    expect(resolved.design.page.size).toBe("a4");
+    expect(resolved.design.features.cover.enabled).toBe(true);
+    expect(resolved.labels.contents).toBe("Contents");
   });
 
   it("is deterministic for equal input", () => {
@@ -256,19 +300,164 @@ describe("resolvePdfSettings text caps and re-resolution", () => {
   });
 });
 
+describe("resolver: bindings, locale, labels (spec 012)", () => {
+  const design = BUILTIN_PDF_TEMPLATE_MANIFEST.design!;
+
+  it("applies a binding to the correct design path without mutating the manifest", () => {
+    const bound = applyBindings(
+      design,
+      [{ setting: "accentColor", targets: ["branding.accent", "tokens.colors.accent"] }],
+      resolvePdfSettings({ accentColor: "#0052CC" })
+    );
+    expect(bound.branding.accent).toBe("#0052CC");
+    expect(bound.tokens.colors.accent).toBe("#0052CC");
+    // The manifest's design is untouched (immutable copy).
+    expect(design.branding.accent).toBe("#4B57A3");
+  });
+
+  it("leaves the manifest default in place when the source value is undefined", () => {
+    const bound = applyBindings(
+      design,
+      [{ setting: "organizationName", targets: ["branding.organizationName"] }],
+      { ...resolvePdfSettings() } // no organizationName
+    );
+    expect(bound.branding.organizationName).toBeUndefined();
+  });
+
+  it("rejects two bindings writing the same design path", () => {
+    expect(() =>
+      applyBindings(
+        design,
+        [
+          { setting: "accentColor", targets: ["branding.accent"] },
+          { setting: "page", targets: ["branding.accent"] },
+        ],
+        resolvePdfSettings({ accentColor: "#0052CC", page: "letter" })
+      )
+    ).toThrow(/more than one binding/);
+  });
+
+  it("resolves labels through the region → base-language fallback chain", () => {
+    // de-CH has no entry; the base language de wins.
+    const deCh = resolveTemplateLabels(BUILTIN_PDF_TEMPLATE_MANIFEST, "de", "CH");
+    expect(deCh.contents).toBe("Inhalt");
+    expect(deCh.endOfDocument).toBe("DOKUMENTENDE");
+    // fr has no entry; falls through to the fallback/default English.
+    const fr = resolveTemplateLabels(BUILTIN_PDF_TEMPLATE_MANIFEST, "fr", undefined);
+    expect(fr.contents).toBe("Contents");
+  });
+
+  it("resolvePdfSettings threads the document locale into resolved labels", () => {
+    expect(resolvePdfSettings({}, { locale: "de" }).labels.contents).toBe("Inhalt");
+    expect(resolvePdfSettings({}, { locale: "en" }).labels.contents).toBe("Contents");
+  });
+
+  it("resolves the optional cover eyebrow without making it a V1 requirement", () => {
+    const manifest = structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST);
+    manifest.localization!.locales.en!.document!.coverEyebrow = "Executive Brief";
+    expect(resolveTemplateLabels(manifest, "en", undefined).coverEyebrow).toBe(
+      "Executive Brief"
+    );
+    expect(
+      resolveTemplateLabels(BUILTIN_PDF_TEMPLATE_MANIFEST, "en", undefined)
+        .coverEyebrow
+    ).toBeUndefined();
+  });
+
+  // Layer 2 of the label-injection defence: even a manifest object that never
+  // went through validateManifest (constructed directly, or from a future
+  // schema) can only contribute the supported label vocabulary. An unknown
+  // key — hostile or merely unexpected — never reaches emission.
+  it("resolves only the supported document-label vocabulary, dropping unknown keys", () => {
+    const hostile = 'x: panic("pwned"), y';
+    const forged = {
+      ...BUILTIN_PDF_TEMPLATE_MANIFEST,
+      localization: {
+        defaultLocale: "en",
+        fallbackLocale: "en",
+        locales: {
+          en: {
+            template: { name: "T", description: "D" },
+            document: { contents: "Contents", [hostile]: "boom", unexpectedButSafe: "x" },
+          },
+        },
+      },
+    };
+    const labels = resolveTemplateLabels(forged, "en", undefined);
+    expect(labels[hostile]).toBeUndefined();
+    expect(labels.unexpectedButSafe).toBeUndefined();
+    expect(labels.contents).toBe("Contents");
+    // …and what survives is emittable.
+    expect(() => typstSettingsDict({ ...resolvePdfSettings(), labels })).not.toThrow();
+  });
+});
+
 describe("typstSettingsDict", () => {
-  it("emits defaults only when nothing is supplied", () => {
+  it("fails closed for every unknown declared catalog identity", () => {
+    for (const capabilityCatalog of [
+      {
+        id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+        version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+        digest: "0".repeat(64),
+      },
+      {
+        id: "foreign.pdf-template",
+        version: PDF_TEMPLATE_CAPABILITIES_V2.version,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+      },
+      {
+        id: PDF_TEMPLATE_CAPABILITIES_V2.id,
+        version: 999,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
+      }
+    ]) {
+      const manifest = revision4Manifest(true);
+      manifest.capabilityCatalog = capabilityCatalog;
+      const error = expectSettingsError(
+        () => resolvePdfSettings({}, { manifest }),
+        "manifest.capabilityCatalog"
+      );
+      expect(error.constraint).toContain("Unsupported PDF capability catalog");
+    }
+  });
+
+  it("preserves Catalog V2 and emits the revision-4 closing-page feature", () => {
+    for (const enabled of [true, false]) {
+      const resolved = resolvePdfSettings({}, {
+        manifest: revision4Manifest(enabled),
+      });
+      expect(resolved.capabilityCatalogDigest).toBe(
+        PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+      );
+      expect(resolved.design.compositions?.closingPage.kind).toBe(
+        "document-summary"
+      );
+      expect(typstSettingsDict(resolved)).toContain(
+        `closingPage: (enabled: ${enabled ? "true" : "false"})`
+      );
+    }
+  });
+
+  it("emits the design subset and labels when nothing is supplied", () => {
     const dict = typstSettingsDict(resolvePdfSettings());
-    expect(dict).toContain('page: "a4"');
+    expect(dict).toContain('accent: "#4B57A3"');
+    expect(dict).toContain('size: "a4"');
     expect(dict).toContain('orientation: "portrait"');
-    expect(dict).toContain("cover: true");
-    expect(dict).toContain("outline: true");
-    expect(dict).toContain('accent-color: "#4B57A3"');
+    expect(dict).toContain("cover: (enabled: true)");
+    expect(dict).toContain("outline: (enabled: true, depth: 3)");
+    expect(dict).toContain("labels: (");
+    expect(dict).toContain('version: "Version"');
     expect(dict).not.toContain("header-text");
     expect(dict).not.toContain("watermark:");
   });
 
-  it("emits kebab-case keys and filled watermark defaults", () => {
+  it("emits an empty label map as a Typst dictionary, never an array", () => {
+    const dict = typstSettingsDict({ ...resolvePdfSettings(), labels: {} });
+    expect(dict).toContain("labels: (:)");
+    expect(dict).not.toContain("labels: (\n  )");
+  });
+
+  it("emits the settings-driven design subset and filled watermark defaults", () => {
     const dict = typstSettingsDict(
       resolvePdfSettings({
         page: "letter",
@@ -279,11 +468,11 @@ describe("typstSettingsDict", () => {
         watermark: { text: "DRAFT" },
       })
     );
-    expect(dict).toContain('page: "letter"');
+    expect(dict).toContain('size: "letter"');
     expect(dict).toContain('orientation: "landscape"');
+    expect(dict).toContain('organization-name: "Acme"');
     expect(dict).toContain('header-text: "Head"');
     expect(dict).toContain('footer-text: "Foot"');
-    expect(dict).toContain('organization-name: "Acme"');
     expect(dict).toContain("watermark: (");
     expect(dict).toContain('text: "DRAFT"');
     expect(dict).toContain('color: "#DE350B"');
@@ -302,6 +491,53 @@ describe("typstSettingsDict", () => {
     expect(dict).toContain('logo-alt: "Acme"');
   });
 
+  it("emits validated imported-logo placement for the canonical template", () => {
+    const resolved = resolvePdfSettings({
+      logo: { bytes: pngBytes(), mediaType: "image/png", alt: "Acme" },
+    });
+    resolved.templateVisuals = {
+      assets: {
+        "asset.logo": {
+          vfsPath: "template-assets/logo.png",
+          reference: {
+            descriptor: "logo",
+            writer: "typst.logo",
+            decorative: false,
+            alt: "Acme",
+            placement: {
+              relativeTo: "margin",
+              fit: "contain",
+              x: "-1.94mm",
+              y: "-0.423mm",
+              width: "49.989mm",
+              height: "11.342mm",
+              crop: { left: 0.1, top: 0, right: 0.1, bottom: 0 },
+              clip: { kind: "rounded-rect", radius: "2mm" },
+            },
+          },
+        },
+      },
+      decorations: [],
+    };
+
+    const dict = typstSettingsDict(resolved, {
+      logoPath: "template-assets/logo.png",
+    });
+    expect(dict).toContain("logo-placement: (");
+    expect(dict).toContain('relativeTo: "margin"');
+    expect(dict).toContain("x: -1.94mm");
+    expect(dict).toContain("y: -0.423mm");
+    expect(dict).toContain("width: 49.989mm");
+    expect(dict).toContain("height: 11.342mm");
+    expect(dict).toContain("rotation: 0");
+    expect(dict).toContain("crop: (");
+    expect(dict).toContain("left: 0.1");
+    expect(dict).toContain("right: 0.1");
+    expect(dict).toContain("clip: (");
+    expect(dict).toContain('kind: "rounded-rect"');
+    expect(dict).toContain("radius: 2mm");
+  });
+
   it("keeps quote/backslash/#{ injection attempts literal in free-text fields", () => {
     const attack = 'a" #{sys.exit()} \\ end';
     const dict = typstSettingsDict(
@@ -318,5 +554,25 @@ describe("typstSettingsDict", () => {
     expect(dict).toContain('\\" #{sys.exit()} \\\\ end');
     // Every occurrence is inside a quoted, escaped string literal.
     expect(dict).toContain(`header-text: "${attack.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
+  });
+
+  it("escapes hostile label strings so a manifest label can never inject Typst (spec 012)", () => {
+    const resolved = resolvePdfSettings();
+    resolved.labels = { ...resolved.labels, contents: 'X" #{sys.exit()} \\ end' };
+    const dict = typstSettingsDict(resolved);
+    expect(dict).toContain('contents: "X\\" #{sys.exit()} \\\\ end"');
+    expect(dict).not.toContain('contents: "X" #{sys.exit()}');
+  });
+
+  // Layer 3 of the label-injection defence: a dictionary KEY is emitted
+  // unquoted, so `typstString` cannot protect it. Even if a hostile key somehow
+  // reached the resolved labels (bypassing the manifest import gate AND the
+  // vocabulary filter), emission must hard-fail rather than write it out.
+  it("refuses to emit a label dictionary key that is not a safe identifier", () => {
+    for (const key of ['x: panic("pwned"), y', "#let evil = 1", "a`b", "has space"]) {
+      const resolved = resolvePdfSettings();
+      resolved.labels = { ...resolved.labels, [key]: "boom" };
+      expect(() => typstSettingsDict(resolved)).toThrow(/safe identifier/);
+    }
   });
 });

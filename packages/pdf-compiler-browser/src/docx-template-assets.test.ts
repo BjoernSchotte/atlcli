@@ -1,0 +1,806 @@
+/**
+ * T6 render proof for DOCX-derived template assets.
+ *
+ * The test uses the pinned Typst-WASM compiler, then rasterizes every page
+ * through Poppler. Color probes prove first/odd/even/all scopes from rendered
+ * pixels rather than from generated source inspection.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { inflateSync } from "node:zlib";
+import type { TemplateManifest } from "@atlcli/template-pack";
+import {
+  PDF_CANONICAL_SOURCE_API_V1,
+  PDF_CANONICAL_SOURCE_REVISION,
+  PDF_RUNTIME_ASSETS,
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  PdfTemplatePreviewCompiler as BrowserTemplatePreviewCompiler,
+  buildUniformPdfPageBorderV1,
+  generateCanonicalPdfTemplateSourceV1,
+  loadPdfTemplatePack,
+  preparePdfDocument,
+  validatePdfOutput,
+  type ExportBlock,
+} from "@atlcli/pdf/browser";
+import {
+  PdfTemplatePreviewCompiler as NodeTemplatePreviewCompiler,
+} from "@atlcli/pdf";
+import {
+  BUILTIN_PDF_DESIGN,
+  BUILTIN_PDF_TEMPLATE_MANIFEST,
+  PDF_TEMPLATE_WRITERS_V1,
+  serializePdfDocument,
+} from "@atlcli/pdf/internal";
+import {
+  packTemplate,
+  validateManifest,
+  type WikiPdfTemplateImageDecorationV1,
+} from "@atlcli/template-pack";
+import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
+import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
+import { BrowserPdfCompiler } from "./index.js";
+
+const encoder = new TextEncoder();
+let compiler: BrowserPdfCompiler;
+const GOLDEN_DIRECTORY = resolve(
+  import.meta.dir,
+  "../test-fixtures/docx-template-assets-golden"
+);
+const GOLDEN_MANIFEST = resolve(GOLDEN_DIRECTORY, "manifest.json");
+const MAX_GOLDEN_MEAN_DIFFERENCE = 0.002;
+const MIN_GOLDEN_COLOR_BOUNDS_IOU = 0.98;
+const GOLDEN_COLORS = [
+  [255, 0, 0],
+  [0, 255, 0],
+  [0, 0, 255],
+  [255, 255, 0],
+  [170, 0, 170],
+  [0, 255, 255],
+] as const;
+
+async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>> {
+  return new Uint8Array(
+    await Bun.file(fileURLToPath(import.meta.resolve(specifier))).arrayBuffer()
+  );
+}
+
+async function digest(bytes: Uint8Array): Promise<string> {
+  const value = await crypto.subtle.digest(
+    "SHA-256",
+    new Uint8Array(bytes).buffer
+  );
+  return Array.from(new Uint8Array(value), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+function colorSvg(color: string, width: number, height: number): Uint8Array {
+  return encoder.encode(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="${color}"/></svg>`
+  );
+}
+
+async function fixturePack(): Promise<Uint8Array> {
+  const sources = {
+    logo: colorSvg("#AA00AA", 120, 40),
+    page: colorSvg("#FF0000", 80, 80),
+    cover: colorSvg("#00FF00", 80, 80),
+    header: colorSvg("#0000FF", 80, 24),
+    footer: colorSvg("#FFFF00", 80, 24),
+  } as const;
+  const slots = {
+    "asset.logo": { descriptor: "logo", decorative: false, alt: "Example mark" },
+    "asset.pageBackground": { descriptor: "page", decorative: true },
+    "asset.coverBackground": { descriptor: "cover", decorative: true },
+    "asset.headerDecoration": { descriptor: "header", decorative: true },
+    "asset.footerDecoration": { descriptor: "footer", decorative: true },
+  } as const;
+  const assetDescriptors: Record<string, unknown> = {};
+  const files: Record<string, Uint8Array> = {};
+  for (const [id, bytes] of Object.entries(sources)) {
+    const width = id === "logo" ? 120 : 80;
+    const height = id === "logo" ? 40 : id === "page" || id === "cover" ? 80 : 24;
+    const path = `assets/${id}.svg`;
+    files[path] = bytes;
+    assetDescriptors[id] = {
+      path,
+      sha256: await digest(bytes),
+      mediaType: "image/svg+xml",
+      byteLength: bytes.byteLength,
+      dimensions: { width, height, unit: "pixel" },
+    };
+  }
+  const decoration = (
+    id: keyof typeof slots,
+    scope: WikiPdfTemplateImageDecorationV1["scope"],
+    layer: WikiPdfTemplateImageDecorationV1["layer"],
+    x: string,
+    y: string,
+    width: string,
+    height: string
+  ): WikiPdfTemplateImageDecorationV1 => ({
+    kind: "image",
+    id,
+    writer: PDF_TEMPLATE_WRITERS_V1.imageDecoration,
+    scope,
+    layer,
+    asset: id,
+    placement: {
+      relativeTo: layer === "page-background" ? "page" : "margin",
+      fit: "stretch",
+      x,
+      y,
+      width,
+      height,
+    },
+    decorative: true,
+  });
+  const border = buildUniformPdfPageBorderV1([
+    {
+      section: 0,
+      offsetFrom: "page",
+      sides: (["top", "right", "bottom", "left"] as const).map((side) => ({
+        side,
+        style: "single",
+        color: "00FFFF",
+        widthEighthPoints: 12,
+      })),
+    },
+  ])!;
+  const design = structuredClone(BUILTIN_PDF_DESIGN);
+  design.page = {
+    size: "letter",
+    orientation: "landscape",
+    margin: { top: "15mm", right: "16mm", bottom: "15mm", left: "16mm" },
+  };
+  design.branding.accent = "#006644";
+  design.typography.fonts.body = "Source Sans 3";
+  design.typography.fonts.heading = "Source Serif 4";
+  const manifest = validateManifest({
+    schemaVersion: 1,
+    id: "fixture.visual-scopes",
+    name: "Visual scope proof",
+    version: "1.0.0",
+    engine: {
+      kind: "typst",
+      api: "wiki.pdf-template/v1",
+      entry: "atlcli.typ",
+      compilerRange: ">=0.15.1 <0.16",
+    },
+    requiredFonts: PDF_RUNTIME_ASSETS.fonts,
+    design,
+    bindings: BUILTIN_PDF_TEMPLATE_MANIFEST.bindings,
+    localization: BUILTIN_PDF_TEMPLATE_MANIFEST.localization,
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    },
+    canonicalSource: {
+      api: PDF_CANONICAL_SOURCE_API_V1,
+      revision: PDF_CANONICAL_SOURCE_REVISION,
+    },
+    assetDescriptors,
+    assets: Object.fromEntries(
+      Object.entries(slots).map(([slot, reference]) => [
+        slot,
+        {
+          ...reference,
+          writer:
+            slot === "asset.logo"
+              ? PDF_TEMPLATE_WRITERS_V1.logo
+              : PDF_TEMPLATE_WRITERS_V1.imageDecoration,
+        },
+      ])
+    ),
+    decorations: [
+      decoration(
+        "asset.pageBackground",
+        "odd",
+        "page-background",
+        "42mm",
+        "4mm",
+        "18mm",
+        "18mm"
+      ),
+      decoration(
+        "asset.coverBackground",
+        "first",
+        "page-background",
+        "68mm",
+        "4mm",
+        "18mm",
+        "18mm"
+      ),
+      decoration(
+        "asset.headerDecoration",
+        "even",
+        "header",
+        "0mm",
+        "0mm",
+        "24mm",
+        "6mm"
+      ),
+      decoration(
+        "asset.footerDecoration",
+        "all",
+        "footer",
+        "0mm",
+        "0mm",
+        "24mm",
+        "6mm"
+      ),
+      border,
+    ],
+  });
+  files["atlcli.typ"] = encoder.encode(
+    generateCanonicalPdfTemplateSourceV1(manifest, {
+      assets: Object.fromEntries(
+        Object.entries(slots).map(([slot, reference]) => [
+          slot,
+          {
+            reference: manifest.assets![slot]!,
+            vfsPath: `template-assets/${reference.descriptor}.svg`,
+          },
+        ])
+      ),
+      decorations: manifest.decorations ?? [],
+    })
+  );
+  return packTemplate({ manifest, files });
+}
+
+const blocks: ExportBlock[] = [
+  { type: "heading", level: 1, content: [{ type: "text", text: "Page one" }] },
+  { type: "paragraph", content: [{ type: "text", text: "Scope proof." }] },
+  { type: "pageBreak" },
+  { type: "heading", level: 1, content: [{ type: "text", text: "Page two" }] },
+  { type: "pageBreak" },
+  { type: "heading", level: 1, content: [{ type: "text", text: "Page three" }] },
+  { type: "pageBreak" },
+  { type: "heading", level: 1, content: [{ type: "text", text: "Page four" }] },
+];
+
+interface Ppm {
+  width: number;
+  height: number;
+  pixels: Uint8Array;
+}
+
+function parsePpm(bytes: Uint8Array): Ppm {
+  let offset = 0;
+  const token = (): string => {
+    while (bytes[offset] === 0x20 || bytes[offset] === 0x0a || bytes[offset] === 0x0d) {
+      offset += 1;
+    }
+    const start = offset;
+    while (
+      offset < bytes.length &&
+      bytes[offset] !== 0x20 &&
+      bytes[offset] !== 0x0a &&
+      bytes[offset] !== 0x0d
+    ) {
+      offset += 1;
+    }
+    return new TextDecoder().decode(bytes.subarray(start, offset));
+  };
+  expect(token()).toBe("P6");
+  const width = Number(token());
+  const height = Number(token());
+  expect(token()).toBe("255");
+  while (bytes[offset] === 0x20 || bytes[offset] === 0x0a || bytes[offset] === 0x0d) {
+    offset += 1;
+  }
+  return { width, height, pixels: bytes.subarray(offset) };
+}
+
+function colorPixels(
+  page: Ppm,
+  [red, green, blue]: readonly [number, number, number]
+): number {
+  let count = 0;
+  for (let index = 0; index + 2 < page.pixels.length; index += 3) {
+    if (
+      Math.abs(page.pixels[index]! - red) <= 8 &&
+      Math.abs(page.pixels[index + 1]! - green) <= 8 &&
+      Math.abs(page.pixels[index + 2]! - blue) <= 8
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+interface ColorBounds {
+  populated: boolean;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+function colorBounds(
+  page: Ppm,
+  [red, green, blue]: readonly [number, number, number]
+): ColorBounds {
+  const bounds: ColorBounds = {
+    populated: false,
+    minX: page.width,
+    minY: page.height,
+    maxX: -1,
+    maxY: -1,
+  };
+  for (let y = 0; y < page.height; y += 1) {
+    for (let x = 0; x < page.width; x += 1) {
+      const index = (y * page.width + x) * 3;
+      if (
+        Math.abs(page.pixels[index]! - red) > 8 ||
+        Math.abs(page.pixels[index + 1]! - green) > 8 ||
+        Math.abs(page.pixels[index + 2]! - blue) > 8
+      ) {
+        continue;
+      }
+      bounds.populated = true;
+      bounds.minX = Math.min(bounds.minX, x);
+      bounds.minY = Math.min(bounds.minY, y);
+      bounds.maxX = Math.max(bounds.maxX, x);
+      bounds.maxY = Math.max(bounds.maxY, y);
+    }
+  }
+  return bounds;
+}
+
+function boundsIou(left: ColorBounds, right: ColorBounds): number {
+  if (!left.populated || !right.populated) {
+    return left.populated === right.populated ? 1 : 0;
+  }
+  const width = Math.max(
+    0,
+    Math.min(left.maxX, right.maxX) - Math.max(left.minX, right.minX) + 1
+  );
+  const height = Math.max(
+    0,
+    Math.min(left.maxY, right.maxY) - Math.max(left.minY, right.minY) + 1
+  );
+  const intersection = width * height;
+  const leftArea =
+    (left.maxX - left.minX + 1) * (left.maxY - left.minY + 1);
+  const rightArea =
+    (right.maxX - right.minX + 1) * (right.maxY - right.minY + 1);
+  return intersection / (leftArea + rightArea - intersection);
+}
+
+function encodePpm(page: Ppm): Uint8Array {
+  const header = encoder.encode(`P6\n${page.width} ${page.height}\n255\n`);
+  const result = new Uint8Array(header.byteLength + page.pixels.byteLength);
+  result.set(header);
+  result.set(page.pixels, header.byteLength);
+  return result;
+}
+
+function compareRasterPage(
+  current: Ppm,
+  golden: Ppm
+): { meanDifference: number; minColorBoundsIou: number } {
+  if (current.width !== golden.width || current.height !== golden.height) {
+    return { meanDifference: 1, minColorBoundsIou: 0 };
+  }
+  let difference = 0;
+  for (let index = 0; index < current.pixels.byteLength; index += 1) {
+    difference += Math.abs(current.pixels[index]! - golden.pixels[index]!);
+  }
+  const populatedColorIous = GOLDEN_COLORS.map((color) => ({
+    current: colorBounds(current, color),
+    golden: colorBounds(golden, color),
+  }))
+    .filter(({ current: left, golden: right }) => left.populated || right.populated)
+    .map(({ current: left, golden: right }) => boundsIou(left, right));
+  return {
+    meanDifference:
+      difference / current.pixels.byteLength / 255,
+    minColorBoundsIou:
+      populatedColorIous.length > 0
+        ? Math.min(...populatedColorIous)
+        : 0,
+  };
+}
+
+function shiftPage(page: Ppm, pixels: number): Ppm {
+  const shifted = new Uint8Array(page.pixels.byteLength);
+  shifted.fill(255);
+  for (let y = 0; y < page.height; y += 1) {
+    for (let x = 0; x < page.width - pixels; x += 1) {
+      const source = (y * page.width + x) * 3;
+      const target = (y * page.width + x + pixels) * 3;
+      shifted.set(page.pixels.subarray(source, source + 3), target);
+    }
+  }
+  return { width: page.width, height: page.height, pixels: shifted };
+}
+
+async function assertRasterGoldens(
+  pages: readonly Ppm[],
+  pdf: Uint8Array
+): Promise<void> {
+  if (process.env.UPDATE_DOCX_TEMPLATE_ASSET_GOLDENS === "1") {
+    await mkdir(GOLDEN_DIRECTORY, { recursive: true });
+    const entries = [];
+    for (let index = 0; index < pages.length; index += 1) {
+      const file = `page-${index + 1}.ppm`;
+      const bytes = encodePpm(pages[index]!);
+      await Bun.write(resolve(GOLDEN_DIRECTORY, file), bytes);
+      entries.push({ file, sha256: await digest(bytes) });
+    }
+    const version = Bun.spawnSync(["pdftoppm", "-v"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await Bun.write(
+      GOLDEN_MANIFEST,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          pdfSha256: await digest(pdf),
+          rasterizer: new TextDecoder()
+            .decode(version.stderr)
+            .split(/\r?\n/u)[0],
+          resolutionDpi: 36,
+          maxMeanPixelDifference: MAX_GOLDEN_MEAN_DIFFERENCE,
+          minColorBoundsIou: MIN_GOLDEN_COLOR_BOUNDS_IOU,
+          pages: entries,
+        },
+        null,
+        2
+      )}\n`
+    );
+  }
+  const manifest = (await Bun.file(GOLDEN_MANIFEST).json()) as {
+    schemaVersion: number;
+    pages: readonly { file: string; sha256: string }[];
+  };
+  expect(manifest.schemaVersion).toBe(1);
+  expect(manifest.pages).toHaveLength(pages.length);
+  for (let index = 0; index < pages.length; index += 1) {
+    const reference = manifest.pages[index]!;
+    const bytes = new Uint8Array(
+      await Bun.file(resolve(GOLDEN_DIRECTORY, reference.file)).arrayBuffer()
+    );
+    expect(await digest(bytes)).toBe(reference.sha256);
+    const comparison = compareRasterPage(pages[index]!, parsePpm(bytes));
+    expect(comparison.meanDifference).toBeLessThanOrEqual(
+      MAX_GOLDEN_MEAN_DIFFERENCE
+    );
+    expect(comparison.minColorBoundsIou).toBeGreaterThanOrEqual(
+      MIN_GOLDEN_COLOR_BOUNDS_IOU
+    );
+  }
+  const shifted = compareRasterPage(pages[0]!, shiftPage(pages[0]!, 12));
+  expect(
+    shifted.meanDifference > MAX_GOLDEN_MEAN_DIFFERENCE ||
+      shifted.minColorBoundsIou < MIN_GOLDEN_COLOR_BOUNDS_IOU
+  ).toBe(true);
+}
+
+function inflatedPdfText(bytes: Uint8Array): string {
+  const raw = new TextDecoder("latin1").decode(bytes);
+  const parts = [raw];
+  for (const match of raw.matchAll(/stream\r?\n/g)) {
+    const start = match.index + match[0].length;
+    const end = raw.indexOf("endstream", start);
+    if (end < 0) continue;
+    let stop = end;
+    while (
+      stop > start &&
+      (bytes[stop - 1] === 0x0a || bytes[stop - 1] === 0x0d)
+    ) {
+      stop -= 1;
+    }
+    try {
+      parts.push(inflateSync(bytes.subarray(start, stop)).toString("latin1"));
+    } catch {
+      // Font/image/non-Flate stream.
+    }
+  }
+  return parts.join("\n");
+}
+
+async function rasterPages(pdf: Uint8Array): Promise<Ppm[]> {
+  const directory = await mkdtemp(join(tmpdir(), "atlcli-t6-raster-"));
+  try {
+    const input = join(directory, "proof.pdf");
+    const prefix = join(directory, "page");
+    await Bun.write(input, pdf);
+    const process = Bun.spawn(
+      ["pdftoppm", "-r", "36", input, prefix],
+      { stdout: "pipe", stderr: "pipe" }
+    );
+    const exit = await process.exited;
+    if (exit !== 0) {
+      throw new Error(
+        `pdftoppm failed: ${await new Response(process.stderr).text()}`
+      );
+    }
+    const files = (await readdir(directory))
+      .filter((name) => /^page-\d+\.ppm$/u.test(name))
+      .sort((left, right) =>
+        Number(/\d+/u.exec(left)![0]) - Number(/\d+/u.exec(right)![0])
+      );
+    // Await before finally removes the temporary directory. Returning the
+    // promise directly lets cleanup race the asynchronous file reads.
+    return await Promise.all(
+      files.map(async (name) =>
+        parsePpm(new Uint8Array(await Bun.file(join(directory, name)).arrayBuffer()))
+      )
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function extractedText(pdf: Uint8Array): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "atlcli-t6-text-"));
+  try {
+    const input = join(directory, "preview.pdf");
+    await Bun.write(input, pdf);
+    const process = Bun.spawn(["pdftotext", "-layout", input, "-"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const text = await new Response(process.stdout).text();
+    const exit = await process.exited;
+    if (exit !== 0) {
+      throw new Error(
+        `pdftotext failed: ${await new Response(process.stderr).text()}`
+      );
+    }
+    return text;
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function resultBytes(
+  result: Awaited<ReturnType<InstanceType<typeof BrowserTemplatePreviewCompiler>["render"]>>
+): Uint8Array {
+  if (result.output.kind !== "bytes") {
+    throw new Error("test preview unexpectedly returned an asset handle");
+  }
+  return result.output.bytes;
+}
+
+beforeAll(async () => {
+  await ensurePdfFonts({ logger: () => {} });
+  await ensureVendoredTypst();
+  const [wasm, ...fonts] = await Promise.all([
+    packageBytes("@atlcli/pdf-compiler-browser/wasm"),
+    ...PDF_RUNTIME_ASSETS.fonts.map((font) =>
+      packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)
+    ),
+  ]);
+  compiler = new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
+});
+
+afterAll(async () => {
+  await compiler?.reset();
+});
+
+describe("DOCX template visual assets through real Typst-WASM", () => {
+  it("compiles every V1 slot and the uniform border as decorative PDF content", async () => {
+    const pack = await loadPdfTemplatePack(await fixturePack());
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("feature zoo has no document assets");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Template asset proof",
+        space: "DEMO",
+        version: 1,
+        author: "Example",
+        language: "en",
+        exportedAt: new Date("2026-07-27T00:00:00.000Z"),
+      },
+      settings: { cover: true, outline: false },
+      templatePack: pack,
+    });
+    expect(bundle.assets.map(({ path }) => path).sort()).toEqual([
+      "template-assets/cover.svg",
+      "template-assets/footer.svg",
+      "template-assets/header.svg",
+      "template-assets/logo.svg",
+      "template-assets/page.svg",
+    ]);
+    const result = await compiler.compile(bundle);
+    const errors = result.diagnostics.filter(({ severity }) => severity === "error");
+    if (errors.length > 0) {
+      const line = errors[0]?.startLine ?? 1;
+      const source = bundle.template.split("\n");
+      throw new Error(
+        `${JSON.stringify(errors)}\n${source
+          .slice(Math.max(0, line - 4), line + 3)
+          .map((value, index) => `${Math.max(1, line - 3) + index}: ${value}`)
+          .join("\n")}`
+      );
+    }
+    const pdf = result.pdf!;
+    const inspection = validatePdfOutput(pdf);
+    expect(inspection).toMatchObject({
+      tagged: true,
+      hasOutline: true,
+    });
+    const raw = inflatedPdfText(pdf);
+    expect(bundle.template).toContain('pdf.artifact(kind: "other"');
+    // Decorative ornaments are artifacts; only the meaning-bearing logo may
+    // create a Figure structure element.
+    expect([...raw.matchAll(/\/S\s*\/Figure\b/g)]).toHaveLength(1);
+
+    const pages = await rasterPages(pdf);
+    expect(pages.length).toBeGreaterThanOrEqual(6);
+    const red = pages.map((page) => colorPixels(page, [255, 0, 0]) > 20);
+    const green = pages.map((page) => colorPixels(page, [0, 255, 0]) > 20);
+    const blue = pages.map((page) => colorPixels(page, [0, 0, 255]) > 20);
+    const yellow = pages.map((page) => colorPixels(page, [255, 255, 0]) > 20);
+    const purple = pages.map((page) => colorPixels(page, [170, 0, 170]) > 20);
+    expect(green).toEqual(pages.map((_, index) => index === 0));
+    expect(red).toEqual(pages.map((_, index) => index % 2 === 0));
+    expect(blue).toEqual(pages.map((_, index) => index % 2 === 1));
+    expect(yellow).toEqual(pages.map(() => true));
+    expect(purple).toEqual(pages.map((_, index) => index === 0));
+    // Cyan border pixels must be visible on every rasterized page.
+    expect(
+      pages.map((page) => colorPixels(page, [0, 255, 255]) > 20)
+    ).toEqual(pages.map(() => true));
+    await assertRasterGoldens(pages, pdf);
+  }, 120_000);
+
+  it("renders design review, compatibility proof, and contact sheet through the host-neutral adapter", async () => {
+    const pack = await loadPdfTemplatePack(await fixturePack());
+    const request = {
+      generation: "generation-t6",
+      snapshotDigest: "a".repeat(64),
+      purpose: "design-review" as const,
+      summary: {
+        readyToApply: 12,
+        needsReview: 4,
+        cannotTransfer: 3,
+        blockers: 1,
+        unanswered: 4,
+      },
+    };
+    const resolveModel = async () => ({
+      baseline: BUILTIN_PDF_TEMPLATE_MANIFEST,
+      current: pack.manifest as TemplateManifest,
+      currentPack: pack,
+    });
+    const browserAdapter = new BrowserTemplatePreviewCompiler({
+      compiler,
+      resolveModel,
+    });
+    const review = await browserAdapter.render(request);
+    expect(review.pageCount).toBe(2);
+    expect(review.regions).toEqual([
+      { page: 1, region: "summary" },
+      { page: 2, region: "baseline" },
+      { page: 2, region: "current" },
+    ]);
+    const reviewBytes = resultBytes(review);
+    const text = await extractedText(reviewBytes);
+    expect(text).toContain("Ready to apply");
+    expect(text).toContain("12");
+    expect(text).toContain("Needs review");
+    expect(text).toContain("4");
+    expect(text).toContain("Cannot transfer");
+    expect(text).toContain("3");
+    expect(text).toContain("Blockers");
+    expect(text).toContain("1");
+    expect(text).toContain("Unanswered");
+    expect(text).toContain("a4 / portrait");
+    expect(text).toContain("letter / landscape");
+    const inspectable = inflatedPdfText(reviewBytes);
+    expect(inspectable).toContain("SourceSerif4");
+    expect(inspectable).toContain("SourceSans3");
+    const reviewPages = await rasterPages(reviewBytes);
+    expect(
+      reviewPages.some((page) => colorPixels(page, [75, 87, 163]) > 20)
+    ).toBe(true);
+    expect(
+      reviewPages.some((page) => colorPixels(page, [0, 102, 68]) > 20)
+    ).toBe(true);
+    expect(
+      reviewPages.some((page) => colorPixels(page, [255, 0, 0]) > 20)
+    ).toBe(true);
+
+    const compatibility = await browserAdapter.render({
+      ...request,
+      purpose: "compatibility-proof",
+    });
+    expect(resultBytes(compatibility).subarray(0, 5)).toEqual(
+      encoder.encode("%PDF-")
+    );
+    expect(compatibility.regions).toEqual([
+      { page: 1, region: "feature-zoo" },
+    ]);
+
+    const contact = await browserAdapter.render({
+      ...request,
+      purpose: "asset-contact-sheet",
+    });
+    const contactText = await extractedText(resultBytes(contact));
+    expect(contactText).toContain("Asset contact sheet");
+    expect(contactText).toContain("Role: asset.logo");
+    expect(contactText).not.toContain("assets/");
+    expect(contact.regions).toEqual([{ page: 1, region: "asset-grid" }]);
+  }, 120_000);
+
+  it("returns byte-identical previews through the Node and browser PDF entries", async () => {
+    const pack = await loadPdfTemplatePack(await fixturePack());
+    const request = {
+      generation: "generation-parity",
+      snapshotDigest: "b".repeat(64),
+      purpose: "design-review" as const,
+      summary: {
+        readyToApply: 2,
+        needsReview: 1,
+        cannotTransfer: 1,
+        blockers: 0,
+        unanswered: 1,
+      },
+    };
+    const resolveModel = async () => ({
+      baseline: BUILTIN_PDF_TEMPLATE_MANIFEST,
+      current: pack.manifest as TemplateManifest,
+      currentPack: pack,
+    });
+    const nodeResult = await new NodeTemplatePreviewCompiler({
+      compiler,
+      resolveModel,
+    }).render(request);
+    const browserResult = await new BrowserTemplatePreviewCompiler({
+      compiler,
+      resolveModel,
+    }).render(request);
+    // On a digest mismatch, name the differing PDF offsets — "two 37500-byte
+    // documents with different hashes" is undebuggable from CI logs alone.
+    if (nodeResult.digest !== browserResult.digest) {
+      const a = resultBytes(nodeResult);
+      const b = resultBytes(browserResult);
+      const spans: string[] = [];
+      const limit = Math.min(a.byteLength, b.byteLength);
+      for (let i = 0; i < limit && spans.length < 5; i += 1) {
+        if (a[i] === b[i]) continue;
+        let end = i;
+        while (end < limit && a[end] !== b[end]) end += 1;
+        const from = Math.max(0, i - 24);
+        const to = Math.min(limit, end + 24);
+        const show = (bytes: Uint8Array) =>
+          Array.from(bytes.subarray(from, to), (byte) =>
+            byte >= 0x20 && byte < 0x7f ? String.fromCharCode(byte) : ".",
+          ).join("");
+        spans.push(`@${i}-${end}\n  node:    ${show(a)}\n  browser: ${show(b)}`);
+        i = end;
+      }
+      throw new Error(
+        `Node and browser preview bytes diverge (len ${a.byteLength}/${b.byteLength}):\n${spans.join("\n")}`,
+      );
+    }
+    expect({
+      digest: nodeResult.digest,
+      mediaType: nodeResult.mediaType,
+      byteLength: nodeResult.byteLength,
+      pageCount: nodeResult.pageCount,
+      regions: nodeResult.regions,
+    }).toEqual({
+      digest: browserResult.digest,
+      mediaType: browserResult.mediaType,
+      byteLength: browserResult.byteLength,
+      pageCount: browserResult.pageCount,
+      regions: browserResult.regions,
+    });
+    expect(resultBytes(nodeResult)).toEqual(resultBytes(browserResult));
+  }, 120_000);
+});

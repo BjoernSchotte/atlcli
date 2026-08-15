@@ -8,18 +8,57 @@
  * runtime asset) is newer than the emitted manifest — otherwise a stale `.output`
  * from an earlier source revision would be asserted against.
  */
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
-export const EXTENSION_ROOT = join(import.meta.dir, "..");
-export const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
+export const EXTENSION_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const DEFAULT_OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
+
+export function resolveExtensionOutputDir(
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = environment.ATLCLI_EXTENSION_OUTPUT_DIR;
+  if (configured === undefined || configured === "") return DEFAULT_OUTPUT_DIR;
+  if (!isAbsolute(configured)) {
+    throw new Error("ATLCLI_EXTENSION_OUTPUT_DIR must be an absolute path");
+  }
+  const output = realpathSync(resolve(configured));
+  if (!statSync(output).isDirectory()) {
+    throw new Error("ATLCLI_EXTENSION_OUTPUT_DIR must resolve to a directory");
+  }
+  if (!existsSync(join(output, "manifest.json"))) {
+    throw new Error("ATLCLI_EXTENSION_OUTPUT_DIR has no root manifest.json");
+  }
+  return output;
+}
+
+export const OUTPUT_DIR = resolveExtensionOutputDir();
 export const MANIFEST_PATH = join(OUTPUT_DIR, "manifest.json");
+const USES_EXPLICIT_RELEASE_OUTPUT = OUTPUT_DIR !== DEFAULT_OUTPUT_DIR;
+const BUILD_LOCK_DIR = join(
+  tmpdir(),
+  `atlcli-extension-build-${createHash("sha256").update(EXTENSION_ROOT).digest("hex").slice(0, 16)}`
+);
+const BUILD_LOCK_OWNER = join(BUILD_LOCK_DIR, "owner");
+const BUILD_WAIT_TIMEOUT_MS = 180_000;
+const BUILD_WAIT_INTERVAL_MS = 100;
+const BUILD_LOCK_INITIALIZATION_GRACE_MS = 5_000;
 
 /** Build inputs (relative to the extension root) that invalidate the output. */
 export const BUILD_INPUTS = [
   "wxt.config.ts",
+  "release-context.ts",
   "package.json",
+  // Spec 010 Phase 0 added a components tree and a Tailwind stylesheet. Without
+  // them here, editing only a component would leave a stale `.output` for every
+  // build-output assertion to pass against.
+  "postcss.config.mjs",
+  "components",
+  "assets",
   "entrypoints",
   "utils",
   "workers",
@@ -29,6 +68,8 @@ export const BUILD_INPUTS = [
   "../../packages/diagram/src",
   "../../packages/docx/src",
   "../../packages/docx/package.json",
+  "../../packages/export-jobs/src",
+  "../../packages/export-jobs/package.json",
   "../../packages/pdf/src",
   "../../packages/pdf-compiler-browser/src",
   "../../packages/pdf/scripts/ensure-fonts.ts",
@@ -60,22 +101,93 @@ export function collectMtimes(path: string): number[] {
   return [st.mtimeMs];
 }
 
-/** Build the extension if the output is missing or stale. */
-export function ensureExtensionBuilt(): void {
+function outputIsStale(): boolean {
+  if (USES_EXPLICIT_RELEASE_OUTPUT) return false;
   const manifestMtime = existsSync(MANIFEST_PATH)
     ? statSync(MANIFEST_PATH).mtimeMs
     : null;
   const sourceMtimes = BUILD_INPUTS.flatMap((p) =>
     collectMtimes(join(EXTENSION_ROOT, p))
   );
+  return isBuildStale(manifestMtime, sourceMtimes);
+}
 
-  if (!isBuildStale(manifestMtime, sourceMtimes)) return;
+function ownerIsAlive(): boolean {
+  try {
+    const pid = Number.parseInt(readFileSync(BUILD_LOCK_OWNER, "utf8"), 10);
+    if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    // mkdir and writing the owner file are separate syscalls. Treat a brand-new
+    // ownerless lock as active so a contender cannot delete it in that gap.
+    try {
+      return Date.now() - statSync(BUILD_LOCK_DIR).mtimeMs < BUILD_LOCK_INITIALIZATION_GRACE_MS;
+    } catch {
+      return false;
+    }
+  }
+}
 
-  const res = spawnSync("bun", ["run", "build"], {
-    cwd: EXTENSION_ROOT,
-    stdio: "inherit",
-  });
-  if (res.status !== 0) {
-    throw new Error(`wxt build failed (exit ${res.status})`);
+function acquireBuildLock(): void {
+  const deadline = Date.now() + BUILD_WAIT_TIMEOUT_MS;
+  while (true) {
+    try {
+      mkdirSync(BUILD_LOCK_DIR);
+      writeFileSync(BUILD_LOCK_OWNER, String(process.pid));
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+
+    // Another test file may have completed the shared build while this file
+    // waited. Re-check the real output instead of starting a redundant build.
+    if (!outputIsStale()) return;
+
+    // A timed-out test process cannot clean up its lock. Reclaim it when its
+    // recorded owner no longer exists, so the next run does not hang.
+    if (!ownerIsAlive()) {
+      rmSync(BUILD_LOCK_DIR, { recursive: true, force: true });
+      continue;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out waiting ${BUILD_WAIT_TIMEOUT_MS}ms for extension build lock`);
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, BUILD_WAIT_INTERVAL_MS);
+  }
+}
+
+export function formatBuildFailure(status: number | null, signal: NodeJS.Signals | null): string {
+  if (signal) return `wxt build was killed by ${signal}`;
+  return `wxt build failed (exit ${status ?? "unknown"})`;
+}
+
+/** Build the extension if the output is missing or stale. */
+export function ensureExtensionBuilt(): void {
+  // A release consumer path is immutable input. Never replace it with a local
+  // build, even when workspace sources are newer than the downloaded bytes.
+  if (USES_EXPLICIT_RELEASE_OUTPUT) return;
+  if (!outputIsStale()) return;
+
+  acquireBuildLock();
+  // A waiter returns from acquireBuildLock without owning the lock when the
+  // other file has already produced fresh output.
+  if (!existsSync(BUILD_LOCK_OWNER) || readFileSync(BUILD_LOCK_OWNER, "utf8") !== String(process.pid)) {
+    return;
+  }
+
+  try {
+    // Sources or output may have changed between the first check and lock
+    // acquisition. Only the lock owner is allowed to launch WXT.
+    if (!outputIsStale()) return;
+    const res = spawnSync("bun", ["run", "build"], {
+      cwd: EXTENSION_ROOT,
+      stdio: "inherit",
+    });
+    if (res.status !== 0) {
+      throw new Error(formatBuildFailure(res.status, res.signal));
+    }
+  } finally {
+    rmSync(BUILD_LOCK_DIR, { recursive: true, force: true });
   }
 }

@@ -6,16 +6,20 @@
  */
 import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
+import { DOCX_CALLOUT_ICON_PNG } from "./callout-icon-assets.js";
 import {
   ImageEmbedder,
   ImageEmbedError,
   MAX_CONTENT_WIDTH_PX,
   MAX_RASTER_AXIS_PX,
   MAX_RASTER_PIXELS,
+  auditImageAltText,
   boundRasterTarget,
   decodeImageInfo,
+  isMissingAltText,
   ensureContentTypeDefault,
   inlineImageParagraph,
+  inlineImageRun,
   isSvg,
   parseSvgSize,
   pxToEmu,
@@ -72,6 +76,19 @@ function templateZip(body = para("hello")): PizZip {
 // ---------------------------------------------------------------------------
 
 describe("decodeImageInfo", () => {
+  it("keeps every built-in callout icon as a distinct 32×32 PNG", () => {
+    const icons = Object.values(DOCX_CALLOUT_ICON_PNG);
+    expect(icons).toHaveLength(6);
+    expect(new Set(icons.map((bytes) => Buffer.from(bytes).toString("base64"))).size).toBe(6);
+    for (const bytes of icons) {
+      expect(decodeImageInfo(bytes)).toMatchObject({
+        format: "png",
+        width: 32,
+        height: 32,
+      });
+    }
+  });
+
   it("decodes PNG IHDR dimensions", () => {
     expect(decodeImageInfo(pngBytes(640, 480))).toEqual({
       format: "png",
@@ -288,6 +305,20 @@ describe("ImageEmbedder", () => {
     assertBalancedXml(xml);
   });
 
+  it("emits a Word anchor with square text wrapping for wrapped ADF media", () => {
+    const zip = templateZip();
+    const left = new ImageEmbedder(zip).embed(pngBytes(100, 50), { wrap: "left" });
+
+    expect(left).toContain("<wp:anchor ");
+    expect(left).not.toContain("<wp:inline ");
+    expect(left).toContain(
+      '<wp:positionH relativeFrom="column"><wp:align>left</wp:align></wp:positionH>',
+    );
+    expect(left).toContain('<wp:wrapSquare wrapText="right"/>');
+    expect(left).toContain("</wp:anchor>");
+    assertBalancedXml(left);
+  });
+
   it("caps oversized images to the content width", () => {
     const zip = templateZip();
     const xml = new ImageEmbedder(zip).embed(pngBytes(1200, 600));
@@ -350,7 +381,7 @@ describe("inlineImageParagraph", () => {
       relId: "rId9",
       docPrId: 3,
       name: "pic",
-      descr: "alt",
+      accessibility: { kind: "labelled", description: "alt" },
       cxEmu: 100,
       cyEmu: 200,
     });
@@ -365,6 +396,23 @@ describe("inlineImageParagraph", () => {
     ]) {
       expect(xml).toContain(landmark);
     }
+  });
+
+  it("emits a paragraph-free inline run with authored border color, alpha, and width", () => {
+    const xml = inlineImageRun({
+      relId: "rId10",
+      docPrId: 4,
+      name: "inline",
+      accessibility: { kind: "labelled", description: "inline alt" },
+      cxEmu: 300,
+      cyEmu: 200,
+      border: { color: "#0052CC80", size: 2 },
+    });
+    assertBalancedXml(xml);
+    expect(xml).toStartWith("<w:r><w:drawing>");
+    expect(xml).not.toContain("<w:p>");
+    expect(xml).toContain('<a:ln w="25400">');
+    expect(xml).toContain('<a:srgbClr val="0052CC"><a:alpha val="50196"/>');
   });
 });
 
@@ -486,6 +534,51 @@ describe("ImageEmbedder.embedSvg", () => {
   });
 });
 
+describe("ImageEmbedder inline drawings", () => {
+  it("embeds a labelled built-in callout icon without changing page-image counters", () => {
+    const zip = templateZip();
+    const embedder = new ImageEmbedder(zip);
+    const icon = embedder.embedCalloutIconInline(pngBytes(32, 32), {
+      name: "Warning callout icon",
+      accessibility: { kind: "labelled", description: "Warning" },
+      widthPx: 16,
+      heightPx: 16,
+    });
+
+    expect(icon).not.toContain("<w:p>");
+    expect(icon).toContain('name="Warning callout icon" descr="Warning"');
+    expect(icon).toContain(`<wp:extent cx="${16 * 9525}" cy="${16 * 9525}"/>`);
+    expect(embedder.embeddedCount).toBe(0);
+    expect(zip.file("word/_rels/document.xml.rels")!.asText()).toContain(
+      "relationships/image",
+    );
+  });
+
+  it("embeds raster and SVG images as runs while preserving dimensions and borders", () => {
+    const zip = templateZip();
+    const embedder = new ImageEmbedder(zip);
+    const raster = embedder.embedInline(pngBytes(100, 50), {
+      widthPx: 40,
+      heightPx: 20,
+      border: { color: "#FF5630", size: 3 },
+    });
+    const svg = embedder.embedSvgInline(DIAGRAM_SVG, pngBytes(400, 200), {
+      widthPx: 30,
+      heightPx: 15,
+      origin: "image",
+      border: { color: "#36B37E", size: 1 },
+    });
+
+    expect(raster).not.toContain("<w:p>");
+    expect(raster).toContain(`<wp:extent cx="${40 * 9525}" cy="${20 * 9525}"/>`);
+    expect(raster).toContain('<a:ln w="38100">');
+    expect(svg).not.toContain("<w:p>");
+    expect(svg).toContain("asvg:svgBlip");
+    expect(svg).toContain('<a:srgbClr val="36B37E">');
+    expect(embedder.embeddedCount).toBe(2);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // SVG sizing + raster budget (spec 006 G4)
 // ---------------------------------------------------------------------------
@@ -548,5 +641,56 @@ describe("boundRasterTarget (spec 006 G4)", () => {
     const axis = MAX_RASTER_AXIS_PX;
     expect(axis * axis).toBeGreaterThan(MAX_RASTER_PIXELS);
     expect(boundRasterTarget({ widthPx: axis, heightPx: axis })).toBeNull();
+  });
+});
+
+/**
+ * Alt-text audit (spec 011, PDF/UA lane — DOCX side).
+ *
+ * The audit exists because the emitted XML looks correct either way:
+ * `inlineImageParagraph` always writes a non-empty `descr`, so Word's own
+ * accessibility checker reports "has alt text" while a screen reader announces
+ * a filename. These tests pin BOTH halves of that: the audit fires, and the
+ * fallback it is warning about really is in the XML.
+ */
+describe("image alt-text audit (spec 011)", () => {
+  it("flags an image with no alt and names the page and asset", () => {
+    expect(auditImageAltText({ name: "chart.png", pageId: "12345" })).toEqual({
+      level: "warning",
+      code: "image-missing-alt",
+      message: expect.stringContaining("chart.png"),
+      source: { pageId: "12345", assetName: "chart.png" },
+    });
+  });
+
+  it("stays silent when the author wrote alt text", () => {
+    expect(auditImageAltText({ alt: "Quarterly revenue", name: "chart.png" })).toBeNull();
+  });
+
+  it("treats whitespace-only alt as missing, exactly as the PDF engine does", () => {
+    // The two engines must agree, or the same source page audits differently
+    // depending on which format the author exported.
+    expect(isMissingAltText(undefined)).toBe(true);
+    expect(isMissingAltText("")).toBe(true);
+    expect(isMissingAltText("   ")).toBe(true);
+    expect(isMissingAltText("\n\t")).toBe(true);
+    expect(isMissingAltText("x")).toBe(false);
+    expect(auditImageAltText({ alt: " ", name: "a.png" })).not.toBeNull();
+  });
+
+  it("omits pageId from the note rather than emitting an empty one", () => {
+    expect(auditImageAltText({ name: "https://example.test/a.png" })?.source).toEqual({
+      assetName: "https://example.test/a.png",
+    });
+  });
+
+  it("is warning about a real fallback: descr carries the filename when alt is absent", () => {
+    // Guards the guard — if the embedder ever started writing an EMPTY descr,
+    // the audit's premise (and its message) would be wrong.
+    const zip = templateZip();
+    const embedder = new ImageEmbedder(zip);
+    const xml = embedder.embed(pngBytes(40, 20), { name: "chart-final-v2.png" });
+    expect(xml).toContain('descr="chart-final-v2.png"');
+    expect(auditImageAltText({ name: "chart-final-v2.png" })).not.toBeNull();
   });
 });

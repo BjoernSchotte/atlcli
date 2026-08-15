@@ -1,8 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
-import type { ConfluencePageDetails, ConfluenceSpace } from "@atlcli/confluence";
+import {
+  AssetPipelineError,
+  type ConfluencePageDetails,
+  type ConfluenceSpace,
+} from "@atlcli/confluence";
 import { DocxRenderError, exportDocx } from "./export.js";
-import type { CurrentUser } from "./resolver.js";
+import type { CurrentUser, IncludePageDetails } from "./resolver.js";
+import { resolveCodeTheme } from "@atlcli/code-highlight/registry";
 import {
   assertBalancedXml,
   buildDocx,
@@ -59,6 +64,22 @@ const deps = {
   getPageOwner: async () => owner,
 };
 
+/**
+ * A Word TOC field, the archetypal reason to set `w:updateFields`: without a
+ * refresh Word shows the cached (usually empty) table of contents.
+ */
+function tocField(): string {
+  return (
+    `<w:p>` +
+    `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+    `<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
+    `<w:r><w:t xml:space="preserve">Right-click to update</w:t></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="end"/></w:r>` +
+    `</w:p>`
+  );
+}
+
 /** A realistic template: cover placeholders, header/footer, TOC-ready styles. */
 function fullTemplate(withScrollHeadings: boolean): Uint8Array {
   const styles = stylesXml(
@@ -80,6 +101,44 @@ function fullTemplate(withScrollHeadings: boolean): Uint8Array {
 }
 
 describe("exportDocx — full pipeline", () => {
+  it("packages correlated ADF annotations as native Word comments", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: fullTemplate(true),
+      details,
+      blocks: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Annotated text",
+          annotations: [{
+            id: "marker-private",
+            annotationType: "inlineComment",
+            comment: {
+              bodyText: "Please verify this value",
+              status: "open",
+              replies: [{ bodyText: "Verified" }],
+            },
+          }],
+        }],
+      }],
+      template,
+      deps,
+    });
+
+    const zip = new PizZip(bytes);
+    const document = zip.file("word/document.xml")?.asText() ?? "";
+    const comments = zip.file("word/comments.xml")?.asText() ?? "";
+    const rels = zip.file("word/_rels/document.xml.rels")?.asText() ?? "";
+    const contentTypes = zip.file("[Content_Types].xml")?.asText() ?? "";
+    expect(document).toContain('<w:commentRangeStart w:id="0"/>');
+    expect(document).toContain('<w:commentReference w:id="0"/>');
+    expect(comments).toContain("Please verify this value");
+    expect(comments).toContain("Reply: Verified");
+    expect(comments).not.toContain("marker-private");
+    expect(rels).toContain("/relationships/comments");
+    expect(contentTypes).toContain("/word/comments.xml");
+  });
+
   it("produces a docx with no $scroll literals and expected style refs", async () => {
     const { bytes, report } = await exportDocx({
       templateBytes: fullTemplate(true),
@@ -112,8 +171,11 @@ describe("exportDocx — full pipeline", () => {
     expect(doc).toContain("Heads up");
     expect(doc).toContain('<w:pStyle w:val="AtlcliCode"/>');
 
-    // Image + logo skipped (no asset fetcher): no drawing, report lists both.
-    expect(doc).not.toContain("<w:drawing");
+    // Page image + logo skipped (no asset fetcher), while the built-in callout
+    // icon remains available and is not tallied as authored page media.
+    expect(doc).toContain("<w:drawing");
+    expect(doc).toContain('name="Info callout icon" descr="Info"');
+    expect(report.embeddedImages).toBe(0);
     expect(report.skippedImages).toBe(2);
     expect(report.notes.some((n) => n.code === "image-skipped")).toBe(true);
     expect(report.notes.some((n) => n.code === "logo-skipped")).toBe(true);
@@ -128,6 +190,157 @@ describe("exportDocx — full pipeline", () => {
     expect(report.unsupportedNames).not.toContain("$scroll.spacelogo");
     expect(report.filename).toBe("Q3_ Architecture _ Overview.docx");
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("embeds all six labelled semantic callout icons without counting them as page media", async () => {
+    const standardKinds = ["info", "note", "warning", "tip", "success", "error"] as const;
+    const blocks = [
+      ...standardKinds.map((kind) => ({
+        type: "callout" as const,
+        kind,
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: `${kind} body` }],
+        }],
+      })),
+      {
+        type: "callout" as const,
+        kind: "warning" as const,
+        panelIcon: ":warning:",
+        panelIconText: "🧭",
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: "explicit warning body" }],
+        }],
+      },
+      {
+        type: "callout" as const,
+        kind: "warning" as const,
+        suppressDefaultIcon: true,
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: "suppressed warning body" }],
+        }],
+      },
+      {
+        type: "callout" as const,
+        kind: "panel" as const,
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: "generic panel body" }],
+        }],
+      },
+    ];
+
+    const { bytes, report } = await exportDocx({
+      templateBytes: fullTemplate(true),
+      details,
+      blocks,
+      template,
+      deps,
+    });
+
+    const zip = new PizZip(bytes);
+    const doc = readPart(bytes, "word/document.xml");
+    const rels = readPart(bytes, "word/_rels/document.xml.rels");
+    for (const label of ["Info", "Note", "Warning", "Tip", "Success", "Error"]) {
+      expect(doc.match(new RegExp(`descr="${label}"`, "g"))).toHaveLength(2);
+    }
+    expect(doc.match(/<wp:docPr\b/g)).toHaveLength(6);
+    expect(doc).toContain("🧭");
+    expect(doc).not.toContain(":warning:");
+    expect(doc).toContain("suppressed warning body");
+    expect(doc).toContain("generic panel body");
+    expect(rels.match(/relationships\/image/g)).toHaveLength(6);
+    expect(
+      Object.keys(zip.files).filter((path) => /^word\/media\/atlcli-image\d+\.png$/u.test(path)),
+    ).toHaveLength(6);
+    expect(report.embeddedImages).toBe(0);
+  });
+
+  it("flattens legacy section/column layouts without visible macro placeholders", async () => {
+    const layoutDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<ac:structured-macro ac:name="section"><ac:rich-text-body>' +
+        '<ac:structured-macro ac:name="column"><ac:rich-text-body>' +
+        "<p>Column A body</p>" +
+        "</ac:rich-text-body></ac:structured-macro>" +
+        '<ac:structured-macro ac:name="column"><ac:rich-text-body>' +
+        "<p>Column B body</p>" +
+        "</ac:rich-text-body></ac:structured-macro>" +
+        "</ac:rich-text-body></ac:structured-macro>",
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: fullTemplate(false),
+      details: layoutDetails,
+      template,
+      deps,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+
+    expect(doc).toContain("Column A body");
+    expect(doc).toContain("Column B body");
+    expect(doc).not.toContain("section macro not rendered");
+    expect(doc).not.toContain("column macro not rendered");
+    expect(report.notes.some((note) => note.code === "macro-not-rendered")).toBe(false);
+  });
+
+  it("turns a Confluence ac:link / ri:url from page storage into a Word HYPERLINK field", async () => {
+    const href = "https://obi.atlassian.net/wiki/x/CACFFg";
+    const linkedDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<table><tbody><tr><td><p>Documentation: <ac:link>' +
+        `<ri:url ri:value="${href}"/>` +
+        '<ac:plain-text-link-body><![CDATA[Platform documentation]]></ac:plain-text-link-body>' +
+        "</ac:link></p></td></tr></tbody></table>",
+    };
+    const { bytes } = await exportDocx({
+      templateBytes: fullTemplate(true),
+      details: linkedDetails,
+      template,
+      exportDate: new Date(2026, 6, 14, 9, 5),
+      deps,
+    });
+
+    // `fullTemplate` contains no link fields: this field instruction and its
+    // visible result can only have come from the ri:url page body above.
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain(` HYPERLINK "${href}" `);
+    expect(doc).toContain("Platform documentation");
+    expect(doc).toContain('<w:fldChar w:fldCharType="begin"/>');
+    expect(doc).toContain('<w:fldChar w:fldCharType="separate"/>');
+    expect(doc).toContain('<w:fldChar w:fldCharType="end"/>');
+    assertBalancedXml(doc);
+  });
+
+  it("preserves Confluence inline background colors as arbitrary Word run shading", async () => {
+    const highlightedDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<p><span style="background-color: rgb(186, 243, 219);">Green highlight</span> ' +
+        '<span style="color: #403294; background-color: #EED7FC"><strong>Purple highlight</strong></span></p>',
+    };
+    const { bytes } = await exportDocx({
+      templateBytes: fullTemplate(true),
+      details: highlightedDetails,
+      template,
+      exportDate: new Date(2026, 6, 14, 9, 5),
+      deps,
+    });
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain(
+      '<w:shd w:val="clear" w:color="auto" w:fill="BAF3DB"/>'
+    );
+    expect(doc).toContain(
+      '<w:shd w:val="clear" w:color="auto" w:fill="EED7FC"/>'
+    );
+    expect(doc).toContain('<w:color w:val="403294"/>');
+    expect(doc).toContain("Green highlight");
+    expect(doc).toContain("Purple highlight");
+    assertBalancedXml(doc);
   });
 
   it("stamps outline levels on injected headings so a TOC \\o collects them on a custom-heading-style template", async () => {
@@ -273,10 +486,28 @@ describe("exportDocx — full pipeline", () => {
     assertBalancedXml(doc);
   });
 
-  it("sets w:updateFields so the TOC repaginates on open", async () => {
-    const { bytes } = await exportDocx({ templateBytes: fullTemplate(true), details, template, deps });
+  it("sets w:updateFields so a TOC repaginates on open", async () => {
+    // The flag is CONDITIONAL since the field-refresh policy landed: it is set
+    // when the finished document carries a field whose refresh changes what the
+    // reader sees. A TOC is the archetype, and stays the default. The full
+    // policy — including the hyperlink-only case this template used to be
+    // wrongly flagged for — lives in `update-fields.test.ts`.
+    const templateBytes = buildDocx({
+      body: tocField() + para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+    const { bytes } = await exportDocx({ templateBytes, details, template, deps });
     const settings = readPart(bytes, "word/settings.xml");
     expect(settings).toContain('<w:updateFields w:val="true"/>');
+  });
+
+  it("leaves w:updateFields alone when the document has nothing to refresh", async () => {
+    // The same realistic template WITHOUT a TOC: its only fields are the body's
+    // static HYPERLINKs, so asking the reader to refresh on every open would
+    // accomplish nothing.
+    const { bytes } = await exportDocx({ templateBytes: fullTemplate(true), details, template, deps });
+    expect(readPart(bytes, "word/document.xml")).toContain("HYPERLINK");
+    expect(readPart(bytes, "word/settings.xml")).not.toContain("<w:updateFields");
   });
 
   it("falls back to builtin heading ids when the template lacks Scroll Heading styles", async () => {
@@ -405,8 +636,11 @@ describe("exportDocx — full pipeline", () => {
   });
 
   it("normalizes a paired w:updateFields=false to true (#3)", async () => {
+    // The TOC is what makes the refresh worth requesting; the template's pinned
+    // `false` is then about a document that no longer exists (its body has been
+    // replaced), and honouring it would ship a visibly empty table of contents.
     const templateBytes = buildDocx({
-      body: para("$scroll.content"),
+      body: tocField() + para("$scroll.content"),
       styles: stylesXml(headingStyle("Heading1", "Heading 1")),
       settings:
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -439,7 +673,9 @@ describe("exportDocx — full pipeline", () => {
         `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
         `</Relationships>`
     );
-    zip.file("word/document.xml", documentXml(para("$scroll.content")));
+    // A TOC, so the export genuinely needs to SYNTHESIZE settings.xml — which is
+    // what this test is about.
+    zip.file("word/document.xml", documentXml(tocField() + para("$scroll.content")));
     zip.file("word/styles.xml", stylesXml(headingStyle("Heading1", "Heading 1")));
     // Existing document rel uses SINGLE quotes.
     zip.file(
@@ -563,6 +799,83 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(report.notes.some((n) => n.code.startsWith("image"))).toBe(false);
   });
 
+  it("embeds correlated ADF inline media inside its paragraph with authored geometry and link", async () => {
+    const { refs, fetcher } = recordingFetcher(pngFixtureBytes(200, 100));
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details,
+      blocks: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "before" },
+          {
+            type: "media",
+            media: { mediaType: "image", id: "inline-1", filename: "inline.png" },
+            source: { kind: "attachment", filename: "inline.png", pageId: "123" },
+            alt: "Inline architecture",
+            width: 40,
+            height: 20,
+            border: { color: "#0052CC", size: 2 },
+            link: { target: { kind: "external", href: "https://example.invalid/inline" } },
+          },
+          { type: "text", text: "after" },
+        ],
+      }],
+      template,
+      deps,
+      assets: fetcher,
+    });
+
+    expect(refs).toEqual([
+      { url: "/download/attachments/123/inline.png", pageId: "123", filename: "inline.png" },
+    ]);
+    const doc = readPart(bytes, "word/document.xml");
+    const paragraphXml = doc.match(/<w:p>[\s\S]*?before[\s\S]*?after[\s\S]*?<\/w:p>/)?.[0];
+    expect(paragraphXml).toBeDefined();
+    expect(paragraphXml!.indexOf("before")).toBeLessThan(paragraphXml!.indexOf("<w:drawing>"));
+    expect(paragraphXml!.indexOf("<w:drawing>")).toBeLessThan(paragraphXml!.indexOf("after"));
+    expect(paragraphXml).toContain(`<wp:extent cx="${40 * 9525}" cy="${20 * 9525}"/>`);
+    expect(paragraphXml).toContain('<a:ln w="25400">');
+    expect(paragraphXml).toContain('<a:srgbClr val="0052CC">');
+    expect(paragraphXml).toContain('HYPERLINK "https://example.invalid/inline"');
+    expect(paragraphXml).not.toContain("[Inline architecture]");
+    expect(report.embeddedImages).toBe(1);
+    expect(report.skippedImages).toBe(0);
+  });
+
+  it("applies ADF mediaSingle percentage width and native Word text wrapping", async () => {
+    const { fetcher } = recordingFetcher();
+    const { bytes } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details,
+      blocks: [{
+        type: "image",
+        source: {
+          kind: "attachment",
+          filename: "diagram.png",
+          pageId: "123",
+        },
+        alt: "Wrapped diagram",
+        mediaPresentation: {
+          layout: "wrap-right",
+          width: 40,
+          widthType: "percentage",
+        },
+      }],
+      template,
+      deps,
+      assets: fetcher,
+    });
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain(`<wp:extent cx="${240 * 9525}" cy="${120 * 9525}"/>`);
+    expect(doc).toContain("<wp:anchor ");
+    expect(doc).toContain(
+      '<wp:positionH relativeFrom="column"><wp:align>right</wp:align></wp:positionH>',
+    );
+    expect(doc).toContain('<wp:wrapSquare wrapText="left"/>');
+  });
+
   it("passes external image URLs through to the fetcher unchanged", async () => {
     const { refs, fetcher } = recordingFetcher();
     const { report } = await exportDocx({
@@ -608,6 +921,26 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(rels).not.toContain("relationships/image");
     const zip = new PizZip(bytes);
     expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
+  });
+
+  it("does not downgrade a durable asset-pipeline failure to a skipped image", async () => {
+    await expect(
+      exportDocx({
+        templateBytes: imageTemplate(),
+        details: {
+          ...details,
+          storage:
+            '<ac:image><ri:attachment ri:filename="checkpointed.png"/></ac:image>',
+        },
+        template,
+        deps,
+        assets: {
+          async fetch() {
+            throw new AssetPipelineError("asset checkpoint quota exceeded");
+          },
+        },
+      }),
+    ).rejects.toThrow("asset checkpoint quota exceeded");
   });
 
   it("degrades an SVG attachment with no rasterizer to image-svg-no-rasterizer (spec 006 G4)", async () => {
@@ -961,11 +1294,47 @@ describe("exportDocx — mermaid diagrams (spec 005a)", () => {
     const svgPart = zip.file("word/media/atlcli-image1.svg")!.asText();
     expect(svgPart).toContain("Start");
     expect(svgPart).not.toContain("fonts.googleapis.com");
+    expect(Object.keys(zip.files).some((path) => path.endsWith(".odttf"))).toBe(false);
+    expect(zip.file("word/fontTable.xml")).toBeNull();
 
     expect(report.renderedDiagrams).toBe(1);
     expect(report.embeddedImages).toBe(0);
     expect(report.skippedImages).toBe(0);
     expect(report.notes.some((n) => n.code.startsWith("diagram"))).toBe(false);
+  });
+
+  it("embeds a generated chart SVG without requiring a page-asset fetcher", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: "" },
+      blocks: [{
+        type: "chart",
+        chart: {
+          schema: "atlcli.chart/1",
+          kind: "bar",
+          title: "Generated chart",
+          data: {
+            mode: "categories",
+            labels: ["A", "B"],
+            series: [{ id: "values", label: "Values", values: [1, 2] }],
+          },
+          source: { kind: "cloud-adf", macroName: "chart" },
+        },
+      }],
+      template,
+      deps,
+      rasterizer,
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.svg).toContain('class="ts-chart"');
+    const zip = new PizZip(bytes);
+    const media = Object.keys(zip.files).filter((path) => path.startsWith("word/media/"));
+    expect(media.filter((path) => path.endsWith(".svg"))).toHaveLength(1);
+    expect(media.filter((path) => path.endsWith(".png"))).toHaveLength(1);
+    expect(readPart(bytes, "word/_rels/document.xml.rels")).toContain("relationships/image");
+    expect(report.notes.some((note) => note.code === "image-svg-no-rasterizer")).toBe(false);
   });
 
   it("routes an unsupported type (Gantt) to the pinned code block — no drawing, note names the type, rasterizer untouched", async () => {
@@ -982,6 +1351,9 @@ describe("exportDocx — mermaid diagrams (spec 005a)", () => {
     expect(doc).not.toContain("<w:drawing");
     expect(doc).toContain('<w:pStyle w:val="AtlcliCode"/>');
     expect(doc).toContain("gantt");
+    expect(
+      Object.keys(new PizZip(bytes).files).some((path) => path.endsWith(".odttf")),
+    ).toBe(true);
     const rels = readPart(bytes, "word/_rels/document.xml.rels");
     expect(rels).not.toContain("relationships/image");
     const note = report.notes.find((n) => n.code === "diagram-unsupported");
@@ -1545,6 +1917,155 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
     }
   });
 
+  it("uses the selected non-default theme for code discovered only in an include", async () => {
+    const page = includePage(
+      "Themed",
+      '<ac:structured-macro ac:name="code">' +
+        '<ac:parameter ac:name="language">ts</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[const included = true;]]></ac:plain-text-body>" +
+        "</ac:structured-macro>",
+    );
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(Themed)"),
+      }),
+      details,
+      blocks: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Root without code" }],
+      }],
+      codeTheme: "dracula",
+      template,
+      deps: {
+        ...deps,
+        getIncludedPage: resolver({ Themed: page }).getIncludedPage,
+      },
+    });
+
+    const document = readPart(bytes, "word/document.xml");
+    expect(document).toContain("const");
+    expect(document).toContain(
+      `w:fill="${resolveCodeTheme("dracula").background.slice(1)}"`,
+    );
+    expect(report.timings.highlightCodeBlocks).toBe(1);
+    expect(report.timings.highlightLanguageCount).toBe(1);
+  });
+
+  it("decodes an ADF-primary include once and never walks its Storage sidecar", async () => {
+    const page: IncludePageDetails = {
+      ...includePage("AdfInclude", "<p>STORAGE_SIDECAR_POISON</p>"),
+      version: 4,
+      exportSource: {
+        primary: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify({
+            type: "doc",
+            version: 1,
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "ADF_INCLUDE_SENTINEL" }],
+            }],
+          }),
+        },
+        storageSidecar: "<p>STORAGE_SIDECAR_POISON</p>",
+        sourceVersion: 4,
+      },
+    };
+    const { calls, getIncludedPage } = resolver({ AdfInclude: page });
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(AdfInclude)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("ADF_INCLUDE_SENTINEL");
+    expect(doc).not.toContain("STORAGE_SIDECAR_POISON");
+    expect(calls).toEqual([":AdfInclude"]);
+  });
+
+  it("correlates an ADF include image by v2 fileId before asset embedding", async () => {
+    const page: IncludePageDetails = {
+      ...includePage("AdfMedia"),
+      exportSource: {
+        primary: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify({
+            type: "doc",
+            version: 1,
+            content: [{
+              type: "mediaSingle",
+              content: [{
+                type: "media",
+                attrs: {
+                  type: "file",
+                  id: "file-1",
+                  collection: "content-1",
+                  alt: "Included image",
+                },
+              }],
+            }],
+          }),
+        },
+        sourceVersion: 1,
+      },
+      mediaAttachments: [{ fileId: "file-1", filename: "included.png", pageId: "AdfMedia" }],
+      mediaAttachmentsComplete: true,
+    };
+    const fetched: Array<{ filename?: string; pageId?: string }> = [];
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(AdfMedia)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ AdfMedia: page }).getIncludedPage },
+      assets: {
+        async fetch(ref) {
+          fetched.push({ filename: ref.filename, pageId: ref.pageId });
+          return pngFixtureBytes(120, 60);
+        },
+      },
+    });
+
+    expect(readPart(bytes, "word/document.xml")).toContain("<w:drawing>");
+    expect(fetched).toContainEqual({ filename: "included.png", pageId: "AdfMedia" });
+    expect(report.notes.map((note) => note.code)).not.toContain("adf-media-unresolved");
+  });
+
+  it("bounds ADF include sidecars separately from primary body bytes", async () => {
+    const page: IncludePageDetails = {
+      ...includePage("SidecarBudget"),
+      exportSource: {
+        primary: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify({
+            type: "doc",
+            version: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "SMALL_ADF" }] }],
+          }),
+        },
+        storageSidecar: "x".repeat(2 * 1024 * 1024 + 1),
+        sourceVersion: 1,
+      },
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(SidecarBudget)"),
+      }),
+      details,
+      template,
+      deps: {
+        ...deps,
+        getIncludedPage: async () => ({ kind: "resolved", page }),
+      },
+    });
+    expect(readPart(bytes, "word/document.xml")).not.toContain("SMALL_ADF");
+    expect(report.notes.some((note) => note.code === "includepage-budget-exceeded")).toBe(true);
+  });
+
   it("renders two occurrences of the same include in one part with one fetch", async () => {
     const { calls, getIncludedPage } = resolver({ Imprint: includePage("Imprint") });
     const { bytes } = await exportDocx({
@@ -1714,6 +2235,39 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
     expect(fetchedRefs.some((r) => r.url.includes("/attachments/Imprint/inc.png"))).toBe(true);
   });
 
+  it("embeds an included FOOTER callout icon through footer1.xml.rels", async () => {
+    const footerPage = includePage(
+      "Imprint",
+      '<ac:structured-macro ac:name="warning">' +
+        "<ac:rich-text-body><p>Footer warning</p></ac:rich-text-body>" +
+        "</ac:structured-macro>",
+    );
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content"),
+        footer: para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details: { ...details, storage: "<p>own body</p>" },
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ Imprint: footerPage }).getIncludedPage },
+    });
+
+    const footer = readPart(bytes, "word/footer1.xml");
+    expect(footer).toContain("Footer warning");
+    expect(footer).toContain('name="Warning callout icon" descr="Warning"');
+    assertBalancedXml(footer);
+    const relId = footer.match(/r:embed="(rId\d+)"/)?.[1];
+    expect(relId).toBeDefined();
+    expect(readPart(bytes, "word/_rels/footer1.xml.rels")).toContain(`Id="${relId}"`);
+    expect(readPart(bytes, "word/_rels/footer1.xml.rels")).toContain(
+      "relationships/image",
+    );
+    expect(readPart(bytes, "word/document.xml")).not.toContain(
+      'name="Warning callout icon"',
+    );
+    expect(report.embeddedImages).toBe(0);
+  });
+
   it("embeds an included FOOTER page's Mermaid diagram into footer1.xml.rels, not document.xml.rels", async () => {
     // The included footer page's ONLY content is a mermaid diagram; the diagram
     // seam must thread the occurrence's part so the svgBlip/PNG relationships
@@ -1760,7 +2314,7 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
         '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">ts</ac:parameter>' +
         "<ac:plain-text-body><![CDATA[const x = 1;]]></ac:plain-text-body></ac:structured-macro>",
     };
-    const { bytes } = await exportDocx({
+    const { bytes, report } = await exportDocx({
       templateBytes: styledTemplate({
         body: para("$scroll.content") + para("$scroll.includepage.(ENG:Imprint)"),
       }),
@@ -1769,6 +2323,50 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
       deps: { ...deps, getIncludedPage: resolver({ Imprint: codePage }).getIncludedPage },
     });
     expect(readPart(bytes, "word/styles.xml")).toContain('w:styleId="AtlcliCode"');
+    expect(readPart(bytes, "word/fontTable.xml")).toContain(
+      '<w:font w:name="JetBrains Mono">',
+    );
+    expect(readPart(bytes, "word/_rels/fontTable.xml.rels")).toContain(
+      "relationships/font",
+    );
+    expect(
+      new PizZip(bytes)
+        .file("word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf")
+        ?.asUint8Array().byteLength,
+    ).toBeGreaterThan(250_000);
+    expect(report.timings.highlightCodeBlocks).toBe(1);
+    expect(report.timings.highlightLanguageCount).toBe(1);
+    expect(report.timings.highlightTokenizeMs).toBeGreaterThan(0);
+  });
+
+  it("embeds the code face for inline code without requiring a code-block style", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({ body: para("$scroll.content") }),
+      details: { ...details, storage: "<p>before <code>INLINE_TOKEN</code> after</p>" },
+      template,
+      deps,
+    });
+    const zip = new PizZip(bytes);
+    expect(readPart(bytes, "word/document.xml")).toContain("INLINE_TOKEN");
+    expect(readPart(bytes, "word/document.xml")).toContain(
+      'w:rFonts w:ascii="JetBrains Mono"',
+    );
+    expect(readPart(bytes, "word/styles.xml")).not.toContain('w:styleId="AtlcliCode"');
+    expect(Object.keys(zip.files).filter((path) => path.endsWith(".odttf"))).toEqual([
+      "word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf",
+    ]);
+  });
+
+  it("does not add font parts to a document with no code semantics", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({ body: para("$scroll.content") }),
+      details: { ...details, storage: "<p>plain text only</p>" },
+      template,
+      deps,
+    });
+    const zip = new PizZip(bytes);
+    expect(Object.keys(zip.files).some((path) => path.endsWith(".odttf"))).toBe(false);
+    expect(zip.file("word/fontTable.xml")).toBeNull();
   });
 
   it("enforces the unique-target budget deterministically (cache still serves repeats)", async () => {
@@ -2043,5 +2641,141 @@ describe("exportDocx — table widths & style source (spec 006 G3/G3b)", () => {
     const doc = readPart(bytes, "word/document.xml");
     expect(doc).toContain('<w:tblStyle w:val="TableGrid"/>');
     expect(report.notes.some((n) => n.code === "table-style-missing")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Alt-text audit through the real export pipeline (spec 011, PDF/UA lane)
+// ---------------------------------------------------------------------------
+
+describe("exportDocx — alt-text audit (spec 011)", () => {
+  const imageTemplate = () =>
+    buildDocx({ body: para("$scroll.content"), styles: stylesXml(headingStyle("Heading1", "Heading 1")) });
+
+  const altNotes = (report: { notes: { code: string }[] }) =>
+    report.notes.filter((n) => n.code === "image-missing-alt");
+
+  it("warns for an embedded attachment image with no alt and names the asset", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<ac:image><ri:attachment ri:filename="chart-final-v2.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: { fetch: async () => pngFixtureBytes(120, 60) },
+    });
+    // The image really is embedded — this is an audit, not a rejection.
+    expect(report.embeddedImages).toBe(1);
+    expect(altNotes(report)).toHaveLength(1);
+    expect(altNotes(report)[0]).toMatchObject({
+      level: "warning",
+      source: { assetName: "chart-final-v2.png" },
+    });
+    // …and the descr it is warning about is the filename fallback.
+    expect(readPart(bytes, "word/document.xml")).toContain('descr="chart-final-v2.png"');
+  });
+
+  it("stays silent when the author wrote alt text", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<ac:image ac:alt="Quarterly revenue by region"><ri:attachment ri:filename="chart.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: { fetch: async () => pngFixtureBytes(120, 60) },
+    });
+    expect(report.embeddedImages).toBe(1);
+    expect(altNotes(report)).toEqual([]);
+    expect(readPart(bytes, "word/document.xml")).toContain('descr="Quarterly revenue by region"');
+  });
+
+  it("audits each offending image once, leaving described ones alone", async () => {
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage:
+          '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>' +
+          '<ac:image ac:alt="described"><ri:attachment ri:filename="b.png"/></ac:image>' +
+          '<ac:image><ri:attachment ri:filename="c.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: {
+        fetch: async (ref: { filename?: string }) =>
+          pngFixtureBytes(100 + (ref.filename?.charCodeAt(0) ?? 0), 50),
+      },
+    });
+    expect(report.embeddedImages).toBe(3);
+    expect(altNotes(report).map((n) => (n as { source?: { assetName?: string } }).source?.assetName)).toEqual([
+      "a.png",
+      "c.png",
+    ]);
+  });
+
+  it("audits an SVG attachment too — the vector path has the same fallback", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><rect width="120" height="60"/></svg>';
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: { ...details, storage: '<ac:image><ri:attachment ri:filename="arch.svg"/></ac:image>' },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(svg) },
+      rasterizer: {
+        async rasterize(_svg: string, target: { widthPx: number; heightPx: number }) {
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    });
+    expect(report.embeddedImages).toBe(1);
+    expect(altNotes(report)).toHaveLength(1);
+    expect(altNotes(report)[0]).toMatchObject({ source: { assetName: "arch.svg" } });
+  });
+
+  it("audits an image that FAILED to embed, matching the PDF engine", async () => {
+    // The defect belongs to the source page, not to the embed attempt: a
+    // broken image with no alt text still needs alt text once the attachment
+    // is fixed. Routing this through the serializer's per-image outcome
+    // channel would silence it (the serializer reads outcome notes only on
+    // success), which is why the seam has a separate audit sink.
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: { ...details, storage: '<ac:image><ri:attachment ri:filename="gone.png"/></ac:image>' },
+      template,
+      deps,
+      assets: {
+        fetch: async () => {
+          throw new Error("404");
+        },
+      },
+    });
+    expect(report.embeddedImages).toBe(0);
+    expect(altNotes(report)).toHaveLength(1);
+    expect(report.notes.some((n) => n.code === "image-embed-failed")).toBe(true);
+  });
+
+  it("does not audit a failed image that DID carry alt text", async () => {
+    // Guards the guard: the audit must key on the alt text, not merely fire
+    // for every image that reaches the seam.
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<ac:image ac:alt="described"><ri:attachment ri:filename="gone.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: {
+        fetch: async () => {
+          throw new Error("404");
+        },
+      },
+    });
+    expect(altNotes(report)).toEqual([]);
+    expect(report.notes.some((n) => n.code === "image-embed-failed")).toBe(true);
   });
 });

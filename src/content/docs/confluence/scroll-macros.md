@@ -35,8 +35,8 @@ report, so "why is section X missing?" always has an answer.
 
 | Macro | Effect in export | Engines |
 |-------|------------------|---------|
-| `scroll-only` | Keep the body only for the matching exporter | DOCX, PDF |
-| `scroll-ignore` | Drop the body (for the matching exporter) | DOCX, PDF |
+| `scroll-only` | Keep the body only for the matching exporter | DOCX `ts`, PDF |
+| `scroll-ignore` | Drop the body (for the matching exporter) | DOCX `ts`, PDF |
 | `scroll-only-inline` | Inline variant of `scroll-only` | DOCX, PDF |
 | `scroll-ignore-inline` | Inline variant of `scroll-ignore` | DOCX, PDF |
 | `scroll-pagebreak` | Insert a hard page break | DOCX, PDF |
@@ -137,8 +137,11 @@ lists, quotes, callouts, or table cells.
 block in its body. Numbering is native to the target format, so it stays correct
 as content moves:
 
-- **DOCX**: a `Caption`-styled paragraph with a live `SEQ` field. Word
-  renumbers captions when the document is opened.
+- **DOCX**: a `Caption`-styled paragraph with a live `SEQ` field, whose result is
+  already the correct ordinal. The document reads "Table 1, Table 2, Table 3" the
+  moment it opens — no refresh needed — and the field stays a field, so
+  cross-references and a table of figures keep working. See
+  [Caption numbering](/confluence/export/#caption-numbering).
 - **PDF**: a `#figure(caption: …, kind: …)` with Typst's own figure counters.
 
 Captions are placed **above** tables and **below** figures and code blocks.
@@ -173,13 +176,13 @@ To inspect what an export normally drops, run the CLI export with
 
 ```bash
 atlcli wiki export <page> --template mytemplate --output out.docx \
-  --engine ts --keep-ignored
+  --keep-ignored
 ```
 
 Both `scroll-only` and `scroll-ignore` bodies are kept, and the report records
 `export-controls-passthrough` so you know the output is not representative of a
 normal run. Page breaks and orientation regions still render. The flag is not
-available for `--scope tree/space` or the Python engine yet.
+available for `--scope tree/space` yet.
 
 > **Tip:** Passthrough is a debugging aid. Do not ship a passthrough export as
 > the final document — it contains content the author marked for exclusion.
@@ -191,11 +194,14 @@ available for `--scope tree/space` or the Python engine yet.
 | Content missing from the export | A `scroll-ignore` (or mismatched `scroll-only`) dropped it | Check the report for `scroll-ignore-applied` / `scroll-only-skipped-other-exporter`; use passthrough mode to confirm |
 | A page break did nothing | The break sits inside a table cell or callout | See the `pagebreak-suppressed-in-container` note; move the break to body level |
 | An orientation region did not flip | The region sits inside a table cell or callout | See the `orientation-suppressed-in-container` note |
-| A caption is not numbered in Word | Word numbers `SEQ` fields on open/print preview | Open the document (fields refresh automatically) |
+| Every caption reads "1" in Word | The template's own `SEQ` fields interleave with the exported ones, so the export cannot vouch for the numbers and asks Word to refresh | Answer **Yes** to the refresh prompt, or press **Ctrl+A** then **F9** — see [Caption numbering](/confluence/export/#caption-numbering) |
 | A caption used the wrong label | The `scroll-title` `type` was unknown | See the `caption-kind-unknown` note; use `figure`, `table`, or `code` |
 
 ## Related topics
 
-- [Macros](/confluence/macros/) — the full macro support matrix
+- [Macro compatibility](/confluence/macro-compatibility/) — every macro, per engine
+- [Exporting pages with dynamic macros](/confluence/dynamic-macros/) — Jira tables, diagrams, includes
+- [DOCX and PDF Export](/confluence/export/) — the export commands
+- [Macros](/confluence/macros/) — macro handling in markdown *sync*
 - [Storage format](/confluence/storage/) — how storage XML maps to output
 - [Pages](/confluence/pages/) — creating and exporting pages

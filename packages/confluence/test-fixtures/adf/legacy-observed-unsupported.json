@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "type": "doc",
+  "content": [
+    {
+      "type": "unsupportedBlock",
+      "attrs": { "originalValue": "synthetic" },
+      "content": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Visible fallback" }] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,3161 @@
+import { describe, expect, test } from "bun:test";
+import { AIMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { tool } from "@langchain/core/tools";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import { z } from "zod/v4";
+import {
+  ResearchCapabilityBroker,
+  type ResearchReadProviders,
+} from "../broker.js";
+import { ResearchModelRunBudget, ResearchRunBudget } from "../budget.js";
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  type ResearchProduct,
+  type ResearchRequestV1,
+} from "../contracts.js";
+import { DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY } from "../dispatch-adapter.js";
+import { createMemoryResearchWorkspace } from "../workspace.js";
+import { navigateConfluenceStorageV1 } from "../document-navigation.js";
+import type { ChatStrategyDecisionV1 } from "./strategy.js";
+import type { ChatModelRouteRequestV1, ChatModelRouteV1 } from "./model.js";
+import type { ChatWorkflowDispatchV1 } from "./workflow.js";
+import {
+  providerCompatibleChatJsonSchemaV1,
+  type ChatAgentDraftV1,
+  type ChatAgentDraftV2,
+} from "./contracts.js";
+import type { ChatCandidateLedgerControllerV1 } from "./retrieval-plan.js";
+import {
+  ChatCandidateLedgerControllerV1 as CandidateLedgerController,
+  createChatRetrievalPlanV1,
+} from "./retrieval-plan.js";
+import { createChatPtcToolsV1 } from "./retrieval.js";
+import type {
+  ChatQualityDispositionV1,
+  ChatRepairSkippedReasonV1,
+} from "./quality.js";
+import {
+  CHAT_WORKFLOW_STATE_PATH_V1,
+  chatSubagentEvalAttemptLimitV1,
+  chatDraftDedicatedSourceIdsV1,
+  chatSubagentModelOutputLimitV1,
+  chatSubagentPtcCallLimitV1,
+  createExactContextAcquisitionToolV1,
+  minimalChatSubagentTaskContextV1,
+  createChatAgenticWorkflowRuntimeV1,
+  createPlannedSearchAcquisitionToolV1,
+  normalizeKnownSourceReferencesV1,
+  preserveChatRepairEvidenceFloorV1,
+  quarantineUnreadEvidenceReferencesV1,
+  type ChatSubagentEvalDiagnosticV1,
+  type ChatSubagentModelStreamEventV1,
+} from "./workflow-runtime.js";
+
+test("counts only substantive single-source blocks as dedicated comparison coverage", () => {
+  const draft: ChatAgentDraftV2 = {
+    blocks: [
+      {
+        id: "answer-block:source-a",
+        markdown: "Source A establishes its own central design decision.",
+        sourceRefs: ["wiki:1001#decision"],
+        assertion: "positive",
+        scope: "none",
+      },
+      {
+        id: "answer-block:cross-source",
+        markdown: "The sources differ in where they place control.",
+        sourceRefs: ["wiki:1001", "wiki:1002"],
+        assertion: "positive",
+        scope: "none",
+      },
+    ],
+    gaps: [],
+  };
+  expect([...chatDraftDedicatedSourceIdsV1(draft)]).toEqual(["wiki:1001"]);
+});
+
+test("keeps the supported provisional evidence when a repair drops every citation", () => {
+  const original: ChatAgentDraftV2 = {
+    blocks: [{
+      id: "answer-block:1",
+      markdown: "The supported bounded conclusion.",
+      sourceRefs: ["wiki:1001"],
+      assertion: "positive",
+      scope: "none",
+    }],
+    gaps: [],
+  };
+  const emptyRepair: ChatAgentDraftV2 = {
+    blocks: [{
+      id: "answer-block:1",
+      markdown: "No detail-backed claim remained.",
+      sourceRefs: [],
+      assertion: "none",
+      scope: "none",
+    }],
+    gaps: [],
+  };
+  expect(preserveChatRepairEvidenceFloorV1({
+    original,
+    repaired: emptyRepair,
+    rejectedSourceIds: [],
+  })).toEqual(original);
+  expect(preserveChatRepairEvidenceFloorV1({
+    original,
+    repaired: emptyRepair,
+    rejectedSourceIds: ["wiki:1001"],
+  })).toEqual(emptyRepair);
+
+  const disclosedRepair: ChatAgentDraftV2 = {
+    ...emptyRepair,
+    gaps: [{
+      code: "unresolved-reference",
+      message: "The original claim requires a narrower restatement.",
+      sourceIds: ["wiki:1001"],
+    }],
+  };
+  expect(preserveChatRepairEvidenceFloorV1({
+    original,
+    repaired: disclosedRepair,
+    rejectedSourceIds: [],
+  })).toEqual(disclosedRepair);
+});
+const strategy: ChatStrategyDecisionV1 = {
+  schema: "atlcli.chat-strategy-decision/v1",
+  qualityMode: "deep",
+  execution: "agentic",
+  reasonCodes: ["multi-source-comparison"],
+  ambiguityDisposition: "none",
+  requiredCapabilities: ["comparison-analysis"],
+  expectedComplexity: "complex",
+  qualityRisks: ["multiple-sources"],
+};
+
+const combinedRiskStrategy: ChatStrategyDecisionV1 = {
+  ...strategy,
+  reasonCodes: ["multi-source-comparison", "cross-product-relationship", "contradiction-risk"],
+  requiredCapabilities: [
+    "comparison-analysis",
+    "relationship-tracing",
+    "contradiction-check",
+  ],
+  qualityRisks: ["multiple-sources", "cross-product", "contradictory-evidence"],
+};
+
+const relationshipComparisonStrategy: ChatStrategyDecisionV1 = {
+  ...strategy,
+  reasonCodes: ["multi-source-comparison", "cross-product-relationship"],
+  requiredCapabilities: ["comparison-analysis", "relationship-tracing"],
+  qualityRisks: ["multiple-sources", "cross-product"],
+};
+
+const request: ResearchRequestV1 = {
+  schema: "atlcli.research-request/v1",
+  question: "Compare the two bounded synthetic positions.",
+  scope: {
+    siteOrigin: "https://tenant-a.atlassian.net",
+    jiraProjectKeys: [],
+    confluenceSpaceKeys: [],
+  },
+  limits: { ...DEFAULT_RESEARCH_LIMITS_V1, maxRunMs: 30_000 },
+  wikiProvider: "rest",
+};
+
+const providers = {
+  jira: {
+    async searchPage() { return { items: [] }; },
+    async getIssue() { throw new Error("not reached"); },
+  },
+  wiki: {
+    async searchPage() { return { items: [] }; },
+    async getPage() { throw new Error("not reached"); },
+  },
+};
+
+function analysisPacket() {
+  return {
+    schema: "atlcli.chat-analysis-packet/v1",
+    claimRefs: [],
+    relationshipRefs: [],
+    contradictions: [],
+    gaps: [],
+  };
+}
+
+function answerDraft() {
+  return {
+    messageMarkdown: "A bounded synthetic answer.",
+    citationSourceIds: [],
+    gaps: [],
+  };
+}
+
+function critiquePacket() {
+  return {
+    schema: "atlcli.chat-critique-packet/v1" as const,
+    defects: [],
+    readyForSynthesis: true,
+  };
+}
+
+function qualityWorkflowTasks(
+  leading: Array<{
+    taskId: string;
+    profileId:
+      | "relationship-tracer"
+      | "comparison-analyst"
+      | "contradiction-checker";
+    objective: string;
+    dependencyTaskIds: string[];
+  }>,
+) {
+  const leadingIds = leading.map((task) => task.taskId);
+  return [
+    ...leading,
+    {
+      taskId: "task:draft",
+      profileId: "answer-drafter" as const,
+      objective: "Draft a provisional answer.",
+      dependencyTaskIds: leadingIds,
+    },
+    {
+      taskId: "task:critic",
+      profileId: "answer-critic" as const,
+      objective: "Critique the provisional answer.",
+      dependencyTaskIds: ["task:draft"],
+    },
+    {
+      taskId: "task:synth",
+      profileId: "chat-synthesizer" as const,
+      objective: "Write the accepted answer.",
+      dependencyTaskIds: ["task:critic"],
+    },
+  ];
+}
+
+function serializedBytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+test("projects only the question and body-free anchor catalogue into shared child context", () => {
+  const context = minimalChatSubagentTaskContextV1("Compare the sources.", [{
+    anchorRef: "research-anchor:page-1",
+    product: "confluence",
+    entityKind: "page",
+    name: "Approved page",
+  }]);
+  expect(JSON.parse(context)).toEqual({
+    question: "Compare the sources.",
+    explicitRequestChecklist: [],
+    exactAnchors: [{
+      anchorRef: "research-anchor:page-1",
+      product: "confluence",
+      entityKind: "page",
+      name: "Approved page",
+    }],
+  });
+  expect(context).not.toContain(
+    "retrieval",
+  );
+  expect(context).not.toContain("content");
+});
+
+test("projects explicit user-authored facets into every child context", () => {
+  const context = minimalChatSubagentTaskContextV1(
+    "Nenne Modellgröße, Endgeschwindigkeit und Einsatzempfehlung.",
+  );
+  expect(JSON.parse(context).explicitRequestChecklist).toEqual([
+    "Modellgröße",
+    "Endgeschwindigkeit",
+    "Einsatzempfehlung",
+  ]);
+});
+
+function analysisPacketNearBytes(targetBytes: number) {
+  const packet = {
+    ...analysisPacket(),
+    contradictions: [] as Array<{ summary: string; sourceIds: string[] }>,
+  };
+  for (let index = 0; index < 40; index += 1) {
+    let acceptedSummary: string | undefined;
+    for (let length = 800; length >= 1; length -= 1) {
+      const summary = `${index}:`.padEnd(length, "x");
+      const candidate = {
+        ...packet,
+        contradictions: [
+          ...packet.contradictions,
+          { summary, sourceIds: [] },
+        ],
+      };
+      if (serializedBytes(candidate) <= targetBytes) {
+        acceptedSummary = summary;
+        break;
+      }
+    }
+    if (!acceptedSummary) break;
+    packet.contradictions.push({ summary: acceptedSummary, sourceIds: [] });
+  }
+  return packet;
+}
+
+function requireDispatch(
+  dispatches: ReadonlyMap<string, ChatWorkflowDispatchV1>,
+  taskId: string,
+): ChatWorkflowDispatchV1 {
+  const dispatch = dispatches.get(taskId);
+  if (!dispatch) {
+    throw new Error(`Missing test dispatch: ${taskId}`);
+  }
+  return dispatch;
+}
+
+function createHarness(input: {
+  strategy?: ChatStrategyDecisionV1;
+  invoke?(
+    input: { description: string; subagent_type: string },
+    config?: RunnableConfig,
+  ): Promise<unknown>;
+  beforeSynthesis?: () => void;
+  modelForPreference?: (preference: "fast" | "balanced" | "thorough") => BaseChatModel;
+  modelForFinalization?: () => BaseChatModel;
+  modelForRoute?: (request: ChatModelRouteRequestV1) => ChatModelRouteV1;
+  promptCache?: { ttl: "5m" | "1h" };
+  structuredOutput?: "native" | "tool";
+  projectResponseSchema?: (
+    schema: Readonly<Record<string, unknown>>,
+  ) => {
+    type: "object";
+    [key: string]: unknown;
+  };
+  onEvalDiagnostic?: (diagnostic: ChatSubagentEvalDiagnosticV1) => void;
+  onModelStreamEvent?: (event: ChatSubagentModelStreamEventV1) => void;
+  searchProducts?: Array<"jira" | "confluence">;
+  withRetrievalAssessment?: boolean;
+  searchExhaustedWithoutCandidates?: boolean;
+  searchPlanSaturated?: boolean;
+  onRetrievalObserve?: (capability: string, result: unknown, callId: string) => void;
+  strategyReviewCurrent?: () => boolean;
+  runStrategyReview?: () => void | Promise<void>;
+  decideRepairAdmission?: (
+    disposition: ChatQualityDispositionV1,
+  ) => { admit: boolean; reason?: ChatRepairSkippedReasonV1 };
+  researchRequest?: ResearchRequestV1;
+  readProviders?: ResearchReadProviders;
+} = {}) {
+  const activeRequest = input.researchRequest ?? request;
+  const budget = new ResearchRunBudget(activeRequest.limits);
+  const modelBudget = new ResearchModelRunBudget(activeRequest.limits);
+  let anchorSequence = 0;
+  const broker = new ResearchCapabilityBroker(
+    activeRequest,
+    input.readProviders ?? providers,
+    { budget, createAnchorId: () => `workflow-page-${++anchorSequence}` },
+  );
+  const workspace = createMemoryResearchWorkspace();
+  let compiledSubagents: Array<{
+    name: string;
+    model?: BaseChatModel;
+    systemPrompt?: string;
+    tools?: unknown[];
+    middleware?: Array<{
+      name?: string;
+      tools?: Array<{ name: string }>;
+      wrapModelCall?: (request: unknown, handler: (request: unknown) => Promise<unknown>) => Promise<unknown>;
+      wrapToolCall?: (request: unknown, handler: (request: unknown) => Promise<unknown>) => Promise<unknown>;
+    }>;
+  }> = [];
+  const invoke = input.invoke ?? (async (taskInput: {
+    description: string;
+    subagent_type: string;
+  }) => taskInput.subagent_type === "chat-synthesizer-v1" ||
+      taskInput.subagent_type === "chat-answer-drafter-v1" ||
+      taskInput.subagent_type === "chat-answer-repairer-v1"
+    ? answerDraft()
+    : taskInput.subagent_type === "chat-answer-critic-v1"
+      ? critiquePacket()
+      : analysisPacket());
+  const upstreamTask = tool((taskInput, config) => invoke(taskInput, config), {
+    name: "task",
+    description: "synthetic upstream task",
+    schema: z.object({
+      description: z.string(),
+      subagent_type: z.string(),
+    }).strict(),
+  });
+  const runtime = createChatAgenticWorkflowRuntimeV1({
+    runtime: {
+      createSubAgentMiddleware: ((options: { subagents?: typeof compiledSubagents }) => {
+        compiledSubagents = options.subagents ?? [];
+        return { name: "subAgentMiddleware", tools: [upstreamTask] };
+      }) as never,
+    },
+    model: {} as BaseChatModel,
+    ...(input.modelForPreference
+      ? { modelForPreference: input.modelForPreference }
+      : {}),
+    ...(input.modelForFinalization
+      ? { modelForFinalization: input.modelForFinalization }
+      : {}),
+    ...(input.modelForRoute ? { modelForRoute: input.modelForRoute } : {}),
+    ...(input.promptCache ? { promptCache: input.promptCache } : {}),
+    structuredOutput: input.structuredOutput ?? "tool",
+    ...(input.projectResponseSchema
+      ? { projectResponseSchema: input.projectResponseSchema }
+      : {}),
+    strategy: input.strategy ?? strategy,
+    budget,
+    modelBudget,
+    onModelBudgetSnapshot: async () => {},
+    broker,
+    workspace,
+    conversationId: "chat-conversation:workflow",
+    turnId: "chat-turn:workflow",
+    question: activeRequest.question,
+    siteOrigin: activeRequest.scope.siteOrigin,
+    taskContext: JSON.stringify({ question: activeRequest.question }),
+    limits: activeRequest.limits,
+    locale: "de-DE",
+    exactContextProducts: activeRequest.exactContextProducts ?? [],
+    searchProducts: input.searchProducts ?? [],
+    boundProjectKeys: [],
+    boundSpaceKeys: [],
+    signal: new AbortController().signal,
+    ...(input.strategyReviewCurrent
+      ? { strategyReviewCurrent: input.strategyReviewCurrent }
+      : {}),
+    ...(input.runStrategyReview
+      ? { runStrategyReview: input.runStrategyReview }
+      : {}),
+    beforeSynthesis: input.beforeSynthesis,
+    ...(input.decideRepairAdmission
+      ? { decideRepairAdmission: input.decideRepairAdmission }
+      : {}),
+    ...(input.withRetrievalAssessment
+      ? {
+          retrievalLedger: {
+            plan: () => ({
+              searches: (input.searchProducts ?? []).map((product) => ({
+                product,
+                maxPages: 1,
+              })),
+            }),
+            allowedInitialQueries: () => [{ text: "synthetic" }],
+            assertToolInput: () => {},
+            observe: async (capability: string, result: unknown, callId: string) => {
+              input.onRetrievalObserve?.(capability, result, callId);
+            },
+            isSearchExhaustedWithoutCandidates: () =>
+              input.searchExhaustedWithoutCandidates === true,
+            isSearchPlanSaturated: () => input.searchPlanSaturated === true,
+            assessment: () => ({
+              schema: "atlcli.chat-retrieval-assessment/v1",
+              sufficient: true,
+              reasons: [],
+              completionSignals: [],
+              metrics: {
+                discoveredCandidates: 0,
+                admittedCandidates: 0,
+                detailReadCandidates: 0,
+                excludedCandidates: 0,
+                deferredCandidates: 0,
+                detailReadCoverage: 1,
+                canonicalUrlCorrectness: 1,
+                observedRecall: null,
+                wrongSourceRate: null,
+                atlassianHttpCalls: 0,
+                latencyMs: 0,
+              },
+            }),
+          } as unknown as ChatCandidateLedgerControllerV1,
+        }
+      : {}),
+    ...(input.onEvalDiagnostic ? { onEvalDiagnostic: input.onEvalDiagnostic } : {}),
+    ...(input.onModelStreamEvent ? { onModelStreamEvent: input.onModelStreamEvent } : {}),
+  });
+  return { runtime, workspace, compiledSubagents, broker };
+}
+
+async function invokeDispatch(
+  runtime: ReturnType<typeof createHarness>["runtime"],
+  dispatch: {
+    description: string;
+    subagentType: string;
+    responseSchema: Readonly<Record<string, unknown>>;
+  },
+  config: RunnableConfig = {},
+): Promise<unknown> {
+  const taskTool = runtime.middleware.tools?.find((candidate) => candidate.name === "task");
+  if (!taskTool) throw new Error("missing bounded task");
+  return taskTool.invoke({
+    description: dispatch.description,
+    subagent_type: dispatch.subagentType,
+  }, {
+    ...config,
+    configurable: {
+      ...config.configurable,
+      [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: dispatch.responseSchema,
+    },
+  });
+}
+
+async function invokeQualityReview(
+  runtime: ReturnType<typeof createHarness>["runtime"],
+): Promise<{
+  dispatches: ChatWorkflowDispatchV1[];
+  requiredGapCodes: string[];
+}> {
+  return JSON.parse(await runtime.qualityReviewTool.invoke({}));
+}
+
+describe("Chat agentic workflow runtime", () => {
+  test("normalizes detail-read aliases and closes the packet source inventory", () => {
+    const broker = {
+      detailEvidenceLedger: () => [{
+        source: {
+          id: "jira:DEMO-1",
+          product: "jira",
+          title: "Synthetic implementation",
+          url: "https://tenant-a.atlassian.net/browse/DEMO-1",
+          issueKey: "DEMO-1",
+          projectKey: "DEMO",
+        },
+      }],
+      canonicalDetailSourceIdForRef: (reference: string) =>
+        reference === "research-entity:read-demo-1" ? "jira:DEMO-1" : undefined,
+    } as ResearchCapabilityBroker;
+    const normalized = normalizeKnownSourceReferencesV1(broker, {
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: ["DEMO-1", "research-entity:read-demo-1", "research-anchor:unread"],
+      claims: [{
+        text: "Synthetic claim",
+        sourceIds: ["DEMO-1"],
+        sourceRefs: ["DEMO-1#invented-section"],
+      }],
+      relationships: [{
+        fromSourceId: "https://tenant-a.atlassian.net/browse/DEMO-1",
+        toSourceId: "UNKNOWN-2",
+        kind: "mentions",
+        support: "Synthetic support",
+      }],
+      gaps: [],
+    });
+    expect(normalized).toMatchObject({
+      sourceIds: [
+        "jira:DEMO-1",
+        "research-anchor:unread",
+        "UNKNOWN-2",
+      ],
+      claims: [{
+        sourceIds: ["jira:DEMO-1"],
+        sourceRefs: ["jira:DEMO-1"],
+      }],
+      relationships: [{
+        fromSourceId: "jira:DEMO-1",
+        toSourceId: "UNKNOWN-2",
+      }],
+    });
+  });
+
+  test("quarantines unread reader references without discarding grounded claims", () => {
+    const broker = {
+      detailEvidenceLedger: () => [{
+        source: {
+          id: "jira:DEMO-1",
+          product: "jira",
+          title: "Synthetic implementation",
+          url: "https://tenant-a.atlassian.net/browse/DEMO-1",
+          issueKey: "DEMO-1",
+          projectKey: "DEMO",
+        },
+      }],
+    } as ResearchCapabilityBroker;
+    const quarantined = quarantineUnreadEvidenceReferencesV1(broker, {
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: ["jira:DEMO-1", "jira:UNKNOWN-2"],
+      claims: [
+        {
+          text: "Grounded",
+          sourceIds: ["jira:DEMO-1"],
+          sourceRefs: ["jira:DEMO-1"],
+        },
+        {
+          text: "Unverified",
+          sourceIds: ["jira:UNKNOWN-2"],
+          sourceRefs: ["jira:UNKNOWN-2"],
+        },
+      ],
+      relationships: [{
+        fromSourceId: "jira:DEMO-1",
+        toSourceId: "jira:UNKNOWN-2",
+        kind: "mentions",
+        support: "Unverified target",
+      }],
+      gaps: [],
+    });
+    expect(quarantined).toMatchObject({
+      sourceIds: ["jira:DEMO-1"],
+      claims: [{
+        text: "Grounded",
+        sourceIds: ["jira:DEMO-1"],
+        sourceRefs: ["jira:DEMO-1"],
+      }],
+      relationships: [],
+      gaps: [expect.stringContaining("1 source reference was excluded")],
+    });
+  });
+
+  test("compiles all ten depth-one profiles without a general-purpose or nested task surface", () => {
+    const harness = createHarness({ invoke: async () => analysisPacket() });
+    expect(harness.compiledSubagents.map((entry) => entry.name)).toEqual([
+      "chat-exact-context-reader-v1",
+      "chat-confluence-search-reader-v1",
+      "chat-jira-search-reader-v1",
+      "chat-relationship-tracer-v1",
+      "chat-comparison-analyst-v1",
+      "chat-contradiction-checker-v1",
+      "chat-answer-drafter-v1",
+      "chat-answer-critic-v1",
+      "chat-answer-repairer-v1",
+      "chat-synthesizer-v1",
+    ]);
+    for (const subagent of harness.compiledSubagents) {
+      if (subagent.name === "chat-exact-context-reader-v1") {
+        expect((subagent.tools ?? []).map((entry) =>
+          (entry as { name: string }).name
+        )).toEqual([
+          "chat_exact_context_acquire",
+          "atlassian_bound_section_read",
+        ]);
+      } else {
+        expect(subagent.tools ?? []).toEqual([]);
+      }
+      expect((subagent.middleware ?? []).slice(0, 2).map((entry) => entry.name)).toEqual([
+        "modelRetryMiddleware",
+        `ChatModelBudgetMiddleware:${subagent.name === "chat-synthesizer-v1"
+          ? "chat-synthesizer"
+          : subagent.name.replace(/^chat-|(?:-v1)$/gu, "")}`,
+      ]);
+      expect((subagent.middleware ?? []).flatMap((entry) => entry.tools ?? [])
+        .some((entry) => entry.name === "task")).toBe(false);
+    }
+    const confluenceReader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-confluence-search-reader-v1",
+    );
+    expect(confluenceReader?.systemPrompt).toContain("exactly one focused initial search query");
+    expect(confluenceReader?.systemPrompt).toContain("return an explicit gap");
+    expect(confluenceReader?.systemPrompt).not.toContain("wiki_search");
+    const exactReader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-exact-context-reader-v1",
+    );
+    expect(exactReader?.systemPrompt).toContain(
+      "Call those tools directly; eval, network, filesystem, and delegation are unavailable",
+    );
+    expect(exactReader?.systemPrompt).toContain(
+      "Call chat_exact_context_acquire exactly once",
+    );
+    expect(exactReader?.systemPrompt).toContain(
+      "Never invent or guess an expansion",
+    );
+    expect(exactReader?.systemPrompt).toContain(
+      "Do not label accepted evidence summary-only",
+    );
+    expect(exactReader?.middleware?.some((entry) =>
+      entry.name === "ChatSubagentEvalGuard:exact-context-reader"
+    )).toBe(false);
+    expect(exactReader?.middleware?.some((entry) =>
+      entry.name === "ChatExactReaderSectionReadGuard"
+    )).toBe(true);
+    expect(harness.compiledSubagents.find((entry) =>
+      entry.name === "chat-synthesizer-v1"
+    )?.systemPrompt).toContain("sourceRefs");
+  });
+
+  test("applies the provider-granted stable cache boundary to every child profile", async () => {
+    const cached = createHarness({
+      promptCache: { ttl: "1h" },
+      invoke: async () => analysisPacket(),
+    });
+    for (const subagent of cached.compiledSubagents) {
+      const names = (subagent.middleware ?? []).map((entry) => entry.name);
+      expect(names).toContain("PromptCachingMiddleware");
+      expect(names).toContain("CacheBreakpointMiddleware");
+      const breakpoint = subagent.middleware?.find((entry) =>
+        entry.name === "CacheBreakpointMiddleware"
+      );
+      const projected = await breakpoint!.wrapModelCall!(
+        {
+          messages: [],
+          state: {},
+          model: { getName: () => "ProviderChosenByBinding" },
+          systemMessage: new SystemMessage("Stable child profile contract."),
+          tools: [],
+        } as never,
+        async (received) => received as never,
+      );
+      expect((projected as unknown as { systemMessage: SystemMessage }).systemMessage.content)
+        .toEqual([{
+          type: "text",
+          text: "Stable child profile contract.",
+          cache_control: { type: "ephemeral", ttl: "1h" },
+        }]);
+    }
+
+    const portable = createHarness({ invoke: async () => analysisPacket() });
+    for (const subagent of portable.compiledSubagents) {
+      const names = (subagent.middleware ?? []).map((entry) => entry.name);
+      expect(names).not.toContain("PromptCachingMiddleware");
+      expect(names).not.toContain("CacheBreakpointMiddleware");
+    }
+  });
+
+  test("allows one optional exact-reader section read and blocks later section loops", async () => {
+    const harness = createHarness();
+    const exactReader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-exact-context-reader-v1",
+    );
+    const guard = exactReader?.middleware?.find((entry) =>
+      entry.name === "ChatExactReaderSectionReadGuard"
+    );
+    if (!guard?.wrapToolCall) throw new Error("missing exact-reader section guard");
+    let hostCalls = 0;
+    const first = await guard.wrapToolCall({
+      toolCall: {
+        id: "section:first",
+        name: "atlassian_bound_section_read",
+        args: {},
+      },
+      state: { messages: [] },
+    }, async () => {
+      hostCalls += 1;
+      return new ToolMessage({
+        tool_call_id: "section:first",
+        name: "atlassian_bound_section_read",
+        content: "first section",
+      });
+    });
+    expect(first).toBeInstanceOf(ToolMessage);
+
+    const second = await guard.wrapToolCall({
+      toolCall: {
+        id: "section:second",
+        name: "atlassian_bound_section_read",
+        args: {},
+      },
+      state: {
+        messages: [new ToolMessage({
+          tool_call_id: "section:first",
+          name: "atlassian_bound_section_read",
+          content: "first section",
+        })],
+      },
+    }, async () => {
+      hostCalls += 1;
+      return new ToolMessage({
+        tool_call_id: "section:second",
+        name: "atlassian_bound_section_read",
+        content: "must not run",
+      });
+    });
+    expect(hostCalls).toBe(1);
+    expect(second).toBeInstanceOf(ToolMessage);
+    if (!(second instanceof ToolMessage)) throw new Error("expected blocked ToolMessage");
+    expect(second.content).toContain("SECTION_READ_LIMIT_REACHED");
+    expect(second.status).not.toBe("error");
+  });
+
+  test("executes only the first section read when an exact reader batches several calls", async () => {
+    const harness = createHarness();
+    const exactReader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-exact-context-reader-v1",
+    );
+    const guard = exactReader?.middleware?.find((entry) =>
+      entry.name === "ChatExactReaderSectionReadGuard"
+    );
+    if (!guard?.wrapToolCall) throw new Error("missing exact-reader section guard");
+    const batchedRequest = new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          id: "section:first",
+          name: "atlassian_bound_section_read",
+          args: {},
+          type: "tool_call",
+        },
+        {
+          id: "section:second",
+          name: "atlassian_bound_section_read",
+          args: {},
+          type: "tool_call",
+        },
+      ],
+    });
+    let hostCalls = 0;
+    const blocked = await guard.wrapToolCall({
+      toolCall: {
+        id: "section:second",
+        name: "atlassian_bound_section_read",
+        args: {},
+      },
+      state: { messages: [batchedRequest] },
+    }, async () => {
+      hostCalls += 1;
+      return new ToolMessage({
+        tool_call_id: "section:second",
+        name: "atlassian_bound_section_read",
+        content: "must not run",
+      });
+    });
+    expect(hostCalls).toBe(0);
+    expect(blocked).toBeInstanceOf(ToolMessage);
+    if (!(blocked instanceof ToolMessage)) throw new Error("expected blocked ToolMessage");
+    expect(blocked.content).toContain("SECTION_READ_LIMIT_REACHED");
+    expect(blocked.status).not.toBe("error");
+  });
+
+  test("bundles exact anchor reads behind one deterministic host capability", async () => {
+    const readRefs: string[] = [];
+    const direct = tool(async ({ anchorRef }) => {
+      readRefs.push(anchorRef);
+      return JSON.stringify({
+        schema: "atlcli.ptc/atlassian.bound.read.output/v1",
+        source: { id: `wiki:${anchorRef}`, product: "confluence", title: anchorRef, url: `https://example.invalid/${anchorRef}` },
+        content: { text: `body:${anchorRef}`, linkTargets: [], truncated: false, inputBytes: 10 },
+        relatedAnchors: [],
+        budget: {},
+      });
+    }, {
+      name: "atlassian_bound_read",
+      description: "synthetic exact read",
+      schema: z.object({ anchorRef: z.string() }).strict(),
+    });
+    const acquire = createExactContextAcquisitionToolV1({
+      tools: [direct],
+      maxDetails: 3,
+    });
+    const result = JSON.parse(await acquire.invoke({
+      anchorRefs: ["anchor-a", "anchor-b", "anchor-a"],
+    })) as { details: Array<{ source: { id: string } }> };
+
+    expect(readRefs).toEqual(["anchor-a", "anchor-b"]);
+    expect(result.details.map((entry) => entry.source.id)).toEqual([
+      "wiki:anchor-a",
+      "wiki:anchor-b",
+    ]);
+  });
+
+  test("lets the exact reader consume the bounded detail allowance instead of a tool-count heuristic", () => {
+    expect(chatSubagentPtcCallLimitV1({
+      profileId: "exact-context-reader",
+      plannedDetailLimit: 20,
+      exactContextProductCount: 1,
+      maxPtcCalls: 32,
+      grantedCapabilityCount: 2,
+    })).toBe(20);
+    expect(chatSubagentPtcCallLimitV1({
+      profileId: "relationship-tracer",
+      plannedDetailLimit: 20,
+      exactContextProductCount: 1,
+      maxPtcCalls: 32,
+      grantedCapabilityCount: 2,
+    })).toBe(6);
+    expect(chatSubagentEvalAttemptLimitV1({
+      profileId: "exact-context-reader",
+      plannedSearchAvailable: false,
+      plannedDetailLimit: 8,
+      exactContextProductCount: 2,
+    })).toBe(24);
+    expect(chatSubagentEvalAttemptLimitV1({
+      profileId: "confluence-search-reader",
+      plannedSearchAvailable: true,
+      plannedDetailLimit: 8,
+      exactContextProductCount: 0,
+    })).toBe(2);
+  });
+
+  test("retries one transient child model failure without retrying permanent failures", async () => {
+    const harness = createHarness();
+    const retry = harness.compiledSubagents[0]?.middleware?.find((entry) =>
+      entry.name === "modelRetryMiddleware"
+    );
+    expect(retry?.wrapModelCall).toBeFunction();
+    let transientAttempts = 0;
+    const response = await retry!.wrapModelCall!({}, async () => {
+      transientAttempts += 1;
+      if (transientAttempts === 1) throw new Error("overloaded_error");
+      return new AIMessage("recovered");
+    });
+    expect(transientAttempts).toBe(2);
+    expect(response).toBeInstanceOf(AIMessage);
+
+    let permanentAttempts = 0;
+    await expect(retry!.wrapModelCall!({}, async () => {
+      permanentAttempts += 1;
+      throw new Error("authentication failed");
+    })).rejects.toThrow("authentication failed");
+    expect(permanentAttempts).toBe(1);
+  });
+
+  test("binds every child to its host-owned provider-neutral model preference", () => {
+    const fast = { preference: "fast" } as unknown as BaseChatModel;
+    const balanced = { preference: "balanced" } as unknown as BaseChatModel;
+    const thorough = { preference: "thorough" } as unknown as BaseChatModel;
+    const selected = { fast, balanced, thorough };
+    const harness = createHarness({
+      modelForPreference: (preference) => selected[preference],
+    });
+    const byName = new Map(
+      harness.compiledSubagents.map((entry) => [entry.name, entry.model]),
+    );
+    expect(byName.get("chat-confluence-search-reader-v1")).toBe(fast);
+    expect(byName.get("chat-jira-search-reader-v1")).toBe(fast);
+    expect(byName.get("chat-comparison-analyst-v1")).toBe(balanced);
+    expect(byName.get("chat-answer-critic-v1")).toBe(balanced);
+    expect(byName.get("chat-synthesizer-v1")).toBe(thorough);
+  });
+
+  test("reserves enough structured output for a three-source exact evidence packet", () => {
+    const harness = createHarness();
+    const exactReader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-exact-context-reader-v1",
+    );
+    const budget = exactReader?.middleware?.find((entry) =>
+      entry.name === "ChatModelBudgetMiddleware:exact-context-reader"
+    );
+    expect(budget).toBeDefined();
+    expect(exactReader?.systemPrompt).toContain(
+      "Every claim must name its canonical sourceIds and exact sourceRefs",
+    );
+    expect(chatSubagentModelOutputLimitV1({
+      profileId: "exact-context-reader",
+      modelPreference: "fast",
+      rootLimit: 8_000,
+    })).toBe(3_072);
+    expect(chatSubagentModelOutputLimitV1({
+      profileId: "confluence-search-reader",
+      modelPreference: "fast",
+      rootLimit: 8_000,
+    })).toBe(2_048);
+  });
+
+  test("makes the bounded drafting, repair, and synthesis corridor explicit", () => {
+    const thorough = { preference: "thorough" } as unknown as BaseChatModel;
+    const finalizer = { preference: "finalize-only" } as unknown as BaseChatModel;
+    const harness = createHarness({
+      modelForPreference: () => thorough,
+      modelForFinalization: () => finalizer,
+    });
+    const synthesizer = harness.compiledSubagents.find((entry) =>
+      entry.name === "chat-synthesizer-v1"
+    );
+
+    expect(synthesizer?.model).toBe(finalizer);
+    expect(harness.compiledSubagents.find((entry) =>
+      entry.name === "chat-answer-repairer-v1"
+    )?.model).toBe(finalizer);
+    expect(harness.compiledSubagents.find((entry) =>
+      entry.name === "chat-answer-drafter-v1"
+    )?.model).toBe(finalizer);
+  });
+
+  test("routes every profile through an explicit provider-neutral role contract", () => {
+    const routed = new Map<string, BaseChatModel>();
+    const requests: ChatModelRouteRequestV1[] = [];
+    const harness = createHarness({
+      modelForRoute: (request) => {
+        requests.push(request);
+        const key = `${request.role}:${request.preference}`;
+        const model = routed.get(key) ??
+          ({ route: key } as unknown as BaseChatModel);
+        routed.set(key, model);
+        return {
+          model,
+          effectiveModelId: "synthetic-route-model",
+          requestedPreference: request.preference,
+          effectivePreference: request.preference,
+          thinkingMode: "provider-default",
+          finalizationCorridor: request.role === "synthesis" ? "finalize-only" : "standard",
+        };
+      },
+    });
+    const byName = new Map(harness.compiledSubagents.map((entry) => [entry.name, entry.model]));
+
+    expect(byName.get("chat-exact-context-reader-v1")).toBe(routed.get("extraction:fast"));
+    expect(byName.get("chat-comparison-analyst-v1")).toBe(routed.get("analysis:balanced"));
+    expect(byName.get("chat-answer-drafter-v1")).toBe(routed.get("drafting:balanced"));
+    expect(byName.get("chat-answer-critic-v1")).toBe(routed.get("critique:balanced"));
+    expect(byName.get("chat-answer-repairer-v1")).toBe(routed.get("repair:balanced"));
+    expect(byName.get("chat-synthesizer-v1")).toBe(routed.get("synthesis:thorough"));
+    expect(requests).toContainEqual({
+      role: "synthesis",
+      preference: "thorough",
+      profileId: "chat-synthesizer",
+    });
+  });
+
+  test("streams body-free child eval lifecycle and terminates a looping ninth reader eval", async () => {
+    const diagnostics: ChatSubagentEvalDiagnosticV1[] = [];
+    const harness = createHarness({
+      onEvalDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      searchProducts: ["confluence"],
+    });
+    const reader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-confluence-search-reader-v1",
+    );
+    expect(reader?.systemPrompt).toContain("wikiSearch");
+    const guard = reader?.middleware?.find((entry) => entry.wrapToolCall !== undefined);
+    if (!guard?.wrapToolCall) throw new Error("missing child eval guard");
+    const request = {
+      toolCall: {
+        name: "eval",
+        args: { code: "await tools.wikiSearch({ query: { text: 'design' } });" },
+      },
+    };
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      await expect(guard.wrapToolCall(request, async () => ({ content: `step ${attempt}` })))
+        .resolves.toEqual({ content: `step ${attempt}` });
+    }
+    const terminal = await guard.wrapToolCall({
+      toolCall: { ...request.toolCall, id: "eval:ninth" },
+    }, async () => ({ content: "ignored" }));
+    expect(terminal).toBeInstanceOf(ToolMessage);
+    expect((terminal as ToolMessage).content).toContain("EVAL_LIMIT_REACHED");
+    expect(diagnostics.filter((entry) => entry.status === "started")
+      .map((entry) => entry.attempt)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(diagnostics[0]).toMatchObject({
+      profileId: "confluence-search-reader",
+      status: "started",
+      attempt: 1,
+      capabilityNames: ["wikiSearch"],
+      argumentKeys: ["query", "text"],
+    });
+    expect(diagnostics.at(-1)).toEqual({
+      profileId: "confluence-search-reader",
+      status: "error",
+      attempt: 9,
+      errorCode: "eval-attempt-exceeded",
+    });
+  });
+
+  test("turns a terminal empty search into one structured stop instruction without another eval", async () => {
+    const diagnostics: ChatSubagentEvalDiagnosticV1[] = [];
+    const harness = createHarness({
+      onEvalDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      searchProducts: ["confluence"],
+      withRetrievalAssessment: true,
+      searchExhaustedWithoutCandidates: true,
+    });
+    const reader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-confluence-search-reader-v1",
+    );
+    const guard = reader?.middleware?.find((entry) => entry.wrapToolCall !== undefined);
+    if (!guard?.wrapToolCall) throw new Error("missing child eval guard");
+    let invoked = false;
+    const result = await guard.wrapToolCall({
+      toolCall: {
+        id: "eval:terminal",
+        name: "eval",
+        args: { code: "await tools.wikiSearch({ query: { text: 'invented' } });" },
+      },
+    }, async () => {
+      invoked = true;
+      return { content: "should not run" };
+    });
+    expect(invoked).toBe(false);
+    expect(result).toBeInstanceOf(ToolMessage);
+    expect((result as ToolMessage).content).toContain("SEARCH_PLAN_COMPLETE_WITHOUT_CANDIDATES");
+    expect(diagnostics).toEqual([{
+      profileId: "confluence-search-reader",
+      status: "success",
+      attempt: 1,
+    }]);
+  });
+
+  test("bundles an admitted search, ranking, and detail path behind one reader capability", async () => {
+    const harness = createHarness({
+      searchProducts: ["confluence"],
+      withRetrievalAssessment: true,
+    });
+    const reader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-confluence-search-reader-v1",
+    );
+    expect(reader?.systemPrompt).toContain("chatRetrievalAcquire");
+    expect(reader?.systemPrompt).not.toContain("wikiSearch");
+    const evaluator = reader?.middleware?.flatMap((entry) => entry.tools ?? [])
+      .find((candidate) => candidate.name === "eval") as {
+        description?: string;
+    } | undefined;
+    if (!evaluator) throw new Error("missing planned acquisition evaluator");
+    expect(evaluator.description).toContain("sandboxed REPL");
+  });
+
+  test("executes planned query variants within one product-wide page budget before ranking and detail reads", async () => {
+    const calls: string[] = [];
+    const search = tool(async (value: { query?: { text?: string }; cursor?: string }) => {
+      const label = value.query?.text ?? value.cursor ?? "unknown";
+      calls.push(`search:${label}`);
+      return JSON.stringify({
+        items: [{ entityRef: `research-entity:${label.replace(/[^A-Za-z0-9-]/gu, "-")}` }],
+        page: { complete: true },
+      });
+    }, {
+      name: "wiki_search",
+      description: "synthetic search",
+      schema: z.object({
+        query: z.object({ text: z.string() }).optional(),
+        cursor: z.string().optional(),
+      }).strict(),
+    });
+    const rank = tool(async (value: { entityRefs: string[] }) => {
+      calls.push(`rank:${value.entityRefs.length}`);
+      return JSON.stringify({
+        items: value.entityRefs.map((entityRef, index) => ({
+          entityRef,
+          sourceId: `wiki:${index + 1}`,
+          rank: index + 1,
+        })),
+      });
+    }, {
+      name: "research_candidate_rank",
+      description: "synthetic rank",
+      schema: z.object({
+        product: z.enum(["jira", "confluence"]),
+        entityRefs: z.array(z.string()),
+      }).strict(),
+    });
+    const detail = tool(async (value: { entityRef: string }) => {
+      calls.push(`detail:${value.entityRef}`);
+      return JSON.stringify({ source: { id: value.entityRef }, content: { text: "detail" } });
+    }, {
+      name: "wiki_page_get",
+      description: "synthetic detail",
+      schema: z.object({ entityRef: z.string() }).strict(),
+    });
+    const acquisition = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: [search, rank, detail],
+      retrievalLedger: {
+        plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        detailReadSourceIds: () => [],
+        allowedInitialQueries: () => [
+          { text: "first" },
+          { text: "second" },
+          { text: "third" },
+        ],
+        retainAdmittedCandidates: async () => {},
+      } as unknown as ChatCandidateLedgerControllerV1,
+      maxSearchPages: 2,
+      maxDetails: 2,
+      toolName: "chat_confluence_retrieval_acquire",
+    });
+
+    expect(acquisition.name).toBe("chat_confluence_retrieval_acquire");
+    expect(acquisition.description).toContain("host-admitted confluence search");
+
+    const outerResult = await acquisition.invoke({}, {
+      toolCall: { id: "outer-acquisition-call" },
+    } as unknown as RunnableConfig);
+    expect(outerResult).toBeInstanceOf(ToolMessage);
+    const result = JSON.parse(String((outerResult as ToolMessage).content));
+
+    expect(calls).toEqual([
+      "search:first",
+      "search:second",
+      "rank:2",
+      "detail:research-entity:first",
+      "detail:research-entity:second",
+    ]);
+    expect(result).toMatchObject({
+      pagesRead: 2,
+      discoveredCandidates: 2,
+      details: [
+        { source: { id: "research-entity:first" } },
+        { source: { id: "research-entity:second" } },
+      ],
+    });
+  });
+
+  test("detail-reads one canonical source once when several variants rediscover it", async () => {
+    const calls: string[] = [];
+    let activeDetails = 0;
+    let maximumActiveDetails = 0;
+    const search = tool(async (value: { query: { text: string } }) => {
+      calls.push(`search:${value.query.text}`);
+      return JSON.stringify({
+        items: [{ entityRef: `research-entity:${value.query.text}` }],
+        page: { complete: true },
+      });
+    }, {
+      name: "wiki_search",
+      description: "synthetic search",
+      schema: z.object({ query: z.object({ text: z.string() }) }).strict(),
+    });
+    const rank = tool(async (value: { entityRefs: string[] }) => JSON.stringify({
+      items: value.entityRefs.map((entityRef, index) => ({
+        entityRef,
+        sourceId: "wiki:one-canonical-source",
+        rank: index + 1,
+      })),
+    }), {
+      name: "research_candidate_rank",
+      description: "synthetic rank",
+      schema: z.object({
+        product: z.enum(["jira", "confluence"]),
+        entityRefs: z.array(z.string()),
+      }).strict(),
+    });
+    const detail = tool(async (value: { entityRef: string }) => {
+      activeDetails += 1;
+      maximumActiveDetails = Math.max(maximumActiveDetails, activeDetails);
+      await Promise.resolve();
+      calls.push(`detail:${value.entityRef}`);
+      activeDetails -= 1;
+      return JSON.stringify({ source: { id: "wiki:one-canonical-source" } });
+    }, {
+      name: "wiki_page_get",
+      description: "synthetic detail",
+      schema: z.object({ entityRef: z.string() }).strict(),
+    });
+    const acquisition = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: [search, rank, detail],
+      retrievalLedger: {
+        plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        detailReadSourceIds: () => [],
+        allowedInitialQueries: () => [{ text: "first" }, { text: "alternate" }],
+        retainAdmittedCandidates: async () => {},
+      } as unknown as ChatCandidateLedgerControllerV1,
+      maxSearchPages: 2,
+      maxDetails: 2,
+    });
+
+    const result = JSON.parse(String(await acquisition.invoke({})));
+
+    expect(result.details).toHaveLength(1);
+    expect(calls.filter((entry) => entry.startsWith("detail:"))).toEqual([
+      "detail:research-entity:first",
+    ]);
+    expect(maximumActiveDetails).toBe(1);
+  });
+
+  test("does not spend discovery detail budget on a rediscovered exact anchor", async () => {
+    const detailed: string[] = [];
+    const retained: string[][] = [];
+    const search = tool(async () => JSON.stringify({
+      items: [
+        { entityRef: "research-entity:existing" },
+        { entityRef: "research-entity:new" },
+      ],
+      page: { complete: true },
+    }), {
+      name: "wiki_search",
+      description: "synthetic search",
+      schema: z.object({ query: z.object({ text: z.string() }) }).strict(),
+    });
+    const rank = tool(async () => JSON.stringify({
+      items: [
+        { entityRef: "research-entity:existing", sourceId: "wiki:existing", rank: 1 },
+        { entityRef: "research-entity:new", sourceId: "wiki:new", rank: 2 },
+      ],
+    }), {
+      name: "research_candidate_rank",
+      description: "synthetic rank",
+      schema: z.object({
+        product: z.enum(["jira", "confluence"]),
+        entityRefs: z.array(z.string()),
+      }).strict(),
+    });
+    const detail = tool(async (value: { entityRef: string }) => {
+      detailed.push(value.entityRef);
+      return JSON.stringify({ source: { id: "wiki:new" } });
+    }, {
+      name: "wiki_page_get",
+      description: "synthetic detail",
+      schema: z.object({ entityRef: z.string() }).strict(),
+    });
+    const acquisition = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: [search, rank, detail],
+      retrievalLedger: {
+        plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        detailReadSourceIds: () => ["wiki:existing"],
+        allowedInitialQueries: () => [{ text: "linked follow-up" }],
+        retainAdmittedCandidates: async (_product: ResearchProduct, sourceIds: readonly string[]) => {
+          retained.push([...sourceIds]);
+        },
+      } as unknown as ChatCandidateLedgerControllerV1,
+      maxSearchPages: 1,
+      maxDetails: 1,
+    });
+
+    const result = JSON.parse(String(await acquisition.invoke({})));
+    expect(detailed).toEqual(["research-entity:new"]);
+    expect(retained).toEqual([["wiki:new"]]);
+    expect(result.details).toEqual([{ source: { id: "wiki:new" } }]);
+  });
+
+  test("preserves successful detail reads when the shared detail budget ends mid-acquisition", async () => {
+    const search = tool(async () => JSON.stringify({
+      items: [
+        { entityRef: "research-entity:first" },
+        { entityRef: "research-entity:second" },
+        { entityRef: "research-entity:third" },
+      ],
+      page: { complete: true },
+    }), {
+      name: "wiki_search",
+      description: "synthetic search",
+      schema: z.object({ query: z.object({ text: z.string() }) }).strict(),
+    });
+    const rank = tool(async (value: { entityRefs: string[] }) => JSON.stringify({
+      items: value.entityRefs.map((entityRef, index) => ({
+        entityRef,
+        sourceId: `wiki:${index + 1}`,
+        rank: index + 1,
+      })),
+    }), {
+      name: "research_candidate_rank",
+      description: "synthetic rank",
+      schema: z.object({
+        product: z.enum(["jira", "confluence"]),
+        entityRefs: z.array(z.string()),
+      }).strict(),
+    });
+    const detailCalls: string[] = [];
+    const detail = tool(async (value: { entityRef: string }) => {
+      detailCalls.push(value.entityRef);
+      if (value.entityRef === "research-entity:second") {
+        throw Object.assign(new Error("Synthetic shared response budget exhausted."), {
+          code: "limit-exceeded",
+        });
+      }
+      return JSON.stringify({
+        source: { id: value.entityRef },
+        content: { text: "accepted detail" },
+      });
+    }, {
+      name: "wiki_page_get",
+      description: "synthetic detail",
+      schema: z.object({ entityRef: z.string() }).strict(),
+    });
+    const acquisition = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: [search, rank, detail],
+      retrievalLedger: {
+        plan: () => ({ searches: [{ product: "confluence", maxPages: 1 }] }),
+        detailReadSourceIds: () => [],
+        allowedInitialQueries: () => [{ text: "bounded" }],
+        retainAdmittedCandidates: async () => {},
+      } as unknown as ChatCandidateLedgerControllerV1,
+      maxSearchPages: 1,
+      maxDetails: 3,
+    });
+
+    const result = JSON.parse(String(await acquisition.invoke({})));
+
+    expect(detailCalls).toEqual([
+      "research-entity:first",
+      "research-entity:second",
+    ]);
+    expect(result.details).toEqual([
+      expect.objectContaining({ source: { id: "research-entity:first" } }),
+    ]);
+    expect(result.gaps).toEqual([
+      expect.stringContaining("after 1 of 3 admitted candidates"),
+    ]);
+  });
+
+  test("runs the compound acquisition through the real broker and durable candidate ledger", async () => {
+    const limits = {
+      ...request.limits,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 2,
+    };
+    const scopedRequest: ResearchRequestV1 = {
+      ...request,
+      question: "Compare atlcli installation and configuration paths.",
+      scope: {
+        ...request.scope,
+        confluenceSpaceKeys: ["DOCSY"],
+      },
+      limits,
+    };
+    const broker = new ResearchCapabilityBroker(scopedRequest, {
+      jira: providers.jira,
+      wiki: {
+        async searchPage(input) {
+          return {
+            items: input.cql.includes("atlcli")
+              ? [{
+                  contentId: "1001",
+                  spaceKey: "DOCSY",
+                  title: "Install atlcli",
+                  excerpt: "Install and configure atlcli.",
+                }]
+              : [],
+          };
+        },
+        async getPage(input) {
+          return {
+            contentId: input.contentId,
+            spaceKey: "DOCSY",
+            title: "Install atlcli",
+            content: {
+              text: "Install atlcli, then configure its profile.",
+              linkTargets: [],
+              truncated: false,
+              inputBytes: 43,
+            },
+          };
+        },
+      },
+    }, { budget: new ResearchRunBudget(limits) });
+    const workspace = createMemoryResearchWorkspace();
+    const retrievalLedger = new CandidateLedgerController({
+      plan: createChatRetrievalPlanV1({
+        conversationId: "conversation:compound",
+        turnId: "turn:compound",
+        question: scopedRequest.question,
+        anchors: [],
+        scopeBindings: [],
+        boundSpaceKeys: ["DOCSY"],
+        searchProducts: ["confluence"],
+        exactContextProducts: [],
+        limits,
+        agentic: true,
+        proposal: {
+          searches: [{
+            searchId: "search:confluence",
+            product: "confluence",
+            variants: [
+              { variantId: "core", query: { text: "atlcli" } },
+              { variantId: "alternate", query: { text: "configuration" } },
+            ],
+            maxPages: 1,
+          }],
+        },
+      }),
+      workspace,
+      siteOrigin: scopedRequest.scope.siteOrigin,
+    });
+    await retrievalLedger.initialize();
+    const rawTools = createChatPtcToolsV1(broker, {
+      searchProducts: ["confluence"],
+      boundSpaceKeys: ["DOCSY"],
+      beforeInvoke: (capability, value) =>
+        retrievalLedger.assertToolInput(capability, value),
+      onResult: (capability, result, callId, value) =>
+        retrievalLedger.observe(capability, result, callId, value),
+    });
+    const acquisition = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: rawTools,
+      retrievalLedger,
+      maxSearchPages: 2,
+      maxDetails: 2,
+    });
+
+    const result = JSON.parse(String(await acquisition.invoke({})));
+
+    expect(result).toMatchObject({
+      pagesRead: 2,
+      discoveredCandidates: 1,
+      details: [{
+        source: {
+          sourceId: "wiki:1001",
+          title: "Install atlcli",
+        },
+        content: { truncated: false },
+      }],
+      gaps: [],
+    });
+    expect(retrievalLedger.snapshot()).toMatchObject({
+      atlassianHttpCalls: 3,
+      candidates: [{
+        sourceId: "wiki:1001",
+        state: "detail-read",
+        admittedRank: 1,
+      }],
+    });
+  });
+
+  test("runs Jira and Confluence acquisition concurrently through one broker admission ledger", async () => {
+    const limits = {
+      ...request.limits,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 2,
+      maxItemsPerProduct: 4,
+    };
+    const scopedRequest: ResearchRequestV1 = {
+      ...request,
+      question: "Compare DEMO delivery with its KB design.",
+      scope: {
+        ...request.scope,
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["KB"],
+      },
+      limits,
+    };
+    const broker = new ResearchCapabilityBroker(scopedRequest, {
+      jira: {
+        async searchPage() {
+          return { items: [{ issueKey: "DEMO-1", projectKey: "DEMO", title: "Delivery" }] };
+        },
+        async getIssue(input) {
+          return {
+            issueKey: input.issueKey,
+            projectKey: "DEMO",
+            title: "Delivery",
+            content: { text: "Implements KB design.", linkTargets: [], truncated: false, inputBytes: 21 },
+          };
+        },
+      },
+      wiki: {
+        async searchPage() {
+          return { items: [{ contentId: "1001", spaceKey: "KB", title: "Design" }] };
+        },
+        async getPage(input) {
+          return {
+            contentId: input.contentId,
+            spaceKey: "KB",
+            title: "Design",
+            content: { text: "Defines DEMO delivery.", linkTargets: [], truncated: false, inputBytes: 22 },
+          };
+        },
+      },
+    }, { budget: new ResearchRunBudget(limits) });
+    const workspace = createMemoryResearchWorkspace();
+    const retrievalLedger = new CandidateLedgerController({
+      plan: createChatRetrievalPlanV1({
+        conversationId: "conversation:parallel-acquisition",
+        turnId: "turn:parallel-acquisition",
+        question: scopedRequest.question,
+        anchors: [],
+        scopeBindings: [],
+        boundProjectKeys: ["DEMO"],
+        boundSpaceKeys: ["KB"],
+        searchProducts: ["jira", "confluence"],
+        exactContextProducts: [],
+        limits,
+        agentic: true,
+        proposal: {
+          searches: [{
+            searchId: "search:jira",
+            product: "jira",
+            variants: [
+              { variantId: "jira-core", query: { text: "delivery" } },
+              { variantId: "jira-alt", query: { text: "implementation" } },
+            ],
+            maxPages: 1,
+          }, {
+            searchId: "search:confluence",
+            product: "confluence",
+            variants: [
+              { variantId: "wiki-core", query: { text: "design" } },
+              { variantId: "wiki-alt", query: { text: "architecture" } },
+            ],
+            maxPages: 1,
+          }],
+        },
+      }),
+      workspace,
+      siteOrigin: scopedRequest.scope.siteOrigin,
+    });
+    await retrievalLedger.initialize();
+    const rawTools = createChatPtcToolsV1(broker, {
+      searchProducts: ["jira", "confluence"],
+      boundProjectKeys: ["DEMO"],
+      boundSpaceKeys: ["KB"],
+      beforeInvoke: (capability, value) =>
+        retrievalLedger.assertToolInput(capability, value),
+      onResult: (capability, result, callId, value) =>
+        retrievalLedger.observe(capability, result, callId, value),
+    });
+    const jira = createPlannedSearchAcquisitionToolV1({
+      product: "jira",
+      tools: rawTools,
+      retrievalLedger,
+      maxSearchPages: 2,
+      maxDetails: 2,
+    });
+    const confluence = createPlannedSearchAcquisitionToolV1({
+      product: "confluence",
+      tools: rawTools,
+      retrievalLedger,
+      maxSearchPages: 2,
+      maxDetails: 2,
+    });
+
+    const [jiraResult, confluenceResult] = await Promise.all([
+      jira.invoke({}),
+      confluence.invoke({}),
+    ]);
+
+    expect(JSON.parse(String(jiraResult))).toMatchObject({
+      discoveredCandidates: 2,
+      details: [{ source: { sourceId: "jira:DEMO-1" } }],
+      gaps: [],
+    });
+    expect(JSON.parse(String(confluenceResult))).toMatchObject({
+      discoveredCandidates: 2,
+      details: [{ source: { sourceId: "wiki:1001" } }],
+      gaps: [],
+    });
+    expect(retrievalLedger.snapshot().candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceId: "jira:DEMO-1", state: "detail-read" }),
+      expect.objectContaining({ sourceId: "wiki:1001", state: "detail-read" }),
+    ]));
+  });
+
+  test("blocks another search after saturation while preserving later ranking and detail evals", async () => {
+    const harness = createHarness({
+      searchProducts: ["confluence"],
+      withRetrievalAssessment: true,
+      searchPlanSaturated: true,
+    });
+    const reader = harness.compiledSubagents.find(
+      (entry) => entry.name === "chat-confluence-search-reader-v1",
+    );
+    const guard = reader?.middleware?.find((entry) => entry.wrapToolCall !== undefined);
+    if (!guard?.wrapToolCall) throw new Error("missing child eval guard");
+    let searchInvoked = false;
+    const stopped = await guard.wrapToolCall({
+      toolCall: {
+        id: "eval:saturated",
+        name: "eval",
+        args: { code: "await tools.wikiSearch({ query: { text: 'another' } });" },
+      },
+    }, async () => {
+      searchInvoked = true;
+      return { content: "should not run" };
+    });
+    expect(searchInvoked).toBe(false);
+    expect((stopped as ToolMessage).content).toContain("SEARCH_PLAN_SATURATED");
+
+    await expect(guard.wrapToolCall({
+      toolCall: {
+        id: "eval:rank",
+        name: "eval",
+        args: { code: "await tools.researchCandidateRank({ candidates: [] });" },
+      },
+    }, async () => ({ content: "ranked" }))).resolves.toEqual({ content: "ranked" });
+  });
+
+  test("degrades only bounded empty-search acquisition failures to an explicit gap packet", async () => {
+    const harness = createHarness({
+      searchProducts: ["confluence"],
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-confluence-search-reader-v1") {
+          throw new Error("Chat search query is not an admitted retrieval-plan variant.");
+        }
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [
+        {
+          taskId: "task:search",
+          profileId: "confluence-search-reader",
+          objective: "Search the admitted Confluence scope.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Compare the bounded search result.",
+          dependencyTaskIds: ["task:search"],
+        },
+        {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft a provisional answer.",
+          dependencyTaskIds: ["task:analysis"],
+        },
+        {
+          taskId: "task:critic",
+          profileId: "answer-critic",
+          objective: "Critique the provisional answer.",
+          dependencyTaskIds: ["task:draft"],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Write the accepted answer.",
+          dependencyTaskIds: ["task:critic"],
+        },
+      ],
+      maxConcurrency: 1,
+    }));
+    const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:search"
+    );
+    if (!dispatch) throw new Error("missing search dispatch");
+    const boundedFallback = await invokeDispatch(harness.runtime, dispatch);
+    expect(boundedFallback).toEqual({
+      schema: "atlcli.chat-evidence-packet/v1",
+      sourceIds: [],
+      claims: [],
+      relationships: [],
+      gaps: [
+        "Confluence discovery exhausted every host-admitted query variant without detail evidence; no broader query or scope was attempted.",
+      ],
+    });
+    expect(harness.runtime.dispatchSnapshot().taskStatuses["task:search"]).toBe("completed");
+  });
+
+  test("reads two small exact anchors once and extracts one aggregate packet", async () => {
+    const pageReads: string[] = [];
+    let exactChildAttempts = 0;
+    let extractionAttempts = 0;
+    let confluenceSearches = 0;
+    const retrievalObservations: Array<{ capability: string; callId: string }> = [];
+    const extractionPacket = {
+      schema: "atlcli.chat-evidence-packet/v1" as const,
+      sourceIds: ["wiki:1001", "wiki:1002"],
+      claims: [
+        {
+          text: "The first bounded conclusion is established.",
+          sourceIds: ["wiki:1001"],
+          sourceRefs: ["wiki:1001"],
+        },
+        {
+          text: "The second bounded conclusion is established.",
+          sourceIds: ["wiki:1002"],
+          sourceRefs: ["wiki:1002"],
+        },
+      ],
+      relationships: [],
+      gaps: [],
+    };
+    const extractionModel = {
+      withStructuredOutput: (schema: unknown, options: unknown) => ({
+        invoke: async (messages: unknown) => {
+          extractionAttempts += 1;
+          expect(schema).toMatchObject({
+            type: "object",
+            properties: {
+              schema: {
+                type: "string",
+                const: "atlcli.chat-evidence-packet/v1",
+              },
+            },
+          });
+          expect(options).toMatchObject({
+            includeRaw: true,
+            method: "jsonSchema",
+          });
+          const projected = JSON.stringify(messages);
+          expect(projected).toContain("already-read projections");
+          expect(projected).toContain(
+            "sourceProjectionTruncated=false and extractionProjectionTruncated=false",
+          );
+          expect(projected).toContain("wiki:1001");
+          expect(projected).toContain("wiki:1002");
+          expect(projected).toContain(
+            '\\"requestedName\\":\\"Synthetic attached page 1\\"',
+          );
+          expect(projected).toContain(
+            '\\"canonicalTitle\\":\\"Synthetic attached page 1001\\"',
+          );
+          expect(projected).toContain(
+            '\\"requestedName\\":\\"Synthetic attached page 2\\"',
+          );
+          expect(projected).toContain(
+            '\\"canonicalTitle\\":\\"Synthetic attached page 1002\\"',
+          );
+          expect(projected).toContain("first bounded conclusion");
+          expect(projected).toContain("second bounded conclusion");
+          expect(projected).not.toContain("research-anchor:");
+          return {
+            raw: new AIMessage({
+              content: "",
+              tool_calls: [{
+                name: "KiteweaveExactEvidenceExtractionV1",
+                args: extractionPacket,
+                id: "tool:exact-extraction",
+                type: "tool_call",
+              }],
+              usage_metadata: {
+                input_tokens: 100,
+                output_tokens: 50,
+                total_tokens: 150,
+              },
+            }),
+            parsed: {},
+          };
+        },
+      }),
+    } as unknown as BaseChatModel;
+    const exactRequest: ResearchRequestV1 = {
+      ...request,
+      question: "Compare the two attached synthetic pages.",
+      scope: {
+        ...request.scope,
+        confluenceSpaceKeys: ["DEMO"],
+      },
+      scopeSeeds: ["1001", "1002"].map((key, index) => ({
+        binding: {
+          schema: "atlcli.research-scope-binding/v1" as const,
+          id: `scope-binding:current:workflow-page-${key}`,
+          tenantOrigin: request.scope.siteOrigin,
+          product: "confluence" as const,
+          entityKind: "page" as const,
+          entityRef: `research-scope-entity:workflow-page-${key}`,
+          key,
+          name: `Synthetic attached page ${index + 1}`,
+          source: "current_context" as const,
+          authority: "approved" as const,
+        },
+        precedence: 300,
+      })),
+      exactContextProducts: ["confluence"],
+    };
+    const harness = createHarness({
+      researchRequest: exactRequest,
+      withRetrievalAssessment: true,
+      onRetrievalObserve: (capability, _result, callId) => {
+        retrievalObservations.push({ capability, callId });
+      },
+      modelForPreference: () => extractionModel,
+      readProviders: {
+        ...providers,
+        wiki: {
+          ...providers.wiki,
+          async searchPage() {
+            confluenceSearches += 1;
+            return { items: [] };
+          },
+          async getPage({ contentId }) {
+            pageReads.push(contentId);
+            return {
+              contentId,
+              spaceKey: "DEMO",
+              title: `Synthetic attached page ${contentId}`,
+              content: {
+                text: contentId === "1001"
+                  ? "The first bounded conclusion is established."
+                  : "The second bounded conclusion is established.",
+                linkTargets: [],
+                truncated: false,
+                inputBytes: 52,
+              },
+            };
+          },
+        },
+      },
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-exact-context-reader-v1") {
+          exactChildAttempts += 1;
+          throw new Error("The exact-reader child must not run for small complete anchors.");
+        }
+        return analysisPacket();
+      },
+    });
+    const anchors = harness.broker.exactAnchors();
+    if (anchors.length !== 2) throw new Error("missing exact anchors");
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [
+        {
+          taskId: "task:exact:first",
+          profileId: "exact-context-reader",
+          objective: `Read ${anchors[0]!.anchorRef} and extract bounded claims.`,
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:exact:second",
+          profileId: "exact-context-reader",
+          objective: `Read ${anchors[1]!.anchorRef} and extract bounded claims.`,
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Analyze the bounded evidence.",
+          dependencyTaskIds: ["task:exact:first", "task:exact:second"],
+        },
+        {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft a provisional answer.",
+          dependencyTaskIds: ["task:analysis"],
+        },
+        {
+          taskId: "task:critic",
+          profileId: "answer-critic",
+          objective: "Critique the provisional answer.",
+          dependencyTaskIds: ["task:draft"],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Write the accepted answer.",
+          dependencyTaskIds: ["task:critic"],
+        },
+      ],
+      maxConcurrency: 2,
+    }));
+    const exactDispatches = response.dispatches.filter((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId.startsWith("task:exact:")
+    );
+    expect(exactDispatches).toHaveLength(1);
+    const packets = await Promise.all(exactDispatches.map((dispatch: ChatWorkflowDispatchV1) =>
+      invokeDispatch(harness.runtime, dispatch)
+    ));
+    expect(packets).toEqual([extractionPacket]);
+    expect(pageReads).toEqual(["1001", "1002"]);
+    expect({ exactChildAttempts, extractionAttempts, confluenceSearches }).toEqual({
+      exactChildAttempts: 0,
+      extractionAttempts: 1,
+      confluenceSearches: 0,
+    });
+    expect(retrievalObservations).toEqual([
+      { capability: "atlassian.bound.read", callId: "chat-exact-fast-path:1" },
+      { capability: "atlassian.bound.read", callId: "chat-exact-fast-path:2" },
+    ]);
+  });
+
+  test("falls back to one guarded section read for a navigable truncated exact page without replaying HTTP", async () => {
+    let pageReads = 0;
+    let directExtractions = 0;
+    let exactChildAttempts = 0;
+    let anchorRef = "";
+    let acquireTool: { invoke(input: unknown): Promise<unknown> } | undefined;
+    let sectionTool: { invoke(input: unknown): Promise<unknown> } | undefined;
+    const exactRequest: ResearchRequestV1 = {
+      ...request,
+      question: "What decision does the attached synthetic page establish?",
+      scopeSeeds: [{
+        binding: {
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:current:navigable-page",
+          tenantOrigin: request.scope.siteOrigin,
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:navigable-page",
+          key: "1003",
+          name: "Navigable synthetic page",
+          source: "current_context",
+          authority: "approved",
+        },
+        precedence: 300,
+      }],
+      exactContextProducts: ["confluence"],
+    };
+    const navigation = navigateConfluenceStorageV1({
+      storage: [
+        "<h1>Overview</h1><p>Background that does not answer the question.</p>",
+        "<h1>Current decision</h1><p>The bounded decision is approved.</p>",
+      ].join(""),
+      sourceVersion: 7,
+      siteOrigin: request.scope.siteOrigin,
+      projectionLimits: {
+        maxTextChars: 80,
+        maxTextBytes: 320,
+        maxLinks: 10,
+        maxNodes: 1_000,
+        maxDepth: 32,
+      },
+    });
+    const harness = createHarness({
+      researchRequest: exactRequest,
+      modelForPreference: () => ({
+        withStructuredOutput: () => ({
+          invoke: async () => {
+            directExtractions += 1;
+            throw new Error("Direct extraction must defer the navigable truncated page.");
+          },
+        }),
+      } as unknown as BaseChatModel),
+      readProviders: {
+        ...providers,
+        wiki: {
+          ...providers.wiki,
+          async getPage({ contentId }) {
+            pageReads += 1;
+            return {
+              contentId,
+              spaceKey: "DEMO",
+              title: "Navigable synthetic page",
+              content: {
+                text: "The initial projection is incomplete.",
+                linkTargets: [],
+                truncated: true,
+                inputBytes: 4_000,
+              },
+              navigation,
+            };
+          },
+        },
+      },
+      async invoke(taskInput) {
+        if (taskInput.subagent_type !== "chat-exact-context-reader-v1") {
+          return analysisPacket();
+        }
+        exactChildAttempts += 1;
+        if (!acquireTool || !sectionTool || !anchorRef) {
+          throw new Error("missing exact fallback tools");
+        }
+        const acquired = JSON.parse(String(await acquireTool.invoke({
+          anchorRefs: [anchorRef],
+        }))) as {
+          details: Array<{
+            document?: { sections: Array<{ sectionRef: string; heading: string }> };
+          }>;
+        };
+        const sectionRef = acquired.details[0]?.document?.sections.find((section) =>
+          section.heading === "Current decision"
+        )?.sectionRef;
+        if (!sectionRef) throw new Error("missing decision section");
+        const section = JSON.parse(String(await sectionTool.invoke({ sectionRef }))) as {
+          source: { sourceId: string };
+          section: { sectionId: string };
+        };
+        expect(section.source.sourceId).toBe("wiki:1003");
+        expect(section.section.sectionId).toBeString();
+        return {
+          schema: "atlcli.chat-evidence-packet/v1",
+          sourceIds: [section.source.sourceId],
+          claims: [{
+            text: "The bounded decision is approved.",
+            sourceIds: [section.source.sourceId],
+            sourceRefs: [`${section.source.sourceId}#${section.section.sectionId}`],
+          }],
+          relationships: [],
+          gaps: ["One remaining section was not required for this question."],
+        };
+      },
+    });
+    anchorRef = harness.broker.exactAnchors()[0]?.anchorRef ?? "";
+    const exactReader = harness.compiledSubagents.find((entry) =>
+      entry.name === "chat-exact-context-reader-v1"
+    );
+    acquireTool = exactReader?.tools?.find((candidate) =>
+      Boolean(candidate && typeof candidate === "object" &&
+        (candidate as { name?: unknown }).name === "chat_exact_context_acquire")
+    ) as typeof acquireTool;
+    sectionTool = exactReader?.tools?.find((candidate) =>
+      Boolean(candidate && typeof candidate === "object" &&
+        (candidate as { name?: unknown }).name === "atlassian_bound_section_read")
+    ) as typeof sectionTool;
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [
+        {
+          taskId: "task:exact:navigable",
+          profileId: "exact-context-reader",
+          objective: `Read ${anchorRef} and extract the current decision.`,
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Analyze the bounded evidence.",
+          dependencyTaskIds: ["task:exact:navigable"],
+        },
+        {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft a provisional answer.",
+          dependencyTaskIds: ["task:analysis"],
+        },
+        {
+          taskId: "task:critic",
+          profileId: "answer-critic",
+          objective: "Critique the provisional answer.",
+          dependencyTaskIds: ["task:draft"],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Write the accepted answer.",
+          dependencyTaskIds: ["task:critic"],
+        },
+      ],
+      maxConcurrency: 1,
+    }));
+    const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:exact:navigable"
+    );
+    if (!dispatch) throw new Error("missing navigable exact dispatch");
+
+    const packet = await invokeDispatch(harness.runtime, dispatch);
+    expect(packet).toMatchObject({
+      sourceIds: ["wiki:1003"],
+      claims: [{ sourceRefs: [expect.stringMatching(/^wiki:1003#/u)] }],
+    });
+    expect({ pageReads, directExtractions, exactChildAttempts }).toEqual({
+      pageReads: 1,
+      directExtractions: 0,
+      exactChildAttempts: 1,
+    });
+    expect(harness.broker.readSectionReferenceLedger()).toHaveLength(1);
+  });
+
+  test("marks an interrupted exact extraction outcome unknown without retrying it", async () => {
+    let pageReads = 0;
+    let extractionAttempts = 0;
+    let extractionStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      extractionStarted = resolve;
+    });
+    const exactRequest: ResearchRequestV1 = {
+      ...request,
+      scopeSeeds: [{
+        binding: {
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:current:cancelled-page",
+          tenantOrigin: request.scope.siteOrigin,
+          product: "confluence",
+          entityKind: "page",
+          entityRef: "research-scope-entity:cancelled-page",
+          key: "1002",
+          name: "Cancelled page",
+          source: "current_context",
+          authority: "approved",
+        },
+        precedence: 300,
+      }],
+      exactContextProducts: ["confluence"],
+    };
+    const extractionModel = {
+      withStructuredOutput: () => ({
+        invoke: async (_messages: unknown, config?: RunnableConfig) => {
+          extractionAttempts += 1;
+          extractionStarted();
+          await new Promise<never>((_resolve, reject) => {
+            const fail = (): void => reject(
+              config?.signal?.reason ?? new DOMException("Cancelled", "AbortError"),
+            );
+            if (config?.signal?.aborted) fail();
+            else config?.signal?.addEventListener("abort", fail, { once: true });
+          });
+        },
+      }),
+    } as unknown as BaseChatModel;
+    const harness = createHarness({
+      researchRequest: exactRequest,
+      modelForPreference: () => extractionModel,
+      readProviders: {
+        ...providers,
+        wiki: {
+          ...providers.wiki,
+          async getPage({ contentId }) {
+            pageReads += 1;
+            return {
+              contentId,
+              spaceKey: "DEMO",
+              title: "Cancelled page",
+              content: {
+                text: "Bound evidence read before cancellation.",
+                linkTargets: [],
+                truncated: false,
+                inputBytes: 40,
+              },
+            };
+          },
+        },
+      },
+    });
+    const anchor = harness.broker.exactAnchors()[0];
+    if (!anchor) throw new Error("missing unread anchor");
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: [
+        {
+          taskId: "task:exact-cancelled",
+          profileId: "exact-context-reader",
+          objective: `Read ${anchor.anchorRef}.`,
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Analyze evidence.",
+          dependencyTaskIds: ["task:exact-cancelled"],
+        },
+        {
+          taskId: "task:draft",
+          profileId: "answer-drafter",
+          objective: "Draft.",
+          dependencyTaskIds: ["task:analysis"],
+        },
+        {
+          taskId: "task:critic",
+          profileId: "answer-critic",
+          objective: "Critique.",
+          dependencyTaskIds: ["task:draft"],
+        },
+        {
+          taskId: "task:synth",
+          profileId: "chat-synthesizer",
+          objective: "Synthesize.",
+          dependencyTaskIds: ["task:critic"],
+        },
+      ],
+      maxConcurrency: 1,
+    }));
+    const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:exact-cancelled"
+    );
+    if (!dispatch) throw new Error("missing cancelled exact dispatch");
+    const controller = new AbortController();
+    const pending = invokeDispatch(harness.runtime, dispatch, {
+      signal: controller.signal,
+    });
+    await started;
+    controller.abort(new DOMException("Cancelled", "AbortError"));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect({ pageReads, extractionAttempts }).toEqual({
+      pageReads: 1,
+      extractionAttempts: 1,
+    });
+    const durableStateContents = await harness.workspace.readFile(CHAT_WORKFLOW_STATE_PATH_V1);
+    if (!durableStateContents) throw new Error("missing durable workflow state");
+    const durableState = JSON.parse(durableStateContents) as {
+      taskStatuses: Record<string, string>;
+    };
+    expect(durableState.taskStatuses["task:exact-cancelled"]).toBe("outcome_unknown");
+  });
+
+  test("uses native structured output only for side-effect-free answer children", async () => {
+    const projectedResponseFormats = new Map<string, unknown>();
+    const harness = createHarness({
+      structuredOutput: "native",
+      withRetrievalAssessment: true,
+      projectResponseSchema: providerCompatibleChatJsonSchemaV1,
+      async invoke(taskInput, config) {
+        projectedResponseFormats.set(taskInput.subagent_type, config?.configurable?.[
+          DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
+        ]);
+        if (
+          taskInput.subagent_type === "chat-synthesizer-v1" ||
+          taskInput.subagent_type === "chat-answer-drafter-v1"
+        ) return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Compare accepted claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 1,
+    }));
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    const dispatch = requireDispatch(byId, "task:analysis");
+    await invokeDispatch(harness.runtime, dispatch);
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const synthDispatch = quality.dispatches.find((entry) => entry.taskId === "task:synth");
+    if (!synthDispatch) throw new Error("missing synthesis dispatch");
+    await invokeDispatch(harness.runtime, synthDispatch);
+    const internalFormat = projectedResponseFormats.get("chat-comparison-analyst-v1");
+    const draftFormat = projectedResponseFormats.get("chat-answer-drafter-v1");
+    const synthesisFormat = projectedResponseFormats.get("chat-synthesizer-v1");
+    expect(Array.isArray(internalFormat)).toBe(true);
+    expect((internalFormat as unknown[])[0]?.constructor.name).toBe("ToolStrategy");
+    expect(draftFormat?.constructor.name).toBe("ProviderStrategy");
+    expect(synthesisFormat?.constructor.name).toBe("ProviderStrategy");
+    const synthesisSchema = (synthesisFormat as { schema?: unknown })?.schema;
+    expect(JSON.stringify(dispatch.responseSchema)).toContain("maxItems");
+    expect(JSON.stringify((internalFormat as Array<{ schema: unknown }>)[0]?.schema)).toContain("maxItems");
+    expect(JSON.stringify((draftFormat as { schema?: unknown })?.schema)).not.toContain("maxItems");
+    expect(JSON.stringify(synthesisSchema)).not.toContain("maxItems");
+    expect(synthesisSchema).toMatchObject({
+      type: "object",
+      properties: {
+        blocks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              markdown: { type: "string" },
+              sourceRefs: { type: "array" },
+              assertion: { enum: ["positive", "absence", "none"] },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  test("keeps an admitted repairer and synthesis on the same native side-effect-free strategy", async () => {
+    const projectedResponseFormats = new Map<string, unknown>();
+    const harness = createHarness({
+      structuredOutput: "native",
+      withRetrievalAssessment: true,
+      projectResponseSchema: providerCompatibleChatJsonSchemaV1,
+      async invoke(taskInput, config) {
+        projectedResponseFormats.set(taskInput.subagent_type, config?.configurable?.[
+          DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
+        ]);
+        if (taskInput.subagent_type === "chat-answer-critic-v1") {
+          return {
+            schema: "atlcli.chat-critique-packet/v1",
+            defects: [{
+              defectId: "chat-defect:repair-format",
+              code: "question-not-answered",
+              severity: "material",
+              sourceIds: [],
+              repairAction: "resynthesize",
+              message: "The provisional answer needs one bounded repair.",
+            }],
+            readyForSynthesis: false,
+          };
+        }
+        if (
+          taskInput.subagent_type === "chat-answer-drafter-v1" ||
+          taskInput.subagent_type === "chat-answer-repairer-v1" ||
+          taskInput.subagent_type === "chat-synthesizer-v1"
+        ) return answerDraft();
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare accepted claims.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const repairDispatch = quality.dispatches.find((entry) =>
+      entry.subagentType === "chat-answer-repairer-v1"
+    );
+    const synthDispatch = quality.dispatches.find((entry) =>
+      entry.subagentType === "chat-synthesizer-v1"
+    );
+    if (!repairDispatch || !synthDispatch) throw new Error("missing final quality dispatches");
+    await invokeDispatch(harness.runtime, repairDispatch);
+    await invokeDispatch(harness.runtime, synthDispatch);
+
+    const repairFormat = projectedResponseFormats.get("chat-answer-repairer-v1");
+    const synthesisFormat = projectedResponseFormats.get("chat-synthesizer-v1");
+    expect(repairFormat?.constructor.name).toBe("ProviderStrategy");
+    expect(synthesisFormat?.constructor.name).toBe("ProviderStrategy");
+  });
+
+  test("retries one schema-invalid side-effect-free repair without replaying acquisition", async () => {
+    let repairAttempts = 0;
+    let analysisCalls = 0;
+    const harness = createHarness({
+      structuredOutput: "native",
+      withRetrievalAssessment: true,
+      projectResponseSchema: providerCompatibleChatJsonSchemaV1,
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-answer-critic-v1") {
+          return {
+            schema: "atlcli.chat-critique-packet/v1",
+            defects: [{
+              defectId: "chat-defect:retry-repair-format",
+              code: "question-not-answered",
+              severity: "material",
+              sourceIds: [],
+              repairAction: "resynthesize",
+              message: "The provisional answer needs one bounded repair.",
+            }],
+            readyForSynthesis: false,
+          };
+        }
+        if (taskInput.subagent_type === "chat-answer-repairer-v1") {
+          repairAttempts += 1;
+          if (repairAttempts === 1) {
+            throw new Error(
+              "Failed to parse structured output for tool 'ChatRepairedAnswerDraftV1': Model output did not satisfy the provided response schema.",
+            );
+          }
+          return answerDraft();
+        }
+        if (
+          taskInput.subagent_type === "chat-answer-drafter-v1" ||
+          taskInput.subagent_type === "chat-synthesizer-v1"
+        ) return answerDraft();
+        analysisCalls += 1;
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare accepted claims.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const repair = quality.dispatches.find((entry) =>
+      entry.subagentType === "chat-answer-repairer-v1"
+    );
+    if (!repair) throw new Error("missing repair dispatch");
+
+    await expect(invokeDispatch(harness.runtime, repair)).resolves.toMatchObject({
+      messageMarkdown: "A bounded synthetic answer.",
+    });
+    expect(repairAttempts).toBe(2);
+    expect(analysisCalls).toBe(1);
+  });
+
+  test("forwards model stream events from host-executed DeepAgents specialists", async () => {
+    const streamed: ChatSubagentModelStreamEventV1[] = [];
+    const harness = createHarness({
+      onModelStreamEvent: (event) => streamed.push(event),
+      async invoke(_taskInput, config) {
+        const callbacks = config?.callbacks as unknown as {
+          handlers?: Array<{
+            handleChatModelStreamEvent?: (event: unknown, runId: string) => Promise<void> | void;
+          }>;
+        };
+        const handlers = callbacks?.handlers ?? [];
+        for (const handler of handlers) {
+          await handler.handleChatModelStreamEvent?.({
+            event: "content-block-delta",
+            index: 0,
+            delta: {
+              type: "reasoning-delta",
+              reasoning: "Comparing the accepted evidence.",
+            },
+          }, "synthetic-specialist-model-run");
+          await handler.handleChatModelStreamEvent?.({
+            event: "message-finish",
+            reason: "stop",
+          }, "synthetic-specialist-model-run");
+        }
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare accepted claims.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const dispatch = response.dispatches.find((entry: ChatWorkflowDispatchV1) =>
+      entry.taskId === "task:analysis"
+    );
+    if (!dispatch) throw new Error("missing analysis dispatch");
+
+    await invokeDispatch(harness.runtime, dispatch);
+
+    expect(streamed).toEqual([
+      expect.objectContaining({
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        runId: "synthetic-specialist-model-run",
+        event: expect.objectContaining({ event: "content-block-delta" }),
+      }),
+      expect.objectContaining({
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        runId: "synthetic-specialist-model-run",
+        event: expect.objectContaining({ event: "message-finish" }),
+      }),
+    ]);
+  });
+
+  test("runs a real two-sibling frontier concurrently, hydrates only admitted dependencies, and persists one synthesizer", async () => {
+    let active = 0;
+    let maximumActive = 0;
+    let reviewComplete = false;
+    const seenDescriptions = new Map<string, string>();
+    const harness = createHarness({
+      strategy: relationshipComparisonStrategy,
+      withRetrievalAssessment: true,
+      beforeSynthesis: () => {
+        if (!reviewComplete) throw new Error("review pending");
+      },
+      async invoke(taskInput) {
+        seenDescriptions.set(taskInput.subagent_type, taskInput.description);
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        active -= 1;
+        if (taskInput.subagent_type === "chat-synthesizer-v1") return {
+          messageMarkdown: "A bounded synthetic comparison.",
+          citationSourceIds: [],
+          gaps: [],
+        };
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:relationships",
+          profileId: "relationship-tracer",
+          objective: "Trace explicit relationships.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:comparison",
+          profileId: "comparison-analyst",
+          objective: "Compare accepted claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 2,
+    }));
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await Promise.all([
+      invokeDispatch(harness.runtime, requireDispatch(byId, "task:relationships")),
+      invokeDispatch(harness.runtime, requireDispatch(byId, "task:comparison")),
+    ]);
+    expect(maximumActive).toBe(2);
+    expect(seenDescriptions.get("chat-relationship-tracer-v1"))
+      .not.toContain("Compare accepted claims");
+    expect(seenDescriptions.get("chat-comparison-analyst-v1"))
+      .not.toContain("Trace explicit relationships");
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    reviewComplete = true;
+    const quality = await invokeQualityReview(harness.runtime);
+    const finalById = new Map(quality.dispatches.map((entry) => [entry.taskId, entry]));
+    await invokeDispatch(harness.runtime, requireDispatch(finalById, "task:synth"));
+    const synthDescription = JSON.parse(
+      seenDescriptions.get("chat-synthesizer-v1")!,
+    );
+    expect(synthDescription.dependencyResults.map((entry: { taskId: string }) => entry.taskId).sort())
+      .toEqual(["task:comparison", "task:critic", "task:draft", "task:relationships"]);
+    expect(harness.runtime.assertComplete()).toMatchObject({
+      messageMarkdown: "A bounded synthetic comparison.",
+    });
+    expect(harness.runtime.dispatchSnapshot()).toMatchObject({
+      dispatchedTasks: 5,
+      activeInvocations: 0,
+      taskStatuses: {
+        "task:relationships": "completed",
+        "task:comparison": "completed",
+        "task:draft": "completed",
+        "task:critic": "completed",
+        "task:synth": "completed",
+      },
+    });
+    expect(JSON.parse((await harness.workspace.readFile(CHAT_WORKFLOW_STATE_PATH_V1))!))
+      .toMatchObject({
+        schema: "atlcli.chat-workflow-state/v1",
+        accepted: { synthesizerTaskId: "task:synth" },
+        taskStatuses: { "task:synth": "completed" },
+      });
+  });
+
+  test("advances the dynamic graph through host-owned waves and explicit checkpoints", async () => {
+    let reviewCurrent = false;
+    let active = 0;
+    let maximumActive = 0;
+    const invoked: string[] = [];
+    const harness = createHarness({
+      strategy: relationshipComparisonStrategy,
+      withRetrievalAssessment: true,
+      strategyReviewCurrent: () => reviewCurrent,
+      async invoke(taskInput) {
+        invoked.push(taskInput.subagent_type);
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        if (taskInput.subagent_type === "chat-synthesizer-v1") return answerDraft();
+        return analysisPacket();
+      },
+    });
+    await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:relationships",
+          profileId: "relationship-tracer",
+          objective: "Trace explicit relationships.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:comparison",
+          profileId: "comparison-analyst",
+          objective: "Compare accepted claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 2,
+    });
+
+    const beforeReview = JSON.parse(await harness.runtime.advanceTool.invoke({}));
+    expect(beforeReview).toMatchObject({
+      schema: "atlcli.chat-workflow-advance/v1",
+      status: "strategy-review-required",
+    });
+    expect(beforeReview.completedTaskIds.sort()).toEqual([
+      "task:comparison",
+      "task:relationships",
+    ]);
+    expect(maximumActive).toBe(2);
+
+    reviewCurrent = true;
+    const beforeQuality = JSON.parse(await harness.runtime.advanceTool.invoke({}));
+    expect(beforeQuality).toMatchObject({
+      status: "quality-review-required",
+      completedTaskIds: ["task:draft", "task:critic"],
+    });
+    await harness.runtime.qualityReviewTool.invoke({});
+    const complete = JSON.parse(await harness.runtime.advanceTool.invoke({}));
+    expect(complete).toMatchObject({
+      status: "complete",
+      completedTaskIds: ["task:synth"],
+      remainingTaskIds: [],
+    });
+    expect(invoked).toEqual([
+      "chat-relationship-tracer-v1",
+      "chat-comparison-analyst-v1",
+      "chat-answer-drafter-v1",
+      "chat-answer-critic-v1",
+      "chat-synthesizer-v1",
+    ]);
+    expect(harness.runtime.assertComplete()).toEqual(answerDraft());
+  });
+
+  test("runs deterministic specialist waves and host reviews to terminal synthesis in one control call", async () => {
+    let reviewCurrent = false;
+    let strategyReviews = 0;
+    const invoked: string[] = [];
+    const descriptions = new Map<string, string>();
+    const harness = createHarness({
+      strategy: relationshipComparisonStrategy,
+      withRetrievalAssessment: true,
+      strategyReviewCurrent: () => reviewCurrent,
+      runStrategyReview: () => {
+        strategyReviews += 1;
+        reviewCurrent = true;
+      },
+      async invoke(taskInput) {
+        invoked.push(taskInput.subagent_type);
+        descriptions.set(taskInput.subagent_type, taskInput.description);
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        if (taskInput.subagent_type === "chat-synthesizer-v1") return answerDraft();
+        return analysisPacket();
+      },
+    });
+    await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:relationships",
+          profileId: "relationship-tracer",
+          objective: "Trace explicit relationships.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:comparison",
+          profileId: "comparison-analyst",
+          objective: "Compare accepted claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 2,
+    });
+
+    const complete = JSON.parse(await harness.runtime.runTool.invoke({}));
+
+    expect(complete).toMatchObject({
+      schema: "atlcli.chat-workflow-advance/v1",
+      status: "complete",
+      remainingTaskIds: [],
+    });
+    expect(strategyReviews).toBe(1);
+    expect(invoked).toEqual([
+      "chat-relationship-tracer-v1",
+      "chat-comparison-analyst-v1",
+      "chat-answer-drafter-v1",
+      "chat-answer-critic-v1",
+      "chat-synthesizer-v1",
+    ]);
+    expect(harness.runtime.qualityDisposition()).toBeDefined();
+    expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("hostConfirmedDetailSourceIds");
+    expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("hostCanonicalSources");
+    expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("relationship-only mention does not satisfy source coverage");
+    expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("Do not mention a display-name mismatch");
+    expect(descriptions.get("chat-synthesizer-v1"))
+      .toContain("but not a Jira macro");
+    expect(harness.runtime.assertComplete()).toEqual(answerDraft());
+    await expect(harness.runtime.qualityReviewTool.invoke({}))
+      .rejects.toThrow("exactly once");
+  });
+
+  test("rejects duplicate phase-equivalent specialists before dispatch", async () => {
+    const harness = createHarness({
+      strategy: combinedRiskStrategy,
+      withRetrievalAssessment: true,
+    });
+    await expect(harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:comparison-a",
+          profileId: "comparison-analyst",
+          objective: "Compare the first claim group.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:comparison-b",
+          profileId: "comparison-analyst",
+          objective: "Compare the second claim group.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:relationships-a",
+          profileId: "relationship-tracer",
+          objective: "Trace the first relationship group.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:relationships-b",
+          profileId: "relationship-tracer",
+          objective: "Trace the second relationship group.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:contradictions",
+          profileId: "contradiction-checker",
+          objective: "Check the resulting contradictions.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 2,
+    })).rejects.toThrow("duplicate-specialist");
+    expect(harness.runtime.dispatchSnapshot().dispatchedTasks).toBe(0);
+  });
+
+  test("fails closed when a child bypasses an incomplete dependency", async () => {
+    const harness = createHarness();
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Compare claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 1,
+    }));
+    const draft = response.dispatches.find(
+      (entry: { taskId: string }) => entry.taskId === "task:draft",
+    );
+    await expect(invokeDispatch(harness.runtime, draft)).rejects.toThrow("incomplete dependency");
+  });
+
+  test("hydrates the host schema and still rejects a duplicate dispatch", async () => {
+    const harness = createHarness();
+    const forgedResponse = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Compare claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 1,
+    }));
+    const forgedAnalysis = forgedResponse.dispatches.find(
+      (entry: { taskId: string }) => entry.taskId === "task:analysis",
+    );
+    await expect(invokeDispatch(harness.runtime, {
+      ...forgedAnalysis,
+      responseSchema: { type: "object" },
+    })).resolves.toEqual(analysisPacket());
+    // The guest copy is non-authoritative, but the immutable task slot remains
+    // single-use after the host-bound schema completed successfully.
+    await expect(invokeDispatch(harness.runtime, forgedAnalysis))
+      .rejects.toThrow("already dispatched");
+  });
+
+  test("accepts a schema-valid packet near its byte limit and rejects one over it", async () => {
+    const nearLimitPacket = analysisPacketNearBytes(23_990);
+    expect(serializedBytes(nearLimitPacket)).toBeGreaterThan(23_000);
+    expect(serializedBytes(nearLimitPacket)).toBeLessThanOrEqual(24_000);
+    const acceptedHarness = createHarness({
+      async invoke(taskInput) {
+        return taskInput.subagent_type === "chat-comparison-analyst-v1"
+          ? nearLimitPacket
+          : {
+              messageMarkdown: "A bounded synthetic answer.",
+              citationSourceIds: [],
+              gaps: [],
+            };
+      },
+    });
+    const acceptedResponse = JSON.parse(await acceptedHarness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Compare claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 1,
+    }));
+    const acceptedById = new Map<string, ChatWorkflowDispatchV1>(
+      acceptedResponse.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await expect(invokeDispatch(
+      acceptedHarness.runtime,
+      requireDispatch(acceptedById, "task:analysis"),
+    )).resolves.toMatchObject({ schema: "atlcli.chat-analysis-packet/v1" });
+
+    const overLimitPacket = analysisPacketNearBytes(24_100);
+    expect(serializedBytes(overLimitPacket)).toBeGreaterThan(24_000);
+    const rejectedHarness = createHarness({
+      async invoke(taskInput) {
+        return taskInput.subagent_type === "chat-comparison-analyst-v1"
+          ? overLimitPacket
+          : analysisPacket();
+      },
+    });
+    const rejectedResponse = JSON.parse(await rejectedHarness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Compare claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 1,
+    }));
+    const rejectedById = new Map<string, ChatWorkflowDispatchV1>(
+      rejectedResponse.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await expect(invokeDispatch(
+      rejectedHarness.runtime,
+      requireDispatch(rejectedById, "task:analysis"),
+    )).rejects.toThrow("exceeds 24000 bytes");
+  });
+
+  test("rejects an oversized synthesizer packet", async () => {
+    const harness = createHarness({
+      withRetrievalAssessment: true,
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-synthesizer-v1") {
+          return {
+            messageMarkdown: "x".repeat(30_000),
+            citationSourceIds: [],
+            gaps: [],
+          };
+        }
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:analysis",
+          profileId: "comparison-analyst",
+          objective: "Compare claims.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 1,
+    }));
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const qualityById = new Map(quality.dispatches.map((entry) => [entry.taskId, entry]));
+    await expect(invokeDispatch(harness.runtime, requireDispatch(qualityById, "task:synth")))
+      .rejects.toThrow(/exceeds|invalid structured packet/u);
+  });
+
+  test("sanitizes unsupported acronym expansions and internal packet limits before completion", async () => {
+    const harness = createHarness({
+      withRetrievalAssessment: true,
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-synthesizer-v1") {
+          return {
+            messageMarkdown: "QuickJS PTC (Proper Tail Calls) remains bounded.\n\nResearch design feeds into the Markdown output contract.",
+            citationSourceIds: [],
+            gaps: [{
+              code: "incomplete-coverage",
+              message: "Only one evidence packet was available for contradiction checking.",
+              sourceIds: [],
+            }],
+          };
+        }
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        if (taskInput.subagent_type === "chat-answer-critic-v1") return critiquePacket();
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare claims.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(byId, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+    const qualityById = new Map(quality.dispatches.map((entry) => [entry.taskId, entry]));
+    await invokeDispatch(harness.runtime, requireDispatch(qualityById, "task:synth"));
+
+    expect(harness.runtime.assertComplete()).toEqual({
+      messageMarkdown: "QuickJS PTC remains bounded.",
+      citationSourceIds: [],
+      gaps: [],
+    });
+  });
+
+  test("improves an intentionally wrong-citation gold answer through one targeted repair", async () => {
+    const invoked: string[] = [];
+    const seenDescriptions = new Map<string, string>();
+    const wrongDraft: ChatAgentDraftV1 = {
+      messageMarkdown: "The rollout is complete according to the wrong source.",
+      citationSourceIds: [],
+      gaps: [],
+    };
+    const repairedDraft: ChatAgentDraftV1 = {
+      messageMarkdown: "The available evidence does not establish that the rollout is complete.",
+      citationSourceIds: [],
+      gaps: [{
+        code: "unresolved-reference",
+        message: "The claimed rollout status is not supported by the admitted evidence.",
+        sourceIds: [],
+      }],
+    };
+    const goldScore = (draft: ChatAgentDraftV1): number =>
+      Number(!draft.messageMarkdown.includes("according to the wrong source")) +
+      Number(draft.messageMarkdown.includes("does not establish")) +
+      Number(draft.gaps.some((gap) => gap.code === "unresolved-reference"));
+    const lowerQualityFinalizer = { id: "lower-quality-finalizer" } as unknown as BaseChatModel;
+    const ordinaryModel = { id: "ordinary-model" } as unknown as BaseChatModel;
+    const harness = createHarness({
+      withRetrievalAssessment: true,
+      modelForRoute: (request) => ({
+        model: request.role === "synthesis" ? lowerQualityFinalizer : ordinaryModel,
+        effectiveModelId: request.role === "synthesis"
+          ? "lower-quality-finalizer"
+          : "ordinary-model",
+        requestedPreference: request.preference,
+        effectivePreference: request.preference,
+        thinkingMode: "provider-default",
+        finalizationCorridor: request.role === "synthesis" ? "finalize-only" : "standard",
+      }),
+      async invoke(taskInput) {
+        invoked.push(taskInput.subagent_type);
+        seenDescriptions.set(taskInput.subagent_type, taskInput.description);
+        if (taskInput.subagent_type === "chat-answer-critic-v1") {
+          return {
+            schema: "atlcli.chat-critique-packet/v1",
+            defects: [{
+              defectId: "chat-defect:wrong-citation",
+              code: "invalid-citation",
+              severity: "material",
+              sourceIds: [],
+              repairAction: "resynthesize",
+              message: "The provisional answer uses the wrong citation.",
+            }],
+            readyForSynthesis: false,
+          };
+        }
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return wrongDraft;
+        if (taskInput.subagent_type === "chat-answer-repairer-v1") return repairedDraft;
+        if (taskInput.subagent_type === "chat-synthesizer-v1") {
+          return {
+            messageMarkdown: "## Empty synthesis regression",
+            citationSourceIds: repairedDraft.citationSourceIds,
+            gaps: [],
+          };
+        }
+        return analysisPacket();
+      },
+    });
+    const proposal = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare accepted evidence.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    expect(harness.compiledSubagents.find((entry) =>
+      entry.name === "chat-synthesizer-v1"
+    )?.model).toBe(lowerQualityFinalizer);
+    const initial = new Map<string, ChatWorkflowDispatchV1>(
+      proposal.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:critic"));
+
+    const quality = await invokeQualityReview(harness.runtime);
+    expect(quality.dispatches.map((entry) => entry.subagentType)).toEqual([
+      "chat-answer-repairer-v1",
+      "chat-synthesizer-v1",
+    ]);
+    const repair = quality.dispatches[0]!;
+    const synth = quality.dispatches[1]!;
+    await invokeDispatch(harness.runtime, repair);
+    await invokeDispatch(harness.runtime, synth);
+    await expect(harness.runtime.qualityReviewTool.invoke({}))
+      .rejects.toThrow("exactly once");
+    expect(invoked.filter((name) => name === "chat-answer-repairer-v1"))
+      .toHaveLength(1);
+    expect(seenDescriptions.get("chat-answer-repairer-v1"))
+      .toContain("chat-defect:wrong-citation");
+    const repairDescription = JSON.parse(
+      seenDescriptions.get("chat-answer-repairer-v1")!,
+    );
+    expect(repairDescription.dependencyResults.map(
+      (entry: { taskId: string }) => entry.taskId,
+    )).toEqual(["task:draft", "task:critic"]);
+    const synthDescription = JSON.parse(
+      seenDescriptions.get("chat-synthesizer-v1")!,
+    );
+    expect(synthDescription.objective).toContain("hostConfirmedDetailSourceIds");
+    expect(synthDescription.dependencyResults.map((entry: { taskId: string }) => entry.taskId))
+      .toEqual(["task:analysis", "task:draft", "task:critic", repair.taskId]);
+    const finalDraft = harness.runtime.assertComplete();
+    expect(goldScore(wrongDraft)).toBe(0);
+    expect("messageMarkdown" in finalDraft).toBe(true);
+    if (!("messageMarkdown" in finalDraft)) {
+      throw new Error("Expected the legacy synthetic draft shape.");
+    }
+    expect(goldScore(finalDraft)).toBe(3);
+    expect(finalDraft).toEqual(repairedDraft);
+  });
+
+  test("preserves synthesis when the host denies repair to protect the deadline reserve", async () => {
+    const harness = createHarness({
+      withRetrievalAssessment: true,
+      decideRepairAdmission: () => ({ admit: false, reason: "deadline-reserve" }),
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-answer-critic-v1") {
+          return {
+            schema: "atlcli.chat-critique-packet/v1",
+            defects: [{
+              defectId: "chat-defect:budgeted-repair",
+              code: "question-not-answered",
+              severity: "material",
+              sourceIds: [],
+              repairAction: "resynthesize",
+              message: "The provisional answer requires a bounded repair.",
+            }],
+            readyForSynthesis: false,
+          };
+        }
+        if (taskInput.subagent_type === "chat-answer-drafter-v1") return answerDraft();
+        return analysisPacket();
+      },
+    });
+    const proposal = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([{
+        taskId: "task:analysis",
+        profileId: "comparison-analyst",
+        objective: "Compare accepted evidence.",
+        dependencyTaskIds: [],
+      }]),
+      maxConcurrency: 1,
+    }));
+    const initial = new Map<string, ChatWorkflowDispatchV1>(
+      proposal.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:analysis"));
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:draft"));
+    await invokeDispatch(harness.runtime, requireDispatch(initial, "task:critic"));
+    const quality = await invokeQualityReview(harness.runtime);
+
+    expect(quality.dispatches.map((entry) => entry.subagentType)).toEqual([
+      "chat-synthesizer-v1",
+    ]);
+    expect(quality.requiredGapCodes).toContain("question-not-answered");
+    expect(harness.runtime.qualityDisposition()).toMatchObject({
+      repairRequired: true,
+      repairAdmitted: false,
+      repairSkippedReason: "deadline-reserve",
+      synthesisAllowed: true,
+    });
+  });
+
+  test("enforces the workflow's admitted concurrency below the host ceiling", async () => {
+    let releaseFirst!: () => void;
+    const firstPending = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const harness = createHarness({
+      strategy: relationshipComparisonStrategy,
+      async invoke(taskInput) {
+        if (taskInput.subagent_type === "chat-comparison-analyst-v1") {
+          await firstPending;
+        }
+        return analysisPacket();
+      },
+    });
+    const response = JSON.parse(await harness.runtime.proposalTool.invoke({
+      tasks: qualityWorkflowTasks([
+        {
+          taskId: "task:comparison",
+          profileId: "comparison-analyst",
+          objective: "Compare claims.",
+          dependencyTaskIds: [],
+        },
+        {
+          taskId: "task:relationships",
+          profileId: "relationship-tracer",
+          objective: "Trace relationships.",
+          dependencyTaskIds: [],
+        },
+      ]),
+      maxConcurrency: 1,
+    }));
+    const byId = new Map<string, ChatWorkflowDispatchV1>(
+      response.dispatches.map((entry: ChatWorkflowDispatchV1) => [entry.taskId, entry]),
+    );
+    const first = invokeDispatch(harness.runtime, requireDispatch(byId, "task:comparison"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(invokeDispatch(harness.runtime, requireDispatch(byId, "task:relationships")))
+      .rejects.toThrow("concurrency exceeded");
+    releaseFirst();
+    await first;
+  });
+});

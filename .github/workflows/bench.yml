@@ -1,0 +1,155 @@
+name: Bench and M1 Acceptance
+
+# Performance measurements are non-blocking trend data. M1 is a functional,
+# cross-host acceptance gate and must be able to turn the nightly red. Keeping
+# them as separate jobs prevents continue-on-error from masking product faults.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: Fixture page count
+        required: false
+        default: "500"
+      repeat:
+        description: Runs per phase (median)
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-and-m1
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: Non-blocking performance trend
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Provision pinned PDF fonts
+        run: bun run fonts:ensure
+
+      - name: Vendor pinned Typst compiler
+        run: bun run vendor:typst
+
+      - name: Verify /usr/bin/time is available
+        run: |
+          if ! /usr/bin/time -v true 2>&1 | grep -q "Maximum resident set size"; then
+            echo "::warning::GNU /usr/bin/time -v unavailable — peak RSS will be recorded as null"
+          else
+            /usr/bin/time -v true 2>&1 | grep "Maximum resident set size"
+          fi
+
+      - name: Restore bench history
+        uses: actions/cache@v4
+        with:
+          path: scripts/bench/history
+          key: bench-history-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            bench-history-${{ runner.os }}-
+
+      - name: Engine-tier benchmark
+        run: |
+          bun --conditions=development scripts/bench/run-bench.ts \
+            --pages "${{ github.event.inputs.pages || '500' }}" \
+            --repeat "${{ github.event.inputs.repeat || '3' }}"
+
+      - name: End-to-end-tier benchmark
+        run: |
+          bun --conditions=development scripts/bench/run-e2e-bench.ts \
+            --pages "${{ github.event.inputs.pages || '500' }}" \
+            --repeat "${{ github.event.inputs.repeat || '3' }}"
+
+      - name: Compare engine tier against trend
+        run: |
+          bun --conditions=development scripts/bench/compare-trend.ts \
+            --current scripts/bench/out/bench-engine.json \
+            --history scripts/bench/history/engine.json \
+            --append
+
+      - name: Compare end-to-end tier against trend
+        run: |
+          bun --conditions=development scripts/bench/compare-trend.ts \
+            --current scripts/bench/out/bench-e2e.json \
+            --history scripts/bench/history/e2e.json \
+            --append
+
+      - name: Upload benchmark records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-records-${{ github.run_id }}
+          path: |
+            scripts/bench/out/bench-engine.json
+            scripts/bench/out/bench-e2e.json
+            scripts/bench/history/
+          if-no-files-found: warn
+          retention-days: 90
+
+  m1-acceptance:
+    name: Blocking M1 cross-host acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Restore Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-1.55.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Provision pinned PDF fonts
+        run: bun run fonts:ensure
+
+      - name: Install Playwright Chromium
+        run: bunx playwright@1.55.0 install --with-deps chromium
+
+      # These steps intentionally share one workspace. The browser harness
+      # writes digests.json and M1 reads it with --require-cross-host.
+      - name: Build browser export harness
+        run: bun run build:browser-export-harness
+
+      - name: Run browser export harness
+        run: bun run test:browser-export-harness
+
+      - name: M1 acceptance corpus
+        run: bun --conditions=development scripts/bench/run-m1-acceptance.ts --require-cross-host
+
+      - name: Upload M1 record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-acceptance-${{ github.run_id }}
+          path: scripts/bench/out/m1-acceptance.json
+          if-no-files-found: error
+          retention-days: 90

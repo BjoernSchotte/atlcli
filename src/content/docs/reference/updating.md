@@ -160,5 +160,5 @@ mv ~/.atlcli/bin/atlcli.bak ~/.atlcli/bin/atlcli
 
 ## Related Topics
 
-- [Getting Started](../getting-started.md) - Installation
+- [Getting Started](/getting-started/) - Installation
 - [Doctor](doctor.md) - Health checks after update

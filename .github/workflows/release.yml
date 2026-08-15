@@ -10,145 +10,141 @@ on:
         required: true
         type: string
 
-env:
-  BUN_VERSION: "1.3.5"
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  # Build one binary per target platform, all cross-compiled from Ubuntu via bun
-  build:
-    strategy:
-      matrix:
-        target: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64]
+  preflight:
+    name: SHA-bound release preflight
+    uses: ./.github/workflows/reusable-quality.yml
+    with:
+      emit_security_attestation: true
+
+  resolve:
+    name: Freeze stable release identity
+    needs: preflight
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      build_id: ${{ steps.identity.outputs.build_id }}
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      source_ref: ${{ steps.identity.outputs.source_ref }}
+      created_at: ${{ steps.identity.outputs.created_at }}
+      release_attempt: ${{ steps.identity.outputs.release_attempt }}
+      stable_latest: ${{ steps.identity.outputs.stable_latest }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Resolve and validate stable identity
+        id: identity
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            version="$REQUESTED_VERSION"
+          else
+            version="${GITHUB_REF#refs/tags/v}"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid stable version: $version" >&2
+            exit 1
+          fi
+          package_version="$(node -p 'require("./package.json").version')"
+          if [ "$version" != "$package_version" ]; then
+            echo "Release version $version does not match package.json $package_version" >&2
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          stable_latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          {
+            echo "version=$version"
+            echo "build_id=v$version"
+            echo "source_sha=$GITHUB_SHA"
+            echo "source_ref=$GITHUB_REF"
+            echo "created_at=$(git show -s --format=%cI "$GITHUB_SHA")"
+            echo "release_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "stable_latest=$stable_latest"
+          } >> "$GITHUB_OUTPUT"
+
+  artifacts:
+    name: Build and consume shared stable artifacts
+    needs: resolve
+    uses: ./.github/workflows/reusable-release-artifacts.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.source_sha }}
+      source_ref: ${{ needs.resolve.outputs.source_ref }}
+      channel: stable
+      version: ${{ needs.resolve.outputs.version }}
+      build_id: ${{ needs.resolve.outputs.build_id }}
+      created_at: ${{ needs.resolve.outputs.created_at }}
+      release_attempt: ${{ fromJSON(needs.resolve.outputs.release_attempt) }}
+      security_attestation_artifact: security-attestation-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ needs.resolve.outputs.release_attempt }}
+
+  create-draft:
+    name: Create complete stable draft
+    needs: [resolve, artifacts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
+      release_url: ${{ steps.draft.outputs.release_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
           fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version: 1.3.14
 
-      - name: Install dependencies
-        run: bun install
-
-      # Spec 008: the CLI bundle graph reaches export-pdf-assets.ts, whose
-      # `with { type: "file" }` imports of @atlcli/pdf/fonts/* resolve into the
-      # gitignored packages/pdf/.fonts/ tree. Without this step every target's
-      # `bun build --compile` fails at bundle time with "Could not resolve".
-      # The assets are embedded into each binary here on the build host, so the
-      # shipped binaries (incl. windows-x64) never resolve fonts at runtime.
-      - name: Provision pinned PDF fonts
-        run: bun run fonts:ensure
-
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build binary
-        run: |
-          mkdir -p release
-          VERSION="${{ steps.version.outputs.version }}"
-          TARGET="${{ matrix.target }}"
-
-          if [[ "$TARGET" == windows-* ]]; then
-            # Cross-compile Windows binary; bun appends .exe when targeting windows
-            bun build apps/cli/src/index.ts \
-              --compile \
-              --target "bun-$TARGET" \
-              --define "__ATLCLI_VERSION__=\"$VERSION\"" \
-              --outfile "release/atlcli.exe"
-            cd release
-            zip "atlcli-$TARGET.zip" atlcli.exe
-            rm atlcli.exe
-            cd ..
-          else
-            bun build apps/cli/src/index.ts \
-              --compile \
-              --target "bun-$TARGET" \
-              --define "__ATLCLI_VERSION__=\"$VERSION\"" \
-              --outfile "release/atlcli"
-            cd release
-            tar -czvf "atlcli-$TARGET.tar.gz" atlcli
-            rm atlcli
-            cd ..
-          fi
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: binary-${{ matrix.target }}
-          path: release/
-
-  # Create GitHub Release
-  release:
-    needs: [build]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Download all artifacts
+      - name: Download this run's manifested bundle only
         uses: actions/download-artifact@v8
         with:
-          path: artifacts
+          name: ${{ needs.artifacts.outputs.bundle_artifact }}
+          path: release
 
-      - name: Prepare release files
+      - name: Assert complete stable asset contract
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          mkdir -p release
-          for dir in artifacts/binary-*/; do
-            cp "$dir"*.tar.gz release/ 2>/dev/null || cp "$dir"*.zip release/ 2>/dev/null || true
-          done
+          bun -e '
+            import { expectedStableReleaseAssetNames } from "./scripts/release-artifacts.ts";
+            const actual = [...new Bun.Glob("*").scanSync("release")].sort();
+            const expected = expectedStableReleaseAssetNames(process.env.VERSION);
+            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+              console.error({ expected, actual });
+              process.exit(1);
+            }
+          '
 
-          # Generate combined checksums
-          cd release
-          shopt -s nullglob
-          for f in *.tar.gz *.zip; do sha256sum "$f" >> checksums.txt; done
-          shopt -u nullglob
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
 
-          if [[ ! -s checksums.txt ]]; then
-            echo "ERROR: no release archives found" >&2
-            exit 1
-          fi
-          cat checksums.txt
-          ls -la
+      - name: Reverify complete bundle before GitHub write
+        run: bun scripts/verify-release-artifacts.ts --dir release > pre-upload-verification.json
+
+      - name: Remove owned verification extraction before GitHub write
+        run: bun scripts/verify-release-artifacts.ts cleanup-extension --out release/extension
 
       - name: Generate changelog
-        id: changelog
         run: |
-          # Get commits since last tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
           if [ -n "$PREV_TAG" ]; then
-            echo "Generating changelog from $PREV_TAG to HEAD"
             CHANGELOG=$(git log --pretty=format:"- %s (%h)" "$PREV_TAG"..HEAD)
           else
-            echo "No previous tag, including all commits"
             CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD~20..HEAD 2>/dev/null || git log --pretty=format:"- %s (%h)")
           fi
-
-          # Write to file for multiline handling
-          echo "$CHANGELOG" > changelog.txt
-
-          # Also create a formatted version
           {
             echo "## What's Changed"
             echo ""
@@ -168,20 +164,263 @@ jobs:
             echo '```'
             echo ""
             echo "### Manual Download"
-            echo "Download the appropriate binary for your platform, extract, and add to your PATH."
+            echo "Download the appropriate CLI archive or the packaged Chrome MV3 extension."
           } > release_notes.md
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: v${{ steps.version.outputs.version }}
-          tag_name: v${{ steps.version.outputs.version }}
-          body_path: release_notes.md
-          files: |
-            release/*.tar.gz
-            release/*.zip
-            release/checksums.txt
-          draft: false
-          prerelease: false
+      - name: Create exclusive stable draft and exact assets
+        id: draft
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts create-draft \
+            --channel stable \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --tag "v${{ needs.resolve.outputs.version }}" \
+            --source-sha "${{ needs.resolve.outputs.source_sha }}" \
+            --dir release \
+            --title "v${{ needs.resolve.outputs.version }}" \
+            --body-file release_notes.md \
+            --stable-latest-before "${{ needs.resolve.outputs.stable_latest }}" \
+            --out create-stable-draft-receipt.json
+
+      - name: Upload stable draft receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: stable-create-draft-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            create-stable-draft-receipt.json
+            pre-upload-verification.json
+          if-no-files-found: error
+          retention-days: 90
+
+  verify-downloaded-draft:
+    name: Download and consume stable draft assets
+    needs: [resolve, create-draft]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download draft bytes from release API and verify contracts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts download-draft \
+            --channel stable \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --tag "v${{ needs.resolve.outputs.version }}" \
+            --source-sha "${{ needs.resolve.outputs.source_sha }}" \
+            --release-id "${{ needs.create-draft.outputs.release_id }}" \
+            --dir downloaded \
+            --stable-latest-before "${{ needs.resolve.outputs.stable_latest }}" \
+            --out downloaded-stable-draft-receipt.json
+          bun scripts/verify-release-artifacts.ts --dir downloaded > downloaded-stable-verification.json
+
+      - name: Install Chromium for downloaded stable extension
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run packed extension release smoke against downloaded stable extension
+        env:
+          ATLCLI_EXTENSION_OUTPUT_DIR: ${{ github.workspace }}/downloaded/extension
+        run: |
+          bun run --cwd apps/extension test:worker-extension-browser:prebuilt
+
+      - name: Upload downloaded stable consumer receipts
+        uses: actions/upload-artifact@v7
+        with:
+          name: stable-downloaded-draft-verification-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            downloaded-stable-draft-receipt.json
+            downloaded-stable-verification.json
+          if-no-files-found: error
+          retention-days: 90
+
+  native-cli-consumer:
+    name: Execute downloaded stable CLI (${{ matrix.target }})
+    needs: [resolve, create-draft]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-24.04
+            archive: atlcli-linux-x64.tar.gz
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            archive: atlcli-linux-arm64.tar.gz
+          - target: darwin-x64
+            runner: macos-15-intel
+            archive: atlcli-darwin-x64.tar.gz
+          - target: darwin-arm64
+            runner: macos-15
+            archive: atlcli-darwin-arm64.tar.gz
+          - target: windows-x64
+            runner: windows-2025
+            archive: atlcli-windows-x64.zip
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Download one exact native archive from the complete draft
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts download-native-asset \
+            --channel stable \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --tag "v${{ needs.resolve.outputs.version }}" \
+            --source-sha "${{ needs.resolve.outputs.source_sha }}" \
+            --release-id "${{ needs.create-draft.outputs.release_id }}" \
+            --asset "${{ matrix.archive }}" \
+            --dir native-download \
+            --stable-latest-before "${{ needs.resolve.outputs.stable_latest }}" \
+            --out native-download-receipt.json
+
+      - name: Execute Unix CLI on its native architecture
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          ATLCLI_DISABLE_UPDATE_CHECK: "1"
+        run: |
+          mkdir native-executable
+          tar -xzf "native-download/${{ matrix.archive }}" -C native-executable
+          native-executable/atlcli release-info --json --no-log > native-release-info.json
+
+      - name: Execute Windows CLI on its native architecture
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ATLCLI_DISABLE_UPDATE_CHECK: "1"
+        run: |
+          Expand-Archive -LiteralPath "native-download/${{ matrix.archive }}" -DestinationPath native-executable
+          $releaseInfo = & .\native-executable\atlcli.exe release-info --json --no-log
+          $releaseInfo | Set-Content -Encoding utf8 native-release-info.json
+
+      - name: Verify exact runtime identity and write receipt
+        shell: bash
+        run: |
+          bun scripts/ci/verify-native-cli.ts \
+            --input native-release-info.json \
+            --channel stable \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --tag "v${{ needs.resolve.outputs.version }}" \
+            --source-sha "${{ needs.resolve.outputs.source_sha }}" \
+            --target "${{ matrix.target }}" \
+            --out native-cli-verification.json
+
+      - name: Upload native consumer receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: stable-native-cli-${{ matrix.target }}-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-download-receipt.json
+            native-release-info.json
+            native-cli-verification.json
+          if-no-files-found: error
+          retention-days: 90
+
+  publish-draft:
+    name: Publish verified stable draft
+    needs: [resolve, create-draft, verify-downloaded-draft, native-cli-consumer]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Publish stable and make it latest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts publish-draft \
+            --channel stable \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --tag "v${{ needs.resolve.outputs.version }}" \
+            --source-sha "${{ needs.resolve.outputs.source_sha }}" \
+            --release-id "${{ needs.create-draft.outputs.release_id }}" \
+            --stable-latest-before "${{ needs.resolve.outputs.stable_latest }}" \
+            --out publish-stable-receipt.json
+
+      - name: Upload stable publication receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: stable-publish-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: publish-stable-receipt.json
+          if-no-files-found: error
+          retention-days: 90
+
+  verify-published:
+    name: Verify published stable release
+    needs: [resolve, create-draft, publish-draft]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Redownload published stable release and verify latest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun scripts/ci/github-release-transaction.ts verify-published \
+            --channel stable \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --tag "v${{ needs.resolve.outputs.version }}" \
+            --source-sha "${{ needs.resolve.outputs.source_sha }}" \
+            --release-id "${{ needs.create-draft.outputs.release_id }}" \
+            --dir published-download \
+            --stable-latest-before "${{ needs.resolve.outputs.stable_latest }}" \
+            --out published-stable-receipt.json
+          bun scripts/verify-release-artifacts.ts --dir published-download > published-stable-verification.json
+
+      - name: Upload published stable verification receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: stable-public-release-verification-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            published-stable-receipt.json
+            published-stable-verification.json
+          if-no-files-found: error
+          retention-days: 90

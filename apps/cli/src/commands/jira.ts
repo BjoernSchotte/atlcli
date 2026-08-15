@@ -1,6 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { assertCliAuthSupported } from "./session-guard.js";
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -17,6 +17,7 @@ import {
 } from "@atlcli/core";
 import {
   JiraClient,
+  JiraAttachment,
   JiraIssue,
   JiraTransition,
   JiraSprint,
@@ -40,7 +41,8 @@ import {
   formatWorklogDate,
   formatElapsed,
   startTimer,
-  stopTimer,
+  peekTimer,
+  clearTimer,
   cancelTimer,
   loadTimer,
   getElapsedSeconds,
@@ -76,6 +78,16 @@ import {
   ProjectJiraTemplateStorage,
   JiraTemplateResolver,
   ensureMigrated,
+  // Attachment helpers (functional core)
+  parseAttachRequest,
+  parseAttachmentTarget,
+  selectAttachmentsByFilename,
+  planDownloads,
+  outputIsDirectory,
+  resolveDownloadPath,
+  formatAttachmentSize,
+  formatAttachmentsTable,
+  toAttachmentJson,
 } from "@atlcli/jira";
 
 export async function handleJira(
@@ -162,7 +174,7 @@ export async function handleJira(
       await handleTemplate(rest, flags, opts);
       return;
     default:
-      output(jiraHelp(), opts);
+      unknownSubcommand(sub, jiraHelp(), opts);
       return;
   }
 }
@@ -206,6 +218,29 @@ async function getClient(
   return client;
 }
 
+/**
+ * Terminal handler for a subcommand this dispatcher does not know.
+ *
+ * An unknown subcommand used to print the help text and exit 0, which is how
+ * issue #8 stayed invisible for so long: `jira issue attachments PROJ-123` —
+ * documented, never implemented — looked like a successful no-op in a script
+ * instead of an error. A bare `jira issue` is still help-with-exit-0; a typo or
+ * a missing command now fails with a usage error. In `--json` mode the error
+ * object is the only thing written, so stdout stays single-document.
+ */
+function unknownSubcommand(
+  sub: string | undefined,
+  help: string,
+  opts: OutputOptions
+): void {
+  if (!sub) {
+    output(help, opts);
+    return;
+  }
+  if (!opts.json) output(help, opts);
+  fail(opts, 1, ERROR_CODES.USAGE, `Unknown subcommand: ${sub}`, { subcommand: sub });
+}
+
 // ============ Me ============
 
 async function handleMe(
@@ -239,7 +274,7 @@ async function handleProject(
       await handleProjectTypes(flags, opts);
       return;
     default:
-      output(projectHelp(), opts);
+      unknownSubcommand(sub, projectHelp(), opts);
       return;
   }
 }
@@ -407,6 +442,12 @@ async function handleIssue(
     case "attach":
       await handleIssueAttach(args.slice(1), flags, opts);
       return;
+    case "attachments":
+      await handleIssueAttachments(args.slice(1), flags, opts);
+      return;
+    case "attachment":
+      await handleIssueAttachment(args.slice(1), flags, opts);
+      return;
     case "open":
       await handleIssueOpen(args.slice(1), flags, opts);
       return;
@@ -420,7 +461,7 @@ async function handleIssue(
       await handleIssueUnlinkPage(flags, opts);
       return;
     default:
-      output(issueHelp(), opts);
+      unknownSubcommand(sub, issueHelp(), opts);
       return;
   }
 }
@@ -653,46 +694,370 @@ async function handleIssueLink(
   output({ schemaVersion: "1", linked: { from, to, type } }, opts);
 }
 
+/**
+ * `jira issue attach <issue-key> <file> [file...] [--comment <text>]`.
+ *
+ * Issue #90: the key is positional (with `--key` kept working), every file on
+ * the command line is uploaded rather than only the first, and `--comment` is
+ * posted after the upload instead of being silently dropped. A file that fails
+ * does not stop the rest — the others still upload and the command exits
+ * non-zero so a script notices.
+ */
 async function handleIssueAttach(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const key = getFlag(flags, "key");
-  const [filePath] = args;
-
-  if (!key || !filePath) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--key <issue> and <file> are required.");
+  const parsed = parseAttachRequest(args, getFlag(flags, "key"));
+  if (!parsed.ok) {
+    fail(opts, 1, ERROR_CODES.USAGE, parsed.error);
     return;
   }
 
-  // Check if file exists
-  try {
-    await stat(filePath);
-  } catch {
-    fail(opts, 1, ERROR_CODES.USAGE, `File not found: ${filePath}`);
+  const { issueKey, files } = parsed.request;
+
+  // `--comment` with no text is a usage error: the whole point of #90 is that a
+  // flag the user passed never disappears without a word.
+  const commentText = getFlag(flags, "comment");
+  if (hasFlag(flags, "comment") && !commentText) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--comment requires text.");
+    return;
+  }
+
+  const missing: string[] = [];
+  for (const file of files) {
+    if (!(await pathExists(file))) missing.push(file);
+  }
+  if (missing.length > 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `File not found: ${missing.join(", ")}`,
+      { files: missing }
+    );
     return;
   }
 
   const client = await getClient(flags, opts);
-  const data = await readFile(filePath);
-  const filename = basename(filePath);
 
-  const attachments = await client.uploadAttachment(key, filename, data);
+  const attached: Array<{
+    id: string;
+    filename: string;
+    size: number;
+    mimeType: string;
+    path: string;
+  }> = [];
+  const failed: Array<{ path: string; error: string }> = [];
+
+  for (const file of files) {
+    const filename = basename(file);
+    try {
+      const data = await readFile(file);
+      const uploaded = await client.uploadAttachment(issueKey, filename, data);
+      for (const a of uploaded) {
+        attached.push({
+          id: a.id,
+          filename: a.filename,
+          size: a.size,
+          mimeType: a.mimeType,
+          path: file,
+        });
+      }
+    } catch (error) {
+      failed.push({ path: file, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // The comment references the attachments, so it is only worth posting when at
+  // least one of them made it.
+  let comment: { id: string } | undefined;
+  if (commentText && attached.length > 0) {
+    try {
+      const posted = await client.addComment(issueKey, commentText);
+      comment = { id: posted.id };
+    } catch (error) {
+      failed.push({
+        path: "--comment",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   if (opts.json) {
-    output({
-      schemaVersion: "1",
-      attached: attachments.map((a) => ({
-        id: a.id,
-        filename: a.filename,
-        size: a.size,
-        mimeType: a.mimeType,
-      })),
-    }, opts);
+    output(
+      {
+        schemaVersion: "1",
+        issue: issueKey,
+        attached,
+        total: attached.length,
+        ...(failed.length > 0 ? { failed } : {}),
+        ...(comment ? { comment } : {}),
+      },
+      opts
+    );
   } else {
-    output(`Attached ${filename} (${data.length} bytes) to ${key}`, opts);
+    for (const file of attached) {
+      output(`Attached ${file.filename} (${file.size} bytes) to ${issueKey}`, opts);
+    }
+    if (comment) output(`Commented on ${issueKey}`, opts);
+    for (const file of failed) {
+      process.stderr.write(`Failed: ${file.path}: ${file.error}\n`);
+    }
   }
+
+  if (failed.length > 0) process.exit(1);
+}
+
+/**
+ * `jira issue attachments <key>` — list what is attached to an issue.
+ *
+ * The key is positional (as documented) with `--key` kept as an alias, matching
+ * `issue open`.
+ */
+async function handleIssueAttachments(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const key = args[0] ?? getFlag(flags, "key");
+
+  if (!key) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue key is required: jira issue attachments <key>");
+    return;
+  }
+
+  const client = await getClient(flags, opts);
+  const attachments = await client.getIssueAttachments(key);
+
+  if (opts.json) {
+    output(
+      {
+        schemaVersion: "1",
+        issue: key,
+        attachments: attachments.map(toAttachmentJson),
+        total: attachments.length,
+      },
+      opts
+    );
+    return;
+  }
+
+  if (attachments.length === 0) {
+    output(`No attachments on ${key}.`, opts);
+    return;
+  }
+
+  for (const line of formatAttachmentsTable(attachments)) {
+    output(line, opts);
+  }
+}
+
+/** `jira issue attachment <download|delete>`. */
+async function handleIssueAttachment(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub] = args;
+  switch (sub) {
+    case "download":
+      await handleAttachmentDownload(args.slice(1), flags, opts);
+      return;
+    case "delete":
+      await handleAttachmentDelete(args.slice(1), flags, opts);
+      return;
+    default:
+      unknownSubcommand(sub, attachmentHelp(), opts);
+      return;
+  }
+}
+
+/**
+ * Resolve `<id>` or `<issue-key> <filename>` to the attachments it names.
+ *
+ * A filename lookup can legitimately match more than one attachment — Jira does
+ * not enforce unique names on an issue — so this returns every match and lets
+ * the caller decide what to do with them.
+ */
+async function resolveAttachments(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<{ client: JiraClient; attachments: JiraAttachment[] }> {
+  const parsed = parseAttachmentTarget(args);
+  if (!parsed.ok) {
+    fail(opts, 1, ERROR_CODES.USAGE, parsed.error);
+  }
+
+  const client = await getClient(flags, opts);
+
+  if (parsed.target.kind === "id") {
+    const attachment = await client.getAttachment(parsed.target.id);
+    return { client, attachments: [attachment] };
+  }
+
+  const { issueKey, filename } = parsed.target;
+  const all = await client.getIssueAttachments(issueKey);
+  const matches = selectAttachmentsByFilename(all, filename);
+
+  if (matches.length === 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `No attachment named "${filename}" on ${issueKey}.`,
+      { issue: issueKey, filename, available: all.map((a) => a.filename) }
+    );
+  }
+
+  return { client, attachments: matches };
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isExistingDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `jira issue attachment download <id> | <issue-key> <filename>`.
+ *
+ * Several attachments on an issue can share a filename; all matches are
+ * downloaded and the colliding names get an id suffix (`shot.10001.png`) rather
+ * than one silently overwriting the other. Existing files on disk are never
+ * clobbered without `--overwrite`.
+ */
+async function handleAttachmentDownload(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const { client, attachments } = await resolveAttachments(args, flags, opts);
+  const outputTarget = getFlag(flags, "output") ?? getFlag(flags, "o");
+  const overwrite = hasFlag(flags, "overwrite");
+
+  const planned = planDownloads(attachments);
+  const isDirectory = outputIsDirectory(outputTarget, {
+    existsAsDirectory: outputTarget ? await isExistingDirectory(outputTarget) : false,
+    fileCount: planned.length,
+  });
+
+  const downloaded: Array<{ id: string; filename: string; path: string; size: number }> = [];
+
+  for (const { attachment, filename } of planned) {
+    const targetPath = resolveDownloadPath(outputTarget, filename, { isDirectory });
+
+    if (!overwrite && (await pathExists(targetPath))) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.IO,
+        `File exists: ${targetPath}. Pass --overwrite to replace it.`,
+        { path: targetPath }
+      );
+    }
+
+    const dir = dirname(targetPath);
+    if (dir && dir !== ".") await mkdir(dir, { recursive: true });
+
+    const data = await client.downloadAttachment(attachment.content);
+    await writeFile(targetPath, data);
+
+    downloaded.push({
+      id: attachment.id,
+      filename: attachment.filename,
+      path: targetPath,
+      size: data.length,
+    });
+  }
+
+  if (opts.json) {
+    output({ schemaVersion: "1", downloaded, total: downloaded.length }, opts);
+    return;
+  }
+
+  for (const file of downloaded) {
+    output(`Downloaded ${file.filename} (${formatAttachmentSize(file.size)}) → ${file.path}`, opts);
+  }
+}
+
+/**
+ * `jira issue attachment delete <id> | <issue-key> <filename> --confirm`.
+ *
+ * Deleting by filename can resolve to several attachments; `--confirm` is
+ * required for all of them, and the response names every one that was removed.
+ */
+async function handleAttachmentDelete(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const { client, attachments } = await resolveAttachments(args, flags, opts);
+
+  if (!hasFlag(flags, "confirm")) {
+    const names = attachments.map((a) => `${a.id} (${a.filename})`).join(", ");
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `--confirm is required to delete ${attachments.length === 1 ? "attachment" : "attachments"}: ${names}`,
+      { attachments: attachments.map((a) => ({ id: a.id, filename: a.filename })) }
+    );
+    return;
+  }
+
+  const deleted: Array<{ id: string; filename: string }> = [];
+  for (const attachment of attachments) {
+    await client.deleteAttachment(attachment.id);
+    deleted.push({ id: attachment.id, filename: attachment.filename });
+  }
+
+  if (opts.json) {
+    output({ schemaVersion: "1", deleted, total: deleted.length }, opts);
+    return;
+  }
+
+  for (const file of deleted) {
+    output(`Deleted attachment ${file.id} (${file.filename})`, opts);
+  }
+}
+
+function attachmentHelp(): string {
+  return `atlcli jira issue attachment <command>
+
+Commands:
+  download <id> [-o <path>] [--overwrite]
+  download <issue-key> <filename> [-o <path>] [--overwrite]
+  delete <id> --confirm
+  delete <issue-key> <filename> --confirm
+
+Options:
+  -o, --output <path>  Output directory or file path (default: current directory)
+      --overwrite      Replace existing files
+      --confirm        Required for delete
+      --profile <name> Use a specific auth profile
+      --json           JSON output
+
+Notes:
+  -o is a directory when it exists as one or ends in a separator (./downloads/),
+  and names the target file otherwise. Missing directories are created.
+
+  A filename can match several attachments on the same issue. Every match is
+  downloaded, and colliding names get the attachment id inserted before the
+  extension (screenshot.10001.png).
+`;
 }
 
 async function handleIssueOpen(
@@ -775,7 +1140,10 @@ Commands:
   assign --key <key> --assignee <accountId>|none
   comment --key <key> <text>
   link --from <key> --to <key> --type <name>
-  attach --key <key> <file>            Attach a file to an issue
+  attach <key> <file> [file...] [--comment <text>]   Attach files to an issue
+  attachments <key>                    List attachments on an issue
+  attachment download <id>|<key> <filename> [-o <path>] [--overwrite]
+  attachment delete <id>|<key> <filename> --confirm
   open <key>                           Open issue in browser
   link-page --key <key> --page <id>    Link to Confluence page
   pages --key <key>                    List linked Confluence pages
@@ -784,7 +1152,7 @@ Commands:
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
-  --comment          Add comment when linking (link-page only)
+  --comment <text>   Post a comment (attach, link-page)
   --field <id>=<value>  Set a custom field (repeatable). Value is auto-coerced:
                          numbers → number, JSON strings → parsed, plain text → string.
                          Example: --field customfield_10028=5 --field customfield_10077={"value":"Bug"}
@@ -960,7 +1328,7 @@ async function handleBoard(
       await handleBoardIssues(flags, opts);
       return;
     default:
-      output(boardHelp(), opts);
+      unknownSubcommand(sub, boardHelp(), opts);
       return;
   }
 }
@@ -1110,7 +1478,7 @@ async function handleSprint(
       await handleSprintReport(args.slice(1), flags, opts);
       return;
     default:
-      output(sprintHelp(), opts);
+      unknownSubcommand(sub, sprintHelp(), opts);
       return;
   }
 }
@@ -1438,7 +1806,7 @@ async function handleWorklog(
       await handleWorklogReport(flags, opts);
       return;
     default:
-      output(worklogHelp(), opts);
+      unknownSubcommand(sub, worklogHelp(), opts);
       return;
   }
 }
@@ -1770,7 +2138,7 @@ async function handleWorklogTimer(
       handleTimerCancel(opts);
       return;
     default:
-      output(timerHelp(), opts);
+      unknownSubcommand(sub, timerHelp(), opts);
       return;
   }
 }
@@ -1785,8 +2153,23 @@ async function handleTimerStart(
     fail(opts, 1, ERROR_CODES.USAGE, "Issue key is required. Usage: jira worklog timer start <issue>");
   }
 
-  const profileName = getFlag(flags, "profile") || "default";
   const comment = getFlag(flags, "comment");
+
+  // Record the profile that will actually be used, not the literal string
+  // "default": on a machine whose only profile is e.g. `mayflower`, recording
+  // "default" made every later `timer stop` fail the profile lookup.
+  const requestedProfile = getFlag(flags, "profile");
+  const config = await loadConfig();
+  const activeProfile = getActiveProfile(config, requestedProfile);
+  if (requestedProfile && !activeProfile) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.AUTH,
+      `Profile "${requestedProfile}" not found. Run 'atlcli auth list' to see configured profiles.`
+    );
+  }
+  const profileName = activeProfile?.name ?? requestedProfile ?? "default";
 
   try {
     const timer = startTimer(issueKey, profileName, comment);
@@ -1808,21 +2191,54 @@ async function handleTimerStart(
   }
 }
 
+/**
+ * Abort `timer stop` while the timer file is still on disk.
+ *
+ * Every losing path between reading the timer and confirming the worklog goes
+ * through here, so the message always states that the tracked time survived and
+ * how to retry. `details.timerPreserved` is the machine-readable form.
+ */
+function failTimerPreserved(
+  opts: OutputOptions,
+  errCode: string,
+  message: string,
+  timer: TimerState
+): never {
+  return fail(
+    opts,
+    1,
+    errCode,
+    `${message}\nNothing was logged and the timer is still running for ${timer.issueKey} ` +
+      `(started ${timer.startedAt}). Retry 'atlcli jira worklog timer stop', or ` +
+      `'atlcli jira worklog timer cancel' to discard it.`,
+    {
+      timerPreserved: true,
+      issueKey: timer.issueKey,
+      startedAt: timer.startedAt,
+    }
+  );
+}
+
 async function handleTimerStop(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const roundFlag = getFlag(flags, "round");
   const commentOverride = getFlag(flags, "comment");
+  const profileOverride = getFlag(flags, "profile");
 
+  // Non-destructive read. The timer file stays on disk until the worklog has
+  // been confirmed created — everything below can fail (bad --round, missing
+  // profile, session auth, network/5xx) and tracked time must survive all of it.
   let result: { timer: TimerState; elapsedSeconds: number };
   try {
-    result = stopTimer();
+    result = peekTimer();
   } catch (e) {
     fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
   }
 
-  let { timer, elapsedSeconds } = result;
+  const { timer } = result;
+  let { elapsedSeconds } = result;
 
   // Apply rounding if specified
   if (roundFlag) {
@@ -1830,7 +2246,12 @@ async function handleTimerStop(
       const interval = parseRoundingInterval(roundFlag);
       elapsedSeconds = roundTime(elapsedSeconds, interval);
     } catch (e) {
-      fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+      failTimerPreserved(
+        opts,
+        ERROR_CODES.USAGE,
+        e instanceof Error ? e.message : String(e),
+        timer
+      );
     }
   }
 
@@ -1842,25 +2263,44 @@ async function handleTimerStop(
   // Use comment from stop command or from timer start
   const comment = commentOverride || timer.comment;
 
-  // Get client using the profile from when timer was started
+  // An explicit --profile at stop time overrides the name recorded at start:
+  // the recorded one can be stale (renamed profile) or plain wrong, and this is
+  // the documented escape hatch out of a timer that cannot otherwise be stopped.
+  const profileName = profileOverride ?? timer.profile;
   const config = await loadConfig();
-  const profile = getActiveProfile(config, timer.profile);
+  const profile = getActiveProfile(config, profileName);
   if (!profile) {
-    fail(
+    failTimerPreserved(
       opts,
-      1,
       ERROR_CODES.AUTH,
-      `Profile "${timer.profile}" not found. The timer was started with this profile.`
+      profileOverride
+        ? `Profile "${profileName}" not found.`
+        : `Profile "${profileName}" not found. The timer was started with this profile; ` +
+            `pass --profile <name> to stop it with a different one.`,
+      timer
     );
   }
   assertCliAuthSupported(profile, opts);
   const client = new JiraClient(profile);
 
   // Log the worklog
-  const worklog = await client.addWorklog(timer.issueKey, elapsedSeconds, {
-    started: timer.startedAt.replace("Z", "+0000"),
-    comment,
-  });
+  let worklog: JiraWorklog;
+  try {
+    worklog = await client.addWorklog(timer.issueKey, elapsedSeconds, {
+      started: timer.startedAt.replace("Z", "+0000"),
+      comment,
+    });
+  } catch (e) {
+    failTimerPreserved(
+      opts,
+      ERROR_CODES.API,
+      e instanceof Error ? e.message : String(e),
+      timer
+    );
+  }
+
+  // The worklog exists in Jira — only now is it safe to drop the timer.
+  clearTimer();
 
   output(
     {
@@ -1922,20 +2362,27 @@ function timerHelp(): string {
   return `atlcli jira worklog timer <command>
 
 Commands:
-  start <issue> [--comment <text>]   Start tracking time on an issue
-  stop [--round <interval>] [--comment <text>]   Stop timer and log worklog
+  start <issue> [--comment <text>] [--profile <name>]   Start tracking time on an issue
+  stop [--round <interval>] [--comment <text>] [--profile <name>]   Stop timer and log worklog
   status                             Show current timer status
   cancel                             Cancel timer without logging
 
 Options:
-  --profile <name>   Use a specific auth profile
+  --profile <name>   Use a specific auth profile. 'start' records the resolved
+                     active profile; 'stop' uses that recorded profile unless
+                     --profile is given again, which overrides it.
   --round <interval> Round time when stopping (15m, 30m, 1h)
   --comment <text>   Comment for the worklog
+
+The timer is only cleared once Jira has confirmed the worklog. If 'stop' fails
+(bad --round, unknown profile, network error), the elapsed time is preserved and
+the command can simply be retried.
 
 Examples:
   jira worklog timer start PROJ-123 --comment "Working on feature"
   jira worklog timer status
   jira worklog timer stop --round 15m
+  jira worklog timer stop --profile work
   jira worklog timer cancel
 `;
 }
@@ -2029,7 +2476,7 @@ async function handleEpic(
       await handleEpicProgress(rest, flags, opts);
       return;
     default:
-      output(epicHelp(), opts);
+      unknownSubcommand(sub, epicHelp(), opts);
       return;
   }
 }
@@ -2394,7 +2841,7 @@ async function handleAnalyze(
       await handleAnalyzePredictability(flags, opts);
       return;
     default:
-      output(analyzeHelp(), opts);
+      unknownSubcommand(sub, analyzeHelp(), opts);
       return;
   }
 }
@@ -2813,7 +3260,7 @@ async function handleBulk(
       await handleBulkLinkPage(flags, opts);
       return;
     default:
-      output(bulkHelp(), opts);
+      unknownSubcommand(sub, bulkHelp(), opts);
       return;
   }
 }
@@ -3414,7 +3861,7 @@ async function handleFilter(
       await handleFilterShare(rest, flags, opts);
       return;
     default:
-      output(filterHelp(), opts);
+      unknownSubcommand(sub, filterHelp(), opts);
       return;
   }
 }
@@ -4169,7 +4616,7 @@ async function handleWebhook(
       await handleWebhookRefresh(rest, flags, opts);
       return;
     default:
-      output(webhookHelp(), opts);
+      unknownSubcommand(sub, webhookHelp(), opts);
       return;
   }
 }
@@ -4416,7 +4863,7 @@ async function handleSubtask(
       await handleSubtaskList(rest, flags, opts);
       return;
     default:
-      output(subtaskHelp(), opts);
+      unknownSubcommand(sub, subtaskHelp(), opts);
       return;
   }
 }
@@ -4549,7 +4996,7 @@ async function handleComponent(
       await handleComponentDelete(rest, flags, opts);
       return;
     default:
-      output(componentHelp(), opts);
+      unknownSubcommand(sub, componentHelp(), opts);
       return;
   }
 }
@@ -4747,7 +5194,7 @@ async function handleVersion(
       await handleVersionDelete(rest, flags, opts);
       return;
     default:
-      output(versionHelp(), opts);
+      unknownSubcommand(sub, versionHelp(), opts);
       return;
   }
 }
@@ -4980,7 +5427,7 @@ async function handleField(
       await handleFieldSearch(rest, flags, opts);
       return;
     default:
-      output(fieldHelp(), opts);
+      unknownSubcommand(sub, fieldHelp(), opts);
       return;
   }
 }
@@ -5237,32 +5684,80 @@ async function getJiraTemplateContext(
   return { resolver, global, profile, project, profileName, projectKey };
 }
 
+/** The three template storage levels, in precedence order (lowest first). */
+const JIRA_TEMPLATE_LEVELS = ["global", "profile", "project"] as const;
+type JiraTemplateLevel = (typeof JIRA_TEMPLATE_LEVELS)[number];
+
+/**
+ * Decide which storage level a template command addresses.
+ *
+ * One rule, used by save / import / delete / list alike:
+ *
+ *   1. an explicit `--level` always wins;
+ *   2. otherwise `--project <key>` selects project storage;
+ *   3. otherwise `--profile <name>` selects profile storage;
+ *   4. otherwise global.
+ *
+ * `--profile` is primarily the *global auth-profile* flag, so it is the weakest
+ * storage signal. It used to be checked before `--project` and before an
+ * explicit `--level`, which meant that anyone with more than one auth profile
+ * silently wrote to `profiles/<name>/` no matter what they asked for — and then
+ * could not find the template again with the same flags.
+ *
+ * An unknown `--level` value is rejected rather than silently falling through.
+ */
+function resolveJiraTemplateLevel(
+  flags: Record<string, string | boolean | string[]>
+): JiraTemplateLevel | undefined {
+  const level = getFlag(flags, "level");
+  if (level !== undefined) {
+    if (!(JIRA_TEMPLATE_LEVELS as readonly string[]).includes(level)) {
+      throw new Error(
+        `Unknown --level "${level}". Use one of: ${JIRA_TEMPLATE_LEVELS.join(", ")}.`
+      );
+    }
+    return level as JiraTemplateLevel;
+  }
+  if (getFlag(flags, "project")) return "project";
+  if (getFlag(flags, "profile")) return "profile";
+  return undefined;
+}
+
 function getTargetJiraStorage(
   ctx: JiraTemplateContext,
   flags: Record<string, string | boolean | string[]>
 ): { storage: JiraTemplateStorage; level: string } {
-  const level = getFlag(flags, "level");
-
-  if (level === "global") {
-    return { storage: ctx.global, level: "global" };
+  switch (resolveJiraTemplateLevel(flags)) {
+    case "profile":
+      if (!ctx.profile) {
+        throw new Error("Profile not specified. Use --profile <name>.");
+      }
+      return { storage: ctx.profile, level: `profile:${ctx.profileName}` };
+    case "project":
+      if (!ctx.project) {
+        throw new Error("Project not specified. Use --project <key>.");
+      }
+      return { storage: ctx.project, level: `project:${ctx.projectKey}` };
+    case "global":
+    default:
+      return { storage: ctx.global, level: "global" };
   }
+}
 
-  if (level === "profile" || getFlag(flags, "profile")) {
-    if (!ctx.profile) {
-      throw new Error("Profile not specified. Use --profile <name>.");
-    }
-    return { storage: ctx.profile, level: `profile:${ctx.profileName}` };
+/**
+ * `getTargetJiraStorage` with the level/flag errors reported through `fail()`,
+ * so `--json` callers get a proper error envelope instead of a bare throw.
+ */
+function requireTargetJiraStorage(
+  ctx: JiraTemplateContext,
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): { storage: JiraTemplateStorage; level: string } {
+  try {
+    return getTargetJiraStorage(ctx, flags);
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
   }
-
-  if (level === "project" || getFlag(flags, "project")) {
-    if (!ctx.project) {
-      throw new Error("Project not specified. Use --project <key>.");
-    }
-    return { storage: ctx.project, level: `project:${ctx.projectKey}` };
-  }
-
-  // Default to global
-  return { storage: ctx.global, level: "global" };
 }
 
 function formatJiraLevel(t: JiraTemplateSummary): string {
@@ -5313,7 +5808,7 @@ async function handleTemplate(
       await handleTemplateImport(flags, opts);
       return;
     default:
-      output(templateHelp(), opts);
+      unknownSubcommand(sub, templateHelp(), opts);
       return;
   }
 }
@@ -5324,21 +5819,28 @@ async function handleTemplateList(
 ): Promise<void> {
   const ctx = await getJiraTemplateContext(flags);
 
-  // Build filter from flags
+  // Build filter from flags. Same level rule as save/import/delete: an explicit
+  // --level wins, then --project, then --profile (which is mainly the auth
+  // flag). The profile/project *values* only refine the level they belong to —
+  // `--level global --profile work` used to be silently rewritten into a
+  // profile-level listing and never showed a single global template.
   const filter: JiraTemplateFilter = {};
-  const level = getFlag(flags, "level");
-  if (level === "global" || level === "profile" || level === "project") {
+  let level: JiraTemplateLevel | undefined;
+  try {
+    level = resolveJiraTemplateLevel(flags);
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+  }
+  if (level) {
     filter.level = level;
   }
-  const profileFilter = getFlag(flags, "profile");
-  if (profileFilter) {
-    filter.level = "profile";
-    filter.profile = profileFilter;
+  if (level === "profile") {
+    const profileFilter = getFlag(flags, "profile") ?? ctx.profileName;
+    if (profileFilter) filter.profile = profileFilter;
   }
-  const projectFilter = getFlag(flags, "project");
-  if (projectFilter) {
-    filter.level = "project";
-    filter.project = projectFilter;
+  if (level === "project") {
+    const projectFilter = getFlag(flags, "project") ?? ctx.projectKey;
+    if (projectFilter) filter.project = projectFilter;
   }
   const search = getFlag(flags, "search");
   if (search) {
@@ -5433,7 +5935,7 @@ async function handleTemplateSave(
   }
 
   const ctx = await getJiraTemplateContext(flags);
-  const { storage, level } = getTargetJiraStorage(ctx, flags);
+  const { storage, level } = requireTargetJiraStorage(ctx, flags, opts);
 
   const client = await getClient(flags, opts);
   const issue = await client.getIssue(issueKey, { fields: ["*all"] });
@@ -5570,7 +6072,7 @@ async function handleTemplateDelete(
   }
 
   const ctx = await getJiraTemplateContext(flags);
-  const { storage, level } = getTargetJiraStorage(ctx, flags);
+  const { storage, level } = requireTargetJiraStorage(ctx, flags, opts);
 
   if (!(await storage.exists(name))) {
     fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found at ${level}.`);
@@ -5657,7 +6159,7 @@ async function handleTemplateImport(
   }
 
   const ctx = await getJiraTemplateContext(flags);
-  const { storage, level } = getTargetJiraStorage(ctx, flags);
+  const { storage, level } = requireTargetJiraStorage(ctx, flags, opts);
 
   if (!force && (await storage.exists(template.name))) {
     fail(opts, 1, ERROR_CODES.USAGE, `Template '${template.name}' already exists at ${level}. Use --force to overwrite.`);
@@ -5693,10 +6195,19 @@ Storage Hierarchy (precedence: project > profile > global):
   ~/.atlcli/templates/jira/profiles/{name}/     Profile-specific
   ~/.atlcli/templates/jira/projects/{key}/      Project-specific
 
+Choosing a level (save, import, delete and list all follow this rule):
+  1. an explicit --level <global|profile|project> always wins
+  2. otherwise --project <key> selects project storage
+  3. otherwise --profile <name> selects profile storage
+  4. otherwise global
+  Note that --profile is primarily the auth-profile flag, so it is the weakest
+  signal: 'save --level project --project PROJ --profile work' stores under
+  PROJ, and 'delete --level project --project PROJ' finds it again.
+
 List options:
   --level <global|profile|project>   Filter by storage level
-  --profile <name>                   Filter by profile
-  --project <key>                    Filter by project
+  --profile <name>                   Filter by profile (only with level profile)
+  --project <key>                    Filter by project (only with level project)
   --type <type>                      Filter by issue type (Bug, Task, etc.)
   --tag <tag>                        Filter by tag
   --search <text>                    Search name and description
@@ -5707,8 +6218,8 @@ Save options:
   --issue <key>         Source issue key (required)
   --description <text>  Template description
   --tags <tags>         Comma-separated tags
-  --level global        Save to global templates
-  --project <key>       Save to project templates
+  --level <level>       Storage level: global (default), profile or project
+  --project <key>       Save to project templates (implies --level project)
   --force               Overwrite existing template
 
 Apply options:
@@ -5744,8 +6255,9 @@ Examples:
   jira template export bug-report -o /tmp/template.json
   jira template import --file /tmp/template.json --project PROJ
 
-  # Delete
+  # Delete — use the same level flags the template was saved with
   jira template delete old-template --confirm
+  jira template delete sprint-task --level project --project PROJ --confirm
 `;
 }
 

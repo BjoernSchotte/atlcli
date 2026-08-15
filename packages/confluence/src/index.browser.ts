@@ -17,11 +17,26 @@
  */
 
 export * from "./client.js";
+export * from "./attachment-delivery.js";
+export * from "./comment-text.js";
+export * from "./page-body.js";
+export * from "./page-diff-source.js";
+export * from "./page-body-to-blocks.js";
+export * from "./render-semantic-diff.js";
+export * from "./storage-change-tree.js";
+export * from "./adf-types.js";
+export * from "./adf-coverage.js";
+export * from "./adf-validate.js";
+export * from "./adf-media.js";
+export * from "./adf-to-blocks.js";
 export * from "./markdown.js";
+export * from "./emoji-projection.js";
 export * from "./asset-budget.js";
 export * from "./compose-document.js";
 export * from "./export-blocks.js";
+export * from "./datasource.js";
 export * from "./html-to-blocks.js";
+export * from "./chart-macro.js";
 export * from "./macro-extract.js";
 export * from "./export-progress.js";
 export * from "./export-scope.js";
@@ -31,3 +46,4 @@ export * from "./tree-fetch.js";
 export * from "./resolve-mentions.js";
 export * from "./page-properties.js";
 export * from "./svg-safety.js";
+export * from "./link-safety.js";

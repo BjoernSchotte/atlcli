@@ -1,0 +1,4 @@
+<p>Known content</p>
+<vendor:release-widget vendor:mode="expanded" vendor:revision="2">
+  <vendor:payload>Opaque payload changed</vendor:payload>
+</vendor:release-widget>

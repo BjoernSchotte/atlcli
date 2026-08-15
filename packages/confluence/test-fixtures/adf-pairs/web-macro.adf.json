@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "type": "doc",
+  "content": [
+    {
+      "type": "heading",
+      "attrs": { "level": 2 },
+      "content": [{ "type": "text", "text": "Shared web macro" }]
+    },
+    {
+      "type": "extension",
+      "attrs": {
+        "extensionType": "com.example.widgets",
+        "extensionKey": "release-widget",
+        "localId": "cloud-local-id",
+        "parameters": {
+          "macroParams": {
+            "view": "compact",
+            "limit": { "value": "5" }
+          }
+        }
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [{ "type": "text", "text": "Visible static fallback" }]
+        }
+      ]
+    },
+    {
+      "type": "extension",
+      "attrs": {
+        "extensionType": "com.atlassian.confluence.macro.core",
+        "extensionKey": "scroll-only",
+        "parameters": { "exporter": "web" }
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [{ "type": "text", "text": "Web-only content" }]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "name": "@atlcli/code-highlight",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": [
+    "./src/index.ts",
+    "./src/index.browser.ts",
+    "./dist/index.js",
+    "./dist/index.browser.js"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "browser": "./src/index.browser.ts",
+        "default": "./src/index.ts"
+      },
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "default": "./dist/index.browser.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./engine/javascript": {
+      "development": "./src/highlight-engine-javascript.ts",
+      "types": "./dist/highlight-engine-javascript.d.ts",
+      "default": "./dist/highlight-engine-javascript.js"
+    },
+    "./engine/oniguruma": {
+      "development": "./src/highlight-engine-oniguruma.ts",
+      "types": "./dist/highlight-engine-oniguruma.d.ts",
+      "default": "./dist/highlight-engine-oniguruma.js"
+    },
+    "./engine/state": {
+      "development": "./src/highlight-engine-state.ts",
+      "types": "./dist/highlight-engine-state.d.ts",
+      "default": "./dist/highlight-engine-state.js"
+    },
+    "./contract": {
+      "development": "./src/contract.ts",
+      "types": "./dist/contract.d.ts",
+      "default": "./dist/contract.js"
+    },
+    "./registry": {
+      "development": "./src/registry.ts",
+      "types": "./dist/registry.d.ts",
+      "default": "./dist/registry.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "catalogue:generate": "bun scripts/generate-catalogue.ts",
+    "catalogue:check": "bun scripts/generate-catalogue.ts --check",
+    "clean": "rm -rf dist",
+    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
+  },
+  "dependencies": {
+    "@shikijs/langs": "4.3.1",
+    "@shikijs/themes": "4.3.1",
+    "shiki": "4.3.1"
+  }
+}

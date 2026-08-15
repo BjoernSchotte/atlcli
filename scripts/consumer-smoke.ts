@@ -125,16 +125,28 @@ export function packAll(destDir: string): Map<string, string> {
  * result to assert the heading landed in word/document.xml.
  */
 export const DOCX_SMOKE_MJS = `
-import { runExport } from "@atlcli/docx";
+import { prepareDocxExportRuntime, runExport } from "@atlcli/docx";
 import { buildDocx, para, readPart } from "@atlcli/docx/fixtures";
+import { unzipDocx } from "@atlcli/docx/scan";
 import { storageToBlocks } from "@atlcli/confluence";
+import { getCodeHighlightEngineId } from "@atlcli/code-highlight/engine/state";
 
 const resolved = import.meta.resolve("@atlcli/docx");
 if (!resolved.includes("/dist/")) {
   throw new Error(\`@atlcli/docx resolved to \${resolved} — expected the built dist/ output\`);
 }
 
-const storage = "<h1>Smoke Heading</h1><p>Consumer smoke body.</p>";
+const assertSharedCodeHighlightState =
+  process.env.ATLCLI_ASSERT_SHARED_CODE_HIGHLIGHT_STATE !== "0";
+if (assertSharedCodeHighlightState && getCodeHighlightEngineId() !== null) {
+  throw new Error(\`Node DOCX initialized highlighting before document usage: \${getCodeHighlightEngineId()}\`);
+}
+
+const storage =
+  "<h1>Smoke Heading</h1><p>Consumer smoke body with <code>INLINE_SMOKE</code>.</p>" +
+  '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">ts</ac:parameter>' +
+  "<ac:plain-text-body><![CDATA[const answer: number = 42;\\n\\n]]></ac:plain-text-body>" +
+  "</ac:structured-macro>";
 
 // The installed converter must produce a real block tree.
 const { blocks, notes } = storageToBlocks(storage);
@@ -142,6 +154,32 @@ if (!Array.isArray(blocks) || blocks.length < 2) {
   throw new Error(\`storageToBlocks produced \${blocks?.length} blocks, expected >= 2\`);
 }
 if (!Array.isArray(notes)) throw new Error("storageToBlocks returned no notes array");
+
+// The public Node contract must use the package-relative font loader, never a
+// browser/global fetch. Concurrent and repeated calls share that one load.
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async () => {
+  throw new Error("DOCX Node preparation attempted a network fetch");
+};
+let prepared;
+try {
+  const concurrent = await Promise.all([
+    prepareDocxExportRuntime(blocks, { preloadCodeFont: true }),
+    prepareDocxExportRuntime(blocks, { preloadCodeFont: true }),
+  ]);
+  prepared = await prepareDocxExportRuntime(blocks, { preloadCodeFont: true });
+  if (concurrent.some((result) => result.codeFontBytes !== 273900)) {
+    throw new Error("concurrent DOCX preparation did not load the committed code font");
+  }
+} finally {
+  globalThis.fetch = originalFetch;
+}
+if (prepared.codeFontBytes !== 273900) {
+  throw new Error("warm DOCX preparation did not retain the committed code font");
+}
+if (assertSharedCodeHighlightState && getCodeHighlightEngineId() !== "oniguruma") {
+  throw new Error(\`Node DOCX selected \${getCodeHighlightEngineId()} instead of Oniguruma after code usage\`);
+}
 
 const templateBytes = buildDocx({ body: para("$scroll.title") + para("$scroll.content") });
 
@@ -167,6 +205,8 @@ const report = await runExport(
   {
     templates: { getBytes: async () => templateBytes },
     output: {
+      // DOCX's OutputSink still hands over a Uint8Array. Only the PDF sink
+      // moved to a PdfBytesHandle (spec 010, T5.6) — see pdf-smoke.mjs.
       emit: async (_name, bytes) => {
         outBytes = bytes;
       },
@@ -183,8 +223,29 @@ const documentXml = readPart(outBytes, "word/document.xml");
 if (!documentXml.includes("Smoke Heading")) {
   throw new Error("word/document.xml does not contain the fixture heading");
 }
-if (!documentXml.includes("Consumer smoke body.")) {
+if (!documentXml.includes("Consumer smoke body with")) {
   throw new Error("word/document.xml does not contain the fixture paragraph");
+}
+if (!documentXml.includes("answer")) {
+  throw new Error("word/document.xml does not contain the highlighted code block");
+}
+if (
+  report.timings.highlightCodeBlocks !== 1 ||
+  report.timings.highlightLanguageCount !== 1 ||
+  !(report.timings.highlightTokenizeMs > 0)
+) {
+  throw new Error(\`Node highlighting timings are incomplete: \${JSON.stringify(report.timings)}\`);
+}
+if (!documentXml.includes('w:rFonts w:ascii="JetBrains Mono"')) {
+  throw new Error("word/document.xml does not select the portable code face");
+}
+const zip = unzipDocx(outBytes);
+const fontTable = zip.file("word/fontTable.xml")?.asText() ?? "";
+const embeddedCodeFont =
+  zip.file("word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf")
+    ?.asUint8Array();
+if (!fontTable.includes('w:name="JetBrains Mono"') || embeddedCodeFont?.byteLength !== 273900) {
+  throw new Error("the installed package did not embed its complete DOCX code font");
 }
 console.log("DOCX_SMOKE_OK", report.filename);
 `;
@@ -194,11 +255,18 @@ console.log("DOCX_SMOKE_OK", report.filename);
  * package's `./wasm` subpath, fonts from the installed `@atlcli/pdf/fonts/*`
  * subpaths (both resolved against the CONSUMER's node_modules via
  * import.meta.resolve), compiled through the installed BrowserPdfCompiler.
+ *
+ * It also exercises the `PdfOutputSink.emit` contract itself (spec 010, T5.6):
+ * the sink is handed a `PdfBytesHandle`, not a `Uint8Array`, and this fixture
+ * walks BOTH representations a real host asks for — `asUint8Array()` (the Node
+ * sink: write to disk) and `asBlob()`/`objectUrl()` (the browser/Forge sink:
+ * hand to a download). Nothing else in the repo proves the handle works from a
+ * consumer's position against the BUILT package.
  */
 export const PDF_SMOKE_MJS = `
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { runPdfExport, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
+import { runPdfExport, isPdfBytesHandle, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { storageToBlocks } from "@atlcli/confluence";
@@ -224,7 +292,7 @@ const compiler = new BrowserPdfCompiler({
 
 const { blocks } = storageToBlocks("<h1>Smoke Heading</h1><p>PDF consumer smoke.</p>");
 
-let outBytes;
+let emitted;
 const report = await runPdfExport(
   {
     blocks,
@@ -244,20 +312,85 @@ const report = await runPdfExport(
     },
     compiler,
     output: {
-      emit: async (_name, bytes) => {
-        outBytes = bytes;
+      // The signature a real Node host writes since spec 010 T5.6: the second
+      // argument is a PdfBytesHandle. (The DOCX OutputSink above still takes a
+      // Uint8Array — the asymmetry is deliberate, not an oversight.)
+      emit: async (_name, handle) => {
+        emitted = handle;
       },
     },
   },
 );
 
-if (!outBytes) throw new Error("runPdfExport emitted nothing");
+if (!emitted) throw new Error("runPdfExport emitted nothing");
+
+// --- The emit contract itself, checked with the guard the package exports ---
+// Every assertion below reads the handle's API; if emit() ever hands over raw
+// bytes again this is what has to notice, so it comes first.
+if (!isPdfBytesHandle(emitted)) {
+  throw new Error(
+    "PdfOutputSink.emit did not hand over a PdfBytesHandle (spec 010, T5.6) — got " +
+      (ArrayBuffer.isView(emitted) ? "a " + emitted.constructor.name : typeof emitted),
+  );
+}
+if (emitted.mimeType !== "application/pdf") {
+  throw new Error(\`handle mimeType is "\${emitted.mimeType}", expected application/pdf\`);
+}
+
+// --- Node sink path: asUint8Array() ---
+const outBytes = await emitted.asUint8Array();
+if (!(outBytes instanceof Uint8Array)) throw new Error("asUint8Array() did not return a Uint8Array");
+if (emitted.size !== outBytes.byteLength) {
+  throw new Error(\`handle.size \${emitted.size} != asUint8Array().byteLength \${outBytes.byteLength}\`);
+}
 const magic = String.fromCharCode(...outBytes.slice(0, 5));
 if (magic !== "%PDF-") throw new Error(\`bad magic bytes: \${magic}\`);
 const inspection = validatePdfOutput(outBytes);
 if (!inspection.tagged || inspection.pageCount < 1) {
   throw new Error(\`invalid pdf structure: \${JSON.stringify(inspection)}\`);
 }
+// Borrowed, not copied — the point of the handle. Two calls hand back the SAME
+// object, so a large document is never materialized twice side by side.
+if ((await emitted.asUint8Array()) !== outBytes) {
+  throw new Error("asUint8Array() copied the document instead of lending it");
+}
+
+// --- Download path: asBlob() ---
+const blob = await emitted.asBlob();
+if (blob.size !== emitted.size) {
+  throw new Error(\`blob.size \${blob.size} != handle.size \${emitted.size}\`);
+}
+if (blob.type !== "application/pdf") throw new Error(\`blob.type is "\${blob.type}"\`);
+if ((await emitted.asBlob()) !== blob) {
+  throw new Error("asBlob() built a second copy instead of memoizing");
+}
+const fromBlob = new Uint8Array(await blob.arrayBuffer());
+if (fromBlob.byteLength !== outBytes.byteLength) {
+  throw new Error(\`blob carries \${fromBlob.byteLength} bytes, array carries \${outBytes.byteLength}\`);
+}
+if (String.fromCharCode(...fromBlob.slice(0, 5)) !== "%PDF-") {
+  throw new Error("the blob does not carry the compiled PDF");
+}
+
+// --- Browser handoff: objectUrl(), or the documented refusal without it ---
+if (typeof globalThis.URL?.createObjectURL === "function") {
+  const url = await emitted.objectUrl();
+  if (!url.startsWith("blob:")) throw new Error(\`objectUrl() returned "\${url}"\`);
+  if ((await emitted.objectUrl()) !== url) {
+    throw new Error("objectUrl() minted a second URL — the first one leaked");
+  }
+  emitted.release();
+  const reminted = await emitted.objectUrl();
+  if (reminted === url) throw new Error("objectUrl() handed back a URL release() revoked");
+  emitted.release();
+} else {
+  let refused = false;
+  await emitted.objectUrl().catch(() => {
+    refused = true;
+  });
+  if (!refused) throw new Error("objectUrl() resolved without URL.createObjectURL");
+}
+
 console.log("PDF_SMOKE_OK", report?.filename ?? "smoke.pdf", "pages=" + inspection.pageCount);
 `;
 
@@ -273,13 +406,26 @@ import {
 } from "@atlcli/docx";
 import {
   runPdfExport,
+  isPdfBytesHandle,
+  pdfBytesFromUint8Array,
   PDF_RUNTIME_ASSETS,
   type PdfExportEnv,
   type RunPdfExportInput,
   type PdfCompilePort,
   type PdfCompileResult,
+  type PdfOutputSink,
+  type PdfBytesHandle,
 } from "@atlcli/pdf";
-import { storageToBlocks, type ExportBlock, type ExportNote } from "@atlcli/confluence";
+import {
+  AttachmentDeliveryError,
+  createPageAttachmentWriterV1,
+  storageToBlocks,
+  type AttachmentBodyV1,
+  type ConfluenceProductRequestV1,
+  type ExportBlock,
+  type ExportNote,
+  type PageAttachmentWriterV1,
+} from "@atlcli/confluence";
 import {
   BrowserPdfCompiler,
   type BrowserPdfCompilerAssets,
@@ -287,6 +433,10 @@ import {
 import { resolveMacroBlocks } from "@atlcli/export-macros";
 import { packTemplate, unpackTemplate, type TemplateManifest } from "@atlcli/template-pack";
 import { nodePdfEnv, nodeDocxEnv, bundledDefaultTemplate } from "@atlcli/export-node";
+import {
+  createPdfExportJobExecutor,
+  createTypescriptDocxExportJobExecutor,
+} from "@atlcli/export-wiring/jobs";
 // The remaining Node-compatible packages: type-check their barrels too, so
 // the skipLibCheck:false proof covers every package the engines matrix
 // marks Node-compatible (jira is deliberately absent — Bun-only).
@@ -295,6 +445,37 @@ import { renderDiagram, type DiagramRenderResult } from "@atlcli/diagram";
 import type { AtlcliPlugin } from "@atlcli/plugin-api";
 
 const converted: { blocks: ExportBlock[]; notes: ExportNote[] } = storageToBlocks("<p>t</p>");
+const productRequest: ConfluenceProductRequestV1 = async (_path, _init) =>
+  new Response(JSON.stringify({ results: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+const attachmentWriter: PageAttachmentWriterV1 =
+  createPageAttachmentWriterV1(productRequest);
+const attachmentBody: AttachmentBodyV1 = new Blob(["smoke"]);
+
+// A consumer must be able to NAME the emit contract, not merely receive it:
+// a typed PdfOutputSink written against the barrel's own PdfBytesHandle type
+// (spec 010, T5.6). This compiles under NodeNext with skipLibCheck:false, so
+// it also proves the handle's .d.ts closure resolves for an external project.
+const pdfSink: PdfOutputSink = {
+  async emit(_name: string, bytes: PdfBytesHandle, context?: { signal?: AbortSignal }): Promise<void> {
+    context?.signal?.throwIfAborted();
+    const array: Uint8Array = await bytes.asUint8Array();
+    const blob: Blob = await bytes.asBlob();
+    const url: string = await bytes.objectUrl();
+    const bytesLength: number = bytes.size;
+    const mime: string = bytes.mimeType;
+    bytes.release();
+    void [array.byteLength, blob.size, url.length, bytesLength, mime, isPdfBytesHandle(bytes)];
+  },
+};
+// If emit() ever went back to taking a Uint8Array, this assignment would stop
+// compiling — the consumer type-check is the mutation detector for the type
+// half of the contract, as the .mjs fixtures are for the runtime half.
+const emittedByteShape: Parameters<PdfOutputSink["emit"]>[1] = pdfBytesFromUint8Array(
+  new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]),
+);
 const surfaces: unknown[] = [
   runExport satisfies (input: RunExportInput, env: ExportEnv) => Promise<ExportReport>,
   runPdfExport,
@@ -309,6 +490,13 @@ const surfaces: unknown[] = [
   nodePdfEnv,
   nodeDocxEnv,
   bundledDefaultTemplate,
+  createPdfExportJobExecutor,
+  createTypescriptDocxExportJobExecutor,
+  AttachmentDeliveryError,
+  attachmentWriter,
+  attachmentBody,
+  pdfSink,
+  emittedByteShape,
 ];
 const _extraTypes: [DiagramRenderResult, AtlcliPlugin, TemplateManifest] | null = null;
 void _extraTypes;
@@ -405,6 +593,8 @@ console.log("EXPORT_NODE_SMOKE_OK", "pdfPages=" + inspection.pageCount);
 export interface ScaffoldOptions {
   /** dependency name → spec (file:… tarball or directory). */
   dependencies: Record<string, string>;
+  /** Optional wider transitive override map for file-linked package dev edges. */
+  overrides?: Record<string, string>;
   /** Extra devDependencies (registry specs), e.g. typescript/@types/node. */
   devDependencies?: Record<string, string>;
   /** tsconfig moduleResolution — "bundler" (Bun/Vite-style) or "nodenext". */
@@ -416,6 +606,7 @@ export function scaffoldConsumer(dir: string, options: ScaffoldOptions): void {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
 
+  const overrides = options.overrides ?? options.dependencies;
   const manifest = {
     name: "atlcli-smoke-consumer",
     private: true,
@@ -426,8 +617,8 @@ export function scaffoldConsumer(dir: string, options: ScaffoldOptions): void {
     // `overrides` (bun + npm) and `pnpm.overrides` pin every transitive
     // `@atlcli/*` range to the same local artifacts, so internal ranges like
     // "@atlcli/core": "0.6.0" can never hit a registry (where they do not exist).
-    overrides: options.dependencies,
-    pnpm: { overrides: options.dependencies },
+    overrides,
+    pnpm: { overrides },
   };
   writeFileSync(join(dir, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 

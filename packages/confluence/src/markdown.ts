@@ -4,9 +4,12 @@ import sub from "markdown-it-sub";
 import sup from "markdown-it-sup";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
-import { createHash } from "crypto";
+import { KNOWN_MACROS } from "./known-macros.js";
+export { KNOWN_MACROS } from "./known-macros.js";
+import { sha256HexOfUtf8 } from "./sha256.js";
 import { encodeBase64, decodeBase64 } from "@atlcli/core";
 import { stripFrontmatter } from "./frontmatter.js";
+import { normalizeEmojiShortName } from "./emoji-projection.js";
 
 // ============ Smart Link Types and Utilities ============
 
@@ -204,14 +207,8 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
   // Handle emoticons: :smile: :thumbs-up: :+1: etc.
   processed = processed.replace(EMOTICON_REGEX, (match, name) => {
-    const lowerName = name.toLowerCase();
-    // Check if it's a known Confluence emoticon or an alias
-    let emoticonName = lowerName;
-    if (EMOTICON_ALIASES[lowerName]) {
-      emoticonName = EMOTICON_ALIASES[lowerName];
-    } else if (!EMOTICON_NAMES.includes(lowerName)) {
-      return match; // Return unchanged if not a known emoticon or alias
-    }
+    const emoticonName = normalizeEmojiShortName(name);
+    if (!emoticonName) return match;
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
     const html = `<ac:emoticon ac:name="${escapeHtml(emoticonName)}" />`;
     macros.push({ placeholder, html });
@@ -1143,8 +1140,6 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-export const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels", "blog-posts", "spaces-list", "index", "contributors", "change-history", "loremipsum"];
-
 /**
  * Strip table `<colgroup>`/`<col>` column-sizing metadata emitted by the modern
  * Confluence Cloud editor.
@@ -1194,59 +1189,6 @@ const JIRA_REGEX = /\{jira:([A-Z][A-Z0-9]*-\d+)(?:\|([^}]*))?\}/gi;
  * Supports ISO date format YYYY-MM-DD
  */
 const DATE_REGEX = /\{date:(\d{4}-\d{2}-\d{2})\}/gi;
-
-/**
- * Valid Confluence emoticon names
- */
-const EMOTICON_NAMES = [
-  "smile", "sad", "cheeky", "laugh", "wink",
-  "thumbs-up", "thumbs-down",
-  "tick", "cross",
-  "warning", "information", "question",
-  "light-on", "light-off",
-  "yellow-star", "red-star", "green-star", "blue-star",
-  "heart", "broken-heart",
-  "plus", "minus",
-];
-
-/**
- * Common aliases for Confluence emoticons (GitHub/Slack style)
- */
-const EMOTICON_ALIASES: Record<string, string> = {
-  // Thumbs
-  "+1": "thumbs-up",
-  "thumbsup": "thumbs-up",
-  "-1": "thumbs-down",
-  "thumbsdown": "thumbs-down",
-  // Check/cross
-  "check": "tick",
-  "white_check_mark": "tick",
-  "heavy_check_mark": "tick",
-  "x": "cross",
-  "heavy_multiplication_x": "cross",
-  // Light/idea
-  "bulb": "light-on",
-  "idea": "light-on",
-  "lightbulb": "light-on",
-  // Stars
-  "star": "yellow-star",
-  // Info/warning
-  "info": "information",
-  "warn": "warning",
-  "alert": "warning",
-  // Faces
-  "grinning": "smile",
-  "grin": "smile",
-  "smiley": "smile",
-  "disappointed": "sad",
-  "cry": "sad",
-  "stuck_out_tongue": "cheeky",
-  "joy": "laugh",
-  "laughing": "laugh",
-  // Heart
-  "love": "heart",
-  "red_heart": "heart",
-};
 
 /**
  * Regex for emoticon: :smile: :thumbs-up: :+1: etc.
@@ -3141,7 +3083,12 @@ export function normalizeMarkdown(markdown: string): string {
 /**
  * Computes SHA-256 hash of content for change detection.
  * Returns hex-encoded hash string.
+ *
+ * Backed by {@link sha256HexOfUtf8} rather than `node:crypto` — this module is a
+ * browser entrypoint, and the bare `crypto` import this replaced pulled Bun's
+ * `crypto-browserify` polyfill (~1.2 MB, and node-global member access with it)
+ * into every browser bundle. Digests are unchanged; see `sha256.ts`.
  */
 export function hashContent(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex");
+  return sha256HexOfUtf8(content);
 }

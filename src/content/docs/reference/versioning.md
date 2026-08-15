@@ -17,6 +17,7 @@ repo can publish.
 - [Pre-1.0 semver rules](#pre-10-semver-rules)
 - [1.0 and the API freeze](#10-and-the-api-freeze)
 - [What counts as breaking](#what-counts-as-breaking)
+- [Post-freeze contract changes](#post-freeze-contract-changes)
 - [Per-package changelog](#per-package-changelog)
 - [Why lockstep, not changesets](#why-lockstep-not-changesets)
 - [Related topics](#related-topics)
@@ -66,6 +67,7 @@ rules keep applying to the rest. A registry publish remains deferred either way.
 | `@atlcli/plugin-api` | 0.6.0 | no | Never API-reviewed |
 | `@atlcli/template-pack` | 0.6.0 | no | Spec 007 did not decide public-API status; the byte format has its own manifest versioning |
 | `@atlcli/export-node` | 0.6.0 | no | Days old; convenience surface should harden against real consumers first |
+| `@atlcli/export-wiring` | 0.1.0 | no | Created in spec 010 by promoting the CLI's host-wiring module so the extension stops carrying a second copy; its shape still follows the hosts |
 
 ## What counts as breaking
 
@@ -77,6 +79,37 @@ rules keep applying to the rest. A registry publish remains deferred either way.
 - Tightened `engines` (dropping a supported runtime)
 
 Deprecations get one minor release with `@deprecated` JSDoc before removal.
+
+## Post-freeze contract changes
+
+Changes that break a frozen v1 seam **without** the usual `@deprecated`-minor cycle are
+recorded here, with the reasoning, so the exception stays visible instead of being rediscovered
+from a diff. The cycle is skippable today for exactly one reason: **nothing is published**, so a
+frozen package has no installed base to migrate — there are no consumers outside this repo and
+its consumer-smoke matrix. Once a registry publish happens, this list closes and the normal
+policy applies without exception.
+
+### `PdfOutputSink.emit` takes a `PdfBytesHandle` (spec 010)
+
+`@atlcli/pdf` — `emit(name, bytes, context?)`'s second parameter changed from `Uint8Array` to
+[`PdfBytesHandle`](/reference/export-api/#emitting-compiled-bytes-pdfoutputsink--pdfbyteshandle).
+
+- **Why.** Every layer that wanted a different shape of the finished document built its own
+  copy of it. The extension's download path held `new Blob([bytes])` while the caller's
+  `Uint8Array` was still reachable — a measured +64.0 MiB for a 64 MiB PDF, both copies live at
+  once. A handle owns one representation and converts on demand, so the same document is never
+  materialized twice in two shapes.
+- **Migration.** A sink that wants bytes calls `await bytes.asUint8Array()`; for the default
+  array-backed handle that is the compiler's own buffer, not a copy. A sink that wants a `Blob`
+  or an object URL asks for one directly instead of constructing it.
+- **Why no deprecation minor.** An overload accepting both shapes would have kept every
+  consumer's `new Blob([...])` path — the exact allocation the change removes — alive and
+  type-legal for a release, in exchange for migrating an installed base of zero.
+- **Guarded by.** The consumer-smoke suites (`scripts/consumer-smoke.ts`,
+  `scripts/consumer-smoke-vite.ts`) assert the handle contract from an external consumer's
+  position against the packed tarballs — both the runtime shape and, under
+  `moduleResolution: NodeNext` with `skipLibCheck: false`, that a consumer can name
+  `PdfBytesHandle` and type a sink against it.
 
 ## Per-package changelog
 

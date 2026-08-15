@@ -1,0 +1,12 @@
+{
+  "name": "atlcli-render-kit-packed-consumer-t0",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": { "build": "astro build" },
+  "dependencies": {
+    "@atlcli/export-blocks-astro": "file:__ATLCLI_RENDER_KIT_TARBALL__",
+    "astro": "7.1.6"
+  }
+}

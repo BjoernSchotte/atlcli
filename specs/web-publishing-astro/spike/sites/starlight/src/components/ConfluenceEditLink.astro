@@ -1,0 +1,13 @@
+---
+import { publicationLocaleLinks } from "../lib/publication-i18n";
+
+const { editUrl } = Astro.locals.starlightRoute;
+const { currentEntry } = await publicationLocaleLinks(Astro.url.pathname, import.meta.env.BASE_URL);
+const label = currentEntry?.data.editLabel ?? "Open in Confluence";
+---
+
+{editUrl && (
+  <a href={editUrl} class="sl-flex print:hidden" data-confluence-edit-link rel="external">
+    {label}
+  </a>
+)}

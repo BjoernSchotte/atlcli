@@ -21,6 +21,7 @@ patches/** text eol=lf
 *.otf binary
 *.woff binary
 *.woff2 binary
+packages/**/fixtures/**/publication/assets/** binary
 *.png binary
 *.jpg binary
 *.jpeg binary

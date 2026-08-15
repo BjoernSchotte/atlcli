@@ -29,12 +29,23 @@ describe("harness output content policy", () => {
     ["root-relative CSS", `url(/assets/font.ttf)`],
     ["root-relative Worker", `new Worker("/assets/worker.js")`],
     ["root-relative asset literal", `const wasm = "/assets/compiler.wasm"`],
+    ["Oniguruma engine", `findNextOnigScannerMatch(scanner, input)`],
+    ["Oniguruma WASM loader", `throw new Error("Must invoke loadWasm first.")`],
+    ["aggregate Shiki singleton", `const marker = bundle_full_exports`],
+    ["aggregate Shiki language map", `import "shiki/langs"`],
+    ["aggregate Shiki theme map", `import "shiki/themes"`],
   ])("rejects %s", (_label, source) => {
     expect(scanHarnessText(source).length).toBeGreaterThan(0);
   });
 
   it("allows local relative assets and non-executable document links", () => {
     expect(scanHarnessText(`import "./app.js"; const pdfLink = "https://atlcli.sh/";`)).toEqual([]);
+  });
+
+  it("allows Node keyword names inside an inert Shiki grammar payload", () => {
+    const grammar =
+      'Object.freeze(JSON.parse(`{"scopeName":"source.coffee","match":"__filename|__dirname"}`))';
+    expect(scanHarnessText(grammar)).toEqual([]);
   });
 
   it("names the exact built file containing a seeded leak", () => {
@@ -54,8 +65,14 @@ describe("harness output content policy", () => {
 function completeInventory(): OutputArtifact[] {
   const artifacts: OutputArtifact[] = [
     { path: "index.html", size: 100 },
+    { path: "topology.html", size: 100 },
     { path: "assets/pdf-worker-abc.js", size: 100 },
     { path: "assets/typst_ts_web_compiler_bg-abc.wasm", size: 25_000_000 },
+    {
+      path: "assets/JetBrainsMono-Regular-abc.ttf",
+      size: 273_900,
+      sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
+    },
   ];
   for (const font of PDF_RUNTIME_ASSETS.fonts) {
     const extension = font.fileName.slice(font.fileName.lastIndexOf("."));
@@ -85,5 +102,45 @@ describe("harness runtime inventory", () => {
       artifact.path.includes(font!.fileName.split(".")[0]!) ? { ...artifact, sha256: "tampered" } : artifact,
     );
     expect(validateHarnessInventory(tampered).join("\n")).toContain("SHA-256");
+  });
+
+  it("requires one pinned DOCX code font", () => {
+    const missing = completeInventory().filter(
+      (artifact) => !artifact.path.includes("JetBrainsMono-Regular"),
+    );
+    expect(validateHarnessInventory(missing).join("\n")).toContain("DOCX code font");
+
+    const duplicate = [
+      ...completeInventory(),
+      {
+        path: "assets/JetBrainsMono-Regular-duplicate.ttf",
+        size: 273_900,
+        sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
+      },
+    ];
+    expect(validateHarnessInventory(duplicate).join("\n")).toContain(
+      "expected exactly one artifact",
+    );
+  });
+
+  it("rejects an emitted Oniguruma engine chunk by inventory", () => {
+    const inventory = [
+      ...completeInventory(),
+      { path: "assets/engine-oniguruma-seeded.js", size: 6_000 },
+    ];
+    expect(validateHarnessInventory(inventory).join("\n")).toContain(
+      "Oniguruma engine",
+    );
+  });
+
+  it("rejects Oniguruma WASM and aggregate Shiki catalogue chunks", () => {
+    const inventory = [
+      ...completeInventory(),
+      { path: "assets/onig-seeded.wasm", size: 20_000 },
+      { path: "assets/langs-seeded.js", size: 6_000 },
+    ];
+    const issues = validateHarnessInventory(inventory).join("\n");
+    expect(issues).toContain("Oniguruma WASM");
+    expect(issues).toContain("aggregate Shiki catalogue");
   });
 });

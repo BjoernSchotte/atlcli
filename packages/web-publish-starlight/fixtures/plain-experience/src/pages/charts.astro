@@ -1,0 +1,48 @@
+---
+import InteractiveChart from "@atlcli/export-blocks-astro/components/InteractiveChart.astro";
+import {
+  EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1,
+  EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+} from "@atlcli/export-blocks-astro/fixtures";
+import "@atlcli/export-blocks-astro/styles.css";
+
+const interactiveBlocks = EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1.filter((block) =>
+  block.type === "chart" && (block.chart.kind === "bar" || block.chart.kind === "xyBar")
+);
+if (interactiveBlocks.length !== 2 || interactiveBlocks.some((block) => block.type !== "chart")) {
+  throw new TypeError("interactive chart fixture drift");
+}
+const chartContext = {
+  ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+  chartPolicy: {
+    strict: true,
+    acquisition: { maxDurationMs: 300_000, maxAggregateBytes: 16_777_216 },
+    normalization: { maxRows: 2_000, maxSeries: 64, maxPoints: 20_000, maxBytes: 524_288 },
+    static: { maxSvgNodes: 100_000, maxSvgBytes: 2_097_152, maxRenderMs: 2_000 },
+    island: { enabled: true, maxRows: 80, maxSeries: 12, maxPoints: 800, maxBytes: 65_536, maxMountMs: 250 },
+  },
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>TanStack chart interaction proof</title>
+    <style is:global>
+      body { margin: 0; color: #172b4d; font-family: system-ui, sans-serif; }
+      main { box-sizing: border-box; margin-inline: auto; max-inline-size: 72rem; padding: 1rem; }
+      [data-atlcli-chart-island] { margin-block: 2rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>TanStack chart interaction proof</h1>
+      <p>Every enhanced chart retains its complete static SVG and exact-value table when JavaScript or interaction is unavailable.</p>
+      {interactiveBlocks.map((block) => block.type === "chart" &&
+        <InteractiveChart block={block} context={chartContext} />
+      )}
+    </main>
+  </body>
+</html>

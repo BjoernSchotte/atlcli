@@ -12,7 +12,12 @@
  * import from any `@atlcli/*` package, enforced by the browser-build gate
  * (`scripts/check-browser-build.ts`).
  */
-import type { ExportBlock, ExportNote, MacroParameter } from "@atlcli/confluence";
+import type {
+  AdfExtensionIdentity,
+  ExportBlock,
+  ExportNote,
+  MacroParameter,
+} from "@atlcli/confluence";
 
 /**
  * One macro instance the resolver hands to a renderer. Mirrors the enriched
@@ -25,6 +30,36 @@ export interface MacroInstance {
   body?: ExportBlock[];
   plainBody?: string;
   macroId?: string;
+  /**
+   * ADF editor identity retained separately from Storage identity. Confluence
+   * documents the ADF local ID as the macro REST ID for Forge macros; only the
+   * export-view port projects it into that request parameter.
+   */
+  adfExtension?: AdfExtensionIdentity;
+}
+
+/**
+ * Closed semantic categories a trusted macro renderer may expose to a static
+ * publication target. The value comes from the renderer registry, never from
+ * page content or an extension-provided parameter.
+ */
+export type MacroWebRenderModelKindV1 =
+  | "toc"
+  | "jira-data"
+  | "diagram"
+  | "chart"
+  | "status"
+  | "smart-card"
+  | "unknown";
+
+/**
+ * A renderer-owned declaration of its publication-safe output category and
+ * the live data classes that had to be frozen to obtain it. It intentionally
+ * contains no source payload, HTML, URL, credential, or callback.
+ */
+export interface MacroWebRenderModelDescriptorV1 {
+  readonly kind: MacroWebRenderModelKindV1;
+  readonly dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
 }
 
 /**
@@ -122,6 +157,12 @@ export interface MacroRenderer {
   /** Stable identity for introspection, override resolution, docs listing. */
   readonly id: string;
   /**
+   * Optional closed publication-model declaration. Custom renderers that do
+   * not make one are represented as the visible `unknown` fallback by web
+   * publishing rather than gaining an implicit component surface.
+   */
+  readonly webRenderModel?: MacroWebRenderModelDescriptorV1;
+  /**
    * `false` for renderers that only read `m.params`/`m.body` (TOC,
    * scroll-tablelayout, transparent-body passthroughs) — these still run under
    * `--no-live-macros`. `true` for anything that touches a port. Required, not
@@ -167,6 +208,47 @@ export interface JiraIssuePort {
   ): Promise<JiraIssueRef[]>;
 }
 
+/**
+ * One row of a {@link ConfluenceContentPort.searchContent} result.
+ *
+ * Every field except `id`/`title` is optional because the *renderer* — not the
+ * port — decides what a missing value means: a Confluence-list column whose
+ * source field is absent renders empty AND is named in a note, which is how a
+ * mapping drift (the Jira round's `issuetype` vs `type`) stays visible instead
+ * of looking like empty data.
+ */
+export interface ConfluenceSearchHit {
+  id: string;
+  title: string;
+  /** Content type as CQL names it: `page`, `blogpost`, `attachment`, … */
+  type?: string;
+  /** Absolute URL of the content. */
+  url?: string;
+  spaceKey?: string;
+  /** The space's display NAME — what the UI's space chip shows. */
+  spaceName?: string;
+  /** Plain-text search excerpt (no highlight markers, no entities). */
+  excerpt?: string;
+  /** Display name of the content owner. Never an avatar URL — see the renderer. */
+  ownedBy?: string;
+  /** ISO timestamp of the last update. */
+  lastModified?: string;
+  labels?: string[];
+  /** Content status: `current`, `draft`, `archived`, … */
+  status?: string;
+}
+
+/** A page of {@link ConfluenceContentPort.searchContent} results. */
+export interface ConfluenceSearchHits {
+  hits: ConfluenceSearchHit[];
+  /**
+   * The server's total match count, when it reports one. A Confluence-list
+   * table is normally a SAMPLE (the live artifact matches 2 817 rows), so its
+   * truncation note names this number — "100 of 100+" would hide the scale.
+   */
+  totalSize?: number;
+}
+
 export interface ConfluenceContentPort {
   /** Fetch a page's storage by title (+ space). `undefined` = not found. */
   getPageStorage(
@@ -182,11 +264,56 @@ export interface ConfluenceContentPort {
     opts?: { limit?: number }
   ): Promise<{ id: string; title: string }[]>;
   searchCql(cql: string, opts?: { limit?: number }): Promise<{ id: string; title: string }[]>;
+  /**
+   * CQL search returning the per-row detail a Confluence-list datasource table
+   * renders — id, title, type, space, excerpt, owner, labels, status — plus the
+   * server's total match count.
+   *
+   * A THIRD search seam on purpose. {@link searchCql} returns `{ id, title }`
+   * only, and `TreeSource.searchPages` returns ids only; both are deliberately
+   * narrow (the tree walker's "filtered pages are never loaded" invariant rests
+   * on that narrowness), so widening either to serve a table would trade a
+   * load-bearing type for convenience.
+   *
+   * Optional so an existing {@link ConfluenceContentPort} implementation stays
+   * valid; the renderer degrades with a note when a host does not supply it.
+   */
+  searchContent?(
+    cql: string,
+    opts: {
+      /** Row cap. The renderer asks for cap+1 so truncation is measured. */
+      maximumResults: number;
+      /** Content statuses to include (`current`, `archived`, `draft`). */
+      contentStatuses?: string[];
+      signal?: AbortSignal;
+    }
+  ): Promise<ConfluenceSearchHits>;
+}
+
+/**
+ * Compose-scope facts a renderer needs to link to OTHER pages of the SAME
+ * export.
+ *
+ * Macro resolution runs AFTER `composeChapters` (both engines resolve macros
+ * inside `run-export`/`export`, on the already-composed tree), so a
+ * `{ kind: "page" }` link target a renderer emits is never rewritten by the
+ * composition pass and would serialize as plain text. Rather than adding a
+ * second link-resolution path, the host hands the renderer composition's OWN
+ * answer: the chapter anchor `composeChapters` assigned to a page id, or
+ * `undefined` when that page is outside the export scope.
+ */
+export interface MacroPageScope {
+  /** The in-document anchor for a page id, or `undefined` when out of scope. */
+  chapterAnchorFor(pageId: string): string | undefined;
 }
 
 export interface ExportViewPort {
   /** Server-side render a macro to HTML via the `export_view` representation. */
-  renderMacroHtml(pageId: string, macroId: string): Promise<string | undefined>;
+  renderMacroHtml(
+    pageId: string,
+    macroId: string,
+    pageVersion?: number,
+  ): Promise<string | undefined>;
 }
 
 export interface AttachmentLookupPort {
@@ -230,6 +357,12 @@ export interface MacroExportContext {
   exportView?: ExportViewPort;
   attachments?: AttachmentLookupPort;
   externalAssets?: ExternalAssetFetcher;
+  /**
+   * Which of the pages a renderer links to are inside THIS document, and under
+   * which anchor. Absent for single-page exports (nothing else is in scope) and
+   * for hosts that do not compose chapters — a renderer then links absolutely.
+   */
+  pageScope?: MacroPageScope;
   /** Recursion guards, shared across include-style renderers. */
   depth: number;
   visited: Set<string>;
@@ -241,6 +374,12 @@ export interface MacroExportContext {
    * JQL queries against different sites must not share a cache entry.
    */
   siteId?: string;
+  /**
+   * Trusted Confluence site origin used to validate tenant-local navigation
+   * targets retained from untrusted page content. Unlike {@link siteId}, this
+   * field is a URL security boundary rather than an opaque cache identity.
+   */
+  siteOrigin?: string;
   /**
    * Renderer-level flags threaded from {@link MacroResolutionOptions}. E.g.
    * `nativeTocPresent` lets the TOC renderer suppress a duplicate body-TOC when
@@ -254,7 +393,7 @@ export interface MacroExportContext {
      * arbitrary-SVG-attachment seam yet (blocked on 006-word-quality G4/T1.15),
      * so it stays on the PNG preview.
      */
-    targetEngine?: "docx" | "pdf";
+    targetEngine?: "docx" | "pdf" | "web";
   };
   /**
    * The whole composed document's block tree, set by the resolver. The TOC

@@ -21,6 +21,7 @@ const BUILTIN_ROOT_COMMANDS = [
   "jira",
   "log",
   "plugin",
+  "pdf-template",
   "update",
   "version",
   "wiki",
@@ -58,13 +59,31 @@ const SUBCOMMANDS: Record<string, string[]> = {
   ],
   log: ["clear", "list", "show", "tail"],
   plugin: ["disable", "enable", "install", "list", "remove"],
-  wiki: ["docs", "my", "page", "recent", "search", "space", "template"],
+  "pdf-template": [
+    "analyze",
+    "build",
+    "clear-optional",
+    "clear-override",
+    "decide",
+    "diff",
+    "import",
+    "pack",
+    "preview",
+    "reanalyze",
+    "review",
+    "set",
+    "status",
+    "undo",
+    "validate",
+  ],
+  wiki: ["docs", "my", "page", "publish", "recent", "search", "space", "template"],
 };
 
 // Nested subcommands (command -> subcommand -> sub-subcommands)
 const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
   wiki: {
     docs: ["add", "check", "diff", "init", "pull", "push", "resolve", "status", "sync", "watch"],
+    publish: ["plan", "refresh", "build", "verify", "run", "status", "prune"],
     page: [
       "archive",
       "children",
@@ -111,6 +130,8 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
     issue: [
       "assign",
       "attach",
+      "attachment",
+      "attachments",
       "comment",
       "create",
       "delete",
@@ -145,6 +166,9 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
 // Third-level subcommands
 const THIRD_LEVEL_SUBCOMMANDS: Record<string, Record<string, Record<string, string[]>>> = {
   jira: {
+    issue: {
+      attachment: ["delete", "download"],
+    },
     worklog: {
       timer: ["cancel", "start", "status", "stop"],
     },
@@ -156,6 +180,49 @@ const GLOBAL_FLAGS = ["--help", "--json", "--no-log", "--profile"];
 
 // Command-specific flags
 const COMMAND_FLAGS: Record<string, string[]> = {
+  "pdf-template import": ["--baseline", "--dir", "--metadata-only", "--policy"],
+  "pdf-template analyze": ["--baseline", "--dir", "--metadata-only", "--policy"],
+  "pdf-template status": ["--details", "--dir"],
+  "pdf-template review": [
+    "--acknowledge-unsupported",
+    "--apply-ready",
+    "--dir",
+    "--keep-current-for-remaining",
+    "--non-interactive",
+  ],
+  "pdf-template preview": ["--dir", "--output-dir"],
+  "pdf-template build": ["--dir", "--output"],
+  "pdf-template undo": ["--dir"],
+  "pdf-template reanalyze": ["--dir", "--metadata-only"],
+  "pdf-template diff": ["--details", "--dir"],
+  "pdf-template decide": [
+    "--accept",
+    "--accept-asset",
+    "--accept-recommended",
+    "--accept-safe",
+    "--acknowledge-unsupported",
+    "--alt",
+    "--candidate",
+    "--custom-placement",
+    "--decorative",
+    "--dir",
+    "--group",
+    "--keep-baseline-for-remaining",
+    "--meaningful",
+    "--reject",
+    "--reset-group",
+    "--rights-confirmed",
+    "--role",
+    "--slot-default",
+    "--use-baseline",
+    "--use-candidate-placement",
+  ],
+  "pdf-template set": ["--dir", "--target", "--value"],
+  "pdf-template clear-override": ["--dir", "--target"],
+  "pdf-template clear-optional": ["--dir", "--target"],
+  "pdf-template validate": ["--dir"],
+  "pdf-template pack": ["--dir", "--output"],
+
   // auth flags
   "auth init": ["--email", "--profile", "--site", "--token"],
   "auth login": ["--email", "--profile", "--site", "--token"],
@@ -171,6 +238,15 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "wiki docs watch": ["--interval"],
   "wiki docs check": ["--fix"],
 
+  // wiki publish lifecycle
+  "wiki publish plan": ["--allow-partial", "--confirm-public", "--json", "--profile", "--project", "--workspace"],
+  "wiki publish refresh": ["--allow-partial", "--confirm-public", "--dry-run", "--json", "--profile", "--project", "--workspace"],
+  "wiki publish build": ["--json", "--project", "--workspace"],
+  "wiki publish verify": ["--build", "--json", "--project", "--workspace"],
+  "wiki publish run": ["--allow-partial", "--confirm-public", "--dry-run", "--json", "--profile", "--project", "--workspace"],
+  "wiki publish status": ["--json", "--project", "--workspace"],
+  "wiki publish prune": ["--confirm", "--json", "--project", "--workspace"],
+
   // wiki page flags
   "wiki page list": ["--ancestor", "--limit", "--space"],
   "wiki page get": ["--format", "--id", "--markdown"],
@@ -184,7 +260,16 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "wiki page children": ["--depth", "--id", "--limit"],
   "wiki page label": ["--cql", "--id"],
   "wiki page history": ["--id", "--limit"],
-  "wiki page diff": ["--id", "--version1", "--version2"],
+  "wiki page diff": [
+    "--context",
+    "--format",
+    "--from",
+    "--id",
+    "--no-color",
+    "--to",
+    "--version",
+    "--word-diff",
+  ],
   "wiki page restore": ["--id", "--version"],
   "wiki page comments": ["--id"],
   "wiki page open": ["--id"],
@@ -274,7 +359,9 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "jira issue assign": ["--key", "--to"],
   "jira issue comment": ["--body", "--key"],
   "jira issue link": ["--from", "--to", "--type"],
-  "jira issue attach": ["--file", "--key"],
+  "jira issue attach": ["--comment", "--key"],
+  "jira issue attachments": ["--key"],
+  "jira issue attachment": ["--confirm", "--output", "--overwrite"],
   "jira issue open": ["--key"],
 
   // jira board flags

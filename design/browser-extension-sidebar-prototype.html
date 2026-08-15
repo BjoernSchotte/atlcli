@@ -1,0 +1,1785 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Kiteweave Browser — Sidebar concept</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/lucide-static@1.23.0/font/lucide.css"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          "SF Pro Text", "Segoe UI", ui-sans-serif, -apple-system, BlinkMacSystemFont,
+          sans-serif;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        --ink: #172b4d;
+        --ink-strong: #122033;
+        --muted: #44546f;
+        --subtle: #5e6c84;
+        --surface: #ffffff;
+        --surface-soft: #f7f9fc;
+        --surface-tint: #f1f6fc;
+        --line: #d5deea;
+        --line-strong: #b8c5d6;
+        --blue: #0c66e4;
+        --blue-hover: #0055cc;
+        --blue-soft: #e9f2ff;
+        --green: #006644;
+        --green-soft: #e8f7f0;
+        --amber: #a54800;
+        --amber-soft: #fff4e5;
+        --focus: #579dff;
+        --page: #edf1f5;
+        --shadow:
+          0 14px 42px rgb(9 30 66 / 14%),
+          0 2px 8px rgb(9 30 66 / 7%);
+        --serif:
+          "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia,
+          ui-serif, serif;
+        --text-caption: 0.75rem;
+        --text-small: 0.8125rem;
+        --text-body: 0.875rem;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-width: 320px;
+        min-height: 100%;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--ink);
+        background: var(--page);
+        font-size: var(--text-body);
+        line-height: 1.45;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button,
+      select {
+        font: inherit;
+      }
+
+      button,
+      summary {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      button:focus-visible,
+      select:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      button {
+        color: inherit;
+      }
+
+      .prototype-frame {
+        width: min(400px, 100vw);
+        min-height: 100vh;
+        margin: 0 auto;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .app-shell {
+        position: relative;
+        display: grid;
+        min-height: 100vh;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        overflow: hidden;
+        background: var(--surface);
+      }
+
+      .app-header {
+        position: relative;
+        z-index: 20;
+        display: flex;
+        min-height: 62px;
+        align-items: center;
+        gap: 9px;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .brand-mark {
+        display: block;
+        width: 32px;
+        height: 32px;
+        flex: 0 0 auto;
+        object-fit: contain;
+      }
+
+      .product-switcher {
+        display: grid;
+        min-width: 0;
+        flex: 1;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        min-height: 44px;
+        padding: 4px 8px;
+        border: 0;
+        border-radius: 8px;
+        text-align: left;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .product-switcher:hover,
+      .icon-button:hover {
+        background: var(--surface-soft);
+      }
+
+      .product-switcher__copy {
+        display: grid;
+        min-width: 0;
+        gap: 1px;
+      }
+
+      .product-switcher__copy strong {
+        overflow: hidden;
+        color: var(--ink-strong);
+        font-size: var(--text-body);
+        font-weight: 760;
+        letter-spacing: -0.015em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .product-switcher__copy span {
+        overflow: hidden;
+        color: var(--muted);
+        font-size: var(--text-caption);
+        font-weight: 580;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .product-switcher > .icon {
+        color: var(--subtle);
+        font-size: 16px;
+        transition: transform 160ms ease;
+      }
+
+      .product-switcher[aria-expanded="true"] > .icon {
+        transform: rotate(180deg);
+      }
+
+      .area-menu {
+        position: absolute;
+        z-index: 30;
+        top: calc(100% + 6px);
+        right: 10px;
+        left: 10px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        background: var(--surface);
+        box-shadow:
+          0 18px 40px rgb(9 30 66 / 20%),
+          0 2px 6px rgb(9 30 66 / 8%);
+        transform-origin: 50% 0;
+        transition:
+          opacity 130ms ease,
+          transform 130ms ease;
+      }
+
+      .area-menu[hidden] {
+        display: none;
+      }
+
+      .area-menu:not([hidden]) {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+
+      .area-menu__heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 13px 14px 9px;
+      }
+
+      .area-menu__heading strong {
+        color: var(--ink-strong);
+        font-family: var(--serif);
+        font-size: 1.04rem;
+        font-weight: 650;
+        letter-spacing: -0.025em;
+      }
+
+      .area-menu__heading span {
+        color: var(--subtle);
+        font-size: var(--text-caption);
+        font-weight: 760;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+      }
+
+      .area-list {
+        display: grid;
+        gap: 2px;
+        margin: 0;
+        padding: 0 7px 8px;
+        list-style: none;
+      }
+
+      .area-option {
+        display: grid;
+        width: 100%;
+        min-height: 58px;
+        grid-template-columns: 34px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 8px;
+        border: 0;
+        border-radius: 9px;
+        text-align: left;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .area-option:hover {
+        background: var(--surface-soft);
+      }
+
+      .area-option[aria-current="page"] {
+        background: var(--blue-soft);
+      }
+
+      .area-option__icon {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        color: var(--muted);
+        background: var(--surface);
+        font-size: 17px;
+      }
+
+      .area-option[aria-current="page"] .area-option__icon {
+        border-color: #b8cbed;
+        color: var(--blue);
+      }
+
+      .area-option__copy {
+        display: grid;
+        min-width: 0;
+        gap: 2px;
+      }
+
+      .area-option__copy strong {
+        font-size: var(--text-small);
+        font-weight: 740;
+        letter-spacing: -0.01em;
+      }
+
+      .area-option__copy span {
+        overflow: hidden;
+        color: var(--muted);
+        font-size: var(--text-caption);
+        line-height: 1.35;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .area-option__state {
+        display: inline-flex;
+        min-height: 21px;
+        align-items: center;
+        padding: 0 7px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--subtle);
+        background: var(--surface);
+        font-size: var(--text-caption);
+        font-weight: 780;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .area-option[aria-current="page"] .area-option__state {
+        border-color: #b8cbed;
+        color: var(--blue);
+      }
+
+      .area-menu__footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 9px 14px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        background: var(--surface-soft);
+        font-size: var(--text-caption);
+      }
+
+      .area-menu__footer span:first-child {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .screen-nav {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .screen-tab {
+        position: relative;
+        display: grid;
+        min-width: 0;
+        min-height: 56px;
+        place-items: center;
+        align-content: center;
+        gap: 3px;
+        padding: 6px 4px;
+        border: 0;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .screen-tab::after {
+        position: absolute;
+        right: 12px;
+        bottom: -1px;
+        left: 12px;
+        height: 2px;
+        border-radius: 2px 2px 0 0;
+        background: transparent;
+        content: "";
+      }
+
+      .screen-tab:hover {
+        color: var(--ink);
+        background: var(--surface-soft);
+      }
+
+      .screen-tab[aria-selected="true"] {
+        color: var(--blue);
+      }
+
+      .screen-tab[aria-selected="true"]::after {
+        background: var(--blue);
+      }
+
+      .screen-tab .icon {
+        font-size: 17px;
+      }
+
+      .screen-tab span:last-child {
+        overflow: hidden;
+        max-width: 100%;
+        font-size: var(--text-caption);
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .workspace {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: var(--line-strong) transparent;
+      }
+
+      .workspace::-webkit-scrollbar {
+        width: 7px;
+      }
+
+      .workspace::-webkit-scrollbar-thumb {
+        border: 2px solid transparent;
+        border-radius: 999px;
+        background: var(--line-strong);
+        background-clip: padding-box;
+      }
+
+      .workspace-panel {
+        min-height: 100%;
+        padding: 18px 16px 28px;
+      }
+
+      .workspace-panel[hidden] {
+        display: none;
+      }
+
+      .workspace-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 15px;
+      }
+
+      .workspace-kicker {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--blue);
+        font-size: var(--text-caption);
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      .workspace-heading h1 {
+        margin: 0;
+        color: var(--ink-strong);
+        font-family: var(--serif);
+        font-size: 1.66rem;
+        font-weight: 650;
+        line-height: 1;
+        letter-spacing: -0.04em;
+      }
+
+      .icon-button {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        flex: 0 0 auto;
+        place-items: center;
+        border: 0;
+        border-radius: 8px;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .icon-button .icon {
+        font-size: 17px;
+      }
+
+      .page-source {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 10px 11px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: var(--surface-soft);
+      }
+
+      .page-source__icon {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 1px solid #b8cbed;
+        border-radius: 8px;
+        color: var(--blue);
+        background: var(--blue-soft);
+        font-size: 17px;
+      }
+
+      .page-source__copy {
+        display: grid;
+        min-width: 0;
+        gap: 2px;
+      }
+
+      .page-source__copy strong {
+        overflow: hidden;
+        color: var(--ink-strong);
+        font-size: var(--text-small);
+        font-weight: 740;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .page-source__copy span {
+        overflow: hidden;
+        color: var(--muted);
+        font-size: var(--text-caption);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .page-source__state {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--green);
+        font-size: var(--text-caption);
+        font-weight: 760;
+      }
+
+      .page-source__state .icon {
+        font-size: 13px;
+      }
+
+      .studio-flow {
+        position: relative;
+        display: grid;
+        gap: 0;
+      }
+
+      .studio-flow::before {
+        position: absolute;
+        top: 24px;
+        bottom: 28px;
+        left: 13px;
+        width: 1px;
+        background: var(--line);
+        content: "";
+      }
+
+      .studio-step {
+        position: relative;
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        gap: 10px;
+        padding-bottom: 21px;
+      }
+
+      .studio-step:last-child {
+        padding-bottom: 0;
+      }
+
+      .step-index {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        width: 28px;
+        height: 28px;
+        place-items: center;
+        border: 1px solid var(--line-strong);
+        border-radius: 50%;
+        color: var(--muted);
+        background: var(--surface);
+        font-size: var(--text-caption);
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+
+      .studio-step[data-complete="true"] .step-index {
+        border-color: #b7dfcc;
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .step-content {
+        min-width: 0;
+        padding-top: 3px;
+      }
+
+      .step-heading {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 9px;
+      }
+
+      .step-heading h2 {
+        margin: 0;
+        color: var(--ink-strong);
+        font-size: var(--text-small);
+        font-weight: 780;
+        letter-spacing: -0.01em;
+      }
+
+      .step-heading span {
+        color: var(--subtle);
+        font-size: var(--text-caption);
+      }
+
+      .choice-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .choice-row--two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .choice-button {
+        display: grid;
+        min-width: 0;
+        min-height: 52px;
+        place-items: start;
+        align-content: center;
+        gap: 3px;
+        padding: 7px 8px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        color: var(--muted);
+        text-align: left;
+        background: var(--surface);
+        cursor: pointer;
+        transition:
+          border-color 120ms ease,
+          background 120ms ease,
+          color 120ms ease;
+      }
+
+      .choice-button:hover {
+        border-color: var(--line-strong);
+        background: var(--surface-soft);
+      }
+
+      .choice-button[aria-checked="true"] {
+        border-color: #9ab8e5;
+        color: var(--blue);
+        background: var(--blue-soft);
+        box-shadow: inset 0 0 0 1px rgb(12 102 228 / 7%);
+      }
+
+      .choice-button__title {
+        display: inline-flex;
+        max-width: 100%;
+        align-items: center;
+        gap: 5px;
+        color: var(--ink-strong);
+        font-size: var(--text-small);
+        font-weight: 730;
+        line-height: 1.2;
+      }
+
+      .choice-button[aria-checked="true"] .choice-button__title {
+        color: var(--blue);
+      }
+
+      .choice-button__detail {
+        overflow: hidden;
+        max-width: 100%;
+        color: var(--subtle);
+        font-size: var(--text-caption);
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .choice-button__title .icon {
+        font-size: 14px;
+      }
+
+      .design-select {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        width: 100%;
+        min-height: 60px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        text-align: left;
+        background: var(--surface);
+        cursor: pointer;
+      }
+
+      .design-select:hover {
+        border-color: var(--line-strong);
+        background: var(--surface-soft);
+      }
+
+      .design-select__swatch {
+        display: grid;
+        width: 34px;
+        height: 38px;
+        grid-template-rows: 8px 1fr;
+        gap: 5px;
+        padding: 7px 6px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--surface);
+        box-shadow: 0 2px 4px rgb(9 30 66 / 8%);
+      }
+
+      .design-select__swatch::before,
+      .design-select__swatch::after {
+        display: block;
+        content: "";
+      }
+
+      .design-select__swatch::before {
+        border-top: 3px solid var(--ink);
+        border-bottom: 1px solid var(--line-strong);
+      }
+
+      .design-select__swatch::after {
+        background:
+          linear-gradient(
+            var(--line-strong) 0 0
+          )
+          0 0 / 100% 1px no-repeat,
+          linear-gradient(
+            var(--line) 0 0
+          )
+          0 6px / 80% 1px no-repeat,
+          linear-gradient(
+            var(--line) 0 0
+          )
+          0 12px / 92% 1px no-repeat;
+      }
+
+      .design-select__copy {
+        display: grid;
+        min-width: 0;
+        gap: 2px;
+      }
+
+      .design-select__copy strong {
+        font-size: var(--text-small);
+        font-weight: 740;
+      }
+
+      .design-select__copy span {
+        overflow: hidden;
+        color: var(--muted);
+        font-size: var(--text-caption);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .design-select > .icon {
+        color: var(--subtle);
+        font-size: 15px;
+      }
+
+      .advanced-options {
+        margin-top: 7px;
+        border-top: 1px solid var(--line);
+      }
+
+      .advanced-options summary {
+        display: flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--muted);
+        font-size: var(--text-caption);
+        font-weight: 680;
+        cursor: pointer;
+        list-style: none;
+      }
+
+      .advanced-options summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .advanced-options summary .icon {
+        font-size: 14px;
+        transition: transform 140ms ease;
+      }
+
+      .advanced-options[open] summary .icon {
+        transform: rotate(180deg);
+      }
+
+      .advanced-options__body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+        padding: 3px 0 1px;
+      }
+
+      .compact-field {
+        display: grid;
+        gap: 4px;
+      }
+
+      .compact-field label {
+        color: var(--muted);
+        font-size: var(--text-caption);
+        font-weight: 650;
+      }
+
+      .compact-field select {
+        width: 100%;
+        min-width: 0;
+        height: 44px;
+        padding: 0 7px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        color: var(--ink);
+        background: var(--surface);
+        font-size: var(--text-caption);
+      }
+
+      .format-panel {
+        display: grid;
+        gap: 8px;
+      }
+
+      .format-panel[hidden] {
+        display: none;
+      }
+
+      .template-field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .template-field__label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--ink-strong);
+        font-size: var(--text-small);
+        font-weight: 730;
+      }
+
+      .required-badge {
+        color: var(--amber);
+        font-size: var(--text-caption);
+        font-weight: 760;
+      }
+
+      .template-field select {
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        padding: 0 10px;
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        color: var(--ink);
+        background: var(--surface);
+        font-size: var(--text-small);
+      }
+
+      .template-field__help {
+        margin: 0;
+        color: var(--muted);
+        font-size: var(--text-caption);
+        line-height: 1.45;
+      }
+
+      .text-action {
+        display: inline-flex;
+        min-height: 44px;
+        width: fit-content;
+        align-items: center;
+        gap: 6px;
+        padding: 0;
+        border: 0;
+        color: var(--blue);
+        background: transparent;
+        font-size: var(--text-caption);
+        font-weight: 740;
+        cursor: pointer;
+      }
+
+      .review-box {
+        display: grid;
+        gap: 9px;
+        padding: 11px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface-soft);
+      }
+
+      .review-line {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        color: var(--muted);
+        font-size: var(--text-caption);
+        line-height: 1.45;
+      }
+
+      .review-line .icon {
+        color: var(--green);
+        font-size: 14px;
+        margin-top: 2px;
+      }
+
+      .review-line[data-tone="warning"] .icon {
+        color: var(--amber);
+      }
+
+      .primary-action {
+        display: inline-flex;
+        width: 100%;
+        min-height: 44px;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        border: 1px solid var(--blue);
+        border-radius: 8px;
+        color: #ffffff;
+        background: var(--blue);
+        font-size: var(--text-small);
+        font-weight: 760;
+        cursor: pointer;
+        transition:
+          background 130ms ease,
+          transform 130ms ease;
+      }
+
+      .primary-action:hover {
+        background: var(--blue-hover);
+      }
+
+      .primary-action:disabled {
+        border-color: var(--line-strong);
+        color: var(--muted);
+        background: var(--surface);
+        cursor: not-allowed;
+      }
+
+      .primary-action:active {
+        transform: translateY(1px);
+      }
+
+      .primary-action .icon {
+        font-size: 15px;
+      }
+
+      .empty-screen {
+        display: grid;
+        min-height: 420px;
+        align-content: start;
+        padding: 44px 12px;
+        text-align: left;
+      }
+
+      .empty-screen__eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 12px;
+        color: var(--blue);
+        font-size: var(--text-caption);
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .empty-screen__eyebrow .icon {
+        font-size: 16px;
+      }
+
+      .empty-screen h1 {
+        margin: 0 0 7px;
+        color: var(--ink-strong);
+        font-family: var(--serif);
+        font-size: 1.45rem;
+        font-weight: 650;
+        letter-spacing: -0.035em;
+      }
+
+      .empty-screen p {
+        max-width: 34ch;
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: var(--text-body);
+        line-height: 1.55;
+      }
+
+      .secondary-action {
+        display: inline-flex;
+        min-height: 44px;
+        width: fit-content;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 0 13px;
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        color: var(--ink);
+        background: var(--surface);
+        font-size: var(--text-small);
+        font-weight: 740;
+        cursor: pointer;
+      }
+
+      .secondary-action:hover {
+        border-color: #9ab8e5;
+        color: var(--blue);
+        background: var(--blue-soft);
+      }
+
+      .app-footer {
+        display: flex;
+        min-height: 36px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 6px 13px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        background: var(--surface-soft);
+        font-size: var(--text-caption);
+      }
+
+      .private-note {
+        display: inline-flex;
+        min-width: 0;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .private-note .icon {
+        color: var(--green);
+        font-size: 12px;
+      }
+
+      .app-footer span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .prototype-toast {
+        position: fixed;
+        z-index: 50;
+        right: 16px;
+        bottom: 48px;
+        left: 16px;
+        display: flex;
+        max-width: 368px;
+        min-height: 44px;
+        align-items: center;
+        gap: 9px;
+        margin: auto;
+        padding: 9px 11px;
+        border: 1px solid var(--line-strong);
+        border-radius: 9px;
+        color: var(--ink);
+        background: var(--surface);
+        box-shadow: 0 10px 28px rgb(9 30 66 / 18%);
+        font-size: var(--text-caption);
+        font-weight: 650;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(8px);
+        transition:
+          opacity 160ms ease,
+          transform 160ms ease;
+      }
+
+      .prototype-toast[data-visible="true"] {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .prototype-toast .icon {
+        color: var(--blue);
+        font-size: 16px;
+      }
+
+      @media (max-width: 359px) {
+        .choice-button__detail {
+          display: none;
+        }
+
+        .screen-tab {
+          min-height: 54px;
+        }
+
+        .screen-tab span:last-child {
+          font-size: var(--text-caption);
+        }
+
+        .choice-row {
+          gap: 4px;
+        }
+
+        .workspace-panel {
+          padding-right: 13px;
+          padding-left: 13px;
+        }
+      }
+
+      @media (min-width: 401px) {
+        body {
+          padding: 20px 0;
+        }
+
+        .prototype-frame,
+        .app-shell {
+          min-height: calc(100vh - 40px);
+        }
+
+        .prototype-frame {
+          overflow: hidden;
+          border: 1px solid var(--line);
+          border-radius: 14px;
+        }
+      }
+
+      @media (forced-colors: active) {
+        .screen-tab[aria-selected="true"],
+        .choice-button[aria-checked="true"],
+        .area-option[aria-current="page"] {
+          outline: 2px solid Highlight;
+          outline-offset: -2px;
+        }
+
+        .page-source__state,
+        .review-line .icon {
+          color: CanvasText;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="prototype-frame">
+      <main class="app-shell">
+        <header class="app-header">
+          <img class="brand-mark" src="./kiteweave-icon.svg" alt="Kiteweave" />
+          <button
+            class="product-switcher"
+            id="product-switcher"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="area-menu"
+          >
+            <span class="product-switcher__copy">
+              <strong>Publishing</strong>
+              <span>Kiteweave Browser</span>
+            </span>
+            <span class="icon icon-chevron-down" aria-hidden="true"></span>
+          </button>
+
+          <section class="area-menu" id="area-menu" role="menu" aria-label="Product areas" hidden>
+            <div class="area-menu__heading">
+              <strong>Choose your workspace</strong>
+              <span>Kiteweave Browser</span>
+            </div>
+            <ul class="area-list">
+              <li>
+                <button class="area-option" type="button" role="menuitem" aria-current="page">
+                  <span class="area-option__icon icon icon-panels-top-left" aria-hidden="true"></span>
+                  <span class="area-option__copy">
+                    <strong>Publishing</strong>
+                    <span>Turn Confluence content into polished documents.</span>
+                  </span>
+                  <span class="area-option__state">Active</span>
+                </button>
+              </li>
+              <li>
+                <button class="area-option" type="button" role="menuitem" data-planned-area="Jira SafeOps">
+                  <span class="area-option__icon icon icon-shield-check" aria-hidden="true"></span>
+                  <span class="area-option__copy">
+                    <strong>Jira SafeOps</strong>
+                    <span>Plan, review, and apply Jira changes with confidence.</span>
+                  </span>
+                  <span class="area-option__state">Soon</span>
+                </button>
+              </li>
+              <li>
+                <button class="area-option" type="button" role="menuitem" data-planned-area="Automations">
+                  <span class="area-option__icon icon icon-workflow" aria-hidden="true"></span>
+                  <span class="area-option__copy">
+                    <strong>Automations</strong>
+                    <span>Run repeatable content and configuration workflows.</span>
+                  </span>
+                  <span class="area-option__state">Soon</span>
+                </button>
+              </li>
+            </ul>
+            <footer class="area-menu__footer">
+              <span><span class="icon icon-sparkles" aria-hidden="true"></span> More areas can be added here</span>
+              <span>Preview concept</span>
+            </footer>
+          </section>
+        </header>
+
+        <nav class="screen-nav" aria-label="Publishing sections" role="tablist">
+          <button
+            class="screen-tab"
+            id="tab-studio"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="panel-studio"
+            data-screen="studio"
+          >
+            <span class="icon icon-file-output" aria-hidden="true"></span>
+            <span>Create</span>
+          </button>
+          <button
+            class="screen-tab"
+            id="tab-preview"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="panel-preview"
+            data-screen="preview"
+          >
+            <span class="icon icon-eye" aria-hidden="true"></span>
+            <span>Preview</span>
+          </button>
+          <button
+            class="screen-tab"
+            id="tab-templates"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="panel-templates"
+            data-screen="templates"
+          >
+            <span class="icon icon-library-big" aria-hidden="true"></span>
+            <span>Templates</span>
+          </button>
+          <button
+            class="screen-tab"
+            id="tab-activity"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="panel-activity"
+            data-screen="activity"
+          >
+            <span class="icon icon-history" aria-hidden="true"></span>
+            <span>History</span>
+          </button>
+        </nav>
+
+        <div class="workspace">
+          <section
+            class="workspace-panel"
+            id="panel-studio"
+            role="tabpanel"
+            aria-labelledby="tab-studio"
+            data-panel="studio"
+          >
+            <div class="workspace-heading">
+              <div>
+                <span class="workspace-kicker">Publishing studio</span>
+                <h1>Make this content travel.</h1>
+              </div>
+              <button class="icon-button" type="button" aria-label="Publishing settings" title="Publishing settings">
+                <span class="icon icon-settings-2" aria-hidden="true"></span>
+              </button>
+            </div>
+
+            <article class="page-source">
+              <span class="page-source__icon icon icon-file-text" aria-hidden="true"></span>
+              <span class="page-source__copy">
+                <strong>Q3 product release notes</strong>
+                <span>PRODUCT · v18 · 1,284 words</span>
+              </span>
+              <span class="page-source__state">
+                <span class="icon icon-circle-check" aria-hidden="true"></span>
+                Page connected
+              </span>
+            </article>
+
+            <div class="studio-flow">
+              <section class="studio-step" data-complete="true">
+                <span class="step-index icon icon-check" aria-label="Complete"></span>
+                <div class="step-content">
+                  <div class="step-heading">
+                    <h2>Choose scope</h2>
+                    <span id="scope-summary">This page</span>
+                  </div>
+                  <div class="choice-row" role="radiogroup" aria-label="Export scope">
+                    <button class="choice-button" type="button" role="radio" aria-checked="true" data-choice-group="scope" data-choice="This page">
+                      <span class="choice-button__title">This page</span>
+                      <span class="choice-button__detail">1 document</span>
+                    </button>
+                    <button class="choice-button" type="button" role="radio" aria-checked="false" data-choice-group="scope" data-choice="Page tree">
+                      <span class="choice-button__title">Page tree</span>
+                      <span class="choice-button__detail">Parent + children</span>
+                    </button>
+                    <button class="choice-button" type="button" role="radio" aria-checked="false" data-choice-group="scope" data-choice="Space">
+                      <span class="choice-button__title">Space</span>
+                      <span class="choice-button__detail">All pages</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="studio-step" data-complete="true">
+                <span class="step-index icon icon-check" aria-label="Complete"></span>
+                <div class="step-content">
+                  <div class="step-heading">
+                    <h2>Choose format</h2>
+                    <span id="format-summary">PDF</span>
+                  </div>
+                  <div class="choice-row choice-row--two" role="radiogroup" aria-label="Document format">
+                    <button class="choice-button" type="button" role="radio" aria-checked="true" data-choice-group="format" data-choice="PDF">
+                      <span class="choice-button__title">
+                        <span class="icon icon-file-text" aria-hidden="true"></span>
+                        PDF
+                      </span>
+                      <span class="choice-button__detail">Share-ready &amp; fixed</span>
+                    </button>
+                    <button class="choice-button" type="button" role="radio" aria-checked="false" data-choice-group="format" data-choice="Word">
+                      <span class="choice-button__title">
+                        <span class="icon icon-file-type-2" aria-hidden="true"></span>
+                        Word
+                      </span>
+                      <span class="choice-button__detail">Editable DOCX</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="studio-step">
+                <span class="step-index">03</span>
+                <div class="step-content">
+                  <div class="step-heading">
+                    <h2 id="design-step-title">Choose PDF design</h2>
+                    <span id="design-step-state">Optional</span>
+                  </div>
+                  <div class="format-panel" data-format-panel="PDF">
+                    <button class="design-select" type="button">
+                      <span class="design-select__swatch" aria-hidden="true"></span>
+                      <span class="design-select__copy">
+                        <strong>Editorial standard</strong>
+                        <span>Clean cover · running title · page numbers</span>
+                      </span>
+                      <span class="icon icon-chevron-right" aria-hidden="true"></span>
+                    </button>
+                    <details class="advanced-options">
+                      <summary>
+                        PDF settings
+                        <span class="icon icon-chevron-down" aria-hidden="true"></span>
+                      </summary>
+                      <div class="advanced-options__body">
+                        <div class="compact-field">
+                          <label for="page-size">Page size</label>
+                          <select id="page-size">
+                            <option>A4</option>
+                            <option>Letter</option>
+                          </select>
+                        </div>
+                        <div class="compact-field">
+                          <label for="image-quality">Images</label>
+                          <select id="image-quality">
+                            <option>Standard</option>
+                            <option>Original</option>
+                            <option>Print</option>
+                          </select>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                  <div class="format-panel" data-format-panel="Word" hidden>
+                    <div class="template-field">
+                      <label class="template-field__label" for="word-template">
+                        Word template
+                        <span class="required-badge">Required</span>
+                      </label>
+                      <select id="word-template" required aria-describedby="word-template-help">
+                        <option value="" selected>Select a Word template…</option>
+                        <option value="business-standard">Business standard</option>
+                        <option value="project-report">Project report</option>
+                      </select>
+                      <p class="template-field__help" id="word-template-help">
+                        Kiteweave checks template fields before creating the editable DOCX.
+                      </p>
+                      <button class="text-action" type="button" data-go-screen="templates">
+                        Manage Word templates
+                        <span class="icon icon-arrow-right" aria-hidden="true"></span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="studio-step">
+                <span class="step-index">04</span>
+                <div class="step-content">
+                  <div class="step-heading">
+                    <h2 id="review-step-title">Preview &amp; export</h2>
+                    <span>Browser-private</span>
+                  </div>
+                  <div class="format-panel" data-format-review="PDF">
+                    <div class="review-box">
+                      <div class="review-line">
+                        <span class="icon icon-shield-check" aria-hidden="true"></span>
+                        The PDF is generated locally. Content stays in this browser.
+                      </div>
+                      <div class="review-line">
+                        <span class="icon icon-eye" aria-hidden="true"></span>
+                        A page-by-page preview opens before download.
+                      </div>
+                      <button class="primary-action" id="pdf-export-button" type="button">
+                        <span>Preview PDF</span>
+                        <span class="icon icon-arrow-right" aria-hidden="true"></span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="format-panel" data-format-review="Word" hidden>
+                    <div class="review-box">
+                      <div class="review-line" id="word-template-status" data-tone="warning" role="status">
+                        <span class="icon icon-circle-alert" aria-hidden="true"></span>
+                        <span>Choose a Word template to continue.</span>
+                      </div>
+                      <div class="review-line">
+                        <span class="icon icon-shield-check" aria-hidden="true"></span>
+                        Word renders the final document. Kiteweave checks fields locally first.
+                      </div>
+                      <button class="primary-action" id="word-export-button" type="button" disabled>
+                        <span>Select a Word template</span>
+                        <span class="icon icon-arrow-right" aria-hidden="true"></span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section
+            class="workspace-panel"
+            id="panel-preview"
+            role="tabpanel"
+            aria-labelledby="tab-preview"
+            data-panel="preview"
+            hidden
+          >
+            <div class="empty-screen">
+              <span class="empty-screen__eyebrow">
+                <span class="icon icon-eye" aria-hidden="true"></span>
+                PDF preview
+              </span>
+              <h1>No PDF draft yet.</h1>
+              <p>Create a local PDF draft, then inspect every page here before downloading it.</p>
+              <button class="secondary-action" type="button" data-go-screen="studio" data-set-format="PDF">
+                Create a PDF preview
+                <span class="icon icon-arrow-right" aria-hidden="true"></span>
+              </button>
+            </div>
+          </section>
+
+          <section
+            class="workspace-panel"
+            id="panel-templates"
+            role="tabpanel"
+            aria-labelledby="tab-templates"
+            data-panel="templates"
+            hidden
+          >
+            <div class="empty-screen">
+              <span class="empty-screen__eyebrow">
+                <span class="icon icon-library-big" aria-hidden="true"></span>
+                Template library
+              </span>
+              <h1>No Word templates added.</h1>
+              <p>Add an approved DOCX template, or return to Create and choose an existing template.</p>
+              <button class="secondary-action" type="button" data-go-screen="studio" data-set-format="Word" data-focus-template="true">
+                Choose a Word template
+                <span class="icon icon-arrow-right" aria-hidden="true"></span>
+              </button>
+            </div>
+          </section>
+
+          <section
+            class="workspace-panel"
+            id="panel-activity"
+            role="tabpanel"
+            aria-labelledby="tab-activity"
+            data-panel="activity"
+            hidden
+          >
+            <div class="empty-screen">
+              <span class="empty-screen__eyebrow">
+                <span class="icon icon-history" aria-hidden="true"></span>
+                Export history
+              </span>
+              <h1>No exports yet.</h1>
+              <p>Completed, interrupted, and running exports will appear here with their next action.</p>
+              <button class="secondary-action" type="button" data-go-screen="studio">
+                Start an export
+                <span class="icon icon-arrow-right" aria-hidden="true"></span>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <footer class="app-footer">
+          <span class="private-note">
+            <span class="icon icon-lock-keyhole" aria-hidden="true"></span>
+            your-site.atlassian.net
+          </span>
+          <span>Publishing</span>
+        </footer>
+      </main>
+    </div>
+
+    <div class="prototype-toast" id="prototype-toast" role="status" aria-live="polite">
+      <span class="icon icon-sparkles" aria-hidden="true"></span>
+      <span id="prototype-toast-copy">Interactive design prototype</span>
+    </div>
+
+    <script>
+      (() => {
+        const switcher = document.querySelector("#product-switcher");
+        const menu = document.querySelector("#area-menu");
+        const menuItems = [...menu.querySelectorAll('[role="menuitem"]')];
+        const screenTabs = [...document.querySelectorAll("[data-screen]")];
+        const screenPanels = [...document.querySelectorAll("[data-panel]")];
+        const formatPanels = [...document.querySelectorAll("[data-format-panel]")];
+        const formatReviews = [...document.querySelectorAll("[data-format-review]")];
+        const wordTemplate = document.querySelector("#word-template");
+        const wordTemplateStatus = document.querySelector("#word-template-status");
+        const wordExportButton = document.querySelector("#word-export-button");
+        const toast = document.querySelector("#prototype-toast");
+        const toastCopy = document.querySelector("#prototype-toast-copy");
+        let toastTimer;
+
+        const focusFromList = (items, current, direction) => {
+          const index = items.indexOf(current);
+          const nextIndex =
+            direction === "first"
+              ? 0
+              : direction === "last"
+                ? items.length - 1
+                : (index + direction + items.length) % items.length;
+          const target = items[nextIndex];
+          items.forEach((item) => {
+            item.tabIndex = item === target ? 0 : -1;
+          });
+          target?.focus();
+        };
+
+        const setMenuOpen = (open, focusTarget = null) => {
+          switcher.setAttribute("aria-expanded", String(open));
+          menu.hidden = !open;
+          if (open && focusTarget) {
+            focusFromList(menuItems, menuItems[0], focusTarget);
+          }
+        };
+
+        const showToast = (message) => {
+          window.clearTimeout(toastTimer);
+          toastCopy.textContent = message;
+          toast.dataset.visible = "true";
+          toastTimer = window.setTimeout(() => {
+            toast.dataset.visible = "false";
+          }, 2400);
+        };
+
+        switcher.addEventListener("click", () => {
+          const opening = switcher.getAttribute("aria-expanded") !== "true";
+          setMenuOpen(opening, opening ? "first" : null);
+        });
+
+        switcher.addEventListener("keydown", (event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setMenuOpen(true, event.key === "ArrowDown" ? "first" : "last");
+          }
+        });
+
+        menu.addEventListener("keydown", (event) => {
+          const item = event.target.closest('[role="menuitem"]');
+          if (!item) return;
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            focusFromList(menuItems, item, event.key === "ArrowDown" ? 1 : -1);
+          } else if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            focusFromList(menuItems, item, event.key === "Home" ? "first" : "last");
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            setMenuOpen(false);
+            switcher.focus();
+          } else if (event.key === "Tab") {
+            setMenuOpen(false);
+          }
+        });
+
+        document.addEventListener("click", (event) => {
+          if (!menu.contains(event.target) && !switcher.contains(event.target)) {
+            setMenuOpen(false);
+          }
+        });
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape" && switcher.getAttribute("aria-expanded") === "true") {
+            setMenuOpen(false);
+            switcher.focus();
+          }
+        });
+
+        menuItems[0].addEventListener("click", () => {
+          setMenuOpen(false);
+          switcher.focus();
+        });
+
+        document.querySelectorAll("[data-planned-area]").forEach((button) => {
+          button.addEventListener("click", () => {
+            setMenuOpen(false);
+            showToast(`${button.dataset.plannedArea} is shown as a future product area.`);
+            switcher.focus();
+          });
+        });
+
+        const activateScreen = (tab, moveFocus = false) => {
+          const screen = tab.dataset.screen;
+          screenTabs.forEach((candidate) => {
+            const active = candidate === tab;
+            candidate.setAttribute("aria-selected", String(active));
+            candidate.tabIndex = active ? 0 : -1;
+          });
+          screenPanels.forEach((panel) => {
+            panel.hidden = panel.dataset.panel !== screen;
+          });
+          if (moveFocus) tab.focus();
+        };
+
+        screenTabs.forEach((tab) => {
+          tab.addEventListener("click", () => activateScreen(tab));
+          tab.addEventListener("keydown", (event) => {
+            const keyDirections = {
+              ArrowRight: 1,
+              ArrowLeft: -1,
+              Home: "first",
+              End: "last",
+            };
+            const direction = keyDirections[event.key];
+            if (direction === undefined) return;
+            event.preventDefault();
+            const index = screenTabs.indexOf(tab);
+            const nextIndex =
+              direction === "first"
+                ? 0
+                : direction === "last"
+                  ? screenTabs.length - 1
+                  : (index + direction + screenTabs.length) % screenTabs.length;
+            activateScreen(screenTabs[nextIndex], true);
+          });
+        });
+
+        const updateFormat = (format) => {
+          formatPanels.forEach((panel) => {
+            panel.hidden = panel.dataset.formatPanel !== format;
+          });
+          formatReviews.forEach((panel) => {
+            panel.hidden = panel.dataset.formatReview !== format;
+          });
+          document.querySelector("#design-step-title").textContent =
+            format === "PDF" ? "Choose PDF design" : "Choose Word template";
+          document.querySelector("#design-step-state").textContent =
+            format === "PDF" ? "Optional" : "Required";
+          document.querySelector("#review-step-title").textContent =
+            format === "PDF" ? "Preview & export" : "Check & export";
+        };
+
+        const selectChoice = (choice, moveFocus = false) => {
+          const group = choice.dataset.choiceGroup;
+          const choices = [...document.querySelectorAll(`[data-choice-group="${group}"]`)];
+          choices.forEach((candidate) => {
+            const checked = candidate === choice;
+            candidate.setAttribute("aria-checked", String(checked));
+            candidate.tabIndex = checked ? 0 : -1;
+          });
+          document.querySelector(`#${group}-summary`).textContent = choice.dataset.choice;
+          if (group === "format") updateFormat(choice.dataset.choice);
+          if (moveFocus) choice.focus();
+        };
+
+        document.querySelectorAll("[data-choice-group]").forEach((choice) => {
+          choice.addEventListener("click", () => selectChoice(choice));
+          choice.addEventListener("keydown", (event) => {
+            const directions = {
+              ArrowRight: 1,
+              ArrowDown: 1,
+              ArrowLeft: -1,
+              ArrowUp: -1,
+              Home: "first",
+              End: "last",
+            };
+            const direction = directions[event.key];
+            if (direction === undefined) return;
+            event.preventDefault();
+            const group = choice.dataset.choiceGroup;
+            const choices = [...document.querySelectorAll(`[data-choice-group="${group}"]`)];
+            const index = choices.indexOf(choice);
+            const nextIndex =
+              direction === "first"
+                ? 0
+                : direction === "last"
+                  ? choices.length - 1
+                  : (index + direction + choices.length) % choices.length;
+            selectChoice(choices[nextIndex], true);
+          });
+        });
+
+        wordTemplate.addEventListener("change", () => {
+          const selected = wordTemplate.options[wordTemplate.selectedIndex];
+          const hasTemplate = wordTemplate.value !== "";
+          wordExportButton.disabled = !hasTemplate;
+          wordExportButton.querySelector("span:first-child").textContent = hasTemplate
+            ? "Check Word template"
+            : "Select a Word template";
+          wordTemplateStatus.dataset.tone = hasTemplate ? "success" : "warning";
+          wordTemplateStatus.querySelector(".icon").className = hasTemplate
+            ? "icon icon-circle-check"
+            : "icon icon-circle-alert";
+          wordTemplateStatus.querySelector("span:last-child").textContent = hasTemplate
+            ? `${selected.text} selected. Ready for a local field check.`
+            : "Choose a Word template to continue.";
+        });
+
+        document.querySelectorAll("[data-go-screen]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const tab = screenTabs.find((candidate) => candidate.dataset.screen === button.dataset.goScreen);
+            if (!tab) return;
+            activateScreen(tab, true);
+            if (button.dataset.setFormat) {
+              const formatChoice = document.querySelector(
+                `[data-choice-group="format"][data-choice="${button.dataset.setFormat}"]`
+              );
+              selectChoice(formatChoice);
+            }
+            if (button.dataset.focusTemplate === "true") {
+              wordTemplate.focus();
+            }
+          });
+        });
+
+        document.querySelector("#pdf-export-button").addEventListener("click", () => {
+          showToast("Prototype only — the PDF preview was not generated.");
+        });
+
+        wordExportButton.addEventListener("click", () => {
+          showToast("Prototype only — the Word template was not checked.");
+        });
+
+        screenTabs.forEach((tab) => {
+          tab.tabIndex = tab.getAttribute("aria-selected") === "true" ? 0 : -1;
+        });
+        ["scope", "format"].forEach((group) => {
+          document.querySelectorAll(`[data-choice-group="${group}"]`).forEach((choice) => {
+            choice.tabIndex = choice.getAttribute("aria-checked") === "true" ? 0 : -1;
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "schema": "atlcli.verapdf-image-lock/1",
+  "repository": "verapdf/cli",
+  "tag": "v1.30.2",
+  "digest": "sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb",
+  "platform": {
+    "os": "linux",
+    "architecture": "amd64"
+  },
+  "version": "1.30.2",
+  "license": "GPL-3.0-or-later AND MPL-2.0-or-later",
+  "provenance": "https://github.com/veraPDF/veraPDF-library/releases/tag/v1.30.2"
+}

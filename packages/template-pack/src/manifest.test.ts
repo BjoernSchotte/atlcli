@@ -72,7 +72,7 @@ describe("validateManifest gate", () => {
           kind: "typst",
           api: "wiki.pdf-template/v1",
           entry: "template.typ",
-          compilerRange: ">=0.15 <0.16",
+          compilerRange: ">=0.14 <0.15",
         },
       },
       "compiler-range-mismatch"
@@ -86,10 +86,10 @@ describe("validateManifest gate", () => {
         kind: "typst",
         api: "wiki.pdf-template/v1",
         entry: "template.typ",
-        compilerRange: ">=0.14 <0.15",
+        compilerRange: ">=0.15.1 <0.16",
       },
     });
-    expect(m.engine.compilerRange).toBe(">=0.14 <0.15");
+    expect(m.engine.compilerRange).toBe(">=0.15.1 <0.16");
   });
 
   it("does not compiler-gate docx manifests", () => {
@@ -120,6 +120,175 @@ describe("validateManifest gate", () => {
     expect(m.settings?.cover.type).toBe("boolean");
     expectReason({ ...base(), settings: { x: { type: "wat" } } }, "shape-error");
   });
+
+  it("validates portable asset descriptors, references, and decorations without claiming PDF support", () => {
+    const sha256 = "a".repeat(64);
+    const manifest = validateManifest({
+      ...base(),
+      assetDescriptors: {
+        hero: {
+          path: "assets/hero.svg",
+          sha256,
+          mediaType: "image/svg+xml",
+          byteLength: 128,
+          dimensions: { width: 1200, height: 800, unit: "pixel" },
+        },
+      },
+      assets: {
+        "asset.pageBackground": {
+          descriptor: "hero",
+          writer: "future.engine.writer",
+          decorative: true,
+        },
+      },
+      decorations: [
+        {
+          kind: "image",
+          id: "future.decoration",
+          writer: "future.engine.writer",
+          scope: "odd",
+          layer: "page-background",
+          asset: "asset.pageBackground",
+          placement: {
+            relativeTo: "page",
+            fit: "cover",
+            x: "0mm",
+            y: "0mm",
+            width: "210mm",
+            height: "297mm",
+            rotation: -2,
+            crop: { left: 0.1, top: 0, right: 0.1, bottom: 0 },
+            clip: { kind: "rounded-rect", radius: "4mm" },
+          },
+          decorative: true,
+        },
+      ],
+      canonicalSource: { api: "wiki.pdf-canonical-typst", revision: "1" },
+    });
+    expect(manifest.assetDescriptors?.hero.sha256).toBe(sha256);
+    expect(manifest.assets?.["asset.pageBackground"]?.writer).toBe(
+      "future.engine.writer"
+    );
+    expect(manifest.decorations?.[0]?.scope).toBe("odd");
+    const decoration = manifest.decorations?.[0];
+    expect(decoration?.kind === "image" && decoration.placement.clip).toEqual({
+      kind: "rounded-rect",
+      radius: "4mm",
+    });
+  });
+
+  it("rejects asset shape, path, reference, alt, and placement-bound errors", () => {
+    const sha256 = "a".repeat(64);
+    const descriptor = {
+      path: "assets/hero.svg",
+      sha256,
+      mediaType: "image/svg+xml",
+      byteLength: 128,
+      dimensions: { width: 1200, height: 800, unit: "pixel" },
+    };
+    expectReason(
+      { ...base(), assetDescriptors: { hero: { ...descriptor, path: "../hero.svg" } } },
+      "shape-error"
+    );
+    expectReason(
+      { ...base(), assetDescriptors: { hero: { ...descriptor, sha256: "ABC" } } },
+      "shape-error"
+    );
+    expectReason(
+      {
+        ...base(),
+        assetDescriptors: { hero: descriptor },
+        assets: {
+          logo: {
+            descriptor: "missing",
+            writer: "writer.image",
+            decorative: true,
+          },
+        },
+      },
+      "shape-error"
+    );
+    expectReason(
+      {
+        ...base(),
+        assetDescriptors: { hero: descriptor },
+        assets: {
+          logo: {
+            descriptor: "hero",
+            writer: "writer.image",
+            decorative: false,
+          },
+        },
+      },
+      "shape-error"
+    );
+    expectReason(
+      {
+        ...base(),
+        assetDescriptors: { hero: descriptor },
+        assets: {
+          logo: {
+            descriptor: "hero",
+            writer: "writer.image",
+            decorative: true,
+          },
+        },
+        decorations: [
+          {
+            kind: "image",
+            id: "decoration",
+            writer: "writer.image",
+            scope: "all",
+            layer: "page-background",
+            asset: "logo",
+            placement: {
+              relativeTo: "page",
+              x: "0mm",
+              y: "0mm",
+              width: "210mm",
+              height: "297mm",
+              opacity: 2,
+            },
+            decorative: true,
+          },
+        ],
+      },
+      "shape-error"
+    );
+    expectReason(
+      {
+        ...base(),
+        assetDescriptors: { hero: descriptor },
+        assets: {
+          logo: {
+            descriptor: "hero",
+            writer: "writer.image",
+            decorative: true,
+          },
+        },
+        decorations: [
+          {
+            kind: "image",
+            id: "decoration",
+            writer: "writer.image",
+            scope: "all",
+            layer: "page-background",
+            asset: "logo",
+            placement: {
+              relativeTo: "page",
+              x: "0mm",
+              y: "0mm",
+              width: "20mm",
+              height: "20mm",
+              clip: { kind: "circle", radius: "4mm" },
+            },
+            decorative: true,
+          },
+        ],
+      },
+      "shape-error",
+    );
+  });
 });
 
 describe("satisfiesRange", () => {
@@ -139,6 +308,8 @@ describe("satisfiesRange", () => {
   });
 
   it("gates against the pinned version by default", () => {
-    expect(PINNED_TYPST_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(PINNED_TYPST_VERSION).toBe("0.15.1");
+    expect(satisfiesRange(PINNED_TYPST_VERSION, ">=0.15.1 <0.16")).toBe(true);
+    expect(satisfiesRange(PINNED_TYPST_VERSION, ">=0.14 <0.15")).toBe(false);
   });
 });

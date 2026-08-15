@@ -4,26 +4,19 @@
   "tasks": {
     "build": {
       "cache": true,
-      "dependsOn": ["^build"],
+      "dependsOn": [],
       "outputs": ["dist/**"],
       "inputs": [
-        "src/**",
-        "tests/**",
-        "scripts/**",
-        "index.html",
-        "vite.config.ts",
-        "playwright.config.ts",
-        "package.json",
-        "tsconfig.json",
-        "tsconfig.worker.json",
-        "tsconfig.tools.json",
-        "$TURBO_ROOT$/packages/confluence/src/**",
-        "$TURBO_ROOT$/packages/diagram/src/**",
-        "$TURBO_ROOT$/packages/docx/src/**",
-        "$TURBO_ROOT$/packages/pdf/src/**",
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/docx/fonts/**",
+        "$TURBO_ROOT$/packages/pdf/scripts/ensure-fonts.ts",
         "$TURBO_ROOT$/packages/pdf/.fonts/**",
         "$TURBO_ROOT$/packages/pdf/licenses/**",
-        "$TURBO_ROOT$/packages/pdf-compiler-browser/src/**",
+        "$TURBO_ROOT$/packages/pdf-compiler-browser/scripts/**",
+        "$TURBO_ROOT$/packages/pdf-compiler-browser/vendor/**",
+        "$TURBO_ROOT$/patches/**",
+        "$TURBO_ROOT$/scripts/clean-browser-artifacts.ts",
         "$TURBO_ROOT$/LICENSE"
       ]
     },
@@ -31,13 +24,16 @@
       "cache": true,
       "outputs": [],
       "inputs": [
-        "src/**",
-        "tests/**",
-        "scripts/**",
-        "vite.config.ts",
-        "playwright.config.ts",
-        "package.json",
-        "tsconfig*.json"
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/docx/fonts/**",
+        "$TURBO_ROOT$/packages/pdf/scripts/ensure-fonts.ts",
+        "$TURBO_ROOT$/packages/pdf/.fonts/**",
+        "$TURBO_ROOT$/packages/pdf/licenses/**",
+        "$TURBO_ROOT$/packages/pdf-compiler-browser/scripts/**",
+        "$TURBO_ROOT$/packages/pdf-compiler-browser/vendor/**",
+        "$TURBO_ROOT$/patches/**",
+        "$TURBO_ROOT$/LICENSE"
       ]
     },
     "check:output": {

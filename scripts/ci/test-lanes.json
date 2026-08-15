@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "baselineSha": "d3a5d82b5587670db666b82f4d19f9716bc42c71",
+  "conservativeDefaultSeconds": 5,
+  "files": [
+    {
+      "path": "scripts/api-report.test.ts",
+      "lane": "package-contract"
+    },
+    {
+      "path": "scripts/dist-hygiene.test.ts",
+      "lane": "package-contract"
+    },
+    {
+      "path": "apps/cli/src/commands/auth-test-isolation.test.ts",
+      "atomicGroup": "auth-isolation",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/cli/src/e2e/registry-isolation.test.ts",
+      "atomicGroup": "registry-isolation",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "packages/action-palette-react/src/render-performance.benchmark.test.tsx",
+      "atomicGroup": "action-palette-render-performance",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "packages/action-registry/src/search.benchmark.test.ts",
+      "atomicGroup": "action-registry-search-performance",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/browser-export-harness/tests/boundaries.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "apps/cli/src/commands/export-pdf-assets.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "apps/cli/src/commands/export-pdf-build-modes.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "apps/cli/src/commands/export-pdf-integration.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "apps/cli/src/commands/export-pdf.e2e.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["poppler", "typst-runtime"]
+    },
+    {
+      "path": "apps/cli/src/commands/export-report-parity.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "apps/cli/src/commands/export-report.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "apps/cli/src/commands/export-source-contract.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "apps/cli/src/commands/export-strict-severity.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "apps/extension/tests/pdf/compiler.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "poppler", "typst-runtime"]
+    },
+    {
+      "path": "packages/docx/src/emoji-font-coverage.libreoffice.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["poppler"]
+    },
+    {
+      "path": "packages/docx/src/header-libreoffice.smoke.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["poppler"]
+    },
+    {
+      "path": "packages/export-node/src/a5-example.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/export-node/src/pdf-env.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/callout-accessibility.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/chapter-running-head.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/compiler.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/docx-template-assets.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "poppler", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/docx-template-intake-chain.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "poppler", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/emoji-font-coverage.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/fonts-compile.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/label-injection.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/pdf-accessibility-claims.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/pdf-lang-catalog.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/pdf-output-options.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/pdf-output-standards.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/second-template.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/template-capabilities-v5.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "poppler", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/template-composition-v4-pipeline.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["poppler", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/template-composition-v4-renderer.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "poppler", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/template-composition-v4.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "poppler", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/template-migration-parity.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf-compiler-browser/src/vendor.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
+      "path": "packages/pdf/scripts/ensure-fonts.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts"]
+    },
+    {
+      "path": "packages/pdf/src/fonts.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts"]
+    },
+    {
+      "path": "scripts/adf-rendered-goldens.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["poppler"]
+    }
+  ]
+}

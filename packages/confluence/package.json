@@ -34,6 +34,11 @@
       "types": "./dist/index.browser.d.ts",
       "default": "./dist/index.browser.js"
     },
+    "./research": {
+      "development": "./src/research.ts",
+      "types": "./dist/research.d.ts",
+      "default": "./dist/research.js"
+    },
     "./node": {
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
@@ -52,7 +57,9 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
+    "@atlcli/change-set": "workspace:*",
     "@atlcli/core": "workspace:*",
+    "@atlcli/export-blocks": "workspace:*",
     "diff": "^8.0.2",
     "entities": "^6.0.0",
     "ignore": "^7.0.5",

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "type": "doc",
+  "content": [
+    {
+      "type": "heading",
+      "attrs": { "level": 2, "localId": "semantic-heading" },
+      "content": [{ "type": "text", "text": "Release notes" }]
+    },
+    {
+      "type": "paragraph",
+      "attrs": { "localId": "semantic-paragraph" },
+      "content": [
+        { "type": "text", "text": "Status: " },
+        { "type": "text", "text": "ready", "marks": [{ "type": "strong" }] }
+      ]
+    },
+    { "type": "rule" }
+  ]
+}

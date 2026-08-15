@@ -29,7 +29,7 @@ The landing screen for Confluence mode. Shows user's context at a glance.
 
 ```
 ┌─ Confluence ──────────────────────────────────────────────────────────────┐
-│  atlcli v2.0.0                            bjoern@mayflowergmbh.atlassian.net │
+│  atlcli v2.0.0                            user@example.invalid │
 ├───────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
 │  Recent Pages                                    Favorite Spaces          │
@@ -535,7 +535,7 @@ Detailed view of local sync state with conflict resolution.
 
 ```
 ┌─ Sync Status: ./my-docs ─────────────────────────────────────────────────────┐
-│  Space: DOCS | Last sync: 5 minutes ago | Profile: mayflowergmbh             │
+│  Space: DOCS | Last sync: 5 minutes ago | Profile: example-profile          │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  Overview                                                                    │

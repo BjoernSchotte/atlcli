@@ -1,0 +1,17 @@
+---
+import { createPlausibleAnalyticsCspV1, createPlausibleAnalyticsPrivacyDeclarationV1, createPlausibleAnalyticsRuntimeV1, normalizePlausibleAnalyticsConfigV1 } from "../analytics.js";
+
+interface Props {
+  endpoint: string;
+  siteDomain: string;
+  events?: readonly ("outbound-link" | "download" | "search-open")[];
+}
+
+const config = normalizePlausibleAnalyticsConfigV1(Astro.props);
+const runtime = createPlausibleAnalyticsRuntimeV1(config);
+const privacy = createPlausibleAnalyticsPrivacyDeclarationV1();
+---
+
+<meta name="atlcli:analytics-csp" content={createPlausibleAnalyticsCspV1(config)} />
+<meta name="atlcli:analytics-privacy" content={JSON.stringify(privacy)} />
+<script is:inline data-atlcli-analytics={config.provider}>{runtime}</script>

@@ -43,6 +43,32 @@ export interface ConfluenceContentPort {
         id: string;
         title: string;
     }[]>;
+    searchContent?(cql: string, opts: {
+        maximumResults: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchHits>;
+}
+
+// export: ConfluenceSearchHit
+export interface ConfluenceSearchHit {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+}
+
+// export: ConfluenceSearchHits
+export interface ConfluenceSearchHits {
+    hits: ConfluenceSearchHit[];
+    totalSize?: number;
 }
 
 // export: createRegistry
@@ -57,11 +83,12 @@ export interface DefaultRegistryDeps {
     htmlToExportBlocks: HtmlToExportBlocksDep;
     parsePageProperties: ParsePagePropertiesDep;
     extractMacroBody: ExtractMacroBodyDep;
+    normalizeChartMacro?: NormalizeChartMacroDep;
 }
 
 // export: ExportViewPort
 export interface ExportViewPort {
-    renderMacroHtml(pageId: string, macroId: string): Promise<string | undefined>;
+    renderMacroHtml(pageId: string, macroId: string, pageVersion?: number): Promise<string | undefined>;
 }
 
 // export: ExternalAssetFetcher
@@ -135,14 +162,16 @@ export interface MacroExportContext {
     exportView?: ExportViewPort;
     attachments?: AttachmentLookupPort;
     externalAssets?: ExternalAssetFetcher;
+    pageScope?: MacroPageScope;
     depth: number;
     visited: Set<string>;
     signal?: AbortSignal;
     budget?: MacroResolutionBudget;
     siteId?: string;
+    siteOrigin?: string;
     flags?: {
         nativeTocPresent?: boolean;
-        targetEngine?: "docx" | "pdf";
+        targetEngine?: "docx" | "pdf" | "web";
     };
     documentBlocks?: readonly ExportBlock[];
 }
@@ -154,15 +183,22 @@ export interface MacroInstance {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
 }
 
 // export: MacroInstanceId
 export type MacroInstanceId = string;
 
+// export: MacroPageScope
+export interface MacroPageScope {
+    chapterAnchorFor(pageId: string): string | undefined;
+}
+
 // export: MacroRenderer
 export interface MacroRenderer {
     readonly macros: readonly string[];
     readonly id: string;
+    readonly webRenderModel?: MacroWebRenderModelDescriptorV1;
     readonly requiresLivePort: boolean;
     render(m: MacroInstance, ctx: MacroExportContext): Promise<MacroRenderResult>;
 }
@@ -202,6 +238,31 @@ export interface MacroResolutionOptions {
     live?: boolean;
 }
 
+// export: MacroResolutionTraceV1
+export interface MacroResolutionTraceV1 {
+    readonly macroName: string;
+    readonly sourcePage?: UnknownBlock["sourcePage"];
+    readonly outcome: "rendered" | "fallback";
+    readonly rendererId?: string;
+    readonly rendererRequiresLivePort?: boolean;
+    readonly webRenderModel?: MacroWebRenderModelDescriptorV1;
+}
+
+// export: MacroWebRenderModelDescriptorV1
+export interface MacroWebRenderModelDescriptorV1 {
+    readonly kind: MacroWebRenderModelKindV1;
+    readonly dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
+
+// export: MacroWebRenderModelKindV1
+export type MacroWebRenderModelKindV1 = "toc" | "jira-data" | "diagram" | "chart" | "status" | "smart-card" | "unknown";
+
+// export: NormalizeChartMacroDep
+export type NormalizeChartMacroDep = (params: readonly MacroParameter[], body: readonly ExportBlock[], source: ChartSourceKindV1) => {
+    model?: ChartModelV1;
+    diagnostics: readonly ChartDiagnosticV1[];
+};
+
 // export: ParsePagePropertiesDep
 export type ParsePagePropertiesDep = (storage: string) => {
     id?: string;
@@ -230,12 +291,13 @@ export type PortErrorKind = "permission" | "not-found" | "rate-limited" | "netwo
 export declare function resolveMacroBlocks(input: StorageToBlocksResult, registry: MacroRendererRegistry, ctx: MacroExportContext, opts?: {
     live?: boolean;
     contextFor?: (page: UnknownBlock["sourcePage"]) => MacroExportContext;
-    targetEngine?: "docx" | "pdf";
+    targetEngine?: "docx" | "pdf" | "web";
+    onResolvedMacro?: (trace: MacroResolutionTraceV1) => void;
 }): Promise<StorageToBlocksResult>;
 
 // export: StorageToBlocksDep
 export type StorageToBlocksDep = (storage: string, opts?: {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     pageContext?: {
         id: string;
         version?: number;
@@ -258,8 +320,29 @@ export type UnknownBlock = Extract<ExportBlock, {
 // export: childrenRenderer
 export declare function childrenRenderer(): MacroRenderer;
 
+// export: columnNotes
+export declare function columnNotes(columns: string[], hits: ConfluenceSearchHit[], macroName: string): ExportNote[];
+
+// export: confluenceListCellText
+export declare function confluenceListCellText(hit: ConfluenceSearchHit, column: string): string | undefined;
+
+// export: confluenceListRenderer
+export declare function confluenceListRenderer(): MacroRenderer;
+
+// export: confluenceListTable
+export declare function confluenceListTable(columns: string[], hits: ConfluenceSearchHit[], anchorFor?: (id: string) => string | undefined): ExportBlock;
+
 // export: cqlFromParams
 export declare function cqlFromParams(m: MacroInstance): string | undefined;
+
+// export: datasourceSiteVerdict
+export declare function datasourceSiteVerdict(args: {
+    datasourceUrl?: string;
+    siteBaseUrl?: string;
+}): DatasourceSiteVerdict;
+
+// export: DatasourceSiteVerdict
+export type DatasourceSiteVerdict = "same-site" | "cross-site" | "unprovable";
 
 // export: diagramMacroRenderer
 export declare function diagramMacroRenderer(): MacroRenderer;
@@ -327,4 +410,22 @@ export declare function tocFromHeadings(blocks: ExportBlock[], opts?: {
 
 // export: tocRenderer
 export declare function tocRenderer(): MacroRenderer;
+
+// export: whiteboardRenderer
+export declare function whiteboardRenderer(): MacroRenderer;
+
+// export: WhiteboardTargetFailure
+export type WhiteboardTargetFailure = "missing-url" | "trusted-site-unavailable" | "malformed-url" | "unsupported-scheme" | "protocol-relative" | "unsafe-relative" | "credentials" | "fragment" | "cross-site" | "malformed-route" | "invalid-space-key" | "invalid-whiteboard-id";
+
+// export: whiteboardTargetVerdict
+export declare function whiteboardTargetVerdict(rawUrl: string | undefined, siteOrigin: string | undefined): WhiteboardTargetVerdict;
+
+// export: WhiteboardTargetVerdict
+export type WhiteboardTargetVerdict = {
+    safe: true;
+    url: string;
+} | {
+    safe: false;
+    reason: WhiteboardTargetFailure;
+};
 ```

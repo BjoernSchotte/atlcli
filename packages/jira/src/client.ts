@@ -1,3 +1,17 @@
+import { parseRetryAfterMs } from "./retry-after.js";
+import {
+  assertNotAuthRedirect,
+  assertSessionJsonOk,
+  isJiraSessionAuthError,
+  sessionAuthRedirectError,
+} from "./auth-redirect.js";
+import {
+  SessionRedirectBlockedError,
+  createAtlassianSessionRedirectPolicy,
+  fetchSessionBinaryFollowingRedirects,
+  isSessionRedirectBlockedError,
+  type SessionRedirectPolicy,
+} from "@atlcli/core/internal";
 import { Profile, getLogger, generateRequestId, redactSensitive, buildAuthHeader, buildTlsOptions, TlsOptions } from "@atlcli/core";
 import type {
   JiraProject,
@@ -30,6 +44,50 @@ import type {
 
 export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission, JiraAttachment, JiraRemoteLink, CreateRemoteLinkInput } from "./types.js";
 
+type RetryScheduler = (delayMs: number, signal?: AbortSignal) => Promise<void>;
+
+export type JiraTransportEvent =
+  | {
+      type: "attempt";
+      method: string;
+      attempt: number;
+    }
+  | {
+      type: "response";
+      method: string;
+      attempt: number;
+      status: number;
+      durationMs: number;
+      responseBytes: number;
+      retryAfterMs?: number;
+    }
+  | {
+      type: "error";
+      method: string;
+      attempt: number;
+      durationMs: number;
+    };
+
+export interface JiraClientOptions {
+  /**
+   * Synchronous budget guard. Unlike passive telemetry, this callback may
+   * throw to prevent an attempt or reject an oversized response before JSON is
+   * exposed to the caller.
+   */
+  guardTransport?: (event: JiraTransportEvent) => void;
+  /**
+   * Content-free transport telemetry for bounded hosts such as the extension
+   * research broker. Events deliberately omit URLs, query/body data, headers,
+   * response content, and error messages.
+   */
+  observeTransport?: (event: JiraTransportEvent) => void;
+}
+
+// Internal-only test seam. Keeping this off the constructor avoids widening the
+// public client API while allowing retry tests to observe requested backoffs
+// without waiting through production-duration timers.
+const retrySchedulerHook = Symbol.for("atlcli.jira.retry-scheduler.test-hook");
+
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
  *
@@ -43,8 +101,17 @@ export class JiraClient {
   private baseDelayMs = 1000;
   private isCloud: boolean;
   private tlsOptions: TlsOptions | undefined;
+  private guardTransport: ((event: JiraTransportEvent) => void) | undefined;
+  private observeTransport: ((event: JiraTransportEvent) => void) | undefined;
+  /**
+   * Where a SESSION-mode attachment download may be redirected to. Injected into
+   * `downloadAttachment`'s redirect follower rather than hardcoded there, so the
+   * allowlist stays one reviewable decision (`@atlcli/core/internal`) shared with
+   * `ConfluenceClient` instead of a per-client copy.
+   */
+  private sessionRedirectPolicy: SessionRedirectPolicy;
 
-  constructor(profile: Profile) {
+  constructor(profile: Profile, options: JiraClientOptions = {}) {
     this.baseUrl = profile.baseUrl.replace(/\/+$/, "");
     this.isCloud = this.baseUrl.includes(".atlassian.net");
 
@@ -57,6 +124,11 @@ export class JiraClient {
     this.useSession = profile.auth.type === "session";
     this.authHeader = this.useSession ? "" : buildAuthHeader(profile);
     this.tlsOptions = buildTlsOptions(profile);
+    this.guardTransport = options.guardTransport;
+    this.observeTransport = options.observeTransport;
+    this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
+      siteOrigin: this.baseUrl,
+    });
   }
 
   /** API version path - v3 for Cloud, v2 for Server */
@@ -69,9 +141,38 @@ export class JiraClient {
     return "/rest/agile/1.0";
   }
 
-  /** Sleep utility for rate limiting */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  /**
+   * Sleep utility for rate limiting / retry backoff.
+   *
+   * Abortable: when `signal` is provided and already/becomes aborted, the sleep
+   * rejects immediately with the signal's reason instead of blocking for the
+   * full delay — otherwise a cancel issued during a multi-second 429/5xx
+   * backoff would not be observed until the backoff elapsed. Mirrors
+   * `ConfluenceClient.sleep`.
+   */
+  private sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    const injectedScheduler = (
+      globalThis as typeof globalThis & Record<symbol, RetryScheduler | undefined>
+    )[retrySchedulerHook];
+    if (injectedScheduler) {
+      return injectedScheduler(ms, signal);
+    }
+
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signal.reason ?? new Error("Aborted"));
+        return;
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal?.reason ?? new Error("Aborted"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
   }
 
   /**
@@ -86,12 +187,39 @@ export class JiraClient {
     if (this.useSession) {
       const headers: Record<string, string> = { ...(result.headers as Record<string, string> | undefined) };
       delete headers.Authorization;
-      result = { ...result, headers, credentials: "include" };
+      // `redirect: "manual"` (session only), mirroring ConfluenceClient: an
+      // unauthenticated Atlassian API call answers with a 3xx to
+      // `id.atlassian.com`. Manual redirect stops fetch from FOLLOWING that
+      // bounce with cookies to a foreign origin and, more importantly, stops
+      // the resulting 200 text/html login page from being handed back as if it
+      // were issue JSON (spec 010 wave-2 finding B1). `assertNotAuthRedirect`
+      // in `request()` turns the un-followed redirect into a typed error.
+      //
+      // "Manual" means *we* decide, not "never follow". `request()` (JSON) never
+      // follows: a REST endpoint has no legitimate redirect. `downloadAttachment`
+      // DOES follow, but only to a destination the session redirect policy allows
+      // — Cloud answers `/rest/api/3/attachment/content/{id}` with a 302 to
+      // `api.media.atlassian.com` by design, so refusing every redirect made
+      // session-mode attachment downloads unreachable by construction (spec 010
+      // wave 2). The cross-origin hop is re-issued with `credentials: "omit"`, so
+      // the ambient session never travels with it. CLI (token) mode is untouched
+      // — this branch never runs for it, so it keeps fetch's default follow
+      // behaviour.
+      result = { ...result, headers, credentials: "include", redirect: "manual" };
     }
     if (this.tlsOptions) {
       result = { ...result, tls: this.tlsOptions } as RequestInit;
     }
     return result;
+  }
+
+  private emitTransport(event: JiraTransportEvent): void {
+    this.guardTransport?.(event);
+    try {
+      this.observeTransport?.(event);
+    } catch {
+      // Telemetry must never change request behaviour.
+    }
   }
 
   /**
@@ -104,6 +232,18 @@ export class JiraClient {
       query?: Record<string, string | number | boolean | undefined>;
       body?: unknown;
       apiBase?: string; // Override API base path
+      /**
+       * Omits request/response content from logs and thrown API errors. Research
+       * reads opt in because Jira descriptions and search excerpts are not
+       * safely redactable by field name.
+       */
+      logBody?: false | "meta-only" | true;
+      /**
+       * Cancels the in-flight request AND any pending retry backoff. Public
+       * methods that accept a signal forward it here; any other method can opt
+       * in with a one-line change.
+       */
+      signal?: AbortSignal;
     } = {}
   ): Promise<T> {
     const apiBase = options.apiBase ?? this.apiPath;
@@ -120,6 +260,9 @@ export class JiraClient {
     const requestId = generateRequestId();
     const method = options.method ?? "GET";
     const startTime = Date.now();
+    const suppressBody = options.logBody === false || options.logBody === "meta-only";
+    const responseBytes = (text: string): number =>
+      new TextEncoder().encode(text).byteLength;
 
     // Log request
     logger.api("request", {
@@ -132,31 +275,67 @@ export class JiraClient {
         Accept: "application/json",
         "Content-Type": "application/json",
       }),
-      body: options.body ? redactSensitive(options.body) : undefined,
+      body: suppressBody
+        ? options.body
+          ? "[request body omitted: logBody policy]"
+          : undefined
+        : options.body
+          ? redactSensitive(options.body)
+          : undefined,
     });
 
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), this.applyFetchOptions({
-        method,
-        headers: {
-          Authorization: this.authHeader,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined,
-      }));
+      options.signal?.throwIfAborted();
+      this.emitTransport({ type: "attempt", method, attempt });
+      const attemptStartedAt = Date.now();
+      let res: Response;
+      try {
+        res = await fetch(
+          url.toString(),
+          this.applyFetchOptions({
+            method,
+            headers: {
+              Authorization: this.authHeader,
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: options.body ? JSON.stringify(options.body) : undefined,
+            signal: options.signal,
+          })
+        );
+      } catch (error) {
+        this.emitTransport({
+          type: "error",
+          method,
+          attempt,
+          durationMs: Date.now() - attemptStartedAt,
+        });
+        throw error;
+      }
+
+      // Session auth: a redirect means the session is missing — classify it
+      // rather than follow it to a foreign origin with cookies (finding B1).
+      assertNotAuthRedirect(res, this.useSession);
 
       // Handle rate limiting (429)
       if (res.status === 429) {
-        const retryAfter = res.headers.get("Retry-After");
-        const delayMs = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : this.baseDelayMs * Math.pow(2, attempt);
+        const delayMs =
+          parseRetryAfterMs(res.headers.get("Retry-After")) ??
+          this.baseDelayMs * Math.pow(2, attempt);
+        this.emitTransport({
+          type: "response",
+          method,
+          attempt,
+          status: res.status,
+          durationMs: Date.now() - attemptStartedAt,
+          responseBytes: 0,
+          retryAfterMs: delayMs,
+        });
 
         if (attempt < this.maxRetries) {
-          await this.sleep(delayMs);
+          await this.sleep(delayMs, options.signal);
           continue;
         }
         const error = new Error(`Rate limited by Jira API after ${this.maxRetries} retries`);
@@ -172,6 +351,14 @@ export class JiraClient {
 
       // Handle 204 No Content
       if (res.status === 204) {
+        this.emitTransport({
+          type: "response",
+          method,
+          attempt,
+          status: res.status,
+          durationMs: Date.now() - attemptStartedAt,
+          responseBytes: 0,
+        });
         logger.api("response", {
           requestId,
           status: res.status,
@@ -182,41 +369,71 @@ export class JiraClient {
       }
 
       const text = await res.text();
+      this.emitTransport({
+        type: "response",
+        method,
+        attempt,
+        status: res.status,
+        durationMs: Date.now() - attemptStartedAt,
+        responseBytes: responseBytes(text),
+      });
       let data: unknown = text;
+      let isJson = false;
       if (text) {
         try {
           data = JSON.parse(text);
+          isJson = true;
         } catch {
           data = text;
         }
       }
 
       if (!res.ok) {
-        const message = typeof data === "string" ? data : JSON.stringify(data);
+        const message = suppressBody
+          ? "[response body omitted: logBody policy]"
+          : typeof data === "string"
+            ? data
+            : JSON.stringify(data);
         lastError = new Error(`Jira API error (${res.status}): ${message}`);
 
         // Retry on server errors (5xx)
         if (res.status >= 500 && attempt < this.maxRetries) {
-          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
+          await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
           continue;
         }
         logger.api("response", {
           requestId,
           status: res.status,
           statusText: res.statusText,
-          body: redactSensitive(data),
+          body: suppressBody
+            ? {
+                byteLength: responseBytes(text),
+                contentType: res.headers.get("content-type") ?? undefined,
+                requestId,
+              }
+            : redactSensitive(data),
           durationMs: Date.now() - startTime,
           error: lastError.message,
         });
         throw lastError;
       }
 
+      // Session auth: reject a 2xx that is a login page / error envelope, not a
+      // real API payload (finding B1). No-op for CLI/token auth.
+      assertSessionJsonOk(text, data, isJson, this.useSession);
+
       // Log successful response
       logger.api("response", {
         requestId,
         status: res.status,
         statusText: res.statusText,
-        body: redactSensitive(data),
+        body: suppressBody
+          ? {
+              byteLength: responseBytes(text),
+              contentType: res.headers.get("content-type") ?? undefined,
+              requestId,
+            }
+          : redactSensitive(data),
         durationMs: Date.now() - startTime,
       });
 
@@ -251,6 +468,7 @@ export class JiraClient {
     query?: string;
     typeKey?: string;
     expand?: string;
+    signal?: AbortSignal;
   } = {}): Promise<{ values: JiraProject[]; total: number }> {
     const data = await this.request<{
       values: JiraProject[];
@@ -266,6 +484,8 @@ export class JiraClient {
         typeKey: options.typeKey,
         expand: options.expand,
       },
+      signal: options.signal,
+      logBody: "meta-only",
     });
 
     return {
@@ -279,9 +499,14 @@ export class JiraClient {
    *
    * GET /rest/api/3/project/{projectIdOrKey}
    */
-  async getProject(keyOrId: string): Promise<JiraProject> {
+  async getProject(
+    keyOrId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<JiraProject> {
     const data = await this.request<JiraProject>(`/project/${keyOrId}`, {
       query: { expand: "description,lead,issueTypes" },
+      signal: options.signal,
+      logBody: "meta-only",
     });
     return this.parseProject(data);
   }
@@ -334,6 +559,7 @@ export class JiraClient {
       style: data.style,
       avatarUrls: data.avatarUrls,
       simplified: data.simplified,
+      ...(typeof data.archived === "boolean" ? { archived: data.archived } : {}),
     };
   }
 
@@ -727,6 +953,8 @@ export class JiraClient {
     options: {
       fields?: string[];
       expand?: string;
+      /** Cancels the in-flight request (spec 010 wave 2). */
+      signal?: AbortSignal;
     } = {}
   ): Promise<JiraIssue> {
     const query: Record<string, string | undefined> = {};
@@ -737,7 +965,11 @@ export class JiraClient {
       query.expand = options.expand;
     }
 
-    return this.request<JiraIssue>(`/issue/${keyOrId}`, { query });
+    return this.request<JiraIssue>(`/issue/${keyOrId}`, {
+      query,
+      signal: options.signal,
+      logBody: "meta-only",
+    });
   }
 
   /**
@@ -859,6 +1091,8 @@ export class JiraClient {
       fields?: string[];
       expand?: string;
       nextPageToken?: string;
+      /** Cancels the in-flight request (spec 010 wave 2). */
+      signal?: AbortSignal;
     } = {}
   ): Promise<JiraSearchResults> {
     // Use the new /search/jql endpoint as /search is deprecated (410)
@@ -880,6 +1114,8 @@ export class JiraClient {
         expand: options.expand,
         nextPageToken: options.nextPageToken,
       },
+      signal: options.signal,
+      logBody: "meta-only",
     });
 
     return {
@@ -900,6 +1136,8 @@ export class JiraClient {
     options: {
       maxResults?: number;
       fields?: string;
+      /** Cancels the in-flight request (spec 010 wave 2). */
+      signal?: AbortSignal;
     } = {}
   ): Promise<JiraSearchResults> {
     const result = await this.request<{
@@ -912,6 +1150,7 @@ export class JiraClient {
         maxResults: options.maxResults ?? 50,
         fields: options.fields ?? "*navigable",
       },
+      signal: options.signal,
     });
 
     return {
@@ -1165,8 +1404,14 @@ export class JiraClient {
    *
    * GET /rest/api/3/issue/{issueIdOrKey}/remotelink
    */
-  async getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]> {
-    return this.request<JiraRemoteLink[]>(`/issue/${keyOrId}/remotelink`);
+  async getRemoteLinks(
+    keyOrId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<JiraRemoteLink[]> {
+    return this.request<JiraRemoteLink[]>(`/issue/${keyOrId}/remotelink`, {
+      signal: options.signal,
+      logBody: "meta-only",
+    });
   }
 
   /**
@@ -1553,11 +1798,48 @@ export class JiraClient {
   }
 
   /**
+   * Get a single attachment's metadata by id.
+   *
+   * GET /rest/api/3/attachment/{id}
+   *
+   * Downloading by id needs this: the id alone yields no filename to save the
+   * bytes under, and `content` is the only URL guaranteed to serve them.
+   */
+  async getAttachment(id: string): Promise<JiraAttachment> {
+    return this.request<JiraAttachment>(`/attachment/${id}`);
+  }
+
+  /**
+   * Delete an attachment by id.
+   *
+   * DELETE /rest/api/3/attachment/{id}
+   */
+  async deleteAttachment(id: string): Promise<void> {
+    await this.request(`/attachment/${id}`, { method: "DELETE" });
+  }
+
+  /**
    * Download an attachment's binary content.
    *
    * Fetches the content URL directly (not through API path).
+   *
+   * `signal` cancels the in-flight download and any pending retry backoff. The
+   * abort is re-thrown rather than swallowed by the retry loop below: without
+   * that check a cancel would be treated as a transient failure and retried
+   * `maxRetries` times, which is the opposite of cancelling.
+   *
+   * Session mode follows a redirect to an ALLOWLISTED destination (spec 010
+   * wave 2): `/rest/api/3/attachment/content/{id}` 302s to the media CDN, so the
+   * previous blanket "a redirect means the session expired" rule made this
+   * method unusable for session profiles. Classification is by destination now —
+   * a login bounce still raises the typed auth error (there are no attachment
+   * bytes at a login page), a media/site hop is followed with the session
+   * credential stripped, and anything else is refused.
    */
-  async downloadAttachment(contentUrl: string): Promise<Buffer> {
+  async downloadAttachment(
+    contentUrl: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<Buffer> {
     const logger = getLogger();
     const requestId = generateRequestId();
     const startTime = Date.now();
@@ -1572,18 +1854,35 @@ export class JiraClient {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        const res = await fetch(contentUrl, this.applyFetchOptions({
+        options.signal?.throwIfAborted();
+        const init = this.applyFetchOptions({
           method: "GET",
           headers: {
             Authorization: this.authHeader,
           },
-        }));
+          signal: options.signal,
+        });
+        // Token mode is untouched: no `redirect: "manual"` was set for it, so
+        // fetch keeps following redirects exactly as before.
+        const res = this.useSession
+          ? await fetchSessionBinaryFollowingRedirects(
+              contentUrl,
+              init,
+              this.sessionRedirectPolicy,
+              {
+                loginRedirectError: (status) => sessionAuthRedirectError(status),
+                blockedRedirectError: (target, reason) =>
+                  new SessionRedirectBlockedError("Jira attachment download", target, reason),
+              }
+            )
+          : await fetch(contentUrl, init);
 
         if (res.status === 429) {
-          const retryAfter = res.headers.get("Retry-After");
-          const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : this.baseDelayMs * Math.pow(2, attempt);
+          const delay =
+            parseRetryAfterMs(res.headers.get("Retry-After")) ??
+            this.baseDelayMs * Math.pow(2, attempt);
           logger.api("rate-limited", { requestId, retryAfter: delay });
-          await this.sleep(delay);
+          await this.sleep(delay, options.signal);
           continue;
         }
 
@@ -1604,10 +1903,17 @@ export class JiraClient {
 
         return buffer;
       } catch (err) {
+        // A cancel is not a transient failure: surface it instead of retrying.
+        if (options.signal?.aborted) throw err;
+        // Neither is a session expiry or a refused redirect destination: both are
+        // verdicts about WHERE the bytes are, so retrying re-issues a request
+        // that is guaranteed to end the same way — and, for an expiry, delays the
+        // extension's session latch by `maxRetries` doomed round trips.
+        if (isJiraSessionAuthError(err) || isSessionRedirectBlockedError(err)) throw err;
         lastError = err instanceof Error ? err : new Error(String(err));
         if (attempt < this.maxRetries - 1) {
           const delay = this.baseDelayMs * Math.pow(2, attempt);
-          await this.sleep(delay);
+          await this.sleep(delay, options.signal);
         }
       }
     }
@@ -1657,8 +1963,9 @@ export class JiraClient {
         }));
 
         if (res.status === 429) {
-          const retryAfter = res.headers.get("Retry-After");
-          const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : this.baseDelayMs * Math.pow(2, attempt);
+          const delay =
+            parseRetryAfterMs(res.headers.get("Retry-After")) ??
+            this.baseDelayMs * Math.pow(2, attempt);
           logger.api("rate-limited", { requestId, retryAfter: delay });
           await this.sleep(delay);
           continue;

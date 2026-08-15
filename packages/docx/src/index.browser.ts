@@ -28,13 +28,35 @@ export type {
 } from "./env.js";
 
 // --- Lower-level entry + report/input model (export.ts) ---
-export { exportDocx, DocxRenderError } from "./export.js";
-export type { ExportInput, ExportReport, ExportResult, ExportTimings } from "./export.js";
+export {
+  exportDocx,
+  prepareDocxExport,
+  renderPreparedDocxExport,
+  renderPreparedDocxExportStream,
+  DocxRenderError,
+} from "./export.js";
+export type {
+  ExportInput,
+  ExportReport,
+  ExportResult,
+  StreamedDocxExportResult,
+  ExportTimings,
+  PreparedDocxMediaPartV1,
+  PreparedDocxExportV1,
+  PreparedDocxRenderStateV1,
+  RenderPreparedDocxExportInput,
+} from "./export.js";
+export { prepareDocxExportRuntime } from "./runtime-preparation.js";
+export type {
+  DocxExportRuntimePreparation,
+  PrepareDocxExportRuntimeOptions,
+} from "./runtime-preparation.js";
 
 // --- Types transitively required by the seams above (closure-enforced) but
 // whose implementation modules stay behind ./scan and ./internal. ---
 export type {
   CurrentUser,
+  IncludePageDetails,
   IncludeLookupOutcome,
   PageOwner,
   ResolveDeps,

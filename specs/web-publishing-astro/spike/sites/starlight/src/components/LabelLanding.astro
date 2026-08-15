@@ -1,0 +1,49 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import type { CollectionEntry } from "astro:content";
+import { publicationRoutePath } from "@atlcli/web-publish-astro-spike";
+
+interface Props {
+  entries: readonly CollectionEntry<"publicationPages">[];
+  label: string;
+  navigation: readonly { label: string; link: string }[];
+}
+
+const { entries, label, navigation } = Astro.props;
+const sidebar = [{ label: "Publication", items: navigation.map((item) => ({ ...item })) }];
+const locale = entries[0]?.data.locale ?? "en";
+const publicationRoot = publicationRoutePath({ locale, route: "/" });
+const base = import.meta.env.BASE_URL.replace(/\/$/u, "");
+const withBase = (path: string) => `${base}${path}`;
+---
+
+<StarlightPage
+  frontmatter={{
+    title: `Label: ${label}`,
+    description: `Publication pages labelled ${label}.`,
+    editUrl: false,
+    pagefind: true,
+  }}
+  headings={[]}
+  sidebar={sidebar}
+  lang={entries[0]?.data.locale ?? "en"}
+  dir={entries[0]?.data.direction ?? "ltr"}
+>
+  <article data-page-title={`Label: ${label}`} data-pagefind-meta="title[data-page-title]">
+    <nav aria-label="Breadcrumb" data-publication-breadcrumb data-pagefind-ignore>
+      <ol>
+        <li><a href={`${withBase(publicationRoot)}/`}>Publication</a></li>
+        <li><span aria-current="page">{label}</span></li>
+      </ol>
+    </nav>
+    <p>{entries.length} {entries.length === 1 ? "page" : "pages"} carry this label.</p>
+    <ul>
+      {entries.map((entry) => (
+        <li>
+          <a href={`${withBase(publicationRoutePath(entry.data))}/`}>{entry.data.title}</a>
+          <p>{entry.data.description}</p>
+        </li>
+      ))}
+    </ul>
+  </article>
+</StarlightPage>

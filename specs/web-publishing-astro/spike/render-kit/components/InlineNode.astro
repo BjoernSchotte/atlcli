@@ -1,0 +1,67 @@
+---
+import { safePublicHref } from "../contract.mjs";
+
+const { node } = Astro.props;
+const type = node && typeof node === "object" && typeof node.type === "string"
+  ? node.type
+  : "invalid";
+const marks = type === "text" && Array.isArray(node.marks)
+  ? node.marks.filter((mark) => typeof mark === "string")
+  : [];
+const linkHref = type === "link" ? safePublicHref(node.target?.href ?? node.target?.url) : undefined;
+const cardHref = type === "smartCard" ? safePublicHref(node.card?.url) : undefined;
+const supportedInlineTypes = new Set([
+  "text", "link", "mention", "date", "status", "smartCard", "media",
+  "placeholder", "lineBreak", "invalid",
+]);
+---
+
+{type === "text" && (
+  <span
+    data-atlcli-inline="text"
+    data-marks={marks.join(" ") || undefined}
+    class:list={{
+      "atlcli-bold": marks.includes("bold"),
+      "atlcli-italic": marks.includes("italic"),
+      "atlcli-code": marks.includes("code"),
+      "atlcli-strike": marks.includes("strike"),
+      "atlcli-underline": marks.includes("underline"),
+    }}
+  >{typeof node.text === "string" ? node.text : ""}</span>
+)}
+{type === "link" && linkHref && (
+  <a href={linkHref} data-atlcli-inline="link">
+    {Array.isArray(node.content) && node.content.map((child) => <Astro.self node={child} />)}
+  </a>
+)}
+{type === "link" && !linkHref && (
+  <span data-atlcli-inline="unsafe-link">
+    {Array.isArray(node.content) && node.content.map((child) => <Astro.self node={child} />)}
+  </span>
+)}
+{type === "mention" && (
+  <span data-atlcli-inline="mention">@{typeof node.displayName === "string" && node.displayName.trim()
+    ? node.displayName
+    : node.userType === "APP" ? "Unknown app" : "Unknown user"}</span>
+)}
+{type === "date" && <time data-atlcli-inline="date">{String(node.timestamp ?? "")}</time>}
+{type === "status" && <span data-atlcli-inline="status">{String(node.text ?? node.color ?? "")}</span>}
+{type === "smartCard" && cardHref && <a href={cardHref}>{String(node.card?.title ?? node.card?.url ?? "Smart link")}</a>}
+{type === "smartCard" && !cardHref && <span>{String(node.card?.title ?? "Smart link unavailable")}</span>}
+{type === "media" && <span data-atlcli-inline="media">{String(node.alt ?? node.media?.filename ?? "Media")}</span>}
+{type === "placeholder" && (
+  <span data-atlcli-inline="placeholder">{String(node.text ?? "Template placeholder")}</span>
+)}
+{type === "lineBreak" && <br />}
+{type === "invalid" && <span data-atlcli-inline="invalid">Unsupported inline content</span>}
+{!supportedInlineTypes.has(type) && (
+  <span data-atlcli-inline="unknown">Unsupported inline content: {type}</span>
+)}
+
+<style>
+  .atlcli-bold { font-weight: 700; }
+  .atlcli-italic { font-style: italic; }
+  .atlcli-code { font-family: ui-monospace, monospace; }
+  .atlcli-strike { text-decoration: line-through; }
+  .atlcli-underline { text-decoration: underline; }
+</style>

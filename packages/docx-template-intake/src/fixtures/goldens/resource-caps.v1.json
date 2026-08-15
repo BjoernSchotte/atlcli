@@ -1,0 +1,177 @@
+{
+  "aggregateZipBudgets": {
+    "maxEntries": 2048,
+    "maxSingleEntryUncompressedBytes": 67108864,
+    "maxUncompressedBytes": 134217728,
+    "source": "@atlcli/docx DOCX_ARCHIVE_BUDGET",
+    "status": "unchanged"
+  },
+  "caps": [
+    {
+      "boundaryPlan": {
+        "limit": 2097152,
+        "limitMinusOne": 2097151,
+        "limitPlusOne": 2097153
+      },
+      "limit": 2097152,
+      "measuredMaximum": 438131,
+      "name": "maxXmlPartBytes",
+      "unit": "bytes"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 2097152,
+        "limitMinusOne": 2097151,
+        "limitPlusOne": 2097153
+      },
+      "limit": 2097152,
+      "measuredMaximum": 438131,
+      "name": "maxXmlPartCharacters",
+      "unit": "characters"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 40000,
+        "limitMinusOne": 39999,
+        "limitPlusOne": 40001
+      },
+      "limit": 40000,
+      "measuredMaximum": 9200,
+      "name": "maxXmlElementsPerPart",
+      "unit": "elements"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 64,
+        "limitMinusOne": 63,
+        "limitPlusOne": 65
+      },
+      "limit": 64,
+      "measuredMaximum": 13,
+      "name": "maxXmlDepth",
+      "unit": "levels"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 60000,
+        "limitMinusOne": 59999,
+        "limitPlusOne": 60001
+      },
+      "limit": 60000,
+      "measuredMaximum": 14031,
+      "name": "maxXmlAttributesPerPart",
+      "unit": "attributes"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 512,
+        "limitMinusOne": 511,
+        "limitPlusOne": 513
+      },
+      "limit": 512,
+      "measuredMaximum": 92,
+      "name": "maxXmlAttributeCharacters",
+      "unit": "characters"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 16777216,
+        "limitMinusOne": 16777215,
+        "limitPlusOne": 16777217
+      },
+      "limit": 16777216,
+      "measuredMaximum": 460800,
+      "name": "maxRasterPixels",
+      "unit": "pixels"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 8192,
+        "limitMinusOne": 8191,
+        "limitPlusOne": 8193
+      },
+      "limit": 8192,
+      "measuredMaximum": 1280,
+      "name": "maxRasterDimension",
+      "unit": "pixels"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 1048576,
+        "limitMinusOne": 1048575,
+        "limitPlusOne": 1048577
+      },
+      "limit": 1048576,
+      "measuredMaximum": 232,
+      "name": "maxSvgBytes",
+      "unit": "bytes"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 10000,
+        "limitMinusOne": 9999,
+        "limitPlusOne": 10001
+      },
+      "limit": 10000,
+      "measuredMaximum": 4,
+      "name": "maxSvgElements",
+      "unit": "elements"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 128,
+        "limitMinusOne": 127,
+        "limitPlusOne": 129
+      },
+      "limit": 128,
+      "measuredMaximum": 2,
+      "name": "maxSvgDepth",
+      "unit": "levels"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 50000,
+        "limitMinusOne": 49999,
+        "limitPlusOne": 50001
+      },
+      "limit": 50000,
+      "measuredMaximum": 11,
+      "name": "maxSvgAttributes",
+      "unit": "attributes"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 524288,
+        "limitMinusOne": 524287,
+        "limitPlusOne": 524289
+      },
+      "limit": 524288,
+      "measuredMaximum": 38,
+      "name": "maxSvgPathDataBytes",
+      "unit": "bytes"
+    },
+    {
+      "boundaryPlan": {
+        "limit": 64,
+        "limitMinusOne": 63,
+        "limitPlusOne": 65
+      },
+      "limit": 64,
+      "measuredMaximum": 0,
+      "name": "maxSvgFilters",
+      "unit": "filters"
+    }
+  ],
+  "parser": {
+    "dependency": "saxes",
+    "failClosedOn": [
+      "doctype",
+      "entity",
+      "warning",
+      "well-formedness"
+    ],
+    "mode": "streaming-xmlns",
+    "version": "6.0.0"
+  },
+  "schema": "atlcli.docx-template-intake-resource-caps/1"
+}

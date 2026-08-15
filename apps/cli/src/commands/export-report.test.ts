@@ -14,6 +14,7 @@ import {
   type PdfCompilePort,
   type PdfCompilerDiagnostic,
   type PdfExportMetadata,
+  type PdfBytesHandle,
   type PdfOutputSink,
 } from "@atlcli/pdf";
 import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
@@ -45,8 +46,9 @@ const METADATA: PdfExportMetadata = {
 
 class MemorySink implements PdfOutputSink {
   bytes: Uint8Array | null = null;
-  async emit(_name: string, bytes: Uint8Array): Promise<void> {
-    this.bytes = bytes;
+  // `bytes` is a PdfBytesHandle since spec 010 T5.6; assertions want the array.
+  async emit(_name: string, bytes: PdfBytesHandle): Promise<void> {
+    this.bytes = await bytes.asUint8Array();
   }
 }
 
@@ -139,12 +141,24 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
     // PDF-shaped success report.
     const pdfReport = buildReport({
       format: "pdf",
+      outputPolicy: { schema: "atlcli.pdf-output-policy/1", standards: ["ua-1"] },
+      outputStandardEvidence: {
+        schema: "atlcli.pdf-output-standard-evidence/1",
+        requestedStandard: "ua-1",
+        basePdfVersion: "1.7",
+        pdfua: { part: "1" },
+        hasDocumentIdentifier: true,
+        tagged: true,
+        hasLang: true,
+        embeddedFontFiles: 1,
+      },
       sourcePages: [{ id: "1", title: "P", notes: [] }],
       outputDetails: [{ output: "/tmp/x.pdf", pageCount: 2, embeddedImages: 1, renderedDiagrams: 0, skippedAssets: 0 }],
       issues: [{ code: "c", severity: "warning", phase: "prepare", retryable: false }],
       strict: false,
     });
     expect(validate(pdfReport) ? [] : validate.errors).toEqual([]);
+    expect(pdfReport.outputStandardEvidence?.requestedStandard).toBe("ua-1");
 
     // DOCX-shaped tree report carrying the 002 fields WITHIN the unified schema.
     const docxReport = buildReport({
@@ -167,9 +181,33 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
     expect(docxReport.notesByCode).toEqual({ "label-filtered": 1 });
     expect(docxReport.outputs).toEqual(["/tmp/tree.docx"]);
 
+    // Removing an engine must not retroactively invalidate archived documents
+    // under the unchanged, additive-only /1 schema. Current producer types stay
+    // narrowed to "ts"; this fixture deliberately models historical JSON.
+    const historicalPythonReport = { ...docxReport, engine: "python" };
+    expect(
+      validate(historicalPythonReport) ? [] : validate.errors,
+      "atlcli.export-report/1 must keep accepting historical Python reports",
+    ).toEqual([]);
+
+    // An `info`-severity issue (an engine note with level "info") is part of the
+    // /1 contract too — the schema's severity enum must accept it.
+    const withInfo = buildReport({
+      format: "docx",
+      engine: "ts",
+      sourcePages: [{ id: "1", title: "Root", notes: [noteToIssue({ level: "info", code: "perf-timing", message: "Timing: 1 ms total" }, "prepare", "1")] }],
+      outputDetails: [{ output: "/tmp/i.docx", embeddedImages: 0, renderedDiagrams: 0, skippedAssets: 0 }],
+      issues: [noteToIssue({ level: "info", code: "perf-timing", message: "Timing: 1 ms total" }, "prepare")],
+      strict: true,
+    });
+    expect(validate(withInfo) ? [] : validate.errors).toEqual([]);
+    expect(withInfo.issues[0]!.severity).toBe("info");
+    expect(withInfo.exitCode).toBe(EXPORT_EXIT.SUCCESS);
+
     // ajv actually REJECTS malformed documents (proves this is a real check).
     expect(validate({ ...pdfReport, extraneous: true })).toBe(false);
     expect(validate({ ...pdfReport, exitCode: 42 })).toBe(false);
+    expect(validate({ ...pdfReport, issues: [{ code: "c", severity: "nope", phase: "p", retryable: false }] })).toBe(false);
   });
 
   it("classifies the typed @atlcli/confluence errors per the unified exit-code table", () => {
@@ -224,9 +262,6 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
     ];
     const issues = notes.map((n) => noteToIssue(n, "prepare"));
     expect(issues.map((i) => i.code)).toEqual(["includepage-cycle", "includepage-ambiguous-title"]);
-    // Every engine note collapses to `warning` severity (008 contract), so
-    // `--strict` CI sees include problems too.
-    expect(issues.every((i) => i.severity === "warning")).toBe(true);
     const report = buildReport({
       format: "docx",
       engine: "ts",
@@ -234,8 +269,64 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
       outputDetails: [{ output: "/tmp/out.docx", embeddedImages: 0, renderedDiagrams: 0, skippedAssets: 0 }],
       issues,
     });
+    // BOTH codes are tallied regardless of severity — an informational note is
+    // still fully reported, it just is not a warning.
     expect(report.notesByCode).toEqual({ "includepage-cycle": 1, "includepage-ambiguous-title": 1 });
     expect(report.warnings.map((w) => w.code)).toContain("includepage-cycle");
+  });
+
+  it("maps note LEVEL onto issue severity instead of flattening everything to warning", () => {
+    // The defect: `noteToIssue` hard-coded `severity: "warning"`, so the
+    // unconditional `perf-timing` note (level "info", appended to every ts DOCX
+    // export) made a clean export exit 2 under --strict while the PDF path,
+    // which emits no such note, exited 0.
+    const info = noteToIssue({ level: "info", code: "perf-timing", message: "Timing: 12 ms total" }, "prepare");
+    const warning = noteToIssue({ level: "warning", code: "image-unresolved", message: "no such attachment" }, "compose");
+    expect(info.severity).toBe("info");
+    expect(warning.severity).toBe("warning");
+    // Everything else about the projection is unchanged.
+    expect(info).toEqual({
+      code: "perf-timing",
+      severity: "info",
+      phase: "prepare",
+      retryable: false,
+      message: "Timing: 12 ms total",
+    });
+
+    // …and that severity is what --strict reads.
+    const base = {
+      format: "docx" as const,
+      engine: "ts" as const,
+      sourcePages: [{ id: "1", title: "Root", notes: [] }],
+      outputDetails: [{ output: "/tmp/out.docx", embeddedImages: 0, renderedDiagrams: 0, skippedAssets: 0 }],
+      strict: true,
+    };
+    const clean = buildReport({ ...base, issues: [info] });
+    expect(clean.exitCode).toBe(EXPORT_EXIT.SUCCESS);
+    expect(clean.warnings).toEqual([]);
+    // The info note did NOT vanish — it is visible in issues and notesByCode.
+    expect(clean.issues).toHaveLength(1);
+    expect(clean.notesByCode).toEqual({ "perf-timing": 1 });
+
+    const dirty = buildReport({ ...base, issues: [info, warning] });
+    expect(dirty.exitCode).toBe(EXPORT_EXIT.STRICT_WARNINGS);
+    expect(dirty.warnings.map((w) => w.code)).toEqual(["image-unresolved"]);
+  });
+
+  it("trips --strict on an error-severity issue that reached a SUCCESS report", () => {
+    // A compiler diagnostic captured on a compile that still produced bytes has
+    // severity "error" but no failureExitCode. Exiting 0 for it under --strict
+    // would be the same false-negative in the other direction.
+    const issue = diagnosticToIssue({ severity: "error", message: "bad glyph", path: "/main.typ" });
+    const strict = buildReport({
+      format: "pdf",
+      sourcePages: [],
+      outputDetails: [],
+      issues: [issue],
+      strict: true,
+    });
+    expect(strict.errors).toHaveLength(1);
+    expect(strict.exitCode).toBe(EXPORT_EXIT.STRICT_WARNINGS);
   });
 
   it("folds a compiler warning into issues and trips exit 2 under --strict", () => {

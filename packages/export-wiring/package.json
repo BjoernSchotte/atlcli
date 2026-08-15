@@ -1,0 +1,53 @@
+{
+  "name": "@atlcli/export-wiring",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./fixtures": {
+      "development": "./src/fixtures.ts",
+      "types": "./dist/fixtures.d.ts",
+      "default": "./dist/fixtures.js"
+    },
+    "./jobs": {
+      "development": "./src/jobs/index.ts",
+      "types": "./dist/jobs/index.d.ts",
+      "default": "./dist/jobs/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
+  },
+  "dependencies": {
+    "@atlcli/code-highlight": "workspace:*",
+    "@atlcli/confluence": "workspace:*",
+    "@atlcli/docx": "workspace:*",
+    "@atlcli/export-jobs": "workspace:*",
+    "@atlcli/export-macros": "workspace:*",
+    "@atlcli/export-media": "workspace:*",
+    "@atlcli/pdf": "workspace:*",
+    "@atlcli/web-publish": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlcli/template-pack": "workspace:*"
+  }
+}

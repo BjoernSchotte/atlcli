@@ -1,0 +1,168 @@
+{
+  "$id": "atlcli.docx-template-fixture-analysis/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "archive": {
+      "additionalProperties": false,
+      "properties": {
+        "compressedBytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "entries": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "largestEntryBytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "uncompressedBytes": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "compressedBytes",
+        "entries",
+        "uncompressedBytes",
+        "largestEntryBytes"
+      ],
+      "type": "object"
+    },
+    "features": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "fixture": {
+      "maxLength": 160,
+      "type": "string"
+    },
+    "raster": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "format": {
+            "enum": [
+              "jpeg",
+              "png"
+            ]
+          },
+          "height": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "path": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "pixels": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "width": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "format",
+          "bytes",
+          "width",
+          "height",
+          "pixels"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "const": "atlcli.docx-template-fixture-analysis/1"
+    },
+    "sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "svg": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "attributes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bytes": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "characters": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "elements": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "filters": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxAttributeCharacters": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxDepth": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "path": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "pathDataBytes": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "bytes",
+          "characters",
+          "elements",
+          "maxDepth",
+          "attributes",
+          "maxAttributeCharacters",
+          "pathDataBytes",
+          "filters"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "xml": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "fixture",
+    "sha256",
+    "archive",
+    "xml",
+    "raster",
+    "svg",
+    "features"
+  ],
+  "title": "Text-free DOCX intake fixture analysis",
+  "type": "object"
+}

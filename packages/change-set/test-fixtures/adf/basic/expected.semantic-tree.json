@@ -1,0 +1,67 @@
+{
+  "kind": "document",
+  "attributes": {
+    "version": 1
+  },
+  "children": [
+    {
+      "kind": "heading",
+      "label": "Hello",
+      "attributes": {
+        "level": 2
+      },
+      "children": [
+        {
+          "kind": "text",
+          "attributes": {
+            "marks": [
+              {
+                "attributes": {
+                  "href": "https://example.com"
+                },
+                "type": "link"
+              },
+              {
+                "attributes": {},
+                "type": "strong"
+              }
+            ]
+          },
+          "text": "Hello",
+          "children": [],
+          "sourcePaths": [
+            [
+              "content",
+              0,
+              "content",
+              0
+            ]
+          ],
+          "identityHints": [],
+          "coverage": "exact"
+        }
+      ],
+      "sourcePaths": [
+        [
+          "content",
+          0
+        ]
+      ],
+      "identityHints": [
+        {
+          "kind": "local-id",
+          "value": "heading-1",
+          "stability": "stable",
+          "attribute": "localId",
+          "semantic": false
+        }
+      ],
+      "coverage": "exact"
+    }
+  ],
+  "sourcePaths": [
+    []
+  ],
+  "identityHints": [],
+  "coverage": "exact"
+}

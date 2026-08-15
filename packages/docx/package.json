@@ -9,8 +9,12 @@
     "publish": "public-0.x"
   },
   "sideEffects": [
+    "./src/browser-runtime-bootstrap.ts",
     "./src/browser-runtime.ts",
-    "./dist/browser-runtime.js"
+    "./src/browser-entry.ts",
+    "./dist/browser-runtime-bootstrap.js",
+    "./dist/browser-runtime.js",
+    "./dist/browser-entry.js"
   ],
   "files": [
     "dist",
@@ -42,6 +46,11 @@
       "development": "./src/browser-runtime.ts",
       "types": "./dist/browser-runtime.d.ts",
       "default": "./dist/browser-runtime.js"
+    },
+    "./browser-entry": {
+      "development": "./src/browser-entry.ts",
+      "types": "./dist/browser-entry.d.ts",
+      "default": "./dist/browser-entry.js"
     },
     "./vite": {
       "development": "./src/vite.ts",
@@ -77,13 +86,17 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
-    "@atlcli/export-macros": "workspace:*",
+    "@atlcli/code-highlight": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/core": "workspace:*",
     "@atlcli/diagram": "workspace:*",
+    "@atlcli/export-blocks": "workspace:*",
+    "@atlcli/export-charts-tanstack": "workspace:*",
+    "@atlcli/export-macros": "workspace:*",
+    "@atlcli/export-media": "workspace:*",
     "@resvg/resvg-wasm": "2.6.2",
     "docxtemplater": "^3.69.0",
-    "pizzip": "^3.2.0",
-    "shiki": "^4.3.1"
+    "fflate": "0.8.3",
+    "pizzip": "^3.2.0"
   }
 }

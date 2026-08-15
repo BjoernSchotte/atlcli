@@ -25,7 +25,7 @@ export interface HostCallContext {
 
 /** Where template bytes come from (extension: IndexedDB blob · CLI: readFile). */
 export interface TemplateSource {
-  getBytes(id: string): Promise<Uint8Array>;
+  getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 /**
@@ -70,7 +70,11 @@ export interface OutputSink {
  * omits it — mermaid diagrams then stay readable source code blocks.
  */
 export interface SvgRasterizer {
-  rasterize(svg: string, target: { widthPx: number; heightPx: number }): Promise<Uint8Array>;
+  rasterize(
+    svg: string,
+    target: { widthPx: number; heightPx: number },
+    context?: HostCallContext
+  ): Promise<Uint8Array>;
 }
 
 /** Everything a host must supply to run an export. */
@@ -120,7 +124,11 @@ export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
 export async function runExport(input: RunExportInput, env: ExportEnv): Promise<ExportReport> {
   const { templateId, ...rest } = input;
   input.signal?.throwIfAborted();
-  const templateBytes = await env.templates.getBytes(templateId ?? "current");
+  const templateBytes = await env.templates.getBytes(
+    templateId ?? "current",
+    input.signal ? { signal: input.signal } : {}
+  );
+  input.signal?.throwIfAborted();
   // The env's asset fetcher drives image embedding (spec 005) and its
   // rasterizer drives diagram embedding (spec 005a) unless the input
   // overrides them; `embedImages: false` disables image embedding entirely.

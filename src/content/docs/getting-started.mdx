@@ -45,6 +45,19 @@ To upgrade:
 brew update && brew upgrade atlcli
 ```
 
+To preview a build from a green `main` commit, switch to the separate dev
+formula:
+
+```bash
+brew uninstall atlcli
+brew install bjoernschotte/tap/atlcli-dev
+atlcli release-info --json
+```
+
+The two formulae conflict intentionally and cannot be linked together. See
+[Development releases](/reference/dev-releases/) for upgrade and return-to-stable
+instructions.
+
 ### Manual Download
 
 Download the latest release for your platform from the [releases page](https://github.com/BjoernSchotte/atlcli/releases):

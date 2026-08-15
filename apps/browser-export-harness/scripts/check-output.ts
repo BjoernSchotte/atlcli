@@ -25,6 +25,17 @@ const ROOT_RELATIVE_RES = [
   /\b(?:fetch|Worker|SharedWorker|URL|importScripts)\s*\(\s*["'`]\/(?!\/)[^"'`]+["'`]/g,
   /["'`]\/assets\/[^"'`]+\.(?:js|mjs|wasm|ttf|otf|woff2?|txt)["'`]/g,
 ];
+const ONIGURUMA_RUNTIME_RES = [
+  /\bfindNextOnigScannerMatch\b/g,
+  /Must invoke loadWasm first[.]/g,
+];
+const AGGREGATE_SHIKI_RUNTIME_RES = [
+  /\bbundle_full_exports\b/g,
+  /\blangs-bundle-full\b/g,
+  /["'`]shiki(?:\/(?:langs|themes))?["'`]/g,
+];
+const DOCX_CODE_FONT_SHA256 =
+  "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f";
 
 export interface OutputFinding {
   file: string;
@@ -46,13 +57,26 @@ function matches(text: string, expressions: RegExp[]): string[] {
 }
 
 export function scanHarnessText(text: string): string[] {
-  return [
+  const findings = [
     ...matches(text, [NODE_SPECIFIER_RE, NODE_RUNTIME_RE]),
     ...matches(text, DYNAMIC_CODE_RES),
     ...matches(text, REMOTE_EXECUTABLE_RES),
     ...matches(text, [EXTENSION_RUNTIME_RE]),
     ...matches(text, ROOT_RELATIVE_RES),
+    ...matches(text, ONIGURUMA_RUNTIME_RES),
+    ...matches(text, AGGREGATE_SHIKI_RUNTIME_RES),
   ];
+  // Shiki grammar chunks are inert JSON payloads. Some grammars list Node
+  // globals as source-language keywords; those strings are not runtime use.
+  if (
+    text.includes("Object.freeze(JSON.parse(`") &&
+    text.includes('"scopeName"')
+  ) {
+    return findings.filter(
+      (finding) => finding !== "__dirname" && finding !== "__filename",
+    );
+  }
+  return findings;
 }
 
 function walk(root: string): string[] {
@@ -115,8 +139,26 @@ function requireOne(
 
 export function validateHarnessInventory(artifacts: OutputArtifact[]): string[] {
   const issues: string[] = [];
+  for (const artifact of artifacts) {
+    if (/(?:^|\/)engine-oniguruma-[^/]+[.]js$/i.test(artifact.path)) {
+      issues.push(`Oniguruma engine: unexpected browser artifact ${artifact.path}`);
+    }
+    if (/(?:^|\/)(?:onig|shiki)[^/]*[.]wasm$/i.test(artifact.path)) {
+      issues.push(`Oniguruma WASM: unexpected browser artifact ${artifact.path}`);
+    }
+    if (
+      /(?:^|\/)(?:langs|themes|bundle-full|bundle-web)-[^/]+[.]js$/i.test(
+        artifact.path,
+      )
+    ) {
+      issues.push(`aggregate Shiki catalogue: unexpected browser artifact ${artifact.path}`);
+    }
+  }
   if (!artifacts.some((artifact) => artifact.path === "index.html")) {
     issues.push("entry HTML: missing index.html");
+  }
+  if (!artifacts.some((artifact) => artifact.path === "topology.html")) {
+    issues.push("topology HTML: missing topology.html");
   }
   issues.push(...requireOne(
     artifacts,
@@ -127,6 +169,12 @@ export function validateHarnessInventory(artifacts: OutputArtifact[]): string[] 
     artifacts,
     "Typst compiler WASM",
     /(?:^|\/)assets\/typst_ts_web_compiler_bg-[^/]+\.wasm$/,
+  ));
+  issues.push(...requireOne(
+    artifacts,
+    "DOCX code font",
+    /(?:^|\/)assets\/JetBrainsMono-Regular-[^/]+\.ttf$/,
+    DOCX_CODE_FONT_SHA256,
   ));
   for (const font of PDF_RUNTIME_ASSETS.fonts) {
     issues.push(...requireOne(artifacts, font.fileName, hashedAssetPattern(font.fileName), font.sha256));

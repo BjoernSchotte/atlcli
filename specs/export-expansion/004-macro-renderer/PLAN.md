@@ -1,6 +1,6 @@
 # 004 — Macro renderer registry & third-party macro support
 
-Status: Plan, 2026-07-19. Part of the `export-expansion` series.
+Status: **Implemented**, 2026-07-20 (PR #55). Merged to `main`; live E2E verified against DOCSY (Jira project ATLCLI). Part of the `export-expansion` series.
 
 ## Reference
 

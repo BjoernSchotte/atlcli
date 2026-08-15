@@ -9,10 +9,10 @@
  *   1. zero `node:`/`bun:` module specifiers,
  *   2. zero remote script origins (import / importScripts / <script src> from
  *      an http(s) URL) — the extension must load only bundled, local assets, and
- *   3. zero bare node GLOBALS (`Buffer.`, `process.env`, `__dirname`),
+ *   3. zero bare node/Bun GLOBALS (`Buffer.`, `process.env`, `__dirname`, `Bun.`),
  *   4. zero string-to-code constructors (`Function(...)`, `eval(...)`) that
  *      violate Manifest V3's extension-page CSP, and
- *   5. a complete, locally bundled PDF runtime (worker, WASM and ten fonts).
+ *   5. complete, locally bundled PDF and DOCX render assets.
  *
  * Bare node globals are
  *      invisible to an import-specifier scan — nothing is imported, the symbol is
@@ -22,22 +22,68 @@
  *      whole class of leak.
  *
  * On a leak it names the offending file(s) and finding(s) and exits non-zero.
+ *
+ * ## Why there is NO dynamic-code exemption for PDF.js (spec 010 T5.3)
+ *
+ * The plan for T5.3 anticipated that vendoring PDF.js would force this gate's
+ * `DYNAMIC_CODE_RES` rule to grow a path-scoped exemption, on the premise that
+ * "PDF.js ships those tokens (its PostScript function evaluator constructs
+ * compiled functions)". **Measured against `pdfjs-dist@6.1.200`, that premise is
+ * false**: `scanText` over the vendored `build/pdf.min.mjs` and
+ * `build/pdf.worker.min.mjs` returns zero findings of any kind. PDF.js v6
+ * replaced the `Function`-based PostScript evaluator with a WebAssembly one
+ * (`buildPostScriptWasmFunction`) and removed the `isEvalSupported` option
+ * along with it.
+ *
+ * So the gate is **not loosened**. No exemption mechanism was added — an unused
+ * one is an invitation, and a used-but-unnecessary one is a hole. What replaces
+ * it is mechanical rather than editorial:
+ *
+ *   - `.mjs` was added to the scanned extensions, so the two vendored files are
+ *     actually covered by every rule here (they were invisible before: the walk
+ *     only looked at `.js`/`.html`);
+ *   - both files are pinned by sha256 in {@link REQUIRED_PDF_ARTIFACTS}, so
+ *     "bundled locally, never a CDN, never modified" is a build assertion;
+ *   - `tests/output-scan.test.ts` asserts the vendored sources are clean *and*
+ *     that a dynamic-code token seeded into that exact path still fails the
+ *     gate — i.e. the PDF.js path is provably **not** exempt.
+ *
+ * If a future PDF.js release does reintroduce `new Function(`, this gate fails
+ * the build and the exemption becomes a deliberate, reviewed decision at that
+ * point — with the trade-off visible — instead of a pre-granted allowance
+ * inherited from a plan written before the dependency was measured.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
+import { TYPST_VENDOR_PINS } from "../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
 
-/** Quoted `node:`/`bun:` module specifier — a real import/require target. */
-const NODE_BUN_RE = /["'`](node|bun):[A-Za-z0-9_./-]*["'`]/g;
+export const TYPST_COMPILER_WASM_SHA256 =
+  TYPST_VENDOR_PINS["typst_ts_web_compiler_bg.wasm"]!;
+
+/** Real `node:`/`bun:` import/require syntax, excluding inert diagnostic text. */
+const NODE_BUN_RES: RegExp[] = [
+  /\b(?:import|require)\s*\(\s*["'`](?:node|bun):[A-Za-z0-9_./-]*["'`]\s*\)/g,
+  /\bimport\s*(?:[^"'`()]*\bfrom\s*)?["'`](?:node|bun):[A-Za-z0-9_./-]*["'`]/g,
+  /\bexport\s+[^"'`()]*\bfrom\s*["'`](?:node|bun):[A-Za-z0-9_./-]*["'`]/g,
+];
 
 /**
- * Bare node GLOBALS that do not exist in the extension runtime. Matched as
+ * Bare node/Bun GLOBALS that do not exist in the extension runtime. Matched as
  * member access / usage rather than as import specifiers (there is no import to
  * find). `Buffer\.` catches `Buffer.from(...)` etc.; `process\.env` catches env
  * reads; `__dirname` / `__filename` are CJS-only path globals. A hit here means
  * code will throw `ReferenceError`/`undefined` at runtime in the panel/worker.
+ *
+ * `Bun\.` joined the set with spec 010's browser-gate work: `import type
+ * { Server } from "bun"` erases at compile time, so NODE_BUN_RE has nothing to
+ * find, while the `Bun.serve(...)` CALL survives into the bundle. That is the
+ * exact shape of `packages/jira/src/webhook-server.ts`. The negative lookbehind
+ * keeps `foo.Bun.x` and identifiers merely ending in `Bun` out. Measured
+ * against the built `.output/chrome-mv3` (77 scanned files): zero hits.
  */
-const NODE_GLOBAL_RE = /\bBuffer\.|\bprocess\.env\b|\b__dirname\b|\b__filename\b/g;
+const NODE_GLOBAL_RE =
+  /\bBuffer\.|\bprocess\.env\b|\b__dirname\b|\b__filename\b|(?<![\w$.])Bun\s*\.\s*[A-Za-z_$]/g;
 
 /** A browser bundle must not hide the same dependency behind a fake global Buffer. */
 const FAKE_BUFFER_GLOBAL_RES: RegExp[] = [
@@ -49,7 +95,16 @@ const FAKE_BUFFER_GLOBAL_RES: RegExp[] = [
 const DYNAMIC_CODE_RES: RegExp[] = [
   /\bnew\s+Function\s*\(/g,
   /(?:^|[=(:,!&|?;{}])\s*Function\s*\(\s*["'`]/g,
-  /(?:^|[^\w.])eval\s*\(/g,
+  /(?<![\w.])\beval\s*\(/g,
+];
+const ONIGURUMA_RUNTIME_RES: RegExp[] = [
+  /\bfindNextOnigScannerMatch\b/g,
+  /Must invoke loadWasm first[.]/g,
+];
+const AGGREGATE_SHIKI_RUNTIME_RES: RegExp[] = [
+  /\bbundle_full_exports\b/g,
+  /\blangs-bundle-full\b/g,
+  /["'`]shiki(?:\/(?:langs|themes))?["'`]/g,
 ];
 
 export interface OutputArtifact {
@@ -58,13 +113,47 @@ export interface OutputArtifact {
   sha256?: string;
 }
 
+/** Path patterns of the vendored PDF.js runtime — exported for the gate tests. */
+export const PDFJS_ARTIFACT_PATTERNS: readonly RegExp[] = [
+  /(?:^|\/)assets\/pdf\.min-[^/]+\.mjs$/,
+  /(?:^|\/)assets\/pdf\.worker\.min-[^/]+\.mjs$/,
+];
+
+/**
+ * The vendored PDF.js runtime (spec 010 T5.3).
+ *
+ * Both files are emitted **verbatim** (Vite `?url&no-inline`), never merged
+ * into a rolldown chunk, which is what lets them be sha256-pinned at all: a
+ * bundled chunk's hash changes whenever any of our own sources do, so pinning
+ * one would be noise. Here the pin means exactly what it says — these are the
+ * unmodified upstream bytes of `pdfjs-dist@6.1.200`, bundled locally.
+ */
+const PDFJS_ARTIFACTS = [
+  {
+    label: "PDF.js viewer runtime",
+    pattern: /(?:^|\/)assets\/pdf\.min-[^/]+\.mjs$/,
+    sha256: "4ba2f15599b03fde8755ad91349920c21dadd3e8fd6b6460a7663d46d4cf21b5",
+  },
+  {
+    label: "PDF.js worker",
+    pattern: /(?:^|\/)assets\/pdf\.worker\.min-[^/]+\.mjs$/,
+    sha256: "2ab9e09667296dab1a618868b3ce6e6c23d5b8f48120ae7c5b34e7e335ed01fa",
+  },
+] as const;
+
 const REQUIRED_PDF_ARTIFACTS = [
   { label: "PDF compiler worker", pattern: /(?:^|\/)assets\/pdf-compiler-[^/]+\.js$/ },
+  ...PDFJS_ARTIFACTS,
   {
     label: "Typst compiler WASM",
     pattern: /(?:^|\/)assets\/typst_ts_web_compiler_bg-[^/]+\.wasm$/,
     minimumSize: 20_000_000,
-    sha256: "1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd",
+    sha256: TYPST_COMPILER_WASM_SHA256,
+  },
+  {
+    label: "DOCX code font",
+    pattern: /(?:^|\/)assets\/JetBrainsMono-Regular-[^/]+\.ttf$/,
+    sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
   },
   {
     label: "Source Sans 3 Regular",
@@ -117,6 +206,21 @@ const REQUIRED_PDF_ARTIFACTS = [
     sha256: "b2095e0d657e6d28dc32444a9dacabab0c9241d0bf39d96371756cc9bdbc3a5f",
   },
   {
+    label: "Noto Sans Arabic Regular",
+    pattern: /(?:^|\/)assets\/NotoSansArabic-Regular-[^/]+\.ttf$/,
+    sha256: "ceea25b464a656dc3b26849bab9356740401af62aedf1bfa8b7f0d9b75925b1b",
+  },
+  {
+    label: "Noto Sans Symbols 2 Regular",
+    pattern: /(?:^|\/)assets\/NotoSansSymbols2-Regular-[^/]+\.ttf$/,
+    sha256: "630846d528dbe4c4981370a4d0a9475a1fd1491a129bb411f8e157cdb5de13c6",
+  },
+  {
+    label: "Noto Emoji",
+    pattern: /(?:^|\/)assets\/NotoEmoji-wght-[^/]+\.ttf$/,
+    sha256: "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551",
+  },
+  {
     label: "Source Sans 3 font license",
     pattern: /(?:^|\/)assets\/LICENSE-Source-Sans-3-[^/]+\.txt$/,
   },
@@ -129,8 +233,31 @@ const REQUIRED_PDF_ARTIFACTS = [
     pattern: /(?:^|\/)assets\/LICENSE-Source-Code-Pro-[^/]+\.txt$/,
   },
   {
+    label: "Noto Sans Symbols 2 font license",
+    pattern: /(?:^|\/)assets\/LICENSE-Noto-Sans-Symbols-2-[^/]+\.txt$/,
+  },
+  {
+    label: "Noto Emoji font license",
+    pattern: /(?:^|\/)assets\/LICENSE-Noto-Emoji-[^/]+\.txt$/,
+  },
+  {
     label: "compiler Apache-2.0 license",
     pattern: /(?:^|\/)assets\/LICENSE-[A-Za-z0-9_-]+\.$/,
+  },
+] as const;
+
+const REQUIRED_RESEARCH_ARTIFACTS = [
+  {
+    label: "DeepAgents research worker",
+    pattern: /(?:^|\/)assets\/research-agent-[^/]+\.js$/,
+    minimumSize: 100_000,
+  },
+  {
+    label: "QuickJS asyncify WASM",
+    pattern: /(?:^|\/)assets\/emscripten-module-[^/]+\.wasm$/,
+    minimumSize: 1_000_000,
+    selectedSha256:
+      "3742fb828ff9841d57dd7350657e3bc9ae2ae52a1d079615f100166c1274052f",
   },
 ] as const;
 
@@ -165,6 +292,100 @@ export interface FileLeak {
   findings: string[];
 }
 
+function maskLiteralsAndComments(text: string): string {
+  const output = [...text];
+  let mode: "code" | "single" | "double" | "template" | "line" | "block" =
+    "code";
+  const templateExpressionDepth: number[] = [];
+
+  const mask = (index: number): void => {
+    if (output[index] !== "\n" && output[index] !== "\r") output[index] = " ";
+  };
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]!;
+    const next = text[index + 1];
+
+    if (mode === "line") {
+      mask(index);
+      if (character === "\n") mode = "code";
+      continue;
+    }
+    if (mode === "block") {
+      mask(index);
+      if (character === "*" && next === "/") {
+        mask(index + 1);
+        index += 1;
+        mode = "code";
+      }
+      continue;
+    }
+    if (mode === "single" || mode === "double") {
+      mask(index);
+      if (character === "\\") {
+        mask(index + 1);
+        index += 1;
+      } else if (
+        (mode === "single" && character === "'") ||
+        (mode === "double" && character === '"')
+      ) {
+        mode = "code";
+      }
+      continue;
+    }
+    if (mode === "template") {
+      mask(index);
+      if (character === "\\") {
+        mask(index + 1);
+        index += 1;
+      } else if (character === "`") {
+        mode = "code";
+      } else if (character === "$" && next === "{") {
+        output[index] = "$";
+        output[index + 1] = "{";
+        index += 1;
+        templateExpressionDepth.push(1);
+        mode = "code";
+      }
+      continue;
+    }
+
+    if (templateExpressionDepth.length > 0) {
+      if (character === "{") {
+        templateExpressionDepth[templateExpressionDepth.length - 1]! += 1;
+      } else if (character === "}") {
+        templateExpressionDepth[templateExpressionDepth.length - 1]! -= 1;
+        if (templateExpressionDepth.at(-1) === 0) {
+          templateExpressionDepth.pop();
+          mode = "template";
+          continue;
+        }
+      }
+    }
+    if (character === "/" && next === "/") {
+      mask(index);
+      mask(index + 1);
+      index += 1;
+      mode = "line";
+    } else if (character === "/" && next === "*") {
+      mask(index);
+      mask(index + 1);
+      index += 1;
+      mode = "block";
+    } else if (character === "'") {
+      mask(index);
+      mode = "single";
+    } else if (character === '"') {
+      mask(index);
+      mode = "double";
+    } else if (character === "`") {
+      mask(index);
+      mode = "template";
+    }
+  }
+  return output.join("");
+}
+
 function walk(dir: string, exts: string[]): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
@@ -181,25 +402,94 @@ function walk(dir: string, exts: string[]): string[] {
 /** Extract all disallowed findings from one file's text. */
 export function scanText(text: string): string[] {
   const found = new Set<string>();
-  for (const m of text.matchAll(NODE_BUN_RE)) found.add(m[0].slice(1, -1));
+  const textWithNodeGlobalLabelsMasked = text.replace(
+    /(["'`])process[.]env\[['"][A-Za-z0-9_]+['"]\]\1/g,
+    (diagnostic) =>
+      `${diagnostic[0]}${" ".repeat(diagnostic.length - 2)}${diagnostic.at(-1)}`
+  );
+  const code = maskLiteralsAndComments(textWithNodeGlobalLabelsMasked);
+  for (const re of NODE_BUN_RES) {
+    for (const match of text.matchAll(re)) {
+      const start = match.index ?? 0;
+      // The same words can appear inside an SDK diagnostic string. The
+      // literal/comment mask preserves executable keywords at their offsets.
+      if (!/\b(?:import|require|export)\b/.test(code.slice(start, start + 12))) {
+        continue;
+      }
+      const specifier = match[0].match(/["'`]((?:node|bun):[^"'`]*)["'`]/);
+      if (specifier?.[1]) found.add(specifier[1]);
+    }
+  }
   for (const re of REMOTE_SCRIPT_RES) {
     for (const m of text.matchAll(re)) found.add(m[0]);
   }
-  for (const m of text.matchAll(NODE_GLOBAL_RE)) found.add(m[0]);
+  for (const m of code.matchAll(NODE_GLOBAL_RE)) found.add(m[0]);
   for (const re of FAKE_BUFFER_GLOBAL_RES) {
     for (const m of text.matchAll(re)) found.add(m[0]);
   }
-  for (const re of DYNAMIC_CODE_RES) {
+  const dynamicCode = code.replace(
+    /\b(?:async\s+)?eval\s*\([^()]*\)\s*\{/g,
+    (declaration) => declaration.replace(/\beval\b/, "method")
+  );
+  for (const re of DYNAMIC_CODE_RES.slice(0, 2)) {
+    for (const match of text.matchAll(re)) {
+      const start = match.index ?? 0;
+      if (code.slice(start, start + match[0].length).includes("Function")) {
+        found.add(match[0].trim());
+      }
+    }
+  }
+  for (const match of dynamicCode.matchAll(DYNAMIC_CODE_RES[2]!)) {
+    found.add(match[0].trim());
+  }
+  for (const re of ONIGURUMA_RUNTIME_RES) {
     for (const m of text.matchAll(re)) found.add(m[0].trim());
   }
-  return [...found];
+  for (const re of AGGREGATE_SHIKI_RUNTIME_RES) {
+    for (const m of text.matchAll(re)) found.add(m[0].trim());
+  }
+  const findings = [...found];
+  if (
+    text.includes("Object.freeze(JSON.parse(`") &&
+    text.includes('"scopeName"')
+  ) {
+    return findings.filter(
+      (finding) => finding !== "__dirname" && finding !== "__filename",
+    );
+  }
+  return findings;
 }
 
-/** Verify that every runtime asset needed for a browser-only PDF export exists. */
-export function validatePdfArtifactInventory(artifacts: OutputArtifact[]): string[] {
+/** Verify that every local binary/runtime asset needed by the extension exists. */
+export function validateExtensionArtifactInventory(
+  artifacts: OutputArtifact[]
+): string[] {
   const issues: string[] = [];
-  for (const requirement of REQUIRED_PDF_ARTIFACTS) {
-    const matches = artifacts.filter((artifact) => requirement.pattern.test(artifact.path));
+  for (const artifact of artifacts) {
+    if (/(?:^|\/)(?:onig|shiki)[^/]*[.]wasm$/i.test(artifact.path)) {
+      issues.push(`Oniguruma WASM: unexpected extension artifact ${artifact.path}`);
+    }
+    if (
+      /(?:^|\/)(?:langs|themes|bundle-full|bundle-web)-[^/]+[.]js$/i.test(
+        artifact.path,
+      )
+    ) {
+      issues.push(`aggregate Shiki catalogue: unexpected extension artifact ${artifact.path}`);
+    }
+  }
+  for (const requirement of [
+    ...REQUIRED_PDF_ARTIFACTS,
+    ...REQUIRED_RESEARCH_ARTIFACTS,
+  ]) {
+    const candidates = artifacts.filter((artifact) =>
+      requirement.pattern.test(artifact.path)
+    );
+    const matches =
+      "selectedSha256" in requirement
+        ? candidates.filter(
+            (artifact) => artifact.sha256 === requirement.selectedSha256
+          )
+        : candidates;
     if (matches.length !== 1) {
       issues.push(
         `${requirement.label}: expected exactly one bundled artifact, found ${matches.length}`
@@ -218,10 +508,13 @@ export function validatePdfArtifactInventory(artifacts: OutputArtifact[]): strin
   return issues;
 }
 
-function collectArtifacts(root: string): OutputArtifact[] {
+export function collectArtifacts(root: string): OutputArtifact[] {
   return walk(root, [""]).map((file) => {
     const path = relative(root, file);
-    const needsHash = file.endsWith(".wasm") || file.endsWith(".ttf");
+    // `.mjs` joins the hashed set for the vendored PDF.js runtime — see
+    // PDFJS_ARTIFACTS. Bundled `.js` chunks are deliberately NOT hashed: their
+    // content legitimately changes with every edit to our own sources.
+    const needsHash = file.endsWith(".wasm") || file.endsWith(".ttf") || file.endsWith(".mjs");
     return {
       path,
       size: statSync(file).size,
@@ -233,13 +526,30 @@ function collectArtifacts(root: string): OutputArtifact[] {
 }
 
 /**
+ * Extensions carrying executable code in the built output.
+ *
+ * `.mjs` was added with the vendored PDF.js runtime (spec 010 T5.3): emitting
+ * it as a verbatim asset is what makes its sha256 pin meaningful, but an asset
+ * with a `.mjs` extension is still executed, so it must be scanned like any
+ * other script — otherwise vendoring a dependency under a new extension would
+ * be a way *around* this gate rather than through it.
+ */
+const SCANNED_EXTENSIONS = [".js", ".mjs", ".html"] as const;
+
+/**
  * Scan a built extension directory for disallowed specifiers / remote origins.
  * Returns one {@link FileLeak} per offending file (empty array = clean).
+ *
+ * Every file is scanned under the same rules; there is no per-path exemption
+ * (see the module comment, "Why there is NO dynamic-code exemption for PDF.js").
  */
 export function scanOutputDir(root: string): FileLeak[] {
   const leaks: FileLeak[] = [];
-  for (const file of walk(root, [".js", ".html"])) {
+  for (const file of walk(root, [...SCANNED_EXTENSIONS])) {
     const findings = scanText(readFileSync(file, "utf8"));
+    if (/engine-oniguruma-[^/]+[.]js$/i.test(file)) {
+      findings.push("Oniguruma engine chunk");
+    }
     if (findings.length > 0) {
       leaks.push({ file: relative(root, file), findings });
     }
@@ -255,7 +565,7 @@ async function main(): Promise<void> {
   let artifactIssues: string[];
   try {
     leaks = scanOutputDir(root);
-    artifactIssues = validatePdfArtifactInventory(collectArtifacts(root));
+    artifactIssues = validateExtensionArtifactInventory(collectArtifacts(root));
   } catch (err) {
     console.error(
       `✗ extension output scan could not read '${root}': ${
@@ -268,7 +578,7 @@ async function main(): Promise<void> {
 
   if (leaks.length === 0 && artifactIssues.length === 0) {
     console.log(
-      `✓ extension output clean — CSP-safe and complete PDF runtime in ${root}`
+      `✓ extension output clean — CSP-safe and complete export runtime in ${root}`
     );
     return;
   }
@@ -281,7 +591,7 @@ async function main(): Promise<void> {
     }
   }
   if (artifactIssues.length > 0) {
-    console.error("  incomplete PDF runtime:");
+    console.error("  incomplete export runtime:");
     for (const issue of artifactIssues) console.error(`    ${issue}`);
   }
   process.exit(1);

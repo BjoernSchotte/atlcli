@@ -7,5 +7,7 @@
  * adapters are available only through the explicit `./browser-runtime`
  * subpath and are deliberately not re-exported here.
  */
+import "./node-code-font.js";
+
 export * from "./index.browser.js";
 export * from "./node-adapters.js";

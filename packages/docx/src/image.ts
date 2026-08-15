@@ -20,7 +20,40 @@
  * {@link ImageEmbedError} leaves no dangling media part or relationship.
  */
 import type PizZip from "pizzip";
-import { ASSET_MAX_BYTES, decodeSvgSource } from "@atlcli/confluence";
+import {
+  ASSET_MAX_BYTES,
+  type ExportNote,
+  type MediaBorder,
+} from "@atlcli/confluence";
+import {
+  boundRasterTarget,
+  decodeImageInfo,
+  isSvg,
+  parseSvgSize,
+  resolveTargetSize,
+  MAX_RASTER_AXIS_PX,
+  MAX_RASTER_PIXELS,
+  type ImageFormat,
+  type ImageInfo,
+  type TargetSize,
+} from "@atlcli/export-media";
+import { isPrecompressedRasterPart } from "./opc-stream.js";
+
+// Inspection, sizing, and raster budgets moved to `@atlcli/export-media`
+// (issue #118 Phase 1) so the PDF and DOCX engines share one implementation.
+// Re-exported here so this module's existing consumers keep working.
+export {
+  boundRasterTarget,
+  decodeImageInfo,
+  isSvg,
+  parseSvgSize,
+  resolveTargetSize,
+  MAX_RASTER_AXIS_PX,
+  MAX_RASTER_PIXELS,
+  type ImageFormat,
+  type ImageInfo,
+  type TargetSize,
+};
 
 /** 914400 EMU/inch ÷ 96 dpi (research §2.5; matches Scroll/Word defaults). */
 export const EMU_PER_PX = 9525;
@@ -38,19 +71,6 @@ export const MAX_CONTENT_WIDTH_PX = 600;
  */
 export const MAX_IMAGE_BYTES = ASSET_MAX_BYTES;
 
-export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
-
-export interface ImageInfo {
-  format: ImageFormat;
-  /** Media-part filename extension. */
-  ext: string;
-  /** MIME type for the `[Content_Types].xml` default. */
-  mime: string;
-  /** Intrinsic pixel dimensions from the header. */
-  width: number;
-  height: number;
-}
-
 /** A non-fatal embed failure: the export continues with a report line. */
 export class ImageEmbedError extends Error {
   constructor(message: string) {
@@ -59,208 +79,75 @@ export class ImageEmbedError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Format sniffing + dimension decoding (research §4: in-browser, DataView)
-// ---------------------------------------------------------------------------
 
-/**
- * Decode format + intrinsic dimensions from the image header. Returns `null`
- * for anything that is not a well-formed PNG/JPEG/GIF.
- */
-export function decodeImageInfo(bytes: Uint8Array): ImageInfo | null {
-  return decodePng(bytes) ?? decodeJpeg(bytes) ?? decodeGif(bytes);
-}
-
-/** PNG: 8-byte signature, IHDR width/height at offsets 16/20 (big-endian). */
-function decodePng(bytes: Uint8Array): ImageInfo | null {
-  const SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-  if (bytes.length < 24 || SIG.some((b, i) => bytes[i] !== b)) return null;
-  // Bytes 12–15 must name the IHDR chunk (always first in a valid PNG).
-  if (bytes[12] !== 0x49 || bytes[13] !== 0x48 || bytes[14] !== 0x44 || bytes[15] !== 0x52) return null;
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const width = view.getUint32(16);
-  const height = view.getUint32(20);
-  if (!width || !height) return null;
-  return { format: "png", ext: "png", mime: "image/png", width, height };
-}
-
-/** GIF: `GIF87a`/`GIF89a`, logical-screen width/height at 6/8 (little-endian). */
-function decodeGif(bytes: Uint8Array): ImageInfo | null {
-  if (bytes.length < 10) return null;
-  const head = String.fromCharCode(...bytes.subarray(0, 6));
-  if (head !== "GIF87a" && head !== "GIF89a") return null;
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const width = view.getUint16(6, true);
-  const height = view.getUint16(8, true);
-  if (!width || !height) return null;
-  return { format: "gif", ext: "gif", mime: "image/gif", width, height };
-}
-
-/**
- * JPEG: walk the marker segments from SOI until a start-of-frame (SOF0–SOF15,
- * excluding the non-frame C4/C8/CC markers) yields height/width, or the scan
- * data (SOS) begins.
- */
-function decodeJpeg(bytes: Uint8Array): ImageInfo | null {
-  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let i = 2;
-  while (i + 3 < bytes.length) {
-    if (bytes[i] !== 0xff) return null; // desynced — not a marker
-    const marker = bytes[i + 1];
-    if (marker === 0xff) {
-      i += 1; // fill byte
-      continue;
-    }
-    // Standalone markers without a length (RSTn, SOI, EOI, TEM).
-    if ((marker >= 0xd0 && marker <= 0xd9) || marker === 0x01) {
-      i += 2;
-      continue;
-    }
-    if (i + 4 > bytes.length) return null;
-    const length = view.getUint16(i + 2);
-    if (length < 2) return null;
-    const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
-    if (isSof) {
-      if (i + 9 > bytes.length) return null;
-      const height = view.getUint16(i + 5);
-      const width = view.getUint16(i + 7);
-      if (!width || !height) return null;
-      return { format: "jpeg", ext: "jpeg", mime: "image/jpeg", width, height };
-    }
-    if (marker === 0xda) return null; // scan data reached without a SOF
-    i += 2 + length;
-  }
-  return null;
-}
-
-/**
- * True when the bytes look like an SVG document (optionally behind a BOM /
- * XML declaration / comments). Only the first 512 bytes are inspected, decoded
- * with BOM/encoding awareness (spec 006 G4 + spec 011): a UTF-16LE/BE SVG must
- * be RECOGNIZED so its content is scanned rather than silently mistaken for
- * unrecognized bytes \u2014 otherwise a UTF-16-encoded `<script>` SVG would never
- * reach the safety check.
- */
-export function isSvg(bytes: Uint8Array): boolean {
-  const head = decodeSvgSource(bytes.subarray(0, 512))
-    .replace(/^\uFEFF/, "")
-    .trimStart();
-  if (!head.startsWith("<")) return false;
-  return /<svg[\s>]/i.test(head);
-}
 
 // ---------------------------------------------------------------------------
 // Sizing
 // ---------------------------------------------------------------------------
 
-export interface TargetSize {
-  widthPx: number;
-  heightPx: number;
-}
-
-/**
- * Resolve the rendered size: author-specified px override the intrinsic size
- * (one missing axis scales by the intrinsic aspect ratio), then the result is
- * capped to `maxWidthPx` preserving aspect (spec 005: width-capping).
- */
-export function resolveTargetSize(
-  intrinsic: { width: number; height: number },
-  wanted: { widthPx?: number; heightPx?: number },
-  maxWidthPx: number
-): TargetSize {
-  let w = intrinsic.width;
-  let h = intrinsic.height;
-  if (wanted.widthPx && wanted.heightPx) {
-    w = wanted.widthPx;
-    h = wanted.heightPx;
-  } else if (wanted.widthPx) {
-    h = Math.round((intrinsic.height * wanted.widthPx) / intrinsic.width);
-    w = wanted.widthPx;
-  } else if (wanted.heightPx) {
-    w = Math.round((intrinsic.width * wanted.heightPx) / intrinsic.height);
-    h = wanted.heightPx;
-  }
-  if (w > maxWidthPx) {
-    h = Math.round((h * maxWidthPx) / w);
-    w = maxWidthPx;
-  }
-  return { widthPx: Math.max(1, w), heightPx: Math.max(1, h) };
-}
 
 /** px → EMU with rounding (research §2.5). */
 export function pxToEmu(px: number): number {
   return Math.round(px * EMU_PER_PX);
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Accessibility audit (spec 011, PDF/UA lane — same audit, DOCX side)
+// ---------------------------------------------------------------------------
+
 /**
- * Parse an SVG's intrinsic pixel size from its opening `<svg>` tag (spec 006
- * G4). Prefers explicit `width`/`height` (px or unitless — `%`/`em`/other
- * units are treated as undeterminable), falling back to the `viewBox`'s width
- * and height. Returns `null` when neither yields a usable positive size, so the
- * caller can apply a default. Pure over the decoded SVG string.
+ * True when an image carries no author-written alternative text.
+ *
+ * Mirrors `isMissingAltText` in `packages/pdf/src/prepare.ts` exactly, including
+ * the whitespace rule: `alt=" "` satisfies no assistive technology, and
+ * Confluence's editor produces it readily. The two engines must agree on what
+ * counts as "has alt text" or the same source page audits differently depending
+ * on which format an author exported.
  */
-export function parseSvgSize(source: string): TargetSize | null {
-  const open = source.replace(/^﻿/, "").match(/<svg\b[^>]*>/i);
-  if (!open) return null;
-  const tag = open[0];
-  const num = (attr: string): number | null => {
-    const m = tag.match(new RegExp(`\\b${attr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"));
-    if (!m) return null;
-    const raw = (m[1] ?? m[2] ?? "").trim();
-    // Accept a bare number or an explicit px length; reject %, em, and friends.
-    const px = raw.match(/^([0-9]+(?:\.[0-9]+)?)(px)?$/i);
-    if (!px) return null;
-    const v = Number.parseFloat(px[1]);
-    return Number.isFinite(v) && v > 0 ? v : null;
-  };
-  const w = num("width");
-  const h = num("height");
-  if (w !== null && h !== null) return { widthPx: Math.round(w), heightPx: Math.round(h) };
-  const vb = tag.match(/\bviewBox\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
-  if (vb) {
-    const parts = (vb[1] ?? vb[2] ?? "").trim().split(/[\s,]+/).map(Number);
-    if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
-      const vw = parts[2];
-      const vh = parts[3];
-      if (vw > 0 && vh > 0) return { widthPx: Math.round(vw), heightPx: Math.round(vh) };
-    }
-  }
-  return null;
+export function isMissingAltText(alt: string | undefined): boolean {
+  return (alt ?? "").trim().length === 0;
 }
 
 /**
- * Symmetric per-axis raster cap (spec 006 G4). `resolveTargetSize` caps only
- * `widthPx`; an SVG's own `viewBox`/`width`/`height` and Confluence's
- * `ac:width`/`ac:height` are unbounded author input, so an extreme aspect
- * ratio can leave `heightPx` (or the total pixel count) enormous even after
- * width-capping. Chosen well above any plausible authored figure so normal
- * content (including tall flowcharts) is never rejected — the guard exists to
- * catch malformed/pathological dimensions before they reach a canvas
- * allocation, not to constrain real usage.
+ * The alt-text audit note for one embedded image, or `null` when the image has
+ * alt text.
+ *
+ * Worth stating plainly, because the emitted XML looks fine either way:
+ * {@link inlineImageParagraph} always writes a non-empty `descr`, falling back
+ * to the filename (`opts.alt || opts.name || "image"`). Word therefore reports
+ * the picture as "has alt text" and its own accessibility checker stays silent,
+ * while a screen reader reads out `chart-final-v2.png`. This audit is the only
+ * signal an author gets that the fallback was taken.
+ *
+ * The emitted `image-missing-alt` code is SHARED with the PDF engine (spec 010),
+ * which emits the same code from `packages/pdf/src/prepare.ts` for the same
+ * source-block condition. Both must keep emitting it: `notesByCode` is the
+ * only cross-format handle a CI pipeline has on "pages that still need alt
+ * text", and it must not depend on which format was exported. The DOCX note
+ * carries no `source.blockPath` (this serializer tracks none) — less
+ * provenance for the same fact, not a different fact.
  */
-export const MAX_RASTER_AXIS_PX = 10000;
-/** Total-pixel raster budget (spec 006 G4): ~40 megapixels. */
-export const MAX_RASTER_PIXELS = 40_000_000;
-
-/**
- * Budget guard for a rasterizer target (spec 006 G4): reject non-finite /
- * non-safe-integer / non-positive axes, either axis above
- * {@link MAX_RASTER_AXIS_PX}, or a total pixel count above
- * {@link MAX_RASTER_PIXELS}. Returns the same size when within budget, or
- * `null` when it is exceeded (the caller degrades with a note instead of
- * invoking the rasterizer). Applied to BOTH the mermaid diagram and the new
- * SVG-attachment paths, since author-supplied `ac:width`/`ac:height` already
- * flow into the mermaid `resolveTargetSize` call too.
- */
-export function boundRasterTarget(size: TargetSize): TargetSize | null {
-  const { widthPx, heightPx } = size;
-  for (const axis of [widthPx, heightPx]) {
-    if (!Number.isFinite(axis) || !Number.isSafeInteger(axis) || axis < 1) return null;
-    if (axis > MAX_RASTER_AXIS_PX) return null;
-  }
-  if (widthPx * heightPx > MAX_RASTER_PIXELS) return null;
-  return size;
+export function auditImageAltText(input: {
+  alt?: string;
+  /** Human label for the image — attachment filename or external URL. */
+  name: string;
+  /** Provenance for the note (spec 003): which page the image lives on. */
+  pageId?: string;
+}): ExportNote | null {
+  if (!isMissingAltText(input.alt)) return null;
+  return {
+    level: "warning",
+    code: "image-missing-alt",
+    message:
+      `The image "${input.name}" has no alternative text; Word falls back to the technical ` +
+      `filename, which assistive technology cannot use. Add alt text on the source page.`,
+    source: {
+      ...(input.pageId ? { pageId: input.pageId } : {}),
+      assetName: input.name,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -283,10 +170,14 @@ export interface DrawingParams {
   docPrId: number;
   /** Element name shown in Word's selection pane. */
   name: string;
-  /** Alt text carried onto `wp:docPr`/`pic:cNvPr` `descr` (accessibility). */
-  descr: string;
+  /** Explicit assistive-technology contract for this drawing. */
+  accessibility:
+    | { kind: "labelled"; description: string }
+    | { kind: "decorative" };
   cxEmu: number;
   cyEmu: number;
+  /** Float the drawing to one side and let following body text wrap around it. */
+  wrap?: "left" | "right";
   /**
    * Optional `<w:pPr>…</w:pPr>` carried onto the emitted paragraph — used by
    * the logo pass to preserve the replaced placeholder paragraph's alignment.
@@ -298,6 +189,8 @@ export interface DrawingParams {
    * older Word falls back to the raster `relId` (the mandatory PNG).
    */
   svgRelId?: string;
+  /** Authored ADF border rendered on the picture shape itself. */
+  border?: MediaBorder;
 }
 
 /**
@@ -308,15 +201,58 @@ export interface DrawingParams {
  * robustness improvement), so the fragment is self-contained wherever the
  * serializer splices it.
  */
-export function inlineImageParagraph(p: DrawingParams): string {
-  const name = escAttr(p.name);
-  const descr = escAttr(p.descr);
+function pictureBorder(border: MediaBorder | undefined): string {
+  if (!border) return `<a:ln><a:noFill/></a:ln>`;
+  const rgb = border.color.slice(1, 7).toUpperCase();
+  const alphaHex = border.color.length === 9 ? border.color.slice(7, 9) : undefined;
+  const alpha = alphaHex === undefined
+    ? ""
+    : `<a:alpha val="${Math.round((Number.parseInt(alphaHex, 16) / 255) * 100000)}"/>`;
   return (
-    `<w:p>${p.pPrXml ?? ""}<w:r><w:drawing>` +
-    `<wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
+    `<a:ln w="${border.size * 12700}">` +
+    `<a:solidFill><a:srgbClr val="${rgb}">${alpha}</a:srgbClr></a:solidFill>` +
+    `</a:ln>`
+  );
+}
+
+/** A drawing run that can be placed between ordinary text runs in one paragraph. */
+export function inlineImageRun(p: DrawingParams): string {
+  const name = escAttr(p.name);
+  const labelledDescription =
+    p.accessibility.kind === "labelled"
+      ? escAttr(p.accessibility.description)
+      : undefined;
+  const docPr =
+    labelledDescription !== undefined
+      ? `<wp:docPr id="${p.docPrId}" name="${name}" descr="${labelledDescription}"/>`
+      : (
+          `<wp:docPr id="${p.docPrId}" name="${name}">` +
+          `<a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+          `<a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}">` +
+          `<adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/>` +
+          `</a:ext></a:extLst></wp:docPr>`
+        );
+  const nonVisualPictureProperties =
+    labelledDescription !== undefined
+      ? `<pic:cNvPr id="${p.docPrId}" name="${name}" descr="${labelledDescription}"/>`
+      : `<pic:cNvPr id="${p.docPrId}" name="${name}"/>`;
+  const drawingOpen = p.wrap
+    ? `<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="0" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
+      `<wp:simplePos x="0" y="0"/>` +
+      `<wp:positionH relativeFrom="column"><wp:align>${p.wrap}</wp:align></wp:positionH>` +
+      `<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>`
+    : `<wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">`;
+  const wrap = p.wrap
+    ? `<wp:wrapSquare wrapText="${p.wrap === "left" ? "right" : "left"}"/>`
+    : "";
+  const drawingClose = p.wrap ? "</wp:anchor>" : "</wp:inline>";
+  return (
+    `<w:r><w:drawing>` +
+    drawingOpen +
     `<wp:extent cx="${p.cxEmu}" cy="${p.cyEmu}"/>` +
     `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
-    `<wp:docPr id="${p.docPrId}" name="${name}" descr="${descr}"/>` +
+    wrap +
+    docPr +
     `<wp:cNvGraphicFramePr>` +
     `<a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>` +
     `</wp:cNvGraphicFramePr>` +
@@ -324,7 +260,7 @@ export function inlineImageParagraph(p: DrawingParams): string {
     `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
     `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
     `<pic:nvPicPr>` +
-    `<pic:cNvPr id="${p.docPrId}" name="${name}" descr="${descr}"/>` +
+    nonVisualPictureProperties +
     `<pic:cNvPicPr><a:picLocks noChangeAspect="1" noChangeArrowheads="1"/></pic:cNvPicPr>` +
     `</pic:nvPicPr>` +
     `<pic:blipFill>` +
@@ -344,10 +280,14 @@ export function inlineImageParagraph(p: DrawingParams): string {
     `<pic:spPr bwMode="auto">` +
     `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${p.cxEmu}" cy="${p.cyEmu}"/></a:xfrm>` +
     `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
-    `<a:noFill/><a:ln><a:noFill/></a:ln>` +
+    `<a:noFill/>${pictureBorder(p.border)}` +
     `</pic:spPr>` +
-    `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
+    `</pic:pic></a:graphicData></a:graphic>${drawingClose}</w:drawing></w:r>`
   );
+}
+
+export function inlineImageParagraph(p: DrawingParams): string {
+  return `<w:p>${p.pPrXml ?? ""}${inlineImageRun(p)}</w:p>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -362,12 +302,23 @@ export interface ImageEmbedderOptions {
 export interface EmbedImageOptions {
   /** Alt text for `descr` (accessibility). */
   alt?: string;
+  /**
+   * Override the drawing's assistive-technology contract.
+   *
+   * Ordinary source images remain labelled from `alt`/`name`; built-in
+   * semantic adornments may opt into the Office 2019 decorative marker.
+   */
+  accessibility?:
+    | { kind: "labelled"; description: string }
+    | { kind: "decorative" };
   /** Human-facing name (e.g. the attachment filename). */
   name?: string;
   /** Author-specified rendered width in px (Confluence `ac:width`). */
   widthPx?: number;
   /** Author-specified rendered height in px. */
   heightPx?: number;
+  /** ADF media wrapping side. */
+  wrap?: "left" | "right";
   /**
    * The document part whose XML will carry the returned drawing (default
    * `word/document.xml`). An `r:embed` relationship is only valid in the rels
@@ -378,17 +329,25 @@ export interface EmbedImageOptions {
   partPath?: string;
   /** `<w:pPr>…</w:pPr>` to preserve on the emitted paragraph (see {@link DrawingParams.pPrXml}). */
   pPrXml?: string;
+  /** Authored ADF border rendered on the picture shape. */
+  border?: MediaBorder;
 }
 
 export interface EmbedSvgOptions {
   /** Alt text for `descr` (spec 005a: the diagram SOURCE is the description). */
   alt?: string;
+  /** Explicit assistive-technology contract for the SVG drawing. */
+  accessibility?:
+    | { kind: "labelled"; description: string }
+    | { kind: "decorative" };
   /** Human-facing name (shown in Word's selection pane). */
   name?: string;
   /** Intrinsic pixel width of the SVG (drives the width-capped display size). */
   widthPx: number;
   /** Intrinsic pixel height of the SVG. */
   heightPx: number;
+  /** ADF media wrapping side. */
+  wrap?: "left" | "right";
   /** Document part whose rels carry the relationships (default `word/document.xml`). */
   partPath?: string;
   /** `<w:pPr>…</w:pPr>` to preserve on the emitted paragraph. */
@@ -400,6 +359,8 @@ export interface EmbedSvgOptions {
    * not a rendered diagram, so the report tallies it as `embeddedImages`.
    */
   origin?: "image" | "diagram";
+  /** Authored ADF border rendered on the picture shape. */
+  border?: MediaBorder;
 }
 
 interface MediaEntry {
@@ -456,6 +417,31 @@ export class ImageEmbedder {
    * — in that case the archive is untouched (no dangling media part or rel).
    */
   embed(bytes: Uint8Array, opts: EmbedImageOptions = {}): string {
+    return this.embedRaster(bytes, opts, false);
+  }
+
+  /** Embed an image as a drawing run inside an existing paragraph. */
+  embedInline(bytes: Uint8Array, opts: EmbedImageOptions = {}): string {
+    return this.embedRaster(bytes, opts, true);
+  }
+
+  /**
+   * Embed a built-in semantic callout icon as an inline drawing.
+   *
+   * It uses the same media/relationship/id machinery as page images, but it is
+   * exporter chrome rather than authored page media and therefore does not
+   * increment {@link embeddedCount}.
+   */
+  embedCalloutIconInline(bytes: Uint8Array, opts: EmbedImageOptions): string {
+    return this.embedRaster(bytes, opts, true, false);
+  }
+
+  private embedRaster(
+    bytes: Uint8Array,
+    opts: EmbedImageOptions,
+    inline: boolean,
+    countAsImage = true,
+  ): string {
     if (bytes.length === 0) throw new ImageEmbedError("the fetched image was empty");
     if (bytes.length > MAX_IMAGE_BYTES) {
       throw new ImageEmbedError(
@@ -475,16 +461,22 @@ export class ImageEmbedder {
     const relId = this.ensureRelationship(entry, opts.partPath ?? DOCUMENT_PART);
     const size = resolveTargetSize(info, { widthPx: opts.widthPx, heightPx: opts.heightPx }, this.maxWidthPx);
     const docPrId = this.nextDocPrId++;
-    this.embedded += 1;
-    return inlineImageParagraph({
+    if (countAsImage) this.embedded += 1;
+    const params: DrawingParams = {
       relId,
       docPrId,
       name: opts.name || `Image ${docPrId}`,
-      descr: opts.alt || opts.name || "image",
+      accessibility: opts.accessibility ?? {
+        kind: "labelled",
+        description: opts.alt || opts.name || "image",
+      },
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
+      wrap: opts.wrap,
       pPrXml: opts.pPrXml,
-    });
+      border: opts.border,
+    };
+    return inline ? inlineImageRun(params) : inlineImageParagraph(params);
   }
 
   /**
@@ -500,6 +492,24 @@ export class ImageEmbedder {
    * no dangling media part or relationship (the 004-F3 invariant).
    */
   embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string {
+    return this.embedSvgDrawing(svg, pngFallback, opts, false);
+  }
+
+  /** Embed SVG + PNG fallback as a drawing run inside an existing paragraph. */
+  embedSvgInline(
+    svg: string | Uint8Array,
+    pngFallback: Uint8Array,
+    opts: EmbedSvgOptions,
+  ): string {
+    return this.embedSvgDrawing(svg, pngFallback, opts, true);
+  }
+
+  private embedSvgDrawing(
+    svg: string | Uint8Array,
+    pngFallback: Uint8Array,
+    opts: EmbedSvgOptions,
+    inline: boolean,
+  ): string {
     const svgBytes = typeof svg === "string" ? new TextEncoder().encode(svg) : svg;
     if (svgBytes.length === 0) throw new ImageEmbedError("the rendered SVG was empty");
     if (svgBytes.length > MAX_IMAGE_BYTES) throw new ImageEmbedError("the rendered SVG is too large to embed");
@@ -532,16 +542,22 @@ export class ImageEmbedder {
     const docPrId = this.nextDocPrId++;
     if ((opts.origin ?? "diagram") === "image") this.embedded += 1;
     else this.diagramsEmbedded += 1;
-    return inlineImageParagraph({
+    const params: DrawingParams = {
       relId: pngRelId,
       svgRelId,
       docPrId,
       name: opts.name || `Diagram ${docPrId}`,
-      descr: opts.alt || opts.name || "diagram",
+      accessibility: opts.accessibility ?? {
+        kind: "labelled",
+        description: opts.alt || opts.name || "diagram",
+      },
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
+      wrap: opts.wrap,
       pPrXml: opts.pPrXml,
-    });
+      border: opts.border,
+    };
+    return inline ? inlineImageRun(params) : inlineImageParagraph(params);
   }
 
   /** Reuse the media part for byte-identical images, else write a new one. */
@@ -568,7 +584,16 @@ export class ImageEmbedder {
     } while (this.zip.file(`word/media/${filename}`));
 
     ensureContentTypeDefault(this.zip, info.ext, info.mime);
-    this.zip.file(`word/media/${filename}`, bytes);
+    const path = `word/media/${filename}`;
+    const write = this.zip.file as unknown as (
+      path: string,
+      content: Uint8Array,
+      options: { binary: boolean; compression?: "STORE" },
+    ) => PizZip;
+    write.call(this.zip, path, bytes, {
+      binary: true,
+      ...(isPrecompressedRasterPart(path) ? { compression: "STORE" as const } : {}),
+    });
     return filename;
   }
 

@@ -23,11 +23,12 @@ import {
   type PdfResolvedAsset,
 } from "@atlcli/pdf";
 import { createAssetByteCache, tokenAssetFetcher, type AssetClient } from "./asset-fetcher.js";
+import type { BrowserPdfCompilerFontSourceV1 } from "@atlcli/pdf-compiler-browser";
 
 const require = createRequire(import.meta.url);
 
 /**
- * Load the vendored, CSP-patched typst wasm and the ten canonical fonts from
+ * Load the vendored, CSP-patched typst wasm and the twelve canonical fonts from
  * the INSTALLED packages (`@atlcli/pdf-compiler-browser/wasm`,
  * `@atlcli/pdf/fonts/*`) — plain `require.resolve`, so it works identically
  * under Node and Bun, from a workspace link or an installed tarball. (The
@@ -49,6 +50,21 @@ export async function loadNodePdfCompilerAssets(): Promise<{ wasm: ArrayBuffer; 
 
 let compilerPromise: Promise<PdfCompilePort> | null = null;
 
+function nodePdfFontSources(): BrowserPdfCompilerFontSourceV1[] {
+  return PDF_RUNTIME_ASSETS.fonts.map((font) => ({
+    assetId: font.assetId,
+    sha256: font.sha256,
+    load: async (context = {}) => {
+      context.signal?.throwIfAborted();
+      const bytes = new Uint8Array(
+        await readFile(require.resolve(`@atlcli/pdf/fonts/${font.fileName}`)),
+      );
+      context.signal?.throwIfAborted();
+      return bytes;
+    },
+  }));
+}
+
 /**
  * One shared compiler per process (`reset_shadow()` runs between compiles, so
  * a single instance serves every page/document). Lazily created; a load
@@ -58,8 +74,14 @@ export function nodePdfCompiler(): Promise<PdfCompilePort> {
   if (compilerPromise) return compilerPromise;
   compilerPromise = (async () => {
     const { BrowserPdfCompiler } = await import("@atlcli/pdf-compiler-browser");
-    const { wasm, fonts } = await loadNodePdfCompilerAssets();
-    return new BrowserPdfCompiler({ wasm, fonts });
+    const wasmBytes = await readFile(
+      require.resolve("@atlcli/pdf-compiler-browser/wasm"),
+    );
+    const wasm = wasmBytes.buffer.slice(
+      wasmBytes.byteOffset,
+      wasmBytes.byteOffset + wasmBytes.byteLength,
+    );
+    return new BrowserPdfCompiler({ wasm, fonts: nodePdfFontSources() });
   })().catch((error) => {
     compilerPromise = null;
     throw error;
@@ -117,7 +139,9 @@ export function dirPdfOutputSink(outDir: string): PdfOutputSink {
       const dir = resolve(outDir);
       const target = join(dir, basename(name));
       await mkdir(dir, { recursive: true });
-      await writeFile(target, bytes);
+      // `bytes` is a PdfBytesHandle since spec 010 T5.6. For the default
+      // array-backed handle this hands back the compiler's own buffer.
+      await writeFile(target, await bytes.asUint8Array());
     },
   };
 }

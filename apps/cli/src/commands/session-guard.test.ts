@@ -1,7 +1,22 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { describe, test, expect, afterAll, beforeEach, mock } from "bun:test";
 
 const utils = await import("../../../../packages/core/src/utils");
 const { ERROR_CODES, getFlag, hasFlag } = utils;
+
+// `mock.module` mutates the process-wide module registry, so without restoring
+// it these stubs leak into every test file that runs after this one — silently
+// replacing `@atlcli/core` with the handful of names stubbed below and making
+// the real clients throw on construction. Capture the genuine modules first and
+// put them back in `afterAll`.
+const realCore = { ...(await import("@atlcli/core")) };
+const realConfluence = { ...(await import("@atlcli/confluence")) };
+const realJira = { ...(await import("@atlcli/jira")) };
+
+afterAll(() => {
+  mock.module("@atlcli/core", () => realCore);
+  mock.module("@atlcli/confluence", () => realConfluence);
+  mock.module("@atlcli/jira", () => realJira);
+});
 
 type Profile = {
   name: string;

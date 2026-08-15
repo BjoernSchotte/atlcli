@@ -1,0 +1,273 @@
+{
+  "schema": "atlcli.astro-build-inventory/1",
+  "bundlePath": "<private>",
+  "outputRoot": "<private>",
+  "bundleDigest": "starlight-published-consumer-bundle-digest",
+  "pages": [
+    {
+      "kind": "page",
+      "sourceId": "guide-ar",
+      "route": "/guide/",
+      "locale": "ar",
+      "pathname": "ar/publish/guide/"
+    },
+    {
+      "kind": "page",
+      "sourceId": "guide",
+      "route": "/guide/",
+      "pathname": "publish/guide/"
+    }
+  ],
+  "labelLandings": [
+    {
+      "kind": "label",
+      "label": "guide",
+      "slug": "guide",
+      "route": "/topics/guide/",
+      "sourceIds": [
+        "guide",
+        "guide-ar"
+      ],
+      "pathname": "publish/topics/guide/"
+    }
+  ],
+  "projectPages": [
+    {
+      "kind": "project",
+      "pathname": "404/"
+    }
+  ],
+  "routes": [
+    {},
+    {
+      "pathname": "/_image"
+    },
+    {
+      "pathname": "/404"
+    },
+    {},
+    {}
+  ],
+  "output": [
+    {
+      "path": "404.html",
+      "byteLength": 13129,
+      "sha256": "36166ad9c014ad36bf96b7625a36d8cbb3b953ea0e6cef91ed24abf6174a6ce5"
+    },
+    {
+      "path": "_astro/InteractiveChart.astro_astro_type_script_index_0_lang.DsVw4269.js",
+      "byteLength": 88186,
+      "sha256": "bc9fd5214f771439da61bf992170548c4092fc6d8faeaaeaeb4225e962e0d66c"
+    },
+    {
+      "path": "_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.BcSo_yiZ.js",
+      "byteLength": 622,
+      "sha256": "dd7cc171c64ce739999d62aae6c7052ae2b45ce190713b35cf8919dde04abfd8"
+    },
+    {
+      "path": "_astro/TableOfContents.astro_astro_type_script_index_0_lang.Csloo1VZ.js",
+      "byteLength": 36,
+      "sha256": "f1c9743eceea19c4cada60524019ee9214c22a257a35bdfd184e85f9006264c0"
+    },
+    {
+      "path": "_astro/ec.0vx5m.js",
+      "byteLength": 2523,
+      "sha256": "182e98b9acfcfd358ea486967bd17dcaddd5930b8d092bc0653fd26ddbb11e37"
+    },
+    {
+      "path": "_astro/ec.v4551.css",
+      "byteLength": 18222,
+      "sha256": "3a5b919ac33d8d19bb5dde4662a0e287ec71991605b307e1eb9d1762c68f64a3"
+    },
+    {
+      "path": "_astro/middleware.DMEje7QF.css",
+      "byteLength": 67641,
+      "sha256": "d4f86271f0a2e4e0a9da682478b78713697b0f8299b00abd25c3943402a34157"
+    },
+    {
+      "path": "_astro/page.B4ePGq7V.js",
+      "byteLength": 2646,
+      "sha256": "896531e009edbc1daa2b2ba04fdd300fd1c50e73f6cc585a8181092176598628"
+    },
+    {
+      "path": "_astro/print.ehPL0gv-.css",
+      "byteLength": 3318,
+      "sha256": "4d7d25c3d697e6d36e64afb9edef136e6d2e4c50f70a48000ca90f9b059e3622"
+    },
+    {
+      "path": "_astro/starlight-toc.CTCQXEge.js",
+      "byteLength": 1981,
+      "sha256": "2a08da9f380dd1395e0072dbd1b35e1e2b0af6072f0e40417865318271f9b342"
+    },
+    {
+      "path": "ar/publish/guide/index.html",
+      "byteLength": 23888,
+      "sha256": "6ac3eed1e3c23748d1dc82d82447c2e2e9cd51342a4a95a8ce4f07a5b0e17870"
+    },
+    {
+      "path": "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt",
+      "byteLength": 14,
+      "sha256": "f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f"
+    },
+    {
+      "path": "feed.xml",
+      "byteLength": 763,
+      "sha256": "dce4ae1e41fc8e900727ba5872011e4e010f25f5f88554b1367d9f68092b7ad7"
+    },
+    {
+      "path": "pagefind/filter/ar_32a581e.pf_filter",
+      "byteLength": 49,
+      "sha256": "545a8000163973efc69dfcbadacc5876cd6794f54c5361db97a42409fc517c85"
+    },
+    {
+      "path": "pagefind/filter/ar_55af971.pf_filter",
+      "byteLength": 48,
+      "sha256": "0a452dcc98c125a17f05030cbf2ed144cc85afa71647f449a79dbd5d82e072ed"
+    },
+    {
+      "path": "pagefind/filter/en_e3b9b2c.pf_filter",
+      "byteLength": 48,
+      "sha256": "6490943560b6117a4476602cee9768c512935e7988f59b4ab593763b38a5fac5"
+    },
+    {
+      "path": "pagefind/filter/en_eb612f5.pf_filter",
+      "byteLength": 50,
+      "sha256": "978ffadbf1ac7953d6a2253c17c80045a7ea6bc36d4ca2dbc508a91990241b14"
+    },
+    {
+      "path": "pagefind/fragment/ar_f7b71b8.pf_fragment",
+      "byteLength": 286,
+      "sha256": "56e9bc5097e737e31a39bffb5e9b37c6e31a7946538df9541de4e21ae15e448b"
+    },
+    {
+      "path": "pagefind/fragment/en_26d568d.pf_fragment",
+      "byteLength": 223,
+      "sha256": "11a68ac48ffccf3e9c084432828b07eb70b5aa1940295319a4085ef7aef5840e"
+    },
+    {
+      "path": "pagefind/fragment/en_db9bb8e.pf_fragment",
+      "byteLength": 352,
+      "sha256": "acf13646e225c81e1861a656dcdd76d09e895e562bb85ddea5800f465398c860"
+    },
+    {
+      "path": "pagefind/index/ar_ff75a53.pf_index",
+      "byteLength": 262,
+      "sha256": "8c8f01c6d8b3907c728041b9ea07ae368a00d8fa3abffc9259075e5cfe6cb10e"
+    },
+    {
+      "path": "pagefind/index/en_8e50d48.pf_index",
+      "byteLength": 378,
+      "sha256": "1a46dd262e47f1bf76363953bec595320c2b5b7dfe82f4b6b8a4fb3fe8093c52"
+    },
+    {
+      "path": "pagefind/pagefind-component-ui.css",
+      "byteLength": 41830,
+      "sha256": "de389c7e5d87d6e2b10d65fb1e36e8989a12a2ad8dd6239b7e070d81fb5d8b0d"
+    },
+    {
+      "path": "pagefind/pagefind-component-ui.js",
+      "byteLength": 175488,
+      "sha256": "958620129dd14bd851805daeb12ce708bd63b9287325d1d5ae6f73a04d1723f8"
+    },
+    {
+      "path": "pagefind/pagefind-entry.json",
+      "byteLength": 228,
+      "sha256": "1a062fcc67235a8494fd9bc2a1d91ad4f2f159a62a90fd2ed726fa79e3fec832"
+    },
+    {
+      "path": "pagefind/pagefind-highlight.js",
+      "byteLength": 44352,
+      "sha256": "04741266a86911636cefc41c8b407e380dda99b7d208724f700f94cdf57e37b5"
+    },
+    {
+      "path": "pagefind/pagefind-modular-ui.css",
+      "byteLength": 7336,
+      "sha256": "653ab29e4de5629f6ddf5f6fcdf5d2b3eb539a8c07fff8a56b8ce2156a570788"
+    },
+    {
+      "path": "pagefind/pagefind-modular-ui.js",
+      "byteLength": 14634,
+      "sha256": "f3efa0f74b305ccab0bc9edc7c09ab69867180b4c43093d84bb9b508ac4ec32c"
+    },
+    {
+      "path": "pagefind/pagefind-ui.css",
+      "byteLength": 14482,
+      "sha256": "e113b816110ed07b017613e901addfe635350f2a5b84990aa76c91a74b158084"
+    },
+    {
+      "path": "pagefind/pagefind-ui.js",
+      "byteLength": 119987,
+      "sha256": "2efa93f2e80a199ca742a69bd4cfffabc5c591ebe7763f64f7c655fd00d2209f"
+    },
+    {
+      "path": "pagefind/pagefind-worker.js",
+      "byteLength": 41255,
+      "sha256": "4ca50d25bcab9e1c3afbc00ab5f7761114e83c8fc1b83d38655af1558b650c2a"
+    },
+    {
+      "path": "pagefind/pagefind.ar_3635c1e0a4.pf_meta",
+      "byteLength": 126,
+      "sha256": "4144f540ae76fc78ab61cd50428f023b61d575777bcc6081c6c8e9e294579267"
+    },
+    {
+      "path": "pagefind/pagefind.ar_e5b338e201.pf_meta",
+      "byteLength": 126,
+      "sha256": "c28d1815655a35d1a9b757983e1d8915bdf8e8b870122f7b1b068f40c6ff60ed"
+    },
+    {
+      "path": "pagefind/pagefind.en_9dc56afc3e.pf_meta",
+      "byteLength": 135,
+      "sha256": "6c415742ca801907fac87384ec3f8c6e5c5de0f19706d3fbcb5e2ac1306897d0"
+    },
+    {
+      "path": "pagefind/pagefind.en_e744234884.pf_meta",
+      "byteLength": 136,
+      "sha256": "f51ddb428809bec6c5b77b354dfbf9d81c11cdbde8c197199980e034849c6b23"
+    },
+    {
+      "path": "pagefind/pagefind.js",
+      "byteLength": 45555,
+      "sha256": "252d272bd34d483d19a752060f6a065114d15ab12c42d8f905ca565e2768a009"
+    },
+    {
+      "path": "pagefind/wasm.ar.pagefind",
+      "byteLength": 73411,
+      "sha256": "9b08b0f4aa7395c4c8ec05369fb301a6d69aeeab69762831376c16df07e9b68e"
+    },
+    {
+      "path": "pagefind/wasm.en.pagefind",
+      "byteLength": 72740,
+      "sha256": "6c8406154b5d460fc8b6cdbf2c99c008c43c465efdb1f9c15c192f5cf30dcd85"
+    },
+    {
+      "path": "pagefind/wasm.unknown.pagefind",
+      "byteLength": 68199,
+      "sha256": "2533da887ac06de36813d031310af0f737daadacc931775e342aa5a3857a4959"
+    },
+    {
+      "path": "publish/guide/index.html",
+      "byteLength": 24395,
+      "sha256": "f41e36b3183b44732b34a7ce5c749c01a70dddb52b6aa765fefd2d839864601f"
+    },
+    {
+      "path": "publish/topics/guide/index.html",
+      "byteLength": 22567,
+      "sha256": "16a08d91286d656aa3ed9f66bbc29d2ab371ece2a3282a2c04d9e31ee9690050"
+    },
+    {
+      "path": "robots.txt",
+      "byteLength": 83,
+      "sha256": "132d6b1d51f82ff71bab409b39f89ce3fcc777a93c2f1daed0723a9b08f6279c"
+    },
+    {
+      "path": "sitemap-0.xml",
+      "byteLength": 921,
+      "sha256": "a15dfb53e54e5c1be57a3b034505c607fe5b5cb56bb29f9eb8844a85afb1fb9e"
+    },
+    {
+      "path": "sitemap-index.xml",
+      "byteLength": 191,
+      "sha256": "770f6b89362939cd21b78cfc3c8e935b82f6bc3c8cfe63003ce632ee18e5c7e3"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+---
+const { block } = Astro.props;
+const text = Array.isArray(block?.content)
+  ? block.content.map((node: { text?: unknown }) => typeof node?.text === "string" ? node.text : "").join("")
+  : "";
+---
+
+<p class="starlight-override" data-renderer-override="starlight-paragraph">{text}</p>

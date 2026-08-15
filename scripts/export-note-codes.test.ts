@@ -3,7 +3,10 @@ import { Glob } from "bun";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EXPORT_NOTE_CODES } from "../packages/confluence/src/export-blocks.js";
+import {
+  EXPORT_NOTE_CODES,
+  RETIRED_EXPORT_NOTE_CODES,
+} from "../packages/confluence/src/export-blocks.js";
 
 /**
  * ExportNote.code registry enforcement (spec 009, "Stabilize
@@ -50,6 +53,62 @@ interface EmissionScan {
   sources: Map<string, string>;
 }
 
+/**
+ * These codes/prefixes belong to the Activity projection, not to Confluence
+ * `ExportNote`. The source scanner is intentionally syntax-based and cannot
+ * infer the surrounding TypeScript type, so keep this small boundary explicit.
+ */
+const NON_EXPORT_NOTE_CODES = new Set([
+  "browser-case-failure",
+  // Closed ChartDiagnosticV1 vocabulary. These records deliberately share
+  // the generic `{ code, message }` shape but are not ExportNote emissions.
+  "flattened-3d",
+  "invalid-option",
+  "malformed-data",
+  "skipped-row",
+  "unsupported-kind",
+  // Publication build-budget issue, likewise separate from ExportNote.
+  "chart-p0-diagnostic",
+  "compiler-diagnostic",
+  // Chat answer gaps are a separate, host-owned evidence taxonomy. They use
+  // the same `{ code, message }` shape but are never Confluence ExportNotes.
+  "incomplete-coverage",
+  "incomplete-retrieval",
+  "invalid-citation",
+  "legacy-pdf-error",
+  // ChangeDiagnosticV1 vocabulary. These diagnostics intentionally use the
+  // same generic `{ code, message }` shape, but belong to the host-neutral
+  // semantic change contract rather than the export reporting surface.
+  "ambiguous-match",
+  "limit-exceeded",
+  "missing-observed-value",
+  "opaque-source-change",
+  "policy-noise",
+  "source-fallback",
+  "source-incomplete",
+  "unavailable-transition",
+  "missing-context",
+  "no-detail-evidence",
+  "prompt-injection-risk",
+  "question-not-answered",
+  "stale-source",
+  "uncovered-candidate",
+  "unresolved-contradiction",
+  "truncated-source",
+  "unresolved-reference",
+  "wrong-source",
+  // Zod refinement issues emitted while validating HITL question proposals.
+  "custom",
+  // ActionUnavailableReasonCodeV1 is a separate palette availability
+  // taxonomy. Its helper has the generic `{ code, message }` shape that this
+  // intentionally syntax-only ExportNote scanner also recognizes.
+  "missing-capability",
+]);
+
+const NON_EXPORT_NOTE_PREFIXES = new Set([
+  "pdf-compiler-",
+]);
+
 function collectEmissionSites(): EmissionScan {
   const literals: EmissionSite[] = [];
   const templatePrefixes: EmissionSite[] = [];
@@ -67,10 +126,12 @@ function collectEmissionSites(): EmissionScan {
         // properties (mark maps, exit codes, …) do not.
         const windowText = source.slice(Math.max(0, match.index - 400), match.index + 400);
         if (!windowText.includes("message:")) continue;
+        if (NON_EXPORT_NOTE_CODES.has(match[1]!)) continue;
         literals.push({ file: rel, code: match[1]! });
       }
 
       for (const match of source.matchAll(/code:\s*`([a-z0-9-]+-)\$\{/g)) {
+        if (NON_EXPORT_NOTE_PREFIXES.has(match[1]!)) continue;
         templatePrefixes.push({ file: rel, code: match[1]! });
       }
     }
@@ -127,5 +188,49 @@ describe("ExportNote.code registry (spec 009)", () => {
         ? `Registry members no emission site produces (renamed call site? remove or re-wire):\n  ${dead.join("\n  ")}`
         : undefined,
     ).toEqual([]);
+  });
+
+  /**
+   * Vocabulary unification (spec 010). The registry checks above answer "is
+   * this code known?"; these answer "do two emitters that observe the SAME
+   * condition spell it the same way?" — the thing a `notesByCode` consumer
+   * actually depends on, and the thing a type-checked union cannot express.
+   */
+  it("no retired code is emitted anywhere again", () => {
+    // The alias table is the migration path, not a second live spelling. If a
+    // retired code reappears at an emission site, the divergence is back.
+    const retired = new Set<string>(Object.keys(RETIRED_EXPORT_NOTE_CODES));
+    const offenders = literals
+      .filter((site) => retired.has(site.code))
+      .map((site) => `${site.file}: "${site.code}" → use "${RETIRED_EXPORT_NOTE_CODES[site.code as keyof typeof RETIRED_EXPORT_NOTE_CODES]}"`);
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
+  it("both PDF hosts spell the unresolved-mention fact identically", () => {
+    // The CLI's PDF host and the extension's PDF host observe the very same
+    // condition — an account id that did not resolve to a display name — from
+    // the same `resolveExportMentions` result. They are separate processes with
+    // no shared call site, so nothing but this assertion keeps their spelling
+    // together. (Each side's own runtime behaviour is pinned separately: the CLI
+    // in `apps/cli/src/commands/export-source-contract.test.ts`, the extension in
+    // `apps/extension/tests/pdf/run-export.test.ts`.)
+    const hosts = ["apps/cli/src/commands/export-pdf.ts", "apps/extension/utils/pdf/run-export.ts"];
+    const spellings = new Map<string, string[]>();
+    for (const host of hosts) {
+      const source = sources.get(host);
+      expect(source, `${host} must be scanned (path moved?)`).toBeDefined();
+      spellings.set(
+        host,
+        [...source!.matchAll(/code:\s*"([a-z0-9-]*mention-unresolved)"/g)].map((m) => m[1]!),
+      );
+    }
+    for (const [host, codes] of spellings) {
+      expect(codes.length, `${host} must emit an unresolved-mention note`).toBeGreaterThan(0);
+    }
+    const distinct = new Set([...spellings.values()].flat());
+    expect(
+      [...distinct],
+      `The two PDF hosts disagree on the unresolved-mention code: ${JSON.stringify(Object.fromEntries(spellings))}`,
+    ).toEqual(["mention-unresolved"]);
   });
 });

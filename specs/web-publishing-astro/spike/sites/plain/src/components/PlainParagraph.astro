@@ -1,0 +1,15 @@
+---
+const { block } = Astro.props;
+const text = Array.isArray(block?.content)
+  ? block.content.map((node: { text?: unknown }) => typeof node?.text === "string" ? node.text : "").join("")
+  : "";
+---
+
+<p class="plain-override" data-renderer-override="plain-paragraph">{text}</p>
+
+<style>
+  .plain-override {
+    padding-inline-start: 0.75rem;
+    border-inline-start: 0.2rem solid var(--atlcli-content-accent);
+  }
+</style>

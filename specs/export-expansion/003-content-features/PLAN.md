@@ -1,6 +1,6 @@
 # 003 — Content features & scroll-* compatibility macros
 
-Status: Plan. Covers UMSETZUNGSPLAN Lane C (T1.4–T1.6) and BASELINE-DESIGN §3
+Status: **Implemented**, 2026-07-20 (PR #54). Merged to `main`; live E2E verified against DOCSY. Covers UMSETZUNGSPLAN Lane C (T1.4–T1.6) and BASELINE-DESIGN §3
 cluster C-content (C1–C9). Compatibility-critical work (C4/C5/C6) lands first,
 then C3 captions and table hardening; C1/C2/C7/C8/C9 are scoped as follow-up
 work packages at the end of this plan.

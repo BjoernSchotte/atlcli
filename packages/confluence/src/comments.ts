@@ -7,7 +7,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join, dirname, basename } from "node:path";
 import type { PageComments, FooterComment, InlineComment } from "./client.js";
-import { storageToMarkdown } from "./markdown.js";
+import { commentBodyToText } from "./comment-text.js";
+export { commentBodyToText } from "./comment-text.js";
 
 /**
  * Get the comments file path for a markdown file.
@@ -52,22 +53,7 @@ export async function writeCommentsFile(
  *
  * Strips HTML tags and normalizes whitespace.
  */
-export function commentBodyToText(storageBody: string): string {
-  // Use markdown converter then strip remaining formatting
-  const markdown = storageToMarkdown(storageBody);
-  return markdown
-    .replace(/\*\*/g, "") // Remove bold markers
-    .replace(/\*/g, "") // Remove italic markers
-    .replace(/`/g, "") // Remove code markers
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // Convert links to text
-    .replace(/\n+/g, " ") // Collapse newlines
-    .replace(/\s+/g, " ") // Collapse whitespace
-    .trim();
-}
-
-/**
- * Format a comment for display.
- */
+/** Format a comment for display. */
 export function formatComment(
   comment: FooterComment | InlineComment,
   indent = 0

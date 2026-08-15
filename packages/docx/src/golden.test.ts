@@ -25,12 +25,45 @@
  * now yields a `logo-skipped` note (counted in `skippedImages`) instead of a
  * `placeholder-unsupported` entry. Every zip ENTRY was asserted byte-identical
  * across the recapture — only the report block changed.
+ *
+ * `word/settings.xml` amended 2026-07-21 for the field-refresh policy: this
+ * fixture's only fields are the body's static `HYPERLINK`s, so the export no
+ * longer injects `<w:updateFields w:val="true"/>` and the entry is the
+ * template's own empty `<w:settings>` element. That is the ONE intended
+ * behaviour change; every other entry stayed byte-identical, which is exactly
+ * what a golden file is for. See `update-fields.test.ts`.
+ *
+ * `word/document.xml` recaptured 2026-07-22 after the in-test DOCX fixture
+ * builder was corrected to attach its existing header/footer relationships to
+ * the final section. The intended diff is limited to the `r` namespace plus
+ * `headerReference`/`footerReference`; without those references Word consumers
+ * are allowed to ignore the otherwise orphaned story parts.
+ *
+ * Recaptured 2026-07-23 after three intentional fidelity fixes: inline code
+ * gained its background shading, generated fixtures gained their required
+ * styles relationship, and ordered lists moved to renderer-compatible,
+ * self-contained numbering definitions. The fixture metadata was anonymized
+ * at the same time; it is synthetic test data only.
+ *
+ * The 2026-07-23 portable-code-font change is asserted as one explicit,
+ * tightly bounded delta from this historical capture: code runs use the
+ * bundled JetBrains Mono face and the package gains its font table,
+ * relationships, content types, and obfuscated font part. Normalizing exactly
+ * those owned additions lets this golden keep detecting every unrelated DOCX
+ * change without storing a 274 kB binary as JSON text.
+ *
+ * The 2026-07-24 semantic-callout-icon change is handled the same way. The
+ * fixture's info macro now owns one labelled PNG drawing. The test asserts its
+ * exact media digest, relationship, and accessible label, then normalizes only
+ * those additions before comparing every historical XML entry.
  */
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import PizZip from "pizzip";
 import { exportDocx, type ExportResult } from "./export.js";
 import { buildDocx, headingStyle, para, runSplitPara, stylesXml } from "./fixtures.js";
+import { CODE_FONT_FAMILY, CODE_FONT_KEY } from "./font-embedding.js";
 import type { ConfluencePageDetails } from "@atlcli/confluence";
 
 interface Golden {
@@ -47,6 +80,54 @@ interface Golden {
 const golden: Golden = JSON.parse(
   readFileSync(new URL("./golden-extension-export.json", import.meta.url), "utf8")
 );
+
+const CODE_FONT_PART =
+  "word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf";
+const CODE_FONT_OWNED_PARTS = [
+  "word/_rels/fontTable.xml.rels",
+  "word/fontTable.xml",
+  CODE_FONT_PART,
+] as const;
+const CALLOUT_ICON_PART = "word/media/atlcli-image1.png";
+const INFO_CALLOUT_ICON_SHA256 =
+  "159c6abc1afe2aebb3f8af25baa442a396f67b7a7bf5aba1df2a00c3c72b222b";
+const INFO_CALLOUT_DRAWING =
+  /<w:r><w:drawing><wp:inline\b[\s\S]*?<wp:docPr id="1" name="Info callout icon" descr="Info"\/>[\s\S]*?<\/wp:inline><\/w:drawing><\/w:r><w:r><w:t xml:space="preserve"> <\/w:t><\/w:r>/u;
+
+function normalizeOwnedDeltas(name: string, value: string): string {
+  let normalized = value.replaceAll(CODE_FONT_FAMILY, "Consolas");
+  if (name === "[Content_Types].xml") {
+    normalized = normalized
+      .replace('<Default Extension="png" ContentType="image/png"/>', "")
+      .replace(
+        '<Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>',
+        "",
+      )
+      .replace(
+        '<Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>',
+        "",
+      );
+  }
+  if (name === "word/_rels/document.xml.rels") {
+    normalized = normalized
+      .replace(
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/atlcli-image1.png"/>',
+        "",
+      )
+      .replace(
+        '<Relationship Id="rIdAtlcliFontTable" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>',
+        "",
+      )
+      .replace(
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"',
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"',
+      );
+  }
+  if (name === "word/document.xml") {
+    normalized = normalized.replace(INFO_CALLOUT_DRAWING, "");
+  }
+  return normalized;
+}
 
 /** EXACTLY the capture script's input — do not "improve" without recapturing. */
 const STORAGE = `
@@ -65,27 +146,27 @@ export function f(): number { return x; }]]></ac:plain-text-body></ac:structured
 `;
 
 export const GOLDEN_DETAILS: ConfluencePageDetails = {
-  id: "1117356071",
-  title: "DOCX Feature Zoo / Golden",
-  url: "https://mayflower.atlassian.net/wiki/spaces/DOCSY/pages/1117356071",
+  id: "fixture-page-1",
+  title: "DOCX Feature Zoo",
+  url: "https://example.invalid/wiki/spaces/TEST/pages/fixture-page-1",
   version: 7,
-  spaceKey: "DOCSY",
+  spaceKey: "TEST",
   storage: STORAGE,
-  tinyUrl: "https://mayflower.atlassian.net/wiki/x/AbC",
+  tinyUrl: "https://example.invalid/wiki/x/fixture",
   created: "2026-01-02T10:00:00.000Z",
   modified: "2026-06-30T12:30:00.000Z",
-  createdBy: { displayName: "Alice Author" },
-  modifiedBy: { displayName: "Mel Modifier" },
+  createdBy: { displayName: "Fixture Author" },
+  modifiedBy: { displayName: "Fixture Modifier" },
   labels: ["architecture", "golden"],
 };
 
-export const GOLDEN_TEMPLATE_META = { name: "mayflower.docx", modificationDate: new Date(2026, 6, 14) };
+export const GOLDEN_TEMPLATE_META = { name: "fixture.docx", modificationDate: new Date(2026, 6, 14) };
 export const GOLDEN_EXPORT_DATE = new Date(2026, 6, 14, 9, 5);
 
 export const GOLDEN_DEPS = {
-  getSpace: async () => ({ id: "s", key: "DOCSY", name: "Docs Space", type: "global" as const }),
-  getCurrentUser: async () => ({ accountId: "u", displayName: "Björn Schotte" }),
-  getPageOwner: async () => ({ accountId: "u-9", displayName: "Olga Owner" }),
+  getSpace: async () => ({ id: "fixture-space", key: "TEST", name: "Fixture Space", type: "global" as const }),
+  getCurrentUser: async () => ({ accountId: "fixture-user", displayName: "Fixture Exporter" }),
+  getPageOwner: async () => ({ accountId: "fixture-owner", displayName: "Fixture Owner" }),
 };
 
 export function goldenTemplateBytes(): Uint8Array {
@@ -109,10 +190,38 @@ export function expectMatchesGolden({ bytes, report }: ExportResult): void {
   const names = Object.keys(zip.files)
     .filter((n) => !zip.files[n].dir)
     .sort();
-  expect(names).toEqual(Object.keys(golden.entries).sort());
-  for (const name of names) {
-    expect(zip.files[name].asText()).toBe(golden.entries[name]);
+  expect(names).toEqual(
+    [...Object.keys(golden.entries), ...CODE_FONT_OWNED_PARTS, CALLOUT_ICON_PART].sort(),
+  );
+  for (const name of Object.keys(golden.entries)) {
+    expect(normalizeOwnedDeltas(name, zip.files[name].asText())).toBe(
+      golden.entries[name],
+    );
   }
+
+  const fontTable = zip.files["word/fontTable.xml"].asText();
+  expect(fontTable).toContain(`<w:font w:name="${CODE_FONT_FAMILY}">`);
+  expect(fontTable).toContain(
+    `<w:embedRegular r:id="rIdAtlcliCodeFont" w:fontKey="${CODE_FONT_KEY}"/>`,
+  );
+  expect(zip.files["word/_rels/fontTable.xml.rels"].asText()).toContain(
+    `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font"`,
+  );
+  const embeddedFont = zip.files[CODE_FONT_PART].asUint8Array();
+  expect(embeddedFont.byteLength).toBe(273_900);
+  expect([...embeddedFont.subarray(0, 4)]).not.toEqual([0x00, 0x01, 0x00, 0x00]);
+
+  const documentXml = zip.files["word/document.xml"].asText();
+  expect(documentXml.match(INFO_CALLOUT_DRAWING)).toHaveLength(1);
+  expect(documentXml.match(/<wp:docPr\b/gu)).toHaveLength(1);
+  expect(zip.files["word/_rels/document.xml.rels"].asText()).toContain(
+    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/atlcli-image1.png"',
+  );
+  const calloutIcon = zip.files[CALLOUT_ICON_PART].asUint8Array();
+  expect(calloutIcon.byteLength).toBe(348);
+  expect(createHash("sha256").update(calloutIcon).digest("hex")).toBe(
+    INFO_CALLOUT_ICON_SHA256,
+  );
 
   expect(report.resolvedCount).toBe(golden.report.resolvedCount);
   expect(report.unsupportedNames).toEqual(golden.report.unsupportedNames);

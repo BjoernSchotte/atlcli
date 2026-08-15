@@ -3,8 +3,6 @@ title: "CLI Commands"
 description: "CLI Commands - atlcli documentation"
 ---
 
-# CLI Commands
-
 Quick reference for all atlcli commands.
 
 ## Global Options
@@ -104,19 +102,25 @@ atlcli doctor --json          # JSON output for scripting
 ```bash
 atlcli wiki docs init <dir> --space <key>    # Initialize sync directory
 atlcli wiki docs pull <dir>                  # Pull from Confluence
+atlcli wiki docs pull --dir <dir>            # Same, when running from elsewhere
 atlcli wiki docs pull <dir> --page-id <id>   # Pull specific page
 atlcli wiki docs pull <dir> --version <n>    # Pull specific version
 atlcli wiki docs pull <dir> --label <name>   # Pull pages with label
+atlcli wiki docs pull <dir> --force          # Overwrite local edits (markdown + attachments)
 atlcli wiki docs push <dir>                  # Push to Confluence
 atlcli wiki docs push <dir> --dry-run        # Preview changes
 atlcli wiki docs push <dir> --force          # Force overwrite
 atlcli wiki docs push <dir> --legacy-editor  # Use legacy editor (v1)
-atlcli wiki docs sync <dir> --watch          # Watch and sync
+atlcli wiki docs sync <dir> --page-id <id>   # Start the bidirectional sync daemon
+atlcli wiki docs sync <dir> --dry-run        # Report the plan; changes nothing on disk
+atlcli wiki docs sync <dir> --on-conflict remote  # Conflicts: merge (default) | local | remote
+atlcli wiki docs sync --help                 # Full sync option list
 atlcli wiki docs status <dir>                # Show sync status
 atlcli wiki docs add <dir> --template <name> # Add page from template
 atlcli wiki docs diff <dir>                  # Show local vs remote diff (title only for folders)
 atlcli wiki docs resolve <dir>               # Resolve sync conflicts
 atlcli wiki docs check <dir>                 # Validate docs (includes folder checks)
+atlcli wiki docs check --dir <dir>           # Same, when running from elsewhere (exits 1 if nothing to validate)
 atlcli wiki docs preview <dir>               # Preview markdown rendering
 atlcli wiki docs convert <file> --to-new-editor    # Convert to v2 editor
 atlcli wiki docs convert <file> --to-legacy-editor # Convert to v1 editor
@@ -216,11 +220,34 @@ atlcli wiki page unlink-issue --id <id> --issue <key>  # Remove link
 ```bash
 atlcli wiki page history --id <id>           # List versions
 atlcli wiki page history --id <id> --limit <n>
-atlcli wiki page diff --id <id> --version <n>  # Compare with current
-atlcli wiki page diff --id <id> --from <n> --to <n>
-atlcli wiki page restore --id <id> --version <n>
+atlcli wiki page diff --id <id> --version <n>  # Unified diff with current
+atlcli wiki page diff --id <id> --from <n> --to <n> --context <n>
+atlcli wiki page diff --id <id> --from <n> --to <n> --format text --word-diff
+atlcli wiki page diff --id <id> --from <n> --to <n> --format semantic
+atlcli wiki page diff --id <id> --from <n> --to <n> --format semantic --json
+atlcli wiki page diff --id <id> --from <n> --to <n> --format review --word-diff
+atlcli wiki page diff --id <id> --from <n> --to <n> --format review --json
+atlcli wiki page restore --id <id> --version <n> --confirm
 atlcli wiki page restore --id <id> --version <n> --message <text> --confirm
 ```
+
+Page diff defaults to the existing line-oriented `unified` format. `text` is
+an explicit alias; `--word-diff` replaces paired changed lines with an inline
+`[-removed-]` / `{+added+}` review presentation. JSON keeps the applicable
+`unified` patch and adds ANSI-free `wordDiff` only when requested. The opt-in
+`semantic` format emits a plain-language, grouped terminal review or one
+`atlcli.change-set/1` JSON envelope. The terminal view does not expose AST
+paths, raw canonical JSON, collection IDs, or attachment UUIDs; use `--json`
+when a tool needs exact paths and operation metadata. `review` combines that
+semantic view with Markdown text hunks acquired from the same exact-version
+pair; its JSON contains both `changeSet` and `textDiff`. `--context` applies to
+text/unified/review;
+`--no-color` and `NO_COLOR` disable ANSI output. Cloud prefers exact-version ADF
+for both sides and can fall back to exact Storage for both sides. Data Center
+uses Storage only; that path is contract-tested but not project-live-certified.
+Large semantic bodies use a private, one-version-at-a-time spill store; it is
+cleaned before output and a spill/cleanup failure is fatal rather than a
+high-memory fallback.
 
 ### Comments
 
@@ -310,6 +337,135 @@ atlcli wiki docs template export <name> -o <file>
 atlcli wiki docs template import --file <path>
 ```
 
+### DOCX and PDF Export
+
+```bash
+# Foreground export through the durable job runtime
+atlcli wiki export <page-id> --output ./page.docx
+atlcli wiki export <page-id> --code-theme dracula --output ./page.docx
+atlcli wiki export <page-id> --format pdf --output ./page.pdf
+atlcli wiki export <page-id> --format pdf --code-theme nord --output ./page.pdf
+atlcli wiki export <page-id> --format pdf --pdf-standard ua-1 --output ./page-ua.pdf
+atlcli wiki export <page-id> --format pdf \
+  --template ./brand.wiki-pdf-template --output ./brand-page.pdf
+atlcli wiki export <page-id> --scope tree --output ./handbook.docx
+atlcli wiki export --scope space --space DOCS --format pdf --out-dir ./dist
+
+# Inspect and manage activity across DOCX and PDF
+atlcli wiki export jobs list
+atlcli wiki export jobs list --status running,waiting --format pdf --since 12h
+atlcli wiki export jobs show <job-id>
+atlcli wiki export jobs watch <job-id>
+atlcli wiki export jobs watch <job-id> --jsonl
+atlcli wiki export jobs cancel <job-id>
+atlcli wiki export jobs resume <queued-id>
+atlcli wiki export jobs retry <failed-id> --output ./retry.docx
+atlcli wiki export jobs rerun <succeeded-id> --output ./copy.pdf
+atlcli wiki export jobs clear --before 30d --confirm
+```
+
+`resume` reclaims the same queued row and its durable checkpoints after a
+foreground runner was lost. `retry` accepts failed, interrupted, or cancelled
+jobs; `rerun` accepts successful jobs. Those two create a linked new job and
+leave the source row unchanged. `list`, `show`, `cancel`, `retry`, `rerun`, and `clear` accept
+`--json`; `watch` accepts `--jsonl`. Ordinary exports stay foreground and print
+progress while another process can monitor or cancel them. There is no
+`--detach` mode. See [DOCX and PDF Export](/confluence/export/) for export flags
+and [Export Jobs & Operations](/reference/export-jobs/) for recovery and
+retention.
+
+### Static Web Publishing
+
+```bash
+# Inspect Confluence and route changes without activating a bundle
+atlcli wiki publish plan --project .atlcli/publish.json --profile work
+
+# Acquire, validate, and atomically activate an immutable bundle
+atlcli wiki publish refresh --project .atlcli/publish.json --profile work
+
+# Build the active bundle with the project-owned Astro site
+atlcli wiki publish build --project .atlcli/publish.json
+
+# Verify the latest build, or select one by digest
+atlcli wiki publish verify --project .atlcli/publish.json
+atlcli wiki publish verify --project .atlcli/publish.json --build <digest>
+
+# Run refresh, build, and verify in sequence
+atlcli wiki publish run --project .atlcli/publish.json --profile work
+
+# Inspect and safely prune local retained state
+atlcli wiki publish status --project .atlcli/publish.json
+atlcli wiki publish prune --project .atlcli/publish.json --confirm
+```
+
+| Flag | Operations | Meaning |
+| --- | --- | --- |
+| `--project <path>` | all | Project JSON; defaults to `.atlcli/publish.json` |
+| `--workspace <path>` | all | Private bundle/build workspace; defaults to `.atlcli/publish/<publicationKey>` |
+| `--profile <name>` | `plan`, `refresh`, `run` | Atlassian authentication profile used only during acquisition |
+| `--confirm-public` | source-reading operations | Required when `visibility` is `public` |
+| `--allow-partial` | source-reading operations | Required when `completeness` is `allow-partial` |
+| `--dry-run` | `refresh`, `run` | Produce and persist the plan without bundle activation or build |
+| `--build <digest>` | `verify` | Verify a specific retained build instead of the newest |
+| `--confirm` | `prune` | Required before verified unreachable state can be removed |
+| `--json` | all | Emit the versioned machine-readable stage result |
+
+`plan` reads source data but writes only `last-plan.json` in the private
+workspace. `refresh` is the only bundle-activation stage. `build` receives the
+active bundle and inventory paths through a bounded, non-secret child
+environment; it does not receive Atlassian credentials. `verify` reports a
+verified local artifact, never a remote deployment.
+
+Public and partial acknowledgements are independent and fail closed when
+missing. An incomplete plan, stale bundle/build digest, failed Astro command,
+unowned output, broken link/anchor, unsafe resource, privacy marker, or manifest
+drift produces a non-zero command failure. Use `--json` in CI and retain the
+reported bundle/build digests with the deployed artifact.
+
+See [Publish Confluence as a static Astro site](/publishing/), the
+[complete configuration reference](/publishing/configuration/), and
+[operations and rollback](/publishing/operations/).
+
+### PDF Template Authoring
+
+```bash
+# Guided Word-design import
+atlcli pdf-template import ./brand.docx
+atlcli pdf-template status ./brand-pdf-template
+atlcli pdf-template review ./brand-pdf-template
+atlcli pdf-template preview ./brand-pdf-template
+atlcli pdf-template build ./brand-pdf-template \
+  --output ./brand.wiki-pdf-template
+atlcli pdf-template undo ./brand-pdf-template
+
+# Expert / automation surfaces
+atlcli pdf-template analyze ./brand.docx --json --no-log
+atlcli pdf-template reanalyze ./brand-v2.docx --dir ./brand-pdf-template
+atlcli pdf-template diff ./brand-pdf-template --details
+atlcli pdf-template decide --dir ./brand-pdf-template <explicit-action>
+atlcli pdf-template set --dir ./brand-pdf-template \
+  --target <capability-path> --value '<json>'
+atlcli pdf-template validate ./brand-pdf-template
+atlcli pdf-template pack ./brand-pdf-template \
+  --output ./brand.wiki-pdf-template
+
+# Declarative Recipe V2
+atlcli pdf-template explain ./recipe.yaml --json
+atlcli pdf-template validate ./recipe.yaml
+atlcli pdf-template build ./recipe.yaml \
+  --output ./recipe.wiki-pdf-template
+```
+
+The default import uses Editorial Indigo as a complete baseline and applies no
+suggestion silently. Graphics require explicit role, rights, accessibility,
+and placement decisions. JSON mode is non-interactive and emits one
+`atlcli.pdf-template-result/1` document on stdout; progress is JSONL on stderr.
+See [PDF Template Authoring CLI](/reference/pdf-template-authoring-cli/) for
+all stages, options, schemas, and recovery behavior.
+Recipe V2 pins an installed baseline by exact id, version, Catalog version, and
+digest; `explain` performs no asset I/O. PDF output standards remain a separate
+`wiki export --pdf-standard <standard>` policy.
+
 ## Jira
 
 ### Issues
@@ -334,7 +490,12 @@ atlcli jira issue transitions --key <key>  # List available transitions
 atlcli jira issue assign --key <key> --assignee <email>
 atlcli jira issue assign --key <key> --assignee none  # Unassign
 atlcli jira issue link --from <key> --to <key> --type <type>
-atlcli jira issue attach --key <key> <file>  # Attach file
+atlcli jira issue attach <key> <file> [file...] [--comment <text>]  # Attach files
+atlcli jira issue attachments <key>     # List attachments
+atlcli jira issue attachment download <id> [-o <path>] [--overwrite]
+atlcli jira issue attachment download <key> <filename> [-o <path>] [--overwrite]
+atlcli jira issue attachment delete <id> --confirm
+atlcli jira issue attachment delete <key> <filename> --confirm
 atlcli jira issue open <key>            # Open issue in browser
 
 # Cross-product linking (Jira ↔ Confluence)
@@ -400,8 +561,10 @@ atlcli jira worklog delete --issue <key> --id <id> --confirm
 # Timer mode
 atlcli jira worklog timer start <key>
 atlcli jira worklog timer start <key> --comment <text>
+atlcli jira worklog timer start <key> --profile <name>  # Record a specific profile
 atlcli jira worklog timer stop           # Stop and log time
 atlcli jira worklog timer stop --round 15m
+atlcli jira worklog timer stop --profile <name>  # Override the recorded profile
 atlcli jira worklog timer status         # Show running timer
 atlcli jira worklog timer cancel         # Cancel without logging
 
@@ -519,6 +682,17 @@ atlcli jira template import --file <path> --project <key>  # To project level
 - Global: `~/.atlcli/templates/jira/global/`
 - Profile: `~/.atlcli/templates/jira/profiles/{name}/`
 - Project: `~/.atlcli/templates/jira/projects/{key}/`
+
+**Choosing a level** — `save`, `import`, `delete` and `list` all use the same rule:
+
+1. an explicit `--level <global|profile|project>` always wins;
+2. otherwise `--project <key>` selects project storage;
+3. otherwise `--profile <name>` selects profile storage;
+4. otherwise global.
+
+`--profile` is primarily the auth-profile flag, so it is the weakest storage
+signal. An unrecognised `--level` value is rejected rather than silently
+falling back to another level.
 
 ### Bulk Operations
 
@@ -666,6 +840,22 @@ atlcli flag unset helloworld --global   # Remove from global config
 Example: `helloworld` → `FLAG_HELLOWORLD`, `export.backend` → `FLAG_EXPORT_BACKEND`
 
 ## Utility Commands
+
+### Research
+
+```bash
+ANTHROPIC_API_KEY=... atlcli research \
+  "Which Jira work is explicitly related to our Confluence documentation?" \
+  --profile work --project PLATFORM --space DOCS \
+  --from 2026-07-24 --to 2026-07-31 \
+  --max-run-minutes 10 --output /absolute/path/report.md
+```
+
+Normal stdout is the canonical Markdown; progress is written to stderr.
+`--json` emits one structured report document. Project and space flags are
+repeatable and accept comma-separated keys. See
+[Jira and Confluence Research](research.md) for the complete contract and
+security boundaries.
 
 ### Helloworld
 

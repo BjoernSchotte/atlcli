@@ -7,41 +7,159 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: AnyPdfTemplateManifest
+export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
+
+// export: assertResolvedPdfFontRequirementsV1
+export declare function assertResolvedPdfFontRequirementsV1(value: unknown): asserts value is ResolvedPdfFontRequirementsV1;
+
+// export: buildUniformPdfPageBorderV1
+export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUniformPageBorderInputV1[], inset?: string): WikiPdfTemplatePageBorderV1 | undefined;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1: PdfTemplateBaselineRegistryV1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1: 1;
+
+// export: BUILTIN_PDF_TEMPLATE_ID
+export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
+
+// export: BUILTIN_PDF_TEMPLATE_MANIFEST
+export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: BUILTIN_PDF_TEMPLATES
+export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
+
+// export: canonicalPdfTemplateBaselineV1
+export declare function canonicalPdfTemplateBaselineV1(baseline: PdfTemplateBaselineContentV1): string;
+
+// export: clonePdfTemplateRuntime
+export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): PdfTemplateRuntimeV1;
+
+// export: computePdfTemplateBaselineDigestV1
+export declare function computePdfTemplateBaselineDigestV1(baseline: PdfTemplateBaselineContentV1): Promise<string>;
+
+// export: DocxUniformPageBorderInputV1
+export interface DocxUniformPageBorderInputV1 {
+    section: number;
+    offsetFrom: string;
+    sides: readonly {
+        side: "bottom" | "left" | "right" | "top";
+        style?: string;
+        color?: string;
+        widthEighthPoints?: number;
+    }[];
+}
+
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    highlightLines?: readonly number[];
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -63,6 +181,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -117,27 +239,75 @@ export declare class FontVerificationError extends Error {
 // export: formatPdfCompilerDiagnostics
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
+// export: generateCanonicalPdfTemplateSourceV1
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: AnyPdfTemplateManifest, visuals: PdfTemplateVisualsV1): string;
+
+// export: getBuiltinPdfTemplate
+export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
     text: string;
     marks?: InlineMark[];
     color?: string;
-} | {
+    backgroundColor?: string;
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
+
+// export: isPdfBytesHandle
+export declare function isPdfBytesHandle(value: unknown): value is PdfBytesHandle;
 
 // export: LinkTarget
 export type LinkTarget = {
@@ -149,13 +319,78 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
 };
+
+// export: loadPdfTemplatePack
+export declare function loadPdfTemplatePack(bytes: Uint8Array, options?: {
+    pinnedTypstVersion?: string;
+}): Promise<ValidatedPdfTemplatePackV1>;
+
+// export: MANUSCRIPT_PDF_TEMPLATE_ID
+export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
+
+// export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
+export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: MaterializedPdfTemplateRecipeV1
+export interface MaterializedPdfTemplateRecipeV1 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}
+
+// export: MaterializedPdfTemplateRecipeV2
+export interface MaterializedPdfTemplateRecipeV2 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: PdfTemplateManifestV5;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+}
+
+// export: MaterializePdfTemplateRecipeInputV1
+export interface MaterializePdfTemplateRecipeInputV1 {
+    recipe: WikiPdfTemplateRecipeV1;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+}
+
+// export: MaterializePdfTemplateRecipeInputV2
+export interface MaterializePdfTemplateRecipeInputV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+    baselineRegistry?: PdfTemplateBaselineRegistryV1;
+}
+
+// export: materializePdfTemplateRecipeV1
+export declare function materializePdfTemplateRecipeV1(input: MaterializePdfTemplateRecipeInputV1): Promise<MaterializedPdfTemplateRecipeV1>;
+
+// export: materializePdfTemplateRecipeV2
+export declare function materializePdfTemplateRecipeV2(input: MaterializePdfTemplateRecipeInputV2): Promise<MaterializedPdfTemplateRecipeV2>;
 
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
@@ -163,16 +398,65 @@ export declare function normalizePdfLocale(locale: string | undefined): {
     region?: string;
 };
 
+// export: ParsedFontAxis
+export interface ParsedFontAxis {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
 // export: ParsedFontFace
 export interface ParsedFontFace {
     family: string;
     subfamily: string;
     style: "normal" | "italic";
     weight: number;
+    axes?: readonly ParsedFontAxis[];
 }
 
 // export: parseFontMeta
 export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
+
+// export: PDF_CANONICAL_SOURCE_API_V1
+export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
+
+// export: PDF_CANONICAL_SOURCE_REVISION
+export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_1
+export declare const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_2
+export declare const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_3
+export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_4
+export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_5
+export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
+
+// export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
+export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_OUTPUT_STANDARDS_V1
+export declare const PDF_OUTPUT_STANDARDS_V1: readonly [
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -184,6 +468,88 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
         fileName: "LICENSE";
     }>;
 }>;
+
+// export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
+export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+];
+
+// export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_ASSET_CAPABILITIES_V1: TemplateAssetCapabilitiesV1;
+
+// export: PDF_TEMPLATE_ASSET_SLOTS_V1
+export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
+    "asset.logo",
+    "asset.pageBackground",
+    "asset.coverBackground",
+    "asset.headerDecoration",
+    "asset.footerDecoration"
+];
+
+// export: PDF_TEMPLATE_BASELINE_SCHEMA_V1
+export declare const PDF_TEMPLATE_BASELINE_SCHEMA_V1: "atlcli.pdf-template-baseline/1";
+
+// export: PDF_TEMPLATE_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2;
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e53f3bf21a19e65a74d64a0cf31e7cc185fdb79607";
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE
+export declare const PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE: ">=0.15.1 <0.16";
+
+// export: PDF_TEMPLATE_DECORATION_IDS_V1
+export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
+    "asset.pageBackground",
+    "asset.coverBackground",
+    "asset.headerDecoration",
+    "asset.footerDecoration",
+    "decoration.pageBorder"
+];
+
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[];
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V2
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf77fc685a6a652dbfe2f12621a840356197a87d3fe424e2";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V3
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
+
+// export: PDF_TEMPLATE_WRITERS_V1
+export declare const PDF_TEMPLATE_WRITERS_V1: {
+    readonly logo: "typst.logo";
+    readonly imageDecoration: "typst.image-decoration";
+    readonly pageBorder: "typst.page-border";
+};
 
 // export: PdfAssetRef
 export interface PdfAssetRef {
@@ -201,9 +567,34 @@ export interface PdfAssetResolver {
     }): Promise<PdfResolvedAsset>;
 }
 
+// export: PdfBindableLevelASetting
+export type PdfBindableLevelASetting = (typeof PDF_BINDABLE_LEVEL_A_SETTINGS)[number];
+
+// export: pdfBytesFromBlob
+export declare function pdfBytesFromBlob(source: Blob, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: pdfBytesFromUint8Array
+export declare function pdfBytesFromUint8Array(source: Uint8Array, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: PdfBytesHandle
+export interface PdfBytesHandle {
+    readonly size: number;
+    readonly mimeType: string;
+    asBlob(): Promise<Blob>;
+    asUint8Array(): Promise<Uint8Array>;
+    objectUrl(): Promise<string>;
+    release(): void;
+}
+
 // export: PdfCompileContext
 export interface PdfCompileContext {
     signal?: AbortSignal;
+    outputPolicy?: PdfOutputPolicyV1;
+    pdfOptions?: TypstPdfOptions0151;
 }
 
 // export: PdfCompilePort
@@ -228,6 +619,16 @@ export interface PdfCompileResult {
     pdf?: Uint8Array;
     diagnostics: PdfCompilerDiagnostic[];
     compilerVersion: string;
+    fontEvidence?: PdfFontLoadEvidenceV1;
+}
+
+// export: PdfDesignResolutionTraceEntry
+export interface PdfDesignResolutionTraceEntry {
+    target: string;
+    source: "baseline" | "engine-policy" | "runtime-binding";
+    sourceId: string;
+    sequence: number;
+    value: unknown;
 }
 
 // export: PdfExportEnv
@@ -263,6 +664,7 @@ export interface PdfExportMetadata {
     exporter?: string;
     language?: string;
     region?: string;
+    direction?: "ltr" | "rtl";
     exportedAt: Date;
 }
 
@@ -271,16 +673,22 @@ export type PdfExportPhase = "configuration" | "preparing" | "fetching" | "compi
 
 // export: PdfExportReport
 export interface PdfExportReport {
+    codeTheme: CodeThemeId;
     filename: string;
     profile: PdfProfile;
+    outputPolicy?: import("./output-policy.js").PdfOutputPolicyV1;
+    outputStandardEvidence?: import("./output-policy.js").PdfOutputStandardEvidenceV1;
     compilerVersion: string;
     pageCount?: number;
     embeddedImages: number;
     renderedDiagrams: number;
     skippedAssets: number;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     compilerDiagnostics?: PdfCompilerDiagnostic[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
+    fontEvidence?: PdfFontLoadEvidenceV1;
     timings: PdfExportTimings;
 }
 
@@ -290,6 +698,43 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfFontDiagnosticCodeV1
+export type PdfFontDiagnosticCodeV1 = "PDF_FONT_STYLE_FALLBACK" | "PDF_FONT_STRETCH_FALLBACK" | "PDF_FONT_WEIGHT_FALLBACK" | "PDF_FONT_MISSING_GLYPH";
+
+// export: PdfFontDiagnosticV1
+export interface PdfFontDiagnosticV1 {
+    code: PdfFontDiagnosticCodeV1;
+    severity: "warning";
+    family: string;
+    role: string;
+    requested: string;
+}
+
+// export: PdfFontLoadEvidenceV1
+export interface PdfFontLoadEvidenceV1 {
+    schema: "atlcli.pdf-font-load-evidence/1";
+    requirementKey: string;
+    registeredAssetIds: readonly string[];
+    loadedFontNames: readonly string[];
+    fullBundleFallback: boolean;
+}
+
+// export: PdfFontRequirementReasonKindV1
+export type PdfFontRequirementReasonKindV1 = "document-style" | "fallback" | "full-bundle-conformance" | "renderer-synthetic" | "template-role";
+
+// export: PdfFontRequirementReasonV1
+export interface PdfFontRequirementReasonV1 {
+    kind: PdfFontRequirementReasonKindV1;
+    detail: string;
+}
+
+// export: PdfGeneratedTemplateProofCompiler
+export declare class PdfGeneratedTemplateProofCompiler implements TemplateGeneratedPackCompilerV1 {
+    private readonly compiler;
+    constructor(compiler: PdfCompilePort);
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
 }
 
 // export: PdfLogoAsset
@@ -305,16 +750,54 @@ export interface PdfOutputInspection {
     tagged: boolean;
     hasOutline: boolean;
     embeddedFontFiles: number;
+    hasLang: boolean;
+}
+
+// export: PdfOutputPolicyError
+export declare class PdfOutputPolicyError extends Error {
+    constructor(message: string);
+}
+
+// export: PdfOutputPolicyV1
+export interface PdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1,
+        ...PdfOutputStandardV1[]
+    ];
 }
 
 // export: PdfOutputSink
 export interface PdfOutputSink {
-    emit(name: string, bytes: Uint8Array, context?: {
+    emit(name: string, bytes: PdfBytesHandle, context?: {
         signal?: AbortSignal;
     }): Promise<void>;
 }
 
+// export: PdfOutputStandardEvidenceV1
+export interface PdfOutputStandardEvidenceV1 {
+    schema: "atlcli.pdf-output-standard-evidence/1";
+    requestedStandard: PdfOutputStandardV1;
+    basePdfVersion: ResolvedPdfOutputPolicyV1["basePdfVersion"];
+    pdfa?: {
+        part: "1" | "2" | "3" | "4";
+        conformance?: "A" | "B" | "E" | "F" | "U";
+    };
+    pdfua?: {
+        part: "1";
+    };
+    hasDocumentIdentifier: boolean;
+    tagged: boolean;
+    hasLang: boolean;
+    embeddedFontFiles: number;
+}
+
+// export: PdfOutputStandardV1
+export type PdfOutputStandardV1 = (typeof PDF_OUTPUT_STANDARDS_V1)[number];
+
 // export: PdfProfile
+// @deprecated PdfProfile — Legacy rendering/report label. It does not request PDF/UA
+conformance. Use `PdfOutputPolicyV1` for a strict output-standard request.
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
 // export: PdfResolvedAsset
@@ -326,10 +809,17 @@ export interface PdfResolvedAsset {
 
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
+    assetId: `canonical/${string}`;
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Arabic" | "Noto Sans Symbols2" | "Noto Emoji";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
+    axes?: readonly {
+        tag: string;
+        min: number;
+        default: number;
+        max: number;
+    }[];
     sourceUrl: string;
     sha256: string;
 }
@@ -340,7 +830,13 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: AnyPdfTemplateManifest;
+    imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
+    templatePack?: ValidatedPdfTemplatePackV1;
 }
+
+// export: PdfSettingPresenceMask
+export type PdfSettingPresenceMask = Readonly<Record<PdfBindableLevelASetting, boolean>>;
 
 // export: PdfSourceBundle
 export interface PdfSourceBundle {
@@ -349,6 +845,7 @@ export interface PdfSourceBundle {
     assets: PreparedPdfAsset[];
     sourceMap: PdfSourceMapEntry[];
     notes: ExportNote[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
 // export: PdfSourceMapEntry
@@ -365,6 +862,104 @@ export interface PdfSourceMapEntry {
 // export: PdfTableCellTextMode
 export type PdfTableCellTextMode = "auto" | "source";
 
+// export: PdfTemplateAssetSlotV1
+export type PdfTemplateAssetSlotV1 = (typeof PDF_TEMPLATE_ASSET_SLOTS_V1)[number];
+
+// export: PdfTemplateBaselineContentV1
+export interface PdfTemplateBaselineContentV1 {
+    schema: typeof PDF_TEMPLATE_BASELINE_SCHEMA_V1;
+    id: string;
+    version: number;
+    catalog: TemplateCapabilityCatalogReferenceV1;
+    design: WikiPdfTemplateDesignV3;
+    localization: WikiPdfTemplateLocalizationV1;
+}
+
+// export: PdfTemplateBaselineRegistryV1
+export interface PdfTemplateBaselineRegistryV1 {
+    resolve(reference: Pick<PdfTemplateRecipeBaselineV2, "id" | "version">): ResolvedPdfTemplateBaselineV1 | undefined;
+}
+
+// export: PdfTemplateDecorationIdV1
+export type PdfTemplateDecorationIdV1 = (typeof PDF_TEMPLATE_DECORATION_IDS_V1)[number];
+
+// export: PdfTemplateManifestV5
+export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
+
+// export: PdfTemplatePreviewCompiler
+export declare class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {
+    private readonly options;
+    constructor(options: PdfTemplatePreviewCompilerOptionsV1);
+    render(request: TemplatePreviewRequestV1): Promise<TemplatePreviewResultV1>;
+}
+
+// export: PdfTemplatePreviewCompilerOptionsV1
+export interface PdfTemplatePreviewCompilerOptionsV1 {
+    compiler: PdfCompilePort;
+    resolveModel(request: TemplatePreviewRequestV1): Promise<PdfTemplatePreviewModelV1>;
+}
+
+// export: PdfTemplatePreviewError
+export declare class PdfTemplatePreviewError extends Error {
+    readonly code: "compile-failed" | "invalid-model" | "missing-summary" | "no-contact-assets";
+    constructor(code: "compile-failed" | "invalid-model" | "missing-summary" | "no-contact-assets", message: string);
+}
+
+// export: PdfTemplatePreviewModelV1
+export interface PdfTemplatePreviewModelV1 {
+    baseline: TemplateManifest;
+    current: TemplateManifest;
+    currentPack?: ValidatedPdfTemplatePackV1;
+    reviewAssets?: readonly {
+        id: string;
+        vfsPath: string;
+        bytes: Uint8Array;
+        mediaType: string;
+        occurrenceCount: number;
+        proposedRole?: string;
+    }[];
+}
+
+// export: PdfTemplateRecipeV2ResolutionError
+export declare class PdfTemplateRecipeV2ResolutionError extends Error {
+    readonly reason: PdfTemplateRecipeV2ResolutionReason;
+    constructor(reason: PdfTemplateRecipeV2ResolutionReason, message: string);
+}
+
+// export: PdfTemplateRecipeV2ResolutionReason
+export type PdfTemplateRecipeV2ResolutionReason = "baseline-not-installed" | "baseline-identity-mismatch" | "baseline-digest-mismatch" | "catalog-mismatch" | "constraint-violation";
+
+// export: PdfTemplateRuntimeMaterializer
+export declare class PdfTemplateRuntimeMaterializer implements TemplateRuntimeMaterializer {
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
+}
+
+// export: PdfTemplateRuntimeSnapshotV1
+export interface PdfTemplateRuntimeSnapshotV1 {
+    schema: "atlcli.pdf-template-runtime-snapshot/1";
+    capabilityCatalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3;
+    fallbackLocale: string;
+    fallbackLabels: Readonly<Record<string, string>>;
+    visuals: PdfTemplateVisualsV1;
+}
+
+// export: PdfTemplateRuntimeV1
+export interface PdfTemplateRuntimeV1 {
+    schema: "atlcli.pdf-template-runtime/1";
+    manifest: AnyPdfTemplateManifest;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    canonicalSource: PdfVerifiedCanonicalSourceV1;
+    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
+    entrySource: string;
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
 // export: PdfTemplateSettings
 export interface PdfTemplateSettings {
     page?: "a4" | "letter";
@@ -377,6 +972,26 @@ export interface PdfTemplateSettings {
     organizationName?: string;
     logo?: PdfLogoAsset;
     watermark?: PdfWatermarkSettings;
+}
+
+// export: PdfTemplateValidationError
+export declare class PdfTemplateValidationError extends Error {
+    readonly phase: PdfTemplateValidationPhase;
+    readonly reason: PdfTemplateValidationReason;
+    readonly path?: string | undefined;
+    constructor(phase: PdfTemplateValidationPhase, reason: PdfTemplateValidationReason, message: string, path?: string | undefined);
+}
+
+// export: PdfTemplateValidationPhase
+export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
+
+// export: PdfTemplateValidationReason
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "invalid-composition" | "canonical-source-mismatch" | "non-canonical-template-source";
+
+// export: PdfTemplateVisualsV1
+export interface PdfTemplateVisualsV1 {
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Pick<ResolvedPdfTemplateAssetV1, "vfsPath" | "reference">>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
 }
 
 // export: PdfTheme
@@ -411,6 +1026,14 @@ export interface PdfThemeOptions {
     };
 }
 
+// export: PdfVerifiedCanonicalSourceV1
+export interface PdfVerifiedCanonicalSourceV1 {
+    api: typeof PDF_CANONICAL_SOURCE_API_V1;
+    revision: string;
+    source: string;
+    sha256: string;
+}
+
 // export: PdfWatermarkSettings
 export interface PdfWatermarkSettings {
     text: string;
@@ -429,65 +1052,115 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
-}> | {
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart";
+}> | (Omit<Extract<ExportBlock, {
+    type: "heading";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
+    type: "paragraph";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-    macroName: string;
+}>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
-    plainBody?: string;
-} | {
-    type: "callout";
-    kind: Extract<ExportBlock, {
-        type: "callout";
-    }>["kind"];
-    title?: string;
-    content: PreparedPdfBlock[];
-} | {
-    type: "list";
-    ordered: boolean;
-    items: Array<{
+    plainBodyHighlight?: HighlightedCode;
+    extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
-        checked?: boolean;
     }>;
-} | {
+}) | Omit<Extract<ExportBlock, {
+    type: "callout";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "expand";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "list";
+}>, "items"> & {
+    items: Array<Omit<ListItem, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
+    type: "layout";
+}>, "columns"> & {
+    columns: Array<Omit<LayoutColumn, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
     type: "table";
-    rows: Array<{
-        cells: Array<{
-            header: boolean;
-            colspan: number;
-            rowspan: number;
-            backgroundColor?: string;
+}>, "caption" | "rows"> & {
+    caption?: PreparedPdfCaption;
+    rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
         }>;
     }>;
-    columnWidths?: number[];
-    caption?: Caption;
-} | {
+} | (Omit<Extract<ExportBlock, {
+    type: "chart";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+    visualAssetPath?: string;
+}) | {
     type: "image";
     assetPath?: string;
     alt?: string;
     width?: number;
     height?: number;
     fallbackLabel: string;
-    caption?: Caption;
-} | {
+    media?: Extract<ExportBlock, {
+        type: "image";
+    }>["media"];
+    mediaPresentation?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaPresentation"];
+    mediaGroup?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaGroup"];
+    border?: Extract<ExportBlock, {
+        type: "image";
+    }>["border"];
+    annotations?: Extract<ExportBlock, {
+        type: "image";
+    }>["annotations"];
+    caption?: PreparedPdfCaption;
+    link?: ExportLink;
+} | (Omit<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | {
+} | (Omit<Extract<ExportBlock, {
     type: "codeBlock";
-    language?: string;
-    code: string;
-    caption?: Caption;
-} | {
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+    highlight: HighlightedCode;
+}) | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    title?: string;
+    initiallyCollapsed?: boolean;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "orientation";
     landscape: boolean;
     content: PreparedPdfBlock[];
+};
+
+// export: PreparedPdfCaption
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+    content: PreparedPdfInlineNode[];
 };
 
 // export: PreparedPdfDocument
@@ -497,20 +1170,129 @@ export interface PreparedPdfDocument {
     notes: ExportNote[];
 }
 
+// export: PreparedPdfExportV1
+export interface PreparedPdfExportV1 {
+    schema: "atlcli.prepared-pdf-export/1";
+    bundle: PdfSourceBundle | undefined;
+    filename: string;
+    codeTheme: CodeThemeId;
+    profile: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
+    language?: string;
+    sourceNotes: ExportNote[];
+    bundleNotes: ExportNote[];
+    counts: {
+        images: number;
+        diagrams: number;
+        skipped: number;
+    };
+    complete: boolean;
+    startedAt: number;
+    prepareMs: number;
+}
+
+// export: PreparedPdfInlineNode
+export type PreparedPdfInlineNode = Exclude<InlineNode, {
+    type: "link" | "media";
+}> | (Omit<Extract<InlineNode, {
+    type: "link";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Extract<InlineNode, {
+    type: "media";
+}> & {
+    assetPath?: string;
+    fallbackLabel: string;
+});
+
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
 
+// export: preparePdfExport
+export declare function preparePdfExport(input: RunPdfExportInput, env: PreparePdfExportEnv): Promise<PreparedPdfExportV1>;
+
+// export: PreparePdfExportEnv
+export interface PreparePdfExportEnv {
+    assets: PdfAssetResolver;
+    now?: () => number;
+    macros?: MacroResolutionOptions;
+}
+
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
+    codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
+    pageContext?: {
+        pageId?: string;
+        pageTitle?: string;
+        pageUrl?: string;
+    };
+    imageQuality?: ExportImageQualityV1;
 }
+
+// export: renderPreparedPdfExport
+export declare function renderPreparedPdfExport(prepared: PreparedPdfExportV1, input: RenderPreparedPdfExportInput, env: RenderPreparedPdfExportEnv): Promise<PdfExportReport>;
+
+// export: RenderPreparedPdfExportEnv
+export interface RenderPreparedPdfExportEnv {
+    compiler: PdfCompilePort;
+    output: PdfOutputSink;
+    now?: () => number;
+}
+
+// export: RenderPreparedPdfExportInput
+export interface RenderPreparedPdfExportInput {
+    signal?: AbortSignal;
+    onPhase?: (phase: Extract<PdfExportPhase, "compiling" | "validating" | "emitting">) => void;
+    onProgress?: ExportProgressCallback;
+}
+
+// export: ResolvedPdfDesign
+export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
+
+// export: ResolvedPdfFontAssetRequirementV1
+export interface ResolvedPdfFontAssetRequirementV1 {
+    assetId: string;
+    source: "canonical" | "custom";
+    family: string;
+    style: "normal" | "italic";
+    weight: number;
+    sha256: string;
+    fileName?: string;
+    reasons: readonly PdfFontRequirementReasonV1[];
+}
+
+// export: ResolvedPdfFontRequirementsV1
+export interface ResolvedPdfFontRequirementsV1 {
+    schema: "atlcli.pdf-font-requirements/1";
+    template: {
+        id: string;
+        version: string;
+    };
+    key: string;
+    assets: readonly ResolvedPdfFontAssetRequirementV1[];
+    diagnostics?: readonly PdfFontDiagnosticV1[];
+}
+
+// export: ResolvedPdfLabels
+export type ResolvedPdfLabels = Record<string, string>;
 
 // export: ResolvedPdfLogo
 export interface ResolvedPdfLogo {
     bytes: Uint8Array;
     mediaType: "image/png" | "image/svg+xml";
     alt: string;
+}
+
+// export: ResolvedPdfOutputPolicyV1
+export interface ResolvedPdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1
+    ];
+    basePdfVersion: "1.4" | "1.5" | "1.6" | "1.7" | "2.0";
 }
 
 // export: ResolvedPdfSettings
@@ -525,6 +1307,56 @@ export interface ResolvedPdfSettings {
     organizationName?: string;
     logo?: ResolvedPdfLogo;
     watermark?: ResolvedPdfWatermark;
+    design: ResolvedPdfDesign;
+    settingPresence: PdfSettingPresenceMask;
+    designTrace: readonly PdfDesignResolutionTraceEntry[];
+    ignoredDesignCapabilities: readonly string[];
+    capabilityCatalogDigest: string;
+    capabilityCatalog: TemplateCapabilityCatalogReferenceV1;
+    labels: ResolvedPdfLabels;
+    templateVisuals?: PdfTemplateVisualsV1;
+}
+
+// export: ResolvedPdfTemplateAssetV1
+export interface ResolvedPdfTemplateAssetV1 {
+    slot: PdfTemplateAssetSlotV1;
+    descriptorId: string;
+    descriptor: TemplateAssetDescriptorV1;
+    reference: TemplateAssetReferenceV1;
+    bytes: Uint8Array;
+    vfsPath: string;
+}
+
+// export: ResolvedPdfTemplateBaselineV1
+export interface ResolvedPdfTemplateBaselineV1 extends PdfTemplateBaselineContentV1 {
+    digest: string;
+}
+
+// export: ResolvedPdfTemplateRecipeAssetV1
+export interface ResolvedPdfTemplateRecipeAssetV1 {
+    slot: string;
+    source: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    sha256: string;
+    bytes: Uint8Array;
+}
+
+// export: ResolvedPdfTemplateRecipeV2
+export interface ResolvedPdfTemplateRecipeV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    catalog: TemplateCapabilityCatalogReferenceV1;
+    canonicalSource: {
+        api: "wiki.pdf-canonical-typst";
+        revision: "5";
+    };
+    compilerRange: string;
+    design: WikiPdfTemplateDesignV3;
+    localization: WikiPdfTemplateLocalizationV1;
 }
 
 // export: ResolvedPdfWatermark
@@ -536,20 +1368,57 @@ export interface ResolvedPdfWatermark {
     size: number;
 }
 
+// export: resolveFullPdfFontRequirementsV1
+export declare function resolveFullPdfFontRequirementsV1(manifest?: TemplateManifest): ResolvedPdfFontRequirementsV1;
+
+// export: ResolvePdfFontRequirementsInputV1
+export interface ResolvePdfFontRequirementsInputV1 {
+    document: PreparedPdfDocument;
+    metadata: PdfExportMetadata;
+    settings: ResolvedPdfSettings;
+    manifest?: AnyPdfTemplateManifest;
+}
+
+// export: resolvePdfFontRequirementsV1
+export declare function resolvePdfFontRequirementsV1(input: ResolvePdfFontRequirementsInputV1): ResolvedPdfFontRequirementsV1;
+
+// export: resolvePdfOutputPolicyV1
+export declare function resolvePdfOutputPolicyV1(value: PdfOutputPolicyV1 | undefined): ResolvedPdfOutputPolicyV1 | undefined;
+
 // export: resolvePdfSettings
-export declare function resolvePdfSettings(options?: PdfTemplateSettings): ResolvedPdfSettings;
+export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
+
+// export: ResolvePdfSettingsContext
+export interface ResolvePdfSettingsContext {
+    locale?: string;
+    region?: string;
+    theme?: PdfThemeOptions;
+    manifest?: AnyPdfTemplateManifest;
+    templatePack?: ValidatedPdfTemplatePackV1;
+}
+
+// export: resolvePdfTemplateRecipeV2Design
+export declare function resolvePdfTemplateRecipeV2Design(value: unknown, registry?: PdfTemplateBaselineRegistryV1): Promise<ResolvedPdfTemplateRecipeV2>;
+
+// export: resolveTypstPdfOptions0151
+export declare function resolveTypstPdfOptions0151(value: TypstPdfOptions0151 | undefined): TypstPdfOptions0151 | undefined;
 
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
 
 // export: RunPdfExportInput
 export interface RunPdfExportInput {
+    codeTheme?: CodeThemeId;
     blocks: ExportBlock[];
     sourceNotes?: ExportNote[];
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: TemplateManifest;
+    imageQuality?: ExportImageQualityV1;
+    templatePack?: ValidatedPdfTemplatePackV1;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
@@ -562,51 +1431,268 @@ export interface RunPdfExportInput {
     };
 }
 
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
+    };
+}
+
+// export: TemplateManifest
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
+    schemaVersion: number;
+    id: string;
+    name: string;
+    version: string;
+    engine: TemplateEngineSpec;
+    requiredFonts?: RequiredFont[];
+    settings?: Record<string, ManifestSetting>;
+    provenance?: TemplateProvenance;
+    design?: TDesign;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
+}
+
+// export: TYPST_PDF_STANDARDS_0_15_1
+export declare const TYPST_PDF_STANDARDS_0_15_1: readonly [
+    "1.4",
+    "1.5",
+    "1.6",
+    "1.7",
+    "2.0",
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
+
+// export: TypstPdfOptions0151
+export interface TypstPdfOptions0151 {
+    standard: TypstPdfStandard0151;
+}
+
+// export: TypstPdfStandard0151
+export type TypstPdfStandard0151 = (typeof TYPST_PDF_STANDARDS_0_15_1)[number];
+
+// export: ValidatedPdfTemplatePackV1
+export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
+
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
+// export: validatePdfOutputStandard
+export declare function validatePdfOutputStandard(bytes: Uint8Array, policy: PdfOutputPolicyV1, inspection?: PdfOutputInspection): PdfOutputStandardEvidenceV1;
+
+// export: validatePdfTemplateManifest
+export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
+
+// export: validatePdfTemplatePack
+export declare function validatePdfTemplatePack(manifest: AnyPdfTemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
+
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
+}
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
+}
 ```
 
 ### Entry point `. (default)`
 
 ```ts
+// export: AnyPdfTemplateManifest
+export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
+
+// export: assertResolvedPdfFontRequirementsV1
+export declare function assertResolvedPdfFontRequirementsV1(value: unknown): asserts value is ResolvedPdfFontRequirementsV1;
+
+// export: buildUniformPdfPageBorderV1
+export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUniformPageBorderInputV1[], inset?: string): WikiPdfTemplatePageBorderV1 | undefined;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1: PdfTemplateBaselineRegistryV1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1: 1;
+
+// export: BUILTIN_PDF_TEMPLATE_ID
+export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
+
+// export: BUILTIN_PDF_TEMPLATE_MANIFEST
+export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: BUILTIN_PDF_TEMPLATES
+export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
+
+// export: canonicalPdfTemplateBaselineV1
+export declare function canonicalPdfTemplateBaselineV1(baseline: PdfTemplateBaselineContentV1): string;
+
+// export: clonePdfTemplateRuntime
+export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): PdfTemplateRuntimeV1;
+
+// export: computePdfTemplateBaselineDigestV1
+export declare function computePdfTemplateBaselineDigestV1(baseline: PdfTemplateBaselineContentV1): Promise<string>;
+
+// export: DocxUniformPageBorderInputV1
+export interface DocxUniformPageBorderInputV1 {
+    section: number;
+    offsetFrom: string;
+    sides: readonly {
+        side: "bottom" | "left" | "right" | "top";
+        style?: string;
+        color?: string;
+        widthEighthPoints?: number;
+    }[];
+}
+
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    highlightLines?: readonly number[];
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -628,6 +1714,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -682,27 +1772,75 @@ export declare class FontVerificationError extends Error {
 // export: formatPdfCompilerDiagnostics
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
+// export: generateCanonicalPdfTemplateSourceV1
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: AnyPdfTemplateManifest, visuals: PdfTemplateVisualsV1): string;
+
+// export: getBuiltinPdfTemplate
+export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
     text: string;
     marks?: InlineMark[];
     color?: string;
-} | {
+    backgroundColor?: string;
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
+
+// export: isPdfBytesHandle
+export declare function isPdfBytesHandle(value: unknown): value is PdfBytesHandle;
 
 // export: LinkTarget
 export type LinkTarget = {
@@ -714,13 +1852,78 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
 };
+
+// export: loadPdfTemplatePack
+export declare function loadPdfTemplatePack(bytes: Uint8Array, options?: {
+    pinnedTypstVersion?: string;
+}): Promise<ValidatedPdfTemplatePackV1>;
+
+// export: MANUSCRIPT_PDF_TEMPLATE_ID
+export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
+
+// export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
+export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: MaterializedPdfTemplateRecipeV1
+export interface MaterializedPdfTemplateRecipeV1 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}
+
+// export: MaterializedPdfTemplateRecipeV2
+export interface MaterializedPdfTemplateRecipeV2 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: PdfTemplateManifestV5;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+}
+
+// export: MaterializePdfTemplateRecipeInputV1
+export interface MaterializePdfTemplateRecipeInputV1 {
+    recipe: WikiPdfTemplateRecipeV1;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+}
+
+// export: MaterializePdfTemplateRecipeInputV2
+export interface MaterializePdfTemplateRecipeInputV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+    baselineRegistry?: PdfTemplateBaselineRegistryV1;
+}
+
+// export: materializePdfTemplateRecipeV1
+export declare function materializePdfTemplateRecipeV1(input: MaterializePdfTemplateRecipeInputV1): Promise<MaterializedPdfTemplateRecipeV1>;
+
+// export: materializePdfTemplateRecipeV2
+export declare function materializePdfTemplateRecipeV2(input: MaterializePdfTemplateRecipeInputV2): Promise<MaterializedPdfTemplateRecipeV2>;
 
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
@@ -728,16 +1931,65 @@ export declare function normalizePdfLocale(locale: string | undefined): {
     region?: string;
 };
 
+// export: ParsedFontAxis
+export interface ParsedFontAxis {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
 // export: ParsedFontFace
 export interface ParsedFontFace {
     family: string;
     subfamily: string;
     style: "normal" | "italic";
     weight: number;
+    axes?: readonly ParsedFontAxis[];
 }
 
 // export: parseFontMeta
 export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
+
+// export: PDF_CANONICAL_SOURCE_API_V1
+export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
+
+// export: PDF_CANONICAL_SOURCE_REVISION
+export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_1
+export declare const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_2
+export declare const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_3
+export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_4
+export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_5
+export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
+
+// export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
+export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_OUTPUT_STANDARDS_V1
+export declare const PDF_OUTPUT_STANDARDS_V1: readonly [
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -749,6 +2001,88 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
         fileName: "LICENSE";
     }>;
 }>;
+
+// export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
+export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+];
+
+// export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_ASSET_CAPABILITIES_V1: TemplateAssetCapabilitiesV1;
+
+// export: PDF_TEMPLATE_ASSET_SLOTS_V1
+export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
+    "asset.logo",
+    "asset.pageBackground",
+    "asset.coverBackground",
+    "asset.headerDecoration",
+    "asset.footerDecoration"
+];
+
+// export: PDF_TEMPLATE_BASELINE_SCHEMA_V1
+export declare const PDF_TEMPLATE_BASELINE_SCHEMA_V1: "atlcli.pdf-template-baseline/1";
+
+// export: PDF_TEMPLATE_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2;
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e53f3bf21a19e65a74d64a0cf31e7cc185fdb79607";
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE
+export declare const PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE: ">=0.15.1 <0.16";
+
+// export: PDF_TEMPLATE_DECORATION_IDS_V1
+export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
+    "asset.pageBackground",
+    "asset.coverBackground",
+    "asset.headerDecoration",
+    "asset.footerDecoration",
+    "decoration.pageBorder"
+];
+
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[];
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V2
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf77fc685a6a652dbfe2f12621a840356197a87d3fe424e2";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V3
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
+
+// export: PDF_TEMPLATE_WRITERS_V1
+export declare const PDF_TEMPLATE_WRITERS_V1: {
+    readonly logo: "typst.logo";
+    readonly imageDecoration: "typst.image-decoration";
+    readonly pageBorder: "typst.page-border";
+};
 
 // export: PdfAssetRef
 export interface PdfAssetRef {
@@ -766,9 +2100,34 @@ export interface PdfAssetResolver {
     }): Promise<PdfResolvedAsset>;
 }
 
+// export: PdfBindableLevelASetting
+export type PdfBindableLevelASetting = (typeof PDF_BINDABLE_LEVEL_A_SETTINGS)[number];
+
+// export: pdfBytesFromBlob
+export declare function pdfBytesFromBlob(source: Blob, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: pdfBytesFromUint8Array
+export declare function pdfBytesFromUint8Array(source: Uint8Array, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: PdfBytesHandle
+export interface PdfBytesHandle {
+    readonly size: number;
+    readonly mimeType: string;
+    asBlob(): Promise<Blob>;
+    asUint8Array(): Promise<Uint8Array>;
+    objectUrl(): Promise<string>;
+    release(): void;
+}
+
 // export: PdfCompileContext
 export interface PdfCompileContext {
     signal?: AbortSignal;
+    outputPolicy?: PdfOutputPolicyV1;
+    pdfOptions?: TypstPdfOptions0151;
 }
 
 // export: PdfCompilePort
@@ -793,6 +2152,16 @@ export interface PdfCompileResult {
     pdf?: Uint8Array;
     diagnostics: PdfCompilerDiagnostic[];
     compilerVersion: string;
+    fontEvidence?: PdfFontLoadEvidenceV1;
+}
+
+// export: PdfDesignResolutionTraceEntry
+export interface PdfDesignResolutionTraceEntry {
+    target: string;
+    source: "baseline" | "engine-policy" | "runtime-binding";
+    sourceId: string;
+    sequence: number;
+    value: unknown;
 }
 
 // export: PdfExportEnv
@@ -828,6 +2197,7 @@ export interface PdfExportMetadata {
     exporter?: string;
     language?: string;
     region?: string;
+    direction?: "ltr" | "rtl";
     exportedAt: Date;
 }
 
@@ -836,16 +2206,22 @@ export type PdfExportPhase = "configuration" | "preparing" | "fetching" | "compi
 
 // export: PdfExportReport
 export interface PdfExportReport {
+    codeTheme: CodeThemeId;
     filename: string;
     profile: PdfProfile;
+    outputPolicy?: import("./output-policy.js").PdfOutputPolicyV1;
+    outputStandardEvidence?: import("./output-policy.js").PdfOutputStandardEvidenceV1;
     compilerVersion: string;
     pageCount?: number;
     embeddedImages: number;
     renderedDiagrams: number;
     skippedAssets: number;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     compilerDiagnostics?: PdfCompilerDiagnostic[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
+    fontEvidence?: PdfFontLoadEvidenceV1;
     timings: PdfExportTimings;
 }
 
@@ -855,6 +2231,43 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfFontDiagnosticCodeV1
+export type PdfFontDiagnosticCodeV1 = "PDF_FONT_STYLE_FALLBACK" | "PDF_FONT_STRETCH_FALLBACK" | "PDF_FONT_WEIGHT_FALLBACK" | "PDF_FONT_MISSING_GLYPH";
+
+// export: PdfFontDiagnosticV1
+export interface PdfFontDiagnosticV1 {
+    code: PdfFontDiagnosticCodeV1;
+    severity: "warning";
+    family: string;
+    role: string;
+    requested: string;
+}
+
+// export: PdfFontLoadEvidenceV1
+export interface PdfFontLoadEvidenceV1 {
+    schema: "atlcli.pdf-font-load-evidence/1";
+    requirementKey: string;
+    registeredAssetIds: readonly string[];
+    loadedFontNames: readonly string[];
+    fullBundleFallback: boolean;
+}
+
+// export: PdfFontRequirementReasonKindV1
+export type PdfFontRequirementReasonKindV1 = "document-style" | "fallback" | "full-bundle-conformance" | "renderer-synthetic" | "template-role";
+
+// export: PdfFontRequirementReasonV1
+export interface PdfFontRequirementReasonV1 {
+    kind: PdfFontRequirementReasonKindV1;
+    detail: string;
+}
+
+// export: PdfGeneratedTemplateProofCompiler
+export declare class PdfGeneratedTemplateProofCompiler implements TemplateGeneratedPackCompilerV1 {
+    private readonly compiler;
+    constructor(compiler: PdfCompilePort);
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
 }
 
 // export: PdfLogoAsset
@@ -870,16 +2283,54 @@ export interface PdfOutputInspection {
     tagged: boolean;
     hasOutline: boolean;
     embeddedFontFiles: number;
+    hasLang: boolean;
+}
+
+// export: PdfOutputPolicyError
+export declare class PdfOutputPolicyError extends Error {
+    constructor(message: string);
+}
+
+// export: PdfOutputPolicyV1
+export interface PdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1,
+        ...PdfOutputStandardV1[]
+    ];
 }
 
 // export: PdfOutputSink
 export interface PdfOutputSink {
-    emit(name: string, bytes: Uint8Array, context?: {
+    emit(name: string, bytes: PdfBytesHandle, context?: {
         signal?: AbortSignal;
     }): Promise<void>;
 }
 
+// export: PdfOutputStandardEvidenceV1
+export interface PdfOutputStandardEvidenceV1 {
+    schema: "atlcli.pdf-output-standard-evidence/1";
+    requestedStandard: PdfOutputStandardV1;
+    basePdfVersion: ResolvedPdfOutputPolicyV1["basePdfVersion"];
+    pdfa?: {
+        part: "1" | "2" | "3" | "4";
+        conformance?: "A" | "B" | "E" | "F" | "U";
+    };
+    pdfua?: {
+        part: "1";
+    };
+    hasDocumentIdentifier: boolean;
+    tagged: boolean;
+    hasLang: boolean;
+    embeddedFontFiles: number;
+}
+
+// export: PdfOutputStandardV1
+export type PdfOutputStandardV1 = (typeof PDF_OUTPUT_STANDARDS_V1)[number];
+
 // export: PdfProfile
+// @deprecated PdfProfile — Legacy rendering/report label. It does not request PDF/UA
+conformance. Use `PdfOutputPolicyV1` for a strict output-standard request.
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
 // export: PdfResolvedAsset
@@ -891,10 +2342,17 @@ export interface PdfResolvedAsset {
 
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
+    assetId: `canonical/${string}`;
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Arabic" | "Noto Sans Symbols2" | "Noto Emoji";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
+    axes?: readonly {
+        tag: string;
+        min: number;
+        default: number;
+        max: number;
+    }[];
     sourceUrl: string;
     sha256: string;
 }
@@ -905,7 +2363,13 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: AnyPdfTemplateManifest;
+    imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
+    templatePack?: ValidatedPdfTemplatePackV1;
 }
+
+// export: PdfSettingPresenceMask
+export type PdfSettingPresenceMask = Readonly<Record<PdfBindableLevelASetting, boolean>>;
 
 // export: PdfSourceBundle
 export interface PdfSourceBundle {
@@ -914,6 +2378,7 @@ export interface PdfSourceBundle {
     assets: PreparedPdfAsset[];
     sourceMap: PdfSourceMapEntry[];
     notes: ExportNote[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
 // export: PdfSourceMapEntry
@@ -930,6 +2395,104 @@ export interface PdfSourceMapEntry {
 // export: PdfTableCellTextMode
 export type PdfTableCellTextMode = "auto" | "source";
 
+// export: PdfTemplateAssetSlotV1
+export type PdfTemplateAssetSlotV1 = (typeof PDF_TEMPLATE_ASSET_SLOTS_V1)[number];
+
+// export: PdfTemplateBaselineContentV1
+export interface PdfTemplateBaselineContentV1 {
+    schema: typeof PDF_TEMPLATE_BASELINE_SCHEMA_V1;
+    id: string;
+    version: number;
+    catalog: TemplateCapabilityCatalogReferenceV1;
+    design: WikiPdfTemplateDesignV3;
+    localization: WikiPdfTemplateLocalizationV1;
+}
+
+// export: PdfTemplateBaselineRegistryV1
+export interface PdfTemplateBaselineRegistryV1 {
+    resolve(reference: Pick<PdfTemplateRecipeBaselineV2, "id" | "version">): ResolvedPdfTemplateBaselineV1 | undefined;
+}
+
+// export: PdfTemplateDecorationIdV1
+export type PdfTemplateDecorationIdV1 = (typeof PDF_TEMPLATE_DECORATION_IDS_V1)[number];
+
+// export: PdfTemplateManifestV5
+export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
+
+// export: PdfTemplatePreviewCompiler
+export declare class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {
+    private readonly options;
+    constructor(options: PdfTemplatePreviewCompilerOptionsV1);
+    render(request: TemplatePreviewRequestV1): Promise<TemplatePreviewResultV1>;
+}
+
+// export: PdfTemplatePreviewCompilerOptionsV1
+export interface PdfTemplatePreviewCompilerOptionsV1 {
+    compiler: PdfCompilePort;
+    resolveModel(request: TemplatePreviewRequestV1): Promise<PdfTemplatePreviewModelV1>;
+}
+
+// export: PdfTemplatePreviewError
+export declare class PdfTemplatePreviewError extends Error {
+    readonly code: "compile-failed" | "invalid-model" | "missing-summary" | "no-contact-assets";
+    constructor(code: "compile-failed" | "invalid-model" | "missing-summary" | "no-contact-assets", message: string);
+}
+
+// export: PdfTemplatePreviewModelV1
+export interface PdfTemplatePreviewModelV1 {
+    baseline: TemplateManifest;
+    current: TemplateManifest;
+    currentPack?: ValidatedPdfTemplatePackV1;
+    reviewAssets?: readonly {
+        id: string;
+        vfsPath: string;
+        bytes: Uint8Array;
+        mediaType: string;
+        occurrenceCount: number;
+        proposedRole?: string;
+    }[];
+}
+
+// export: PdfTemplateRecipeV2ResolutionError
+export declare class PdfTemplateRecipeV2ResolutionError extends Error {
+    readonly reason: PdfTemplateRecipeV2ResolutionReason;
+    constructor(reason: PdfTemplateRecipeV2ResolutionReason, message: string);
+}
+
+// export: PdfTemplateRecipeV2ResolutionReason
+export type PdfTemplateRecipeV2ResolutionReason = "baseline-not-installed" | "baseline-identity-mismatch" | "baseline-digest-mismatch" | "catalog-mismatch" | "constraint-violation";
+
+// export: PdfTemplateRuntimeMaterializer
+export declare class PdfTemplateRuntimeMaterializer implements TemplateRuntimeMaterializer {
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
+}
+
+// export: PdfTemplateRuntimeSnapshotV1
+export interface PdfTemplateRuntimeSnapshotV1 {
+    schema: "atlcli.pdf-template-runtime-snapshot/1";
+    capabilityCatalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3;
+    fallbackLocale: string;
+    fallbackLabels: Readonly<Record<string, string>>;
+    visuals: PdfTemplateVisualsV1;
+}
+
+// export: PdfTemplateRuntimeV1
+export interface PdfTemplateRuntimeV1 {
+    schema: "atlcli.pdf-template-runtime/1";
+    manifest: AnyPdfTemplateManifest;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    canonicalSource: PdfVerifiedCanonicalSourceV1;
+    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
+    entrySource: string;
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
 // export: PdfTemplateSettings
 export interface PdfTemplateSettings {
     page?: "a4" | "letter";
@@ -942,6 +2505,26 @@ export interface PdfTemplateSettings {
     organizationName?: string;
     logo?: PdfLogoAsset;
     watermark?: PdfWatermarkSettings;
+}
+
+// export: PdfTemplateValidationError
+export declare class PdfTemplateValidationError extends Error {
+    readonly phase: PdfTemplateValidationPhase;
+    readonly reason: PdfTemplateValidationReason;
+    readonly path?: string | undefined;
+    constructor(phase: PdfTemplateValidationPhase, reason: PdfTemplateValidationReason, message: string, path?: string | undefined);
+}
+
+// export: PdfTemplateValidationPhase
+export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
+
+// export: PdfTemplateValidationReason
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "invalid-composition" | "canonical-source-mismatch" | "non-canonical-template-source";
+
+// export: PdfTemplateVisualsV1
+export interface PdfTemplateVisualsV1 {
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Pick<ResolvedPdfTemplateAssetV1, "vfsPath" | "reference">>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
 }
 
 // export: PdfTheme
@@ -976,6 +2559,14 @@ export interface PdfThemeOptions {
     };
 }
 
+// export: PdfVerifiedCanonicalSourceV1
+export interface PdfVerifiedCanonicalSourceV1 {
+    api: typeof PDF_CANONICAL_SOURCE_API_V1;
+    revision: string;
+    source: string;
+    sha256: string;
+}
+
 // export: PdfWatermarkSettings
 export interface PdfWatermarkSettings {
     text: string;
@@ -994,65 +2585,115 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
-}> | {
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart";
+}> | (Omit<Extract<ExportBlock, {
+    type: "heading";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
+    type: "paragraph";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-    macroName: string;
+}>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
-    plainBody?: string;
-} | {
-    type: "callout";
-    kind: Extract<ExportBlock, {
-        type: "callout";
-    }>["kind"];
-    title?: string;
-    content: PreparedPdfBlock[];
-} | {
-    type: "list";
-    ordered: boolean;
-    items: Array<{
+    plainBodyHighlight?: HighlightedCode;
+    extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
-        checked?: boolean;
     }>;
-} | {
+}) | Omit<Extract<ExportBlock, {
+    type: "callout";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "expand";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "list";
+}>, "items"> & {
+    items: Array<Omit<ListItem, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
+    type: "layout";
+}>, "columns"> & {
+    columns: Array<Omit<LayoutColumn, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
     type: "table";
-    rows: Array<{
-        cells: Array<{
-            header: boolean;
-            colspan: number;
-            rowspan: number;
-            backgroundColor?: string;
+}>, "caption" | "rows"> & {
+    caption?: PreparedPdfCaption;
+    rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
         }>;
     }>;
-    columnWidths?: number[];
-    caption?: Caption;
-} | {
+} | (Omit<Extract<ExportBlock, {
+    type: "chart";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+    visualAssetPath?: string;
+}) | {
     type: "image";
     assetPath?: string;
     alt?: string;
     width?: number;
     height?: number;
     fallbackLabel: string;
-    caption?: Caption;
-} | {
+    media?: Extract<ExportBlock, {
+        type: "image";
+    }>["media"];
+    mediaPresentation?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaPresentation"];
+    mediaGroup?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaGroup"];
+    border?: Extract<ExportBlock, {
+        type: "image";
+    }>["border"];
+    annotations?: Extract<ExportBlock, {
+        type: "image";
+    }>["annotations"];
+    caption?: PreparedPdfCaption;
+    link?: ExportLink;
+} | (Omit<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | {
+} | (Omit<Extract<ExportBlock, {
     type: "codeBlock";
-    language?: string;
-    code: string;
-    caption?: Caption;
-} | {
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+    highlight: HighlightedCode;
+}) | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    title?: string;
+    initiallyCollapsed?: boolean;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "orientation";
     landscape: boolean;
     content: PreparedPdfBlock[];
+};
+
+// export: PreparedPdfCaption
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+    content: PreparedPdfInlineNode[];
 };
 
 // export: PreparedPdfDocument
@@ -1062,20 +2703,129 @@ export interface PreparedPdfDocument {
     notes: ExportNote[];
 }
 
+// export: PreparedPdfExportV1
+export interface PreparedPdfExportV1 {
+    schema: "atlcli.prepared-pdf-export/1";
+    bundle: PdfSourceBundle | undefined;
+    filename: string;
+    codeTheme: CodeThemeId;
+    profile: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
+    language?: string;
+    sourceNotes: ExportNote[];
+    bundleNotes: ExportNote[];
+    counts: {
+        images: number;
+        diagrams: number;
+        skipped: number;
+    };
+    complete: boolean;
+    startedAt: number;
+    prepareMs: number;
+}
+
+// export: PreparedPdfInlineNode
+export type PreparedPdfInlineNode = Exclude<InlineNode, {
+    type: "link" | "media";
+}> | (Omit<Extract<InlineNode, {
+    type: "link";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Extract<InlineNode, {
+    type: "media";
+}> & {
+    assetPath?: string;
+    fallbackLabel: string;
+});
+
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
 
+// export: preparePdfExport
+export declare function preparePdfExport(input: RunPdfExportInput, env: PreparePdfExportEnv): Promise<PreparedPdfExportV1>;
+
+// export: PreparePdfExportEnv
+export interface PreparePdfExportEnv {
+    assets: PdfAssetResolver;
+    now?: () => number;
+    macros?: MacroResolutionOptions;
+}
+
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
+    codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
+    pageContext?: {
+        pageId?: string;
+        pageTitle?: string;
+        pageUrl?: string;
+    };
+    imageQuality?: ExportImageQualityV1;
 }
+
+// export: renderPreparedPdfExport
+export declare function renderPreparedPdfExport(prepared: PreparedPdfExportV1, input: RenderPreparedPdfExportInput, env: RenderPreparedPdfExportEnv): Promise<PdfExportReport>;
+
+// export: RenderPreparedPdfExportEnv
+export interface RenderPreparedPdfExportEnv {
+    compiler: PdfCompilePort;
+    output: PdfOutputSink;
+    now?: () => number;
+}
+
+// export: RenderPreparedPdfExportInput
+export interface RenderPreparedPdfExportInput {
+    signal?: AbortSignal;
+    onPhase?: (phase: Extract<PdfExportPhase, "compiling" | "validating" | "emitting">) => void;
+    onProgress?: ExportProgressCallback;
+}
+
+// export: ResolvedPdfDesign
+export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
+
+// export: ResolvedPdfFontAssetRequirementV1
+export interface ResolvedPdfFontAssetRequirementV1 {
+    assetId: string;
+    source: "canonical" | "custom";
+    family: string;
+    style: "normal" | "italic";
+    weight: number;
+    sha256: string;
+    fileName?: string;
+    reasons: readonly PdfFontRequirementReasonV1[];
+}
+
+// export: ResolvedPdfFontRequirementsV1
+export interface ResolvedPdfFontRequirementsV1 {
+    schema: "atlcli.pdf-font-requirements/1";
+    template: {
+        id: string;
+        version: string;
+    };
+    key: string;
+    assets: readonly ResolvedPdfFontAssetRequirementV1[];
+    diagnostics?: readonly PdfFontDiagnosticV1[];
+}
+
+// export: ResolvedPdfLabels
+export type ResolvedPdfLabels = Record<string, string>;
 
 // export: ResolvedPdfLogo
 export interface ResolvedPdfLogo {
     bytes: Uint8Array;
     mediaType: "image/png" | "image/svg+xml";
     alt: string;
+}
+
+// export: ResolvedPdfOutputPolicyV1
+export interface ResolvedPdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1
+    ];
+    basePdfVersion: "1.4" | "1.5" | "1.6" | "1.7" | "2.0";
 }
 
 // export: ResolvedPdfSettings
@@ -1090,6 +2840,56 @@ export interface ResolvedPdfSettings {
     organizationName?: string;
     logo?: ResolvedPdfLogo;
     watermark?: ResolvedPdfWatermark;
+    design: ResolvedPdfDesign;
+    settingPresence: PdfSettingPresenceMask;
+    designTrace: readonly PdfDesignResolutionTraceEntry[];
+    ignoredDesignCapabilities: readonly string[];
+    capabilityCatalogDigest: string;
+    capabilityCatalog: TemplateCapabilityCatalogReferenceV1;
+    labels: ResolvedPdfLabels;
+    templateVisuals?: PdfTemplateVisualsV1;
+}
+
+// export: ResolvedPdfTemplateAssetV1
+export interface ResolvedPdfTemplateAssetV1 {
+    slot: PdfTemplateAssetSlotV1;
+    descriptorId: string;
+    descriptor: TemplateAssetDescriptorV1;
+    reference: TemplateAssetReferenceV1;
+    bytes: Uint8Array;
+    vfsPath: string;
+}
+
+// export: ResolvedPdfTemplateBaselineV1
+export interface ResolvedPdfTemplateBaselineV1 extends PdfTemplateBaselineContentV1 {
+    digest: string;
+}
+
+// export: ResolvedPdfTemplateRecipeAssetV1
+export interface ResolvedPdfTemplateRecipeAssetV1 {
+    slot: string;
+    source: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    sha256: string;
+    bytes: Uint8Array;
+}
+
+// export: ResolvedPdfTemplateRecipeV2
+export interface ResolvedPdfTemplateRecipeV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    catalog: TemplateCapabilityCatalogReferenceV1;
+    canonicalSource: {
+        api: "wiki.pdf-canonical-typst";
+        revision: "5";
+    };
+    compilerRange: string;
+    design: WikiPdfTemplateDesignV3;
+    localization: WikiPdfTemplateLocalizationV1;
 }
 
 // export: ResolvedPdfWatermark
@@ -1101,20 +2901,57 @@ export interface ResolvedPdfWatermark {
     size: number;
 }
 
+// export: resolveFullPdfFontRequirementsV1
+export declare function resolveFullPdfFontRequirementsV1(manifest?: TemplateManifest): ResolvedPdfFontRequirementsV1;
+
+// export: ResolvePdfFontRequirementsInputV1
+export interface ResolvePdfFontRequirementsInputV1 {
+    document: PreparedPdfDocument;
+    metadata: PdfExportMetadata;
+    settings: ResolvedPdfSettings;
+    manifest?: AnyPdfTemplateManifest;
+}
+
+// export: resolvePdfFontRequirementsV1
+export declare function resolvePdfFontRequirementsV1(input: ResolvePdfFontRequirementsInputV1): ResolvedPdfFontRequirementsV1;
+
+// export: resolvePdfOutputPolicyV1
+export declare function resolvePdfOutputPolicyV1(value: PdfOutputPolicyV1 | undefined): ResolvedPdfOutputPolicyV1 | undefined;
+
 // export: resolvePdfSettings
-export declare function resolvePdfSettings(options?: PdfTemplateSettings): ResolvedPdfSettings;
+export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
+
+// export: ResolvePdfSettingsContext
+export interface ResolvePdfSettingsContext {
+    locale?: string;
+    region?: string;
+    theme?: PdfThemeOptions;
+    manifest?: AnyPdfTemplateManifest;
+    templatePack?: ValidatedPdfTemplatePackV1;
+}
+
+// export: resolvePdfTemplateRecipeV2Design
+export declare function resolvePdfTemplateRecipeV2Design(value: unknown, registry?: PdfTemplateBaselineRegistryV1): Promise<ResolvedPdfTemplateRecipeV2>;
+
+// export: resolveTypstPdfOptions0151
+export declare function resolveTypstPdfOptions0151(value: TypstPdfOptions0151 | undefined): TypstPdfOptions0151 | undefined;
 
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
 
 // export: RunPdfExportInput
 export interface RunPdfExportInput {
+    codeTheme?: CodeThemeId;
     blocks: ExportBlock[];
     sourceNotes?: ExportNote[];
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: TemplateManifest;
+    imageQuality?: ExportImageQualityV1;
+    templatePack?: ValidatedPdfTemplatePackV1;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
@@ -1127,51 +2964,268 @@ export interface RunPdfExportInput {
     };
 }
 
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
+    };
+}
+
+// export: TemplateManifest
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
+    schemaVersion: number;
+    id: string;
+    name: string;
+    version: string;
+    engine: TemplateEngineSpec;
+    requiredFonts?: RequiredFont[];
+    settings?: Record<string, ManifestSetting>;
+    provenance?: TemplateProvenance;
+    design?: TDesign;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
+}
+
+// export: TYPST_PDF_STANDARDS_0_15_1
+export declare const TYPST_PDF_STANDARDS_0_15_1: readonly [
+    "1.4",
+    "1.5",
+    "1.6",
+    "1.7",
+    "2.0",
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
+
+// export: TypstPdfOptions0151
+export interface TypstPdfOptions0151 {
+    standard: TypstPdfStandard0151;
+}
+
+// export: TypstPdfStandard0151
+export type TypstPdfStandard0151 = (typeof TYPST_PDF_STANDARDS_0_15_1)[number];
+
+// export: ValidatedPdfTemplatePackV1
+export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
+
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
+// export: validatePdfOutputStandard
+export declare function validatePdfOutputStandard(bytes: Uint8Array, policy: PdfOutputPolicyV1, inspection?: PdfOutputInspection): PdfOutputStandardEvidenceV1;
+
+// export: validatePdfTemplateManifest
+export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
+
+// export: validatePdfTemplatePack
+export declare function validatePdfTemplatePack(manifest: AnyPdfTemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
+
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
+}
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
+}
 ```
 
 ### Entry point `./browser`
 
 ```ts
+// export: AnyPdfTemplateManifest
+export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
+
+// export: assertResolvedPdfFontRequirementsV1
+export declare function assertResolvedPdfFontRequirementsV1(value: unknown): asserts value is ResolvedPdfFontRequirementsV1;
+
+// export: buildUniformPdfPageBorderV1
+export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUniformPageBorderInputV1[], inset?: string): WikiPdfTemplatePageBorderV1 | undefined;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1: PdfTemplateBaselineRegistryV1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1: 1;
+
+// export: BUILTIN_PDF_TEMPLATE_ID
+export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
+
+// export: BUILTIN_PDF_TEMPLATE_MANIFEST
+export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: BUILTIN_PDF_TEMPLATES
+export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
+
+// export: canonicalPdfTemplateBaselineV1
+export declare function canonicalPdfTemplateBaselineV1(baseline: PdfTemplateBaselineContentV1): string;
+
+// export: clonePdfTemplateRuntime
+export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): PdfTemplateRuntimeV1;
+
+// export: computePdfTemplateBaselineDigestV1
+export declare function computePdfTemplateBaselineDigestV1(baseline: PdfTemplateBaselineContentV1): Promise<string>;
+
+// export: DocxUniformPageBorderInputV1
+export interface DocxUniformPageBorderInputV1 {
+    section: number;
+    offsetFrom: string;
+    sides: readonly {
+        side: "bottom" | "left" | "right" | "top";
+        style?: string;
+        color?: string;
+        widthEighthPoints?: number;
+    }[];
+}
+
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    highlightLines?: readonly number[];
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
+    type: "chart";
+    chart: import("./charts.js").ChartModelV1;
+    caption?: Caption;
+    diagnostics?: import("./charts.js").ChartDiagnosticV1[];
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -1193,6 +3247,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -1247,27 +3305,75 @@ export declare class FontVerificationError extends Error {
 // export: formatPdfCompilerDiagnostics
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
+// export: generateCanonicalPdfTemplateSourceV1
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: AnyPdfTemplateManifest, visuals: PdfTemplateVisualsV1): string;
+
+// export: getBuiltinPdfTemplate
+export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
     text: string;
     marks?: InlineMark[];
     color?: string;
-} | {
+    backgroundColor?: string;
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
+
+// export: isPdfBytesHandle
+export declare function isPdfBytesHandle(value: unknown): value is PdfBytesHandle;
 
 // export: LinkTarget
 export type LinkTarget = {
@@ -1279,13 +3385,78 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
 };
+
+// export: loadPdfTemplatePack
+export declare function loadPdfTemplatePack(bytes: Uint8Array, options?: {
+    pinnedTypstVersion?: string;
+}): Promise<ValidatedPdfTemplatePackV1>;
+
+// export: MANUSCRIPT_PDF_TEMPLATE_ID
+export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
+
+// export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
+export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: MaterializedPdfTemplateRecipeV1
+export interface MaterializedPdfTemplateRecipeV1 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}
+
+// export: MaterializedPdfTemplateRecipeV2
+export interface MaterializedPdfTemplateRecipeV2 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: PdfTemplateManifestV5;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+}
+
+// export: MaterializePdfTemplateRecipeInputV1
+export interface MaterializePdfTemplateRecipeInputV1 {
+    recipe: WikiPdfTemplateRecipeV1;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+}
+
+// export: MaterializePdfTemplateRecipeInputV2
+export interface MaterializePdfTemplateRecipeInputV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+    baselineRegistry?: PdfTemplateBaselineRegistryV1;
+}
+
+// export: materializePdfTemplateRecipeV1
+export declare function materializePdfTemplateRecipeV1(input: MaterializePdfTemplateRecipeInputV1): Promise<MaterializedPdfTemplateRecipeV1>;
+
+// export: materializePdfTemplateRecipeV2
+export declare function materializePdfTemplateRecipeV2(input: MaterializePdfTemplateRecipeInputV2): Promise<MaterializedPdfTemplateRecipeV2>;
 
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
@@ -1293,16 +3464,65 @@ export declare function normalizePdfLocale(locale: string | undefined): {
     region?: string;
 };
 
+// export: ParsedFontAxis
+export interface ParsedFontAxis {
+    tag: string;
+    min: number;
+    default: number;
+    max: number;
+}
+
 // export: ParsedFontFace
 export interface ParsedFontFace {
     family: string;
     subfamily: string;
     style: "normal" | "italic";
     weight: number;
+    axes?: readonly ParsedFontAxis[];
 }
 
 // export: parseFontMeta
 export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
+
+// export: PDF_CANONICAL_SOURCE_API_V1
+export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
+
+// export: PDF_CANONICAL_SOURCE_REVISION
+export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_1
+export declare const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_2
+export declare const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_3
+export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_4
+export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_5
+export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
+
+// export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
+export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_OUTPUT_STANDARDS_V1
+export declare const PDF_OUTPUT_STANDARDS_V1: readonly [
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -1314,6 +3534,88 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
         fileName: "LICENSE";
     }>;
 }>;
+
+// export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
+export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+];
+
+// export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_ASSET_CAPABILITIES_V1: TemplateAssetCapabilitiesV1;
+
+// export: PDF_TEMPLATE_ASSET_SLOTS_V1
+export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
+    "asset.logo",
+    "asset.pageBackground",
+    "asset.coverBackground",
+    "asset.headerDecoration",
+    "asset.footerDecoration"
+];
+
+// export: PDF_TEMPLATE_BASELINE_SCHEMA_V1
+export declare const PDF_TEMPLATE_BASELINE_SCHEMA_V1: "atlcli.pdf-template-baseline/1";
+
+// export: PDF_TEMPLATE_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2;
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e53f3bf21a19e65a74d64a0cf31e7cc185fdb79607";
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE
+export declare const PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE: ">=0.15.1 <0.16";
+
+// export: PDF_TEMPLATE_DECORATION_IDS_V1
+export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
+    "asset.pageBackground",
+    "asset.coverBackground",
+    "asset.headerDecoration",
+    "asset.footerDecoration",
+    "decoration.pageBorder"
+];
+
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[];
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V2
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf77fc685a6a652dbfe2f12621a840356197a87d3fe424e2";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V3
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
+
+// export: PDF_TEMPLATE_WRITERS_V1
+export declare const PDF_TEMPLATE_WRITERS_V1: {
+    readonly logo: "typst.logo";
+    readonly imageDecoration: "typst.image-decoration";
+    readonly pageBorder: "typst.page-border";
+};
 
 // export: PdfAssetRef
 export interface PdfAssetRef {
@@ -1331,9 +3633,34 @@ export interface PdfAssetResolver {
     }): Promise<PdfResolvedAsset>;
 }
 
+// export: PdfBindableLevelASetting
+export type PdfBindableLevelASetting = (typeof PDF_BINDABLE_LEVEL_A_SETTINGS)[number];
+
+// export: pdfBytesFromBlob
+export declare function pdfBytesFromBlob(source: Blob, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: pdfBytesFromUint8Array
+export declare function pdfBytesFromUint8Array(source: Uint8Array, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: PdfBytesHandle
+export interface PdfBytesHandle {
+    readonly size: number;
+    readonly mimeType: string;
+    asBlob(): Promise<Blob>;
+    asUint8Array(): Promise<Uint8Array>;
+    objectUrl(): Promise<string>;
+    release(): void;
+}
+
 // export: PdfCompileContext
 export interface PdfCompileContext {
     signal?: AbortSignal;
+    outputPolicy?: PdfOutputPolicyV1;
+    pdfOptions?: TypstPdfOptions0151;
 }
 
 // export: PdfCompilePort
@@ -1358,6 +3685,16 @@ export interface PdfCompileResult {
     pdf?: Uint8Array;
     diagnostics: PdfCompilerDiagnostic[];
     compilerVersion: string;
+    fontEvidence?: PdfFontLoadEvidenceV1;
+}
+
+// export: PdfDesignResolutionTraceEntry
+export interface PdfDesignResolutionTraceEntry {
+    target: string;
+    source: "baseline" | "engine-policy" | "runtime-binding";
+    sourceId: string;
+    sequence: number;
+    value: unknown;
 }
 
 // export: PdfExportEnv
@@ -1393,6 +3730,7 @@ export interface PdfExportMetadata {
     exporter?: string;
     language?: string;
     region?: string;
+    direction?: "ltr" | "rtl";
     exportedAt: Date;
 }
 
@@ -1401,16 +3739,22 @@ export type PdfExportPhase = "configuration" | "preparing" | "fetching" | "compi
 
 // export: PdfExportReport
 export interface PdfExportReport {
+    codeTheme: CodeThemeId;
     filename: string;
     profile: PdfProfile;
+    outputPolicy?: import("./output-policy.js").PdfOutputPolicyV1;
+    outputStandardEvidence?: import("./output-policy.js").PdfOutputStandardEvidenceV1;
     compilerVersion: string;
     pageCount?: number;
     embeddedImages: number;
     renderedDiagrams: number;
     skippedAssets: number;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     compilerDiagnostics?: PdfCompilerDiagnostic[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
+    fontEvidence?: PdfFontLoadEvidenceV1;
     timings: PdfExportTimings;
 }
 
@@ -1420,6 +3764,43 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfFontDiagnosticCodeV1
+export type PdfFontDiagnosticCodeV1 = "PDF_FONT_STYLE_FALLBACK" | "PDF_FONT_STRETCH_FALLBACK" | "PDF_FONT_WEIGHT_FALLBACK" | "PDF_FONT_MISSING_GLYPH";
+
+// export: PdfFontDiagnosticV1
+export interface PdfFontDiagnosticV1 {
+    code: PdfFontDiagnosticCodeV1;
+    severity: "warning";
+    family: string;
+    role: string;
+    requested: string;
+}
+
+// export: PdfFontLoadEvidenceV1
+export interface PdfFontLoadEvidenceV1 {
+    schema: "atlcli.pdf-font-load-evidence/1";
+    requirementKey: string;
+    registeredAssetIds: readonly string[];
+    loadedFontNames: readonly string[];
+    fullBundleFallback: boolean;
+}
+
+// export: PdfFontRequirementReasonKindV1
+export type PdfFontRequirementReasonKindV1 = "document-style" | "fallback" | "full-bundle-conformance" | "renderer-synthetic" | "template-role";
+
+// export: PdfFontRequirementReasonV1
+export interface PdfFontRequirementReasonV1 {
+    kind: PdfFontRequirementReasonKindV1;
+    detail: string;
+}
+
+// export: PdfGeneratedTemplateProofCompiler
+export declare class PdfGeneratedTemplateProofCompiler implements TemplateGeneratedPackCompilerV1 {
+    private readonly compiler;
+    constructor(compiler: PdfCompilePort);
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
 }
 
 // export: PdfLogoAsset
@@ -1435,16 +3816,54 @@ export interface PdfOutputInspection {
     tagged: boolean;
     hasOutline: boolean;
     embeddedFontFiles: number;
+    hasLang: boolean;
+}
+
+// export: PdfOutputPolicyError
+export declare class PdfOutputPolicyError extends Error {
+    constructor(message: string);
+}
+
+// export: PdfOutputPolicyV1
+export interface PdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1,
+        ...PdfOutputStandardV1[]
+    ];
 }
 
 // export: PdfOutputSink
 export interface PdfOutputSink {
-    emit(name: string, bytes: Uint8Array, context?: {
+    emit(name: string, bytes: PdfBytesHandle, context?: {
         signal?: AbortSignal;
     }): Promise<void>;
 }
 
+// export: PdfOutputStandardEvidenceV1
+export interface PdfOutputStandardEvidenceV1 {
+    schema: "atlcli.pdf-output-standard-evidence/1";
+    requestedStandard: PdfOutputStandardV1;
+    basePdfVersion: ResolvedPdfOutputPolicyV1["basePdfVersion"];
+    pdfa?: {
+        part: "1" | "2" | "3" | "4";
+        conformance?: "A" | "B" | "E" | "F" | "U";
+    };
+    pdfua?: {
+        part: "1";
+    };
+    hasDocumentIdentifier: boolean;
+    tagged: boolean;
+    hasLang: boolean;
+    embeddedFontFiles: number;
+}
+
+// export: PdfOutputStandardV1
+export type PdfOutputStandardV1 = (typeof PDF_OUTPUT_STANDARDS_V1)[number];
+
 // export: PdfProfile
+// @deprecated PdfProfile — Legacy rendering/report label. It does not request PDF/UA
+conformance. Use `PdfOutputPolicyV1` for a strict output-standard request.
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
 // export: PdfResolvedAsset
@@ -1456,10 +3875,17 @@ export interface PdfResolvedAsset {
 
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
+    assetId: `canonical/${string}`;
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Arabic" | "Noto Sans Symbols2" | "Noto Emoji";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
+    axes?: readonly {
+        tag: string;
+        min: number;
+        default: number;
+        max: number;
+    }[];
     sourceUrl: string;
     sha256: string;
 }
@@ -1470,7 +3896,13 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: AnyPdfTemplateManifest;
+    imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
+    templatePack?: ValidatedPdfTemplatePackV1;
 }
+
+// export: PdfSettingPresenceMask
+export type PdfSettingPresenceMask = Readonly<Record<PdfBindableLevelASetting, boolean>>;
 
 // export: PdfSourceBundle
 export interface PdfSourceBundle {
@@ -1479,6 +3911,7 @@ export interface PdfSourceBundle {
     assets: PreparedPdfAsset[];
     sourceMap: PdfSourceMapEntry[];
     notes: ExportNote[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
 // export: PdfSourceMapEntry
@@ -1495,6 +3928,104 @@ export interface PdfSourceMapEntry {
 // export: PdfTableCellTextMode
 export type PdfTableCellTextMode = "auto" | "source";
 
+// export: PdfTemplateAssetSlotV1
+export type PdfTemplateAssetSlotV1 = (typeof PDF_TEMPLATE_ASSET_SLOTS_V1)[number];
+
+// export: PdfTemplateBaselineContentV1
+export interface PdfTemplateBaselineContentV1 {
+    schema: typeof PDF_TEMPLATE_BASELINE_SCHEMA_V1;
+    id: string;
+    version: number;
+    catalog: TemplateCapabilityCatalogReferenceV1;
+    design: WikiPdfTemplateDesignV3;
+    localization: WikiPdfTemplateLocalizationV1;
+}
+
+// export: PdfTemplateBaselineRegistryV1
+export interface PdfTemplateBaselineRegistryV1 {
+    resolve(reference: Pick<PdfTemplateRecipeBaselineV2, "id" | "version">): ResolvedPdfTemplateBaselineV1 | undefined;
+}
+
+// export: PdfTemplateDecorationIdV1
+export type PdfTemplateDecorationIdV1 = (typeof PDF_TEMPLATE_DECORATION_IDS_V1)[number];
+
+// export: PdfTemplateManifestV5
+export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
+
+// export: PdfTemplatePreviewCompiler
+export declare class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {
+    private readonly options;
+    constructor(options: PdfTemplatePreviewCompilerOptionsV1);
+    render(request: TemplatePreviewRequestV1): Promise<TemplatePreviewResultV1>;
+}
+
+// export: PdfTemplatePreviewCompilerOptionsV1
+export interface PdfTemplatePreviewCompilerOptionsV1 {
+    compiler: PdfCompilePort;
+    resolveModel(request: TemplatePreviewRequestV1): Promise<PdfTemplatePreviewModelV1>;
+}
+
+// export: PdfTemplatePreviewError
+export declare class PdfTemplatePreviewError extends Error {
+    readonly code: "compile-failed" | "invalid-model" | "missing-summary" | "no-contact-assets";
+    constructor(code: "compile-failed" | "invalid-model" | "missing-summary" | "no-contact-assets", message: string);
+}
+
+// export: PdfTemplatePreviewModelV1
+export interface PdfTemplatePreviewModelV1 {
+    baseline: TemplateManifest;
+    current: TemplateManifest;
+    currentPack?: ValidatedPdfTemplatePackV1;
+    reviewAssets?: readonly {
+        id: string;
+        vfsPath: string;
+        bytes: Uint8Array;
+        mediaType: string;
+        occurrenceCount: number;
+        proposedRole?: string;
+    }[];
+}
+
+// export: PdfTemplateRecipeV2ResolutionError
+export declare class PdfTemplateRecipeV2ResolutionError extends Error {
+    readonly reason: PdfTemplateRecipeV2ResolutionReason;
+    constructor(reason: PdfTemplateRecipeV2ResolutionReason, message: string);
+}
+
+// export: PdfTemplateRecipeV2ResolutionReason
+export type PdfTemplateRecipeV2ResolutionReason = "baseline-not-installed" | "baseline-identity-mismatch" | "baseline-digest-mismatch" | "catalog-mismatch" | "constraint-violation";
+
+// export: PdfTemplateRuntimeMaterializer
+export declare class PdfTemplateRuntimeMaterializer implements TemplateRuntimeMaterializer {
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
+}
+
+// export: PdfTemplateRuntimeSnapshotV1
+export interface PdfTemplateRuntimeSnapshotV1 {
+    schema: "atlcli.pdf-template-runtime-snapshot/1";
+    capabilityCatalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3;
+    fallbackLocale: string;
+    fallbackLabels: Readonly<Record<string, string>>;
+    visuals: PdfTemplateVisualsV1;
+}
+
+// export: PdfTemplateRuntimeV1
+export interface PdfTemplateRuntimeV1 {
+    schema: "atlcli.pdf-template-runtime/1";
+    manifest: AnyPdfTemplateManifest;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    canonicalSource: PdfVerifiedCanonicalSourceV1;
+    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
+    entrySource: string;
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
 // export: PdfTemplateSettings
 export interface PdfTemplateSettings {
     page?: "a4" | "letter";
@@ -1507,6 +4038,26 @@ export interface PdfTemplateSettings {
     organizationName?: string;
     logo?: PdfLogoAsset;
     watermark?: PdfWatermarkSettings;
+}
+
+// export: PdfTemplateValidationError
+export declare class PdfTemplateValidationError extends Error {
+    readonly phase: PdfTemplateValidationPhase;
+    readonly reason: PdfTemplateValidationReason;
+    readonly path?: string | undefined;
+    constructor(phase: PdfTemplateValidationPhase, reason: PdfTemplateValidationReason, message: string, path?: string | undefined);
+}
+
+// export: PdfTemplateValidationPhase
+export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
+
+// export: PdfTemplateValidationReason
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "invalid-composition" | "canonical-source-mismatch" | "non-canonical-template-source";
+
+// export: PdfTemplateVisualsV1
+export interface PdfTemplateVisualsV1 {
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Pick<ResolvedPdfTemplateAssetV1, "vfsPath" | "reference">>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
 }
 
 // export: PdfTheme
@@ -1541,6 +4092,14 @@ export interface PdfThemeOptions {
     };
 }
 
+// export: PdfVerifiedCanonicalSourceV1
+export interface PdfVerifiedCanonicalSourceV1 {
+    api: typeof PDF_CANONICAL_SOURCE_API_V1;
+    revision: string;
+    source: string;
+    sha256: string;
+}
+
 // export: PdfWatermarkSettings
 export interface PdfWatermarkSettings {
     text: string;
@@ -1559,65 +4118,115 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
-}> | {
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart";
+}> | (Omit<Extract<ExportBlock, {
+    type: "heading";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
+    type: "paragraph";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-    macroName: string;
+}>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
-    plainBody?: string;
-} | {
-    type: "callout";
-    kind: Extract<ExportBlock, {
-        type: "callout";
-    }>["kind"];
-    title?: string;
-    content: PreparedPdfBlock[];
-} | {
-    type: "list";
-    ordered: boolean;
-    items: Array<{
+    plainBodyHighlight?: HighlightedCode;
+    extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
-        checked?: boolean;
     }>;
-} | {
+}) | Omit<Extract<ExportBlock, {
+    type: "callout";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "expand";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "list";
+}>, "items"> & {
+    items: Array<Omit<ListItem, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
+    type: "layout";
+}>, "columns"> & {
+    columns: Array<Omit<LayoutColumn, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
     type: "table";
-    rows: Array<{
-        cells: Array<{
-            header: boolean;
-            colspan: number;
-            rowspan: number;
-            backgroundColor?: string;
+}>, "caption" | "rows"> & {
+    caption?: PreparedPdfCaption;
+    rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
         }>;
     }>;
-    columnWidths?: number[];
-    caption?: Caption;
-} | {
+} | (Omit<Extract<ExportBlock, {
+    type: "chart";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+    visualAssetPath?: string;
+}) | {
     type: "image";
     assetPath?: string;
     alt?: string;
     width?: number;
     height?: number;
     fallbackLabel: string;
-    caption?: Caption;
-} | {
+    media?: Extract<ExportBlock, {
+        type: "image";
+    }>["media"];
+    mediaPresentation?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaPresentation"];
+    mediaGroup?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaGroup"];
+    border?: Extract<ExportBlock, {
+        type: "image";
+    }>["border"];
+    annotations?: Extract<ExportBlock, {
+        type: "image";
+    }>["annotations"];
+    caption?: PreparedPdfCaption;
+    link?: ExportLink;
+} | (Omit<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | {
+} | (Omit<Extract<ExportBlock, {
     type: "codeBlock";
-    language?: string;
-    code: string;
-    caption?: Caption;
-} | {
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+    highlight: HighlightedCode;
+}) | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    title?: string;
+    initiallyCollapsed?: boolean;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "orientation";
     landscape: boolean;
     content: PreparedPdfBlock[];
+};
+
+// export: PreparedPdfCaption
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+    content: PreparedPdfInlineNode[];
 };
 
 // export: PreparedPdfDocument
@@ -1627,20 +4236,129 @@ export interface PreparedPdfDocument {
     notes: ExportNote[];
 }
 
+// export: PreparedPdfExportV1
+export interface PreparedPdfExportV1 {
+    schema: "atlcli.prepared-pdf-export/1";
+    bundle: PdfSourceBundle | undefined;
+    filename: string;
+    codeTheme: CodeThemeId;
+    profile: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
+    language?: string;
+    sourceNotes: ExportNote[];
+    bundleNotes: ExportNote[];
+    counts: {
+        images: number;
+        diagrams: number;
+        skipped: number;
+    };
+    complete: boolean;
+    startedAt: number;
+    prepareMs: number;
+}
+
+// export: PreparedPdfInlineNode
+export type PreparedPdfInlineNode = Exclude<InlineNode, {
+    type: "link" | "media";
+}> | (Omit<Extract<InlineNode, {
+    type: "link";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Extract<InlineNode, {
+    type: "media";
+}> & {
+    assetPath?: string;
+    fallbackLabel: string;
+});
+
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
 
+// export: preparePdfExport
+export declare function preparePdfExport(input: RunPdfExportInput, env: PreparePdfExportEnv): Promise<PreparedPdfExportV1>;
+
+// export: PreparePdfExportEnv
+export interface PreparePdfExportEnv {
+    assets: PdfAssetResolver;
+    now?: () => number;
+    macros?: MacroResolutionOptions;
+}
+
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
+    codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
+    pageContext?: {
+        pageId?: string;
+        pageTitle?: string;
+        pageUrl?: string;
+    };
+    imageQuality?: ExportImageQualityV1;
 }
+
+// export: renderPreparedPdfExport
+export declare function renderPreparedPdfExport(prepared: PreparedPdfExportV1, input: RenderPreparedPdfExportInput, env: RenderPreparedPdfExportEnv): Promise<PdfExportReport>;
+
+// export: RenderPreparedPdfExportEnv
+export interface RenderPreparedPdfExportEnv {
+    compiler: PdfCompilePort;
+    output: PdfOutputSink;
+    now?: () => number;
+}
+
+// export: RenderPreparedPdfExportInput
+export interface RenderPreparedPdfExportInput {
+    signal?: AbortSignal;
+    onPhase?: (phase: Extract<PdfExportPhase, "compiling" | "validating" | "emitting">) => void;
+    onProgress?: ExportProgressCallback;
+}
+
+// export: ResolvedPdfDesign
+export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
+
+// export: ResolvedPdfFontAssetRequirementV1
+export interface ResolvedPdfFontAssetRequirementV1 {
+    assetId: string;
+    source: "canonical" | "custom";
+    family: string;
+    style: "normal" | "italic";
+    weight: number;
+    sha256: string;
+    fileName?: string;
+    reasons: readonly PdfFontRequirementReasonV1[];
+}
+
+// export: ResolvedPdfFontRequirementsV1
+export interface ResolvedPdfFontRequirementsV1 {
+    schema: "atlcli.pdf-font-requirements/1";
+    template: {
+        id: string;
+        version: string;
+    };
+    key: string;
+    assets: readonly ResolvedPdfFontAssetRequirementV1[];
+    diagnostics?: readonly PdfFontDiagnosticV1[];
+}
+
+// export: ResolvedPdfLabels
+export type ResolvedPdfLabels = Record<string, string>;
 
 // export: ResolvedPdfLogo
 export interface ResolvedPdfLogo {
     bytes: Uint8Array;
     mediaType: "image/png" | "image/svg+xml";
     alt: string;
+}
+
+// export: ResolvedPdfOutputPolicyV1
+export interface ResolvedPdfOutputPolicyV1 {
+    schema: "atlcli.pdf-output-policy/1";
+    standards: readonly [
+        PdfOutputStandardV1
+    ];
+    basePdfVersion: "1.4" | "1.5" | "1.6" | "1.7" | "2.0";
 }
 
 // export: ResolvedPdfSettings
@@ -1655,6 +4373,56 @@ export interface ResolvedPdfSettings {
     organizationName?: string;
     logo?: ResolvedPdfLogo;
     watermark?: ResolvedPdfWatermark;
+    design: ResolvedPdfDesign;
+    settingPresence: PdfSettingPresenceMask;
+    designTrace: readonly PdfDesignResolutionTraceEntry[];
+    ignoredDesignCapabilities: readonly string[];
+    capabilityCatalogDigest: string;
+    capabilityCatalog: TemplateCapabilityCatalogReferenceV1;
+    labels: ResolvedPdfLabels;
+    templateVisuals?: PdfTemplateVisualsV1;
+}
+
+// export: ResolvedPdfTemplateAssetV1
+export interface ResolvedPdfTemplateAssetV1 {
+    slot: PdfTemplateAssetSlotV1;
+    descriptorId: string;
+    descriptor: TemplateAssetDescriptorV1;
+    reference: TemplateAssetReferenceV1;
+    bytes: Uint8Array;
+    vfsPath: string;
+}
+
+// export: ResolvedPdfTemplateBaselineV1
+export interface ResolvedPdfTemplateBaselineV1 extends PdfTemplateBaselineContentV1 {
+    digest: string;
+}
+
+// export: ResolvedPdfTemplateRecipeAssetV1
+export interface ResolvedPdfTemplateRecipeAssetV1 {
+    slot: string;
+    source: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    sha256: string;
+    bytes: Uint8Array;
+}
+
+// export: ResolvedPdfTemplateRecipeV2
+export interface ResolvedPdfTemplateRecipeV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    catalog: TemplateCapabilityCatalogReferenceV1;
+    canonicalSource: {
+        api: "wiki.pdf-canonical-typst";
+        revision: "5";
+    };
+    compilerRange: string;
+    design: WikiPdfTemplateDesignV3;
+    localization: WikiPdfTemplateLocalizationV1;
 }
 
 // export: ResolvedPdfWatermark
@@ -1666,20 +4434,57 @@ export interface ResolvedPdfWatermark {
     size: number;
 }
 
+// export: resolveFullPdfFontRequirementsV1
+export declare function resolveFullPdfFontRequirementsV1(manifest?: TemplateManifest): ResolvedPdfFontRequirementsV1;
+
+// export: ResolvePdfFontRequirementsInputV1
+export interface ResolvePdfFontRequirementsInputV1 {
+    document: PreparedPdfDocument;
+    metadata: PdfExportMetadata;
+    settings: ResolvedPdfSettings;
+    manifest?: AnyPdfTemplateManifest;
+}
+
+// export: resolvePdfFontRequirementsV1
+export declare function resolvePdfFontRequirementsV1(input: ResolvePdfFontRequirementsInputV1): ResolvedPdfFontRequirementsV1;
+
+// export: resolvePdfOutputPolicyV1
+export declare function resolvePdfOutputPolicyV1(value: PdfOutputPolicyV1 | undefined): ResolvedPdfOutputPolicyV1 | undefined;
+
 // export: resolvePdfSettings
-export declare function resolvePdfSettings(options?: PdfTemplateSettings): ResolvedPdfSettings;
+export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
+
+// export: ResolvePdfSettingsContext
+export interface ResolvePdfSettingsContext {
+    locale?: string;
+    region?: string;
+    theme?: PdfThemeOptions;
+    manifest?: AnyPdfTemplateManifest;
+    templatePack?: ValidatedPdfTemplatePackV1;
+}
+
+// export: resolvePdfTemplateRecipeV2Design
+export declare function resolvePdfTemplateRecipeV2Design(value: unknown, registry?: PdfTemplateBaselineRegistryV1): Promise<ResolvedPdfTemplateRecipeV2>;
+
+// export: resolveTypstPdfOptions0151
+export declare function resolveTypstPdfOptions0151(value: TypstPdfOptions0151 | undefined): TypstPdfOptions0151 | undefined;
 
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
 
 // export: RunPdfExportInput
 export interface RunPdfExportInput {
+    codeTheme?: CodeThemeId;
     blocks: ExportBlock[];
     sourceNotes?: ExportNote[];
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
+    outputPolicy?: PdfOutputPolicyV1;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: TemplateManifest;
+    imageQuality?: ExportImageQualityV1;
+    templatePack?: ValidatedPdfTemplatePackV1;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
@@ -1692,18 +4497,184 @@ export interface RunPdfExportInput {
     };
 }
 
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
+    };
+}
+
+// export: TemplateManifest
+export interface TemplateManifest<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3 = WikiPdfTemplateDesignV1> extends TemplateVisualManifestFieldsV1 {
+    schemaVersion: number;
+    id: string;
+    name: string;
+    version: string;
+    engine: TemplateEngineSpec;
+    requiredFonts?: RequiredFont[];
+    settings?: Record<string, ManifestSetting>;
+    provenance?: TemplateProvenance;
+    design?: TDesign;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
+}
+
+// export: TYPST_PDF_STANDARDS_0_15_1
+export declare const TYPST_PDF_STANDARDS_0_15_1: readonly [
+    "1.4",
+    "1.5",
+    "1.6",
+    "1.7",
+    "2.0",
+    "a-1b",
+    "a-1a",
+    "a-2b",
+    "a-2u",
+    "a-2a",
+    "a-3b",
+    "a-3u",
+    "a-3a",
+    "a-4",
+    "a-4f",
+    "a-4e",
+    "ua-1"
+];
+
+// export: TypstPdfOptions0151
+export interface TypstPdfOptions0151 {
+    standard: TypstPdfStandard0151;
+}
+
+// export: TypstPdfStandard0151
+export type TypstPdfStandard0151 = (typeof TYPST_PDF_STANDARDS_0_15_1)[number];
+
+// export: ValidatedPdfTemplatePackV1
+export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
+
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
+// export: validatePdfOutputStandard
+export declare function validatePdfOutputStandard(bytes: Uint8Array, policy: PdfOutputPolicyV1, inspection?: PdfOutputInspection): PdfOutputStandardEvidenceV1;
+
+// export: validatePdfTemplateManifest
+export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
+
+// export: validatePdfTemplatePack
+export declare function validatePdfTemplatePack(manifest: AnyPdfTemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
+
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions?: DesignPageCompositionsV1;
+}
+
+// export: WikiPdfTemplateDesignV3
+export interface WikiPdfTemplateDesignV3 {
+    page: DesignPageV3;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+    compositions: DesignPageCompositionsV3;
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+    paints?: Readonly<Record<string, DesignPaintV3>>;
+    decorations?: readonly DesignDecorationV3[];
+}
 ```
 
 ### Entry point `./internal`
 
 ```ts
+// export: AnyPdfTemplateManifest
+export type AnyPdfTemplateManifest = TemplateManifest | PdfTemplateManifestV5;
+
 // export: ATLCLI_TYPST_TEMPLATE
 export declare const ATLCLI_TYPST_TEMPLATE: string;
+
+// export: AtlcliTypstDecorationModelV5
+export interface AtlcliTypstDecorationModelV5 {
+    paints: Readonly<Record<string, DesignPaintV3>>;
+    decorations: readonly DesignDecorationV3[];
+}
+
+// export: AtlcliTypstPageModelV5
+export interface AtlcliTypstPageModelV5 {
+    page: DesignPageV3;
+    running: DesignPageCompositionsV3["running"];
+}
+
+// export: AtlcliTypstSemanticModelV5
+export interface AtlcliTypstSemanticModelV5 {
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+}
+
+// export: AtlcliTypstTemplateOptions
+export interface AtlcliTypstTemplateOptions {
+    positionedLogo?: boolean;
+    pageModelV5?: AtlcliTypstPageModelV5;
+    semanticModelV5?: AtlcliTypstSemanticModelV5;
+    decorationModelV5?: AtlcliTypstDecorationModelV5;
+    imageGeometryV5?: boolean;
+    typographyModelV5?: DesignTypography;
+}
+
+// export: buildUniformPdfPageBorderV1
+export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUniformPageBorderInputV1[], inset?: string): WikiPdfTemplatePageBorderV1 | undefined;
+
+// export: BUILTIN_PDF_DESIGN
+export declare const BUILTIN_PDF_DESIGN: WikiPdfTemplateDesignV1;
+
+// export: BUILTIN_PDF_FALLBACK_LABELS
+export declare const BUILTIN_PDF_FALLBACK_LABELS: Record<string, string>;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1: PdfTemplateBaselineRegistryV1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1: 1;
+
+// export: BUILTIN_PDF_TEMPLATE_ID
+export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
+
+// export: BUILTIN_PDF_TEMPLATE_MANIFEST
+export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: BUILTIN_PDF_TEMPLATES
+export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
+
+// export: canonicalPdfTemplateBaselineV1
+export declare function canonicalPdfTemplateBaselineV1(baseline: PdfTemplateBaselineContentV1): string;
 
 // export: classifyTableLayout
 export declare function classifyTableLayout(input: {
@@ -1713,17 +4684,64 @@ export declare function classifyTableLayout(input: {
     availableWidth: number;
 }): TableLayoutClass;
 
+// export: clonePdfTemplateRuntime
+export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): PdfTemplateRuntimeV1;
+
+// export: computePdfTemplateBaselineDigestV1
+export declare function computePdfTemplateBaselineDigestV1(baseline: PdfTemplateBaselineContentV1): Promise<string>;
+
 // export: createAtlcliTypstTemplate
-export declare function createAtlcliTypstTemplate(options?: PdfThemeOptions): string;
+export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, options?: AtlcliTypstTemplateOptions): string;
+
+// export: createAtlcliTypstTemplateV4
+export declare function createAtlcliTypstTemplateV4(design: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, baseSource?: string): string;
+
+// export: createAtlcliTypstTemplateV5
+export declare function createAtlcliTypstTemplateV5(design: WikiPdfTemplateDesignV3, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;
 
 // export: DEFAULT_PDF_THEME
 export declare const DEFAULT_PDF_THEME: Readonly<PdfTheme>;
+
+// export: DocxUniformPageBorderInputV1
+export interface DocxUniformPageBorderInputV1 {
+    section: number;
+    offsetFrom: string;
+    sides: readonly {
+        side: "bottom" | "left" | "right" | "top";
+        style?: string;
+        color?: string;
+        widthEighthPoints?: number;
+    }[];
+}
 
 // export: escapeTypstContent
 export declare function escapeTypstContent(value: string): string;
 
 // export: escapeTypstString
 export declare function escapeTypstString(value: string): string;
+
+// export: generateCanonicalPdfTemplateSourceV1
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: AnyPdfTemplateManifest, visuals: PdfTemplateVisualsV1): string;
+
+// export: getBuiltinPdfTemplate
+export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
+
+// export: isMissingAltText
+export declare function isMissingAltText(alt: string | undefined): boolean;
+
+// export: LANDSCAPE_TEXT_WIDTH_PT
+export declare const LANDSCAPE_TEXT_WIDTH_PT = 717;
+
+// export: loadPdfTemplatePack
+export declare function loadPdfTemplatePack(bytes: Uint8Array, options?: {
+    pinnedTypstVersion?: string;
+}): Promise<ValidatedPdfTemplatePackV1>;
+
+// export: MANUSCRIPT_PDF_TEMPLATE_ID
+export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
+
+// export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
+export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 
 // export: mapPdfDiagnostics
 export declare function mapPdfDiagnostics(diagnostics: Array<{
@@ -1745,14 +4763,187 @@ export declare function mapPdfDiagnostics(diagnostics: Array<{
     blockPath?: string;
 }>;
 
+// export: MaterializedPdfTemplateRecipeV1
+export interface MaterializedPdfTemplateRecipeV1 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}
+
+// export: MaterializedPdfTemplateRecipeV2
+export interface MaterializedPdfTemplateRecipeV2 {
+    bytes: Uint8Array;
+    packDigest: string;
+    manifest: PdfTemplateManifestV5;
+    canonicalTypst: string;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+}
+
+// export: materializeLegacyPdfDesign
+export declare function materializeLegacyPdfDesign(sparseDesign: WikiPdfTemplateDesignV1, characterizedBaseline: WikiPdfTemplateDesignV1, fallbackAliases?: Readonly<Record<string, string>>): {
+    design: WikiPdfTemplateDesignV1;
+    ignoredCapabilities: readonly string[];
+};
+
+// export: MaterializePdfTemplateRecipeInputV1
+export interface MaterializePdfTemplateRecipeInputV1 {
+    recipe: WikiPdfTemplateRecipeV1;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+}
+
+// export: MaterializePdfTemplateRecipeInputV2
+export interface MaterializePdfTemplateRecipeInputV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    resolvedAssets: Readonly<Record<string, ResolvedPdfTemplateRecipeAssetV1>>;
+    compiler: TemplateGeneratedPackCompilerV1;
+    baselineRegistry?: PdfTemplateBaselineRegistryV1;
+}
+
+// export: materializePdfTemplateRecipeV1
+export declare function materializePdfTemplateRecipeV1(input: MaterializePdfTemplateRecipeInputV1): Promise<MaterializedPdfTemplateRecipeV1>;
+
+// export: materializePdfTemplateRecipeV2
+export declare function materializePdfTemplateRecipeV2(input: MaterializePdfTemplateRecipeInputV2): Promise<MaterializedPdfTemplateRecipeV2>;
+
 // export: PDF_ASSET_CONCURRENCY
 export declare const PDF_ASSET_CONCURRENCY = 4;
+
+// export: PDF_CANONICAL_SOURCE_API_V1
+export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
+
+// export: PDF_CANONICAL_SOURCE_REVISION
+export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_1
+export declare const PDF_CANONICAL_SOURCE_REVISION_1 = "1";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_2
+export declare const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_3
+export declare const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_4
+export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
+
+// export: PDF_CANONICAL_SOURCE_REVISION_5
+export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
+
+// export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
+export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
 // export: PDF_MAX_ASSET_BYTES
 export declare const PDF_MAX_ASSET_BYTES: number;
 
 // export: PDF_MAX_TOTAL_ASSET_BYTES
 export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
+
+// export: PDF_SCAN_CHUNK_BYTES
+export declare const PDF_SCAN_CHUNK_BYTES: number;
+
+// export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
+export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+];
+
+// export: PDF_TEMPLATE_ASSET_SLOTS_V1
+export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
+    "asset.logo",
+    "asset.pageBackground",
+    "asset.coverBackground",
+    "asset.headerDecoration",
+    "asset.footerDecoration"
+];
+
+// export: PDF_TEMPLATE_BASELINE_SCHEMA_V1
+export declare const PDF_TEMPLATE_BASELINE_SCHEMA_V1: "atlcli.pdf-template-baseline/1";
+
+// export: PDF_TEMPLATE_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2;
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V2
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e53f3bf21a19e65a74d64a0cf31e7cc185fdb79607";
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE
+export declare const PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE: ">=0.15.1 <0.16";
+
+// export: PDF_TEMPLATE_DECORATION_IDS_V1
+export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
+    "asset.pageBackground",
+    "asset.coverBackground",
+    "asset.headerDecoration",
+    "asset.footerDecoration",
+    "decoration.pageBorder"
+];
+
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1: readonly string[];
+
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2: readonly string[];
+
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[];
+
+// export: PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
+export declare const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<Record<string, string>>;
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V2
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf77fc685a6a652dbfe2f12621a840356197a87d3fe424e2";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V3
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
+
+// export: PDF_TEMPLATE_WRITERS_V1
+export declare const PDF_TEMPLATE_WRITERS_V1: {
+    readonly logo: "typst.logo";
+    readonly imageDecoration: "typst.image-decoration";
+    readonly pageBorder: "typst.page-border";
+};
 
 // export: pdfColorContrast
 export declare function pdfColorContrast(first: string, second: string): number;
@@ -1763,22 +4954,224 @@ export interface PdfOutputInspection {
     tagged: boolean;
     hasOutline: boolean;
     embeddedFontFiles: number;
+    hasLang: boolean;
 }
 
 // export: pdfTableCellForeground
 export declare function pdfTableCellForeground(background: string, theme: PdfTheme): string;
+
+// export: PdfTemplateAssetSlotV1
+export type PdfTemplateAssetSlotV1 = (typeof PDF_TEMPLATE_ASSET_SLOTS_V1)[number];
+
+// export: PdfTemplateBaselineContentV1
+export interface PdfTemplateBaselineContentV1 {
+    schema: typeof PDF_TEMPLATE_BASELINE_SCHEMA_V1;
+    id: string;
+    version: number;
+    catalog: TemplateCapabilityCatalogReferenceV1;
+    design: WikiPdfTemplateDesignV3;
+    localization: WikiPdfTemplateLocalizationV1;
+}
+
+// export: PdfTemplateBaselineRegistryV1
+export interface PdfTemplateBaselineRegistryV1 {
+    resolve(reference: Pick<PdfTemplateRecipeBaselineV2, "id" | "version">): ResolvedPdfTemplateBaselineV1 | undefined;
+}
+
+// export: PdfTemplateDecorationIdV1
+export type PdfTemplateDecorationIdV1 = (typeof PDF_TEMPLATE_DECORATION_IDS_V1)[number];
+
+// export: PdfTemplateManifestV5
+export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
+
+// export: PdfTemplatePreviewCompiler
+export declare class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {
+    private readonly options;
+    constructor(options: PdfTemplatePreviewCompilerOptionsV1);
+    render(request: TemplatePreviewRequestV1): Promise<TemplatePreviewResultV1>;
+}
+
+// export: PdfTemplatePreviewCompilerOptionsV1
+export interface PdfTemplatePreviewCompilerOptionsV1 {
+    compiler: PdfCompilePort;
+    resolveModel(request: TemplatePreviewRequestV1): Promise<PdfTemplatePreviewModelV1>;
+}
+
+// export: PdfTemplatePreviewError
+export declare class PdfTemplatePreviewError extends Error {
+    readonly code: "compile-failed" | "invalid-model" | "missing-summary" | "no-contact-assets";
+    constructor(code: "compile-failed" | "invalid-model" | "missing-summary" | "no-contact-assets", message: string);
+}
+
+// export: PdfTemplatePreviewModelV1
+export interface PdfTemplatePreviewModelV1 {
+    baseline: TemplateManifest;
+    current: TemplateManifest;
+    currentPack?: ValidatedPdfTemplatePackV1;
+    reviewAssets?: readonly {
+        id: string;
+        vfsPath: string;
+        bytes: Uint8Array;
+        mediaType: string;
+        occurrenceCount: number;
+        proposedRole?: string;
+    }[];
+}
+
+// export: PdfTemplateRecipeV2ResolutionError
+export declare class PdfTemplateRecipeV2ResolutionError extends Error {
+    readonly reason: PdfTemplateRecipeV2ResolutionReason;
+    constructor(reason: PdfTemplateRecipeV2ResolutionReason, message: string);
+}
+
+// export: PdfTemplateRecipeV2ResolutionReason
+export type PdfTemplateRecipeV2ResolutionReason = "baseline-not-installed" | "baseline-identity-mismatch" | "baseline-digest-mismatch" | "catalog-mismatch" | "constraint-violation";
+
+// export: PdfTemplateRuntimeSnapshotV1
+export interface PdfTemplateRuntimeSnapshotV1 {
+    schema: "atlcli.pdf-template-runtime-snapshot/1";
+    capabilityCatalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    design: WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3;
+    fallbackLocale: string;
+    fallbackLabels: Readonly<Record<string, string>>;
+    visuals: PdfTemplateVisualsV1;
+}
+
+// export: PdfTemplateRuntimeV1
+export interface PdfTemplateRuntimeV1 {
+    schema: "atlcli.pdf-template-runtime/1";
+    manifest: AnyPdfTemplateManifest;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    canonicalSource: PdfVerifiedCanonicalSourceV1;
+    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
+    entrySource: string;
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
+// export: PdfTemplateValidationError
+export declare class PdfTemplateValidationError extends Error {
+    readonly phase: PdfTemplateValidationPhase;
+    readonly reason: PdfTemplateValidationReason;
+    readonly path?: string | undefined;
+    constructor(phase: PdfTemplateValidationPhase, reason: PdfTemplateValidationReason, message: string, path?: string | undefined);
+}
+
+// export: PdfTemplateValidationPhase
+export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
+
+// export: PdfTemplateValidationReason
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "invalid-composition" | "canonical-source-mismatch" | "non-canonical-template-source";
+
+// export: PdfTemplateVisualsV1
+export interface PdfTemplateVisualsV1 {
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Pick<ResolvedPdfTemplateAssetV1, "vfsPath" | "reference">>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
+// export: PdfVerifiedCanonicalSourceV1
+export interface PdfVerifiedCanonicalSourceV1 {
+    api: typeof PDF_CANONICAL_SOURCE_API_V1;
+    revision: string;
+    source: string;
+    sha256: string;
+}
+
+// export: PORTRAIT_TEXT_WIDTH_PT
+export declare const PORTRAIT_TEXT_WIDTH_PT = 470;
 
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
 
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
+    codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
+    pageContext?: {
+        pageId?: string;
+        pageTitle?: string;
+        pageUrl?: string;
+    };
+    imageQuality?: ExportImageQualityV1;
 }
 
 // export: preservePdfSourceCellColor
 export declare function preservePdfSourceCellColor(sourceColor: string | undefined, background: string, theme: PdfTheme): string | undefined;
+
+// export: projectPdfDesignThroughCatalog
+export declare function projectPdfDesignThroughCatalog(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
+
+// export: projectPdfDesignThroughCatalogSchemaV2
+export declare function projectPdfDesignThroughCatalogSchemaV2(design: unknown, catalog: TemplateCapabilityCatalogV2): Record<string, unknown>;
+
+// export: projectPdfDesignThroughCatalogV2
+export declare function projectPdfDesignThroughCatalogV2(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
+
+// export: projectPdfDesignV1SubsetFromCatalogV2
+export declare function projectPdfDesignV1SubsetFromCatalogV2(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
+
+// export: projectPdfDesignV5RuntimeSettings
+export declare function projectPdfDesignV5RuntimeSettings(design: WikiPdfTemplateDesignV3): WikiPdfTemplateDesignV1;
+
+// export: readPdfDesignCapability
+export declare function readPdfDesignCapability<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;
+
+// export: readPdfDesignCapabilityFromCatalogV2
+export declare function readPdfDesignCapabilityFromCatalogV2<T = unknown>(design: unknown, catalog: TemplateCapabilityCatalogV2, path: string): T;
+
+// export: readPdfDesignCapabilityV2
+export declare function readPdfDesignCapabilityV2<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;
+
+// export: ResolvedPdfTemplateAssetV1
+export interface ResolvedPdfTemplateAssetV1 {
+    slot: PdfTemplateAssetSlotV1;
+    descriptorId: string;
+    descriptor: TemplateAssetDescriptorV1;
+    reference: TemplateAssetReferenceV1;
+    bytes: Uint8Array;
+    vfsPath: string;
+}
+
+// export: ResolvedPdfTemplateBaselineV1
+export interface ResolvedPdfTemplateBaselineV1 extends PdfTemplateBaselineContentV1 {
+    digest: string;
+}
+
+// export: ResolvedPdfTemplateRecipeAssetV1
+export interface ResolvedPdfTemplateRecipeAssetV1 {
+    slot: string;
+    source: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    sha256: string;
+    bytes: Uint8Array;
+}
+
+// export: ResolvedPdfTemplateRecipeV2
+export interface ResolvedPdfTemplateRecipeV2 {
+    recipe: WikiPdfTemplateRecipeV2;
+    baseline: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    catalog: TemplateCapabilityCatalogReferenceV1;
+    canonicalSource: {
+        api: "wiki.pdf-canonical-typst";
+        revision: "5";
+    };
+    compilerRange: string;
+    design: WikiPdfTemplateDesignV3;
+    localization: WikiPdfTemplateLocalizationV1;
+}
+
+// export: resolvePdfTemplateRecipeV2Design
+export declare function resolvePdfTemplateRecipeV2Design(value: unknown, registry?: PdfTemplateBaselineRegistryV1): Promise<ResolvedPdfTemplateRecipeV2>;
 
 // export: resolvePdfTheme
 export declare function resolvePdfTheme(options?: PdfThemeOptions): PdfTheme;
@@ -1798,8 +5191,26 @@ export declare function typstLabel(value: string): string;
 // export: typstString
 export declare function typstString(value: string): string;
 
+// export: ValidatedPdfTemplatePackV1
+export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
+
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
+
+// export: validatePdfOutputStandard
+export declare function validatePdfOutputStandard(bytes: Uint8Array, policy: PdfOutputPolicyV1, inspection?: PdfOutputInspection): PdfOutputStandardEvidenceV1;
+
+// export: validatePdfTemplateManifest
+export declare function validatePdfTemplateManifest(manifest: AnyPdfTemplateManifest, catalog?: TemplateCapabilityCatalogV1 | TemplateCapabilityCatalogV2): AnyPdfTemplateManifest;
+
+// export: validatePdfTemplatePack
+export declare function validatePdfTemplatePack(manifest: AnyPdfTemplateManifest, files: Readonly<Record<string, Uint8Array>>): Promise<ValidatedPdfTemplatePackV1>;
+
+// export: writePdfDesignCapability
+export declare function writePdfDesignCapability(design: WikiPdfTemplateDesignV1, path: string, value: unknown, writerId: string): WikiPdfTemplateDesignV1;
+
+// export: writePdfDesignCapabilityV2
+export declare function writePdfDesignCapabilityV2(design: WikiPdfTemplateDesignV1, path: string, value: unknown, writerId: string): WikiPdfTemplateDesignV1;
 ```
 
 ### Entry point `./template`
@@ -1808,6 +5219,34 @@ export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspectio
 // export: ATLCLI_TYPST_TEMPLATE
 export declare const ATLCLI_TYPST_TEMPLATE: string;
 
+// export: AtlcliTypstDecorationModelV5
+export interface AtlcliTypstDecorationModelV5 {
+    paints: Readonly<Record<string, DesignPaintV3>>;
+    decorations: readonly DesignDecorationV3[];
+}
+
+// export: AtlcliTypstPageModelV5
+export interface AtlcliTypstPageModelV5 {
+    page: DesignPageV3;
+    running: DesignPageCompositionsV3["running"];
+}
+
+// export: AtlcliTypstSemanticModelV5
+export interface AtlcliTypstSemanticModelV5 {
+    navigation: DesignNavigationV3;
+    components: DesignComponentsV3;
+}
+
+// export: AtlcliTypstTemplateOptions
+export interface AtlcliTypstTemplateOptions {
+    positionedLogo?: boolean;
+    pageModelV5?: AtlcliTypstPageModelV5;
+    semanticModelV5?: AtlcliTypstSemanticModelV5;
+    decorationModelV5?: AtlcliTypstDecorationModelV5;
+    imageGeometryV5?: boolean;
+    typographyModelV5?: DesignTypography;
+}
+
 // export: createAtlcliTypstTemplate
-export declare function createAtlcliTypstTemplate(options?: PdfThemeOptions): string;
+export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, options?: AtlcliTypstTemplateOptions): string;
 ```

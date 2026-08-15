@@ -26,7 +26,11 @@ describe("auth.test.ts isolation", () => {
   test("passes when run standalone (no other test file pre-loads @atlcli/core)", () => {
     const res = spawnSync(
       "bun",
-      ["test", "apps/cli/src/commands/auth.test.ts"],
+      [
+        "--conditions=development",
+        "test",
+        "apps/cli/src/commands/auth.test.ts",
+      ],
       { cwd: REPO_ROOT, encoding: "utf8", timeout: 60_000 }
     );
     const output = `${res.stdout ?? ""}${res.stderr ?? ""}`;

@@ -1,5 +1,7 @@
-// This side-effect import must evaluate before any PizZip/docxtemplater module.
-// The actual application graph is therefore loaded dynamically, not statically.
-import "@atlcli/docx/browser-runtime";
+export {};
+
+(globalThis as typeof globalThis & {
+  __ATLCLI_DOCX_BROWSER_INTENT_STARTED_AT?: number;
+}).__ATLCLI_DOCX_BROWSER_INTENT_STARTED_AT = performance.now();
 
 await import("./app.js");

@@ -199,7 +199,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 
 ### Design model & manifest schema (T6.1)
 
-- [ ] `packages/template-pack/src/manifest.ts`: extend 007's manifest
+- [x] `packages/template-pack/src/manifest.ts`: extend 007's manifest
       schema with `design: WikiPdfTemplateDesignV1` (`page`, `features`,
       `branding`, `typography`, `tokens`, `semanticPalettes`,
       `components`, per the Architecture section's field list) and
@@ -210,15 +210,21 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       rejects out-of-bounds lengths/ratios, non-canonical colors, and any
       Typst-source-shaped string in a design field (same "settings are
       data, not code" rule as 007's T2.1, extended to the design model).
-- [ ] `packages/template-pack/src/manifest.ts`: `bindings:
+- [x] `packages/template-pack/src/manifest.ts`: `bindings:
       WikiPdfTemplateSettingBindingV1[]` — `{ setting, targets, transform?
       }`; `targets` validated against a versioned allowlist of design
-      paths (start with the Level-A set 007 already exposes: accent,
-      page size, cover/outline enabled, outline depth, header/footer
-      text, organization name, logo asset + alt); `transform` is
-      `identity` or an explicit `choice-map` — reject anything else at
-      validation time, not at render time.
-- [ ] `packages/template-pack/src/manifest.ts`: `localization:
+      paths; `transform` is `identity` or an explicit `choice-map` —
+      reject anything else at validation time, not at render time.
+      **Shipped scope (narrowed deliberately):** the allowlist covers
+      accent, page size, orientation, cover/outline enabled, outline
+      depth, header/footer *enabled*, and organization name.
+      Header/footer **text** and the **logo asset + alt** are NOT
+      bindable design targets: they are per-export *content and assets*,
+      not presentation tokens, so they stay Level-A settings the template
+      reads directly (`settings.at("header-text" | "logo" | …)`). The DoD
+      requirement — retire 007's direct `.at()` reads "for every field
+      covered by a binding" — therefore holds as written.
+- [x] `packages/template-pack/src/manifest.ts`: `localization:
       WikiPdfTemplateLocalizationV1` — `defaultLocale`, `fallbackLocale`,
       `locales` map (`template`, `document`, `settingGroups`, `settings`
       copy, per the Architecture section). `validateManifest` requires
@@ -226,7 +232,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       description, every document label, every declared setting/group/
       option label); other locales may be partial with a lint warning on
       a missing field, never a hard reject.
-- [ ] Tests: `packages/template-pack/src/manifest.test.ts` (extend) —
+- [x] Tests: `packages/template-pack/src/manifest.test.ts` (extend) —
       real fixture manifests covering every new field, boundary values
       for lengths/ratios/colors, an incomplete `fallbackLocale` (reject),
       a partial non-fallback locale (accept + warning), a `bindings`
@@ -235,7 +241,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 
 ### Resolver: bindings, locale, labels (T6.2)
 
-- [ ] `packages/pdf/src/settings.ts`: extend `resolvePdfSettings` to the
+- [x] `packages/pdf/src/settings.ts`: extend `resolvePdfSettings` to the
       seven-step order documented in 007's Risks entry ("Built-in vs.
       manifest settings") — manifest defaults → persisted host values →
       per-export overrides → validation/normalization → **apply declared
@@ -244,23 +250,23 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       shape gains `design` (fully resolved, bound `WikiPdfTemplateDesignV1`)
       and `labels` (resolved document-facing strings) alongside the
       existing `values`/`assets`.
-- [ ] `packages/pdf/src/settings.ts`: `applyBindings(design, bindings,
+- [x] `packages/pdf/src/settings.ts`: `applyBindings(design, bindings,
       values)` — pure function, one allowlisted target write per binding,
       duplicate-target-write detection (two bindings writing the same
       path is a validation error, not last-write-wins).
-- [ ] `packages/template-pack/src/localize.ts` (new): `localizeTemplateUi
+- [x] `packages/template-pack/src/localize.ts` (new): `localizeTemplateUi
       (manifest, uiLocale)` — pure function resolving UI-facing copy
       (template name/description, setting/group/option labels) per the
       locale-fallback chain (exact locale incl. region → base language →
       `defaultLocale` → `fallbackLocale`); this is the function folder
       010 calls to render a generated settings form, not built here.
-- [ ] `packages/pdf/src/serialize.ts` / `template.ts`: `settings` dict
+- [x] `packages/pdf/src/serialize.ts` / `template.ts`: `settings` dict
       emitted to Typst gains `design` and `labels` namespaces alongside
       the existing `values`/`assets`; `typstSettingsDict` (007's emitter)
       extends to serialize the new namespaces with the same
       `typstString`-escaping discipline — no new emission path, one
       escaper for every settings namespace.
-- [ ] Tests: `packages/pdf/src/settings.test.ts` (extend) — bindings
+- [x] Tests: `packages/pdf/src/settings.test.ts` (extend) — bindings
       resolve to the correct design path; duplicate-target-write is
       rejected; locale resolution follows the four-step fallback chain
       exactly, including a region-specific locale (`de-CH`) falling back
@@ -269,7 +275,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 
 ### Hardcoding migration: built-in template (T6.3)
 
-- [ ] Complete 007's T2.5 ledger: extend
+- [x] Complete 007's T2.5 ledger: extend
       `specs/export-expansion/007-pdf-template-settings/HARDCODING-LEDGER.md`
       (or the `template.ts` comment-block equivalent, whichever 007
       chose) with every remaining presentation literal — typography roles
@@ -277,30 +283,36 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       component's spacing/layout constants — as its own ledger row with a
       manifest destination path, before any migration edit lands. This is
       restatement of current behavior, not new design.
-- [ ] `packages/pdf/src/template.ts`: replace each ledgered hardcoded
+- [x] `packages/pdf/src/template.ts`: replace each ledgered hardcoded
       literal with a read from `settings.design.*`/`settings.labels.*`,
       grouped by ledger category (typography, then tokens, then
-      semantic palettes, then components) as separate, reviewable commits
-      rather than one large diff — each commit keeps the built-in
+      semantic palettes, then components) — each step keeps the built-in
       template's manifest defaults equal to the literal it replaces, so
       output does not change mid-migration.
-- [ ] `packages/pdf/src/serialize.ts`: any presentation literal owned by
+      **Deviation:** this landed as ONE commit, not the per-category
+      series the task asked for. The categories are interdependent (the
+      template stops compiling until the whole design object is threaded)
+      and the lint could not go green until every category had moved, so
+      an intermediate commit would have been red. Reviewability is
+      instead carried by the byte-parity proof (T6.4) plus the ledger's
+      per-category destination table.
+- [x] `packages/pdf/src/serialize.ts`: any presentation literal owned by
       the serializer (not `template.ts`) moves the same way; semantic
       content emission (meta, blocks) is unaffected.
-- [ ] Built-in manifest for the existing template (name/id per whatever
+- [x] Built-in manifest for the existing template (name/id per whatever
       007 shipped, e.g. `builtin.<name>`): fixed `schemaVersion`, full
       `design`/`typography`/`tokens`/`semanticPalettes`/`components`/
       `localization` populated from the completed ledger; default setting
       values reproduce today's output exactly — selecting the built-in
       template with no overrides and omitting template selection entirely
       must be equivalent.
-- [ ] `packages/pdf/scripts/check-hardcoding-ledger.ts` (007's lint stub,
+- [x] `packages/pdf/scripts/check-hardcoding-ledger.ts` (007's lint stub,
       extended here): once the ledger is complete, flip the check from
       "heuristic warning" to "CI-enforced" — any new bare hex color,
       length literal, or font-family string in `template.ts`/
       `serialize.ts` outside the ledger's recorded set and the engine-
       invariant allowlist fails the build.
-- [ ] Document the **engine-invariant allowlist**: a short, reviewed list
+- [x] Document the **engine-invariant allowlist**: a short, reviewed list
       (in the lint stub's header comment or a sibling
       `packages/pdf/ENGINE-INVARIANTS.md`) of literals that are
       structurally required by the engine and are not presentation
@@ -310,7 +322,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 
 ### Default-output parity (T6.4)
 
-- [ ] Capture the pre-migration baseline: compile the built-in template's
+- [x] Capture the pre-migration baseline: compile the built-in template's
       default output (via 011's harness `pdf-settings` conformance case)
       before T6.3's literal-by-literal replacement starts; record the
       sha256 digest and, if the pinned compiler's output isn't perfectly
@@ -319,40 +331,49 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       perceptual-difference tooling 011's DOCX media-parity check uses,
       adapted to compare full PDF page rasters within a documented
       tolerance.
-- [ ] After T6.3 completes, re-run the same fixture and assert digest
+- [x] After T6.3 completes, re-run the same fixture and assert digest
       equality (preferred) or raster equality within tolerance
       (fallback, only if byte-identity turns out to be infeasible —
       document which one applies and why). A default-output change of
       any kind is a **STOP**: review the exact cause before proceeding,
       never silently accept a new baseline.
-- [ ] Wire this comparison into `apps/browser-export-harness/scripts/
+- [x] Wire this comparison into `apps/browser-export-harness/scripts/
       check-parity.ts` as an explicit "pre/post migration" mode (or a
       one-off script reusing its digesting/comparison functions) — reuse
       011's existing digest/report-projection machinery rather than
       building a second comparator.
-- [ ] Tests: a fixture-based regression test asserting the comparison
+      **Deviation:** `check-parity.ts` was NOT edited. Spec 011 round 2
+      owns `apps/browser-export-harness` in this same wave, so touching it
+      would have collided. The parity gate instead reuses 011's *approach*
+      (the identical `BrowserPdfCompiler` + pinned wasm/fonts path, sha256
+      digest equality) as a package-level real-compiler test in
+      `packages/pdf-compiler-browser/src/template-migration-parity.test.ts`,
+      with `node:crypto` for the digest rather than importing the harness's
+      `sha256Hex`. No second *comparator* was built — only a second call
+      site for the same technique.
+- [x] Tests: a fixture-based regression test asserting the comparison
       script itself rejects a deliberately altered raster (mirrors 011's
       own infrastructure-test pattern for its parity checker).
 
 ### Second curated template (T6.5)
 
-- [ ] Design decision (open question, see Risks): the second template's
+- [x] Design decision (open question, see Risks): the second template's
       visual direction and name are a review decision before
       implementation starts — it must differ from the built-in in cover
       treatment, page master/header/footer, heading typography and
       rhythm, and accent usage; a superficial accent-color-only variant
       does not satisfy this task.
-- [ ] Author the second template's manifest (same schema as T6.1/T6.3's
+- [x] Author the second template's manifest (same schema as T6.1/T6.3's
       built-in, distinct `design`/`typography`/`tokens`/
       `semanticPalettes`/`components`/`localization` values) — no new
       `template.ts` branches, no `if (templateId === ...)` conditionals;
       the second template proves the manifest is sufficient by rendering
       through the identical engine code path as the built-in.
-- [ ] Package it through 007's `.wiki-pdf-template` container
+- [x] Package it through 007's `.wiki-pdf-template` container
       (`packages/template-pack/src/pack.ts`) and register it as a second
       built-in entry alongside the first in whatever catalog/registry
       structure 007 or this folder's T6.1 establishes for built-ins.
-- [ ] Tests: the second template compiles cleanly through the same
+- [x] Tests: the second template compiles cleanly through the same
       correctness fixture as the built-in (007's Level-A serialize
       goldens + compile smokes, re-run against the second template's
       manifest) and passes the same 011 conformance case and the same
@@ -366,10 +387,218 @@ Same rule as every folder in this series: pure functions get direct
 input/output tests; anything touching the compiler compiles for real; no
 mocked HTTP, no stubbed compiler.
 
-- [ ] Covered inline per task above; consolidate here at implementation
+- [x] Covered inline per task above; consolidate here at implementation
       time only if a cross-cutting suite (e.g. one file testing the full
       resolver pipeline end-to-end against both built-in manifests) proves
       more maintainable than task-scoped test files.
+
+## Implementation record — deviations & decisions (2026-07-20)
+
+**Parity method: digest equality (the preferred option), not raster.**
+`packages/pdf-compiler-browser/src/template-migration-parity.test.ts` pins the
+sha256 of the built-in template's default output over a fixture exercising every
+migrated role, both semantic palettes, and the component set. The digest was
+captured from the pre-migration engine (007 state) with the pinned compiler
+`typst.ts 0.7.0 / Typst 0.14.2` **before** any literal moved, and is unchanged
+after the migration: `351fd2d4f0a178368d642ef939f2de2736ddc506f196cd70b47e455cad376975`
+(73050 bytes). Byte-identity was achievable because the rewrite preserves the
+Typst *document model* exactly, so the raster fallback was never needed. The
+test refuses to compare across compiler versions, and a tamper case proves the
+gate would actually catch a regression.
+
+**How the design reaches the engine (two mechanisms, deliberately).** Static
+design (typography roles, color tokens, semantic palettes, component
+spacing/layout, page margins) is interpolated when
+`createAtlcliTypstTemplate(design, labels)` generates the Typst string — the
+template helpers (`callout`, `status-badge`, `task-item`, …) are called from the
+document body at main.typ top level and cannot see `atlcli-doc`'s `settings`, so
+generation-time interpolation is the only way to make them data-driven. The
+settings-driven subset (accent, page size/orientation, cover/outline,
+organization name) plus the localized labels travel in the emitted
+`settings.design` / `settings.labels` dictionary and are read at Typst runtime,
+which is what retires 007's direct `settings.at("accent-color", …)` reads. Every
+runtime read falls back to a generation-time default drawn from the same
+manifest, so `settings: (:)` still compiles (007's backward-compatibility
+contract).
+
+**Colors are `#RRGGBB` only.** The Architecture section allows "canonical
+`#RRGGBB` or token references"; token references were not implemented — neither
+curated template needs them and omitting them keeps the resolver free of a
+reference-resolution pass. Accepting a strict subset is forward-compatible.
+
+**Serializer presentation is design-parameterized.** `serialize.ts` originally
+bound the built-in design at module scope, which made a second template's
+`tableStroke`/`tableHeaderBackground`/`mention`/`placeholder` dead data. The
+active design is now threaded through the `Writer` (block scope) and
+`RenderContext` (inline scope), so those tokens genuinely apply. The Confluence
+status palette moved with it (`semanticPalettes.statuses` is per-template).
+
+**Security: manifest localization is an injection surface.** A document-label
+KEY is interpolated into generated Typst as a dictionary key (unquoted), where
+`typstString` cannot help. An unvalidated key (`x: panic("…"), y`) escaped the
+key position and was evaluated as code by the real compiler. Closed in three
+layers: (1) `validateLocalization` asserts label keys are safe identifiers and
+runs label values through the design model's "no Typst metacharacters" check;
+(2) `resolveTemplateLabels` resolves only the declared
+`WIKI_PDF_V1_DOCUMENT_LABELS` vocabulary, so an unknown key never reaches
+emission; (3) `typstSettingsDict` hard-fails on any key that is not a safe
+identifier. Regression tests cover all three layers plus a real-compiler proof
+that a gate-bypassing manifest cannot execute code. UI-only copy
+(`template`/`settingGroups`/`settings`) is bounded and control-char-free but may
+contain punctuation, since it never reaches Typst.
+
+**Hardcoding-lint accepted limits.** The lint is a heuristic review aid, not a
+parser. Known bypasses (a literal wrapped in its own `${…}`, 3-/4-/8-digit hex,
+`cm`/`in`/`%` units, multi-family font stacks) are accepted: all are contrived,
+and the byte-parity gate plus review are the real backstop. Tightening it is
+cheap follow-up work if a real case appears.
+
+## Documented extension — chapter running head (2026-07-20)
+
+**Not in any spec's original task list.** It came out of the M1 acceptance run:
+on a 57-page tree export every page's running head read "M1 Abnahme Root" — the
+root page title. That is correct per the shipped design (the head had exactly
+two behaviours, document title + space key, or the fixed `headerText` string),
+but useless for a book-like document. DOCX already had the equivalent capability
+(a user template can carry a `STYLEREF "Heading 1"` field; spec 006 G1 built the
+STYLEREF inventory/validation), so PDF was asymmetric. Recorded here because
+this folder owns the design model the field lives in.
+
+**Where the field went, and why.** `design.features.header.mode`, a bounded enum
+`"title" | "chapter" | "custom"` validated by `validateDesign` —
+*not* a new top-level `header` section. `features` already owns the header as a
+named section, and `features.outline` already carries bounded configuration
+beyond `enabled` (`depth`), so "a feature section holds its own bounded options"
+was the established convention rather than a new one. The field is **optional**:
+an absent `mode` stays `undefined` (the `branding.organizationName` /
+`TypographyRole.font` precedent — reject invalid, never coerce absent) and
+consumers resolve it through the exported `DEFAULT_DESIGN_HEADER_MODE`
+(`"title"`). That is what makes the addition non-breaking for every manifest
+written before it existed.
+
+**No binding, deliberately.** `features.header.mode` was NOT added to
+`BINDING_TARGET_ALLOWLIST`. A binding needs a Level-A source, and
+`bindingSourceValue` in `packages/pdf/src/settings.ts` is a closed switch over
+the six existing Level-A keys — an allowlisted target with no source would be
+permanently unreachable configuration in a *versioned* allowlist. Adding a
+target later is non-breaking (same additive rule the contract states for
+settings keys), so the honest order is: add a Level-A `headerMode` setting +
+its CLI/extension surface first, then the binding. Until then the mode is what
+it should be anyway — a template-design choice an author makes in the manifest,
+like `page.margin` or a typography role.
+
+**The Typst construct, verified against the real compiler** (`typst.ts 0.7.0 /
+Typst 0.14.2`), not assumed:
+
+```typst
+query(heading.where(level: 1))
+  .filter(h => h.outlined and h.location().page() <= here().page())
+```
+
+The obvious `heading.where(level: 1).before(here()).last()` was rejected on
+evidence: inside a page header `here()` resolves to the **top** of the page, so
+`.before(here())` excludes a chapter that opens on that very page, and the head
+lags one page behind at every chapter opening (probed per page with `panic`
+diagnostics against the pinned compiler: the page where "Beta Chapter" opened
+still read "Alpha Chapter"). The `h.outlined` filter is equally load-bearing —
+`outline()` emits its own level-1 heading for the "Contents" title, the only
+heading with `outlined: false`; without the filter every page of every document
+was headed *Contents*. Pages with no preceding chapter fall back to `meta.title`,
+never to an empty head.
+
+**Default parity preserved.** The mode is resolved at template-*generation* time
+(it is static design, not settings-driven), so the chapter branch is only ever
+emitted for a chapter-mode design. The generated Typst for the default design is
+character-identical to the pre-feature template, and
+`template-migration-parity.test.ts` still pins
+`351fd2d4f0a178368d642ef939f2de2736ddc506f196cd70b47e455cad376975` unchanged.
+
+**Manuscript opted in** (`features.header.mode: "chapter"`) — it is the
+book-like curated template, and it has no pinned digest, so its output changing
+is intended. Editorial Indigo stays on `"title"`, which is what keeps the
+digest fixed.
+
+**Tests** (no mocks; real compiler, real fonts, real import gate). Header text is
+not recoverable from a compiled PDF — Typst subsets fonts and emits glyph ids,
+and the running head reaches neither the outline nor the structure tree — so
+`chapter-running-head.test.ts` asserts through **byte-equality between two real
+renders constructed to agree only if the head resolves to a specific string**
+(e.g. a single chapter whose heading equals the document title renders
+byte-identically in both modes; a document with no chapter heading does too,
+which is simultaneously the fallback proof and the ToC-exclusion regression
+guard). That is a stronger claim than a substring match, not a weaker one.
+
+**Refinement — first chapter on the page, not the last (2026-07-20).** Came from
+the user's review of the M1 acceptance artifacts produced by the entry above, so
+it belongs to this same follow-up rather than to a new spec. When SEVERAL
+chapters begin on one page, `started.last()` named the *last* of them; the head
+now names the *first*. Rationale: the head sits at the top of the page and the
+content directly below it starts with that first chapter, so naming a later one
+contradicts what the reader sees. The resolution became:
+
+```typst
+let chapters = query(heading.where(level: 1)).filter(h => h.outlined)
+let opening = chapters.filter(h => h.location().page() == here().page())
+let running = chapters.filter(h => h.location().page() < here().page())
+let chapter-head = if opening.len() > 0 { opening.first().body }
+  else if running.len() > 0 { running.last().body }
+  else { meta.title }
+```
+
+Both behaviours the entry above measured survive unchanged and are pinned by
+their own tests: the `== here().page()` branch still selects a chapter that
+*opens* on this page (the one-page lag of `.before(here())` does not return), and
+the `h.outlined` filter still keeps the ToC's own "Contents" heading out.
+
+**Correction: this CONVERGED with Word, it did not diverge from it.** The entry
+above, and the reference docs derived from it, claimed Word's `STYLEREF` rule is
+"the last H1 that began on or before this page". That is wrong, and the review of
+this refinement is what caught it. Word's default for a `STYLEREF` field in a
+header searches the page **top-down** and takes the **first** matching paragraph;
+if the style does not occur on the page it searches back toward the start of the
+document, i.e. the chapter still running. The `\l` switch is what reverses the
+on-page search to bottom-up and yields the *last* one — Microsoft's ECMA-376
+implementation notes state that `\l` in a header "causes the search to go from the
+bottom of the page to the beginning of the document and then to the end of the
+document" and has no effect elsewhere ([MS-OI29500 §17.16.5.59] /
+[MS-OE376 §2.16.5.66], note (f)). So the pre-refinement PDF rule was the `\l`
+behaviour, and the refinement moved PDF onto Word's *default*. The remaining
+difference is only the exhausted case: Word then searches forward to the end of
+the document, PDF falls back to `meta.title`. `docx-engine.md` and
+`pdf-template-contract.md` were corrected accordingly; the stale "last H1"
+wording also sat in this repo's DOCX release-train manual-verification step,
+which would have produced a wrong verdict on a multi-chapter page.
+
+`collectStylerefFields` (`packages/docx/src/scan.ts`, spec 006 G1) captures only
+the quoted style name — it does not parse switches, so `\l` is ignored, as are
+`\* MERGEFORMAT` and the numbering switches. That is correct for its purpose (the
+diagnostic asks only *does this export emit the style the field names*) and
+nothing in the DOCX engine encodes a first/last assumption anywhere:
+`validateStylerefFields` compares style names, and the field instruction survives
+byte-exactly for Word to resolve. Noted in `docx-engine.md`.
+
+[MS-OI29500 §17.16.5.59]: https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/0f5599c3-3b12-4970-931d-659e489369f4
+[MS-OE376 §2.16.5.66]: https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oe376/34d69bba-3782-470b-97d3-e9852c3257f0
+
+**Equivalence in the normal case, proven not asserted.** `composeChapters`
+inserts a `pageBreak` per chapter by default, so ordinary tree/space exports put
+at most one chapter on a page — and there "first opening here" and "last at or
+before here" are the same heading. Because the old rule can no longer be
+executed, the proof is a pinned digest: a one-chapter-per-page fixture was
+compiled against `origin/main` at `62a0031` (the commit before this refinement)
+with the pinned compiler, and its sha256
+`90bef12c83c654c059f5cc3918b21469c3640c7dad78683676b7766b02023ca0` is asserted by
+`chapter-running-head.test.ts` after the change. It reproduces byte-for-byte.
+Provenance is recorded on the constant; a change there means the refinement
+altered output in the case it was supposed to leave alone, so it is never a
+re-baselining candidate.
+
+The new discriminating tests were themselves checked by temporarily restoring the
+`started.last()` rule: the first-on-page assertion and its mirrored control both
+fail under it, while the equivalence digest passes under *both* rules — which is
+exactly the split the change claims. `template-migration-parity.test.ts` still
+pins `351fd2d4…` unchanged (the default design is `title` mode, so the chapter
+branch is never emitted for it).
 
 ## Definition of Done
 

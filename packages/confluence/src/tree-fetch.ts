@@ -9,29 +9,90 @@
  * fetch, folder 010) reuse the logic unchanged. `confluenceTreeSource(client)`
  * is the Node adapter that maps the port 1:1 onto the existing client.
  *
- * Isomorphic: no `node:`/`bun:` specifiers — only `storageToBlocks` and the
- * shared limiter/scope helpers.
+ * Isomorphic: no `node:`/`bun:` specifiers — only the representation-neutral
+ * body dispatcher and shared limiter/scope helpers.
  */
 import {
-  storageToBlocks,
+  canonicalExportNoteCode,
+  StorageParseError,
   type ExportBlock,
   type ExportNote,
 } from "./export-blocks.js";
+import { AdfValidationError } from "./adf-types.js";
+import {
+  createAdfAnnotationResolver,
+  createAdfMediaAttachmentResolver,
+  type AdfMediaAttachment,
+} from "./adf-to-blocks.js";
+import type { InlineComment } from "./client.js";
+import type { PageAttachmentMediaTermination } from "./client.js";
+import { pageBodyToBlocks } from "./page-body-to-blocks.js";
+import type {
+  BlocksResult,
+  ConfluenceExportPageDetails,
+  ExportPageSource,
+  PageBody,
+  PageBodyToBlocksOptions,
+} from "./page-body.js";
 import {
   normalizeLabelFilter,
   type ExportScope,
   type LabelFilter,
+  validateExportScope,
 } from "./export-scope.js";
-import { createInOrderLimiter } from "./in-order-limiter.js";
 import { escapeCqlValue } from "./client.js";
 
 // ---------------------------------------------------------------------------
 // Port
 // ---------------------------------------------------------------------------
 
-/** Context threaded through every port method — carries the abort signal. */
+/** Content-free hierarchy operation names exposed to progress/diagnostic hosts. */
+export type TreeHierarchyOperationV1 =
+  | "page-version"
+  | "space-homepage"
+  | "page-direct-children"
+  | "page-descendants"
+  | "page-child-pages"
+  | "folder-direct-children";
+
+/**
+ * A bounded, content-free hierarchy diagnostic. It deliberately carries no
+ * page id/title, URL, response body, or original error message.
+ */
+export type TreeFetchDiagnosticV1 =
+  | {
+      code: "hierarchy-fallback";
+      deployment: "cloud";
+      operation: "page-direct-children";
+      status: number;
+      requestId?: string;
+      fallback: "page-descendants";
+    }
+  | {
+      code: "hierarchy-request-failed";
+      deployment: "cloud" | "data-center";
+      operation: TreeHierarchyOperationV1;
+      status?: number;
+      requestId?: string;
+      /**
+       * Which traversal node the failed request served. Content-free but
+       * decisive for triage: a failing `page-version` on the *root* means the
+       * export source itself is unreadable, while on a *child* it points at one
+       * page inside an otherwise healthy tree (issue #153 took two diagnostic
+       * round-trips without this field).
+       */
+      node?: "root" | "child";
+    };
+
+/** Context threaded through every port method — abort plus safe diagnostics. */
 export interface TreeFetchContext {
   signal?: AbortSignal;
+  onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
+  /**
+   * Role of the traversal node the current request serves, when the caller
+   * knows it. Copied verbatim into `hierarchy-request-failed` diagnostics.
+   */
+  hierarchyNode?: "root" | "child";
 }
 
 /** A reference to a node whose *children* are being requested. */
@@ -40,15 +101,33 @@ export interface TreeNodeRef {
   kind: "page" | "folder";
 }
 
-/** A page fetched via {@link TreeSource.getPage}. */
-export interface TreeSourcePage {
+export interface TreeSourcePageMetadata {
   id: string;
   title: string;
-  storage: string;
   version?: number;
   labels?: string[];
   spaceKey?: string;
+  /** Exact v2 `fileId` metadata, prefetched only when the ADF references media. */
+  mediaAttachments?: AdfMediaAttachment[];
+  mediaAttachmentsComplete?: boolean;
+  mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+  unresolvedMediaFileIds?: string[];
+  inlineComments?: InlineComment[];
+  inlineCommentsComplete?: boolean;
 }
+
+/**
+ * A page fetched via {@link TreeSource.getPage}.
+ *
+ * New sources provide an explicitly selected representation-neutral
+ * `exportSource`. The Storage-only member remains accepted during the host
+ * migration window so existing third-party/test ports keep compiling.
+ */
+export type TreeSourcePage = TreeSourcePageMetadata &
+  (
+    | { exportSource: ExportPageSource; storage?: string }
+    | { storage: string; exportSource?: undefined }
+  );
 
 /** A lightweight version snapshot via {@link TreeSource.getPageVersion}. */
 export interface TreeSourceVersion {
@@ -75,6 +154,12 @@ export interface TreeChild {
   title: string;
   kind: "page" | "folder" | "unsupported";
   unsupportedKind?: string;
+  /**
+   * Raw content status when the listing reported a non-`current` one (draft,
+   * archived, …). Such children arrive as `kind: "unsupported"`: exports ship
+   * published pages only, and a by-id version read on a draft would 404.
+   */
+  status?: string;
   position: number | null;
   observedVersion?: number;
 }
@@ -159,14 +244,157 @@ export interface TreeFetchProgress {
  */
 export type CompletenessMode = "strict" | "partial";
 
+/** Stable, lightweight identity for one body slot in the discovered manifest. */
+export interface ExportTreeBodyManifestEntryV1 {
+  ordinal: number;
+  key: string;
+  pageId: string;
+  title: string;
+}
+
+/** Serializable normalized result; raw storage XHTML is deliberately absent. */
+export type ExportTreeBodyResultV1 =
+  | {
+      ok: false;
+      pageId: string;
+      title: string;
+      /** Present once a representation-bound body read started. */
+      source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+      };
+      failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{ id: string; title: string }>;
+        detail?: string;
+      };
+    }
+  | {
+      ok: true;
+      pageId: string;
+      title: string;
+      /** Body-free source telemetry retained across durable recovery. */
+      source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+      };
+      blocks: ExportBlock[];
+      notes: ExportNote[];
+      meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+      };
+    };
+
+/**
+ * Optional durable body sink used by queued exports. Direct callers omit it
+ * and retain the existing in-memory result API.
+ */
+export interface ExportTreeBodyStoreV1 {
+  /** Persist or authenticate the lightweight discovery manifest. */
+  prepare(
+    entries: readonly ExportTreeBodyManifestEntryV1[],
+    context: { signal: AbortSignal },
+  ): Promise<void>;
+  /** Return a previously committed normalized slot during recovery. */
+  load(
+    entry: ExportTreeBodyManifestEntryV1,
+    context: { signal: AbortSignal },
+  ): Promise<ExportTreeBodyResultV1 | undefined>;
+  /** Commit one normalized slot before it becomes visible to composition. */
+  commit(
+    entry: ExportTreeBodyManifestEntryV1,
+    result: ExportTreeBodyResultV1,
+    context: { signal: AbortSignal },
+  ): Promise<void>;
+}
+
 export interface TreeFetchOptions {
   labels?: LabelFilter;
   maxPages?: number;
   maxFolders?: number;
   concurrency?: number;
+  /** Processing plus ready slots; defaults to eight and must cover concurrency. */
+  maxResultSlots?: number;
+  /** Durable queued-export sink; omitted by legacy/direct callers. */
+  bodyStore?: ExportTreeBodyStoreV1;
   completenessMode?: CompletenessMode;
   signal?: AbortSignal;
   onProgress?: (progress: TreeFetchProgress) => void;
+  /** Content-free hierarchy diagnostics suitable for a durable job monitor. */
+  onDiagnostic?: (diagnostic: TreeFetchDiagnosticV1) => void | Promise<void>;
+  /** Common representation-neutral decoder options; page provenance is owned here. */
+  bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+  /**
+   * A validated, body-free plan recovered from durable job storage. When
+   * present, discovery/label reads are skipped and only the pinned page bodies
+   * are fetched.
+   */
+  preparedPlan?: ExportTreePlanV1;
+  /**
+   * Called after discovery/filtering and before the first page body read. A
+   * background host can atomically persist the plan and publish its ref here.
+   */
+  onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+  /**
+   * Called after a recovered plan passes all scope/policy/budget validation and
+   * before its first page body read.
+   */
+  onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
+  /** Maximum serialized size accepted for a durable body-free plan. */
+  maxPlanBytes?: number;
+}
+
+export type ExportTreePlanNodeV1 =
+  | {
+      kind: "page";
+      pageId: string;
+      title: string;
+      depth: number;
+      effectiveDepth: number;
+      parentId: string | null;
+      position: number | null;
+      observedVersion?: number;
+    }
+  | {
+      kind: "folder";
+      folderId: string;
+      title: string;
+      depth: number;
+      effectiveDepth: number;
+      parentId: string | null;
+      position: number | null;
+    };
+
+/**
+ * Durable pre-body snapshot for one ordered tree export.
+ *
+ * It contains identifiers, titles, ordering metadata, version pins and
+ * bounded diagnostics, but never ADF, Storage, decoded blocks or attachments.
+ */
+export interface ExportTreePlanV1 {
+  schema: "atlcli.export-tree-plan/1";
+  scope: ExportScope;
+  policy: {
+    labels?: LabelFilter;
+    completenessMode: CompletenessMode;
+    maxPages: number;
+    maxFolders: number;
+  };
+  rootId: string;
+  includeRoot: boolean;
+  nodes: readonly ExportTreePlanNodeV1[];
+  notes: readonly ExportNote[];
+  complete: boolean;
+}
+
+export interface TreeSourceSummary {
+  /** Pages whose version-bound body source was read, including parse failures. */
+  pagesRead: number;
+  representations: Readonly<Record<PageBody["representation"], number>>;
+  /** Successfully decoded pages that emitted one or more degradation notes. */
+  degradedPages: number;
 }
 
 export interface FetchExportTreeResult {
@@ -174,11 +402,25 @@ export interface FetchExportTreeResult {
   notes: ExportNote[];
   /** False when partial mode downgraded a completeness failure; true otherwise. */
   complete: boolean;
+  /** Aggregate only: raw ADF/Storage bodies never leave the body-fetch jobs. */
+  sourceSummary: TreeSourceSummary;
+}
+
+/** Raised before body IO when a recovered tree plan is corrupt or foreign. */
+export class ExportTreePlanError extends Error {
+  readonly code = "export-tree-plan-invalid" as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ExportTreePlanError";
+  }
 }
 
 const DEFAULT_MAX_PAGES = 500;
 const DEFAULT_MAX_FOLDERS = 200;
 const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_MAX_PLAN_BYTES = 2 * 1024 * 1024;
+const DEFAULT_MAX_RESULT_SLOTS = 8;
 const CQL_ID_CHUNK = 100;
 
 // ---------------------------------------------------------------------------
@@ -261,6 +503,34 @@ function errorStatus(error: unknown): number | undefined {
   const message = error instanceof Error ? error.message : String(error);
   const match = message.match(/\((\d{3})\)/);
   return match ? Number.parseInt(match[1]!, 10) : undefined;
+}
+
+function errorRequestId(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("requestId" in error)) return undefined;
+  const requestId = (error as { requestId?: unknown }).requestId;
+  return typeof requestId === "string"
+    && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)
+    ? requestId
+    : undefined;
+}
+
+async function reportHierarchyFailure(
+  context: TreeFetchContext,
+  deployment: "cloud" | "data-center",
+  operation: TreeHierarchyOperationV1,
+  error: unknown,
+): Promise<void> {
+  if (!context.onDiagnostic) return;
+  const status = errorStatus(error);
+  const requestId = errorRequestId(error);
+  await context.onDiagnostic({
+    code: "hierarchy-request-failed",
+    deployment,
+    operation,
+    ...(status !== undefined ? { status } : {}),
+    ...(requestId ? { requestId } : {}),
+    ...(context.hierarchyNode ? { node: context.hierarchyNode } : {}),
+  });
 }
 
 function isUnreadable(status: number | undefined): boolean {
@@ -477,14 +747,364 @@ function compareChildren(a: TreeChild, b: TreeChild): number {
   return a.title.localeCompare(b.title);
 }
 
+function unsupportedChildNote(child: TreeChild): ExportNote {
+  if (child.status !== undefined) {
+    // Not a foreign *type* — a page/folder whose status makes it unexportable
+    // (draft, archived). Named separately so report consumers can distinguish
+    // "you have a whiteboard" from "you have an unpublished child".
+    return {
+      level: "warning",
+      code: "child-not-current",
+      message:
+        `Child "${child.title}" (${child.id}) has status "${child.status}" ` +
+        `and was skipped; only current (published) pages are exported.`,
+    };
+  }
+  const kind = child.unsupportedKind ?? "unknown";
+  if (kind.toLowerCase() === "whiteboard") {
+    return {
+      level: "warning",
+      code: "unsupported-child-type",
+      message:
+        "A direct Whiteboard child is not traversable and was skipped; " +
+        "its board content was not exported. Embedded Whiteboard links on " +
+        "exported pages are retained separately.",
+    };
+  }
+  // `warning`, not `info`: content the user asked for is being DROPPED from
+  // the export. Contrast `label-filtered`, which is informational because the
+  // user explicitly requested that exclusion.
+  return {
+    level: "warning",
+    code: "unsupported-child-type",
+    message:
+      `Child "${child.title}" (${child.id}) is an unsupported type ` +
+      `"${kind}" and was skipped.`,
+  };
+}
+
+const PROVISIONAL_ADF_RESOLUTION_CODES = new Set([
+  "macro-not-rendered",
+  "inline-extension-not-rendered",
+]);
+
+/**
+ * `sourceSummary.degradedPages` describes lossy source decoding, not a macro
+ * resolution pass that has not run yet. Pending ADF extension notes are owned
+ * and replaced by the downstream macro resolver; counting a page as degraded
+ * solely for those provisional notes would leave a successful pure renderer
+ * (such as the Whiteboard linked card) permanently marked degraded.
+ */
+function sourceDecodeDegraded(decoded: BlocksResult): boolean {
+  if (decoded.degraded !== true) return false;
+  // A zero diagnostic budget can suppress a real degradation note. Preserve
+  // the decoder's boolean when there is no evidence that it was provisional.
+  if (decoded.notes.length === 0) return true;
+  return decoded.notes.some(
+    (note) => !PROVISIONAL_ADF_RESOLUTION_CODES.has(note.code),
+  );
+}
+
+function normalizedScopeKey(scope: ExportScope): string {
+  try {
+    validateExportScope(scope);
+    switch (scope.kind) {
+      case "page":
+        return JSON.stringify(["page", scope.pageId]);
+      case "tree":
+        if (scope.includeRoot !== undefined && typeof scope.includeRoot !== "boolean") {
+          throw new TypeError("invalid includeRoot");
+        }
+        return JSON.stringify([
+          "tree",
+          scope.rootPageId,
+          scope.includeRoot ?? true,
+          scope.maxDepth ?? null,
+        ]);
+      case "space":
+        return JSON.stringify(["space", scope.spaceKey, scope.maxDepth ?? null]);
+    }
+  } catch {
+    throw new ExportTreePlanError("Recovered export tree plan contains an invalid scope.");
+  }
+}
+
+function clonePlanScope(scope: ExportScope): ExportScope {
+  switch (scope.kind) {
+    case "page":
+      return { kind: "page", pageId: scope.pageId };
+    case "tree":
+      return {
+        kind: "tree",
+        rootPageId: scope.rootPageId,
+        ...(scope.includeRoot !== undefined ? { includeRoot: scope.includeRoot } : {}),
+        ...(scope.maxDepth !== undefined ? { maxDepth: scope.maxDepth } : {}),
+      };
+    case "space":
+      return {
+        kind: "space",
+        spaceKey: scope.spaceKey,
+        ...(scope.maxDepth !== undefined ? { maxDepth: scope.maxDepth } : {}),
+      };
+  }
+}
+
+function normalizedLabelKey(filter: LabelFilter | undefined): string {
+  const normalized = normalizeLabelFilter(filter);
+  return JSON.stringify({
+    include: [...(normalized?.include ?? [])].sort(),
+    exclude: [...(normalized?.exclude ?? [])].sort(),
+    excludeMode: normalized?.excludeMode ?? null,
+  });
+}
+
+function clonePlanLabels(filter: LabelFilter | undefined): LabelFilter | undefined {
+  const normalized = normalizeLabelFilter(filter);
+  if (!normalized) return undefined;
+  return {
+    ...(normalized.include ? { include: [...normalized.include].sort() } : {}),
+    ...(normalized.exclude ? { exclude: [...normalized.exclude].sort() } : {}),
+    ...(normalized.excludeMode ? { excludeMode: normalized.excludeMode } : {}),
+  };
+}
+
+function clonePlanNote(note: ExportNote): ExportNote {
+  return {
+    level: note.level,
+    code: note.code,
+    message: note.message,
+    ...(note.macroName !== undefined ? { macroName: note.macroName } : {}),
+    ...(note.source
+      ? {
+          source: {
+            ...(note.source.pageId !== undefined ? { pageId: note.source.pageId } : {}),
+            ...(note.source.pageTitle !== undefined ? { pageTitle: note.source.pageTitle } : {}),
+            ...(note.source.pageUrl !== undefined ? { pageUrl: note.source.pageUrl } : {}),
+            ...(note.source.blockPath !== undefined ? { blockPath: note.source.blockPath } : {}),
+            ...(note.source.assetName !== undefined ? { assetName: note.source.assetName } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function createTreePlan(
+  scope: ExportScope,
+  rootId: string,
+  includeRoot: boolean,
+  nodes: readonly ExportNode[],
+  notes: readonly ExportNote[],
+  complete: boolean,
+  policy: {
+    labels?: LabelFilter;
+    completenessMode: CompletenessMode;
+    maxPages: number;
+    maxFolders: number;
+  },
+): ExportTreePlanV1 {
+  const labels = clonePlanLabels(policy.labels);
+  return {
+    schema: "atlcli.export-tree-plan/1",
+    scope: clonePlanScope(scope),
+    policy: {
+      ...(labels ? { labels } : {}),
+      completenessMode: policy.completenessMode,
+      maxPages: policy.maxPages,
+      maxFolders: policy.maxFolders,
+    },
+    rootId,
+    includeRoot,
+    nodes: nodes.map((node): ExportTreePlanNodeV1 =>
+      node.kind === "page"
+        ? {
+            kind: "page",
+            pageId: node.pageId,
+            title: node.title,
+            depth: node.depth,
+            effectiveDepth: node.effectiveDepth,
+            parentId: node.parentId,
+            position: node.position,
+            ...(node.meta.observedVersion !== undefined
+              ? { observedVersion: node.meta.observedVersion }
+              : {}),
+          }
+        : {
+            kind: "folder",
+            folderId: node.folderId,
+            title: node.title,
+            depth: node.depth,
+            effectiveDepth: node.effectiveDepth,
+            parentId: node.parentId,
+            position: node.position,
+          },
+    ),
+    notes: notes.map(clonePlanNote),
+    complete,
+  };
+}
+
+function assertPlanInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ExportTreePlanError(`${label} must be a non-negative safe integer.`);
+  }
+}
+
+function assertPlanByteBudget(plan: ExportTreePlanV1, maxPlanBytes: number): void {
+  if (!Number.isSafeInteger(maxPlanBytes) || maxPlanBytes < 1) {
+    throw new ExportTreePlanError("maxPlanBytes must be a positive safe integer.");
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(plan);
+  } catch {
+    throw new ExportTreePlanError("Recovered export tree plan is not serializable.");
+  }
+  if (new TextEncoder().encode(serialized).byteLength > maxPlanBytes) {
+    throw new ExportTreePlanError("Export tree plan exceeds the durable byte budget.");
+  }
+}
+
+function restoreTreePlan(
+  plan: ExportTreePlanV1,
+  scope: ExportScope,
+  expected: {
+    labels?: LabelFilter;
+    completenessMode: CompletenessMode;
+    maxPages: number;
+    maxFolders: number;
+  },
+): { rootId: string; includeRoot: boolean; nodes: ExportNode[]; notes: ExportNote[]; complete: boolean } {
+  if (plan.schema !== "atlcli.export-tree-plan/1") {
+    throw new ExportTreePlanError("Unsupported export tree plan schema.");
+  }
+  if (normalizedScopeKey(plan.scope) !== normalizedScopeKey(scope)) {
+    throw new ExportTreePlanError("Recovered export tree plan does not match the requested scope.");
+  }
+  if (
+    !plan.policy ||
+    typeof plan.policy !== "object" ||
+    plan.policy.completenessMode !== expected.completenessMode ||
+    plan.policy.maxPages !== expected.maxPages ||
+    plan.policy.maxFolders !== expected.maxFolders ||
+    normalizedLabelKey(plan.policy.labels) !== normalizedLabelKey(expected.labels)
+  ) {
+    throw new ExportTreePlanError("Recovered export tree plan policy does not match the request.");
+  }
+  if (typeof plan.rootId !== "string" || plan.rootId.trim().length === 0) {
+    throw new ExportTreePlanError("Recovered export tree plan has no root id.");
+  }
+  if (
+    (scope.kind === "page" && plan.rootId !== scope.pageId) ||
+    (scope.kind === "tree" && plan.rootId !== scope.rootPageId)
+  ) {
+    throw new ExportTreePlanError("Recovered export tree plan root does not match the request.");
+  }
+  const expectedIncludeRoot = scope.kind === "tree" ? (scope.includeRoot ?? true) : true;
+  if (plan.includeRoot !== expectedIncludeRoot || typeof plan.complete !== "boolean") {
+    throw new ExportTreePlanError("Recovered export tree plan flags do not match the request.");
+  }
+  if (!Array.isArray(plan.nodes) || !Array.isArray(plan.notes)) {
+    throw new ExportTreePlanError("Recovered export tree plan collections are invalid.");
+  }
+
+  let pages = 0;
+  let folders = 0;
+  const seen = new Set<string>();
+  const nodes = plan.nodes.map((node): ExportNode => {
+    if (!node || typeof node !== "object") {
+      throw new ExportTreePlanError("Recovered export tree plan contains an invalid node.");
+    }
+    const id = node.kind === "page" ? node.pageId : node.kind === "folder" ? node.folderId : undefined;
+    if (typeof id !== "string" || id.trim().length === 0 || typeof node.title !== "string") {
+      throw new ExportTreePlanError("Recovered export tree plan contains invalid node identity.");
+    }
+    const key = `${node.kind}:${id}`;
+    if (seen.has(key)) throw new ExportTreePlanError("Recovered export tree plan contains duplicate nodes.");
+    seen.add(key);
+    assertPlanInteger(node.depth, "node.depth");
+    assertPlanInteger(node.effectiveDepth, "node.effectiveDepth");
+    if (node.parentId !== null && typeof node.parentId !== "string") {
+      throw new ExportTreePlanError("Recovered export tree plan contains an invalid parent id.");
+    }
+    if (node.position !== null) assertPlanInteger(node.position, "node.position");
+
+    if (node.kind === "page") {
+      pages += 1;
+      if (pages > expected.maxPages) {
+        throw new ExportTreePlanError("Recovered export tree plan exceeds the page limit.");
+      }
+      if (
+        node.observedVersion !== undefined &&
+        (!Number.isSafeInteger(node.observedVersion) || node.observedVersion < 1)
+      ) {
+        throw new ExportTreePlanError("Recovered export tree plan contains an invalid page version.");
+      }
+      return {
+        kind: "page",
+        pageId: node.pageId,
+        title: node.title,
+        depth: node.depth,
+        effectiveDepth: node.effectiveDepth,
+        parentId: node.parentId,
+        position: node.position,
+        blocks: [],
+        notes: [],
+        meta: {
+          labels: [],
+          ...(node.observedVersion !== undefined
+            ? { observedVersion: node.observedVersion }
+            : {}),
+        },
+      };
+    }
+
+    folders += 1;
+    if (folders > expected.maxFolders) {
+      throw new ExportTreePlanError("Recovered export tree plan exceeds the folder limit.");
+    }
+    return {
+      kind: "folder",
+      folderId: node.folderId,
+      title: node.title,
+      depth: node.depth,
+      effectiveDepth: node.effectiveDepth,
+      parentId: node.parentId,
+      position: node.position,
+    };
+  });
+
+  const notes = plan.notes.map((note) => {
+    const source = note?.source;
+    if (
+      !note ||
+      typeof note !== "object" ||
+      (note.level !== "info" && note.level !== "warning") ||
+      typeof note.code !== "string" ||
+      canonicalExportNoteCode(note.code) === undefined ||
+      typeof note.message !== "string" ||
+      (note.macroName !== undefined && typeof note.macroName !== "string") ||
+      (source !== undefined &&
+        (typeof source !== "object" || source === null ||
+          [source.pageId, source.pageTitle, source.pageUrl, source.blockPath, source.assetName]
+            .some((value) => value !== undefined && typeof value !== "string")))
+    ) {
+      throw new ExportTreePlanError("Recovered export tree plan contains an invalid note.");
+    }
+    return clonePlanNote(note);
+  });
+  return { rootId: plan.rootId, includeRoot: plan.includeRoot, nodes, notes, complete: plan.complete };
+}
+
 /**
  * Fetch an ordered export tree for a scope.
  *
  * Phase 1 (sequential): pre-order DFS discovers every node, captures positions
  * and version snapshots, and enforces cycle/depth/count guards.
  * Phase 2 (pure): the label filter prunes + reparents *before* any body fetch.
- * Phase 3 (pooled): surviving page bodies are fetched through the shared
- * in-order-delivery pool and walked into blocks, with the completeness contract.
+ * Phase 3 (bounded): surviving page bodies are fetched through a deterministic
+ * sliding window and walked into blocks. Queued hosts may commit each normalized
+ * slot to a durable body store before composition; direct callers retain the
+ * same in-memory result contract.
  */
 export async function fetchExportTree(
   source: TreeSource,
@@ -492,21 +1112,51 @@ export async function fetchExportTree(
   opts: TreeFetchOptions = {}
 ): Promise<FetchExportTreeResult> {
   const signal = opts.signal;
-  const context: TreeFetchContext = { signal };
+  const context: TreeFetchContext = {
+    signal,
+    ...(opts.onDiagnostic ? { onDiagnostic: opts.onDiagnostic } : {}),
+  };
   const maxPages = opts.maxPages ?? DEFAULT_MAX_PAGES;
   const maxFolders = opts.maxFolders ?? DEFAULT_MAX_FOLDERS;
   const concurrency = opts.concurrency ?? DEFAULT_CONCURRENCY;
+  const maxPlanBytes = opts.maxPlanBytes ?? DEFAULT_MAX_PLAN_BYTES;
+  const maxResultSlots = opts.maxResultSlots ?? DEFAULT_MAX_RESULT_SLOTS;
   const mode: CompletenessMode = opts.completenessMode ?? "strict";
   const filter = normalizeLabelFilter(opts.labels);
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
+    throw new RangeError("Tree fetch concurrency must be a positive safe integer.");
+  }
+  if (!Number.isSafeInteger(maxResultSlots) || maxResultSlots < concurrency) {
+    throw new RangeError(
+      "Tree fetch maxResultSlots must be a safe integer greater than or equal to concurrency.",
+    );
+  }
 
   const treeNotes: ExportNote[] = [];
   let complete = true;
+  if (opts.preparedPlan) assertPlanByteBudget(opts.preparedPlan, maxPlanBytes);
+  const recoveredPlan = opts.preparedPlan
+    ? restoreTreePlan(opts.preparedPlan, scope, {
+        ...(filter ? { labels: filter } : {}),
+        completenessMode: mode,
+        maxPages,
+        maxFolders,
+      })
+    : undefined;
+  if (recoveredPlan) {
+    treeNotes.push(...recoveredPlan.notes);
+    complete = recoveredPlan.complete;
+  }
 
   // Resolve the scope root + includeRoot.
   let rootId: string;
   let includeRoot = true;
   let maxDepth: number | undefined;
-  if (scope.kind === "page") {
+  if (recoveredPlan) {
+    rootId = recoveredPlan.rootId;
+    includeRoot = recoveredPlan.includeRoot;
+    maxDepth = scope.kind === "tree" ? scope.maxDepth : scope.kind === "page" ? 0 : undefined;
+  } else if (scope.kind === "page") {
     rootId = scope.pageId;
     // A page scope is exactly one page — never descend into children.
     maxDepth = 0;
@@ -518,10 +1168,11 @@ export async function fetchExportTree(
     const resolved = await source.getSpaceHomepageId(scope.spaceKey, context);
     if (!resolved) throw new SpaceHomepageError(scope.spaceKey);
     rootId = resolved;
+    maxDepth = scope.maxDepth;
   }
 
   // ---- Phase 1: ordering walk ----
-  const planned: ExportNode[] = [];
+  const planned: ExportNode[] = recoveredPlan?.nodes ?? [];
   const visited = new Set<string>();
   let pageCount = 0;
   let folderCount = 0;
@@ -565,7 +1216,38 @@ export async function fetchExportTree(
       let title = knownTitle;
       let version = observedVersion;
       if (title === undefined || version === undefined) {
-        const snapshot = await source.getPageVersion(ref.id, context);
+        const isRoot = ref.id === rootId;
+        let snapshot: TreeSourceVersion;
+        try {
+          snapshot = await source.getPageVersion(ref.id, {
+            ...context,
+            hierarchyNode: isRoot ? "root" : "child",
+          });
+        } catch (error) {
+          throwIfAborted(signal);
+          // A failing *root* stays fatal — the export source itself is
+          // unreadable. A failing child is a per-page completeness event, the
+          // same contract phase 2 applies to body reads: listings can include
+          // children a by-id read 404s on (view-restricted pages — Cloud masks
+          // missing permission as 404 — or a racing delete). One such child
+          // must not abort the whole hierarchy export (#153).
+          const status = errorStatus(error);
+          if (isRoot || (!isUnreadable(status) && !isAmbiguous404(status))) throw error;
+          const affected = [{ id: ref.id, title: knownTitle ?? ref.id }];
+          const code: CompletenessCode = isUnreadable(status)
+            ? "page-unreadable"
+            : "page-ambiguous-404";
+          if (mode === "strict") throw new ExportCompletenessError(code, affected);
+          treeNotes.push({
+            level: "warning",
+            code,
+            message:
+              `Page "${knownTitle ?? ref.id}" (${ref.id}) could not be read (${status}); ` +
+              `the page and its subtree were omitted.`,
+          });
+          partialComplete();
+          return;
+        }
         if (title === undefined) title = snapshot.title;
         if (version === undefined) version = snapshot.version;
       }
@@ -621,11 +1303,7 @@ export async function fetchExportTree(
     for (const child of sorted) {
       throwIfAborted(signal);
       if (child.kind === "unsupported") {
-        treeNotes.push({
-          level: "info",
-          code: "unsupported-child-type",
-          message: `Child "${child.title}" (${child.id}) is an unsupported type "${child.unsupportedKind ?? "unknown"}" and was skipped.`,
-        });
+        treeNotes.push(unsupportedChildNote(child));
         continue;
       }
       if (child.kind === "folder") {
@@ -646,9 +1324,9 @@ export async function fetchExportTree(
     }
   };
 
-  if (includeRoot) {
+  if (!recoveredPlan && includeRoot) {
     await walk({ id: rootId, kind: "page" }, 0, null, null, undefined, undefined);
-  } else {
+  } else if (!recoveredPlan) {
     // Root excluded by explicit request: discover the root's children as the
     // top-level nodes (each becomes its own level-1 chapter). Seed the root's
     // composite key into the cycle guard even though the root is never emitted —
@@ -678,11 +1356,7 @@ export async function fetchExportTree(
     }
     for (const child of [...children].sort(compareChildren)) {
       if (child.kind === "unsupported") {
-        treeNotes.push({
-          level: "info",
-          code: "unsupported-child-type",
-          message: `Child "${child.title}" (${child.id}) is an unsupported type "${child.unsupportedKind ?? "unknown"}" and was skipped.`,
-        });
+        treeNotes.push(unsupportedChildNote(child));
         continue;
       }
       if (child.kind === "folder") {
@@ -705,7 +1379,12 @@ export async function fetchExportTree(
 
   // ---- Phase 2: label filter (before body fetch) ----
   let nodes: ExportNode[] = planned;
-  if (filter) {
+  if (!recoveredPlan && filter) {
+    if (opts.onPlanPrepared && !source.searchPages) {
+      throw new ExportTreePlanError(
+        "Durable tree planning requires metadata-only label lookup before body reads.",
+      );
+    }
     const labelsById = await resolveLabels(source, nodes, filter, context);
     // Root-bypass immunity applies only when the true root is actually in the
     // node list. With `includeRoot: false` the root was removed by explicit
@@ -718,136 +1397,353 @@ export async function fetchExportTree(
     treeNotes.push(...filtered.notes);
   }
 
-  // ---- Phase 3: body fetch pool (page nodes only, in pre-order slots) ----
+  if (!recoveredPlan && opts.onPlanPrepared) {
+    const plan = createTreePlan(scope, rootId, includeRoot, nodes, treeNotes, complete, {
+      ...(filter ? { labels: filter } : {}),
+      completenessMode: mode,
+      maxPages,
+      maxFolders,
+    });
+    assertPlanByteBudget(plan, maxPlanBytes);
+    await opts.onPlanPrepared(plan);
+    throwIfAborted(signal);
+  }
+  if (recoveredPlan && opts.onPlanRecovered) {
+    await opts.onPlanRecovered(opts.preparedPlan!);
+    throwIfAborted(signal);
+  }
+
+  // ---- Phase 3: bounded body window (page nodes only, in pre-order slots) ----
   const pageNodes = nodes.filter((n): n is ExportPageNode => n.kind === "page");
   const total = pageNodes.length;
   let fetched = 0;
-  const limit = createInOrderLimiter(concurrency);
+  const manifestEntries: ExportTreeBodyManifestEntryV1[] = pageNodes.map(
+    (node, ordinal) => ({
+      ordinal,
+      pageId: node.pageId,
+      title: node.title,
+      key: JSON.stringify([
+        node.pageId,
+        node.title,
+        node.meta.observedVersion ?? null,
+        node.depth,
+        node.effectiveDepth,
+        node.parentId,
+        node.position,
+      ]),
+    }),
+  );
 
-  type BodyFailure = {
-    code: CompletenessCode;
-    affected: ReadonlyArray<{ id: string; title: string }>;
-  };
-  type BodyResult =
-    | { ok: false; node: ExportPageNode; failure: BodyFailure }
+  const bodyController = new AbortController();
+  const abortBodies = (): void => bodyController.abort(signal?.reason);
+  if (signal?.aborted) abortBodies();
+  else signal?.addEventListener("abort", abortBodies, { once: true });
+  const bodyContext: TreeFetchContext = { signal: bodyController.signal };
+
+  type BodyOutcome =
     | {
-        ok: true;
-        node: ExportPageNode;
-        page: TreeSourcePage;
-        blocks: ExportBlock[];
-        notes: ExportNote[];
-      };
+        ordinal: number;
+        result: ExportTreeBodyResultV1;
+        recovered: boolean;
+      }
+    | { ordinal: number; error: unknown };
 
-  const jobs = pageNodes.map((node) =>
-    limit<BodyResult>(async () => {
-      throwIfAborted(signal);
+  const representationCounts: Record<PageBody["representation"], number> = {
+    atlas_doc_format: 0,
+    storage: 0,
+  };
+  let pagesRead = 0;
+  let degradedPages = 0;
+
+  const recordSource = (result: ExportTreeBodyResultV1): void => {
+    if (!result.source) return;
+    representationCounts[result.source.representation] += 1;
+    pagesRead += 1;
+    if (result.source.degraded) degradedPages += 1;
+  };
+
+  const applySuccess = (
+    node: ExportPageNode,
+    result: Extract<ExportTreeBodyResultV1, { ok: true }>,
+  ): void => {
+    if (result.pageId !== node.pageId || result.title !== node.title) {
+      throw new Error("Tree body result identity does not match its manifest slot.");
+    }
+    node.blocks = result.blocks;
+    node.notes = result.notes;
+    node.meta.version = result.meta.version;
+    node.meta.labels = result.meta.labels;
+    node.meta.spaceKey = result.meta.spaceKey;
+  };
+
+  const applyPartialFailure = (
+    node: ExportPageNode,
+    result: Extract<ExportTreeBodyResultV1, { ok: false }>,
+  ): void => {
+    node.placeholder = true;
+    node.blocks = [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: `[Content unavailable: ${node.title} (${result.failure.code})]`,
+          },
+        ],
+      },
+    ];
+    treeNotes.push({
+      level: "warning",
+      code: result.failure.code,
+      message:
+        `${result.failure.affected.map((affected) => `${affected.title} (${affected.id})`).join(", ")} could not be exported ` +
+        `(${result.failure.code}${result.failure.detail ? `: ${result.failure.detail}` : ""}); a placeholder chapter was rendered.`,
+    });
+    partialComplete();
+  };
+
+  const processBody = async (ordinal: number): Promise<BodyOutcome> => {
+    const node = pageNodes[ordinal]!;
+    const entry = manifestEntries[ordinal]!;
+    try {
+      throwIfAborted(bodyController.signal);
+      const recovered = await opts.bodyStore?.load(entry, {
+        signal: bodyController.signal,
+      });
+      if (recovered) return { ordinal, result: recovered, recovered: true };
+
       let page: TreeSourcePage;
       try {
-        page = await source.getPage(node.pageId, context);
+        page = await source.getPage(node.pageId, bodyContext);
       } catch (error) {
-        throwIfAborted(signal);
+        throwIfAborted(bodyController.signal);
         const status = errorStatus(error);
         const affected = [{ id: node.pageId, title: node.title }];
-        if (isUnreadable(status)) {
-          return { ok: false, node, failure: { code: "page-unreadable", affected } };
-        }
-        if (isAmbiguous404(status)) {
-          return { ok: false, node, failure: { code: "page-ambiguous-404", affected } };
+        if (isUnreadable(status) || isAmbiguous404(status)) {
+          return {
+            ordinal,
+            recovered: false,
+            result: {
+              ok: false,
+              pageId: node.pageId,
+              title: node.title,
+              failure: {
+                code: isUnreadable(status)
+                  ? "page-unreadable"
+                  : "page-ambiguous-404",
+                affected,
+              },
+            },
+          };
         }
         throw error;
       }
 
-      // Version check: the body-fetch version must match the discovery snapshot.
+      const exportSource: ExportPageSource = page.exportSource ?? {
+        primary: { representation: "storage", value: page.storage },
+        ...(page.version !== undefined ? { sourceVersion: page.version } : {}),
+      };
+      const bodyVersion = exportSource.sourceVersion ?? page.version;
       if (
         node.meta.observedVersion !== undefined &&
-        page.version !== undefined &&
-        page.version !== node.meta.observedVersion
+        bodyVersion !== undefined &&
+        bodyVersion !== node.meta.observedVersion
       ) {
         return {
-          ok: false,
-          node,
-          failure: {
-            code: "page-version-changed",
-            affected: [{ id: node.pageId, title: node.title }],
+          ordinal,
+          recovered: false,
+          result: {
+            ok: false,
+            pageId: node.pageId,
+            title: node.title,
+            failure: {
+              code: "page-version-changed",
+              affected: [{ id: node.pageId, title: node.title }],
+            },
+            source: {
+              representation: exportSource.primary.representation,
+              degraded: false,
+            },
           },
         };
       }
 
-      const walked = storageToBlocks(page.storage, {
-        pageContext: {
-          id: node.pageId,
-          ...(page.version !== undefined ? { version: page.version } : {}),
-          ...(page.spaceKey !== undefined ? { spaceKey: page.spaceKey } : {}),
-        },
-      });
-      return { ok: true, node, page, blocks: walked.blocks, notes: walked.notes };
-    })
-  );
-
-  const settled = await Promise.allSettled(jobs);
-  throwIfAborted(signal);
-
-  // Deterministic primary error = earliest pre-order slot that rejected.
-  for (const result of settled) {
-    if (result.status === "rejected") throw result.reason;
-  }
-
-  // Apply results in pre-order (slot order). A completeness failure aborts in
-  // strict mode (earliest slot first) or downgrades to a note in partial mode.
-  const strictFailures: Array<{
-    slot: number;
-    code: CompletenessCode;
-    affected: ReadonlyArray<{ id: string; title: string }>;
-  }> = [];
-
-  settled.forEach((result, slot) => {
-    if (result.status !== "fulfilled") return;
-    const value = result.value;
-    if (!value.ok) {
-      strictFailures.push({ slot, code: value.failure.code, affected: value.failure.affected });
-      return;
-    }
-    fetched += 1;
-    opts.onProgress?.({ fetched, total, currentTitle: value.node.title });
-    value.node.blocks = value.blocks;
-    value.node.notes = value.notes;
-    value.node.meta.version = value.page.version;
-    value.node.meta.labels = value.page.labels ?? [];
-    value.node.meta.spaceKey = value.page.spaceKey;
-  });
-
-  if (strictFailures.length > 0) {
-    if (mode === "strict") {
-      const first = strictFailures[0]!;
-      throw new ExportCompletenessError(first.code, first.affected);
-    }
-    // partial: downgrade each to a note + placeholder chapter, complete = false.
-    for (const failure of strictFailures) {
-      const node = pageNodes.find((n) => n.pageId === failure.affected[0]?.id);
-      if (node) {
-        node.placeholder = true;
-        node.blocks = [
-          {
-            type: "paragraph",
-            content: [
-              {
-                type: "text",
-                text: `[Content unavailable: ${node.title} (${failure.code})]`,
-              },
-            ],
+      let decoded: BlocksResult;
+      try {
+        decoded = pageBodyToBlocks(exportSource, {
+          ...opts.bodyOptions,
+          resolveMediaAttachment:
+            createAdfMediaAttachmentResolver(page.mediaAttachments) ??
+            opts.bodyOptions?.resolveMediaAttachment,
+          resolveAnnotation:
+            createAdfAnnotationResolver(page.inlineComments) ??
+            opts.bodyOptions?.resolveAnnotation,
+          annotationCommentsComplete:
+            page.inlineCommentsComplete ?? opts.bodyOptions?.annotationCommentsComplete,
+          pageContext: {
+            id: node.pageId,
+            title: node.title,
+            ...(bodyVersion !== undefined ? { version: bodyVersion } : {}),
+            ...(page.spaceKey !== undefined ? { spaceKey: page.spaceKey } : {}),
           },
-        ];
+        });
+      } catch (error) {
+        // A page whose selected body blows a validation/parse budget is
+        // UNREADABLE, not fatal
+        // to the run (spec 011). Left uncaught this rejected the job, and the
+        // rejection scan below re-throws it — so one pathological page aborted
+        // the entire tree export. Routing it through the existing completeness
+        // path means strict mode still aborts (the user asked for completeness)
+        // while partial mode renders a placeholder chapter and keeps going,
+        // which is exactly what the budget's own docs promise.
+        if (!(error instanceof StorageParseError) && !(error instanceof AdfValidationError)) {
+          throw error;
+        }
+        throwIfAborted(bodyController.signal);
+        const representation = exportSource.primary.representation;
+        const detail = error instanceof StorageParseError
+          ? `storage exceeded the parse budget: ${error.kind}`
+          : `ADF validation failed: ${error.code}`;
+        return {
+          ordinal,
+          recovered: false,
+          result: {
+            ok: false,
+            pageId: node.pageId,
+            title: node.title,
+            failure: {
+              code: "page-unreadable",
+              affected: [{ id: node.pageId, title: node.title }],
+              detail,
+            },
+            source: { representation, degraded: false },
+          },
+        };
       }
-      treeNotes.push({
-        level: "warning",
-        code: failure.code,
-        message: `${failure.affected.map((a) => `${a.title} (${a.id})`).join(", ")} could not be exported (${failure.code}); a placeholder chapter was rendered.`,
-      });
+      return {
+        ordinal,
+        recovered: false,
+        result: {
+          ok: true,
+          pageId: node.pageId,
+          title: node.title,
+          source: {
+            representation:
+              decoded.representation ?? exportSource.primary.representation,
+            degraded: sourceDecodeDegraded(decoded),
+          },
+          blocks: decoded.blocks,
+          notes: decoded.notes,
+          meta: {
+            ...(bodyVersion === undefined ? {} : { version: bodyVersion }),
+            labels: page.labels ?? [],
+            ...(page.spaceKey === undefined ? {} : { spaceKey: page.spaceKey }),
+          },
+        },
+      };
+    } catch (error) {
+      return { ordinal, error };
     }
-    partialComplete();
+  };
+
+  const active = new Map<number, Promise<BodyOutcome>>();
+  const ready = new Map<number, BodyOutcome>();
+  let nextStart = 0;
+  let nextCommit = 0;
+  const startBodies = (): void => {
+    while (
+      nextStart < total &&
+      active.size < concurrency &&
+      active.size + ready.size < maxResultSlots
+    ) {
+      const ordinal = nextStart;
+      nextStart += 1;
+      active.set(ordinal, processBody(ordinal));
+    }
+  };
+
+  try {
+    await opts.bodyStore?.prepare(manifestEntries, {
+      signal: bodyController.signal,
+    });
+    while (nextCommit < total) {
+      throwIfAborted(bodyController.signal);
+      startBodies();
+      const current = ready.get(nextCommit);
+      if (!current) {
+        if (active.size === 0) {
+          throw new Error("Tree body window made no progress.");
+        }
+        const settled = await Promise.race(active.values());
+        active.delete(settled.ordinal);
+        ready.set(settled.ordinal, settled);
+        continue;
+      }
+      if ("error" in current) throw current.error;
+
+      const node = pageNodes[nextCommit]!;
+      if (!current.result.ok && mode === "strict") {
+        throw new ExportCompletenessError(
+          current.result.failure.code,
+          current.result.failure.affected,
+        );
+      }
+      if (opts.bodyStore && !current.recovered) {
+        await opts.bodyStore.commit(
+          manifestEntries[nextCommit]!,
+          current.result,
+          { signal: bodyController.signal },
+        );
+      }
+      if (current.result.ok) {
+        fetched += 1;
+        opts.onProgress?.({
+          fetched,
+          total,
+          currentTitle: current.result.title,
+        });
+      }
+      if (!opts.bodyStore) {
+        recordSource(current.result);
+        if (current.result.ok) applySuccess(node, current.result);
+        else applyPartialFailure(node, current.result);
+      }
+      ready.delete(nextCommit);
+      nextCommit += 1;
+    }
+
+    if (opts.bodyStore) {
+      for (const [ordinal, entry] of manifestEntries.entries()) {
+        throwIfAborted(bodyController.signal);
+        const result = await opts.bodyStore.load(entry, {
+          signal: bodyController.signal,
+        });
+        if (!result) {
+          throw new Error(`Tree body store lost committed slot ${ordinal}.`);
+        }
+        recordSource(result);
+        if (result.ok) applySuccess(pageNodes[ordinal]!, result);
+        else applyPartialFailure(pageNodes[ordinal]!, result);
+      }
+    }
+  } catch (error) {
+    bodyController.abort(error);
+    await Promise.all(active.values());
+    throw error;
+  } finally {
+    signal?.removeEventListener("abort", abortBodies);
   }
 
-  return { nodes, notes: treeNotes, complete };
+  return {
+    nodes,
+    notes: treeNotes,
+    complete,
+    sourceSummary: {
+      pagesRead,
+      representations: representationCounts,
+      degradedPages,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -929,6 +1825,16 @@ async function resolveLabels(
 
 /** The subset of `ConfluenceClient` the adapter needs (keeps this isomorphic). */
 export interface TreeSourceClient {
+  /** Selects the hierarchy API without probing unsupported deployment routes. */
+  readonly deploymentType?: "cloud" | "data-center";
+  getExportPageDetailsWithMedia?(
+    id: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<ConfluenceExportPageDetails>;
+  getExportPageDetails?(
+    id: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<ConfluenceExportPageDetails>;
   getPageDetails(
     id: string,
     options?: { signal?: AbortSignal }
@@ -937,6 +1843,16 @@ export interface TreeSourceClient {
     id: string,
     options?: { signal?: AbortSignal }
   ): Promise<{ title: string; version: number }>;
+  /**
+   * Optional bulk version snapshot (Cloud REST v2 `GET /pages?id=…`). When
+   * present, the adapter resolves child-page versions in one round-trip per
+   * listing instead of one `getPageVersion` call per child; ids missing from
+   * the map fall back to the per-page path (and its completeness handling).
+   */
+  getPageVersions?(
+    ids: readonly string[],
+    options?: { signal?: AbortSignal }
+  ): Promise<ReadonlyMap<string, { title: string; version: number }>>;
   getChildrenWithPosition(
     parentId: string,
     options?: { signal?: AbortSignal }
@@ -944,11 +1860,15 @@ export interface TreeSourceClient {
   getPageDirectChildren(
     pageId: string,
     options?: { signal?: AbortSignal }
-  ): Promise<Array<{ id: string; title: string; type: string }>>;
+  ): Promise<Array<{ id: string; title: string; type: string; status?: string; position?: number | null }>>;
+  getPageDescendants?(
+    pageId: string,
+    options?: { depth?: number; limit?: number; signal?: AbortSignal }
+  ): Promise<Array<{ id: string; title: string; type: string; status?: string; position?: number | null }>>;
   getFolderChildren(
     folderId: string,
     options?: { signal?: AbortSignal }
-  ): Promise<Array<{ id: string; title: string; type: string }>>;
+  ): Promise<Array<{ id: string; title: string; type: string; status?: string; position?: number | null }>>;
   getSpaceHomepageId(
     spaceKey: string,
     options?: { signal?: AbortSignal }
@@ -963,19 +1883,107 @@ export interface TreeSourceClient {
 /**
  * Node adapter: maps the {@link TreeSource} port 1:1 onto a `ConfluenceClient`.
  *
- * `getChildren` first discovers child *kinds* via `getPageDirectChildren` (a
- * page parent) — the only call that reports mixed page/folder/whiteboard
- * children in one round-trip — then re-fetches real positions for page children
- * via `getChildrenWithPosition`, and recurses folder children via
- * `getFolderChildren` (a folder parent). Anything outside page/folder is mapped
- * honestly to `kind: "unsupported"` with the raw type, never cast into a page.
+ * On Cloud, `getChildren` discovers child *kinds* and `childPosition` through
+ * `getPageDirectChildren` (a page parent) — the only call that reports mixed
+ * page/folder/whiteboard children in one round-trip — and recurses folder
+ * children through `getFolderChildren` (a folder parent). Page versions are
+ * snapshotted through Cloud REST v2 by `getPageVersion`; Cloud traversal never
+ * depends on the v1 child-page listing. Data Center uses only its v1 page tree.
+ * Anything outside page/folder is mapped honestly to `kind: "unsupported"`
+ * with the raw type, never cast into a page.
  */
 export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
   const classifyKind = (type: string): "page" | "folder" | "unsupported" =>
     type === "page" ? "page" : type === "folder" ? "folder" : "unsupported";
 
+  // Map one Cloud listing entry to a TreeChild. A non-"current" status (draft,
+  // archived) downgrades the child to "unsupported" carrying that status: a
+  // by-id follow-up read on such content 404s (#153), and exports ship
+  // published pages only.
+  const mapCloudChild = (child: {
+    id: string;
+    title: string;
+    type: string;
+    status?: string;
+    position?: number | null;
+  }): TreeChild => {
+    const kind = classifyKind(child.type);
+    if (
+      kind !== "unsupported" &&
+      typeof child.status === "string" &&
+      child.status !== "current"
+    ) {
+      return {
+        id: child.id,
+        title: child.title,
+        kind: "unsupported",
+        unsupportedKind: child.type,
+        status: child.status,
+        position: child.position ?? null,
+      };
+    }
+    return {
+      id: child.id,
+      title: child.title,
+      kind,
+      ...(kind === "unsupported" ? { unsupportedKind: child.type } : {}),
+      position: child.position ?? null,
+    };
+  };
+
+  // Best-effort bulk version snapshot for Cloud child pages: one listing
+  // round-trip instead of one `getPageVersion` per child. Ids the bulk read
+  // does not return (restricted, deleted) keep `observedVersion` undefined and
+  // fall back to the per-page snapshot, whose completeness handling then
+  // classifies the failure. Bulk errors never fail discovery for the same
+  // reason — the per-page path is the authoritative one.
+  const attachObservedVersions = async (
+    children: TreeChild[],
+    context: TreeFetchContext,
+  ): Promise<TreeChild[]> => {
+    if (!client.getPageVersions) return children;
+    const pending = children.filter(
+      (child) => child.kind === "page" && child.observedVersion === undefined,
+    );
+    if (pending.length === 0) return children;
+    let versions: ReadonlyMap<string, { title: string; version: number }>;
+    try {
+      versions = await client.getPageVersions(
+        pending.map((child) => child.id),
+        { signal: context.signal },
+      );
+    } catch {
+      context.signal?.throwIfAborted();
+      return children;
+    }
+    return children.map((child) => {
+      if (child.kind !== "page" || child.observedVersion !== undefined) return child;
+      const snapshot = versions.get(child.id);
+      return snapshot ? { ...child, observedVersion: snapshot.version } : child;
+    });
+  };
+
   return {
     async getPage(id, context) {
+      const exportRead = client.getExportPageDetailsWithMedia ?? client.getExportPageDetails;
+      if (exportRead) {
+        const page = await exportRead.call(client, id, { signal: context.signal });
+        return {
+          id: page.id,
+          title: page.title,
+          storage: page.storage,
+          exportSource: page.exportSource,
+          version: page.version,
+          labels: page.labels,
+          spaceKey: page.spaceKey,
+          mediaAttachments: page.mediaAttachments,
+          mediaAttachmentsComplete: page.mediaAttachmentsComplete,
+          mediaAttachmentsTermination: page.mediaAttachmentsTermination,
+          unresolvedMediaFileIds: page.unresolvedMediaFileIds,
+          inlineComments: page.inlineComments,
+          inlineCommentsComplete: page.inlineCommentsComplete,
+        };
+      }
       const page = await client.getPageDetails(id, { signal: context.signal });
       return {
         id: page.id,
@@ -988,55 +1996,106 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
     },
 
     async getPageVersion(id, context) {
-      const v = await client.getPageVersion(id, { signal: context.signal });
-      return { version: v.version, title: v.title };
+      try {
+        const v = await client.getPageVersion(id, { signal: context.signal });
+        return { version: v.version, title: v.title };
+      } catch (error) {
+        await reportHierarchyFailure(
+          context,
+          client.deploymentType === "data-center" ? "data-center" : "cloud",
+          "page-version",
+          error,
+        );
+        throw error;
+      }
     },
 
     async getChildren(nodeRef, context) {
-      if (nodeRef.kind === "folder") {
-        const children = await client.getFolderChildren(nodeRef.id, { signal: context.signal });
+      // Data Center has no Confluence Cloud REST v2 hierarchy API. Its v1
+      // child-page endpoint already returns the complete traversable page set
+      // with position/version metadata, so use it directly and never probe
+      // `/api/v2/.../direct-children` on an on-premises deployment.
+      if (client.deploymentType === "data-center") {
+        if (nodeRef.kind === "folder") {
+          throw new TypeError("Data Center tree traversal cannot descend into Cloud folder nodes.");
+        }
+        let children: Awaited<ReturnType<TreeSourceClient["getChildrenWithPosition"]>>;
+        try {
+          children = await client.getChildrenWithPosition(nodeRef.id, {
+            signal: context.signal,
+          });
+        } catch (error) {
+          await reportHierarchyFailure(context, "data-center", "page-child-pages", error);
+          throw error;
+        }
         return children.map((child) => ({
           id: child.id,
           title: child.title,
-          kind: classifyKind(child.type),
-          ...(classifyKind(child.type) === "unsupported" ? { unsupportedKind: child.type } : {}),
-          // getFolderChildren carries no position/version field.
-          position: null,
+          kind: "page" as const,
+          position: child.position,
+          observedVersion: child.version,
         }));
       }
 
-      // Page parent: discover kinds, then re-fetch page positions/versions.
-      const discovered = await client.getPageDirectChildren(nodeRef.id, { signal: context.signal });
-      const positioned = await client.getChildrenWithPosition(nodeRef.id, { signal: context.signal });
-      const byId = new Map(positioned.map((p) => [p.id, p]));
+      if (nodeRef.kind === "folder") {
+        let children: Awaited<ReturnType<TreeSourceClient["getFolderChildren"]>>;
+        try {
+          children = await client.getFolderChildren(nodeRef.id, { signal: context.signal });
+        } catch (error) {
+          await reportHierarchyFailure(context, "cloud", "folder-direct-children", error);
+          throw error;
+        }
+        return attachObservedVersions(children.map(mapCloudChild), context);
+      }
 
-      return discovered.map((child): TreeChild => {
-        const kind = classifyKind(child.type);
-        if (kind === "page") {
-          const pos = byId.get(child.id);
-          return {
-            id: child.id,
-            title: child.title,
-            kind: "page",
-            position: pos?.position ?? null,
-            observedVersion: pos?.version,
-          };
+      // Page parent: discover kinds, falling back from the newer direct-children
+      // route only for endpoint/capability failures. Authentication, throttling,
+      // transport, cancellation, and server failures must retain their semantics.
+      let discovered: Awaited<ReturnType<TreeSourceClient["getPageDirectChildren"]>>;
+      try {
+        discovered = await client.getPageDirectChildren(nodeRef.id, { signal: context.signal });
+      } catch (error) {
+        context.signal?.throwIfAborted();
+        const status = errorStatus(error);
+        const fallbackStatuses = new Set([400, 404, 405, 501]);
+        if (status === undefined || !fallbackStatuses.has(status) || !client.getPageDescendants) {
+          await reportHierarchyFailure(context, "cloud", "page-direct-children", error);
+          throw error;
         }
-        if (kind === "folder") {
-          return { id: child.id, title: child.title, kind: "folder", position: null };
+        await context.onDiagnostic?.({
+          code: "hierarchy-fallback",
+          deployment: "cloud",
+          operation: "page-direct-children",
+          status,
+          ...(errorRequestId(error) ? { requestId: errorRequestId(error) } : {}),
+          fallback: "page-descendants",
+        });
+        try {
+          discovered = await client.getPageDescendants(nodeRef.id, {
+            depth: 1,
+            signal: context.signal,
+          });
+        } catch (fallbackError) {
+          await reportHierarchyFailure(context, "cloud", "page-descendants", fallbackError);
+          throw fallbackError;
         }
-        return {
-          id: child.id,
-          title: child.title,
-          kind: "unsupported",
-          unsupportedKind: child.type,
-          position: null,
-        };
-      });
+      }
+
+      return attachObservedVersions(discovered.map(mapCloudChild), context);
     },
 
     async getSpaceHomepageId(spaceKey, context) {
-      return client.getSpaceHomepageId(spaceKey, { signal: context.signal });
+      try {
+        return await client.getSpaceHomepageId(spaceKey, { signal: context.signal });
+      } catch (error) {
+        await reportHierarchyFailure(
+          context,
+          client.deploymentType === "data-center" ? "data-center" : "cloud",
+          "space-homepage",
+          error,
+        );
+        throw error;
+      }
     },
 
     async searchPages(cql, context) {

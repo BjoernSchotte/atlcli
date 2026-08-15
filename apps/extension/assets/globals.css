@@ -1,0 +1,265 @@
+/*
+ * Tailwind v4 (CSS-first) theme for the side panel — spec 010 Phase 0.
+ *
+ * Dark mode is expressed ONLY through CSS variables, never through Tailwind's
+ * `dark:` variant. Components therefore write `bg-card text-card-foreground`
+ * once and are correct in both schemes, which is what makes the same screen
+ * components mountable by a different host shell (a Forge iframe inherits the
+ * page's colour scheme) without a per-host fork.
+ *
+ * `.theme-light` / `.theme-dark` on <html> (element+class = higher specificity
+ * than the bare `:root` rules, including the ones inside the media query) are
+ * the seam for an explicit theme setting; Phase 0 ships no toggle and follows
+ * the OS preference.
+ */
+@import "tailwindcss";
+
+@source "../components";
+@source "../entrypoints";
+@source "../utils";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  --background: #ffffff;
+  --foreground: #172b4d;
+  --card: #ffffff;
+  --card-foreground: #172b4d;
+  --popover: #ffffff;
+  --popover-foreground: #172b4d;
+  --primary: #0c66e4;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f6fc;
+  --secondary-foreground: #172b4d;
+  --muted: #f7f9fc;
+  --muted-foreground: #44546f;
+  --accent: #e9f2ff;
+  --accent-foreground: #172b4d;
+  --destructive: #c9372c;
+  --destructive-foreground: #ffffff;
+  --success: #006644;
+  --success-foreground: #ffffff;
+  --warning: #a54800;
+  --warning-foreground: #172b4d;
+  --border: #d5deea;
+  --input: #b8c5d6;
+  --ring: #579dff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --destructive-foreground: oklch(0.145 0 0);
+    --success: oklch(0.7 0.14 152);
+    --success-foreground: oklch(0.145 0 0);
+    --warning: oklch(0.77 0.14 75);
+    --warning-foreground: oklch(0.145 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --input: oklch(1 0 0 / 16%);
+    --ring: oklch(0.556 0 0);
+  }
+}
+
+html.theme-light {
+  color-scheme: light;
+}
+
+html.theme-dark {
+  color-scheme: dark;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.145 0 0);
+  --success: oklch(0.7 0.14 152);
+  --success-foreground: oklch(0.145 0 0);
+  --warning: oklch(0.77 0.14 75);
+  --warning-foreground: oklch(0.145 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body {
+    height: 100%;
+    min-width: 320px;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+.kiteweave-agent-kite {
+  animation: kiteweave-agent-drift 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes kiteweave-agent-drift {
+  from {
+    transform: translate3d(-1px, 2px, 0) rotate(-2deg);
+  }
+
+  to {
+    transform: translate3d(2px, -3px, 0) rotate(2deg);
+  }
+}
+
+.kiteweave-agent-dot {
+  animation: kiteweave-agent-dot 900ms ease-in-out infinite alternate;
+}
+
+.scrollbar-invisible {
+  scrollbar-width: none;
+}
+
+.scrollbar-invisible::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes kiteweave-agent-dot {
+  from {
+    opacity: 0.35;
+    transform: translateY(1px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@media (forced-colors: active) {
+  .screen-tab[aria-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .kiteweave-agent-kite {
+    animation: none;
+  }
+
+  .kiteweave-agent-dot {
+    animation: none;
+  }
+}
+
+/*
+ * Minimal PDF.js AnnotationLayer structure. The full pdf_viewer stylesheet is
+ * intentionally not imported: this preview enables only filtered link
+ * annotations, no forms, comments, editors, popups, or scripting surfaces.
+ * PDF.js owns every section's percentage geometry; this CSS only establishes
+ * the positioned layer and full-size focusable anchors.
+ */
+.pdf-annotation-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+
+.pdf-annotation-layer section {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: auto;
+  transform-origin: 0 0;
+  user-select: none;
+}
+
+.pdf-annotation-layer .linkAnnotation > a {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.pdf-annotation-layer .linkAnnotation > a:hover {
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+}
+
+.pdf-annotation-layer .linkAnnotation > a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}

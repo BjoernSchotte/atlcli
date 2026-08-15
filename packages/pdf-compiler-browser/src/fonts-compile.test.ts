@@ -52,7 +52,7 @@ describe("custom font intake into BrowserPdfCompilerAssets.fonts", () => {
       ...(await fontBytesForFamily("Source Sans 3")),
       ...(await fontBytesForFamily("Source Serif 4")),
     ];
-    const wasm = await packageBytes("@myriaddreamin/typst-ts-web-compiler/wasm");
+    const wasm = await packageBytes("@atlcli/pdf-compiler-browser/wasm");
     const compiler = new BrowserPdfCompiler({ wasm: wasm.buffer, fonts: base });
     // Compile the Code-Pro doc with no Code-Pro bytes available: the family can
     // never be loaded from a base set that does not contain it.
@@ -69,7 +69,7 @@ describe("custom font intake into BrowserPdfCompilerAssets.fonts", () => {
     const custom = await fontBytesForFamily(CUSTOM_FAMILY);
     expect(custom.length).toBeGreaterThan(0);
 
-    const wasm = await packageBytes("@myriaddreamin/typst-ts-web-compiler/wasm");
+    const wasm = await packageBytes("@atlcli/pdf-compiler-browser/wasm");
     const compiler = new BrowserPdfCompiler({ wasm: wasm.buffer, fonts: [...base, ...custom] });
 
     const result = await compiler.compile(bundle(CUSTOM_DOC));

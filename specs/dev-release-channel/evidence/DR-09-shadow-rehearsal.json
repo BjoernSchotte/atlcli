@@ -1,0 +1,100 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-09",
+  "recordedAt": "2026-08-13T03:40:00Z",
+  "proofedParentHead": "e9865bd8fde6c1481b00a8c6ed76427e843a78b9",
+  "authoritativePublishedArtifact": false,
+  "purpose": "vollstaendiger manueller Shadow-Dev-Release aus einem gruenen Main-SHA mit exakten CLI-/MV3-Consumer-Proofs und null externen Publikationswrites",
+  "sourceEligibility": {
+    "sourceSha": "e9865bd8fde6c1481b00a8c6ed76427e843a78b9",
+    "canonicalMainCiRunId": 31663642329,
+    "canonicalMainCiUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31663642329",
+    "canonicalMainCiConclusion": "success",
+    "requiredJobConclusion": "success",
+    "releaseEligibilityJobId": 94334683350,
+    "releaseEligibilityJobUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31664004282/job/94334683350",
+    "releaseEligibilityConclusion": "success"
+  },
+  "workflow": {
+    "runId": 31664004282,
+    "runAttempt": 1,
+    "event": "workflow_dispatch",
+    "url": "https://github.com/BjoernSchotte/atlcli/actions/runs/31664004282",
+    "conclusion": "success",
+    "dryRun": true,
+    "publishHomebrewPlanned": true,
+    "forceRebuild": false,
+    "executedPublicationMutations": [],
+    "shadowCompletionJobId": 94336475688,
+    "shadowCompletionJobUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31664004282/job/94336475688"
+  },
+  "identity": {
+    "buildId": "dev-20260813.14.1-e9865bd8",
+    "releaseTag": "dev-20260813.14.1-e9865bd8",
+    "cliVersion": "0.17.2-dev.20260813.14.1+e9865bd8",
+    "extensionVersion": "0.17.2.14",
+    "extensionVersionName": "0.17.2-dev.20260813.14.1-e9865bd8",
+    "homebrewVersion": "20260813032810.14.1",
+    "stableLatestBefore": "v0.17.2",
+    "stableLatestExpectedAfter": "v0.17.2"
+  },
+  "assets": [
+    { "name": "atlcli-darwin-arm64.tar.gz", "size": 46555831, "sha256": "bab96f077db586cc966af8649be81eec95f9fa95569def07f961de0abc28347c" },
+    { "name": "atlcli-darwin-x64.tar.gz", "size": 48536692, "sha256": "4419152a85c638cb6cef29d6ee093c94664b0886940b5dead876ebfef7dc3244" },
+    { "name": "atlcli-extension-chrome-mv3-dev-20260813.14.1-e9865bd8.zip", "size": 21350791, "sha256": "c1ce703307199041a902ae10762a019d0c23163a8a6fb60993aa60d80ec796fc" },
+    { "name": "atlcli-linux-arm64.tar.gz", "size": 57628142, "sha256": "bd9673ee22570241245eb336135c1fef1591a79b69ac117f0223595be1ae0cde" },
+    { "name": "atlcli-linux-x64.tar.gz", "size": 57935559, "sha256": "a34e3dd063077f4743bb444d9a279076de8d740e113bc63e53c535630b54d76a" },
+    { "name": "atlcli-windows-x64.zip", "size": 60343284, "sha256": "f8945a32973c409d889ed94b3db731df0de8988176679339af518aa83a42d11c" },
+    { "name": "build-metadata.json", "size": 2409, "sha256": "8065360779454edb358685627dce951dc60101024bd5e836213764c5992400d0" },
+    { "name": "checksums.txt", "size": 762, "sha256": "68d6c28ba0d052521870ca66d7657b29ba2634870f2157b3dd82bff35711ee3d" },
+    { "name": "security-attestation.json", "size": 1273, "sha256": "7747b8613e0ae06127f155aeb20871b8a53b517ee7161ece8792b09f1b095f43" },
+    { "name": "source-eligibility.json", "size": 734, "sha256": "593d4afc27044e2f75318f2da8a55f2db1eb95cb316c0b893bf7bb0340003153" }
+  ],
+  "consumerProof": {
+    "bundleVerificationJobId": 94335731634,
+    "bundleVerificationJobUrl": "https://github.com/BjoernSchotte/atlcli/actions/runs/31664004282/job/94335731634",
+    "bundleVerificationConclusion": "success",
+    "packedExtensionSuites": ["worker", "jobs", "research", "rovo", "palette"],
+    "extensionOutputScan": "success",
+    "extensionEntryCount": 471,
+    "extensionContentTreeSha256": "11199223da1d952ad3bb9ae851d4098466f6c6ac5e7ca1c244dcc8cd8126f6fb",
+    "extensionManifestSha256": "331dd2e57fd6cdfc35826f4fe84e0b097506528f7fdeec02f3bf46a656dd4a21",
+    "nativeCliTargets": {
+      "linux-x64": { "jobId": 94336353214, "platform": "linux", "arch": "x64", "result": "success" },
+      "linux-arm64": { "jobId": 94336353133, "platform": "linux", "arch": "arm64", "result": "success" },
+      "darwin-x64": { "jobId": 94336353162, "platform": "darwin", "arch": "x64", "result": "success" },
+      "darwin-arm64": { "jobId": 94336353160, "platform": "darwin", "arch": "arm64", "result": "success" },
+      "windows-x64": { "jobId": 94336353159, "platform": "win32", "arch": "x64", "result": "success" }
+    },
+    "downloadedReceiptInspection": "success"
+  },
+  "negativeProofs": {
+    "tamperedDigestBlocked": true,
+    "invalidExtensionVersionBlocked": true,
+    "nonMainShaBlocked": true,
+    "missingAssetBlocked": true,
+    "stableLatestDriftBlocked": true,
+    "redOrMissingOrPendingRequiredRunBlocked": true,
+    "newerRedRerunOverridesOlderGreen": true,
+    "pullRequestAndManualCiRunsIgnored": true,
+    "explicitAdvisoryFailureEligibleButDegraded": true
+  },
+  "proof": {
+    "canonicalMainCi": "success",
+    "shaBoundReleasePreflight": "success",
+    "exactBundleVerification": "success",
+    "packedExtensionConsumers": "success",
+    "fiveNativeCliConsumers": "success",
+    "shadowPublicationPlan": "success",
+    "zeroPublicationWrites": true,
+    "stableDryRun": "success",
+    "operatorAuthorization": "explicit continuation through a real proven dev release"
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false,
+    "containsRawProviderLogs": false,
+    "containsOnlyPublicGitHubIdentifiersUrlsAndArtifactDigests": true
+  }
+}

@@ -1,0 +1,18 @@
+---
+import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-astro/fixtures";
+import StarlightPublicationPage from "@atlcli/web-publish-starlight/components/StarlightPublicationPage.astro";
+import {
+  PUBLISHED_GUIDE_NAVIGATION_V1,
+  PUBLISHED_GUIDE_PAGE_V1,
+  PUBLISHED_STARLIGHT_NAVIGATION_V1,
+} from "../publication-navigation";
+---
+
+<StarlightPublicationPage
+  page={PUBLISHED_GUIDE_PAGE_V1}
+  navigation={PUBLISHED_GUIDE_NAVIGATION_V1}
+  sidebar={PUBLISHED_STARLIGHT_NAVIGATION_V1.sidebar}
+  context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 }}
+>
+  <p><a data-atlcli-deep-link-action href="#publish">Link to publishing</a></p>
+</StarlightPublicationPage>

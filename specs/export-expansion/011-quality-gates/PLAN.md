@@ -26,11 +26,24 @@ BOM-aware `decodeSvgSource` closed every prior `pending-006` gap, so the CSS
 `url()`/`@import`/`style`-attr cases and the UTF-16LE case flip from ratcheted
 to hard `must-reject` (rules: `css-external-reference` and `blocked-element`);
 WIRED the both-engines gate via the shared sanitizer the PDF and DOCX engines
-both delegate to (no divergence possible). Still pending for a future 011 round:
-browser conformance cases 001–006 (each lands with its folder's follow-up PR),
-the benchmark runner/M1-corpus/CI-trend, all PDF/UA tasks, the remaining
-security tasks (archive corpus, raw `.docx` budget, storage-parse/link-scheme,
-full compiler-timeout coverage), E2E discipline, and docs pages.
+both delegate to (no divergence possible).
+
+**Round 2b (2026-07-20, after every feature spec merged) — landed:** ALL SIX
+browser conformance cases 001–006 (`blocks`, `scope`, `content-compat`,
+`macros`, `placeholders`, `docx-quality`) with shared block-producing fixtures
+in `@atlcli/export-fixtures` (so browser + CLI consume identical bytes),
+registered via the round-1 registry/manifest, run through the generic Playwright
+loop and the drift guard; the shape-parity gate (`check-parity.ts`) extended
+from one case to FIVE PDF cases (all byte + report identical browser vs CLI);
+the M1 acceptance corpus + offline `run-m1-acceptance` runner; the cross-plan
+archive-policy conformance gate (007's `template-pack`); and a self-skipping
+veraPDF PDF/UA ratchet (pattern: the LibreOffice smoke). Still pending: DOCX
+per-part cross-host parity for 005/006, the benchmark runner/CI-trend, the
+alt-text/language PDF/UA audits + docs (need feature-package source changes,
+out of this lane), the remaining source-owned security tasks (raw `.docx`
+budget, storage-parse/link-scheme, active-content — all in
+`packages/{confluence,docx}` source, out of this lane), E2E discipline
+(live-tenant, orchestrator only), and docs pages.
 
 ## Reference
 
@@ -122,6 +135,7 @@ writing only `002-scope-orchestration/` and `003-content-features/` exist.
 | 006 (Word quality, Lane G, T1.13–T1.16) | numbering.xml, tblGrid, SVG embedding | DOCX-quality case; SVG path is where the shared sanitizer (T4.7) plugs in |
 | 007 (PDF templates, Lane P, T2.1–T2.4) | `settings` threading, watermark, `.wiki-pdf-template` | PDF-settings case; container format is a T4.7 hardening target |
 | 008 (CLI, Lane K, T3.1–T3.5) | Bun compile port, `wiki export --format pdf`, scope flags | The other half of shape parity: CLI runs the same fixtures as the harness |
+| 012 (curated templates, T6.5) | Second built-in PDF template ("Manuscript") | `manuscript` conformance case: compiles one fixture under BOTH manifests, asserts determinism + that the two differ, and emits digests the parity gate compares. *(Round 3: DONE — byte parity across browser and CLI holds.)* |
 
 Hard sequencing: each conformance case merges **in the same PR wave as its
 feature folder** (it is that folder's acceptance test). The parity comparison
@@ -247,42 +261,73 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       case-ID list doesn't exactly match the expected set for the folders
       that have landed — catching an unregistered or duplicated case
       before merge.
-- [ ] One harness case per folder, registered in the `ConformanceCase`
+- [x] One harness case per folder, registered in the `ConformanceCase`
       registry above, with its own `data-testid` result element, asserted
       via the generic Playwright loop in
       `apps/browser-export-harness/tests/exports.e2e.ts`. Concrete case list
       (**seven browser cases, 001–007**; case 008 is the CLI/Bun parity
       runner below and is deliberately not a browser case — see Definition
-      of Done, which is corrected accordingly):
-  - [ ] **Case 001 `blocks`** (`src/blocks-case.ts`): fixture using every new
+      of Done, which is corrected accordingly). *(Round 2: all six feature-lane
+      cases 001–006 landed. Shared block-producing fixtures live in
+      `@atlcli/export-fixtures` so the browser case and the Bun/CLI parity
+      runner consume the SAME bytes; 001–004 emit PDF digests + report
+      projections into the shape-parity gate; 005/006 are DOCX-only.)*
+  - [x] **Case 001 `blocks`** (`src/blocks-case.ts`): fixture using every new
         `ExportBlock` field (`caption`, `pageBreak`, `orientation`, `anchor`,
         enriched `unknown`) through both engines; asserts no unexpected note
-        codes and warm-repeat determinism for the PDF side.
-  - [ ] **Case 002 `scope`** (`src/scope-case.ts`): three-page fixture tree
+        codes and warm-repeat determinism for the PDF side. *(Done. Caption is
+        exercised on `table` + `codeBlock` (no image asset needed → both engines
+        emit zero warning notes); DOCX asserts the table grid, landscape
+        section, named bookmark and preserved unknown-macro placeholder.)*
+  - [x] **Case 002 `scope`** (`src/scope-case.ts`): three-page fixture tree
         through `composeChapters` → both engines; asserts heading-level
         offsets, chapter page breaks, namespaced anchors resolve (no dangling
         link diagnostics), and PDF `pageCount`/outline growth via
-        `validatePdfOutput`.
-  - [ ] **Case 003 `content-compat`** (`src/content-case.ts`): storage
+        `validatePdfOutput`. *(Done. The fixture carries an in-page anchor +
+        link so anchor namespacing is genuinely exercised; compose emits zero
+        warnings; DOCX asserts ≥2 chapter page breaks + the namespaced anchor
+        bookmark.)*
+  - [x] **Case 003 `content-compat`** (`src/content-case.ts`): storage
         fixture with `scroll-pagebreak`, `scroll-landscape`/`-portrait`,
         `scroll-title`→caption, scroll-only/-ignore (exporter-sensitive);
         asserts DOCX section/`w:br` output parts and PDF page count +
         orientation effect; includes the 200-row repeating-header table.
-  - [ ] **Case 004 `macros`** (`src/macro-case.ts`): real
+        *(Done. DOCX consumes the storage directly; asserts the page break, the
+        `w:orient="landscape"` section and ≥200 table rows; PDF grows past one
+        page. scroll-only/-ignore left for a follow-up — the parser side is
+        already unit-tested in `@atlcli/confluence`.)*
+  - [x] **Case 004 `macros`** (`src/macro-case.ts`): real
         `MacroRendererRegistry` + resolver pass with deterministic in-memory
         fetch ports (recorded Jira search payload, diagram preview PNG bytes,
         export_view HTML); asserts the full fallback chain ends in
         placeholder+report note for an unknown macro and that the Jira table
-        renders as a real table block.
-  - [ ] **Case 005 `placeholders`** (`src/placeholder-case.ts`): template
+        renders as a real table block. *(Done via `defaultRegistry` +
+        `resolveMacroBlocks` with in-memory Jira + attachment ports: asserts the
+        Jira JQL macro → real `table`, the draw.io + unknown macros → placeholder
+        FLOOR with `macro-degraded`, and both engines serialize the result. The
+        resolution notes ride into the PDF report as source notes so the parity
+        gate checks them. Diagram→image PNG embedding is exercised at unit level
+        in `@atlcli/export-macros`; the harness keeps the port asset-free for
+        byte-stable parity.)*
+  - [x] **Case 005 `placeholders`** (`src/placeholder-case.ts`): template
         built with `buildDocx` containing includepage + metadata
         placeholders; real resolver + document pass with an in-memory
         `getIncludedPage` port; asserts cycle protection note and resolved
-        part text.
-  - [ ] **Case 006 `docx-quality`** (`src/docx-quality-case.ts`): asserts
-        `word/numbering.xml` exists with multilevel defs, `w:tblGrid` widths
-        from `columnWidths`, an SVG attachment lands as svgBlip + PNG
-        fallback media parts, and the StyleRef header field survives export.
+        part text. *(Done. In-memory `getIncludedPage` via the production
+        `buildGetIncludedPage`; asserts the included page text + `$scroll.title`
+        resolve, a self-include triggers `includepage-cycle`, and
+        `$scroll.metadata.*` degrades with `placeholder-unsupported`.)*
+  - [x] **Case 006 `docx-quality`** (`src/docx-quality-case.ts`): asserts
+        `word/numbering.xml` carries independent definitions and authored starts,
+        `w:tblGrid` widths from `columnWidths`, an SVG attachment lands as
+        svgBlip + PNG fallback media parts, and the StyleRef header field
+        survives export.
+        *(Done. A nested ordered list forces two self-contained single-level
+        definitions/instances with starts 3 and 8 plus depth-specific indents;
+        `columnWidths: [300,100]` (spread 3.0) forces two real `w:gridCol`
+        widths; a safe SVG attachment fed through the canvas rasterizer lands as
+        `asvg:svgBlip` + a PNG media pair; the header STYLEREF survives with no
+        unused-style warning (the level-1 heading emits the referenced style).)*
   - [x] **Case 007 `pdf-settings`** (`src/pdf-settings-case.ts`): compiles
         the same blocks twice with different `settings` (A4/portrait vs
         Letter/landscape, watermark on, cover/outline toggled); asserts the
@@ -290,19 +335,24 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
         and a `.wiki-pdf-template` container round-trips through the template
         library. *(Done. "Watermark present" is proven robustly by asserting
         watermark-on vs watermark-off bytes differ rather than glyph-decoding.)*
-  - [ ] **Case 008** is not a browser case: it is the parity runner below.
-        *(Done for pdf-settings — see check-parity.ts. Docx/other cases join
-        as their fixtures land.)*
+  - [x] **Case 008** is not a browser case: it is the parity runner below.
+        *(Round 2: `check-parity.ts` now proves byte + report parity for FIVE
+        PDF cases — `pdf-settings`, `blocks`, `scope`, `content-compat`,
+        `macros` — driven by the SAME `@atlcli/export-fixtures` block builders
+        on both hosts. DOCX per-part parity for 005/006 stays pending — those
+        are DOCX-only cases that assert their invariants in-case; wiring the
+        cross-host DOCX per-part digest map is the remaining check-parity work.)*
 - [x] Extend each case result with output digests: sha256 for PDF bytes,
       per-part sha256 map for DOCX (via `unzipDocx` in-page); surface them in
       the JSON `*-result` elements. Also surface a canonical projection of
       the case's `ExportNote`s (code, severity, count, failure phase —
       excludes timing and host-specific free text) alongside the digests,
       so the parity gate below can compare reports, not only bytes.
-      *(Scope this round: `pdf-settings` emits sha256 digests + a report-note
-      projection (`emitsDigests: true`), and `check-parity.ts` consumes them.
-      The DOCX per-part digest map and the folder-lane cases (001–004) emit
-      their digests as each case lands; the comparison primitives
+      *(Round 1: `pdf-settings` emits sha256 digests + a report-note projection.
+      Round 2: cases `blocks`/`scope`/`content-compat`/`macros` (001–004) now
+      emit sha256 PDF digests + report projections too (`emitsDigests: true`),
+      all consumed by `check-parity.ts`. The DOCX per-part digest map for the
+      DOCX-only cases (005/006) is still pending; the comparison primitives
       (`compareDocxParity`, per-part raster metric) are already built and
       unit-tested in `parity-compare.ts`.)*
 - [x] **Shape-parity gate**: `apps/browser-export-harness/scripts/check-parity.ts`
@@ -347,25 +397,80 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       (UMSETZUNGSPLAN's M1 acceptance explicitly needs labels, `scroll-*`
       macros, draw.io diagrams, and a Jira table — see the M1 corpus task
       below, which is a distinct fixture from this one).
-- [ ] **M1 acceptance corpus** (new task, precedes the M1 milestone check):
-      `scripts/bench/generate-m1-corpus.ts` — a versioned 50-page
-      `ExportPageNode[]` tree (not raw blocks) assembled from the same
-      fixture building blocks as harness cases 002/003/004/005 (labels on a
-      subset of pages, `scroll-pagebreak`/`scroll-landscape`/`scroll-title`
-      macros, a draw.io preview-PNG macro, a live-Jira-table macro, an
-      includepage placeholder), committed to
-      `packages/export-fixtures/src/m1-corpus.ts` so it is not tenant- or
-      network-dependent. A new script
+- [~] **M1 acceptance corpus** (new task, precedes the M1 milestone check):
+      a versioned 50-page `ExportPageNode[]` tree (not raw blocks) assembled
+      from the same fixture building blocks as harness cases 002/003/004/005
+      (labels on a subset of pages, `scroll-pagebreak`/`scroll-landscape`/
+      `scroll-title` macros, a draw.io preview macro, a live-Jira-table macro),
+      committed to `packages/export-fixtures/src/m1-corpus.ts` so it is not
+      tenant- or network-dependent. A new script
       `scripts/bench/run-m1-acceptance.ts` runs this corpus through
-      `fetchExportTree`-shaped input → `composeChapters` → both engines, via
-      **both** the browser harness (Playwright) and the CLI-side production
-      path (T3.1), producing DOCX and PDF for each, and emits a
-      machine-readable `m1-acceptance.json` record (`{corpusDigest, docx:
-      {harness, cli}, pdf: {harness, cli}, digestsMatch, notes}`) as a CI
-      artifact. The M1 milestone in UMSETZUNGSPLAN is only marked done once
-      this record is green — a formally green M1 that never ran the
-      integrated product story once is the failure mode this closes.
-- [ ] Runner: `scripts/bench/run-bench.ts` — phases measured separately with
+      `composeChapters` → both engines, producing DOCX and PDF, and emits a
+      machine-readable `m1-acceptance.json` record. The M1 milestone in
+      UMSETZUNGSPLAN is only marked done once this record is green — a formally
+      green M1 that never ran the integrated product story once is the failure
+      mode this closes.
+      *(Round 2: the corpus + the CLI-side runner are DONE and green offline —
+      `run-m1-acceptance` composes the 50-page tree and exports a byte-stable
+      (deterministic, compiled-twice-identical) DOCX + real-Typst PDF, emitting
+      `{version, corpusDigest, pages, blockCount, docx:{cli}, pdf:{cli},
+      digestsMatch, notes}`. Pending: `includepage` sits in the DOCX template
+      pass, not the block tree, so it is exercised by case 005, not the corpus;
+      the browser-harness (Playwright) M1 leg + `digestsMatch` (browser vs CLI)
+      and the diagram's PNG embedding are pending; the LIVE DOCSY acceptance run
+      is orchestrator territory. Absolute PDF/DOCX bytes are NOT pinned across
+      the repo (they track the Typst wasm/font versions — see Risks); the
+      corpus structural digest IS pinned in `generate-m1-corpus.test.ts`.)*
+      *(Round 3: the BROWSER LEG and `digestsMatch` are now DONE. Conformance
+      case `m1` (`apps/browser-export-harness/src/m1-case.ts`) runs the SAME
+      committed corpus through the browser engines (real module Worker + Typst
+      WASM) and publishes its digests; `run-m1-acceptance.ts` reads them and
+      reports `digestsMatch`. Measured result: **PDF matches byte-for-byte
+      across hosts** (417,487 B, same sha256), and all **6** DOCX parts match
+      (`[Content_Types].xml`, `_rels/.rels`, `word/_rels/document.xml.rels`,
+      `word/document.xml`, `word/settings.xml`, `word/styles.xml` — the count is
+      recorded as `docx.partCount` in the record, so it is checkable rather
+      than asserted).
+      One real finding: the DOCX **container** bytes differ across hosts at
+      IDENTICAL length (5,257 B both) because PizZip deflates through
+      `node:zlib` under Bun and pako in the browser. That is an encoding
+      difference, not a document difference, so the DOCX contract is compared
+      part-by-part on DECOMPRESSED content — the same reasoning the media parity
+      check already uses for rasterizer-divergent PNGs. The record now carries
+      `docx.partsMatch` (the contract, true), `docx.containerBytesMatch`
+      (recorded for transparency, expected false) and `firstDivergentPart`.
+      SCOPE OF THE DOCX CONTRACT, stated explicitly because `docxPartDigests`
+      sorts part names: what is compared is the SET of part names and each
+      part's decompressed bytes. Part ORDER within the archive and per-entry zip
+      metadata (timestamps, compression method/flags, external attributes) sit
+      OUTSIDE the contract — they are encoding, and Word does not read meaning
+      from them. A divergence in either would not be caught here; a missing or
+      extra part, or any content change, would be (`firstPartDivergence`
+      compares the union of names on both sides). This
+      is also why `m1` is deliberately NOT in `check-parity.ts`'s case list —
+      that gate only compares whole bytes and would fail permanently and
+      meaninglessly on the zip container. `digestsMatch` stays `null` (never
+      `true`) when the harness has not run or the compiler versions differ; a
+      measured mismatch is a hard failure. Still pending: `includepage` (case
+      005's territory, as noted), the diagram's PNG embedding, and the LIVE
+      DOCSY run.)*
+      *(Round 3 review fix — the cross-host leg could never have run in CI.* The
+      harness manifest is gitignored and job-local: `bench.yml` ran
+      `run-m1-acceptance.ts` with no harness step, so `digestsMatch` would have
+      been `null` forever, while `ci.yml` ran the harness but never the
+      acceptance script — the two halves never met. The `true` observed locally
+      came from a leftover artifact of an earlier local harness run, which is
+      exactly the "formally green M1 that never ran the integrated story" this
+      task exists to prevent. FIXED: the `bench` job now builds the harness,
+      installs Chromium, runs the Playwright harness (publishing the `m1`
+      digests), and only then runs the acceptance script — in ONE job. A new
+      `--require-cross-host` flag, which CI passes, turns "not measured" into a
+      hard failure, so a harness that silently stops publishing `m1` fails the
+      step instead of degrading to `null`. **The job that now produces a
+      non-null `digestsMatch` is `bench.yml` → job `bench`.** Verified by
+      reproducing the exact CI step order locally: exit 1 with the manifest
+      removed, exit 0 and `digestsMatch true` after the harness step.)*
+- [x] Runner: `scripts/bench/run-bench.ts` — phases measured separately with
       wall-clock ms: blocks→compose (002), DOCX serialize+zip, PDF
       serialize+compile (real Typst WASM via the T3.1 Bun port). **RSS
       methodology, made internally consistent**: `/usr/bin/time -v`
@@ -381,7 +486,20 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       Output: one JSON record per phase
       (`{commit, date, phase, ms, peakRssBytes, outputBytes, pages}`) plus
       one whole-run record.
-- [ ] **End-to-end tier** (extends the engine-only benchmark, addresses the
+      *(Round 3: DONE. Phases `baseline|compose|docx|pdf`, each in its own child
+      under `/usr/bin/time`; a `--phase all` child supplies
+      `wholeProcessPeakRssBytes`. A `baseline` phase (load fixture + wasm +
+      fonts + template, do no work) is measured too, so the runtime/asset floor
+      inside every phase-scoped RSS is subtractable rather than guessed at.
+      `bench-env.ts` parses BOTH `/usr/bin/time` flavours — GNU `-v` (kbytes,
+      Linux/CI) and BSD `-l` (bytes, macOS) — and records which one produced a
+      number as `rssMethod`; when neither exists it records `null`, never a
+      fabricated figure. Each phase also reports `noteCodes`, so a silently
+      skipped image shows up instead of quietly making a phase look faster.
+      Measured 500-page engine tier (M5 Max, Bun 1.3.8, Typst 0.14.2, median of
+      3): compose 9 ms / 152 MB · docx 222 ms / 336 MB / 523 KB · pdf 7,952 ms /
+      3,035 MB / 16.2 MB · whole run 8,142 ms / 3,114 MB.)*
+- [x] **End-to-end tier** (extends the engine-only benchmark, addresses the
       parsing/resolver/transfer gap): `scripts/bench/run-e2e-bench.ts` — the
       500-page corpus generated as **storage XHTML** (not pre-parsed
       blocks), run through the real pipeline
@@ -393,7 +511,27 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       is explicitly **out of scope for this task** — recorded as an open
       question below, not silently dropped, since it needs Playwright
       wiring this folder doesn't otherwise require for benchmarks.
-- [ ] CI thresholds as **non-blocking trend first**: new
+      *(Round 3: DONE. `generate-storage-fixture.ts` emits the 500-page corpus as
+      storage XHTML plus a real in-memory `TreeSource`; phases
+      `baseline|fetch|resolve|compose|docx|pdf` each run in their own child, and
+      each reports cold AND warm (the work run twice in-process), median of 3.
+      The resolver pass is the REAL `defaultRegistry` + `resolveMacroBlocks` —
+      the run confirms both outcomes fire (`macro-rendered-via` for the Jira
+      table, `macro-degraded` for the draw.io floor), so the resolver is
+      genuinely exercised rather than walked past. Measured 500-page e2e tier
+      (same machine): fetch 33 ms · resolve 6 ms · compose 13 ms · docx 236 ms ·
+      pdf 7,677 ms cold / 577 ms warm · whole run 8,127 ms / 3,400 MB.
+      Chromium variant remains out of scope as specified.
+      FINDINGS worth acting on: (a) PDF compile is ~94% of wall clock in both
+      tiers — nothing else moves the total; (b) the parse+resolve+compose gap
+      the engine tier cannot see is ~52 ms of ~8.1 s (<1%) for THIS corpus, but
+      it does not hold for memory (e2e peaks ~9% higher); (c) peak RSS of
+      3.0–3.4 GB EXCEEDS this task's own `< 2 GB` placeholder budget below —
+      the placeholder was a pre-measurement guess and must be re-derived from
+      these numbers before anything is frozen; (d) the warm PDF number is a
+      Typst incremental-cache hit on byte-identical input, so it is a lower
+      bound on setup cost, NOT a steady-state re-export cost.)*
+- [x] CI thresholds as **non-blocking trend first**: new
       `.github/workflows/bench.yml`, nightly `schedule` + manual dispatch,
       `continue-on-error: true`; uploads the JSON as an artifact, restores
       the previous record via `actions/cache`, and emits `::warning::` when
@@ -405,18 +543,58 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       < 60 s / < 1.5 GB RSS; 500-page PDF compile < 180 s / < 2 GB RSS,
       engine tier and end-to-end tier budgeted separately) and flip the
       workflow to failing. Never a per-PR gate.
+      *(Round 3: the WORKFLOW is DONE — `.github/workflows/bench.yml`, nightly
+      `schedule` + `workflow_dispatch`, `continue-on-error: true`, both tiers +
+      the M1 corpus, records uploaded as an artifact, history restored/updated
+      via `actions/cache`. `scripts/bench/compare-trend.ts` computes the rolling
+      median and emits `::warning::` past >20% time / >15% RSS. Comparison is
+      environment-scoped: a record is only comparable when tier, page count,
+      fixture digest, Typst wasm digest, font-set digest, OS, arch, runner AND
+      `rssMethod` all match, so a deliberate compiler/font bump resets the
+      baseline instead of firing a false alarm, and a warning names the phase,
+      tier and machine. Verified end to end locally (a synthetic +50% time /
+      +30% RSS record fires exactly the expected three warnings).
+      *(Round 3 review fix — the workflow was inert in CI.* `runner` was derived
+      from `RUNNER_NAME`, which on GitHub-hosted runners is instance-specific
+      ("GitHub Actions 2"/"…14") and ALWAYS set, so the `RUNNER_OS` fallback was
+      unreachable. Every nightly would have found zero comparable records and
+      never warned — invisible behind `continue-on-error: true`. It only passed
+      locally because a dev machine has a stable hostname. `benchRunnerLabel`
+      now emits a runner CLASS (`ci:<environment>:<os>:<arch>` in CI, hostname
+      locally, `ATLCLI_BENCH_RUNNER` override), pinned by tests in
+      `bench-env.test.ts` and, end to end, by a `compare-trend.test.ts` case
+      asserting two nightlies differing ONLY in `RUNNER_NAME` are comparable and
+      that a regression between them is detected. Also hardened `loadHistory`:
+      it previously guarded unparseable JSON but not structurally-invalid
+      records, so one valid-JSON record missing `environment` would throw before
+      `--append` ran, leaving the poisoned entry in the cache for `restore-keys`
+      to resurrect forever. Bad entries are now dropped and rewritten out.)*
+      STILL OPEN, by design: `scripts/bench/budgets.json` is NOT written and the
+      workflow is NOT failing — that needs the ~2 weeks of trend data this
+      workflow has yet to collect. Note the measured 3.0–3.4 GB peak RSS
+      contradicts the `< 2 GB` placeholder above; do not freeze that number.)*
 - [x] Regression tests for the generator (determinism: same seed → identical
       JSON; page/block counts exact) in `scripts/bench/generate-fixture.test.ts`
-      and `scripts/bench/generate-m1-corpus.test.ts`. *(generate-fixture.test.ts
-      done; generate-m1-corpus.test.ts pending with the M1 corpus above.)*
-- [ ] Document the envelope in `src/content/docs/reference/` once measured —
+      and `scripts/bench/generate-m1-corpus.test.ts`. *(Both done:
+      generate-m1-corpus.test.ts pins the corpus's page/block/label counts, a
+      golden structural sha256, the integrated-story block coverage, and clean
+      composition — all pure over the corpus JSON, no compile.)*
+- [x] Document the envelope in `src/content/docs/reference/` once measured —
       engine tier and end-to-end tier reported separately, each tier's scope
       stated explicitly (what it does and does not exercise); this is the
       precondition for any chapter-streaming work (parked, T4.9).
+      *(Round 3: `src/content/docs/reference/export-performance.md`, linked in
+      the Reference sidebar. Both tiers are tabled separately with the machine +
+      runtime + compiler + font context, each tier's scope AND anti-scope stated
+      explicitly, the RSS methodology explained (why per-phase RSS is still a
+      whole-process number), and the four findings above written up — including
+      the budget contradiction and the warm-number caveat, rather than only the
+      flattering figures. Reproduction commands, flag table, and troubleshooting
+      included per the docs standards.)*
 
 ### PDF/UA
 
-- [ ] veraPDF in CI over exported fixtures: new
+- [~] veraPDF in CI over exported fixtures: new
       `.github/workflows/verapdf.yml` (nightly + `workflow_dispatch` +
       release tags). Steps: build, compile the conformance corpus (the
       harness fixture set + the 50-page bench fixture, plus a fixed
@@ -431,7 +609,15 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       distinct "veraPDF tool broken" message if it doesn't match — this
       catches a bad pin/silent-upgrade before it's mistaken for a baseline
       regression.
-- [ ] Ratchet, not aspiration, and precise enough to catch a growing
+      *(Round 2: `scripts/verapdf/compile-corpus.ts` DONE and runnable offline
+      (compiles a canary + `blocks` + `pdf-settings-a` to real tagged PDFs,
+      deadline-wrapped); the self-skipping gate `verapdf.ratchet.test.ts` runs
+      veraPDF `--flavour ua1 --format json`, does the canary "tool broken"
+      self-check first, then ratchets — SKIPS when the binary is absent, same
+      pattern as the LibreOffice smoke. Pending (needs the binary / CI): the
+      sha256 `verapdf.lock.json` pin and the `verapdf.yml` workflow — authored
+      only when a runner has veraPDF, since neither is verifiable offline.)*
+- [~] Ratchet, not aspiration, and precise enough to catch a growing
       regression: store failing verdicts in `scripts/verapdf/baseline.json`
       keyed by `{fixture, ruleId, failureCount, locationsDigest}`, not by
       rule ID alone — a rule ID staying in the baseline while its failure
@@ -441,25 +627,87 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       baselined key whose count increases; warns when a baselined key
       starts passing (so the baseline shrinks monotonically). Baseline
       changes are reviewed diffs.
-- [ ] Alt-text audit task: emit a dedicated note code (e.g.
-      `pdf-image-missing-alt`) from `packages/pdf/src/prepare.ts` when an
+      *(Round 2: the ratchet CORE (`scripts/verapdf/ratchet.ts`) is DONE and
+      unit-tested (`ratchet.test.ts`, no binary needed) with synthetic veraPDF
+      JSON — proves it catches a NEW rule, a RISING count on a baselined rule
+      (keyed by `{fixture, ruleId, failureCount, locationsDigest}`, not id
+      alone), and warns on a shrinking baseline. `baseline.json` starts empty;
+      it is populated from the first real veraPDF run (a reviewed diff).)*
+- [x] Alt-text audit task: emit a dedicated note code (e.g.
+      `pdf-image-missing-alt`; renamed to `image-missing-alt` by spec 010's
+      vocabulary unification) from `packages/pdf/src/prepare.ts` when an
       image block has no `alt`; surface it in `PdfExportReport` and the CLI
       `--report json` (T3.4) so authors can fix source pages. Same audit in
       the DOCX path (`packages/docx/src/image.ts`).
-- [ ] Language audit task: thread `PdfExportMetadata.language` into the Typst
+      *(Round 3: DONE. `pdf-image-missing-alt` is emitted from
+      `preparePdfDocument` with spec 003 provenance (`source.pageId` /
+      `blockPath` / `assetName`) — `walk` now threads a block path using the
+      serializer's exact convention, so a note locates the offending image
+      inside nested containers. Emitted from the SOURCE block before the fetch,
+      so an image that fails to embed is audited too; whitespace-only alt counts
+      as missing. `PreparePdfOptions.pageContext` lets a host supply the page
+      identity external images/single-page exports don't carry, with the block's
+      own attachment pageId winning. Reaches `PdfExportReport.notes` via
+      prepare → serialize → report, hence `--report json`. DOCX equivalent
+      (`image-missing-alt`): `auditImageAltText`/`isMissingAltText` in
+      `packages/docx/src/image.ts` (identical whitespace rule, so the engines
+      cannot disagree), wired through the image seam's existing outcome-`notes`
+      channel in `export.ts` on BOTH the raster and svgBlip paths, reusing
+      `budgetMeta`'s page-identity resolution. Only successfully embedded images
+      are audited — a failed embed already reports `image-embed-failed`.
+      Registry: three codes added to `EXPORT_NOTE_CODES`.)*
+- [x] Language audit task: thread `PdfExportMetadata.language` into the Typst
       template (`packages/pdf/src/template.ts`, `set text(lang: ..)`) and
       verify a `/Lang` entry in the catalog; extend
       `packages/pdf/src/validate.ts` with a `hasLang` field and extend
       `packages/pdf/src/validate.test.ts` accordingly. Warn on export when
       metadata has no language.
-- [ ] Honest conformance statement in docs: new page
+      *(Round 3: DONE, and the Round-2 note above was STALE on one point:
+      `template.ts` ALREADY threads `lang: meta.at("language", …)` /
+      `region:` — `git log -S` attributes that to f8b1340 (#42, browser-native
+      Typst export), NOT to spec 012 as an earlier draft of this note claimed.
+      So NO template change was needed and
+      **both pinned digests stay untouched** (`PRE_MIGRATION_DIGEST`,
+      `ONE_PER_PAGE_PRE_REFINEMENT_DIGEST` both pass unchanged); no
+      re-baselining. That the threading actually produces a catalog `/Lang` is
+      proven against the REAL pinned compiler in
+      `packages/pdf-compiler-browser/src/pdf-lang-catalog.test.ts` (de → `/Lang
+      (de)`, en+GB → `/Lang (en-GB)`, absent → `/Lang (en)`), inspecting
+      compiled bytes. `validatePdfOutput` gains `hasLang`, matched against the
+      CATALOG object specifically — a `/Lang` on a structure element or an XMP
+      `dc:language` packet is not the document-level declaration PDF/UA 7.2
+      requires, and `validate.test.ts` pins both negatives.
+      `auditPdfLanguage` in `run-export.ts` emits `pdf-language-missing` for
+      two independent defects: no usable language on the request (the template
+      then silently claims "en"), and no `/Lang` in the produced file — the
+      second read from the real output bytes, so a report can never attest to a
+      property the file lacks.)*
+- [x] Honest conformance statement in docs: new page
       `src/content/docs/reference/pdf-accessibility.md` stating exactly:
       output is **Tagged PDF** with document language, outline, embedded
       fonts, and alt-text pass-through; it is **not certified PDF/UA-1**;
       list the open veraPDF rule gaps from `baseline.json` and link the
       audit note codes. No marketing language; update the page in the same
       PR whenever the baseline changes.
-- [ ] HEAD-bound security attestation artifact: `scripts/security/
+      *(Round 3: DONE, page written + registered in the Astro sidebar. Because
+      it is a liability statement, every affirmative claim is PINNED against
+      real compiled PDF bytes in
+      `packages/pdf-compiler-browser/src/pdf-accessibility-claims.test.ts`
+      (tagged + `/Suspects false`, catalog `/Lang`, `/Outlines` from headings,
+      embedded `/FontFile*`, author alt → `/Alt` on a `/Figure`) — a template
+      change that falsifies a sentence turns that file red. Three findings
+      verified while writing and now documented, each a way an export can LOOK
+      accessible without being so: (1) a missing alt becomes the FILENAME in
+      `/Alt`, not an absent `/Alt`, so a presence-only checker passes while a
+      screen reader reads "chart-final-v2.png"; (2) the `outline` setting
+      controls the in-body Contents PAGE, not the PDF bookmark outline, which is
+      emitted from headings either way; (3) `profile: "pdf-ua-1"` produces
+      BYTE-IDENTICAL output to `"tagged"` and writes no `pdfuaid` identifier —
+      it records what a host asked for, never what was achieved. The veraPDF
+      gap list is honest about being EMPTY: `baseline.json` is `{}` because no
+      run has happened (binary pin + workflow still pending), and the page
+      states that this means "not yet measured", NOT "zero gaps".)*
+- [x] HEAD-bound security attestation artifact: `scripts/security/
       attest.ts` emits `security-attestation.json` (`{commit, date,
       veraPdfDigestOk, veraPdfBaselineDelta, securityReviewNote, m1
       AcceptanceOk}`, unchanged shape) as a CI artifact on every push to
@@ -485,6 +733,25 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       pre-publish gate only if/when that deferred work resumes; recorded as
       a cross-plan dependency, not built here (see Risks and
       crossPlanImpacts).
+      *(Round 3: DONE — `scripts/security/attest.ts` + `attest.test.ts` (19
+      tests) + `.github/workflows/security-attestation.yml` (push to `main`,
+      `v*` tags, `workflow_dispatch`; `fetch-depth: 2` so the baseline delta has
+      a parent to diff against; artifact uploaded even on failure). Design rule
+      enforced by tests: NEVER attest to something unverified — every field is
+      either an established fact or `null`, never collapsed to a
+      passing-looking value, and a `checks[]` entry records why each field holds
+      its value. That matters today, since the veraPDF binary is not yet pinned
+      or present on any runner: the honest output is `veraPdfDigestOk: null`
+      with a stated reason. Exit code follows the same line — a DETERMINED
+      failure (digest mismatch, failed M1 run) is red, an unperformable check is
+      not, because a permanently red job is one nobody reads. `date` is the
+      commit's own committer date, not wall-clock, so re-running on one commit
+      reproduces the same bytes. `veraPdfBaselineDelta` diffs
+      `scripts/verapdf/baseline.json` against HEAD~1 keyed by
+      `{fixture, ruleId}` with count/locations changes reported as `changed`.
+      `m1AcceptanceOk` READS the benchmark lane's `m1-acceptance.json` rather
+      than running the corpus — recording a result and producing one are
+      different jobs. Still NOT a publish gate, per this bullet's own decision.)*
 
 ### Security hardening
 
@@ -526,7 +793,7 @@ budget).**
       a regex can't reliably close (see Risks: recommend 006 move to a real
       XML parser + canonical reserialization instead of regex if the corpus
       can't be closed safely).
-- [ ] **Cross-plan archive policy conformance gate** (does not implement
+- [x] **Cross-plan archive policy conformance gate** (does not implement
       the validator — 007 does): `packages/export-fixtures/src/
       archive-corpus.ts`, hand-built malicious `.wiki-pdf-template` zips
       (path traversal, symlink entries, declared-vs-actual size mismatch
@@ -534,8 +801,15 @@ budget).**
       `packages/template-pack/src/unpack.ts` in a new
       `packages/export-fixtures/src/archive-corpus.test.ts`; fails on any
       case that unpacks successfully or exceeds the documented resource
-      budget.
-- [ ] Raw `.docx` template upload archive budget (unclaimed by any feature
+      budget. *(Done — 007's `template-pack` merged with all caps
+      (`too-large-archive`/`too-many-entries`/`path-traversal`/`symlink`/
+      `file-too-large`/`uncompressed-too-large`). The corpus supplies 8
+      adversarial archives (4 traversal shapes, a symlink, a per-file over-cap,
+      a cumulative 90 MiB zip bomb, a 2049-entry flood) + a positive control;
+      the gate asserts each is rejected with the EXACT typed kind — a case that
+      unpacks, or trips a different guard, fails. The corpus is kept OFF the
+      package barrel so its large buffers never load in the browser bundle.)*
+- [x] Raw `.docx` template upload archive budget (unclaimed by any feature
       lane — `unzipDocx` in `packages/docx/src/scan.ts` today validates
       only the **compressed** input size against `MAX_TEMPLATE_BYTES`,
       never decompressed size, entry count, or entry names): add a shared
@@ -548,7 +822,46 @@ budget).**
       Regression tests with hand-built PizZip archives (declared/actual
       size mismatch, path traversal, 100k-entry archive) in
       `packages/docx/src/scan.test.ts`.
-- [ ] Active-content policy for imported `.docx` templates: reject-on-import
+      *(Round 3: DONE — `packages/docx/src/scan.ts`. `DOCX_ARCHIVE_BUDGET`
+      (`maxEntryCount` 2048, `maxUncompressedBytes` 128 MiB,
+      `maxSingleEntryUncompressedBytes` 64 MiB) is enforced by
+      `assertArchiveBudget` from each entry's DECLARED central-directory size
+      BEFORE any inflation, and `assertSafeDocxEntryName` mirrors 007's
+      `assertSafePath` rule (`..`, absolute, backslash, drive prefix, ASCII
+      control chars) with docx-local `path-traversal` / `invalid-path` kinds — a
+      deliberate mirror, not an import, so `@atlcli/docx` takes no dependency on
+      the PDF container format. Numbers are sized against the 20 MB compressed
+      cap (~6.4x expansion headroom); rationale is in the constant's doc comment.
+      Adversarial tests in `scan.test.ts` build REAL PizZip archives: a 70 MiB
+      single-member bomb and a 3x50 MiB cumulative bomb (both well under
+      `MAX_TEMPLATE_BYTES`, so only the new guard catches them), a
+      `maxEntryCount + 1` flood, five traversal/absolute/backslash names, and
+      newline + NUL names — each asserting the EXACT typed kind, plus positive
+      controls (a real media-bearing template, an archive exactly at the entry
+      cap, ordinary Word part names) and an assertion that the bomb is refused
+      WITHOUT inflating it.)*
+      *(Round 4, after review: the round-3 budget was DEFEATED BY A LYING CENTRAL
+      DIRECTORY and the doc comment claiming "a bomb can never be inflated" was
+      false. Declared sizes are attacker-controlled: an archive whose
+      `word/document.xml` declared 1 KiB while its DEFLATE stream expanded to
+      400 MiB passed every cap and was inflated (measured RSS +819 MiB in 227 ms),
+      then failed with an UNTYPED `Error: Bug : uncompressed data size mismatch`.
+      Fixed with `assertPlausibleCompression`, which bounds the declared:compressed
+      ratio in BOTH directions from central-directory metadata only: an
+      under-declaring member is provably lying (DEFLATE never expands its input,
+      so `declared < compressed x 0.9` is impossible), and an over-declaring one
+      is a sub-cap bomb. Re-probed: the same liar is now refused in 0 ms with
+      +1 MiB RSS. The upper bound is 500:1, NOT the 100:1 first chosen —
+      measurement showed a legitimate 20 000-identical-paragraph template
+      compresses 304.9:1, so 100:1 rejected real templates; 4000-paragraph prose
+      is 26.6:1 and incompressible media ~1:1. PizZip's inflate errors are now
+      translated to a typed `corrupt-entry` `DocxError` via `readPartText`.
+      Residual risk stated honestly in the source: an entry whose declared size is
+      CONSISTENT with its compressed stream but whose data decodes to something
+      else still inflates before PizZip's post-hoc length check; PizZip exposes no
+      bounded inflate, so that spike is bounded by `MAX_TEMPLATE_BYTES` rather
+      than eliminated.)*
+- [x] Active-content policy for imported `.docx` templates: reject-on-import
       (a new `DocxError` kind, never a silent strip) when the archive
       contains `word/vbaProject.bin`, an `word/activeX/*` OLE/ActiveX
       control part, or an `<w:altChunk>` reference in `document.xml`.
@@ -562,7 +875,53 @@ budget).**
       Word. Real hand-crafted fixture templates (VBA-bearing, altChunk,
       DDEAUTO field) in `packages/docx/src/scan.test.ts` and
       `packages/docx/src/export.test.ts`.
-- [ ] Confluence storage parse budget (**cross-plan coordination note**:
+      *(Round 3: DONE — a new `active-content` `DocxError` kind, thrown by
+      `assertNoActiveContent` inside `unzipDocx`: REJECT, never strip (a silent
+      strip would return a document that looks like the user's template but is
+      not, and would make the control invisible). Covers `word/vbaProject.bin`
+      and `word/vbaData.xml` (case-insensitive — `word/VBAProject.BIN` is the
+      same part to Word), `word/activeX/*`, and `<w:altChunk>` in `document.xml`
+      AND in header/footer parts (the spec named only `document.xml`; headers
+      accept the element too, so leaving them out was a bypass). The field-
+      instruction audit is `collectRiskyFieldInstructions` (reusing
+      `collectStylerefFields`' run-split reassembly, so a `DDEA` + `UTO` split
+      across `w:instrText` runs still matches); hits land on
+      `ScanResult.riskyFieldInstructions` and `exportDocx` turns them into a
+      `template-field-instruction-risk` warning. Fixtures: a real CFB/OLE2-
+      signature `vbaProject.bin`, an ActiveX part with a real CLSID, altChunk in
+      body and header, a run-split `DDEAUTO cmd.exe` field and an `INCLUDETEXT`
+      UNC `fldSimple`; positive controls prove `activex-logo.png`, the literal
+      text "w:altChunk", and ordinary `PAGE`/`STYLEREF`/`TOC` fields all pass.)*
+      *(Round 4, after review: the round-3 path-based checks were BYPASSABLE, and
+      all ten bypasses were reproduced against the built output before fixing.
+      altChunk was accepted in `word/footnotes.xml`, `word/endnotes.xml`,
+      `word/comments.xml` and `word/glossary/document.xml` (`CT_AltChunk` is in
+      `EG_BlockLevelElts`, so it is valid in all of them — the same argument that
+      justified adding headers applied verbatim and had been under-applied);
+      `<x:altChunk>` under a non-`w` namespace prefix was accepted (XML binds
+      namespaces by URI, not prefix); VBA was accepted at `word/macros/` and
+      `customXml/`, ActiveX at `word/controls/`. Rewritten around OPC
+      RELATIONSHIP TYPES, which is how Word actually resolves these parts and the
+      only channel that cannot be evaded by relocating a file or renaming a
+      prefix: `findActiveContentRelationship` matches `/aFChunk`, `/vbaProject`
+      and `/control` in any `.rels` part. The element scan now covers every
+      WordprocessingML part under ANY namespace prefix, and the path scan matches
+      on basename/segment rather than exact location. `/oleObject` is a deliberate
+      ALLOW (embedded charts and spreadsheets are legitimate in corporate
+      templates) recorded in code and pinned by a test. Re-probed after the fix:
+      all ten bypasses REJECTED, both positive controls still ACCEPTED.
+      Additionally `DDE`/`DDEAUTO` moved from AUDIT to HARD REJECT — they have no
+      legitimate use in an export template and `ensureUpdateFields` makes the
+      exporter itself arm the trigger — while `INCLUDETEXT`/`INCLUDEPICTURE` stay
+      audited. The rejection lives in `assertNoActiveContent` inside `unzipDocx`,
+      so the guarantee no longer depends on which entry point a host uses.
+      API: `ScanResult.riskyFieldInstructions` was made OPTIONAL to keep spec
+      009's additive-only freeze; `DocxErrorKind` widening 3 -> 11 is a DELIBERATE
+      break, safe because both consumers (`template-pack/validate.ts`, the
+      extension upload panel) read `kind` non-exhaustively — the extension's
+      fallback was fixed, as it told a user with a macro template "That template
+      is too large.")*
+- [x] Confluence storage parse budget (**cross-plan coordination note**:
       touches `packages/confluence/src/export-blocks.ts`, the hot file
       UMSETZUNGSPLAN sequences T0.1→T1.4→T1.8 — land as a small additive PR
       after T0.1 merges, coordinated with folder 001, not a solo 011
@@ -577,7 +936,46 @@ budget).**
       (hand-authored) in `packages/confluence/src/export-blocks.test.ts`,
       run through both engines via a new harness/parity negative-fixture
       case owned by this folder.
-- [ ] Link-target scheme policy (**same cross-plan coordination note** —
+      *(Round 3: DONE — the cross-plan sequencing constraint is SATISFIED and
+      verified: 001 (#49), 003 (#54) and 004 (#55) are all merged into
+      origin/main, so `export-blocks.ts` is no longer a contended hot file and
+      this landed as the small additive PR the note asked for.
+      `StorageParseBudget` (`maxNodes` 400 000, `maxDepth` 256, `maxTextLength`
+      16 MiB, overridable via `StorageToBlocksOptions.parseBudget`) is enforced
+      in `parseXml`, throwing the typed, catchable `StorageParseError`
+      (`too-many-nodes` / `too-deep` / `text-too-long`). Capping DEPTH at the
+      parse boundary is what makes the walkers safe — they recurse strictly along
+      the tree `parseXml` produced, so `walkBlocks`/`handleBlockElement`/
+      `walkInline` need no counter of their own. The control-character fixture
+      the task asked for found a REAL bug: `&#x1;` survives storage and
+      `encodeXmlText` does not escape it, so it reached `<w:t>` verbatim and
+      produced a `.docx` Word refuses to open ("unreadable content"). Text nodes
+      and attribute values are now stripped of XML-1.0-illegal characters at the
+      same single boundary. Tests include a control proving the 50 000-deep
+      nesting bomb IS a real `RangeError` once the depth cap is lifted, so the
+      guard is demonstrably load-bearing, plus a test showing one bad page
+      degrades while its neighbours still export.)*
+      *(Round 4, after review: the round-3 budget REJECTED ORDINARY PAGES and
+      nothing caught the error, so a normal page killed an entire tree export —
+      an availability regression on real input, the opposite of the intent.
+      Measured node density per storage shape: colour-span prose 56 375/MiB, rich
+      text 74 415, nested lists 109 553, tables 126 333, dense 4-column tables
+      177 029. Confluence Cloud accepts ~5 MB bodies, so the worst realistic page
+      is 177 029 x 5 = 885 145 nodes — and `maxNodes: 400_000` sat BELOW the
+      platform limit, measurably rejecting a 4 MiB table page. Raised to
+      2 000 000 (~2.3x the worst realistic 5 MB page) with the derivation table in
+      the constant's doc comment. Second half: `StorageParseError` was caught
+      NOWHERE in production — in `tree-fetch.ts` it became a rejected
+      `allSettled` entry that was re-thrown — so the "one bad page degrades"
+      claim was true only of a hand-rolled loop in a test. `fetchExportTree` now
+      catches it narrowly and routes it through the EXISTING completeness path:
+      strict mode aborts with a typed `ExportCompletenessError`, partial mode
+      renders a placeholder chapter and keeps going, and the note carries a
+      `detail` so "page-unreadable" does not hide "exceeded the parse budget:
+      too-deep". Reusing `page-unreadable` avoided widening `CompletenessCode`.
+      Tests pin all three behaviours plus a control proving an unrelated error
+      still propagates untouched.)*
+- [x] Link-target scheme policy (**same cross-plan coordination note** —
       lands with folder 001/003, specified and gated here): `<a href>`/
       `ac:link` targets flow verbatim from Confluence storage into DOCX
       hyperlink fields (`packages/docx/src/serialize.ts`) and PDF
@@ -589,11 +987,45 @@ budget).**
       consumed by both serializers. Malformed-URI fixtures run through both
       engines via the same negative-fixture case as the storage budget
       above.
+      *(Round 3: DONE, and UNIFIED rather than added as a third implementation.
+      The repo carried THREE answers to "is this href safe?": `isSafeLinkScheme`
+      (confluence/html-to-blocks.ts, 004), `isSafeHyperlinkUrl`
+      (docx/ooxml.ts, 004 — a hand-copied duplicate), and an inline
+      `/^(https?:|mailto:)/i` in pdf/serialize.ts's `resolveLink` that silently
+      DISAGREED with both (no control-character stripping; rejected the relative
+      URLs the other two allowed). New canonical module
+      `packages/confluence/src/link-safety.ts` (`isSafeLinkScheme`,
+      `sanitizeLinkHref`, `normalizeLinkHref`, `UNSAFE_LINK_NOTE_CODE`) is now
+      the single source of truth; all three delegate to it and the old names
+      survive as thin wrappers so the published API is unchanged. The DEGRADATION
+      moved up to the walkers (`export-blocks.ts` for storage `<a href>`,
+      `html-to-blocks.ts` for export_view HTML), so both engines inherit it and
+      the user sees an `unsafe-link-skipped` warning; the DOCX `hyperlinkField`
+      and PDF `resolveLink` re-checks stay as defense in depth. PDF now
+      distinguishes a blocked scheme (warning, `unsafe-link-skipped`) from a
+      merely unrepresentable target (info, `pdf-link-unresolved`).
+      `link-safety.test.ts` carries a 21-entry blocked corpus (javascript,
+      vbscript, data, file, jar, ms-msdt, search-ms, plus tab/newline/CR/NUL/
+      vertical-tab smuggling and case variants), an 11-entry allowed corpus as
+      positive control, and a DRIFT GUARD asserting both walkers reach the
+      identical verdict for every entry.)*
+      *(Round 4, after review: `sanitizeLinkHref` validated the NORMALIZED href
+      but returned the RAW one, so a caller could act on bytes the policy never
+      examined. It now returns the control-character-stripped form (case and
+      spaces preserved — only controls are removed). `normalizeLinkHref`'s
+      character class was rewritten in explicit `\u0020` form instead of using a
+      literal space as a range endpoint. `tel:` was added to the allowlist as a
+      deliberate product call: contact and directory pages legitimately carry
+      phone links and the scheme is inert (it hands a number to a dialler, it
+      cannot execute or fetch). `sms:`/`callto:`/`skype:` stay blocked — rarer in
+      enterprise wikis, no demonstrated need — and degrade to visible text with a
+      note. Both decisions are pinned by tests.)*
 - [~] Compiler execution budget: `BrowserPdfCompiler.compile()`
-      *(Partial: `check-parity.ts` wraps every Bun-side compile in a wall-clock
+      *(Partial: `check-parity.ts`, `run-m1-acceptance.ts`, and
+      `compile-corpus.ts` now all wrap every Bun-side compile in a wall-clock
       deadline that throws a stable `compile-timeout` code. The harness
-      worker-terminate auto-deadline and the same wrapper on `compile-corpus.ts`/
-      `run-bench.ts`/`run-m1-acceptance.ts` are pending with those scripts.)*
+      worker-terminate auto-deadline and the same wrapper on `run-bench.ts` are
+      pending with that (unwritten) script.)*
       (`packages/pdf-compiler-browser/src/compiler.ts`) runs the WASM
       compile synchronously with no wall-clock or memory budget; folder
       008's own plan documents this as an "unchanged limitation... a true
@@ -612,7 +1044,16 @@ budget).**
       (`check-parity.ts`, `compile-corpus.ts`, `run-bench.ts`,
       `run-m1-acceptance.ts`) so a pathological fixture never hangs CI. A
       stable `compile-timeout` error code, never a silent hang.
-- [ ] `/security-review` before releases: add a "Security review completed
+- [x] `/security-review` before releases *(Round 3: DONE — a "Security Review
+      Before Every Release" section in `src/content/docs/contributing.md` with a
+      surface/what-to-check/where table covering the raw `.docx` upload,
+      `.wiki-pdf-template`, embedded SVG, storage parse budget, link schemes,
+      font intake and any new network code, referenced from the Prerequisites
+      list; and a pre-release checklist in `showDryRunPlan`
+      (`scripts/release.ts`). The reminder is ADVISORY — the script does not
+      block — so its only force is being printed, which is exactly why
+      `release.test.ts` now regression-tests that the line and the named
+      surfaces are present.)*: add a "Security review completed
       for this release" line to the release runbook section in
       `src/content/docs/contributing.md`, and make
       `scripts/release.ts --dry-run` print a reminder checklist item; the
@@ -624,14 +1065,19 @@ budget).**
 
 ### E2E resource discipline
 
-- [ ] Naming convention: every live test resource is named
+- [~] Naming convention: every live test resource is named
       `atlcli-e2e-<feature>-<timestamp>` (epoch seconds; e.g.
       `atlcli-e2e-scope-tree-1789000000`) — Confluence pages in space
       `DOCSY`, Jira issues in project `ATLCLI` (summary prefix). Helper
       `makeE2eTitle(feature)` in a new shared test helper
       `apps/cli/src/e2e/resources.ts` used by all live E2E scripts
       (including `scripts/e2e-template-test.sh` successors).
-- [ ] **Machine-readable ownership marker, not name/timestamp alone**: at
+      *(Helper landed and fully tested; ADOPTION still pending. Nothing
+      outside `apps/cli/src/e2e/` imports it yet — no live E2E script calls
+      `makeE2eTitle` today. Sequencing is intentional: folders 001/003/004
+      deferred converting their live cases until this helper existed, so the
+      call sites land with those folders' own E2E cases.)*
+- [x] **Machine-readable ownership marker, not name/timestamp alone**: at
       creation, every E2E-created page also gets a content property
       (`atlcli-e2e-run-id` → the CI run ID or a local UUID) and every
       Jira issue gets an equivalent issue property. A visible-title prefix
@@ -639,13 +1085,18 @@ budget).**
       against a same-named user page or two E2E runs racing in the same
       window — the property is the actual ownership proof a deletion path
       checks before deleting.
-- [ ] **Per-test cleanup first, sweeper as recovery only**: each E2E test
+- [~] **Per-test cleanup first, sweeper as recovery only**: each E2E test
       records the IDs it creates and deletes them itself in a `finally`
       block (`apps/cli/src/e2e/resources.ts`) — the tenant is clean after
       every single run, not just after the nightly sweep. This is on top
       of, not instead of, the existing "clean up test resources" workflow
       rule in `CLAUDE.md`.
-- [ ] Cleanup helper task in the CLI test suite:
+      *(`withE2eResources` + `E2eResourceTracker` landed, with tests proving
+      the `finally` path runs when the body throws. No live E2E case uses
+      them yet — the only existing one (`export-pdf.e2e.test.ts`) reads
+      env-provided fixture IDs and creates nothing. Adoption lands with
+      folders 001/003/004.)*
+- [x] Cleanup helper task in the CLI test suite:
       `apps/cli/src/e2e/cleanup.ts` — using `ConfluenceClient`/`JiraClient`
       with profile `mayflower`, list `DOCSY` pages / `ATLCLI` issues that
       carry the `atlcli-e2e-run-id` marker property **and** whose title/
@@ -661,7 +1112,7 @@ budget).**
       marker-match, circuit-breaker threshold) in
       `apps/cli/src/e2e/cleanup.test.ts`; the deletion path is exercised
       only against the live tenant.
-- [ ] CI wiring, nightly only: `.github/workflows/e2e-nightly.yml`
+- [~] CI wiring, nightly only: `.github/workflows/e2e-nightly.yml`
       (`schedule` + `workflow_dispatch`, main branch only) runs the new
       scope/macro E2E cases (T4.8 scope) and then `cleanup.ts --force` as
       **recovery for whatever per-test cleanup missed** (a crashed run, a
@@ -671,7 +1122,13 @@ budget).**
       history, credentials are repo secrets that must not be exposed to
       fork PRs — therefore **never** per-PR, never on forks; the sweeper
       also runs even when the E2E step fails (`if: always()`).
-- [ ] Documentation: add an "E2E resources" section to
+      *(Workflow landed with the schedule/dispatch/main/fork guards and the
+      `if: always()` recovery sweep. The "new scope/macro E2E cases (T4.8
+      scope)" it is meant to run DO NOT EXIST yet — its
+      `apps/cli/src/commands/*.e2e.test.ts` glob currently matches only the
+      pre-existing `export-pdf.e2e.test.ts`. The workflow is the landing pad;
+      folders 001/003/004 add the cases.)*
+- [x] Documentation: add an "E2E resources" section to
       `src/content/docs/contributing.md` (naming convention, run-id marker
       property, 24 h TTL, per-test cleanup-in-`finally` expectation,
       sweeper usage `bun apps/cli/src/e2e/cleanup.ts`, circuit-breaker

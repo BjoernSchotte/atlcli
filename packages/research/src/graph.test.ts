@@ -1,0 +1,999 @@
+import { describe, expect, test } from "bun:test";
+import {
+  RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+  RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1,
+  acceptResearchGraphProposalV1,
+  composeResearchGraphV1,
+  createStandardResearchBriefV1,
+  composeStandardResearchGraphV1,
+  diffResearchPlansV1,
+  projectSelectedResearchRolesV1,
+  researchPlanApprovalRequiredV1,
+  reduceResearchGraphV1,
+  reviseResearchGraphSelectionV1,
+  validateResearchGraphV1,
+  type ResearchGraphCapabilityV1,
+  type ResearchGraphProposalV1,
+  type ResearchGraphV1,
+} from "./graph.js";
+import { researchTaskIdForNodeV1 } from "./dynamic-subagents.js";
+import { createResearchBriefV1, reviseResearchBriefPlanV1 } from "./brief.js";
+import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
+import {
+  RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+} from "./contracts.js";
+import {
+  RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
+  RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
+} from "./workflow-contracts.js";
+
+const brief = (
+  question: string,
+  products: ("jira" | "confluence")[],
+  reconciliation: "off" | "auto" | "required" = "auto",
+  effort: "lookup" | "analysis" | "deep" = "analysis",
+  planApproval: "automatic" | "required" = "automatic",
+) => createResearchBriefV1({
+  sessionId: "research-session:test",
+  turnId: "research-turn:test",
+  objective: question,
+  scope: {
+    siteOrigin: "https://example.atlassian.net",
+    jiraProjectKeys: products.includes("jira") ? ["DEMO"] : [],
+    confluenceSpaceKeys: products.includes("confluence") ? ["DOCS"] : [],
+  },
+  sourceClasses: products,
+  asOf: "2026-01-01T00:00:00.000Z",
+  timezone: "UTC",
+  requestedEffort: effort,
+  requestedPlanApproval: planApproval,
+  requestedReconciliation: reconciliation,
+});
+
+function proposalFor(
+  graph: ResearchGraphV1,
+  selectedIds: readonly string[],
+): ResearchGraphProposalV1 {
+  const selected = graph.nodes.filter((node) => selectedIds.includes(node.id));
+  const acquisitions = selected
+    .filter((node) => node.kind === "search" || node.kind === "resolve_scope")
+    .map((node) => node.id);
+  return {
+    schema: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1,
+    basedOnBriefRevision: graph.basedOnBriefRevision,
+    basedOnGraphRevision: graph.revision,
+    nodes: selected.map((node) => ({
+      nodeId: node.id,
+      dependencies: node.roleId === "synthesizer"
+        ? selected.filter((candidate) => candidate.id !== node.id).map((candidate) => candidate.id)
+        : node.roleId === "reconciler"
+          ? selected.filter((candidate) =>
+              candidate.id !== node.id && candidate.roleId !== "synthesizer"
+            ).map((candidate) => candidate.id)
+        : node.roleId === "coverage-moderator"
+            ? selected.filter((candidate) =>
+                candidate.id !== node.id &&
+                candidate.roleId !== "coverage-moderator" &&
+                candidate.roleId !== "reconciler" &&
+                candidate.roleId !== "synthesizer"
+              ).map((candidate) => candidate.id)
+          : node.roleId === "document-distiller" ||
+              node.roleId === "contradiction-verifier"
+            ? acquisitions
+            : node.roleId === "outline-planner"
+              ? selected.filter((candidate) =>
+                  candidate.id !== node.id &&
+                  candidate.roleId !== "coverage-moderator" &&
+                  candidate.roleId !== "reconciler" &&
+                  candidate.roleId !== "synthesizer"
+                ).map((candidate) => candidate.id)
+            : [],
+      reasonCodes: [node.reasonCodes[0]!],
+    })),
+  };
+}
+
+function revisionProposalFor(
+  catalog: ResearchGraphV1,
+  current: ResearchGraphV1,
+  selectedIds: readonly string[],
+  prune: Array<{ nodeId: string; reasonCode: "budget_pruned" | "not_applicable" }> = [],
+) {
+  const proposal = proposalFor(catalog, selectedIds);
+  return {
+    schema: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1,
+    basedOnBriefRevision: current.basedOnBriefRevision,
+    basedOnGraphRevision: current.revision,
+    nodes: proposal.nodes.map((node) => ({
+      ...node,
+      priority: catalog.nodes.find((candidate) => candidate.id === node.nodeId)!.priority,
+    })),
+    prune,
+  };
+}
+
+describe("dynamic research graph composition", () => {
+  test("rejects an unresolved empty scope before graph composition", () => {
+    expect(() => composeStandardResearchGraphV1("Research the relevant work.", {
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+    })).toThrow("scope must be resolved");
+  });
+
+  test("does not add a Jira branch for an exact Confluence page binding", () => {
+    const exactPageBrief = createResearchBriefV1({
+      sessionId: "research-session:exact-page",
+      turnId: "research-turn:exact-page",
+      objective: "Summarize the attached page and cite its main claims.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:exact-page:12345",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "page",
+        entityRef: "page:12345",
+        key: "12345",
+        name: "Customer retention analysis",
+        source: "exact_link",
+        authority: "approved",
+      }],
+      asOf: "2026-08-03T00:00:00.000Z",
+      timezone: "UTC",
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "off",
+    });
+    const graph = composeResearchGraphV1(exactPageBrief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+
+    expect(graph.nodes.map((node) => node.id)).toEqual([
+      "research-node:wiki-lookup",
+      "research-node:synthesizer",
+    ]);
+    expect(graph.nodes.some((node) => node.id.includes("jira"))).toBe(false);
+    expect(graph.nodes[0]?.grantedCapabilityIds).toEqual(["atlassian.bound.read"]);
+    expect(graph.nodes[0]?.reasonCodes).toEqual(["exact_reference_follow"]);
+    expect(graph.nodes[0]?.outputSchema).toBe(RESEARCH_PACKET_BODY_SCHEMA_V2);
+    expect(graph.nodes[0]?.grantedCapabilityIds).not.toContain("wiki.search");
+    expect(graph.nodes[0]?.grantedCapabilityIds).not.toContain("research.candidate.rank");
+    expect(graph.nodes[0]?.grantedCapabilityIds).not.toContain("wiki.page.get");
+  });
+
+  test("keeps the one deep repair slot on retained exact evidence", () => {
+    const exactPageBrief = createResearchBriefV1({
+      sessionId: "research-session:exact-page-repair",
+      turnId: "research-turn:exact-page-repair",
+      objective: "Analyse every requested facet of the attached page.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:exact-page-repair:12345",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence",
+        entityKind: "page",
+        entityRef: "page:12345",
+        key: "12345",
+        name: "Synthetic multi-facet page",
+        source: "exact_link",
+        authority: "approved",
+      }],
+      asOf: "2026-08-03T00:00:00.000Z",
+      timezone: "UTC",
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+      requestedReconciliation: "auto",
+    });
+    const graph = composeResearchGraphV1(exactPageBrief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const repair = graph.nodes.find((node) => node.kind === "repair");
+
+    expect(repair).toMatchObject({
+      roleId: "contradiction-verifier",
+      grantedCapabilityIds: ["atlassian.bound.read"],
+      outputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    expect(repair?.grantedCapabilityIds).not.toContain("wiki.search");
+    expect(repair?.grantedCapabilityIds).not.toContain("research.candidate.rank");
+  });
+  test("gives every productive host the same standard cross-product graph", () => {
+    const graph = composeStandardResearchGraphV1(
+      "Which Confluence pages correspond to Jira work items?",
+    );
+    expect(projectSelectedResearchRolesV1(graph)).toEqual([
+      "focused-researcher",
+      "document-distiller",
+      "coverage-moderator",
+      "reconciler",
+      "synthesizer",
+    ]);
+    expect(graph.nodes.filter((node) => node.roleId === "focused-researcher")).toHaveLength(2);
+  });
+
+  test("asks for an exact window when a standard brief uses an unresolved relative time", () => {
+    const unresolved = createStandardResearchBriefV1("What is the current Jira status?", {
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+      },
+    });
+    expect(unresolved.clarificationQuestions).toEqual([{
+      id: "clarification:time-window",
+      prompt: "Which exact reporting window should this research use?",
+      required: true,
+    }]);
+    expect(() => composeResearchGraphV1(unresolved)).toThrow("clarification");
+
+    const bounded = createStandardResearchBriefV1("What is the current Jira status?", {
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: [],
+        timeWindow: { from: "2026-08-01", to: "2026-08-02" },
+      },
+    });
+    expect(bounded.clarificationQuestions).toEqual([]);
+  });
+
+  test("does not interrupt a lookup chat for a research reporting window", () => {
+    const chatBrief = createStandardResearchBriefV1(
+      "Give me a summary of the current page.",
+      {
+        scope: {
+          siteOrigin: "https://example.atlassian.net",
+          jiraProjectKeys: [],
+          confluenceSpaceKeys: ["DOCS"],
+        },
+        policy: {
+          schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+          requestedEffort: "lookup",
+          requestedPlanApproval: "automatic",
+          scopeExpansionMode: "ask",
+          requestedReconciliation: "off",
+        },
+      },
+    );
+
+    expect(chatBrief.clarificationQuestions).toEqual([]);
+    expect(() => composeResearchGraphV1(chatBrief)).not.toThrow();
+  });
+
+  test("binds productive graph budgets and scope to the normalized host request", () => {
+    const graph = composeStandardResearchGraphV1(
+      "Which Confluence pages are related to Jira work items?",
+      {
+        scope: {
+          siteOrigin: "https://tenant.example",
+          jiraProjectKeys: ["SAFE"],
+          confluenceSpaceKeys: ["DOCS"],
+        },
+        limits: {
+          ...DEFAULT_RESEARCH_LIMITS_V1,
+          maxRunMs: 600_000,
+        },
+        asOf: "2026-07-31T12:00:00.000Z",
+      },
+    );
+
+    expect(graph.nodes.find((node) => node.roleId === "focused-researcher")?.budget.maxDurationMs).toBe(240_000);
+    expect(graph.approvalEnvelope.scopeFingerprint).not.toBe(
+      composeStandardResearchGraphV1("Which Confluence pages are related to Jira work items?")
+        .approvalEnvelope.scopeFingerprint,
+    );
+  });
+
+  test("selects structurally different nodes for lookup, Jira-only, and cross-product briefs", () => {
+    const lookup = composeResearchGraphV1(brief("Get Jira issue DEMO-1", ["jira"], "off", "lookup"));
+    const jiraOnly = composeResearchGraphV1(brief("List open Jira tickets", ["jira"], "off"));
+    const crossProduct = composeResearchGraphV1(brief("Which Confluence content is related to Jira tickets?", ["jira", "confluence"]));
+    expect(projectSelectedResearchRolesV1(lookup)).toEqual(["focused-researcher", "synthesizer"]);
+    expect(lookup.nodes.filter((node) => node.roleId === "focused-researcher")).toHaveLength(1);
+    expect(lookup.nodes.find((node) => node.id === "research-node:jira-lookup")?.grantedCapabilityIds)
+      .toEqual(["jira.issue.search", "research.candidate.rank", "jira.issue.get"]);
+    expect(projectSelectedResearchRolesV1(jiraOnly)).toEqual(["focused-researcher", "synthesizer"]);
+    expect(projectSelectedResearchRolesV1(crossProduct)).toEqual([
+      "focused-researcher",
+      "document-distiller",
+      "reconciler",
+      "synthesizer",
+    ]);
+    expect(crossProduct.nodes.find((node) => node.roleId === "synthesizer")?.dependencies).toEqual([
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:reconciler",
+      "research-node:reconciliation-repair",
+    ]);
+  });
+
+  test("uses quote-bearing V2 for detail reads and references-only V2 for analysis", () => {
+    const graph = composeResearchGraphV1(
+      brief("Join bounded Jira and Confluence evidence.", ["jira", "confluence"]),
+      { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 },
+    );
+    validateResearchGraphV1(graph);
+    const detailNodes = graph.nodes.filter((node) =>
+      node.requestedCapabilityIds.includes("jira.issue.get") ||
+      node.requestedCapabilityIds.includes("wiki.page.get"),
+    );
+    expect(detailNodes.length).toBeGreaterThanOrEqual(2);
+    expect(detailNodes.every((node) => node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2)).toBe(true);
+    expect(graph.nodes.find((node) => node.roleId === "document-distiller")?.outputSchema)
+      .toBe(RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2);
+    expect(graph.nodes.find((node) => node.roleId === "reconciler")?.outputSchema)
+      .toBe("atlcli.reconciliation-body/v1");
+    expect(graph.nodes.find((node) => node.roleId === "synthesizer")?.outputSchema)
+      .toBe("atlcli.research-agent-draft/v1");
+    const invalid = {
+      ...graph,
+      nodes: graph.nodes.map((node) => node.roleId === "synthesizer"
+        ? { ...node, outputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 }
+        : node),
+    };
+    expect(() => validateResearchGraphV1(invalid)).toThrow("output schema");
+  });
+
+  test("keeps a V2 lookup to retrieval, an optional join, and synthesis", () => {
+    const graph = composeResearchGraphV1(
+      brief("Which Jira and Confluence items explicitly link to each other?", ["jira", "confluence"], "off", "lookup"),
+      { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 },
+    );
+    validateResearchGraphV1(graph);
+    expect(projectSelectedResearchRolesV1(graph)).toEqual([
+      "focused-researcher",
+      "document-distiller",
+      "synthesizer",
+    ]);
+    expect(graph.nodes.map((node) => node.id)).toEqual([
+      "research-node:jira-lookup",
+      "research-node:wiki-lookup",
+      "research-node:cross-product-join",
+      "research-node:synthesizer",
+    ]);
+  });
+
+  test("offers an optional T5 outline planner only to V2 graphs and fences it before critique", () => {
+    const graph = composeResearchGraphV1(
+      brief(
+        "Which Jira and Confluence items correspond and contradict each other?",
+        ["jira", "confluence"],
+        "auto",
+        "deep",
+      ),
+      { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 },
+    );
+    validateResearchGraphV1(graph);
+    expect(graph.nodes).toHaveLength(9);
+    expect(graph.maxResearchWaves).toBe(5);
+    const planner = graph.nodes.find((node) => node.roleId === "outline-planner")!;
+    expect(planner).toMatchObject({
+      kind: "outline",
+      outputSchema: RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
+      grantedCapabilityIds: [],
+    });
+    expect(projectSelectedResearchRolesV1(graph)).toContain("outline-planner");
+
+    const selected = graph.nodes
+      .filter((node) => node.kind !== "repair")
+      .map((node) => node.id);
+    const accepted = acceptResearchGraphProposalV1(graph, proposalFor(graph, selected));
+    expect(accepted.maxResearchWaves).toBe(4);
+    const acceptedPlanner = accepted.nodes.find((node) => node.id === planner.id)!;
+    expect(acceptedPlanner.dependencies).toEqual([
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:contradiction-verification",
+    ]);
+    expect(accepted.nodes.find((node) => node.roleId === "coverage-moderator")?.dependencies)
+      .toEqual([
+        "research-node:jira-research",
+        "research-node:wiki-research",
+        "research-node:cross-product-join",
+        "research-node:contradiction-verification",
+        "research-node:outline-planning",
+      ]);
+    expect(accepted.nodes.find((node) => node.roleId === "reconciler")?.dependencies)
+      .toContain(planner.id);
+  });
+
+  test("persists the host-granted intersection rather than widening model requests", () => {
+    const graph = composeResearchGraphV1(
+      brief("List Jira tickets", ["jira"], "off"),
+      { grants: { "focused-researcher": ["jira.issue.search"] } },
+    );
+    const jira = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
+    expect(jira.requestedCapabilityIds).toEqual([
+      "jira.issue.search",
+      "research.candidate.rank",
+      "jira.issue.get",
+    ]);
+    expect(jira.grantedCapabilityIds).toEqual(["jira.issue.search"]);
+    expect(graph.approvalEnvelope.allowedCapabilityIds).toEqual(["jira.issue.search"]);
+  });
+
+  test("grants bounded metadata discovery only to relationship-shaped research nodes", () => {
+    const related = composeResearchGraphV1(brief(
+      "Which related Confluence space and Jira project should be investigated from explicit links?",
+      ["jira", "confluence"],
+    ));
+    const jira = related.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const wiki = related.nodes.find((node) => node.id === "research-node:wiki-research")!;
+    expect(jira.grantedCapabilityIds).toEqual([
+      "jira.issue.search",
+      "research.candidate.rank",
+      "jira.issue.get",
+      "jira.project.search",
+      "atlassian.reference.resolve",
+    ]);
+    expect(wiki.grantedCapabilityIds).toEqual([
+      "wiki.search",
+      "research.candidate.rank",
+      "wiki.page.get",
+      "wiki.space.search",
+      "atlassian.reference.resolve",
+    ]);
+    expect(jira.reasonCodes).toContain("related_scope_discovery");
+
+    const hostTrimmed = composeResearchGraphV1(brief(
+      "Which related Jira project should be investigated?",
+      ["jira"],
+    ), {
+      grants: { "focused-researcher": ["jira.issue.search", "jira.project.search"] },
+    });
+    expect(hostTrimmed.nodes.find((node) => node.id === "research-node:jira-research")
+      ?.grantedCapabilityIds).toEqual(["jira.issue.search", "jira.project.search"]);
+  });
+
+  test("selects dedicated joining, verification, and moderation for task-shaped briefs", () => {
+    const standard = composeResearchGraphV1(brief(
+      "How do these pages describe the funnel, and which DEMO work items correspond to each stage?",
+      ["jira", "confluence"],
+    ));
+    expect(projectSelectedResearchRolesV1(standard)).toContain("document-distiller");
+    const deep = composeResearchGraphV1(brief(
+      "How do these pages describe the funnel, and which DEMO work items correspond to each stage?",
+      ["jira", "confluence"],
+      "auto",
+      "deep",
+    ));
+    expect(projectSelectedResearchRolesV1(deep)).toEqual([
+      "focused-researcher",
+      "document-distiller",
+      "coverage-moderator",
+      "reconciler",
+      "synthesizer",
+    ]);
+    expect(deep.maxResearchWaves).toBe(3);
+    const contradiction = composeResearchGraphV1(brief(
+      "Which Confluence content explicitly contradicts Jira tickets?",
+      ["jira", "confluence"],
+    ));
+    expect(projectSelectedResearchRolesV1(contradiction)).toContain("contradiction-verifier");
+
+    const explicitRelationship = composeResearchGraphV1(brief(
+      "Which Confluence pages are explicitly related to Jira tickets?",
+      ["jira", "confluence"],
+    ));
+    expect(projectSelectedResearchRolesV1(explicitRelationship)).toEqual([
+      "focused-researcher",
+      "document-distiller",
+      "reconciler",
+      "synthesizer",
+    ]);
+  });
+
+  test("derives every visible role decision from executable nodes", () => {
+    const graph = composeResearchGraphV1(brief("List Jira tickets", ["jira"], "off"));
+    expect(graph.roleDecisions).toHaveLength(6);
+    expect(graph.roleDecisions.find((entry) => entry.roleId === "focused-researcher")?.decision).toBe("selected");
+    expect(graph.roleDecisions.find((entry) => entry.roleId === "document-distiller")?.decision).toBe("omitted");
+    expect(() => validateResearchGraphV1({
+      ...graph,
+      roleDecisions: graph.roleDecisions.filter((entry) => entry.roleId !== "coverage-moderator"),
+    })).toThrow("missing");
+    expect(() => validateResearchGraphV1({
+      ...graph,
+      roleDecisions: graph.roleDecisions.map((entry) => entry.roleId === "focused-researcher" ? { ...entry, decision: "omitted" as const } : entry),
+    })).toThrow("derive");
+    expect(() => validateResearchGraphV1({
+      ...graph,
+      roleDecisions: [...graph.roleDecisions, graph.roleDecisions[0]!],
+    })).toThrow("duplicated");
+  });
+
+  test("accepts structurally different supervisor compositions inside one host envelope", () => {
+    const catalog = composeResearchGraphV1(brief(
+      "How do Jira and Confluence describe the pipeline, including coverage gaps?",
+      ["jira", "confluence"],
+      "auto",
+      "deep",
+    ));
+    const requiredIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ];
+    const concise = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, requiredIds));
+    const critical = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, [
+      ...requiredIds.slice(0, 2),
+      "research-node:cross-product-join",
+      "research-node:coverage-moderation",
+      "research-node:reconciler",
+      requiredIds[2]!,
+    ]));
+
+    expect(projectSelectedResearchRolesV1(concise)).toEqual([
+      "focused-researcher",
+      "synthesizer",
+    ]);
+    expect(projectSelectedResearchRolesV1(critical)).toEqual([
+      "focused-researcher",
+      "document-distiller",
+      "coverage-moderator",
+      "reconciler",
+      "synthesizer",
+    ]);
+    expect(concise.nodes.find((node) => node.roleId === "synthesizer")?.dependencies)
+      .toEqual(requiredIds.slice(0, 2));
+    expect(critical.nodes.find((node) => node.roleId === "reconciler")?.dependencies)
+      .toEqual([
+        "research-node:jira-research",
+        "research-node:wiki-research",
+        "research-node:cross-product-join",
+        "research-node:coverage-moderation",
+      ]);
+    expect(concise.approvalEnvelope).toEqual({
+      ...catalog.approvalEnvelope,
+      maxResearchWaves: 2,
+    });
+    expect(concise.totalBudget.maxInputTokens).toBeLessThan(
+      concise.approvalEnvelope.totalBudgetCeiling.maxInputTokens,
+    );
+  });
+
+  test("rejects supervisor graph widening and invalid critical topology", () => {
+    const catalog = composeResearchGraphV1(brief(
+      "Which Jira and Confluence items correspond?",
+      ["jira", "confluence"],
+    ));
+    const valid = proposalFor(catalog, [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:reconciler",
+      "research-node:synthesizer",
+    ]);
+
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.map((node) => node.nodeId === "research-node:jira-research"
+        ? { ...node, nodeId: "research-node:invented" }
+        : node),
+    })).toThrow("outside the host catalog");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.filter((node) => node.nodeId !== "research-node:wiki-research"),
+    })).toThrow("retain every host-required acquisition");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.map((node) => node.nodeId === "research-node:cross-product-join"
+        ? { ...node, dependencies: ["research-node:jira-research"] }
+        : node),
+    })).toThrow("omits a required dependency");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.map((node) => node.nodeId === "research-node:jira-research"
+        ? { ...node, dependencies: ["research-node:synthesizer"] }
+        : node),
+    })).toThrow("cannot depend");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.map((node) => node.nodeId === "research-node:jira-research"
+        ? { ...node, grantedCapabilityIds: ["wiki.page.get"] }
+        : node),
+    })).toThrow("unsupported fields");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      basedOnGraphRevision: valid.basedOnGraphRevision + 1,
+    })).toThrow("stale");
+    expect(() => acceptResearchGraphProposalV1(catalog, proposalFor(catalog, [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:reconciler",
+      "research-node:reconciliation-repair",
+      "research-node:synthesizer",
+    ]))).toThrow("cannot be selected before critique");
+  });
+
+  test("revises a settled graph from the original approved catalog without rewriting accepted evidence", () => {
+    const catalog = composeResearchGraphV1(brief(
+      "Which Confluence pages are related to Jira tickets?",
+      ["jira", "confluence"],
+      "auto",
+    ));
+    const selectedIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ];
+    let current = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, selectedIds));
+    const completedTaskIds = new Map<string, string>();
+    for (const nodeId of selectedIds.slice(0, 2)) {
+      current = reduceResearchGraphV1(current, {
+        kind: "start_node",
+        expectedRevision: current.revision,
+        nodeId,
+      });
+      current = reduceResearchGraphV1(current, {
+        kind: "complete_node",
+        expectedRevision: current.revision,
+        nodeId,
+        packetRef: `packet:${nodeId}`,
+      });
+      const node = current.nodes.find((candidate) => candidate.id === nodeId)!;
+      completedTaskIds.set(nodeId, researchTaskIdForNodeV1(current, node));
+    }
+    expect(current.nodes.find((node) => node.roleId === "synthesizer")?.status).toBe("ready");
+
+    const revision = revisionProposalFor(catalog, current, [
+      ...selectedIds.slice(0, 2),
+      "research-node:cross-product-join",
+      selectedIds[2]!,
+    ]);
+    revision.nodes.find((node) => node.nodeId === "research-node:cross-product-join")!.priority = 71;
+    const revised = reviseResearchGraphSelectionV1(catalog, current, revision);
+    expect(revised).toMatchObject({
+      revision: current.revision + 1,
+      status: "running",
+      approvalEnvelope: { basedOnGraphRevision: current.revision + 1, status: "approved" },
+    });
+    expect(revised.nodes.find((node) => node.id === "research-node:jira-research")).toMatchObject({
+      status: "complete",
+      packetRef: "packet:research-node:jira-research",
+      taskGraphRevision: current.revision,
+    });
+    expect(revised.nodes.find((node) => node.id === "research-node:cross-product-join")).toMatchObject({
+      status: "ready",
+      priority: 71,
+    });
+    const revisedJira = revised.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const revisedJoin = revised.nodes.find((node) => node.id === "research-node:cross-product-join")!;
+    expect(researchTaskIdForNodeV1(revised, revisedJira))
+      .toBe(completedTaskIds.get(revisedJira.id)!);
+    expect(researchTaskIdForNodeV1(revised, revisedJoin))
+      .toBe(`research-task:r${revised.revision}:cross-product-join:a1`);
+    expect(revised.nodes.find((node) => node.roleId === "synthesizer")?.status).toBe("blocked");
+    validateResearchGraphV1(revised);
+  });
+
+  test("allows closing only undispatched optional work and rejects historic-node rewrites", () => {
+    const catalog = composeResearchGraphV1(brief(
+      "Which Confluence pages are related to Jira tickets?",
+      ["jira", "confluence"],
+      "auto",
+    ));
+    const selectedIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:synthesizer",
+    ];
+    let current = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, selectedIds));
+    for (const nodeId of selectedIds.slice(0, 2)) {
+      current = reduceResearchGraphV1(current, {
+        kind: "start_node",
+        expectedRevision: current.revision,
+        nodeId,
+      });
+      current = reduceResearchGraphV1(current, {
+        kind: "complete_node",
+        expectedRevision: current.revision,
+        nodeId,
+        packetRef: `packet:${nodeId}`,
+      });
+    }
+
+    const closed = reviseResearchGraphSelectionV1(catalog, current, revisionProposalFor(
+      catalog,
+      current,
+      selectedIds,
+      [{ nodeId: "research-node:cross-product-join", reasonCode: "budget_pruned" }],
+    ));
+    expect(closed.nodes.find((node) => node.id === "research-node:cross-product-join")).toMatchObject({
+      status: "pruned",
+      stopReason: "graph-revision:budget_pruned",
+    });
+    expect(closed.nodes.find((node) => node.roleId === "synthesizer")?.status).toBe("ready");
+
+    const rewrittenPriority = revisionProposalFor(catalog, current, selectedIds);
+    rewrittenPriority.nodes[0] = { ...rewrittenPriority.nodes[0]!, priority: 1 };
+    expect(() => reviseResearchGraphSelectionV1(catalog, current, rewrittenPriority))
+      .toThrow("cannot alter an observed node");
+    expect(() => reviseResearchGraphSelectionV1(catalog, current, revisionProposalFor(
+      catalog,
+      current,
+      selectedIds,
+      [{ nodeId: "research-node:synthesizer", reasonCode: "not_applicable" }],
+    ))).toThrow("cannot close required acquisition or synthesis");
+
+    const requiredCatalog = composeResearchGraphV1(brief(
+      "Which Confluence pages are related to Jira tickets?",
+      ["jira", "confluence"],
+      "required",
+    ));
+    const requiredSelectedIds = requiredCatalog.nodes
+      .filter((node) => node.kind !== "repair")
+      .map((node) => node.id);
+    const requiredCurrent = acceptResearchGraphProposalV1(
+      requiredCatalog,
+      proposalFor(requiredCatalog, requiredSelectedIds),
+    );
+    expect(() => reviseResearchGraphSelectionV1(requiredCatalog, requiredCurrent, revisionProposalFor(
+      requiredCatalog,
+      requiredCurrent,
+      requiredSelectedIds,
+      [{ nodeId: "research-node:reconciler", reasonCode: "not_applicable" }],
+    ))).toThrow("cannot close required acquisition or synthesis");
+  });
+
+  test("rejects cycles, unknown dependencies, depth, and capability widening", () => {
+    const graph = composeResearchGraphV1(brief("List Jira tickets", ["jira"], "off"));
+    const cyclic = { ...graph, nodes: graph.nodes.map((node) => ({ ...node, dependencies: [node.id] })) };
+    expect(() => validateResearchGraphV1(cyclic)).toThrow("acyclic");
+    const unknown = { ...graph, nodes: graph.nodes.map((node) => ({ ...node, dependencies: ["missing"] })) };
+    expect(() => validateResearchGraphV1(unknown)).toThrow("dependency");
+    const depth = { ...graph, nodes: graph.nodes.map((node, index) => ({ ...node, depth: index === 0 ? 1 as const : node.depth })) };
+    expect(() => validateResearchGraphV1(depth)).toThrow("depth");
+    const widened = structuredClone(graph) as ResearchGraphV1;
+    widened.nodes[0]!.grantedCapabilityIds.push("wiki.page.get");
+    expect(() => validateResearchGraphV1(widened)).toThrow(/unrequested|outside/);
+    const incompatible = structuredClone(graph) as ResearchGraphV1;
+    incompatible.nodes.find((node) => node.roleId === "focused-researcher")!.dependencies = ["research-node:synthesizer"];
+    expect(() => validateResearchGraphV1(incompatible)).toThrow("incompatible");
+    const expanded = structuredClone(graph) as ResearchGraphV1;
+    expanded.nodes[0]!.kind = "expand";
+    expect(() => validateResearchGraphV1(expanded)).toThrow("unavailable");
+    expect(() => validateResearchGraphV1({
+      ...graph,
+      totalBudget: { ...graph.totalBudget, maxCapabilityCalls: graph.totalBudget.maxCapabilityCalls + 1 },
+    })).toThrow("derive");
+  });
+
+  test("rejects excessive concurrency, waves, and graph fan-out", () => {
+    const graph = composeResearchGraphV1(brief("List Jira tickets", ["jira"], "off"));
+    for (const limits of [
+      { maxParallelNodes: 4, maxResearchWaves: 2, maxReconciliationWaves: 1 },
+      { maxParallelNodes: 3, maxResearchWaves: 3, maxReconciliationWaves: 1 },
+      { maxParallelNodes: 3, maxResearchWaves: 2, maxReconciliationWaves: 2 },
+    ]) {
+      expect(() => validateResearchGraphV1({
+        ...graph,
+        ...limits,
+        approvalEnvelope: {
+          ...graph.approvalEnvelope,
+          ...limits,
+        },
+      })).toThrow("concurrency or wave limits");
+    }
+
+    expect(() => validateResearchGraphV1({
+      ...graph,
+      nodes: Array.from({ length: 10 }, () => graph.nodes[0]!),
+    })).toThrow("node count");
+  });
+
+  test("keeps required plan approval proposed until the exact revision is approved", () => {
+    const proposed = composeResearchGraphV1(brief(
+      "Perform exhaustive contradiction analysis.",
+      ["jira", "confluence"],
+      "required",
+      "deep",
+      "required",
+    ));
+    expect(proposed).toMatchObject({ status: "proposed", approvalEnvelope: { status: "proposed" } });
+    expect(proposed.nodes.every((node) => node.status === "proposed")).toBe(true);
+    expect(() => reduceResearchGraphV1(proposed, { kind: "approve", expectedRevision: 2, approvedAt: "2026-01-02T00:00:00.000Z" })).toThrow("stale");
+    const approved = reduceResearchGraphV1(proposed, { kind: "approve", expectedRevision: 1, approvedAt: "2026-01-02T00:00:00.000Z" });
+    expect(approved.status).toBe("approved");
+    expect(approved.nodes.filter((node) => node.dependencies.length === 0).every((node) => node.status === "ready")).toBe(true);
+  });
+
+  test("preserves default versus explicit automatic approval for an identical deep brief", () => {
+    const objective = "Perform exhaustive contradiction analysis across Jira and Confluence.";
+    const proposed = composeStandardResearchGraphV1(objective, {
+      policy: {
+        schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+        requestedEffort: "deep",
+        requestedPlanApproval: "default",
+        scopeExpansionMode: "ask",
+        requestedReconciliation: "auto",
+      },
+    });
+    expect(proposed).toMatchObject({
+      resolvedEffort: "deep",
+      status: "proposed",
+      approvalEnvelope: {
+        status: "proposed",
+        scopeDiscoveryPolicy: { expansionMode: "ask" },
+      },
+    });
+    expect(researchPlanApprovalRequiredV1(proposed)).toMatchObject({
+      schema: "atlcli.research-plan-approval-required/v1",
+      kind: "plan_approval_required",
+      resolvedEffort: "deep",
+      resolvedPlanApproval: "required",
+      graphRevision: 1,
+    });
+
+    const automatic = composeStandardResearchGraphV1(objective, {
+      policy: {
+        schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+        requestedEffort: "deep",
+        requestedPlanApproval: "automatic",
+        scopeExpansionMode: "ask",
+        requestedReconciliation: "auto",
+      },
+    });
+    expect(automatic).toMatchObject({
+      resolvedEffort: "deep",
+      status: "approved",
+      approvalEnvelope: { status: "approved" },
+    });
+    expect(researchPlanApprovalRequiredV1(automatic)).toBeUndefined();
+  });
+
+  test("uses a pure revision-fenced reducer to unlock dependency barriers", () => {
+    let graph = composeResearchGraphV1(brief("List Jira tickets", ["jira"], "off"));
+    graph = reduceResearchGraphV1(graph, { kind: "start_node", expectedRevision: 1, nodeId: "research-node:jira-research" });
+    expect(graph.nodes.find((node) => node.id === "research-node:synthesizer")?.status).toBe("blocked");
+    graph = reduceResearchGraphV1(graph, { kind: "complete_node", expectedRevision: 1, nodeId: "research-node:jira-research", packetRef: "packet:task:1" });
+    expect(graph.nodes.find((node) => node.id === "research-node:synthesizer")?.status).toBe("ready");
+    graph = reduceResearchGraphV1(graph, { kind: "start_node", expectedRevision: 1, nodeId: "research-node:synthesizer" });
+    graph = reduceResearchGraphV1(graph, { kind: "complete_node", expectedRevision: 1, nodeId: "research-node:synthesizer", packetRef: "packet:task:2" });
+    expect(graph.status).toBe("complete");
+  });
+
+  test("keeps graph failure transitions revision-fenced and immutable", () => {
+    const initial = composeResearchGraphV1(brief("List Jira tickets", ["jira"], "off"));
+    const snapshot = structuredClone(initial);
+    expect(() => reduceResearchGraphV1(initial, {
+      kind: "start_node",
+      expectedRevision: 2,
+      nodeId: "research-node:jira-research",
+    })).toThrow("stale");
+    expect(() => reduceResearchGraphV1(initial, {
+      kind: "start_node",
+      expectedRevision: 1,
+      nodeId: "research-node:unknown",
+    })).toThrow("unknown node");
+
+    const running = reduceResearchGraphV1(initial, {
+      kind: "start_node",
+      expectedRevision: 1,
+      nodeId: "research-node:jira-research",
+    });
+    expect(initial).toEqual(snapshot);
+    expect(() => reduceResearchGraphV1(running, {
+      kind: "start_node",
+      expectedRevision: 1,
+      nodeId: "research-node:jira-research",
+    })).toThrow("ready");
+
+    const quarantined = reduceResearchGraphV1(running, {
+      kind: "quarantine_node",
+      expectedRevision: 1,
+      nodeId: "research-node:jira-research",
+      stopReason: "late-result",
+    });
+    expect(quarantined.nodes.find(
+      (node) => node.id === "research-node:jira-research",
+    )).toMatchObject({ status: "quarantined", stopReason: "late-result" });
+    expect(quarantined.nodes.find(
+      (node) => node.id === "research-node:synthesizer",
+    )?.status).toBe("blocked");
+    expect(() => reduceResearchGraphV1(quarantined, {
+      kind: "complete_node",
+      expectedRevision: 1,
+      nodeId: "research-node:jira-research",
+      packetRef: "packet:late",
+    })).toThrow("running");
+  });
+
+  test("projects a body-free user-plan revision diff and flags a renewed approval", () => {
+    const initialBrief = brief("Map Jira work to Confluence documentation", ["jira", "confluence"], "auto", "analysis", "required");
+    const initialGraph = composeResearchGraphV1(initialBrief);
+    const revisedBrief = reviseResearchBriefPlanV1({
+      brief: initialBrief,
+      basedOnGraphRevision: initialGraph.revision,
+      instruction: "Separate direct links from inferred relationships.",
+      requestedAt: "2026-08-02T10:00:00.000Z",
+    });
+    const revisedGraph = composeResearchGraphV1(revisedBrief, { graphRevision: 2 });
+    const diff = diffResearchPlansV1({
+      fromBrief: initialBrief,
+      fromGraph: initialGraph,
+      toBrief: revisedBrief,
+      toGraph: revisedGraph,
+    });
+
+    expect(diff).toMatchObject({
+      schema: "atlcli.research-plan-diff/v1",
+      fromRevision: 1,
+      toRevision: 2,
+      briefRevisionChanged: true,
+      scopeFingerprintChanged: false,
+      scopeBindingFingerprintChanged: false,
+      addedCapabilityIds: [],
+      exceededApprovalEnvelopeFields: [],
+      requiresApproval: true,
+    });
+    expect(JSON.stringify(diff)).not.toContain("Separate direct links");
+  });
+
+  test("permits only catalog-approved additions and exposes hidden envelope widening", () => {
+    const initialBrief = brief(
+      "Map Jira work to Confluence documentation",
+      ["jira", "confluence"],
+      "off",
+      "analysis",
+    );
+    const catalog = composeResearchGraphV1(initialBrief);
+    const initialIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ];
+    const selected = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, initialIds));
+    const revised = reviseResearchGraphSelectionV1(
+      catalog,
+      selected,
+      revisionProposalFor(catalog, selected, [
+        ...initialIds.slice(0, 2),
+        "research-node:cross-product-join",
+        initialIds[2]!,
+      ]),
+    );
+    const approvedDiff = diffResearchPlansV1({
+      fromBrief: initialBrief,
+      fromGraph: selected,
+      toBrief: initialBrief,
+      toGraph: revised,
+    });
+    expect(approvedDiff).toMatchObject({
+      addedRoleIds: ["document-distiller"],
+      exceededApprovalEnvelopeFields: [],
+    });
+
+    const widened = structuredClone(revised);
+    widened.approvalEnvelope.allowedCapabilityIds.push(
+      "jira.issue.comments" as ResearchGraphCapabilityV1,
+    );
+    widened.approvalEnvelope.coverageTargetFingerprint = "fnv1a32:changed";
+    const widenedDiff = diffResearchPlansV1({
+      fromBrief: initialBrief,
+      fromGraph: selected,
+      toBrief: initialBrief,
+      toGraph: widened,
+    });
+    expect(widenedDiff.exceededApprovalEnvelopeFields).toEqual(
+      expect.arrayContaining(["capabilities", "coverage_targets"]),
+    );
+  });
+});

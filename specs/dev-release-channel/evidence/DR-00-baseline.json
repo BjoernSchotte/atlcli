@@ -1,0 +1,158 @@
+{
+  "schema": "atlcli.dev-release-baseline/v1",
+  "recordedAt": "2026-08-12T14:07:16Z",
+  "planningBaselineSha": "e03755e758b5d83cd5f3c6227060fba247f89e29",
+  "implementationBranchHeadBeforeDr00": "b84ba46a773ecf65294fed852b92e3cd969fd789",
+  "sourceRepository": {
+    "name": "BjoernSchotte/atlcli",
+    "url": "https://github.com/BjoernSchotte/atlcli",
+    "visibility": "public",
+    "defaultBranch": "main",
+    "originMainSha": "e03755e758b5d83cd5f3c6227060fba247f89e29",
+    "rootVersion": "0.17.2",
+    "rulesets": [],
+    "environments": [
+      {
+        "name": "github-pages",
+        "protectionRuleTypes": ["branch_policy"]
+      }
+    ]
+  },
+  "stableRelease": {
+    "id": 352001333,
+    "tag": "v0.17.2",
+    "tagObjectSha": "e19e0fcc48e48a355941edf19c7d68d9256c9805",
+    "commitSha": "ff02900dc87f26dca9bd69964a05bf99bc370107",
+    "url": "https://github.com/BjoernSchotte/atlcli/releases/tag/v0.17.2",
+    "publishedAt": "2026-07-10T09:25:09Z",
+    "draft": false,
+    "prerelease": false,
+    "immutable": false,
+    "assets": [
+      {
+        "name": "atlcli-darwin-arm64.tar.gz",
+        "size": 22604117,
+        "sha256": "3254a791edf0d194a1734cab0918f11baa4c7da03f50a98fd680c73b6b67b6c4"
+      },
+      {
+        "name": "atlcli-darwin-x64.tar.gz",
+        "size": 25123647,
+        "sha256": "4387c762bec603eed776e52578cb8414efa397cb80c25f7ca6b8cd040d00eb90"
+      },
+      {
+        "name": "atlcli-linux-arm64.tar.gz",
+        "size": 38282369,
+        "sha256": "da58a8b320a9d1fa323a7b84f9ffe1cff899c88e2820e1db0cd40fda9c9ed391"
+      },
+      {
+        "name": "atlcli-linux-x64.tar.gz",
+        "size": 39929781,
+        "sha256": "c4c368b7e981601ac5963f4f2e5e5a2737afb018eeac0f473dcb655210d91bd4"
+      },
+      {
+        "name": "atlcli-windows-x64.zip",
+        "size": 41581222,
+        "sha256": "4c1f09ae6d36d138dc573f0bb2dca2be4b55a1de6deb0fdf65519c0573559cca"
+      },
+      {
+        "name": "checksums.txt",
+        "size": 455,
+        "sha256": "bfef1e860499031859e9778dabefd5ba0418279f2cb38959bf3bc701079612c7"
+      }
+    ]
+  },
+  "sourceEligibilityContract": {
+    "workflowPath": ".github/workflows/ci.yml",
+    "event": "push",
+    "branch": "main",
+    "aggregateJob": "required",
+    "identityRule": "workflow path plus event plus branch plus exact head SHA plus latest run attempt",
+    "advisoryJobs": [
+      "Non-required system Chrome compatibility",
+      "Non-required CI timing telemetry",
+      "Astro Windows compatibility canary",
+      "Astro platform canary"
+    ],
+    "baselineRun": {
+      "id": 31599183166,
+      "attempt": 1,
+      "headSha": "e03755e758b5d83cd5f3c6227060fba247f89e29",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/BjoernSchotte/atlcli/actions/runs/31599183166",
+      "requiredJob": {
+        "id": 94123595002,
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/BjoernSchotte/atlcli/actions/runs/31599183166/job/94123595002"
+      }
+    }
+  },
+  "homebrewTap": {
+    "name": "BjoernSchotte/homebrew-tap",
+    "url": "https://github.com/BjoernSchotte/homebrew-tap",
+    "visibility": "public",
+    "defaultBranch": "main",
+    "headSha": "1b3f5e4147ae370505edd93390d82954c941d2e4",
+    "headUrl": "https://github.com/BjoernSchotte/homebrew-tap/commit/1b3f5e4147ae370505edd93390d82954c941d2e4",
+    "rulesets": [],
+    "stableFormula": {
+      "path": "Formula/atlcli.rb",
+      "gitBlobSha": "1875dbd9485b62af4c738fcafa4d3dbc873f9b85",
+      "version": "0.17.2",
+      "url": "https://github.com/BjoernSchotte/homebrew-tap/blob/main/Formula/atlcli.rb"
+    },
+    "stableUpdateWorkflow": {
+      "path": ".github/workflows/update-formula.yml",
+      "gitBlobSha": "cb5c9292886de46c31c83b95e0995a474dafba29",
+      "url": "https://github.com/BjoernSchotte/homebrew-tap/blob/main/.github/workflows/update-formula.yml",
+      "currentBehavior": "accepts arbitrary formula, tag, and repository inputs; downloads four archives; updates with sed; pushes without audit or install proof"
+    }
+  },
+  "authorityBoundary": {
+    "currentDevReleaseEnvironment": null,
+    "targetEnvironment": "dev-release",
+    "targetEnvironmentOwner": "BjoernSchotte/atlcli repository administrators",
+    "sourceBuildPermissions": ["contents:read", "actions:read", "checks:read"],
+    "sourcePublishPermissions": ["contents:write", "id-token:write", "attestations:write"],
+    "tapDispatchCredential": "short-lived GitHub App token restricted to BjoernSchotte/homebrew-tap with Actions write and metadata read",
+    "forbiddenFallback": "personal access token"
+  },
+  "proof": {
+    "dependencyInstall": {
+      "command": "bun install --frozen-lockfile",
+      "result": "success",
+      "bunVersion": "1.3.14"
+    },
+    "releaseRegressionTests": {
+      "command": "bun run test scripts/release.test.ts scripts/dev-resolution.test.ts",
+      "result": "success",
+      "passed": 13,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "stableDryRun": {
+      "command": "bun scripts/release.ts patch --dry-run",
+      "result": "success",
+      "currentVersion": "0.17.2",
+      "plannedVersion": "0.17.3",
+      "mutatedGit": false,
+      "mutatedGitHub": false,
+      "mutatedHomebrewTap": false,
+      "canonicalTestCommand": "bun run test"
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "success"
+    }
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false,
+    "containsOnlyPublicRepositoryMetadata": true
+  }
+}

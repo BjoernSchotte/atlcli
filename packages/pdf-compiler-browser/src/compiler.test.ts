@@ -1,22 +1,41 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { deflateSync, inflateSync } from "node:zlib";
 import {
   PDF_RUNTIME_ASSETS,
   preparePdfDocument,
+  resolveFullPdfFontRequirementsV1,
   validatePdfOutput,
   type ExportBlock,
   type PdfSourceBundle,
   type PdfTemplateSettings,
 } from "@atlcli/pdf/browser";
 import { ATLCLI_TYPST_TEMPLATE, serializePdfDocument } from "@atlcli/pdf/internal";
+// Cross-package relative import (like ensure-fonts below): export-fixtures is
+// a PRIVATE workspace package, and a devDependency on it from this publishable
+// package breaks the spec-009 file:-link consumer install.
+import {
+  generateImageHeavyCorpus,
+  resolveImageHeavyAsset,
+} from "../../export-fixtures/src/image-heavy-corpus.js";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
-import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
+import {
+  BrowserPdfCompiler,
+  PDF_BROWSER_COMPILER_VERSION,
+  type BrowserPdfCompilerFontSourceV1,
+} from "./index.js";
+
+let canonicalCompiler: BrowserPdfCompiler | undefined;
 
 beforeAll(async () => {
   await ensurePdfFonts({ logger: () => {} });
   await ensureVendoredTypst();
+  canonicalCompiler = await createCompiler();
+});
+
+afterAll(async () => {
+  await canonicalCompiler?.reset();
 });
 
 async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>> {
@@ -30,6 +49,37 @@ async function createCompiler(): Promise<BrowserPdfCompiler> {
     ...PDF_RUNTIME_ASSETS.fonts.map((font) => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)),
   ]);
   return new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
+}
+
+async function createDemandAwareCompiler(
+  onLoad: (assetId: string) => void = () => {},
+  sourcesTransform: (
+    sources: BrowserPdfCompilerFontSourceV1[],
+  ) => BrowserPdfCompilerFontSourceV1[] = (sources) => sources,
+): Promise<BrowserPdfCompiler> {
+  const wasm = await packageBytes("@atlcli/pdf-compiler-browser/wasm");
+  const sources = PDF_RUNTIME_ASSETS.fonts.map(
+    (font): BrowserPdfCompilerFontSourceV1 => ({
+      assetId: font.assetId,
+      sha256: font.sha256,
+      load: async (context = {}) => {
+        context.signal?.throwIfAborted();
+        onLoad(font.assetId);
+        return packageBytes(`@atlcli/pdf/fonts/${font.fileName}`);
+      },
+    }),
+  );
+  return new BrowserPdfCompiler({
+    wasm: wasm.buffer,
+    fonts: sourcesTransform(sources),
+  });
+}
+
+function sharedCompiler(): BrowserPdfCompiler {
+  if (!canonicalCompiler) {
+    throw new Error("Canonical BrowserPdfCompiler is not initialized");
+  }
+  return canonicalCompiler;
 }
 
 function bundle(main: string, sourceMap: PdfSourceBundle["sourceMap"] = []): PdfSourceBundle {
@@ -117,8 +167,177 @@ function tinyPng(): Uint8Array {
 }
 
 describe("BrowserPdfCompiler package", () => {
+  it("loads, registers, and reports only the resolved font subset", async () => {
+    const loaded: string[] = [];
+    const compiler = await createDemandAwareCompiler((assetId) => loaded.push(assetId));
+    try {
+      const source = settingsBundle({ cover: false, outline: false });
+      const expected = source.fontRequirements!.assets.map((asset) => asset.assetId);
+      const result = await compiler.compile(source);
+
+      expect(result.diagnostics).toEqual([]);
+      expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true });
+      expect(loaded).toEqual(expected);
+      expect(result.fontEvidence).toMatchObject({
+        schema: "atlcli.pdf-font-load-evidence/1",
+        requirementKey: source.fontRequirements!.key,
+        registeredAssetIds: expected,
+        fullBundleFallback: false,
+      });
+      expect(result.fontEvidence!.registeredAssetIds.length).toBeLessThan(
+        PDF_RUNTIME_ASSETS.fonts.length,
+      );
+      expect(result.fontEvidence!.loadedFontNames.join("\n")).not.toContain(
+        "Source Code Pro",
+      );
+
+      await compiler.compile(source);
+      expect(loaded).toEqual(expected);
+    } finally {
+      await compiler.reset();
+    }
+  }, 30_000);
+
+  it("rebuilds one compiler when the deterministic requirement key changes", async () => {
+    const loaded: string[] = [];
+    const compiler = await createDemandAwareCompiler((assetId) => loaded.push(assetId));
+    try {
+      const prose = settingsBundle({ cover: false, outline: false });
+      const full = {
+        ...prose,
+        fontRequirements: resolveFullPdfFontRequirementsV1(),
+      };
+      await compiler.compile(prose);
+      const proseLoadCount = loaded.length;
+      const result = await compiler.compile(full);
+
+      expect(loaded.slice(proseLoadCount)).toEqual(
+        PDF_RUNTIME_ASSETS.fonts.map((font) => font.assetId),
+      );
+      expect(result.fontEvidence?.registeredAssetIds).toEqual(
+        PDF_RUNTIME_ASSETS.fonts.map((font) => font.assetId),
+      );
+      expect(result.fontEvidence?.fullBundleFallback).toBe(false);
+    } finally {
+      await compiler.reset();
+    }
+  }, 30_000);
+
+  it("serializes process-global font ownership across compiler instances", async () => {
+    const first = await createDemandAwareCompiler();
+    const second = await createDemandAwareCompiler();
+    const prose = settingsBundle({ cover: false, outline: false });
+    const full = {
+      ...prose,
+      fontRequirements: resolveFullPdfFontRequirementsV1(),
+    };
+    try {
+      const [firstProse, fullResult, secondProse] = await Promise.all([
+        first.compile(prose),
+        second.compile(full),
+        first.compile(prose),
+      ]);
+
+      expect(firstProse.diagnostics).toEqual([]);
+      expect(fullResult.diagnostics).toEqual([]);
+      expect(secondProse.diagnostics).toEqual([]);
+      expect(secondProse.pdf).toEqual(firstProse.pdf);
+      expect(firstProse.fontEvidence?.registeredAssetIds).toEqual(
+        prose.fontRequirements!.assets.map((asset) => asset.assetId),
+      );
+      expect(fullResult.fontEvidence?.registeredAssetIds).toEqual(
+        PDF_RUNTIME_ASSETS.fonts.map((font) => font.assetId),
+      );
+    } finally {
+      await first.reset();
+      await second.reset();
+    }
+  }, 30_000);
+
+  it("rejects missing and hash-mismatched font sources before compilation", async () => {
+    const source = settingsBundle({ cover: false, outline: false });
+    const required = source.fontRequirements!.assets[0]!;
+    const missing = await createDemandAwareCompiler(
+      () => {},
+      (sources) => sources.filter((candidate) => candidate.assetId !== required.assetId),
+    );
+    const mismatched = await createDemandAwareCompiler(
+      () => {},
+      (sources) => sources.map((candidate) =>
+        candidate.assetId === required.assetId
+          ? { ...candidate, sha256: "0".repeat(64) }
+          : candidate
+      ),
+    );
+    try {
+      await expect(missing.compile(source)).rejects.toThrow(
+        `font source is missing ${required.assetId}`,
+      );
+      await expect(mismatched.compile(source)).rejects.toThrow(
+        "does not match the required SHA-256",
+      );
+    } finally {
+      await missing.reset();
+      await mismatched.reset();
+    }
+  });
+
+  it("does not invoke font loaders for a compile cancelled before initialization", async () => {
+    let loads = 0;
+    const compiler = await createDemandAwareCompiler(() => {
+      loads += 1;
+    });
+    const controller = new AbortController();
+    controller.abort(new DOMException("cancelled", "AbortError"));
+    try {
+      await expect(
+        compiler.compile(settingsBundle(), { signal: controller.signal }),
+      ).rejects.toThrow("cancelled");
+      expect(loads).toBe(0);
+    } finally {
+      await compiler.reset();
+    }
+  });
+
+  it("clears a failed initialization so the same compiler can retry", async () => {
+    let attempts = 0;
+    const source = settingsBundle({ cover: false, outline: false });
+    const firstRequired = source.fontRequirements!.assets[0]!.assetId;
+    const compiler = await createDemandAwareCompiler(
+      () => {},
+      (sources) => sources.map((candidate) =>
+        candidate.assetId === firstRequired
+          ? {
+              ...candidate,
+              load: async () => {
+                attempts += 1;
+                if (attempts === 1) throw new Error("transient font read");
+                return packageBytes(
+                  `@atlcli/pdf/fonts/${
+                    PDF_RUNTIME_ASSETS.fonts.find(
+                      (font) => font.assetId === firstRequired,
+                    )!.fileName
+                  }`,
+                );
+              },
+            }
+          : candidate
+      ),
+    );
+    try {
+      await expect(compiler.compile(source)).rejects.toThrow(
+        "transient font read",
+      );
+      const result = await compiler.compile(source);
+      expect(result.diagnostics).toEqual([]);
+      expect(attempts).toBe(2);
+    } finally {
+      await compiler.reset();
+    }
+  }, 30_000);
+
   it("compiles with the complete canonical font set", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle(String.raw`#set text(font: "Source Sans 3")
 = Package smoke
 #text(font: "Source Serif 4")[Serif]
@@ -135,27 +354,142 @@ describe("BrowserPdfCompiler package", () => {
 
   it("returns normalized, source-mapped diagnostics without raw Typst ranges", async () => {
     const compiler = await createCompiler();
-    const result = await compiler.compile(bundle(
-      "#this-function-does-not-exist()",
-      [{ blockPath: "blocks[0]", blockType: "paragraph", startLine: 1, startColumn: 1, endLine: 1, endColumn: 40 }]
-    ));
-    expect(result.pdf).toBeUndefined();
-    expect(result.diagnostics[0]).toMatchObject({
-      severity: "error",
-      path: "/main.typ",
-      blockPath: "blocks[0]",
-    });
-    expect("range" in (result.diagnostics[0] as object)).toBe(false);
+    try {
+      const result = await compiler.compile(bundle(
+        "#this-function-does-not-exist()",
+        [{ blockPath: "blocks[0]", blockType: "paragraph", startLine: 1, startColumn: 1, endLine: 1, endColumn: 40 }]
+      ));
+      expect(result.pdf).toBeUndefined();
+      expect(result.diagnostics[0]).toMatchObject({
+        severity: "error",
+        path: "/main.typ",
+        blockPath: "blocks[0]",
+      });
+      expect("range" in (result.diagnostics[0] as object)).toBe(false);
+    } finally {
+      await compiler.reset();
+    }
   }, 30_000);
 
   it("drops compiler state and initializes cleanly after reset", async () => {
     const compiler = await createCompiler();
-    const source = bundle("= Reset lifecycle\n\nSame source.");
-    const first = await compiler.compile(source);
-    await compiler.reset();
-    const second = await compiler.compile(source);
-    expect(second.diagnostics).toEqual([]);
-    expect(second.pdf).toEqual(first.pdf);
+    try {
+      const source = bundle("= Reset lifecycle\n\nSame source.");
+      const first = await compiler.compile(source);
+      await compiler.reset();
+      const second = await compiler.compile(source);
+      expect(second.diagnostics).toEqual([]);
+      expect(second.pdf).toEqual(first.pdf);
+    } finally {
+      await compiler.reset();
+    }
+  }, 30_000);
+
+  it("exposes the real post-VFS measurement point before Typst compiles", async () => {
+    const compiler = sharedCompiler();
+    let hookRan = false;
+    const hook = Symbol.for("atlcli.pdf-compiler-browser.memory-probe.after-vfs-loaded");
+    const host = globalThis as typeof globalThis &
+      Record<symbol, (() => void) | undefined>;
+    host[hook] = () => {
+      hookRan = true;
+    };
+    let result: Awaited<ReturnType<BrowserPdfCompiler["compile"]>>;
+    try {
+      result = await compiler.compile(bundle("= Measured compile"));
+    } finally {
+      delete host[hook];
+    }
+    expect(hookRan).toBe(true);
+    expect(result.pdf?.byteLength).toBeGreaterThan(0);
+  }, 30_000);
+
+  it("decodes every image-heavy corpus encoder through the real Typst pipeline (issue #118)", async () => {
+    // The corpus ships its own pinned JPEG/PNG encoders; this proves the REAL
+    // compiler (image crate inside Typst WASM) accepts their output. A decode
+    // failure surfaces as a compile diagnostic, so empty diagnostics + a
+    // tagged PDF is the actual acceptance evidence.
+    const corpus = generateImageHeavyCorpus({ scale: 0.06 });
+    const prepared = await preparePdfDocument(corpus.blocks, {
+      resolve: async (ref) => resolveImageHeavyAsset(corpus, ref.filename ?? ""),
+    });
+    expect(prepared.notes).toEqual([]);
+    expect(prepared.assets).toHaveLength(corpus.counts.uniqueAssets);
+    const source = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Image-heavy corpus decode proof",
+        space: "DOCSY",
+        version: 1,
+        exporter: "atlcli image-heavy corpus test",
+        exportedAt: new Date("2026-07-27T00:00:00.000Z"),
+      },
+      settings: { cover: false, outline: false },
+    });
+    const compiler = sharedCompiler();
+    const result = await compiler.compile(source);
+    expect(result.diagnostics).toEqual([]);
+    expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true });
+  }, 120_000);
+
+  it("decodes profile-normalized derivatives through the real Typst pipeline (issue #118 P1)", async () => {
+    // The 'standard' profile re-encodes rasters with the pinned in-repo
+    // codec; Typst (image crate) must accept every derivative. Zero
+    // diagnostics + a tagged PDF is the acceptance evidence, and the
+    // normalized bundle must be materially smaller than the original.
+    // Scale 0.75 keeps sources ABOVE the 180-PPI envelope target (photos
+    // 1800px wide vs the 1176px cap) so normalization genuinely engages;
+    // smaller scales are correctly all-kept ("no-downscale").
+    const corpus = generateImageHeavyCorpus({ scale: 0.75 });
+    const resolver = {
+      resolve: async (ref: { filename?: string }) =>
+        resolveImageHeavyAsset(corpus, ref.filename ?? ""),
+    };
+    const prepared = await preparePdfDocument(corpus.blocks, resolver, {
+      imageQuality: { imageProfile: "standard" },
+    });
+    const originalBytes = corpus.counts.uniqueAssetBytes;
+    const normalizedBytes = prepared.assets.reduce(
+      (total, asset) => total + asset.bytes.byteLength,
+      0,
+    );
+    expect(normalizedBytes).toBeLessThan(originalBytes * 0.75);
+    expect(prepared.notes.some((note) => note.code === "image-profile-applied")).toBe(true);
+    const source = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Image profile decode proof",
+        space: "DOCSY",
+        version: 1,
+        exporter: "atlcli image profile test",
+        exportedAt: new Date("2026-07-27T00:00:00.000Z"),
+      },
+      settings: { cover: false, outline: false },
+    });
+    const compiler = sharedCompiler();
+    const result = await compiler.compile(source);
+    expect(result.diagnostics).toEqual([]);
+    expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true });
+  }, 120_000);
+
+  it("registers the Typst WASM linear memory with the benchmark probe hook", async () => {
+    const hook = Symbol.for("atlcli.pdf-compiler-browser.memory-probe.register-wasm-memory");
+    const host = globalThis as typeof globalThis &
+      Record<symbol, ((memory: WebAssembly.Memory) => void) | undefined>;
+    let registered: WebAssembly.Memory | undefined;
+    host[hook] = (memory) => {
+      registered = memory;
+    };
+    const compiler = await createCompiler();
+    try {
+      const result = await compiler.compile(bundle("= Attribution probe"));
+      expect(result.pdf?.byteLength).toBeGreaterThan(0);
+      expect(registered).toBeInstanceOf(WebAssembly.Memory);
+      // Linear memory only grows, so byteLength read after a compile is the
+      // high-water mark the attribution gate consumes.
+      expect(registered!.buffer.byteLength).toBeGreaterThan(0);
+    } finally {
+      delete host[hook];
+      await compiler.reset();
+    }
   }, 30_000);
 
   it("contains no host-specific asset or extension imports", async () => {
@@ -191,17 +525,50 @@ describe("BrowserPdfCompiler package", () => {
     const source = serializePdfDocument(prepared, {
       metadata: { title: "Anchor names", exportedAt: new Date("2026-07-19T00:00:00Z") },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(source);
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(result.pdf).toBeDefined();
     expect(validatePdfOutput(result.pdf!).pageCount).toBeGreaterThanOrEqual(1);
   }, 30_000);
+
+  it("compiles the static PDF projection of a correlated ADF inline comment", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "Annotated value",
+        annotations: [{
+          id: "marker-private",
+          annotationType: "inlineComment",
+          comment: {
+            bodyText: "Review this value",
+            status: "resolved",
+            replies: [{ bodyText: "Reviewed" }],
+          },
+        }],
+      }],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const source = serializePdfDocument(prepared, {
+      metadata: { title: "Inline comments", exportedAt: new Date("2026-07-19T00:00:00Z") },
+    });
+    const compiler = sharedCompiler();
+    const result = await compiler.compile(source);
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(validatePdfOutput(result.pdf!).pageCount).toBeGreaterThanOrEqual(2);
+  }, 30_000);
 });
 
 describe("template settings compiled output", () => {
   it("compiles Letter with a DRAFT watermark: clean, tagged, page count unchanged vs A4", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const a4 = await compiler.compile(settingsBundle());
     const letter = await compiler.compile(
       settingsBundle({ page: "letter", orientation: "portrait", watermark: { text: "DRAFT" } })
@@ -220,7 +587,7 @@ describe("template settings compiled output", () => {
   }, 120_000);
 
   it("produces the exact page count for every cover/outline combination", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     // Baseline: cover + outline + one body page + colophon = 4 pages. Each
     // disabled section removes exactly one page — a stray unconditional
     // pagebreak() outside its guard would leave a blank page behind instead.
@@ -238,7 +605,7 @@ describe("template settings compiled output", () => {
   }, 240_000);
 
   it("compiles landscape orientation with the A4-tuned cover measurements intact", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(settingsBundle({ orientation: "landscape" }));
     expect(result.diagnostics).toEqual([]);
     // Cover and colophon still fit their landscape pages: same page count as portrait.
@@ -247,7 +614,7 @@ describe("template settings compiled output", () => {
   }, 120_000);
 
   it("compiles accent color, organization name, header/footer text, and a real PNG logo", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(
       settingsBundle({
         accentColor: "#0052CC",
@@ -280,7 +647,7 @@ describe("spec 003 content features (real compiler)", () => {
       },
     });
     const source = serializePdfDocument(prepared, { metadata: meta, ...(settings ? { settings } : {}) });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(source);
     const errors = result.diagnostics.filter((d) => d.severity === "error");
     if (errors.length) throw new Error(`compile errors: ${JSON.stringify(errors)}`);
@@ -398,7 +765,7 @@ describe("spec 003 captioned figures (real compiler, code-context regression)", 
   ) {
     const prepared = await preparePdfDocument(blocks, { resolve });
     const source = serializePdfDocument(prepared, { metadata: meta });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(source);
     return { result, source };
   }
@@ -456,7 +823,9 @@ describe("spec 003 captioned figures (real compiler, code-context regression)", 
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(result.pdf).toBeDefined();
     expect(source.main).toContain("#figure(block(width: 100%)[");
-    expect(source.main).toContain("#figure(raw(");
+    expect(source.main).toContain("#figure(block(width: 100%, fill: rgb(");
+    expect(source.main).toContain('#text(font: "Source Code Pro"');
+    expect(source.main).toContain('"const"');
   }, 60_000);
 
   it("a wide table nested inside a landscape region compiles and escalates against the landscape width", async () => {
@@ -501,7 +870,7 @@ describe("spec 003 captioned figures (real compiler, code-context regression)", 
     expect(landscapeCodes).not.toContain("table-text-scaled");
     expect(landscapeCodes).not.toContain("table-overflow-warned");
 
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(landscape);
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(result.pdf).toBeDefined();

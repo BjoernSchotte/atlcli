@@ -5,12 +5,13 @@
  * any `@atlcli/*` package.
  */
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
+import type { ChartDiagnosticV1, ChartModelV1, ChartSourceKindV1, MacroParameter } from "@atlcli/export-blocks";
 
 /** The `storageToBlocks` walker, injected. */
 export type StorageToBlocksDep = (
   storage: string,
   opts?: {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     pageContext?: { id: string; version?: number; spaceKey?: string };
   }
 ) => { blocks: ExportBlock[]; notes: ExportNote[] };
@@ -41,3 +42,10 @@ export type ExtractMacroBodyDep = (
   macroNames: readonly string[],
   name: string
 ) => string | undefined;
+
+/** Pure source adapter used when an ADF/DC macro reaches the resolver pass. */
+export type NormalizeChartMacroDep = (
+  params: readonly MacroParameter[],
+  body: readonly ExportBlock[],
+  source: ChartSourceKindV1,
+) => { model?: ChartModelV1; diagnostics: readonly ChartDiagnosticV1[] };

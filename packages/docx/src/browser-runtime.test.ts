@@ -7,8 +7,11 @@ import {
   canvasSvgRasterizer,
   installDocxBrowserRuntime,
   memoryTemplateSource,
+  prepareDocxCodeHighlighting,
+  prepareDocxExportRuntime,
   type DocxByteHelpers,
 } from "./browser-runtime.js";
+import type { ExportBlock } from "@atlcli/confluence";
 import { DOCX_BROWSER_VITE_DEFINES } from "./vite.js";
 
 type RuntimeGlobal = typeof globalThis & {
@@ -37,6 +40,67 @@ describe("DOCX browser byte helpers", () => {
     const before = scope.Buffer;
     installDocxBrowserRuntime();
     expect(scope.Buffer).toBe(before);
+  });
+
+  it("awaits only nested non-Mermaid DOCX languages and is idempotent", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "callout",
+        kind: "info",
+        content: [{ type: "codeBlock", language: "ts", code: "const x = 1;" }],
+      },
+      {
+        type: "table",
+        rows: [{
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [
+              { type: "codeBlock", language: "typescript", code: "const y = 2;" },
+              { type: "codeBlock", language: "mermaid", code: "graph TD; A-->B" },
+            ],
+          }],
+        }],
+      },
+    ];
+    await Promise.all([
+      prepareDocxCodeHighlighting(blocks),
+      prepareDocxCodeHighlighting(blocks),
+    ]);
+    await prepareDocxCodeHighlighting(blocks);
+  });
+
+  it("does not infer font demand from an empty or partial block tree", async () => {
+    const empty = await prepareDocxExportRuntime([]);
+    const partial = await prepareDocxExportRuntime([
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "INLINE_TOKEN", marks: ["code"] }],
+      },
+    ]);
+    expect(empty.codeFontBytes).toBe(0);
+    expect(empty.codeFontMs).toBe(0);
+    expect(partial.codeFontBytes).toBe(0);
+    expect(partial.codeFontMs).toBe(0);
+  });
+
+  it("explicitly preloads highlighting and the validated bundled code font", async () => {
+    const prepared = await prepareDocxExportRuntime([
+      {
+        type: "callout",
+        kind: "info",
+        content: [{ type: "codeBlock", language: "ts", code: "const x = 1;" }],
+      },
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "INLINE_TOKEN", marks: ["code"] }],
+      },
+    ], { preloadCodeFont: true });
+    expect(prepared.codeFontBytes).toBe(273_900);
+    expect(prepared.totalMs).toBeGreaterThanOrEqual(0);
+    expect(prepared.highlightingMs).toBeGreaterThanOrEqual(0);
+    expect(prepared.codeFontMs).toBeGreaterThanOrEqual(0);
   });
 
   it("exports the exact frozen Vite define map", () => {
@@ -144,7 +208,7 @@ async function buildAndRunEntry(entrySource: string): Promise<ReturnType<typeof 
 }
 
 describe("browser runtime module evaluation order", () => {
-  const runtimePath = join(import.meta.dir, "browser-runtime.ts");
+  const runtimePath = join(import.meta.dir, "browser-runtime-bootstrap.ts");
 
   it("works when the runtime is installed before a dynamic engine import", async () => {
     const run = await buildAndRunEntry(
@@ -152,7 +216,7 @@ describe("browser runtime module evaluation order", () => {
         `const { value } = await import("./probe.ts");\n` +
         `console.log(Array.from(value).join(","));\n`
     );
-    expect(run.status).toBe(0);
+    expect(run.status, run.stderr.toString()).toBe(0);
     expect(run.stdout).toContain("111,107");
   });
 

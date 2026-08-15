@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createRegistry } from "./registry.js";
+import { createRegistry, defaultRegistry } from "./registry.js";
 import type { MacroRenderer } from "./types.js";
 
 function stub(id: string, macros: string[]): MacroRenderer {
@@ -67,5 +67,44 @@ describe("compose", () => {
     const base = createRegistry([stub("ev", ["*"])]);
     const composed = base.compose(stub("a", ["toc"])).compose(stub("b", ["jira"]));
     expect(composed.renderers.map((r) => r.id)).toEqual(["b", "a", "ev"]);
+  });
+});
+
+describe("defaultRegistry — the shipped renderer set", () => {
+  const deps = {
+    storageToBlocks: () => ({ blocks: [], notes: [] }),
+    htmlToExportBlocks: () => ({ blocks: [], notes: [] }),
+    parsePageProperties: () => [],
+    extractMacroBody: () => undefined,
+  } as unknown as Parameters<typeof defaultRegistry>[0];
+
+  test("routes the synthetic `confluence-list` macro name a datasource emits", () => {
+    // The Confluence-search datasource translates to `confluence-list`, a name
+    // with no legacy macro behind it. If nothing claims it, the datasource
+    // falls through to the export_view catch-all, which cannot render it
+    // (there is no server-side macro to fetch) — a silently link-only table.
+    const registry = defaultRegistry(deps);
+    const claimant = registry.renderers.find((r) => r.macros.includes("confluence-list"));
+    expect(claimant?.id).toBe("confluence-list");
+    expect(claimant?.requiresLivePort).toBe(true);
+  });
+
+  test("the Jira renderer still owns the legacy macro names", () => {
+    const registry = defaultRegistry(deps);
+    const jira = registry.renderers.find((r) => r.id === "jira");
+    expect(jira?.macros).toEqual(["jira", "jiraissues"]);
+  });
+
+  test("routes embedded Whiteboards before the live export-view floor", () => {
+    const registry = defaultRegistry(deps);
+    const whiteboardIndex = registry.renderers.findIndex(
+      (renderer) => renderer.id === "whiteboard-linked-card",
+    );
+    const exportViewIndex = registry.renderers.findIndex(
+      (renderer) => renderer.id === "export-view",
+    );
+    expect(whiteboardIndex).toBeGreaterThanOrEqual(0);
+    expect(whiteboardIndex).toBeLessThan(exportViewIndex);
+    expect(registry.renderers[whiteboardIndex]?.requiresLivePort).toBe(false);
   });
 });

@@ -3,12 +3,16 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  BUNDLED_TEMPLATE_NAME,
   createAssetByteCache,
+  loadExportTemplate,
   mightContainMermaid,
   mightReferenceImage,
   prestartPageDependentDeps,
   tokenAssetFetcher,
 } from "./export-internals.js";
+import { BUNDLED_TEMPLATE_EPOCH, bundledDefaultTemplate } from "@atlcli/export-node";
+import { buildDocx, para } from "@atlcli/docx/fixtures";
 
 const tempDirs: string[] = [];
 
@@ -172,5 +176,34 @@ describe("Image rasterizer gate (spec 006 G4)", () => {
 
   test("does not trigger on prose without any image reference", () => {
     expect(mightReferenceImage("<p>An image is worth a thousand words.</p>")).toBe(false);
+  });
+});
+
+describe("loadExportTemplate (spec 010 W3-D)", () => {
+  test("no path resolves to the bundled default, with an info note naming it", async () => {
+    const loaded = await loadExportTemplate(undefined);
+    expect(loaded.bytes).toEqual(bundledDefaultTemplate());
+    expect(loaded.meta.name).toBe(BUNDLED_TEMPLATE_NAME);
+    // The bundled default's only meaningful date is its reproducible-build pin;
+    // duplicating that literal here is exactly the drift the shared export avoids.
+    expect(loaded.meta.modificationDate).toEqual(BUNDLED_TEMPLATE_EPOCH);
+    expect(loaded.notes).toHaveLength(1);
+    expect(loaded.notes[0]!.code).toBe("template-default-used");
+    // `info`: the export is correct, so this must never fail a --strict build.
+    expect(loaded.notes[0]!.level).toBe("info");
+  });
+
+  test("a path reads that file and reports no note", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-template-load-"));
+    tempDirs.push(root);
+    const path = join(root, "corporate.docx");
+    const bytes = buildDocx({ body: para("$scroll.content"), date: new Date(0) });
+    await writeFile(path, bytes);
+
+    const loaded = await loadExportTemplate(path);
+    expect(loaded.bytes).toEqual(bytes);
+    expect(loaded.meta.name).toBe("corporate.docx");
+    expect(loaded.meta.modificationDate).toEqual((await stat(path)).mtime);
+    expect(loaded.notes).toEqual([]);
   });
 });

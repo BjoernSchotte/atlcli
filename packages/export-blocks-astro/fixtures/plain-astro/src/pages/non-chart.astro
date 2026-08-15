@@ -1,0 +1,33 @@
+---
+import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
+import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-astro/fixtures";
+import type { ExportBlock } from "@atlcli/export-blocks";
+import "@atlcli/export-blocks-astro/styles.css";
+
+const blocks = [
+  { type: "heading", level: 2, content: [{ type: "text", text: "Stable guide" }] },
+  { type: "paragraph", content: [{ type: "text", text: "Existing exports must not enter the chart rendering path." }] },
+  {
+    type: "list", ordered: false, items: [
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "First" }] }] },
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "Second" }] }] },
+    ],
+  },
+  {
+    type: "table", rows: [{ cells: [
+      { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Key" }] }] },
+      { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }] },
+    ] }],
+  },
+] as const satisfies readonly ExportBlock[];
+---
+
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Chart-free regression</title></head>
+  <body>
+    <main data-atlcli-non-chart-golden>
+      <ExportDocument blocks={blocks} context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1} />
+    </main>
+  </body>
+</html>

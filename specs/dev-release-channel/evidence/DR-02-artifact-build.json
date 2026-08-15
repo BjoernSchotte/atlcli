@@ -1,0 +1,148 @@
+{
+  "schema": "atlcli.dev-release-task-proof/v1",
+  "task": "DR-02",
+  "recordedAt": "2026-08-12T14:57:43Z",
+  "proofedParentHead": "4747fa39956f9cffd0059c3143292535318437fa",
+  "authoritativePublishedArtifact": false,
+  "purpose": "working-tree deterministic build proof; DR-10 binds downloaded published bytes to their exact committed source SHA",
+  "identityFixture": {
+    "channel": "dev",
+    "sourceSha": "4747fa39956f9cffd0059c3143292535318437fa",
+    "buildId": "dev-20260812.418.2-4747fa39",
+    "releaseTag": "dev-20260812.418.2-4747fa39",
+    "cliVersion": "0.17.2-dev.20260812.418.2+4747fa39",
+    "extensionVersion": "0.17.2.418",
+    "extensionVersionName": "0.17.2-dev.20260812.418.2-4747fa39",
+    "publishableSource": false,
+    "dryRun": true
+  },
+  "fullMatrixBuild": {
+    "command": "bun scripts/release-artifacts.ts build --channel dev --dry-run --run-number 418 --run-attempt 2 --timestamp 2026-08-12T02:17:45Z --output <ignored-artifact-directory>",
+    "result": "success",
+    "artifacts": [
+      {
+        "name": "atlcli-darwin-arm64.tar.gz",
+        "size": 46555853,
+        "sha256": "0c9b474c819ef7b7f7187c350c31ef6533dd6e0d4dc4691502ebf69d83b74744"
+      },
+      {
+        "name": "atlcli-darwin-x64.tar.gz",
+        "size": 48536687,
+        "sha256": "a0d3225b274ba7363404f75ea85e2613d36e8e6d3acf850f902f8c78bfd3ba52"
+      },
+      {
+        "name": "atlcli-extension-chrome-mv3-dev-20260812.418.2-4747fa39.zip",
+        "size": 21350775,
+        "sha256": "8b1d6c3f897d079b86bc169f332abbe8ebfc41c9e777c19454b2d5a19f71d73a"
+      },
+      {
+        "name": "atlcli-linux-arm64.tar.gz",
+        "size": 57628134,
+        "sha256": "880a91653d13c7cb9b560d31b25750ad89dd26cca47e6eb0b9c9362d7562cb4a"
+      },
+      {
+        "name": "atlcli-linux-x64.tar.gz",
+        "size": 57935565,
+        "sha256": "1c8e565f55745fd6b9a2d48a462cd4766bf461b21e8262b2a93e7237a5f09798"
+      },
+      {
+        "name": "atlcli-windows-x64.zip",
+        "size": 60343290,
+        "sha256": "b81d39d3b311dd56036d99cc4ead9fd9767f8cc2944cbc778d910465bbb4d047"
+      }
+    ],
+    "extensionContentTreeSha256": "afea49833c303b79192f5091d9a80a033dc1ef9632350a52026e3f017f9d5b78",
+    "secondBuildMatchedEveryArtifactByte": true
+  },
+  "finalBuilderRepeat": {
+    "target": "darwin-arm64",
+    "runs": 2,
+    "outputDirectoriesCarriedOwnershipMarker": true,
+    "directoryDiff": "empty",
+    "cliEntryModeBefore": "0644",
+    "cliEntryModeAfter": "0644",
+    "cliArchiveSha256": "0c9b474c819ef7b7f7187c350c31ef6533dd6e0d4dc4691502ebf69d83b74744",
+    "extensionArchiveSha256": "8b1d6c3f897d079b86bc169f332abbe8ebfc41c9e777c19454b2d5a19f71d73a",
+    "extensionContentTreeSha256": "afea49833c303b79192f5091d9a80a033dc1ef9632350a52026e3f017f9d5b78"
+  },
+  "extensionContexts": {
+    "source": {
+      "version": "0.0.0",
+      "versionName": "source",
+      "artifact": "atlcli-extension-chrome-mv3-source.zip",
+      "artifactSize": 21350746,
+      "artifactSha256": "3b0fe2f818a7a214d6914b3098faf5e1df64fed628f25df8e29de74207ed4d72",
+      "contentTreeSha256": "f5f9f0f2852cb0b88ec21014c7fa9cb3e65dfd28c7500b2d0a4e006aa2e02648",
+      "fileCount": 471
+    },
+    "stable": {
+      "version": "0.17.2",
+      "versionName": "0.17.2-stable",
+      "artifact": "atlcli-extension-chrome-mv3-v0.17.2.zip",
+      "artifactSize": 21350752,
+      "artifactSha256": "818da9bb5a705f1559692f51fd61040b3e5209effd244cb00c1bdad7d6821a6a",
+      "contentTreeSha256": "20a6dbf8681ae98f3dff0578b8a9df3c78f4486a850de93b813f4ef83a090615",
+      "fileCount": 471,
+      "zipPrebuiltPreservedExactBytes": true
+    },
+    "dev": {
+      "version": "0.17.2.418",
+      "versionName": "0.17.2-dev.20260812.418.2-4747fa39",
+      "artifact": "atlcli-extension-chrome-mv3-dev-20260812.418.2-4747fa39.zip",
+      "artifactSize": 21350775,
+      "artifactSha256": "8b1d6c3f897d079b86bc169f332abbe8ebfc41c9e777c19454b2d5a19f71d73a",
+      "contentTreeSha256": "afea49833c303b79192f5091d9a80a033dc1ef9632350a52026e3f017f9d5b78",
+      "fileCount": 471
+    }
+  },
+  "packagingContract": {
+    "wxtVersion": "0.20.27",
+    "canonicalCommand": "wxt zip",
+    "normalization": "WXT zip:extension:done hook rewrites only container timestamps and ordering from the same WXT output tree",
+    "zipPrebuiltStartsBuild": false,
+    "manifestAtArchiveRoot": true,
+    "sourceMutation": false
+  },
+  "workflow": {
+    "stableUsesSharedBuilder": true,
+    "stableAssetNamesPreserved": true,
+    "frozenLockfile": true,
+    "inlineTarZipLoopsRemoved": true
+  },
+  "proof": {
+    "focusedTests": {
+      "command": "bun run test scripts/ci/workflow-policy.test.ts scripts/build-release-artifacts.test.ts scripts/release-archive.test.ts scripts/release-artifacts.test.ts apps/cli/build-release-info.test.ts apps/extension/release-context.test.ts apps/extension/scripts/package-release.test.ts apps/extension/tests/manifest.test.ts",
+      "result": "success",
+      "passed": 68,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "success"
+    },
+    "fonts": {
+      "command": "bun run fonts:ensure",
+      "result": "success",
+      "verifiedFiles": 13
+    },
+    "typst": {
+      "command": "bun run vendor:typst",
+      "result": "success",
+      "version": "0.8.0-rc3.typst0151.1"
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "success"
+    }
+  },
+  "toolchain": {
+    "bun": "1.3.14",
+    "wxt": "0.20.27",
+    "jszip": "3.10.1"
+  },
+  "privacy": {
+    "containsSecrets": false,
+    "containsTenantData": false,
+    "containsAbsoluteLocalPaths": false
+  }
+}

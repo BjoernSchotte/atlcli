@@ -4,6 +4,7 @@ import {
   type PdfCompilePort,
   type PdfCompilerDiagnostic,
   type PdfExportReport,
+  type ResolvedPdfFontRequirementsV1,
   type PdfSourceBundle,
 } from "@atlcli/pdf/browser";
 import { ATLCLI_TYPST_TEMPLATE, validatePdfOutput } from "@atlcli/pdf/internal";
@@ -39,12 +40,15 @@ function assertNormalizedDiagnostic(diagnostic: PdfCompilerDiagnostic): void {
   }
 }
 
-async function diagnosticProbe(): Promise<PdfCompilerDiagnostic[]> {
+async function diagnosticProbe(
+  fontRequirements: ResolvedPdfFontRequirementsV1,
+): Promise<PdfCompilerDiagnostic[]> {
   const invalid: PdfSourceBundle = {
     main: "#function-that-does-not-exist()",
     template: ATLCLI_TYPST_TEMPLATE,
     assets: [],
     notes: [],
+    fontRequirements,
     sourceMap: [
       {
         blockPath: "blocks[0]",
@@ -104,6 +108,9 @@ export interface PdfCaseResult {
   compilerVersion: string;
   diagnosticCount: number;
   workerGeneration: number;
+  fontRequirementCount: number;
+  registeredFontAssetIds: readonly string[];
+  fullBundleFallback: boolean;
 }
 
 export async function runPdfCase(): Promise<PdfCaseResult> {
@@ -126,7 +133,20 @@ export async function runPdfCase(): Promise<PdfCaseResult> {
   if (first.report.notes[0]?.code !== "browser-harness") {
     throw new Error("The runner did not preserve source-note ordering.");
   }
-  const diagnostics = await diagnosticProbe();
+  if (!first.report.fontRequirements || !first.report.fontEvidence) {
+    throw new Error("The browser PDF report omitted font requirements or load evidence.");
+  }
+  const expectedAssetIds = first.report.fontRequirements.assets.map(
+    (asset) => asset.assetId,
+  );
+  if (
+    first.report.fontEvidence.fullBundleFallback ||
+    JSON.stringify(first.report.fontEvidence.registeredAssetIds) !==
+      JSON.stringify(expectedAssetIds)
+  ) {
+    throw new Error("The browser PDF compiler did not register the resolved font subset.");
+  }
+  const diagnostics = await diagnosticProbe(first.report.fontRequirements);
 
   return {
     filename: first.report.filename,
@@ -139,6 +159,9 @@ export async function runPdfCase(): Promise<PdfCaseResult> {
     compilerVersion: first.report.compilerVersion,
     diagnosticCount: diagnostics.length,
     workerGeneration: compiler.workerGeneration,
+    fontRequirementCount: expectedAssetIds.length,
+    registeredFontAssetIds: first.report.fontEvidence.registeredAssetIds,
+    fullBundleFallback: first.report.fontEvidence.fullBundleFallback,
   };
 }
 

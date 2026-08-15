@@ -1,0 +1,141 @@
+{
+  "schema": "atlcli.publication-project/1",
+  "publicationKey": "product-docs",
+  "source": {
+    "kind": "tree",
+    "rootPageId": "12345"
+  },
+  "sourcePolicy": {
+    "representation": "adf-primary",
+    "includeLabels": [],
+    "excludeLabels": ["private"],
+    "excludeMode": "prune-subtree",
+    "maxDepth": 8,
+    "maxPages": 10000,
+    "maxFolders": 1000
+  },
+  "completeness": "strict",
+  "visibility": "internal",
+  "routes": {
+    "prefix": "/publish",
+    "generatedStyle": "stable-pretty",
+    "collisions": "stable-source-suffix",
+    "tombstones": "retain",
+    "customRoutes": []
+  },
+  "macros": {
+    "mode": "allow-frozen-live",
+    "unknown": "visible-fallback",
+    "liveFreshnessSeconds": 300,
+    "maxRows": 2000,
+    "maxNodes": 20000,
+    "maxBytes": 524288,
+    "chartDiagnostics": {
+      "p0Codes": [
+        "unsupported-kind",
+        "malformed-data",
+        "locale-parse",
+        "skipped-row",
+        "truncated",
+        "renderer-fallback"
+      ]
+    }
+  },
+  "assets": {
+    "selfContained": true,
+    "external": "same-origin-only",
+    "allowedOrigins": [],
+    "activeContent": "block",
+    "maxAssetBytes": 50000000,
+    "maxTotalBytes": 1000000000,
+    "maxImagePixels": 40000000,
+    "maxSvgNodes": 50000
+  },
+  "renderers": {
+    "allowedRendererIds": ["atlcli.chart"],
+    "allowIslands": true,
+    "maxIslandBytes": 65536,
+    "maxChartRows": 80,
+    "maxChartSeries": 12,
+    "maxChartPoints": 800,
+    "maxChartSvgNodes": 100000,
+    "maxChartSvgBytes": 2097152,
+    "maxChartRenderMs": 2000,
+    "maxChartIslandMountMs": 250,
+    "maxChartAcquisitionMs": 300000,
+    "maxChartAggregateBytes": 16777216
+  },
+  "experience": {
+    "id": "atlcli.starlight",
+    "expectedVersion": "1.0.0",
+    "requiredCapabilities": [
+      "responsive-navigation",
+      "search-modal",
+      "search-page",
+      "chart-islands",
+      "seo"
+    ],
+    "designTokens": {},
+    "componentOverrides": {}
+  },
+  "search": {
+    "provider": "pagefind",
+    "enabled": true,
+    "languages": "from-pages",
+    "filters": ["space", "label", "content-type", "language"],
+    "metadata": ["title", "description", "breadcrumbs", "image"],
+    "ranking": {
+      "title": 4,
+      "headings": 2,
+      "labels": 1.5,
+      "body": 1
+    },
+    "ui": "both",
+    "shortcut": "mod+k"
+  },
+  "seo": {
+    "sitemap": true,
+    "robots": "noindex",
+    "canonical": true,
+    "structuredData": ["WebSite", "TechArticle", "BreadcrumbList"],
+    "socialCards": "metadata-only",
+    "feed": "disabled"
+  },
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": ["en"],
+    "routeMode": "hide-default",
+    "fallback": {},
+    "uiTranslations": "starlight"
+  },
+  "media": {
+    "images": "verified-original",
+    "formats": ["original", "webp"],
+    "fonts": "system",
+    "imageZoom": true,
+    "code": "expressive-code"
+  },
+  "analytics": {
+    "provider": "none"
+  },
+  "editLink": {
+    "provider": "none"
+  },
+  "builder": {
+    "builder": "astro-static",
+    "projectDir": "./site",
+    "integrationOptions": {
+      "bundlePath": "./.atlcli/runtime/publication.json",
+      "routePrefix": "/publish",
+      "experienceId": "atlcli.starlight"
+    },
+    "outputProfile": "directory",
+    "base": "/docs",
+    "buildCommand": ["bun", "run", "build"]
+  },
+  "retention": {
+    "bundles": 3,
+    "builds": 3,
+    "graceSeconds": 86400
+  }
+}

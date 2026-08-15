@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "type": "doc",
+  "content": [
+    {
+      "type": "heading",
+      "attrs": { "level": 2, "localId": "paired-heading" },
+      "content": [{ "type": "text", "text": "Paired fixture" }]
+    },
+    {
+      "type": "paragraph",
+      "attrs": { "localId": "paired-paragraph" },
+      "content": [
+        { "type": "text", "text": "Bold", "marks": [{ "type": "strong" }] },
+        { "type": "text", "text": " and " },
+        { "type": "text", "text": "code", "marks": [{ "type": "code" }] },
+        { "type": "hardBreak" },
+        { "type": "emoji", "attrs": { "shortName": "warning", "text": "⚠️" } }
+      ]
+    },
+    {
+      "type": "blockquote",
+      "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Quoted" }] }]
+    },
+    {
+      "type": "bulletList",
+      "content": [{
+        "type": "listItem",
+        "attrs": { "localId": "paired-bullet-item" },
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "Bullet" }] },
+          {
+            "type": "bulletList",
+            "content": [{
+              "type": "listItem",
+              "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Nested bullet" }] }]
+            }]
+          }
+        ]
+      }]
+    },
+    {
+      "type": "orderedList",
+      "attrs": { "order": 3 },
+      "content": [{
+        "type": "listItem",
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "Number" }] },
+          {
+            "type": "orderedList",
+            "attrs": { "order": 8 },
+            "content": [{
+              "type": "listItem",
+              "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Nested number" }] }]
+            }]
+          }
+        ]
+      }]
+    },
+    {
+      "type": "taskList",
+      "attrs": { "localId": "tasks-root" },
+      "content": [
+        {
+          "type": "taskItem",
+          "attrs": { "localId": "task-done", "state": "DONE" },
+          "content": [{ "type": "text", "text": "Done" }]
+        },
+        {
+          "type": "taskItem",
+          "attrs": { "localId": "task-open", "state": "TODO" },
+          "content": [{ "type": "text", "text": "Open" }]
+        },
+        {
+          "type": "taskList",
+          "attrs": { "localId": "tasks-nested" },
+          "content": [{
+            "type": "taskItem",
+            "attrs": { "localId": "task-nested", "state": "TODO" },
+            "content": [{ "type": "text", "text": "Nested task" }]
+          }]
+        }
+      ]
+    },
+    {
+      "type": "layoutSection",
+      "content": [
+        {
+          "type": "layoutColumn",
+          "attrs": { "width": 30 },
+          "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Sidebar" }] }]
+        },
+        {
+          "type": "layoutColumn",
+          "attrs": { "width": 70 },
+          "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Main" }] }]
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "content": [{
+        "type": "tableRow",
+        "content": [
+          {
+            "type": "tableHeader",
+            "attrs": { "colspan": 1, "rowspan": 1, "background": "#AABBCC" },
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Header" }] }]
+          },
+          {
+            "type": "tableCell",
+            "attrs": { "colspan": 2, "rowspan": 1 },
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Cell" }] }]
+          }
+        ]
+      }]
+    },
+    {
+      "type": "panel",
+      "attrs": { "panelType": "info" },
+      "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Information" }] }]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "state: " },
+        { "type": "status", "attrs": { "text": "Done", "color": "green" } },
+        { "type": "text", "text": " date: " },
+        { "type": "date", "attrs": { "timestamp": "1704067200000" } },
+        { "type": "placeholder", "attrs": { "text": "editor-only" } }
+      ]
+    },
+    { "type": "rule" }
+  ]
+}

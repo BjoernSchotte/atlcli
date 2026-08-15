@@ -9,6 +9,11 @@ path, a real module Worker and Typst-WASM/font compile, deterministic warm PDF o
 abort-without-emission. The artifact scanner rejects native-runtime, extension-runtime, remote
 code, dynamic-code, and root-relative asset leaks.
 
+The highlighting performance case also starts in a fresh browser context. It proves that
+Shiki core, the JavaScript engine, the selected theme, and direct grammar modules load only
+after explicit intent; a one-language trace rejects unrelated/aggregate catalogue requests,
+and the 22-language trace verifies overlap, warm reuse, and byte-identical DOCX output.
+
 ```bash
 bun run typecheck:browser-export-harness
 bun run build:browser-export-harness

@@ -5,44 +5,42 @@
  * normal browser or Node barrel must not install globals or pull DOM policy
  * into hosts that do not need it.
  */
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
+import type { ExportBlock } from "@atlcli/confluence";
+import {
+  installDocxBrowserByteRuntime,
+  type DocxByteHelpers,
+} from "./browser-runtime-bootstrap.js";
 import type { SvgRasterizer, TemplateSource } from "./env.js";
 
-export interface DocxByteHelpers {
-  from(value: ArrayLike<number> | ArrayBuffer | string, encoding?: string): Uint8Array;
-  alloc(size: number): Uint8Array;
-  isBuffer(value: unknown): boolean;
-}
-
-const helpers: DocxByteHelpers = {
-  from(value, _encoding) {
-    // Preserve the extension shim's existing behavior: strings are UTF-8 and
-    // byte-like values are copied through Uint8Array's native constructors.
-    if (typeof value === "string") return new TextEncoder().encode(value);
-    return new Uint8Array(value as ArrayLike<number>);
-  },
-  alloc(size) {
-    return new Uint8Array(size);
-  },
-  isBuffer() {
-    // Browser hosts never produce Node Buffers. This keeps PizZip and
-    // docxtemplater on their Uint8Array branches.
-    return false;
-  },
-};
-
-type DocxBrowserGlobal = typeof globalThis & {
-  __atlDocxByteHelpers?: DocxByteHelpers;
-};
+export type { DocxByteHelpers } from "./browser-runtime-bootstrap.js";
+export {
+  prepareDocxExportRuntime,
+  type DocxExportRuntimePreparation,
+  type PrepareDocxExportRuntimeOptions,
+} from "./runtime-preparation.js";
 
 /** Install the namespaced byte helpers once without defining a fake Buffer. */
 export function installDocxBrowserRuntime(): void {
-  const scope = globalThis as DocxBrowserGlobal;
-  scope.__atlDocxByteHelpers ??= helpers;
+  installDocxBrowserByteRuntime();
 }
 
 // Deliberate side effect: browser entries import this subpath before importing
 // PizZip/docxtemplater through @atlcli/docx/browser.
 installDocxBrowserRuntime();
+
+/**
+ * Load only grammars used by the supplied DOCX blocks. The implementation is
+ * dynamically imported so merely bootstrapping a browser realm does not load
+ * the Shiki catalogue or engine chunk before explicit DOCX intent.
+ */
+export async function prepareDocxCodeHighlighting(
+  blocks: readonly ExportBlock[],
+  options: { codeTheme?: CodeThemeId } = {},
+): Promise<void> {
+  const highlighting = await import("./code-highlighting.js");
+  await highlighting.prepareDocxCodeHighlighting(blocks, options);
+}
 
 /**
  * A template source that owns an immutable snapshot of the supplied view.

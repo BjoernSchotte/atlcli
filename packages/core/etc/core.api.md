@@ -525,7 +525,11 @@ export interface BuiltinContext {
 export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
 
 // export: checkForUpdates
-export declare function checkForUpdates(): Promise<UpdateInfo>;
+export declare function checkForUpdates(options?: {
+    releaseInfo?: ReleaseInfoV1;
+    installMethod?: InstallMethod;
+    platform?: string;
+}): Promise<UpdateInfo>;
 
 // export: clearProfileAuth
 export declare function clearProfileAuth(config: Config, name: string): boolean;
@@ -590,7 +594,7 @@ export type DeploymentType = "cloud" | "data-center";
 export declare function detectImportSourceType(source: string): "directory" | "git" | "url";
 
 // export: detectInstallMethod
-export declare function detectInstallMethod(): InstallMethod;
+export declare function detectInstallMethod(binPath?: string): InstallMethod;
 
 // export: detectPlatform
 export declare function detectPlatform(): string;
@@ -724,6 +728,9 @@ export declare function getLogger(): Logger;
 // export: getProfile
 export declare function getProfile(config: Config, name: string): Profile | undefined;
 
+// export: getReleaseInfo
+export declare function getReleaseInfo(): ReleaseInfoV1;
+
 // export: getTemplatesBaseDir
 export declare function getTemplatesBaseDir(): string;
 
@@ -793,7 +800,7 @@ export interface ImportResult {
 }
 
 // export: InstallMethod
-export type InstallMethod = "script" | "homebrew" | "source" | "unknown";
+export type InstallMethod = "script" | "homebrew" | "homebrew-dev" | "source" | "unknown";
 
 // export: installUpdate
 export declare function installUpdate(version?: string): Promise<string>;
@@ -987,6 +994,20 @@ export declare function redactSensitive<T>(obj: T): T;
 
 // export: redactValue
 export declare function redactValue(value: string): string;
+
+// export: ReleaseBuildChannel
+export type ReleaseBuildChannel = "stable" | "dev" | "source";
+
+// export: ReleaseInfoV1
+export interface ReleaseInfoV1 {
+    schema: typeof RELEASE_INFO_SCHEMA;
+    version: string;
+    channel: ReleaseBuildChannel;
+    sourceSha: string;
+    buildId: string;
+    releaseTag: string | null;
+    homebrewVersion: string | null;
+}
 
 // export: removeProfile
 export declare function removeProfile(config: Config, name: string): void;
@@ -1733,6 +1754,78 @@ export type TokenResolver = (profile: Profile) => string | null;
 export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
 ```
 
+### Entry point `./internal`
+
+```ts
+// export: ATLASSIAN_LOGIN_HOSTS
+export declare const ATLASSIAN_LOGIN_HOSTS: readonly string[];
+
+// export: ATLASSIAN_MEDIA_HOST
+export declare const ATLASSIAN_MEDIA_HOST = "media.atlassian.com";
+
+// export: AtlassianSessionRedirectPolicyOptions
+export interface AtlassianSessionRedirectPolicyOptions {
+    siteOrigin: string;
+    allowedOrigins?: readonly string[];
+}
+
+// export: createAtlassianSessionRedirectPolicy
+export declare function createAtlassianSessionRedirectPolicy(options: AtlassianSessionRedirectPolicyOptions): SessionRedirectPolicy;
+
+// export: fetchSessionBinaryFollowingRedirects
+export declare function fetchSessionBinaryFollowingRedirects(url: string, init: RequestInit, policy: SessionRedirectPolicy, options: SessionBinaryFetchOptions): Promise<Response>;
+
+// export: isAtlassianLoginTarget
+export declare function isAtlassianLoginTarget(target: URL): boolean;
+
+// export: isAtlassianMediaTarget
+export declare function isAtlassianMediaTarget(target: URL): boolean;
+
+// export: isSessionRedirectBlockedError
+export declare function isSessionRedirectBlockedError(err: unknown): err is SessionRedirectBlockedError;
+
+// export: parseRetryAfterMs
+export declare function parseRetryAfterMs(header: string | null | undefined, options?: {
+    now?: number;
+}): number | undefined;
+
+// export: redactRedirectTarget
+export declare function redactRedirectTarget(target: string): string;
+
+// export: RETRY_AFTER_MAX_MS
+export declare const RETRY_AFTER_MAX_MS = 60000;
+
+// export: RETRY_AFTER_MIN_MS
+export declare const RETRY_AFTER_MIN_MS = 1000;
+
+// export: SESSION_REDIRECT_MAX_HOPS
+export declare const SESSION_REDIRECT_MAX_HOPS = 5;
+
+// export: SessionBinaryFetchLike
+export type SessionBinaryFetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+// export: SessionBinaryFetchOptions
+export interface SessionBinaryFetchOptions {
+    fetchFn?: SessionBinaryFetchLike;
+    maxRedirects?: number;
+    loginRedirectError(status: number): Error;
+    blockedRedirectError(target: string, reason: string): Error;
+}
+
+// export: SessionRedirectBlockedError
+export declare class SessionRedirectBlockedError extends Error {
+    readonly target: string;
+    readonly reason: string;
+    constructor(label: string, target: string, reason: string);
+}
+
+// export: SessionRedirectPolicy
+export interface SessionRedirectPolicy {
+    isLoginTarget(target: URL): boolean;
+    isAllowedTarget(target: URL): boolean;
+}
+```
+
 ### Entry point `./node`
 
 ```ts
@@ -1880,7 +1973,11 @@ export interface BuiltinContext {
 export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
 
 // export: checkForUpdates
-export declare function checkForUpdates(): Promise<UpdateInfo>;
+export declare function checkForUpdates(options?: {
+    releaseInfo?: ReleaseInfoV1;
+    installMethod?: InstallMethod;
+    platform?: string;
+}): Promise<UpdateInfo>;
 
 // export: clearProfileAuth
 export declare function clearProfileAuth(config: Config, name: string): boolean;
@@ -1945,7 +2042,7 @@ export type DeploymentType = "cloud" | "data-center";
 export declare function detectImportSourceType(source: string): "directory" | "git" | "url";
 
 // export: detectInstallMethod
-export declare function detectInstallMethod(): InstallMethod;
+export declare function detectInstallMethod(binPath?: string): InstallMethod;
 
 // export: detectPlatform
 export declare function detectPlatform(): string;
@@ -2079,6 +2176,9 @@ export declare function getLogger(): Logger;
 // export: getProfile
 export declare function getProfile(config: Config, name: string): Profile | undefined;
 
+// export: getReleaseInfo
+export declare function getReleaseInfo(): ReleaseInfoV1;
+
 // export: getTemplatesBaseDir
 export declare function getTemplatesBaseDir(): string;
 
@@ -2148,7 +2248,7 @@ export interface ImportResult {
 }
 
 // export: InstallMethod
-export type InstallMethod = "script" | "homebrew" | "source" | "unknown";
+export type InstallMethod = "script" | "homebrew" | "homebrew-dev" | "source" | "unknown";
 
 // export: installUpdate
 export declare function installUpdate(version?: string): Promise<string>;
@@ -2342,6 +2442,20 @@ export declare function redactSensitive<T>(obj: T): T;
 
 // export: redactValue
 export declare function redactValue(value: string): string;
+
+// export: ReleaseBuildChannel
+export type ReleaseBuildChannel = "stable" | "dev" | "source";
+
+// export: ReleaseInfoV1
+export interface ReleaseInfoV1 {
+    schema: typeof RELEASE_INFO_SCHEMA;
+    version: string;
+    channel: ReleaseBuildChannel;
+    sourceSha: string;
+    buildId: string;
+    releaseTag: string | null;
+    homebrewVersion: string | null;
+}
 
 // export: removeProfile
 export declare function removeProfile(config: Config, name: string): void;

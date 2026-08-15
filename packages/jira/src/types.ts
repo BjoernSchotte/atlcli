@@ -5,6 +5,10 @@
  * https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/
  */
 
+import type { AdfDocument, AdfNode } from "@atlcli/change-set/adf";
+
+export type { AdfDocument, AdfNode } from "@atlcli/change-set/adf";
+
 // ============ User Types ============
 
 /** Jira user (Cloud uses accountId, Server uses username) */
@@ -47,6 +51,8 @@ export interface JiraProject {
   avatarUrls?: Record<string, string>;
   /** Whether the project is simplified (next-gen) */
   simplified?: boolean;
+  /** Whether the project is archived (returned by project search when available). */
+  archived?: boolean;
 }
 
 /** Project category */
@@ -164,21 +170,6 @@ export interface JiraTransitionField {
   allowedValues?: unknown[];
 }
 
-/** Atlassian Document Format (ADF) - rich text for Cloud */
-export interface AdfDocument {
-  type: "doc";
-  version: 1;
-  content: AdfNode[];
-}
-
-export interface AdfNode {
-  type: string;
-  content?: AdfNode[];
-  text?: string;
-  attrs?: Record<string, unknown>;
-  marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
-}
-
 /** Issue fields */
 export interface JiraIssueFields {
   summary: string;
@@ -205,6 +196,16 @@ export interface JiraIssueFields {
   subtasks?: JiraIssueRef[];
   /** Issue links */
   issuelinks?: JiraIssueLink[];
+  /**
+   * Bounded comment field returned with an issue detail read. Jira may return
+   * only the first page; `total` makes that limitation explicit to callers.
+   */
+  comment?: {
+    comments?: JiraComment[];
+    startAt?: number;
+    maxResults?: number;
+    total?: number;
+  };
   /** Time tracking */
   timetracking?: {
     originalEstimate?: string;

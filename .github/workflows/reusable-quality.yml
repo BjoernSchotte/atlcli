@@ -1,0 +1,511 @@
+name: Reusable product quality
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Optional exact commit to test; defaults to the caller event SHA
+        required: false
+        default: ""
+        type: string
+      run_static_quality:
+        description: Run repository typecheck and build contracts
+        required: false
+        default: true
+        type: boolean
+      run_tests:
+        description: Run the complete required Bun test inventory
+        required: false
+        default: true
+        type: boolean
+      run_astro_platform:
+        description: Run pinned Astro platform compatibility contracts
+        required: false
+        default: true
+        type: boolean
+      emit_security_attestation:
+        description: Emit and upload a security attestation for this exact SHA
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  static-quality:
+    name: Linux typecheck, browser checks, build, and package contracts
+    if: inputs.run_static_quality || inputs.run_tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Restore pinned PDF fonts
+        uses: actions/cache@v6
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
+
+      - name: Cache Turbo
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-quality-${{ inputs.source_sha || github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-quality-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: bash scripts/ci/install-frozen-dependencies.sh
+
+      - name: Validate dev-release evidence schemas and privacy
+        if: inputs.run_static_quality
+        run: bun scripts/ci/dev-release-evidence-policy.ts
+
+      - name: Check pinned ADF contract offline
+        if: inputs.run_static_quality
+        run: bun run check:adf-pinned
+
+      - name: Check generated Shiki catalogues and loaders
+        if: inputs.run_static_quality
+        run: bun run --cwd packages/code-highlight catalogue:check
+
+      - name: Type check
+        if: inputs.run_static_quality
+        run: bun run typecheck
+
+      - name: Check browser build
+        if: inputs.run_static_quality
+        run: bun run check:browser
+
+      - name: Validate duration-aware test inventory
+        if: inputs.run_tests
+        run: bun scripts/ci/test-lanes.ts --check --topology general-3x1
+
+      - name: Build
+        run: bun run build
+
+      - name: Check extension output bundle
+        if: inputs.run_static_quality
+        run: bun run check:extension-output
+
+      # These guards both require fresh dist output and invoke the package
+      # build themselves. Running them after the canonical build preserves
+      # that contract while turning their internal Turbo builds into cache hits.
+      - name: Run package contract tests against the warm build
+        if: inputs.run_tests
+        run: |
+          mkdir -p test-results
+          LOG_FILE="test-results/bun-test-package-contract.log"
+          JUNIT_FILE="test-results/bun-test-package-contract.xml"
+
+          set +e
+          bun scripts/ci/run-test-lane.ts \
+            --topology general-3x1 \
+            --group package-contract \
+            --junit "$JUNIT_FILE" \
+            2>&1 | tee "$LOG_FILE"
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$TEST_EXIT" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -Eq '^[[:space:]]*[1-9][0-9]* errors?[[:space:]]*$' "$LOG_FILE"; then
+            exit "$TEST_EXIT"
+          fi
+          if grep -Eq '^[[:space:]]*0 fail[[:space:]]*$' "$LOG_FILE"; then
+            echo "::warning::Bun package-contract lane exited with code $TEST_EXIT despite reporting zero failed tests"
+            exit 0
+          fi
+          exit "$TEST_EXIT"
+
+      - name: Upload package contract JUnit
+        if: always() && inputs.run_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: bun-test-junit-package-contract-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/bun-test-package-contract.xml
+          if-no-files-found: error
+
+      - name: Upload failed package contract log
+        if: failure() && inputs.run_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: bun-test-package-contract-failure-log-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/bun-test-package-contract.log
+          if-no-files-found: error
+
+  tests:
+    name: Linux Bun tests (${{ matrix.group }})
+    if: inputs.run_tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: general-1
+            fonts: true
+            poppler: false
+          - group: general-2
+            fonts: true
+            poppler: false
+          - group: general-3
+            fonts: true
+            poppler: false
+          - group: pdf-typst
+            fonts: true
+            poppler: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Restore pinned PDF fonts
+        if: matrix.fonts
+        uses: actions/cache@v6
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
+
+      - name: Install dependencies
+        run: bash scripts/ci/install-frozen-dependencies.sh
+
+      - name: Install PDF proof tools
+        if: matrix.poppler
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes poppler-utils
+          pdftoppm -v
+          pdftotext -v
+
+      # Tests resolve the gitignored, sha-pinned font tree directly. The old
+      # serial quality job warmed it during typecheck; independent shards must
+      # establish the same precondition themselves.
+      - name: Provision pinned PDF fonts
+        if: matrix.fonts
+        run: bun run fonts:ensure
+
+      - name: Run duration-aware test lane
+        env:
+          GROUP: ${{ matrix.group }}
+        run: |
+          mkdir -p test-results
+          LOG_FILE="test-results/bun-test-${GROUP}.log"
+          JUNIT_FILE="test-results/bun-test-${GROUP}.xml"
+
+          set +e
+          bun scripts/ci/run-test-lane.ts \
+            --topology general-3x1 \
+            --group "$GROUP" \
+            --junit "$JUNIT_FILE" \
+            2>&1 | tee "$LOG_FILE"
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$TEST_EXIT" -eq 0 ]; then
+            exit 0
+          fi
+
+          if grep -Eq '^[[:space:]]*[1-9][0-9]* errors?[[:space:]]*$' "$LOG_FILE"; then
+            exit "$TEST_EXIT"
+          fi
+
+          if grep -Eq '^[[:space:]]*0 fail[[:space:]]*$' "$LOG_FILE"; then
+            echo "::warning::Bun lane ${GROUP} exited with code $TEST_EXIT despite reporting zero failed tests"
+            exit 0
+          fi
+
+          exit "$TEST_EXIT"
+
+      - name: Upload test lane JUnit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bun-test-junit-${{ matrix.group }}-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/bun-test-${{ matrix.group }}.xml
+          if-no-files-found: error
+
+      - name: Upload failed test lane log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bun-test-${{ matrix.group }}-failure-log-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/bun-test-${{ matrix.group }}.log
+          if-no-files-found: error
+
+  publishing-platform:
+    name: Astro platform (${{ matrix.lane }}, ${{ matrix.os }}, Node ${{ matrix.node }})
+    if: inputs.run_astro_platform
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: minimum-astro
+            os: ubuntu-latest
+            node: "22.12.0"
+            astro: "7.1.6"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bash scripts/ci/install-frozen-dependencies.sh
+
+      - name: Verify Astro version lane
+        shell: bash
+        env:
+          EXPECTED_ASTRO: ${{ matrix.astro }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const paths = [
+            'packages/web-publish-astro/fixtures/astro-consumer',
+            'packages/web-publish-starlight/fixtures/published-consumer',
+          ];
+          const versions = paths.map((fixture) => {
+            const packagePath = require.resolve('astro/package.json', { paths: [path.resolve(fixture)] });
+            return JSON.parse(fs.readFileSync(packagePath, 'utf8')).version;
+          });
+          if (new Set(versions).size !== 1) throw new Error(`Astro fixture versions diverged: ${versions.join(', ')}`);
+          const actual = versions[0];
+          if (actual !== process.env.EXPECTED_ASTRO) {
+            throw new Error(`expected Astro ${process.env.EXPECTED_ASTRO}, got ${actual}`);
+          }
+          console.log(`Astro ${actual} verified for ${process.env.EXPECTED_ASTRO} lane`);
+          NODE
+
+      - name: Run packed Astro and Starlight consumers
+        env:
+          ATLCLI_CONSUMER_SMOKE: "1"
+        run: >-
+          bun --conditions=development test
+          packages/export-blocks-astro/src/packed-consumer.test.ts
+          packages/web-publish-astro/src/astro-consumer.test.ts
+          packages/web-publish-starlight/src/starlight-renderer.test.ts
+
+  # Windows remains a supported local `wiki publish build` host, but its
+  # compatibility proof does not need to extend every merge-ready PR. Run it
+  # as drift evidence and keep it blocking for release tags.
+  publishing-platform-windows:
+    name: Astro Windows compatibility canary (Astro 7.1.6, Node 24)
+    if: inputs.run_astro_platform && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag')
+    continue-on-error: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bash scripts/ci/install-frozen-dependencies.sh
+
+      - name: Verify pinned Astro version
+        shell: bash
+        env:
+          EXPECTED_ASTRO: "7.1.6"
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const paths = [
+            'packages/web-publish-astro/fixtures/astro-consumer',
+            'packages/web-publish-starlight/fixtures/published-consumer',
+          ];
+          const versions = paths.map((fixture) => {
+            const packagePath = require.resolve('astro/package.json', { paths: [path.resolve(fixture)] });
+            return JSON.parse(fs.readFileSync(packagePath, 'utf8')).version;
+          });
+          if (new Set(versions).size !== 1) throw new Error(`Astro fixture versions diverged: ${versions.join(', ')}`);
+          const actual = versions[0];
+          if (actual !== process.env.EXPECTED_ASTRO) {
+            throw new Error(`expected Astro ${process.env.EXPECTED_ASTRO}, got ${actual}`);
+          }
+          console.log(`Astro ${actual} verified for Windows compatibility`);
+          NODE
+
+      - name: Run packed Astro and Starlight consumers
+        env:
+          ATLCLI_CONSUMER_SMOKE: "1"
+        run: >-
+          bun --conditions=development test
+          packages/export-blocks-astro/src/packed-consumer.test.ts
+          packages/web-publish-astro/src/astro-consumer.test.ts
+          packages/web-publish-starlight/src/starlight-renderer.test.ts
+
+  # A floating dependency lane is useful drift evidence, not per-commit proof.
+  # Keep it off pull requests and ordinary main pushes so it cannot lengthen
+  # merge-ready feedback or make a merge depend on registry drift.
+  publishing-platform-latest:
+    name: Astro platform canary (latest Astro 7, Node 24)
+    if: inputs.run_astro_platform && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag')
+    continue-on-error: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bash scripts/ci/install-frozen-dependencies.sh
+
+      - name: Resolve latest supported Astro 7.x
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const paths = [
+            'packages/web-publish-astro/fixtures/astro-consumer/package.json',
+            'packages/web-publish-starlight/fixtures/published-consumer/package.json',
+          ];
+          for (const file of paths) {
+            const packageJson = JSON.parse(fs.readFileSync(file, 'utf8'));
+            packageJson.dependencies.astro = '^7.1.6';
+            fs.writeFileSync(file, `${JSON.stringify(packageJson, null, 2)}\n`);
+          }
+          NODE
+          bun install --no-progress
+
+      - name: Verify Astro 7.x resolution
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const fixtures = [
+            'packages/web-publish-astro/fixtures/astro-consumer',
+            'packages/web-publish-starlight/fixtures/published-consumer',
+          ];
+          const versions = fixtures.map((fixture) => {
+            const packagePath = require.resolve('astro/package.json', { paths: [path.resolve(fixture)] });
+            return JSON.parse(fs.readFileSync(packagePath, 'utf8')).version;
+          });
+          if (new Set(versions).size !== 1) throw new Error(`Astro fixture versions diverged: ${versions.join(', ')}`);
+          if (!/^7\./.test(versions[0])) throw new Error(`latest Astro 7.x lane resolved ${versions[0]}`);
+          console.log(`Astro ${versions[0]} verified for latest Astro 7.x lane`);
+          NODE
+
+      - name: Run packed Astro and Starlight consumers
+        env:
+          ATLCLI_CONSUMER_SMOKE: "1"
+        run: >-
+          bun --conditions=development test
+          packages/export-blocks-astro/src/packed-consumer.test.ts
+          packages/web-publish-astro/src/astro-consumer.test.ts
+          packages/web-publish-starlight/src/starlight-renderer.test.ts
+
+  security-attestation:
+    name: Exact-SHA security attestation
+    if: inputs.emit_security_attestation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          # attest.ts compares HEAD with its parent. Keep the exact release SHA
+          # plus one parent so the delta cannot silently become indeterminate.
+          fetch-depth: 2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Emit security attestation
+        run: bun scripts/security/attest.ts --out security-attestation.json
+
+      - name: Verify security attestation SHA
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          # shellcheck disable=SC2016
+          bun -e '
+            const attestation = await Bun.file("security-attestation.json").json();
+            if (attestation.commit !== process.env.EXPECTED_SOURCE_SHA) {
+              console.error(`Attestation commit ${attestation.commit} does not match ${process.env.EXPECTED_SOURCE_SHA}`);
+              process.exit(1);
+            }
+          '
+
+      - name: Upload security attestation
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: security-attestation-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: security-attestation.json
+          if-no-files-found: error

@@ -5,25 +5,34 @@
     "typecheck": {
       "cache": true,
       "outputs": [],
-      "inputs": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "tsconfig.json", "package.json"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/patches/**"
+      ]
     },
     "build": {
       "cache": true,
       "dependsOn": ["^build"],
-      "outputs": ["../../dist/**", "dist/**"],
-      "inputs": ["src/**/*.ts", "tsconfig.json", "tsconfig.build.json", "package.json"]
+      "outputs": ["dist/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/patches/**"
+      ]
     },
-    "//#check:browser": {
+    "//#check:browser:internal": {
       "cache": true,
+      "outputs": [],
       "inputs": [
         "scripts/check-browser-build.ts",
-        "packages/confluence/src/**/*.ts",
-        "packages/jira/src/**/*.ts",
-        "packages/core/src/**/*.ts",
-        "packages/docx/src/**/*.ts",
-        "packages/pdf/src/**/*.ts",
-        "packages/pdf-compiler-browser/src/**/*.ts",
-        "packages/diagram/src/**/*.ts"
+        "packages/*/src/**",
+        "packages/docx/fonts/**",
+        "packages/pdf/.fonts/**",
+        "packages/pdf/licenses/**",
+        "packages/pdf/scripts/ensure-fonts.ts",
+        "packages/pdf-compiler-browser/scripts/**",
+        "packages/pdf-compiler-browser/vendor/**",
+        "patches/**",
+        "LICENSE"
       ]
     }
   }

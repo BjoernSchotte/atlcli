@@ -22,6 +22,49 @@ const DEFAULT_MAX_ISSUES = 20;
 const HARD_MAX_ISSUES = 100;
 
 /**
+ * Does a datasource table target the SAME Jira site this export is
+ * authenticated against?
+ *
+ * This is not pedantry. Atlassian's datasource config modal has a site selector
+ * (`/gateway/api/v2/accessible-products`), so a Confluence page can legitimately
+ * embed a table from a *different* Jira site. Running that JQL against OUR site
+ * returns plausible-looking but wrong rows — the worst available failure mode,
+ * because nothing about the output says it is wrong.
+ *
+ * The proof we use is the datasource element's own `href`: Atlassian generates
+ * it as the "view in Jira" URL for the selected site, so its origin IS the
+ * target site. Comparing it with `ctx.siteId` (the base URL the Jira port is
+ * bound to) answers exactly the question that matters — "would the rows come
+ * from the site the user's table points at?" — with no extra API call.
+ *
+ * Deliberately fail-safe: anything we cannot compare is `"unprovable"`, which
+ * the renderer degrades on. Guessing here is what this function exists to
+ * prevent.
+ */
+export type DatasourceSiteVerdict = "same-site" | "cross-site" | "unprovable";
+
+export function datasourceSiteVerdict(args: {
+  /** The datasource element's `href`. */
+  datasourceUrl?: string;
+  /** The site our ports are authenticated against (`MacroExportContext.siteId`). */
+  siteBaseUrl?: string;
+}): DatasourceSiteVerdict {
+  const target = originOf(args.datasourceUrl);
+  const ours = originOf(args.siteBaseUrl);
+  if (target === undefined || ours === undefined) return "unprovable";
+  return target === ours ? "same-site" : "cross-site";
+}
+
+function originOf(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).origin.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Map a Jira `statusCategory.colorName` to a Confluence status color name the
  * engines already render. Jira uses `blue-gray`, `yellow`, `green`, etc.;
  * Confluence status colors are `grey`/`blue`/`yellow`/`green`/`red`/`purple`.
@@ -97,7 +140,17 @@ export function issueTable(columns: string[], issues: JiraIssueRef[]): ExportBlo
 }
 
 function prettyColumn(c: string): string {
-  const map: Record<string, string> = { key: "Key", summary: "Summary", status: "Status" };
+  const map: Record<string, string> = {
+    key: "Key",
+    summary: "Summary",
+    status: "Status",
+    // Datasource column vocabulary (`views[].properties.columns[].key`) is the
+    // provider's schema keys, which do not always match the legacy macro's
+    // `columns` names — the 2026 Jira provider says `issuetype` where the macro
+    // path says `type`. Label them the same either way.
+    issuetype: "Type",
+    duedate: "Due date",
+  };
   const lc = c.toLowerCase();
   return map[lc] ?? c.charAt(0).toUpperCase() + c.slice(1);
 }
@@ -116,6 +169,33 @@ function parseMaxIssues(raw: string | undefined): number {
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n) || n <= 0) return DEFAULT_MAX_ISSUES;
   return Math.min(n, HARD_MAX_ISSUES);
+}
+
+/** Human-readable origin for a cross-site note (never the full URL with its JQL). */
+function describeOrigin(url: string | undefined): string {
+  return originOf(url) ?? "an unknown site";
+}
+
+/**
+ * The blocks a degraded datasource falls back to: the walker-provided body
+ * (the original link, verbatim), or a reconstructed link when a caller built
+ * the instance without one. Never empty output for a non-empty input.
+ */
+function datasourceLinkBlocks(m: MacroInstance, datasourceUrl: string | undefined): ExportBlock[] {
+  if (m.body && m.body.length > 0) return m.body;
+  if (!datasourceUrl) return [];
+  return [
+    {
+      type: "paragraph",
+      content: [
+        {
+          type: "link",
+          target: { kind: "external", href: datasourceUrl },
+          content: [{ type: "text", text: datasourceUrl }],
+        },
+      ],
+    },
+  ];
 }
 
 function portErrorNote(macroName: string, err: { kind: string; message: string }): ExportNote {
@@ -141,7 +221,37 @@ export function jiraMacroRenderer(): MacroRenderer {
     id: "jira",
     macros: ["jira", "jiraissues"],
     requiresLivePort: true,
+    webRenderModel: { kind: "jira-data", dependencies: ["jira"] },
     async render(m: MacroInstance, ctx: MacroExportContext): Promise<MacroRenderResult> {
+      // Cross-site guard runs BEFORE the port check: a datasource pointing at
+      // another Jira site must degrade to its link with a stated reason, not
+      // fall through to a placeholder that says nothing about why.
+      const datasourceUrl = macroParamText(m.params, "datasourceUrl");
+      if (macroParamText(m.params, "datasourceId") !== undefined) {
+        const verdict = datasourceSiteVerdict({
+          ...(datasourceUrl !== undefined ? { datasourceUrl } : {}),
+          ...(ctx.siteId !== undefined ? { siteBaseUrl: ctx.siteId } : {}),
+        });
+        if (verdict !== "same-site") {
+          return {
+            kind: "blocks",
+            blocks: datasourceLinkBlocks(m, datasourceUrl),
+            bodyConsumed: true,
+            notes: [
+              {
+                level: "warning",
+                code: "datasource-cross-site",
+                message:
+                  verdict === "cross-site"
+                    ? `A Jira datasource table targets a different Jira site (${describeOrigin(datasourceUrl)}) than this export is authenticated against (${describeOrigin(ctx.siteId)}); it was kept as a link instead of being answered with rows from the wrong site.`
+                    : "A Jira datasource table could not be proven to target this export's Jira site; it was kept as a link instead of being answered with rows that may come from a different site.",
+                macroName: m.name,
+              },
+            ],
+          };
+        }
+      }
+
       if (!ctx.jira) return { kind: "skip" };
 
       const serverIdNote: ExportNote[] = [];
@@ -186,8 +296,27 @@ export function jiraMacroRenderer(): MacroRenderer {
         if (jql) {
           const columns = parseColumns(macroParamText(m.params, "columns"));
           const maximumIssues = parseMaxIssues(macroParamText(m.params, "maximumIssues"));
-          const issues = await ctx.jira.searchJql(jql, { columns, maximumIssues });
+          // Ask for one row past the cap so truncation is a FACT, not a guess
+          // (same probe the children renderer uses). A table silently cut at
+          // the cap is the same class of defect as a silently dropped macro —
+          // and a datasource stores no row limit at all, so this cap is ours.
+          const fetched = await ctx.jira.searchJql(jql, {
+            columns,
+            maximumIssues: maximumIssues + 1,
+          });
+          const truncated = fetched.length > maximumIssues;
+          const issues = truncated ? fetched.slice(0, maximumIssues) : fetched;
           const table = issueTable(columns, issues);
+          const truncationNote: ExportNote[] = truncated
+            ? [
+                {
+                  level: "warning",
+                  code: "macro-degraded",
+                  message: `Jira table truncated to ${maximumIssues} of ${maximumIssues}+ matching issues.`,
+                  macroName: m.name,
+                },
+              ]
+            : [];
           return {
             kind: "blocks",
             blocks: [table],
@@ -198,6 +327,7 @@ export function jiraMacroRenderer(): MacroRenderer {
                 message: `Jira JQL rendered as a ${issues.length}-issue table.`,
                 macroName: m.name,
               },
+              ...truncationNote,
               ...serverIdNote,
             ],
           };
