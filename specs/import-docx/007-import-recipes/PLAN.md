@@ -200,4 +200,3 @@ STOP if reuse requires executable expressions, arbitrary regex replacement witho
 ## 9. DAG
 
 This plan runs independently in the first post-MVP parallel wave. Plans 009/010 may consume recipes through the baseline override contract but do not depend on the catalog implementation.
-

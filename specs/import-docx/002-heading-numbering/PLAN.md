@@ -252,4 +252,3 @@ STOP and update this plan if the parser/OOXML evidence cannot distinguish genera
 ## 10. DAG and parallel execution
 
 After the MVP, Plans 002–008 may run in parallel. This plan blocks only Plan 009. Plan 010 later depends on 009, 003, and 005. No executor may import types from a sibling follow-on plan; shared contracts land in the baseline-owned packages.
-

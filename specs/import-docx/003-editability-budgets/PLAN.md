@@ -230,4 +230,3 @@ STOP if safe calibration would require destructive tenant load, if target behavi
 ## 10. DAG
 
 Plans 002–008 run in parallel after the MVP. Plan 009 depends on 002 and 003. Plan 010 depends on 003, 005, and 009.
-
