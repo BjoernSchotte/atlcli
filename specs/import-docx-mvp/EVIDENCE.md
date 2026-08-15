@@ -130,3 +130,17 @@ Fixture: 2,528-byte DOCX with an inline DrawingML picture (1×1 PNG,
 - In-batch duplicate titles and unparsable files fail closed/degrade
   gracefully (unit-tested with a broken fixture in the directory).
 - Cleanup: all 3 pages deleted; spot-check GET returned **404**.
+
+## 2026-08-15 — Fidelity slice E2E: blockquotes, code blocks, footnotes
+
+- Parser: Quote/Intense Quote/Zitat styles group into blockquote blocks;
+  Code/Source Code/HTML Preformatted styles merge into code blocks;
+  footnote references become inline [n] markers (numbered in reference
+  order) with the footnote bodies appended as a trailing section (own
+  rels scope, separator pseudo-footnotes skipped). Missing footnote
+  definitions and endnotes report explicit issues. 7 new unit tests.
+- Live Cloud proof: page `1197899830` published with blockquote,
+  codeBlock, and footnote paragraphs — ADF accepted, readback
+  block-sequence verification passed (info issue
+  `docx-import/footnotes-appended` as designed).
+- Cleanup: page deleted; follow-up GET returned **404**.

@@ -128,6 +128,20 @@ function encodeBlock(block: ImportBlock, options: AdfEncodeOptions): AdfNode {
       };
     case "image":
       return encodeImage(block, options);
+    case "blockquote":
+      return {
+        type: "blockquote",
+        content:
+          block.blocks.length > 0
+            ? block.blocks.map((b) => encodeBlock(b, options))
+            : [{ type: "paragraph", content: [] }],
+      };
+    case "code":
+      return {
+        type: "codeBlock",
+        attrs: {},
+        content: block.text.length > 0 ? [{ type: "text", text: block.text }] : [],
+      };
   }
 }
 

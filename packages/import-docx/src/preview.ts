@@ -60,6 +60,8 @@ function countBlocks(blocks: ImportBlock[], counts: Record<string, number>): voi
       for (const row of block.rows) {
         for (const cell of row.cells) countBlocks(cell.blocks, counts);
       }
+    } else if (block.type === "blockquote") {
+      countBlocks(block.blocks, counts);
     }
   }
 }

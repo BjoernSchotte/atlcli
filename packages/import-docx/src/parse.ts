@@ -62,7 +62,7 @@ const IGNORED_BODY_MARKERS = new Set(["sectPr", "bookmarkStart", "bookmarkEnd", 
 interface ParseContext {
   issues: ImportIssue[];
   /** styleId → heading level (1-6). */
-  headingStyles: Map<string, number>;
+  styles: ParagraphStyles;
   /** numId → ilvl → resolved level definition. */
   numbering: Map<string, Map<number, NumberingLevel>>;
   /** numId → live counters (index = ilvl), advanced in document order. */
@@ -80,6 +80,10 @@ interface ParseContext {
    * the paragraph handler into block-level image nodes.
    */
   pendingImages: ImportImageBlock[];
+  /** footnote id → `<w:footnote>` element from word/footnotes.xml. */
+  footnotes: Map<string, XmlElement>;
+  /** Footnote ids in first-reference order (1-based numbering source). */
+  footnoteRefs: string[];
   /** issue codes already reported once (deduplicated counters). */
   reported: Map<string, number>;
 }
@@ -103,15 +107,29 @@ function report(
   }
 }
 
-/** Parse `word/styles.xml` into styleId → heading level. */
-function parseHeadingStyles(stylesXml: string | undefined): Map<string, number> {
-  const map = new Map<string, number>();
-  if (!stylesXml) return map;
+interface ParagraphStyles {
+  /** styleId → heading level (1-6). */
+  headings: Map<string, number>;
+  /** styleIds whose paragraphs are quotations. */
+  quotes: Set<string>;
+  /** styleIds whose paragraphs are preformatted code. */
+  code: Set<string>;
+}
+
+const QUOTE_STYLE_NAME = /^(intense\s+)?quote$|^(intensives\s+)?zitat$|^block\s*quote/i;
+const CODE_STYLE_NAME = /^(source\s+)?code|^html\s+preformatted|^preformatted|^macro\s*text/i;
+
+/** Parse `word/styles.xml` into heading/quote/code paragraph-style maps. */
+function parseParagraphStyles(stylesXml: string | undefined): ParagraphStyles {
+  const styles: ParagraphStyles = { headings: new Map(), quotes: new Set(), code: new Set() };
+  if (!stylesXml) return styles;
   const root = parseXmlTree(stylesXml);
   for (const style of childElements(root)) {
     if (style.local !== "style" || attr(style, "type", W_NS) !== "paragraph") continue;
     const styleId = attr(style, "styleId", W_NS);
     if (!styleId) continue;
+    const name = firstChild(style, "name");
+    const nameVal = name ? (attr(name, "val", W_NS) ?? "") : "";
 
     let level: number | undefined;
     const pPr = firstChild(style, "pPr");
@@ -121,14 +139,20 @@ function parseHeadingStyles(stylesXml: string | undefined): Map<string, number> 
       level = outlineVal + 1;
     }
     if (level === undefined) {
-      const name = firstChild(style, "name");
-      const nameVal = name ? (attr(name, "val", W_NS) ?? "") : "";
       const match = /^heading ([1-6])$/i.exec(nameVal) ?? /^Heading([1-6])$/.exec(styleId);
       if (match) level = Number(match[1]);
     }
-    if (level !== undefined) map.set(styleId, level);
+    if (level !== undefined) {
+      styles.headings.set(styleId, level);
+      continue;
+    }
+    if (QUOTE_STYLE_NAME.test(nameVal) || /^(Intense)?Quote$/.test(styleId)) {
+      styles.quotes.add(styleId);
+    } else if (CODE_STYLE_NAME.test(nameVal) || /^(Source)?Code|^HTMLPreformatted$/.test(styleId)) {
+      styles.code.add(styleId);
+    }
   }
-  return map;
+  return styles;
 }
 
 /** One resolved `w:lvl` definition. */
@@ -540,6 +564,35 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
           "Word comments are not imported by this slice.",
         );
         break;
+      case "footnoteReference": {
+        const id = attr(child, "id", W_NS);
+        if (id && ctx.footnotes.has(id)) {
+          let index = ctx.footnoteRefs.indexOf(id);
+          if (index === -1) {
+            ctx.footnoteRefs.push(id);
+            index = ctx.footnoteRefs.length - 1;
+          }
+          runs.push({ kind: "text", text: `[${index + 1}]` });
+        } else {
+          report(
+            ctx,
+            "docx-import/footnote-missing",
+            "warning",
+            "reported",
+            "A footnote reference points at a missing footnote definition.",
+          );
+        }
+        break;
+      }
+      case "endnoteReference":
+        report(
+          ctx,
+          "docx-import/endnote-dropped",
+          "warning",
+          "reported",
+          "Endnotes are not imported yet; the endnote marker was omitted.",
+        );
+        break;
       default:
         report(
           ctx,
@@ -552,6 +605,21 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
     }
   }
   return runs;
+}
+
+/** Parse word/footnotes.xml into id → footnote element (separators skipped). */
+function parseFootnotes(footnotesXml: string | undefined): Map<string, XmlElement> {
+  const map = new Map<string, XmlElement>();
+  if (!footnotesXml) return map;
+  const root = parseXmlTree(footnotesXml);
+  for (const fn of childElements(root)) {
+    if (fn.local !== "footnote") continue;
+    const type = attr(fn, "type", W_NS);
+    if (type === "separator" || type === "continuationSeparator") continue;
+    const id = attr(fn, "id", W_NS);
+    if (id) map.set(id, fn);
+  }
+  return map;
 }
 
 interface NumberedParagraph {
@@ -587,12 +655,15 @@ function paragraphNumbering(
   return { numId, ilvl, ordered: level?.ordered ?? false };
 }
 
-function headingLevel(p: XmlElement, ctx: ParseContext): number | undefined {
+function paragraphStyleId(p: XmlElement): string | undefined {
   const pPr = firstChild(p, "pPr");
   const pStyle = pPr ? firstChild(pPr, "pStyle") : undefined;
-  const styleId = pStyle ? attr(pStyle, "val", W_NS) : undefined;
-  if (!styleId) return undefined;
-  return ctx.headingStyles.get(styleId);
+  return pStyle ? attr(pStyle, "val", W_NS) : undefined;
+}
+
+function headingLevel(p: XmlElement, ctx: ParseContext): number | undefined {
+  const styleId = paragraphStyleId(p);
+  return styleId ? ctx.styles.headings.get(styleId) : undefined;
 }
 
 /** Convert a run of consecutive numbered paragraphs into a nested list block. */
@@ -666,15 +737,29 @@ function parseTable(tbl: XmlElement, ctx: ParseContext, depth: number): ImportBl
   return rows.length > 0 ? [{ type: "table", rows }] : [];
 }
 
+function runsToPlainText(runs: ImportRun[]): string {
+  return runs.map((r) => (r.kind === "text" ? r.text : "\n")).join("");
+}
+
 /** Parse the block children of a container (body, table cell). */
 function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: number): ImportBlock[] {
   const blocks: ImportBlock[] = [];
   let pendingList: NumberedParagraph[] = [];
+  let pendingQuote: ImportBlock[] = [];
+  let pendingCode: string[] = [];
 
-  const flushList = () => {
+  const flushPending = () => {
     if (pendingList.length > 0) {
       blocks.push(buildList(pendingList));
       pendingList = [];
+    }
+    if (pendingQuote.length > 0) {
+      blocks.push({ type: "blockquote", blocks: pendingQuote });
+      pendingQuote = [];
+    }
+    if (pendingCode.length > 0) {
+      blocks.push({ type: "code", text: pendingCode.join("\n") });
+      pendingCode = [];
     }
   };
 
@@ -699,7 +784,7 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
         // importing them as list items would destroy the document structure
         // (specs/import-docx/002-heading-numbering).
         if (level !== undefined) {
-          flushList();
+          flushPending();
           blocks.push({
             type: "heading",
             level: level as 1 | 2 | 3 | 4 | 5 | 6,
@@ -712,12 +797,30 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
         if (numbering) {
           pendingList.push({ ilvl: numbering.ilvl, ordered: numbering.ordered, runs });
           if (images.length > 0) {
-            flushList();
+            flushPending();
             blocks.push(...images);
           }
           break;
         }
-        flushList();
+
+        // Quote/code styled paragraphs group with their neighbors.
+        const styleId = paragraphStyleId(child);
+        if (styleId && ctx.styles.quotes.has(styleId)) {
+          // Only list/code groups can be open here; flushing them cannot
+          // touch an open quote group (groups are mutually exclusive).
+          if (pendingList.length > 0 || pendingCode.length > 0) flushPending();
+          pendingQuote.push({ type: "paragraph", runs });
+          blocks.push(...images);
+          break;
+        }
+        if (styleId && ctx.styles.code.has(styleId)) {
+          if (pendingList.length > 0 || pendingQuote.length > 0) flushPending();
+          pendingCode.push(runsToPlainText(runs));
+          blocks.push(...images);
+          break;
+        }
+
+        flushPending();
         if (runs.length > 0 || (tableDepth > 0 && images.length === 0)) {
           // Keep empty paragraphs inside table cells (cell shape), drop empty
           // body paragraphs (Word's spacing artifacts).
@@ -727,14 +830,14 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
         break;
       }
       case "tbl":
-        flushList();
+        flushPending();
         blocks.push(...parseTable(child, ctx, tableDepth));
         break;
       case "sdt": {
         // Structured document tag: unwrap its content container.
         const content = firstChild(child, "sdtContent");
         if (content) {
-          flushList();
+          flushPending();
           report(
             ctx,
             "docx-import/sdt-unwrapped",
@@ -761,7 +864,7 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
         }
     }
   }
-  flushList();
+  flushPending();
   return blocks;
 }
 
@@ -787,7 +890,7 @@ export function parseDocx(bytes: Uint8Array): ImportedDocument {
   const rels = parseDocumentRels(readOptional("word/_rels/document.xml.rels"));
   const ctx: ParseContext = {
     issues: [],
-    headingStyles: parseHeadingStyles(readOptional("word/styles.xml")),
+    styles: parseParagraphStyles(readOptional("word/styles.xml")),
     numbering: parseNumbering(readOptional("word/numbering.xml")),
     numberingCounters: new Map(),
     hyperlinks: rels.hyperlinks,
@@ -799,6 +902,8 @@ export function parseDocx(bytes: Uint8Array): ImportedDocument {
       return new Uint8Array(file.asUint8Array());
     },
     pendingImages: [],
+    footnotes: parseFootnotes(readOptional("word/footnotes.xml")),
+    footnoteRefs: [],
     reported: new Map(),
   };
 
@@ -808,6 +913,38 @@ export function parseDocx(bytes: Uint8Array): ImportedDocument {
   if (!body) throw new Error("word/document.xml has no <w:body> element.");
 
   const blocks = parseBlocks(body, ctx, 0);
+
+  // Referenced footnotes append as a trailing section in reference order,
+  // matching the [n] markers emitted inline (Confluence has no native
+  // footnote node).
+  if (ctx.footnoteRefs.length > 0) {
+    const footnoteRels = parseDocumentRels(readOptional("word/_rels/footnotes.xml.rels"));
+    const footnoteCtx: ParseContext = {
+      ...ctx,
+      hyperlinks: footnoteRels.hyperlinks,
+      imageRels: new Map(),
+      pendingImages: [],
+    };
+    for (const [index, id] of ctx.footnoteRefs.entries()) {
+      const fn = ctx.footnotes.get(id)!;
+      const runs: ImportRun[] = [{ kind: "text", text: `[${index + 1}] ` }];
+      let first = true;
+      for (const para of childElements(fn).filter((c) => c.local === "p")) {
+        if (!first) runs.push({ kind: "hard-break" });
+        first = false;
+        runs.push(...parseRuns(para, footnoteCtx));
+      }
+      blocks.push({ type: "paragraph", runs });
+    }
+    report(
+      ctx,
+      "docx-import/footnotes-appended",
+      "info",
+      "approximated",
+      "Footnotes were appended as a trailing section with inline [n] markers (Confluence has no native footnotes).",
+      { count: ctx.footnoteRefs.length },
+    );
+  }
 
   const firstH1 = blocks.find(
     (b): b is Extract<ImportBlock, { type: "heading" }> => b.type === "heading" && b.level === 1,

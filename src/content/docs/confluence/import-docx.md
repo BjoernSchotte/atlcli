@@ -99,6 +99,9 @@ the document → the file name.
 | Bullet and numbered lists, including nesting | Native bullet/ordered lists (format from `numbering.xml`) |
 | Tables with marked header rows | Native tables with header cells |
 | Embedded images (PNG, JPEG, GIF, WebP, SVG) | Page attachments rendered as native media |
+| Quote / Intense Quote / Zitat paragraphs | Native blockquotes (consecutive paragraphs grouped) |
+| Code-styled paragraphs (Code, Source Code, HTML Preformatted) | Native code blocks (consecutive lines merged) |
+| Footnotes | Inline `[n]` markers plus an appended footnote section (numbered in reference order) |
 | Tracked insertions | Accepted into the content (with an info issue) |
 | Content controls (SDT) | Unwrapped to their plain content |
 | Word fields | Flattened to their cached display text |

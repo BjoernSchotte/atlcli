@@ -60,7 +60,11 @@ export type ImportBlock =
   | { type: "paragraph"; runs: ImportRun[] }
   | ImportListBlock
   | { type: "table"; rows: ImportTableRow[] }
-  | ImportImageBlock;
+  | ImportImageBlock
+  /** Consecutive Quote/Intense Quote paragraphs, grouped. */
+  | { type: "blockquote"; blocks: ImportBlock[] }
+  /** Consecutive code-styled paragraphs, merged into one block. */
+  | { type: "code"; text: string };
 
 export interface ImportImageBlock {
   type: "image";

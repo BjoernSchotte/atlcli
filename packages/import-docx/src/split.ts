@@ -53,6 +53,8 @@ function collectAssetIds(blocks: ImportBlock[], into: Set<string>): void {
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) collectAssetIds(cell.blocks, into);
+    } else if (block.type === "blockquote") {
+      collectAssetIds(block.blocks, into);
     }
   }
 }
