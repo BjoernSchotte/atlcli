@@ -47,7 +47,31 @@ export type ImportBlock =
   | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; runs: ImportRun[] }
   | { type: "paragraph"; runs: ImportRun[] }
   | ImportListBlock
-  | { type: "table"; rows: ImportTableRow[] };
+  | { type: "table"; rows: ImportTableRow[] }
+  | ImportImageBlock;
+
+export interface ImportImageBlock {
+  type: "image";
+  /** References an {@link ImportAsset} by its stable id. */
+  assetId: string;
+  alt?: string;
+  /** Display size in CSS px (converted from source EMU), when declared. */
+  width?: number;
+  height?: number;
+}
+
+/**
+ * An embedded binary carried alongside the document (today: images). Bytes
+ * stay in memory only; publication uploads them as page attachments.
+ */
+export interface ImportAsset {
+  /** Stable id derived from the source package part name. */
+  id: string;
+  /** Attachment file name used at upload (basename of the source part). */
+  fileName: string;
+  mediaType: string;
+  bytes: Uint8Array;
+}
 
 export type ImportIssueSeverity = "info" | "warning";
 
@@ -71,5 +95,7 @@ export interface ImportedDocument {
   /** Title candidate derived from the first level-1 heading, if present. */
   titleCandidate?: string;
   blocks: ImportBlock[];
+  /** Embedded binaries referenced by `image` blocks, in source order. */
+  assets: ImportAsset[];
   issues: ImportIssue[];
 }

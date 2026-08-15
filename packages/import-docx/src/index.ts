@@ -5,7 +5,9 @@
  * file/stdin/network acquisition belongs to the imperative shell (CLI).
  */
 export type {
+  ImportAsset,
   ImportBlock,
+  ImportImageBlock,
   ImportIssue,
   ImportIssueOutcome,
   ImportIssueSeverity,
@@ -18,10 +20,17 @@ export type {
   ImportedDocument,
 } from "./model.js";
 export { parseDocx } from "./parse.js";
-export { documentToAdf, type AdfDocument, type AdfNode } from "./adf.js";
+export {
+  documentToAdf,
+  type AdfDocument,
+  type AdfEncodeOptions,
+  type AdfMediaResolution,
+  type AdfNode,
+} from "./adf.js";
 export {
   buildImportPreview,
   renderImportPreview,
   type ImportPreview,
+  type ImportPreviewAsset,
   type ImportTarget,
 } from "./preview.js";

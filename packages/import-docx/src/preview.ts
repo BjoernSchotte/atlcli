@@ -15,12 +15,26 @@ export interface ImportTarget {
   parentId?: string;
 }
 
+export interface ImportPreviewAsset {
+  fileName: string;
+  mediaType: string;
+  byteLength: number;
+  sha256: string;
+}
+
 export interface ImportPreview {
   target: ImportTarget;
   counts: Record<string, number>;
   outline: { level: number; text: string }[];
+  /** Attachments a confirmed run uploads, with content digests. */
+  assets: ImportPreviewAsset[];
   issues: ImportedDocument["issues"];
-  /** sha256 over the exact ADF payload that --confirm would publish. */
+  /**
+   * sha256 over the canonical ADF payload with media ids in placeholder form
+   * (`asset:<assetId>`). Publication substitutes uploaded attachment
+   * identities for the placeholders and changes nothing else, so together
+   * with the per-asset digests this still binds preview to publication.
+   */
   adfDigest: string;
 }
 
@@ -58,8 +72,17 @@ export async function buildImportPreview(
     .filter((b): b is Extract<ImportBlock, { type: "heading" }> => b.type === "heading")
     .map((h) => ({ level: h.level, text: runsText(h.runs) }));
 
+  const assets = await Promise.all(
+    doc.assets.map(async (asset) => ({
+      fileName: asset.fileName,
+      mediaType: asset.mediaType,
+      byteLength: asset.bytes.byteLength,
+      sha256: await sha256Hex(asset.bytes),
+    })),
+  );
+
   const adfDigest = await sha256Hex(new TextEncoder().encode(JSON.stringify(documentToAdf(doc))));
-  return { target, counts, outline, issues: doc.issues, adfDigest };
+  return { target, counts, outline, assets, issues: doc.issues, adfDigest };
 }
 
 export function renderImportPreview(preview: ImportPreview): string {
@@ -82,6 +105,16 @@ export function renderImportPreview(preview: ImportPreview): string {
     lines.push("Outline:");
     for (const h of preview.outline) {
       lines.push(`${"  ".repeat(h.level)}H${h.level} ${h.text}`);
+    }
+  }
+
+  if (preview.assets.length > 0) {
+    lines.push("");
+    lines.push(`Attachments (${preview.assets.length}):`);
+    for (const asset of preview.assets) {
+      lines.push(
+        `  ${asset.fileName} (${asset.mediaType}, ${asset.byteLength} bytes, sha256:${asset.sha256.slice(0, 12)}…)`,
+      );
     }
   }
 

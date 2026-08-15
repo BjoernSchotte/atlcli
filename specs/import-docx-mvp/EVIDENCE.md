@@ -70,3 +70,18 @@ hyperlink, H2, nested ordered list, header-row table, one `w:drawing`).
   (`ca3a9fcdd8816c532cc24cb3149dec170ca5d0acad6252eabac071c9cef09d18`).
 - Cleanup: `wiki page delete --id 1197899801 --confirm` succeeded; follow-up
   `wiki page get` returned **404**.
+
+## 2026-08-15 — Image support E2E, live Cloud (`mayflower` / DOCSY)
+
+Fixture: 2,528-byte DOCX with an inline DrawingML picture (1×1 PNG,
+`wp:extent` 200×100 px, `descr` alt text), external hyperlink, list.
+
+- Preview: image surfaced as `1 image` block plus an attachment plan
+  (`image1.png`, image/png, 70 bytes, sha256 `c414cd0e204d…`); digest
+  `74bfef36f9038bfc…` computed over the placeholder-form ADF.
+- Publish (`--confirm --json`): shell page `1198129153` created (v1),
+  attachment uploaded, `listPageAttachmentMedia` resolved the media
+  `fileId`, final ADF with `mediaSingle/media` landed as version 2,
+  readback block-sequence verification (incl. `mediaSingle`) passed,
+  zero issues.
+- Cleanup: page deleted; follow-up GET returned **404**.

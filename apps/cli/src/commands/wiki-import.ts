@@ -26,6 +26,7 @@ import {
   documentToAdf,
   parseDocx,
   renderImportPreview,
+  type AdfMediaResolution,
   type ImportedDocument,
 } from "@atlcli/import-docx";
 import { assertCliAuthSupported } from "./session-guard.js";
@@ -115,18 +116,50 @@ export async function handleWikiImport(
     });
   }
 
-  const adf = documentToAdf(doc);
+  // Publication transaction. With assets the page is created as an empty
+  // shell first (attachments need a page id), assets are uploaded, and the
+  // final ADF — identical to the preview except for substituted media
+  // identities — lands as version 2. Any failure rolls the page back.
+  const hasAssets = doc.assets.length > 0;
   const page = await client.createPageAdf({
     spaceId: space.id,
     title,
-    adf,
+    adf: hasAssets ? { version: 1, type: "doc", content: [] } : documentToAdf(doc),
     parentId,
   });
 
-  // Verify by readback; a page that cannot be verified is rolled back.
+  let adf = documentToAdf(doc);
+  let finalPage = page;
   try {
+    if (hasAssets) {
+      for (const asset of doc.assets) {
+        await client.uploadAttachment({
+          pageId: page.id,
+          filename: asset.fileName,
+          data: asset.bytes,
+          mimeType: asset.mediaType,
+        });
+      }
+      const mediaList = await client.listPageAttachmentMedia(page.id);
+      const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
+      const media = new Map<string, AdfMediaResolution>();
+      for (const asset of doc.assets) {
+        const fileId = fileIdByName.get(asset.fileName);
+        if (!fileId) {
+          throw new Error(`uploaded attachment ${asset.fileName} has no resolvable media fileId`);
+        }
+        media.set(asset.id, { fileId, collection: `contentId-${page.id}` });
+      }
+      adf = documentToAdf(doc, { media });
+      finalPage = await client.updatePageAdf({ id: page.id, title, adf, version: 2 });
+      finalPage = { ...finalPage, url: finalPage.url ?? page.url };
+    }
+
+    // Verify by readback; a page that cannot be verified is rolled back.
     const readback = await client.getPageAdf(page.id);
-    const published = JSON.parse(readback.body.value) as { content?: { type?: string }[] };
+    const published = JSON.parse(readback.body.value) as {
+      content?: { type?: string }[];
+    };
     const expectedTypes = adf.content.map((n) => n.type).join(",");
     const actualTypes = (published.content ?? []).map((n) => n.type).join(",");
     if (expectedTypes !== actualTypes) {
@@ -159,15 +192,16 @@ export async function handleWikiImport(
     output(
       {
         mode: "published",
-        page: { id: page.id, title: page.title, url: page.url, version: page.version },
+        page: { id: finalPage.id, title: finalPage.title, url: finalPage.url, version: finalPage.version },
         adfDigest: preview.adfDigest,
+        attachments: preview.assets,
         issues: doc.issues,
       },
       opts,
     );
   } else {
-    output(`Created page "${page.title}" (${page.id})`, opts);
-    if (page.url) output(page.url, opts);
+    output(`Created page "${finalPage.title}" (${finalPage.id})`, opts);
+    if (finalPage.url) output(finalPage.url, opts);
     if (doc.issues.length > 0) {
       output(`${doc.issues.length} issue(s) — run without --confirm to review them in the preview.`, opts);
     }

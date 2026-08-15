@@ -6,10 +6,28 @@
  */
 import type {
   ImportBlock,
+  ImportImageBlock,
   ImportListBlock,
   ImportRun,
   ImportedDocument,
 } from "./model.js";
+
+/** Uploaded-attachment identity an image block resolves to at publish time. */
+export interface AdfMediaResolution {
+  /** Attachment `extensions.fileId` / v2 `fileId` — the ADF `media.attrs.id`. */
+  fileId: string;
+  /** `contentId-<pageId>` collection from the upload response. */
+  collection: string;
+}
+
+export interface AdfEncodeOptions {
+  /**
+   * assetId → uploaded identity. Unresolved image blocks encode with the
+   * deterministic placeholder id `asset:<assetId>` and an empty collection —
+   * valid for previews/digests, never for publication.
+   */
+  media?: ReadonlyMap<string, AdfMediaResolution>;
+}
 
 export interface AdfNode {
   type: string;
@@ -47,27 +65,48 @@ function encodeParagraph(runs: ImportRun[]): AdfNode {
   return { type: "paragraph", content: encodeRuns(runs) };
 }
 
-function encodeList(list: ImportListBlock): AdfNode {
+function encodeList(list: ImportListBlock, options: AdfEncodeOptions): AdfNode {
   return {
     type: list.ordered ? "orderedList" : "bulletList",
     content: list.items.map((item) => {
-      const content: AdfNode[] = item.blocks.map(encodeBlock);
+      const content: AdfNode[] = item.blocks.map((b) => encodeBlock(b, options));
       // ADF list items require at least one block child.
       if (content.length === 0) content.push({ type: "paragraph", content: [] });
-      if (item.child) content.push(encodeList(item.child));
+      if (item.child) content.push(encodeList(item.child, options));
       return { type: "listItem", content };
     }),
   };
 }
 
-function encodeBlock(block: ImportBlock): AdfNode {
+function encodeImage(block: ImportImageBlock, options: AdfEncodeOptions): AdfNode {
+  const resolved = options.media?.get(block.assetId);
+  return {
+    type: "mediaSingle",
+    attrs: { layout: "center" },
+    content: [
+      {
+        type: "media",
+        attrs: {
+          type: "file",
+          id: resolved?.fileId ?? `asset:${block.assetId}`,
+          collection: resolved?.collection ?? "",
+          ...(block.width ? { width: block.width } : {}),
+          ...(block.height ? { height: block.height } : {}),
+          ...(block.alt ? { alt: block.alt } : {}),
+        },
+      },
+    ],
+  };
+}
+
+function encodeBlock(block: ImportBlock, options: AdfEncodeOptions): AdfNode {
   switch (block.type) {
     case "heading":
       return { type: "heading", attrs: { level: block.level }, content: encodeRuns(block.runs) };
     case "paragraph":
       return encodeParagraph(block.runs);
     case "list":
-      return encodeList(block);
+      return encodeList(block, options);
     case "table":
       return {
         type: "table",
@@ -75,15 +114,17 @@ function encodeBlock(block: ImportBlock): AdfNode {
         content: block.rows.map((row) => ({
           type: "tableRow",
           content: row.cells.map((cell) => {
-            const content: AdfNode[] = cell.blocks.map(encodeBlock);
+            const content: AdfNode[] = cell.blocks.map((b) => encodeBlock(b, options));
             if (content.length === 0) content.push({ type: "paragraph", content: [] });
             return { type: cell.header ? "tableHeader" : "tableCell", attrs: {}, content };
           }),
         })),
       };
+    case "image":
+      return encodeImage(block, options);
   }
 }
 
-export function documentToAdf(doc: ImportedDocument): AdfDocument {
-  return { version: 1, type: "doc", content: doc.blocks.map(encodeBlock) };
+export function documentToAdf(doc: ImportedDocument, options: AdfEncodeOptions = {}): AdfDocument {
+  return { version: 1, type: "doc", content: doc.blocks.map((b) => encodeBlock(b, options)) };
 }

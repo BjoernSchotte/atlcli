@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { parseDocx } from "./parse.js";
-import { buildDocxFixture, hyperlinkRel, p, r } from "./test-support.js";
+import { TINY_PNG, buildDocxFixture, drawing, hyperlinkRel, imageRel, p, r } from "./test-support.js";
 import type { ImportBlock, ImportListBlock } from "./model.js";
 
 function heading(block: ImportBlock): asserts block is Extract<ImportBlock, { type: "heading" }> {
@@ -103,7 +103,7 @@ describe("parseDocx", () => {
     expect(doc.issues.some((i) => i.code === "docx-import/nested-table-flattened")).toBe(true);
   });
 
-  it("reports images, comments, and deletions instead of silently dropping them", () => {
+  it("reports empty drawings, comments, and deletions instead of silently dropping them", () => {
     const bytes = buildDocxFixture({
       body:
         p(`<w:r><w:drawing/></w:r>` + r("text")) +
@@ -112,7 +112,7 @@ describe("parseDocx", () => {
     });
     const doc = parseDocx(bytes);
     const codes = doc.issues.map((i) => i.code);
-    expect(codes).toContain("docx-import/image-not-supported");
+    expect(codes).toContain("docx-import/drawing-without-image");
     expect(codes).toContain("docx-import/comment-dropped");
     expect(codes).toContain("docx-import/revision-deletion-dropped");
     // Deleted text must not appear anywhere in the parsed content.
@@ -125,9 +125,50 @@ describe("parseDocx", () => {
       body: p(`<w:r><w:drawing/></w:r><w:r><w:drawing/></w:r><w:r><w:drawing/></w:r>`),
     });
     const doc = parseDocx(bytes);
-    const imageIssues = doc.issues.filter((i) => i.code === "docx-import/image-not-supported");
-    expect(imageIssues).toHaveLength(1);
-    expect(imageIssues[0].context?.occurrences).toBe(3);
+    const drawingIssues = doc.issues.filter((i) => i.code === "docx-import/drawing-without-image");
+    expect(drawingIssues).toHaveLength(1);
+    expect(drawingIssues[0].context?.occurrences).toBe(3);
+  });
+
+  it("extracts embedded raster images as assets and block-level image nodes", () => {
+    const bytes = buildDocxFixture({
+      body:
+        p(r("before")) +
+        p(drawing("rId7", { cx: 952500, cy: 476250, descr: "A red dot" })) +
+        p(r("with text ") + drawing("rId7")),
+      documentRels: imageRel("rId7", "media/image1.png"),
+      parts: { "word/media/image1.png": TINY_PNG },
+    });
+    const doc = parseDocx(bytes);
+
+    expect(doc.blocks.map((b) => b.type)).toEqual(["paragraph", "image", "paragraph", "image"]);
+    const image = doc.blocks[1];
+    if (image.type !== "image") throw new Error("expected image block");
+    expect(image.assetId).toBe("word/media/image1.png");
+    expect(image.alt).toBe("A red dot");
+    expect(image.width).toBe(100);
+    expect(image.height).toBe(50);
+
+    // Two references, one deduplicated asset with the original bytes.
+    expect(doc.assets).toHaveLength(1);
+    expect(doc.assets[0].fileName).toBe("image1.png");
+    expect(doc.assets[0].mediaType).toBe("image/png");
+    expect(doc.assets[0].bytes).toEqual(TINY_PNG);
+    expect(doc.issues).toHaveLength(0);
+  });
+
+  it("reports unsupported image formats and missing image parts", () => {
+    const bytes = buildDocxFixture({
+      body: p(drawing("rId7")) + p(drawing("rId8")),
+      documentRels: imageRel("rId7", "media/image1.emf") + imageRel("rId8", "media/missing.png"),
+      parts: { "word/media/image1.emf": TINY_PNG },
+    });
+    const doc = parseDocx(bytes);
+    expect(doc.blocks).toHaveLength(0);
+    expect(doc.assets).toHaveLength(0);
+    const codes = doc.issues.map((i) => i.code);
+    expect(codes).toContain("docx-import/image-format-not-supported");
+    expect(codes).toContain("docx-import/image-part-missing");
   });
 
   it("rejects packages that are not DOCX", () => {

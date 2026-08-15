@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { documentToAdf } from "./adf.js";
 import { buildImportPreview, renderImportPreview } from "./preview.js";
 import { parseDocx } from "./parse.js";
-import { buildDocxFixture, hyperlinkRel, p, r } from "./test-support.js";
+import { TINY_PNG, buildDocxFixture, drawing, hyperlinkRel, imageRel, p, r } from "./test-support.js";
 
 describe("documentToAdf", () => {
   it("encodes the full slice roundtrip fixture deterministically", () => {
@@ -52,6 +52,44 @@ describe("documentToAdf", () => {
   });
 });
 
+describe("documentToAdf media resolution", () => {
+  const imageBytes = () =>
+    buildDocxFixture({
+      body: p(drawing("rId7", { descr: "alt text" })),
+      documentRels: imageRel("rId7", "media/image1.png"),
+      parts: { "word/media/image1.png": TINY_PNG },
+    });
+
+  it("encodes deterministic placeholders without a media map", () => {
+    const adf = documentToAdf(parseDocx(imageBytes()));
+    const media = adf.content[0].content?.[0];
+    expect(adf.content[0].type).toBe("mediaSingle");
+    expect(media?.attrs).toMatchObject({
+      type: "file",
+      id: "asset:word/media/image1.png",
+      collection: "",
+      alt: "alt text",
+    });
+  });
+
+  it("substitutes uploaded identities via the media map, changing nothing else", () => {
+    const doc = parseDocx(imageBytes());
+    const placeholder = documentToAdf(doc);
+    const resolved = documentToAdf(doc, {
+      media: new Map([
+        ["word/media/image1.png", { fileId: "file-123", collection: "contentId-42" }],
+      ]),
+    });
+    const attrs = resolved.content[0].content?.[0].attrs;
+    expect(attrs?.id).toBe("file-123");
+    expect(attrs?.collection).toBe("contentId-42");
+    // Identical except for the two substituted attributes.
+    const normalize = (s: string) =>
+      s.replace("file-123", "asset:word/media/image1.png").replace("contentId-42", "");
+    expect(normalize(JSON.stringify(resolved))).toBe(JSON.stringify(placeholder));
+  });
+});
+
 describe("preview", () => {
   it("builds a digest-bound preview and renders issues and outline", async () => {
     const bytes = buildDocxFixture({
@@ -72,7 +110,7 @@ describe("preview", () => {
     const text = renderImportPreview(preview);
     expect(text).toContain("Space:  DOCSY");
     expect(text).toContain("H1 Title");
-    expect(text).toContain("docx-import/image-not-supported");
+    expect(text).toContain("docx-import/drawing-without-image");
 
     // Digest is stable for identical input.
     const again = await buildImportPreview(parseDocx(bytes), { spaceKey: "DOCSY", title: "Title" });

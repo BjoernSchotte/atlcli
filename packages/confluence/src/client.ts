@@ -1950,6 +1950,43 @@ export class ConfluenceClient {
     };
   }
 
+  /**
+   * Replace a page body with an atlas_doc_format (ADF) document via REST v2.
+   *
+   * Cloud-only, same contract note as {@link createPageAdf}. `version` is the
+   * NEW version number the caller commits to (current + 1), which makes the
+   * lost-update guard explicit at the call site.
+   */
+  async updatePageAdf(params: {
+    id: string;
+    title: string;
+    adf: unknown;
+    version: number;
+  }): Promise<ConfluencePage> {
+    const data = (await this.requestV2(`/pages/${params.id}`, {
+      method: "PUT",
+      body: {
+        id: params.id,
+        status: "current",
+        title: params.title,
+        body: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify(params.adf),
+        },
+        version: { number: params.version },
+      },
+      logBody: "meta-only",
+    })) as any;
+
+    return {
+      id: String(data.id),
+      title: data.title,
+      url: this.buildWebUrl(data._links?.webui),
+      version: data.version?.number,
+      parentId: data.parentId ? String(data.parentId) : null,
+    };
+  }
+
   async updatePage(params: {
     id: string;
     title: string;

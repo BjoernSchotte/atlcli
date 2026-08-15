@@ -921,6 +921,12 @@ export declare class ConfluenceClient {
         adf: unknown;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    updatePageAdf(params: {
+        id: string;
+        title: string;
+        adf: unknown;
+        version: number;
+    }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;
         title: string;
@@ -4246,6 +4252,12 @@ export declare class ConfluenceClient {
         title: string;
         adf: unknown;
         parentId?: string;
+    }): Promise<ConfluencePage>;
+    updatePageAdf(params: {
+        id: string;
+        title: string;
+        adf: unknown;
+        version: number;
     }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;
@@ -7573,6 +7585,12 @@ export declare class ConfluenceClient {
         adf: unknown;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    updatePageAdf(params: {
+        id: string;
+        title: string;
+        adf: unknown;
+        version: number;
+    }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;
         title: string;
@@ -10595,6 +10613,12 @@ export declare class ConfluenceClient {
         title: string;
         adf: unknown;
         parentId?: string;
+    }): Promise<ConfluencePage>;
+    updatePageAdf(params: {
+        id: string;
+        title: string;
+        adf: unknown;
+        version: number;
     }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;
@@ -14318,6 +14342,12 @@ export declare class ConfluenceClient {
         adf: unknown;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    updatePageAdf(params: {
+        id: string;
+        title: string;
+        adf: unknown;
+        version: number;
+    }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;
         title: string;
@@ -16838,6 +16868,12 @@ export declare class ConfluenceClient {
         title: string;
         adf: unknown;
         parentId?: string;
+    }): Promise<ConfluencePage>;
+    updatePageAdf(params: {
+        id: string;
+        title: string;
+        adf: unknown;
+        version: number;
     }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;

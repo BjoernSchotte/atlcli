@@ -10,7 +10,9 @@
  */
 import { unzipDocx, readPartText, DOCX_TEMPLATE_INTAKE_BUDGET } from "@atlcli/docx/scan";
 import type {
+  ImportAsset,
   ImportBlock,
+  ImportImageBlock,
   ImportIssue,
   ImportListBlock,
   ImportListItem,
@@ -26,6 +28,21 @@ const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationship
 const REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
 const HYPERLINK_REL =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
+const IMAGE_REL =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+
+/** EMU per CSS pixel (914400 EMU/inch ÷ 96 px/inch). */
+const EMU_PER_PX = 9525;
+
+/** Raster/vector formats Confluence can attach AND render in a media node. */
+const IMAGE_MEDIA_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+};
 
 const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 
@@ -50,6 +67,17 @@ interface ParseContext {
   numbering: Map<string, Map<number, boolean>>;
   /** relationship id → external URL. */
   hyperlinks: Map<string, string>;
+  /** relationship id → internal image part path (word/-relative resolved). */
+  imageRels: Map<string, string>;
+  /** Extracted assets, keyed by asset id (one per referenced part). */
+  assets: Map<string, ImportAsset>;
+  /** Reads image part bytes; returns undefined for missing parts. */
+  readImagePart: (part: string) => Uint8Array | undefined;
+  /**
+   * Images collected while walking the current paragraph's runs; drained by
+   * the paragraph handler into block-level image nodes.
+   */
+  pendingImages: ImportImageBlock[];
   /** issue codes already reported once (deduplicated counters). */
   reported: Map<string, number>;
 }
@@ -136,19 +164,119 @@ function parseNumbering(numberingXml: string | undefined): Map<string, Map<numbe
   return map;
 }
 
-/** Parse `word/_rels/document.xml.rels` into rId → external hyperlink URL. */
-function parseHyperlinkRels(relsXml: string | undefined): Map<string, string> {
-  const map = new Map<string, string>();
-  if (!relsXml) return map;
+interface DocumentRels {
+  /** rId → external hyperlink URL. */
+  hyperlinks: Map<string, string>;
+  /** rId → zip part path of an internal image (e.g. `word/media/image1.png`). */
+  images: Map<string, string>;
+}
+
+/** Resolve a word/-relative rels target to a normalized zip part path. */
+function resolveWordRelTarget(target: string): string {
+  const joined = target.startsWith("/") ? target.slice(1) : `word/${target}`;
+  const parts: string[] = [];
+  for (const segment of joined.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") parts.pop();
+    else parts.push(segment);
+  }
+  return parts.join("/");
+}
+
+/** Parse `word/_rels/document.xml.rels` into hyperlink and image maps. */
+function parseDocumentRels(relsXml: string | undefined): DocumentRels {
+  const rels: DocumentRels = { hyperlinks: new Map(), images: new Map() };
+  if (!relsXml) return rels;
   const root = parseXmlTree(relsXml);
   for (const rel of childElements(root)) {
     if (rel.local !== "Relationship" || rel.uri !== REL_NS) continue;
-    if (attr(rel, "Type") !== HYPERLINK_REL) continue;
     const id = attr(rel, "Id");
     const target = attr(rel, "Target");
-    if (id && target && attr(rel, "TargetMode") === "External") map.set(id, target);
+    if (!id || !target) continue;
+    const external = attr(rel, "TargetMode") === "External";
+    const type = attr(rel, "Type");
+    if (type === HYPERLINK_REL && external) {
+      rels.hyperlinks.set(id, target);
+    } else if (type === IMAGE_REL && !external) {
+      rels.images.set(id, resolveWordRelTarget(target));
+    }
   }
-  return map;
+  return rels;
+}
+
+/** Depth-first search for the first descendant element with a local name. */
+function findDescendant(el: XmlElement, local: string): XmlElement | undefined {
+  for (const child of childElements(el)) {
+    if (child.local === local) return child;
+    const found = findDescendant(child, local);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/**
+ * Extract a DrawingML image reference from a `w:drawing` and register its
+ * bytes as an asset. Returns undefined (with a reported issue) when the
+ * drawing carries no importable raster/vector image.
+ */
+function extractDrawing(drawing: XmlElement, ctx: ParseContext): ImportImageBlock | undefined {
+  const blip = findDescendant(drawing, "blip");
+  const relId = blip ? attr(blip, "embed", R_NS) : undefined;
+  const part = relId ? ctx.imageRels.get(relId) : undefined;
+  if (!part) {
+    report(
+      ctx,
+      "docx-import/drawing-without-image",
+      "warning",
+      "reported",
+      "A drawing without an embedded local image (shape, chart, or linked picture) was omitted.",
+    );
+    return undefined;
+  }
+
+  const extension = part.slice(part.lastIndexOf(".") + 1).toLowerCase();
+  const mediaType = IMAGE_MEDIA_TYPES[extension];
+  if (!mediaType) {
+    report(
+      ctx,
+      "docx-import/image-format-not-supported",
+      "warning",
+      "reported",
+      `Embedded images of type .${extension} (e.g. EMF/WMF) are not imported.`,
+      { extension },
+    );
+    return undefined;
+  }
+
+  if (!ctx.assets.has(part)) {
+    const bytes = ctx.readImagePart(part);
+    if (!bytes) {
+      report(
+        ctx,
+        "docx-import/image-part-missing",
+        "warning",
+        "reported",
+        "An image relationship points at a missing package part; the image was omitted.",
+      );
+      return undefined;
+    }
+    const fileName = part.slice(part.lastIndexOf("/") + 1);
+    ctx.assets.set(part, { id: part, fileName, mediaType, bytes });
+  }
+
+  const extent = findDescendant(drawing, "extent");
+  const cx = extent ? Number(attr(extent, "cx")) : NaN;
+  const cy = extent ? Number(attr(extent, "cy")) : NaN;
+  const docPr = findDescendant(drawing, "docPr");
+  const alt = docPr ? (attr(docPr, "descr") ?? attr(docPr, "name")) : undefined;
+
+  return {
+    type: "image",
+    assetId: part,
+    ...(alt ? { alt } : {}),
+    ...(Number.isFinite(cx) && cx > 0 ? { width: Math.round(cx / EMU_PER_PX) } : {}),
+    ...(Number.isFinite(cy) && cy > 0 ? { height: Math.round(cy / EMU_PER_PX) } : {}),
+  };
 }
 
 function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks): ImportRun[] {
@@ -279,15 +407,19 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
       case "tab":
         runs.push({ kind: "text", text: "\t", marks: cleaned });
         break;
-      case "drawing":
+      case "drawing": {
+        const image = extractDrawing(child, ctx);
+        if (image) ctx.pendingImages.push(image);
+        break;
+      }
       case "pict":
       case "object":
         report(
           ctx,
-          "docx-import/image-not-supported",
+          "docx-import/legacy-image-not-supported",
           "warning",
           "reported",
-          "Images/drawings are not imported by this slice (media identity gate pending).",
+          "Legacy VML pictures/embedded objects are not imported.",
         );
         break;
       case "rPr":
@@ -450,19 +582,27 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
       case "p": {
         const numbering = paragraphNumbering(child, ctx);
         const runs = parseRuns(child, ctx);
+        // Images are block-level in the IR: a paragraph's embedded drawings
+        // surface as image blocks right after (or instead of) the paragraph.
+        const images = ctx.pendingImages.splice(0, ctx.pendingImages.length);
         if (numbering) {
           pendingList.push({ ...numbering, runs });
+          if (images.length > 0) {
+            flushList();
+            blocks.push(...images);
+          }
           break;
         }
         flushList();
         const level = headingLevel(child, ctx);
         if (level !== undefined) {
           blocks.push({ type: "heading", level: level as 1 | 2 | 3 | 4 | 5 | 6, runs });
-        } else if (runs.length > 0 || tableDepth > 0) {
+        } else if (runs.length > 0 || (tableDepth > 0 && images.length === 0)) {
           // Keep empty paragraphs inside table cells (cell shape), drop empty
           // body paragraphs (Word's spacing artifacts).
           blocks.push({ type: "paragraph", runs });
         }
+        blocks.push(...images);
         break;
       }
       case "tbl":
@@ -523,11 +663,20 @@ export function parseDocx(bytes: Uint8Array): ImportedDocument {
   const readOptional = (part: string): string | undefined =>
     zip.file(part) ? readPartText(zip, part) : undefined;
 
+  const rels = parseDocumentRels(readOptional("word/_rels/document.xml.rels"));
   const ctx: ParseContext = {
     issues: [],
     headingStyles: parseHeadingStyles(readOptional("word/styles.xml")),
     numbering: parseNumbering(readOptional("word/numbering.xml")),
-    hyperlinks: parseHyperlinkRels(readOptional("word/_rels/document.xml.rels")),
+    hyperlinks: rels.hyperlinks,
+    imageRels: rels.images,
+    assets: new Map(),
+    readImagePart: (part) => {
+      const file = zip.file(part);
+      if (!file) return undefined;
+      return new Uint8Array(file.asUint8Array());
+    },
+    pendingImages: [],
     reported: new Map(),
   };
 
@@ -543,5 +692,5 @@ export function parseDocx(bytes: Uint8Array): ImportedDocument {
   );
   const titleCandidate = firstH1 ? runsPlainText(firstH1.runs) || undefined : undefined;
 
-  return { titleCandidate, blocks, issues: ctx.issues };
+  return { titleCandidate, blocks, assets: [...ctx.assets.values()], issues: ctx.issues };
 }

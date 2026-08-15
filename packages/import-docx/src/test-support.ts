@@ -9,10 +9,20 @@ const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Default Extension="emf" ContentType="image/x-emf"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
   <Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>
 </Types>`;
+
+/** 1×1 red PNG, the smallest embeddable raster fixture. */
+export const TINY_PNG: Uint8Array = Uint8Array.from(
+  atob(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  ),
+  (c) => c.charCodeAt(0),
+);
 
 const ROOT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -54,8 +64,10 @@ export interface FixtureOptions {
   body: string;
   styles?: string;
   numbering?: string;
-  /** Extra document-level relationships (e.g. hyperlinks). */
+  /** Extra document-level relationships (e.g. hyperlinks, images). */
   documentRels?: string;
+  /** Extra binary parts, e.g. `{ "word/media/image1.png": TINY_PNG }`. */
+  parts?: Record<string, Uint8Array>;
 }
 
 export function buildDocxFixture(options: FixtureOptions): Uint8Array {
@@ -76,12 +88,39 @@ export function buildDocxFixture(options: FixtureOptions): Uint8Array {
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${options.documentRels ?? ""}</Relationships>`,
   );
+  for (const [name, bytes] of Object.entries(options.parts ?? {})) {
+    zip.file(name, bytes);
+  }
   const out = zip.generate({ type: "uint8array", compression: "DEFLATE" });
   return out;
 }
 
 export function hyperlinkRel(id: string, target: string): string {
   return `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${target}" TargetMode="External"/>`;
+}
+
+export function imageRel(id: string, target: string): string {
+  return `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${target}"/>`;
+}
+
+/** Minimal inline DrawingML picture run referencing an image relationship. */
+export function drawing(
+  relId: string,
+  opts: { cx?: number; cy?: number; descr?: string } = {},
+): string {
+  const cx = opts.cx ?? 952500; // 100 px
+  const cy = opts.cy ?? 476250; // 50 px
+  return (
+    `<w:r><w:drawing>` +
+    `<wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
+    `<wp:extent cx="${cx}" cy="${cy}"/>` +
+    `<wp:docPr id="1" name="Picture 1"${opts.descr ? ` descr="${opts.descr}"` : ""}/>` +
+    `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+    `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:blipFill><a:blip r:embed="${relId}"/></pic:blipFill>` +
+    `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`
+  );
 }
 
 export function p(inner: string, opts: { style?: string; numId?: string; ilvl?: number } = {}): string {
