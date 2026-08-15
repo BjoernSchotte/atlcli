@@ -15,6 +15,7 @@ import {
   fail,
   getActiveProfile,
   getFlag,
+  getFlags,
   hasFlag,
   loadConfig,
   output,
@@ -24,7 +25,12 @@ import { ConfluenceClient } from "@atlcli/confluence";
 import {
   SplitTitleConflictError,
   assessEditability,
+  buildGovernance,
   buildImportPreview,
+  governanceHasEffects,
+  principalId,
+  renderGovernanceSummary,
+  type DestinationGovernance,
   countPages,
   documentToAdf,
   parseDocx,
@@ -176,16 +182,43 @@ export async function handleWikiImport(
     }
   }
 
+  // Destination governance (plan 005 slice): validated fully offline; the
+  // policy is proven against the target only at publish time.
+  const { governance, errors: governanceErrors } = buildGovernance({
+    restriction: getFlag(flags, "restriction"),
+    viewers: getFlags(flags, "viewer"),
+    editors: getFlags(flags, "editor"),
+    labels: getFlags(flags, "label"),
+    contentProperties: getFlags(flags, "content-property"),
+    stagingParentTitle: getFlag(flags, "staging-parent"),
+  });
+  if (governanceErrors.length > 0) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Invalid destination governance:\n  ${governanceErrors.join("\n  ")}`, {
+      errors: governanceErrors,
+    });
+  }
+
   const preview = await buildImportPreview(doc, { spaceKey, title, parentId });
 
   if (!confirm) {
     if (opts.json) {
-      output({ mode: "preview", source, ...(tree ? { tree: treeSummary(tree) } : {}), preview }, opts);
+      output(
+        { mode: "preview", source, governance, ...(tree ? { tree: treeSummary(tree) } : {}), preview },
+        opts,
+      );
     } else {
       output(renderImportPreview(preview), opts);
+      if (governanceHasEffects(governance)) {
+        output("", opts);
+        output("Governance:", opts);
+        for (const line of renderGovernanceSummary(governance)) output(`  ${line}`, opts);
+      }
       if (tree) {
         output(`\nPage tree (--split ${splitFlag}, ${countPages(tree)} pages):`, opts);
         output(renderTree(tree, 0), opts);
+        if (governance.restriction.mode !== "inherit") {
+          output("  (view restrictions on the root cascade to its children in Confluence Cloud)", opts);
+        }
       }
       output("\nDry preview only — nothing was published. Re-run with --confirm to create the page.", opts);
     }
@@ -204,6 +237,7 @@ export async function handleWikiImport(
   // Title preflight (§2.12): every page title this run would create must be
   // free in the target space BEFORE the first write.
   const plannedTitles: string[] = [];
+  if (governance.staging.mode === "private-parent") plannedTitles.push(governance.staging.title);
   if (tree) collectTreeTitles(tree, plannedTitles);
   else plannedTitles.push(title);
   const conflicts: string[] = [];
@@ -224,22 +258,72 @@ export async function handleWikiImport(
 
   // Publication transaction. Every created page id is tracked; any failure
   // rolls back ALL pages created by this run (children before parents).
+  const needsRestriction = governance.restriction.mode !== "inherit";
+  const needsStaging = governance.staging.mode === "private-parent";
+  const importer = needsRestriction || needsStaging ? await client.getCurrentUser() : undefined;
+
   const createdPageIds: string[] = [];
   let rootResult: PublishedPageReport;
+  let stagingParentId: string | undefined;
   try {
+    let effectiveParent = parentId;
+    if (governance.staging.mode === "private-parent") {
+      // Staging parent: empty, restricted to the importer, marker property —
+      // proven BEFORE any imported content exists below it.
+      const parent = await publishOnePage(
+        client,
+        space.id,
+        governance.staging.title,
+        parentId,
+        [],
+        [],
+        createdPageIds,
+        {
+          forceShell: true,
+          afterShell: async (id) => {
+            await applyRestriction(
+              client,
+              id,
+              { ...governance, restriction: { mode: "private" } },
+              importer!.accountId,
+            );
+            await client.createPageProperty(id, "atlcli.import.staging", true);
+            const marker = await client.getPagePropertyByKey(id, "atlcli.import.staging");
+            if (marker !== true) throw new Error(`staging marker readback failed on page ${id}`);
+          },
+        },
+      );
+      stagingParentId = parent.id;
+      effectiveParent = parent.id;
+    }
+
+    // Restriction-first on the root page: the shell is restricted and read
+    // back before any sensitive body or attachment lands (plan 005 task 0).
+    const rootOptions = needsRestriction
+      ? {
+          forceShell: true,
+          afterShell: (id: string) => applyRestriction(client, id, governance, importer!.accountId),
+        }
+      : undefined;
+
     if (tree) {
-      rootResult = await publishTree(client, space.id, tree, parentId, createdPageIds);
+      rootResult = await publishTree(client, space.id, tree, effectiveParent, createdPageIds, rootOptions);
     } else {
       rootResult = await publishOnePage(
         client,
         space.id,
         title,
-        parentId,
+        effectiveParent,
         doc.blocks,
         doc.assets,
         createdPageIds,
+        rootOptions,
       );
     }
+
+    // Labels/properties are required outcomes (invariant 7): a failure here
+    // throws and rolls the whole run back.
+    await applyMetadata(client, rootResult.id, governance);
   } catch (err) {
     const failedRollbacks: string[] = [];
     for (const id of [...createdPageIds].reverse()) {
@@ -272,6 +356,8 @@ export async function handleWikiImport(
       {
         mode: "published",
         source,
+        ...(governanceHasEffects(governance) ? { governance } : {}),
+        ...(stagingParentId ? { stagingParentId } : {}),
         page: rootResult,
         pagesCreated: createdPageIds.length,
         adfDigest: preview.adfDigest,
@@ -740,39 +826,59 @@ async function publishOnePage(
   blocks: ImportedDocument["blocks"],
   assets: ImportedDocument["assets"],
   createdPageIds: string[],
+  options: {
+    /** Create an empty shell first even without assets (restriction-first). */
+    forceShell?: boolean;
+    /**
+     * Runs after the shell exists and BEFORE any content/attachment lands —
+     * the restriction-before-sensitive-content hook. A throw rolls back.
+     */
+    afterShell?: (pageId: string) => Promise<void>;
+  } = {},
 ): Promise<PublishedPageReport> {
   const pageDoc: ImportedDocument = { blocks, assets, issues: [] };
   const hasAssets = assets.length > 0;
+  const useShell = hasAssets || options.forceShell === true;
   const page = await client.createPageAdf({
     spaceId,
     title,
-    adf: hasAssets ? { version: 1, type: "doc", content: [] } : documentToAdf(pageDoc),
+    adf: useShell ? { version: 1, type: "doc", content: [] } : documentToAdf(pageDoc),
     parentId,
   });
   createdPageIds.push(page.id);
+  if (options.afterShell) await options.afterShell(page.id);
 
   let adf = documentToAdf(pageDoc);
   let finalPage = page;
-  if (hasAssets) {
-    for (const asset of assets) {
-      await client.uploadAttachment({
-        pageId: page.id,
-        filename: asset.fileName,
-        data: asset.bytes,
-        mimeType: asset.mediaType,
-      });
-    }
-    const mediaList = await client.listPageAttachmentMedia(page.id);
-    const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
-    const media = new Map<string, AdfMediaResolution>();
-    for (const asset of assets) {
-      const fileId = fileIdByName.get(asset.fileName);
-      if (!fileId) {
-        throw new Error(`uploaded attachment ${asset.fileName} has no resolvable media fileId`);
+  if (blocks.length === 0 && !hasAssets) {
+    // Nothing to publish beyond the shell (e.g. a staging parent). Cloud
+    // normalizes an empty doc to one empty paragraph, so there is no
+    // meaningful block sequence to verify either.
+    return { id: page.id, title: page.title, url: page.url, version: page.version };
+  }
+  if (useShell) {
+    let media: Map<string, AdfMediaResolution> | undefined;
+    if (hasAssets) {
+      for (const asset of assets) {
+        await client.uploadAttachment({
+          pageId: page.id,
+          filename: asset.fileName,
+          data: asset.bytes,
+          mimeType: asset.mediaType,
+        });
       }
-      media.set(asset.id, { fileId, collection: `contentId-${page.id}` });
+      const mediaList = await client.listPageAttachmentMedia(page.id);
+      const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
+      media = new Map<string, AdfMediaResolution>();
+      for (const asset of assets) {
+        const fileId = fileIdByName.get(asset.fileName);
+        if (!fileId) {
+          throw new Error(`uploaded attachment ${asset.fileName} has no resolvable media fileId`);
+        }
+        media.set(asset.id, { fileId, collection: `contentId-${page.id}` });
+      }
     }
-    adf = documentToAdf(pageDoc, { media });
+    adf = documentToAdf(pageDoc, media ? { media } : {});
     finalPage = await client.updatePageAdf({ id: page.id, title, adf, version: 2 });
     finalPage = { ...finalPage, url: finalPage.url ?? page.url };
   }
@@ -796,6 +902,7 @@ async function publishTree(
   plan: ImportPagePlan,
   parentId: string | undefined,
   createdPageIds: string[],
+  rootOptions?: Parameters<typeof publishOnePage>[7],
 ): Promise<PublishedPageReport> {
   const page = await publishOnePage(
     client,
@@ -805,12 +912,87 @@ async function publishTree(
     plan.blocks,
     plan.assets,
     createdPageIds,
+    rootOptions,
   );
   const children: PublishedPageReport[] = [];
   for (const child of plan.children) {
     children.push(await publishTree(client, spaceId, child, page.id, createdPageIds));
   }
   return children.length > 0 ? { ...page, children } : page;
+}
+
+/**
+ * Apply and PROVE a restriction policy on one page. The importing user is
+ * always included in both operations — a policy that locks the importer out
+ * would break the rest of the transaction and strand the page.
+ */
+async function applyRestriction(
+  client: ConfluenceClient,
+  pageId: string,
+  governance: DestinationGovernance,
+  importerAccountId: string,
+): Promise<void> {
+  const r = governance.restriction;
+  if (r.mode === "inherit") return;
+  const withImporter = (ids: string[]) =>
+    ids.includes(importerAccountId) ? ids : [...ids, importerAccountId];
+  const readAccounts =
+    r.mode === "private"
+      ? [importerAccountId]
+      : withImporter(r.viewers.filter((p) => p.kind === "cloud-account").map((p) => p.accountId));
+  const readGroups = r.mode === "private" ? [] : r.viewers.filter((p) => p.kind === "cloud-group").map((p) => p.groupId);
+  const updateAccounts =
+    r.mode === "private"
+      ? [importerAccountId]
+      : withImporter(r.editors.filter((p) => p.kind === "cloud-account").map((p) => p.accountId));
+  const updateGroups = r.mode === "private" ? [] : r.editors.filter((p) => p.kind === "cloud-group").map((p) => p.groupId);
+
+  await client.setContentRestrictions(pageId, {
+    read: { accountIds: readAccounts, groupIds: readGroups },
+    update: { accountIds: updateAccounts, groupIds: updateGroups },
+  });
+
+  // Readback proof: every required principal must actually be in effect.
+  const effective = await client.getContentRestrictions(pageId);
+  const missing: string[] = [];
+  for (const id of readAccounts) if (!effective.read.accountIds.includes(id)) missing.push(`read account:${id}`);
+  for (const id of readGroups) if (!effective.read.groupIds.includes(id)) missing.push(`read group-id:${id}`);
+  for (const id of updateAccounts) if (!effective.update.accountIds.includes(id)) missing.push(`update account:${id}`);
+  for (const id of updateGroups) if (!effective.update.groupIds.includes(id)) missing.push(`update group-id:${id}`);
+  if (effective.read.accountIds.length === 0 && effective.read.groupIds.length === 0) {
+    missing.push("read restriction set is empty (page would stay space-visible)");
+  }
+  if (missing.length > 0) {
+    throw new Error(`restriction readback failed on page ${pageId}: ${missing.join("; ")}`);
+  }
+}
+
+/**
+ * Apply and PROVE labels and content properties. Required outcomes, not
+ * best-effort last mutations (invariant 7): any miss throws → rollback.
+ */
+async function applyMetadata(
+  client: ConfluenceClient,
+  pageId: string,
+  governance: DestinationGovernance,
+): Promise<void> {
+  if (governance.labels.length > 0) {
+    await client.addLabels(pageId, governance.labels);
+    const effective = new Set((await client.getLabels(pageId)).map((l) => l.name));
+    const missing = governance.labels.filter((l) => !effective.has(l));
+    if (missing.length > 0) {
+      throw new Error(`label readback failed on page ${pageId}: missing ${missing.join(", ")}`);
+    }
+  }
+  for (const prop of governance.contentProperties) {
+    await client.createPageProperty(pageId, prop.key, prop.value);
+    const value = await client.getPagePropertyByKey(pageId, prop.key);
+    if (JSON.stringify(value) !== JSON.stringify(prop.value)) {
+      throw new Error(
+        `property readback failed on page ${pageId}: ${prop.key} is ${JSON.stringify(value)}, expected ${JSON.stringify(prop.value)}`,
+      );
+    }
+  }
 }
 
 function collectTreeTitles(plan: ImportPagePlan, into: string[]): void {
@@ -865,6 +1047,12 @@ Options:
   --skip-existing   Batch: skip files whose titles already exist (resume)
   --update-page <id>      Reimport INTO this existing page (keeps id/URL/history)
   --expect-version <n>    Required with --update-page --confirm (lost-update guard)
+  --restriction <mode>    inherit|private|explicit (default inherit)
+  --viewer <principal>    Repeatable; explicit mode: account:<id> | group-id:<id>
+  --editor <principal>    Repeatable; explicit mode: account:<id> | group-id:<id>
+  --staging-parent <t>    Create a private import-owned parent titled <t>
+  --label <name>          Repeatable; applied and verified on the root page
+  --content-property k=v  Repeatable; atlcli.* namespaced page metadata
   --confirm         Actually create/update the page(s)
   --profile <name>  Use a specific auth profile
   --json            JSON output

@@ -27,6 +27,7 @@ explicit `--confirm`.
 - [Importing from a Confluence attachment](#importing-from-a-confluence-attachment)
 - [Editability check](#editability-check)
 - [Splitting into a page tree](#splitting-into-a-page-tree)
+- [Visibility, staging, and metadata](#visibility-staging-and-metadata)
 - [Updating an existing page](#updating-an-existing-page)
 - [Batch import](#batch-import)
 - [Options](#options)
@@ -178,6 +179,50 @@ Page tree (--split 2, 4 pages):
 - Publication is transactional: if any page of the tree fails, **all**
   pages created by the run are rolled back
 
+## Visibility, staging, and metadata
+
+Where imported content lands and **who can see it** is part of the reviewed
+plan, not an afterthought:
+
+```bash
+# Private review copy: only you can view/edit until you lift the restriction
+atlcli wiki import draft.docx --space TEAM --restriction private --confirm
+
+# Explicit audience by stable ids (never display names or emails)
+atlcli wiki import spec.docx --space TEAM \
+  --restriction explicit \
+  --viewer account:557058:aaaa-bbbb --viewer group-id:9c2d… \
+  --editor account:557058:aaaa-bbbb --confirm
+
+# Private staging parent + labels + audit metadata
+atlcli wiki import handbook.docx --space TEAM \
+  --staging-parent "Imported drafts" \
+  --label imported --content-property atlcli.import.batch=wave-1 --confirm
+```
+
+How it behaves:
+
+- **Restriction-first:** with `private`/`explicit`, the page is created as an
+  empty shell, the restriction is applied **and read back** first, and only
+  then does any imported content or attachment land. A failed or rejected
+  restriction (e.g. an unknown account id) rolls the empty shell back —
+  sensitive content is never visible in an unrestricted state.
+- `private` restricts view+edit to the importing user. `explicit` takes
+  stable principals (`account:<accountId>`, `group-id:<groupId>`); the
+  importing user is always included so the transaction cannot lock itself
+  out. Data-Center-style principals (`user-key:`, `group:`) are rejected.
+- With `--split`, the restriction is applied to the root; Confluence Cloud
+  cascades view restrictions to child pages.
+- `--staging-parent <title>` creates a private, import-owned parent
+  (marker property `atlcli.import.staging`) and places the imported
+  page/tree below it — review privately, then move or unrestrict.
+- Labels and `atlcli.*`-namespaced content properties are **required
+  outcomes**: they are applied and read back, and a failure rolls back the
+  entire import.
+- Attachment downloads follow page visibility; anyone who can view the page
+  can download its attachments. The preview repeats this caveat whenever a
+  restriction is selected.
+
 ## Updating an existing page
 
 Reimport a revised DOCX **into the page it originally created** — the page
@@ -241,6 +286,12 @@ interrupted batch continues without duplicating verified content.
 | `--skip-existing` | flag | off | Batch: skip files whose titles already exist (resume an interrupted batch) |
 | `--update-page <id>` | string | — | Reimport into this existing page (keeps id/URL/history) |
 | `--expect-version <n>` | number | — | Required with `--update-page --confirm`; must match the page's current version |
+| `--restriction <mode>` | string | `inherit` | `inherit` \| `private` \| `explicit` page visibility |
+| `--viewer <principal>` | string, repeatable | — | Explicit mode: `account:<id>` or `group-id:<id>` |
+| `--editor <principal>` | string, repeatable | — | Explicit mode: `account:<id>` or `group-id:<id>` |
+| `--staging-parent <title>` | string | — | Create a private import-owned parent and import below it |
+| `--label <name>` | string, repeatable | — | Labels applied and verified on the root page |
+| `--content-property <k=v>` | string, repeatable | — | `atlcli.*` namespaced page metadata (max 20, value ≤ 2048 chars) |
 | `--confirm` | flag | off | Actually create the page; without it the command only previews |
 | `--profile <name>` | string | active profile | Auth profile |
 | `--json` | flag | off | Machine-readable output (preview or publish report) |

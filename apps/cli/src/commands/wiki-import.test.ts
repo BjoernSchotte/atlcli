@@ -178,6 +178,60 @@ describe("wiki import (preview mode, offline)", () => {
     }
   });
 
+  it("shows governance in the preview and stays fully offline", async () => {
+    const file = join(dir, "gov.docx");
+    writeFileSync(file, buildDocxFixture({ body: p(r("Doc"), { style: "Heading1" }) }));
+
+    await handleWikiImport(
+      [file],
+      {
+        space: "DOCSY",
+        restriction: "explicit",
+        viewer: ["account:557058:abc", "group-id:g9"],
+        label: ["Migrated", "migrated"],
+        "content-property": ["atlcli.import.batch=wave-1"],
+        "staging-parent": "Imported drafts",
+        json: true,
+      },
+      { json: true },
+    );
+
+    const parsed = JSON.parse(stdout.join(""));
+    expect(parsed.mode).toBe("preview");
+    expect(parsed.governance.restriction.mode).toBe("explicit");
+    expect(parsed.governance.restriction.viewers).toEqual([
+      { kind: "cloud-account", accountId: "557058:abc" },
+      { kind: "cloud-group", groupId: "g9" },
+    ]);
+    expect(parsed.governance.labels).toEqual(["migrated"]);
+    expect(parsed.governance.contentProperties).toEqual([
+      { key: "atlcli.import.batch", value: "wave-1" },
+    ]);
+    expect(parsed.governance.staging).toEqual({ mode: "private-parent", title: "Imported drafts" });
+  });
+
+  it("rejects invalid governance before any preview", async () => {
+    const file = join(dir, "gov-bad.docx");
+    writeFileSync(file, buildDocxFixture({ body: p(r("Doc")) }));
+
+    let exitCode: number | undefined;
+    const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    }) as never);
+    try {
+      await handleWikiImport(
+        [file],
+        { space: "DOCSY", restriction: "explicit", viewer: ["group:legacy-dc"], json: true },
+        { json: true },
+      ).catch(() => {});
+      expect(exitCode).toBe(1);
+      expect(stdout.join("")).toContain("Data Center kind");
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
   it("falls back to the file name when the document has no level-1 heading", async () => {
     const file = join(dir, "notes.docx");
     writeFileSync(file, buildDocxFixture({ body: p(r("just text")) }));

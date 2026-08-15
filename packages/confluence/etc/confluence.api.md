@@ -915,6 +915,32 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    setContentRestrictions(pageId: string, restrictions: {
+        read?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+        update?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+    }): Promise<void>;
+    getContentRestrictions(pageId: string): Promise<{
+        read: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+        update: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+    }>;
+    createPageProperty(pageId: string, key: string, value: unknown): Promise<{
+        id: string;
+        key: string;
+        version: number;
+    }>;
+    getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -4247,6 +4273,32 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    setContentRestrictions(pageId: string, restrictions: {
+        read?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+        update?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+    }): Promise<void>;
+    getContentRestrictions(pageId: string): Promise<{
+        read: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+        update: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+    }>;
+    createPageProperty(pageId: string, key: string, value: unknown): Promise<{
+        id: string;
+        key: string;
+        version: number;
+    }>;
+    getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -7579,6 +7631,32 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    setContentRestrictions(pageId: string, restrictions: {
+        read?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+        update?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+    }): Promise<void>;
+    getContentRestrictions(pageId: string): Promise<{
+        read: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+        update: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+    }>;
+    createPageProperty(pageId: string, key: string, value: unknown): Promise<{
+        id: string;
+        key: string;
+        version: number;
+    }>;
+    getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -10608,6 +10686,32 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    setContentRestrictions(pageId: string, restrictions: {
+        read?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+        update?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+    }): Promise<void>;
+    getContentRestrictions(pageId: string): Promise<{
+        read: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+        update: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+    }>;
+    createPageProperty(pageId: string, key: string, value: unknown): Promise<{
+        id: string;
+        key: string;
+        version: number;
+    }>;
+    getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -14336,6 +14440,32 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    setContentRestrictions(pageId: string, restrictions: {
+        read?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+        update?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+    }): Promise<void>;
+    getContentRestrictions(pageId: string): Promise<{
+        read: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+        update: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+    }>;
+    createPageProperty(pageId: string, key: string, value: unknown): Promise<{
+        id: string;
+        key: string;
+        version: number;
+    }>;
+    getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -16863,6 +16993,32 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
     }): Promise<ConfluencePage>;
+    setContentRestrictions(pageId: string, restrictions: {
+        read?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+        update?: {
+            accountIds?: string[];
+            groupIds?: string[];
+        };
+    }): Promise<void>;
+    getContentRestrictions(pageId: string): Promise<{
+        read: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+        update: {
+            accountIds: string[];
+            groupIds: string[];
+        };
+    }>;
+    createPageProperty(pageId: string, key: string, value: unknown): Promise<{
+        id: string;
+        key: string;
+        version: number;
+    }>;
+    getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
     createPageAdf(params: {
         spaceId: string;
         title: string;

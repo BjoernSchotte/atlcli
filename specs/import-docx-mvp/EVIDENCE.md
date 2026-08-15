@@ -184,3 +184,32 @@ verified 404. Contracts derived from authoritative responses:
   by key returned the exact JSON value.
 - Current-user identity for the `private` policy comes from
   `GET /rest/api/user/current` (`accountId`, `type=known`).
+
+## 2026-08-15 — Destination governance E2E, live Cloud (plan 005 slice)
+
+Proof matrix (plan §6), all pages deleted afterwards with a verified 404:
+
+- **private:** `--restriction private --label atlcli-import
+  --content-property atlcli.import.source=gov-e2e` published page
+  `1197899851` restriction-first (empty shell → restrict → readback →
+  body+image → labels/properties with readback). Independent
+  verification: read AND update restricted to exactly the importer's
+  accountId, label and property present.
+- **invalid principal:** `--restriction explicit --viewer
+  account:000000:…` — the restriction PUT failed with HTTP 400
+  ("not a valid existing user") while the page was still an empty
+  shell; the shell was rolled back and a title search returned 0
+  results. No sensitive content was ever visible.
+- **staging parent:** `--staging-parent "atlcli gov e2e staging area"
+  --restriction private` created parent `1198129207` (restricted to the
+  importer, marker property `atlcli.import.staging` read back) BEFORE
+  child `1198096423` was created below it (`parentId` verified);
+  `pagesCreated: 2`, rollback tracks both ids in reverse order.
+- **inherit:** covered by every earlier E2E (no restriction mutation).
+- **explicit with a foreign principal:** not live-provable with a
+  single-account test tenant; the mechanism (PUT + readback per
+  principal, importer always included) is identical to the proven
+  private path, and unknown principals fail closed per above.
+- Fix found by this E2E: an empty page plan (staging parent) skips the
+  body update and block-sequence verify — Cloud normalizes an empty doc
+  to one empty paragraph, which the verifier would misread as drift.

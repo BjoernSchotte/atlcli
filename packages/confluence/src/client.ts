@@ -1913,6 +1913,83 @@ export class ConfluenceClient {
   }
 
   /**
+   * REPLACE a page's restriction set (Cloud REST v1 PUT contract, proven in
+   * specs/import-docx-mvp/EVIDENCE.md plan-005 probe). Unknown principals
+   * fail the whole PUT with HTTP 400 before any state changes — callers can
+   * treat a rejected principal as a clean preflight failure.
+   */
+  async setContentRestrictions(
+    pageId: string,
+    restrictions: {
+      read?: { accountIds?: string[]; groupIds?: string[] };
+      update?: { accountIds?: string[]; groupIds?: string[] };
+    },
+  ): Promise<void> {
+    const operation = (op: "read" | "update", set?: { accountIds?: string[]; groupIds?: string[] }) =>
+      set
+        ? [
+            {
+              operation: op,
+              restrictions: {
+                user: (set.accountIds ?? []).map((accountId) => ({ type: "known", accountId })),
+                group: (set.groupIds ?? []).map((id) => ({ type: "group", id })),
+              },
+            },
+          ]
+        : [];
+    await this.request(`/content/${pageId}/restriction`, {
+      method: "PUT",
+      body: [...operation("read", restrictions.read), ...operation("update", restrictions.update)],
+    });
+  }
+
+  /** Read back the page's user/group restriction sets by operation. */
+  async getContentRestrictions(pageId: string): Promise<{
+    read: { accountIds: string[]; groupIds: string[] };
+    update: { accountIds: string[]; groupIds: string[] };
+  }> {
+    const data = (await this.request(`/content/${pageId}/restriction/byOperation`, {
+      query: {
+        expand:
+          "read.restrictions.user,read.restrictions.group,update.restrictions.user,update.restrictions.group",
+      },
+    })) as any;
+    const extract = (op: "read" | "update") => ({
+      accountIds: (data?.[op]?.restrictions?.user?.results ?? [])
+        .map((u: any) => u.accountId)
+        .filter(Boolean),
+      groupIds: (data?.[op]?.restrictions?.group?.results ?? [])
+        .map((g: any) => g.id ?? g.name)
+        .filter(Boolean),
+    });
+    return { read: extract("read"), update: extract("update") };
+  }
+
+  /** Create a v2 page content property (bounded metadata, not page body). */
+  async createPageProperty(
+    pageId: string,
+    key: string,
+    value: unknown,
+  ): Promise<{ id: string; key: string; version: number }> {
+    const data = (await this.requestV2(`/pages/${pageId}/properties`, {
+      method: "POST",
+      body: { key, value },
+      logBody: "meta-only",
+    })) as any;
+    return { id: String(data.id), key: data.key, version: data.version?.number ?? 1 };
+  }
+
+  /** Read a v2 page property by key; undefined when absent. */
+  async getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined> {
+    const data = (await this.requestV2(`/pages/${pageId}/properties`, {
+      query: { key },
+      logBody: "meta-only",
+    })) as any;
+    const hit = (data?.results ?? []).find((r: any) => r.key === key);
+    return hit?.value;
+  }
+
+  /**
    * Create a page with an atlas_doc_format (ADF) body via REST v2.
    *
    * Cloud-only: REST v2 and ADF are not part of the supported Data Center
