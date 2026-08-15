@@ -1,0 +1,31 @@
+{
+  "name": "@atlcli/import-docx",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@atlcli/core": "workspace:*",
+    "@atlcli/docx": "workspace:*",
+    "saxes": "6.0.0",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "pizzip": "3.2.0"
+  }
+}

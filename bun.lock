@@ -73,6 +73,7 @@
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/export-node": "workspace:*",
         "@atlcli/export-wiring": "workspace:*",
+        "@atlcli/import-docx": "workspace:*",
         "@atlcli/jira": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/pdf-compiler-browser": "workspace:*",
@@ -356,6 +357,19 @@
         "@atlcli/template-pack": "workspace:*",
       },
     },
+    "packages/import-docx": {
+      "name": "@atlcli/import-docx",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/core": "workspace:*",
+        "@atlcli/docx": "workspace:*",
+        "saxes": "6.0.0",
+        "yaml": "2.9.0",
+      },
+      "devDependencies": {
+        "pizzip": "3.2.0",
+      },
+    },
     "packages/jira": {
       "name": "@atlcli/jira",
       "version": "0.6.0",
@@ -597,6 +611,8 @@
     "@atlcli/export-wiring": ["@atlcli/export-wiring@workspace:packages/export-wiring"],
 
     "@atlcli/extension": ["@atlcli/extension@workspace:apps/extension"],
+
+    "@atlcli/import-docx": ["@atlcli/import-docx@workspace:packages/import-docx"],
 
     "@atlcli/jira": ["@atlcli/jira@workspace:packages/jira"],
 

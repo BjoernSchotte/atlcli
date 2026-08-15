@@ -1912,6 +1912,181 @@ export class ConfluenceClient {
     };
   }
 
+  /**
+   * REPLACE a page's restriction set (Cloud REST v1 PUT contract, proven in
+   * specs/import-docx-mvp/EVIDENCE.md plan-005 probe). Unknown principals
+   * fail the whole PUT with HTTP 400 before any state changes — callers can
+   * treat a rejected principal as a clean preflight failure.
+   */
+  async setContentRestrictions(
+    pageId: string,
+    restrictions: {
+      read?: { accountIds?: string[]; groupIds?: string[] };
+      update?: { accountIds?: string[]; groupIds?: string[] };
+    },
+  ): Promise<void> {
+    const operation = (op: "read" | "update", set?: { accountIds?: string[]; groupIds?: string[] }) =>
+      set
+        ? [
+            {
+              operation: op,
+              restrictions: {
+                user: (set.accountIds ?? []).map((accountId) => ({ type: "known", accountId })),
+                group: (set.groupIds ?? []).map((id) => ({ type: "group", id })),
+              },
+            },
+          ]
+        : [];
+    await this.request(`/content/${pageId}/restriction`, {
+      method: "PUT",
+      body: [...operation("read", restrictions.read), ...operation("update", restrictions.update)],
+    });
+  }
+
+  /** Read back the page's user/group restriction sets by operation. */
+  async getContentRestrictions(pageId: string): Promise<{
+    read: { accountIds: string[]; groupIds: string[] };
+    update: { accountIds: string[]; groupIds: string[] };
+  }> {
+    const data = (await this.request(`/content/${pageId}/restriction/byOperation`, {
+      query: {
+        expand:
+          "read.restrictions.user,read.restrictions.group,update.restrictions.user,update.restrictions.group",
+      },
+    })) as any;
+    const extract = (op: "read" | "update") => ({
+      accountIds: (data?.[op]?.restrictions?.user?.results ?? [])
+        .map((u: any) => u.accountId)
+        .filter(Boolean),
+      groupIds: (data?.[op]?.restrictions?.group?.results ?? [])
+        .map((g: any) => g.id ?? g.name)
+        .filter(Boolean),
+    });
+    return { read: extract("read"), update: extract("update") };
+  }
+
+  /** Create a v2 page content property (bounded metadata, not page body). */
+  async createPageProperty(
+    pageId: string,
+    key: string,
+    value: unknown,
+  ): Promise<{ id: string; key: string; version: number }> {
+    const data = (await this.requestV2(`/pages/${pageId}/properties`, {
+      method: "POST",
+      body: { key, value },
+      logBody: "meta-only",
+    })) as any;
+    return { id: String(data.id), key: data.key, version: data.version?.number ?? 1 };
+  }
+
+  /** Read a v2 page property by key; undefined when absent. */
+  async getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined> {
+    return (await this.getPageProperty(pageId, key))?.value;
+  }
+
+  /** Read a v2 page property with its identity/version; undefined when absent. */
+  async getPageProperty(
+    pageId: string,
+    key: string,
+  ): Promise<{ id: string; version: number; value: unknown } | undefined> {
+    const data = (await this.requestV2(`/pages/${pageId}/properties`, {
+      query: { key },
+      logBody: "meta-only",
+    })) as any;
+    const hit = (data?.results ?? []).find((r: any) => r.key === key);
+    if (!hit) return undefined;
+    return { id: String(hit.id), version: hit.version?.number ?? 1, value: hit.value };
+  }
+
+  /** Create or update a v2 page property (upsert by key). */
+  async upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void> {
+    const existing = await this.getPageProperty(pageId, key);
+    if (!existing) {
+      await this.createPageProperty(pageId, key, value);
+      return;
+    }
+    await this.requestV2(`/pages/${pageId}/properties/${existing.id}`, {
+      method: "PUT",
+      body: { key, value, version: { number: existing.version + 1 } },
+      logBody: "meta-only",
+    });
+  }
+
+  /**
+   * Create a page with an atlas_doc_format (ADF) body via REST v2.
+   *
+   * Cloud-only: REST v2 and ADF are not part of the supported Data Center
+   * contract (import plan §2.1); callers gate on deployment type first.
+   * The ADF value is serialized here so callers hand over a structured
+   * document, never a pre-encoded string.
+   */
+  async createPageAdf(params: {
+    spaceId: string;
+    title: string;
+    adf: unknown;
+    parentId?: string;
+  }): Promise<ConfluencePage> {
+    const data = (await this.requestV2(`/pages`, {
+      method: "POST",
+      body: {
+        spaceId: params.spaceId,
+        status: "current",
+        title: params.title,
+        ...(params.parentId ? { parentId: params.parentId } : {}),
+        body: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify(params.adf),
+        },
+      },
+      logBody: "meta-only",
+    })) as any;
+
+    return {
+      id: String(data.id),
+      title: data.title,
+      url: this.buildWebUrl(data._links?.webui),
+      version: data.version?.number,
+      parentId: data.parentId ? String(data.parentId) : null,
+    };
+  }
+
+  /**
+   * Replace a page body with an atlas_doc_format (ADF) document via REST v2.
+   *
+   * Cloud-only, same contract note as {@link createPageAdf}. `version` is the
+   * NEW version number the caller commits to (current + 1), which makes the
+   * lost-update guard explicit at the call site.
+   */
+  async updatePageAdf(params: {
+    id: string;
+    title: string;
+    adf: unknown;
+    version: number;
+  }): Promise<ConfluencePage> {
+    const data = (await this.requestV2(`/pages/${params.id}`, {
+      method: "PUT",
+      body: {
+        id: params.id,
+        status: "current",
+        title: params.title,
+        body: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify(params.adf),
+        },
+        version: { number: params.version },
+      },
+      logBody: "meta-only",
+    })) as any;
+
+    return {
+      id: String(data.id),
+      title: data.title,
+      url: this.buildWebUrl(data._links?.webui),
+      version: data.version?.number,
+      parentId: data.parentId ? String(data.parentId) : null,
+    };
+  }
+
   async updatePage(params: {
     id: string;
     title: string;
@@ -4125,16 +4300,13 @@ export class ConfluenceClient {
       parentCommentId,
     } = params;
 
-    // API requires exactly ONE of pageId or parentCommentId, not both
+    // API requires exactly ONE of pageId or parentCommentId, not both.
+    // Replies inherit the parent's anchor — inlineCommentProperties are only
+    // valid on top-level inline comments.
     const requestBody: Record<string, unknown> = {
       body: {
         representation: "storage",
         value: body,
-      },
-      inlineCommentProperties: {
-        textSelection,
-        textSelectionMatchCount,
-        textSelectionMatchIndex,
       },
     };
 
@@ -4142,6 +4314,11 @@ export class ConfluenceClient {
       requestBody.parentCommentId = parentCommentId;
     } else {
       requestBody.pageId = pageId;
+      requestBody.inlineCommentProperties = {
+        textSelection,
+        textSelectionMatchCount,
+        textSelectionMatchIndex,
+      };
     }
 
     const data = (await this.requestV2("/inline-comments", {

@@ -47,6 +47,7 @@ export default defineConfig({
             { label: 'Validation', link: '/confluence/validation/' },
             { label: 'Audit', link: '/confluence/audit/' },
             { label: 'Export', link: '/confluence/export/' },
+            { label: 'DOCX Import', link: '/confluence/import-docx/' },
             { label: 'Export Template Library', link: '/confluence/export-templates/' },
             { label: 'Create a PDF Template from YAML', link: '/confluence/pdf-template-from-yaml/' },
             { label: 'Create a PDF Template from Word', link: '/confluence/pdf-template-from-word/' },

@@ -6,6 +6,7 @@ import { handleSearch, handleRecent, handleMy } from "./search.js";
 import { handleTemplate } from "./template.js";
 import { handleExport } from "./export.js";
 import { handlePublish } from "./publish.js";
+import { handleWikiImport } from "./wiki-import.js";
 
 export async function handleWiki(
   args: string[],
@@ -45,6 +46,9 @@ export async function handleWiki(
     case "export":
       await handleExport(rest, flags, opts);
       return;
+    case "import":
+      await handleWikiImport(rest, flags, opts);
+      return;
     case "publish":
       await handlePublish(rest, flags, opts);
       return;
@@ -68,6 +72,7 @@ Commands:
   recent    Recently modified pages
   template  Page template management
   export    Export page to DOCX or PDF
+  import    Import a DOCX file as a new page (review-first)
   publish   Build and verify a static Astro publication
 
 Options:
