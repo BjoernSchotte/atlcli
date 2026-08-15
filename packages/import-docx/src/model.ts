@@ -15,6 +15,12 @@ export interface ImportRunMarks {
   code?: boolean;
   /** External hyperlink target (http/https/mailto only; enforced by the parser). */
   link?: { href: string };
+  /**
+   * Internal cross-reference to a Word bookmark (hyperlink anchor or
+   * REF/PAGEREF field). Resolved to a page link at encode time when the
+   * bookmark's page is known; otherwise rendered as plain text.
+   */
+  anchorLink?: { anchor: string };
 }
 
 export type ImportRun =
@@ -56,8 +62,10 @@ export type ImportBlock =
        * (specs/import-docx/002-heading-numbering).
        */
       label?: string;
+      /** Word bookmark names anchored at this block (split link targets). */
+      bookmarks?: string[];
     }
-  | { type: "paragraph"; runs: ImportRun[] }
+  | { type: "paragraph"; runs: ImportRun[]; bookmarks?: string[] }
   | ImportListBlock
   | { type: "table"; rows: ImportTableRow[] }
   | ImportImageBlock

@@ -27,6 +27,12 @@ export interface AdfEncodeOptions {
    * valid for previews/digests, never for publication.
    */
   media?: ReadonlyMap<string, AdfMediaResolution>;
+  /**
+   * Bookmark name → absolute page URL (plan 009 cross-page link rewrite).
+   * Runs with an `anchorLink` mark whose bookmark resolves here become
+   * links; unresolved anchors render as plain text.
+   */
+  anchors?: ReadonlyMap<string, string>;
 }
 
 export interface AdfNode {
@@ -43,7 +49,7 @@ export interface AdfDocument {
   content: AdfNode[];
 }
 
-function encodeRuns(runs: ImportRun[]): AdfNode[] {
+function encodeRuns(runs: ImportRun[], options: AdfEncodeOptions = {}): AdfNode[] {
   const nodes: AdfNode[] = [];
   for (const run of runs) {
     if (run.kind === "hard-break") {
@@ -56,13 +62,17 @@ function encodeRuns(runs: ImportRun[]): AdfNode[] {
     if (run.marks?.italic) marks.push({ type: "em" });
     if (run.marks?.code) marks.push({ type: "code" });
     if (run.marks?.link) marks.push({ type: "link", attrs: { href: run.marks.link.href } });
+    else if (run.marks?.anchorLink) {
+      const href = options.anchors?.get(run.marks.anchorLink.anchor);
+      if (href) marks.push({ type: "link", attrs: { href } });
+    }
     nodes.push({ type: "text", text: run.text, ...(marks.length > 0 ? { marks } : {}) });
   }
   return nodes;
 }
 
-function encodeParagraph(runs: ImportRun[]): AdfNode {
-  return { type: "paragraph", content: encodeRuns(runs) };
+function encodeParagraph(runs: ImportRun[], options: AdfEncodeOptions): AdfNode {
+  return { type: "paragraph", content: encodeRuns(runs, options) };
 }
 
 function encodeList(list: ImportListBlock, options: AdfEncodeOptions): AdfNode {
@@ -105,12 +115,12 @@ function encodeBlock(block: ImportBlock, options: AdfEncodeOptions): AdfNode {
       // The resolved numbering label becomes literal heading text: Confluence
       // has no native multilevel heading numbering, and the label is the
       // citable section identifier.
-      const content = encodeRuns(block.runs);
+      const content = encodeRuns(block.runs, options);
       if (block.label) content.unshift({ type: "text", text: `${block.label} ` });
       return { type: "heading", attrs: { level: block.level }, content };
     }
     case "paragraph":
-      return encodeParagraph(block.runs);
+      return encodeParagraph(block.runs, options);
     case "list":
       return encodeList(block, options);
     case "table":

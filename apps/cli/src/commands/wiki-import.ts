@@ -44,6 +44,7 @@ import {
   type AdfMediaResolution,
   type ImportPagePlan,
   type ImportedDocument,
+  type SplitResult,
 } from "@atlcli/import-docx";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
@@ -316,21 +317,26 @@ export async function handleWikiImport(
   if (!spaceKey) {
     fail(opts, 1, ERROR_CODES.VALIDATION, "No space given. Use --space <KEY> or set a profile space.", {});
   }
-  const title = getFlag(flags, "title") ?? doc.titleCandidate ?? basename(sourceName, ".docx");
+  let title = getFlag(flags, "title") ?? doc.titleCandidate ?? basename(sourceName, ".docx");
   const parentId = getFlag(flags, "parent");
 
-  // Optional page-tree split (specs/import-docx/009, slice): heading levels
-  // 1..N become their own pages below the root. Title conflicts inside the
-  // resulting tree block before any preview is shown.
+  // Optional page-tree split (specs/import-docx/009, full form): heading
+  // levels 1..6 open pages; in-tree title conflicts fail or rename per
+  // --title-conflict; split issues join the document issues.
   const splitFlag = getFlag(flags, "split");
-  let tree: ImportPagePlan | undefined;
+  const titleConflict = (getFlag(flags, "title-conflict") ?? "fail") as "fail" | "rename";
+  if (titleConflict !== "fail" && titleConflict !== "rename") {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--title-conflict must be fail or rename.", {});
+  }
+  let split: SplitResult | undefined;
   if (splitFlag !== undefined) {
     const level = Number(splitFlag);
-    if (level !== 1 && level !== 2) {
-      fail(opts, 1, ERROR_CODES.VALIDATION, "--split must be 1 or 2 (heading levels that open new pages).", {});
+    if (!Number.isInteger(level) || level < 1 || level > 6) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, "--split must be 1..6 (heading levels that open new pages).", {});
     }
     try {
-      tree = splitDocument(doc, { level: level as 1 | 2, rootTitle: title });
+      split = splitDocument(doc, { level: level as 1 | 2 | 3 | 4 | 5 | 6, rootTitle: title }, titleConflict);
+      doc.issues.push(...split.issues);
     } catch (err) {
       if (err instanceof SplitTitleConflictError) {
         fail(opts, 1, ERROR_CODES.VALIDATION, err.message, { duplicates: err.duplicates });
@@ -338,6 +344,7 @@ export async function handleWikiImport(
       throw err;
     }
   }
+  const tree = split?.root;
 
   // Destination governance (plan 005 slice): validated fully offline; the
   // policy is proven against the target only at publish time.
@@ -425,13 +432,23 @@ export async function handleWikiImport(
     const matches = await client.findPagesByTitle(planned, { spaceKey });
     if (matches.length > 0) conflicts.push(planned);
   }
+  if (conflicts.length > 0 && titleConflict === "rename") {
+    // Rename conflicting plan titles to a free " (n)" variant (plan 009).
+    for (const conflicting of conflicts) {
+      const freeTitle = await findFreeTitle(client, spaceKey, conflicting);
+      if (tree) renameInTree(tree, conflicting, freeTitle);
+      if (title === conflicting) title = freeTitle;
+      output(`Title "${conflicting}" exists — renamed to "${freeTitle}".`, opts);
+    }
+    conflicts.length = 0;
+  }
   if (conflicts.length > 0) {
     fail(
       opts,
       1,
       ERROR_CODES.VALIDATION,
       `These titles already exist in ${spaceKey}: ${conflicts.join(", ")}. ` +
-        `Use --title, rename the headings, or remove the existing pages.`,
+        `Use --title, rename the headings, use --title-conflict rename, or remove the existing pages.`,
       { conflicts },
     );
   }
@@ -486,8 +503,8 @@ export async function handleWikiImport(
         }
       : undefined;
 
-    if (tree) {
-      rootResult = await publishTree(client, space.id, tree, effectiveParent, createdPageIds, rootOptions);
+    if (split) {
+      rootResult = await publishTree(client, space.id, split, effectiveParent, createdPageIds, rootOptions);
     } else {
       // Single pages seal a plan-006 baseline so they can be updated in
       // place later. Trees stay baseline-free (tree update is a later plan).
@@ -655,7 +672,7 @@ interface BatchItemPlan {
   file: string;
   doc?: ImportedDocument;
   title?: string;
-  tree?: ImportPagePlan;
+  split?: SplitResult;
   parseError?: string;
 }
 
@@ -688,8 +705,8 @@ async function handleBatchImport(
   const skipExisting = hasFlag(flags, "skip-existing");
   const splitFlag = getFlag(flags, "split");
   const splitLevel = splitFlag !== undefined ? Number(splitFlag) : undefined;
-  if (splitLevel !== undefined && splitLevel !== 1 && splitLevel !== 2) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, "--split must be 1 or 2 (heading levels that open new pages).", {});
+  if (splitLevel !== undefined && (!Number.isInteger(splitLevel) || splitLevel < 1 || splitLevel > 6)) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--split must be 1..6 (heading levels that open new pages).", {});
   }
 
   const spaceFlag = getFlag(flags, "space");
@@ -723,11 +740,12 @@ async function handleBatchImport(
     try {
       const doc = parseDocx(new Uint8Array(readFileSync(file)), parsePolicy);
       const title = doc.titleCandidate ?? basename(file, ".docx");
-      const tree =
+      const split =
         splitLevel !== undefined
-          ? splitDocument(doc, { level: splitLevel as 1 | 2, rootTitle: title })
+          ? splitDocument(doc, { level: splitLevel as 1 | 2 | 3 | 4 | 5 | 6, rootTitle: title })
           : undefined;
-      plans.push({ file, doc, title, tree });
+      if (split) doc.issues.push(...split.issues);
+      plans.push({ file, doc, title, split });
     } catch (err) {
       plans.push({ file, parseError: (err as Error).message });
     }
@@ -739,7 +757,7 @@ async function handleBatchImport(
   for (const plan of plans) {
     if (!plan.title) continue;
     const titles: string[] = [];
-    if (plan.tree) collectTreeTitles(plan.tree, titles);
+    if (plan.split) collectTreeTitles(plan.split.root, titles);
     else titles.push(plan.title);
     for (const t of titles) {
       const key = t.toLowerCase();
@@ -765,7 +783,7 @@ async function handleBatchImport(
         : {
             file: plan.file,
             title: plan.title,
-            pages: plan.tree ? countPages(plan.tree) : 1,
+            pages: plan.split ? countPages(plan.split.root) : 1,
             blocks: plan.doc!.blocks.length,
             attachments: plan.doc!.assets.length,
             issues: plan.doc!.issues.length,
@@ -818,7 +836,7 @@ async function handleBatchImport(
       }
     }
     const titles: string[] = [];
-    if (plan.tree) collectTreeTitles(plan.tree, titles);
+    if (plan.split) collectTreeTitles(plan.split.root, titles);
     else titles.push(plan.title);
 
     let conflict: string | undefined;
@@ -840,8 +858,8 @@ async function handleBatchImport(
 
     const createdPageIds: string[] = [];
     try {
-      const root = plan.tree
-        ? await publishTree(client, space.id, plan.tree, parentId, createdPageIds)
+      const root = plan.split
+        ? await publishTree(client, space.id, plan.split, parentId, createdPageIds)
         : await publishOnePage(client, space.id, plan.title, parentId, plan.doc.blocks, plan.doc.assets, createdPageIds);
       results.push({
         file: plan.file,
@@ -1208,7 +1226,6 @@ async function publishOnePage(
   createdPageIds.push(page.id);
   if (options.afterShell) await options.afterShell(page.id);
 
-  let adf = documentToAdf(pageDoc);
   let finalPage = page;
   if (blocks.length === 0 && !hasAssets) {
     // Nothing to publish beyond the shell (e.g. a staging parent). Cloud
@@ -1216,34 +1233,30 @@ async function publishOnePage(
     // meaningful block sequence to verify either.
     return { id: page.id, title: page.title, url: page.url, version: page.version };
   }
+  let readbackValue: string;
   if (useShell) {
-    let media: Map<string, AdfMediaResolution> | undefined;
-    if (hasAssets) {
-      for (const asset of assets) {
-        await client.uploadAttachment({
-          pageId: page.id,
-          filename: asset.fileName,
-          data: asset.bytes,
-          mimeType: asset.mediaType,
-        });
-      }
-      const mediaList = await client.listPageAttachmentMedia(page.id);
-      const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
-      media = new Map<string, AdfMediaResolution>();
-      for (const asset of assets) {
-        const fileId = fileIdByName.get(asset.fileName);
-        if (!fileId) {
-          throw new Error(`uploaded attachment ${asset.fileName} has no resolvable media fileId`);
-        }
-        media.set(asset.id, { fileId, collection: `contentId-${page.id}` });
-      }
-    }
-    adf = documentToAdf(pageDoc, media ? { media } : {});
-    finalPage = await client.updatePageAdf({ id: page.id, title, adf, version: 2 });
-    finalPage = { ...finalPage, url: finalPage.url ?? page.url };
+    const finalized = await finalizePageContent(client, page.id, title, blocks, assets, {});
+    finalPage = { ...finalized.page, url: finalized.page.url ?? page.url };
+    readbackValue = finalized.readbackValue;
+  } else {
+    const adf = documentToAdf(pageDoc);
+    readbackValue = await verifyPageContent(client, page.id, title, adf);
   }
 
-  const readback = await client.getPageAdf(page.id);
+  if (options.baseline) {
+    await sealBaseline(client, page.id, readbackValue, finalPage.version ?? 1, assets, options.baseline);
+  }
+  return { id: finalPage.id, title: finalPage.title, url: finalPage.url, version: finalPage.version };
+}
+
+/** Read back a page and verify its block sequence against the plan. */
+async function verifyPageContent(
+  client: ConfluenceClient,
+  pageId: string,
+  title: string,
+  adf: ReturnType<typeof documentToAdf>,
+): Promise<string> {
+  const readback = await client.getPageAdf(pageId);
   const published = JSON.parse(readback.body.value) as { content?: { type?: string }[] };
   const expectedTypes = adf.content.map((n) => n.type).join(",");
   const actualTypes = (published.content ?? []).map((n) => n.type).join(",");
@@ -1252,11 +1265,51 @@ async function publishOnePage(
       `page "${title}": published block sequence [${actualTypes}] does not match the previewed plan [${expectedTypes}]`,
     );
   }
+  return readback.body.value;
+}
 
-  if (options.baseline) {
-    await sealBaseline(client, page.id, readback.body.value, finalPage.version ?? readback.version, assets, options.baseline);
+/**
+ * Finalize an EXISTING shell page: upload assets, encode the final ADF with
+ * media identities and (optionally) cross-page anchor links, PUT it as
+ * version 2, and verify the readback.
+ */
+async function finalizePageContent(
+  client: ConfluenceClient,
+  pageId: string,
+  title: string,
+  blocks: ImportedDocument["blocks"],
+  assets: ImportedDocument["assets"],
+  encode: { anchors?: ReadonlyMap<string, string> },
+): Promise<{ page: PublishedPageReport; readbackValue: string }> {
+  const pageDoc: ImportedDocument = { blocks, assets, issues: [] };
+  let media: Map<string, AdfMediaResolution> | undefined;
+  if (assets.length > 0) {
+    for (const asset of assets) {
+      await client.uploadAttachment({
+        pageId,
+        filename: asset.fileName,
+        data: asset.bytes,
+        mimeType: asset.mediaType,
+      });
+    }
+    const mediaList = await client.listPageAttachmentMedia(pageId);
+    const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
+    media = new Map<string, AdfMediaResolution>();
+    for (const asset of assets) {
+      const fileId = fileIdByName.get(asset.fileName);
+      if (!fileId) {
+        throw new Error(`uploaded attachment ${asset.fileName} has no resolvable media fileId`);
+      }
+      media.set(asset.id, { fileId, collection: `contentId-${pageId}` });
+    }
   }
-  return { id: finalPage.id, title: finalPage.title, url: finalPage.url, version: finalPage.version };
+  const adf = documentToAdf(pageDoc, { ...(media ? { media } : {}), ...(encode.anchors ? { anchors: encode.anchors } : {}) });
+  const updated = await client.updatePageAdf({ id: pageId, title, adf, version: 2 });
+  const readbackValue = await verifyPageContent(client, pageId, title, adf);
+  return {
+    page: { id: updated.id, title: updated.title, url: updated.url, version: updated.version },
+    readbackValue,
+  };
 }
 
 /**
@@ -1296,30 +1349,57 @@ async function sealBaseline(
   }
 }
 
-/** Publish a split tree depth-first: each page before its children. */
+/**
+ * Publish a split tree in TWO phases (plan 009 full form): first create
+ * every page as an empty shell (parents before children, so ids and URLs
+ * exist for the whole tree), then finalize each page's content with the
+ * bookmark→page-URL map so cross-page references become real links.
+ */
 async function publishTree(
   client: ConfluenceClient,
   spaceId: string,
-  plan: ImportPagePlan,
+  split: SplitResult,
   parentId: string | undefined,
   createdPageIds: string[],
   rootOptions?: Parameters<typeof publishOnePage>[7],
 ): Promise<PublishedPageReport> {
-  const page = await publishOnePage(
-    client,
-    spaceId,
-    plan.title,
-    parentId,
-    plan.blocks,
-    plan.assets,
-    createdPageIds,
-    rootOptions,
-  );
-  const children: PublishedPageReport[] = [];
-  for (const child of plan.children) {
-    children.push(await publishTree(client, spaceId, child, page.id, createdPageIds));
+  const shells = new Map<ImportPagePlan, { id: string; url?: string }>();
+
+  const createShells = async (plan: ImportPagePlan, parent: string | undefined): Promise<void> => {
+    const page = await client.createPageAdf({
+      spaceId,
+      title: plan.title,
+      adf: { version: 1, type: "doc", content: [] },
+      parentId: parent,
+    });
+    createdPageIds.push(page.id);
+    if (plan === split.root && rootOptions?.afterShell) await rootOptions.afterShell(page.id);
+    shells.set(plan, { id: page.id, url: page.url });
+    for (const child of plan.children) await createShells(child, page.id);
+  };
+  await createShells(split.root, parentId);
+
+  // Bookmark → absolute page URL, resolvable only now that shells exist.
+  const anchors = new Map<string, string>();
+  for (const [name, owner] of split.anchorOwners) {
+    const shell = shells.get(owner);
+    if (shell?.url) anchors.set(name, shell.url);
   }
-  return children.length > 0 ? { ...page, children } : page;
+
+  const finalize = async (plan: ImportPagePlan): Promise<PublishedPageReport> => {
+    const shell = shells.get(plan)!;
+    let page: PublishedPageReport = { id: shell.id, title: plan.title, url: shell.url };
+    if (plan.blocks.length > 0 || plan.assets.length > 0) {
+      const finalized = await finalizePageContent(client, shell.id, plan.title, plan.blocks, plan.assets, {
+        anchors,
+      });
+      page = { ...finalized.page, url: finalized.page.url ?? shell.url };
+    }
+    const children: PublishedPageReport[] = [];
+    for (const child of plan.children) children.push(await finalize(child));
+    return children.length > 0 ? { ...page, children } : page;
+  };
+  return finalize(split.root);
 }
 
 /**
@@ -1399,6 +1479,28 @@ async function applyMetadata(
 function collectTreeTitles(plan: ImportPagePlan, into: string[]): void {
   into.push(plan.title);
   for (const child of plan.children) collectTreeTitles(child, into);
+}
+
+/** Find a free " (n)" title variant in the space (plan 009 rename mode). */
+async function findFreeTitle(
+  client: ConfluenceClient,
+  spaceKey: string,
+  baseTitle: string,
+): Promise<string> {
+  for (let n = 2; n <= 50; n++) {
+    const candidate = `${baseTitle} (${n})`;
+    const matches = await client.findPagesByTitle(candidate, { spaceKey });
+    if (matches.length === 0) return candidate;
+  }
+  throw new Error(`No free title variant found for "${baseTitle}" within 50 attempts.`);
+}
+
+function renameInTree(plan: ImportPagePlan, from: string, to: string): boolean {
+  if (plan.title === from) {
+    plan.title = to;
+    return true;
+  }
+  return plan.children.some((child) => renameInTree(child, from, to));
 }
 
 function treeSummary(plan: ImportPagePlan): {

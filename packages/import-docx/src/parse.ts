@@ -50,7 +50,6 @@ const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 /** Paragraph-level children that are markers/metadata, not content. */
 const IGNORED_PARAGRAPH_MARKERS = new Set([
   "pPr",
-  "bookmarkStart",
   "bookmarkEnd",
   "proofErr",
   "commentRangeStart",
@@ -58,7 +57,7 @@ const IGNORED_PARAGRAPH_MARKERS = new Set([
 ]);
 
 /** Body-level children that are layout/metadata, not content. */
-const IGNORED_BODY_MARKERS = new Set(["sectPr", "bookmarkStart", "bookmarkEnd", "proofErr"]);
+const IGNORED_BODY_MARKERS = new Set(["sectPr", "bookmarkEnd", "proofErr"]);
 
 interface ParseContext {
   issues: ImportIssue[];
@@ -83,6 +82,8 @@ interface ParseContext {
    * the paragraph handler into block-level image nodes.
    */
   pendingImages: ImportImageBlock[];
+  /** Bookmark names awaiting attachment to the next produced block. */
+  pendingBookmarks: string[];
   /** footnote id → `<w:footnote>` element from word/footnotes.xml. */
   footnotes: Map<string, XmlElement>;
   /** Footnote ids in first-reference order (1-based numbering source). */
@@ -466,13 +467,9 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
             );
           }
         } else if (anchor) {
-          report(
-            ctx,
-            "docx-import/internal-link-not-mapped",
-            "warning",
-            "reported",
-            "An internal bookmark link was kept as plain text; anchor mapping arrives with the page-tree plan.",
-          );
+          // Cross-reference to a bookmark: carried as a typed mark and
+          // resolved to a page link at encode time (plan 009 link rewrite).
+          marks = { ...inherited, anchorLink: { anchor } };
         }
         runs.push(...parseRuns(child, ctx, marks));
         break;
@@ -517,7 +514,15 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
           "Tracked deletions were dropped (the deleted text is not imported).",
         );
         break;
-      case "fldSimple":
+      case "fldSimple": {
+        // REF/PAGEREF fields are cross-references to a bookmark — keep the
+        // cached display text AND the typed anchor for link rewriting.
+        const instr = attr(child, "instr", W_NS) ?? "";
+        const refMatch = /^\s*(?:REF|PAGEREF)\s+([^\s\\]+)/.exec(instr);
+        if (refMatch) {
+          runs.push(...parseRuns(child, ctx, { ...inherited, anchorLink: { anchor: refMatch[1] } }));
+          break;
+        }
         report(
           ctx,
           "docx-import/field-flattened",
@@ -527,6 +532,7 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
         );
         runs.push(...parseRuns(child, ctx, inherited));
         break;
+      }
       case "commentReference":
         report(
           ctx,
@@ -539,6 +545,11 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
       case "smartTag":
         runs.push(...parseRuns(child, ctx, inherited));
         break;
+      case "bookmarkStart": {
+        const name = attr(child, "name", W_NS);
+        if (name && !name.startsWith("_GoBack")) ctx.pendingBookmarks.push(name);
+        break;
+      }
       default:
         if (!IGNORED_PARAGRAPH_MARKERS.has(child.local)) {
           report(
@@ -569,7 +580,7 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
     }
   }
   const cleaned: ImportRunMarks | undefined =
-    marks.bold || marks.italic || marks.code || marks.link ? marks : undefined;
+    marks.bold || marks.italic || marks.code || marks.link || marks.anchorLink ? marks : undefined;
 
   const runs: ImportRun[] = [];
   for (const child of childElements(run)) {
@@ -835,6 +846,7 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
         // heading numbering attaches w:numPr to heading paragraphs, and
         // importing them as list items would destroy the document structure
         // (specs/import-docx/002-heading-numbering).
+        const bookmarks = ctx.pendingBookmarks.splice(0, ctx.pendingBookmarks.length);
         if (level !== undefined) {
           flushPending();
           blocks.push({
@@ -842,6 +854,7 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
             level: level as 1 | 2 | 3 | 4 | 5 | 6,
             runs,
             ...(label ? { label } : {}),
+            ...(bookmarks.length > 0 ? { bookmarks } : {}),
           });
           blocks.push(...images);
           break;
@@ -876,7 +889,14 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
         if (runs.length > 0 || (tableDepth > 0 && images.length === 0)) {
           // Keep empty paragraphs inside table cells (cell shape), drop empty
           // body paragraphs (Word's spacing artifacts).
-          blocks.push({ type: "paragraph", runs });
+          blocks.push({
+            type: "paragraph",
+            runs,
+            ...(bookmarks.length > 0 ? { bookmarks } : {}),
+          });
+        } else if (bookmarks.length > 0) {
+          // Bookmark on a dropped empty paragraph: re-queue for the next block.
+          ctx.pendingBookmarks.push(...bookmarks);
         }
         blocks.push(...images);
         break;
@@ -903,6 +923,11 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
       }
       case "tcPr":
         break;
+      case "bookmarkStart": {
+        const name = attr(child, "name", W_NS);
+        if (name && !name.startsWith("_GoBack")) ctx.pendingBookmarks.push(name);
+        break;
+      }
       default:
         if (!IGNORED_BODY_MARKERS.has(child.local)) {
           report(
@@ -962,6 +987,7 @@ export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): Impo
       return new Uint8Array(file.asUint8Array());
     },
     pendingImages: [],
+    pendingBookmarks: [],
     footnotes: parseFootnotes(readOptional("word/footnotes.xml")),
     footnoteRefs: [],
     reported: new Map(),

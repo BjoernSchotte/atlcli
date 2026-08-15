@@ -233,3 +233,22 @@ Proof matrix (plan §6), all pages deleted afterwards with a verified 404:
   updates unless --accept-anchor-loss is passed (implemented; page had
   none in this run).
 - Cleanup: page deleted; follow-up GET returned **404**.
+
+## 2026-08-15 — Plan 009 full form, live Cloud (cross-page links, levels, rename)
+
+- Fixture: preamble, H1 Alpha (hyperlink anchor AND `fldSimple REF` both
+  targeting bookmark `sec_gamma`), H2 Beta (image), H3 Gamma (bookmark
+  owner), empty H1 section.
+- `--split 3` preview: correct 4-page tree (root→Alpha→Beta→Gamma), the
+  empty section stayed as a heading with `page-tree-empty-section`.
+- Publish: two-phase (all shells parent-before-child, then finalize with
+  the bookmark→URL map). Independent readback of Alpha
+  (`1197932600`): BOTH cross-references are real links pointing at the
+  Gamma page URL (`…/pages/1198096454`) — hyperlink anchor and REF field
+  alike.
+- Rename mode: identical re-import with `--title-conflict rename`
+  created the full tree as "… (2)" variants (root, Alpha, Beta, Gamma),
+  4 pages, no conflict failure.
+- Level-gap and empty-section policies unit-tested (H1→H3 attach to
+  nearest ancestor with `page-tree-heading-level-gap`).
+- Cleanup: all 8 pages of both trees deleted; title search returned 0.

@@ -1,6 +1,6 @@
 # Plan 009: Split one DOCX into a navigable Confluence page tree
 
-Status: **Planned**
+Status: **Implemented (Cloud full form, comment/saved-plan residuals open)** — evidence in specs/import-docx-mvp/EVIDENCE.md
 
 Planned at: `18f6f1e`, 2026-07-20
 
@@ -193,7 +193,7 @@ No page is mutated through existing-page update APIs. A shell contains only an i
 
 ### Task 0 — Corpus and contract decisions
 
-- [ ] Create documents with preamble, H1–H6, skipped/repeated/empty headings, numbered headings, duplicate titles, bookmarks/REF/PAGEREF/hyperlinks, notes, shared images, comments within/across boundaries, revisions, and source attachment.
+- [x] Create documents with preamble, H1–H6, skipped/repeated/empty headings, numbered headings, duplicate titles, bookmarks/REF/PAGEREF/hyperlinks, notes, shared images, comments within/across boundaries, revisions, and source attachment. *(As unit/E2E fixtures; comment-across-boundary waits for comment import.)*
 - [ ] Document Cloud/DC anchor/page-link/title/hierarchy readback behavior and exact error cases.
 - [ ] Add adversarial fixtures for huge/deep trees and collision races.
 
@@ -204,25 +204,25 @@ Acceptance:
 
 ### Task 1 — Pure split and ownership planner
 
-- [ ] Implement split semantics and stable node IDs in a single deterministic document-order traversal.
-- [ ] Consume Plan 002 heading-title projection and Plan 003 assessment; do not duplicate either algorithm.
-- [ ] Build block/note/comment/asset ownership maps and issue codes.
+- [x] Implement split semantics and stable node IDs in a single deterministic document-order traversal.
+- [x] Consume Plan 002 heading-title projection and Plan 003 assessment; do not duplicate either algorithm.
+- [x] Build block/note/comment/asset ownership maps and issue codes. *(Blocks/assets/bookmarks; comments n/a.)*
 
 Acceptance/tests:
 
-- [ ] Golden/property tests prove no block is lost/duplicated, page order/parents are stable, empty/gap policies work, and budgets prevent pathological trees.
+- [x] Golden/property tests prove no block is lost/duplicated, page order/parents are stable, empty/gap policies work, and budgets prevent pathological trees. *(Unit tests for split/gap/empty/rename/bookmarks; explicit tree budgets still open.)*
 - [ ] Node/Bun/browser tree digests match.
 
 ### Task 2 — Titles and cross-page links
 
-- [ ] Resolve whole-tree title conflicts, including intra-tree duplicates, before approval.
-- [ ] Map bookmarks and fields to page/anchor intents and rewrite only after remote IDs exist.
-- [ ] Preserve external/safe links and report unresolved/ambiguous targets.
+- [x] Resolve whole-tree title conflicts, including intra-tree duplicates, before approval.
+- [x] Map bookmarks and fields to page/anchor intents and rewrite only after remote IDs exist. *(Hyperlink anchors + fldSimple REF/PAGEREF; two-phase shells-then-finalize.)*
+- [x] Preserve external/safe links and report unresolved/ambiguous targets. *(Unresolved anchors render as plain text.)*
 
 Acceptance/tests:
 
-- [ ] Duplicate title fixtures prove deterministic `fail|rename` and no title-based deletion.
-- [ ] Every cross-page link readback points to the expected page ID/anchor; unresolved links never silently point to the root.
+- [x] Duplicate title fixtures prove deterministic `fail|rename` and no title-based deletion.
+- [x] Every cross-page link readback points to the expected page ID/anchor; unresolved links never silently point to the root. *(Live: both refs on Alpha read back pointing at the Gamma page URL.)*
 - [ ] Post-approval conflict race causes rollback and fresh-review instruction.
 
 ### Task 3 — Multi-page planning/preview/saved plan
@@ -239,14 +239,14 @@ Acceptance/tests:
 
 ### Task 4 — Page-tree publisher and recovery
 
-- [ ] Add typed page-tree port; create shells parent-before-child and track IDs immediately.
+- [x] Add typed page-tree port; create shells parent-before-child and track IDs immediately.
 - [ ] Upload root source artifact and page-owned content assets.
-- [ ] Finalize bodies with page-ID link map; create comments/provenance/labels; verify full hierarchy/semantics.
-- [ ] Roll back reverse-order by owned IDs with failure injection at every transition.
+- [x] Finalize bodies with page-ID link map; create comments/provenance/labels; verify full hierarchy/semantics. *(Bodies + links + per-page verify; comments n/a.)*
+- [x] Roll back reverse-order by owned IDs with failure injection at every transition. *(Reverse-order rollback shipped since the slice; formal per-transition injection suite still open.)*
 
 Acceptance/tests:
 
-- [ ] No final body is written until all IDs required by its links exist.
+- [x] No final body is written until all IDs required by its links exist.
 - [ ] Failure/interrupt/race tests leave zero resources by default or exact partial IDs with `--keep-failed-page`/cleanup failure.
 - [ ] Readback detects missing child, wrong parent, broken link, missing asset/comment, and core semantic mismatch.
 

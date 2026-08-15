@@ -168,16 +168,22 @@ Page tree (--split 2, 4 pages):
   └ 2 Working hours (2 blocks)
 ```
 
-- `--split 1`: every Heading 1 becomes a child page of the root
-- `--split 2`: Heading 1 → children, Heading 2 → grandchildren
+- `--split <1..6>`: headings up to that level open pages — level 1 makes
+  H1 sections children of the root, level 2 adds H2 grandchildren, and so
+  on down to H6
 - The splitting heading becomes the page **title** (numbering label
   included) and is removed from the page body; content before the first
   splitting heading stays on the root page
+- **Cross-references become real links:** Word bookmarks, hyperlink
+  anchors, and `REF`/`PAGEREF` fields whose target lands on another page
+  are rewritten to links to that page. The tree publishes in two phases —
+  all page shells first (so every target URL exists), then the content
+- Level jumps (H1 → H3) attach to the nearest open ancestor; empty
+  sections stay as headings in their ancestor's body instead of becoming
+  empty pages (each reported as an info issue)
 - Images travel with the section that references them
-- Duplicate resulting titles are rejected **before** the preview — rename
-  the headings or import without `--split`
-- Before publishing, every planned title is checked against the target
-  space; existing pages with the same title block the run
+- Title conflicts: in-tree duplicates and existing space titles fail by
+  default; `--title-conflict rename` deduplicates with " (2)", " (3)" …
 - Publication is transactional: if any page of the tree fails, **all**
   pages created by the run are rolled back
 

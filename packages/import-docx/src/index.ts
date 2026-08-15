@@ -81,10 +81,12 @@ export {
 } from "./assess.js";
 export {
   SplitTitleConflictError,
+  collectAnchorRefs,
   countPages,
   splitDocument,
   type ImportPagePlan,
   type SplitOptions,
+  type SplitResult,
 } from "./split.js";
 export {
   buildImportPreview,
