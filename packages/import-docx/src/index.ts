@@ -28,6 +28,17 @@ export {
   type AdfNode,
 } from "./adf.js";
 export {
+  buildGovernance,
+  governanceHasEffects,
+  parsePrincipal,
+  principalId,
+  renderGovernanceSummary,
+  type DestinationGovernance,
+  type DestinationPrincipal,
+  type DestinationRestrictionPolicy,
+  type GovernanceInput,
+} from "./destination-governance.js";
+export {
   EDITABILITY_BUDGETS,
   assessEditability,
   type EditabilityAssessment,
