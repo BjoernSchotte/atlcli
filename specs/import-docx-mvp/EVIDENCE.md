@@ -161,3 +161,26 @@ Fixture: 2,528-byte DOCX with an inline DrawingML picture (1×1 PNG,
   (code path exercised by the rollback design; page never left
   unverified).
 - Cleanup: page deleted; follow-up GET returned **404**.
+
+## 2026-08-15 — Plan 005 Task 0: Cloud governance contracts, live (`mayflower` / DOCSY)
+
+Probe page `1198194732` (shell, no sensitive body), deleted+purged with
+verified 404. Contracts derived from authoritative responses:
+
+- **Restrictions:** `PUT /rest/api/content/{id}/restriction` with
+  `[{operation:"read"|"update", restrictions:{user:[{type:"known",
+  accountId}]}}]` REPLACES the restriction set (2 results). Readback via
+  `GET …/restriction/byOperation?expand=read.restrictions.user,…`
+  returned exactly the applied accountIds for both operations.
+  `DELETE …/restriction` restores inherited visibility (readback: 0
+  users). An unknown accountId fails the PUT with HTTP 400
+  ("valid": false) — invalid principals fail closed BEFORE any
+  restriction state changes, which makes the preflight contract
+  (invariant 2/4) implementable without probing mutations.
+- **Labels:** `POST /rest/api/content/{id}/label` with
+  `[{prefix:"global", name}]` applied and echoed the label.
+- **Page properties (v2):** `POST /api/v2/pages/{id}/properties` with
+  `{key:"atlcli.import.probe", value:{…}}` created version 1; readback
+  by key returned the exact JSON value.
+- Current-user identity for the `private` policy comes from
+  `GET /rest/api/user/current` (`accountId`, `type=known`).
