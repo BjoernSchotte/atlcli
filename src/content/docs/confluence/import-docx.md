@@ -28,6 +28,7 @@ explicit `--confirm`.
 - [Editability check](#editability-check)
 - [Splitting into a page tree](#splitting-into-a-page-tree)
 - [Import policy: style mappings and options](#import-policy-style-mappings-and-options)
+- [Recipes: shared, versioned import conventions](#recipes-shared-versioned-import-conventions)
 - [Visibility, staging, and metadata](#visibility-staging-and-metadata)
 - [Updating an existing page](#updating-an-existing-page)
 - [Batch import](#batch-import)
@@ -223,6 +224,55 @@ Rules:
 - `--unsupported fail` blocks a confirmed publish while any construct
   would be lost (reported warnings); previews still work.
 
+## Recipes: shared, versioned import conventions
+
+A recipe wraps an import policy in a **named, versioned, digest-bound file**
+your team can commit and review — apply the same Word-to-wiki conventions
+across every import without repeating flags:
+
+```yaml
+# .atlcli/import-recipes/company-handbook.yaml
+schema: atlcli.docx-import-recipe/1
+id: company-handbook
+version: "2.1"
+title: Firmenhandbuch-Konventionen
+targets: [cloud]
+options:
+  revisions: accept
+  unsupported: fail
+overrides:
+  styleMappings:
+    Hinweis: blockquote
+    Listing: code
+metadata:
+  owners: [docs-team]
+```
+
+```bash
+atlcli wiki import handbook.docx --space TEAM --recipe-id company-handbook
+atlcli wiki import handbook.docx --space TEAM --recipe ./my-recipe.yaml
+
+atlcli wiki import recipe validate my-recipe.yaml
+atlcli wiki import recipe list
+atlcli wiki import recipe show company-handbook
+```
+
+- **Catalogs are explicit:** `--recipe <file>` reads a file;
+  `--recipe-id <id>` searches `.atlcli/import-recipes/` in the working
+  directory, then `~/.atlcli/import-recipes/`. The repository catalog
+  shadows the user catalog; duplicate ids inside one catalog are an error;
+  symlinks may not escape a catalog root.
+- **Recipes are data, not code:** no scripts, regex, template engines, raw
+  ADF/HTML, YAML anchors/aliases, or custom tags — the hardened parser
+  rejects them, along with duplicate keys and unknown fields.
+- The recipe sits at the lowest explicit precedence layer: CLI flags and an
+  `--overrides` file still win, with provenance shown in the preview.
+- Preview and publish report carry the recipe id, version, and content
+  digest, so a page can be traced back to the exact convention set that
+  produced it.
+- A recipe declaring `targets: [data-center]` is rejected before any
+  preview — it cannot silently run against the wrong edition.
+
 ## Visibility, staging, and metadata
 
 Where imported content lands and **who can see it** is part of the reviewed
@@ -340,6 +390,8 @@ interrupted batch continues without duplicating verified content.
 | `--revisions <mode>` | string | `accept` | `accept` or `reject` tracked changes |
 | `--unsupported <mode>` | string | `report` | `fail` blocks confirmed publishes on lossy constructs |
 | `--overrides <file>` | string | — | Policy file (`atlcli.docx-import-overrides/1`, YAML or JSON) |
+| `--recipe <file>` | string | — | Apply a recipe file (`atlcli.docx-import-recipe/1`) |
+| `--recipe-id <id>` | string | — | Apply a catalog recipe by id |
 | `--confirm` | flag | off | Actually create the page; without it the command only previews |
 | `--profile <name>` | string | active profile | Auth profile |
 | `--json` | flag | off | Machine-readable output (preview or publish report) |

@@ -21,6 +21,14 @@ export type {
 } from "./model.js";
 export { parseDocx, type ParseDocxPolicy } from "./parse.js";
 export {
+  RECIPE_SCHEMA,
+  canonicalRecipeJson,
+  parseRecipe,
+  recipeApplicability,
+  type DocxImportRecipeV1,
+  type ParsedRecipe,
+} from "./recipe.js";
+export {
   STYLE_MAPPING_TARGETS,
   renderPolicySummary,
   resolveImportPolicy,

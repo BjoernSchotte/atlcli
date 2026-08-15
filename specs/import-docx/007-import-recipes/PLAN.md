@@ -128,31 +128,31 @@ Preview/report list recipe ID/version/digest, source path category (repo/user/ex
 > per-decision provenance, and fail-closed explicit-layer conflicts.
 
 - [x] Inventory every baseline option/override and classify it as safe reusable, source-bound, target-bound, or forbidden in recipes. *(All current baseline knobs — styleMappings, revisions, unsupported — are safe reusable; source-bound node overrides do not exist in the slice and stay excluded until built.)*
-- [ ] Freeze `atlcli.docx-import-recipe/1`, limits, precedence, and canonicalization in API docs.
-- [ ] Create minimal, advanced, Cloud-only, DC-only, stale capability, source-bound, and hostile fixtures.
+- [x] Freeze `atlcli.docx-import-recipe/1`, limits, precedence, and canonicalization in API docs. *(Slice 2: `packages/import-docx/src/recipe.ts` + user docs; 64 KiB size limit, sorted-key canonical JSON digest.)*
+- [x] Create minimal, advanced, Cloud-only, DC-only, stale capability, source-bound, and hostile fixtures. *(As inline test fixtures in `recipe.test.ts`/`wiki-import.test.ts`: valid+advanced, DC-only applicability, alias/tag/duplicate/unknown-field/oversize hostile cases. Stale-capability and source-bound fixtures wait for those features.)*
 
 Acceptance:
 
-- [ ] Recipe schema contains no raw target fragment or executable field.
+- [x] Recipe schema contains no raw target fragment or executable field.
 - [x] Every baseline override either has a recipe policy or explicit exclusion.
 
 ### Task 1 — Implement pure parsing/resolution
 
-- [ ] Add strict schema validation, canonical serialization/digest, applicability checks, and provenance-aware merge.
-- [ ] Keep browser entrypoint free of filesystem/process dependencies; inject catalog bytes/listing.
-- [ ] Add stable validation issue codes with JSON Pointer/YAML path locations.
+- [x] Add strict schema validation, canonical serialization/digest, applicability checks, and provenance-aware merge. *(Slice 2: `parseRecipe`/`canonicalRecipeJson`/`recipeApplicability` + `resolveImportPolicy` recipe layer.)*
+- [x] Keep browser entrypoint free of filesystem/process dependencies; inject catalog bytes/listing. *(`parseRecipe` takes text; all I/O lives in `apps/cli/src/commands/wiki-import-recipe.ts`.)*
+- [ ] Add stable validation issue codes with JSON Pointer/YAML path locations. *(Slice returns plain messages; typed codes deferred.)*
 
 Acceptance/tests:
 
-- [ ] Duplicate/prototype/custom-tag/alias/depth/size/unknown-key fixtures fail deterministically.
-- [ ] Node/Bun/browser resolve identical inputs to identical effective options/override/plan digests.
-- [ ] Precedence table is exhaustively tested.
+- [x] Duplicate/prototype/custom-tag/alias/depth/size/unknown-key fixtures fail deterministically. *(Depth is bounded structurally by the flat schema + unknown-field rejection.)*
+- [ ] Node/Bun/browser resolve identical inputs to identical effective options/override/plan digests. *(Bun-tested; explicit Node/browser parity run deferred.)*
+- [x] Precedence table is exhaustively tested.
 
 ### Task 2 — Add CLI catalogs and commands
 
-- [ ] Implement explicit safe catalog roots, no symlink escape, deterministic duplicate-ID behavior, and atomic export.
-- [ ] Add validate/list/show/export with human/JSON output.
-- [ ] Integrate recipe provenance into normal preview, saved plan, report, and stale checks.
+- [x] Implement explicit safe catalog roots, no symlink escape, deterministic duplicate-ID behavior, and atomic export. *(Export lands in slice 3.)*
+- [x] Add validate/list/show/export with human/JSON output. *(validate/list/show shipped; export in slice 3.)*
+- [x] Integrate recipe provenance into normal preview, saved plan, report, and stale checks. *(id/version/digest/source in preview and publish report; saved-plan/stale checks do not exist in the slice.)*
 
 Acceptance/tests:
 

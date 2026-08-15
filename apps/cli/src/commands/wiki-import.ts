@@ -46,6 +46,48 @@ import {
 } from "@atlcli/import-docx";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { parse as parseYaml } from "yaml";
+import { handleRecipeCommand, loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
+import { recipeApplicability } from "@atlcli/import-docx";
+
+interface RecipeInfo {
+  id: string;
+  version: string;
+  digest: string;
+  source: "repo" | "user";
+}
+
+/** Load `--recipe <file>` / `--recipe-id <id>` into a policy layer. */
+async function loadRecipeLayer(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+): Promise<{ layer?: PolicyLayerInput; info?: RecipeInfo }> {
+  const path = getFlag(flags, "recipe");
+  const id = getFlag(flags, "recipe-id");
+  if (path && id) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Give either --recipe <file> or --recipe-id <id>, not both.", {});
+  }
+  if (!path && !id) return {};
+  const result = path ? await loadRecipeFile(path) : await loadRecipeById(id!);
+  if (!result.entry) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Invalid recipe:\n  ${result.errors.join("\n  ")}`, {
+      errors: result.errors,
+    });
+  }
+  const parsed = result.entry.parsed!;
+  const applicability = recipeApplicability(parsed.recipe, "cloud");
+  if (applicability) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, applicability, { recipeId: parsed.recipe.id });
+  }
+  return {
+    layer: parsed.policyLayer,
+    info: {
+      id: parsed.recipe.id,
+      version: parsed.recipe.version,
+      digest: parsed.digest,
+      source: result.entry.source,
+    },
+  };
+}
 
 /**
  * Resolve the layered import policy from CLI flags and an optional override
@@ -136,6 +178,11 @@ export async function handleWikiImport(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions,
 ): Promise<void> {
+  if (args[0] === "recipe") {
+    await handleRecipeCommand(args.slice(1), flags, opts);
+    return;
+  }
+
   const [file] = args;
   const fromPage = getFlag(flags, "from-page");
   const attachmentName = getFlag(flags, "attachment");
@@ -230,7 +277,8 @@ export async function handleWikiImport(
     source = { kind: "file", path: file! };
   }
 
-  const policy = resolvePolicyFromFlags(flags, opts);
+  const recipe = await loadRecipeLayer(flags, opts);
+  const policy = resolvePolicyFromFlags(flags, opts, recipe.layer);
   let doc: ImportedDocument;
   try {
     doc = parseDocx(bytes, {
@@ -296,12 +344,27 @@ export async function handleWikiImport(
   if (!confirm) {
     if (opts.json) {
       output(
-        { mode: "preview", source, policy, governance, ...(tree ? { tree: treeSummary(tree) } : {}), preview },
+        {
+          mode: "preview",
+          source,
+          ...(recipe.info ? { recipe: recipe.info } : {}),
+          policy,
+          governance,
+          ...(tree ? { tree: treeSummary(tree) } : {}),
+          preview,
+        },
         opts,
       );
     } else {
       output(renderImportPreview(preview), opts);
       const policyLines = renderPolicySummary(policy);
+      if (recipe.info) {
+        output("", opts);
+        output(
+          `Recipe: ${recipe.info.id}@${recipe.info.version} [${recipe.info.source}] (sha256:${recipe.info.digest.slice(0, 16)}…)`,
+          opts,
+        );
+      }
       if (policyLines.length > 0) {
         output("", opts);
         output("Policy:", opts);
@@ -457,6 +520,7 @@ export async function handleWikiImport(
       {
         mode: "published",
         source,
+        ...(recipe.info ? { recipe: recipe.info } : {}),
         ...(governanceHasEffects(governance) ? { governance } : {}),
         ...(stagingParentId ? { stagingParentId } : {}),
         page: rootResult,
@@ -568,7 +632,8 @@ async function handleBatchImport(
   const parentId = getFlag(flags, "parent");
 
   // Plan every file up front — the whole batch is reviewed before any write.
-  const policy = resolvePolicyFromFlags(flags, opts);
+  const recipe = await loadRecipeLayer(flags, opts);
+  const policy = resolvePolicyFromFlags(flags, opts, recipe.layer);
   const parsePolicy = {
     styleMappings: policy.styleMappings,
     revisions: policy.options.revisions,
@@ -1176,6 +1241,13 @@ Options:
   --revisions <mode>      accept|reject tracked changes (default accept)
   --unsupported <mode>    report|fail on lossy constructs (default report)
   --overrides <file>      Override file (atlcli.docx-import-overrides/1, YAML/JSON)
+  --recipe <file>         Apply a recipe file (atlcli.docx-import-recipe/1)
+  --recipe-id <id>        Apply a catalog recipe (.atlcli/import-recipes/, ~/.atlcli/…)
+
+Recipe commands:
+  wiki import recipe validate <file>
+  wiki import recipe list
+  wiki import recipe show <file|id>
   --confirm         Actually create/update the page(s)
   --profile <name>  Use a specific auth profile
   --json            JSON output

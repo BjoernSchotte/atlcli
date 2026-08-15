@@ -364,6 +364,7 @@
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "saxes": "6.0.0",
+        "yaml": "2.9.0",
       },
       "devDependencies": {
         "pizzip": "3.2.0",

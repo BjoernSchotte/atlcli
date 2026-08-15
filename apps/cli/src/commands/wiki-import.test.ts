@@ -290,6 +290,58 @@ describe("wiki import (preview mode, offline)", () => {
     }
   });
 
+  it("applies a recipe file with digest provenance in the preview", async () => {
+    const file = join(dir, "recipe-doc.docx");
+    writeFileSync(file, buildDocxFixture({ body: p(r("Doc"), { style: "Heading1" }) }));
+    const recipeFile = join(dir, "handbook.yaml");
+    writeFileSync(
+      recipeFile,
+      `schema: atlcli.docx-import-recipe/1\nid: handbook\nversion: "1.0"\ntitle: Handbook rules\ntargets: [cloud]\noptions:\n  unsupported: fail\noverrides:\n  styleMappings:\n    Hinweis: blockquote\n`,
+    );
+
+    await handleWikiImport([file], { space: "DOCSY", recipe: recipeFile, json: true }, { json: true });
+
+    const parsed = JSON.parse(stdout.join(""));
+    expect(parsed.recipe.id).toBe("handbook");
+    expect(parsed.recipe.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(parsed.policy.options.unsupported).toBe("fail");
+    expect(parsed.policy.provenance["options.unsupported"]).toBe("recipe");
+    expect(parsed.policy.provenance["style:hinweis"]).toBe("recipe");
+  });
+
+  it("rejects a recipe that does not target cloud, and validates via the subcommand", async () => {
+    const recipeFile = join(dir, "dc-only.yaml");
+    writeFileSync(
+      recipeFile,
+      `schema: atlcli.docx-import-recipe/1\nid: dc-only\nversion: "1"\ntitle: DC\ntargets: [data-center]\n`,
+    );
+    const file = join(dir, "x.docx");
+    writeFileSync(file, buildDocxFixture({ body: p(r("Doc")) }));
+
+    let exitCode: number | undefined;
+    const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    }) as never);
+    try {
+      await handleWikiImport(
+        [file],
+        { space: "DOCSY", recipe: recipeFile, json: true },
+        { json: true },
+      ).catch(() => {});
+      expect(exitCode).toBe(1);
+      expect(stdout.join("")).toContain("not cloud");
+    } finally {
+      exitSpy.mockRestore();
+    }
+
+    stdout.length = 0;
+    await handleWikiImport(["recipe", "validate", recipeFile], { json: true }, { json: true });
+    const validated = JSON.parse(stdout.join(""));
+    expect(validated.valid).toBe(true);
+    expect(validated.id).toBe("dc-only");
+  });
+
   it("falls back to the file name when the document has no level-1 heading", async () => {
     const file = join(dir, "notes.docx");
     writeFileSync(file, buildDocxFixture({ body: p(r("just text")) }));
