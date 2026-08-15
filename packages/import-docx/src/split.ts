@@ -220,6 +220,27 @@ export function countPages(page: ImportPagePlan): number {
   return 1 + page.children.reduce((sum, child) => sum + countPages(child), 0);
 }
 
+/** Every fileLink path referenced anywhere in a block list (plan 010). */
+export function collectFileLinkRefs(blocks: ImportBlock[], into = new Set<string>()): Set<string> {
+  for (const block of blocks) {
+    if (block.type === "heading" || block.type === "paragraph") {
+      for (const run of block.runs) {
+        if (run.kind === "text" && run.marks?.fileLink) into.add(run.marks.fileLink.path);
+      }
+    } else if (block.type === "list") {
+      for (const item of block.items) {
+        collectFileLinkRefs(item.blocks, into);
+        if (item.child) collectFileLinkRefs([item.child], into);
+      }
+    } else if (block.type === "table") {
+      for (const row of block.rows) for (const cell of row.cells) collectFileLinkRefs(cell.blocks, into);
+    } else if (block.type === "blockquote") {
+      collectFileLinkRefs(block.blocks, into);
+    }
+  }
+  return into;
+}
+
 /** Every anchorLink target referenced anywhere in a block list. */
 export function collectAnchorRefs(blocks: ImportBlock[], into = new Set<string>()): Set<string> {
   for (const block of blocks) {

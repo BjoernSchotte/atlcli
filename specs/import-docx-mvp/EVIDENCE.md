@@ -320,3 +320,22 @@ Proof matrix (plan §6), all pages deleted afterwards with a verified 404:
   comments) through the plan-007 policy chain, including
   `options.comments`, style mappings, and revisions.
 - All four E2E pages deleted; follow-up GET returned **404**.
+
+## 2026-08-15 — Plan 010 residuals closed: outer ZIP, cross-file links, bounded concurrency
+
+- **Outer ZIP:** `wiki import batch.zip` extracted 2 sorted .docx entries
+  (incl. a nested folder member; .txt and ~$ entries ignored) through the
+  hardened scan guards (traversal names rejected, bomb budgets before
+  inflation — unit-tested) and published both pages (`1198194846`,
+  `1198129259`).
+- **Cross-file links:** manifest batch where intro.docx links
+  `guides/admin.docx#adm` — after publication the patch pass rewrote the
+  link; independent readback of the intro page (v2) shows exactly one
+  link pointing at the admin document's imported page URL
+  (`…/pages/1198031055`), `crossFileLinks.patched=[docs/intro.docx]`,
+  no unresolved targets. Item digests are re-sealed after patching:
+  an immediate `--resume` still skipped both items.
+- **Bounded concurrency:** manifest planning now runs 4 parallel
+  workers keyed by sourcePath (manifest order preserved); target
+  mutations remain strictly sequential (bound = 1) by design.
+- Cleanup: all four pages deleted; follow-up GET returned **404**.

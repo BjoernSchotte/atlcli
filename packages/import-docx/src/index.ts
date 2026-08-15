@@ -92,9 +92,11 @@ export {
   type EditabilityAssessment,
   type EditabilityLevel,
 } from "./assess.js";
+export { extractDocxEntriesFromZip, type BatchZipEntry } from "./batch-zip.js";
 export {
   SplitTitleConflictError,
   collectAnchorRefs,
+  collectFileLinkRefs,
   countPages,
   splitDocument,
   type ImportPagePlan,

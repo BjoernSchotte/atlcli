@@ -31,8 +31,10 @@ import {
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
   assessEditability,
+  collectFileLinkRefs,
   countPages,
   digestAdfValue,
+  documentToAdf,
   parseBatchManifest,
   parseDocx,
   splitDocument,
@@ -142,35 +144,45 @@ export async function handleManifestBatch(
     renameSync(tmp, statePath);
   };
 
-  // Plan every document up front (bounded planning concurrency: sequential).
+  // Plan every document up front. Planning runs with BOUNDED concurrency
+  // (4 workers); results are keyed by sourcePath, so ordering stays exactly
+  // the manifest order regardless of completion order. Mutation later runs
+  // with a separate bound of 1 (sequential) by design.
   const planned = new Map<string, PlannedItem | { error: string }>();
-  for (const docSpec of manifest.documents) {
-    try {
-      const bytes = new Uint8Array(readFileSync(join(baseDir, docSpec.sourcePath)));
-      const doc = parseDocx(bytes, {
-        styleMappings: policy.styleMappings,
-        revisions: policy.options.revisions,
-      });
-      const title =
-        docSpec.title ?? doc.titleCandidate ?? docSpec.sourcePath.replace(/^.*\//, "").replace(/\.docx$/i, "");
-      const splitLevel = docSpec.splitHeading ?? manifest.defaults.splitHeading;
-      const split =
-        splitLevel !== undefined
-          ? splitDocument(doc, { level: splitLevel, rootTitle: title }, manifest.defaults.titleConflict)
-          : undefined;
-      if (split) doc.issues.push(...split.issues);
-      planned.set(docSpec.sourcePath, {
-        doc,
-        title,
-        split,
-        sourceSha256: await sha256Hex(bytes),
-        labels: docSpec.labels ?? [],
-        relativeParentPath: docSpec.relativeParentPath,
-      });
-    } catch (err) {
-      planned.set(docSpec.sourcePath, { error: (err as Error).message });
+  const PLANNING_CONCURRENCY = 4;
+  const queue = [...manifest.documents];
+  const planWorker = async (): Promise<void> => {
+    for (;;) {
+      const docSpec = queue.shift();
+      if (!docSpec) return;
+      try {
+        const bytes = new Uint8Array(readFileSync(join(baseDir, docSpec.sourcePath)));
+        const doc = parseDocx(bytes, {
+          styleMappings: policy.styleMappings,
+          revisions: policy.options.revisions,
+        });
+        const title =
+          docSpec.title ?? doc.titleCandidate ?? docSpec.sourcePath.replace(/^.*\//, "").replace(/\.docx$/i, "");
+        const splitLevel = docSpec.splitHeading ?? manifest.defaults.splitHeading;
+        const split =
+          splitLevel !== undefined
+            ? splitDocument(doc, { level: splitLevel, rootTitle: title }, manifest.defaults.titleConflict)
+            : undefined;
+        if (split) doc.issues.push(...split.issues);
+        planned.set(docSpec.sourcePath, {
+          doc,
+          title,
+          split,
+          sourceSha256: await sha256Hex(bytes),
+          labels: docSpec.labels ?? [],
+          relativeParentPath: docSpec.relativeParentPath,
+        });
+      } catch (err) {
+        planned.set(docSpec.sourcePath, { error: (err as Error).message });
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: PLANNING_CONCURRENCY }, planWorker));
 
   if (!confirm) {
     const items = manifest.documents.map((docSpec) => {
@@ -265,6 +277,7 @@ export async function handleManifestBatch(
   };
 
   const results: BatchStateItemV1[] = [];
+  const rootUrls = new Map<string, { pageId: string; url?: string }>();
   for (const docSpec of manifest.documents) {
     const plan = planned.get(docSpec.sourcePath)!;
     const previous = state.items.find((i) => i.sourcePath === docSpec.sourcePath);
@@ -283,6 +296,7 @@ export async function handleManifestBatch(
           const remote = await client.getPageAdf(previous.rootPageId);
           const digest = await digestAdfValue(remote.body.value);
           if (digest === previous.verifiedBodyDigest) {
+            rootUrls.set(docSpec.sourcePath, { pageId: previous.rootPageId });
             results.push({ ...previous, status: "skipped" });
             continue;
           }
@@ -355,6 +369,7 @@ export async function handleManifestBatch(
         throw err;
       }
       const readback = await client.getPageAdf(root.id);
+      rootUrls.set(docSpec.sourcePath, { pageId: root.id, url: root.url });
       results.push({
         sourcePath: docSpec.sourcePath,
         sourceSha256: plan.sourceSha256,
@@ -391,6 +406,85 @@ export async function handleManifestBatch(
     saveState();
   }
 
+  // Cross-file link resolution (plan 010): now that every document's root
+  // page exists, re-encode pages whose documents reference sibling DOCX
+  // files and patch the links in. Split trees are excluded in this slice.
+  const crossFile: { patched: string[]; unresolved: Record<string, string[]> } = {
+    patched: [],
+    unresolved: {},
+  };
+  const normalizePath = (path: string): string => {
+    const parts: string[] = [];
+    for (const seg of path.split("/")) {
+      if (seg === "" || seg === ".") continue;
+      if (seg === "..") parts.pop();
+      else parts.push(seg);
+    }
+    return parts.join("/");
+  };
+  const urlForSource = async (sourcePath: string): Promise<string | undefined> => {
+    const entry = rootUrls.get(sourcePath);
+    if (!entry) return undefined;
+    if (!entry.url) {
+      try {
+        entry.url = (await client.getPage(entry.pageId)).url;
+      } catch {
+        return undefined;
+      }
+    }
+    return entry.url;
+  };
+  for (const docSpec of manifest.documents) {
+    const plan = planned.get(docSpec.sourcePath);
+    if (!plan || "error" in plan) continue;
+    const refs = collectFileLinkRefs(plan.doc.blocks);
+    if (refs.size === 0) continue;
+    const self = rootUrls.get(docSpec.sourcePath);
+    if (!self) continue;
+    if (plan.split) {
+      crossFile.unresolved[docSpec.sourcePath] = [...refs];
+      continue;
+    }
+    const docDir = docSpec.sourcePath.includes("/")
+      ? docSpec.sourcePath.slice(0, docSpec.sourcePath.lastIndexOf("/"))
+      : "";
+    const fileLinks = new Map<string, string>();
+    const unresolved: string[] = [];
+    for (const ref of refs) {
+      const target = normalizePath(docDir ? `${docDir}/${ref}` : ref);
+      const url = await urlForSource(target);
+      if (url) fileLinks.set(ref, url);
+      else unresolved.push(ref);
+    }
+    if (unresolved.length > 0) crossFile.unresolved[docSpec.sourcePath] = unresolved;
+    if (fileLinks.size === 0) continue;
+    try {
+      let media;
+      if (plan.doc.assets.length > 0) {
+        const mediaList = await client.listPageAttachmentMedia(self.pageId);
+        const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
+        media = new Map(
+          plan.doc.assets.flatMap((asset) => {
+            const fileId = fileIdByName.get(asset.fileName);
+            return fileId ? [[asset.id, { fileId, collection: `contentId-${self.pageId}` }] as const] : [];
+          }),
+        );
+      }
+      const adf = documentToAdf(plan.doc, { ...(media ? { media } : {}), fileLinks });
+      const current = await client.getPageAdf(self.pageId);
+      await client.updatePageAdf({ id: self.pageId, title: plan.title, adf, version: current.version + 1 });
+      const item = results.find((r) => r.sourcePath === docSpec.sourcePath);
+      if (item) {
+        const patched = await client.getPageAdf(self.pageId);
+        item.verifiedBodyDigest = await digestAdfValue(patched.body.value);
+      }
+      crossFile.patched.push(docSpec.sourcePath);
+    } catch (err) {
+      crossFile.unresolved[docSpec.sourcePath] = [...refs];
+      output(`  ⚠ cross-file link patch failed for ${docSpec.sourcePath}: ${(err as Error).message}`, opts);
+    }
+  }
+
   // Final sync: skip-only iterations `continue` past the per-item
   // checkpoint, so persist the normalized result set once more here.
   state.items = manifest.documents.map(
@@ -419,6 +513,9 @@ export async function handleManifestBatch(
         statePath,
         stagingRootId: state.stagingRootId,
         summary: { complete: complete.length, skipped: skipped.length, failed: failed.length },
+        ...(crossFile.patched.length > 0 || Object.keys(crossFile.unresolved).length > 0
+          ? { crossFileLinks: crossFile }
+          : {}),
         results,
       },
       opts,

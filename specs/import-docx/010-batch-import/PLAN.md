@@ -1,6 +1,6 @@
 # Plan 010: Import DOCX batches and folder trees with checkpoints and resume
 
-Status: **Implemented (Cloud full form: manifest, hierarchy, checkpoint/resume; ZIP/cross-file-links/concurrency residuals open)** — evidence in specs/import-docx-mvp/EVIDENCE.md
+Status: **Implemented (Cloud full form incl. outer-ZIP source, cross-file links, bounded planning concurrency)** — evidence in specs/import-docx-mvp/EVIDENCE.md
 
 Planned at: `18f6f1e`, 2026-07-20
 
@@ -209,7 +209,7 @@ Acceptance:
 
 ### Task 1 — Safe discovery and manifest validation
 
-- [x] Implement strict schema/canonicalization, relative-root resolution, no-follow symlink policy, deterministic ordering, and safe outer ZIP inspection/extraction. *(Manifest schema hardened + canonical digest; sourcePath traversal rejected; ZIP source still open.)*
+- [x] Implement strict schema/canonicalization, relative-root resolution, no-follow symlink policy, deterministic ordering, and safe outer ZIP inspection/extraction. *(Outer ZIP reuses the hardened scan guards — traversal names and bomb budgets checked before inflation, sorted .docx discovery.)*
 - [x] Reject duplicate normalized paths/item IDs/title-map conflicts before parsing/publication.
 - [x] Acquire/hash/preflight every DOCX through the baseline safety pipeline.
 
@@ -222,12 +222,12 @@ Acceptance/tests:
 
 - [x] Invoke the Plan 009 file-to-subtree planner for each item; `splitHeading` absent uses its one-page/root contract.
 - [x] Apply Plan 003 budgets and Plan 005 governance without copying their logic. *(Editability in preview; staging root via the plan-005 restriction path; defaults.recipe resolves through the plan-007 policy chain incl. comment mode.)*
-- [x] Resolve directory parent nodes, whole-batch titles, and relative cross-file links. *(Folder pages + per-item title policy; cross-FILE links still open — cross-page links within one document ship via plan 009.)*
+- [x] Resolve directory parent nodes, whole-batch titles, and relative cross-file links. *(Cross-file DOCX hyperlinks (incl. #anchors) resolve to sibling documents' imported pages via a post-publication patch pass; unresolved targets reported.)*
 - [ ] Produce aggregate preview/report/plan digest with file→page→node/asset issue locations.
 
 Acceptance/tests:
 
-- [ ] Bounded concurrency does not change order/digests.
+- [x] Bounded concurrency does not change order/digests. *(Planning: 4 workers keyed by sourcePath, manifest order preserved; mutations bound = 1.)*
 - [ ] Every input block/page/link has exactly one outcome/owner.
 - [ ] Any source/options/recipe/capability/destination/collision/governance change stales saved approval.
 - [ ] Offline versus checked dry-run follows the MVP contract; unchecked target/governance state cannot be approved, checkpointed as publishable, or replayed directly.
@@ -248,7 +248,7 @@ Acceptance/tests:
 
 - [x] Create/restrict/read back staging root.
 - [ ] Execute item subtrees with bounded mutation concurrency and deterministic events.
-- [ ] Coordinate shell ID maps for cross-file links and completion dependencies.
+- [x] Coordinate shell ID maps for cross-file links and completion dependencies. *(Root URL map collected during publication; link patch pass runs after all roots exist and re-seals the item digests so resume stays valid.)*
 - [x] Roll back failed item resources only; retain verified items under staging and report partial state.
 - [ ] Implement `stop|continue` and retry only proven operations/items.
 

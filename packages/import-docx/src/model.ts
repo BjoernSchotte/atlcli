@@ -21,6 +21,12 @@ export interface ImportRunMarks {
    * bookmark's page is known; otherwise rendered as plain text.
    */
   anchorLink?: { anchor: string };
+  /**
+   * Relative link to another DOCX file (plan 010 cross-file links).
+   * Resolved to that document's imported page URL when both files travel
+   * in the same batch; otherwise rendered as plain text with an issue.
+   */
+  fileLink?: { path: string; anchor?: string };
 }
 
 export type ImportRun =

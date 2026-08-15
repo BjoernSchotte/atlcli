@@ -406,7 +406,12 @@ files at once — each file becomes its own page (or page tree with
 ```bash
 atlcli wiki import ./exports --space TEAM --parent 123456
 atlcli wiki import a.docx b.docx c.docx --space TEAM --confirm
+atlcli wiki import export-bundle.zip --space TEAM --confirm   # outer ZIP
 ```
+
+A `.zip` batch source is inspected against the same hardened archive
+budgets as DOCX packages (entry-name safety, zip-bomb limits) before
+anything is inflated; all `.docx` members import in sorted order.
 
 The batch preview lists every file with its resolved title, page count,
 attachments, issues, and editability rating; files that fail to parse are
@@ -463,6 +468,12 @@ atlcli wiki import --manifest batch.yaml --confirm --resume # continue later
   and its body digest matches — a page someone deleted is re-imported,
   everything else is left alone. A changed manifest invalidates the state
   file instead of being silently reinterpreted.
+- **Cross-file links:** a Word hyperlink pointing at a sibling DOCX
+  (`guides/admin.docx` or `admin.docx#section`) becomes a link to that
+  document's imported page. Links are patched in after every root page
+  exists; unresolved targets stay plain text and are listed in the
+  report. Planning runs with bounded concurrency (4 workers); target
+  mutations stay strictly sequential.
 
 ## Options
 

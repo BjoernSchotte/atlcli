@@ -43,6 +43,7 @@ import {
   splitDocument,
   type AdfMediaResolution,
   type ImportPagePlan,
+  extractDocxEntriesFromZip,
   type ImportBlock,
   type ImportComment,
   type ImportedDocument,
@@ -664,8 +665,27 @@ async function handleRecipeExport(
  * more than one positional file. A single regular file returns undefined —
  * the single-import path owns it.
  */
-function resolveBatchFiles(args: string[], opts: OutputOptions): string[] | undefined {
+export interface BatchSource {
+  /** Display name for reports (path or zip-entry path). */
+  display: string;
+  read: () => Uint8Array;
+}
+
+function resolveBatchFiles(args: string[], opts: OutputOptions): BatchSource[] | undefined {
   if (args.length === 1) {
+    // Safe outer ZIP as a batch source (plan 010): sorted .docx entries.
+    if (args[0].toLowerCase().endsWith(".zip")) {
+      let entries;
+      try {
+        entries = extractDocxEntriesFromZip(new Uint8Array(readFileSync(args[0])));
+      } catch (err) {
+        fail(opts, 1, ERROR_CODES.VALIDATION, `Batch ZIP rejected: ${(err as Error).message}`, {});
+      }
+      return entries.map((entry) => ({
+        display: `${args[0]}!${entry.path}`,
+        read: () => entry.bytes,
+      }));
+    }
     let stat;
     try {
       stat = statSync(args[0]);
@@ -680,14 +700,14 @@ function resolveBatchFiles(args: string[], opts: OutputOptions): string[] | unde
     if (files.length === 0) {
       fail(opts, 1, ERROR_CODES.VALIDATION, `No .docx files found in ${args[0]}.`, {});
     }
-    return files;
+    return files.map((file) => ({ display: file, read: () => new Uint8Array(readFileSync(file)) }));
   }
   for (const arg of args) {
     if (!arg.toLowerCase().endsWith(".docx")) {
       fail(opts, 1, ERROR_CODES.VALIDATION, `Batch input must be .docx files; got ${arg}.`, {});
     }
   }
-  return args;
+  return args.map((file) => ({ display: file, read: () => new Uint8Array(readFileSync(file)) }));
 }
 
 interface BatchItemPlan {
@@ -716,7 +736,7 @@ interface BatchItemResult {
  * without duplicating verified content.
  */
 async function handleBatchImport(
-  files: string[],
+  files: BatchSource[],
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions,
 ): Promise<void> {
@@ -758,9 +778,10 @@ async function handleBatchImport(
     revisions: policy.options.revisions,
   };
   const plans: BatchItemPlan[] = [];
-  for (const file of files) {
+  for (const source of files) {
+    const file = source.display;
     try {
-      const doc = parseDocx(new Uint8Array(readFileSync(file)), parsePolicy);
+      const doc = parseDocx(source.read(), parsePolicy);
       const title = doc.titleCandidate ?? basename(file, ".docx");
       const split =
         splitLevel !== undefined

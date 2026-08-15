@@ -33,6 +33,11 @@ export interface AdfEncodeOptions {
    * links; unresolved anchors render as plain text.
    */
   anchors?: ReadonlyMap<string, string>;
+  /**
+   * Relative DOCX path (as written in the mark) → imported page URL
+   * (plan 010 cross-file links). Unresolved paths render as plain text.
+   */
+  fileLinks?: ReadonlyMap<string, string>;
 }
 
 export interface AdfNode {
@@ -64,6 +69,9 @@ function encodeRuns(runs: ImportRun[], options: AdfEncodeOptions = {}): AdfNode[
     if (run.marks?.link) marks.push({ type: "link", attrs: { href: run.marks.link.href } });
     else if (run.marks?.anchorLink) {
       const href = options.anchors?.get(run.marks.anchorLink.anchor);
+      if (href) marks.push({ type: "link", attrs: { href } });
+    } else if (run.marks?.fileLink) {
+      const href = options.fileLinks?.get(run.marks.fileLink.path);
       if (href) marks.push({ type: "link", attrs: { href } });
     }
     nodes.push({ type: "text", text: run.text, ...(marks.length > 0 ? { marks } : {}) });

@@ -460,6 +460,20 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
           }
           if (scheme && SAFE_LINK_SCHEMES.has(scheme)) {
             marks = { ...inherited, link: { href } };
+          } else if (
+            scheme === undefined &&
+            /^[^\\:*?"<>|]+\.docx(#[^#]*)?$/i.test(href) &&
+            !href.startsWith("/")
+          ) {
+            // Relative link to a sibling DOCX (plan 010 cross-file links).
+            const hash = href.indexOf("#");
+            marks = {
+              ...inherited,
+              fileLink: {
+                path: (hash === -1 ? href : href.slice(0, hash)).replace(/\\/g, "/"),
+                ...(hash !== -1 && href.slice(hash + 1) ? { anchor: href.slice(hash + 1) } : {}),
+              },
+            };
           } else {
             report(
               ctx,
@@ -592,7 +606,9 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
     }
   }
   const cleaned: ImportRunMarks | undefined =
-    marks.bold || marks.italic || marks.code || marks.link || marks.anchorLink ? marks : undefined;
+    marks.bold || marks.italic || marks.code || marks.link || marks.anchorLink || marks.fileLink
+      ? marks
+      : undefined;
 
   const appendToOpenAnchors = (text: string): void => {
     for (const [id, collected] of ctx.openCommentAnchors) {
