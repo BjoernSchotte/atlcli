@@ -72,12 +72,16 @@ export async function handleWikiImport(
 
   const confirm = hasFlag(flags, "confirm");
   const spaceFlag = getFlag(flags, "space");
+  const updatePageId = getFlag(flags, "update-page");
+  if (updatePageId && (getFlag(flags, "split") || getFlag(flags, "parent"))) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--update-page cannot be combined with --split or --parent.", {});
+  }
 
   // The preview of a local file is a purely local projection: no config,
   // profile, or network access unless the run publishes, needs the profile's
   // default space, or downloads its source from Confluence.
   let profile: Awaited<ReturnType<typeof getActiveProfile>> | undefined;
-  if (confirm || !spaceFlag || fromPage) {
+  if (confirm || !spaceFlag || fromPage || updatePageId) {
     const config = await loadConfig();
     const profileName = getFlag(flags, "profile");
     profile = getActiveProfile(config, profileName);
@@ -87,7 +91,7 @@ export async function handleWikiImport(
       });
     }
     assertCliAuthSupported(profile, opts);
-    if ((confirm || fromPage) && resolveDeploymentType(profile) !== "cloud") {
+    if ((confirm || fromPage || updatePageId) && resolveDeploymentType(profile) !== "cloud") {
       fail(
         opts,
         1,
@@ -138,6 +142,11 @@ export async function handleWikiImport(
     fail(opts, 1, ERROR_CODES.VALIDATION, `Rejected DOCX package: ${(err as Error).message}`, {
       file: sourceName,
     });
+  }
+
+  if (updatePageId) {
+    await handleUpdateImport(updatePageId, doc, source, flags, opts, profile!, confirm);
+    return;
   }
 
   const spaceKey = spaceFlag ?? profile?.space;
@@ -531,6 +540,184 @@ async function handleBatchImport(
   }
 }
 
+/**
+ * In-place reimport into one existing page (plan 006 slice).
+ *
+ * Safety model: page identity/URL/history are preserved (a v2 body PUT, no
+ * delete/recreate); `--expect-version` is a mandatory lost-update guard at
+ * confirm time; on failed verification the previous body is restored as a
+ * new version. Unrelated attachments are untouched; same-name attachments
+ * are updated in place. Inline comments anchored to changed text may lose
+ * their anchors — surfaced as a warning, never silently.
+ */
+async function handleUpdateImport(
+  pageId: string,
+  doc: ImportedDocument,
+  source: unknown,
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  profile: NonNullable<Awaited<ReturnType<typeof getActiveProfile>>>,
+  confirm: boolean,
+): Promise<void> {
+  const client = new ConfluenceClient(profile);
+  const current = await client.getPage(pageId);
+  const currentAdfPage = await client.getPageAdf(pageId);
+  const currentAdf = JSON.parse(currentAdfPage.body.value) as { content?: { type?: string }[] };
+  const currentTypes = (currentAdf.content ?? []).map((n) => n.type ?? "?");
+
+  const title = getFlag(flags, "title") ?? current.title;
+  const newAdf = documentToAdf(doc);
+  const newTypes = newAdf.content.map((n) => n.type);
+
+  const summary = {
+    pageId,
+    title,
+    currentVersion: currentAdfPage.version,
+    newVersion: currentAdfPage.version + 1,
+    currentBlocks: countTypes(currentTypes),
+    newBlocks: countTypes(newTypes),
+    attachments: doc.assets.map((a) => a.fileName),
+  };
+
+  if (!confirm) {
+    if (opts.json) {
+      output({ mode: "update-preview", source, update: summary, issues: doc.issues }, opts);
+    } else {
+      output(`Update preview for page ${pageId} ("${current.title}")`, opts);
+      output(`  Version:  ${summary.currentVersion} → ${summary.newVersion}`, opts);
+      output(`  Current:  ${formatTypeCounts(summary.currentBlocks)}`, opts);
+      output(`  New:      ${formatTypeCounts(summary.newBlocks)}`, opts);
+      if (summary.attachments.length > 0) {
+        output(`  Attachments to upload/update: ${summary.attachments.join(", ")}`, opts);
+      }
+      output(`  Note: inline comments anchored to changed text may lose their anchors.`, opts);
+      output(
+        `\nDry preview only — re-run with --confirm --expect-version ${summary.currentVersion} to update the page.`,
+        opts,
+      );
+    }
+    return;
+  }
+
+  const expectFlag = getFlag(flags, "expect-version");
+  if (expectFlag === undefined) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `--update-page --confirm requires --expect-version <n> (current version is ${currentAdfPage.version}). This guards against overwriting concurrent edits you have not reviewed.`,
+      { currentVersion: currentAdfPage.version },
+    );
+  }
+  if (Number(expectFlag) !== currentAdfPage.version) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `Page ${pageId} is at version ${currentAdfPage.version}, not ${expectFlag} — it changed since your review. Re-run the preview and update --expect-version.`,
+      { currentVersion: currentAdfPage.version, expected: Number(expectFlag) },
+    );
+  }
+
+  // Upload/update assets first (same-name attachments are upserted; page
+  // body still shows the old content until the PUT below).
+  let finalAdf = newAdf;
+  if (doc.assets.length > 0) {
+    for (const asset of doc.assets) {
+      await client.uploadAttachment({
+        pageId,
+        filename: asset.fileName,
+        data: asset.bytes,
+        mimeType: asset.mediaType,
+      });
+    }
+    const mediaList = await client.listPageAttachmentMedia(pageId);
+    const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
+    const media = new Map<string, AdfMediaResolution>();
+    for (const asset of doc.assets) {
+      const fileId = fileIdByName.get(asset.fileName);
+      if (!fileId) throw new Error(`attachment ${asset.fileName} has no resolvable media fileId`);
+      media.set(asset.id, { fileId, collection: `contentId-${pageId}` });
+    }
+    finalAdf = documentToAdf(doc, { media });
+  }
+
+  const updated = await client.updatePageAdf({
+    id: pageId,
+    title,
+    adf: finalAdf,
+    version: currentAdfPage.version + 1,
+  });
+
+  try {
+    const readback = await client.getPageAdf(pageId);
+    const published = JSON.parse(readback.body.value) as { content?: { type?: string }[] };
+    const expectedTypes = finalAdf.content.map((n) => n.type).join(",");
+    const actualTypes = (published.content ?? []).map((n) => n.type).join(",");
+    if (expectedTypes !== actualTypes) {
+      throw new Error(
+        `published block sequence [${actualTypes}] does not match the reviewed plan [${expectedTypes}]`,
+      );
+    }
+  } catch (err) {
+    // Restore the previous body as a NEW version — history is preserved and
+    // the page never stays in an unverified state.
+    try {
+      await client.updatePageAdf({
+        id: pageId,
+        title: current.title,
+        adf: currentAdf,
+        version: currentAdfPage.version + 2,
+      });
+    } catch {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.API,
+        `Update verification failed AND restoring the previous body failed — page ${pageId} needs manual review: ${(err as Error).message}`,
+        { pageId },
+      );
+    }
+    fail(
+      opts,
+      1,
+      ERROR_CODES.API,
+      `Update could not be verified; the previous content was restored as version ${currentAdfPage.version + 2}: ${(err as Error).message}`,
+      { pageId },
+    );
+  }
+
+  if (opts.json) {
+    output(
+      {
+        mode: "updated",
+        source,
+        page: { id: updated.id, title: updated.title, url: updated.url, version: updated.version },
+        previousVersion: currentAdfPage.version,
+        attachments: doc.assets.map((a) => a.fileName),
+        issues: doc.issues,
+      },
+      opts,
+    );
+  } else {
+    output(`Updated page "${updated.title}" (${updated.id}) to version ${updated.version}`, opts);
+    if (updated.url) output(updated.url, opts);
+  }
+}
+
+function countTypes(types: string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const t of types) counts[t] = (counts[t] ?? 0) + 1;
+  return counts;
+}
+
+function formatTypeCounts(counts: Record<string, number>): string {
+  const entries = Object.entries(counts).sort(([a], [b]) => a.localeCompare(b));
+  return entries.length === 0
+    ? "empty page"
+    : entries.map(([k, v]) => `${v} ${k}`).join(", ");
+}
+
 interface PublishedPageReport {
   id: string;
   title: string;
@@ -676,7 +863,9 @@ Options:
   --parent <id>     Parent page id
   --split <1|2>     Split into a page tree at heading levels 1 (or 1+2)
   --skip-existing   Batch: skip files whose titles already exist (resume)
-  --confirm         Actually create the page(s)
+  --update-page <id>      Reimport INTO this existing page (keeps id/URL/history)
+  --expect-version <n>    Required with --update-page --confirm (lost-update guard)
+  --confirm         Actually create/update the page(s)
   --profile <name>  Use a specific auth profile
   --json            JSON output
 

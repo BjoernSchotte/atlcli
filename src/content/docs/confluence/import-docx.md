@@ -14,8 +14,8 @@ explicit `--confirm`.
 > **Scope.** DOCX import is under active development
 > (`specs/import-docx-mvp`). Current coverage: single pages, page-tree
 > splitting, batch imports with resume, and importing from Confluence
-> attachments — Cloud only. Updating existing pages and Data Center
-> support are planned follow-ups.
+> attachments, and in-place updates of existing pages — Cloud only.
+> Data Center support is a planned follow-up.
 
 ## On this page
 
@@ -27,6 +27,7 @@ explicit `--confirm`.
 - [Importing from a Confluence attachment](#importing-from-a-confluence-attachment)
 - [Editability check](#editability-check)
 - [Splitting into a page tree](#splitting-into-a-page-tree)
+- [Updating an existing page](#updating-an-existing-page)
 - [Batch import](#batch-import)
 - [Options](#options)
 - [Advanced example](#advanced-example)
@@ -177,6 +178,30 @@ Page tree (--split 2, 4 pages):
 - Publication is transactional: if any page of the tree fails, **all**
   pages created by the run are rolled back
 
+## Updating an existing page
+
+Reimport a revised DOCX **into the page it originally created** — the page
+id, URL, version history, labels, and unrelated attachments are preserved
+(the body is replaced as a new version, never delete-and-recreate):
+
+```bash
+# 1. Preview: shows current vs. new content and the current version
+atlcli wiki import spec-v2.docx --update-page 123456
+
+# 2. Confirm with the version you just reviewed
+atlcli wiki import spec-v2.docx --update-page 123456 --confirm --expect-version 7
+```
+
+`--expect-version` is mandatory on a confirmed update: if the page changed
+since your preview (someone edited it concurrently), the run fails instead
+of overwriting their work. Same-name attachments are updated in place; if
+the post-update verification fails, the previous content is automatically
+**restored as a new version**.
+
+Word of caution: inline comments anchored to text that changed may lose
+their anchors — the preview says so explicitly. `--update-page` cannot be
+combined with `--split` or `--parent`.
+
 ## Batch import
 
 Import a whole directory (all `.docx` directly inside, sorted) or several
@@ -214,6 +239,8 @@ interrupted batch continues without duplicating verified content.
 | `--parent <id>` | string | space root | Parent page id |
 | `--split <1\|2>` | number | off | Split into a page tree at heading levels 1 (or 1+2) |
 | `--skip-existing` | flag | off | Batch: skip files whose titles already exist (resume an interrupted batch) |
+| `--update-page <id>` | string | — | Reimport into this existing page (keeps id/URL/history) |
+| `--expect-version <n>` | number | — | Required with `--update-page --confirm`; must match the page's current version |
 | `--confirm` | flag | off | Actually create the page; without it the command only previews |
 | `--profile <name>` | string | active profile | Auth profile |
 | `--json` | flag | off | Machine-readable output (preview or publish report) |

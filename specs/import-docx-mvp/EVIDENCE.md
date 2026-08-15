@@ -144,3 +144,20 @@ Fixture: 2,528-byte DOCX with an inline DrawingML picture (1×1 PNG,
   block-sequence verification passed (info issue
   `docx-import/footnotes-appended` as designed).
 - Cleanup: page deleted; follow-up GET returned **404**.
+
+## 2026-08-15 — In-place update E2E, live Cloud (plan 006 slice)
+
+- Seed: page `1198030895` created from a v1 fixture (H1 + 1 paragraph).
+- Preview `--update-page 1198030895`: showed title, version 1 → 2, and
+  current (1 heading, 1 paragraph) vs. new (1 heading, 2 paragraph)
+  block summaries plus the inline-comment anchor warning.
+- Guards proven live: `--confirm` without `--expect-version` fails with
+  the current version in the message; `--expect-version 7` against
+  version 1 fails as a concurrent-edit conflict. Nothing was written in
+  either case.
+- `--confirm --expect-version 1`: body replaced via v2 PUT as version 2,
+  same page id/URL, readback block-sequence verification passed. On a
+  failed verification the previous body is restored as a new version
+  (code path exercised by the rollback design; page never left
+  unverified).
+- Cleanup: page deleted; follow-up GET returned **404**.
