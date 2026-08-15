@@ -7,8 +7,8 @@
  * new Cloud page, verifies the readback, and rolls the page back if
  * publication cannot be verified.
  */
-import { basename } from "node:path";
-import { readFileSync } from "node:fs";
+import { basename, join } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -55,6 +55,16 @@ export async function handleWikiImport(
   if (fromPage && !attachmentName) {
     fail(opts, 1, ERROR_CODES.VALIDATION, "--from-page requires --attachment <filename>.", {});
   }
+
+  // Batch mode: a directory, or several files (specs/import-docx/010 slice).
+  if (!fromPage) {
+    const batchFiles = resolveBatchFiles(args, opts);
+    if (batchFiles) {
+      await handleBatchImport(batchFiles, flags, opts);
+      return;
+    }
+  }
+
   const sourceName = file ?? attachmentName!;
   if (!sourceName.toLowerCase().endsWith(".docx")) {
     fail(opts, 1, ERROR_CODES.VALIDATION, "Only .docx files are supported.", { file: sourceName });
@@ -270,6 +280,257 @@ export async function handleWikiImport(
   }
 }
 
+/**
+ * Detect batch input: a directory (all *.docx directly inside, sorted) or
+ * more than one positional file. A single regular file returns undefined —
+ * the single-import path owns it.
+ */
+function resolveBatchFiles(args: string[], opts: OutputOptions): string[] | undefined {
+  if (args.length === 1) {
+    let stat;
+    try {
+      stat = statSync(args[0]);
+    } catch {
+      return undefined; // Missing path — let the single path report it.
+    }
+    if (!stat.isDirectory()) return undefined;
+    const files = readdirSync(args[0])
+      .filter((name) => name.toLowerCase().endsWith(".docx") && !name.startsWith("~$"))
+      .sort()
+      .map((name) => join(args[0], name));
+    if (files.length === 0) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, `No .docx files found in ${args[0]}.`, {});
+    }
+    return files;
+  }
+  for (const arg of args) {
+    if (!arg.toLowerCase().endsWith(".docx")) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, `Batch input must be .docx files; got ${arg}.`, {});
+    }
+  }
+  return args;
+}
+
+interface BatchItemPlan {
+  file: string;
+  doc?: ImportedDocument;
+  title?: string;
+  tree?: ImportPagePlan;
+  parseError?: string;
+}
+
+interface BatchItemResult {
+  file: string;
+  title?: string;
+  status: "created" | "skipped" | "failed";
+  pages?: number;
+  rootPageId?: string;
+  url?: string;
+  error?: string;
+}
+
+/**
+ * Batch import (plan 010 slice): each file is an independently auditable
+ * transaction — a failure rolls back only that file's pages, records the
+ * error, and the batch continues. `--skip-existing` turns space-level title
+ * conflicts into skips, which makes an interrupted batch safely re-runnable
+ * without duplicating verified content.
+ */
+async function handleBatchImport(
+  files: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+): Promise<void> {
+  if (getFlag(flags, "title")) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--title cannot be used in batch mode (titles come from each document).", {});
+  }
+  const confirm = hasFlag(flags, "confirm");
+  const skipExisting = hasFlag(flags, "skip-existing");
+  const splitFlag = getFlag(flags, "split");
+  const splitLevel = splitFlag !== undefined ? Number(splitFlag) : undefined;
+  if (splitLevel !== undefined && splitLevel !== 1 && splitLevel !== 2) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--split must be 1 or 2 (heading levels that open new pages).", {});
+  }
+
+  const spaceFlag = getFlag(flags, "space");
+  let profile: Awaited<ReturnType<typeof getActiveProfile>> | undefined;
+  if (confirm || !spaceFlag) {
+    const config = await loadConfig();
+    profile = getActiveProfile(config, getFlag(flags, "profile"));
+    if (!profile) {
+      fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", {});
+    }
+    assertCliAuthSupported(profile, opts);
+    if (confirm && resolveDeploymentType(profile) !== "cloud") {
+      fail(opts, 1, ERROR_CODES.VALIDATION, "wiki import currently supports Confluence Cloud profiles only.", {});
+    }
+  }
+  const spaceKey = spaceFlag ?? profile?.space;
+  if (!spaceKey) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "No space given. Use --space <KEY> or set a profile space.", {});
+  }
+  const parentId = getFlag(flags, "parent");
+
+  // Plan every file up front — the whole batch is reviewed before any write.
+  const plans: BatchItemPlan[] = [];
+  for (const file of files) {
+    try {
+      const doc = parseDocx(new Uint8Array(readFileSync(file)));
+      const title = doc.titleCandidate ?? basename(file, ".docx");
+      const tree =
+        splitLevel !== undefined
+          ? splitDocument(doc, { level: splitLevel as 1 | 2, rootTitle: title })
+          : undefined;
+      plans.push({ file, doc, title, tree });
+    } catch (err) {
+      plans.push({ file, parseError: (err as Error).message });
+    }
+  }
+
+  // In-batch title conflicts fail closed before preview or publish.
+  const titleOwners = new Map<string, string>();
+  const inBatchConflicts: string[] = [];
+  for (const plan of plans) {
+    if (!plan.title) continue;
+    const titles: string[] = [];
+    if (plan.tree) collectTreeTitles(plan.tree, titles);
+    else titles.push(plan.title);
+    for (const t of titles) {
+      const key = t.toLowerCase();
+      const owner = titleOwners.get(key);
+      if (owner && owner !== plan.file) inBatchConflicts.push(`"${t}" (${owner} vs ${plan.file})`);
+      titleOwners.set(key, plan.file);
+    }
+  }
+  if (inBatchConflicts.length > 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `Multiple batch files would create the same title: ${inBatchConflicts.join("; ")}. Rename the documents/headings.`,
+      {},
+    );
+  }
+
+  if (!confirm) {
+    const items = plans.map((plan) =>
+      plan.parseError
+        ? { file: plan.file, error: plan.parseError }
+        : {
+            file: plan.file,
+            title: plan.title,
+            pages: plan.tree ? countPages(plan.tree) : 1,
+            blocks: plan.doc!.blocks.length,
+            attachments: plan.doc!.assets.length,
+            issues: plan.doc!.issues.length,
+            editability: assessEditability(plan.doc!.blocks).level,
+          },
+    );
+    if (opts.json) {
+      output({ mode: "batch-preview", spaceKey, parentId, items }, opts);
+    } else {
+      output(`Batch preview — ${files.length} file(s) → space ${spaceKey}:`, opts);
+      for (const item of items) {
+        if ("error" in item && item.error) {
+          output(`  ✗ ${item.file}: REJECTED — ${item.error}`, opts);
+        } else if ("title" in item) {
+          const editability = item.editability !== "ok" ? ` [editability: ${String(item.editability).toUpperCase()}]` : "";
+          output(
+            `  • ${item.file} → "${item.title}" (${item.pages} page(s), ${item.blocks} blocks, ${item.attachments} attachment(s), ${item.issues} issue(s))${editability}`,
+            opts,
+          );
+        }
+      }
+      output("\nDry preview only — nothing was published. Re-run with --confirm to import the batch.", opts);
+    }
+    return;
+  }
+
+  const client = new ConfluenceClient(profile!);
+  const spacePage = await client.listSpacesV2({ keys: [spaceKey], limit: 1 });
+  const space = spacePage.spaces.find((s) => s.key === spaceKey);
+  if (!space) {
+    fail(opts, 1, ERROR_CODES.API, `Space ${spaceKey} not found or not accessible.`, { spaceKey });
+  }
+
+  const results: BatchItemResult[] = [];
+  for (const plan of plans) {
+    if (plan.parseError || !plan.doc || !plan.title) {
+      results.push({ file: plan.file, status: "failed", error: plan.parseError ?? "unparsed" });
+      continue;
+    }
+    const titles: string[] = [];
+    if (plan.tree) collectTreeTitles(plan.tree, titles);
+    else titles.push(plan.title);
+
+    let conflict: string | undefined;
+    for (const t of titles) {
+      const matches = await client.findPagesByTitle(t, { spaceKey });
+      if (matches.length > 0) {
+        conflict = t;
+        break;
+      }
+    }
+    if (conflict) {
+      results.push(
+        skipExisting
+          ? { file: plan.file, title: plan.title, status: "skipped", error: `title "${conflict}" already exists` }
+          : { file: plan.file, title: plan.title, status: "failed", error: `title "${conflict}" already exists (use --skip-existing to resume past it)` },
+      );
+      continue;
+    }
+
+    const createdPageIds: string[] = [];
+    try {
+      const root = plan.tree
+        ? await publishTree(client, space.id, plan.tree, parentId, createdPageIds)
+        : await publishOnePage(client, space.id, plan.title, parentId, plan.doc.blocks, plan.doc.assets, createdPageIds);
+      results.push({
+        file: plan.file,
+        title: plan.title,
+        status: "created",
+        pages: createdPageIds.length,
+        rootPageId: root.id,
+        url: root.url,
+      });
+    } catch (err) {
+      for (const id of [...createdPageIds].reverse()) {
+        try {
+          await client.deletePage(id);
+        } catch {
+          // Recorded below; the batch keeps going either way.
+        }
+      }
+      results.push({ file: plan.file, title: plan.title, status: "failed", error: (err as Error).message });
+    }
+  }
+
+  const created = results.filter((r) => r.status === "created");
+  const skipped = results.filter((r) => r.status === "skipped");
+  const failed = results.filter((r) => r.status === "failed");
+
+  if (opts.json) {
+    output(
+      {
+        mode: "batch-published",
+        spaceKey,
+        summary: { created: created.length, skipped: skipped.length, failed: failed.length },
+        results,
+      },
+      opts,
+    );
+  } else {
+    for (const r of results) {
+      const mark = r.status === "created" ? "✓" : r.status === "skipped" ? "→" : "✗";
+      output(`  ${mark} ${r.file}: ${r.status}${r.pages ? ` (${r.pages} page(s))` : ""}${r.error ? ` — ${r.error}` : ""}`, opts);
+    }
+    output(`\nBatch done: ${created.length} created, ${skipped.length} skipped, ${failed.length} failed.`, opts);
+  }
+  if (failed.length > 0) {
+    process.exit(1);
+  }
+}
+
 interface PublishedPageReport {
   id: string;
   title: string;
@@ -398,6 +659,7 @@ function renderTree(plan: ImportPagePlan, depth: number): string {
 
 function importHelp(): string {
   return `atlcli wiki import <file.docx> [options]
+atlcli wiki import <dir-or-files…> [options]           (batch)
 atlcli wiki import --from-page <id> --attachment <name.docx> [options]
 
 Semantic DOCX import to a new Confluence Cloud page (review-first).
@@ -413,6 +675,7 @@ Options:
   --title <title>   Page title (default: first Heading 1, else file name)
   --parent <id>     Parent page id
   --split <1|2>     Split into a page tree at heading levels 1 (or 1+2)
+  --skip-existing   Batch: skip files whose titles already exist (resume)
   --confirm         Actually create the page(s)
   --profile <name>  Use a specific auth profile
   --json            JSON output

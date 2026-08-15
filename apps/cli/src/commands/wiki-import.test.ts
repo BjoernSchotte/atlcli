@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { handleWikiImport } from "./wiki-import.js";
 import {
   buildDocxFixture,
@@ -118,6 +118,59 @@ describe("wiki import (preview mode, offline)", () => {
         { space: "DOCSY", split: "1", json: true },
         { json: true },
       ).catch(() => {});
+      expect(exitCode).toBe(1);
+      expect(stdout.join("")).toContain("same title");
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
+  it("previews a directory batch with per-file summaries", async () => {
+    const batchDir = join(dir, "batch");
+    mkdirSync(batchDir);
+    writeFileSync(
+      join(batchDir, "b-second.docx"),
+      buildDocxFixture({ body: p(r("Second Doc"), { style: "Heading1" }) + p(r("text")) }),
+    );
+    writeFileSync(
+      join(batchDir, "a-first.docx"),
+      buildDocxFixture({ body: p(r("First Doc"), { style: "Heading1" }) }),
+    );
+    writeFileSync(join(batchDir, "broken.docx"), new TextEncoder().encode("not a zip"));
+
+    await handleWikiImport([batchDir], { space: "DOCSY", json: true }, { json: true });
+
+    const parsed = JSON.parse(stdout.join(""));
+    expect(parsed.mode).toBe("batch-preview");
+    // Sorted, deterministic order; the broken file is reported, not fatal.
+    expect(parsed.items.map((i: { file: string }) => basename(i.file))).toEqual([
+      "a-first.docx",
+      "b-second.docx",
+      "broken.docx",
+    ]);
+    expect(parsed.items[0].title).toBe("First Doc");
+    expect(parsed.items[1].pages).toBe(1);
+    expect(parsed.items[2].error).toContain("docx");
+  });
+
+  it("rejects a batch whose files would create the same title", async () => {
+    const batchDir = join(dir, "dupes");
+    mkdirSync(batchDir);
+    for (const name of ["one.docx", "two.docx"]) {
+      writeFileSync(
+        join(batchDir, name),
+        buildDocxFixture({ body: p(r("Same Title"), { style: "Heading1" }) }),
+      );
+    }
+    let exitCode: number | undefined;
+    const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    }) as never);
+    try {
+      await handleWikiImport([batchDir], { space: "DOCSY", json: true }, { json: true }).catch(
+        () => {},
+      );
       expect(exitCode).toBe(1);
       expect(stdout.join("")).toContain("same title");
     } finally {

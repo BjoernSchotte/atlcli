@@ -114,3 +114,19 @@ Fixture: 2,528-byte DOCX with an inline DrawingML picture (1×1 PNG,
 - Split-time duplicate titles and `--split` values outside 1|2 fail closed
   (unit-tested); tree-wide rollback deletes children before parents.
 - Cleanup: all 4 pages deleted; root and grandchild GETs returned **404**.
+
+## 2026-08-15 — Editability assessment (plan 003 slice) + batch import E2E (plan 010 slice)
+
+- Editability: `assessEditability` metrics (ADF bytes, node count, table
+  cells, images) with soft caution/risk budgets and a --split
+  recommendation; unit-tested against the budget boundaries; surfaced in
+  single, tree, and batch previews. Warn-only by design — the thresholds
+  are community-calibrated, not proven API limits.
+- Batch live E2E: directory with alpha/beta/gamma fixtures →
+  `wiki import <dir> --confirm` created 3 pages (`1198030866`,
+  `1197998116`, `1197801502`), summary `created: 3`.
+- Resume: identical re-run with `--skip-existing` reported
+  `skipped: 3, created: 0` — no duplicate content.
+- In-batch duplicate titles and unparsable files fail closed/degrade
+  gracefully (unit-tested with a broken fixture in the directory).
+- Cleanup: all 3 pages deleted; spot-check GET returned **404**.

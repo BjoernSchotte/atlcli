@@ -13,9 +13,9 @@ explicit `--confirm`.
 
 > **Scope.** DOCX import is under active development
 > (`specs/import-docx-mvp`). Current coverage: single pages, page-tree
-> splitting, and importing from Confluence attachments — Cloud only.
-> Batch imports, updating existing pages, and Data Center support are
-> planned follow-ups.
+> splitting, batch imports with resume, and importing from Confluence
+> attachments — Cloud only. Updating existing pages and Data Center
+> support are planned follow-ups.
 
 ## On this page
 
@@ -27,6 +27,7 @@ explicit `--confirm`.
 - [Importing from a Confluence attachment](#importing-from-a-confluence-attachment)
 - [Editability check](#editability-check)
 - [Splitting into a page tree](#splitting-into-a-page-tree)
+- [Batch import](#batch-import)
 - [Options](#options)
 - [Advanced example](#advanced-example)
 - [No silent loss: import issues](#no-silent-loss-import-issues)
@@ -173,6 +174,32 @@ Page tree (--split 2, 4 pages):
 - Publication is transactional: if any page of the tree fails, **all**
   pages created by the run are rolled back
 
+## Batch import
+
+Import a whole directory (all `.docx` directly inside, sorted) or several
+files at once — each file becomes its own page (or page tree with
+`--split`) under the same parent:
+
+```bash
+atlcli wiki import ./exports --space TEAM --parent 123456
+atlcli wiki import a.docx b.docx c.docx --space TEAM --confirm
+```
+
+The batch preview lists every file with its resolved title, page count,
+attachments, issues, and editability rating; files that fail to parse are
+reported without stopping the preview. Titles are taken from each document
+(`--title` is rejected in batch mode), and duplicate titles across the
+batch fail closed before anything is published.
+
+Each file publishes as its **own transaction**: a failure rolls back only
+that file's pages, is recorded in the result list, and the batch continues.
+The final report shows exact `created` / `skipped` / `failed` results and
+the command exits non-zero if anything failed.
+
+**Resuming:** re-run the same command with `--skip-existing` — files whose
+titles already exist in the space are skipped instead of failing, so an
+interrupted batch continues without duplicating verified content.
+
 ## Options
 
 | Option | Type | Default | Description |
@@ -183,6 +210,7 @@ Page tree (--split 2, 4 pages):
 | `--title <title>` | string | first H1, else file name | Page title |
 | `--parent <id>` | string | space root | Parent page id |
 | `--split <1\|2>` | number | off | Split into a page tree at heading levels 1 (or 1+2) |
+| `--skip-existing` | flag | off | Batch: skip files whose titles already exist (resume an interrupted batch) |
 | `--confirm` | flag | off | Actually create the page; without it the command only previews |
 | `--profile <name>` | string | active profile | Auth profile |
 | `--json` | flag | off | Machine-readable output (preview or publish report) |
