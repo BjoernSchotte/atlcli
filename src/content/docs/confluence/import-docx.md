@@ -29,6 +29,7 @@ explicit `--confirm`.
 - [Splitting into a page tree](#splitting-into-a-page-tree)
 - [Import policy: style mappings and options](#import-policy-style-mappings-and-options)
 - [Recipes: shared, versioned import conventions](#recipes-shared-versioned-import-conventions)
+- [Word comments](#word-comments)
 - [Visibility, staging, and metadata](#visibility-staging-and-metadata)
 - [Updating an existing page](#updating-an-existing-page)
 - [Batch import](#batch-import)
@@ -106,6 +107,7 @@ the document → the file name.
 | Quote / Intense Quote / Zitat paragraphs | Native blockquotes (consecutive paragraphs grouped) |
 | Code-styled paragraphs (Code, Source Code, HTML Preformatted) | Native code blocks (consecutive lines merged) |
 | Footnotes | Inline `[n]` markers plus an appended footnote section (numbered in reference order) |
+| Word comments (incl. replies and resolved state) | Native Confluence comments — inline on the exact commented text where the anchor resolves, footer otherwise |
 | Tracked insertions | Accepted into the content (with an info issue) |
 | Content controls (SDT) | Unwrapped to their plain content |
 | Word fields | Flattened to their cached display text |
@@ -285,6 +287,32 @@ atlcli wiki import recipe export --id company-handbook \
 - A recipe declaring `targets: [data-center]` is rejected before any
   preview — it cannot silently run against the wrong edition.
 
+## Word comments
+
+Word comments import as **native Confluence comments** (single-page imports
+and in-place updates):
+
+- The Confluence comment **actor is always you** (the authenticated
+  importer); the original Word author and date appear as a visible
+  attribution line at the top of each comment — no impersonation, no
+  name-to-account guessing.
+- A comment anchored to a text range becomes an **inline comment on the
+  exact same text**; if the anchor cannot be matched, it falls back to a
+  footer comment (with an info issue). Replies thread under their parent;
+  resolved Word threads arrive resolved.
+- `--comments auto|inline|footer|skip` controls the shape (default `auto`;
+  also available in recipes and override files as `options.comments`).
+- On `--update-page`, comments are **reconciled by source identity** from
+  the import baseline: existing threads keep their Confluence ids, new
+  Word comments (and new replies to existing threads) are added, and
+  imported comments whose Word source disappeared are deleted after
+  verification. Comments other people added on the page are never touched.
+- Commenting is not editing: inline-comment annotations are normalized out
+  of the update divergence check, so a colleague commenting on the page
+  does not block your next update.
+- Not yet covered: comments in `--split` page trees and plain batch mode
+  (reported as an explicit issue).
+
 ## Visibility, staging, and metadata
 
 Where imported content lands and **who can see it** is part of the reviewed
@@ -455,6 +483,7 @@ atlcli wiki import --manifest batch.yaml --confirm --resume # continue later
 | `--map-style <s>=<t>` | string, repeatable | — | Map a Word style to `paragraph`/`heading-1..6`/`blockquote`/`code` |
 | `--revisions <mode>` | string | `accept` | `accept` or `reject` tracked changes |
 | `--unsupported <mode>` | string | `report` | `fail` blocks confirmed publishes on lossy constructs |
+| `--comments <mode>` | string | `auto` | `auto`/`inline`/`footer`/`skip` Word-comment handling |
 | `--overrides <file>` | string | — | Policy file (`atlcli.docx-import-overrides/1`, YAML or JSON) |
 | `--recipe <file>` | string | — | Apply a recipe file (`atlcli.docx-import-recipe/1`) |
 | `--recipe-id <id>` | string | — | Apply a catalog recipe by id |

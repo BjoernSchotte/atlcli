@@ -115,11 +115,31 @@ export interface ImportIssue {
   context?: Record<string, string | number>;
 }
 
+/**
+ * A Word comment (or reply). The DOCX author is DOCUMENT ATTRIBUTION only —
+ * the Confluence comment actor is always the authenticated importer, and the
+ * original author appears as a visible attribution line (MVP §2.10).
+ */
+export interface ImportComment {
+  /** Source comment id from word/comments.xml. */
+  id: string;
+  author: string;
+  date?: string;
+  /** Plain text of the comment body (paragraphs joined by newlines). */
+  text: string;
+  resolved: boolean;
+  replies: ImportComment[];
+  /** Exact text of the commented range, when the range was resolvable. */
+  anchorText?: string;
+}
+
 export interface ImportedDocument {
   /** Title candidate derived from the first level-1 heading, if present. */
   titleCandidate?: string;
   blocks: ImportBlock[];
   /** Embedded binaries referenced by `image` blocks, in source order. */
   assets: ImportAsset[];
+  /** Word comments in document order (top-level; replies nested). */
+  comments: ImportComment[];
   issues: ImportIssue[];
 }

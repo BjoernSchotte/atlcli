@@ -43,6 +43,7 @@ import {
   splitDocument,
   type AdfMediaResolution,
   type ImportPagePlan,
+  type ImportComment,
   type ImportedDocument,
   type SplitResult,
 } from "@atlcli/import-docx";
@@ -316,7 +317,7 @@ export async function handleWikiImport(
   }
 
   if (updatePageId) {
-    await handleUpdateImport(updatePageId, doc, bytes, source, flags, opts, profile!, confirm);
+    await handleUpdateImport(updatePageId, doc, bytes, source, flags, opts, profile!, confirm, policy);
     return;
   }
 
@@ -344,6 +345,15 @@ export async function handleWikiImport(
     try {
       split = splitDocument(doc, { level: level as 1 | 2 | 3 | 4 | 5 | 6, rootTitle: title }, titleConflict);
       doc.issues.push(...split.issues);
+      if (doc.comments.length > 0) {
+        doc.issues.push({
+          code: "docx-import/comments-not-imported-in-split",
+          severity: "warning",
+          outcome: "reported",
+          message: "Word comments are not imported for --split page trees yet; import without --split to keep them.",
+          context: { occurrences: doc.comments.length },
+        });
+      }
     } catch (err) {
       if (err instanceof SplitTitleConflictError) {
         fail(opts, 1, ERROR_CODES.VALIDATION, err.message, { duplicates: err.duplicates });
@@ -387,6 +397,15 @@ export async function handleWikiImport(
       );
     } else {
       output(renderImportPreview(preview), opts);
+      if (doc.comments.length > 0) {
+        const anchored = doc.comments.filter((c) => c.anchorText).length;
+        const replies = doc.comments.reduce((sum, c) => sum + c.replies.length, 0);
+        output("", opts);
+        output(
+          `Comments: ${doc.comments.length} thread(s) (${anchored} anchored, ${replies} repl${replies === 1 ? "y" : "ies"}) — mode ${policy.options.comments}`,
+          opts,
+        );
+      }
       const policyLines = renderPolicySummary(policy);
       if (recipe.info) {
         output("", opts);
@@ -527,6 +546,7 @@ export async function handleWikiImport(
         {
           ...rootOptions,
           baseline: { sourceSha256, importPlanDigest: preview.adfDigest },
+          comments: { list: doc.comments, mode: policy.options.comments, issues: doc.issues },
         },
       );
     }
@@ -933,6 +953,7 @@ async function handleUpdateImport(
   opts: OutputOptions,
   profile: NonNullable<Awaited<ReturnType<typeof getActiveProfile>>>,
   confirm: boolean,
+  policy: ResolvedImportPolicy,
 ): Promise<void> {
   const client = new ConfluenceClient(profile);
   const current = await client.getPage(pageId);
@@ -968,7 +989,14 @@ async function handleUpdateImport(
   const currentBodyDigest = await digestAdfValue(currentAdfPage.body.value);
   const diverged = currentBodyDigest !== baseline.bodyDigest;
 
-  const inlineComments = await client.getInlineComments(pageId);
+  // Only FOREIGN inline comments gate the update — import-owned ones (bound
+  // in the baseline) are reconciled by this very run.
+  const ownedCommentIds = new Set(
+    (baseline.documentCommentBindings ?? []).map((b) => b.confluenceCommentId),
+  );
+  const inlineComments = (await client.getInlineComments(pageId)).filter(
+    (c) => !ownedCommentIds.has(c.id),
+  );
   const acceptAnchorLoss = hasFlag(flags, "accept-anchor-loss");
 
   const summary = {
@@ -1090,6 +1118,50 @@ async function handleUpdateImport(
       );
     }
 
+    // Comment reconciliation (plan 006 invariant 9): authoritative source
+    // ids from the baseline bindings only — never text/name matching.
+    const previousBindings = baseline.documentCommentBindings ?? [];
+    const flattenIds = (comments: ImportComment[]): string[] =>
+      comments.flatMap((c) => [c.id, ...c.replies.map((r) => r.id)]);
+    const currentIds = new Set(flattenIds(doc.comments));
+    const boundIds = new Set(previousBindings.map((b) => b.sourceCommentId));
+    const keptBindings = previousBindings.filter((b) => currentIds.has(b.sourceCommentId));
+    const orphanedBindings = previousBindings.filter((b) => !currentIds.has(b.sourceCommentId));
+
+    // New whole threads publish normally; new replies on bound threads
+    // attach to the existing Confluence comment.
+    const newThreads = doc.comments.filter((c) => !boundIds.has(c.id));
+    const newBindings =
+      newThreads.length > 0
+        ? await publishComments(client, pageId, newThreads, policy.options.comments, doc.issues)
+        : [];
+    const replyBindings: PublishedCommentBinding[] = [];
+    for (const thread of doc.comments) {
+      const parentBinding = previousBindings.find((b) => b.sourceCommentId === thread.id);
+      if (!parentBinding) continue;
+      for (const reply of thread.replies) {
+        if (boundIds.has(reply.id)) continue;
+        const created =
+          parentBinding.location === "inline"
+            ? await client.createInlineComment({
+                pageId,
+                body: commentStorageBody(reply),
+                textSelection: "",
+                parentCommentId: parentBinding.confluenceCommentId,
+              })
+            : await client.createFooterComment({
+                pageId,
+                body: commentStorageBody(reply),
+                parentCommentId: parentBinding.confluenceCommentId,
+              });
+        replyBindings.push({
+          sourceCommentId: reply.id,
+          confluenceCommentId: created.id,
+          location: parentBinding.location,
+        });
+      }
+    }
+
     // Seal the successor baseline before any destructive cleanup.
     const assetBindings = doc.assets.map((a) => ({
       sourceAssetId: a.id,
@@ -1103,8 +1175,26 @@ async function handleUpdateImport(
       bodyDigest: await digestAdfValue(readback.body.value),
       importedPageVersion: readback.version,
       assetBindings,
+      documentCommentBindings: [...keptBindings, ...newBindings, ...replyBindings],
     });
     await client.upsertPageProperty(pageId, BASELINE_PROPERTY_KEY, nextBaseline);
+
+    // Retire import-owned comments whose source comment disappeared —
+    // AFTER the successor baseline is sealed; a failed delete is an orphan
+    // warning, never a rollback. Native/user comments are never touched
+    // (only baseline-bound ids are candidates).
+    const orphanTopLevel = orphanedBindings.filter(
+      (b) => !orphanedBindings.some((other) => other !== b && other.confluenceCommentId === b.confluenceCommentId),
+    );
+    for (const binding of orphanTopLevel) {
+      try {
+        await client.deleteComment(binding.confluenceCommentId, binding.location);
+      } catch (err) {
+        orphanWarnings.push(
+          `orphaned imported comment ${binding.confluenceCommentId} (source ${binding.sourceCommentId}): ${(err as Error).message}`,
+        );
+      }
+    }
 
     // Delete superseded import-owned attachments AFTER everything verified;
     // a deletion failure is an explicit orphan warning, never a rollback.
@@ -1219,9 +1309,15 @@ export async function publishOnePage(
      * source bytes + the plan digest. Required for later in-place updates.
      */
     baseline?: { sourceSha256: string; importPlanDigest: string };
+    /** Publish imported Word comments after the body verifies (MVP §9.4). */
+    comments?: {
+      list: ImportComment[];
+      mode: "auto" | "inline" | "footer" | "skip";
+      issues: ImportedDocument["issues"];
+    };
   } = {},
 ): Promise<PublishedPageReport> {
-  const pageDoc: ImportedDocument = { blocks, assets, issues: [] };
+  const pageDoc: ImportedDocument = { blocks, assets, comments: [], issues: [] };
   const hasAssets = assets.length > 0;
   const useShell = hasAssets || options.forceShell === true;
   const page = await client.createPageAdf({
@@ -1250,10 +1346,148 @@ export async function publishOnePage(
     readbackValue = await verifyPageContent(client, page.id, title, adf);
   }
 
+  let commentBindings: PublishedCommentBinding[] = [];
+  if (options.comments && options.comments.list.length > 0) {
+    commentBindings = await publishComments(
+      client,
+      page.id,
+      options.comments.list,
+      options.comments.mode,
+      options.comments.issues,
+    );
+  }
   if (options.baseline) {
-    await sealBaseline(client, page.id, readbackValue, finalPage.version ?? 1, assets, options.baseline);
+    await sealBaseline(
+      client,
+      page.id,
+      readbackValue,
+      finalPage.version ?? 1,
+      assets,
+      options.baseline,
+      commentBindings,
+    );
   }
   return { id: finalPage.id, title: finalPage.title, url: finalPage.url, version: finalPage.version };
+}
+
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Storage body for an imported comment: attribution line + text (§2.10). */
+function commentStorageBody(comment: ImportComment): string {
+  const date = comment.date ? `, ${comment.date.slice(0, 10)}` : "";
+  const attribution = `<p><em>Imported DOCX comment — original author: ${escapeXml(comment.author)}${date}</em></p>`;
+  const body = comment.text
+    .split("\n")
+    .map((line) => `<p>${escapeXml(line)}</p>`)
+    .join("");
+  return attribution + body;
+}
+
+export interface PublishedCommentBinding {
+  sourceCommentId: string;
+  confluenceCommentId: string;
+  location: "inline" | "footer";
+}
+
+/**
+ * Publish imported Word comments onto a page (MVP §9.4, plan 006 comment
+ * reconciliation source). The comment ACTOR is the authenticated importer;
+ * original authorship is a visible attribution line. `auto` tries an inline
+ * comment on the exact anchored text and falls back to a footer comment
+ * with an issue when the anchor cannot be resolved; replies thread under
+ * their parent; resolved threads are re-resolved after creation.
+ */
+export async function publishComments(
+  client: ConfluenceClient,
+  pageId: string,
+  comments: ImportComment[],
+  mode: "auto" | "inline" | "footer" | "skip",
+  issues: ImportedDocument["issues"],
+): Promise<PublishedCommentBinding[]> {
+  const bindings: PublishedCommentBinding[] = [];
+  if (mode === "skip") {
+    if (comments.length > 0) {
+      issues.push({
+        code: "docx-import/comments-skipped",
+        severity: "warning",
+        outcome: "reported",
+        message: `Comments were skipped by policy (comments=skip).`,
+        context: { occurrences: comments.length },
+      });
+    }
+    return bindings;
+  }
+
+  for (const comment of comments) {
+    let location: "inline" | "footer" = "footer";
+    let created: { id: string } | undefined;
+
+    const wantInline = (mode === "auto" || mode === "inline") && !!comment.anchorText;
+    if (wantInline) {
+      try {
+        created = await client.createInlineComment({
+          pageId,
+          body: commentStorageBody(comment),
+          textSelection: comment.anchorText!,
+        });
+        location = "inline";
+      } catch (err) {
+        if (mode === "inline") {
+          throw new Error(
+            `inline comment for source comment ${comment.id} failed (anchor "${comment.anchorText}"): ${(err as Error).message}`,
+          );
+        }
+        issues.push({
+          code: "docx-import/comment-anchor-unresolved",
+          severity: "info",
+          outcome: "approximated",
+          message: `Comment anchor could not be matched on the page; the comment was imported as a footer comment.`,
+          context: { sourceCommentId: comment.id },
+        });
+      }
+    } else if (mode === "inline" && !comment.anchorText) {
+      issues.push({
+        code: "docx-import/comment-anchor-missing",
+        severity: "info",
+        outcome: "approximated",
+        message: "Comment has no anchored text range; imported as a footer comment.",
+        context: { sourceCommentId: comment.id },
+      });
+    }
+    if (!created) {
+      created = await client.createFooterComment({ pageId, body: commentStorageBody(comment) });
+      location = "footer";
+    }
+    bindings.push({ sourceCommentId: comment.id, confluenceCommentId: created.id, location });
+
+    for (const reply of comment.replies) {
+      const replyCreated =
+        location === "inline"
+          ? await client.createInlineComment({
+              pageId,
+              body: commentStorageBody(reply),
+              textSelection: "",
+              parentCommentId: created.id,
+            })
+          : await client.createFooterComment({
+              pageId,
+              body: commentStorageBody(reply),
+              parentCommentId: created.id,
+            });
+      bindings.push({ sourceCommentId: reply.id, confluenceCommentId: replyCreated.id, location });
+    }
+
+    if (comment.resolved) {
+      await client.resolveComment(created.id, location);
+    }
+  }
+  return bindings;
 }
 
 /** Read back a page and verify its block sequence against the plan. */
@@ -1288,7 +1522,7 @@ export async function finalizePageContent(
   assets: ImportedDocument["assets"],
   encode: { anchors?: ReadonlyMap<string, string> },
 ): Promise<{ page: PublishedPageReport; readbackValue: string }> {
-  const pageDoc: ImportedDocument = { blocks, assets, issues: [] };
+  const pageDoc: ImportedDocument = { blocks, assets, comments: [], issues: [] };
   let media: Map<string, AdfMediaResolution> | undefined;
   if (assets.length > 0) {
     for (const asset of assets) {
@@ -1331,6 +1565,7 @@ async function sealBaseline(
   pageVersion: number | undefined,
   assets: ImportedDocument["assets"],
   seed: { sourceSha256: string; importPlanDigest: string },
+  commentBindings: PublishedCommentBinding[] = [],
 ): Promise<void> {
   const bodyDigest = await digestAdfValue(readbackAdfValue);
   const assetBindings = await Promise.all(
@@ -1347,6 +1582,7 @@ async function sealBaseline(
     bodyDigest,
     importedPageVersion: pageVersion ?? 1,
     assetBindings,
+    documentCommentBindings: commentBindings,
   });
   await client.upsertPageProperty(pageId, BASELINE_PROPERTY_KEY, baseline);
   const stored = await client.getPagePropertyByKey(pageId, BASELINE_PROPERTY_KEY);

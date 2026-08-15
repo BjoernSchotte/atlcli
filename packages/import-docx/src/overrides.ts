@@ -38,6 +38,11 @@ export interface DocxImportOptionsV1 {
   revisions?: "accept" | "reject";
   /** fail = any reported-outcome warning blocks a confirmed publication. */
   unsupported?: "report" | "fail";
+  /**
+   * Word-comment handling: auto = inline where the anchor resolves, footer
+   * otherwise; inline/footer force one shape; skip drops them (reported).
+   */
+  comments?: "auto" | "inline" | "footer" | "skip";
 }
 
 export interface DocxImportOverridesV1 {
@@ -65,6 +70,7 @@ export interface PolicyLayerInput {
 const DEFAULT_OPTIONS: Required<DocxImportOptionsV1> = {
   revisions: "accept",
   unsupported: "report",
+  comments: "auto",
 };
 
 function validateLayer(
@@ -85,6 +91,11 @@ function validateLayer(
     if (layer.options.unsupported !== "report" && layer.options.unsupported !== "fail") {
       errors.push(`${source}: options.unsupported must be report|fail (got "${layer.options.unsupported}").`);
     } else options.unsupported = layer.options.unsupported;
+  }
+  if (layer.options?.comments !== undefined) {
+    if (!["auto", "inline", "footer", "skip"].includes(layer.options.comments)) {
+      errors.push(`${source}: options.comments must be auto|inline|footer|skip (got "${layer.options.comments}").`);
+    } else options.comments = layer.options.comments;
   }
   for (const [rawKey, rawTarget] of Object.entries(layer.styleMappings ?? {})) {
     const key = rawKey.trim().toLowerCase();
@@ -127,6 +138,7 @@ export function resolveImportPolicy(layers: {
     provenance: {
       "options.revisions": "default",
       "options.unsupported": "default",
+      "options.comments": "default",
     },
   };
 
@@ -145,13 +157,15 @@ export function resolveImportPolicy(layers: {
   // Layer order = precedence order; later layers overwrite earlier ones.
   applyOption("revisions", "recipe", recipe.options.revisions);
   applyOption("unsupported", "recipe", recipe.options.unsupported);
+  applyOption("comments", "recipe", recipe.options.comments);
   applyStyles(recipe.styleMappings, "recipe");
   applyOption("revisions", "cli", cli.options.revisions);
   applyOption("unsupported", "cli", cli.options.unsupported);
+  applyOption("comments", "cli", cli.options.comments);
   applyStyles(cli.styleMappings, "cli");
 
   // The two explicit layers must not contradict each other (rule 4).
-  for (const key of ["revisions", "unsupported"] as const) {
+  for (const key of ["revisions", "unsupported", "comments"] as const) {
     const a = cli.options[key];
     const b = overrideFile.options[key];
     if (a !== undefined && b !== undefined && a !== b) {
@@ -170,6 +184,7 @@ export function resolveImportPolicy(layers: {
   }
   applyOption("revisions", "override-file", overrideFile.options.revisions);
   applyOption("unsupported", "override-file", overrideFile.options.unsupported);
+  applyOption("comments", "override-file", overrideFile.options.comments);
   applyStyles(overrideFile.styleMappings, "override-file");
 
   return { policy, errors };
@@ -178,7 +193,7 @@ export function resolveImportPolicy(layers: {
 /** Non-default decisions as human lines, e.g. for the preview. */
 export function renderPolicySummary(policy: ResolvedImportPolicy): string[] {
   const lines: string[] = [];
-  for (const key of ["revisions", "unsupported"] as const) {
+  for (const key of ["revisions", "unsupported", "comments"] as const) {
     const source = policy.provenance[`options.${key}`];
     if (source !== "default") lines.push(`${key}: ${policy.options[key]} (${source})`);
   }

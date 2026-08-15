@@ -4300,16 +4300,13 @@ export class ConfluenceClient {
       parentCommentId,
     } = params;
 
-    // API requires exactly ONE of pageId or parentCommentId, not both
+    // API requires exactly ONE of pageId or parentCommentId, not both.
+    // Replies inherit the parent's anchor — inlineCommentProperties are only
+    // valid on top-level inline comments.
     const requestBody: Record<string, unknown> = {
       body: {
         representation: "storage",
         value: body,
-      },
-      inlineCommentProperties: {
-        textSelection,
-        textSelectionMatchCount,
-        textSelectionMatchIndex,
       },
     };
 
@@ -4317,6 +4314,11 @@ export class ConfluenceClient {
       requestBody.parentCommentId = parentCommentId;
     } else {
       requestBody.pageId = pageId;
+      requestBody.inlineCommentProperties = {
+        textSelection,
+        textSelectionMatchCount,
+        textSelectionMatchIndex,
+      };
     }
 
     const data = (await this.requestV2("/inline-comments", {

@@ -7,7 +7,7 @@ describe("resolveImportPolicy", () => {
   it("resolves defaults with default provenance", () => {
     const { policy, errors } = resolveImportPolicy({});
     expect(errors).toEqual([]);
-    expect(policy.options).toEqual({ revisions: "accept", unsupported: "report" });
+    expect(policy.options).toEqual({ revisions: "accept", unsupported: "report", comments: "auto" });
     expect(policy.provenance["options.revisions"]).toBe("default");
     expect(renderPolicySummary(policy)).toEqual([]);
   });

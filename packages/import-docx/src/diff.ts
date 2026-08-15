@@ -7,7 +7,7 @@
  * content changes. LCS alignment; adjacent remove/add pairs of the same
  * node type collapse into "changed".
  */
-import { canonicalJson } from "./baseline.js";
+import { canonicalJson, stripAdfAnnotations } from "./baseline.js";
 import type { AdfNode } from "./adf.js";
 
 export interface SemanticDiffEntry {
@@ -41,7 +41,7 @@ function normalizeNode(node: AdfNode): AdfNode {
 }
 
 function blockKey(node: AdfNode): string {
-  return canonicalJson(normalizeNode(node));
+  return canonicalJson(stripAdfAnnotations(normalizeNode(node)));
 }
 
 function blockText(node: AdfNode): string {

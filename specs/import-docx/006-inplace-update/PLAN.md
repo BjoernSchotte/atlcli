@@ -1,6 +1,6 @@
 # Plan 006: Safely update one previously imported Confluence page in place
 
-Status: **Implemented (Cloud full form, slice-scoped comments)** — see EVIDENCE notes in specs/import-docx-mvp/EVIDENCE.md
+Status: **Implemented (Cloud full form incl. comment import/reconciliation)** — see EVIDENCE notes in specs/import-docx-mvp/EVIDENCE.md
 
 Planned at: `18f6f1e`, 2026-07-20
 
@@ -169,7 +169,7 @@ Acceptance:
 ### Task 1 — Strengthen baseline provenance
 
 - [x] Write/read/validate `ImportedPageBaselineV1` during normal MVP creation without changing create semantics. *(Sealed as `atlcli.import.baseline` page property with readback verification after every single-page publish.)*
-- [x] Include exact imported asset/comment bindings and target version. *(Asset bindings with sha256 + remote filename; comment bindings wait for comment import.)*
+- [x] Include exact imported asset/comment bindings and target version. *(Asset bindings with sha256 + remote filename; documentCommentBindings with source id, Confluence id, and location.)*
 - [ ] Add recovery from bounded page manifest only where authoritative property support is unavailable; visible marker alone is insufficient.
 
 Acceptance/tests:
@@ -181,7 +181,7 @@ Acceptance/tests:
 
 - [x] Diff target-neutral projections with stable node/source IDs where available and deterministic fallback matching. *(LCS over canonicalized blocks with media identities normalized away.)*
 - [x] Plan reuse/upload/retire actions by digest and ownership. *(Unchanged-sha skip, upload changed/new, retire superseded after verify.)*
-- [ ] Plan comment preserve/reanchor/recreate/block outcomes with exact reason codes.
+- [x] Plan comment preserve/reanchor/recreate/block outcomes with exact reason codes. *(Bound threads preserved by id, new threads/replies created, orphaned imported comments retired post-verify, foreign inline comments gate with --accept-anchor-loss.)*
 - [ ] Bind current version/state/baseline/new plan/diff/actions into approval digest.
 
 Acceptance/tests:
@@ -193,7 +193,7 @@ Acceptance/tests:
 ### Task 3 — Implement existing-page transaction
 
 - [x] Re-read version/state before mutation.
-- [x] Upload new assets, update body with version precondition, reconcile imported comments/provenance, verify semantics/metadata, then retire old import-owned resources. *(Comment reconciliation n/a until comment import exists.)*
+- [x] Upload new assets, update body with version precondition, reconcile imported comments/provenance, verify semantics/metadata, then retire old import-owned resources.
 - [x] On failure, restore prior body through a new version and clean only resources created by this run.
 - [ ] Report `updated`, `restored`, or `partial`; never `rolled-back` as if history were erased.
 
@@ -201,7 +201,7 @@ Acceptance/tests:
 
 - [ ] Failure injection at every step proves exact surviving state/IDs.
 - [x] Concurrent edit yields zero overwrite. *(Live: tampered page → target-diverged, version untouched.)*
-- [ ] Unknown attachment/comment/label/restriction survives.
+- [x] Unknown attachment/comment/label/restriction survives. *(Only baseline-bound comment/attachment ids are ever retired; live-proven.)*
 - [ ] Cleanup never selects by title/filename alone.
 
 ### Task 4 — CLI, Cloud E2E, DC contracts, docs

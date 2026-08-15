@@ -7,6 +7,7 @@
 export type {
   ImportAsset,
   ImportBlock,
+  ImportComment,
   ImportImageBlock,
   ImportIssue,
   ImportIssueOutcome,
@@ -36,8 +37,10 @@ export {
   buildBaseline,
   canonicalJson,
   digestAdfValue,
+  stripAdfAnnotations,
   validateBaseline,
   type BaselineAssetBinding,
+  type BaselineCommentBinding,
   type ImportedPageBaselineV1,
 } from "./baseline.js";
 export {

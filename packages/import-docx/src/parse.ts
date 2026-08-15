@@ -20,6 +20,7 @@ import type {
   ImportRunMarks,
   ImportTableRow,
   ImportedDocument,
+  ImportComment,
 } from "./model.js";
 import { attr, childElements, firstChild, parseXmlTree, textContent, type XmlElement } from "./xml.js";
 import type { StyleMappingTarget } from "./overrides.js";
@@ -48,13 +49,7 @@ const IMAGE_MEDIA_TYPES: Record<string, string> = {
 const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 
 /** Paragraph-level children that are markers/metadata, not content. */
-const IGNORED_PARAGRAPH_MARKERS = new Set([
-  "pPr",
-  "bookmarkEnd",
-  "proofErr",
-  "commentRangeStart",
-  "commentRangeEnd",
-]);
+const IGNORED_PARAGRAPH_MARKERS = new Set(["pPr", "bookmarkEnd", "proofErr"]);
 
 /** Body-level children that are layout/metadata, not content. */
 const IGNORED_BODY_MARKERS = new Set(["sectPr", "bookmarkEnd", "proofErr"]);
@@ -84,6 +79,10 @@ interface ParseContext {
   pendingImages: ImportImageBlock[];
   /** Bookmark names awaiting attachment to the next produced block. */
   pendingBookmarks: string[];
+  /** Comment ranges currently open (id → text collected so far). */
+  openCommentAnchors: Map<string, string>;
+  /** Finished comment ranges (id → exact anchored text). */
+  commentAnchors: Map<string, string>;
   /** footnote id → `<w:footnote>` element from word/footnotes.xml. */
   footnotes: Map<string, XmlElement>;
   /** Footnote ids in first-reference order (1-based numbering source). */
@@ -534,13 +533,6 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
         break;
       }
       case "commentReference":
-        report(
-          ctx,
-          "docx-import/comment-dropped",
-          "warning",
-          "reported",
-          "Word comments are not imported by this slice.",
-        );
         break;
       case "smartTag":
         runs.push(...parseRuns(child, ctx, inherited));
@@ -548,6 +540,19 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
       case "bookmarkStart": {
         const name = attr(child, "name", W_NS);
         if (name && !name.startsWith("_GoBack")) ctx.pendingBookmarks.push(name);
+        break;
+      }
+      case "commentRangeStart": {
+        const id = attr(child, "id", W_NS);
+        if (id) ctx.openCommentAnchors.set(id, "");
+        break;
+      }
+      case "commentRangeEnd": {
+        const id = attr(child, "id", W_NS);
+        if (id && ctx.openCommentAnchors.has(id)) {
+          ctx.commentAnchors.set(id, ctx.openCommentAnchors.get(id)!.trim());
+          ctx.openCommentAnchors.delete(id);
+        }
         break;
       }
       default:
@@ -582,12 +587,21 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
   const cleaned: ImportRunMarks | undefined =
     marks.bold || marks.italic || marks.code || marks.link || marks.anchorLink ? marks : undefined;
 
+  const appendToOpenAnchors = (text: string): void => {
+    for (const [id, collected] of ctx.openCommentAnchors) {
+      ctx.openCommentAnchors.set(id, collected + text);
+    }
+  };
+
   const runs: ImportRun[] = [];
   for (const child of childElements(run)) {
     switch (child.local) {
-      case "t":
-        runs.push({ kind: "text", text: textContent(child), marks: cleaned });
+      case "t": {
+        const text = textContent(child);
+        appendToOpenAnchors(text);
+        runs.push({ kind: "text", text, marks: cleaned });
         break;
+      }
       case "br":
         runs.push({ kind: "hard-break" });
         break;
@@ -619,13 +633,8 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
         runs.push({ kind: "text", text: textContent(child), marks: cleaned });
         break;
       case "commentReference":
-        report(
-          ctx,
-          "docx-import/comment-dropped",
-          "warning",
-          "reported",
-          "Word comments are not imported by this slice.",
-        );
+        // Comments are imported via word/comments.xml (parseComments); the
+        // inline reference marker itself produces no page content.
         break;
       case "footnoteReference": {
         const id = attr(child, "id", W_NS);
@@ -668,6 +677,92 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
     }
   }
   return runs;
+}
+
+const W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml";
+const W15_NS = "http://schemas.microsoft.com/office/word/2012/wordml";
+
+/**
+ * Parse word/comments.xml (+ optional word/commentsExtended.xml for reply
+ * threading and resolved state) into the comment tree. Thread metadata maps
+ * through the LAST paragraph's `w14:paraId` of each comment body — the
+ * documented `commentsExtended` join key.
+ */
+function parseComments(
+  commentsXml: string | undefined,
+  commentsExtendedXml: string | undefined,
+  anchors: Map<string, string>,
+  ctx: ParseContext,
+): ImportComment[] {
+  if (!commentsXml) return [];
+  const root = parseXmlTree(commentsXml);
+
+  interface RawComment {
+    comment: ImportComment;
+    /** w14:paraId of the last body paragraph (commentsExtended join key). */
+    lastParaId?: string;
+  }
+  const raw: RawComment[] = [];
+  for (const el of childElements(root)) {
+    if (el.local !== "comment") continue;
+    const id = attr(el, "id", W_NS);
+    if (!id) continue;
+    const paragraphs = childElements(el).filter((c) => c.local === "p");
+    const text = paragraphs
+      .map((p) => textContent(p).trim())
+      .filter(Boolean)
+      .join("\n");
+    const last = paragraphs[paragraphs.length - 1];
+    raw.push({
+      comment: {
+        id,
+        author: attr(el, "author", W_NS) ?? "unknown",
+        ...(attr(el, "date", W_NS) ? { date: attr(el, "date", W_NS) } : {}),
+        text,
+        resolved: false,
+        replies: [],
+        ...(anchors.has(id) && anchors.get(id) ? { anchorText: anchors.get(id) } : {}),
+      },
+      lastParaId: last ? attr(last, "paraId", W14_NS) : undefined,
+    });
+  }
+  if (raw.length === 0) return [];
+
+  // Thread metadata: paraId → { parentParaId, done }.
+  const threads = new Map<string, { parent?: string; done: boolean }>();
+  if (commentsExtendedXml) {
+    const extRoot = parseXmlTree(commentsExtendedXml);
+    for (const el of childElements(extRoot)) {
+      if (el.local !== "commentEx") continue;
+      const paraId = attr(el, "paraId", W15_NS);
+      if (!paraId) continue;
+      threads.set(paraId, {
+        parent: attr(el, "paraIdParent", W15_NS),
+        done: attr(el, "done", W15_NS) === "1",
+      });
+    }
+  } else {
+    report(
+      ctx,
+      "docx-import/comment-threads-unavailable",
+      "info",
+      "approximated",
+      "commentsExtended.xml is missing; comments import unthreaded and unresolved.",
+    );
+  }
+
+  const byParaId = new Map<string, RawComment>();
+  for (const item of raw) if (item.lastParaId) byParaId.set(item.lastParaId, item);
+
+  const topLevel: ImportComment[] = [];
+  for (const item of raw) {
+    const thread = item.lastParaId ? threads.get(item.lastParaId) : undefined;
+    if (thread?.done) item.comment.resolved = true;
+    const parent = thread?.parent ? byParaId.get(thread.parent) : undefined;
+    if (parent && parent !== item) parent.comment.replies.push(item.comment);
+    else topLevel.push(item.comment);
+  }
+  return topLevel;
 }
 
 /** Parse word/footnotes.xml into id → footnote element (separators skipped). */
@@ -988,6 +1083,8 @@ export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): Impo
     },
     pendingImages: [],
     pendingBookmarks: [],
+    openCommentAnchors: new Map(),
+    commentAnchors: new Map(),
     footnotes: parseFootnotes(readOptional("word/footnotes.xml")),
     footnoteRefs: [],
     reported: new Map(),
@@ -1055,5 +1152,12 @@ export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): Impo
       : firstH1Text
     : undefined;
 
-  return { titleCandidate, blocks, assets: [...ctx.assets.values()], issues: ctx.issues };
+  const comments = parseComments(
+    readOptional("word/comments.xml"),
+    readOptional("word/commentsExtended.xml"),
+    ctx.commentAnchors,
+    ctx,
+  );
+
+  return { titleCandidate, blocks, assets: [...ctx.assets.values()], comments, issues: ctx.issues };
 }

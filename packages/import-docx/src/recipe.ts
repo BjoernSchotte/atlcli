@@ -33,7 +33,7 @@ const MAX_STRING = 512;
 const TOP_LEVEL_KEYS = new Set([
   "schema", "id", "version", "title", "description", "targets", "options", "overrides", "metadata",
 ]);
-const OPTION_KEYS = new Set(["revisions", "unsupported"]);
+const OPTION_KEYS = new Set(["revisions", "unsupported", "comments"]);
 const OVERRIDE_KEYS = new Set(["styleMappings"]);
 const METADATA_KEYS = new Set(["owners", "documentationUrl", "tags"]);
 

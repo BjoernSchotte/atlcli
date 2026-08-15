@@ -103,17 +103,15 @@ describe("parseDocx", () => {
     expect(doc.issues.some((i) => i.code === "docx-import/nested-table-flattened")).toBe(true);
   });
 
-  it("reports empty drawings, comments, and deletions instead of silently dropping them", () => {
+  it("reports empty drawings and deletions instead of silently dropping them", () => {
     const bytes = buildDocxFixture({
       body:
         p(`<w:r><w:drawing/></w:r>` + r("text")) +
-        p(`<w:r><w:commentReference w:id="1"/></w:r>`) +
         p(`<w:del><w:r><w:delText>gone</w:delText></w:r></w:del>` + r("kept")),
     });
     const doc = parseDocx(bytes);
     const codes = doc.issues.map((i) => i.code);
     expect(codes).toContain("docx-import/drawing-without-image");
-    expect(codes).toContain("docx-import/comment-dropped");
     expect(codes).toContain("docx-import/revision-deletion-dropped");
     // Deleted text must not appear anywhere in the parsed content.
     expect(JSON.stringify(doc.blocks)).not.toContain("gone");

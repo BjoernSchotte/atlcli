@@ -40,6 +40,42 @@ describe("baseline", () => {
     expect((await validateBaseline({ schema: "other/1" }, "123")).reason).toContain("unknown baseline schema");
   });
 
+  it("digestAdfValue normalizes inline-comment annotations and text segmentation", async () => {
+    // Sealed at publish time: one merged text node, no annotations.
+    const sealed = JSON.stringify({
+      version: 1,
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Revenue grew to 42 million." }] },
+      ],
+    });
+    // After someone adds an inline comment: Confluence splits the text node
+    // and adds an annotation mark. That is commenting, not editing.
+    const annotated = JSON.stringify({
+      version: 1,
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Revenue grew to " },
+            {
+              type: "text",
+              text: "42 million",
+              marks: [{ type: "annotation", attrs: { annotationType: "inlineComment", id: "x" } }],
+            },
+            { type: "text", text: "." },
+          ],
+        },
+      ],
+    });
+    expect(await digestAdfValue(annotated)).toBe(await digestAdfValue(sealed));
+
+    // A REAL edit still changes the digest.
+    const edited = sealed.replace("42 million", "43 million");
+    expect(await digestAdfValue(edited)).not.toBe(await digestAdfValue(sealed));
+  });
+
   it("digestAdfValue is stable across key order and whitespace", async () => {
     const a = await digestAdfValue('{"type":"doc","version":1,"content":[]}');
     const b = await digestAdfValue('{\n  "version": 1,\n  "content": [],\n  "type": "doc"\n}');

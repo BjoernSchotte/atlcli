@@ -56,7 +56,7 @@ function countByType(nodes: AdfNode[], types: readonly string[]): number {
 
 /** Assess the page a given block list would publish as. */
 export function assessEditability(blocks: ImportBlock[]): EditabilityAssessment {
-  const doc: ImportedDocument = { blocks, assets: [], issues: [] };
+  const doc: ImportedDocument = { blocks, assets: [], comments: [], issues: [] };
   const adf = documentToAdf(doc);
   const adfBytes = new TextEncoder().encode(JSON.stringify(adf)).byteLength;
   const nodeCount = countNodes(adf.content);

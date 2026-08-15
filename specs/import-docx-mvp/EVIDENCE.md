@@ -276,3 +276,30 @@ Proof matrix (plan §6), all pages deleted afterwards with a verified 404:
   --resume (unit-tested).
 - Cleanup: all batch pages incl. staging root and folder page deleted;
   staging-root title search returned 0.
+
+## 2026-08-15 — Word-comment import + plan 006 comment reconciliation, live Cloud
+
+- Parser: word/comments.xml + commentsExtended.xml (replies via
+  w14:paraId → w15:paraIdParent, resolved via w15:done), comment range
+  anchors collected as exact text between commentRangeStart/End. Policy
+  option comments=auto|inline|footer|skip in CLI, recipes, overrides.
+- Import (page `1198194823`): anchored comment → INLINE comment on
+  exactly "42 million euros" with visible attribution "original author:
+  Alice Autor, 2026-02-01", threaded reply (Bob), resolved footer
+  comment (Carol). All three bindings sealed into the baseline.
+- Reconciliation update (v2 DOCX: Carol removed, Erin new, Dave = new
+  reply on Alice's thread): Alice's thread KEPT the same Confluence id,
+  Dave attached as reply 2 to the existing inline thread, Carol's
+  imported comment was deleted post-verify, Erin created as footer;
+  bindings updated to sources 1,2,4,5. Foreign comments untouched by
+  construction (only baseline-bound ids are candidates).
+- Two real findings fixed by this E2E: (1) creating an inline comment
+  REWRITES the page body (annotation marks + text-node splits) — the
+  divergence digest and semantic diff now strip annotations and re-merge
+  adjacent equal-marked text nodes ("commenting is not editing",
+  invariant-3 safe normalization, regression-tested); (2) the
+  inline-comment anchor-loss gate now exempts import-owned (baseline-
+  bound) comments and gates only foreign ones.
+- Client fix: inlineCommentProperties are only sent on top-level inline
+  comments (replies inherit the parent anchor).
+- Cleanup: page deleted; follow-up GET returned **404**.
