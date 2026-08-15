@@ -941,6 +941,12 @@ export declare class ConfluenceClient {
         version: number;
     }>;
     getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
+    getPageProperty(pageId: string, key: string): Promise<{
+        id: string;
+        version: number;
+        value: unknown;
+    } | undefined>;
+    upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -4299,6 +4305,12 @@ export declare class ConfluenceClient {
         version: number;
     }>;
     getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
+    getPageProperty(pageId: string, key: string): Promise<{
+        id: string;
+        version: number;
+        value: unknown;
+    } | undefined>;
+    upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -7657,6 +7669,12 @@ export declare class ConfluenceClient {
         version: number;
     }>;
     getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
+    getPageProperty(pageId: string, key: string): Promise<{
+        id: string;
+        version: number;
+        value: unknown;
+    } | undefined>;
+    upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -10712,6 +10730,12 @@ export declare class ConfluenceClient {
         version: number;
     }>;
     getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
+    getPageProperty(pageId: string, key: string): Promise<{
+        id: string;
+        version: number;
+        value: unknown;
+    } | undefined>;
+    upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -14466,6 +14490,12 @@ export declare class ConfluenceClient {
         version: number;
     }>;
     getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
+    getPageProperty(pageId: string, key: string): Promise<{
+        id: string;
+        version: number;
+        value: unknown;
+    } | undefined>;
+    upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -17019,6 +17049,12 @@ export declare class ConfluenceClient {
         version: number;
     }>;
     getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
+    getPageProperty(pageId: string, key: string): Promise<{
+        id: string;
+        version: number;
+        value: unknown;
+    } | undefined>;
+    upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
