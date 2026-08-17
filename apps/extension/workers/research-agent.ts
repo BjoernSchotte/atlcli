@@ -52,6 +52,10 @@ import {
   appendLocalGemmaPerformanceSamplesV1,
   type LocalGemmaPerformanceSampleV1,
 } from "../utils/local-model/performance.js";
+import {
+  BROWSER_CHAT_CALLER_PATH_WORKER_V1,
+  isBrowserChatCallerPathV1,
+} from "../utils/local-model/caller-path.js";
 
 function post(message: ResearchWorkerResponseV1): void {
   globalThis.postMessage(message);
@@ -165,6 +169,15 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   void (async () => {
     try {
       if (!resume && "mode" in message && message.mode === "chat") {
+        if (message.modelBinding?.kind === "local-gemma" && !isBrowserChatCallerPathV1(
+          message.callerPath,
+          BROWSER_CHAT_CALLER_PATH_WORKER_V1,
+        )) {
+          throw new ResearchContractError(
+            "invalid-request",
+            "The browser Chat run did not cross the research-worker boundary.",
+          );
+        }
         if (!("request" in message)) {
           throw new ResearchContractError("invalid-request", "A direct chat run requires a request.");
         }
@@ -242,7 +255,10 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
                     modelId: message.modelBinding.modelId,
                     maxOutputTokens: request.limits.maxModelOutputTokens,
                     onPerformanceSample: (sample) => {
-                      localPerformanceSamples.push(sample);
+                      localPerformanceSamples.push({
+                        ...sample,
+                        callerPath: BROWSER_CHAT_CALLER_PATH_WORKER_V1,
+                      });
                       console.info("[local-gemma/performance] inference sample", sample);
                     },
                   }),

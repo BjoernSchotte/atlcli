@@ -10,6 +10,7 @@ import type {
   ResearchScopePreflightOutcomeV1,
   ResearchSessionScopeReviewV1,
 } from "@atlcli/research";
+import { BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1 } from "../utils/local-model/caller-path.js";
 import {
   CHAT_USER_QUESTION_SCHEMA_V1,
   ChatUserQuestionRequiredError,
@@ -241,6 +242,7 @@ describe("routeMessage (pure router)", () => {
       turnId: "research-turn:run-1",
       windowId: 7,
       mode: "chat",
+      callerPath: BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1,
       request,
       policy,
       qualityPolicy,
@@ -253,6 +255,7 @@ describe("routeMessage (pure router)", () => {
         _turnId,
         _windowId,
         mode,
+        _callerPath,
         _request,
         receivedPolicy,
         receivedQuality,
@@ -383,6 +386,7 @@ describe("routeMessage (pure router)", () => {
       turnId: "research-turn:hitl",
       windowId: 7,
       mode: "chat",
+      callerPath: BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1,
       request: { schema: "atlcli.research-request/v1" } as ResearchRequestV1,
       hostIdentity: {
         userId: "browser-principal:hitl",

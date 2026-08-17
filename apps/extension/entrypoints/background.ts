@@ -55,6 +55,12 @@ import {
 import { normalizeAnthropicApiKey } from "../utils/research/credential.js";
 import { profileFromTabUrl } from "../utils/profile.js";
 import {
+  BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1,
+  BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1,
+  isBrowserChatCallerPathV1,
+  type BrowserChatCallerPathSidepanelV1,
+} from "../utils/local-model/caller-path.js";
+import {
   ResearchScopeCatalogBroker,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
   approveResearchScopeExpansionV1,
@@ -576,6 +582,7 @@ export default defineBackground({
     turnId: string,
     windowId: number,
     mode: "chat" | "research",
+    callerPath: BrowserChatCallerPathSidepanelV1 | undefined,
     value: ResearchRequestV1,
     policyValue?: ResearchOneShotPolicyV1,
     qualityPolicyValue?: ChatQualityPolicyV1,
@@ -585,6 +592,15 @@ export default defineBackground({
       kind: "stream-interruption" | "steering";
     },
   ) => {
+    if (mode === "chat" && !isBrowserChatCallerPathV1(
+      callerPath,
+      BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1,
+    )) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "The browser Chat run did not enter through the side-panel port.",
+      );
+    }
     const request = normalizeResearchRequestV1(value);
     const policy = normalizeResearchOneShotPolicyV1(policyValue);
     const qualityPolicy = mode === "chat" && qualityPolicyValue
@@ -682,6 +698,9 @@ export default defineBackground({
           apiKey: modelRunBinding.apiKey,
           modelProvider: modelRunBinding.modelProvider,
           mode,
+          ...(mode === "chat" && modelRunBinding.modelProvider === "local-gemma"
+            ? { callerPath: BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1 }
+            : {}),
           request,
           policy,
           ...(effectiveHostIdentity ? { hostIdentity: effectiveHostIdentity } : {}),

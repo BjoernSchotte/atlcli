@@ -53,6 +53,13 @@ import {
   isChatPresentationStreamEventV1,
   isResearchOneShotEventV1,
 } from "./research/events.js";
+import {
+  BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1,
+  BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1,
+  isBrowserChatCallerPathV1,
+  type BrowserChatCallerPathBackgroundV1,
+  type BrowserChatCallerPathSidepanelV1,
+} from "./local-model/caller-path.js";
 
 /**
  * Detection payload shared by the SW push (`entity-changed`) and the
@@ -215,6 +222,7 @@ export type ExtRequest =
       turnId: string;
       windowId: number;
       mode: "chat" | "research";
+      callerPath?: BrowserChatCallerPathSidepanelV1;
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
       qualityPolicy?: ChatQualityPolicyV1;
@@ -709,6 +717,7 @@ export type OffscreenRequest =
       apiKey: string;
       modelProvider?: "anthropic" | "local-gemma";
       mode: "chat" | "research";
+      callerPath?: BrowserChatCallerPathBackgroundV1;
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
       qualityPolicy?: ChatQualityPolicyV1;
@@ -894,13 +903,16 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (kind === "research:run") {
-    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; windowId?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "windowId", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; windowId?: unknown; mode?: unknown; callerPath?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "windowId", "mode", "callerPath", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
       isResearchRunId(run.runId) &&
       isResearchSessionId(run.sessionId) &&
       isResearchTurnId(run.turnId) &&
       isWindowId(run.windowId) &&
       (run.mode === "chat" || run.mode === "research") &&
+      (run.mode === "chat"
+        ? isBrowserChatCallerPathV1(run.callerPath, BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1)
+        : run.callerPath === undefined) &&
       typeof run.request === "object" &&
       run.request !== null &&
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null)) &&
@@ -1221,8 +1233,8 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (candidate.kind === "offscreen:research-run") {
-    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; modelProvider?: unknown; mode?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "modelProvider", "mode", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; modelProvider?: unknown; mode?: unknown; callerPath?: unknown; request?: unknown; policy?: unknown; qualityPolicy?: unknown; hostIdentity?: unknown; resumeAnswer?: unknown; resumeCheckpoint?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "modelProvider", "mode", "callerPath", "request", "policy", "qualityPolicy", "hostIdentity", "resumeAnswer", "resumeCheckpoint"]) &&
       isResearchRunId(run.runId) &&
       isResearchSessionId(run.sessionId) &&
       isResearchTurnId(run.turnId) &&
@@ -1232,6 +1244,12 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
         ? run.apiKey === "" && run.mode === "chat"
         : isResearchApiKey(run.apiKey)) &&
       (run.mode === "chat" || run.mode === "research") &&
+      (run.modelProvider === "local-gemma"
+        ? run.mode === "chat" && isBrowserChatCallerPathV1(
+          run.callerPath,
+          BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1,
+        )
+        : run.callerPath === undefined) &&
       typeof run.request === "object" &&
       run.request !== null &&
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null)) &&

@@ -29,6 +29,7 @@ import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
 import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/research";
 import { classifyLocalGemmaHostErrorV1 } from "./local-model/error.js";
+import type { BrowserChatCallerPathBackgroundV1 } from "./local-model/caller-path.js";
 import type {
   ChatHostIdentityV1,
   ChatInteractionControlV1,
@@ -63,6 +64,7 @@ export interface OffscreenListenerDeps {
     turnId: string,
     apiKey: string,
     mode: "chat" | "research",
+    callerPath: BrowserChatCallerPathBackgroundV1 | undefined,
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
     qualityPolicy?: ChatQualityPolicyV1,
@@ -446,6 +448,7 @@ export function handleOffscreenMessage(
           message.turnId,
           message.apiKey,
           message.mode,
+          message.callerPath,
           message.request,
           message.policy,
           message.qualityPolicy,

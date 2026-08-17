@@ -16,6 +16,7 @@ import {
   ChatUserQuestionRequiredError,
   createChatInteractionStateV1,
 } from "@atlcli/research";
+import { BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1 } from "../utils/local-model/caller-path.js";
 
 const preparation = {
   totalMs: 12,
@@ -461,6 +462,7 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
           turnId,
           apiKey,
           mode,
+          _callerPath,
           receivedRequest,
           receivedPolicy,
           receivedQuality,
@@ -519,6 +521,7 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
         apiKey: "",
         modelProvider: "local-gemma",
         mode: "chat",
+        callerPath: BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1,
         request,
         hostIdentity: {
           userId: "browser-principal:synthetic-local",
@@ -529,7 +532,7 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       {
         ...okOffscreenDeps,
         runResearch: async (...args) => {
-          received.push(args[3], args[4], args[11]);
+          received.push(args[3], args[4], args[12]);
           return answer;
         },
       },
@@ -558,6 +561,9 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
         apiKey: modelProvider === "local-gemma" ? "" : "sk-ant-test-listener",
         ...(modelProvider ? { modelProvider } : {}),
         mode: "chat",
+        ...(modelProvider === "local-gemma"
+          ? { callerPath: BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1 }
+          : {}),
         request,
         hostIdentity,
       }, cap.sendResponse, {

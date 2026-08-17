@@ -8,6 +8,10 @@ import {
   isChatPresentationMessage,
   isResearchEvent,
 } from "../utils/messages.js";
+import {
+  BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1,
+  BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1,
+} from "../utils/local-model/caller-path.js";
 
 describe("message guards", () => {
   it("accepts only bounded ephemeral Chat presentation messages", () => {
@@ -47,6 +51,7 @@ describe("message guards", () => {
       turnId: "research-turn:chat-1",
       windowId: 7,
       mode: "chat",
+      callerPath: BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1,
       request: {},
     } as const;
     expect(isExtRequest(panelChatRun)).toBe(false);
@@ -97,6 +102,7 @@ describe("message guards", () => {
     expect(isExtRequest({
       ...panelChatRun,
       mode: "research",
+      callerPath: undefined,
     })).toBe(true);
     expect(isExtRequest({ kind: "get-current-entity" })).toBe(false);
     expect(isExtRequest({ kind: "get-current-entity", windowId: -1 })).toBe(false);
@@ -835,6 +841,7 @@ describe("message guards", () => {
       ...offscreenChatRun,
       apiKey: "",
       modelProvider: "local-gemma",
+      callerPath: BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1,
       hostIdentity: {
         userId: "browser-principal:synthetic",
         providerCacheIdentity: "provider-cache:synthetic",

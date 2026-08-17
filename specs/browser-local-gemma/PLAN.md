@@ -878,9 +878,15 @@ Automated proof:
       still rejects remote executable code.
 - [x] Focused adapter fixtures reject malformed/unknown tool calls and accept
       the required `eval` plus terminal structured-answer sequence.
-- [ ] A caller-path assertion proves every G0 acceptance run entered through the
+- [x] A caller-path assertion proves every G0 acceptance run entered through the
       existing `ResearchScreen`/port/background path; direct runtime/adapter
-      harnesses cannot emit the acceptance receipt.
+      harnesses cannot emit the acceptance receipt. The production-packed live
+      proof reloaded the existing installation, completed a fresh local Quick
+      turn in approximately 35 seconds, and persisted a body-free warm sample
+      with the exact five-stage path `research-screen` -> `sidepanel-port` ->
+      `background` -> `offscreen` -> `research-worker`. Focused negative tests
+      reject a direct local worker harness before dispatch and discard a direct
+      model/adapter performance sample without that complete path.
 - [x] Anthropic regression fixtures prove the G0 binding changes leave existing
       Chat and Deep Research behavior unchanged.
 

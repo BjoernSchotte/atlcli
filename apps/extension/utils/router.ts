@@ -49,6 +49,7 @@ import type {
   ChatUserQuestionAnswerV1,
 } from "@atlcli/research";
 import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/research";
+import type { BrowserChatCallerPathSidepanelV1 } from "./local-model/caller-path.js";
 
 /** Injected side effects the router needs to fulfil requests. */
 export interface RouterDeps {
@@ -82,6 +83,7 @@ export interface RouterDeps {
     turnId: string,
     windowId: number,
     mode: "chat" | "research",
+    callerPath: BrowserChatCallerPathSidepanelV1 | undefined,
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
     qualityPolicy?: ChatQualityPolicyV1,
@@ -297,6 +299,7 @@ export async function routeMessage(
           msg.turnId,
           msg.windowId,
           msg.mode,
+          msg.callerPath,
           msg.request,
           msg.policy,
           msg.qualityPolicy,

@@ -16,6 +16,7 @@ import type {
   ChatUserQuestionAnswerV1,
   ChatUserQuestionV1,
 } from "@atlcli/research";
+import type { BrowserChatCallerPathWorkerV1 } from "../local-model/caller-path.js";
 
 export type ChatWorkerControlV1 = ChatInteractionControlV1;
 
@@ -38,6 +39,7 @@ export type ResearchWorkerRequestV1 =
       turnId: string;
       apiKey: string;
       mode?: "chat" | "research";
+      callerPath?: BrowserChatCallerPathWorkerV1;
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
       qualityPolicy?: ChatQualityPolicyV1;

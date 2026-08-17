@@ -8,6 +8,7 @@ import {
   summarizeLocalGemmaPerformanceV1,
   type LocalGemmaPerformanceSampleV1,
 } from "../utils/local-model/performance.js";
+import { BROWSER_CHAT_CALLER_PATH_WORKER_V1 } from "../utils/local-model/caller-path.js";
 
 function sampleV1(
   index: number,
@@ -16,6 +17,7 @@ function sampleV1(
   firstPreviewMs = 500 + index,
 ): LocalGemmaPerformanceSampleV1 {
   return {
+    callerPath: BROWSER_CHAT_CALLER_PATH_WORKER_V1,
     requestId: `request-${index}`,
     recordedAt: new Date(index * 1_000).toISOString(),
     inputTokens: 1_000 + index,
@@ -56,6 +58,24 @@ describe("local Gemma performance receipts", () => {
     expect(history.samples).toHaveLength(LOCAL_GEMMA_PERFORMANCE_HISTORY_LIMIT_V1);
     expect(history.samples[0]?.requestId).toBe("request-5");
     expect(history.samples.at(-1)?.requestId).toBe("request-44");
+  });
+
+  test("does not persist a direct model or adapter harness as an acceptance sample", async () => {
+    const files = new Map<string, string>();
+    const directSample = { ...sampleV1(1), callerPath: undefined };
+    await appendLocalGemmaPerformanceSamplesV1({
+      workspace: {
+        readFile: async (path) => files.get(path),
+        writeFile: async (path, contents) => {
+          files.set(path, contents);
+        },
+      },
+      samples: [directSample],
+    });
+
+    expect(parseLocalGemmaPerformanceHistoryV1(
+      files.get(LOCAL_GEMMA_PERFORMANCE_HISTORY_PATH_V1),
+    ).samples).toEqual([]);
   });
 
   test("summarizes cold and warm samples separately with medians", () => {

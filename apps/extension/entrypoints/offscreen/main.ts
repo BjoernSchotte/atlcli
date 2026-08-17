@@ -34,6 +34,12 @@ import {
 } from "@atlcli/research/browser";
 import { LOCAL_GEMMA_G0_MANIFEST_V1 } from "../../utils/local-model/manifest.js";
 import { withLocalRunHeartbeatV1 } from "../../utils/research/run-heartbeat.js";
+import {
+  BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1,
+  BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1,
+  isBrowserChatCallerPathV1,
+  type BrowserChatCallerPathBackgroundV1,
+} from "../../utils/local-model/caller-path.js";
 
 const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
 
@@ -204,6 +210,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       turnId,
       key,
       mode,
+      callerPath: BrowserChatCallerPathBackgroundV1 | undefined,
       request,
       policy,
       qualityPolicy,
@@ -212,6 +219,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       resumeCheckpoint,
       modelProvider,
     ) => {
+      if (modelProvider === "local-gemma" && !isBrowserChatCallerPathV1(
+        callerPath,
+        BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1,
+      )) {
+        throw new Error("The browser Chat run did not cross the background boundary.");
+      }
       const apiKey = modelProvider === "local-gemma"
         ? ""
         : normalizeAnthropicApiKey(key);
@@ -224,6 +237,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
           ? { modelBinding: await connectInstalledLocalModelV1() }
           : {}),
         mode,
+        ...(modelProvider === "local-gemma"
+          ? { callerPath: BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1 }
+          : {}),
         request,
         policy,
         ...(qualityPolicy ? { qualityPolicy } : {}),

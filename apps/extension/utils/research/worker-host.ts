@@ -21,6 +21,12 @@ import type {
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,
 } from "./worker-protocol.js";
+import {
+  BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1,
+  BROWSER_CHAT_CALLER_PATH_WORKER_V1,
+  isBrowserChatCallerPathV1,
+  type BrowserChatCallerPathOffscreenV1,
+} from "../local-model/caller-path.js";
 
 interface WorkerLike {
   onmessage: ((event: MessageEvent<ResearchWorkerResponseV1>) => void) | null;
@@ -57,6 +63,7 @@ interface ResearchAgentWorkerRunInput {
   turnId: string;
   apiKey: string;
   mode?: "chat" | "research";
+  callerPath?: BrowserChatCallerPathOffscreenV1;
   request?: ResearchRequestV1;
   policy?: ResearchOneShotPolicyV1;
   qualityPolicy?: ChatQualityPolicyV1;
@@ -171,6 +178,16 @@ export class ResearchAgentWorkerHost {
         ));
         return;
       }
+      if (input.modelBinding && !isBrowserChatCallerPathV1(
+        input.callerPath,
+        BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1,
+      )) {
+        reject(new ResearchContractError(
+          "invalid-request",
+          "The browser Chat run did not cross the offscreen boundary.",
+        ));
+        return;
+      }
       const request: ResearchWorkerRequestV1 = {
         kind: "research-worker:run",
         runId: input.runId,
@@ -178,6 +195,9 @@ export class ResearchAgentWorkerHost {
         turnId: input.turnId,
         apiKey: input.apiKey,
         mode: input.mode ?? "research",
+        ...(input.modelBinding
+          ? { callerPath: BROWSER_CHAT_CALLER_PATH_WORKER_V1 }
+          : {}),
         request: input.request,
         ...(input.policy ? { policy: input.policy } : {}),
         ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),

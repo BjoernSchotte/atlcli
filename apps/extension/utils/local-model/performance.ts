@@ -1,4 +1,9 @@
 import type { LocalModelInferencePerformanceV1 } from "./protocol.js";
+import {
+  BROWSER_CHAT_CALLER_PATH_WORKER_V1,
+  isBrowserChatCallerPathV1,
+  type BrowserChatCallerPathWorkerV1,
+} from "./caller-path.js";
 
 export const LOCAL_GEMMA_PERFORMANCE_HISTORY_SCHEMA_V1 =
   "atlcli.browser-local-gemma-performance-history/v1" as const;
@@ -7,6 +12,8 @@ export const LOCAL_GEMMA_PERFORMANCE_HISTORY_PATH_V1 =
 export const LOCAL_GEMMA_PERFORMANCE_HISTORY_LIMIT_V1 = 40;
 
 export interface LocalGemmaPerformanceSampleV1 {
+  /** Present only after the request crossed every productive browser boundary. */
+  callerPath?: BrowserChatCallerPathWorkerV1;
   requestId: string;
   recordedAt: string;
   inputTokens: number;
@@ -45,7 +52,11 @@ function isSampleV1(value: unknown): value is LocalGemmaPerformanceSampleV1 {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const sample = value as Partial<LocalGemmaPerformanceSampleV1>;
   const timing = sample.timing as Partial<LocalModelInferencePerformanceV1> | undefined;
-  return typeof sample.requestId === "string" &&
+  return isBrowserChatCallerPathV1(
+    sample.callerPath,
+    BROWSER_CHAT_CALLER_PATH_WORKER_V1,
+  ) &&
+    typeof sample.requestId === "string" &&
     typeof sample.recordedAt === "string" &&
     isFiniteNonNegative(sample.inputTokens) &&
     isFiniteNonNegative(sample.outputTokens) &&

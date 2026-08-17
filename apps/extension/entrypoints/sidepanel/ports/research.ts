@@ -58,6 +58,7 @@ import {
   type BrowserModelSelectionV1,
 } from "../../../utils/local-model/selection.js";
 import { classifyLocalGemmaHostErrorV1 } from "../../../utils/local-model/error.js";
+import { BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1 } from "../../../utils/local-model/caller-path.js";
 
 const MAX_RESEARCH_RESUME_MS = 10 * 60_000;
 const CHAT_HOST_PRINCIPAL_KEY = "atlcli.chat.host-principal-id.v1";
@@ -1224,6 +1225,9 @@ export function chromeResearchPort(): ResearchPort {
             turnId,
             windowId: window.id,
             mode: options?.mode ?? "research",
+            ...(options?.mode === "chat"
+              ? { callerPath: BROWSER_CHAT_CALLER_PATH_SIDEPANEL_V1 }
+              : {}),
             request,
             policy,
             ...(hostIdentity ? { hostIdentity } : {}),

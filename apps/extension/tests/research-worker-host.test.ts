@@ -18,6 +18,10 @@ import type {
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,
 } from "../utils/research/worker-protocol.js";
+import {
+  BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1,
+  BROWSER_CHAT_CALLER_PATH_WORKER_V1,
+} from "../utils/local-model/caller-path.js";
 
 class FakeWorker {
   onmessage:
@@ -119,6 +123,7 @@ describe("dedicated research worker host", () => {
       turnId: "chat-turn:local",
       apiKey: "",
       mode: "chat",
+      callerPath: BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1,
       request,
       qualityPolicy,
       modelBinding: {
@@ -130,11 +135,39 @@ describe("dedicated research worker host", () => {
     expect(worker.posted[0]).toMatchObject({
       kind: "research-worker:run",
       apiKey: "",
+      callerPath: BROWSER_CHAT_CALLER_PATH_WORKER_V1,
       modelBinding: { kind: "local-gemma", modelId: "fixture/model" },
     });
     expect(worker.transfers[0]).toEqual([channel.port1]);
     worker.emit({ kind: "research-worker:complete", runId: "chat-local-1", answer });
     expect(await running).toBe(answer);
+    channel.port2.close();
+  });
+
+  it("rejects a direct local worker harness without the productive browser caller path", async () => {
+    const worker = new FakeWorker();
+    const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
+    const channel = new MessageChannel();
+    const running = host.run({
+      runId: "chat-local-direct-harness",
+      sessionId: "chat-session:local-direct-harness",
+      turnId: "chat-turn:local-direct-harness",
+      apiKey: "",
+      mode: "chat",
+      request,
+      qualityPolicy,
+      modelBinding: {
+        kind: "local-gemma",
+        modelId: "fixture/model",
+        port: channel.port1,
+      },
+    });
+
+    await expect(running).rejects.toMatchObject({
+      code: "invalid-request",
+      message: "The browser Chat run did not cross the offscreen boundary.",
+    });
+    expect(worker.posted).toEqual([]);
     channel.port2.close();
   });
 
@@ -148,6 +181,7 @@ describe("dedicated research worker host", () => {
       turnId: "chat-turn:local-start-error",
       apiKey: "",
       mode: "chat",
+      callerPath: BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1,
       request,
       qualityPolicy,
       modelBinding: {
@@ -191,6 +225,7 @@ describe("dedicated research worker host", () => {
       turnId: "chat-turn:local-opaque-error",
       apiKey: "",
       mode: "chat",
+      callerPath: BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1,
       request,
       qualityPolicy,
       modelBinding: {
@@ -219,6 +254,7 @@ describe("dedicated research worker host", () => {
       turnId: "chat-turn:local-runtime-error",
       apiKey: "",
       mode: "chat",
+      callerPath: BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1,
       request,
       qualityPolicy,
       modelBinding: {
