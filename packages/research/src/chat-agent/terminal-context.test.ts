@@ -210,6 +210,209 @@ describe("local Chat terminal-context compiler", () => {
     })).toBeUndefined();
   });
 
+  test("matches compound question terms to separate source headings without language rules", () => {
+    const body = [
+      `Unrelated introduction ${"x".repeat(6_500)}`,
+      "Plan 2 · Batch\nMultiple jobs are processed in one scheduled batch.",
+      "Plan 3 · Stream\nEach job is processed immediately with a latency target.",
+      `Plan 4 · Dedicated\nOne isolated worker handles every job. ${"y".repeat(6_500)}`,
+    ].join("\n");
+
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question: "Which plan processes multiple jobs in a batch, and how does it differ from the stream-plan?",
+      evidence: [evidence(body)],
+    });
+    const projectedText = projection?.snippets.map((snippet) => snippet.text).join("\n") ?? "";
+
+    expect(projection?.matchedQuestionTerms).toEqual(expect.arrayContaining([
+      "multiple",
+      "stream",
+    ]));
+    expect(projectedText).toContain("Plan 2 · Batch");
+    expect(projectedText).toContain("Plan 3 · Stream");
+  });
+
+  test("retains a common heading term when a rare compound sibling anchors it", () => {
+    const repeatedHeadingNoise = Array.from(
+      { length: 16 },
+      (_, index) => `Plan notes ${index}\n${"x".repeat(620)}`,
+    ).join("\n");
+    const body = [
+      repeatedHeadingNoise,
+      "Plan 2 · Batch\nMultiple jobs are processed in one scheduled batch.",
+      "Plan 3 · Stream\nEach job is processed immediately with a latency target.",
+      "Plan 4 · Dedicated\nOne isolated worker handles every job.",
+    ].join("\n");
+
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question: "Which plan processes multiple jobs, and how does it differ from the stream-plan?",
+      evidence: [evidence(body)],
+    });
+    const projectedText = projection?.snippets.map((snippet) => snippet.text).join("\n") ?? "";
+
+    expect(projection?.matchedQuestionTerms).toEqual(expect.arrayContaining([
+      "multiple",
+      "stream",
+    ]));
+    expect(projectedText).toContain("Plan 2 · Batch");
+    expect(projectedText).toContain("Plan 3 · Stream");
+  });
+
+  test("keeps a relational lookup local instead of preferring a later isolated anchor", () => {
+    const repeatedHeadingNoise = Array.from(
+      { length: 16 },
+      (_, index) => `Notizen zum Versandweg ${index}\n${"x".repeat(620)}`,
+    ).join("\n");
+    const body = [
+      repeatedHeadingNoise,
+      "Die vier Versandwege",
+      "Weg 1 · Brief\nEin einzelnes Dokument in einer Sendung.",
+      "Weg 2 · Sammelpaket\nMehrere Artikel in einer gemeinsamen Sendung.",
+      "Weg 3 · Express\nEine einzelne Sendung mit garantierter Laufzeit.",
+      "Weg 4 · Kurier\nEine reservierte Zustellung ohne Umschlagplatz.",
+      `Unabhängiger Ablauf-Katalog ${"y".repeat(8_000)}`,
+      "Express-Notiz\nDiese spätere Notiz beschreibt nur die verfügbare Fahrzeugflotte.",
+    ].join("\n");
+
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question: "Welcher Versandweg bündelt mehrere Artikel und wie unterscheidet er sich vom Express-Weg?",
+      retrievalContext: "Sammelpaket bündelt mehrere Artikel. Express transportiert eine einzelne Sendung mit garantierter Laufzeit.",
+      evidence: [evidence(body)],
+    });
+    const projectedText = projection?.snippets.map((snippet) => snippet.text).join("\n") ?? "";
+
+    expect(projectedText).toContain("Weg 2 · Sammelpaket");
+    expect(projectedText).toContain("Weg 3 · Express");
+    expect(projectedText).not.toContain("Express-Notiz");
+  });
+
+  test("ranks late prior-answer discriminators instead of truncating them by answer order", () => {
+    const broadPriorTerms = Array.from(
+      { length: 32 },
+      (_, index) => `overviewmarker${index}`,
+    ).join(" ");
+    const body = [
+      Array.from(
+        { length: 32 },
+        (_, index) =>
+          `overviewmarker${index}\nGeneral plan note ${index}. ${"x".repeat(620)}`,
+      ).join("\n"),
+      "Plan 1 · Single\nOne job is processed on demand.",
+      "Plan 2 · Batch\nMultiple jobs are processed in one scheduled batch.",
+      "Plan 3 · Stream\nEach job is processed immediately with a latency target.",
+      "Plan 4 · Dedicated\nOne isolated worker handles every job.",
+      `Unrelated catalogue ${"x".repeat(8_000)}`,
+      "Stream appendix\nThis later appendix describes only retention limits.",
+    ].join("\n");
+
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question: "Which of those plans groups multiple jobs, and how does it differ from the stream-plan?",
+      retrievalContext: [
+        broadPriorTerms,
+        "Batch groups multiple jobs in one schedule. Stream processes each job immediately.",
+      ].join(" "),
+      evidence: [evidence(body)],
+    });
+    const projectedText = projection?.snippets.map((snippet) => snippet.text).join("\n") ?? "";
+
+    expect(projectedText).toContain("Plan 2 · Batch");
+    expect(projectedText).toContain("Plan 3 · Stream");
+    expect(projectedText).not.toContain("Stream appendix");
+  });
+
+  test("uses prior-answer term order to reject an earlier bag-of-words distractor", () => {
+    const body = [
+      [
+        "Distractor plan notes",
+        "Immediate jobs multiple stream schedule batch each plan grouped.",
+        "This section is not the described service table.",
+        "x".repeat(700),
+      ].join("\n"),
+      `Unrelated catalogue\n${"z".repeat(2_200)}`,
+      "Plan 2 · Batch\nMultiple jobs are processed in one scheduled batch.",
+      "Plan 3 · Stream\nEach job is processed immediately with a latency target.",
+      "Plan 4 · Dedicated\nOne isolated worker handles every job.",
+    ].join("\n");
+
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question: "Which plan groups multiple jobs, and how does it differ from the stream-plan?",
+      retrievalContext: [
+        "Batch processes multiple jobs in one scheduled batch.",
+        "Stream processes each job immediately.",
+      ].join(" "),
+      evidence: [evidence(body)],
+    });
+    const projectedText = projection?.snippets.map((snippet) => snippet.text).join("\n") ?? "";
+
+    expect(projectedText).toContain("Plan 2 · Batch");
+    expect(projectedText).toContain("Plan 3 · Stream");
+    expect(projectedText).not.toContain("Distractor plan notes");
+  });
+
+  test("keeps an explicit common comparison target from an anaphoric follow-up", () => {
+    const repeatedStreamSections = Array.from(
+      { length: 12 },
+      (_, index) =>
+        `Stream-Notiz ${index}\nAllgemeiner Hinweis zum Tarif ${index}. ${"x".repeat(620)}`,
+    ).join("\n");
+    const body = [
+      "Die fünf Servicetarife",
+      "1 · Einzel\nEin Auftrag wird sofort verarbeitet.",
+      "2 · Stapel\nMehrere Aufträge werden gemeinsam nach Zeitplan verarbeitet.",
+      "3 · Stream\nJeder Auftrag wird sofort mit zugesicherter Latenz verarbeitet.",
+      "4 · Verbunden\nAufträge werden an externe Systeme weitergegeben.",
+      "5 · Exklusiv\nEine isolierte Instanz verarbeitet alle Aufträge.",
+      repeatedStreamSections,
+      `Stream-Anhang\nDieser spätere Anhang beschreibt nur Aufbewahrungsfristen. ${"z".repeat(2_000)}`,
+    ].join("\n");
+
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question: "Welcher der gerade genannten Tarife bündelt mehrere Aufträge, und worin unterscheidet er sich vom Tarif Stream?",
+      retrievalContext: [
+        "Die fünf Servicetarife umfassen Einzel, Stapel, Stream, Verbunden und Exklusiv.",
+        "Stapel bündelt mehrere Aufträge; Stream verarbeitet jeden Auftrag sofort.",
+      ].join(" "),
+      evidence: [evidence(body)],
+    });
+    const projectedText = projection?.snippets.map((snippet) => snippet.text).join("\n") ?? "";
+
+    expect(projectedText).toContain("2 · Stapel");
+    expect(projectedText).toContain("3 · Stream");
+    expect(projectedText).not.toContain("Stream-Anhang");
+  });
+
+  test("keeps an explicitly named common row beside a rare table row", () => {
+    const body = [
+      "Die fünf Servicetarife",
+      "1 · Einzel\nEin Auftrag wird sofort verarbeitet.",
+      "2 · Stapel\nMehrere Aufträge werden nach Zeitplan gebündelt. Geht kein Auftrag verloren?",
+      "3 · Stream\nJeder Auftrag wird sofort mit zugesicherter Latenz verarbeitet. Wird das Latenzziel eingehalten?",
+      "4 · Verbunden\nAufträge werden an externe Systeme weitergegeben.",
+      "5 · Exklusiv\nEine isolierte Instanz verarbeitet alle Aufträge.",
+      Array.from(
+        { length: 12 },
+        (_, index) =>
+          `Stapel-Notiz ${index}\nAllgemeiner Hinweis zum Tarif ${index}. ${"y".repeat(620)}`,
+      ).join("\n"),
+      Array.from(
+        { length: 12 },
+        (_, index) =>
+          `Stream-Notiz ${index}\nAllgemeiner Hinweis zum Tarif ${index}. ${"x".repeat(620)}`,
+      ).join("\n"),
+      `Stream-Anhang\nDieser spätere Anhang beschreibt nur Aufbewahrungsfristen. ${"z".repeat(2_000)}`,
+    ].join("\n");
+
+    const projection = buildChatLocalDirectEvidenceProjectionV1({
+      question: "Was steht in der Tabelle zu Stapel und Stream? Beschreibe, was verarbeitet wird und welche Prüffrage dahintersteht.",
+      evidence: [evidence(body)],
+    });
+    const projectedText = projection?.snippets.map((snippet) => snippet.text).join("\n") ?? "";
+
+    expect(projectedText).toContain("2 · Stapel");
+    expect(projectedText).toContain("3 · Stream");
+    expect(projectedText).not.toContain("Stream-Anhang");
+  });
+
   test("builds a fresh finalization message directly from bounded matched evidence", async () => {
     const calls: string[] = [];
     const model = {

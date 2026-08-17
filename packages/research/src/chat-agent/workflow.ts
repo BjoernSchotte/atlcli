@@ -1356,7 +1356,7 @@ export function createChatWorkflowProposalControllerV1(input: {
       `Assign at most ${MAX_EXACT_ANCHORS_PER_CHAT_READER_V1} explicit opaque anchorRefs to each exact-context-reader task; split larger exact source sets into parallel readers. ` +
       "Dependencies must move strictly from acquisition readers through analysis and optional contradiction reconciliation to one provisional answer drafter and one answer critic. The comparison analyst owns evidence-backed differences and conflicts by default. Add a contradiction checker only when the accepted strategy explicitly requires contradiction checking. Add a relationship tracer only when the accepted strategy requires cross-product relationship work. The host rejects duplicate or phase-equivalent specialists. The host deterministically packs up to three small exact anchors into one reader and splits only when the bounded projection requires it. Keep admitted search variants for the same product in one search-reader task because its host controller owns the product-wide pagination and detail budget. Split exact readers only when their bounded anchor packets cannot be packed together. Include exactly one chat-synthesizer definition, but the host withholds its dispatch until the mandatory quality checkpoint. The answer repairer is host-only and cannot be proposed. The host returns exact task descriptions, types, response schemas, and privacy-safe normalization reason codes for dispatch.",
     schema: z.object({
-      tasks: z.array(workflowTaskProposalSchema).min(4).max(9),
+      tasks: z.array(workflowTaskProposalSchema).min(3).max(9),
       maxConcurrency: z.number().int().min(1).max(3),
       retrievalPlan: CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1.optional(),
     }).strict(),

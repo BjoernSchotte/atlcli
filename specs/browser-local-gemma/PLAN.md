@@ -904,9 +904,16 @@ Live proof:
 - [x] The same packed extension completes Think-deeper-agentic three consecutive
       times with the expected workflow, validation, repair where required, and
       terminal synthesis.
-- [ ] A new local conversation completes at least one evidence-aware follow-up
+- [x] A new local conversation completes at least one evidence-aware follow-up
       turn without losing provider identity, accepted evidence, or tool-result
-      correlation; close/reopen the side panel and reopen the conversation.
+      correlation; close/reopen the side panel and reopen the conversation. The
+      production-packed proof used a fresh local conversation with a completed
+      Quick evidence seed followed by an Auto comparison turn. The follow-up
+      began streaming its terminal answer after approximately 139 seconds and
+      completed after approximately 234 seconds with two canonical source
+      bindings. Closing and reopening the side panel, then explicitly reopening
+      the conversation from history, retained the local provider identity,
+      answer blocks, and source bindings without a failure state.
 - [ ] Network observation records zero Anthropic and model-origin requests during
       local inference while allowing only expected Atlassian traffic.
 - [ ] Existing Chat cancellation reaches a terminal cancelled event, stops local

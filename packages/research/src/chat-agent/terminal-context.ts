@@ -146,10 +146,40 @@ function splitDirectEvidenceTextV1(text: string): string[] {
 
 function lexicalTermsV1(text: string): Set<string> {
   const normalized = text.normalize("NFKC").toLowerCase();
-  return new Set(
-    [...normalized.matchAll(/(?:\p{L}[\p{L}\p{M}\p{N}_-]{2,}|\p{N}+)/gu)]
-      .map((match) => match[0]!),
-  );
+  const terms = new Set<string>();
+  for (const match of normalized.matchAll(
+    /(?:\p{L}[\p{L}\p{M}\p{N}_-]{2,}|\p{N}+)/gu,
+  )) {
+    const term = match[0]!;
+    terms.add(term);
+    // Keep the full compound for exact matching, but also expose meaningful
+    // components. This lets a question such as "audio-stage" match a source
+    // heading named "Audio" without a language-specific stemmer or synonym
+    // table. Short fragments stay excluded so identifiers do not add noise.
+    for (const component of term.split(/[_-]+/u)) {
+      if (component.length >= 3) terms.add(component);
+    }
+  }
+  return terms;
+}
+
+function lexicalSequenceV1(text: string): string[] {
+  return [...text.normalize("NFKC").toLowerCase().matchAll(
+    /(?:\p{L}[\p{L}\p{M}\p{N}_-]{2,}|\p{N}+)/gu,
+  )].map((match) => match[0]!);
+}
+
+function lexicalPhrasesV1(text: string): Set<string> {
+  const sequence = lexicalSequenceV1(text);
+  const phrases = new Set<string>();
+  for (let start = 0; start < sequence.length; start += 1) {
+    for (const length of [2, 3]) {
+      const terms = sequence.slice(start, start + length);
+      if (terms.length !== length || terms.join("").length < 9) continue;
+      phrases.add(terms.join("\u0000"));
+    }
+  }
+  return phrases;
 }
 
 function discriminativeQuestionTermsV1(input: {
@@ -272,6 +302,7 @@ function representativeDetailScoreV1(text: string): number {
  */
 export function buildChatLocalDirectEvidenceProjectionV1(input: {
   question: string;
+  retrievalContext?: string;
   evidence: readonly ResearchDetailEvidenceV1[];
   readSections?: readonly ResearchReadSectionReferenceV1[];
   targetTextChars?: number;
@@ -286,8 +317,13 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
       text,
       order,
       terms: lexicalTermsV1(text),
+      phrases: lexicalPhrasesV1(text),
       allowedSourceRefs: allowedRefs.get(entry.source.id) ?? [entry.source.id],
     }))
+  );
+  const maximumDiscriminativeFrequency = Math.max(
+    2,
+    Math.ceil(candidates.length * 0.1),
   );
   const documentFrequency = new Map<string, number>();
   for (const term of questionTerms) {
@@ -296,14 +332,44 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
       candidates.filter((candidate) => candidate.terms.has(term)).length,
     );
   }
+  const retrievalContextFrequency = new Map<string, number>();
+  for (const term of lexicalTermsV1(input.retrievalContext ?? "")) {
+    const frequency = candidates.filter((candidate) => candidate.terms.has(term)).length;
+    if (frequency > 0) retrievalContextFrequency.set(term, frequency);
+  }
+  const retrievalContextTerms = [...retrievalContextFrequency]
+    .filter(([term, frequency]) =>
+      term.length >= 5 && frequency <= maximumDiscriminativeFrequency
+    )
+    // A prior answer commonly starts with broad framing and ends with the
+    // exact facts needed to resolve an anaphoric follow-up. Rank evidenced
+    // terms by document rarity instead of preserving answer order so those
+    // later discriminators cannot fall behind an arbitrary prefix cutoff.
+    .sort(([leftTerm, leftFrequency], [rightTerm, rightFrequency]) =>
+      leftFrequency - rightFrequency ||
+      rightTerm.length - leftTerm.length ||
+      leftTerm.localeCompare(rightTerm, "en-US")
+    )
+    .slice(0, 64)
+    .map(([term]) => term);
+  const retrievalContextPhraseFrequency = new Map<string, number>();
+  for (const phrase of lexicalPhrasesV1(input.retrievalContext ?? "")) {
+    const frequency = candidates.filter((candidate) => candidate.phrases.has(phrase)).length;
+    if (frequency > 0 && frequency <= maximumDiscriminativeFrequency) {
+      retrievalContextPhraseFrequency.set(phrase, frequency);
+    }
+  }
+  const retrievalContextPhrases = [...retrievalContextPhraseFrequency]
+    .sort(([leftPhrase, leftFrequency], [rightPhrase, rightFrequency]) =>
+      leftFrequency - rightFrequency ||
+      rightPhrase.length - leftPhrase.length ||
+      leftPhrase.localeCompare(rightPhrase, "en-US")
+    )
+    .slice(0, 64)
+    .map(([phrase]) => phrase);
   const anchoredQuestionTerms = new Set([...questionTerms].filter((term) => {
     const frequency = documentFrequency.get(term) ?? 0;
-    if (frequency === 0) return false;
-    if (candidates.length === 1) {
-      return term.length >= 5 || /^\p{N}+$/u.test(term);
-    }
-    return /^\p{N}+$/u.test(term) ||
-      (term.length >= 5 && frequency / candidates.length <= 0.1);
+    return frequency > 0 && (term.length >= 5 || /^\p{N}+$/u.test(term));
   }));
   const scored = candidates
     .map((candidate) => {
@@ -313,7 +379,21 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
         const rarity = Math.log2(1 + candidates.length / (documentFrequency.get(term) ?? 1));
         return total + rarity + (/^\p{N}+$/u.test(term) ? 2 : 0);
       }, 0);
-      return { ...candidate, matches, score };
+      const retrievalContextScore = retrievalContextTerms.reduce((total, term) => {
+        if (!candidate.terms.has(term)) return total;
+        const frequency = retrievalContextFrequency.get(term) ?? 1;
+        return total + Math.log2(1 + candidates.length / Math.max(1, frequency));
+      }, 0);
+      const retrievalPhraseScore = retrievalContextPhrases.reduce((total, phrase) => {
+        if (!candidate.phrases.has(phrase)) return total;
+        const frequency = retrievalContextPhraseFrequency.get(phrase) ?? 1;
+        return total + Math.log2(1 + candidates.length / Math.max(1, frequency));
+      }, 0);
+      return {
+        ...candidate,
+        matches,
+        score: score + retrievalContextScore * 0.5 + retrievalPhraseScore,
+      };
     });
   const ranked = scored
     .filter((candidate) => candidate.score > 0)
@@ -322,7 +402,10 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
       left.sourceId.localeCompare(right.sourceId, "en-US") ||
       left.order - right.order
     );
-  const allMatchedTerms = new Set(ranked.flatMap((candidate) => candidate.matches));
+  const selectionRanked = ranked;
+  const allMatchedTerms = new Set(
+    selectionRanked.flatMap((candidate) => candidate.matches),
+  );
   const discriminativeAnchors = [...allMatchedTerms].filter((term) =>
     term.length >= 5 || /^\p{N}+$/u.test(term)
   );
@@ -343,7 +426,7 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
       input.targetTextChars ?? CHAT_TERMINAL_DIRECT_MAX_TEXT_CHARS_V1,
     ),
   );
-  for (const candidate of ranked) {
+  for (const candidate of selectionRanked) {
     if (selected.length >= CHAT_TERMINAL_DIRECT_MAX_SNIPPETS_V1) break;
     if (candidate.matches.every((term) => coveredTerms.has(term))) continue;
     if (
@@ -362,10 +445,12 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
   ) {
     return undefined;
   }
-  // An overview anchor often names a category while the user's requested
-  // example lives in a distant table row. Keep one language-neutral,
+  // Multiple distant anchors often describe an overview plus a requested
+  // detail elsewhere in the document. In that case, keep one language-neutral,
   // evidence-dense detail (IDs, measurements, or quoted cases) before filling
-  // adjacency. This is still source projection, not answer interpretation.
+  // adjacency. A single anchored cluster is instead kept local: injecting an
+  // unrelated representative row can distract a small model from the exact
+  // table or paragraph that answered the question.
   const representative = scored
     .filter((candidate) =>
       !selected.some((current) =>
@@ -384,6 +469,7 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
       left.order - right.order
     )[0];
   if (
+    selected.length >= 2 &&
     representative &&
     selected.length < CHAT_TERMINAL_DIRECT_MAX_SNIPPETS_V1 &&
     selectedChars + representative.text.length <= targetTextChars
@@ -409,8 +495,8 @@ export function buildChatLocalDirectEvidenceProjectionV1(input: {
     }))
     .filter((candidate) => Number.isFinite(candidate.distance))
     .sort((left, right) =>
-      Number(right.score > 0) - Number(left.score > 0) ||
       left.distance - right.distance ||
+      Number(right.score > 0) - Number(left.score > 0) ||
       right.score - left.score ||
       left.sourceId.localeCompare(right.sourceId, "en-US") ||
       left.order - right.order
@@ -989,6 +1075,7 @@ export async function createChatLocalTerminalContextMessagesV1(input: {
   model: BaseChatModel;
   broker: ResearchCapabilityBroker;
   question: string;
+  retrievalContext?: string;
   locale?: string;
   signal?: AbortSignal;
   maxInputTokens?: number;
@@ -1008,6 +1095,7 @@ export async function createChatLocalTerminalContextMessagesV1(input: {
   });
   const directEvidence = buildChatLocalDirectEvidenceProjectionV1({
     question: input.question,
+    retrievalContext: input.retrievalContext,
     evidence,
     readSections,
     targetTextChars: envelope.directEvidenceTargetChars,

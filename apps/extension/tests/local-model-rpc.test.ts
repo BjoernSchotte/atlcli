@@ -191,6 +191,35 @@ describe("pinned Gemma 4 response grammar", () => {
     )).toBe(true);
   });
 
+  it("repairs omitted object separators only when a structured Chat packet opts in", () => {
+    const raw = '<|tool_call>call:ChatEvidencePacketV1{sourceIds:[<|"|>wiki:1<|"|>]claims:[{text:<|"|>Supported.<|"|>sourceIds:[<|"|>wiki:1<|"|>],sourceRefs:[<|"|>wiki:1#section:one<|"|>]}]relationships:[]gaps:[]}';
+    expect(() => parseGemma4ResponseV1({
+      requestId: "strict-structured-separators",
+      raw,
+      allowedToolNames: new Set(["ChatEvidencePacketV1"]),
+    })).toThrow("missing ','");
+    expect(parseGemma4ResponseV1({
+      requestId: "structured-separators",
+      raw,
+      allowedToolNames: new Set(["ChatEvidencePacketV1"]),
+      maximumImplicitObjectSeparators: 32,
+    }).toolCalls[0]?.arguments).toEqual({
+      sourceIds: ["wiki:1"],
+      claims: [{
+        text: "Supported.",
+        sourceIds: ["wiki:1"],
+        sourceRefs: ["wiki:1#section:one"],
+      }],
+      relationships: [],
+      gaps: [],
+    });
+    expect(isCompleteGemmaToolCallV1(
+      raw,
+      "ChatEvidencePacketV1",
+      32,
+    )).toBe(true);
+  });
+
   it("repairs omitted separators only when the agentic proposal projection opts in", () => {
     const raw = '<|tool_call>call:eval{tasks:[{taskId:<|"|>reader<|"|>profileId:<|"|>exact-context-reader<|"|>objective:<|"|>Read the bound page.<|"|>dependencyTaskIds:[]}]maxConcurrency:1}';
     expect(() => parseGemma4ResponseV1({
@@ -214,8 +243,32 @@ describe("pinned Gemma 4 response grammar", () => {
     });
   });
 
-  it("ignores only a duplicated terminal boundary for an opted-in agentic proposal", () => {
-    const raw = '<|tool_call>call:eval{tasks:[{taskId:<|"|>reader<|"|>,profileId:<|"|>exact-context-reader<|"|>,objective:<|"|>Read.<|"|>,dependencyTaskIds:[]}]}]}';
+  it("keeps a multi-task agentic proposal inside the shared structured separator budget", () => {
+    const tasks = Array.from({ length: 6 }, (_, index) =>
+      `{taskId:<|"|>task-${index}<|"|>profileId:<|"|>exact-context-reader<|"|>objective:<|"|>Read source ${index}.<|"|>dependencyTaskIds:[]}`
+    ).join(",");
+    const raw = `<|tool_call>call:eval{tasks:[${tasks}]maxConcurrency:1}`;
+    expect(() => parseGemma4ResponseV1({
+      requestId: "undersized-agentic-separator-budget",
+      raw,
+      allowedToolNames: new Set(["eval"]),
+      maximumImplicitObjectSeparators: 16,
+    })).toThrow("missing ','");
+    expect(parseGemma4ResponseV1({
+      requestId: "shared-agentic-separator-budget",
+      raw,
+      allowedToolNames: new Set(["eval"]),
+      maximumImplicitObjectSeparators: 32,
+    }).toolCalls[0]?.arguments).toMatchObject({
+      tasks: expect.arrayContaining([
+        expect.objectContaining({ taskId: "task-5" }),
+      ]),
+      maxConcurrency: 1,
+    });
+  });
+
+  it("ignores only bounded duplicated terminal closers for an opted-in agentic proposal", () => {
+    const raw = '<|tool_call>call:eval{tasks:[{taskId:<|"|>reader<|"|>,profileId:<|"|>exact-context-reader<|"|>,objective:<|"|>Read.<|"|>,dependencyTaskIds:[]}]}]}]}]}';
     expect(() => parseGemma4ResponseV1({
       requestId: "strict-agentic-boundary",
       raw,
@@ -225,7 +278,7 @@ describe("pinned Gemma 4 response grammar", () => {
       requestId: "projected-agentic-boundary",
       raw,
       allowedToolNames: new Set(["eval"]),
-      maximumTrailingStructuralClosers: 2,
+      maximumTrailingStructuralClosers: 8,
     }).toolCalls[0]?.arguments).toEqual({
       tasks: [{
         taskId: "reader",
@@ -234,7 +287,7 @@ describe("pinned Gemma 4 response grammar", () => {
         dependencyTaskIds: [],
       }],
     });
-    expect(isCompleteGemmaToolCallV1(raw, "eval", 0, 2)).toBe(true);
+    expect(isCompleteGemmaToolCallV1(raw, "eval", 0, 8)).toBe(true);
   });
 
   it("closes only the omitted terminal root boundary", () => {
@@ -353,13 +406,22 @@ describe("local model RPC boundary", () => {
       '\"profileId\":\"exact-context-reader\"',
     );
     expect(String(normalized.arguments.code)).toContain(
+      '\"profileId\":\"answer-drafter\"',
+    );
+    expect(String(normalized.arguments.code)).toContain(
+      '\"profileId\":\"answer-critic\"',
+    );
+    expect(String(normalized.arguments.code)).toContain(
+      '\"profileId\":\"chat-synthesizer\"',
+    );
+    expect(String(normalized.arguments.code)).toContain(
       '\"maxDepth\":1',
     );
     expect(String(normalized.arguments.code)).not.toContain("description");
     expect(String(normalized.arguments.code)).not.toContain("externalId");
   });
 
-  it("supplies the singleton local concurrency without selecting model tasks", () => {
+  it("supplies singleton concurrency and the mandatory local workflow roles", () => {
     const normalized = normalizeLocalGemmaAgenticEvalToolCallV1({
       id: "agentic-proposal-without-concurrency",
       name: "eval",
@@ -377,6 +439,58 @@ describe("local model RPC boundary", () => {
     expect(String(normalized.arguments.code)).toContain(
       '"profileId":"exact-context-reader"',
     );
+    const proposal = JSON.parse(
+      String(normalized.arguments.code).match(/^const proposal = (.*);$/mu)?.[1] ?? "null",
+    ) as { tasks: Array<{ profileId: string }> };
+    expect(proposal.tasks.map((task) => task.profileId)).toEqual([
+      "exact-context-reader",
+      "answer-drafter",
+      "answer-critic",
+      "chat-synthesizer",
+    ]);
+  });
+
+  it("keeps an empty local specialist selection admissible for host strategy normalization", () => {
+    const normalized = normalizeLocalGemmaAgenticEvalToolCallV1({
+      id: "host-normalized-agentic-proposal",
+      name: "eval",
+      arguments: { tasks: [], maxConcurrency: 1 },
+    });
+    const proposal = JSON.parse(
+      String(normalized.arguments.code).match(/^const proposal = (.*);$/mu)?.[1] ?? "null",
+    ) as { tasks: Array<{ profileId: string }> };
+    expect(proposal.tasks.map((task) => task.profileId)).toEqual([
+      "answer-drafter",
+      "answer-critic",
+      "chat-synthesizer",
+    ]);
+  });
+
+  it("does not duplicate mandatory agentic roles already selected by Gemma", () => {
+    const normalized = normalizeLocalGemmaAgenticEvalToolCallV1({
+      id: "complete-agentic-proposal",
+      name: "eval",
+      arguments: {
+        tasks: [
+          "answer-drafter",
+          "answer-critic",
+          "chat-synthesizer",
+        ].map((profileId) => ({
+          taskId: `task:${profileId}`,
+          profileId,
+          objective: `Run ${profileId}.`,
+          dependencyTaskIds: [],
+        })),
+      },
+    });
+    const proposal = JSON.parse(
+      String(normalized.arguments.code).match(/^const proposal = (.*);$/mu)?.[1] ?? "null",
+    ) as { tasks: Array<{ profileId: string }> };
+    expect(proposal.tasks.map((task) => task.profileId)).toEqual([
+      "answer-drafter",
+      "answer-critic",
+      "chat-synthesizer",
+    ]);
   });
 
   it("normalizes the pinned Gemma empty-gap and omitted block metadata shortcuts", () => {
@@ -499,6 +613,31 @@ describe("local model RPC boundary", () => {
       readyForSynthesis: false,
     });
     expect(normalizeLocalGemmaToolCallV1({
+      id: "critic-missing-code",
+      name: "ChatCritiquePacketV1",
+      arguments: {
+        defects: [{
+          defectId: "chat-defect:missing-code",
+          severity: "blocking",
+          message: "One semantic defect without its closed taxonomy code.",
+          sourceIds: ["source-1"],
+          repairAction: "disclose-gap",
+        }],
+        readyForSynthesis: false,
+      },
+    }, { schema: "atlcli.chat-critique-packet/v1" }).arguments).toEqual({
+      schema: "atlcli.chat-critique-packet/v1",
+      defects: [{
+        defectId: "chat-defect:missing-code",
+        code: "question-not-answered",
+        severity: "blocking",
+        message: "One semantic defect without its closed taxonomy code.",
+        sourceIds: ["source-1"],
+        repairAction: "disclose-gap",
+      }],
+      readyForSynthesis: false,
+    });
+    expect(normalizeLocalGemmaToolCallV1({
       id: "critic-explicit-invalid",
       name: "ChatCritiquePacketV1",
       arguments: {
@@ -510,7 +649,7 @@ describe("local model RPC boundary", () => {
       },
     }).arguments).toMatchObject({
       defects: [{
-        defectId: "invalid",
+        defectId: "chat-defect:local-1",
         sourceIds: "invalid",
         code: "unknown",
       }],
@@ -864,7 +1003,7 @@ describe("local model RPC boundary", () => {
     channel.port2.close();
   });
 
-  it("continues an admitted local agentic workflow without proposing it again", async () => {
+  it("lets Gemma replace a rejected workflow proposal on the next model call", async () => {
     const channel = new MessageChannel();
     let observed: LocalModelPortRequestV1 | undefined;
     channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
@@ -876,9 +1015,16 @@ describe("local model RPC boundary", () => {
         requestId: event.data.requestId,
         text: "",
         toolCalls: [{
-          id: "agentic-root-continue",
+          id: "agentic-root-retry",
           name: "eval",
-          arguments: {},
+          arguments: {
+            tasks: [{
+              taskId: "reader-retry",
+              profileId: "exact-context-reader",
+              objective: "Read the bound context.",
+              dependencyTaskIds: [],
+            }],
+          },
         }],
         inputTokens: 32,
         outputTokens: 12,
@@ -907,7 +1053,7 @@ describe("local model RPC boundary", () => {
       new SystemMessage(
         "The host requires an agentic Chat workflow for this turn.",
       ),
-      new HumanMessage("Use the admitted workflow."),
+      new HumanMessage("Use an agentic workflow."),
       new AIMessage({
         content: "",
         tool_calls: [{
@@ -922,7 +1068,7 @@ describe("local model RPC boundary", () => {
         }],
       }),
       new ToolMessage({
-        content: "The admitted workflow completed.",
+        content: "The workflow proposal was rejected by the host contract.",
         tool_call_id: "agentic-root-eval",
         name: "eval",
       }),
@@ -935,19 +1081,19 @@ describe("local model RPC boundary", () => {
       tools: [{
         function: {
           name: "eval",
-          parameters: {
-            type: "object",
-            additionalProperties: false,
-            properties: {},
-          },
+          parameters: expect.objectContaining({
+            required: expect.arrayContaining(["tasks"]),
+            properties: expect.objectContaining({
+              tasks: expect.objectContaining({ type: "array" }),
+            }),
+          }),
         },
       }],
     });
     expect(result.tool_calls?.[0]?.name).toBe("eval");
-    expect(result.tool_calls?.[0]?.args).toMatchObject({
-      code: "await tools.chatWorkflowRun({})",
-    });
-    expect(result.tool_calls?.[0]?.args.code).not.toContain("chatWorkflowPropose");
+    expect(result.tool_calls?.[0]?.args.code).toContain("reader-retry");
+    expect(result.tool_calls?.[0]?.args.code).toContain("chatWorkflowPropose");
+    expect(result.tool_calls?.[0]?.args.code).toContain("chatWorkflowRun");
     channel.port1.close();
     channel.port2.close();
   });
@@ -1026,6 +1172,89 @@ describe("local model RPC boundary", () => {
     expect(result.tool_calls?.[0]?.args.code).toContain(
       "await tools.chatWorkflowPropose(proposal);",
     );
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("does not continue an agentic workflow completed before the latest human turn", async () => {
+    const channel = new MessageChannel();
+    let observed: LocalModelPortRequestV1 | undefined;
+    channel.port2.onmessage = (event: MessageEvent<LocalModelPortRequestV1>) => {
+      observed = event.data;
+      if (event.data.kind !== "generate") return;
+      channel.port2.postMessage({
+        schema: LOCAL_MODEL_PROTOCOL_SCHEMA_V1,
+        kind: "complete",
+        requestId: event.data.requestId,
+        text: "",
+        toolCalls: [{
+          id: "new-turn-agentic-root",
+          name: "eval",
+          arguments: {
+            tasks: [{
+              taskId: "reader",
+              profileId: "exact-context-reader",
+              objective: "Read the current bound context.",
+              dependencyTaskIds: [],
+            }],
+          },
+        }],
+        inputTokens: 32,
+        outputTokens: 12,
+      });
+    };
+    channel.port2.start();
+    const binding = createLocalGemmaChatModelBindingV1({
+      port: channel.port1,
+      modelId: "fixture/model",
+      maxOutputTokens: 1_024,
+    });
+    const runnable = binding.model.bindTools!([{
+      name: "eval",
+      description: "Propose and run an admitted workflow.",
+      schema: z.object({ code: z.string() }),
+    }]);
+
+    const result = await runnable.invoke([
+      new SystemMessage(
+        "The host requires an agentic Chat workflow for this turn.",
+      ),
+      new HumanMessage("Earlier turn."),
+      new AIMessage({
+        content: "",
+        tool_calls: [{
+          id: "earlier-agentic-root",
+          name: "eval",
+          args: {
+            code: [
+              "await tools.chatWorkflowPropose(proposal);",
+              "await tools.chatWorkflowRun({})",
+            ].join("\n"),
+          },
+        }],
+      }),
+      new ToolMessage({
+        content: "The earlier workflow completed.",
+        tool_call_id: "earlier-agentic-root",
+        name: "eval",
+      }),
+      new HumanMessage("Current follow-up turn."),
+    ]);
+
+    expect(observed).toMatchObject({
+      kind: "generate",
+      requiredToolName: "eval",
+      tools: [{
+        function: {
+          name: "eval",
+          parameters: {
+            properties: { tasks: { type: "array" } },
+          },
+        },
+      }],
+    });
+    expect(result.tool_calls?.[0]?.args.code).toContain("chatWorkflowPropose");
+    expect(result.tool_calls?.[0]?.args.code).toContain("chatWorkflowRun");
     channel.port1.close();
     channel.port2.close();
   });

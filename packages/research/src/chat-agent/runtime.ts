@@ -2428,6 +2428,14 @@ export function createKiteweaveChatAgent(
                           }).model,
                           broker,
                           question: turn.question,
+                          retrievalContext: durableChatSession?.conversation.recentTurns
+                            .filter((candidate) =>
+                              candidate.id !== turn.turnId &&
+                              candidate.status === "complete" &&
+                              candidate.finalAnswer !== undefined
+                            )
+                            .at(-1)
+                            ?.finalAnswer?.messageMarkdown.slice(0, 4_000),
                           locale: turn.locale,
                           signal,
                           maxInputTokens:

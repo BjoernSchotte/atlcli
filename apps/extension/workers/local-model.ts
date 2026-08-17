@@ -330,17 +330,26 @@ async function generateV1(
   const agenticProposal = request.requiredToolName === "eval" &&
       requiredToolProperties?.tasks !== undefined &&
       requiredToolProperties.code === undefined;
-  const agenticProposalSeparators = agenticProposal ? 16 : 0;
+  const agenticTrailingCloserBudget = agenticProposal ? 8 : 0;
+  const agenticProposalSeparators = agenticProposal ? 32 : 0;
   const structuredChatPacket = typeof request.requiredToolName === "string" &&
     /^Chat[A-Za-z0-9]+V[0-9]+$/u.test(request.requiredToolName);
+  // Gemma can omit commas between otherwise valid object fields. Keep this
+  // tolerance inside the local provider adapter and only for host-validated
+  // Chat packets; arbitrary tool calls remain strict.
+  const structuredChatPacketSeparators = structuredChatPacket ? 32 : 0;
+  const maximumImplicitObjectSeparators = Math.max(
+    agenticProposalSeparators,
+    structuredChatPacketSeparators,
+  );
   const completeRequiredToolCriterion = request.requiredToolName
     ? new CompleteToolCallStoppingCriteriaV1(
         inputTokens,
         request.requiredToolName,
         (tokenIds) => tokenizer.decode(tokenIds, { skip_special_tokens: false }),
         responsePrefill,
-        agenticProposalSeparators,
-        agenticProposal ? 2 : 0,
+        maximumImplicitObjectSeparators,
+        agenticTrailingCloserBudget,
         bareStringEnumValues,
         structuredChatPacket,
       )
@@ -506,8 +515,8 @@ async function generateV1(
         ? isCompleteGemmaToolCallV1(
             raw,
             request.requiredToolName,
-            agenticProposalSeparators,
-            agenticProposal ? 2 : 0,
+            maximumImplicitObjectSeparators,
+            agenticTrailingCloserBudget,
             bareStringEnumValues,
             structuredChatPacket,
           )
@@ -521,8 +530,8 @@ async function generateV1(
         allowedToolNames: new Set(
           request.tools.map((tool) => tool.function.name),
         ),
-        maximumImplicitObjectSeparators: agenticProposalSeparators,
-        maximumTrailingStructuralClosers: agenticProposal ? 2 : 0,
+        maximumImplicitObjectSeparators,
+        maximumTrailingStructuralClosers: agenticTrailingCloserBudget,
         bareStringEnumValues,
         allowTrailingCollectionCommas: structuredChatPacket,
       });

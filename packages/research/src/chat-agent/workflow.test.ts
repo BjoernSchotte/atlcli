@@ -845,6 +845,37 @@ describe("Chat dynamic workflow admission", () => {
     );
   });
 
+  test("admits the mandatory quality chain before adding a strategy-required specialist", async () => {
+    const controller = createChatWorkflowProposalControllerV1({
+      strategy: {
+        ...agentic,
+        requiredCapabilities: ["exact-read", "quality-review", "chat-answer"],
+      },
+      budget: new ResearchRunBudget(DEFAULT_RESEARCH_LIMITS_V1),
+      allowedProfileIds: [
+        "exact-context-reader",
+        "answer-drafter",
+        "answer-critic",
+        "chat-synthesizer",
+      ],
+    });
+    const normalized = JSON.parse(await controller.tool.invoke({
+      tasks: qualityWorkflowTasks([]),
+      maxConcurrency: 1,
+    })) as {
+      normalization: { proposedTaskCount: number; admittedProfileIds: string[] };
+    };
+    expect(normalized.normalization).toMatchObject({
+      proposedTaskCount: 3,
+      admittedProfileIds: [
+        "answer-drafter",
+        "answer-critic",
+        "chat-synthesizer",
+        "exact-context-reader",
+      ],
+    });
+  });
+
   test("adds a host-required contradiction checker without changing the model's quality chain", async () => {
     const controller = createChatWorkflowProposalControllerV1({
       strategy: comparisonContradictionAgentic,
