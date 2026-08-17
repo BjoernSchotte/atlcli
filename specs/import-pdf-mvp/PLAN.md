@@ -4,7 +4,7 @@ Status: **Planned**
 
 Planned at: `b6826af5489ca08db6dea0e1ca384323c0d1c59f` (`feat(import-docx): semantic DOCX import - full Cloud feature set + DC contract track (#61)`), 2026-08-17
 
-Revised against: `cd3a1356dd83cc74680ca05fbbdd06c05df61cdf`, 2026-08-17 - add proof-gated PDFium adapters for CLI and future browser-host capabilities while retaining the existing PDF.js viewer during migration
+Revised against: `1702e43458d7fd610699c8f09522e23c8e15cc11`, 2026-08-17 - use PDFium for import across qualified hosts, retain PDF.js as viewer, and make bounded automatic PDF page-tree planning the default
 
 Spec ID: `import-pdf-mvp`
 
@@ -49,6 +49,7 @@ The MVP is successful only when all of the following are true:
 10. The built CLI passes an automated neutral live E2E in `mayflower` / `DOCSY`, reads back text/table/media semantics, and deletes every owned resource in `finally` cleanup.
 11. The digital-PDF release does not claim OCR support. Scanned or mixed pages are explicitly classified and blocked or preserved as reviewed image fallbacks according to policy. OCR ships only after the separate gate in Section 19.1 passes.
 12. PDFium is the import/analyzer engine for built CLI/Bun and, after host-specific proof, the Browser Extension and Forge Custom UI. PDF.js remains the viewer in the browser products and is not a production import adapter. The import contracts stay engine-neutral enough to avoid leaking PDFium handles or facts into semantic and Confluence layers.
+13. PDF imports default to an automatic, previewed page-tree decision. A 100-page PDF never silently becomes one Confluence page: qualified headings determine the hierarchy, bounded source-page ranges provide the fallback, and Data Center blocks when the resulting tree is unsupported.
 
 This plan does not promise pixel-identical conversion. PDF is a final-layout format; the product promise is evidence-backed semantic reconstruction with explicit fidelity fallbacks.
 
@@ -151,6 +152,22 @@ The intended reusable capability surface is `@atlcli/import-pdf/browser`, not th
 
 PDF Oxide is not an MVP production dependency. The transient neutral bake-off found useful Markdown/text extraction but also table misses, column reordering, a scan-classification false positive, and a Bun default-entry failure. It may be reconsidered as a non-authoritative heuristic only after a fresh upstream/version bake-off passes the same goldset and packaging gates.
 
+### 2.9 Long documents default to an automatic page tree
+
+PDF uses `--split auto` by default; this does not change the shipped DOCX default or syntax. Automatic planning keeps a short document on one wiki page only when it has at most 20 source pages and remains below the target editability caution budgets. Otherwise it creates a Cloud page tree.
+
+Auto splitting follows this order:
+
+1. Use qualifying recovered headings/outline relationships to create meaningful sections and hierarchy.
+2. Keep a qualifying section intact when it fits the target budgets and contains at most 20 source pages.
+3. Subdivide an oversized leaf section at stable paragraph/source-page boundaries, never through a table, figure-caption group, list item, or page-image fallback.
+4. When headings are absent or unsafe, create flat children covering approximately 20 source pages each.
+5. For a split document, make the root an index/overview and publish content in children; preamble content is assigned to an explicit introductory child rather than making the root large.
+
+The default title for a range child is `<root title> - Pages <start>-<end>` using PDF page labels when they are unique and safe, otherwise one-based physical page numbers. Heading-derived titles remain preferred. The preview is authoritative and shows the exact titles, hierarchy, source ranges, split reasons, estimated target sizes, conflicts, and rollback scope before any write.
+
+One PDF page never automatically means one wiki page. The planner caps a single target page at 40 source pages even under explicit `--split off`, caps one import at 200 created pages, and defaults `--max-wiki-pages` to 50. These are product/resource limits, not heuristics that may be bypassed silently.
+
 ---
 
 ## 3. Current repository state and planning evidence
@@ -241,7 +258,7 @@ Record the result in `specs/import-pdf-mvp/DRIFT.md`. STOP and reconcile if anot
 - repeated header/footer/page-number detection with reviewable decisions;
 - target-neutral semantic projection with PDF evidence sidecar;
 - local terminal and JSON preview, deterministic plan/body/asset digests;
-- create one page; optional Cloud page-tree split only from qualifying headings;
+- automatic one-page-or-tree planning with heading-first and bounded page-range splitting; Cloud publishes trees, DC accepts only resolved one-page plans;
 - Cloud ADF and DC Storage single-page publication;
 - title preflight, destination governance already proven by the shared publisher;
 - optional byte-identical source attachment, default off;
@@ -286,7 +303,7 @@ Record the result in `specs/import-pdf-mvp/DRIFT.md`. STOP and reconcile if anot
 | Cloud ADF / DC Storage | reuse | shared target projection after behavior-lock extraction |
 | title preflight and rename policy | reuse | no format-specific behavior |
 | restrictions/staging/labels/properties | reuse | target-side behavior only |
-| split page tree | limited | Cloud only; only qualifying recovered headings; never per-page automatically |
+| split page tree | adapt and default | PDF defaults to Cloud `auto`: qualifying headings first, bounded page-range fallback; never one child per source page |
 | editability assessment | reuse and extend | target payload plus PDF analysis/fallback budgets |
 | source attachment input | reuse | exact PDF attachment name/version provenance |
 | retain original source as attachment | add | explicit PDF opt-in, digest/readback, hidden-content disclosure |
@@ -297,7 +314,7 @@ Record the result in `specs/import-pdf-mvp/DRIFT.md`. STOP and reconcile if anot
 | Word comments/replies | defer PDF annotations | do not treat annotations as equivalent without an actor/anchor plan |
 | bookmarks/cross-file DOCX links | adapt/defer | safe PDF outline/dest links may guide navigation; cross-file links deferred |
 | footnotes from OOXML | heuristic/report | no native PDF footnote relation; do not claim native without evidence |
-| DC single-page contract | reuse | no DC split/update/governance parity claim beyond current target support |
+| DC single-page contract | reuse/fail closed | short one-page plans publish; any resolved multi-page plan blocks instead of collapsing into one page |
 
 ---
 
@@ -635,6 +652,40 @@ Every issue has:
 
 Examples include `page-scan-no-ocr`, `reading-order-ambiguous`, `table-grid-low-confidence`, `figure-rendered-fallback`, `unsafe-link-reported`, `embedded-file-ignored`, `javascript-action-rejected`, and `page-resource-budget-exceeded`.
 
+### 8.7 Split policy and page-plan contract
+
+```ts
+type PdfSplitModeV1 =
+  | { kind: "auto" }
+  | { kind: "off" }
+  | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6 }
+  | { kind: "pages"; targetSourcePages: number }; // integer 5..40
+
+interface PdfSplitPolicyV1 {
+  schema: "atlcli.pdf-split-policy/1";
+  mode: PdfSplitModeV1;
+  maxWikiPages: number; // default 50, accepted range 1..200
+  autoSinglePageMaxSourcePages: 20;
+  absoluteSinglePageMaxSourcePages: 40;
+  editabilityBudgetRevision: string;
+}
+
+interface PdfPlannedPageV1 {
+  id: string;
+  title: string;
+  parentId?: string;
+  sourcePageIndexes: number[];
+  sourcePageLabels: string[];
+  splitBasis: "root-index" | "heading" | "size-budget" | "page-range" | "preamble";
+  estimatedAdfBytes?: number;
+  estimatedStorageBytes?: number;
+  estimatedNodes: number;
+  estimatedTableCells: number;
+}
+```
+
+The canonical import plan stores both requested and resolved split policy. Changing the split mode, heading level, page-range target, maximum wiki pages, titles, or target editability budgets changes the plan digest and requires a fresh preview. Every source page belongs to exactly one planned content page or has one explicit no-content/rejected outcome; duplicated or unassigned source pages block publication.
+
 ---
 
 ## 9. Extraction and mapping rules
@@ -731,7 +782,9 @@ PDF-specific flags:
 --attach-source                            default off
 --overrides <pdf-overrides.yaml|json>
 --unsupported report|fail                  existing policy
---split <1..6>                             Cloud only; qualifying headings only
+--split auto|off|heading:<1..6>|pages:<N>  default auto; pages N must be 5..40
+--split <1..6>                             PDF alias for heading:<level>; preserves DOCX syntax
+--max-wiki-pages <1..200>                  default 50; pre-write resource cap
 ```
 
 DOCX-only flags such as `--map-style`, `--revisions`, `--comments`, and DOCX recipes fail with a format-specific message for PDF rather than being ignored.
@@ -743,6 +796,8 @@ Human and JSON preview include:
 - source digest, page count/classification, analyzer versions/options;
 - target space/parent/title/deployment/evidence label;
 - block counts and recovered outline;
+- requested/resolved split policy, target page count, hierarchy, titles, source page labels/ranges, and the reason for every boundary;
+- per-planned-page estimated source pages, ADF/Storage bytes, nodes, table cells, assets, and editability state;
 - per-page native/approximated/attached/reported/rejected counts;
 - low-confidence/ambiguous regions with page/bbox locator;
 - tables: native/fallback/linearized counts and span warnings;
@@ -771,7 +826,24 @@ Overrides cannot inject ADF, Storage, HTML, scripts, URLs outside link policy, O
 
 ### 10.4 Page-tree split
 
-`--split` is off by default. It is available only on Cloud and only when each splitting heading has qualifying evidence and produces unique, non-empty sections. The existing two-phase shell creation/link finalization and child-first rollback semantics are reused. A page boundary is not a heading; one child per PDF page is explicitly not implemented.
+PDF defaults to `--split auto`; DOCX remains unchanged. The resolved modes are:
+
+| Mode | Behavior |
+|---|---|
+| `auto` | one page only for <=20 source pages below caution budgets; otherwise heading hierarchy plus approximately 20-page bounded fallback chunks |
+| `off` | request one page; reject above 40 source pages or any hard target/editability budget |
+| `heading:<1..6>` | split only at qualifying headings through the selected level; block when a leaf exceeds the single-page hard limits and recommend `auto` or `pages:<N>` |
+| `pages:<N>` | create flat range children targeting N source pages (`5..40`), shifting boundaries to keep atomic content together |
+
+`--split <1..6>` remains a PDF alias for `heading:<level>` and keeps the existing DOCX meaning. Unknown syntax, `pages` outside `5..40`, and `--max-wiki-pages` outside `1..200` fail before analysis or target access.
+
+On Cloud, a resolved multi-page plan reuses the existing two-phase shell creation/link finalization and child-first rollback transaction. The root becomes an index page with deterministic child links and compact source/import metadata. Heading pages form a hierarchy; range fallback pages are siblings beneath the nearest qualifying heading page or the root. Empty sections do not create pages. Duplicate titles fail by default or use the existing `--title-conflict rename` policy before confirmation.
+
+Boundaries may move away from the nominal page count to keep a table, figure-caption group, list item, or page-image fallback atomic. A boundary never moves content across reading order, and each source page is accounted for exactly once in the planned content pages. One child per PDF page is explicitly not implemented.
+
+If the resolved plan exceeds `--max-wiki-pages` (default 50), preview reports the proposed count and blocks confirmation. The user may select a larger `pages:<N>`, a shallower heading level, or explicitly raise the cap up to the absolute 200-page transaction limit; exceeding 200 always rejects.
+
+Data Center retains its single-page MVP contract. A short PDF whose resolved `auto` plan is one page may publish. Any resolved page tree fails closed with the exact proposed page count and guidance to target Cloud or choose an explicit mode that produces a safe one-page plan; it is never flattened into one oversized Storage page.
 
 ---
 
@@ -821,7 +893,7 @@ title preflight -> shell -> attachments -> Storage version 2
 -> structural + semantic readback -> labels/readback -> complete
 ```
 
-PDF `--split`, restrictions/staging, content properties, and any capability not already proven for the current DC publisher fail closed with the exact unsupported flag list. Contract-tested remains the product label.
+For PDF, DC accepts only a resolved one-page split plan. Any `auto`, `heading`, or `pages` result containing children fails before mutation with its exact page count; it is never flattened. Restrictions/staging, content properties, and any capability not already proven for the current DC publisher likewise fail closed with the exact unsupported list. Contract-tested remains the product label.
 
 ### 11.4 Stronger semantic readback
 
@@ -938,6 +1010,7 @@ All committed fixtures are generated, authored for AtlCLI, or redistributable wi
 8. Repeated header/footer/page number, crop/media boxes, rotation.
 9. Scan, mixed hidden OCR layer, blank page, image-only page.
 10. Every adversarial class in Section 12.3.
+11. Heading-rich and heading-poor 100-page documents, oversized sections, atomic content crossing nominal boundaries, duplicate headings, and page-tree cap failures.
 
 Fixtures include authoring source where practical, a ground-truth manifest, expected source regions, expected outcome, and deterministic digest. Private customer documents are prohibited.
 
@@ -1038,13 +1111,14 @@ Tasks remain unchecked until evidence exists.
 
 **Depends on:** nothing.
 
-**Files:** `specs/import-pdf-mvp/DRIFT.md`, `EVIDENCE.md`, temporary neutral probes/fixtures only; no production code. The existing untracked bake-off may inform this task but is not itself release evidence or a production dependency.
+**Files:** `specs/import-pdf-mvp/DRIFT.md`, `EVIDENCE.md`, temporary neutral probes/fixtures only; no production code. The prior transient bake-off findings may inform this task but are not themselves release evidence or a production dependency.
 
 **Work:**
 
 - [ ] Execute Section 3.5 drift check against `b6826af5`.
 - [ ] Inventory actual DOCX source/target/publisher contracts and lock current fixture digests.
 - [ ] Build committed neutral simple-untagged and complex-tagged fixtures plus scan/mixed/table/figure/adversarial probes; record source and expected-feature digests.
+- [ ] Add heading-rich and heading-poor neutral 100-page fixtures; define expected root indexes, child ranges/hierarchy, atomic boundary shifts, page counts, and zero duplicate/unassigned source pages.
 - [ ] Reproduce the transient bake-off with exact candidate pins, initially `@embedpdf/pdfium` 2.15.0 and `pdfjs-dist` 6.1.200; reverify that these are still the intended upstream artifacts before selection.
 - [ ] Prove PDFium correlation among structure nodes/attributes, text and character boxes, annotations, destinations, page objects/images, and page/region rendering. Explicitly measure table roles/spans, figure bounds/alternative text, and visible-composition gaps.
 - [ ] Use a temporary public-API PDF.js probe as the bake-off baseline for structure IDs, text items, operator/image facts, annotations, destinations, and rendering; do not turn that probe into production importer code.
@@ -1237,7 +1311,7 @@ bun run typecheck
 - [ ] Add format routing/magic validation while preserving existing DOCX syntax.
 - [ ] Implement PDF flags, standard JSON report, terminal preview, issue/confidence/page summaries, and digest binding.
 - [ ] Implement hardened `atlcli.pdf-import-overrides/1`.
-- [ ] Produce a single-page create plan with title resolution and target capability summary.
+- [ ] Implement `PdfSplitPolicyV1`, default `auto`, all flag validation, deterministic one-page/tree resolution, root-index/range titles, source-page accounting, limits, and target capability summary.
 - [ ] Reject DOCX-only/PDF-only flags on the wrong source.
 
 **Verify:**
@@ -1248,7 +1322,7 @@ bun --conditions=development run --cwd apps/cli src/index.ts wiki import ./packa
 bun run typecheck
 ```
 
-**Expected:** default run is offline/no-write preview; non-TTY and confirm rules pass; source/plan digests repeat; DOCX CLI snapshots remain unchanged.
+**Expected:** default run is offline/no-write preview; a neutral 100-page fixture resolves to a bounded tree, short fixtures remain one page, non-TTY and confirm rules pass, source/plan digests repeat, and DOCX CLI snapshots remain unchanged.
 
 **Suggested commit:** `feat(import-pdf): add review-first CLI planning`
 
@@ -1290,18 +1364,20 @@ bun run build
 
 - [ ] Reuse title conflict preflight and supported governance/metadata options.
 - [ ] Implement opt-in source PDF attachment after restriction proof with byte digest readback.
-- [ ] Implement Cloud `--split 1..6` only for qualifying heading plans.
+- [ ] Publish every resolved Cloud mode: `auto`, `off`, `heading:<1..6>`/numeric alias, and `pages:<5..40>`; create root indexes, patch child links, and enforce 50-default/200-hard page caps.
+- [ ] Prove atomic-boundary shifting, exact source-page ownership, deterministic range/part titles, conflict preflight, and per-planned-page editability budgets.
 - [ ] Prove multi-page shell/link/finalize/child-first rollback.
-- [ ] Keep DC unsupported combinations fail-closed and explicit.
+- [ ] Allow safe resolved one-page PDF plans on DC and reject every resolved tree before mutation without flattening.
 
 **Verify:**
 
 ```bash
 bun run test packages/import-pdf packages/import-confluence apps/cli/src/commands/wiki-import-pdf.test.ts
+bun run test packages/import-pdf apps/cli/src/commands/wiki-import-pdf.test.ts --test-name-pattern split
 bun run typecheck
 ```
 
-**Expected:** sensitive bytes never precede a requested restriction; source attachment is distinct from figures; split titles/body/assets are exact.
+**Expected:** sensitive bytes never precede a requested restriction; source attachment is distinct from figures; a 100-page Cloud PDF cannot resolve to one page; split titles/ranges/body/assets and rollback are exact; DC trees fail before mutation.
 
 **Suggested commit:** `feat(import-pdf): add destination-safe source retention and split`
 
@@ -1406,6 +1482,9 @@ The root test command is always `bun run test`, never bare `bun test`.
 - [ ] Drift reconciliation is complete against the implementation base.
 - [ ] Digital tagged/qualified-untagged scope and scan/OCR non-support are exact in CLI/docs.
 - [ ] Every page and recognized region has one outcome and source locator.
+- [ ] PDF split defaults to `auto`; <=20-page safe fixtures remain one page, a neutral 100-page fixture becomes a bounded Cloud tree, and no planned content page exceeds 40 source pages or hard editability budgets.
+- [ ] Every source page belongs to exactly one content page; root index, heading/range titles, atomic boundary shifts, page caps, preview reasons, conflict policy, links, and child-first rollback are proven.
+- [ ] DC publishes safe resolved one-page plans and blocks every resolved tree before mutation without flattening.
 - [ ] Quality gates pass per family with zero unreported loss and zero false-native critical cases.
 - [ ] Figures/tables use native output only under threshold; all fallbacks are visible and digest-bound.
 - [ ] Source PDF attachment is opt-in, restriction-safe, byte-verified, and separate from content assets.
@@ -1436,6 +1515,8 @@ Stop and revise this plan if:
 - active content, embedded files, XFA/forms, or unsafe links would need execution/passthrough;
 - encrypted input would require passwords in argv, logs, plans, evidence, or diagnostics;
 - a page/region can disappear without an outcome/source locator;
+- auto split can place a 100-page fixture on one target page, leave a source page unassigned/duplicated, split an atomic table/figure/list/page-image group, or exceed the 40-source-page content-page ceiling;
+- a resolved tree can exceed the requested/default/absolute wiki-page cap, publish without exact previewed titles/ranges, or be flattened for Data Center;
 - preview/publication digests cannot bind all semantic and asset substitutions;
 - Cloud media identity or target-safe source attachment links/digests cannot be proven via public APIs;
 - ADF/DC mappings require undocumented payloads or silent body-format fallback;
@@ -1519,6 +1600,10 @@ UI Kit and Forge backend functions are not PDFium hosts in this plan. If either 
 | PDFium wrapper/binary provenance drifts | API/output/license/artifact changes | exact wrapper and WASM integrity pins, notices audit, packed-runtime parity |
 | PDF.js viewer runtime drifts independently | viewer/output regression | keep importer dependency-free from PDF.js; run existing viewer host gates |
 | PDFium renderer support missing on one import host | CLI/browser crash or empty images | PDFium bitmap/worker matrices, explicit capability failure, no empty success |
+| Auto split over-fragments documents | dozens of tiny/empty pages | heading qualification, 20-page target, atomic grouping, 50-page default cap, exact preview |
+| Auto split produces oversized pages | slow/failing editor | caution-budget trigger, 40-source-page hard ceiling, per-page assessment, confirmation blocker |
+| Range fallback loses context | table/figure/list split across children | atomic ownership groups and boundary shifting; block when no safe boundary exists |
+| DC silently flattens a tree | one oversized Storage page | resolved-plan capability check before mutation; exact unsupported error |
 | Preview differs from published media | user approves different result | placeholders + asset digests + semantic readback |
 | Source PDF exposes hidden data | unexpected attachment disclosure | default off, review disclosure, restriction-first, byte digest |
 | Shared refactor breaks DOCX | changed digests/comments/updates | behavior locks and neutral DOCX live E2E before commit |
@@ -1538,12 +1623,14 @@ Decisions fixed by this plan:
 3. Scan policy: confirmed publication defaults to `fail`; page-image fallback is explicit.
 4. Original PDF attachment: opt-in and off by default.
 5. Cloud: ADF/live-certified. DC: Storage/contract-tested/not project-live-certified.
-6. First release: new-page import with optional qualifying Cloud split; update and batch are deferred.
+6. First release: new-page import with PDF `--split auto` by default; Cloud publishes the resolved tree, DC accepts only resolved one-page plans; update and batch are deferred.
 7. PDF annotations are reported, not imported as comments.
 8. Only source-neutral contracts proven by both importers are extracted; PDF evidence remains source-specific.
 9. PDFium is the import/analyzer engine for CLI and, after individual proof, Extension and Forge Custom UI; PDF.js remains the viewer.
 10. The PDFium import identity is deterministic, digest-bound, and never falls back to PDF.js after preview.
 11. PDF Oxide is deferred from the MVP production dependency set.
+12. Auto keeps only PDFs with <=20 source pages and sub-caution target estimates on one page; its fallback target is approximately 20 source pages per child.
+13. `--split off` has an absolute 40-source-page ceiling; `pages:<N>` accepts 5..40; `--max-wiki-pages` defaults to 50 and cannot exceed 200.
 
 Evidence questions owned by PDF-00, not choices to guess:
 
@@ -1554,6 +1641,7 @@ Evidence questions owned by PDF-00, not choices to guess:
 5. Which rendered-region implementation is deterministic and packageable in each claimed host?
 6. Which untagged layout families qualify for native output under the fixed metrics?
 7. Does any local OCR engine meet the separate entry gate without unacceptable license, model, runtime, or bundle cost?
+8. Do the fixed 20-page auto threshold, 40-page hard content-page ceiling, and 50-page default transaction cap remain below the target editability/resource gates on the neutral corpus? Evidence may tighten them; loosening them requires a plan revision.
 
 If an answer changes scope or dependencies, update this plan and evidence before implementation continues.
 
