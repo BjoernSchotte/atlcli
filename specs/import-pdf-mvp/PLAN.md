@@ -4,13 +4,15 @@ Status: **Planned**
 
 Planned at: `b6826af5489ca08db6dea0e1ca384323c0d1c59f` (`feat(import-docx): semantic DOCX import - full Cloud feature set + DC contract track (#61)`), 2026-08-17
 
+Revised against: `cd3a1356dd83cc74680ca05fbbdd06c05df61cdf`, 2026-08-17 - add proof-gated PDFium adapters for CLI and future browser-host capabilities while retaining the existing PDF.js viewer during migration
+
 Spec ID: `import-pdf-mvp`
 
 Priority: **P1**
 
 Estimated effort: **XL / 9-13 implementation weeks for the digital-PDF MVP; OCR is a separately gated follow-up**
 
-Risk: **HIGH** - untrusted PDF execution surfaces, lossy semantic reconstruction, reading-order ambiguity, raster/vector extraction, two Confluence body models, and multi-step publication
+Risk: **HIGH** - untrusted PDF execution surfaces, PDFium WASM lifecycle and cross-host normalization, lossy semantic reconstruction, reading-order ambiguity, raster/vector extraction, two Confluence body models, and multi-step publication
 
 > **Executor instructions:** Read this plan completely before changing code. Execute the mandatory drift check and Task PDF-00 before extracting shared abstractions or committing an implementation shape. Follow tasks in dependency order. A checked box means the named proof passed and its exact command, version, fixture digest, metric, live page title, and cleanup result is recorded in `specs/import-pdf-mvp/EVIDENCE.md`; it is not an estimate. Stop on every STOP condition and revise this plan instead of improvising. Never commit customer documents, customer-derived text/images, tenant identifiers, or live artifacts.
 
@@ -46,6 +48,7 @@ The MVP is successful only when all of the following are true:
 9. Existing DOCX commands, output digests, Cloud behavior, DC contract behavior, and update baselines do not regress when source-neutral seams are extracted.
 10. The built CLI passes an automated neutral live E2E in `mayflower` / `DOCSY`, reads back text/table/media semantics, and deletes every owned resource in `finally` cleanup.
 11. The digital-PDF release does not claim OCR support. Scanned or mixed pages are explicitly classified and blocked or preserved as reviewed image fallbacks according to policy. OCR ships only after the separate gate in Section 19.1 passes.
+12. PDFium is the import/analyzer engine for built CLI/Bun and, after host-specific proof, the Browser Extension and Forge Custom UI. PDF.js remains the viewer in the browser products and is not a production import adapter. The import contracts stay engine-neutral enough to avoid leaking PDFium handles or facts into semantic and Confluence layers.
 
 This plan does not promise pixel-identical conversion. PDF is a final-layout format; the product promise is evidence-backed semantic reconstruction with explicit fidelity fallbacks.
 
@@ -131,6 +134,23 @@ The profile's typed deployment decides the target once. A 404 or normalized resp
 
 The current DOCX command previews by default rather than prompting. PDF retains that shipped behavior in the MVP. An interactive approval prompt is not introduced by this plan.
 
+### 2.8 Engine placement is host-specific
+
+The importer does not force one PDF engine into every host:
+
+| Host | Planned engine | Decision rule |
+|---|---|---|
+| built AtlCLI on Bun/Node | PDFium through an exact-pinned local WASM adapter | preferred only after PDF-00 proves semantics, packaging, lifecycle, cancellation, and budgets |
+| browser Extension | PDFium through a local WASM worker; existing PDF.js remains the viewer | enable analysis/import capabilities only after Extension CSP, worker, memory, idle-eviction, bundle, and packaged E2E gates pass |
+| Forge Custom UI | PDFium through a same-resource, local WASM asset in the Custom UI iframe | enable only after a deployed Forge spike proves CSP, worker/fallback, static-asset resolution, memory, cancellation, and Runs on Atlassian implications |
+| tests/diagnostics | PDFium on every claimed import host; PDF.js only as a bake-off/viewer regression reference | compare extraction quality during PDF-00 without shipping a second import engine |
+
+The public CLI does not expose an engine-selection flag in the MVP. The import plan records PDFium's exact version, adapter revision, capabilities, and options digest. A PDFium runtime failure never falls back to PDF.js because viewer behavior is not an import contract; capability failure is explicit and requires replanning. Browser hosts that have not passed the PDFium gate omit or disable the PDF-import capability with a reason.
+
+The intended reusable capability surface is `@atlcli/import-pdf/browser`, not the Extension viewer. It owns PDFium initialization from caller-supplied local WASM bytes, analysis workers, normalized facts, progress, cancellation, and teardown. Extension and Forge shells own asset URLs, file acquisition, persistence, authentication, target writes, CSP declarations, UI, and lifecycle/idle policy. Forge support here means **Custom UI in the browser iframe**, not UI Kit or Forge backend functions.
+
+PDF Oxide is not an MVP production dependency. The transient neutral bake-off found useful Markdown/text extraction but also table misses, column reordering, a scan-classification false positive, and a Bun default-entry failure. It may be reconsidered as a non-authoritative heuristic only after a fresh upstream/version bake-off passes the same goldset and packaging gates.
+
 ---
 
 ## 3. Current repository state and planning evidence
@@ -149,8 +169,9 @@ The current DOCX command previews by default rather than prompting. PDF retains 
 | Publication transaction is CLI-owned and DOCX-shaped | `apps/cli/src/commands/wiki-import.ts` `publishOnePage`, `finalizePageContent`, `publishOnePageDc`, `publishTree` | factor only proven identical steps; strengthen readback |
 | Current ADF readback verifies mainly top-level block types | `verifyPageContent` in `wiki-import.ts` | insufficient for PDF fidelity; add canonical semantic verification |
 | CLI dispatch and help are DOCX-only | `apps/cli/src/commands/wiki.ts`, `wiki-import.ts` | add format routing without breaking existing invocations |
-| PDF.js is extension-only | `apps/extension/package.json` | importer owns an exact dependency/runtime contract |
+| PDF.js currently serves the Extension PDF viewer | `apps/extension/package.json`, `apps/extension/utils/pdf/**` | keep this browser-host integration; importer facts require a separate owned adapter contract |
 | Existing PDF viewer renders only | `apps/extension/utils/pdf/viewer.ts` | do not import the viewer into the analyzer |
+| PDFium is not a production dependency | workspace manifests and lockfile at the planning baseline | add it only after PDF-00 proves exact-pinned local WASM contracts for the import hosts claimed by each release |
 
 ### 3.2 Actual DOCX coverage to compare
 
@@ -180,11 +201,15 @@ This establishes three design facts only:
 
 The private PDF, its text, images, metadata, path, and customer names must never enter Git, fixtures, evidence, tests, snapshots, commit messages, PR text, or documentation.
 
-### 3.4 PDF.js is a primitive provider, not an importer
+### 3.4 PDFium is the import primitive; PDF.js remains the viewer
 
-The checked `pdfjs-dist` public API provides text items with transforms and direction, marked-content identifiers, page structure roles, outline/destinations, annotations, metadata/mark info, operator lists, and page rendering. It does not by itself decide paragraph boundaries, reading order, headings, tables, captions, repeated headers, or visible-figure composition.
+The existing `pdfjs-dist` integration provides the browser viewer and remains unchanged by the PDF importer. Its extraction APIs are useful as a PDF-00 comparison baseline, but no production `PdfFactsAdapter` is built on PDF.js in this plan.
 
-Planning also proved that a raw PDF.js import is not automatically a Bun/Node contract: DOM/canvas ownership and exact workspace resolution must be explicit. Task PDF-00 must pass source, built CLI, packed Node, Bun, and browser-worker probes before the adapter is accepted.
+PDFium provides a different low-level surface: text pages and character boxes, structure-tree roles/attributes, annotations, page objects, and page/region rendering through a native/WASM lifecycle. It likewise does not reconstruct authoring semantics. Its document/page/text-page/structure-tree handles and allocated buffers must be closed or freed deterministically; the adapter, not downstream semantics, owns that lifecycle.
+
+A transient, untracked neutral bake-off using `pdfjs-dist` 6.1.200 and `@embedpdf/pdfium` 2.15.0 recovered all expected tokens from a simple fixture with both engines. On a complex tagged fixture both exposed the same four tagged tables, nine tagged figures with matching alternative text, eighteen annotations, and one physical-image fact. PDFium was materially faster in that local cold/warm sample. These results justify making PDFium the preferred CLI candidate, but they are not release evidence: PDF-00 must reproduce them with committed neutral fixtures, exact dependency/provenance records, quality metrics, RSS/cancellation data, and packed-runtime proofs in `EVIDENCE.md`.
+
+A raw PDFium WASM binding is not automatically an AtlCLI contract. Task PDF-00 must prove the normalized facts boundary in built CLI/Bun/Node, the packaged Extension worker, and deployed Forge Custom UI separately. Cross-host equality applies to canonical normalized PDFium facts and semantic decisions, not pointers, process-global IDs, raster bytes, or timing. PDF.js receives its existing viewer/output regression gates only.
 
 ### 3.5 Mandatory drift check
 
@@ -244,7 +269,7 @@ Record the result in `specs/import-pdf-mvp/DRIFT.md`. STOP and reconcile if anot
 - reverse-engineering a DOCX from the PDF before import;
 - pixel-identical Confluence pages;
 - executing JavaScript, actions, forms, embedded files, or external URLs;
-- calling PDF.js private/core modules to avoid a public-API limitation;
+- calling PDF.js private/core modules or private/unstable PDFium bindings to avoid a public-API limitation;
 - claiming a rendered crop is native/editable content;
 - using the export-side `ExportBlock` decoder as import truth.
 
@@ -290,7 +315,7 @@ Record the result in `specs/import-pdf-mvp/DRIFT.md`. STOP and reconcile if anot
 10. **Existing DOCX behavior is locked.** Shared refactors require identical DOCX semantic snapshots, plan/body digests, tests, and live transaction behavior.
 11. **Cloud and DC encoders stay independent.** Neither is generated by converting the other's body.
 12. **Customer data stays transient.** Only synthetic or redistributable neutral fixtures enter the repository.
-13. **Public parser APIs only.** A missing public PDF.js capability triggers fallback, another audited adapter, or a STOP; never a private import.
+13. **Supported PDFium APIs only.** A missing supported PDFium-wrapper capability triggers a fidelity fallback or a STOP; never a private engine import, direct unstable FFI leak, or reuse of the PDF.js viewer as an unreviewed importer.
 14. **Deterministic decisions.** Same bytes, analyzer/version/options, override, and target capabilities produce the same canonical plan.
 15. **Source attachment is not content.** It is off by default and never deleted as a superseded figure.
 
@@ -307,8 +332,13 @@ CLI file/stdin or Confluence attachment
              Uint8Array + source descriptor
                   |
                   v
-       @atlcli/import-pdf safe document adapter
-       classify -> public PDF.js facts -> page evidence
+       @atlcli/import-pdf safe facts boundary
+       PdfFactsAdapter backed by PDFium
+       CLI/Bun | Extension worker | Forge Custom UI
+                  |
+          normalized facts
+                  |
+       classify -> page evidence
                   |
         +---------+----------+
         |                    |
@@ -381,6 +411,8 @@ Forbidden edges:
 - target body fragments supplied by user overrides;
 - external OCR/network services in the digital MVP.
 
+`PdfFactsAdapter` is an internal PDFium port, not a public multi-engine selector. It accepts bytes, budgets, cancellation, and a progress sink; it emits owned facts plus exact PDFium identity/capabilities and exposes one idempotent cleanup boundary. PDFium handles/pointers, process-global IDs, and engine coordinates never cross it. If the adapter lacks a required capability, it returns a stable capability issue before semantic projection; the orchestration layer does not retry through PDF.js.
+
 ### 7.3 Proposed files
 
 ```text
@@ -393,7 +425,9 @@ packages/import-pdf/
     index.ts
     index.browser.ts
     contracts.ts
-    adapter/pdfjs.ts
+    adapter/contracts.ts
+    adapter/pdfium.ts
+    adapter/pdfium-browser.ts
     classify.ts
     text.ts
     structure.ts
@@ -531,7 +565,11 @@ interface PdfAnalysisV1 {
   schema: "atlcli.pdf-analysis/1";
   source: PdfSourceV1;
   analyzer: {
-    pdfjsVersion: string;
+    engine: {
+      kind: "pdfium";
+      version: string;
+      capabilitiesDigest: string;
+    };
     adapterRevision: string;
     policyRevision: string;
     optionsDigest: string;
@@ -572,7 +610,7 @@ Every change needs DOCX compatibility tests. Word-specific comments, style IDs, 
 `PdfImportPlanV1` pins:
 
 - source SHA-256 and byte length;
-- PDF.js exact version and safe option set;
+- PDFium engine kind, exact wrapper/WASM version, normalized capability set, and safe option set;
 - adapter/heuristic/policy revisions;
 - override digest;
 - target deployment/capability/destination digest;
@@ -581,7 +619,7 @@ Every change needs DOCX compatibility tests. Word-specific comments, style IDs, 
 - every extracted/rendered/source attachment digest;
 - issue/evidence digest and page-completeness counts.
 
-Maps and object keys are sorted; floating coordinates are normalized to a documented precision; non-finite numbers are rejected; runtime-specific object IDs, absolute paths, timestamps, and locale formatting are excluded. Repeat analysis in Bun, Node, and the browser worker must produce the same semantic/evidence digest. Rendered-image bytes may use platform-specific evidence only if the renderer is not claimed portable; the MVP should prefer one frozen renderer path for publication assets.
+Maps and object keys are sorted; floating coordinates are normalized to a documented precision; non-finite numbers are rejected; runtime-specific object IDs, pointers, process-global prefixes, absolute paths, timestamps, and locale formatting are excluded. Repeat analysis with PDFium in CLI, Extension, and Forge must produce the same semantic/evidence digest for portable facts. Rendered-image bytes may use platform-specific evidence only if the renderer is not claimed portable; the MVP should prefer one frozen PDFium renderer path for publication assets.
 
 ### 8.6 Issue schema
 
@@ -817,20 +855,20 @@ Otherwise keep baseline changes out of this MVP.
 
 ## 12. Security and resource budgets
 
-### 12.1 Safe PDF.js option contract
+### 12.1 Safe PDFium import adapter contracts
 
-The importer owns one frozen adapter configuration:
+The PDFium import adapters accept byte `data` only, perform no external resource fetch, treat JavaScript/actions/attachments as inert metadata, render only through an owned bounded renderer, and release every resource in `finally` and on cancellation. They own:
 
-- byte `data`, never URL/range transport;
-- `isEvalSupported: false`;
-- `enableXfa: false`;
-- no remote CMap, standard-font, ICC, or WASM URLs;
-- no external resource fetch;
-- rendering only through the owned bounded canvas/worker adapter;
-- worker/document/page destruction in `finally` and on cancellation;
-- JavaScript/actions/attachments inspected as inert metadata only.
+- one exact-pinned, locally packaged `pdfium.wasm`; no CDN, system library discovery, or runtime download;
+- one documented initialization/teardown path and bounded concurrency around the WASM module;
+- balanced close/destroy calls for document, page, text-page, bitmap, annotation, and structure-tree handles;
+- balanced allocation/free for every copied input/output buffer, including failure and cancellation paths;
+- a supported wrapper API only; no raw binding beyond the audited wrapper contract unless PDF-00 stops and revises this plan;
+- memory-growth, decoded-pixel, deadline, and cancellation checks that fail explicitly rather than returning partial empty facts;
+- host loaders that receive caller-supplied local WASM bytes and never infer a CDN or external URL;
+- separate CLI and browser-worker package entries with the same normalized facts contract.
 
-The existing extension viewer is a security precedent, not a reusable analyzer. Importer code must not pull Vite `?url&no-inline` viewer assets or extension globals into the CLI package.
+The existing PDF.js viewer is a security precedent and separate product capability, not a reusable analyzer. Importer code must not pull Vite `?url&no-inline` PDF.js assets or extension globals into the importer package. Extension and Forge keep PDF.js for viewing while loading PDFium separately for import analysis.
 
 ### 12.2 Initial hard budgets
 
@@ -868,17 +906,19 @@ Fixtures cover:
 - encrypted/password PDFs;
 - hostile link schemes and Unicode control characters;
 - active SVG-like content and malformed image profiles;
-- cancellation at document open, page facts, text, operator, render, and finalization.
+- cancellation at engine initialization, document open, page facts, text/structure extraction, operator/page-object enumeration, render, and finalization;
+- repeated PDFium open/close cycles and injected failures proving no leaked handles, allocations, or unbounded WASM memory growth.
 
-Every case proves bounded exit, stable issue/error code, no network request, and cleanup of worker/page/document/canvas resources.
+Every case proves bounded exit, stable issue/error code, no network request, and cleanup of worker/module/document/page/text-page/structure-tree/bitmap/canvas resources as applicable to the selected adapter.
 
 ### 12.4 Dependency and supply-chain rules
 
 - Every new direct dependency is exact-pinned; no caret, tilde, wildcard, `latest`, unpinned Git/URL, or CDN.
 - Task PDF-00 records exact version, upstream tag/commit, license and transitives, provenance/integrity, install scripts/native binaries, unpacked/bundle size, vulnerabilities, maintenance, and supported runtimes.
-- The importer may reuse the checked `pdfjs-dist` version only after it passes the import adapter gates. If it changes, centralize or pin deliberately and rerun extension viewer/output tests.
+- The PDFium import candidate and its wrapper/WASM artifact are exact-pinned only after PDF-00 records upstream source/tag, wrapper and binary licenses/notices, artifact integrity, install behavior, supported hosts, and pack output. The planning-spike version (`@embedpdf/pdfium` 2.15.0) is evidence to reproduce, not an automatic production selection.
+- The importer does not depend on `pdfjs-dist`. Existing PDF.js version changes remain subject to the separate Extension/Forge viewer and output gates.
 - Optional native canvas packages and platform binaries require macOS/Linux/Windows and Node/Bun pack evidence; a missing optional binary cannot produce an empty import.
-- Browser assets are emitted locally and checksum/provenance tested. No runtime downloads.
+- PDFium WASM and browser assets are emitted locally and checksum/provenance tested. No runtime downloads.
 
 ---
 
@@ -924,8 +964,9 @@ No aggregate score can hide a page loss or a false-native critical feature. Each
 
 ### 13.3 Determinism and parity
 
-- three repeated runs in each runtime produce equal semantic/evidence digests;
-- Bun source CLI, built Bun CLI, packed Node consumer, and browser worker agree;
+- three repeated PDFium runs in each claimed host/runtime produce equal semantic/evidence digests;
+- Bun source CLI, built Bun CLI, and packed Node consumer agree on the PDFium path;
+- packaged Extension-worker and deployed Forge Custom UI runs agree with the portable PDFium fixture truth, loss, false-native, and semantic thresholds;
 - Cloud ADF and DC Storage project the same supported semantic digest;
 - current DOCX corpus produces unchanged semantic snapshots and preview digests after shared extraction;
 - asset placeholder substitution changes only media identities and target URLs.
@@ -940,6 +981,8 @@ Task PDF-00 records cold/warm p50/p95 on named hardware. Before release:
 - page concurrency remains bounded and output order deterministic;
 - adding preview/evidence does not duplicate full decoded page/asset buffers;
 - renderer fallbacks have separate page/pixel/time counts in the report.
+
+The PDF-00 bake-off reports PDFium and PDF.js separately as a selection comparison. Release benchmarks then report PDFium on every import host it claims. PDFium is accepted only if it meets the semantic gates and remains within each host's RSS/cancellation ceilings. Speed never compensates for lower completeness, reading order, table/figure precision, or false-native output.
 
 OCR time is excluded because OCR is not a digital-MVP capability.
 
@@ -967,7 +1010,7 @@ PDF-00 feasibility and corpus
   |
   +--> PDF-01 proven shared semantic core + DOCX lock
   |      |
-  |      +--> PDF-02 safe PDF adapter/classifier
+  |      +--> PDF-02 safe PDFium import adapters + classifier
   |              |
   |              +--> PDF-03 tagged text/structure
   |              |      |
@@ -995,17 +1038,23 @@ Tasks remain unchecked until evidence exists.
 
 **Depends on:** nothing.
 
-**Files:** `specs/import-pdf-mvp/DRIFT.md`, `EVIDENCE.md`, temporary neutral probes/fixtures only; no production code.
+**Files:** `specs/import-pdf-mvp/DRIFT.md`, `EVIDENCE.md`, temporary neutral probes/fixtures only; no production code. The existing untracked bake-off may inform this task but is not itself release evidence or a production dependency.
 
 **Work:**
 
 - [ ] Execute Section 3.5 drift check against `b6826af5`.
 - [ ] Inventory actual DOCX source/target/publisher contracts and lock current fixture digests.
-- [ ] Build neutral tagged/untagged/scan/mixed/table/figure probes.
-- [ ] Prove public PDF.js correlation among structure IDs, text items, operator/image facts, annotations, destinations, and page rendering.
-- [ ] Prove whether public APIs expose enough table spans, figure bounds, alternative text, and visible asset data; define fallback for each gap.
-- [ ] Prove exact dependency/runtime shape in Bun source, built Bun, Node 20/22/24, and Chromium worker with local assets and zero network.
-- [ ] Benchmark classification, text/order, table/figure facts, memory, cancellation, and render bounds.
+- [ ] Build committed neutral simple-untagged and complex-tagged fixtures plus scan/mixed/table/figure/adversarial probes; record source and expected-feature digests.
+- [ ] Reproduce the transient bake-off with exact candidate pins, initially `@embedpdf/pdfium` 2.15.0 and `pdfjs-dist` 6.1.200; reverify that these are still the intended upstream artifacts before selection.
+- [ ] Prove PDFium correlation among structure nodes/attributes, text and character boxes, annotations, destinations, page objects/images, and page/region rendering. Explicitly measure table roles/spans, figure bounds/alternative text, and visible-composition gaps.
+- [ ] Use a temporary public-API PDF.js probe as the bake-off baseline for structure IDs, text items, operator/image facts, annotations, destinations, and rendering; do not turn that probe into production importer code.
+- [ ] Define and test the owned PDFium `PdfFactsAdapter` contract. Use PDF.js only as the bake-off baseline when comparing token completeness, reading order, structure roles, tables/spans, figures/alt text, annotations, physical-image facts, and duplicate/false-native rates.
+- [ ] Prove exact PDFium dependency/WASM/runtime shape in Bun source, built Bun, packed Bun, Node 20/22/24, and a neutral Chromium worker with local assets and zero network. Run small Extension and deployed Forge Custom UI feasibility smokes where their owning workspaces are available; absence of a host integration does not become a false MVP claim. Keep the existing PDF.js viewer/output regression suite green independently.
+- [ ] Audit PDFium wrapper and binary provenance, notices/licenses, integrity, install scripts, public/supported API surface, bundle/pack size, platform assumptions, and update path.
+- [ ] Inject failures and cancellation at every PDFium lifecycle stage; prove balanced handle/buffer cleanup, bounded WASM memory growth, deadlines, and RSS.
+- [ ] Benchmark both engines for classification, text/order, table/figure facts, memory, cold/warm latency, cancellation, and render bounds. Apply Section 13.4 without trading away semantic quality.
+- [ ] Record a host capability matrix: PDFium for CLI, Extension import, and Forge Custom UI import only where each host gate passes; PDF.js remains viewer-only; explicit failure where PDFium lacks a capability; no cross-engine fallback.
+- [ ] Record PDF Oxide as deferred or rejected for the MVP unless a fresh exact version clears the same facts, quality, runtime, and packaging gates.
 - [ ] Run an OCR bake-off only as research; record GO/NO-GO against Section 19.1 without adding OCR to MVP scope.
 - [ ] Freeze initial analyzer, policy, and budget revisions.
 
@@ -1017,9 +1066,9 @@ bun run typecheck
 bun run check:browser
 ```
 
-**Expected:** current DOCX baseline is green; all PDF gaps have measured public-API/fallback decisions; no production dependency or shared abstraction is committed.
+**Expected:** current DOCX baseline is green; PDFium is either accepted for each claimed import host with complete lifecycle/runtime evidence or that host capability remains explicitly unavailable; PDF.js remains viewer-only; no production dependency or shared abstraction is committed.
 
-**STOP if:** tags cannot correlate to text; a required lane needs PDF.js private modules/eval/network; Bun/Node/browser ownership cannot be made deterministic; or the digital goldset cannot meet the planned gates.
+**STOP if:** tags cannot correlate to text; normalized PDFium output diverges across a claimed host beyond the declared semantic gates; a required import lane needs PDF.js, unsupported/private PDFium bindings, `eval`, or network; PDFium handles/buffers/cancellation cannot be bounded; Bun/Node/browser ownership cannot be made deterministic; or the digital goldset cannot meet the planned gates.
 
 **Suggested commit:** `docs(import-pdf): record feasibility and drift evidence`
 
@@ -1053,19 +1102,20 @@ bun install --frozen-lockfile
 
 **Suggested commit:** `refactor(import): extract proven semantic core`
 
-### Task PDF-02 - Implement safe PDF adapter and page classification
+### Task PDF-02 - Implement safe PDFium import adapters and page classification
 
 **Depends on:** PDF-00 and PDF-01 contracts.
 
-**Files:** `packages/import-pdf/package.json`, build config, `src/{index,index.browser,contracts,budgets,classify,issues,canonical}.ts`, `src/adapter/pdfjs.ts`, safe/adversarial tests.
+**Files:** `packages/import-pdf/package.json`, build config, `src/{index,index.browser,contracts,budgets,classify,issues,canonical}.ts`, `src/adapter/{contracts,pdfium,pdfium-browser}.ts`, safe/adversarial tests.
 
 **Work:**
 
-- [ ] Accept bytes only; validate signature, encryption, page count, safe options, deadlines, and cancellation.
-- [ ] Expose only owned normalized facts; no PDF.js object leaks into public contracts.
-- [ ] Collect page boxes/rotation/labels, mark info, outline, inert action/attachment presence, text/structure/operator summaries.
+- [ ] Accept bytes only; validate signature, encryption, page count, safe options, deadlines, and cancellation before engine work.
+- [ ] Implement PDFium CLI and browser-worker loaders behind one `PdfFactsAdapter`; expose only owned normalized facts, never PDFium handles/pointers or host objects.
+- [ ] Collect page boxes/rotation/labels, mark info, outline, inert action/attachment presence, text/structure plus operator/page-object summaries through capability-labelled facts.
 - [ ] Classify every page/document and enforce completeness accounting.
-- [ ] Add deterministic progress events and cleanup in `finally`.
+- [ ] Record engine kind/version/capabilities/options in preview provenance and canonical digests; reject preview/publication engine drift.
+- [ ] Add deterministic progress events and idempotent cleanup in `finally`; exercise every PDFium allocation/handle failure path.
 
 **Verify:**
 
@@ -1075,7 +1125,7 @@ bun run typecheck
 bun run check:browser
 ```
 
-**Expected:** all source classes receive stable results/codes; adversarial inputs remain bounded; no network or active execution occurs.
+**Expected:** all source classes receive stable results/codes; PDFium powers the qualified import paths while PDF.js remains viewer-only; adversarial inputs remain bounded; no network, active execution, leaked engine object, or engine fallback occurs.
 
 **Suggested commit:** `feat(import-pdf): add safe PDF facts and classification`
 
@@ -1263,9 +1313,9 @@ bun run typecheck
 
 **Work:**
 
-- [ ] Add source/dist/packed Node/Bun/browser-worker conformance using the exact shipped artifact.
+- [ ] Add source/dist/packed Node/Bun conformance and a neutral browser-worker harness for the exact PDFium artifact. Prove the importer does not bundle PDF.js and the viewer does not depend on PDFium.
 - [ ] Run adversarial/no-network/cancellation/resource suites and performance gates.
-- [ ] Verify exact dependency pins, local assets, API report/closure, pack/install matrix, license/provenance.
+- [ ] Verify exact PDFium wrapper/WASM pins, local assets, API report/closure, pack/install matrix, license/provenance, and artifact checksums; run the existing PDF.js viewer dependency/output gates separately.
 - [ ] Document supported source/feature matrices, confidence/fallback language, all options, security/privacy, Cloud/DC evidence labels, troubleshooting, and related topics.
 - [ ] Add minimal and realistic examples without customer data.
 
@@ -1284,7 +1334,7 @@ bun run docs:build
 git diff --check
 ```
 
-**Expected:** all gates pass from clean source and built artifacts; docs make no OCR, browser UI, or DC live-certification overclaim.
+**Expected:** all gates pass from clean source and built artifacts; PDFium is confined to import capabilities, PDF.js remains the viewer, and docs make no OCR, unproven Forge capability, browser UI, or DC live-certification overclaim.
 
 **Suggested commit:** `docs(import-pdf): complete security and operations guide`
 
@@ -1322,13 +1372,13 @@ git diff --check
 | Layer | Required proof |
 |---|---|
 | pure contracts | canonical schemas, locators, outcomes, confidence, digests |
-| parser adapter | public API only, safe options, bytes-only, destroy/cancel |
+| parser adapters | owned/public APIs only, normalized facts, bytes-only, no silent fallback, destroy/free/cancel |
 | semantic goldens | per-family metrics, no page loss, no false native |
 | security | adversarial inputs, no network/active content, hard budgets |
 | shared core | DOCX behavior/digest locks, independent ADF/Storage |
 | CLI | routing, flags, offline preview, non-TTY, blockers, JSON/help |
 | publisher | exact state order, media resolution, semantic readback, rollback |
-| packaging | source/dist/built/pack, Node LTS, Bun, browser worker |
+| packaging | PDFium source/dist/built/pack on Node LTS/Bun plus Extension/Forge import workers; PDF.js viewer regression; no capability dependency leak |
 | Cloud | built CLI DOCSY live create/readback/failure/cleanup |
 | Data Center | deterministic v1/Storage/context-path/auth contract server |
 | docs | links/build, coverage/options/troubleshooting/privacy/evidence labels |
@@ -1378,9 +1428,11 @@ Stop and revise this plan if:
 - tagged structure cannot be deterministically correlated with marked text/visible regions;
 - qualified untagged reading order misses its release gate or produces any false-native critical fixture;
 - native table/figure false-positive or loss rates exceed Section 13.2;
-- a required implementation needs PDF.js private/core imports, `eval`, remote assets, CDN models, or external fetch;
-- PDF.js/runtime/canvas assets cannot be exact-pinned, licensed, packaged, and proven in built Bun/Node/browser outputs;
-- cancellation cannot bound CPU/RSS or cannot reliably destroy worker/document/page/canvas resources;
+- a required import implementation needs PDF.js, unsupported/private PDFium bindings, `eval`, remote assets, CDN models, or external fetch;
+- PDFium wrapper/WASM assets cannot be exact-pinned, licensed, integrity-checked, packaged, and proven in their claimed import-host outputs;
+- PDFium cannot reproduce the required normalized structure/text/table/figure/annotation facts on a claimed import host without weakening a semantic gate;
+- adapter selection or fallback can change after preview without changing the bound plan digest and requiring a fresh review;
+- cancellation cannot bound CPU/RSS or cannot reliably destroy/free worker/module/document/page/text-page/structure-tree/bitmap/canvas resources;
 - active content, embedded files, XFA/forms, or unsafe links would need execution/passthrough;
 - encrypted input would require passwords in argv, logs, plans, evidence, or diagnostics;
 - a page/region can disappear without an outcome/source locator;
@@ -1432,7 +1484,24 @@ Separate evidence tracks for complex multi-column reading order, continued/neste
 
 ### 19.6 Browser extension and Forge
 
-The neutral browser-worker case proves portability only. UI, file acquisition, session auth, target locking, durable jobs, CSP, upload, progress, accessibility, and rollback require host-specific plans and E2E.
+The MVP ships and tests an engine-neutral `@atlcli/import-pdf/browser` capability backed by local PDFium WASM, but it does not add browser-product UI. PDF.js remains responsible for viewing PDFs.
+
+The later Extension integration must prove, with the packaged artifact:
+
+- local `pdfium.wasm` resolution with the existing MV3 CSP and no CDN/egress;
+- dedicated-worker or offscreen ownership, cancellation, idle eviction, and repeated-job memory recovery;
+- file/attachment acquisition, progress, preview, target writes, rollback, accessibility, and packaged Chrome E2E;
+- no regression or dependency coupling in the existing PDF.js viewer.
+
+The later Forge integration is limited to Custom UI and must prove, in a deployed app:
+
+- same-resource local WASM loading inside the sandboxed iframe, without external egress;
+- whether WebAssembly compilation requires `unsafe-eval` or another permission, and the resulting Runs on Atlassian eligibility;
+- dedicated-worker support or a bounded main-thread fallback, CSP, bundle/transfer size, memory, cancellation, and modal lifecycle;
+- bridge-based acquisition/publication, progress, preview, rollback, and browser E2E;
+- no dependency coupling in the existing PDF.js viewer.
+
+UI Kit and Forge backend functions are not PDFium hosts in this plan. If either browser host fails its gate, the PDF-import capability stays absent there while CLI import remains releasable; the semantic/import package contract must not be forked to work around a host limitation.
 
 ---
 
@@ -1445,9 +1514,11 @@ The neutral browser-worker case proves portability only. UI, file acquisition, s
 | Hidden OCR duplicates native text | repeated paragraphs | overlap/text-layer suppression; zero duplicate gate |
 | Image object differs from visible figure | tiles/masks/crops missing | visible correlation; bounded rendered fallback |
 | Vector fallback is blurry/huge | unreadable or oversized page | pixel/DPI/bbox budgets, preview dimensions, asset cap |
-| Public PDF.js surface lacks semantic metadata | spans/alt unavailable | report/manual override/fallback; alternate audited adapter or STOP |
-| PDF.js caret/runtime drifts | different API/output/binary | exact importer pin, frozen lock, packed runtime parity |
-| Native canvas missing on one platform | CLI crash or empty images | optional-binary matrix, explicit capability failure, no empty success |
+| PDFium host outputs expose different semantic metadata | spans/alt/table facts diverge | normalized capability contract, per-host goldset; report/fallback or STOP |
+| PDFium WASM lifecycle leaks or grows memory | RSS rises across documents/cancellation | balanced-handle tests, injected failures, bounded module ownership, STOP |
+| PDFium wrapper/binary provenance drifts | API/output/license/artifact changes | exact wrapper and WASM integrity pins, notices audit, packed-runtime parity |
+| PDF.js viewer runtime drifts independently | viewer/output regression | keep importer dependency-free from PDF.js; run existing viewer host gates |
+| PDFium renderer support missing on one import host | CLI/browser crash or empty images | PDFium bitmap/worker matrices, explicit capability failure, no empty success |
 | Preview differs from published media | user approves different result | placeholders + asset digests + semantic readback |
 | Source PDF exposes hidden data | unexpected attachment disclosure | default off, review disclosure, restriction-first, byte digest |
 | Shared refactor breaks DOCX | changed digests/comments/updates | behavior locks and neutral DOCX live E2E before commit |
@@ -1470,14 +1541,19 @@ Decisions fixed by this plan:
 6. First release: new-page import with optional qualifying Cloud split; update and batch are deferred.
 7. PDF annotations are reported, not imported as comments.
 8. Only source-neutral contracts proven by both importers are extracted; PDF evidence remains source-specific.
+9. PDFium is the import/analyzer engine for CLI and, after individual proof, Extension and Forge Custom UI; PDF.js remains the viewer.
+10. The PDFium import identity is deterministic, digest-bound, and never falls back to PDF.js after preview.
+11. PDF Oxide is deferred from the MVP production dependency set.
 
 Evidence questions owned by PDF-00, not choices to guess:
 
-1. Which exact PDF.js version/entry/worker/canvas combination passes all claimed runtimes?
-2. Can public APIs expose or reliably correlate table spans, author alt text, and visible raster bytes for the required fixtures?
-3. Which rendered-region implementation is deterministic and packageable across the claimed hosts?
-4. Which untagged layout families qualify for native output under the fixed metrics?
-5. Does any local OCR engine meet the separate entry gate without unacceptable license, model, runtime, or bundle cost?
+1. Which exact `@embedpdf/pdfium` wrapper/WASM artifact passes CLI semantics, provenance, packaging, lifecycle, cancellation, and resource gates?
+2. Can the same PDFium WASM artifact and normalized facts contract pass packaged Extension and deployed Forge Custom UI CSP, worker, memory, idle, cancellation, and static-asset gates?
+3. Does Forge require `unsafe-eval`, another CSP relaxation, or an eligibility-changing permission, and is that acceptable? A CDN is not an option.
+4. Can PDFium expose or reliably correlate table spans, author alt text, and visible raster bytes for the required fixtures without engine-specific semantics leaking downstream?
+5. Which rendered-region implementation is deterministic and packageable in each claimed host?
+6. Which untagged layout families qualify for native output under the fixed metrics?
+7. Does any local OCR engine meet the separate entry gate without unacceptable license, model, runtime, or bundle cost?
 
 If an answer changes scope or dependencies, update this plan and evidence before implementation continues.
 
@@ -1492,6 +1568,11 @@ If an answer changes scope or dependencies, update this plan and evidence before
 - Current PDF.js viewer/security precedent: `apps/extension/utils/pdf/viewer.ts`, `apps/extension/utils/pdf/pdfjs-assets.ts`, `apps/extension/scripts/check-output-build.ts`
 - Checked PDF.js public type surface: `node_modules/pdfjs-dist/types/src/display/api.d.ts` at the implementation baseline; reverify from the exact selected upstream release during PDF-00
 - PDF.js project/API: <https://github.com/mozilla/pdf.js>, <https://mozilla.github.io/pdf.js/api/>
+- PDFium project and public C API: <https://pdfium.googlesource.com/pdfium/>, <https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/>
+- EmbedPDF PDFium wrapper used by the planning bake-off; reverify exact package/source/license during PDF-00: <https://github.com/embedpdf/embed-pdf-viewer>
+- Forge Custom UI static-resource/CSP model: <https://developer.atlassian.com/platform/forge/extend-ui-with-custom-options/>
+- Forge Custom UI iframe restrictions: <https://developer.atlassian.com/platform/forge/custom-ui/iframe/>
+- Forge content and external permissions: <https://developer.atlassian.com/platform/forge/manifest-reference/permissions/>
 - Atlassian Cloud page REST v2: <https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/>
 - Atlassian Document Format: <https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/>
 - Confluence Data Center REST: <https://developer.atlassian.com/server/confluence/confluence-server-rest-api/>
@@ -1500,7 +1581,7 @@ If an answer changes scope or dependencies, update this plan and evidence before
 
 ## 23. Maintenance notes
 
-- Any PDF.js, canvas, renderer, OCR, model, or language-pack upgrade is an evidence change: update exact pins, provenance, fixtures, semantic digests, security corpus, runtime/pack matrix, and Cloud/DC proof as applicable.
+- Any PDFium wrapper/WASM, PDF.js, canvas, renderer, OCR, model, or language-pack upgrade is an evidence change: update exact pins and artifact integrity, provenance/notices, fixtures, semantic digests, security corpus, runtime/pack matrix, and Cloud/DC proof as applicable.
 - Heuristic thresholds/revisions are versioned product behavior. Do not tune them from a private document or silently change them in a dependency bump.
 - Add every newly supported PDF producer/layout family to the goldset before changing documentation from fallback/report to native.
 - Track fallback rate, page-loss blockers, analysis time/RSS, render pixels/bytes, and issue codes in sanitized local/live receipts; never persist document content.
