@@ -922,8 +922,15 @@ Live proof:
       answer blocks, and source bindings without a failure state.
 - [ ] Network observation records zero Anthropic and model-origin requests during
       local inference while allowing only expected Atlassian traffic.
-- [ ] Existing Chat cancellation reaches a terminal cancelled event, stops local
-      generation, and releases the model/resource lease.
+- [x] Existing Chat cancellation reaches a terminal cancelled event, stops local
+      generation, and releases the model/resource lease. A production-packed
+      local Auto turn was stopped from the existing composer after approximately
+      33 seconds; the UI returned to its terminal stopped state, the provider
+      reported a typed `cancelled` failure, and no further generation progress
+      appeared during a five-second observation. A fresh local conversation then
+      completed a warm cited answer in approximately 24 seconds, proving that no
+      active Chat, worker, or generation slot remained leased. Focused UI, worker
+      host, local RPC, stopping, and native tensor-cleanup tests pass.
 - [x] Record initial cold/warm and answer-stream timing samples on the named
       decision hardware.
 - [ ] Complete the measurement set with decode rate, peak JS/GPU/process memory,
