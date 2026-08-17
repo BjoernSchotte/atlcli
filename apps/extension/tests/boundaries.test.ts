@@ -301,7 +301,7 @@ describe("browser-local model runtime dependency boundary", () => {
     .flatMap((dir) => sourceFiles(join(ROOT, dir)));
 
   it("declares Transformers.js as an exact extension runtime dependency only", () => {
-    expect(extensionManifest.dependencies?.["@huggingface/transformers"]).toBe("4.1.0");
+    expect(extensionManifest.dependencies?.["@huggingface/transformers"]).toBe("4.2.0");
     expect(researchManifest.dependencies?.["@huggingface/transformers"]).toBeUndefined();
     expect(researchManifest.devDependencies?.["@huggingface/transformers"]).toBeUndefined();
   });

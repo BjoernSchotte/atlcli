@@ -35,7 +35,7 @@ export function classifyLocalGemmaHostErrorV1(
     return classified;
   }
   return {
-    code: "provider-error",
+    code: classified.code,
     message: `Local Gemma browser host failed: ${detail}`,
   };
 }

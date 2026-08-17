@@ -528,11 +528,11 @@ describe("research-owned native task dispatch interception", () => {
     try {
       const result = await session.eval(`${guestTask("provider-failure")}`, 5_000);
       expect(result.ok).toBe(false);
-      expect(diagnostics).toContainEqual({
+      expect(diagnostics).toContainEqual(expect.objectContaining({
         taskId: "provider-failure",
         status: "failed",
         code: "subagent-provider-error",
-      });
+      }));
       expect(JSON.stringify(diagnostics)).not.toContain("private provider response body");
       expect(outcomes).toEqual(["upstream-error"]);
     } finally {

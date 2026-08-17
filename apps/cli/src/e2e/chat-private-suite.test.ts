@@ -329,61 +329,39 @@ describe("private Chat release suite", () => {
     expect(proof.failureCodes).not.toContain("unsupported-claim");
   });
 
-  test("fails private proof for incomplete or self-contradictory answer prose", async () => {
-    for (const [name, markdown] of [
-      [
-        "incomplete",
-        `Supported fact 1. [Quelle](${sourceUrl})\n\nDie Quelle bezeichnet die Einstellung als`,
-      ],
-      [
-        "classification-conflict",
-        `Supported fact 1. Die Werte wurden direkt gemessen. Diese Werte sind eine Vermutung. [Quelle](${sourceUrl})`,
-      ],
-      [
-        "detached-continuation",
-        `Supported fact 1. [Quelle](${sourceUrl})\n\nda der Autor die übrigen Werte nur abgeleitet hat.`,
-      ],
-      [
-        "detached-conjunction",
-        `Supported fact 1. [Quelle](${sourceUrl})\n\nund die übrigen Werte nur abgeleitet wurden.`,
-      ],
-      [
-        "reproducibility-conflict",
-        `Supported fact 1. Die Werte sind belastbare Messungen. Diese Werte sind nicht als reproduzierbare Produktivmessungen einzustufen. [Quelle](${sourceUrl})`,
-      ],
-    ] as const) {
-      const root = await mkdtemp(join(tmpdir(), `atlcli-chat-private-${name}-`));
-      roots.push(root);
-      const args = parseChatPrivateSuiteArgumentsV1([
-        "--suite", join(root, "suite.json"), "--output-dir", join(root, "artifacts"),
-      ], "/repository");
-      const selected = selectChatPrivateSuiteV1(suite, { caseId: "CASE02", variant: "quick" });
-      const proof = await runChatPrivateSuiteV1(args, selected, async () => ({
-        exitCode: 0,
-        stdout: JSON.stringify({
-          sessionId: "research-session:private",
-          answer: {
-            messageMarkdown: markdown,
-            citations: [{ url: sourceUrl }],
-            strategy: { qualityMode: "quick" },
-            run: {
-              durationMs: 100,
-              counts: { ptcCalls: 1, httpCalls: 1 },
-              usage: { inputTokens: 10, outputTokens: 5 },
-              modelRouting: { callsByRoute: { supervisor: 1 } },
-            },
+  test("fails private proof for structurally repeated conversational prose", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-chat-private-repetition-"));
+    roots.push(root);
+    const args = parseChatPrivateSuiteArgumentsV1([
+      "--suite", join(root, "suite.json"), "--output-dir", join(root, "artifacts"),
+    ], "/repository");
+    const selected = selectChatPrivateSuiteV1(suite, { caseId: "CASE02", variant: "quick" });
+    const repeated = "Supported fact 1 establishes the bounded result from the accepted source.";
+    const proof = await runChatPrivateSuiteV1(args, selected, async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        sessionId: "research-session:private",
+        answer: {
+          messageMarkdown: `${repeated} [Quelle](${sourceUrl})\n\n${repeated}`,
+          citations: [{ url: sourceUrl }],
+          strategy: { qualityMode: "quick" },
+          run: {
+            durationMs: 100,
+            counts: { ptcCalls: 1, httpCalls: 1 },
+            usage: { inputTokens: 10, outputTokens: 5 },
+            modelRouting: { callsByRoute: { supervisor: 1 } },
           },
-        }),
-        stderr: "",
-      }), cleanAuthority);
+        },
+      }),
+      stderr: "",
+    }), cleanAuthority);
 
-      expect(proof.status).toBe("failed");
-      expect(proof.failureCodes).toContain("answer-integrity-failed");
-      expect(proof.failureCodes).not.toContain("required-fact-missing");
-    }
+    expect(proof.status).toBe("failed");
+    expect(proof.failureCodes).toContain("answer-integrity-failed");
+    expect(proof.failureCodes).not.toContain("required-fact-missing");
   });
 
-  test("allows report repetition without weakening Deep Research integrity", () => {
+  test("allows report repetition without adding language-specific prose gates", () => {
     const repeated = [
       "# Bericht",
       "Supported fact 1 establishes the bounded result from the accepted source.",
@@ -392,13 +370,6 @@ describe("private Chat release suite", () => {
     ].join("\n\n");
     expect(privateAnswerIntegrityIssuesV1(repeated, "quick")).toContain("repeated-prose");
     expect(privateAnswerIntegrityIssuesV1(repeated, "deep-research")).toEqual([]);
-
-    const incomplete = `${repeated}\n\nDie Quelle bezeichnet die Einstellung als`;
-    expect(privateAnswerIntegrityIssuesV1(incomplete, "deep-research"))
-      .toContain("incomplete-prose");
-    const conflicting = `${repeated}\n\nDie Werte wurden direkt gemessen. Diese Werte sind eine Vermutung.`;
-    expect(privateAnswerIntegrityIssuesV1(conflicting, "deep-research"))
-      .toContain("observation-classification-conflict");
   });
 
   test("compiles explicit operator and installed-extension decisions into neutral proofs", async () => {

@@ -873,9 +873,7 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "repeated-prose",
-    "incomplete-prose",
-    "observation-classification-conflict"
+    "repeated-prose"
 ];
 
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
@@ -889,8 +887,6 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 
 // export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
 export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
-    "incomplete-prose",
-    "observation-classification-conflict",
     "repeated-prose"
 ];
 
@@ -1005,6 +1001,9 @@ export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
     "continuation",
     "completion"
 ];
+
+// export: CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1
+export declare const CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1 = "Address each substantive request in the user's original question using supported evidence, or state a precise material gap. Judge coverage by meaning, not wording: natural paraphrases, different word order, and the user's chosen language are valid. Never copy question fragments merely to satisfy validation.";
 
 // export: CHAT_SESSION_PATH_V1
 export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
@@ -1122,6 +1121,7 @@ export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1
 // export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
 export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
     "host-exact-anchors-bound",
+    "host-required-specialists-added",
     "exact-readers-packed",
     "dominated-specialists-removed",
     "phase-dependencies-normalized"
@@ -1796,12 +1796,24 @@ export interface ChatPresentationStreamEventV1 {
     delta?: string;
 }
 
-// export: ChatPtcReferenceRejectionV1
-export interface ChatPtcReferenceRejectionV1 {
+// export: ChatPtcAnchorReferenceRejectionV1
+export interface ChatPtcAnchorReferenceRejectionV1 {
     schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
     status: "rejected";
     code: "unknown-anchor-ref";
     currentAnchorRefs: string[];
+}
+
+// export: ChatPtcReferenceRejectionV1
+export type ChatPtcReferenceRejectionV1 = ChatPtcAnchorReferenceRejectionV1 | ChatPtcSectionReferenceRejectionV1;
+
+// export: ChatPtcSectionReferenceRejectionV1
+export interface ChatPtcSectionReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-section-ref";
+    currentSectionRefs: string[];
+    action: "retry-with-current-section-ref" | "read-bound-entity-first";
 }
 
 // export: ChatQualityModeV1
@@ -4899,8 +4911,11 @@ export interface ResearchDetailEvidenceV1 {
 // export: ResearchDispatchDiagnosticV1
 export interface ResearchDispatchDiagnosticV1 {
     taskId?: string;
+    subagentType?: string;
     status: ResearchDispatchStatusV1;
     code?: ResearchDispatchErrorCodeV1;
+    failureStage?: "upstream" | "result-commit";
+    failureClass?: "structured-output" | "provider" | "unknown";
     providerStatus?: number;
     resultBytes?: number;
 }
@@ -9264,9 +9279,7 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "repeated-prose",
-    "incomplete-prose",
-    "observation-classification-conflict"
+    "repeated-prose"
 ];
 
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
@@ -9280,8 +9293,6 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 
 // export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
 export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
-    "incomplete-prose",
-    "observation-classification-conflict",
     "repeated-prose"
 ];
 
@@ -9396,6 +9407,9 @@ export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
     "continuation",
     "completion"
 ];
+
+// export: CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1
+export declare const CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1 = "Address each substantive request in the user's original question using supported evidence, or state a precise material gap. Judge coverage by meaning, not wording: natural paraphrases, different word order, and the user's chosen language are valid. Never copy question fragments merely to satisfy validation.";
 
 // export: CHAT_SESSION_PATH_V1
 export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
@@ -9513,6 +9527,7 @@ export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1
 // export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
 export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
     "host-exact-anchors-bound",
+    "host-required-specialists-added",
     "exact-readers-packed",
     "dominated-specialists-removed",
     "phase-dependencies-normalized"
@@ -10187,12 +10202,24 @@ export interface ChatPresentationStreamEventV1 {
     delta?: string;
 }
 
-// export: ChatPtcReferenceRejectionV1
-export interface ChatPtcReferenceRejectionV1 {
+// export: ChatPtcAnchorReferenceRejectionV1
+export interface ChatPtcAnchorReferenceRejectionV1 {
     schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
     status: "rejected";
     code: "unknown-anchor-ref";
     currentAnchorRefs: string[];
+}
+
+// export: ChatPtcReferenceRejectionV1
+export type ChatPtcReferenceRejectionV1 = ChatPtcAnchorReferenceRejectionV1 | ChatPtcSectionReferenceRejectionV1;
+
+// export: ChatPtcSectionReferenceRejectionV1
+export interface ChatPtcSectionReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-section-ref";
+    currentSectionRefs: string[];
+    action: "retry-with-current-section-ref" | "read-bound-entity-first";
 }
 
 // export: ChatQualityModeV1
@@ -13281,8 +13308,11 @@ export interface ResearchDetailEvidenceV1 {
 // export: ResearchDispatchDiagnosticV1
 export interface ResearchDispatchDiagnosticV1 {
     taskId?: string;
+    subagentType?: string;
     status: ResearchDispatchStatusV1;
     code?: ResearchDispatchErrorCodeV1;
+    failureStage?: "upstream" | "result-commit";
+    failureClass?: "structured-output" | "provider" | "unknown";
     providerStatus?: number;
     resultBytes?: number;
 }
@@ -17635,9 +17665,7 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "repeated-prose",
-    "incomplete-prose",
-    "observation-classification-conflict"
+    "repeated-prose"
 ];
 
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
@@ -17651,8 +17679,6 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 
 // export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
 export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
-    "incomplete-prose",
-    "observation-classification-conflict",
     "repeated-prose"
 ];
 
@@ -17767,6 +17793,9 @@ export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
     "continuation",
     "completion"
 ];
+
+// export: CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1
+export declare const CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1 = "Address each substantive request in the user's original question using supported evidence, or state a precise material gap. Judge coverage by meaning, not wording: natural paraphrases, different word order, and the user's chosen language are valid. Never copy question fragments merely to satisfy validation.";
 
 // export: CHAT_SESSION_PATH_V1
 export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
@@ -17884,6 +17913,7 @@ export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1
 // export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
 export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
     "host-exact-anchors-bound",
+    "host-required-specialists-added",
     "exact-readers-packed",
     "dominated-specialists-removed",
     "phase-dependencies-normalized"
@@ -18558,12 +18588,24 @@ export interface ChatPresentationStreamEventV1 {
     delta?: string;
 }
 
-// export: ChatPtcReferenceRejectionV1
-export interface ChatPtcReferenceRejectionV1 {
+// export: ChatPtcAnchorReferenceRejectionV1
+export interface ChatPtcAnchorReferenceRejectionV1 {
     schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
     status: "rejected";
     code: "unknown-anchor-ref";
     currentAnchorRefs: string[];
+}
+
+// export: ChatPtcReferenceRejectionV1
+export type ChatPtcReferenceRejectionV1 = ChatPtcAnchorReferenceRejectionV1 | ChatPtcSectionReferenceRejectionV1;
+
+// export: ChatPtcSectionReferenceRejectionV1
+export interface ChatPtcSectionReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-section-ref";
+    currentSectionRefs: string[];
+    action: "retry-with-current-section-ref" | "read-bound-entity-first";
 }
 
 // export: ChatQualityModeV1
@@ -21661,8 +21703,11 @@ export interface ResearchDetailEvidenceV1 {
 // export: ResearchDispatchDiagnosticV1
 export interface ResearchDispatchDiagnosticV1 {
     taskId?: string;
+    subagentType?: string;
     status: ResearchDispatchStatusV1;
     code?: ResearchDispatchErrorCodeV1;
+    failureStage?: "upstream" | "result-commit";
+    failureClass?: "structured-output" | "provider" | "unknown";
     providerStatus?: number;
     resultBytes?: number;
 }
@@ -26038,9 +26083,7 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "repeated-prose",
-    "incomplete-prose",
-    "observation-classification-conflict"
+    "repeated-prose"
 ];
 
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
@@ -26054,8 +26097,6 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 
 // export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
 export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
-    "incomplete-prose",
-    "observation-classification-conflict",
     "repeated-prose"
 ];
 
@@ -26170,6 +26211,9 @@ export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
     "continuation",
     "completion"
 ];
+
+// export: CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1
+export declare const CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1 = "Address each substantive request in the user's original question using supported evidence, or state a precise material gap. Judge coverage by meaning, not wording: natural paraphrases, different word order, and the user's chosen language are valid. Never copy question fragments merely to satisfy validation.";
 
 // export: CHAT_SESSION_PATH_V1
 export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
@@ -26287,6 +26331,7 @@ export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1
 // export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
 export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
     "host-exact-anchors-bound",
+    "host-required-specialists-added",
     "exact-readers-packed",
     "dominated-specialists-removed",
     "phase-dependencies-normalized"
@@ -26970,12 +27015,24 @@ export interface ChatPresentationStreamEventV1 {
     delta?: string;
 }
 
-// export: ChatPtcReferenceRejectionV1
-export interface ChatPtcReferenceRejectionV1 {
+// export: ChatPtcAnchorReferenceRejectionV1
+export interface ChatPtcAnchorReferenceRejectionV1 {
     schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
     status: "rejected";
     code: "unknown-anchor-ref";
     currentAnchorRefs: string[];
+}
+
+// export: ChatPtcReferenceRejectionV1
+export type ChatPtcReferenceRejectionV1 = ChatPtcAnchorReferenceRejectionV1 | ChatPtcSectionReferenceRejectionV1;
+
+// export: ChatPtcSectionReferenceRejectionV1
+export interface ChatPtcSectionReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-section-ref";
+    currentSectionRefs: string[];
+    action: "retry-with-current-section-ref" | "read-bound-entity-first";
 }
 
 // export: ChatQualityModeV1
@@ -30372,8 +30429,11 @@ export interface ResearchDetailEvidenceV1 {
 // export: ResearchDispatchDiagnosticV1
 export interface ResearchDispatchDiagnosticV1 {
     taskId?: string;
+    subagentType?: string;
     status: ResearchDispatchStatusV1;
     code?: ResearchDispatchErrorCodeV1;
+    failureStage?: "upstream" | "result-commit";
+    failureClass?: "structured-output" | "provider" | "unknown";
     providerStatus?: number;
     resultBytes?: number;
 }
@@ -34924,9 +34984,7 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "repeated-prose",
-    "incomplete-prose",
-    "observation-classification-conflict"
+    "repeated-prose"
 ];
 
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
@@ -34940,8 +34998,6 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 
 // export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
 export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
-    "incomplete-prose",
-    "observation-classification-conflict",
     "repeated-prose"
 ];
 
@@ -35056,6 +35112,9 @@ export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
     "continuation",
     "completion"
 ];
+
+// export: CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1
+export declare const CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1 = "Address each substantive request in the user's original question using supported evidence, or state a precise material gap. Judge coverage by meaning, not wording: natural paraphrases, different word order, and the user's chosen language are valid. Never copy question fragments merely to satisfy validation.";
 
 // export: CHAT_SESSION_PATH_V1
 export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
@@ -35173,6 +35232,7 @@ export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1
 // export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
 export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
     "host-exact-anchors-bound",
+    "host-required-specialists-added",
     "exact-readers-packed",
     "dominated-specialists-removed",
     "phase-dependencies-normalized"
@@ -35856,12 +35916,24 @@ export interface ChatPresentationStreamEventV1 {
     delta?: string;
 }
 
-// export: ChatPtcReferenceRejectionV1
-export interface ChatPtcReferenceRejectionV1 {
+// export: ChatPtcAnchorReferenceRejectionV1
+export interface ChatPtcAnchorReferenceRejectionV1 {
     schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
     status: "rejected";
     code: "unknown-anchor-ref";
     currentAnchorRefs: string[];
+}
+
+// export: ChatPtcReferenceRejectionV1
+export type ChatPtcReferenceRejectionV1 = ChatPtcAnchorReferenceRejectionV1 | ChatPtcSectionReferenceRejectionV1;
+
+// export: ChatPtcSectionReferenceRejectionV1
+export interface ChatPtcSectionReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-section-ref";
+    currentSectionRefs: string[];
+    action: "retry-with-current-section-ref" | "read-bound-entity-first";
 }
 
 // export: ChatQualityModeV1
@@ -39262,8 +39334,11 @@ export interface ResearchDetailEvidenceV1 {
 // export: ResearchDispatchDiagnosticV1
 export interface ResearchDispatchDiagnosticV1 {
     taskId?: string;
+    subagentType?: string;
     status: ResearchDispatchStatusV1;
     code?: ResearchDispatchErrorCodeV1;
+    failureStage?: "upstream" | "result-commit";
+    failureClass?: "structured-output" | "provider" | "unknown";
     providerStatus?: number;
     resultBytes?: number;
 }
@@ -45858,9 +45933,7 @@ export declare const CHAT_DRAFT_REPAIR_REJECTION_REASONS_V1: readonly [
     "malformed-factual-markdown",
     "missing-detailed-factual-block",
     "orphan-heading",
-    "repeated-prose",
-    "incomplete-prose",
-    "observation-classification-conflict"
+    "repeated-prose"
 ];
 
 // export: CHAT_EVIDENCE_MEMORY_SCHEMA_V1
@@ -45874,8 +45947,6 @@ export declare const CHAT_INTERACTION_STATE_SCHEMA_V1: "atlcli.chat-interaction-
 
 // export: CHAT_MARKDOWN_INTEGRITY_ISSUES_V1
 export declare const CHAT_MARKDOWN_INTEGRITY_ISSUES_V1: readonly [
-    "incomplete-prose",
-    "observation-classification-conflict",
     "repeated-prose"
 ];
 
@@ -45990,6 +46061,9 @@ export declare const CHAT_SEMANTIC_ACTIVITY_CODES_V1: readonly [
     "continuation",
     "completion"
 ];
+
+// export: CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1
+export declare const CHAT_SEMANTIC_COVERAGE_INSTRUCTION_V1 = "Address each substantive request in the user's original question using supported evidence, or state a precise material gap. Judge coverage by meaning, not wording: natural paraphrases, different word order, and the user's chosen language are valid. Never copy question fragments merely to satisfy validation.";
 
 // export: CHAT_SESSION_PATH_V1
 export declare const CHAT_SESSION_PATH_V1: "/state/chat-session-v1.json";
@@ -46107,6 +46181,7 @@ export declare const CHAT_USER_QUESTION_SCHEMA_V1: "atlcli.chat-user-question/v1
 // export: CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1
 export declare const CHAT_WORKFLOW_NORMALIZATION_REASON_CODES_V1: readonly [
     "host-exact-anchors-bound",
+    "host-required-specialists-added",
     "exact-readers-packed",
     "dominated-specialists-removed",
     "phase-dependencies-normalized"
@@ -46790,12 +46865,24 @@ export interface ChatPresentationStreamEventV1 {
     delta?: string;
 }
 
-// export: ChatPtcReferenceRejectionV1
-export interface ChatPtcReferenceRejectionV1 {
+// export: ChatPtcAnchorReferenceRejectionV1
+export interface ChatPtcAnchorReferenceRejectionV1 {
     schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
     status: "rejected";
     code: "unknown-anchor-ref";
     currentAnchorRefs: string[];
+}
+
+// export: ChatPtcReferenceRejectionV1
+export type ChatPtcReferenceRejectionV1 = ChatPtcAnchorReferenceRejectionV1 | ChatPtcSectionReferenceRejectionV1;
+
+// export: ChatPtcSectionReferenceRejectionV1
+export interface ChatPtcSectionReferenceRejectionV1 {
+    schema: typeof CHAT_PTC_REFERENCE_REJECTION_SCHEMA_V1;
+    status: "rejected";
+    code: "unknown-section-ref";
+    currentSectionRefs: string[];
+    action: "retry-with-current-section-ref" | "read-bound-entity-first";
 }
 
 // export: ChatQualityModeV1
@@ -50196,8 +50283,11 @@ export interface ResearchDetailEvidenceV1 {
 // export: ResearchDispatchDiagnosticV1
 export interface ResearchDispatchDiagnosticV1 {
     taskId?: string;
+    subagentType?: string;
     status: ResearchDispatchStatusV1;
     code?: ResearchDispatchErrorCodeV1;
+    failureStage?: "upstream" | "result-commit";
+    failureClass?: "structured-output" | "provider" | "unknown";
     providerStatus?: number;
     resultBytes?: number;
 }
