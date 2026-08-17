@@ -20,6 +20,9 @@ describe("local model offscreen boundary", () => {
     expect(offscreenSource).not.toContain("restoreInstalledLocalModelWorkerV1");
     expect(offscreenSource).toContain("function connectInstalledLocalModelV1()");
     expect(offscreenSource).toContain("prewarmLocalModelRuntimeV1");
+    expect(offscreenSource).toContain("disposeLocalModelRuntimeV1");
+    expect(offscreenSource).toContain("localModelActivity.begin()");
+    expect(offscreenSource).toContain("localModelActivity.end()");
     expect(offscreenSource).toContain("localModelRuntimeModulePromise");
     expect(offscreenSource).toContain("connectLocalModelPortV1(channel.port2)");
     expect(offscreenSource).not.toMatch(/new Worker\([^)]*local-model/isu);

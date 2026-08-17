@@ -23,3 +23,12 @@ export function disposeLocalModelValueV1(value: unknown): void {
 export function disposeLocalModelInputsV1(inputs: Record<string, unknown>): void {
   for (const value of Object.values(inputs)) disposeLocalModelValueV1(value);
 }
+
+export async function disposeLocalModelRuntimeHandleV1(
+  runtime: Promise<{ model: { dispose: () => unknown } }> | undefined,
+): Promise<boolean> {
+  if (!runtime) return false;
+  const { model } = await runtime;
+  await model.dispose();
+  return true;
+}

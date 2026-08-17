@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   disposeLocalModelInputsV1,
+  disposeLocalModelRuntimeHandleV1,
   disposeLocalModelValueV1,
 } from "../utils/local-model/runtime-lifecycle.js";
 
@@ -21,5 +22,14 @@ describe("local Gemma native tensor lifecycle", () => {
       metadata: 4,
     });
     expect(disposed).toEqual(["input_ids", "attention_mask"]);
+  });
+
+  it("releases one loaded runtime and treats an absent runtime as already idle", async () => {
+    let disposed = 0;
+    expect(await disposeLocalModelRuntimeHandleV1(undefined)).toBe(false);
+    expect(await disposeLocalModelRuntimeHandleV1(Promise.resolve({
+      model: { dispose: () => { disposed += 1; } },
+    }))).toBe(true);
+    expect(disposed).toBe(1);
   });
 });

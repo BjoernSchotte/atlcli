@@ -29,6 +29,7 @@ import {
 } from "../utils/local-model/gemma-response.js";
 import {
   disposeLocalModelInputsV1,
+  disposeLocalModelRuntimeHandleV1,
   disposeLocalModelValueV1,
 } from "../utils/local-model/runtime-lifecycle.js";
 import {
@@ -204,6 +205,19 @@ export function prewarmLocalModelRuntimeV1(): Promise<LocalModelPrewarmReceiptV1
     prewarmPromise = undefined;
   });
   return prewarmPromise;
+}
+
+/** Release the loaded model after every queued generation has settled. */
+export function disposeLocalModelRuntimeV1(): Promise<boolean> {
+  const dispose = async (): Promise<boolean> => {
+    const runtime = loadedRuntime;
+    loadedRuntime = undefined;
+    runtimePrewarmed = false;
+    return disposeLocalModelRuntimeHandleV1(runtime);
+  };
+  const task = generationQueue.then(dispose, dispose);
+  generationQueue = task.then(() => undefined, () => undefined);
+  return task;
 }
 
 function postPortV1(port: MessagePort, response: LocalModelPortResponseV1): void {

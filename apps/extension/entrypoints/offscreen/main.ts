@@ -34,6 +34,8 @@ import {
 } from "@atlcli/research/browser";
 import { LOCAL_GEMMA_G0_MANIFEST_V1 } from "../../utils/local-model/manifest.js";
 import { withLocalRunHeartbeatV1 } from "../../utils/research/run-heartbeat.js";
+import { createIdleTimer } from "../../utils/idle-timer.js";
+import { createOffscreenActivityTracker } from "../../utils/pdf/offscreen-activity.js";
 import {
   BROWSER_CHAT_CALLER_PATH_BACKGROUND_V1,
   BROWSER_CHAT_CALLER_PATH_OFFSCREEN_V1,
@@ -42,6 +44,7 @@ import {
 } from "../../utils/local-model/caller-path.js";
 
 const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
+const LOCAL_MODEL_IDLE_MS_V1 = 5 * 60 * 1_000;
 
 /**
  * MV3 can discard this document without an orderly worker shutdown. On every
@@ -76,6 +79,21 @@ function localModelRuntimeModuleV1() {
     "../../workers/local-model.js"
   );
 }
+
+const localModelIdle = createIdleTimer({
+  delayMs: LOCAL_MODEL_IDLE_MS_V1,
+  onIdle: () => {
+    void localModelRuntimeModuleV1()
+      .then(({ disposeLocalModelRuntimeV1 }) => disposeLocalModelRuntimeV1())
+      .then((disposed) => {
+        console.info("[local-gemma/offscreen] idle disposal completed", { disposed });
+      })
+      .catch((error) => {
+        console.error("[local-gemma/offscreen] idle disposal failed", error);
+      });
+  },
+});
+const localModelActivity = createOffscreenActivityTracker(localModelIdle);
 
 async function connectInstalledLocalModelV1() {
   // Offscreen documents expose only chrome.runtime, not chrome.storage. The
@@ -178,10 +196,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       return runWasmAdd(a, b);
     },
     prewarmLocalModel: async () => {
-      const { prewarmLocalModelRuntimeV1 } = await localModelRuntimeModuleV1();
-      const receipt = await prewarmLocalModelRuntimeV1();
-      console.info("[local-gemma/offscreen] prewarm completed", receipt);
-      return receipt;
+      localModelActivity.begin();
+      try {
+        const { prewarmLocalModelRuntimeV1 } = await localModelRuntimeModuleV1();
+        const receipt = await prewarmLocalModelRuntimeV1();
+        console.info("[local-gemma/offscreen] prewarm completed", receipt);
+        return receipt;
+      } finally {
+        localModelActivity.end();
+      }
     },
     // The T5.3 scheduling hints ride the message (scalars only) because the
     // panel decides the job kind while the offscreen queue enforces it — see
@@ -268,18 +291,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
           }).catch(() => undefined);
         },
       });
-      return modelProvider === "local-gemma"
-        ? withLocalRunHeartbeatV1({
-            runId,
-            operation: run,
-            sendHeartbeat: async (activeRunId) => {
-              await chrome.runtime.sendMessage({
-                kind: "research:heartbeat",
-                runId: activeRunId,
-              });
-            },
-          })
-        : run();
+      if (modelProvider !== "local-gemma") return run();
+      localModelActivity.begin();
+      try {
+        return await withLocalRunHeartbeatV1({
+          runId,
+          operation: run,
+          sendHeartbeat: async (activeRunId) => {
+            await chrome.runtime.sendMessage({
+              kind: "research:heartbeat",
+              runId: activeRunId,
+            });
+          },
+        });
+      } finally {
+        localModelActivity.end();
+      }
     },
     resumeResearch: async (runId, sessionId, turnId, key) => {
       const apiKey = normalizeAnthropicApiKey(key);
