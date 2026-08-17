@@ -920,8 +920,12 @@ Live proof:
       bindings. Closing and reopening the side panel, then explicitly reopening
       the conversation from history, retained the local provider identity,
       answer blocks, and source bindings without a failure state.
-- [ ] Network observation records zero Anthropic and model-origin requests during
-      local inference while allowing only expected Atlassian traffic.
+- [x] Network observation records zero Anthropic and model-origin requests during
+      local inference while allowing only expected Atlassian traffic. A cleared
+      offscreen Network recording around a production-packed warm local turn
+      contained exactly three requests: two extension-owned bundled scripts and
+      one expected Atlassian read. It contained no Anthropic request and no
+      model-distribution request; the cited answer completed normally.
 - [x] Existing Chat cancellation reaches a terminal cancelled event, stops local
       generation, and releases the model/resource lease. A production-packed
       local Auto turn was stopped from the existing composer after approximately
