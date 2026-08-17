@@ -1,8 +1,9 @@
 # Browser-local Gemma 4 E4B with Transformers.js implementation plan
 
-Status: **In progress; the production Chat path is proven repeatedly for local
-Quick and Auto direct/agentic cases, but G0 remains open until the repeated Think
-deeper, multi-turn, cancellation, and network/privacy gates pass.**
+Status: **G0 GO recorded for the existing production Chat path. Quick, Auto,
+Think deeper, multi-turn, cancellation, privacy, and bounded lifecycle behavior
+are proven in the packed extension. Remaining G1-G7 work is release hardening,
+not permission to add a parallel Gemma workflow.**
 
 Originally planned against repository commit `878675a3` on 2026-08-10.
 Re-baselined against implementation commit `e247cfe7` on 2026-08-11 after the
@@ -116,12 +117,13 @@ contract. The model adapter therefore has to prove all of the following:
 General conversational quality or a successful “hello world” generation is
 not release evidence.
 
-### 2.3 Current proof checkpoint
+### 2.3 G0 decision checkpoint
 
-The implementation has progressed beyond the original thin G0 skeleton because
-real packed-extension failures required production-shaped fixes before a useful
-GO/NO-GO run was possible. The following checkpoint is proven without claiming
-G0 complete:
+The implementation progressed beyond the original thin G0 skeleton because real
+packed-extension failures required production-shaped fixes before a useful
+GO/NO-GO run was possible. G0 now records **GO for continued implementation**;
+this is not a release-readiness claim. The complete sanitized decision evidence
+is in [`G0-RECEIPT.md`](./G0-RECEIPT.md). In summary:
 
 - the verified Gemma 4 E4B model remains installed across an extension reload;
 - the existing side-panel Chat, background, offscreen document, fresh agent
@@ -155,9 +157,12 @@ G0 complete:
 - the late host pre-read section-reference handoff is covered by a regression
   fixture and the full Chat-agent suite is green without replaying the bound
   entity read or widening broker scope;
-- automated fixtures cover the local Quick, Auto, and Think-deeper strategy
-  semantics, but repeated live proof remains outstanding for both Think-deeper
-  trajectories.
+- repeated packed-extension runs cover the local Quick, Auto, and Think-deeper
+  direct/agentic trajectories, and focused fixtures retain those strategy
+  semantics without language- or content-specific acceptance anchors;
+- cancellation, inference-network isolation, measured decode/resource behavior,
+  five-minute idle session disposal, and a successful post-idle cold Chat turn
+  complete the G0 reliability and privacy boundary.
 
 Committed plans and receipts must keep private tenant content, URLs, customer
 names, identifiers, traces, and generated answers out of Git. Live proof may use
@@ -799,7 +804,7 @@ hardening.
       and worker path to resolve either the Anthropic binding or a verified local
       binding; do not fork `ChatAgentPortV1` or the Chat workflow.
 
-#### G0 checkpoint ledger — proven, but not yet GO
+#### G0 checkpoint ledger — GO recorded
 
 - [x] Reload the production-packed extension without removing the installed
       model and recover a ready local runtime.
@@ -937,12 +942,14 @@ Live proof:
       host, local RPC, stopping, and native tensor-cleanup tests pass.
 - [x] Record initial cold/warm and answer-stream timing samples on the named
       decision hardware.
-- [ ] Complete the measurement set with decode rate, peak JS/GPU/process memory,
+- [x] Complete the measurement set with decode rate, peak JS/GPU/process memory,
       thermal behavior, cancellation cleanup, and idle disposal; broad support
-      thresholds remain G6 work.
-- [ ] Write a sanitized GO/NO-GO receipt under this spec with the exact commit,
+      thresholds remain G6 work. The measured limits and the retained-WASM-RSS
+      caveat are recorded in `G0-RECEIPT.md`.
+- [x] Write a sanitized GO/NO-GO receipt under this spec with the exact commit,
       packed extension, Chrome/OS/hardware, Transformers.js/ORT/model revisions,
       selected file manifest, test cases, network evidence, and measurements.
+      See `G0-RECEIPT.md` for the GO-for-continuation decision.
 
 STOP additional product scope and record NO-GO if any required mode cannot
 reliably satisfy the existing Chat contracts, if the production path needs a
@@ -1038,8 +1045,12 @@ Implementation:
 - [x] Add transferable `MessagePort` support to the per-run agent-worker host.
 - [ ] Serialize local generations and bind every generation to the run abort
       signal and owning agent worker.
-- [ ] Implement bounded warm retention, idle disposal, export preemption of an
-      idle lease, provider-switch disposal, and shutdown cleanup.
+- [x] Dispose the loaded local model session after five idle minutes, serialize
+      disposal behind active generation, and prove a later cold Chat turn can
+      reload through the same production path.
+- [ ] Implement export preemption of an idle lease, provider-switch disposal,
+      shutdown cleanup, and any additional bounded-retention policy justified by
+      G6 measurements.
 - [ ] Recover predictably from worker crash, offscreen recreation, WebGPU device
       loss, duplicate/late messages, and port disconnect.
 - [ ] Keep a measured fallback that locates only the engine in the offscreen
@@ -1292,7 +1303,7 @@ real browser failures required selected G3/G4/G5 work before G0 could produce a
 valid answer. Retain the current implementation baseline and finish G0 as a
 proof ratchet. Do not rewrite history or reopen parallel implementations.
 
-Remaining critical-path ratchets:
+G0 ratchets completed by `G0-RECEIPT.md`:
 
 1. **Quick live ratchet** — fixed exact-context case three consecutive times,
    valid `eval`, canonical answer, citations, persistence, close/reopen.
@@ -1306,10 +1317,14 @@ Remaining critical-path ratchets:
 5. **Reliability/privacy ratchet** — cancellation, worker/offscreen recovery,
    no remote-provider/model-origin inference traffic, no silent fallback, and
    completed performance/resource measurements.
-6. **GO ratchet** — full required suites green, sanitized receipt committed,
-   G0 aggregate tasks checked only from the receipt.
-7. Continue the remaining G1–G7 hardening and release-readiness tasks after G0
-   records GO.
+6. **GO ratchet** — focused required suites, typecheck, packed-output and privacy
+   gates green; sanitized receipt committed and G0 aggregate tasks checked only
+   from the receipt. The full-workspace sandbox limitations and release gates
+   remain explicit in the receipt.
+
+Continue the remaining G1–G7 hardening and release-readiness tasks after this G0
+GO. Do not reinterpret the G0 decision as completion of the plan-level
+definition of done.
 
 After each independently proven ratchet, update this checklist and its sanitized
 evidence summary, run the focused gates, then create one scoped conventional
