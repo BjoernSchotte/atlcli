@@ -20,6 +20,7 @@ interface TurboConfig {
 }
 
 interface PackageManifest {
+  dependencies?: Record<string, string>;
   scripts?: Record<string, string>;
 }
 
@@ -54,6 +55,12 @@ const requiredBrowserInputs = [
   "$TURBO_ROOT$/LICENSE",
 ] as const;
 
+const requiredImportPdfHarnessInputs = [
+  "$TURBO_ROOT$/packages/import-pdf/package.json",
+  "$TURBO_ROOT$/packages/import-pdf/scripts/**",
+  "$TURBO_ROOT$/packages/import-pdf/vendor/**",
+] as const;
+
 describe("Turbo cache policy", () => {
   it("keeps package and root CLI outputs owned by separate tasks", async () => {
     const root = await readJson<TurboConfig>("turbo.json");
@@ -80,6 +87,11 @@ describe("Turbo cache policy", () => {
         for (const input of requiredBrowserInputs) {
           expect(inputs, `${path} ${taskName} omits ${input}`).toContain(input);
         }
+        if (path === "apps/browser-export-harness/turbo.json") {
+          for (const input of requiredImportPdfHarnessInputs) {
+            expect(inputs, `${path} ${taskName} omits ${input}`).toContain(input);
+          }
+        }
       }
     }
   });
@@ -95,6 +107,33 @@ describe("Turbo cache policy", () => {
       const config = await readJson<TurboConfig>(path);
       expect(config.tasks.build?.dependsOn, path).toEqual([]);
     }
+  });
+
+  it("materializes and tracks the PDFium asset before source tests or browser builds", async () => {
+    const rootPackage = await readJson<PackageManifest>("package.json");
+    const harnessPackage = await readJson<PackageManifest>(
+      "apps/browser-export-harness/package.json",
+    );
+    const lockfile = await readFile(join(REPO_ROOT, "bun.lock"), "utf8");
+    const harnessStart = lockfile.indexOf('"apps/browser-export-harness"');
+    const harnessEnd = lockfile.indexOf('"apps/cli"', harnessStart);
+    const harnessLockEntry = lockfile.slice(harnessStart, harnessEnd);
+
+    expect(rootPackage.scripts?.["vendor:pdfium"]).toBe(
+      "bun packages/import-pdf/scripts/vendor-pdfium.ts",
+    );
+    for (const script of ["postinstall", "prebuild", "prebuild:prod"]) {
+      expect(rootPackage.scripts?.[script], script).toContain("vendor:pdfium");
+    }
+
+    expect(harnessPackage.dependencies?.["@atlcli/import-pdf"]).toBe("workspace:*");
+    for (const script of ["prebuild", "precheck:parity", "pretest:e2e"]) {
+      expect(harnessPackage.scripts?.[script], script).toContain("vendor:pdfium");
+    }
+
+    expect(harnessStart).toBeGreaterThanOrEqual(0);
+    expect(harnessEnd).toBeGreaterThan(harnessStart);
+    expect(harnessLockEntry).toContain('"@atlcli/import-pdf": "workspace:*"');
   });
 
   it("routes the browser-build gate through a distinct cacheable root task", async () => {

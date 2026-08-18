@@ -125,10 +125,11 @@ describe("pack-check (spec 009)", () => {
 
       // We pack with `--ignore-scripts` (see the pack test below) to make the
       // manifest snapshot deterministic, so the non-strip prepack side effects
-      // — pinned PDF fonts (`@atlcli/pdf`) and the vendored typst glue/wasm
-      // (`@atlcli/pdf-compiler-browser`) — must already be on disk. Both scripts
-      // are idempotent verify-or-produce, so this is a no-op when present.
-      for (const script of ["fonts:ensure", "vendor:typst"]) {
+      // — pinned PDF fonts (`@atlcli/pdf`), vendored typst glue/wasm
+      // (`@atlcli/pdf-compiler-browser`), and vendored PDFium WASM
+      // (`@atlcli/import-pdf`) — must already be on disk. All scripts are
+      // idempotent verify-or-produce, so this is a no-op when present.
+      for (const script of ["fonts:ensure", "vendor:typst", "vendor:pdfium"]) {
         const res = run(["bun", "run", script], repoRoot);
         if (res.exitCode !== 0) {
           throw new Error(`bun run ${script} failed:\n${res.stdout}\n${res.stderr}`);

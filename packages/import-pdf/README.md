@@ -18,3 +18,8 @@ The package ships the exact PDFium WASM, wrapper/PDFium license texts,
 provenance tuple, and an explicit third-party-notice gap inventory under
 `@atlcli/import-pdf/licenses/*`. It does not claim an upstream SBOM or a fully
 reproducible PDFium build where the selected distribution provides neither.
+
+Workspace installs materialize and verify these ignored generated files with
+`bun run vendor:pdfium`. Root and browser-harness build lifecycles repeat that
+idempotent verification so a clean checkout never depends on a developer's
+pre-existing `packages/import-pdf/vendor/` directory.
