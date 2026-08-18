@@ -83,6 +83,30 @@ describe("classifyChanges", () => {
       }),
     },
     {
+      name: "action registry dependency of the extension",
+      paths: ["packages/action-registry/src/index.ts"],
+      expected: narrow({
+        code: true,
+        consumer: true,
+        staticQuality: true,
+        unitTests: true,
+        packageContracts: true,
+        browserHarness: true,
+      }),
+    },
+    {
+      name: "action palette dependency of the extension",
+      paths: ["packages/action-palette-react/src/index.tsx"],
+      expected: narrow({
+        code: true,
+        consumer: true,
+        staticQuality: true,
+        unitTests: true,
+        packageContracts: true,
+        browserHarness: true,
+      }),
+    },
+    {
       name: "PDF package documentation",
       paths: ["packages/docx/README.md"],
       expected: narrow({

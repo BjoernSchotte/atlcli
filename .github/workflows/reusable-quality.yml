@@ -63,7 +63,7 @@ jobs:
       - name: Cache Turbo
         uses: actions/cache@v6
         with:
-          path: .turbo
+          path: .turbo/cache
           key: ${{ runner.os }}-turbo-quality-${{ inputs.source_sha || github.sha }}
           restore-keys: |
             ${{ runner.os }}-turbo-quality-
@@ -149,6 +149,26 @@ jobs:
           name: bun-test-package-contract-failure-log-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/bun-test-package-contract.log
           if-no-files-found: error
+
+      # Turbo summaries contain input paths and environment metadata. Persist
+      # only the bounded cache/timing projection produced by our sanitizer.
+      - name: Sanitize Turbo run summaries
+        if: always()
+        run: |
+          trap 'rm -rf .turbo/runs' EXIT
+          bun scripts/ci/turbo-run-summary.ts \
+            --runs .turbo/runs \
+            --source static-quality \
+            --out turbo-telemetry/static-quality.json
+
+      - name: Upload sanitized Turbo telemetry
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: turbo-summary-static-quality-${{ inputs.source_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: turbo-telemetry/static-quality.json
+          if-no-files-found: error
+          retention-days: 14
 
   tests:
     name: Linux Bun tests (${{ matrix.group }})
