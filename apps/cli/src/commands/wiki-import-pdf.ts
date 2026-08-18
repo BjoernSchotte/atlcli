@@ -28,6 +28,7 @@ import {
   type PdfReadingOrderModeV1,
   type PdfReviewTargetV1,
   type PdfScanPolicyV1,
+  type PdfVisualFallbackModeV1,
   type PdfPlannedPageV1,
 } from "@atlcli/import-pdf";
 import {
@@ -68,6 +69,7 @@ const VALUE_FLAGS = [
   "split",
   "max-wiki-pages",
   "scan-policy",
+  "visual-fallback",
   "reading-order",
   "unsupported",
   "overrides",
@@ -178,13 +180,24 @@ export async function handlePdfWikiImport(
     "auto",
     opts,
   ) as PdfReadingOrderModeV1;
+  const visualFallbackFlag = getFlag(flags, "visual-fallback");
   const scanPolicy = validateChoice(
     getFlag(flags, "scan-policy"),
     ["fail", "page-image", "report"] as const,
     "--scan-policy",
-    "fail",
+    visualFallbackFlag === undefined ? "fail" : "page-image",
     opts,
   ) as PdfScanPolicyV1;
+  if (visualFallbackFlag !== undefined && hasFlag(flags, "scan-policy") && scanPolicy !== "page-image") {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--visual-fallback requires --scan-policy page-image when both are given.", {});
+  }
+  const visualFallback = validateChoice(
+    visualFallbackFlag,
+    ["auto", "inline", "collapsed", "appendix"] as const,
+    "--visual-fallback",
+    scanPolicy === "page-image" ? "inline" : "auto",
+    opts,
+  ) as PdfVisualFallbackModeV1;
   const unsupported = validateChoice(
     getFlag(flags, "unsupported"),
     ["report", "fail"] as const,
@@ -271,6 +284,7 @@ export async function handlePdfWikiImport(
       titleConflict,
       readingOrder,
       scanPolicy,
+      visualFallback,
       unsupported,
       attachSource: hasFlag(flags, "attach-source"),
       overrides,

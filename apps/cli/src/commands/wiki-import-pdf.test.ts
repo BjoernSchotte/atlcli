@@ -112,8 +112,35 @@ describe("wiki import PDF review-first planning", () => {
     );
     const image = JSON.parse(stdout.join(""));
     expect(image.pages[0].fallback).toBe("page-image");
+    expect(image.options).toMatchObject({ visualFallback: "inline", visualFallbackPlacement: "inline" });
     expect(image.assets).toHaveLength(1);
     expect(image.assets[0]).toMatchObject({ mediaType: "image/png" });
+  });
+
+  it("offers explicit auto, inline, collapsed, and appendix visual fallback placement", async () => {
+    const file = resolve(fixtureRoot, "scan.pdf");
+    for (const [mode, placement, disclosure, heading] of [
+      ["auto", "collapsed", 1, false],
+      ["inline", "inline", 0, false],
+      ["collapsed", "collapsed", 1, false],
+      ["appendix", "appendix", 1, true],
+    ] as const) {
+      stdout.length = 0;
+      await handleWikiImport(
+        [file],
+        { space: "DOCSY", "visual-fallback": mode, json: true },
+        { json: true },
+      );
+      const result = JSON.parse(stdout.join(""));
+      expect(result.options).toMatchObject({
+        scanPolicy: "page-image",
+        visualFallback: mode,
+        visualFallbackPlacement: placement,
+      });
+      expect(result.content.blockCounts.disclosure ?? 0).toBe(disclosure);
+      expect(result.content.outline.some((item: { text: string }) => item.text === "Original visual views")).toBe(heading);
+      expect(result.blockers).toEqual([]);
+    }
   });
 
   it("rejects format mismatch, cross-format flags, unsafe split values, and confirm+dry-run before writes", async () => {
@@ -147,6 +174,12 @@ describe("wiki import PDF review-first planning", () => {
       [resolve(fixtureRoot, "simple-untagged.pdf")],
       { space: "DOCSY", confirm: true, "dry-run": true, json: true },
       "mutually exclusive",
+    );
+    stdout.length = 0;
+    await expectFailure(
+      [resolve(fixtureRoot, "scan.pdf")],
+      { space: "DOCSY", "visual-fallback": "auto", "scan-policy": "report", json: true },
+      "requires --scan-policy page-image",
     );
   });
 });

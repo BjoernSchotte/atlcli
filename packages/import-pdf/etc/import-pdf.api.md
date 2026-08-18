@@ -37,6 +37,7 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     titleConflict?: "fail" | "rename";
     readingOrder?: PdfReadingOrderModeV1;
     scanPolicy?: PdfScanPolicyV1;
+    visualFallback?: PdfVisualFallbackModeV1;
     unsupported?: "report" | "fail";
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
@@ -611,6 +612,8 @@ export interface PdfImportReviewV1 {
     options: {
         readingOrder: PdfReadingOrderModeV1;
         scanPolicy: PdfScanPolicyV1;
+        visualFallback: PdfVisualFallbackModeV1;
+        visualFallbackPlacement: PdfVisualFallbackPlacementV1;
         unsupported: "report" | "fail";
         attachSource: boolean;
     };
@@ -926,6 +929,9 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: PdfVisualFallbackModeV1
+export type PdfVisualFallbackModeV1 = "auto" | PdfVisualFallbackPlacementV1;
+
 // export: planPdfSplit
 export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV1[], options: {
     rootTitle: string;
@@ -1033,6 +1039,7 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     titleConflict?: "fail" | "rename";
     readingOrder?: PdfReadingOrderModeV1;
     scanPolicy?: PdfScanPolicyV1;
+    visualFallback?: PdfVisualFallbackModeV1;
     unsupported?: "report" | "fail";
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
@@ -1651,6 +1658,8 @@ export interface PdfImportReviewV1 {
     options: {
         readingOrder: PdfReadingOrderModeV1;
         scanPolicy: PdfScanPolicyV1;
+        visualFallback: PdfVisualFallbackModeV1;
+        visualFallbackPlacement: PdfVisualFallbackPlacementV1;
         unsupported: "report" | "fail";
         attachSource: boolean;
     };
@@ -1976,6 +1985,9 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: PdfVisualFallbackModeV1
+export type PdfVisualFallbackModeV1 = "auto" | PdfVisualFallbackPlacementV1;
+
 // export: PdfVisualFallbackPlacementV1
 export type PdfVisualFallbackPlacementV1 = "inline" | "collapsed" | "appendix";
 
@@ -2083,6 +2095,7 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     titleConflict?: "fail" | "rename";
     readingOrder?: PdfReadingOrderModeV1;
     scanPolicy?: PdfScanPolicyV1;
+    visualFallback?: PdfVisualFallbackModeV1;
     unsupported?: "report" | "fail";
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
@@ -2657,6 +2670,8 @@ export interface PdfImportReviewV1 {
     options: {
         readingOrder: PdfReadingOrderModeV1;
         scanPolicy: PdfScanPolicyV1;
+        visualFallback: PdfVisualFallbackModeV1;
+        visualFallbackPlacement: PdfVisualFallbackPlacementV1;
         unsupported: "report" | "fail";
         attachSource: boolean;
     };
@@ -2972,6 +2987,9 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: PdfVisualFallbackModeV1
+export type PdfVisualFallbackModeV1 = "auto" | PdfVisualFallbackPlacementV1;
+
 // export: planPdfSplit
 export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV1[], options: {
     rootTitle: string;
@@ -3079,6 +3097,7 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     titleConflict?: "fail" | "rename";
     readingOrder?: PdfReadingOrderModeV1;
     scanPolicy?: PdfScanPolicyV1;
+    visualFallback?: PdfVisualFallbackModeV1;
     unsupported?: "report" | "fail";
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
@@ -3703,6 +3722,8 @@ export interface PdfImportReviewV1 {
     options: {
         readingOrder: PdfReadingOrderModeV1;
         scanPolicy: PdfScanPolicyV1;
+        visualFallback: PdfVisualFallbackModeV1;
+        visualFallbackPlacement: PdfVisualFallbackPlacementV1;
         unsupported: "report" | "fail";
         attachSource: boolean;
     };
@@ -4027,6 +4048,9 @@ export interface PdfUntaggedSemanticsV1 {
     requiresFallbackPages: number[];
     semanticDigest: string;
 }
+
+// export: PdfVisualFallbackModeV1
+export type PdfVisualFallbackModeV1 = "auto" | PdfVisualFallbackPlacementV1;
 
 // export: PdfVisualFallbackPlacementV1
 export type PdfVisualFallbackPlacementV1 = "inline" | "collapsed" | "appendix";

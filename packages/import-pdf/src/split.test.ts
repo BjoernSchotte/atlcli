@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { IMPORT_DOCUMENT_SCHEMA_V2, type ImportDocumentV2 } from "@atlcli/import-core";
 import { createNodePdfiumFactsAdapter } from "./node.js";
-import { PDF_TABLE_POLICY_REVISION } from "./contracts.js";
+import { PDF_TABLE_POLICY_REVISION, PDF_VISUAL_FALLBACK_POLICY_REVISION } from "./contracts.js";
+import { applyPdfFallbackPresentation } from "./fallback-presentation.js";
 import { normalizeUntaggedPdfFacts } from "./untagged.js";
 import { derivePdfSplitTitleRenames, parsePdfSplitPolicy, planPdfSplit, type PdfPlannedPageV1 } from "./split.js";
 
@@ -88,6 +89,56 @@ describe("PDF split planning", () => {
       "Archive - Pages 61-80",
       "Archive - Pages 81-100",
     ]);
+  });
+
+  it("keeps appendix fallbacks local to each generated wiki page", async () => {
+    const value = await semantics("heading-poor-100.pdf");
+    const pageIndexes = [2, 22, 42, 62, 82];
+    const fallbackBlocks = pageIndexes.flatMap((pageIndex) => [{
+      id: `pdf:p${pageIndex}:page-image:block`,
+      type: "image" as const,
+      assetId: `asset:${pageIndex}`,
+      presentation: "page-fallback" as const,
+      captionBlockId: `pdf:p${pageIndex}:page-image:caption`,
+      sourceRefs: [`pdf:p${pageIndex}`],
+    }, {
+      id: `pdf:p${pageIndex}:page-image:caption`,
+      type: "paragraph" as const,
+      runs: [{ kind: "text" as const, text: `Source page ${pageIndex + 1}` }],
+      sourceRefs: [`pdf:p${pageIndex}`],
+    }]);
+    const document = applyPdfFallbackPresentation({
+      ...value.normalized.document,
+      blocks: [...value.normalized.document.blocks, ...fallbackBlocks],
+      assets: pageIndexes.map((pageIndex) => ({
+        id: `asset:${pageIndex}`,
+        fileName: `page-${pageIndex + 1}.png`,
+        mediaType: "image/png",
+        bytes: new Uint8Array([pageIndex]),
+      })),
+    }, "appendix");
+    const fallbackEvidence = pageIndexes.map((pageIndex) => ({
+      sourceId: `pdf:p${pageIndex}:page-image`,
+      targetNodeId: `pdf:p${pageIndex}:page-image:block`,
+      locator: { pageIndex, bbox: { x: 0, y: 0, width: 1, height: 1 } },
+      basis: ["rendered-region" as const],
+      confidence: 1,
+      decisionCode: "pdf/page-image-fallback-attached",
+      outcome: "attached" as const,
+      analyzerRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,
+    }));
+    const plan = await planPdfSplit(
+      value.facts,
+      document,
+      [...value.normalized.evidence, ...fallbackEvidence],
+      { rootTitle: "Archive", policy: parsePdfSplitPolicy("pages:20") },
+    );
+    expect(plan.root.children).toHaveLength(5);
+    for (const page of plan.root.children) {
+      expect(page.blocks.filter((block) => block.id === "pdf:visual-fallback-appendix:heading")).toHaveLength(1);
+      expect(page.blocks.filter((block) => block.type === "disclosure")).toHaveLength(1);
+      expect(page.assets).toHaveLength(1);
+    }
   });
 
   it("resolves explicit off, heading syntax, and the numeric heading alias deterministically", async () => {

@@ -27,7 +27,7 @@ function disclosure(
     type: "disclosure",
     title: fallbackTitle(image),
     blocks,
-    sourceRefs: [...new Set(blocks.flatMap((block) => block.sourceRefs ?? []))],
+    sourceRefs: [image.id, ...new Set(blocks.flatMap((block) => block.sourceRefs ?? []))],
     ...(image.pageBoundaryBefore ? { pageBoundaryBefore: true } : {}),
   };
 }
@@ -59,7 +59,6 @@ export function applyPdfFallbackPresentation(
       type: "heading",
       level: 2,
       runs: [{ kind: "text", text: "Original visual views" }],
-      sourceRefs: disclosures.flatMap((item) => item.sourceRefs ?? []),
     });
     blocks.push(...disclosures.map((item) => ({ ...item, pageBoundaryBefore: undefined })));
   }

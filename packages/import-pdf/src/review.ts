@@ -10,6 +10,11 @@ import {
 } from "./contracts.js";
 import { preservePdfFigures } from "./figures.js";
 import {
+  PDF_FALLBACK_PRESENTATION_REVISION,
+  applyPdfFallbackPresentation,
+  type PdfVisualFallbackPlacementV1,
+} from "./fallback-presentation.js";
+import {
   PDF_VISUAL_FALLBACK_POLICY_REVISION,
   assessPdfVisualFallbacks,
   fallbackAssessmentPageIndexes,
@@ -36,6 +41,7 @@ export const PDF_IMPORT_PLAN_SCHEMA_V1 = "atlcli.pdf-import-plan/1" as const;
 
 export type PdfReadingOrderModeV1 = "auto" | "tags" | "geometry";
 export type PdfScanPolicyV1 = "fail" | "page-image" | "report";
+export type PdfVisualFallbackModeV1 = "auto" | PdfVisualFallbackPlacementV1;
 
 export interface PdfReviewTargetV1 {
   spaceKey: string;
@@ -70,6 +76,8 @@ export interface PdfImportReviewV1 {
   options: {
     readingOrder: PdfReadingOrderModeV1;
     scanPolicy: PdfScanPolicyV1;
+    visualFallback: PdfVisualFallbackModeV1;
+    visualFallbackPlacement: PdfVisualFallbackPlacementV1;
     unsupported: "report" | "fail";
     attachSource: boolean;
   };
@@ -146,6 +154,7 @@ export async function buildPdfImportReview(
     titleConflict?: "fail" | "rename";
     readingOrder?: PdfReadingOrderModeV1;
     scanPolicy?: PdfScanPolicyV1;
+    visualFallback?: PdfVisualFallbackModeV1;
     unsupported?: "report" | "fail";
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
@@ -153,9 +162,14 @@ export async function buildPdfImportReview(
 ): Promise<PdfImportReviewV1> {
   const readingOrder = options.readingOrder ?? "auto";
   const scanPolicy = options.scanPolicy ?? "fail";
+  const visualFallback = options.visualFallback ?? (scanPolicy === "page-image" ? "inline" : "auto");
+  const visualFallbackPlacement: PdfVisualFallbackPlacementV1 = visualFallback === "auto" ? "collapsed" : visualFallback;
   const unsupported = options.unsupported ?? "report";
   if (!["auto", "tags", "geometry"].includes(readingOrder)) reviewInvalid("readingOrder must be auto, tags, or geometry.");
   if (!["fail", "page-image", "report"].includes(scanPolicy)) reviewInvalid("scanPolicy must be fail, page-image, or report.");
+  if (!["auto", "inline", "collapsed", "appendix"].includes(visualFallback)) {
+    reviewInvalid("visualFallback must be auto, inline, collapsed, or appendix.");
+  }
   if (!["report", "fail"].includes(unsupported)) reviewInvalid("unsupported must be report or fail.");
   const analyzed = await adapter.analyze(sourceBytes);
   if (readingOrder === "tags" && !analyzed.facts.tagged) {
@@ -177,11 +191,18 @@ export async function buildPdfImportReview(
   const withPageImages = scanPolicy === "page-image"
     ? await materializePdfVisualFallbacks(sourceBytes, adapter, visual.document, visual.evidence, fallbackAssessments)
     : { document: visual.document, evidence: visual.evidence };
-  const override = await applyPdfImportOverrides(withPageImages.document, options.overrides);
+  const appliedOverride = await applyPdfImportOverrides(withPageImages.document, options.overrides);
+  const override: AppliedPdfImportOverridesV1 = {
+    ...appliedOverride,
+    document: applyPdfFallbackPresentation(appliedOverride.document, visualFallbackPlacement),
+  };
   const semanticDigest = await digestPdfCanonical({
     factsDigest: analyzed.factsDigest,
     policyRevision: normalizeWithTags ? PDF_TAGGED_POLICY_REVISION : PDF_GEOMETRY_POLICY_REVISION,
     visualFallbackPolicyRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,
+    fallbackPresentationRevision: PDF_FALLBACK_PRESENTATION_REVISION,
+    visualFallback,
+    visualFallbackPlacement,
     overrideDigest: override.digest,
     document: sanitizedDocument(override.document),
     evidence: withPageImages.evidence,
@@ -213,8 +234,16 @@ export async function buildPdfImportReview(
     semanticDigest,
     overrideDigest: override.digest,
     target,
-    options: { readingOrder, scanPolicy, unsupported, attachSource: options.attachSource ?? false },
+    options: {
+      readingOrder,
+      scanPolicy,
+      visualFallback,
+      visualFallbackPlacement,
+      unsupported,
+      attachSource: options.attachSource ?? false,
+    },
     visualFallbackPolicyRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,
+    fallbackPresentationRevision: PDF_FALLBACK_PRESENTATION_REVISION,
     fallbackAssessments,
     splitDigest: split.digest,
     issueDigest,
@@ -235,7 +264,14 @@ export async function buildPdfImportReview(
     evidence: withPageImages.evidence,
     semanticDigest,
     override,
-    options: { readingOrder, scanPolicy, unsupported, attachSource: options.attachSource ?? false },
+    options: {
+      readingOrder,
+      scanPolicy,
+      visualFallback,
+      visualFallbackPlacement,
+      unsupported,
+      attachSource: options.attachSource ?? false,
+    },
     target,
     pages: pageSummaries(
       analyzed.facts,

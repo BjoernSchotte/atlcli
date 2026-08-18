@@ -351,6 +351,21 @@ describe.skipIf(!RUN).serial("built CLI PDF import live Cloud certification", ()
     });
   }, CASE_TIMEOUT_MS);
 
+  it("publishes an opted-in full-page visual fallback inside a collapsed Cloud expand", async () => {
+    await withPublishedPdf(
+      "import-pdf-visual-fallback",
+      "scan.pdf",
+      ["--split", "off", "--visual-fallback", "auto"],
+      async ({ receipt, summaries, client }) => {
+        const summary = summaries.get(receipt.page.id)!;
+        expect(summary.types).toContain("expand");
+        expect(summary.types).toContain("media");
+        expect(summary.text).toContain("Original visual view of source page 1.");
+        expect((await attachmentDigests(client, receipt.page.id)).size).toBe(1);
+      },
+    );
+  }, CASE_TIMEOUT_MS);
+
   it("proves restriction before source retention plus labels, metadata, and byte digest", async () => {
     await withPublishedPdf(
       "import-pdf-governance",

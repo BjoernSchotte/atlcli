@@ -158,12 +158,24 @@ editable semantics cannot be preserved safely. Choose an explicit alternative:
 
 - `--scan-policy page-image` renders each affected page as a bounded PNG. The
   result preserves visible fidelity but is not editable or accessible text.
+  Without `--visual-fallback`, this legacy spelling keeps full-page images
+  inline for compatibility.
 - `--scan-policy report` omits the affected page content with a visible issue.
   Publication additionally requires `--unsupported report` and
   `--accept-reported-pages`.
 
 There is no OCR fallback. Hidden OCR text is treated as evidence to validate,
 not as permission to duplicate or invent visible content.
+
+`--visual-fallback auto|inline|collapsed|appendix` is the clearer opt-in and
+implies `--scan-policy page-image`. `auto` is recommended: localized unsafe
+content becomes a labeled inline crop, while a whole-page visual backup is
+placed in a collapsed **Original visual view** section. `inline` exposes the
+whole-page backup directly, `collapsed` makes that choice explicit, and
+`appendix` collects whole-page views under **Original visual views** at the end
+of each generated wiki page. Region crops remain next to their source content
+in every mode. Tiny degenerate tag boxes are reported without adding an image;
+unclaimed visible text and unlocalizable loss still require a whole-page view.
 
 ## Figures, tables, and reading order
 
@@ -278,6 +290,7 @@ content properties before mutation.
 | `--title-conflict` | enum | `fail` | `fail` or deterministic `rename`. |
 | `--reading-order` | enum | `auto` | `auto`, `tags`, or `geometry`. |
 | `--scan-policy` | enum | `fail` | `fail`, `page-image`, or `report`. |
+| `--visual-fallback` | enum | none | `auto`, `inline`, `collapsed`, or `appendix`; opts into visual fallback and implies scan policy `page-image`. |
 | `--unsupported` | enum | `report` | `report` or `fail` on lossy constructs. |
 | `--accept-reported-pages` | boolean | off | Required to publish pages omitted under scan `report`. |
 | `--attach-source` | boolean | off | Retain and byte-verify the original PDF. |

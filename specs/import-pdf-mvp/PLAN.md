@@ -751,11 +751,13 @@ Tagged tables use `Table/THead/TBody/TR/TH/TD` correlation first. Untagged geome
 
 ### 9.6 Scans, mixed pages, and fallbacks
 
-The digital MVP offers `--scan-policy fail|page-image|report`, default `fail` for confirmed publication:
+The digital MVP offers `--scan-policy fail|page-image|report`, default `fail` for confirmed publication, plus the explicit presentation control `--visual-fallback auto|inline|collapsed|appendix`:
 
 - `fail`: a scan/mixed page without trustworthy native coverage is a blocker;
 - `page-image`: render the page under the fixed pixel budget, attach it, and insert a clearly reported image fallback;
 - `report`: omit the page body but retain the issue; allowed only in preview unless `--unsupported report` and explicit `--accept-reported-pages` are both present.
+
+`--visual-fallback` opts into the `page-image` safety path. `auto` is the recommended presentation: localized unsafe regions stay inline as bounded, labeled crops and unavoidable whole-page backups use a collapsed disclosure. `inline` preserves the legacy exposed full-page placement, `collapsed` requests disclosures explicitly, and `appendix` collects full-page views at the end of each generated wiki page. A page-level severity assessment distinguishes `none`, `report-only`, `region`, and `page`; degenerate tag residue must never trigger a visible asset by itself.
 
 There is no implicit OCR. The preview shows page number, class, outcome, fallback asset, and accessible-text limitation.
 
@@ -783,6 +785,8 @@ PDF-specific flags:
 ```text
 --format pdf
 --scan-policy fail|page-image|report       default fail
+--visual-fallback auto|inline|collapsed|appendix
+                                             explicit opt-in; recommended auto
 --accept-reported-pages                    explicit lossy-page acknowledgement
 --reading-order auto|tags|geometry         default auto
 --attach-source                            default off

@@ -290,6 +290,11 @@ function documentFor(
   end: number,
 ): ImportDocumentV2 {
   const blocks = assignments.filter(({ pages }) => pages.some((page) => page >= start && page <= end)).map(({ block }) => block);
+  const appendixHeading = source.blocks.find((block) => block.id === "pdf:visual-fallback-appendix:heading");
+  const firstAppendix = blocks.findIndex((block) => block.type === "disclosure" && block.id.includes(":page-image:block:disclosure"));
+  if (appendixHeading && firstAppendix >= 0 && !blocks.includes(appendixHeading)) {
+    blocks.splice(firstAppendix, 0, { ...appendixHeading });
+  }
   const ids = assetIds(blocks);
   return { ...source, blocks, assets: source.assets.filter((asset) => ids.has(asset.id)) };
 }
