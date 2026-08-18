@@ -632,3 +632,104 @@ PDF-04 is complete for conservative digital-untagged ordering, repeated-region
 handling, overlap suppression, basic heading/list evidence, and explicit
 fallback. Tables and figures remain non-native until PDF-05/PDF-06 clear their
 separate evidence and false-native gates.
+
+## PDF-05 - Tables and spans
+
+### Result
+
+The exact PDFium facts boundary now records bounded public path-object facts
+(normalized bounds, segment count, fill mode, and stroke flag) and character
+font weight. The reviewed public-call allowlist covers only
+`FPDFPath_CountSegments`, `FPDFPath_GetDrawMode`, and
+`FPDFText_GetFontWeight` in addition to the already admitted object APIs. No
+operator list or private/fork API is used.
+
+`atlcli.pdf-table-policy/1` accepts a tagged table only when every row/cell role,
+MCID correlation, Unicode mapping, integer RowSpan/ColSpan, occupancy, and grid
+boundary is complete and non-overlapping. It accepts an untagged table only
+when stroked axis-aligned path objects form a complete bounded grid and every
+cell contains uniquely assigned text. Header identity is native only from a
+`TH` role or separately proven bold first-row evidence; the current untagged
+producer exposes no usable weight and therefore does not invent headers.
+
+Malformed tagged grids are linearized row by row. Repeated aligned columns
+without path/grid proof are also linearized and explicitly marked
+`linearized-render-required`; they never produce a native table. Cell source
+references, page/bounds, decision confidence, outcome, and policy revision
+remain in evidence, and the visible cell text is neither duplicated nor lost.
+PDF-06 owns the actual rendered-region asset.
+
+### Table goldens and target projections
+
+```text
+bun run test packages/import-pdf packages/import-core packages/import-docx --test-name-pattern table
+10 pass, 0 fail, 78 assertions
+
+bun run test packages/import-pdf
+24 pass, 0 fail, 333 assertions
+```
+
+| Family | Result |
+|---|---|
+| real tagged | exact 2x2 native table; 4/4 cells and 2/2 headers correct; cell text/order exact; figure remains separately reported |
+| synthetic tagged spans | complete 3-row grid retains `colspan=2` and `rowspan=2` in both ADF and Storage |
+| malformed tagged | grid hole and invalid typed span produce zero native tables; all three source tokens occur exactly once in the linearized result |
+| real untagged positive | eight stroked path facts prove one complete 3x3 grid; 9/9 cells correct; page stays geometry-native |
+| real untagged negative | alignment-only source produces zero native tables; all 9 cell tokens survive in three linear rows; page requires fallback |
+
+The shared encoder regression suite ran the DOCX parser, DOCX ADF/Storage
+encoders, and source-neutral span encoders directly:
+
+```text
+bun run test packages/import-docx/src/parse.test.ts packages/import-docx/src/adf.test.ts packages/import-docx/src/storage.test.ts packages/import-core/src/model.test.ts
+28 pass, 0 fail, 102 assertions
+```
+
+Those checks independently verify `tableHeader`/`tableCell`, RowSpan/ColSpan,
+Storage `th`/`td`, exact cell text/order, and DOCX nested-table reporting. Live
+PDF publication/readback remains intentionally owned by PDF-08/PDF-11 because
+the PDF CLI route does not exist before PDF-07.
+
+### Repository and packaged-consumer proof
+
+```text
+bun run typecheck
+pass
+
+bun run build
+33 tasks pass
+
+bun run check:browser
+36 browser entrypoints pass
+
+bun install --frozen-lockfile
+pass
+
+bun run test scripts/api-report.test.ts scripts/publishable-deps.test.ts packages/import-pdf
+30 pass, 0 fail, 348 assertions
+
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+```
+
+Fresh API/closure reports have zero reachable-but-unexported gaps. The packed
+Bun, filesystem-link, plain Node 22/npm, and Vite 8.1.4 consumers remain
+green. The Vite production hook uses the exact local PDFium WASM and now proves
+the real tagged 2-row/4-cell/2-header table in the semantic output, while the
+no-CDN/no-eval and exact-WASM assertions remain active.
+
+### Built-CLI live guard
+
+The first neutral DOCX write encountered an immediate Confluence readback
+sequence mismatch. The existing transaction failed closed, rolled back its one
+owned page, and a title query returned zero pages. A controlled retry then
+published successfully; independent readback preserved headings, the 2x2
+table, image, caption, and body text. The exact page was deleted, final GET
+returned 404, and a final title-prefix query returned zero pages. No live ID,
+URL, raw receipt, credential, or tenant-derived body is committed.
+
+### Decision
+
+PDF-05 is complete. Native tables require structure or a proved physical grid;
+alignment alone is never native. PDF-06 must materialize the rendered-region
+fallback before the CLI can offer visual preservation for approximated tables.

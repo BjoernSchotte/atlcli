@@ -21,6 +21,7 @@ export interface PdfTextCharacterFact {
   value: string;
   bbox: PdfNormalizedRect | null;
   fontSizePoints: number;
+  fontWeight: number;
   angleRadians: number;
   mcid: number | null;
   generated: boolean;
@@ -55,6 +56,14 @@ export interface PdfImageObjectFact {
   pixelWidth: number;
   pixelHeight: number;
   decodedBytes: number;
+}
+
+export interface PdfPathObjectFact {
+  id: string;
+  bbox: PdfNormalizedRect | null;
+  segmentCount: number;
+  fillMode: number;
+  stroke: boolean;
 }
 
 export interface PdfAnnotationFact {
@@ -98,6 +107,7 @@ export interface PdfPageFactsV1 {
   objectTypeCounts: Record<string, number>;
   operatorSummary: { capability: "unavailable"; count: null };
   images: PdfImageObjectFact[];
+  paths: PdfPathObjectFact[];
   annotations: PdfAnnotationFact[];
 }
 
@@ -120,6 +130,7 @@ export interface PdfEngineCapabilitiesV1 {
   outline: true;
   annotations: true;
   pageObjects: true;
+  pathGeometry: true;
   imageMetadata: true;
   operatorList: false;
   nativeTableExtraction: false;
@@ -205,6 +216,7 @@ export const PDF_TAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-tagged-semantics/1" as
 export const PDF_TAGGED_POLICY_REVISION = "atlcli.pdf-tagged-policy/1" as const;
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-untagged-semantics/1" as const;
 export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as const;
+export const PDF_TABLE_POLICY_REVISION = "atlcli.pdf-table-policy/1" as const;
 
 export interface PdfSourceLocatorV1 {
   pageIndex: number;
@@ -223,6 +235,7 @@ export type PdfEvidenceBasis =
   | "text-geometry"
   | "font-evidence"
   | "annotation"
+  | "path-object"
   | "image-object"
   | "operator-list"
   | "rendered-region"
@@ -236,7 +249,10 @@ export interface PdfDecisionEvidenceV1 {
   confidence: number;
   decisionCode: string;
   outcome: ImportOutcome;
-  analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION;
+  analyzerRevision:
+    | typeof PDF_TAGGED_POLICY_REVISION
+    | typeof PDF_GEOMETRY_POLICY_REVISION
+    | typeof PDF_TABLE_POLICY_REVISION;
 }
 
 export interface PdfTaggedPageOutcomeV1 {

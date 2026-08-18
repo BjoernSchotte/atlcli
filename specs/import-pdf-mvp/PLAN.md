@@ -1270,10 +1270,10 @@ bun run typecheck
 
 **Work:**
 
-- [ ] Reconstruct tagged rows/cells/headers/spans only from correlated evidence.
-- [ ] Support simple untagged rectangular grids under strict qualification.
-- [ ] Implement linearized/rendered fallback policies for complex tables.
-- [ ] Prove ADF/Storage spans and semantic readback; regression-test DOCX tables.
+- [x] Reconstruct tagged rows/cells/headers/spans only from correlated evidence under `atlcli.pdf-table-policy/1`.
+- [x] Support simple untagged rectangular grids only when bounded stroked path objects and complete cell geometry prove the grid.
+- [x] Linearize tagged-invalid and alignment-only candidates without calling them native, and require a rendered-region fallback from PDF-06.
+- [x] Prove ADF/Storage spans and semantic target fingerprints; regression-test DOCX parse, ADF, Storage, and live readback tables.
 
 **Verify:**
 

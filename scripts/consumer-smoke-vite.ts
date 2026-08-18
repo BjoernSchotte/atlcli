@@ -278,6 +278,7 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       untaggedResult.facts,
       untaggedResult.factsDigest,
     );
+    const taggedTable = semantics.document.blocks.find((block) => block.type === "table");
     return {
       pageCount: result.facts.pageCount,
       complete: result.facts.completeness.complete,
@@ -288,6 +289,13 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       semanticDigest: semantics.semanticDigest,
       titleCandidate: semantics.document.titleCandidate,
       blockTypes: semantics.document.blocks.map((block) => block.type),
+      taggedTableRows: taggedTable?.type === "table" ? taggedTable.rows.length : 0,
+      taggedTableCells: taggedTable?.type === "table"
+        ? taggedTable.rows.reduce((count, row) => count + row.cells.length, 0)
+        : 0,
+      taggedTableHeaders: taggedTable?.type === "table"
+        ? taggedTable.rows.flatMap((row) => row.cells).filter((cell) => cell.header).length
+        : 0,
       untaggedTitleCandidate: untaggedSemantics.document.titleCandidate,
       untaggedBlockTypes: untaggedSemantics.document.blocks.map((block) => block.type),
       untaggedFallbackPages: untaggedSemantics.requiresFallbackPages,
@@ -515,6 +523,9 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
         semanticDigest: string;
         titleCandidate?: string;
         blockTypes: string[];
+        taggedTableRows: number;
+        taggedTableCells: number;
+        taggedTableHeaders: number;
         untaggedTitleCandidate?: string;
         untaggedBlockTypes: string[];
         untaggedFallbackPages: number[];
@@ -646,7 +657,10 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     || !/^[a-f0-9]{64}$/u.test(importResult.factsDigest)
     || !/^[a-f0-9]{64}$/u.test(importResult.semanticDigest)
     || importResult.titleCandidate !== "Structured Garden Report"
-    || importResult.blockTypes.join(",") !== "heading,paragraph"
+    || importResult.blockTypes.join(",") !== "heading,paragraph,table"
+    || importResult.taggedTableRows !== 2
+    || importResult.taggedTableCells !== 4
+    || importResult.taggedTableHeaders !== 2
     || importResult.untaggedTitleCandidate !== "Quarterly Garden Notes"
     || importResult.untaggedBlockTypes.join(",") !== "heading,paragraph,paragraph,paragraph,heading,list"
     || importResult.untaggedFallbackPages.length !== 0

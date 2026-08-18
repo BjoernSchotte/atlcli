@@ -12,5 +12,6 @@ export * from "./normalize.js";
 export * from "./reading-order.js";
 export * from "./repeated-regions.js";
 export * from "./untagged.js";
+export * from "./tables.js";
 export { createPdfiumFactsAdapter } from "./adapter/pdfium.js";
 export type { PdfiumAdapterConfig, PdfiumFactsAdapter } from "./adapter/contracts.js";

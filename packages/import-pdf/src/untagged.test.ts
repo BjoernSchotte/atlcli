@@ -37,6 +37,7 @@ function pageWithLines(
         value,
         bbox: { x: line.x + offset * 0.012, y: line.y, width: 0.011, height: 0.02 },
         fontSizePoints: 11,
+        fontWeight: 400,
         angleRadians: line.angle ?? 0,
         mcid: null,
         generated: false,
@@ -51,6 +52,7 @@ function pageWithLines(
         value,
         bbox: null,
         fontSizePoints: 1,
+        fontWeight: 400,
         angleRadians: 0,
         mcid: null,
         generated: true,
@@ -72,6 +74,7 @@ function pageWithLines(
     objectTypeCounts: {},
     operatorSummary: { capability: "unavailable", count: null },
     images: [],
+    paths: [],
     annotations: [],
   };
 }
@@ -95,6 +98,7 @@ function factsFor(page: PdfPageFactsV1): PdfFactsV1 {
         outline: true,
         annotations: true,
         pageObjects: true,
+        pathGeometry: true,
         imageMetadata: true,
         operatorList: false,
         nativeTableExtraction: false,

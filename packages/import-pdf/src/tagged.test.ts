@@ -58,6 +58,7 @@ function charactersFor(
     value: character,
     bbox: { x: 0.1 + offset * 0.02, y, width: 0.018, height: 0.02 },
     fontSizePoints: 12,
+    fontWeight: 400,
     angleRadians: 0,
     mcid,
     generated: false,
@@ -84,6 +85,7 @@ function syntheticPage(
     objectTypeCounts: {},
     operatorSummary: { capability: "unavailable", count: null },
     images: [],
+    paths: [],
     annotations: [],
   };
 }
@@ -107,6 +109,7 @@ function syntheticFacts(page: PdfPageFactsV1): PdfFactsV1 {
         outline: true,
         annotations: true,
         pageObjects: true,
+        pathGeometry: true,
         imageMetadata: true,
         operatorList: false,
         nativeTableExtraction: false,
@@ -152,26 +155,31 @@ describe("tagged PDF semantic extraction", () => {
     expect(normalized.document.blocks.map((block) => [block.type, textOf(block)])).toEqual([
       ["heading", "Structured Garden Report"],
       ["paragraph", "Tagged content connects structure roles to marked text."],
+      ["table", ""],
     ]);
     expect(normalized.pageOutcomes).toEqual([{
       pageIndex: 0,
       mode: "tagged-native",
-      projectedNodeIds: ["pdf:p0:struct:0:heading-1", "pdf:p0:struct:1:paragraph"],
+      projectedNodeIds: [
+        "pdf:p0:struct:0:heading-1",
+        "pdf:p0:struct:1:paragraph",
+        "pdf:p0:struct:2:table",
+      ],
       claimedCharacterCount: 127,
       unclaimedCharacterCount: 0,
       corruptTagCount: 0,
     }]);
     expect(normalized.evidence.map((item) => item.outcome)).toEqual([
-      "native", "native", "reported", "reported",
+      "native", "native", "native", "native", "native", "native", "native", "reported",
     ]);
-    expect(normalized.document.issues.map((issue) => issue.code)).toContain(
+    expect(normalized.document.issues.map((issue) => issue.code)).not.toContain(
       "pdf-import/tagged-table-deferred",
     );
     expect(normalized.document.issues.map((issue) => issue.code)).toContain(
       "pdf-import/tagged-figure-deferred",
     );
     expect(documentToAdf(normalized.document).content.map((node) => node.type)).toEqual([
-      "heading", "paragraph",
+      "heading", "paragraph", "table",
     ]);
 
     const withoutOutline = await normalizeTaggedPdfFacts(

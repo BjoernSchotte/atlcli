@@ -26,6 +26,7 @@ import {
   type PdfReadingOrderPageV1,
 } from "./reading-order.js";
 import { detectRepeatedRegions } from "./repeated-regions.js";
+import { analyzeUntaggedTable, type PdfTableProjectionV1 } from "./tables.js";
 
 interface ListMarker {
   ordered: boolean;
@@ -180,11 +181,23 @@ function projectQualifiedPage(
   suppressed: ReadonlySet<string>,
   headingLevelByFont: ReadonlyMap<number, 1 | 2 | 3 | 4 | 5 | 6>,
   evidence: PdfDecisionEvidenceV1[],
+  table: PdfTableProjectionV1,
 ): ImportBlock[] {
   const available = analysis.ordered.filter((fragment) => !suppressed.has(fragment.id));
   const blocks: ImportBlock[] = [];
+  let tableInserted = false;
+  const insertTableBefore = (fragment?: PdfGeometryFragmentV1): void => {
+    if (
+      tableInserted
+      || table.mode !== "native"
+      || (fragment && table.bbox && table.bbox.y >= fragment.bbox.y)
+    ) return;
+    blocks.push(...table.blocks);
+    tableInserted = true;
+  };
   for (let index = 0; index < available.length;) {
     const fragment = available[index]!;
+    insertTableBefore(fragment);
     if (listMarker(fragment.text)) {
       const listFragments: PdfGeometryFragmentV1[] = [];
       while (index < available.length && listMarker(available[index]!.text)) {
@@ -219,6 +232,7 @@ function projectQualifiedPage(
     });
     index += 1;
   }
+  insertTableBefore();
   return blocks;
 }
 
@@ -240,7 +254,15 @@ export async function normalizeUntaggedPdfFacts(
       "PDF facts differ from the digest supplied to geometry normalization.",
     );
   }
-  const analyses = facts.pages.map(analyzeGeometryReadingOrder);
+  const rawAnalyses = facts.pages.map((page) => analyzeGeometryReadingOrder(page));
+  const tables = rawAnalyses.map((analysis) => analyzeUntaggedTable(facts.pages[analysis.pageIndex]!, analysis));
+  const analyses = facts.pages.map((page) => {
+    const table = tables[page.index]!;
+    return analyzeGeometryReadingOrder(
+      page,
+      table.mode === "native" ? new Set(table.fragmentIds) : new Set(),
+    );
+  });
   const repeated = detectRepeatedRegions(analyses);
   const automaticallySuppressed = new Set<string>([
     ...repeated,
@@ -257,6 +279,9 @@ export async function normalizeUntaggedPdfFacts(
   const requiresFallbackPages: number[] = [];
   for (const analysis of analyses) {
     const page = facts.pages[analysis.pageIndex]!;
+    const table = tables[analysis.pageIndex]!;
+    evidence.push(...table.evidence);
+    issues.push(...table.issues);
     const reasons = new Set(analysis.qualificationReasons);
     if (facts.tagged) reasons.add("tagged-document-routed-to-geometry");
     if (page.kind !== "digital") reasons.add(`page-kind-${page.kind}`);
@@ -287,11 +312,15 @@ export async function normalizeUntaggedPdfFacts(
         automaticallySuppressed,
         headingLevelByFont,
         evidence,
+        table,
       ));
-      if (blocks.length > blockStart && page.index > 0) blocks[blockStart]!.pageBoundaryBefore = true;
     } else {
       requiresFallbackPages.push(page.index);
-      const fallbackFragments = analysis.fragments.filter((fragment) => !automaticallySuppressed.has(fragment.id));
+      if (table.mode === "linearized-render-required") blocks.push(...table.blocks);
+      const tableFragmentIds = new Set(table.fragmentIds);
+      const fallbackFragments = analysis.fragments.filter((fragment) =>
+        !automaticallySuppressed.has(fragment.id) && !tableFragmentIds.has(fragment.id)
+      );
       for (const fragment of fallbackFragments) {
         evidence.push({
           sourceId: fragment.id,
@@ -312,6 +341,7 @@ export async function normalizeUntaggedPdfFacts(
         context: { pageIndex: page.index, reasons: [...reasons].sort().join(",") },
       });
     }
+    if (blocks.length > blockStart && page.index > 0) blocks[blockStart]!.pageBoundaryBefore = true;
     const accounted = new Set(analysis.fragments.flatMap((fragment) =>
       fragment.characters.map((character) => character.index)
     ));

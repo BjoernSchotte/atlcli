@@ -22,6 +22,7 @@ export interface PdfGeometryFragmentV1 {
   bbox: PdfNormalizedRect;
   characters: PdfTextCharacterFact[];
   fontSizePoints: number;
+  fontWeight: number;
   angleRadians: number;
   direction: PdfTextDirection;
   sourceOrder: number;
@@ -111,6 +112,8 @@ export function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragm
         .map((character) => character.fontSizePoints));
       const angleRadians = median(part.filter((character) => !character.generated)
         .map((character) => character.angleRadians));
+      const fontWeight = median(part.filter((character) => !character.generated)
+        .map((character) => character.fontWeight));
       fragments.push({
         id: `pdf:p${page.index}:fragment:${part[0]!.index}-${part.at(-1)!.index}`,
         pageIndex: page.index,
@@ -118,6 +121,7 @@ export function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragm
         bbox,
         characters: [...part],
         fontSizePoints,
+        fontWeight,
         angleRadians,
         direction: textDirection(text),
         sourceOrder: fragments.length,
@@ -129,8 +133,10 @@ export function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragm
   return fragments;
 }
 
-function assignColumns(fragments: PdfGeometryFragmentV1[]): number {
-  const content = fragments.filter((fragment) => !fragment.furniture && !fragment.duplicateOf);
+function assignColumns(fragments: PdfGeometryFragmentV1[], ignored: ReadonlySet<string>): number {
+  const content = fragments.filter((fragment) =>
+    !fragment.furniture && !fragment.duplicateOf && !ignored.has(fragment.id)
+  );
   if (content.length === 0) return 1;
   const xs = [...new Set(content.map((fragment) => Math.round(fragment.bbox.x * 100) / 100))].sort(
     (a, b) => a - b,
@@ -148,7 +154,10 @@ function assignColumns(fragments: PdfGeometryFragmentV1[]): number {
   return columnCount;
 }
 
-export function analyzeGeometryReadingOrder(page: PdfPageFactsV1): PdfReadingOrderPageV1 {
+export function analyzeGeometryReadingOrder(
+  page: PdfPageFactsV1,
+  ignoredFragmentIds: ReadonlySet<string> = new Set(),
+): PdfReadingOrderPageV1 {
   const fragments = extractGeometryFragments(page);
   const reasons = new Set<string>();
   const extractedIndexes = new Set(fragments.flatMap((fragment) =>
@@ -179,16 +188,18 @@ export function analyzeGeometryReadingOrder(page: PdfPageFactsV1): PdfReadingOrd
   if (fragments.some((fragment) => fragment.characters.some((character) => character.unicodeMapError))) {
     reasons.add("unicode-map-error");
   }
-  const columnCount = assignColumns(fragments);
+  const columnCount = assignColumns(fragments, ignoredFragmentIds);
   if (columnCount > PDF_GEOMETRY_POLICY_V1.maxColumns) reasons.add("too-many-columns");
   if (columnCount === 2) {
     const counts = [0, 1].map((column) => fragments.filter((fragment) =>
-      !fragment.furniture && !fragment.duplicateOf && fragment.column === column
+      !fragment.furniture && !fragment.duplicateOf && !ignoredFragmentIds.has(fragment.id) && fragment.column === column
     ).length);
     if (counts.some((count) => count < PDF_GEOMETRY_POLICY_V1.minimumLinesPerColumn)) {
       reasons.add("under-evidenced-column");
     }
-    const leftRight = fragments.filter((fragment) => !fragment.furniture && !fragment.duplicateOf);
+    const leftRight = fragments.filter((fragment) =>
+      !fragment.furniture && !fragment.duplicateOf && !ignoredFragmentIds.has(fragment.id)
+    );
     const leftEdge = Math.max(...leftRight.filter((fragment) => fragment.column === 0)
       .map((fragment) => fragment.bbox.x + fragment.bbox.width));
     const rightEdge = Math.min(...leftRight.filter((fragment) => fragment.column === 1)
@@ -196,7 +207,7 @@ export function analyzeGeometryReadingOrder(page: PdfPageFactsV1): PdfReadingOrd
     if (leftEdge >= rightEdge) reasons.add("column-overlap");
   }
   const ordered = fragments
-    .filter((fragment) => !fragment.furniture && !fragment.duplicateOf)
+    .filter((fragment) => !fragment.furniture && !fragment.duplicateOf && !ignoredFragmentIds.has(fragment.id))
     .sort((a, b) => a.column - b.column || a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x || a.sourceOrder - b.sourceOrder);
   return {
     pageIndex: page.index,

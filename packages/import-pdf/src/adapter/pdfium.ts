@@ -16,6 +16,7 @@ import {
   type PdfFactsV1,
   type PdfImageObjectFact,
   type PdfNormalizedRect,
+  type PdfPathObjectFact,
   type PdfPageFactsV1,
   type PdfStructureAttributeFact,
   type PdfStructureNodeFact,
@@ -33,6 +34,7 @@ import type {
 } from "./contracts.js";
 
 const PAGE_OBJECT_IMAGE = 3;
+const PAGE_OBJECT_PATH = 2;
 const PAGE_OBJECT_FORM = 5;
 const ACTION_URI = 3;
 const PDFIUM_LOAD_ERROR_PASSWORD = 4;
@@ -46,6 +48,7 @@ const CAPABILITIES: PdfEngineCapabilitiesV1 = Object.freeze({
   outline: true,
   annotations: true,
   pageObjects: true,
+  pathGeometry: true,
   imageMetadata: true,
   operatorList: false,
   nativeTableExtraction: false,
@@ -521,6 +524,7 @@ function extractText(
         value: unicode > 0 && unicode <= 0x10ffff ? String.fromCodePoint(unicode) : "",
         bbox: normalizeRect(raw, pageWidth, pageHeight),
         fontSizePoints: round(module.FPDFText_GetFontSize(textPage, index)),
+        fontWeight: Math.max(0, module.FPDFText_GetFontWeight(textPage, index)),
         angleRadians: round(module.FPDFText_GetCharAngle(textPage, index), 6),
         mcid: mcid >= 0 ? mcid : null,
         generated: module.FPDFText_IsGenerated(textPage, index) > 0,
@@ -607,9 +611,10 @@ function extractObjects(
   pageWidth: number,
   pageHeight: number,
   control: Control,
-): Pick<PdfPageFactsV1, "objectTypeCounts" | "operatorSummary" | "images"> {
+): Pick<PdfPageFactsV1, "objectTypeCounts" | "operatorSummary" | "images" | "paths"> {
   const objectTypeCounts: Record<string, number> = {};
   const images: PdfImageObjectFact[] = [];
+  const paths: PdfPathObjectFact[] = [];
   let pageObjectCount = 0;
 
   const visit = (
@@ -656,6 +661,30 @@ function extractObjects(
       for (let index = 0; index < childCount; index += 1) {
         visit(module.FPDFFormObj_GetObject(object, index), [...path, index], nextAncestors);
       }
+      return;
+    }
+    if (type === PAGE_OBJECT_PATH) {
+      const drawMode = withPointer(module, 8, (pointer) => {
+        const ok = module.FPDFPath_GetDrawMode(object, pointer, pointer + 4);
+        return ok
+          ? {
+              fillMode: memory(module).HEAP32[pointer >>> 2] ?? 0,
+              stroke: (memory(module).HEAP32[(pointer >>> 2) + 1] ?? 0) !== 0,
+            }
+          : { fillMode: 0, stroke: false };
+      });
+      paths.push({
+        id: `pdf:p${pageIndex}:path:${path.join(".")}`,
+        bbox: normalizeRect(
+          rawRect(module, (pointer) =>
+            module.FPDFPageObj_GetBounds(object, pointer, pointer + 4, pointer + 8, pointer + 12),
+          ),
+          pageWidth,
+          pageHeight,
+        ),
+        segmentCount: Math.max(0, module.FPDFPath_CountSegments(object)),
+        ...drawMode,
+      });
       return;
     }
     if (type !== PAGE_OBJECT_IMAGE) return;
@@ -740,6 +769,7 @@ function extractObjects(
     objectTypeCounts,
     operatorSummary: { capability: "unavailable", count: null },
     images,
+    paths,
   };
 }
 

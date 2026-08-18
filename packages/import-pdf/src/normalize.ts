@@ -21,6 +21,7 @@ import { taggedRuns } from "./links.js";
 import { indexTaggedStructure, isSemanticContainer, structureRole } from "./structure.js";
 import { correlateTaggedText, descendantMcids } from "./text.js";
 import { PdfImportError } from "./issues.js";
+import { projectTaggedTable } from "./tables.js";
 
 interface MutableProjection {
   blocks: ImportBlock[];
@@ -81,7 +82,12 @@ function projectNode(
     return;
   }
   if (role === "Table") {
-    reportDeferred(page, node, state, "table");
+    const table = projectTaggedTable(page, node, corruptMcids);
+    state.blocks.push(...table.blocks);
+    state.evidence.push(...table.evidence);
+    state.issues.push(...table.issues);
+    table.claimedCharacterIndexes.forEach((index) => state.claimedCharacterIndexes.add(index));
+    if (table.mode !== "native") state.corruptTagCount += 1;
     return;
   }
   if (role === "Figure") {
