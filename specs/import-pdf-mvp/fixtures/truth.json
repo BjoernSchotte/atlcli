@@ -1,0 +1,181 @@
+{
+  "fixtures": {
+    "adversarial-actions.pdf": {
+      "bytes": 2379,
+      "class": "digital-untagged",
+      "embeddedFiles": 1,
+      "javascriptActions": 1,
+      "pages": 1,
+      "policy": "report-never-execute-or-extract",
+      "sha256": "71ccaa23ee2329cd75798ea698f0f89c71af5584831ae00100f292510f650082"
+    },
+    "complex-tagged.pdf": {
+      "annotations": 1,
+      "bytes": 3725,
+      "class": "tagged",
+      "figureAlt": "Green square sample tile",
+      "outlines": 1,
+      "pages": 1,
+      "physicalImages": 1,
+      "roles": {
+        "Caption": 1,
+        "Figure": 1,
+        "H1": 1,
+        "P": 1,
+        "TD": 2,
+        "TH": 2,
+        "TR": 2,
+        "Table": 1
+      },
+      "sha256": "59786ff65e6151820787290b43acd5ffa7123d94e17243341cbecc0f7da1322b",
+      "tableSpans": 4,
+      "tokens": [
+        "Structured Garden Report",
+        "North",
+        "Twelve"
+      ]
+    },
+    "complex-untagged.pdf": {
+      "bytes": 1889,
+      "class": "digital-untagged",
+      "columns": 2,
+      "pages": 1,
+      "sha256": "288e17630dc2f7e1d38c481cd729e3a8cf17c9a793d882e36a42fb096937e58e",
+      "tokens": [
+        "Left column sentence 01",
+        "Right column sentence 12"
+      ]
+    },
+    "encrypted.pdf": {
+      "bytes": 2630,
+      "class": "encrypted",
+      "pages": null,
+      "password": "neutral-fixture",
+      "policy": "reject-v1",
+      "sha256": "8c8f1fb3b5f69c1f0a8800bfe17f582ac2e2c80b69596231a07618767965a43d"
+    },
+    "figure.pdf": {
+      "bytes": 3206,
+      "class": "digital-untagged",
+      "pages": 1,
+      "physicalImages": 1,
+      "sha256": "cbc777c4c7d9285d64f8a2f0e2cc5388b52b4469f90313712712329571bae890",
+      "vectorFigures": 1
+    },
+    "heading-poor-100.pdf": {
+      "bytes": 63292,
+      "class": "digital-untagged",
+      "duplicatePages": 0,
+      "expectedRanges": [
+        [
+          1,
+          20
+        ],
+        [
+          21,
+          40
+        ],
+        [
+          41,
+          60
+        ],
+        [
+          61,
+          80
+        ],
+        [
+          81,
+          100
+        ]
+      ],
+      "pages": 100,
+      "rootPages": [],
+      "sha256": "a13d436289dc245131ac9351c171f5141c1477284144e942318e250c39f39954",
+      "unassignedPages": 0
+    },
+    "heading-rich-100.pdf": {
+      "atomicRegion": [
+        39,
+        41
+      ],
+      "bytes": 63387,
+      "class": "digital-untagged",
+      "duplicatePages": 0,
+      "expectedRanges": [
+        [
+          1,
+          25
+        ],
+        [
+          26,
+          50
+        ],
+        [
+          51,
+          75
+        ],
+        [
+          76,
+          100
+        ]
+      ],
+      "pages": 100,
+      "rootPages": [
+        1,
+        26,
+        51,
+        76
+      ],
+      "sha256": "57c78033e00440312ca9298df246be8beb53737a0bd890991cb8a48005fb6bc7",
+      "unassignedPages": 0
+    },
+    "mixed.pdf": {
+      "bytes": 7622,
+      "class": "mixed",
+      "digitalPages": [
+        1
+      ],
+      "pages": 2,
+      "scanPages": [
+        2
+      ],
+      "sha256": "8a871788fc265b6942a72cc5af0f7af4dfed9bc3d6c84fcc7fb6bcc8f608bc80"
+    },
+    "scan.pdf": {
+      "bytes": 23454,
+      "class": "scan",
+      "pages": 1,
+      "pdfTextTokens": [],
+      "renderedTextOnly": "SCANNED NEUTRAL NOTICE",
+      "sha256": "1908adf6153db8872cfb17a5b7cd85965a4b240098864d392b6b654a093178c6"
+    },
+    "simple-untagged.pdf": {
+      "annotations": 1,
+      "bytes": 2135,
+      "class": "digital-untagged",
+      "pages": 1,
+      "sha256": "9a31a7f21dadb234e121e75f31212c8e24b2ea35665ee0d2dcfeff5904c6faf5",
+      "tokens": [
+        "Quarterly Garden Notes",
+        "twelve neutral test trees"
+      ]
+    },
+    "table-negative.pdf": {
+      "bytes": 1924,
+      "class": "digital-untagged",
+      "pages": 1,
+      "sha256": "4067a1dc4ebf9366e1dbac93795fbaac13ed4f256d0c272d448653c0d3d986e3",
+      "tablePolicy": "must-not-be-native"
+    },
+    "table-positive.pdf": {
+      "bytes": 1805,
+      "class": "digital-untagged",
+      "pages": 1,
+      "sha256": "5120eeab5e10be4f83d67310f03b10c15ca840e393e0d4eb417ecf67e4b6fbd2",
+      "tablePolicy": "candidate-only-with-grid-evidence"
+    }
+  },
+  "license": "Apache-2.0",
+  "provenance": "Generated locally from specs/import-pdf-mvp/fixtures/generate.py; no customer or tenant input.",
+  "schema": "atlcli.import-pdf.fixture-truth/v1"
+}

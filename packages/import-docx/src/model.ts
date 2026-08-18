@@ -1,156 +1,28 @@
-/**
- * Neutral import IR for the DOCX → Confluence vertical slice
- * (specs/import-docx-mvp/PLAN.md §7.1, reduced per DRIFT.md §2).
- *
- * The IR is target-neutral and parser-neutral: nothing in here may reference
- * OOXML part names, saxes types, ADF, or Storage XHTML. Every construct the
- * parser cannot represent must surface as an {@link ImportIssue} — "parser
- * ignored it" is never a valid outcome (§2.4).
- */
+/** DOCX-only extensions around the source-neutral `@atlcli/import-core` IR. */
+import type { ImportBlock, ImportDocumentV2 } from "@atlcli/import-core";
 
-/** Inline formatting carried by a text run. */
-export interface ImportRunMarks {
-  bold?: boolean;
-  italic?: boolean;
-  code?: boolean;
-  /** External hyperlink target (http/https/mailto only; enforced by the parser). */
-  link?: { href: string };
-  /**
-   * Internal cross-reference to a Word bookmark (hyperlink anchor or
-   * REF/PAGEREF field). Resolved to a page link at encode time when the
-   * bookmark's page is known; otherwise rendered as plain text.
-   */
-  anchorLink?: { anchor: string };
-  /**
-   * Relative link to another DOCX file (plan 010 cross-file links).
-   * Resolved to that document's imported page URL when both files travel
-   * in the same batch; otherwise rendered as plain text with an issue.
-   */
-  fileLink?: { path: string; anchor?: string };
-}
-
-export type ImportRun =
-  | { kind: "text"; text: string; marks?: ImportRunMarks }
-  | { kind: "hard-break" };
-
-export interface ImportListItem {
-  /** Block content of the item (first block is the item paragraph). */
-  blocks: ImportBlock[];
-  /** Nested list (deeper `ilvl` in the source), if any. */
-  child?: ImportListBlock;
-}
-
-export interface ImportListBlock {
-  type: "list";
-  ordered: boolean;
-  items: ImportListItem[];
-}
-
-export interface ImportTableCell {
-  header: boolean;
-  blocks: ImportBlock[];
-}
-
-export interface ImportTableRow {
-  cells: ImportTableCell[];
-}
-
-export type ImportBlock =
-  | {
-      type: "heading";
-      level: 1 | 2 | 3 | 4 | 5 | 6;
-      runs: ImportRun[];
-      /**
-       * Resolved visible numbering label (e.g. `1.2`, `A`, `IV`) when the
-       * source heading is numbered via OOXML numbering. Word generates these
-       * at render time; losing them breaks the section identifiers people
-       * cite, so the import resolves and preserves them explicitly
-       * (specs/import-docx/002-heading-numbering).
-       */
-      label?: string;
-      /** Word bookmark names anchored at this block (split link targets). */
-      bookmarks?: string[];
-    }
-  | { type: "paragraph"; runs: ImportRun[]; bookmarks?: string[] }
-  | ImportListBlock
-  | { type: "table"; rows: ImportTableRow[] }
-  | ImportImageBlock
-  /** Consecutive Quote/Intense Quote paragraphs, grouped. */
-  | { type: "blockquote"; blocks: ImportBlock[] }
-  /** Consecutive code-styled paragraphs, merged into one block. */
-  | { type: "code"; text: string };
-
-export interface ImportImageBlock {
-  type: "image";
-  /** References an {@link ImportAsset} by its stable id. */
-  assetId: string;
-  alt?: string;
-  /** Display size in CSS px (converted from source EMU), when declared. */
-  width?: number;
-  height?: number;
-}
+export type DocxImportBlock =
+  | (Extract<ImportBlock, { type: "heading" }> & { bookmarks?: string[] })
+  | (Extract<ImportBlock, { type: "paragraph" }> & { bookmarks?: string[] })
+  | Exclude<ImportBlock, { type: "heading" } | { type: "paragraph" }>;
 
 /**
- * An embedded binary carried alongside the document (today: images). Bytes
- * stay in memory only; publication uploads them as page attachments.
- */
-export interface ImportAsset {
-  /** Stable id derived from the source package part name. */
-  id: string;
-  /** Attachment file name used at upload (basename of the source part). */
-  fileName: string;
-  mediaType: string;
-  bytes: Uint8Array;
-}
-
-export type ImportIssueSeverity = "info" | "warning";
-
-/**
- * §2.4 outcome for the construct the issue describes. The slice only produces
- * `approximated` and `reported`; `rejected` is thrown as an error instead.
- */
-export type ImportIssueOutcome = "approximated" | "reported";
-
-export interface ImportIssue {
-  /** Stable machine code, e.g. `docx-import/image-not-supported`. */
-  code: string;
-  severity: ImportIssueSeverity;
-  outcome: ImportIssueOutcome;
-  message: string;
-  /** Sanitized context (element names, counts) — never document body text. */
-  context?: Record<string, string | number>;
-}
-
-/**
- * A Word comment (or reply). The DOCX author is DOCUMENT ATTRIBUTION only —
- * the Confluence comment actor is always the authenticated importer, and the
- * original author appears as a visible attribution line (MVP §2.10).
+ * A Word comment or reply. Source attribution is visible content only; the
+ * authenticated importer remains the Confluence comment actor.
  */
 export interface ImportComment {
-  /** Source comment id from word/comments.xml. */
   id: string;
   author: string;
   date?: string;
-  /** Plain text of the comment body (paragraphs joined by newlines). */
   text: string;
   resolved: boolean;
   replies: ImportComment[];
-  /** Exact text of the commented range, when the range was resolvable. */
   anchorText?: string;
 }
 
-export interface ImportedDocument {
-  /** Title candidate derived from the first level-1 heading, if present. */
-  titleCandidate?: string;
-  blocks: ImportBlock[];
-  /** Embedded binaries referenced by `image` blocks, in source order. */
-  assets: ImportAsset[];
-  /** Word comments in document order (top-level; replies nested). */
+export interface ImportedDocument extends Omit<ImportDocumentV2, "blocks"> {
+  sourceKind: "docx";
+  blocks: DocxImportBlock[];
   comments: ImportComment[];
-  /**
-   * Comment id → top-level block owning its range start. Used by the split
-   * publisher to place each comment on the page that carries its anchor.
-   */
-  commentOwners: Map<string, ImportBlock>;
-  issues: ImportIssue[];
+  commentOwners: Map<string, DocxImportBlock>;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Glob } from "bun";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,6 +10,12 @@ import {
   TYPST_CORE_COMMIT,
   TYPST_TS_SOURCE_COMMIT,
 } from "../packages/pdf-compiler-browser/scripts/vendor-typst.js";
+import {
+  PDFIUM_FORK_COMMIT,
+  PDFIUM_PACKAGE_VERSION,
+  PDFIUM_RELEASE_COMMIT,
+  PDFIUM_WASM_SHA256,
+} from "../packages/import-pdf/scripts/vendor-pdfium.js";
 import { runStripDevCondition } from "./strip-dev-condition.js";
 
 /**
@@ -118,10 +125,11 @@ describe("pack-check (spec 009)", () => {
 
       // We pack with `--ignore-scripts` (see the pack test below) to make the
       // manifest snapshot deterministic, so the non-strip prepack side effects
-      // — pinned PDF fonts (`@atlcli/pdf`) and the vendored typst glue/wasm
-      // (`@atlcli/pdf-compiler-browser`) — must already be on disk. Both scripts
-      // are idempotent verify-or-produce, so this is a no-op when present.
-      for (const script of ["fonts:ensure", "vendor:typst"]) {
+      // — pinned PDF fonts (`@atlcli/pdf`), vendored typst glue/wasm
+      // (`@atlcli/pdf-compiler-browser`), and vendored PDFium WASM
+      // (`@atlcli/import-pdf`) — must already be on disk. All scripts are
+      // idempotent verify-or-produce, so this is a no-op when present.
+      for (const script of ["fonts:ensure", "vendor:typst", "vendor:pdfium"]) {
         const res = run(["bun", "run", script], repoRoot);
         if (res.exitCode !== 0) {
           throw new Error(`bun run ${script} failed:\n${res.stdout}\n${res.stderr}`);
@@ -420,5 +428,37 @@ describe("pack-check (spec 009)", () => {
     ) as { source?: { commit?: string }; typstCore?: { forkCommit?: string } };
     expect(provenance.source?.commit).toBe(TYPST_TS_SOURCE_COMMIT);
     expect(provenance.typstCore?.forkCommit).toBe(TYPST_CORE_COMMIT);
+  }, 60000);
+
+  it("@atlcli/import-pdf ships its exact PDFium artifact, licenses, notices, and provenance", () => {
+    const { entries, manifest, tarball } = packageOf(
+      packages.find((pkg) => pkg.name === "@atlcli/import-pdf") ?? (undefined as never),
+    );
+    for (const required of [
+      "package/vendor/pdfium.wasm",
+      "package/vendor/LICENSE",
+      "package/vendor/LICENSE.pdfium",
+      "package/vendor/THIRD_PARTY_NOTICES.md",
+      "package/vendor/PROVENANCE.json",
+    ]) {
+      expect(entries.includes(required), `@atlcli/import-pdf: missing ${required}`).toBe(true);
+    }
+    const wasm = Bun.spawnSync(
+      ["tar", "-xOf", tarball, "package/vendor/pdfium.wasm"],
+      { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
+    );
+    expect(wasm.exitCode).toBe(0);
+    expect(createHash("sha256").update(wasm.stdout).digest("hex")).toBe(PDFIUM_WASM_SHA256);
+    const provenance = JSON.parse(
+      tarExtract(tarball, "package/vendor/PROVENANCE.json"),
+    ) as Record<string, unknown>;
+    expect(provenance).toMatchObject({
+      packageVersion: PDFIUM_PACKAGE_VERSION,
+      releaseCommit: PDFIUM_RELEASE_COMMIT,
+      pdfiumForkCommit: PDFIUM_FORK_COMMIT,
+      wasmSha256: PDFIUM_WASM_SHA256,
+      noticeInventory: "THIRD_PARTY_NOTICES.md",
+    });
+    expect(manifest.dependencies).not.toHaveProperty("pdfjs-dist");
   }, 60000);
 });

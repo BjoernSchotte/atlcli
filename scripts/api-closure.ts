@@ -231,6 +231,30 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
     reasoning:
       "STAYS 0.x: never API-reviewed, Bun-only engines (webhook server is Bun.serve-native).",
   },
+  "@atlcli/import-core": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the source-neutral semantic import model and pure " +
+      "ADF/Storage/preview projection boundary. Keep it experimental until both DOCX and PDF " +
+      "parsers plus packed Node, Bun, and browser consumers prove the versioned contract.",
+  },
+  "@atlcli/import-confluence": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the host-neutral prepared-page publication, semantic " +
+      "readback, and exact owned-page rollback boundary shared by semantic importers. Keep it " +
+      "experimental until DOCX and PDF Cloud/Data Center transactions and browser hosts prove it.",
+  },
+  "@atlcli/import-pdf": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the exact-pinned PDFium facts, safety-budget, and " +
+      "classification boundary for semantic PDF import. Keep it experimental until tagged and " +
+      "untagged semantics, publication, and CLI/browser-worker consumers clear the full MVP gates.",
+  },
   "@atlcli/plugin-api": {
     version: "0.x",
     frozen: false,

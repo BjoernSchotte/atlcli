@@ -5,19 +5,8 @@
  * file/stdin/network acquisition belongs to the imperative shell (CLI).
  */
 export type {
-  ImportAsset,
-  ImportBlock,
   ImportComment,
-  ImportImageBlock,
-  ImportIssue,
-  ImportIssueOutcome,
-  ImportIssueSeverity,
-  ImportListBlock,
-  ImportListItem,
-  ImportRun,
-  ImportRunMarks,
-  ImportTableCell,
-  ImportTableRow,
+  DocxImportBlock,
   ImportedDocument,
 } from "./model.js";
 export { parseDocx, type ParseDocxPolicy } from "./parse.js";
@@ -35,7 +24,6 @@ export {
   BASELINE_PROPERTY_KEY,
   BASELINE_SCHEMA,
   buildBaseline,
-  canonicalJson,
   digestAdfValue,
   stripAdfAnnotations,
   validateBaseline,
@@ -69,13 +57,6 @@ export {
   type StyleMappingTarget,
 } from "./overrides.js";
 export {
-  documentToAdf,
-  type AdfDocument,
-  type AdfEncodeOptions,
-  type AdfMediaResolution,
-  type AdfNode,
-} from "./adf.js";
-export {
   buildGovernance,
   governanceHasEffects,
   parsePrincipal,
@@ -86,14 +67,7 @@ export {
   type DestinationRestrictionPolicy,
   type GovernanceInput,
 } from "./destination-governance.js";
-export {
-  EDITABILITY_BUDGETS,
-  assessEditability,
-  type EditabilityAssessment,
-  type EditabilityLevel,
-} from "./assess.js";
 export { extractDocxEntriesFromZip, type BatchZipEntry } from "./batch-zip.js";
-export { documentToStorage, storageTagSequence, type StorageEncodeOptions } from "./storage.js";
 export {
   SplitTitleConflictError,
   collectAnchorRefs,
@@ -104,10 +78,3 @@ export {
   type SplitOptions,
   type SplitResult,
 } from "./split.js";
-export {
-  buildImportPreview,
-  renderImportPreview,
-  type ImportPreview,
-  type ImportPreviewAsset,
-  type ImportTarget,
-} from "./preview.js";

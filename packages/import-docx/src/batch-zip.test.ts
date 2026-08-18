@@ -3,7 +3,7 @@ import PizZip from "pizzip";
 import { extractDocxEntriesFromZip } from "./batch-zip.js";
 import { collectFileLinkRefs } from "./split.js";
 import { parseDocx } from "./parse.js";
-import { documentToAdf } from "./adf.js";
+import { documentToAdf, importReferenceKey } from "@atlcli/import-core";
 import { buildDocxFixture, hyperlinkRel, p, r } from "./test-support.js";
 
 function outerZip(entries: Record<string, Uint8Array | string>): Uint8Array {
@@ -37,7 +37,7 @@ describe("extractDocxEntriesFromZip", () => {
 });
 
 describe("cross-file links (plan 010)", () => {
-  it("parses relative .docx hyperlinks as fileLink marks and resolves them at encode time", () => {
+  it("parses relative .docx hyperlinks as source-owned references and resolves them at encode time", () => {
     const bytes = buildDocxFixture({
       body: p(`<w:hyperlink r:id="rId9">${r("see the admin guide")}</w:hyperlink>`),
       documentRels: hyperlinkRel("rId9", "guides/admin.docx#section_2"),
@@ -47,7 +47,13 @@ describe("cross-file links (plan 010)", () => {
     const para = doc.blocks[0];
     if (para.type !== "paragraph") throw new Error("expected paragraph");
     expect(para.runs[0]).toMatchObject({
-      marks: { fileLink: { path: "guides/admin.docx", anchor: "section_2" } },
+      marks: {
+        reference: {
+          namespace: "docx-file",
+          target: "guides/admin.docx",
+          fragment: "section_2",
+        },
+      },
     });
     expect([...collectFileLinkRefs(doc.blocks)]).toEqual(["guides/admin.docx"]);
 
@@ -55,7 +61,10 @@ describe("cross-file links (plan 010)", () => {
     const plain = documentToAdf(doc);
     expect(JSON.stringify(plain)).not.toContain('"link"');
     const resolved = documentToAdf(doc, {
-      fileLinks: new Map([["guides/admin.docx", "https://example.net/wiki/pages/1"]]),
+      references: new Map([[
+        importReferenceKey({ namespace: "docx-file", target: "guides/admin.docx" }),
+        "https://example.net/wiki/pages/1",
+      ]]),
     });
     expect(JSON.stringify(resolved)).toContain("https://example.net/wiki/pages/1");
   });

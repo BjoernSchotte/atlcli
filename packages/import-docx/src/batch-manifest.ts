@@ -5,7 +5,7 @@
  */
 import { sha256Hex } from "@atlcli/core";
 import { isAlias, parseDocument, visit } from "yaml";
-import { canonicalJson } from "./baseline.js";
+import { canonicalJson } from "@atlcli/import-core";
 
 export const BATCH_MANIFEST_SCHEMA = "atlcli.docx-batch-manifest/1" as const;
 export const BATCH_STATE_SCHEMA = "atlcli.docx-batch-state/1" as const;

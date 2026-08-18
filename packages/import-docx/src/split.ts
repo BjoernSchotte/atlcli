@@ -9,7 +9,8 @@
  * removed from the page body. Content before the first splitting heading
  * stays on the root page.
  */
-import type { ImportAsset, ImportBlock, ImportIssue, ImportedDocument } from "./model.js";
+import type { ImportAsset, ImportIssue } from "@atlcli/import-core";
+import type { DocxImportBlock as ImportBlock, ImportedDocument } from "./model.js";
 
 export interface ImportPagePlan {
   /** Resolved page title (heading label + text for split pages). */
@@ -64,7 +65,7 @@ function collectAssetIds(blocks: ImportBlock[], into: Set<string>): void {
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) collectAssetIds(cell.blocks, into);
-    } else if (block.type === "blockquote") {
+    } else if (block.type === "blockquote" || block.type === "disclosure") {
       collectAssetIds(block.blocks, into);
     }
   }
@@ -220,12 +221,14 @@ export function countPages(page: ImportPagePlan): number {
   return 1 + page.children.reduce((sum, child) => sum + countPages(child), 0);
 }
 
-/** Every fileLink path referenced anywhere in a block list (plan 010). */
+/** Every DOCX batch-file reference used anywhere in a block list. */
 export function collectFileLinkRefs(blocks: ImportBlock[], into = new Set<string>()): Set<string> {
   for (const block of blocks) {
     if (block.type === "heading" || block.type === "paragraph") {
       for (const run of block.runs) {
-        if (run.kind === "text" && run.marks?.fileLink) into.add(run.marks.fileLink.path);
+        if (run.kind === "text" && run.marks?.reference?.namespace === "docx-file") {
+          into.add(run.marks.reference.target);
+        }
       }
     } else if (block.type === "list") {
       for (const item of block.items) {
@@ -234,19 +237,21 @@ export function collectFileLinkRefs(blocks: ImportBlock[], into = new Set<string
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) collectFileLinkRefs(cell.blocks, into);
-    } else if (block.type === "blockquote") {
+    } else if (block.type === "blockquote" || block.type === "disclosure") {
       collectFileLinkRefs(block.blocks, into);
     }
   }
   return into;
 }
 
-/** Every anchorLink target referenced anywhere in a block list. */
+/** Every DOCX bookmark reference used anywhere in a block list. */
 export function collectAnchorRefs(blocks: ImportBlock[], into = new Set<string>()): Set<string> {
   for (const block of blocks) {
     if (block.type === "heading" || block.type === "paragraph") {
       for (const run of block.runs) {
-        if (run.kind === "text" && run.marks?.anchorLink) into.add(run.marks.anchorLink.anchor);
+        if (run.kind === "text" && run.marks?.reference?.namespace === "docx-bookmark") {
+          into.add(run.marks.reference.target);
+        }
       }
     } else if (block.type === "list") {
       for (const item of block.items) {
@@ -255,7 +260,7 @@ export function collectAnchorRefs(blocks: ImportBlock[], into = new Set<string>(
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) collectAnchorRefs(cell.blocks, into);
-    } else if (block.type === "blockquote") {
+    } else if (block.type === "blockquote" || block.type === "disclosure") {
       collectAnchorRefs(block.blocks, into);
     }
   }

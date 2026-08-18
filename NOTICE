@@ -11,6 +11,12 @@ original attribution preserved.
 
 Third-party notices:
 
+- @embedpdf/pdfium (https://github.com/embedpdf/embed-pdf-viewer), version
+  2.15.0, licensed under the MIT License, distributing a PDFium WebAssembly
+  binary from https://github.com/embedpdf/pdfium. PDFium is licensed under a
+  BSD-style license and carries Apache-2.0-licensed components. Exact release,
+  fork, binary provenance, license texts, and the unresolved transitive-notice
+  inventory ship in packages/import-pdf/vendor/.
 - typst.ts web compiler (https://github.com/BjoernSchotte/typst.ts), forked
   from https://github.com/Myriad-Dreamin/typst.ts, distribution version
   0.8.0-rc3.typst0151.1 with embedded Typst 0.15.1, licensed under the Apache

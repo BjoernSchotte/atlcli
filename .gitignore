@@ -26,6 +26,10 @@ packages/pdf/.fonts/
 # packages/pdf-compiler-browser/scripts/vendor-typst.ts for why not committed).
 packages/pdf-compiler-browser/vendor/
 
+# Reproducible PDFium importer WASM/licenses/provenance. The exact-pinned
+# dependency is verified and copied by packages/import-pdf/scripts/vendor-pdfium.ts.
+packages/import-pdf/vendor/
+
 # SonarQube coverage artifact
 coverage/
 .scannerwork/

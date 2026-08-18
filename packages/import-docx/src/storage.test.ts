@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { documentToStorage, storageTagSequence } from "./storage.js";
+import { documentToStorage, storageTagSequence } from "@atlcli/import-core";
 import { parseDocx } from "./parse.js";
 import {
   DEFAULT_STYLES,

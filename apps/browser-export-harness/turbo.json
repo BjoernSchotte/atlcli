@@ -15,6 +15,9 @@
         "$TURBO_ROOT$/packages/pdf/licenses/**",
         "$TURBO_ROOT$/packages/pdf-compiler-browser/scripts/**",
         "$TURBO_ROOT$/packages/pdf-compiler-browser/vendor/**",
+        "$TURBO_ROOT$/packages/import-pdf/package.json",
+        "$TURBO_ROOT$/packages/import-pdf/scripts/**",
+        "$TURBO_ROOT$/packages/import-pdf/vendor/**",
         "$TURBO_ROOT$/patches/**",
         "$TURBO_ROOT$/scripts/clean-browser-artifacts.ts",
         "$TURBO_ROOT$/LICENSE"
@@ -32,6 +35,9 @@
         "$TURBO_ROOT$/packages/pdf/licenses/**",
         "$TURBO_ROOT$/packages/pdf-compiler-browser/scripts/**",
         "$TURBO_ROOT$/packages/pdf-compiler-browser/vendor/**",
+        "$TURBO_ROOT$/packages/import-pdf/package.json",
+        "$TURBO_ROOT$/packages/import-pdf/scripts/**",
+        "$TURBO_ROOT$/packages/import-pdf/vendor/**",
         "$TURBO_ROOT$/patches/**",
         "$TURBO_ROOT$/LICENSE"
       ]

@@ -92,6 +92,14 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     emitsDigests: false,
   },
   {
+    id: "import-pdf",
+    title: "PDFium import Worker contract",
+    folderTaskIds: ["import-pdf-mvp/PDF-10"],
+    engines: ["pdf"],
+    mediaPolicy: "none",
+    emitsDigests: false,
+  },
+  {
     id: "pdf-settings",
     title: "PDF settings & watermark (007)",
     folderTaskIds: ["007/T2.1", "007/T2.2", "007/T2.4"],
@@ -222,6 +230,7 @@ export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "docx-job-parity",
   "pdf",
   "pdf-job-parity",
+  "import-pdf",
   "pdf-settings",
   "pdf-v5",
   "docx-template-intake",

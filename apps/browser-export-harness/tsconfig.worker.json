@@ -9,6 +9,8 @@
   "include": [
     "src/pdf-worker.ts",
     "src/pdf-worker-protocol.ts",
+    "src/import-pdf-worker.ts",
+    "src/import-pdf-worker-protocol.ts",
     "src/worker-assets.d.ts",
     "src/vite-env.d.ts"
   ],

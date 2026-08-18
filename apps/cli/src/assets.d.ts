@@ -25,3 +25,8 @@ declare module "@atlcli/pdf-compiler-browser/wasm" {
   const path: string;
   export default path;
 }
+
+declare module "@atlcli/import-pdf/wasm" {
+  const path: string;
+  export default path;
+}

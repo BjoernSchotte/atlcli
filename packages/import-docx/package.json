@@ -22,6 +22,7 @@
   "dependencies": {
     "@atlcli/core": "workspace:*",
     "@atlcli/docx": "workspace:*",
+    "@atlcli/import-core": "workspace:*",
     "saxes": "6.0.0",
     "yaml": "2.9.0"
   },

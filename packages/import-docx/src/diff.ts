@@ -7,8 +7,8 @@
  * content changes. LCS alignment; adjacent remove/add pairs of the same
  * node type collapse into "changed".
  */
-import { canonicalJson, stripAdfAnnotations } from "./baseline.js";
-import type { AdfNode } from "./adf.js";
+import { stripAdfAnnotations } from "./baseline.js";
+import { canonicalJson, type AdfNode } from "@atlcli/import-core";
 
 export interface SemanticDiffEntry {
   op: "added" | "removed" | "changed";

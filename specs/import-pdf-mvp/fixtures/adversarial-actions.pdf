@@ -1,0 +1,145 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<<
+/Producer (pypdf)
+/Title (Neutral actions and attachment fixture)
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Count 1
+/Kids [ 4 0 R ]
+>>
+endobj
+3 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+/Names <<
+/JavaScript <<
+/Names [ (fd0cc11b\05591f9\05547e6\0559868\055baf185170b73) 10 0 R ]
+>>
+/EmbeddedFiles 13 0 R
+>>
+>>
+endobj
+4 0 obj
+<<
+/Annots [ 5 0 R ]
+/Contents 6 0 R
+/MediaBox [ 0 0 595.2756 841.8898 ]
+/Resources <<
+/Font 7 0 R
+/ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>>
+/Rotate 0
+/Trans <<
+>>
+/Type /Page
+/Parent 2 0 R
+>>
+endobj
+5 0 obj
+<<
+/A <<
+/S /URI
+/Type /Action
+/URI (https\072\057\057example\056com\057garden\055notes)
+>>
+/Border [ 0 0 0 ]
+/Rect [ 54 690.8898 300 707.8898 ]
+/Subtype /Link
+/Type /Annot
+>>
+endobj
+6 0 obj
+<<
+/Filter [ /ASCII85Decode /FlateDecode ]
+/Length 529
+>>
+stream
+Gas2F?]UF*'ZJu(;k-?8R1A?9^qQp?IF4#m^-DoUd'XS9(2#Pq_cs\c@H3:iJb4\<IeTF?NlXFI]^#TC?X`tkK?'oon<BcJ^>NLD([<`"Z.*:/o!Qar(0QO4iP:>FoKNe0o6hCoO\sI"/5/DLO/!rs(=a(uGCMb9b(,@OENs%GS>@N6;FF(oK;JP]`A$*`Q=^_%as>$$i%+A\AnQc`/'i)kK\r.b8)P>"'F\<l_PB<P',FrI.*5QfWg=LAdHFj\46\jUf[lmA6>?m$MJ=N!MW!^b+>j;'*%##H,T<XDN'7Td?Dk$hnQ.jDs4=rFcPq`BP7lT35Fb:C,3[4[5#qo$Lb+3s4K;^9%I?_@L?u"3]a`60%J0[%Zio8N)=>ZX[:Dh[KQ^=04P>)Rc;""]^SeD?An1Knm(75W4+6LVrSAeCjm:"DjE\!gn=ccVVioX0].3imXLpfi`N.5n?V/m]$_38t;PUSM"'C4rYnd6D!=%A:K`@Foasc'q^Wf:+Gori**X6&E2cAH0!F&Ff'*~>
+endstream
+endobj
+7 0 obj
+<<
+/F1 8 0 R
+/F2 9 0 R
+>>
+endobj
+8 0 obj
+<<
+/BaseFont /Helvetica
+/Encoding /WinAnsiEncoding
+/Name /F1
+/Subtype /Type1
+/Type /Font
+>>
+endobj
+9 0 obj
+<<
+/BaseFont /Helvetica-Bold
+/Encoding /WinAnsiEncoding
+/Name /F2
+/Subtype /Type1
+/Type /Font
+>>
+endobj
+10 0 obj
+<<
+/Type /Action
+/S /JavaScript
+/JS (app\056alert\050\047neutral fixture action\047\051\073)
+>>
+endobj
+11 0 obj
+<<
+/Type /EmbeddedFile
+/Length 67
+>>
+stream
+Embedded neutral fixture; import must not extract this by default.
+
+endstream
+endobj
+12 0 obj
+<<
+/Type /Filespec
+/F (neutral\055note\056txt)
+/EF <<
+/F 11 0 R
+>>
+>>
+endobj
+13 0 obj
+<<
+/Names [ (neutral\055note\056txt) 12 0 R ]
+>>
+endobj
+xref
+0 14
+0000000000 65535 f 
+0000000015 00000 n 
+0000000102 00000 n 
+0000000161 00000 n 
+0000000332 00000 n 
+0000000549 00000 n 
+0000000740 00000 n 
+0000001360 00000 n 
+0000001401 00000 n 
+0000001508 00000 n 
+0000001620 00000 n 
+0000001732 00000 n 
+0000001870 00000 n 
+0000001956 00000 n 
+trailer
+<<
+/Size 14
+/Root 3 0 R
+/Info 1 0 R
+>>
+startxref
+2021
+%%EOF

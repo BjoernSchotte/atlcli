@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { documentToAdf } from "./adf.js";
-import { buildImportPreview, renderImportPreview } from "./preview.js";
+import { documentToAdf, buildImportPreview, renderImportPreview } from "@atlcli/import-core";
 import { parseDocx } from "./parse.js";
 import { TINY_PNG, buildDocxFixture, drawing, hyperlinkRel, imageRel, p, r } from "./test-support.js";
 
@@ -91,6 +90,18 @@ describe("documentToAdf media resolution", () => {
 });
 
 describe("preview", () => {
+  it("preserves the pre-extraction DOCX behavior-lock digest", async () => {
+    const doc = parseDocx(buildDocxFixture({
+      body:
+        p(r("Neutral Import Baseline"), { style: "Heading1" }) +
+        p(r("Stable paragraph for PDF-00 DOCX behavior lock.")) +
+        p(r("First item"), { numId: "1" }),
+    }));
+    const preview = await buildImportPreview(doc, { spaceKey: "DOCSY", title: "Neutral" });
+    expect(preview.adfDigest).toBe("beecac58ae32f52ced9670c4f765136e4ebd2fce1642195cc63f518e9a571023");
+    expect(preview.counts).toEqual({ heading: 1, paragraph: 2, list: 1 });
+  });
+
   it("builds a digest-bound preview and renders issues and outline", async () => {
     const bytes = buildDocxFixture({
       body:

@@ -72,7 +72,7 @@ Commands:
   recent    Recently modified pages
   template  Page template management
   export    Export page to DOCX or PDF
-  import    Import a DOCX file as a new page (review-first)
+  import    Import DOCX or PDF as Confluence page(s) (review-first)
   publish   Build and verify a static Astro publication
 
 Options:

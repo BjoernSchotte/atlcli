@@ -10,6 +10,7 @@
  * digest comparison at update time.
  */
 import { sha256Hex } from "@atlcli/core";
+import { canonicalJson } from "@atlcli/import-core";
 
 export const BASELINE_SCHEMA = "atlcli.docx-page-baseline/1" as const;
 export const BASELINE_PROPERTY_KEY = "atlcli.import.baseline" as const;
@@ -44,24 +45,6 @@ export interface ImportedPageBaselineV1 {
   documentCommentBindings?: BaselineCommentBinding[];
   /** sha256 over the canonical JSON of every field above. */
   provenanceDigest: string;
-}
-
-function sortValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortValue);
-  if (typeof value === "object" && value !== null) {
-    const obj = value as Record<string, unknown>;
-    return Object.fromEntries(
-      Object.keys(obj)
-        .sort()
-        .map((key) => [key, sortValue(obj[key])]),
-    );
-  }
-  return value;
-}
-
-/** Canonical JSON (recursively sorted keys) for digest computation. */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(sortValue(value));
 }
 
 /**

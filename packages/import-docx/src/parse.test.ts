@@ -1,13 +1,26 @@
 import { describe, expect, it } from "bun:test";
 import { parseDocx } from "./parse.js";
 import { TINY_PNG, buildDocxFixture, drawing, hyperlinkRel, imageRel, p, r } from "./test-support.js";
-import type { ImportBlock, ImportListBlock } from "./model.js";
+import type { ImportListBlock } from "@atlcli/import-core";
+import type { DocxImportBlock as ImportBlock } from "./model.js";
 
 function heading(block: ImportBlock): asserts block is Extract<ImportBlock, { type: "heading" }> {
   expect(block.type).toBe("heading");
 }
 
 describe("parseDocx", () => {
+  it("projects deterministic ImportDocumentV2 and block identities", () => {
+    const bytes = buildDocxFixture({
+      body: p(r("Title"), { style: "Heading1" }) + p(r("Body")) + p(r("Item"), { numId: "1" }),
+    });
+    const first = parseDocx(bytes);
+    const second = parseDocx(bytes);
+    expect(first.schema).toBe("atlcli.import-document/2");
+    expect(first.sourceKind).toBe("docx");
+    expect(first.blocks.map((block) => block.id)).toEqual(second.blocks.map((block) => block.id));
+    expect(new Set(first.blocks.map((block) => block.id)).size).toBe(first.blocks.length);
+  });
+
   it("maps heading styles by outline level including localized names", () => {
     const bytes = buildDocxFixture({
       body:

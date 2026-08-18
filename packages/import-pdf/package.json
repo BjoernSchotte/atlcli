@@ -1,0 +1,61 @@
+{
+  "name": "@atlcli/import-pdf",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "vendor",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "browser": "./src/index.browser.ts",
+        "default": "./src/index.ts"
+      },
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "default": "./dist/index.browser.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./browser-worker": {
+      "development": "./src/index.browser.ts",
+      "types": "./dist/index.browser.d.ts",
+      "default": "./dist/index.browser.js"
+    },
+    "./node": {
+      "development": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
+    },
+    "./wasm": "./vendor/pdfium.wasm",
+    "./licenses/*": "./vendor/*"
+  },
+  "scripts": {
+    "build": "bun scripts/vendor-pdfium.ts && tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist vendor",
+    "prepack": "bun scripts/vendor-pdfium.ts && bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
+  },
+  "dependencies": {
+    "@atlcli/core": "workspace:*",
+    "@atlcli/import-core": "workspace:*",
+    "@embedpdf/pdfium": "2.15.0",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@types/emscripten": "1.41.5"
+  }
+}

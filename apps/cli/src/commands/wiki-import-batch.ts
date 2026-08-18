@@ -31,10 +31,13 @@ import {
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
   assessEditability,
+  documentToAdf,
+  importReferenceKey,
+} from "@atlcli/import-core";
+import {
   collectFileLinkRefs,
   countPages,
   digestAdfValue,
-  documentToAdf,
   parseBatchManifest,
   parseDocx,
   splitDocument,
@@ -47,11 +50,10 @@ import {
 } from "@atlcli/import-docx";
 import { assertCliAuthSupported } from "./session-guard.js";
 import {
-  applyRestriction,
-  findFreeTitle,
   publishOnePage,
   publishTree,
 } from "./wiki-import.js";
+import { applyRestriction, findFreeTitle } from "./wiki-import-destination.js";
 import { loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
 import { resolveImportPolicy, recipeApplicability } from "@atlcli/import-docx";
 
@@ -470,7 +472,11 @@ export async function handleManifestBatch(
           }),
         );
       }
-      const adf = documentToAdf(plan.doc, { ...(media ? { media } : {}), fileLinks });
+      const references = new Map([...fileLinks].map(([target, url]) => [
+        importReferenceKey({ namespace: "docx-file", target }),
+        url,
+      ]));
+      const adf = documentToAdf(plan.doc, { ...(media ? { media } : {}), references });
       const current = await client.getPageAdf(self.pageId);
       await client.updatePageAdf({ id: self.pageId, title: plan.title, adf, version: current.version + 1 });
       const item = results.find((r) => r.sourcePath === docSpec.sourcePath);

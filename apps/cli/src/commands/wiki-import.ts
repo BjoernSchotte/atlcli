@@ -24,29 +24,40 @@ import {
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
-  SplitTitleConflictError,
   assessEditability,
-  buildGovernance,
   buildImportPreview,
+  documentToAdf,
+  renderImportPreview,
+  type AdfMediaResolution,
+  IMPORT_DOCUMENT_SCHEMA_V2,
+  importReferenceKey,
+  type ImportBlock,
+  type AdfNode,
+} from "@atlcli/import-core";
+import {
+  createPreparedCloudShell,
+  finalizePreparedCloudPage,
+  prepareConfluencePage,
+  publishPreparedCloudPage,
+  publishPreparedDcPage,
+  rollbackOwnedPages,
+  verifyAdfSemanticReadback,
+} from "@atlcli/import-confluence";
+import {
+  SplitTitleConflictError,
+  buildGovernance,
   governanceHasEffects,
   principalId,
   renderGovernanceSummary,
-  type DestinationGovernance,
   renderPolicySummary,
   resolveImportPolicy,
   type PolicyLayerInput,
   type ResolvedImportPolicy,
   countPages,
-  documentToAdf,
   parseDocx,
-  renderImportPreview,
   splitDocument,
-  type AdfMediaResolution,
   type ImportPagePlan,
-  documentToStorage,
   extractDocxEntriesFromZip,
-  storageTagSequence,
-  type ImportBlock,
   type ImportComment,
   type ImportedDocument,
   type SplitResult,
@@ -56,6 +67,11 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { handleRecipeCommand, loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
 import { handleManifestBatch } from "./wiki-import-batch.js";
 import {
+  applyMetadata,
+  applyRestriction,
+  findFreeTitle,
+} from "./wiki-import-destination.js";
+import {
   BASELINE_PROPERTY_KEY,
   buildBaseline,
   diffAdfBlocks,
@@ -64,7 +80,6 @@ import {
   recipeApplicability,
   renderSemanticDiffLines,
   validateBaseline,
-  type AdfNode,
   type ImportedPageBaselineV1,
 } from "@atlcli/import-docx";
 
@@ -73,6 +88,27 @@ interface RecipeInfo {
   version: string;
   digest: string;
   source: "repo" | "user";
+}
+
+const PDF_ONLY_FLAGS = [
+  "scan-policy",
+  "visual-fallback",
+  "accept-reported-pages",
+  "reading-order",
+  "attach-source",
+  "max-wiki-pages",
+] as const;
+
+function rejectPdfOnlyFlagsForDocx(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+): void {
+  const found = PDF_ONLY_FLAGS.filter((flag) => hasFlag(flags, flag));
+  if (found.length > 0) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `PDF-only option(s) cannot be used with DOCX: ${found.map((flag) => `--${flag}`).join(", ")}.`, {
+      flags: found,
+    });
+  }
 }
 
 /** Load `--recipe <file>` / `--recipe-id <id>` into a policy layer. */
@@ -206,6 +242,35 @@ export async function handleWikiImport(
     return;
   }
 
+  if (hasFlag(flags, "help")) {
+    output(importHelp(), opts);
+    return;
+  }
+  if (hasFlag(flags, "confirm") && hasFlag(flags, "dry-run")) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--confirm and --dry-run are mutually exclusive.", {});
+  }
+
+  const requestedFormat = getFlag(flags, "format");
+  if (hasFlag(flags, "format") && requestedFormat === undefined) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--format requires docx or pdf.", {});
+  }
+  if (requestedFormat && requestedFormat !== "docx" && requestedFormat !== "pdf") {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--format must be docx or pdf.", {});
+  }
+  const candidateName = getFlag(flags, "attachment") ?? args[0];
+  const inferredFormat = candidateName?.toLowerCase().endsWith(".pdf")
+    ? "pdf"
+    : candidateName?.toLowerCase().endsWith(".docx")
+      ? "docx"
+      : undefined;
+  const format = requestedFormat ?? inferredFormat;
+  if (format === "pdf") {
+    const { handlePdfWikiImport } = await import("./wiki-import-pdf.js");
+    await handlePdfWikiImport(args, flags, opts);
+    return;
+  }
+  rejectPdfOnlyFlagsForDocx(flags, opts);
+
   const manifestPath = getFlag(flags, "manifest");
   if (manifestPath) {
     await handleManifestBatch(manifestPath, flags, opts);
@@ -228,7 +293,7 @@ export async function handleWikiImport(
   }
 
   // Batch mode: a directory, or several files (specs/import-docx/010 slice).
-  if (!fromPage) {
+  if (!fromPage && file !== "-") {
     const batchFiles = resolveBatchFiles(args, opts);
     if (batchFiles) {
       await handleBatchImport(batchFiles, flags, opts);
@@ -237,8 +302,8 @@ export async function handleWikiImport(
   }
 
   const sourceName = file ?? attachmentName!;
-  if (!sourceName.toLowerCase().endsWith(".docx")) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, "Only .docx files are supported.", { file: sourceName });
+  if (!sourceName.toLowerCase().endsWith(".docx") && requestedFormat !== "docx") {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Import supports .docx or .pdf; use --format for stdin or an extensionless input.", { file: sourceName });
   }
 
   const confirm = hasFlag(flags, "confirm");
@@ -308,6 +373,9 @@ export async function handleWikiImport(
       attachmentId: attachment.id,
       version: attachment.version,
     };
+  } else if (file === "-") {
+    bytes = new Uint8Array(readFileSync(0));
+    source = { kind: "file", path: "-" };
   } else {
     try {
       bytes = new Uint8Array(readFileSync(file!));
@@ -320,6 +388,9 @@ export async function handleWikiImport(
   const recipe = await loadRecipeLayer(flags, opts);
   const policy = resolvePolicyFromFlags(flags, opts, recipe.layer);
   let doc: ImportedDocument;
+  if (bytes.byteLength < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Format mismatch: selected DOCX input does not have an OOXML ZIP byte signature.", {});
+  }
   try {
     doc = parseDocx(bytes, {
       styleMappings: policy.styleMappings,
@@ -473,12 +544,9 @@ export async function handleWikiImport(
     try {
       dcResult = await publishOnePageDc(client, spaceKey, title, parentId, doc, governance.labels, dcCreated);
     } catch (err) {
-      for (const id of [...dcCreated].reverse()) {
-        try {
-          await client.deletePage(id);
-        } catch {
-          fail(opts, 1, ERROR_CODES.API, `DC publication failed AND rollback failed for page ${id}: ${(err as Error).message}`, { pageId: id });
-        }
+      const rollback = await rollbackOwnedPages(client, dcCreated);
+      if (rollback.failed.length > 0) {
+        fail(opts, 1, ERROR_CODES.API, `DC publication failed AND rollback failed for page ${rollback.failed[0]}: ${(err as Error).message}`, { pageId: rollback.failed[0] });
       }
       fail(opts, 1, ERROR_CODES.API, `DC publication could not be verified; the page was rolled back: ${(err as Error).message}`, {});
     }
@@ -621,14 +689,8 @@ export async function handleWikiImport(
     // throws and rolls the whole run back.
     await applyMetadata(client, rootResult.id, governance);
   } catch (err) {
-    const failedRollbacks: string[] = [];
-    for (const id of [...createdPageIds].reverse()) {
-      try {
-        await client.deletePage(id);
-      } catch {
-        failedRollbacks.push(id);
-      }
-    }
+    const rollback = await rollbackOwnedPages(client, createdPageIds);
+    const failedRollbacks = rollback.failed;
     if (failedRollbacks.length > 0) {
       fail(
         opts,
@@ -988,13 +1050,7 @@ async function handleBatchImport(
         url: root.url,
       });
     } catch (err) {
-      for (const id of [...createdPageIds].reverse()) {
-        try {
-          await client.deletePage(id);
-        } catch {
-          // Recorded below; the batch keeps going either way.
-        }
-      }
+      await rollbackOwnedPages(client, createdPageIds);
       results.push({ file: plan.file, title: plan.title, status: "failed", error: (err as Error).message });
     }
   }
@@ -1035,7 +1091,7 @@ async function handleBatchImport(
  * are updated in place. Inline comments anchored to changed text may lose
  * their anchors — surfaced as a warning, never silently.
  */
-async function handleUpdateImport(
+export async function handleUpdateImport(
   pageId: string,
   doc: ImportedDocument,
   sourceBytes: Uint8Array,
@@ -1045,8 +1101,9 @@ async function handleUpdateImport(
   profile: NonNullable<Awaited<ReturnType<typeof getActiveProfile>>>,
   confirm: boolean,
   policy: ResolvedImportPolicy,
+  clientOverride?: ConfluenceClient,
 ): Promise<void> {
-  const client = new ConfluenceClient(profile);
+  const client = clientOverride ?? new ConfluenceClient(profile);
   const current = await client.getPage(pageId);
   const currentAdfPage = await client.getPageAdf(pageId);
   const currentAdf = JSON.parse(currentAdfPage.body.value) as { content?: AdfNode[] };
@@ -1200,14 +1257,7 @@ async function handleUpdateImport(
   const orphanWarnings: string[] = [];
   try {
     const readback = await client.getPageAdf(pageId);
-    const published = JSON.parse(readback.body.value) as { content?: { type?: string }[] };
-    const expectedTypes = finalAdf.content.map((n) => n.type).join(",");
-    const actualTypes = (published.content ?? []).map((n) => n.type).join(",");
-    if (expectedTypes !== actualTypes) {
-      throw new Error(
-        `published block sequence [${actualTypes}] does not match the reviewed plan [${expectedTypes}]`,
-      );
-    }
+    await verifyAdfSemanticReadback(finalAdf, readback.body.value);
 
     // Comment reconciliation (plan 006 invariant 9): authoritative source
     // ids from the baseline bindings only — never text/name matching.
@@ -1408,40 +1458,37 @@ export async function publishOnePage(
     };
   } = {},
 ): Promise<PublishedPageReport> {
-  const pageDoc: ImportedDocument = { blocks, assets, comments: [], commentOwners: new Map(), issues: [] };
-  const hasAssets = assets.length > 0;
-  const useShell = hasAssets || options.forceShell === true;
-  const page = await client.createPageAdf({
-    spaceId,
-    title,
-    adf: useShell ? { version: 1, type: "doc", content: [] } : documentToAdf(pageDoc),
-    parentId,
-  });
-  createdPageIds.push(page.id);
-  if (options.afterShell) await options.afterShell(page.id);
-
-  let finalPage = page;
-  if (blocks.length === 0 && !hasAssets) {
+  const pageDoc: ImportedDocument = {
+    schema: IMPORT_DOCUMENT_SCHEMA_V2,
+    sourceKind: "docx",
+    blocks,
+    assets,
+    comments: [],
+    commentOwners: new Map(),
+    issues: [],
+  };
+  const prepared = prepareConfluencePage({ title, parentId, document: pageDoc });
+  if (blocks.length === 0 && assets.length === 0 && options.forceShell === true) {
     // Nothing to publish beyond the shell (e.g. a staging parent). Cloud
     // normalizes an empty doc to one empty paragraph, so there is no
     // meaningful block sequence to verify either.
-    return { id: page.id, title: page.title, url: page.url, version: page.version };
+    const shell = await createPreparedCloudShell(client, spaceId, prepared, (id) => createdPageIds.push(id));
+    if (options.afterShell) await options.afterShell(shell.id);
+    return { id: shell.id, title: shell.title, url: shell.url, version: shell.version };
   }
-  let readbackValue: string;
-  if (useShell) {
-    const finalized = await finalizePageContent(client, page.id, title, blocks, assets, {});
-    finalPage = { ...finalized.page, url: finalized.page.url ?? page.url };
-    readbackValue = finalized.readbackValue;
-  } else {
-    const adf = documentToAdf(pageDoc);
-    readbackValue = await verifyPageContent(client, page.id, title, adf);
-  }
+  const published = await publishPreparedCloudPage(client, spaceId, prepared, {
+    forceShell: options.forceShell,
+    afterShell: options.afterShell,
+    onOwnedPage: (id) => createdPageIds.push(id),
+  });
+  const finalPage = published.page;
+  const readbackValue = published.readbackValue;
 
   let commentBindings: PublishedCommentBinding[] = [];
   if (options.comments && options.comments.list.length > 0) {
     commentBindings = await publishComments(
       client,
-      page.id,
+      finalPage.id,
       options.comments.list,
       options.comments.mode,
       options.comments.issues,
@@ -1450,7 +1497,7 @@ export async function publishOnePage(
   if (options.baseline) {
     await sealBaseline(
       client,
-      page.id,
+      finalPage.id,
       readbackValue,
       finalPage.version ?? 1,
       assets,
@@ -1597,56 +1644,13 @@ export async function publishOnePageDc(
   labels: string[],
   createdPageIds: string[],
 ): Promise<PublishedPageReport> {
-  const page = await client.createPage({ spaceKey, title, storage: "<p/>", parentId });
-  createdPageIds.push(page.id);
-
-  for (const asset of doc.assets) {
-    await client.uploadAttachment({
-      pageId: page.id,
-      filename: asset.fileName,
-      data: asset.bytes,
-      mimeType: asset.mediaType,
-    });
-  }
-
-  const storage = documentToStorage(doc);
-  const updated = await client.updatePage({ id: page.id, title, storage, version: 2 });
-
-  const details = await client.getPageDetails(page.id);
-  const expected = storageTagSequence(storage).join(",");
-  const actual = storageTagSequence(details.storage ?? "").join(",");
-  if (expected !== actual) {
-    throw new Error(
-      `page "${title}": readback structural sequence [${actual}] does not match the plan [${expected}]`,
-    );
-  }
-
-  if (labels.length > 0) {
-    await client.addLabels(page.id, labels);
-    const effective = new Set((await client.getLabels(page.id)).map((l) => l.name));
-    const missing = labels.filter((l) => !effective.has(l));
-    if (missing.length > 0) throw new Error(`label readback failed: missing ${missing.join(", ")}`);
-  }
-  return { id: updated.id, title: updated.title, url: updated.url ?? page.url, version: updated.version };
-}
-
-/** Read back a page and verify its block sequence against the plan. */
-async function verifyPageContent(
-  client: ConfluenceClient,
-  pageId: string,
-  title: string,
-  adf: ReturnType<typeof documentToAdf>,
-): Promise<string> {
-  const readback = await client.getPageAdf(pageId);
-  const published = JSON.parse(readback.body.value) as { content?: { type?: string }[] };
-  const expectedTypes = adf.content.map((n) => n.type).join(",");
-  const actualTypes = (published.content ?? []).map((n) => n.type).join(",");
-  if (expectedTypes !== actualTypes) {
-    throw new Error(
-      `page "${title}": published block sequence [${actualTypes}] does not match the previewed plan [${expectedTypes}]`,
-    );
-  }
-  return readback.body.value;
+  const result = await publishPreparedDcPage(
+    client,
+    spaceKey,
+    prepareConfluencePage({ title, parentId, document: doc }),
+    { labels, onOwnedPage: (id) => createdPageIds.push(id) },
+  );
+  return result.page;
 }
 
 /**
@@ -1662,34 +1666,30 @@ export async function finalizePageContent(
   assets: ImportedDocument["assets"],
   encode: { anchors?: ReadonlyMap<string, string> },
 ): Promise<{ page: PublishedPageReport; readbackValue: string }> {
-  const pageDoc: ImportedDocument = { blocks, assets, comments: [], commentOwners: new Map(), issues: [] };
-  let media: Map<string, AdfMediaResolution> | undefined;
-  if (assets.length > 0) {
-    for (const asset of assets) {
-      await client.uploadAttachment({
-        pageId,
-        filename: asset.fileName,
-        data: asset.bytes,
-        mimeType: asset.mediaType,
-      });
-    }
-    const mediaList = await client.listPageAttachmentMedia(pageId);
-    const fileIdByName = new Map(mediaList.attachments.map((a) => [a.filename, a.fileId]));
-    media = new Map<string, AdfMediaResolution>();
-    for (const asset of assets) {
-      const fileId = fileIdByName.get(asset.fileName);
-      if (!fileId) {
-        throw new Error(`uploaded attachment ${asset.fileName} has no resolvable media fileId`);
-      }
-      media.set(asset.id, { fileId, collection: `contentId-${pageId}` });
-    }
-  }
-  const adf = documentToAdf(pageDoc, { ...(media ? { media } : {}), ...(encode.anchors ? { anchors: encode.anchors } : {}) });
-  const updated = await client.updatePageAdf({ id: pageId, title, adf, version: 2 });
-  const readbackValue = await verifyPageContent(client, pageId, title, adf);
+  const pageDoc: ImportedDocument = {
+    schema: IMPORT_DOCUMENT_SCHEMA_V2,
+    sourceKind: "docx",
+    blocks,
+    assets,
+    comments: [],
+    commentOwners: new Map(),
+    issues: [],
+  };
+  const references = encode.anchors
+    ? new Map([...encode.anchors].map(([target, url]) => [
+        importReferenceKey({ namespace: "docx-bookmark", target }),
+        url,
+      ]))
+    : undefined;
+  const result = await finalizePreparedCloudPage(
+    client,
+    pageId,
+    prepareConfluencePage({ title, document: pageDoc }),
+    { ...(references ? { references } : {}) },
+  );
   return {
-    page: { id: updated.id, title: updated.title, url: updated.url, version: updated.version },
-    readbackValue,
+    page: result.page,
+    readbackValue: result.readbackValue,
   };
 }
 
@@ -1775,13 +1775,22 @@ export async function publishTree(
   }
 
   const createShells = async (plan: ImportPagePlan, parent: string | undefined): Promise<void> => {
-    const page = await client.createPageAdf({
+    const page = await createPreparedCloudShell(
+      client,
       spaceId,
-      title: plan.title,
-      adf: { version: 1, type: "doc", content: [] },
-      parentId: parent,
-    });
-    createdPageIds.push(page.id);
+      prepareConfluencePage({
+        title: plan.title,
+        parentId: parent,
+        document: {
+          schema: IMPORT_DOCUMENT_SCHEMA_V2,
+          sourceKind: "docx",
+          blocks: plan.blocks,
+          assets: plan.assets,
+          issues: [],
+        },
+      }),
+      (id) => createdPageIds.push(id),
+    );
     if (plan === split.root && rootOptions?.afterShell) await rootOptions.afterShell(page.id);
     shells.set(plan, { id: page.id, url: page.url });
     for (const child of plan.children) await createShells(child, page.id);
@@ -1815,97 +1824,9 @@ export async function publishTree(
   return finalize(split.root);
 }
 
-/**
- * Apply and PROVE a restriction policy on one page. The importing user is
- * always included in both operations — a policy that locks the importer out
- * would break the rest of the transaction and strand the page.
- */
-export async function applyRestriction(
-  client: ConfluenceClient,
-  pageId: string,
-  governance: DestinationGovernance,
-  importerAccountId: string,
-): Promise<void> {
-  const r = governance.restriction;
-  if (r.mode === "inherit") return;
-  const withImporter = (ids: string[]) =>
-    ids.includes(importerAccountId) ? ids : [...ids, importerAccountId];
-  const readAccounts =
-    r.mode === "private"
-      ? [importerAccountId]
-      : withImporter(r.viewers.filter((p) => p.kind === "cloud-account").map((p) => p.accountId));
-  const readGroups = r.mode === "private" ? [] : r.viewers.filter((p) => p.kind === "cloud-group").map((p) => p.groupId);
-  const updateAccounts =
-    r.mode === "private"
-      ? [importerAccountId]
-      : withImporter(r.editors.filter((p) => p.kind === "cloud-account").map((p) => p.accountId));
-  const updateGroups = r.mode === "private" ? [] : r.editors.filter((p) => p.kind === "cloud-group").map((p) => p.groupId);
-
-  await client.setContentRestrictions(pageId, {
-    read: { accountIds: readAccounts, groupIds: readGroups },
-    update: { accountIds: updateAccounts, groupIds: updateGroups },
-  });
-
-  // Readback proof: every required principal must actually be in effect.
-  const effective = await client.getContentRestrictions(pageId);
-  const missing: string[] = [];
-  for (const id of readAccounts) if (!effective.read.accountIds.includes(id)) missing.push(`read account:${id}`);
-  for (const id of readGroups) if (!effective.read.groupIds.includes(id)) missing.push(`read group-id:${id}`);
-  for (const id of updateAccounts) if (!effective.update.accountIds.includes(id)) missing.push(`update account:${id}`);
-  for (const id of updateGroups) if (!effective.update.groupIds.includes(id)) missing.push(`update group-id:${id}`);
-  if (effective.read.accountIds.length === 0 && effective.read.groupIds.length === 0) {
-    missing.push("read restriction set is empty (page would stay space-visible)");
-  }
-  if (missing.length > 0) {
-    throw new Error(`restriction readback failed on page ${pageId}: ${missing.join("; ")}`);
-  }
-}
-
-/**
- * Apply and PROVE labels and content properties. Required outcomes, not
- * best-effort last mutations (invariant 7): any miss throws → rollback.
- */
-async function applyMetadata(
-  client: ConfluenceClient,
-  pageId: string,
-  governance: DestinationGovernance,
-): Promise<void> {
-  if (governance.labels.length > 0) {
-    await client.addLabels(pageId, governance.labels);
-    const effective = new Set((await client.getLabels(pageId)).map((l) => l.name));
-    const missing = governance.labels.filter((l) => !effective.has(l));
-    if (missing.length > 0) {
-      throw new Error(`label readback failed on page ${pageId}: missing ${missing.join(", ")}`);
-    }
-  }
-  for (const prop of governance.contentProperties) {
-    await client.createPageProperty(pageId, prop.key, prop.value);
-    const value = await client.getPagePropertyByKey(pageId, prop.key);
-    if (JSON.stringify(value) !== JSON.stringify(prop.value)) {
-      throw new Error(
-        `property readback failed on page ${pageId}: ${prop.key} is ${JSON.stringify(value)}, expected ${JSON.stringify(prop.value)}`,
-      );
-    }
-  }
-}
-
 function collectTreeTitles(plan: ImportPagePlan, into: string[]): void {
   into.push(plan.title);
   for (const child of plan.children) collectTreeTitles(child, into);
-}
-
-/** Find a free " (n)" title variant in the space (plan 009 rename mode). */
-export async function findFreeTitle(
-  client: ConfluenceClient,
-  spaceKey: string,
-  baseTitle: string,
-): Promise<string> {
-  for (let n = 2; n <= 50; n++) {
-    const candidate = `${baseTitle} (${n})`;
-    const matches = await client.findPagesByTitle(candidate, { spaceKey });
-    if (matches.length === 0) return candidate;
-  }
-  throw new Error(`No free title variant found for "${baseTitle}" within 50 attempts.`);
 }
 
 function renameInTree(plan: ImportPagePlan, from: string, to: string): boolean {
@@ -1943,23 +1864,34 @@ function renderTree(plan: ImportPagePlan, depth: number): string {
 }
 
 function importHelp(): string {
-  return `atlcli wiki import <file.docx> [options]
+  return `atlcli wiki import <file.docx|file.pdf> [options]
 atlcli wiki import <dir-or-files…> [options]           (batch)
-atlcli wiki import --from-page <id> --attachment <name.docx> [options]
+atlcli wiki import --from-page <id> --attachment <name.docx|name.pdf> [options]
 
-Semantic DOCX import to a new Confluence Cloud page (review-first).
+Semantic DOCX/PDF import to Confluence page(s), review-first.
 
 Without --confirm the command only previews: block counts, heading outline,
-issues, and the digest of the exact ADF payload a confirmed run publishes.
-The source is a local file, or a DOCX already attached to a Confluence page.
+issues, page-tree resolution, and the digest-bound publication plan.
+PDF defaults to --split auto: short, editable PDFs stay on one page; longer
+PDFs become a bounded page tree instead of one oversized wiki page.
 
 Options:
-  --from-page <id>       Source: page id carrying the DOCX attachment
+  --format <kind>        docx|pdf; required for stdin and extensionless input
+  --from-page <id>       Source: page id carrying the source attachment
   --attachment <name>    Source: exact attachment file name on that page
   --space <KEY>     Target space key (default: profile space)
-  --title <title>   Page title (default: first Heading 1, else file name)
+  --title <title>   Page title (DOCX: first Heading 1; PDF: file name)
   --parent <id>     Parent page id
-  --split <1|2>     Split into a page tree at heading levels 1 (or 1+2)
+  --split <mode>    DOCX: heading level 1..6 when given. PDF: auto (default),
+                    off, heading:<1..6>, pages:<5..40>, or numeric alias 1..6
+  --max-wiki-pages <n>  PDF page-tree cap, 1..200 (default 50)
+  --title-conflict <m>  PDF: fail|rename for planned/existing titles (default fail)
+  --scan-policy <mode>  PDF: fail|page-image|report (default fail)
+  --visual-fallback <m> PDF: auto|inline|collapsed|appendix; implies page-image
+  --reading-order <m>   PDF: auto|tags|geometry (default auto)
+  --accept-reported-pages  PDF: acknowledge explicitly omitted reported pages
+  --attach-source       PDF: also retain the original PDF (default off)
+  --dry-run             Preview only; never prompt or write
   --skip-existing   Batch: skip files whose titles already exist (resume)
   --update-page <id>      Reimport INTO this existing page (keeps id/URL/history)
   --expect-version <n>    Required with --update-page --confirm (lost-update guard)
@@ -1973,7 +1905,7 @@ Options:
                           paragraph|heading-1..6|blockquote|code
   --revisions <mode>      accept|reject tracked changes (default accept)
   --unsupported <mode>    report|fail on lossy constructs (default report)
-  --overrides <file>      Override file (atlcli.docx-import-overrides/1, YAML/JSON)
+  --overrides <file>      Format-specific digest-bound override file (YAML/JSON)
   --recipe <file>         Apply a recipe file (atlcli.docx-import-recipe/1)
   --recipe-id <id>        Apply a catalog recipe (.atlcli/import-recipes/, ~/.atlcli/…)
 
@@ -1988,5 +1920,7 @@ Recipe commands:
 Examples:
   atlcli wiki import handbook.docx --space DOCSY
   atlcli wiki import handbook.docx --space DOCSY --parent 12345 --confirm
+  atlcli wiki import handbook.pdf --space DOCSY
+  atlcli wiki import handbook.pdf --space DOCSY --split pages:20 --max-wiki-pages 25
 `;
 }

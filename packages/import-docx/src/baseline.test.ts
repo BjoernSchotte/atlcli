@@ -1,12 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildBaseline,
-  canonicalJson,
   digestAdfValue,
   validateBaseline,
 } from "./baseline.js";
 import { diffAdfBlocks } from "./diff.js";
-import type { AdfNode } from "./adf.js";
+import { canonicalJson, type AdfNode } from "@atlcli/import-core";
 
 describe("baseline", () => {
   const input = {

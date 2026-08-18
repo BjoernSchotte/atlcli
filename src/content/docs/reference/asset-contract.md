@@ -27,6 +27,8 @@ its embedded copy. This page is the contract those subpaths follow.
 | Subpath | Contents |
 |---|---|
 | `@atlcli/pdf-compiler-browser/wasm` | The vendored, CSP-safe and provenance-bound typst.ts compiler WASM (`typst_ts_web_compiler_bg.wasm`) |
+| `@atlcli/import-pdf/wasm` | The exact-pinned PDFium importer WASM; callers load local bytes and inject them into `@atlcli/import-pdf/node` or `/browser-worker` |
+| `@atlcli/import-pdf/licenses/<file>` | PDFium wrapper/PDFium licenses, provenance, and the explicit third-party-notice gap inventory |
 | `@atlcli/pdf/fonts/<file>.ttf` | The twelve sha256-pinned Source Sans 3 / Source Serif 4 / Source Code Pro / Noto Symbols / Noto Emoji TTFs |
 | `@atlcli/pdf/licenses/<file>` | The SIL OFL 1.1 license texts accompanying those fonts |
 | `@atlcli/docx/fonts/<file>` | The committed Inter TTFs used by SVG rasterization and the JetBrains Mono face embedded for inline/block code |
