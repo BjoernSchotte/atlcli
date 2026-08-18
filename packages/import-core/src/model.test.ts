@@ -55,12 +55,17 @@ function fixture(): ImportDocumentV2 {
         alt: "Neutral green square",
       },
       {
-        id: "block:caption",
-        type: "paragraph",
-        runs: [{
-          kind: "text",
-          text: "Reference",
-          marks: { reference: { namespace: "fixture", target: "section-1" } },
+        id: "block:disclosure",
+        type: "disclosure",
+        title: "Original view",
+        blocks: [{
+          id: "block:caption",
+          type: "paragraph",
+          runs: [{
+            kind: "text",
+            text: "Reference",
+            marks: { reference: { namespace: "fixture", target: "section-1" } },
+          }],
         }],
       },
     ],
@@ -89,18 +94,20 @@ describe("ImportDocumentV2 target projections", () => {
       "https://example.com/neutral#section-1",
     ]]);
     const adf = documentToAdf(document, { references });
-    expect(adf.content.map((node) => node.type)).toEqual(["heading", "table", "mediaSingle", "paragraph"]);
+    expect(adf.content.map((node) => node.type)).toEqual(["heading", "table", "mediaSingle", "expand"]);
     expect(adf.content[1]?.content?.[0]?.content?.[0]?.attrs).toEqual({ rowspan: 2, colspan: 3 });
     expect(JSON.stringify(adf)).not.toContain("source:figure");
     expect(JSON.stringify(adf)).toContain("https://example.com/neutral#section-1");
+    expect(adf.content[3]).toMatchObject({ type: "expand", attrs: { title: "Original view" } });
   });
 
   it("maps spans and exact asset filenames to independent Storage output", () => {
     const storage = documentToStorage(fixture());
     expect(storage).toContain('<th rowspan="2" colspan="3"><p>Spanning header</p></th>');
     expect(storage).toContain('ri:filename="neutral.png"');
+    expect(storage).toContain('<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">Original view</ac:parameter>');
     expect(storage).not.toContain("source:figure");
-    expect(storageTagSequence(storage)).toEqual(["h1", "table", "p", "ac:image", "p"]);
+    expect(storageTagSequence(storage)).toEqual(["h1", "table", "p", "ac:image", "ac:structured-macro", "p"]);
   });
 
   it("previews deterministically without serializing source evidence", async () => {

@@ -63,6 +63,8 @@ function encodeBlock(block: ImportBlock, options: StorageEncodeOptions, assets: 
     }
     case "blockquote":
       return `<blockquote>${encodeBlocks(block.blocks, options, assets) || "<p/>"}</blockquote>`;
+    case "disclosure":
+      return `<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">${escapeXml(block.title)}</ac:parameter><ac:rich-text-body>${encodeBlocks(block.blocks, options, assets) || "<p/>"}</ac:rich-text-body></ac:structured-macro>`;
     case "code":
       return `<ac:structured-macro ac:name="code"><ac:plain-text-body><![CDATA[${block.text.replace(/\]\]>/g, "]]]]><![CDATA[>")}]]></ac:plain-text-body></ac:structured-macro>`;
     case "page-break":

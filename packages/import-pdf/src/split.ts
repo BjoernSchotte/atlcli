@@ -159,7 +159,7 @@ function assetIds(blocks: readonly ImportBlock[]): Set<string> {
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) cell.blocks.forEach(walk);
-    } else if (block.type === "blockquote") block.blocks.forEach(walk);
+    } else if (block.type === "blockquote" || block.type === "disclosure") block.blocks.forEach(walk);
   };
   blocks.forEach(walk);
   return result;

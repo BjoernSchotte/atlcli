@@ -107,13 +107,20 @@ export type ImportBlock = (ImportNodeIdentity & {
 }) | ImportImageBlock | (ImportNodeIdentity & {
     type: "blockquote";
     blocks: ImportBlock[];
-}) | (ImportNodeIdentity & {
+}) | ImportDisclosureBlock | (ImportNodeIdentity & {
     type: "code";
     text: string;
 }) | (ImportNodeIdentity & {
     type: "page-break";
     sourcePageIndex?: number;
 });
+
+// export: ImportDisclosureBlock
+export interface ImportDisclosureBlock extends ImportNodeIdentity {
+    type: "disclosure";
+    title: string;
+    blocks: ImportBlock[];
+}
 
 // export: ImportDocumentV2
 export interface ImportDocumentV2 {
@@ -371,13 +378,20 @@ export type ImportBlock = (ImportNodeIdentity & {
 }) | ImportImageBlock | (ImportNodeIdentity & {
     type: "blockquote";
     blocks: ImportBlock[];
-}) | (ImportNodeIdentity & {
+}) | ImportDisclosureBlock | (ImportNodeIdentity & {
     type: "code";
     text: string;
 }) | (ImportNodeIdentity & {
     type: "page-break";
     sourcePageIndex?: number;
 });
+
+// export: ImportDisclosureBlock
+export interface ImportDisclosureBlock extends ImportNodeIdentity {
+    type: "disclosure";
+    title: string;
+    blocks: ImportBlock[];
+}
 
 // export: ImportDocumentV2
 export interface ImportDocumentV2 {

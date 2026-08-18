@@ -15,6 +15,7 @@ export * from "./untagged.js";
 export * from "./tables.js";
 export * from "./fallbacks.js";
 export * from "./fallback-policy.js";
+export * from "./fallback-presentation.js";
 export * from "./visual-fallbacks.js";
 export * from "./figures.js";
 export * from "./overrides.js";

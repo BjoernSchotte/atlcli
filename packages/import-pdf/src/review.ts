@@ -279,7 +279,7 @@ export function pdfImportReviewReport(review: PdfImportReviewV1): Record<string,
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) cell.blocks.forEach(count);
-    } else if (block.type === "blockquote") block.blocks.forEach(count);
+    } else if (block.type === "blockquote" || block.type === "disclosure") block.blocks.forEach(count);
   };
   review.document.blocks.forEach(count);
   const outline = review.document.blocks.flatMap((block) =>

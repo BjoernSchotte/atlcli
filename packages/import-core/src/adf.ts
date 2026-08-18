@@ -121,6 +121,14 @@ function encodeBlock(block: ImportBlock, options: AdfEncodeOptions): AdfNode | n
       const content = encodeBlocks(block.blocks, options);
       return { type: "blockquote", content: content.length > 0 ? content : [{ type: "paragraph", content: [] }] };
     }
+    case "disclosure": {
+      const content = encodeBlocks(block.blocks, options);
+      return {
+        type: "expand",
+        attrs: { title: block.title },
+        content: content.length > 0 ? content : [{ type: "paragraph", content: [] }],
+      };
+    }
     case "code":
       return { type: "codeBlock", attrs: {}, content: block.text ? [{ type: "text", text: block.text }] : [] };
     case "page-break":

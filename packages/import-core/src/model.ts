@@ -83,6 +83,13 @@ export interface ImportImageBlock extends ImportNodeIdentity {
   captionBlockId?: string;
 }
 
+/** Target-neutral disclosure container (ADF expand / Confluence Storage expand macro). */
+export interface ImportDisclosureBlock extends ImportNodeIdentity {
+  type: "disclosure";
+  title: string;
+  blocks: ImportBlock[];
+}
+
 export type ImportBlock =
   | (ImportNodeIdentity & {
       type: "heading";
@@ -95,6 +102,7 @@ export type ImportBlock =
   | (ImportNodeIdentity & { type: "table"; rows: ImportTableRow[] })
   | ImportImageBlock
   | (ImportNodeIdentity & { type: "blockquote"; blocks: ImportBlock[] })
+  | ImportDisclosureBlock
   | (ImportNodeIdentity & { type: "code"; text: string })
   | (ImportNodeIdentity & { type: "page-break"; sourcePageIndex?: number });
 

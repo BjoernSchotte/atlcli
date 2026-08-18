@@ -200,6 +200,7 @@ function blockText(block: ImportBlock): string {
     ]).join("\n");
   }
   if (block.type === "blockquote") return block.blocks.map(blockText).join("\n");
+  if (block.type === "disclosure") return block.blocks.map(blockText).join("\n");
   if (block.type === "code") return block.text;
   if (block.type === "table") {
     return block.rows.flatMap((row) => row.cells.flatMap((cell) => cell.blocks.map(blockText))).join("\n");

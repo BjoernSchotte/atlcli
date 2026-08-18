@@ -65,7 +65,7 @@ function collectAssetIds(blocks: ImportBlock[], into: Set<string>): void {
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) collectAssetIds(cell.blocks, into);
-    } else if (block.type === "blockquote") {
+    } else if (block.type === "blockquote" || block.type === "disclosure") {
       collectAssetIds(block.blocks, into);
     }
   }
@@ -237,7 +237,7 @@ export function collectFileLinkRefs(blocks: ImportBlock[], into = new Set<string
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) collectFileLinkRefs(cell.blocks, into);
-    } else if (block.type === "blockquote") {
+    } else if (block.type === "blockquote" || block.type === "disclosure") {
       collectFileLinkRefs(block.blocks, into);
     }
   }
@@ -260,7 +260,7 @@ export function collectAnchorRefs(blocks: ImportBlock[], into = new Set<string>(
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) collectAnchorRefs(cell.blocks, into);
-    } else if (block.type === "blockquote") {
+    } else if (block.type === "blockquote" || block.type === "disclosure") {
       collectAnchorRefs(block.blocks, into);
     }
   }

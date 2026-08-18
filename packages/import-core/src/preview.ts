@@ -40,7 +40,7 @@ function countBlocks(blocks: ImportBlock[], counts: Record<string, number>): voi
       }
     } else if (block.type === "table") {
       for (const row of block.rows) for (const cell of row.cells) countBlocks(cell.blocks, counts);
-    } else if (block.type === "blockquote") countBlocks(block.blocks, counts);
+    } else if (block.type === "blockquote" || block.type === "disclosure") countBlocks(block.blocks, counts);
   }
 }
 
