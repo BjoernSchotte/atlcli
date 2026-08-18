@@ -6,6 +6,7 @@ import {
   type ImportAsset,
   type ImportBlock,
   type ImportDocumentV2,
+  type ImportListBlock,
 } from "@atlcli/import-core";
 import { digestPdfCanonical } from "./canonical.js";
 import type { PdfDecisionEvidenceV1, PdfFactsV1 } from "./contracts.js";
@@ -326,15 +327,19 @@ async function plannedPage(
 }
 
 function resolveTitles(pages: readonly PdfPlannedPageV1[], mode: "fail" | "rename"): void {
-  const seen = new Map<string, number>();
+  const used = new Set<string>();
   const visit = (page: PdfPlannedPageV1): void => {
-    const key = page.title.normalize("NFC").toLocaleLowerCase("en-US");
-    const count = seen.get(key) ?? 0;
-    if (count > 0) {
+    const original = page.title;
+    let key = original.normalize("NFC").toLocaleLowerCase("en-US");
+    if (used.has(key)) {
       if (mode === "fail") splitInvalid(`PDF split would create duplicate title ${JSON.stringify(page.title)}.`);
-      page.title = `${page.title} (${count + 1})`;
+      let suffix = 2;
+      do {
+        page.title = `${original} (${suffix++})`;
+        key = page.title.normalize("NFC").toLocaleLowerCase("en-US");
+      } while (used.has(key));
     }
-    seen.set(key, count + 1);
+    used.add(key);
     page.children.forEach(visit);
   };
   pages.forEach(visit);
@@ -352,6 +357,48 @@ function publicPage(page: PdfPlannedPageV1): Record<string, unknown> {
     assetDigests: page.assets.map((asset) => asset.id).sort(),
     children: page.children.map(publicPage),
   };
+}
+
+function indexList(pages: readonly PdfPlannedPageV1[], prefix: string): ImportListBlock {
+  return {
+    id: `${prefix}:list`,
+    type: "list",
+    ordered: false,
+    items: pages.map((page, index) => ({
+      blocks: [{
+        id: `${prefix}:item:${index}`,
+        type: "paragraph",
+        runs: [{
+          kind: "text",
+          text: page.title,
+          marks: { reference: { namespace: "pdf-page", target: page.id } },
+        }],
+      }],
+      ...(page.children.length > 0 ? { child: indexList(page.children, `${prefix}:item:${index}`) } : {}),
+    })),
+  };
+}
+
+async function populateRootIndex(root: PdfPlannedPageV1, source: ImportDocumentV2): Promise<void> {
+  const blocks: ImportBlock[] = [
+    { id: "pdf:index:heading", type: "heading", level: 2, runs: [{ kind: "text", text: "Contents" }] },
+    indexList(root.children, "pdf:index"),
+  ];
+  const document: ImportDocumentV2 = { ...source, titleCandidate: undefined, blocks, assets: [], issues: [] };
+  const adf = documentToAdf(document);
+  const storage = documentToStorage(document);
+  const assessment = assessEditability(blocks);
+  root.blocks = blocks;
+  root.assets = [];
+  root.estimate = {
+    adfBytes: new TextEncoder().encode(JSON.stringify(adf)).byteLength,
+    storageBytes: new TextEncoder().encode(storage).byteLength,
+    nodes: assessment.nodeCount,
+    tableCells: assessment.tableCells,
+    assets: 0,
+    editability: assessment.level,
+  };
+  root.bodyDigest = await digestPdfCanonical({ adf, storage });
 }
 
 export async function planPdfSplit(
@@ -465,6 +512,7 @@ export async function planPdfSplit(
       });
     }
     resolveTitles([root], options.titleConflict ?? "fail");
+    await populateRootIndex(root, document);
   }
   const sourceAssignments = contentPages.flatMap((page) =>
     page.sourcePageIndexes.map((pageIndex) => ({ pageIndex, plannedPageId: page.id }))
@@ -500,4 +548,46 @@ export async function planPdfSplit(
 
 export function summarizePdfPlannedPage(page: PdfPlannedPageV1): Record<string, unknown> {
   return publicPage(page);
+}
+
+/**
+ * Derive the exact publication plan after remote title preflight. The user
+ * explicitly selected `title-conflict=rename`; source assignments, page ids,
+ * blocks and assets remain unchanged, while the root index and plan digest are
+ * rebound to the deterministic target titles.
+ */
+export async function derivePdfSplitTitleRenames(
+  plan: PdfSplitPlanV1,
+  renames: ReadonlyMap<string, string>,
+): Promise<PdfSplitPlanV1> {
+  const clone = (page: PdfPlannedPageV1): PdfPlannedPageV1 => ({
+    ...page,
+    title: renames.get(page.id) ?? page.title,
+    blocks: [...page.blocks],
+    assets: [...page.assets],
+    children: page.children.map(clone),
+    sourcePageIndexes: [...page.sourcePageIndexes],
+    sourcePageLabels: [...page.sourcePageLabels],
+    estimate: { ...page.estimate },
+  });
+  const root = clone(plan.root);
+  await populateRootIndex(root, {
+    schema: "atlcli.import-document/2",
+    sourceKind: "pdf",
+    blocks: [],
+    assets: [],
+    issues: [],
+  });
+  const digestInput = {
+    schema: plan.schema,
+    requested: plan.requested,
+    resolved: plan.resolved,
+    root: publicPage(root),
+    contentPageCount: plan.contentPageCount,
+    totalWikiPages: plan.totalWikiPages,
+    sourceAssignments: plan.sourceAssignments,
+    issues: plan.issues,
+    blockers: plan.blockers,
+  };
+  return { ...plan, root, digest: await digestPdfCanonical(digestInput) };
 }

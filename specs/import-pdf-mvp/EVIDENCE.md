@@ -1047,3 +1047,111 @@ PDF-08 is complete. Both import sources now have a common prepared-page and
 verified target transaction without moving source-specific behavior into a
 generic abstraction. PDF-09 may enable PDF publication and bounded page trees
 on top of this proven seam.
+
+## PDF-09 - Destination safety, source retention, and qualified split
+
+### Result
+
+Confirmed PDF import now publishes the exact reviewed plan. It first rejects
+blockers, unsafe page counts, incomplete source-page ownership, any target page
+over 40 source pages, editability risk, and Data Center trees. Cloud title
+preflight checks both remote pages and within-plan duplicates before mutation;
+`fail` reports conflicts, while explicit `rename` selects bounded free titles,
+rebuilds the root index, and binds the changed target titles to a new canonical
+publication-plan digest.
+
+The existing destination-governance contract is shared without moving it into
+the format-neutral publisher. Cloud supports inherited/private/explicit
+restrictions, an optional private staging parent, labels, and namespaced content
+properties. Data Center supports labels for its proven one-page subset and
+rejects restrictions, staging, properties, and every tree before create.
+
+### Split and link proof
+
+All reviewed split modes reach the same publication transaction:
+`auto`, explicit `off`, `heading:<1..6>`, its numeric alias, and
+`pages:<5..40>`. A resolved tree creates shells parent-first, builds a complete
+planned-page-to-URL reference map, replaces source-neutral root-index references
+with child URLs, finalizes every body, then reads back every title and parent.
+The root index is a native nested bullet list and follows the resolved heading
+tree. The 50-page default and 200-page hard cap, exact once-only source-page
+assignments, deterministic range/part titles, atomic-boundary shifts, and
+per-page editability budgets remain part of the digest-bound plan.
+
+The neutral 100-page heading-rich fixture still resolves to nine wiki pages;
+the heading-poor fixture resolves to six. Explicit `off` cannot flatten either
+into one page. Heading syntax and its numeric alias produce identical trees,
+assignments, and digests. A renamed child changes the index text and plan digest
+without changing page IDs or source ownership.
+
+### Restriction, source attachment, and rollback proof
+
+The optional original PDF is uploaded only after a requested root/staging
+restriction and its readback succeed. It uses a deterministic digest-derived
+`.pdf` filename, is downloaded again, and must match both byte length and
+SHA-256. A preflight rejects any filename collision with extracted content
+assets. Source attachment identity remains separate from figure media
+correlation and is disclosed in the publication receipt.
+
+Failure injection covers restriction write, source upload, source digest
+readback, content-asset upload, body update, semantic body readback, and root
+metadata. Every post-create single-page failure deletes exactly its registered
+owned page. A partially finalized tree rolls back only its owned IDs in exact
+child-first order. A private staging parent is registered independently and is
+therefore included in the same reverse-order ledger.
+
+```text
+bun run test packages/import-pdf packages/import-confluence apps/cli/src/commands/wiki-import-pdf.test.ts apps/cli/src/commands/wiki-import-pdf-publication.test.ts apps/cli/src/commands/wiki-import-destination.test.ts
+63 pass, 0 fail, 589 assertions
+
+bun run test packages/import-pdf apps/cli/src/commands/wiki-import-pdf.test.ts --test-name-pattern split
+7 pass, 37 filtered out, 0 fail, 46 assertions
+
+bun run test apps/cli/src/commands/wiki-import-dc.contract.test.ts
+3 pass, 0 fail, 22 assertions
+
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+
+bun run typecheck
+pass
+
+bun run build
+34 tasks pass
+```
+
+Fresh API and closure reports include the target-parent receipt field, the
+Data Center pre-body hook, and digest-bound split-title derivation with no
+closure gaps. Packed Bun, production file-link Bun, plain Node 22/npm, and Vite
+8.1.4 consumers all remain green.
+
+The full repository suite outside the sandbox completed 8,341 tests with 16
+documented skips and one failure in the pre-existing viewer-only PDF.js probe
+under full-suite concurrency. That complete probe passed immediately in
+isolation (8 pass, 0 fail, 277 assertions). Every PDF-09, DOCX compatibility,
+and Data Center contract test passed in the full run. This remains recorded as
+an unrelated concurrency-sensitive viewer test, not reported as a green full
+suite.
+
+### Built-CLI live proof and cleanup
+
+The freshly built CLI published a neutral one-page untagged fixture in the
+authorized `mayflower` / `DOCSY` environment with a private restriction,
+opted-in original source attachment, one neutral label, and one namespaced
+property. Restriction readback completed before the source upload. The source
+attachment downloaded byte-identically; semantic ADF readback completed at
+version 2. An independent built-CLI read preserved the heading, prose, safe
+link, and list, and an independent label read returned the required label.
+
+The exact owned page was then deleted. Final ID readback returned 404 and an
+exact title query returned zero pages. No live ID, URL, raw receipt, credential,
+tenant-derived body, or private/customer PDF is committed.
+
+### Decision
+
+PDF-09 is complete. Cloud can safely publish the reviewed one-page or bounded
+tree plan with destination policy, optional source retention, semantic
+readback, and exact rollback. Data Center is intentionally limited to a
+contract-tested one-page Storage transaction and never silently flattens a
+tree. PDF-10 may now close packaging, browser, security/performance, and user
+documentation gates.

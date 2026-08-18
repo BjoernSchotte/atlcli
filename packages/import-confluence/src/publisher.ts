@@ -29,6 +29,7 @@ export interface PublishedConfluencePageV1 {
   title: string;
   url?: string;
   version?: number;
+  parentId?: string | null;
 }
 
 export interface CloudImportClientPort {
@@ -236,6 +237,8 @@ export async function publishPreparedDcPage(
   options: {
     labels?: string[];
     onOwnedPage: (pageId: string) => void;
+    /** Runs before any source/content attachment or body is written. */
+    afterShell?: (pageId: string) => Promise<void>;
   },
 ): Promise<DcPublishResultV1> {
   validatePreparedPage(plan);
@@ -246,6 +249,7 @@ export async function publishPreparedDcPage(
     parentId: plan.parentId,
   });
   options.onOwnedPage(shell.id);
+  if (options.afterShell) await options.afterShell(shell.id);
   for (const asset of plan.document.assets) {
     await client.uploadAttachment({
       pageId: shell.id,

@@ -50,11 +50,10 @@ import {
 } from "@atlcli/import-docx";
 import { assertCliAuthSupported } from "./session-guard.js";
 import {
-  applyRestriction,
-  findFreeTitle,
   publishOnePage,
   publishTree,
 } from "./wiki-import.js";
+import { applyRestriction, findFreeTitle } from "./wiki-import-destination.js";
 import { loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
 import { resolveImportPolicy, recipeApplicability } from "@atlcli/import-docx";
 

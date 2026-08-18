@@ -49,7 +49,6 @@ import {
   governanceHasEffects,
   principalId,
   renderGovernanceSummary,
-  type DestinationGovernance,
   renderPolicySummary,
   resolveImportPolicy,
   type PolicyLayerInput,
@@ -67,6 +66,11 @@ import { assertCliAuthSupported } from "./session-guard.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { handleRecipeCommand, loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
 import { handleManifestBatch } from "./wiki-import-batch.js";
+import {
+  applyMetadata,
+  applyRestriction,
+  findFreeTitle,
+} from "./wiki-import-destination.js";
 import {
   BASELINE_PROPERTY_KEY,
   buildBaseline,
@@ -1819,97 +1823,9 @@ export async function publishTree(
   return finalize(split.root);
 }
 
-/**
- * Apply and PROVE a restriction policy on one page. The importing user is
- * always included in both operations — a policy that locks the importer out
- * would break the rest of the transaction and strand the page.
- */
-export async function applyRestriction(
-  client: ConfluenceClient,
-  pageId: string,
-  governance: DestinationGovernance,
-  importerAccountId: string,
-): Promise<void> {
-  const r = governance.restriction;
-  if (r.mode === "inherit") return;
-  const withImporter = (ids: string[]) =>
-    ids.includes(importerAccountId) ? ids : [...ids, importerAccountId];
-  const readAccounts =
-    r.mode === "private"
-      ? [importerAccountId]
-      : withImporter(r.viewers.filter((p) => p.kind === "cloud-account").map((p) => p.accountId));
-  const readGroups = r.mode === "private" ? [] : r.viewers.filter((p) => p.kind === "cloud-group").map((p) => p.groupId);
-  const updateAccounts =
-    r.mode === "private"
-      ? [importerAccountId]
-      : withImporter(r.editors.filter((p) => p.kind === "cloud-account").map((p) => p.accountId));
-  const updateGroups = r.mode === "private" ? [] : r.editors.filter((p) => p.kind === "cloud-group").map((p) => p.groupId);
-
-  await client.setContentRestrictions(pageId, {
-    read: { accountIds: readAccounts, groupIds: readGroups },
-    update: { accountIds: updateAccounts, groupIds: updateGroups },
-  });
-
-  // Readback proof: every required principal must actually be in effect.
-  const effective = await client.getContentRestrictions(pageId);
-  const missing: string[] = [];
-  for (const id of readAccounts) if (!effective.read.accountIds.includes(id)) missing.push(`read account:${id}`);
-  for (const id of readGroups) if (!effective.read.groupIds.includes(id)) missing.push(`read group-id:${id}`);
-  for (const id of updateAccounts) if (!effective.update.accountIds.includes(id)) missing.push(`update account:${id}`);
-  for (const id of updateGroups) if (!effective.update.groupIds.includes(id)) missing.push(`update group-id:${id}`);
-  if (effective.read.accountIds.length === 0 && effective.read.groupIds.length === 0) {
-    missing.push("read restriction set is empty (page would stay space-visible)");
-  }
-  if (missing.length > 0) {
-    throw new Error(`restriction readback failed on page ${pageId}: ${missing.join("; ")}`);
-  }
-}
-
-/**
- * Apply and PROVE labels and content properties. Required outcomes, not
- * best-effort last mutations (invariant 7): any miss throws → rollback.
- */
-async function applyMetadata(
-  client: ConfluenceClient,
-  pageId: string,
-  governance: DestinationGovernance,
-): Promise<void> {
-  if (governance.labels.length > 0) {
-    await client.addLabels(pageId, governance.labels);
-    const effective = new Set((await client.getLabels(pageId)).map((l) => l.name));
-    const missing = governance.labels.filter((l) => !effective.has(l));
-    if (missing.length > 0) {
-      throw new Error(`label readback failed on page ${pageId}: missing ${missing.join(", ")}`);
-    }
-  }
-  for (const prop of governance.contentProperties) {
-    await client.createPageProperty(pageId, prop.key, prop.value);
-    const value = await client.getPagePropertyByKey(pageId, prop.key);
-    if (JSON.stringify(value) !== JSON.stringify(prop.value)) {
-      throw new Error(
-        `property readback failed on page ${pageId}: ${prop.key} is ${JSON.stringify(value)}, expected ${JSON.stringify(prop.value)}`,
-      );
-    }
-  }
-}
-
 function collectTreeTitles(plan: ImportPagePlan, into: string[]): void {
   into.push(plan.title);
   for (const child of plan.children) collectTreeTitles(child, into);
-}
-
-/** Find a free " (n)" title variant in the space (plan 009 rename mode). */
-export async function findFreeTitle(
-  client: ConfluenceClient,
-  spaceKey: string,
-  baseTitle: string,
-): Promise<string> {
-  for (let n = 2; n <= 50; n++) {
-    const candidate = `${baseTitle} (${n})`;
-    const matches = await client.findPagesByTitle(candidate, { spaceKey });
-    if (matches.length === 0) return candidate;
-  }
-  throw new Error(`No free title variant found for "${baseTitle}" within 50 attempts.`);
 }
 
 function renameInTree(plan: ImportPagePlan, from: string, to: string): boolean {

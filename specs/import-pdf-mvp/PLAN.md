@@ -1374,12 +1374,12 @@ bun run build
 
 **Work:**
 
-- [ ] Reuse title conflict preflight and supported governance/metadata options.
-- [ ] Implement opt-in source PDF attachment after restriction proof with byte digest readback.
-- [ ] Publish every resolved Cloud mode: `auto`, `off`, `heading:<1..6>`/numeric alias, and `pages:<5..40>`; create root indexes, patch child links, and enforce 50-default/200-hard page caps.
-- [ ] Prove atomic-boundary shifting, exact source-page ownership, deterministic range/part titles, conflict preflight, and per-planned-page editability budgets.
-- [ ] Prove multi-page shell/link/finalize/child-first rollback.
-- [ ] Allow safe resolved one-page PDF plans on DC and reject every resolved tree before mutation without flattening.
+- [x] Reuse title conflict preflight and supported governance/metadata options.
+- [x] Implement opt-in source PDF attachment after restriction proof with byte digest readback.
+- [x] Publish every resolved Cloud mode: `auto`, `off`, `heading:<1..6>`/numeric alias, and `pages:<5..40>`; create root indexes, patch child links, and enforce 50-default/200-hard page caps.
+- [x] Prove atomic-boundary shifting, exact source-page ownership, deterministic range/part titles, conflict preflight, and per-planned-page editability budgets.
+- [x] Prove multi-page shell/link/finalize/child-first rollback.
+- [x] Allow safe resolved one-page PDF plans on DC and reject every resolved tree before mutation without flattening.
 
 **Verify:**
 

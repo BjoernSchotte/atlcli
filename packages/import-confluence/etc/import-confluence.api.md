@@ -178,6 +178,7 @@ export interface PublishedConfluencePageV1 {
     title: string;
     url?: string;
     version?: number;
+    parentId?: string | null;
 }
 
 // export: publishPreparedCloudPage
@@ -191,6 +192,7 @@ export declare function publishPreparedCloudPage(client: CloudImportClientPort, 
 export declare function publishPreparedDcPage(client: DcImportClientPort, spaceKey: string, plan: PreparedConfluencePageV1, options: {
     labels?: string[];
     onOwnedPage: (pageId: string) => void;
+    afterShell?: (pageId: string) => Promise<void>;
 }): Promise<DcPublishResultV1>;
 
 // export: rollbackOwnedPages
@@ -377,6 +379,7 @@ export interface PublishedConfluencePageV1 {
     title: string;
     url?: string;
     version?: number;
+    parentId?: string | null;
 }
 
 // export: publishPreparedCloudPage
@@ -390,6 +393,7 @@ export declare function publishPreparedCloudPage(client: CloudImportClientPort, 
 export declare function publishPreparedDcPage(client: DcImportClientPort, spaceKey: string, plan: PreparedConfluencePageV1, options: {
     labels?: string[];
     onOwnedPage: (pageId: string) => void;
+    afterShell?: (pageId: string) => Promise<void>;
 }): Promise<DcPublishResultV1>;
 
 // export: rollbackOwnedPages

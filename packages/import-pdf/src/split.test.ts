@@ -5,7 +5,7 @@ import { IMPORT_DOCUMENT_SCHEMA_V2, type ImportDocumentV2 } from "@atlcli/import
 import { createNodePdfiumFactsAdapter } from "./node.js";
 import { PDF_TABLE_POLICY_REVISION } from "./contracts.js";
 import { normalizeUntaggedPdfFacts } from "./untagged.js";
-import { parsePdfSplitPolicy, planPdfSplit, type PdfPlannedPageV1 } from "./split.js";
+import { derivePdfSplitTitleRenames, parsePdfSplitPolicy, planPdfSplit, type PdfPlannedPageV1 } from "./split.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
 
@@ -48,7 +48,29 @@ describe("PDF split planning", () => {
     expect(pages.slice(1).every((page) => page.sourcePageIndexes.length <= 20)).toBe(true);
     expect(pages.some((page) => page.title === "Part One")).toBe(true);
     expect(pages.some((page) => page.splitBasis === "page-range" && page.title.includes("Pages"))).toBe(true);
+    expect(plan.root.blocks[0]).toMatchObject({ type: "heading", level: 2 });
+    expect(plan.root.blocks[1]).toMatchObject({ type: "list", ordered: false });
+    const index = plan.root.blocks[1];
+    if (index?.type !== "list") throw new Error("expected root index list");
+    expect(index.items[0]?.blocks[0]).toMatchObject({
+      type: "paragraph",
+      runs: [{ kind: "text", marks: { reference: { namespace: "pdf-page", target: plan.root.children[0]?.id } } }],
+    });
     expect(plan.blockers).toEqual([]);
+
+    const renamed = await derivePdfSplitTitleRenames(plan, new Map([[plan.root.children[0]!.id, "Renamed chapter"]]));
+    expect(renamed.digest).not.toBe(plan.digest);
+    expect(renamed.root.children[0]?.title).toBe("Renamed chapter");
+    const renamedIndex = renamed.root.blocks[1];
+    if (renamedIndex?.type !== "list") throw new Error("expected renamed root index list");
+    expect(renamedIndex.items[0]?.blocks[0]).toMatchObject({
+      type: "paragraph",
+      runs: [{
+        kind: "text",
+        text: "Renamed chapter",
+        marks: { reference: { namespace: "pdf-page", target: plan.root.children[0]?.id } },
+      }],
+    });
   });
 
   it("uses five flat 20-page ranges for a heading-poor 100-page PDF", async () => {
@@ -66,6 +88,29 @@ describe("PDF split planning", () => {
       "Archive - Pages 61-80",
       "Archive - Pages 81-100",
     ]);
+  });
+
+  it("resolves explicit off, heading syntax, and the numeric heading alias deterministically", async () => {
+    const short = await semantics("simple-untagged.pdf");
+    const off = await planPdfSplit(short.facts, short.normalized.document, short.normalized.evidence, {
+      rootTitle: "Notes",
+      policy: parsePdfSplitPolicy("off"),
+    });
+    expect(off.resolved).toEqual({ kind: "single-page", reason: "explicit-off" });
+
+    const long = await semantics("heading-rich-100.pdf");
+    const explicit = await planPdfSplit(long.facts, long.normalized.document, long.normalized.evidence, {
+      rootTitle: "Guide",
+      policy: parsePdfSplitPolicy("heading:1"),
+    });
+    const alias = await planPdfSplit(long.facts, long.normalized.document, long.normalized.evidence, {
+      rootTitle: "Guide",
+      policy: parsePdfSplitPolicy("1"),
+    });
+    expect(explicit.resolved).toEqual({ kind: "page-tree", reason: "heading" });
+    expect(alias.root).toEqual(explicit.root);
+    expect(alias.sourceAssignments).toEqual(explicit.sourceAssignments);
+    expect(alias.digest).toBe(explicit.digest);
   });
 
   it("validates modes and refuses unsafe one-page or over-cap plans", async () => {

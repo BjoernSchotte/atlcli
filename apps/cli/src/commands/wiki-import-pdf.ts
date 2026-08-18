@@ -6,6 +6,7 @@ import {
   fail,
   getActiveProfile,
   getFlag,
+  getFlags,
   hasFlag,
   loadConfig,
   output,
@@ -17,6 +18,7 @@ import { ConfluenceClient } from "@atlcli/confluence";
 import {
   buildPdfImportReview,
   createPdfiumFactsAdapter,
+  derivePdfSplitTitleRenames,
   isPdfImportError,
   parsePdfImportOverrides,
   parsePdfSplitPolicy,
@@ -26,8 +28,23 @@ import {
   type PdfReadingOrderModeV1,
   type PdfReviewTargetV1,
   type PdfScanPolicyV1,
+  type PdfPlannedPageV1,
 } from "@atlcli/import-pdf";
+import {
+  buildGovernance,
+  governanceHasEffects,
+  renderGovernanceSummary,
+} from "@atlcli/import-docx";
 import { assertCliAuthSupported } from "./session-guard.js";
+import {
+  preflightImportTitles,
+  TitlePreflightConflictError,
+} from "./wiki-import-destination.js";
+import {
+  PdfPublicationTransactionError,
+  publishPdfCloud,
+  publishPdfDc,
+} from "./wiki-import-pdf-publication.js";
 
 const DOCX_ONLY_FLAGS = [
   "map-style",
@@ -56,6 +73,12 @@ const VALUE_FLAGS = [
   "overrides",
   "title-conflict",
   "profile",
+  "restriction",
+  "viewer",
+  "editor",
+  "label",
+  "content-property",
+  "staging-parent",
 ] as const;
 
 function assetFilePath(imported: string): string {
@@ -116,6 +139,10 @@ async function loadOverrides(
   }
 }
 
+function collectPlannedPages(root: PdfPlannedPageV1): PdfPlannedPageV1[] {
+  return [root, ...root.children.flatMap(collectPlannedPages)];
+}
+
 export async function handlePdfWikiImport(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -172,6 +199,19 @@ export async function handlePdfWikiImport(
     "fail",
     opts,
   );
+  const { governance, errors: governanceErrors } = buildGovernance({
+    restriction: getFlag(flags, "restriction"),
+    viewers: getFlags(flags, "viewer"),
+    editors: getFlags(flags, "editor"),
+    labels: getFlags(flags, "label"),
+    contentProperties: getFlags(flags, "content-property"),
+    stagingParentTitle: getFlag(flags, "staging-parent"),
+  });
+  if (governanceErrors.length > 0) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Invalid destination governance:\n  ${governanceErrors.join("\n  ")}`, {
+      errors: governanceErrors,
+    });
+  }
   const spaceFlag = getFlag(flags, "space");
   const confirm = hasFlag(flags, "confirm");
   let profile: Awaited<ReturnType<typeof getActiveProfile>> | undefined;
@@ -236,7 +276,15 @@ export async function handlePdfWikiImport(
       overrides,
     });
     if (!confirm || hasFlag(flags, "dry-run")) {
-      output(opts.json ? pdfImportReviewReport(review) : renderPdfImportReview(review), opts);
+      if (opts.json) {
+        output({ ...pdfImportReviewReport(review), governance }, opts);
+      } else {
+        output(renderPdfImportReview(review), opts);
+        if (governanceHasEffects(governance)) {
+          output("\nGovernance:", opts);
+          for (const line of renderGovernanceSummary(governance)) output(`  ${line}`, opts);
+        }
+      }
       return;
     }
     if (
@@ -267,14 +315,94 @@ export async function handlePdfWikiImport(
         { pages: review.split.totalWikiPages },
       );
     }
-    fail(
-      opts,
-      1,
-      ERROR_CODES.VALIDATION,
-      "PDF publication is not enabled until the shared transaction/readback task is complete; the digest-bound review plan made no writes.",
-      { planDigest: review.planDigest },
-    );
+    if (deployment === "data-center") {
+      const unsupportedDc: string[] = [];
+      if (governance.restriction.mode !== "inherit") unsupportedDc.push("restrictions");
+      if (governance.staging.mode !== "none") unsupportedDc.push("staging parent");
+      if (governance.contentProperties.length > 0) unsupportedDc.push("content properties");
+      if (unsupportedDc.length > 0) {
+        fail(
+          opts,
+          1,
+          ERROR_CODES.VALIDATION,
+          `Data Center PDF import does not support: ${unsupportedDc.join(", ")}. No page was created.`,
+          { unsupported: unsupportedDc },
+        );
+      }
+    }
+
+    const client = new ConfluenceClient(profile!);
+    const plannedCandidates = collectPlannedPages(review.split.root).map((page) => ({ id: page.id, title: page.title }));
+    if (governance.staging.mode === "private-parent") {
+      plannedCandidates.push({ id: "pdf-staging-parent", title: governance.staging.title });
+    }
+    const remoteRenames = await preflightImportTitles(client, spaceKey, plannedCandidates, titleConflict);
+    const pageRenames = new Map([...remoteRenames].filter(([id]) => id !== "pdf-staging-parent"));
+    const publicationPlan = pageRenames.size > 0
+      ? await derivePdfSplitTitleRenames(review.split, pageRenames)
+      : review.split;
+    const stagingTitle = remoteRenames.get("pdf-staging-parent");
+
+    const result = deployment === "cloud"
+      ? await (async () => {
+          const spaces = await client.listSpacesV2({ keys: [spaceKey], limit: 1 });
+          const space = spaces.spaces.find((candidate) => candidate.key === spaceKey);
+          if (!space) fail(opts, 1, ERROR_CODES.API, `Space ${spaceKey} not found or not accessible.`, { spaceKey });
+          return publishPdfCloud({
+            client,
+            spaceId: space.id,
+            plan: publicationPlan,
+            parentId: target.parentId,
+            governance,
+            stagingTitle,
+            sourceBytes: bytes,
+            sourceSha256,
+            attachSource: hasFlag(flags, "attach-source"),
+            issues: review.document.issues,
+          });
+        })()
+      : await publishPdfDc({
+          client,
+          spaceKey,
+          plan: publicationPlan,
+          parentId: target.parentId,
+          labels: governance.labels,
+          sourceBytes: bytes,
+          sourceSha256,
+          attachSource: hasFlag(flags, "attach-source"),
+          issues: review.document.issues,
+        });
+
+    if (opts.json) {
+      output({
+        mode: "published",
+        deployment,
+        source: { sha256: sourceSha256, byteLength: bytes.byteLength, pageCount: review.facts.pageCount },
+        page: result.root,
+        pagesCreated: result.pagesCreated,
+        reviewPlanDigest: review.planDigest,
+        publicationPlanDigest: result.publicationPlanDigest,
+        titleRenames: [...remoteRenames].map(([plannedPageId, title]) => ({ plannedPageId, title })),
+        ...(result.sourceAttachment ? { sourceAttachment: result.sourceAttachment } : {}),
+        issues: review.document.issues,
+      }, opts);
+    } else {
+      output(`Created ${result.pagesCreated} page(s) for PDF import.`, opts);
+      output(`Root: ${result.root.title} (${result.root.id})`, opts);
+      if (result.root.url) output(result.root.url, opts);
+      if (result.sourceAttachment) output(`Source PDF attached and byte-verified: ${result.sourceAttachment.filename}`, opts);
+    }
   } catch (error) {
+    if (error instanceof TitlePreflightConflictError) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, error.message, { conflicts: error.conflicts });
+    }
+    if (error instanceof PdfPublicationTransactionError) {
+      const cause = error.cause instanceof Error ? error.cause.message : "unknown transaction failure";
+      fail(opts, 1, ERROR_CODES.API, `${error.message} Cause: ${cause}`, {
+        rollbackAttempted: error.rollback.attempted.length,
+        rollbackFailed: error.rollback.failed,
+      });
+    }
     if (isPdfImportError(error)) {
       fail(opts, 1, ERROR_CODES.VALIDATION, `Rejected PDF import: ${error.message}`, {
         code: error.code,

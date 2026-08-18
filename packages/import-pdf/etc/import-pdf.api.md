@@ -67,6 +67,9 @@ export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStruc
 // export: createBrowserPdfiumFactsAdapter
 export declare function createBrowserPdfiumFactsAdapter(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapter;
 
+// export: derivePdfSplitTitleRenames
+export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames: ReadonlyMap<string, string>): Promise<PdfSplitPlanV1>;
+
 // export: descendantMcids
 export declare function descendantMcids(node: PdfStructureNodeFact): number[];
 
@@ -1040,6 +1043,9 @@ export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStruc
 // export: createPdfiumFactsAdapter
 export declare function createPdfiumFactsAdapter(config: PdfiumAdapterConfig): PdfiumFactsAdapter;
 
+// export: derivePdfSplitTitleRenames
+export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames: ReadonlyMap<string, string>): Promise<PdfSplitPlanV1>;
+
 // export: descendantMcids
 export declare function descendantMcids(node: PdfStructureNodeFact): number[];
 
@@ -2012,6 +2018,9 @@ export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStruc
 
 // export: createBrowserPdfiumFactsAdapter
 export declare function createBrowserPdfiumFactsAdapter(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapter;
+
+// export: derivePdfSplitTitleRenames
+export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames: ReadonlyMap<string, string>): Promise<PdfSplitPlanV1>;
 
 // export: descendantMcids
 export declare function descendantMcids(node: PdfStructureNodeFact): number[];
@@ -2988,6 +2997,9 @@ export declare function createNodePdfiumFactsAdapter(): Promise<PdfiumFactsAdapt
 
 // export: createPdfiumFactsAdapter
 export declare function createPdfiumFactsAdapter(config: PdfiumAdapterConfig): PdfiumFactsAdapter;
+
+// export: derivePdfSplitTitleRenames
+export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames: ReadonlyMap<string, string>): Promise<PdfSplitPlanV1>;
 
 // export: descendantMcids
 export declare function descendantMcids(node: PdfStructureNodeFact): number[];
