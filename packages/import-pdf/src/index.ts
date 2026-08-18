@@ -14,6 +14,7 @@ export * from "./repeated-regions.js";
 export * from "./untagged.js";
 export * from "./tables.js";
 export * from "./fallbacks.js";
+export * from "./fallback-policy.js";
 export * from "./figures.js";
 export * from "./overrides.js";
 export * from "./split.js";

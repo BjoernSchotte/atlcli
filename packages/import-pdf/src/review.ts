@@ -11,6 +11,12 @@ import {
   type PdfMaterializedAssetV1,
 } from "./contracts.js";
 import { preservePdfFigures } from "./figures.js";
+import {
+  PDF_VISUAL_FALLBACK_POLICY_REVISION,
+  assessPdfVisualFallbacks,
+  fallbackAssessmentPageIndexes,
+  type PdfFallbackScopeV1,
+} from "./fallback-policy.js";
 import { PdfImportError } from "./issues.js";
 import { normalizeTaggedPdfFacts } from "./normalize.js";
 import {
@@ -49,6 +55,8 @@ export interface PdfPageReviewSummaryV1 {
   minimumConfidence: number | null;
   issueCount: number;
   fallback: "none" | "required" | "page-image" | "reported";
+  fallbackScope: PdfFallbackScopeV1;
+  fallbackReasons: string[];
 }
 
 export interface PdfImportReviewV1 {
@@ -77,17 +85,6 @@ export interface PdfImportReviewV1 {
 
 function reviewInvalid(message: string): never {
   throw new PdfImportError("pdf/override-invalid", message);
-}
-
-function fallbackPages(
-  facts: PdfFactsV1,
-  base: { requiresGeometryPages?: number[]; requiresFallbackPages?: number[] },
-): number[] {
-  return [...new Set([
-    ...(base.requiresGeometryPages ?? []),
-    ...(base.requiresFallbackPages ?? []),
-    ...facts.pages.filter((page) => page.kind === "image-only").map((page) => page.index),
-  ])].filter((pageIndex) => facts.pages[pageIndex]?.kind !== "blank").sort((a, b) => a - b);
 }
 
 function sanitizedDocument(document: ImportDocumentV2): Record<string, unknown> {
@@ -189,13 +186,15 @@ function pageSummaries(
   facts: PdfFactsV1,
   evidence: readonly PdfDecisionEvidenceV1[],
   issues: readonly ImportIssue[],
-  fallback: ReadonlySet<number>,
+  assessments: ReturnType<typeof assessPdfVisualFallbacks>,
   policy: PdfScanPolicyV1,
 ): PdfPageReviewSummaryV1[] {
   return facts.pages.map((page) => {
     const entries = evidence.filter((item) => item.locator.pageIndex === page.index);
     const outcomes: Record<string, number> = {};
     for (const entry of entries) outcomes[entry.outcome] = (outcomes[entry.outcome] ?? 0) + 1;
+    const assessment = assessments.find((item) => item.pageIndex === page.index)!;
+    const fallbackRequired = assessment.scope === "region" || assessment.scope === "page";
     return {
       pageIndex: page.index,
       pageLabel: page.label ?? String(page.index + 1),
@@ -203,7 +202,9 @@ function pageSummaries(
       outcomes,
       minimumConfidence: entries.length > 0 ? Math.min(...entries.map((entry) => entry.confidence)) : null,
       issueCount: issues.filter((issue) => issue.context?.pageIndex === page.index).length,
-      fallback: !fallback.has(page.index) ? "none" : policy === "page-image" ? "page-image" : policy === "report" ? "reported" : "required",
+      fallback: !fallbackRequired ? "none" : policy === "page-image" ? "page-image" : policy === "report" ? "reported" : "required",
+      fallbackScope: assessment.scope,
+      fallbackReasons: assessment.reasonCodes,
     };
   });
 }
@@ -254,7 +255,8 @@ export async function buildPdfImportReview(
     adapter,
     base,
   );
-  const pagesRequiringFallback = fallbackPages(analyzed.facts, base);
+  const fallbackAssessments = assessPdfVisualFallbacks(analyzed.facts, base);
+  const pagesRequiringFallback = fallbackAssessmentPageIndexes(fallbackAssessments);
   const withPageImages = scanPolicy === "page-image"
     ? await addPageImages(sourceBytes, adapter, visual.document, visual.evidence, pagesRequiringFallback)
     : { document: visual.document, evidence: visual.evidence };
@@ -262,6 +264,7 @@ export async function buildPdfImportReview(
   const semanticDigest = await digestPdfCanonical({
     factsDigest: analyzed.factsDigest,
     policyRevision: normalizeWithTags ? PDF_TAGGED_POLICY_REVISION : PDF_GEOMETRY_POLICY_REVISION,
+    visualFallbackPolicyRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,
     overrideDigest: override.digest,
     document: sanitizedDocument(override.document),
     evidence: withPageImages.evidence,
@@ -294,6 +297,8 @@ export async function buildPdfImportReview(
     overrideDigest: override.digest,
     target,
     options: { readingOrder, scanPolicy, unsupported, attachSource: options.attachSource ?? false },
+    visualFallbackPolicyRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,
+    fallbackAssessments,
     splitDigest: split.digest,
     issueDigest,
     assetDigests: [...assetDigests].sort(),
@@ -319,7 +324,7 @@ export async function buildPdfImportReview(
       analyzed.facts,
       withPageImages.evidence,
       override.document.issues,
-      new Set(pagesRequiringFallback),
+      fallbackAssessments,
       scanPolicy,
     ),
     split,
@@ -445,7 +450,8 @@ export function renderPdfImportReview(review: PdfImportReviewV1): string {
   lines.push("", "Page outcomes:");
   for (const page of review.pages) {
     const outcomes = Object.entries(page.outcomes).map(([key, value]) => `${key}:${value}`).join(", ") || "no semantic nodes";
-    lines.push(`  Page ${page.pageLabel}: ${page.kind}; ${outcomes}; fallback ${page.fallback}`);
+    const scope = page.fallbackScope === "none" ? "" : `; scope ${page.fallbackScope} (${page.fallbackReasons.join(", ")})`;
+    lines.push(`  Page ${page.pageLabel}: ${page.kind}; ${outcomes}; fallback ${page.fallback}${scope}`);
   }
   if (review.document.issues.length > 0) {
     lines.push("", `Issues (${review.document.issues.length}):`);
