@@ -154,4 +154,19 @@ describe("@atlcli/import-pdf production boundary", () => {
     );
     for (const name of reviewedPdfiumFunctions) expect(declarations).toContain(`${name}:`);
   });
+
+  it("does not couple the existing Extension PDF.js viewer to PDFium import", async () => {
+    const extensionRoot = resolve(packageRoot, "../../apps/extension");
+    const manifest = JSON.parse(await readFile(resolve(extensionRoot, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+    };
+    expect(manifest.dependencies?.["pdfjs-dist"]).toBeDefined();
+    expect(manifest.dependencies?.["@embedpdf/pdfium"]).toBeUndefined();
+    expect(manifest.dependencies?.["@atlcli/import-pdf"]).toBeUndefined();
+
+    const viewerSource = await readFile(resolve(extensionRoot, "utils/pdf/viewer.ts"), "utf8");
+    expect(viewerSource).toContain("pdfjs-dist");
+    expect(viewerSource).not.toContain("@embedpdf/pdfium");
+    expect(viewerSource).not.toContain("@atlcli/import-pdf");
+  });
 });

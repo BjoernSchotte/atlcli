@@ -16,6 +16,7 @@ import { runDocxCase } from "./docx-case.js";
 import { runDocxJobParityCase } from "./docx-job-parity-case.js";
 import { runDocxQualityCase } from "./docx-quality-case.js";
 import { runDocxTemplateIntakeCase } from "./docx-template-intake-case.js";
+import { runImportPdfCase } from "./import-pdf-case.js";
 import { runM1Case } from "./m1-case.js";
 import { runMacroCase } from "./macro-case.js";
 import { runManuscriptCase } from "./manuscript-case.js";
@@ -40,6 +41,7 @@ const RUNNERS: Record<string, () => Promise<unknown>> = {
   "docx-job-parity": runDocxJobParityCase,
   pdf: runPdfCase,
   "pdf-job-parity": runPdfJobParityCase,
+  "import-pdf": runImportPdfCase,
   "pdf-settings": runPdfSettingsCase,
   "pdf-v5": runPdfV5Case,
   "docx-template-intake": runDocxTemplateIntakeCase,

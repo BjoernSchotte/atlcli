@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, join, relative } from "node:path";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf/browser";
+import { PDFIUM_WASM_SHA256 } from "@atlcli/import-pdf/browser-worker";
 
 const NODE_SPECIFIER_RE = /["'`](?:node|bun):[A-Za-z0-9_./-]*["'`]/g;
 const NODE_RUNTIME_RE = /(?<![\w.])Buffer\.[A-Za-z_$]|\bprocess\.(?:env|versions)\b|\brequire\s*\(\s*["'`]|\b__dirname\b|\b__filename\b/g;
@@ -34,6 +35,11 @@ const AGGREGATE_SHIKI_RUNTIME_RES = [
   /\blangs-bundle-full\b/g,
   /["'`]shiki(?:\/(?:langs|themes))?["'`]/g,
 ];
+const IMPORT_ENGINE_BOUNDARY_RES = [
+  /pdfjs-dist/g,
+  /DEFAULT_PDFIUM_WASM_URL/g,
+  /cdn[.]jsdelivr[.]net\/npm\/@embedpdf\/pdfium/gi,
+];
 const DOCX_CODE_FONT_SHA256 =
   "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f";
 
@@ -56,21 +62,34 @@ function matches(text: string, expressions: RegExp[]): string[] {
   return [...findings];
 }
 
+function withoutReviewedEmscriptenBrowserProbe(text: string): string {
+  // @embedpdf/pdfium's browser-only Emscripten wrapper retains one discarded
+  // environment probe even though the Node branch is compiled out. This exact
+  // expression does not import/call Node and evaluates safely in a Worker.
+  // Keep every other process.versions use subject to the Node-runtime ban.
+  return text.replace(
+    /typeof process\s*==\s*["'`]object["'`]\s*&&\s*typeof process[.]versions\s*==\s*["'`]object["'`]\s*&&\s*typeof process[.]versions[.]node\s*==\s*["'`]string["'`]\s*&&\s*process[.]type/gu,
+    "false",
+  );
+}
+
 export function scanHarnessText(text: string): string[] {
+  const reviewed = withoutReviewedEmscriptenBrowserProbe(text);
   const findings = [
-    ...matches(text, [NODE_SPECIFIER_RE, NODE_RUNTIME_RE]),
-    ...matches(text, DYNAMIC_CODE_RES),
-    ...matches(text, REMOTE_EXECUTABLE_RES),
-    ...matches(text, [EXTENSION_RUNTIME_RE]),
-    ...matches(text, ROOT_RELATIVE_RES),
-    ...matches(text, ONIGURUMA_RUNTIME_RES),
-    ...matches(text, AGGREGATE_SHIKI_RUNTIME_RES),
+    ...matches(reviewed, [NODE_SPECIFIER_RE, NODE_RUNTIME_RE]),
+    ...matches(reviewed, DYNAMIC_CODE_RES),
+    ...matches(reviewed, REMOTE_EXECUTABLE_RES),
+    ...matches(reviewed, [EXTENSION_RUNTIME_RE]),
+    ...matches(reviewed, ROOT_RELATIVE_RES),
+    ...matches(reviewed, ONIGURUMA_RUNTIME_RES),
+    ...matches(reviewed, AGGREGATE_SHIKI_RUNTIME_RES),
+    ...matches(reviewed, IMPORT_ENGINE_BOUNDARY_RES),
   ];
   // Shiki grammar chunks are inert JSON payloads. Some grammars list Node
   // globals as source-language keywords; those strings are not runtime use.
   if (
-    text.includes("Object.freeze(JSON.parse(`") &&
-    text.includes('"scopeName"')
+    reviewed.includes("Object.freeze(JSON.parse(`") &&
+    reviewed.includes('"scopeName"')
   ) {
     return findings.filter(
       (finding) => finding !== "__dirname" && finding !== "__filename",
@@ -169,6 +188,12 @@ export function validateHarnessInventory(artifacts: OutputArtifact[]): string[] 
     artifacts,
     "Typst compiler WASM",
     /(?:^|\/)assets\/typst_ts_web_compiler_bg-[^/]+\.wasm$/,
+  ));
+  issues.push(...requireOne(
+    artifacts,
+    "PDFium importer WASM",
+    /(?:^|\/)assets\/pdfium-[^/]+\.wasm$/,
+    PDFIUM_WASM_SHA256,
   ));
   issues.push(...requireOne(
     artifacts,

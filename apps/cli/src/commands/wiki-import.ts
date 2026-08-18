@@ -1884,6 +1884,7 @@ Options:
   --split <mode>    DOCX: heading level 1..6 when given. PDF: auto (default),
                     off, heading:<1..6>, pages:<5..40>, or numeric alias 1..6
   --max-wiki-pages <n>  PDF page-tree cap, 1..200 (default 50)
+  --title-conflict <m>  PDF: fail|rename for planned/existing titles (default fail)
   --scan-policy <mode>  PDF: fail|page-image|report (default fail)
   --reading-order <m>   PDF: auto|tags|geometry (default auto)
   --accept-reported-pages  PDF: acknowledge explicitly omitted reported pages

@@ -1401,11 +1401,11 @@ bun run typecheck
 
 **Work:**
 
-- [ ] Add source/dist/packed Node/Bun conformance and a neutral browser-worker harness for the exact PDFium artifact. Prove the importer does not bundle PDF.js and the viewer does not depend on PDFium.
-- [ ] Run adversarial/no-network/cancellation/resource suites and performance gates.
-- [ ] Verify exact PDFium wrapper/WASM pins, local assets, API report/closure, pack/install matrix, license/provenance, and artifact checksums; run the existing PDF.js viewer dependency/output gates separately.
-- [ ] Document supported source/feature matrices, confidence/fallback language, all options, security/privacy, Cloud/DC evidence labels, troubleshooting, and related topics.
-- [ ] Add minimal and realistic examples without customer data.
+- [x] Add source/dist/packed Node/Bun conformance and a neutral browser-worker harness for the exact PDFium artifact. Prove the importer does not bundle PDF.js and the viewer does not depend on PDFium.
+- [x] Run adversarial/no-network/cancellation/resource suites and performance gates.
+- [x] Verify exact PDFium wrapper/WASM pins, local assets, API report/closure, pack/install matrix, license/provenance, and artifact checksums; run the existing PDF.js viewer dependency/output gates separately.
+- [x] Document supported source/feature matrices, confidence/fallback language, all options, security/privacy, Cloud/DC evidence labels, troubleshooting, and related topics.
+- [x] Add minimal and realistic examples without customer data.
 
 **Verify:**
 

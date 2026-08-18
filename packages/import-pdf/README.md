@@ -13,3 +13,8 @@ owned by terminating that worker/process.
 
 This package is experimental (`0.x`). PDF.js remains the viewer engine in the
 browser extension and is not a dependency of the importer.
+
+The package ships the exact PDFium WASM, wrapper/PDFium license texts,
+provenance tuple, and an explicit third-party-notice gap inventory under
+`@atlcli/import-pdf/licenses/*`. It does not claim an upstream SBOM or a fully
+reproducible PDFium build where the selected distribution provides neither.

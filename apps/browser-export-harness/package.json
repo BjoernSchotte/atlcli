@@ -25,6 +25,7 @@
     "@atlcli/export-fixtures": "workspace:*",
     "@atlcli/export-jobs": "workspace:*",
     "@atlcli/export-wiring": "workspace:*",
+    "@atlcli/import-pdf": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
     "@atlcli/pdf-template-authoring": "workspace:*",

@@ -1155,3 +1155,140 @@ readback, and exact rollback. Data Center is intentionally limited to a
 contract-tested one-page Storage transaction and never silently flattens a
 tree. PDF-10 may now close packaging, browser, security/performance, and user
 documentation gates.
+
+## PDF-10 - Packaging, browser, security, performance, and docs
+
+### Browser and package boundaries
+
+The browser export harness now runs one neutral PDF import case in a dedicated
+module Worker. The production graph loads exactly one same-origin
+`pdfium-*.wasm`, verifies the committed SHA-256 before initialization, analyzes
+the committed untagged fixture through the browser-worker contract, and returns
+only normalized facts and semantic digests. The worker is always terminated.
+The six-case production Playwright suite passed with no foreign request.
+
+Static and emitted-output gates independently prove that the importer graph has
+no PDF.js dependency, default PDFium CDN, Blob worker, dynamic-code escape, or
+direct host use of `@embedpdf/pdfium`. The Extension keeps its separately pinned
+PDF.js viewer and has no dependency on `@atlcli/import-pdf` or PDFium. Its build,
+output scanner, three PDF.js browser tests, and viewer browser test passed
+separately. The browser surface is an engine-neutral capability only; no
+Extension or Forge UI is claimed.
+
+The packed importer contains the locally owned WASM, wrapper license, PDFium
+license text, generated third-party notice, and provenance record. The checks
+bind `@embedpdf/pdfium@2.15.0`, its npm integrity and shasum, signed release
+commit, fork commit, 4,633,788-byte WASM, and SHA-256
+`c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8`.
+The repository NOTICE names the runtime. The provenance record deliberately
+keeps upstream transitive notice reconciliation, an SBOM, and a fully
+reproducible source build visible as production-governance gaps rather than
+claiming evidence that does not exist.
+
+```text
+bun install --frozen-lockfile
+pass, lockfile unchanged
+
+bun run test scripts/pack-check.test.ts
+13 pass, 0 fail, 499 assertions
+
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+source tarball Bun, production file-link Bun, plain Node 22/npm, and Vite 8.1.4
+
+bun run check:browser
+37 browser entrypoints pass
+
+bun run check:browser-export-harness
+pass
+
+bun run test:browser-export-harness
+6 pass, 0 fail
+```
+
+### Security, cancellation, and performance
+
+The importer adversarial suites cover inert JavaScript/actions/attachments,
+encryption, malformed input, page/text/pixel budgets, unsafe links, hidden OCR,
+scan/mixed classification, injected failure after every acquired PDFium handle,
+between-page cancellation, bitmap cleanup, deterministic recovery, and repeated
+WASM memory accounting. Browser output is scanned for network URLs and dynamic
+code; the runtime receives only caller-loaded local bytes.
+
+The fresh-process benchmark constructs but does not commit an exact 25 MiB,
+100-page neutral PDF. Five independent runs met every planned gate:
+
+```text
+analysis p95              173.226042 ms   (budget 30 s)
+first progress p95          5.312042 ms   (budget 500 ms)
+cancellation p95            0.602083 ms   (budget 1 s)
+whole-process peak RSS    561,430,528 B   (budget 750 MiB)
+final WASM plateau         33,685,504 B
+source-page accounting    100 / 100
+semantic repeatability    exact
+post-cancel recovery      deterministic
+```
+
+The ignored benchmark receipt contains only neutral metrics and digests. No
+customer input, extracted customer text, tenant identifier, or live receipt is
+stored in Git.
+
+### Documentation and repository gates
+
+The new user guide documents the tagged/qualified-untagged boundary, explicit
+scan and OCR non-support, native versus fallback tables/figures, default
+`--split auto` behavior and every PDF option, review/confirmation semantics,
+source-attachment privacy, restrictions/governance, Cloud/DC evidence labels,
+troubleshooting, and related topics. It includes a minimal preview and a
+realistic bounded 100-page example using neutral names. Help and the asset
+contract describe the same behavior and packaged WASM ownership.
+
+```text
+bun run typecheck
+pass
+
+bun run build
+34 tasks pass
+
+bun run docs:check
+0 errors, 0 warnings, 0 hints
+
+bun run docs:build
+94 pages built
+
+bun run test
+8,348 pass, 16 documented skips, 1 failure
+
+bun run test specs/import-pdf-mvp/probe/src/probe.test.ts \
+  --test-name-pattern "PDF-00 viewer-only PDF.js baseline"
+1 pass, 0 fail
+```
+
+The sandboxed full run first showed local-server bind failures. Repeating the
+whole suite outside that restriction made all 60 server cases green. The sole
+remaining full-suite failure is the already recorded viewer-only PDF.js probe
+under 697-file parallel load; its exact assertion passed immediately in
+isolation. Every PDFium importer, browser-worker, CLI, package, adversarial,
+DOCX-compatibility, and DC contract test passed in the full run. PDF-10 therefore
+does not misreport the monorepo suite as entirely green.
+
+### Built-CLI Cloud guard and cleanup
+
+After the final production build, the built CLI published a neutral one-page
+untagged fixture to the authorized `mayflower` / `DOCSY` target with a private
+restriction and one neutral label. Publication reached version 2 after verified
+body finalization. Independent built-CLI readback preserved the heading, prose,
+safe link, and list, and an independent label read returned the expected label.
+
+The exact owned page was deleted immediately. Final ID readback returned 404
+and an exact title query returned zero pages. No live ID, URL, title, raw
+receipt, credential, tenant-derived body, or private/customer PDF is committed.
+
+### Decision
+
+PDF-10 is complete. PDFium is locally owned and confined to import capability;
+PDF.js remains the viewer runtime. Source, built, packed, Node/Bun, browser,
+security, performance, docs, and a cleanup-verified built-CLI Cloud guard are
+proved without overclaiming OCR, product UI, Forge hosting, or Data Center live
+certification. PDF-11 may now execute the full neutral Cloud matrix and final
+deterministic Data Center proof.

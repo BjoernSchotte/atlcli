@@ -56,6 +56,21 @@ describe("browser harness boundaries", () => {
     expect(combined).toContain("new Worker(new URL");
   });
 
+  it("keeps PDFium in the isolated import Worker and PDF.js out of the importer graph", () => {
+    const worker = read("src/import-pdf-worker.ts");
+    const importerFiles = [
+      "src/import-pdf-case.ts",
+      "src/import-pdf-worker.ts",
+      "src/import-pdf-worker-protocol.ts",
+    ].map(read).join("\n");
+    expect(worker).toContain('@atlcli/import-pdf/wasm?url&no-inline');
+    expect(worker).toContain('@atlcli/import-pdf/browser-worker');
+    expect(worker).toContain("sameOriginBytes");
+    expect(importerFiles).not.toContain("pdfjs-dist");
+    expect(importerFiles).not.toContain("DEFAULT_PDFIUM_WASM_URL");
+    expect(importerFiles).not.toContain("@embedpdf/pdfium");
+  });
+
   it("keeps every font import static and checks it against the manifest", () => {
     const worker = read("src/pdf-worker.ts");
     const staticFontImports = [...worker.matchAll(/from\s+"@atlcli\/pdf\/fonts\/([^?]+)\?url"/g)]

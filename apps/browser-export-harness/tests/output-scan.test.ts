@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf/browser";
+import { PDFIUM_WASM_SHA256 } from "@atlcli/import-pdf/browser-worker";
 import {
   scanHarnessOutput,
   scanHarnessText,
@@ -34,12 +35,22 @@ describe("harness output content policy", () => {
     ["aggregate Shiki singleton", `const marker = bundle_full_exports`],
     ["aggregate Shiki language map", `import "shiki/langs"`],
     ["aggregate Shiki theme map", `import "shiki/themes"`],
+    ["PDF.js importer dependency", `import "pdfjs-dist"`],
+    ["PDFium default CDN", `const wasm = DEFAULT_PDFIUM_WASM_URL`],
   ])("rejects %s", (_label, source) => {
     expect(scanHarnessText(source).length).toBeGreaterThan(0);
   });
 
   it("allows local relative assets and non-executable document links", () => {
     expect(scanHarnessText(`import "./app.js"; const pdfLink = "https://atlcli.sh/";`)).toEqual([]);
+  });
+
+  it("allows only the exact discarded Emscripten browser environment probe", () => {
+    const probe =
+      "typeof process == 'object' && typeof process.versions == 'object' && " +
+      "typeof process.versions.node == 'string' && process.type;";
+    expect(scanHarnessText(probe)).toEqual([]);
+    expect(scanHarnessText("const version = process.versions.node")).not.toEqual([]);
   });
 
   it("allows Node keyword names inside an inert Shiki grammar payload", () => {
@@ -68,6 +79,11 @@ function completeInventory(): OutputArtifact[] {
     { path: "topology.html", size: 100 },
     { path: "assets/pdf-worker-abc.js", size: 100 },
     { path: "assets/typst_ts_web_compiler_bg-abc.wasm", size: 25_000_000 },
+    {
+      path: "assets/pdfium-abc.wasm",
+      size: 4_633_788,
+      sha256: PDFIUM_WASM_SHA256,
+    },
     {
       path: "assets/JetBrainsMono-Regular-abc.ttf",
       size: 273_900,
@@ -121,6 +137,16 @@ describe("harness runtime inventory", () => {
     expect(validateHarnessInventory(duplicate).join("\n")).toContain(
       "expected exactly one artifact",
     );
+  });
+
+  it("requires exactly one digest-bound PDFium importer WASM", () => {
+    const missing = completeInventory().filter((artifact) => !artifact.path.includes("pdfium-"));
+    expect(validateHarnessInventory(missing).join("\n")).toContain("PDFium importer WASM");
+
+    const tampered = completeInventory().map((artifact) =>
+      artifact.path.includes("pdfium-") ? { ...artifact, sha256: "tampered" } : artifact,
+    );
+    expect(validateHarnessInventory(tampered).join("\n")).toContain("SHA-256");
   });
 
   it("rejects an emitted Oniguruma engine chunk by inventory", () => {
