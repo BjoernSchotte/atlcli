@@ -34,6 +34,10 @@ export function normalizePdfTextFragment(value: string): string {
     .replace(/\u00ad(?=\n|$)/gu, "")
     .replace(/[\t\f\v ]+/gu, " ")
     .replace(/ *\n */gu, " ")
+    // PDF text APIs can surface non-rendering C0/C1 control codes. Confluence
+    // removes them from ADF on write, so discard them at the source boundary
+    // before preview and semantic readback digests are calculated.
+    .replace(/\p{Cc}+/gu, "")
     .normalize("NFC");
 }
 
