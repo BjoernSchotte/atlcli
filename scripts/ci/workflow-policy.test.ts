@@ -635,7 +635,11 @@ describe("CI workflow policy", () => {
     };
     const browser = ci.slice(ci.indexOf("  browser-export-harness:"), ci.indexOf("  required:"));
 
-    expect(browser.match(/bun run --cwd apps\/extension build/g)).toHaveLength(1);
+    expect(browser.match(/bun run build:extension/g)).toHaveLength(1);
+    expect(browser).not.toContain("bun run --cwd apps/extension build");
+    expect(browser).toContain("path: .turbo/cache");
+    expect(browser).toContain("--source browser-harness");
+    expect(browser).toContain("rm -rf .turbo/runs");
     for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
       expect(browser).toContain(`test:${suite}-extension-browser:prebuilt`);
     }
@@ -722,6 +726,12 @@ describe("CI workflow policy", () => {
     expect(staticQuality).toContain("bun run check:browser");
     expect(staticQuality).toContain("bun run build");
     expect(staticQuality).toContain("bun run check:extension-output");
+    expect(staticQuality).toContain("bun scripts/ci/turbo-run-summary.ts");
+    expect(staticQuality).toContain("--source static-quality");
+    expect(staticQuality).toContain("turbo-summary-static-quality-");
+    expect(staticQuality).toContain("path: .turbo/cache");
+    expect(staticQuality).toContain("rm -rf .turbo/runs");
+    expect(staticQuality).not.toContain("path: .turbo\n");
     expect(staticQuality).toContain("Validate duration-aware test inventory");
     expect(staticQuality).toContain("Run package contract tests against the warm build");
     expect(staticQuality).toContain("--group package-contract");
@@ -798,6 +808,8 @@ describe("CI workflow policy", () => {
     expect(telemetry).toContain("if: always()");
     expect(telemetry).toContain("actions/download-artifact@v8");
     expect(telemetry).toContain("pattern: bun-test-junit-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(telemetry).toContain("pattern: turbo-summary-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(telemetry).toContain("--turbo turbo-results");
     expect(telemetry).toContain("'general-3x1'");
     expect(telemetry).toContain("bun scripts/ci/telemetry-summary.ts");
     expect(required).not.toBeNull();

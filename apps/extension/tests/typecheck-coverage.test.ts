@@ -8,7 +8,8 @@ import { EXTENSION_ROOT } from "./build-helper.js";
  * sources. The root tsconfig `include` only globs `**​/src/**`, which the
  * extension (entrypoints/**, utils/**) does not use — so a bare `tsc --noEmit`
  * silently skips the extension. PLAN §2.4 claims root-flow coverage, so the
- * root script must also run the extension's own typecheck.
+ * root script must also select the extension's own typecheck in the shared
+ * Turbo graph.
  */
 describe("root typecheck coverage", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -18,13 +19,10 @@ describe("root typecheck coverage", () => {
 
   it("root `typecheck` runs the extension typecheck too", () => {
     const script: string = rootPkg.scripts.typecheck;
-    expect(script).toContain("tsc --noEmit");
-    // Chains the extension typecheck (directly or via the typecheck:extension
-    // turbo script) so one root command covers the extension workspace.
-    expect(
-      script.includes("typecheck:extension") ||
-        script.includes("--cwd apps/extension")
-    ).toBe(true);
+    expect(script).toStartWith("turbo run typecheck typecheck:root");
+    expect(script).toContain("--filter=//");
+    expect(script).toContain("--filter=@atlcli/extension");
+    expect(rootPkg.scripts["typecheck:root"]).toBe("bunx tsc --noEmit");
   });
 
   it("keeps a dedicated extension typecheck script for CI parity", () => {

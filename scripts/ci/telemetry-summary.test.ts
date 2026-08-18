@@ -52,12 +52,37 @@ describe("CI telemetry summary", () => {
           completed_at: "2026-07-30T10:00:04Z",
         },
       ],
+      turbo: [{
+        schema: 1,
+        source: "quality",
+        runs: [{
+          id: "turbo-run-1",
+          turboVersion: "2.10.11",
+          tasks: [{
+            taskId: "@atlcli/core#build",
+            task: "build",
+            package: "@atlcli/core",
+            hash: "abcdef0123456789",
+            cacheStatus: "HIT",
+            localCache: true,
+            remoteCache: false,
+            timeSavedMs: 250,
+            durationMs: 10,
+            exitCode: 0,
+          }],
+        }],
+      }],
     });
     expect(summary).toMatchObject({
-      schema: 1,
+      schema: 2,
       proofMode: "required",
       files: 2,
       testcases: 2,
+      turbo: {
+        runs: 1,
+        tasks: 1,
+        cacheHits: 1,
+      },
     });
     expect(summary.slowestFiles[0]).toMatchObject({
       file: "pkg/slow.test.ts",
@@ -70,6 +95,7 @@ describe("CI telemetry summary", () => {
       samples: 2,
     });
     expect(telemetryMarkdown(summary)).toContain("legacy-4-shard");
+    expect(telemetryMarkdown(summary)).toContain("Turbo cache: 1 hit / 0 miss");
   });
 
   test("fails closed when two lane artifacts own the same file", () => {

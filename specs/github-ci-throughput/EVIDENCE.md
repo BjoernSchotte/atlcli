@@ -29,6 +29,16 @@ open until the live sample gates in `PLAN.md` are satisfied.
   `upload-artifact@v7`, and `download-artifact@v8`)
 - Windows platform lanes deliberately skip the shared Bun package cache after
   live restores outlasted the complete Linux/browser proof paths
+- Turborepo is pinned to `2.10.11`; repository build and typecheck entrypoints
+  emit run summaries, while CI uploads only the allowlisted sanitized form
+- Turbo cache storage is limited to `.turbo/cache`; raw `.turbo/runs` data is
+  removed after sanitization and never included in the shared cache
+- Root, extension, browser compiler, and browser harness typechecks run in one
+  explicit Turbo graph; the extension build also uses the cached Turbo route
+- Package build hashes use Turbo's Bun lockfile-aware dependency graph instead
+  of globally invalidating every task for each `bun.lock` change
+- Action palette and action registry changes now select the browser harness in
+  addition to their standard package routes
 
 ## PR #139 observed bottleneck
 
@@ -78,9 +88,12 @@ merge proof is repeated.
 | Deterministic LPT lanes and argv-safe runner | Passed focused tests |
 | Workflow dependency and non-required telemetry policy | Passed focused tests |
 | Security attestation dependency-free policy | Passed focused tests |
-| Complete root suite | 7,711 passed, 16 skipped, 0 failed across 611 files (four CI shards) |
+| Complete root suite | 8,266 passed, 16 skipped, 0 failed across 680 files |
 | TypeScript typecheck (root, extension, compiler, harness) | Passed |
-| Complete build | Passed, 27 Turbo tasks |
+| Complete build | Passed, 31 Turbo tasks |
+| Turbo summary sanitizer | Passed against a real Turbo 2.10.11 run; command, paths, inputs, and environment values excluded |
+| Bun lockfile cache scope | Passed isolated workspace proof: unrelated package hash stable, dependency consumer hash changed |
+| Repeated extension build | Passed; second summarized Turbo run was a local cache hit |
 | Full Bun/npm/pnpm consumer proof | 12 passed, 0 failed |
 | Documentation check/build | Passed, 90 pages built |
 | Neutral bundled-Chromium harness | 6 passed, 0 failed |
@@ -88,7 +101,8 @@ merge proof is repeated.
 | Packed MV3 durable-jobs proof | 24 passed, 0 failed |
 | Packed MV3 Rovo visibility proof | 2 passed, 0 failed |
 | Browser/Node shape parity | Passed |
-| Required local Atlassian E2E | Not run: `ATLCLI_E2E_PAGE_ID` is unavailable |
+| Live Atlassian CLI smoke | Passed read-only against the configured `mayflower` profile and `DOCSY` space |
+| Retained-page export E2E | Not run: `ATLCLI_E2E_PAGE_ID` is unavailable |
 
 The checked timing metadata intentionally contains no invented historical file
 durations. Until a live JUnit snapshot is reviewed, new and unmeasured files
@@ -126,9 +140,10 @@ public GitHub Actions runs:
 - ten merge-group equivalence runs after any separately approved queue
   activation.
 
-The repository-required live/read-only Atlassian E2E remains a commit blocker
-until the operator supplies the retained private fixture through the local
-environment. No customer identifier or credential was copied into this file.
+The live/read-only Atlassian CLI path was verified without creating or changing
+tenant resources. The retained-page export suite still requires
+`ATLCLI_E2E_PAGE_ID`; no customer identifier or credential was copied into this
+file.
 
 ## Promotion status
 
@@ -139,7 +154,8 @@ environment. No customer identifier or credential was copied into this file.
 | Successful raw test-log retention reduction | Implemented | JUnit always; raw log only on failure |
 | Duration-aware test topology | Measuring | Required lane remains legacy |
 | System Chrome neutral harness | Canary only | Cannot replace matched Chromium/MV3 proof |
-| Package build reuse | Held | Same-SHA artifact/co-located evidence absent |
+| Local Turbo task reuse | Implemented | Package-aware lockfile hashing, one typecheck graph, extension build caching, and sanitized summaries are covered locally |
+| Cross-run package build reuse | Held | Same-SHA artifact/co-located and remote-cache evidence absent |
 | Selective product routing | Implemented, live validation pending | Conservative dependency closures and fail-open overrides are covered locally; post-change PR evidence is still required |
 | Draft-fast | Implemented, live validation pending | Live PR head/draft state is checked at selection; ready proof is checked again inside the final aggregate |
 | Quality DAG flattening | Implemented | Duplicate publishing proof and reusable aggregate tail removed; pinned Ubuntu Astro runs in parallel while Windows compatibility moves off ordinary PRs |
