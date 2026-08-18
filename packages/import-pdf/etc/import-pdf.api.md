@@ -10,14 +10,33 @@
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 
+// export: charactersForMcids
+export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
+
 // export: classifyPdfDocument
 export declare function classifyPdfDocument(tagged: boolean, pages: readonly Pick<PdfPageFactsV1, "kind">[]): PdfDocumentClassification;
 
 // export: classifyPdfPage
 export declare function classifyPdfPage(text: string, imageCount: number): PdfPageKind;
 
+// export: CorrelatedTaggedText
+export interface CorrelatedTaggedText {
+    text: string;
+    characters: PdfTextCharacterFact[];
+    bbox: PdfNormalizedRect | null;
+    direction: PdfTextDirection;
+    hasUnicodeError: boolean;
+    usedActualText: boolean;
+}
+
+// export: correlateTaggedText
+export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStructureNodeFact): CorrelatedTaggedText;
+
 // export: createBrowserPdfiumFactsAdapter
 export declare function createBrowserPdfiumFactsAdapter(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapter;
+
+// export: descendantMcids
+export declare function descendantMcids(node: PdfStructureNodeFact): number[];
 
 // export: digestPdfCanonical
 export declare function digestPdfCanonical(value: unknown, maxBytes?: number): Promise<string>;
@@ -25,8 +44,29 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
 
+// export: flattenStructure
+export declare function flattenStructure(nodes: readonly PdfStructureNodeFact[]): PdfStructureNodeFact[];
+
+// export: headingHierarchyGap
+export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
+
+// export: indexTaggedStructure
+export declare function indexTaggedStructure(page: PdfPageFactsV1): TaggedStructureIndex;
+
 // export: isPdfImportError
 export declare function isPdfImportError(error: unknown): error is PdfImportError;
+
+// export: isSemanticContainer
+export declare function isSemanticContainer(role: string): boolean;
+
+// export: normalizePdfText
+export declare function normalizePdfText(value: string): string;
+
+// export: normalizePdfTextFragment
+export declare function normalizePdfTextFragment(value: string): string;
+
+// export: normalizeTaggedPdfFacts
+export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfTaggedSemanticsV1>;
 
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
@@ -42,6 +82,12 @@ export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_TAGGED_POLICY_REVISION
+export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
+
+// export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
+export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
 
 // export: PdfAnalysisBudgets
 export interface PdfAnalysisBudgets {
@@ -151,6 +197,18 @@ export interface PdfCompletenessV1 {
     complete: boolean;
 }
 
+// export: PdfDecisionEvidenceV1
+export interface PdfDecisionEvidenceV1 {
+    sourceId: string;
+    targetNodeId?: string;
+    locator: PdfSourceLocatorV1;
+    basis: PdfEvidenceBasis[];
+    confidence: number;
+    decisionCode: string;
+    outcome: ImportOutcome;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION;
+}
+
 // export: PdfDocumentClassification
 export type PdfDocumentClassification = "tagged" | "digital-untagged" | "scan" | "mixed" | "blank" | "encrypted" | "rejected";
 
@@ -170,6 +228,9 @@ export interface PdfEngineCapabilitiesV1 {
     ocr: false;
     activeContentExecution: false;
 }
+
+// export: PdfEvidenceBasis
+export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "image-object" | "operator-list" | "rendered-region" | "ocr";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
@@ -287,6 +348,17 @@ export interface PdfPageFactsV1 {
 // export: PdfPageKind
 export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 
+// export: PdfSourceLocatorV1
+export interface PdfSourceLocatorV1 {
+    pageIndex: number;
+    pageLabel?: string;
+    bbox?: PdfNormalizedRect;
+    structurePath?: string;
+    markedContentIds?: string[];
+    annotationId?: string;
+    objectFingerprint?: string;
+}
+
 // export: PdfStructureAttributeFact
 export interface PdfStructureAttributeFact {
     name: string;
@@ -309,6 +381,28 @@ export interface PdfStructureNodeFact {
     children: PdfStructureNodeFact[];
 }
 
+// export: PdfTaggedPageOutcomeV1
+export interface PdfTaggedPageOutcomeV1 {
+    pageIndex: number;
+    mode: "tagged-native" | "geometry-required";
+    projectedNodeIds: string[];
+    claimedCharacterCount: number;
+    unclaimedCharacterCount: number;
+    corruptTagCount: number;
+}
+
+// export: PdfTaggedSemanticsV1
+export interface PdfTaggedSemanticsV1 {
+    schema: typeof PDF_TAGGED_SEMANTICS_SCHEMA_V1;
+    factsDigest: string;
+    policyRevision: typeof PDF_TAGGED_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    pageOutcomes: PdfTaggedPageOutcomeV1[];
+    requiresGeometryPages: number[];
+    semanticDigest: string;
+}
+
 // export: PdfTextCharacterFact
 export interface PdfTextCharacterFact {
     index: number;
@@ -323,8 +417,53 @@ export interface PdfTextCharacterFact {
     unicodeMapError: boolean;
 }
 
+// export: PdfTextDirection
+export type PdfTextDirection = "ltr" | "rtl" | "neutral";
+
+// export: projectTaggedList
+export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
+
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
+
+// export: safeLinkForCharacter
+export declare function safeLinkForCharacter(character: PdfTextCharacterFact, annotations: readonly PdfAnnotationFact[]): {
+    href: string;
+    annotationId: string;
+} | null;
+
+// export: structureRole
+export declare function structureRole(node: PdfStructureNodeFact): string;
+
+// export: taggedHeadingLevel
+export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
+
+// export: TaggedListProjection
+export interface TaggedListProjection {
+    block: ImportListBlock | null;
+    evidence: PdfDecisionEvidenceV1[];
+    issues: ImportIssue[];
+    claimedCharacterIndexes: number[];
+}
+
+// export: taggedRuns
+export declare function taggedRuns(characters: readonly PdfTextCharacterFact[], annotations: readonly PdfAnnotationFact[], actualText?: string): {
+    runs: ImportRun[];
+    annotationIds: string[];
+};
+
+// export: TaggedStructureIndex
+export interface TaggedStructureIndex {
+    nodes: PdfStructureNodeFact[];
+    mcidOwners: Map<number, string[]>;
+    duplicateMcids: Set<number>;
+}
+
+// export: textDirection
+export declare function textDirection(value: string): PdfTextDirection;
+
+// export: unionRects
+export declare function unionRects(rects: Array<PdfNormalizedRect | null | undefined>): PdfNormalizedRect | null;
 ```
 
 ### Entry point `. (default)`
@@ -333,14 +472,33 @@ export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysis
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 
+// export: charactersForMcids
+export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
+
 // export: classifyPdfDocument
 export declare function classifyPdfDocument(tagged: boolean, pages: readonly Pick<PdfPageFactsV1, "kind">[]): PdfDocumentClassification;
 
 // export: classifyPdfPage
 export declare function classifyPdfPage(text: string, imageCount: number): PdfPageKind;
 
+// export: CorrelatedTaggedText
+export interface CorrelatedTaggedText {
+    text: string;
+    characters: PdfTextCharacterFact[];
+    bbox: PdfNormalizedRect | null;
+    direction: PdfTextDirection;
+    hasUnicodeError: boolean;
+    usedActualText: boolean;
+}
+
+// export: correlateTaggedText
+export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStructureNodeFact): CorrelatedTaggedText;
+
 // export: createPdfiumFactsAdapter
 export declare function createPdfiumFactsAdapter(config: PdfiumAdapterConfig): PdfiumFactsAdapter;
+
+// export: descendantMcids
+export declare function descendantMcids(node: PdfStructureNodeFact): number[];
 
 // export: digestPdfCanonical
 export declare function digestPdfCanonical(value: unknown, maxBytes?: number): Promise<string>;
@@ -348,8 +506,29 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
 
+// export: flattenStructure
+export declare function flattenStructure(nodes: readonly PdfStructureNodeFact[]): PdfStructureNodeFact[];
+
+// export: headingHierarchyGap
+export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
+
+// export: indexTaggedStructure
+export declare function indexTaggedStructure(page: PdfPageFactsV1): TaggedStructureIndex;
+
 // export: isPdfImportError
 export declare function isPdfImportError(error: unknown): error is PdfImportError;
+
+// export: isSemanticContainer
+export declare function isSemanticContainer(role: string): boolean;
+
+// export: normalizePdfText
+export declare function normalizePdfText(value: string): string;
+
+// export: normalizePdfTextFragment
+export declare function normalizePdfTextFragment(value: string): string;
+
+// export: normalizeTaggedPdfFacts
+export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfTaggedSemanticsV1>;
 
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
@@ -365,6 +544,12 @@ export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_TAGGED_POLICY_REVISION
+export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
+
+// export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
+export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
 
 // export: PdfAnalysisBudgets
 export interface PdfAnalysisBudgets {
@@ -474,6 +659,18 @@ export interface PdfCompletenessV1 {
     complete: boolean;
 }
 
+// export: PdfDecisionEvidenceV1
+export interface PdfDecisionEvidenceV1 {
+    sourceId: string;
+    targetNodeId?: string;
+    locator: PdfSourceLocatorV1;
+    basis: PdfEvidenceBasis[];
+    confidence: number;
+    decisionCode: string;
+    outcome: ImportOutcome;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION;
+}
+
 // export: PdfDocumentClassification
 export type PdfDocumentClassification = "tagged" | "digital-untagged" | "scan" | "mixed" | "blank" | "encrypted" | "rejected";
 
@@ -493,6 +690,9 @@ export interface PdfEngineCapabilitiesV1 {
     ocr: false;
     activeContentExecution: false;
 }
+
+// export: PdfEvidenceBasis
+export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "image-object" | "operator-list" | "rendered-region" | "ocr";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
@@ -610,6 +810,17 @@ export interface PdfPageFactsV1 {
 // export: PdfPageKind
 export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 
+// export: PdfSourceLocatorV1
+export interface PdfSourceLocatorV1 {
+    pageIndex: number;
+    pageLabel?: string;
+    bbox?: PdfNormalizedRect;
+    structurePath?: string;
+    markedContentIds?: string[];
+    annotationId?: string;
+    objectFingerprint?: string;
+}
+
 // export: PdfStructureAttributeFact
 export interface PdfStructureAttributeFact {
     name: string;
@@ -632,6 +843,28 @@ export interface PdfStructureNodeFact {
     children: PdfStructureNodeFact[];
 }
 
+// export: PdfTaggedPageOutcomeV1
+export interface PdfTaggedPageOutcomeV1 {
+    pageIndex: number;
+    mode: "tagged-native" | "geometry-required";
+    projectedNodeIds: string[];
+    claimedCharacterCount: number;
+    unclaimedCharacterCount: number;
+    corruptTagCount: number;
+}
+
+// export: PdfTaggedSemanticsV1
+export interface PdfTaggedSemanticsV1 {
+    schema: typeof PDF_TAGGED_SEMANTICS_SCHEMA_V1;
+    factsDigest: string;
+    policyRevision: typeof PDF_TAGGED_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    pageOutcomes: PdfTaggedPageOutcomeV1[];
+    requiresGeometryPages: number[];
+    semanticDigest: string;
+}
+
 // export: PdfTextCharacterFact
 export interface PdfTextCharacterFact {
     index: number;
@@ -646,8 +879,53 @@ export interface PdfTextCharacterFact {
     unicodeMapError: boolean;
 }
 
+// export: PdfTextDirection
+export type PdfTextDirection = "ltr" | "rtl" | "neutral";
+
+// export: projectTaggedList
+export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
+
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
+
+// export: safeLinkForCharacter
+export declare function safeLinkForCharacter(character: PdfTextCharacterFact, annotations: readonly PdfAnnotationFact[]): {
+    href: string;
+    annotationId: string;
+} | null;
+
+// export: structureRole
+export declare function structureRole(node: PdfStructureNodeFact): string;
+
+// export: taggedHeadingLevel
+export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
+
+// export: TaggedListProjection
+export interface TaggedListProjection {
+    block: ImportListBlock | null;
+    evidence: PdfDecisionEvidenceV1[];
+    issues: ImportIssue[];
+    claimedCharacterIndexes: number[];
+}
+
+// export: taggedRuns
+export declare function taggedRuns(characters: readonly PdfTextCharacterFact[], annotations: readonly PdfAnnotationFact[], actualText?: string): {
+    runs: ImportRun[];
+    annotationIds: string[];
+};
+
+// export: TaggedStructureIndex
+export interface TaggedStructureIndex {
+    nodes: PdfStructureNodeFact[];
+    mcidOwners: Map<number, string[]>;
+    duplicateMcids: Set<number>;
+}
+
+// export: textDirection
+export declare function textDirection(value: string): PdfTextDirection;
+
+// export: unionRects
+export declare function unionRects(rects: Array<PdfNormalizedRect | null | undefined>): PdfNormalizedRect | null;
 ```
 
 ### Entry point `./browser-worker`
@@ -656,14 +934,33 @@ export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysis
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 
+// export: charactersForMcids
+export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
+
 // export: classifyPdfDocument
 export declare function classifyPdfDocument(tagged: boolean, pages: readonly Pick<PdfPageFactsV1, "kind">[]): PdfDocumentClassification;
 
 // export: classifyPdfPage
 export declare function classifyPdfPage(text: string, imageCount: number): PdfPageKind;
 
+// export: CorrelatedTaggedText
+export interface CorrelatedTaggedText {
+    text: string;
+    characters: PdfTextCharacterFact[];
+    bbox: PdfNormalizedRect | null;
+    direction: PdfTextDirection;
+    hasUnicodeError: boolean;
+    usedActualText: boolean;
+}
+
+// export: correlateTaggedText
+export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStructureNodeFact): CorrelatedTaggedText;
+
 // export: createBrowserPdfiumFactsAdapter
 export declare function createBrowserPdfiumFactsAdapter(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapter;
+
+// export: descendantMcids
+export declare function descendantMcids(node: PdfStructureNodeFact): number[];
 
 // export: digestPdfCanonical
 export declare function digestPdfCanonical(value: unknown, maxBytes?: number): Promise<string>;
@@ -671,8 +968,29 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
 
+// export: flattenStructure
+export declare function flattenStructure(nodes: readonly PdfStructureNodeFact[]): PdfStructureNodeFact[];
+
+// export: headingHierarchyGap
+export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
+
+// export: indexTaggedStructure
+export declare function indexTaggedStructure(page: PdfPageFactsV1): TaggedStructureIndex;
+
 // export: isPdfImportError
 export declare function isPdfImportError(error: unknown): error is PdfImportError;
+
+// export: isSemanticContainer
+export declare function isSemanticContainer(role: string): boolean;
+
+// export: normalizePdfText
+export declare function normalizePdfText(value: string): string;
+
+// export: normalizePdfTextFragment
+export declare function normalizePdfTextFragment(value: string): string;
+
+// export: normalizeTaggedPdfFacts
+export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfTaggedSemanticsV1>;
 
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
@@ -688,6 +1006,12 @@ export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_TAGGED_POLICY_REVISION
+export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
+
+// export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
+export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
 
 // export: PdfAnalysisBudgets
 export interface PdfAnalysisBudgets {
@@ -797,6 +1121,18 @@ export interface PdfCompletenessV1 {
     complete: boolean;
 }
 
+// export: PdfDecisionEvidenceV1
+export interface PdfDecisionEvidenceV1 {
+    sourceId: string;
+    targetNodeId?: string;
+    locator: PdfSourceLocatorV1;
+    basis: PdfEvidenceBasis[];
+    confidence: number;
+    decisionCode: string;
+    outcome: ImportOutcome;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION;
+}
+
 // export: PdfDocumentClassification
 export type PdfDocumentClassification = "tagged" | "digital-untagged" | "scan" | "mixed" | "blank" | "encrypted" | "rejected";
 
@@ -816,6 +1152,9 @@ export interface PdfEngineCapabilitiesV1 {
     ocr: false;
     activeContentExecution: false;
 }
+
+// export: PdfEvidenceBasis
+export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "image-object" | "operator-list" | "rendered-region" | "ocr";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
@@ -933,6 +1272,17 @@ export interface PdfPageFactsV1 {
 // export: PdfPageKind
 export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 
+// export: PdfSourceLocatorV1
+export interface PdfSourceLocatorV1 {
+    pageIndex: number;
+    pageLabel?: string;
+    bbox?: PdfNormalizedRect;
+    structurePath?: string;
+    markedContentIds?: string[];
+    annotationId?: string;
+    objectFingerprint?: string;
+}
+
 // export: PdfStructureAttributeFact
 export interface PdfStructureAttributeFact {
     name: string;
@@ -955,6 +1305,28 @@ export interface PdfStructureNodeFact {
     children: PdfStructureNodeFact[];
 }
 
+// export: PdfTaggedPageOutcomeV1
+export interface PdfTaggedPageOutcomeV1 {
+    pageIndex: number;
+    mode: "tagged-native" | "geometry-required";
+    projectedNodeIds: string[];
+    claimedCharacterCount: number;
+    unclaimedCharacterCount: number;
+    corruptTagCount: number;
+}
+
+// export: PdfTaggedSemanticsV1
+export interface PdfTaggedSemanticsV1 {
+    schema: typeof PDF_TAGGED_SEMANTICS_SCHEMA_V1;
+    factsDigest: string;
+    policyRevision: typeof PDF_TAGGED_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    pageOutcomes: PdfTaggedPageOutcomeV1[];
+    requiresGeometryPages: number[];
+    semanticDigest: string;
+}
+
 // export: PdfTextCharacterFact
 export interface PdfTextCharacterFact {
     index: number;
@@ -969,8 +1341,53 @@ export interface PdfTextCharacterFact {
     unicodeMapError: boolean;
 }
 
+// export: PdfTextDirection
+export type PdfTextDirection = "ltr" | "rtl" | "neutral";
+
+// export: projectTaggedList
+export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
+
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
+
+// export: safeLinkForCharacter
+export declare function safeLinkForCharacter(character: PdfTextCharacterFact, annotations: readonly PdfAnnotationFact[]): {
+    href: string;
+    annotationId: string;
+} | null;
+
+// export: structureRole
+export declare function structureRole(node: PdfStructureNodeFact): string;
+
+// export: taggedHeadingLevel
+export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
+
+// export: TaggedListProjection
+export interface TaggedListProjection {
+    block: ImportListBlock | null;
+    evidence: PdfDecisionEvidenceV1[];
+    issues: ImportIssue[];
+    claimedCharacterIndexes: number[];
+}
+
+// export: taggedRuns
+export declare function taggedRuns(characters: readonly PdfTextCharacterFact[], annotations: readonly PdfAnnotationFact[], actualText?: string): {
+    runs: ImportRun[];
+    annotationIds: string[];
+};
+
+// export: TaggedStructureIndex
+export interface TaggedStructureIndex {
+    nodes: PdfStructureNodeFact[];
+    mcidOwners: Map<number, string[]>;
+    duplicateMcids: Set<number>;
+}
+
+// export: textDirection
+export declare function textDirection(value: string): PdfTextDirection;
+
+// export: unionRects
+export declare function unionRects(rects: Array<PdfNormalizedRect | null | undefined>): PdfNormalizedRect | null;
 ```
 
 ### Entry point `./node`
@@ -979,11 +1396,27 @@ export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysis
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 
+// export: charactersForMcids
+export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
+
 // export: classifyPdfDocument
 export declare function classifyPdfDocument(tagged: boolean, pages: readonly Pick<PdfPageFactsV1, "kind">[]): PdfDocumentClassification;
 
 // export: classifyPdfPage
 export declare function classifyPdfPage(text: string, imageCount: number): PdfPageKind;
+
+// export: CorrelatedTaggedText
+export interface CorrelatedTaggedText {
+    text: string;
+    characters: PdfTextCharacterFact[];
+    bbox: PdfNormalizedRect | null;
+    direction: PdfTextDirection;
+    hasUnicodeError: boolean;
+    usedActualText: boolean;
+}
+
+// export: correlateTaggedText
+export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStructureNodeFact): CorrelatedTaggedText;
 
 // export: createNodePdfiumFactsAdapter
 export declare function createNodePdfiumFactsAdapter(): Promise<PdfiumFactsAdapter>;
@@ -991,17 +1424,41 @@ export declare function createNodePdfiumFactsAdapter(): Promise<PdfiumFactsAdapt
 // export: createPdfiumFactsAdapter
 export declare function createPdfiumFactsAdapter(config: PdfiumAdapterConfig): PdfiumFactsAdapter;
 
+// export: descendantMcids
+export declare function descendantMcids(node: PdfStructureNodeFact): number[];
+
 // export: digestPdfCanonical
 export declare function digestPdfCanonical(value: unknown, maxBytes?: number): Promise<string>;
 
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
 
+// export: flattenStructure
+export declare function flattenStructure(nodes: readonly PdfStructureNodeFact[]): PdfStructureNodeFact[];
+
+// export: headingHierarchyGap
+export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
+
+// export: indexTaggedStructure
+export declare function indexTaggedStructure(page: PdfPageFactsV1): TaggedStructureIndex;
+
 // export: isPdfImportError
 export declare function isPdfImportError(error: unknown): error is PdfImportError;
 
+// export: isSemanticContainer
+export declare function isSemanticContainer(role: string): boolean;
+
 // export: loadPackagedPdfiumWasm
 export declare function loadPackagedPdfiumWasm(): Promise<Uint8Array>;
+
+// export: normalizePdfText
+export declare function normalizePdfText(value: string): string;
+
+// export: normalizePdfTextFragment
+export declare function normalizePdfTextFragment(value: string): string;
+
+// export: normalizeTaggedPdfFacts
+export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfTaggedSemanticsV1>;
 
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
@@ -1017,6 +1474,12 @@ export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_TAGGED_POLICY_REVISION
+export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
+
+// export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
+export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
 
 // export: PdfAnalysisBudgets
 export interface PdfAnalysisBudgets {
@@ -1126,6 +1589,18 @@ export interface PdfCompletenessV1 {
     complete: boolean;
 }
 
+// export: PdfDecisionEvidenceV1
+export interface PdfDecisionEvidenceV1 {
+    sourceId: string;
+    targetNodeId?: string;
+    locator: PdfSourceLocatorV1;
+    basis: PdfEvidenceBasis[];
+    confidence: number;
+    decisionCode: string;
+    outcome: ImportOutcome;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION;
+}
+
 // export: PdfDocumentClassification
 export type PdfDocumentClassification = "tagged" | "digital-untagged" | "scan" | "mixed" | "blank" | "encrypted" | "rejected";
 
@@ -1145,6 +1620,9 @@ export interface PdfEngineCapabilitiesV1 {
     ocr: false;
     activeContentExecution: false;
 }
+
+// export: PdfEvidenceBasis
+export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "image-object" | "operator-list" | "rendered-region" | "ocr";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
@@ -1262,6 +1740,17 @@ export interface PdfPageFactsV1 {
 // export: PdfPageKind
 export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 
+// export: PdfSourceLocatorV1
+export interface PdfSourceLocatorV1 {
+    pageIndex: number;
+    pageLabel?: string;
+    bbox?: PdfNormalizedRect;
+    structurePath?: string;
+    markedContentIds?: string[];
+    annotationId?: string;
+    objectFingerprint?: string;
+}
+
 // export: PdfStructureAttributeFact
 export interface PdfStructureAttributeFact {
     name: string;
@@ -1284,6 +1773,28 @@ export interface PdfStructureNodeFact {
     children: PdfStructureNodeFact[];
 }
 
+// export: PdfTaggedPageOutcomeV1
+export interface PdfTaggedPageOutcomeV1 {
+    pageIndex: number;
+    mode: "tagged-native" | "geometry-required";
+    projectedNodeIds: string[];
+    claimedCharacterCount: number;
+    unclaimedCharacterCount: number;
+    corruptTagCount: number;
+}
+
+// export: PdfTaggedSemanticsV1
+export interface PdfTaggedSemanticsV1 {
+    schema: typeof PDF_TAGGED_SEMANTICS_SCHEMA_V1;
+    factsDigest: string;
+    policyRevision: typeof PDF_TAGGED_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    pageOutcomes: PdfTaggedPageOutcomeV1[];
+    requiresGeometryPages: number[];
+    semanticDigest: string;
+}
+
 // export: PdfTextCharacterFact
 export interface PdfTextCharacterFact {
     index: number;
@@ -1298,6 +1809,51 @@ export interface PdfTextCharacterFact {
     unicodeMapError: boolean;
 }
 
+// export: PdfTextDirection
+export type PdfTextDirection = "ltr" | "rtl" | "neutral";
+
+// export: projectTaggedList
+export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
+
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
+
+// export: safeLinkForCharacter
+export declare function safeLinkForCharacter(character: PdfTextCharacterFact, annotations: readonly PdfAnnotationFact[]): {
+    href: string;
+    annotationId: string;
+} | null;
+
+// export: structureRole
+export declare function structureRole(node: PdfStructureNodeFact): string;
+
+// export: taggedHeadingLevel
+export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
+
+// export: TaggedListProjection
+export interface TaggedListProjection {
+    block: ImportListBlock | null;
+    evidence: PdfDecisionEvidenceV1[];
+    issues: ImportIssue[];
+    claimedCharacterIndexes: number[];
+}
+
+// export: taggedRuns
+export declare function taggedRuns(characters: readonly PdfTextCharacterFact[], annotations: readonly PdfAnnotationFact[], actualText?: string): {
+    runs: ImportRun[];
+    annotationIds: string[];
+};
+
+// export: TaggedStructureIndex
+export interface TaggedStructureIndex {
+    nodes: PdfStructureNodeFact[];
+    mcidOwners: Map<number, string[]>;
+    duplicateMcids: Set<number>;
+}
+
+// export: textDirection
+export declare function textDirection(value: string): PdfTextDirection;
+
+// export: unionRects
+export declare function unionRects(rects: Array<PdfNormalizedRect | null | undefined>): PdfNormalizedRect | null;
 ```

@@ -1,4 +1,4 @@
-import type { ImportOutcome } from "@atlcli/import-core";
+import type { ImportDocumentV2, ImportOutcome } from "@atlcli/import-core";
 
 export const PDF_FACTS_SCHEMA_V1 = "atlcli.pdf-facts/1" as const;
 export const PDFIUM_ENGINE_VERSION = "2.15.0" as const;
@@ -199,4 +199,60 @@ export interface PdfAnalysisOptions {
 
 export interface PdfFactsAdapter {
   analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV1>;
+}
+
+export const PDF_TAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-tagged-semantics/1" as const;
+export const PDF_TAGGED_POLICY_REVISION = "atlcli.pdf-tagged-policy/1" as const;
+
+export interface PdfSourceLocatorV1 {
+  pageIndex: number;
+  pageLabel?: string;
+  bbox?: PdfNormalizedRect;
+  structurePath?: string;
+  markedContentIds?: string[];
+  annotationId?: string;
+  objectFingerprint?: string;
+}
+
+export type PdfEvidenceBasis =
+  | "structure-tree"
+  | "marked-content"
+  | "outline"
+  | "text-geometry"
+  | "font-evidence"
+  | "annotation"
+  | "image-object"
+  | "operator-list"
+  | "rendered-region"
+  | "ocr";
+
+export interface PdfDecisionEvidenceV1 {
+  sourceId: string;
+  targetNodeId?: string;
+  locator: PdfSourceLocatorV1;
+  basis: PdfEvidenceBasis[];
+  confidence: number;
+  decisionCode: string;
+  outcome: ImportOutcome;
+  analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION;
+}
+
+export interface PdfTaggedPageOutcomeV1 {
+  pageIndex: number;
+  mode: "tagged-native" | "geometry-required";
+  projectedNodeIds: string[];
+  claimedCharacterCount: number;
+  unclaimedCharacterCount: number;
+  corruptTagCount: number;
+}
+
+export interface PdfTaggedSemanticsV1 {
+  schema: typeof PDF_TAGGED_SEMANTICS_SCHEMA_V1;
+  factsDigest: string;
+  policyRevision: typeof PDF_TAGGED_POLICY_REVISION;
+  document: ImportDocumentV2;
+  evidence: PdfDecisionEvidenceV1[];
+  pageOutcomes: PdfTaggedPageOutcomeV1[];
+  requiresGeometryPages: number[];
+  semanticDigest: string;
 }

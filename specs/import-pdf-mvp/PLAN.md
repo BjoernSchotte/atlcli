@@ -1223,10 +1223,10 @@ bun run check:browser
 
 **Work:**
 
-- [ ] Correlate structure content IDs with marked text and normalized source locators.
-- [ ] Implement text normalization, bidi/rotation, heading hierarchy, paragraphs, lists, and safe links.
-- [ ] Detect tag corruption/incompleteness and demote to geometry/fallback rather than trusting `Marked=true`.
-- [ ] Emit evidence/issue/outcome for every projected node and repeated region.
+- [x] Correlate structure content IDs with marked text and normalized source locators.
+- [x] Implement text normalization, bidi/rotation, heading hierarchy, paragraphs, lists, and safe links.
+- [x] Detect tag corruption/incompleteness and demote to geometry/fallback rather than trusting `Marked=true`.
+- [x] Emit evidence/issue/outcome for every projected node and repeated region.
 
 **Verify:**
 

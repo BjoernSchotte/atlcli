@@ -428,3 +428,114 @@ PDF-02 is complete. PDF.js remains outside the import package. Semantic block
 construction, reading-order decisions, tables, figures, and raster fallbacks
 remain owned by PDF-03 through PDF-05; this task establishes only the bounded,
 provenance-bound facts layer they consume.
+
+## PDF-03 - Tagged semantic extraction
+
+### Result
+
+The PDF package now correlates public PDFium structure nodes and MCIDs with
+owned character facts and emits a digest-bound `atlcli.pdf-tagged-semantics/1`
+result. Every accepted target node has a stable source id, page/label,
+structure path, normalized bounding box where available, MCID list, evidence
+basis, confidence, decision code, and one of the shared loss outcomes.
+
+The native tagged slice supports H1-H6, paragraphs, nested ordered/unordered
+lists, NFC text normalization, logical RTL text, rotated character facts, and
+allowlisted external link marks limited to overlapping character regions.
+Explicit heading levels are retained; hierarchy gaps are reported rather than
+silently repaired. Outline presence is not required for heading recognition.
+
+Tables, figures, and unsupported roles are preserved as `reported` evidence
+for their dedicated tasks. They are not called native. Duplicate MCID owners,
+missing structures, empty correlations, invalid Unicode maps, and unclaimed
+visible marked text make the page `geometry-required`. Repeated tagged text is
+retained with distinct source evidence and an explicit repeated-region issue;
+no implicit deduplication occurs.
+
+The semantic normalizer recomputes the facts digest before use and rejects a
+mismatch with `pdf/provenance-drift`. Its output digest covers the source facts
+digest, tagged policy revision, semantic document, evidence, page outcomes,
+and geometry-required page set.
+
+### Tagged goldens and measured gates
+
+```text
+bun run test packages/import-pdf --test-name-pattern tagged
+5 pass, 0 fail, 44 assertions
+
+bun run test packages/import-pdf
+16 pass, 0 fail, 252 assertions
+```
+
+The independent real tagged golden produced the same facts and semantic digest
+across repeated PDFium runs. Its available-family metrics are:
+
+| Metric | Result |
+|---|---:|
+| accounted pages | 1 / 1 (100%) |
+| visible marked characters accounted by native or reported evidence | 127 / 127 (100%) |
+| unreported loss | 0 |
+| duplicate projected text | 0 |
+| exact projected block-order pairs | 1 / 1 (100%) |
+| heading precision / recall | 1.00 / 1.00 |
+| heading-level accuracy | 1 / 1 (100%) |
+| false native table/figure outcomes | 0 |
+| unsafe links promoted | 0 |
+
+The real result projects exactly `heading,paragraph` to both neutral IR and
+ADF, while the tagged table and figure remain reported. Removing its outline
+does not change the H1 result. Deterministic contract goldens additionally
+prove exact H1-to-H3 preservation, logical Arabic text with rotated facts,
+partial safe-link run segmentation, nested ordered/unordered list structure,
+list item/nesting F1 1.00, repeated-region accounting, duplicate-MCID
+demotion, and missing-tree demotion.
+
+This task does not claim the eventual cross-producer release corpus (Word,
+LibreOffice, browser print, and expanded Unicode/layout fixtures). That breadth
+remains a PDF-10 release gate; PDF-03 proves the implemented semantics against
+the current independent real golden and deterministic contract families.
+
+### Repository and packaged-consumer proof
+
+```text
+bun run typecheck
+pass
+
+bun run build
+33 tasks pass
+
+bun run check:browser
+36 browser entrypoints pass
+
+bun install --frozen-lockfile
+pass
+
+bun run test scripts/api-report.test.ts scripts/publishable-deps.test.ts packages/import-pdf
+22 pass, 0 fail, 267 assertions
+
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+```
+
+API reports and closure classification were regenerated from fresh built
+declarations with zero reachable-but-unexported gaps. The real tarball suite
+proved Bun, plain Node 22/npm, and Vite 8.1.4 consumers. In the Vite production
+chunk the packed browser-worker loads the verified local PDFium WASM, analyzes
+the independent tagged golden, and produces title `Structured Garden Report`,
+block types `heading,paragraph`, plus valid facts and semantic digests. The
+existing no-CDN/no-eval and exact-WASM checks remain active.
+
+### Built-CLI live guard
+
+The freshly built CLI previewed a neutral DOCX with one heading, paragraph,
+and list, created a version-1 page in the authorized `mayflower` / `DOCSY`
+environment, and read back the expected Storage body. The exact owned page was
+deleted and a final GET returned 404. The temporary fixture and raw receipt
+were removed; no live ID, URL, credential, or tenant-derived body is committed.
+
+### Decision
+
+PDF-03 is complete for the tagged text/heading/list/link semantics assigned to
+this task. PDF-04 owns conservative geometry order and repeated-region removal;
+PDF-05 and PDF-06 replace the explicit tagged table/figure reports only after
+their separate false-native and fallback gates pass.

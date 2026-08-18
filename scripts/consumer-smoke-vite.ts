@@ -58,7 +58,7 @@ const DOCX_TEMPLATE_BYTES = buildDocx({
   body: para("$scroll.title") + para("$scroll.content"),
 });
 const PDF_IMPORT_FIXTURE_BYTES = readFileSync(
-  join(import.meta.dir, "../specs/import-pdf-mvp/fixtures/simple-untagged.pdf"),
+  join(import.meta.dir, "../specs/import-pdf-mvp/fixtures/complex-tagged.pdf"),
 );
 const PDFIUM_WASM_SHA256 = "c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8";
 
@@ -125,7 +125,11 @@ import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { IMPORT_DOCUMENT_SCHEMA_V2, documentToAdf } from "@atlcli/import-core";
-import { PDF_FACTS_SCHEMA_V1, createBrowserPdfiumFactsAdapter } from "@atlcli/import-pdf/browser-worker";
+import {
+  PDF_FACTS_SCHEMA_V1,
+  createBrowserPdfiumFactsAdapter,
+  normalizeTaggedPdfFacts,
+} from "@atlcli/import-pdf/browser-worker";
 import {
   createPageAttachmentWriterV1,
   storageToBlocks,
@@ -263,6 +267,7 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     const pdfiumWasm = await loadBytes(pdfiumWasmUrl);
     const adapter = createBrowserPdfiumFactsAdapter({ wasmBinary: pdfiumWasm });
     const result = await adapter.analyze(fixtureBytes);
+    const semantics = await normalizeTaggedPdfFacts(result.facts, result.factsDigest);
     return {
       pageCount: result.facts.pageCount,
       complete: result.facts.completeness.complete,
@@ -270,6 +275,9 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       engine: result.facts.provenance.engine,
       wasmSha256: result.facts.provenance.wasmSha256,
       factsDigest: result.factsDigest,
+      semanticDigest: semantics.semanticDigest,
+      titleCandidate: semantics.document.titleCandidate,
+      blockTypes: semantics.document.blocks.map((block) => block.type),
     };
   },
   async compile(loadBytes: LoadBytes) {
@@ -490,6 +498,9 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
         engine: string;
         wasmSha256: string;
         factsDigest: string;
+        semanticDigest: string;
+        titleCandidate?: string;
+        blockTypes: string[];
       }>;
       compile(load: (url: string) => Promise<Uint8Array>): Promise<{
         byteLength: number;
@@ -611,10 +622,13 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   if (
     importResult.pageCount !== 1
     || !importResult.complete
-    || importResult.classification !== "digital-untagged"
+    || importResult.classification !== "tagged"
     || importResult.engine !== "pdfium"
     || importResult.wasmSha256 !== PDFIUM_WASM_SHA256
     || !/^[a-f0-9]{64}$/u.test(importResult.factsDigest)
+    || !/^[a-f0-9]{64}$/u.test(importResult.semanticDigest)
+    || importResult.titleCandidate !== "Structured Garden Report"
+    || importResult.blockTypes.join(",") !== "heading,paragraph"
   ) {
     throw new Error(
       `vite smoke PDF import produced implausible facts: ${JSON.stringify(importResult)}`,
