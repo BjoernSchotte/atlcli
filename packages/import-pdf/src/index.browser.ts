@@ -9,5 +9,8 @@ export * from "./headings.js";
 export * from "./lists.js";
 export * from "./links.js";
 export * from "./normalize.js";
+export * from "./reading-order.js";
+export * from "./repeated-regions.js";
+export * from "./untagged.js";
 export { createBrowserPdfiumFactsAdapter } from "./adapter/pdfium-browser.js";
 export type { PdfiumAdapterConfig, PdfiumFactsAdapter } from "./adapter/contracts.js";

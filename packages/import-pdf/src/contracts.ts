@@ -203,6 +203,8 @@ export interface PdfFactsAdapter {
 
 export const PDF_TAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-tagged-semantics/1" as const;
 export const PDF_TAGGED_POLICY_REVISION = "atlcli.pdf-tagged-policy/1" as const;
+export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-untagged-semantics/1" as const;
+export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as const;
 
 export interface PdfSourceLocatorV1 {
   pageIndex: number;
@@ -234,7 +236,7 @@ export interface PdfDecisionEvidenceV1 {
   confidence: number;
   decisionCode: string;
   outcome: ImportOutcome;
-  analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION;
+  analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION;
 }
 
 export interface PdfTaggedPageOutcomeV1 {
@@ -254,5 +256,28 @@ export interface PdfTaggedSemanticsV1 {
   evidence: PdfDecisionEvidenceV1[];
   pageOutcomes: PdfTaggedPageOutcomeV1[];
   requiresGeometryPages: number[];
+  semanticDigest: string;
+}
+
+export interface PdfUntaggedPageOutcomeV1 {
+  pageIndex: number;
+  mode: "geometry-native" | "fallback-required";
+  projectedNodeIds: string[];
+  columnCount: number;
+  sourceFragmentCount: number;
+  suppressedFragmentCount: number;
+  accountedCharacterCount: number;
+  unaccountedCharacterCount: number;
+  qualificationReasons: string[];
+}
+
+export interface PdfUntaggedSemanticsV1 {
+  schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V1;
+  factsDigest: string;
+  policyRevision: typeof PDF_GEOMETRY_POLICY_REVISION;
+  document: ImportDocumentV2;
+  evidence: PdfDecisionEvidenceV1[];
+  pageOutcomes: PdfUntaggedPageOutcomeV1[];
+  requiresFallbackPages: number[];
   semanticDigest: string;
 }

@@ -539,3 +539,96 @@ PDF-03 is complete for the tagged text/heading/list/link semantics assigned to
 this task. PDF-04 owns conservative geometry order and repeated-region removal;
 PDF-05 and PDF-06 replace the explicit tagged table/figure reports only after
 their separate false-native and fallback gates pass.
+
+## PDF-04 - Conservative untagged reading order
+
+### Result
+
+The PDF package now normalizes qualified digital-untagged pages under the
+explicit `atlcli.pdf-geometry-policy/1` revision. The exported immutable policy
+pins the column, line, fragment-gap, overlap, heading, and rotation thresholds,
+and the semantic digest covers both that revision and the exact source-facts
+digest.
+
+The implementation deterministically fragments and orders characters into
+lines and blocks, supports at most two proven columns, suppresses only exact
+overlapping duplicates, removes repeated top/bottom furniture only after a
+cross-page threshold is met, and derives headings and one-level nested lists
+from measured evidence. Safe URI annotations are projected only over their
+overlapping text. Logical RTL text is preserved. Conflicting overlap, more than
+two columns, non-horizontal text, invalid Unicode mapping, scan/mixed pages,
+and other ambiguous layouts emit explicit `fallback-required` page outcomes
+with no native semantic blocks.
+
+Every fragment is either projected or represented by approximated/reported
+evidence. Repeated regions, page-number furniture, exact duplicates, unsafe
+links, and every rejected geometry decision therefore remain visible in the
+evidence ledger rather than disappearing silently.
+
+### Goldens and measured gates
+
+```text
+bun run test packages/import-pdf --test-name-pattern untagged
+4 pass, 0 fail, 44 assertions
+
+bun run test packages/import-pdf
+20 pass, 0 fail, 296 assertions
+```
+
+| Family | Measured result |
+|---|---|
+| simple untagged | 1/1 page qualified; exact `heading,paragraph,paragraph,paragraph,heading,list`; three native list items; safe link retained; zero fallback pages |
+| two-column | exact title followed by all 12 left-column and all 12 right-column lines; 25 blocks total; zero duplicates or fallback pages |
+| heading-rich 100-page | 100/100 page outcomes; four deterministic heading roots; zero unassigned pages |
+| heading-poor 100-page | 100/100 page outcomes and body paragraphs; 100 distinct page tokens retained; repeated headers removed; zero invented headings |
+| negative layouts | conflicting overlap, three-column geometry, and rotation produce zero native blocks; exact overlap is explicitly approximated; unsafe links are not promoted |
+| RTL contract | logical RTL text remains qualified and unchanged |
+
+The focused API/package suite completed with 26 passing tests and 311
+assertions. The current corpus does not yet establish the broader
+cross-producer release matrix; that remains a PDF-10 gate.
+
+### Repository and packaged-consumer proof
+
+```text
+bun run typecheck
+pass
+
+bun run build
+33 tasks pass
+
+bun run check:browser
+36 browser entrypoints pass
+
+bun install --frozen-lockfile
+pass
+
+bun run test scripts/api-report.test.ts scripts/publishable-deps.test.ts packages/import-pdf
+26 pass, 0 fail, 311 assertions
+
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+```
+
+Fresh declarations produced matching API and closure reports with no hidden
+public type. The packed Bun, filesystem-link, plain Node 22/npm, and Vite 8.1.4
+consumers remain green. The Vite production case uses the exact local PDFium
+WASM to analyze both neutral tagged and untagged PDFs. The untagged case yields
+title `Quarterly Garden Notes`, the expected six-block sequence, no fallback
+page, and a stable 64-character semantic digest; the existing no-CDN/no-eval
+and exact-WASM checks remain active.
+
+### Built-CLI live guard
+
+The freshly built CLI previewed and published the existing neutral generated
+DOCX in the authorized `mayflower` / `DOCSY` environment. Readback preserved
+the four headings, table, image attachment, caption, and repeated body text.
+The exact owned page was deleted and the final GET returned 404. No live ID,
+URL, raw receipt, credential, or tenant-derived body is committed.
+
+### Decision
+
+PDF-04 is complete for conservative digital-untagged ordering, repeated-region
+handling, overlap suppression, basic heading/list evidence, and explicit
+fallback. Tables and figures remain non-native until PDF-05/PDF-06 clear their
+separate evidence and false-native gates.

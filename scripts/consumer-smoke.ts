@@ -450,8 +450,10 @@ import {
   PDF_FACTS_SCHEMA_V1,
   createPdfiumFactsAdapter,
   normalizeTaggedPdfFacts,
+  normalizeUntaggedPdfFacts,
   type PdfFactsV1,
   type PdfTaggedSemanticsV1,
+  type PdfUntaggedSemanticsV1,
 } from "@atlcli/import-pdf";
 import { renderDiagram, type DiagramRenderResult } from "@atlcli/diagram";
 import type { AtlcliPlugin } from "@atlcli/plugin-api";
@@ -500,6 +502,7 @@ const surfaces: unknown[] = [
   PDF_FACTS_SCHEMA_V1,
   createPdfiumFactsAdapter,
   normalizeTaggedPdfFacts,
+  normalizeUntaggedPdfFacts,
   renderDiagram,
   resolveMacroBlocks,
   packTemplate,
@@ -524,6 +527,7 @@ const _importDocument: ImportDocumentV2 = {
 };
 const _pdfFacts: PdfFactsV1 | null = null;
 const _pdfTagged: PdfTaggedSemanticsV1 | null = null;
+const _pdfUntagged: PdfUntaggedSemanticsV1 | null = null;
 const _extraTypes: [DiagramRenderResult, AtlcliPlugin, TemplateManifest] | null = null;
 void _extraTypes;
 const _envParts: [TemplateSource, OutputSink, PdfExportEnv, PdfCompilePort, PdfCompileResult, RunPdfExportInput, BrowserPdfCompilerAssets] | null = null;
@@ -531,6 +535,7 @@ void surfaces;
 void _importDocument;
 void _pdfFacts;
 void _pdfTagged;
+void _pdfUntagged;
 void _envParts;
 export {};
 `;

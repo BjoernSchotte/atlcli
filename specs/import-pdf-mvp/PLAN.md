@@ -1247,9 +1247,9 @@ bun run typecheck
 
 **Work:**
 
-- [ ] Implement deterministic lines/blocks/columns, overlap suppression, repeated-region detection, and heading/list evidence.
-- [ ] Qualify only layouts that meet thresholds; ambiguous layouts use fallback/report/blocker.
-- [ ] Make every heuristic revision explicit in the canonical plan.
+- [x] Implement deterministic lines/blocks/columns, overlap suppression, repeated-region detection, and heading/list evidence.
+- [x] Qualify only layouts that meet thresholds; ambiguous layouts use fallback/report/blocker.
+- [x] Make every heuristic revision explicit: the completed slice is pinned to `atlcli.pdf-geometry-policy/1`, whose immutable thresholds are exported as `PDF_GEOMETRY_POLICY_V1` and covered by the canonical semantic digest.
 
 **Verify:**
 
