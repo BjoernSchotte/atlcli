@@ -837,3 +837,116 @@ PDF-06 is complete. Native raster extraction is limited to proved one-to-one
 objects; vector/composite and weak table semantics retain visible fidelity only
 through bounded, explicitly attached rendered regions. PDF-07 may now expose
 these decisions in the review-first CLI vertical slice.
+
+## PDF-07 - Review, overrides, and CLI PDF vertical slice
+
+### Result
+
+`wiki import` now routes one local file, stdin with explicit `--format`, or an
+exact Confluence attachment by suffix plus byte signature. Explicit
+`--format docx|pdf` must agree with the bytes. The PDF path is dynamically
+loaded, so existing DOCX invocations do not initialize PDFium or read its WASM.
+DOCX keeps its shipped syntax, preview, batch, recipe, update, and publication
+behavior; PDF-only and DOCX-only options fail on the wrong source instead of
+being ignored.
+
+The PDF vertical slice loads the exact local PDFium WASM from the built asset,
+analyzes and normalizes the source, materializes proved figures/fallbacks, and
+returns either a terminal review or `atlcli.pdf-import-review/1` standard JSON.
+The standard report contains page classification/outcomes/confidence, target
+capability evidence, block counts and heading outline, table/figure/asset
+summaries, sanitized review locators, issues, requested/resolved split policy,
+per-target-page estimates, rollback scope, and facts/semantic/issues/split/plan
+digests. It intentionally omits raw facts, block bodies, and asset bytes.
+
+`atlcli.pdf-import-overrides/1` is source-SHA-bound and limited to four reviewed
+semantic operations: heading level, author alt text, title from selected
+extracted text, and deterministic top-level reordering. The 256 KiB / 200
+operation parser uses YAML core schema, duplicate-key and zero-alias parsing,
+exact field allowlists, control-character and length checks, prototype-key
+rejection, conflict checks, and stale/unknown source-ID rejection. It cannot
+inject ADF, Storage, HTML, scripts, URLs, OCR text, paths, or remote assets.
+
+### Split-policy proof
+
+`atlcli.pdf-split-policy/1` implements `auto` (default), `off`,
+`heading:<1..6>` plus numeric alias, and `pages:<5..40>`. The default one-page
+threshold is 20 source pages below editability caution; explicit one-page mode
+has an absolute 40-source-page ceiling. The default/absolute wiki-page caps are
+50/200. Every plan assigns each physical source page exactly once, keeps
+multi-page atomic blocks together, reports shifted boundaries, and includes the
+requested policy in the canonical plan digest.
+
+| Neutral golden | Resolved result |
+|---|---|
+| simple untagged, 1 page | one wiki page; one exact source assignment |
+| complex tagged, 1 page | one wiki page; one native table and one native raster figure |
+| heading-rich, 100 pages | root index plus 8 content pages; four 20-page heading pages with four 5-page range children; max content range 20 |
+| heading-poor, 100 pages | root index plus five flat 20-page range children |
+| synthetic 12-page atomic table | nominal 5-page boundary shifts to 7/5; table is not split |
+| scan | default `fail` blocker; explicit `page-image` creates one bounded PNG and accessible-text warning |
+
+Both 100-page goldens have 100 sorted assignments, no duplicate/unassigned
+page, no blocker, and no one-source-page-per-wiki-page expansion. `--split off`
+rejects 100 pages. A resolved count over `--max-wiki-pages` remains previewable
+but blocks confirmation; the 200-page absolute transaction limit rejects.
+
+### Tests and packaged runtime
+
+```text
+bun run test packages/import-pdf apps/cli/src/commands/wiki-import.test.ts apps/cli/src/commands/wiki-import-pdf.test.ts
+57 pass, 0 fail, 525 assertions
+
+bun run test scripts/api-report.test.ts scripts/publishable-deps.test.ts packages/import-pdf
+44 pass, 0 fail, 452 assertions
+
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+
+bun run typecheck
+pass
+
+bun run build
+33 tasks pass
+
+bun run check:browser
+36 browser entrypoints pass
+```
+
+Fresh API and closure reports contain no reachable-but-unexported gaps. Packed
+Bun, production filesystem-link Bun, plain Node 22/npm, and Vite 8.1.4 all run
+their real DOCX and PDF smokes. The freshly built CLI emits a local
+`pdfium-*.wasm`; its neutral tagged PDF preview reports one heading, one native
+table, one native raster figure, one source assignment, no blocker, and stable
+facts/semantic/issues/split/plan digests. The plan's illustrative
+`feature-zoo.pdf` filename does not exist in the committed PDF-00 corpus, so the
+actual built-CLI gate uses the richer committed `complex-tagged.pdf` golden.
+
+### Built-CLI live guards
+
+The freshly built CLI published an existing neutral generated DOCX in the
+authorized `mayflower` / `DOCSY` environment. Readback preserved its heading,
+paragraph, and list at version 1. The exact returned owned page was deleted;
+final GET returned 404 and an exact title CQL query returned zero results.
+
+The built PDF command then analyzed a neutral one-page PDF under `--confirm`
+with the same authorized target. PDF-07 deliberately has no publication seam:
+it returned the stable validation message that publication waits for the shared
+transaction/readback task, included the plan digest, and made no write. An exact
+title CQL query returned zero results. No live ID, URL, raw receipt, credential,
+tenant-derived body, or private PDF is committed.
+
+The full repository suite outside the sandbox completed 8,316 tests with 16
+documented skips and one failure in the pre-existing viewer-only PDF.js
+baseline under full-suite concurrency. The complete importer probe, including
+that exact PDF.js assertion, then passed immediately in isolation (8 pass,
+0 fail, 277 assertions). All PDF-07 importer and CLI tests passed in the full
+run. This task therefore does not claim a fully green monorepo run, and keeps
+the unrelated concurrency-sensitive viewer probe visible.
+
+### Decision
+
+PDF-07 is complete. Review and split planning are real and digest-bound, while
+confirmed PDF publication remains fail-closed until PDF-08 factors the shared
+transaction and strengthens semantic readback. This prevents a preview-only
+vertical slice from claiming mutation safety it has not yet implemented.

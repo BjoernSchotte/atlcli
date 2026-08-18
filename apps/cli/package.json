@@ -21,6 +21,7 @@
     "@atlcli/export-wiring": "workspace:*",
     "@atlcli/import-core": "workspace:*",
     "@atlcli/import-docx": "workspace:*",
+    "@atlcli/import-pdf": "workspace:*",
     "@atlcli/jira": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",

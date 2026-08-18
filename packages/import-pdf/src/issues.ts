@@ -13,6 +13,8 @@ export type PdfImportErrorCode =
   | "pdf/engine-failure"
   | "pdf/provenance-drift"
   | "pdf/asset-request-invalid"
+  | "pdf/override-invalid"
+  | "pdf/split-policy-invalid"
   | "pdf/incomplete";
 
 export class PdfImportError extends Error {

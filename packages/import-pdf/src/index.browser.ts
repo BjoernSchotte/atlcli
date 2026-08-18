@@ -15,5 +15,8 @@ export * from "./untagged.js";
 export * from "./tables.js";
 export * from "./fallbacks.js";
 export * from "./figures.js";
+export * from "./overrides.js";
+export * from "./split.js";
+export * from "./review.js";
 export { createBrowserPdfiumFactsAdapter } from "./adapter/pdfium-browser.js";
 export type { PdfiumAdapterConfig, PdfiumFactsAdapter } from "./adapter/contracts.js";

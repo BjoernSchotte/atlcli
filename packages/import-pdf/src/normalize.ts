@@ -240,7 +240,10 @@ export async function normalizeTaggedPdfFacts(
   }
   const blocks: ImportBlock[] = [];
   const evidence: PdfDecisionEvidenceV1[] = [];
-  const issues: ImportIssue[] = facts.issues.map((issue) => ({ ...issue }));
+  const issues: ImportIssue[] = facts.issues.map(({ pageIndex, ...issue }) => ({
+    ...issue,
+    ...(pageIndex === undefined ? {} : { context: { ...issue.context, pageIndex } }),
+  }));
   const pageOutcomes: PdfTaggedPageOutcomeV1[] = [];
   const requiresGeometryPages: number[] = [];
   let previousHeadingLevel: number | null = null;

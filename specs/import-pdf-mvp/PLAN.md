@@ -1320,11 +1320,11 @@ bun run typecheck
 
 **Work:**
 
-- [ ] Add format routing/magic validation while preserving existing DOCX syntax.
-- [ ] Implement PDF flags, standard JSON report, terminal preview, issue/confidence/page summaries, and digest binding.
-- [ ] Implement hardened `atlcli.pdf-import-overrides/1`.
-- [ ] Implement `PdfSplitPolicyV1`, default `auto`, all flag validation, deterministic one-page/tree resolution, root-index/range titles, source-page accounting, limits, and target capability summary.
-- [ ] Reject DOCX-only/PDF-only flags on the wrong source.
+- [x] Add format routing/magic validation while preserving existing DOCX syntax.
+- [x] Implement PDF flags, standard JSON report, terminal preview, issue/confidence/page summaries, and digest binding.
+- [x] Implement hardened `atlcli.pdf-import-overrides/1`.
+- [x] Implement `PdfSplitPolicyV1`, default `auto`, all flag validation, deterministic one-page/tree resolution, root-index/range titles, source-page accounting, limits, and target capability summary.
+- [x] Reject DOCX-only/PDF-only flags on the wrong source.
 
 **Verify:**
 

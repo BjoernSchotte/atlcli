@@ -79,6 +79,26 @@ interface RecipeInfo {
   source: "repo" | "user";
 }
 
+const PDF_ONLY_FLAGS = [
+  "scan-policy",
+  "accept-reported-pages",
+  "reading-order",
+  "attach-source",
+  "max-wiki-pages",
+] as const;
+
+function rejectPdfOnlyFlagsForDocx(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+): void {
+  const found = PDF_ONLY_FLAGS.filter((flag) => hasFlag(flags, flag));
+  if (found.length > 0) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `PDF-only option(s) cannot be used with DOCX: ${found.map((flag) => `--${flag}`).join(", ")}.`, {
+      flags: found,
+    });
+  }
+}
+
 /** Load `--recipe <file>` / `--recipe-id <id>` into a policy layer. */
 async function loadRecipeLayer(
   flags: Record<string, string | boolean | string[]>,
@@ -210,6 +230,35 @@ export async function handleWikiImport(
     return;
   }
 
+  if (hasFlag(flags, "help")) {
+    output(importHelp(), opts);
+    return;
+  }
+  if (hasFlag(flags, "confirm") && hasFlag(flags, "dry-run")) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--confirm and --dry-run are mutually exclusive.", {});
+  }
+
+  const requestedFormat = getFlag(flags, "format");
+  if (hasFlag(flags, "format") && requestedFormat === undefined) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--format requires docx or pdf.", {});
+  }
+  if (requestedFormat && requestedFormat !== "docx" && requestedFormat !== "pdf") {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--format must be docx or pdf.", {});
+  }
+  const candidateName = getFlag(flags, "attachment") ?? args[0];
+  const inferredFormat = candidateName?.toLowerCase().endsWith(".pdf")
+    ? "pdf"
+    : candidateName?.toLowerCase().endsWith(".docx")
+      ? "docx"
+      : undefined;
+  const format = requestedFormat ?? inferredFormat;
+  if (format === "pdf") {
+    const { handlePdfWikiImport } = await import("./wiki-import-pdf.js");
+    await handlePdfWikiImport(args, flags, opts);
+    return;
+  }
+  rejectPdfOnlyFlagsForDocx(flags, opts);
+
   const manifestPath = getFlag(flags, "manifest");
   if (manifestPath) {
     await handleManifestBatch(manifestPath, flags, opts);
@@ -232,7 +281,7 @@ export async function handleWikiImport(
   }
 
   // Batch mode: a directory, or several files (specs/import-docx/010 slice).
-  if (!fromPage) {
+  if (!fromPage && file !== "-") {
     const batchFiles = resolveBatchFiles(args, opts);
     if (batchFiles) {
       await handleBatchImport(batchFiles, flags, opts);
@@ -241,8 +290,8 @@ export async function handleWikiImport(
   }
 
   const sourceName = file ?? attachmentName!;
-  if (!sourceName.toLowerCase().endsWith(".docx")) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, "Only .docx files are supported.", { file: sourceName });
+  if (!sourceName.toLowerCase().endsWith(".docx") && requestedFormat !== "docx") {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Import supports .docx or .pdf; use --format for stdin or an extensionless input.", { file: sourceName });
   }
 
   const confirm = hasFlag(flags, "confirm");
@@ -312,6 +361,9 @@ export async function handleWikiImport(
       attachmentId: attachment.id,
       version: attachment.version,
     };
+  } else if (file === "-") {
+    bytes = new Uint8Array(readFileSync(0));
+    source = { kind: "file", path: "-" };
   } else {
     try {
       bytes = new Uint8Array(readFileSync(file!));
@@ -324,6 +376,9 @@ export async function handleWikiImport(
   const recipe = await loadRecipeLayer(flags, opts);
   const policy = resolvePolicyFromFlags(flags, opts, recipe.layer);
   let doc: ImportedDocument;
+  if (bytes.byteLength < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Format mismatch: selected DOCX input does not have an OOXML ZIP byte signature.", {});
+  }
   try {
     doc = parseDocx(bytes, {
       styleMappings: policy.styleMappings,
@@ -1972,23 +2027,32 @@ function renderTree(plan: ImportPagePlan, depth: number): string {
 }
 
 function importHelp(): string {
-  return `atlcli wiki import <file.docx> [options]
+  return `atlcli wiki import <file.docx|file.pdf> [options]
 atlcli wiki import <dir-or-files…> [options]           (batch)
-atlcli wiki import --from-page <id> --attachment <name.docx> [options]
+atlcli wiki import --from-page <id> --attachment <name.docx|name.pdf> [options]
 
-Semantic DOCX import to a new Confluence Cloud page (review-first).
+Semantic DOCX/PDF import to Confluence page(s), review-first.
 
 Without --confirm the command only previews: block counts, heading outline,
-issues, and the digest of the exact ADF payload a confirmed run publishes.
-The source is a local file, or a DOCX already attached to a Confluence page.
+issues, page-tree resolution, and the digest-bound publication plan.
+PDF defaults to --split auto: short, editable PDFs stay on one page; longer
+PDFs become a bounded page tree instead of one oversized wiki page.
 
 Options:
-  --from-page <id>       Source: page id carrying the DOCX attachment
+  --format <kind>        docx|pdf; required for stdin and extensionless input
+  --from-page <id>       Source: page id carrying the source attachment
   --attachment <name>    Source: exact attachment file name on that page
   --space <KEY>     Target space key (default: profile space)
-  --title <title>   Page title (default: first Heading 1, else file name)
+  --title <title>   Page title (DOCX: first Heading 1; PDF: file name)
   --parent <id>     Parent page id
-  --split <1|2>     Split into a page tree at heading levels 1 (or 1+2)
+  --split <mode>    DOCX: heading level 1..6 when given. PDF: auto (default),
+                    off, heading:<1..6>, pages:<5..40>, or numeric alias 1..6
+  --max-wiki-pages <n>  PDF page-tree cap, 1..200 (default 50)
+  --scan-policy <mode>  PDF: fail|page-image|report (default fail)
+  --reading-order <m>   PDF: auto|tags|geometry (default auto)
+  --accept-reported-pages  PDF: acknowledge explicitly omitted reported pages
+  --attach-source       PDF: also retain the original PDF (default off)
+  --dry-run             Preview only; never prompt or write
   --skip-existing   Batch: skip files whose titles already exist (resume)
   --update-page <id>      Reimport INTO this existing page (keeps id/URL/history)
   --expect-version <n>    Required with --update-page --confirm (lost-update guard)
@@ -2002,7 +2066,7 @@ Options:
                           paragraph|heading-1..6|blockquote|code
   --revisions <mode>      accept|reject tracked changes (default accept)
   --unsupported <mode>    report|fail on lossy constructs (default report)
-  --overrides <file>      Override file (atlcli.docx-import-overrides/1, YAML/JSON)
+  --overrides <file>      Format-specific digest-bound override file (YAML/JSON)
   --recipe <file>         Apply a recipe file (atlcli.docx-import-recipe/1)
   --recipe-id <id>        Apply a catalog recipe (.atlcli/import-recipes/, ~/.atlcli/…)
 
@@ -2017,5 +2081,7 @@ Recipe commands:
 Examples:
   atlcli wiki import handbook.docx --space DOCSY
   atlcli wiki import handbook.docx --space DOCSY --parent 12345 --confirm
+  atlcli wiki import handbook.pdf --space DOCSY
+  atlcli wiki import handbook.pdf --space DOCSY --split pages:20 --max-wiki-pages 25
 `;
 }

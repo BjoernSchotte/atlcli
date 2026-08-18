@@ -13,8 +13,34 @@ export declare function analyzeGeometryReadingOrder(page: PdfPageFactsV1, ignore
 // export: analyzeUntaggedTable
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
 
+// export: AppliedPdfImportOverridesV1
+export interface AppliedPdfImportOverridesV1 {
+    document: ImportDocumentV2;
+    titleCandidate?: string;
+    digest: string;
+    applied: Array<{
+        kind: PdfImportOverrideOperationV1["kind"];
+        sourceId: string;
+    }>;
+}
+
+// export: applyPdfImportOverrides
+export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
+
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
+
+// export: buildPdfImportReview
+export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
+    target: PdfReviewTargetV1;
+    splitPolicy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+    readingOrder?: PdfReadingOrderModeV1;
+    scanPolicy?: PdfScanPolicyV1;
+    unsupported?: "report" | "fail";
+    attachSource?: boolean;
+    overrides?: ParsedPdfImportOverridesV1;
+}): Promise<PdfImportReviewV1>;
 
 // export: charactersForMcids
 export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
@@ -90,10 +116,24 @@ export declare function normalizePdfTextFragment(value: string): string;
 export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfTaggedSemanticsV1>;
 
 // export: normalizeUntaggedPdfFacts
-export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfUntaggedSemanticsV1>;
+export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string, options?: {
+    allowTagged?: boolean;
+}): Promise<PdfUntaggedSemanticsV1>;
 
 // export: pageHasQualifiedDigitalLayout
 export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+
+// export: ParsedPdfImportOverridesV1
+export interface ParsedPdfImportOverridesV1 {
+    overrides: PdfImportOverridesV1;
+    digest: string;
+}
+
+// export: parsePdfImportOverrides
+export declare function parsePdfImportOverrides(text: string, expectedSourceSha256: string): Promise<ParsedPdfImportOverridesV1>;
+
+// export: parsePdfSplitPolicy
+export declare function parsePdfSplitPolicy(split?: string, maxWikiPagesText?: string): PdfSplitPolicyV1;
 
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
@@ -146,6 +186,42 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
+
+// export: PDF_IMPORT_OVERRIDES_MAX_BYTES
+export declare const PDF_IMPORT_OVERRIDES_MAX_BYTES: number;
+
+// export: PDF_IMPORT_OVERRIDES_MAX_OPERATIONS
+export declare const PDF_IMPORT_OVERRIDES_MAX_OPERATIONS = 200;
+
+// export: PDF_IMPORT_OVERRIDES_SCHEMA_V1
+export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-overrides/1";
+
+// export: PDF_IMPORT_PLAN_SCHEMA_V1
+export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
+
+// export: PDF_IMPORT_REVIEW_SCHEMA_V1
+export declare const PDF_IMPORT_REVIEW_SCHEMA_V1: "atlcli.pdf-import-review/1";
+
+// export: PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES
+export declare const PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES = 200;
+
+// export: PDF_SPLIT_ABSOLUTE_SOURCE_PAGE_LIMIT
+export declare const PDF_SPLIT_ABSOLUTE_SOURCE_PAGE_LIMIT = 40;
+
+// export: PDF_SPLIT_DEFAULT_MAX_WIKI_PAGES
+export declare const PDF_SPLIT_DEFAULT_MAX_WIKI_PAGES = 50;
+
+// export: PDF_SPLIT_DEFAULT_TARGET_PAGES
+export declare const PDF_SPLIT_DEFAULT_TARGET_PAGES = 20;
+
+// export: PDF_SPLIT_EDITABILITY_REVISION
+export declare const PDF_SPLIT_EDITABILITY_REVISION: "atlcli.import-editability/1";
+
+// export: PDF_SPLIT_PLAN_SCHEMA_V1
+export declare const PDF_SPLIT_PLAN_SCHEMA_V1: "atlcli.pdf-split-plan/1";
+
+// export: PDF_SPLIT_POLICY_SCHEMA_V1
+export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
@@ -472,7 +548,65 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
+
+// export: PdfImportOverrideOperationV1
+export type PdfImportOverrideOperationV1 = {
+    kind: "set-heading-level";
+    sourceId: string;
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+} | {
+    kind: "set-figure-alt";
+    sourceId: string;
+    alt: string;
+} | {
+    kind: "set-title-from";
+    sourceId: string;
+} | {
+    kind: "move-before";
+    sourceId: string;
+    beforeSourceId: string;
+};
+
+// export: PdfImportOverridesV1
+export interface PdfImportOverridesV1 {
+    schema: typeof PDF_IMPORT_OVERRIDES_SCHEMA_V1;
+    sourceSha256: string;
+    operations: PdfImportOverrideOperationV1[];
+}
+
+// export: pdfImportReviewReport
+export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
+
+// export: PdfImportReviewV1
+export interface PdfImportReviewV1 {
+    schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V1;
+    source: {
+        sha256: string;
+        byteLength: number;
+        pageCount: number;
+        classification: PdfFactsV1["classification"];
+    };
+    facts: PdfFactsV1;
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    semanticDigest: string;
+    override: AppliedPdfImportOverridesV1;
+    options: {
+        readingOrder: PdfReadingOrderModeV1;
+        scanPolicy: PdfScanPolicyV1;
+        unsupported: "report" | "fail";
+        attachSource: boolean;
+    };
+    target: PdfReviewTargetV1;
+    pages: PdfPageReviewSummaryV1[];
+    split: PdfSplitPlanV1;
+    blockers: string[];
+    assetDigests: string[];
+    issueDigest: string;
+    planDigest: string;
+}
 
 // export: PDFIUM_ENGINE_VERSION
 export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
@@ -541,6 +675,17 @@ export interface PdfPageFactsV1 {
 // export: PdfPageKind
 export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 
+// export: PdfPageReviewSummaryV1
+export interface PdfPageReviewSummaryV1 {
+    pageIndex: number;
+    pageLabel: string;
+    kind: PdfFactsV1["pages"][number]["kind"];
+    outcomes: Record<string, number>;
+    minimumConfidence: number | null;
+    issueCount: number;
+    fallback: "none" | "required" | "page-image" | "reported";
+}
+
 // export: PdfPathObjectFact
 export interface PdfPathObjectFact {
     id: string;
@@ -551,6 +696,33 @@ export interface PdfPathObjectFact {
     stroke: boolean;
 }
 
+// export: PdfPlannedPageEstimateV1
+export interface PdfPlannedPageEstimateV1 {
+    adfBytes: number;
+    storageBytes: number;
+    nodes: number;
+    tableCells: number;
+    assets: number;
+    editability: EditabilityAssessment["level"];
+}
+
+// export: PdfPlannedPageV1
+export interface PdfPlannedPageV1 {
+    id: string;
+    title: string;
+    sourcePageIndexes: number[];
+    sourcePageLabels: string[];
+    splitBasis: PdfSplitBasisV1;
+    blocks: ImportBlock[];
+    assets: ImportAsset[];
+    children: PdfPlannedPageV1[];
+    estimate: PdfPlannedPageEstimateV1;
+    bodyDigest: string;
+}
+
+// export: PdfReadingOrderModeV1
+export type PdfReadingOrderModeV1 = "auto" | "tags" | "geometry";
+
 // export: PdfReadingOrderPageV1
 export interface PdfReadingOrderPageV1 {
     pageIndex: number;
@@ -559,6 +731,19 @@ export interface PdfReadingOrderPageV1 {
     columnCount: number;
     qualificationReasons: string[];
 }
+
+// export: PdfReviewTargetV1
+export interface PdfReviewTargetV1 {
+    spaceKey: string;
+    title: string;
+    parentId?: string;
+    deployment: "cloud" | "data-center" | "unresolved-offline";
+    supportsPageTree: boolean | null;
+    evidence: "profile" | "offline-unresolved";
+}
+
+// export: PdfScanPolicyV1
+export type PdfScanPolicyV1 = "fail" | "page-image" | "report";
 
 // export: PdfSourceLocatorV1
 export interface PdfSourceLocatorV1 {
@@ -569,6 +754,56 @@ export interface PdfSourceLocatorV1 {
     markedContentIds?: string[];
     annotationId?: string;
     objectFingerprint?: string;
+}
+
+// export: PdfSplitBasisV1
+export type PdfSplitBasisV1 = "root-index" | "heading" | "size-budget" | "page-range" | "preamble";
+
+// export: PdfSplitModeV1
+export type PdfSplitModeV1 = {
+    kind: "auto";
+} | {
+    kind: "off";
+} | {
+    kind: "heading";
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+} | {
+    kind: "pages";
+    targetSourcePages: number;
+};
+
+// export: PdfSplitPlanV1
+export interface PdfSplitPlanV1 {
+    schema: typeof PDF_SPLIT_PLAN_SCHEMA_V1;
+    requested: PdfSplitPolicyV1;
+    resolved: {
+        kind: "single-page" | "page-tree";
+        reason: "short-and-editable" | "explicit-off" | "heading" | "page-range" | "auto-long-or-complex";
+    };
+    root: PdfPlannedPageV1;
+    contentPageCount: number;
+    totalWikiPages: number;
+    sourceAssignments: Array<{
+        pageIndex: number;
+        plannedPageId: string;
+    }>;
+    issues: Array<{
+        code: string;
+        message: string;
+        context?: Record<string, string | number>;
+    }>;
+    blockers: string[];
+    digest: string;
+}
+
+// export: PdfSplitPolicyV1
+export interface PdfSplitPolicyV1 {
+    schema: typeof PDF_SPLIT_POLICY_SCHEMA_V1;
+    mode: PdfSplitModeV1;
+    maxWikiPages: number;
+    autoSinglePageMaxSourcePages: 20;
+    absoluteSinglePageMaxSourcePages: 40;
+    editabilityBudgetRevision: typeof PDF_SPLIT_EDITABILITY_REVISION;
 }
 
 // export: PdfStructureAttributeFact
@@ -674,6 +909,13 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: planPdfSplit
+export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV1[], options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+}): Promise<PdfSplitPlanV1>;
+
 // export: preservePdfFigures
 export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
 
@@ -686,6 +928,9 @@ export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStruc
 // export: rectsTouch
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
+// export: renderPdfImportReview
+export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
+
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
 
@@ -697,6 +942,9 @@ export declare function safeLinkForCharacter(character: PdfTextCharacterFact, an
 
 // export: structureRole
 export declare function structureRole(node: PdfStructureNodeFact): string;
+
+// export: summarizePdfPlannedPage
+export declare function summarizePdfPlannedPage(page: PdfPlannedPageV1): Record<string, unknown>;
 
 // export: taggedHeadingLevel
 export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
@@ -738,8 +986,34 @@ export declare function analyzeGeometryReadingOrder(page: PdfPageFactsV1, ignore
 // export: analyzeUntaggedTable
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
 
+// export: AppliedPdfImportOverridesV1
+export interface AppliedPdfImportOverridesV1 {
+    document: ImportDocumentV2;
+    titleCandidate?: string;
+    digest: string;
+    applied: Array<{
+        kind: PdfImportOverrideOperationV1["kind"];
+        sourceId: string;
+    }>;
+}
+
+// export: applyPdfImportOverrides
+export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
+
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
+
+// export: buildPdfImportReview
+export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
+    target: PdfReviewTargetV1;
+    splitPolicy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+    readingOrder?: PdfReadingOrderModeV1;
+    scanPolicy?: PdfScanPolicyV1;
+    unsupported?: "report" | "fail";
+    attachSource?: boolean;
+    overrides?: ParsedPdfImportOverridesV1;
+}): Promise<PdfImportReviewV1>;
 
 // export: charactersForMcids
 export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
@@ -815,10 +1089,24 @@ export declare function normalizePdfTextFragment(value: string): string;
 export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfTaggedSemanticsV1>;
 
 // export: normalizeUntaggedPdfFacts
-export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfUntaggedSemanticsV1>;
+export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string, options?: {
+    allowTagged?: boolean;
+}): Promise<PdfUntaggedSemanticsV1>;
 
 // export: pageHasQualifiedDigitalLayout
 export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+
+// export: ParsedPdfImportOverridesV1
+export interface ParsedPdfImportOverridesV1 {
+    overrides: PdfImportOverridesV1;
+    digest: string;
+}
+
+// export: parsePdfImportOverrides
+export declare function parsePdfImportOverrides(text: string, expectedSourceSha256: string): Promise<ParsedPdfImportOverridesV1>;
+
+// export: parsePdfSplitPolicy
+export declare function parsePdfSplitPolicy(split?: string, maxWikiPagesText?: string): PdfSplitPolicyV1;
 
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
@@ -871,6 +1159,42 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
+
+// export: PDF_IMPORT_OVERRIDES_MAX_BYTES
+export declare const PDF_IMPORT_OVERRIDES_MAX_BYTES: number;
+
+// export: PDF_IMPORT_OVERRIDES_MAX_OPERATIONS
+export declare const PDF_IMPORT_OVERRIDES_MAX_OPERATIONS = 200;
+
+// export: PDF_IMPORT_OVERRIDES_SCHEMA_V1
+export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-overrides/1";
+
+// export: PDF_IMPORT_PLAN_SCHEMA_V1
+export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
+
+// export: PDF_IMPORT_REVIEW_SCHEMA_V1
+export declare const PDF_IMPORT_REVIEW_SCHEMA_V1: "atlcli.pdf-import-review/1";
+
+// export: PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES
+export declare const PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES = 200;
+
+// export: PDF_SPLIT_ABSOLUTE_SOURCE_PAGE_LIMIT
+export declare const PDF_SPLIT_ABSOLUTE_SOURCE_PAGE_LIMIT = 40;
+
+// export: PDF_SPLIT_DEFAULT_MAX_WIKI_PAGES
+export declare const PDF_SPLIT_DEFAULT_MAX_WIKI_PAGES = 50;
+
+// export: PDF_SPLIT_DEFAULT_TARGET_PAGES
+export declare const PDF_SPLIT_DEFAULT_TARGET_PAGES = 20;
+
+// export: PDF_SPLIT_EDITABILITY_REVISION
+export declare const PDF_SPLIT_EDITABILITY_REVISION: "atlcli.import-editability/1";
+
+// export: PDF_SPLIT_PLAN_SCHEMA_V1
+export declare const PDF_SPLIT_PLAN_SCHEMA_V1: "atlcli.pdf-split-plan/1";
+
+// export: PDF_SPLIT_POLICY_SCHEMA_V1
+export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
@@ -1197,7 +1521,65 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
+
+// export: PdfImportOverrideOperationV1
+export type PdfImportOverrideOperationV1 = {
+    kind: "set-heading-level";
+    sourceId: string;
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+} | {
+    kind: "set-figure-alt";
+    sourceId: string;
+    alt: string;
+} | {
+    kind: "set-title-from";
+    sourceId: string;
+} | {
+    kind: "move-before";
+    sourceId: string;
+    beforeSourceId: string;
+};
+
+// export: PdfImportOverridesV1
+export interface PdfImportOverridesV1 {
+    schema: typeof PDF_IMPORT_OVERRIDES_SCHEMA_V1;
+    sourceSha256: string;
+    operations: PdfImportOverrideOperationV1[];
+}
+
+// export: pdfImportReviewReport
+export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
+
+// export: PdfImportReviewV1
+export interface PdfImportReviewV1 {
+    schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V1;
+    source: {
+        sha256: string;
+        byteLength: number;
+        pageCount: number;
+        classification: PdfFactsV1["classification"];
+    };
+    facts: PdfFactsV1;
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    semanticDigest: string;
+    override: AppliedPdfImportOverridesV1;
+    options: {
+        readingOrder: PdfReadingOrderModeV1;
+        scanPolicy: PdfScanPolicyV1;
+        unsupported: "report" | "fail";
+        attachSource: boolean;
+    };
+    target: PdfReviewTargetV1;
+    pages: PdfPageReviewSummaryV1[];
+    split: PdfSplitPlanV1;
+    blockers: string[];
+    assetDigests: string[];
+    issueDigest: string;
+    planDigest: string;
+}
 
 // export: PDFIUM_ENGINE_VERSION
 export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
@@ -1266,6 +1648,17 @@ export interface PdfPageFactsV1 {
 // export: PdfPageKind
 export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 
+// export: PdfPageReviewSummaryV1
+export interface PdfPageReviewSummaryV1 {
+    pageIndex: number;
+    pageLabel: string;
+    kind: PdfFactsV1["pages"][number]["kind"];
+    outcomes: Record<string, number>;
+    minimumConfidence: number | null;
+    issueCount: number;
+    fallback: "none" | "required" | "page-image" | "reported";
+}
+
 // export: PdfPathObjectFact
 export interface PdfPathObjectFact {
     id: string;
@@ -1276,6 +1669,33 @@ export interface PdfPathObjectFact {
     stroke: boolean;
 }
 
+// export: PdfPlannedPageEstimateV1
+export interface PdfPlannedPageEstimateV1 {
+    adfBytes: number;
+    storageBytes: number;
+    nodes: number;
+    tableCells: number;
+    assets: number;
+    editability: EditabilityAssessment["level"];
+}
+
+// export: PdfPlannedPageV1
+export interface PdfPlannedPageV1 {
+    id: string;
+    title: string;
+    sourcePageIndexes: number[];
+    sourcePageLabels: string[];
+    splitBasis: PdfSplitBasisV1;
+    blocks: ImportBlock[];
+    assets: ImportAsset[];
+    children: PdfPlannedPageV1[];
+    estimate: PdfPlannedPageEstimateV1;
+    bodyDigest: string;
+}
+
+// export: PdfReadingOrderModeV1
+export type PdfReadingOrderModeV1 = "auto" | "tags" | "geometry";
+
 // export: PdfReadingOrderPageV1
 export interface PdfReadingOrderPageV1 {
     pageIndex: number;
@@ -1284,6 +1704,19 @@ export interface PdfReadingOrderPageV1 {
     columnCount: number;
     qualificationReasons: string[];
 }
+
+// export: PdfReviewTargetV1
+export interface PdfReviewTargetV1 {
+    spaceKey: string;
+    title: string;
+    parentId?: string;
+    deployment: "cloud" | "data-center" | "unresolved-offline";
+    supportsPageTree: boolean | null;
+    evidence: "profile" | "offline-unresolved";
+}
+
+// export: PdfScanPolicyV1
+export type PdfScanPolicyV1 = "fail" | "page-image" | "report";
 
 // export: PdfSourceLocatorV1
 export interface PdfSourceLocatorV1 {
@@ -1294,6 +1727,56 @@ export interface PdfSourceLocatorV1 {
     markedContentIds?: string[];
     annotationId?: string;
     objectFingerprint?: string;
+}
+
+// export: PdfSplitBasisV1
+export type PdfSplitBasisV1 = "root-index" | "heading" | "size-budget" | "page-range" | "preamble";
+
+// export: PdfSplitModeV1
+export type PdfSplitModeV1 = {
+    kind: "auto";
+} | {
+    kind: "off";
+} | {
+    kind: "heading";
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+} | {
+    kind: "pages";
+    targetSourcePages: number;
+};
+
+// export: PdfSplitPlanV1
+export interface PdfSplitPlanV1 {
+    schema: typeof PDF_SPLIT_PLAN_SCHEMA_V1;
+    requested: PdfSplitPolicyV1;
+    resolved: {
+        kind: "single-page" | "page-tree";
+        reason: "short-and-editable" | "explicit-off" | "heading" | "page-range" | "auto-long-or-complex";
+    };
+    root: PdfPlannedPageV1;
+    contentPageCount: number;
+    totalWikiPages: number;
+    sourceAssignments: Array<{
+        pageIndex: number;
+        plannedPageId: string;
+    }>;
+    issues: Array<{
+        code: string;
+        message: string;
+        context?: Record<string, string | number>;
+    }>;
+    blockers: string[];
+    digest: string;
+}
+
+// export: PdfSplitPolicyV1
+export interface PdfSplitPolicyV1 {
+    schema: typeof PDF_SPLIT_POLICY_SCHEMA_V1;
+    mode: PdfSplitModeV1;
+    maxWikiPages: number;
+    autoSinglePageMaxSourcePages: 20;
+    absoluteSinglePageMaxSourcePages: 40;
+    editabilityBudgetRevision: typeof PDF_SPLIT_EDITABILITY_REVISION;
 }
 
 // export: PdfStructureAttributeFact
@@ -1399,6 +1882,13 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: planPdfSplit
+export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV1[], options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+}): Promise<PdfSplitPlanV1>;
+
 // export: preservePdfFigures
 export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
 
@@ -1411,6 +1901,9 @@ export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStruc
 // export: rectsTouch
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
+// export: renderPdfImportReview
+export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
+
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
 
@@ -1422,6 +1915,9 @@ export declare function safeLinkForCharacter(character: PdfTextCharacterFact, an
 
 // export: structureRole
 export declare function structureRole(node: PdfStructureNodeFact): string;
+
+// export: summarizePdfPlannedPage
+export declare function summarizePdfPlannedPage(page: PdfPlannedPageV1): Record<string, unknown>;
 
 // export: taggedHeadingLevel
 export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
@@ -1463,8 +1959,34 @@ export declare function analyzeGeometryReadingOrder(page: PdfPageFactsV1, ignore
 // export: analyzeUntaggedTable
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
 
+// export: AppliedPdfImportOverridesV1
+export interface AppliedPdfImportOverridesV1 {
+    document: ImportDocumentV2;
+    titleCandidate?: string;
+    digest: string;
+    applied: Array<{
+        kind: PdfImportOverrideOperationV1["kind"];
+        sourceId: string;
+    }>;
+}
+
+// export: applyPdfImportOverrides
+export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
+
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
+
+// export: buildPdfImportReview
+export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
+    target: PdfReviewTargetV1;
+    splitPolicy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+    readingOrder?: PdfReadingOrderModeV1;
+    scanPolicy?: PdfScanPolicyV1;
+    unsupported?: "report" | "fail";
+    attachSource?: boolean;
+    overrides?: ParsedPdfImportOverridesV1;
+}): Promise<PdfImportReviewV1>;
 
 // export: charactersForMcids
 export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
@@ -1540,10 +2062,24 @@ export declare function normalizePdfTextFragment(value: string): string;
 export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfTaggedSemanticsV1>;
 
 // export: normalizeUntaggedPdfFacts
-export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfUntaggedSemanticsV1>;
+export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string, options?: {
+    allowTagged?: boolean;
+}): Promise<PdfUntaggedSemanticsV1>;
 
 // export: pageHasQualifiedDigitalLayout
 export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+
+// export: ParsedPdfImportOverridesV1
+export interface ParsedPdfImportOverridesV1 {
+    overrides: PdfImportOverridesV1;
+    digest: string;
+}
+
+// export: parsePdfImportOverrides
+export declare function parsePdfImportOverrides(text: string, expectedSourceSha256: string): Promise<ParsedPdfImportOverridesV1>;
+
+// export: parsePdfSplitPolicy
+export declare function parsePdfSplitPolicy(split?: string, maxWikiPagesText?: string): PdfSplitPolicyV1;
 
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
@@ -1596,6 +2132,42 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
+
+// export: PDF_IMPORT_OVERRIDES_MAX_BYTES
+export declare const PDF_IMPORT_OVERRIDES_MAX_BYTES: number;
+
+// export: PDF_IMPORT_OVERRIDES_MAX_OPERATIONS
+export declare const PDF_IMPORT_OVERRIDES_MAX_OPERATIONS = 200;
+
+// export: PDF_IMPORT_OVERRIDES_SCHEMA_V1
+export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-overrides/1";
+
+// export: PDF_IMPORT_PLAN_SCHEMA_V1
+export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
+
+// export: PDF_IMPORT_REVIEW_SCHEMA_V1
+export declare const PDF_IMPORT_REVIEW_SCHEMA_V1: "atlcli.pdf-import-review/1";
+
+// export: PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES
+export declare const PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES = 200;
+
+// export: PDF_SPLIT_ABSOLUTE_SOURCE_PAGE_LIMIT
+export declare const PDF_SPLIT_ABSOLUTE_SOURCE_PAGE_LIMIT = 40;
+
+// export: PDF_SPLIT_DEFAULT_MAX_WIKI_PAGES
+export declare const PDF_SPLIT_DEFAULT_MAX_WIKI_PAGES = 50;
+
+// export: PDF_SPLIT_DEFAULT_TARGET_PAGES
+export declare const PDF_SPLIT_DEFAULT_TARGET_PAGES = 20;
+
+// export: PDF_SPLIT_EDITABILITY_REVISION
+export declare const PDF_SPLIT_EDITABILITY_REVISION: "atlcli.import-editability/1";
+
+// export: PDF_SPLIT_PLAN_SCHEMA_V1
+export declare const PDF_SPLIT_PLAN_SCHEMA_V1: "atlcli.pdf-split-plan/1";
+
+// export: PDF_SPLIT_POLICY_SCHEMA_V1
+export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
@@ -1922,7 +2494,65 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
+
+// export: PdfImportOverrideOperationV1
+export type PdfImportOverrideOperationV1 = {
+    kind: "set-heading-level";
+    sourceId: string;
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+} | {
+    kind: "set-figure-alt";
+    sourceId: string;
+    alt: string;
+} | {
+    kind: "set-title-from";
+    sourceId: string;
+} | {
+    kind: "move-before";
+    sourceId: string;
+    beforeSourceId: string;
+};
+
+// export: PdfImportOverridesV1
+export interface PdfImportOverridesV1 {
+    schema: typeof PDF_IMPORT_OVERRIDES_SCHEMA_V1;
+    sourceSha256: string;
+    operations: PdfImportOverrideOperationV1[];
+}
+
+// export: pdfImportReviewReport
+export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
+
+// export: PdfImportReviewV1
+export interface PdfImportReviewV1 {
+    schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V1;
+    source: {
+        sha256: string;
+        byteLength: number;
+        pageCount: number;
+        classification: PdfFactsV1["classification"];
+    };
+    facts: PdfFactsV1;
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    semanticDigest: string;
+    override: AppliedPdfImportOverridesV1;
+    options: {
+        readingOrder: PdfReadingOrderModeV1;
+        scanPolicy: PdfScanPolicyV1;
+        unsupported: "report" | "fail";
+        attachSource: boolean;
+    };
+    target: PdfReviewTargetV1;
+    pages: PdfPageReviewSummaryV1[];
+    split: PdfSplitPlanV1;
+    blockers: string[];
+    assetDigests: string[];
+    issueDigest: string;
+    planDigest: string;
+}
 
 // export: PDFIUM_ENGINE_VERSION
 export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
@@ -1991,6 +2621,17 @@ export interface PdfPageFactsV1 {
 // export: PdfPageKind
 export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 
+// export: PdfPageReviewSummaryV1
+export interface PdfPageReviewSummaryV1 {
+    pageIndex: number;
+    pageLabel: string;
+    kind: PdfFactsV1["pages"][number]["kind"];
+    outcomes: Record<string, number>;
+    minimumConfidence: number | null;
+    issueCount: number;
+    fallback: "none" | "required" | "page-image" | "reported";
+}
+
 // export: PdfPathObjectFact
 export interface PdfPathObjectFact {
     id: string;
@@ -2001,6 +2642,33 @@ export interface PdfPathObjectFact {
     stroke: boolean;
 }
 
+// export: PdfPlannedPageEstimateV1
+export interface PdfPlannedPageEstimateV1 {
+    adfBytes: number;
+    storageBytes: number;
+    nodes: number;
+    tableCells: number;
+    assets: number;
+    editability: EditabilityAssessment["level"];
+}
+
+// export: PdfPlannedPageV1
+export interface PdfPlannedPageV1 {
+    id: string;
+    title: string;
+    sourcePageIndexes: number[];
+    sourcePageLabels: string[];
+    splitBasis: PdfSplitBasisV1;
+    blocks: ImportBlock[];
+    assets: ImportAsset[];
+    children: PdfPlannedPageV1[];
+    estimate: PdfPlannedPageEstimateV1;
+    bodyDigest: string;
+}
+
+// export: PdfReadingOrderModeV1
+export type PdfReadingOrderModeV1 = "auto" | "tags" | "geometry";
+
 // export: PdfReadingOrderPageV1
 export interface PdfReadingOrderPageV1 {
     pageIndex: number;
@@ -2009,6 +2677,19 @@ export interface PdfReadingOrderPageV1 {
     columnCount: number;
     qualificationReasons: string[];
 }
+
+// export: PdfReviewTargetV1
+export interface PdfReviewTargetV1 {
+    spaceKey: string;
+    title: string;
+    parentId?: string;
+    deployment: "cloud" | "data-center" | "unresolved-offline";
+    supportsPageTree: boolean | null;
+    evidence: "profile" | "offline-unresolved";
+}
+
+// export: PdfScanPolicyV1
+export type PdfScanPolicyV1 = "fail" | "page-image" | "report";
 
 // export: PdfSourceLocatorV1
 export interface PdfSourceLocatorV1 {
@@ -2019,6 +2700,56 @@ export interface PdfSourceLocatorV1 {
     markedContentIds?: string[];
     annotationId?: string;
     objectFingerprint?: string;
+}
+
+// export: PdfSplitBasisV1
+export type PdfSplitBasisV1 = "root-index" | "heading" | "size-budget" | "page-range" | "preamble";
+
+// export: PdfSplitModeV1
+export type PdfSplitModeV1 = {
+    kind: "auto";
+} | {
+    kind: "off";
+} | {
+    kind: "heading";
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+} | {
+    kind: "pages";
+    targetSourcePages: number;
+};
+
+// export: PdfSplitPlanV1
+export interface PdfSplitPlanV1 {
+    schema: typeof PDF_SPLIT_PLAN_SCHEMA_V1;
+    requested: PdfSplitPolicyV1;
+    resolved: {
+        kind: "single-page" | "page-tree";
+        reason: "short-and-editable" | "explicit-off" | "heading" | "page-range" | "auto-long-or-complex";
+    };
+    root: PdfPlannedPageV1;
+    contentPageCount: number;
+    totalWikiPages: number;
+    sourceAssignments: Array<{
+        pageIndex: number;
+        plannedPageId: string;
+    }>;
+    issues: Array<{
+        code: string;
+        message: string;
+        context?: Record<string, string | number>;
+    }>;
+    blockers: string[];
+    digest: string;
+}
+
+// export: PdfSplitPolicyV1
+export interface PdfSplitPolicyV1 {
+    schema: typeof PDF_SPLIT_POLICY_SCHEMA_V1;
+    mode: PdfSplitModeV1;
+    maxWikiPages: number;
+    autoSinglePageMaxSourcePages: 20;
+    absoluteSinglePageMaxSourcePages: 40;
+    editabilityBudgetRevision: typeof PDF_SPLIT_EDITABILITY_REVISION;
 }
 
 // export: PdfStructureAttributeFact
@@ -2124,6 +2855,13 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: planPdfSplit
+export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV1[], options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+}): Promise<PdfSplitPlanV1>;
+
 // export: preservePdfFigures
 export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
 
@@ -2136,6 +2874,9 @@ export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStruc
 // export: rectsTouch
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
+// export: renderPdfImportReview
+export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
+
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
 
@@ -2147,6 +2888,9 @@ export declare function safeLinkForCharacter(character: PdfTextCharacterFact, an
 
 // export: structureRole
 export declare function structureRole(node: PdfStructureNodeFact): string;
+
+// export: summarizePdfPlannedPage
+export declare function summarizePdfPlannedPage(page: PdfPlannedPageV1): Record<string, unknown>;
 
 // export: taggedHeadingLevel
 export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
@@ -2188,8 +2932,34 @@ export declare function analyzeGeometryReadingOrder(page: PdfPageFactsV1, ignore
 // export: analyzeUntaggedTable
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
 
+// export: AppliedPdfImportOverridesV1
+export interface AppliedPdfImportOverridesV1 {
+    document: ImportDocumentV2;
+    titleCandidate?: string;
+    digest: string;
+    applied: Array<{
+        kind: PdfImportOverrideOperationV1["kind"];
+        sourceId: string;
+    }>;
+}
+
+// export: applyPdfImportOverrides
+export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
+
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
+
+// export: buildPdfImportReview
+export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
+    target: PdfReviewTargetV1;
+    splitPolicy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+    readingOrder?: PdfReadingOrderModeV1;
+    scanPolicy?: PdfScanPolicyV1;
+    unsupported?: "report" | "fail";
+    attachSource?: boolean;
+    overrides?: ParsedPdfImportOverridesV1;
+}): Promise<PdfImportReviewV1>;
 
 // export: charactersForMcids
 export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
@@ -2271,10 +3041,24 @@ export declare function normalizePdfTextFragment(value: string): string;
 export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfTaggedSemanticsV1>;
 
 // export: normalizeUntaggedPdfFacts
-export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfUntaggedSemanticsV1>;
+export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string, options?: {
+    allowTagged?: boolean;
+}): Promise<PdfUntaggedSemanticsV1>;
 
 // export: pageHasQualifiedDigitalLayout
 export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+
+// export: ParsedPdfImportOverridesV1
+export interface ParsedPdfImportOverridesV1 {
+    overrides: PdfImportOverridesV1;
+    digest: string;
+}
+
+// export: parsePdfImportOverrides
+export declare function parsePdfImportOverrides(text: string, expectedSourceSha256: string): Promise<ParsedPdfImportOverridesV1>;
+
+// export: parsePdfSplitPolicy
+export declare function parsePdfSplitPolicy(split?: string, maxWikiPagesText?: string): PdfSplitPolicyV1;
 
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
@@ -2327,6 +3111,42 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
+
+// export: PDF_IMPORT_OVERRIDES_MAX_BYTES
+export declare const PDF_IMPORT_OVERRIDES_MAX_BYTES: number;
+
+// export: PDF_IMPORT_OVERRIDES_MAX_OPERATIONS
+export declare const PDF_IMPORT_OVERRIDES_MAX_OPERATIONS = 200;
+
+// export: PDF_IMPORT_OVERRIDES_SCHEMA_V1
+export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-overrides/1";
+
+// export: PDF_IMPORT_PLAN_SCHEMA_V1
+export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
+
+// export: PDF_IMPORT_REVIEW_SCHEMA_V1
+export declare const PDF_IMPORT_REVIEW_SCHEMA_V1: "atlcli.pdf-import-review/1";
+
+// export: PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES
+export declare const PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES = 200;
+
+// export: PDF_SPLIT_ABSOLUTE_SOURCE_PAGE_LIMIT
+export declare const PDF_SPLIT_ABSOLUTE_SOURCE_PAGE_LIMIT = 40;
+
+// export: PDF_SPLIT_DEFAULT_MAX_WIKI_PAGES
+export declare const PDF_SPLIT_DEFAULT_MAX_WIKI_PAGES = 50;
+
+// export: PDF_SPLIT_DEFAULT_TARGET_PAGES
+export declare const PDF_SPLIT_DEFAULT_TARGET_PAGES = 20;
+
+// export: PDF_SPLIT_EDITABILITY_REVISION
+export declare const PDF_SPLIT_EDITABILITY_REVISION: "atlcli.import-editability/1";
+
+// export: PDF_SPLIT_PLAN_SCHEMA_V1
+export declare const PDF_SPLIT_PLAN_SCHEMA_V1: "atlcli.pdf-split-plan/1";
+
+// export: PDF_SPLIT_POLICY_SCHEMA_V1
+export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
@@ -2653,7 +3473,65 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
+
+// export: PdfImportOverrideOperationV1
+export type PdfImportOverrideOperationV1 = {
+    kind: "set-heading-level";
+    sourceId: string;
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+} | {
+    kind: "set-figure-alt";
+    sourceId: string;
+    alt: string;
+} | {
+    kind: "set-title-from";
+    sourceId: string;
+} | {
+    kind: "move-before";
+    sourceId: string;
+    beforeSourceId: string;
+};
+
+// export: PdfImportOverridesV1
+export interface PdfImportOverridesV1 {
+    schema: typeof PDF_IMPORT_OVERRIDES_SCHEMA_V1;
+    sourceSha256: string;
+    operations: PdfImportOverrideOperationV1[];
+}
+
+// export: pdfImportReviewReport
+export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
+
+// export: PdfImportReviewV1
+export interface PdfImportReviewV1 {
+    schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V1;
+    source: {
+        sha256: string;
+        byteLength: number;
+        pageCount: number;
+        classification: PdfFactsV1["classification"];
+    };
+    facts: PdfFactsV1;
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    semanticDigest: string;
+    override: AppliedPdfImportOverridesV1;
+    options: {
+        readingOrder: PdfReadingOrderModeV1;
+        scanPolicy: PdfScanPolicyV1;
+        unsupported: "report" | "fail";
+        attachSource: boolean;
+    };
+    target: PdfReviewTargetV1;
+    pages: PdfPageReviewSummaryV1[];
+    split: PdfSplitPlanV1;
+    blockers: string[];
+    assetDigests: string[];
+    issueDigest: string;
+    planDigest: string;
+}
 
 // export: PDFIUM_ENGINE_VERSION
 export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
@@ -2722,6 +3600,17 @@ export interface PdfPageFactsV1 {
 // export: PdfPageKind
 export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 
+// export: PdfPageReviewSummaryV1
+export interface PdfPageReviewSummaryV1 {
+    pageIndex: number;
+    pageLabel: string;
+    kind: PdfFactsV1["pages"][number]["kind"];
+    outcomes: Record<string, number>;
+    minimumConfidence: number | null;
+    issueCount: number;
+    fallback: "none" | "required" | "page-image" | "reported";
+}
+
 // export: PdfPathObjectFact
 export interface PdfPathObjectFact {
     id: string;
@@ -2732,6 +3621,33 @@ export interface PdfPathObjectFact {
     stroke: boolean;
 }
 
+// export: PdfPlannedPageEstimateV1
+export interface PdfPlannedPageEstimateV1 {
+    adfBytes: number;
+    storageBytes: number;
+    nodes: number;
+    tableCells: number;
+    assets: number;
+    editability: EditabilityAssessment["level"];
+}
+
+// export: PdfPlannedPageV1
+export interface PdfPlannedPageV1 {
+    id: string;
+    title: string;
+    sourcePageIndexes: number[];
+    sourcePageLabels: string[];
+    splitBasis: PdfSplitBasisV1;
+    blocks: ImportBlock[];
+    assets: ImportAsset[];
+    children: PdfPlannedPageV1[];
+    estimate: PdfPlannedPageEstimateV1;
+    bodyDigest: string;
+}
+
+// export: PdfReadingOrderModeV1
+export type PdfReadingOrderModeV1 = "auto" | "tags" | "geometry";
+
 // export: PdfReadingOrderPageV1
 export interface PdfReadingOrderPageV1 {
     pageIndex: number;
@@ -2740,6 +3656,19 @@ export interface PdfReadingOrderPageV1 {
     columnCount: number;
     qualificationReasons: string[];
 }
+
+// export: PdfReviewTargetV1
+export interface PdfReviewTargetV1 {
+    spaceKey: string;
+    title: string;
+    parentId?: string;
+    deployment: "cloud" | "data-center" | "unresolved-offline";
+    supportsPageTree: boolean | null;
+    evidence: "profile" | "offline-unresolved";
+}
+
+// export: PdfScanPolicyV1
+export type PdfScanPolicyV1 = "fail" | "page-image" | "report";
 
 // export: PdfSourceLocatorV1
 export interface PdfSourceLocatorV1 {
@@ -2750,6 +3679,56 @@ export interface PdfSourceLocatorV1 {
     markedContentIds?: string[];
     annotationId?: string;
     objectFingerprint?: string;
+}
+
+// export: PdfSplitBasisV1
+export type PdfSplitBasisV1 = "root-index" | "heading" | "size-budget" | "page-range" | "preamble";
+
+// export: PdfSplitModeV1
+export type PdfSplitModeV1 = {
+    kind: "auto";
+} | {
+    kind: "off";
+} | {
+    kind: "heading";
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+} | {
+    kind: "pages";
+    targetSourcePages: number;
+};
+
+// export: PdfSplitPlanV1
+export interface PdfSplitPlanV1 {
+    schema: typeof PDF_SPLIT_PLAN_SCHEMA_V1;
+    requested: PdfSplitPolicyV1;
+    resolved: {
+        kind: "single-page" | "page-tree";
+        reason: "short-and-editable" | "explicit-off" | "heading" | "page-range" | "auto-long-or-complex";
+    };
+    root: PdfPlannedPageV1;
+    contentPageCount: number;
+    totalWikiPages: number;
+    sourceAssignments: Array<{
+        pageIndex: number;
+        plannedPageId: string;
+    }>;
+    issues: Array<{
+        code: string;
+        message: string;
+        context?: Record<string, string | number>;
+    }>;
+    blockers: string[];
+    digest: string;
+}
+
+// export: PdfSplitPolicyV1
+export interface PdfSplitPolicyV1 {
+    schema: typeof PDF_SPLIT_POLICY_SCHEMA_V1;
+    mode: PdfSplitModeV1;
+    maxWikiPages: number;
+    autoSinglePageMaxSourcePages: 20;
+    absoluteSinglePageMaxSourcePages: 40;
+    editabilityBudgetRevision: typeof PDF_SPLIT_EDITABILITY_REVISION;
 }
 
 // export: PdfStructureAttributeFact
@@ -2855,6 +3834,13 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: planPdfSplit
+export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV1[], options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+}): Promise<PdfSplitPlanV1>;
+
 // export: preservePdfFigures
 export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
 
@@ -2867,6 +3853,9 @@ export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStruc
 // export: rectsTouch
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
+// export: renderPdfImportReview
+export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
+
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
 
@@ -2878,6 +3867,9 @@ export declare function safeLinkForCharacter(character: PdfTextCharacterFact, an
 
 // export: structureRole
 export declare function structureRole(node: PdfStructureNodeFact): string;
+
+// export: summarizePdfPlannedPage
+export declare function summarizePdfPlannedPage(page: PdfPlannedPageV1): Record<string, unknown>;
 
 // export: taggedHeadingLevel
 export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;

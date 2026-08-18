@@ -255,6 +255,7 @@ export function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean {
 export async function normalizeUntaggedPdfFacts(
   facts: PdfFactsV1,
   factsDigest: string,
+  options: { allowTagged?: boolean } = {},
 ): Promise<PdfUntaggedSemanticsV1> {
   if (await digestPdfFacts(facts) !== factsDigest) {
     throw new PdfImportError(
@@ -282,7 +283,10 @@ export async function normalizeUntaggedPdfFacts(
   const headingLevelByFont = headingLevels(analyses, automaticallySuppressed, bodyFont);
   const blocks: ImportBlock[] = [];
   const evidence: PdfDecisionEvidenceV1[] = [];
-  const issues: ImportIssue[] = facts.issues.map((issue) => ({ ...issue }));
+  const issues: ImportIssue[] = facts.issues.map(({ pageIndex, ...issue }) => ({
+    ...issue,
+    ...(pageIndex === undefined ? {} : { context: { ...issue.context, pageIndex } }),
+  }));
   const pageOutcomes: PdfUntaggedPageOutcomeV1[] = [];
   const requiresFallbackPages: number[] = [];
   for (const analysis of analyses) {
@@ -291,7 +295,7 @@ export async function normalizeUntaggedPdfFacts(
     evidence.push(...table.evidence);
     issues.push(...table.issues);
     const reasons = new Set(analysis.qualificationReasons);
-    if (facts.tagged) reasons.add("tagged-document-routed-to-geometry");
+    if (facts.tagged && !options.allowTagged) reasons.add("tagged-document-routed-to-geometry");
     if (!pageHasQualifiedDigitalLayout(page)) reasons.add(`page-kind-${page.kind}`);
     const suppressed = analysis.fragments.filter((fragment) => automaticallySuppressed.has(fragment.id));
     for (const fragment of suppressed) {
