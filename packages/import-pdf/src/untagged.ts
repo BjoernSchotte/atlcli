@@ -244,6 +244,14 @@ function visibleCharacterIndexes(page: PdfPageFactsV1): number[] {
   ).map((character) => character.index);
 }
 
+export function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean {
+  if (page.kind === "digital") return true;
+  if (page.kind !== "mixed" || page.text.trim().length === 0) return false;
+  return page.images.length > 0 && page.images.every((image) =>
+    image.bbox !== null && image.bbox.width * image.bbox.height < 0.6
+  );
+}
+
 export async function normalizeUntaggedPdfFacts(
   facts: PdfFactsV1,
   factsDigest: string,
@@ -284,7 +292,7 @@ export async function normalizeUntaggedPdfFacts(
     issues.push(...table.issues);
     const reasons = new Set(analysis.qualificationReasons);
     if (facts.tagged) reasons.add("tagged-document-routed-to-geometry");
-    if (page.kind !== "digital") reasons.add(`page-kind-${page.kind}`);
+    if (!pageHasQualifiedDigitalLayout(page)) reasons.add(`page-kind-${page.kind}`);
     const suppressed = analysis.fragments.filter((fragment) => automaticallySuppressed.has(fragment.id));
     for (const fragment of suppressed) {
       const reason = fragment.furniture

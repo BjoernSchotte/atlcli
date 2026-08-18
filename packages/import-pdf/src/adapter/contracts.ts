@@ -14,6 +14,8 @@ export type PdfiumFailureStage =
   | "after-structure-tree"
   | "after-annotation"
   | "after-page-objects"
+  | "after-bitmap"
+  | "after-render"
   | "before-finalize";
 
 /** Test-only fault seam; never exported from the package barrel. */

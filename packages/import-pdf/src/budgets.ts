@@ -19,6 +19,11 @@ export interface PdfAnalysisBudgets {
   maxDecodedPixelsPerAsset: number;
   maxDecodedBytesTotal: number;
   maxDecodedBytesPerAsset: number;
+  maxRenderedPixelsTotal: number;
+  maxRenderedPixelsPerAsset: number;
+  maxRenderedBytesTotal: number;
+  maxRenderedBytesPerAsset: number;
+  maxRenderDpi: number;
   maxEvidenceEntries: number;
   maxCanonicalBytes: number;
   maxPageObjectDepth: number;
@@ -43,6 +48,11 @@ export const PDF_ANALYSIS_HARD_BUDGETS: Readonly<PdfAnalysisBudgets> = Object.fr
   maxDecodedPixelsPerAsset: 80_000_000,
   maxDecodedBytesTotal: 250 * 1024 * 1024,
   maxDecodedBytesPerAsset: 25 * 1024 * 1024,
+  maxRenderedPixelsTotal: 200_000_000,
+  maxRenderedPixelsPerAsset: 40_000_000,
+  maxRenderedBytesTotal: 250 * 1024 * 1024,
+  maxRenderedBytesPerAsset: 25 * 1024 * 1024,
+  maxRenderDpi: 300,
   maxEvidenceEntries: 250_000,
   maxCanonicalBytes: 50 * 1024 * 1024,
   maxPageObjectDepth: 64,

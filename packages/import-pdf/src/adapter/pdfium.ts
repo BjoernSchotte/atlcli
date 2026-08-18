@@ -3,6 +3,7 @@ import { init, type WrappedPdfiumModule } from "@embedpdf/pdfium";
 import {
   PDF_FACTS_ADAPTER_REVISION,
   PDF_FACTS_SCHEMA_V1,
+  PDF_ASSET_MATERIALIZER_REVISION,
   PDFIUM_ENGINE_VERSION,
   PDFIUM_WASM_SHA256,
   PDF_ANALYSIS_POLICY_REVISION,
@@ -10,11 +11,14 @@ import {
   type PdfAnalysisProgress,
   type PdfAnalysisResultV1,
   type PdfAnalysisTelemetry,
+  type PdfAssetMaterializationOptions,
+  type PdfAssetMaterializationRequestV1,
   type PdfAnnotationFact,
   type PdfEngineCapabilitiesV1,
   type PdfFactsIssue,
   type PdfFactsV1,
   type PdfImageObjectFact,
+  type PdfMaterializedAssetV1,
   type PdfNormalizedRect,
   type PdfPathObjectFact,
   type PdfPageFactsV1,
@@ -26,6 +30,7 @@ import { resolvePdfAnalysisBudgets, type PdfAnalysisBudgets } from "../budgets.j
 import { digestPdfCanonical, digestPdfFacts } from "../canonical.js";
 import { classifyPdfDocument, classifyPdfPage } from "../classify.js";
 import { PdfImportError, isPdfImportError } from "../issues.js";
+import { encodeRgbaPng } from "../fallbacks.js";
 import type {
   PdfiumAdapterConfig,
   PdfiumAdapterTestConfig,
@@ -72,10 +77,12 @@ interface Counters {
   decodedPixels: number;
   decodedBytes: number;
   evidenceEntries: number;
+  renderedPixels: number;
+  renderedBytes: number;
 }
 
 interface Control {
-  options: PdfAnalysisOptions;
+  options: { signal?: AbortSignal };
   budgets: PdfAnalysisBudgets;
   started: number;
   failAt?: PdfiumFailureStage;
@@ -675,6 +682,10 @@ function extractObjects(
       });
       paths.push({
         id: `pdf:p${pageIndex}:path:${path.join(".")}`,
+        mcid: (() => {
+          const mcid = module.FPDFPageObj_GetMarkedContentID(object);
+          return mcid >= 0 ? mcid : null;
+        })(),
         bbox: normalizeRect(
           rawRect(module, (pointer) =>
             module.FPDFPageObj_GetBounds(object, pointer, pointer + 4, pointer + 8, pointer + 12),
@@ -874,6 +885,8 @@ async function analyzePdfium(
       decodedPixels: 0,
       decodedBytes: 0,
       evidenceEntries: 0,
+      renderedPixels: 0,
+      renderedBytes: 0,
     },
   };
   let module: WrappedPdfiumModule | undefined;
@@ -1141,6 +1154,297 @@ async function analyzePdfium(
   }
 }
 
+function pageObjectAtPath(
+  module: WrappedPdfiumModule,
+  page: number,
+  path: readonly number[],
+): number {
+  if (path.length === 0) return 0;
+  let object = module.FPDFPage_GetObject(page, path[0]!);
+  for (const index of path.slice(1)) {
+    if (!object || module.FPDFPageObj_GetType(object) !== PAGE_OBJECT_FORM) return 0;
+    if (index < 0 || index >= module.FPDFFormObj_CountObjects(object)) return 0;
+    object = module.FPDFFormObj_GetObject(object, index);
+  }
+  return object;
+}
+
+function imageObjectPath(request: PdfAssetMaterializationRequestV1): number[] {
+  const prefix = `pdf:p${request.pageIndex}:image:`;
+  if (!request.objectId?.startsWith(prefix)) return [];
+  const values = request.objectId.slice(prefix.length).split(".").map(Number);
+  return values.every((value) => Number.isSafeInteger(value) && value >= 0) ? values : [];
+}
+
+function bitmapToRgba(
+  module: WrappedPdfiumModule,
+  bitmap: number,
+  budgets: PdfAnalysisBudgets,
+  pageIndex: number,
+): {
+  width: number;
+  height: number;
+  rgba: Uint8Array;
+} {
+  const width = module.FPDFBitmap_GetWidth(bitmap);
+  const height = module.FPDFBitmap_GetHeight(bitmap);
+  const stride = module.FPDFBitmap_GetStride(bitmap);
+  const format = module.FPDFBitmap_GetFormat(bitmap);
+  const pointer = module.FPDFBitmap_GetBuffer(bitmap);
+  if (
+    !pointer
+    || !Number.isSafeInteger(width)
+    || !Number.isSafeInteger(height)
+    || !Number.isSafeInteger(stride)
+    || width < 1
+    || height < 1
+    || stride < 1
+    || ![1, 2, 3, 4].includes(format)
+  ) throw new PdfImportError("pdf/engine-failure", "PDFium returned an invalid bitmap.");
+  const pixels = width * height;
+  budget(
+    Number.isSafeInteger(pixels) && pixels <= budgets.maxRenderedPixelsPerAsset,
+    "rendered pixels per asset",
+    pixels,
+    budgets.maxRenderedPixelsPerAsset,
+    pageIndex,
+  );
+  const channels = format === 1 ? 1 : format === 2 ? 3 : 4;
+  if (stride < width * channels) {
+    throw new PdfImportError("pdf/engine-failure", "PDFium returned a truncated bitmap stride.");
+  }
+  const source = memory(module).HEAPU8;
+  if (pointer + stride * height > source.byteLength) {
+    throw new PdfImportError("pdf/engine-failure", "PDFium bitmap escapes the owned WASM memory.");
+  }
+  const rgba = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    const row = pointer + y * stride;
+    for (let x = 0; x < width; x += 1) {
+      const input = row + x * channels;
+      const output = (y * width + x) * 4;
+      if (format === 1) {
+        const gray = source[input] ?? 0;
+        rgba.set([gray, gray, gray, 255], output);
+      } else {
+        rgba[output] = source[input + 2] ?? 0;
+        rgba[output + 1] = source[input + 1] ?? 0;
+        rgba[output + 2] = source[input] ?? 0;
+        rgba[output + 3] = format === 4 ? (source[input + 3] ?? 255) : 255;
+      }
+    }
+  }
+  return { width, height, rgba };
+}
+
+function validatedRegion(request: PdfAssetMaterializationRequestV1) {
+  const rect = request.bbox;
+  if (
+    !rect
+    || [rect.x, rect.y, rect.width, rect.height].some((value) => !Number.isFinite(value))
+    || rect.x < 0
+    || rect.y < 0
+    || rect.width <= 0
+    || rect.height <= 0
+    || rect.x + rect.width > 1.000001
+    || rect.y + rect.height > 1.000001
+  ) throw new PdfImportError("pdf/asset-request-invalid", "Rendered-region request has invalid normalized bounds.");
+  return rect;
+}
+
+async function materializePdfium(
+  data: Uint8Array,
+  requests: readonly PdfAssetMaterializationRequestV1[],
+  wasmBinary: Uint8Array,
+  options: PdfAssetMaterializationOptions,
+  failAt?: PdfiumFailureStage,
+): Promise<PdfMaterializedAssetV1[]> {
+  const budgets = resolvePdfAnalysisBudgets(options.budgets);
+  validateInput(data, budgets);
+  if (!Array.isArray(requests) || requests.length > budgets.maxAssetsTotal) {
+    throw new PdfImportError("pdf/budget-exceeded", "PDF materialization request count exceeds the asset budget.", {
+      actual: Array.isArray(requests) ? requests.length : 0,
+      limit: budgets.maxAssetsTotal,
+    });
+  }
+  if (new Set(requests.map((request) => request.id)).size !== requests.length) {
+    throw new PdfImportError("pdf/asset-request-invalid", "PDF materialization request ids must be unique.");
+  }
+  if (await sha256Hex(wasmBinary) !== PDFIUM_WASM_SHA256) {
+    throw new PdfImportError("pdf/wasm-digest-mismatch", "PDFium WASM digest does not match the reviewed artifact.");
+  }
+  const control: Control = {
+    options,
+    budgets,
+    started: now(),
+    failAt,
+    stage: "materialize-start",
+    counters: {
+      textItems: 0,
+      pageObjects: 0,
+      structureNodes: 0,
+      assets: 0,
+      decodedPixels: 0,
+      decodedBytes: 0,
+      evidenceEntries: 0,
+      renderedPixels: 0,
+      renderedBytes: 0,
+    },
+  };
+  let module: WrappedPdfiumModule | undefined;
+  let initialized = false;
+  let inputPointer = 0;
+  let document = 0;
+  let completed = 0;
+  options.progress?.({ phase: "start", completed: 0, total: requests.length });
+  try {
+    module = await init({ wasmBinary: new Uint8Array(wasmBinary).buffer });
+    module.PDFiumExt_Init();
+    initialized = true;
+    check(control, "after-init");
+    inputPointer = allocate(module, data.byteLength);
+    memory(module).HEAPU8.set(data, inputPointer);
+    check(control, "after-input");
+    document = module.FPDF_LoadMemDocument64(inputPointer, data.byteLength, "");
+    if (!document) throw new PdfImportError("pdf/engine-failure", "PDFium could not load bytes for asset materialization.");
+    check(control, "after-load");
+    const pageCount = module.FPDF_GetPageCount(document);
+    const assets: PdfMaterializedAssetV1[] = [];
+    for (const request of requests) {
+      check(control, "materialize-request");
+      options.progress?.({
+        phase: "request-start",
+        completed,
+        total: requests.length,
+        requestId: request.id,
+      });
+      if (!request.id || request.pageIndex < 0 || request.pageIndex >= pageCount) {
+        throw new PdfImportError("pdf/asset-request-invalid", "PDF materialization request targets an invalid page.");
+      }
+      const page = module.FPDF_LoadPage(document, request.pageIndex);
+      if (!page) throw new PdfImportError("pdf/engine-failure", "PDFium could not load a requested asset page.");
+      let bitmap = 0;
+      try {
+        check(control, "after-page-load");
+        if (request.kind === "image-object") {
+          const path = imageObjectPath(request);
+          const object = pageObjectAtPath(module, page, path);
+          if (!object || module.FPDFPageObj_GetType(object) !== PAGE_OBJECT_IMAGE) {
+            throw new PdfImportError("pdf/asset-request-invalid", "PDF image request does not identify a public image object.");
+          }
+          const dimensions = withPointer(module, 8, (pointer) => {
+            if (!module!.FPDFImageObj_GetImagePixelSize(object, pointer, pointer + 4)) return 0;
+            const width = memory(module!).HEAP32[pointer >>> 2] ?? 0;
+            const height = memory(module!).HEAP32[(pointer >>> 2) + 1] ?? 0;
+            return width * height;
+          });
+          budget(
+            Number.isSafeInteger(dimensions) && dimensions > 0 && dimensions <= budgets.maxRenderedPixelsPerAsset,
+            "rendered pixels per asset",
+            dimensions,
+            budgets.maxRenderedPixelsPerAsset,
+            request.pageIndex,
+          );
+          bitmap = module.FPDFImageObj_GetRenderedBitmap(document, page, object);
+        } else if (request.kind === "rendered-region") {
+          const rect = validatedRegion(request);
+          const dpi = request.dpi ?? 144;
+          if (!Number.isSafeInteger(dpi) || dpi < 72 || dpi > budgets.maxRenderDpi) {
+            throw new PdfImportError("pdf/budget-exceeded", "PDF render DPI is outside the reviewed budget.", {
+              actual: dpi,
+              limit: budgets.maxRenderDpi,
+            });
+          }
+          const fullWidth = Math.max(1, Math.ceil(module.FPDF_GetPageWidthF(page) * dpi / 72));
+          const fullHeight = Math.max(1, Math.ceil(module.FPDF_GetPageHeightF(page) * dpi / 72));
+          const left = Math.floor(rect.x * fullWidth);
+          const top = Math.floor(rect.y * fullHeight);
+          const width = Math.max(1, Math.ceil(rect.width * fullWidth));
+          const height = Math.max(1, Math.ceil(rect.height * fullHeight));
+          const pixels = width * height;
+          budget(
+            Number.isSafeInteger(pixels) && pixels <= budgets.maxRenderedPixelsPerAsset,
+            "rendered pixels per asset",
+            pixels,
+            budgets.maxRenderedPixelsPerAsset,
+            request.pageIndex,
+          );
+          bitmap = module.FPDFBitmap_Create(width, height, 1);
+          if (bitmap) {
+            module.FPDFBitmap_FillRect(bitmap, 0, 0, width, height, 0xffffffff);
+            module.FPDF_RenderPageBitmap(bitmap, page, -left, -top, fullWidth, fullHeight, 0, 0);
+          }
+        } else {
+          throw new PdfImportError("pdf/asset-request-invalid", "Unknown PDF materialization request kind.");
+        }
+        if (!bitmap) throw new PdfImportError("pdf/engine-failure", "PDFium could not materialize a requested bitmap.");
+        check(control, "after-bitmap");
+        const decoded = bitmapToRgba(module, bitmap, budgets, request.pageIndex);
+        const pixels = decoded.width * decoded.height;
+        budget(
+          Number.isSafeInteger(pixels) && pixels <= budgets.maxRenderedPixelsPerAsset,
+          "rendered pixels per asset",
+          pixels,
+          budgets.maxRenderedPixelsPerAsset,
+          request.pageIndex,
+        );
+        control.counters.renderedPixels += pixels;
+        budget(
+          control.counters.renderedPixels <= budgets.maxRenderedPixelsTotal,
+          "rendered pixels total",
+          control.counters.renderedPixels,
+          budgets.maxRenderedPixelsTotal,
+        );
+        const bytes = encodeRgbaPng(decoded.width, decoded.height, decoded.rgba);
+        budget(
+          bytes.byteLength <= budgets.maxRenderedBytesPerAsset,
+          "rendered bytes per asset",
+          bytes.byteLength,
+          budgets.maxRenderedBytesPerAsset,
+          request.pageIndex,
+        );
+        control.counters.renderedBytes += bytes.byteLength;
+        budget(
+          control.counters.renderedBytes <= budgets.maxRenderedBytesTotal,
+          "rendered bytes total",
+          control.counters.renderedBytes,
+          budgets.maxRenderedBytesTotal,
+        );
+        check(control, "after-render");
+        assets.push({
+          requestId: request.id,
+          pageIndex: request.pageIndex,
+          sourceKind: request.kind,
+          mediaType: "image/png",
+          width: decoded.width,
+          height: decoded.height,
+          bytes,
+          sha256: await sha256Hex(bytes),
+          materializerRevision: PDF_ASSET_MATERIALIZER_REVISION,
+        });
+        completed += 1;
+        options.progress?.({
+          phase: "request-complete",
+          completed,
+          total: requests.length,
+          requestId: request.id,
+        });
+      } finally {
+        if (bitmap) module.FPDFBitmap_Destroy(bitmap);
+        module.FPDF_ClosePage(page);
+      }
+    }
+    return assets;
+  } catch (error) {
+    throw sanitizedEngineError(error, control.stage);
+  } finally {
+    if (module && document) module.FPDF_CloseDocument(document);
+    if (module && inputPointer) module.pdfium.wasmExports.free(inputPointer);
+    if (module && initialized) module.FPDF_DestroyLibrary();
+    options.progress?.({ phase: "cleanup", completed, total: requests.length });
+  }
+}
+
 function createAdapter(config: PdfiumAdapterTestConfig): PdfiumFactsAdapter {
   const wasmBinary = new Uint8Array(config.wasmBinary);
   let active = false;
@@ -1162,6 +1466,26 @@ function createAdapter(config: PdfiumAdapterTestConfig): PdfiumFactsAdapter {
       active = true;
       const ownedData = new Uint8Array(data);
       return analyzePdfium(ownedData, wasmBinary, options, config.failAt)
+        .finally(() => {
+          active = false;
+        });
+    },
+    materialize(data, requests, options = {}) {
+      if (!(data instanceof Uint8Array)) {
+        return Promise.reject(
+          new PdfImportError("pdf/input-type-invalid", "PDF input must be supplied as Uint8Array bytes."),
+        );
+      }
+      if (active) {
+        return Promise.reject(
+          new PdfImportError(
+            "pdf/adapter-busy",
+            "This PDFium adapter already owns an active document. Use a separate bounded worker.",
+          ),
+        );
+      }
+      active = true;
+      return materializePdfium(new Uint8Array(data), [...requests], wasmBinary, options, config.failAt)
         .finally(() => {
           active = false;
         });

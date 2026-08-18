@@ -133,6 +133,7 @@ import {
   createBrowserPdfiumFactsAdapter,
   normalizeTaggedPdfFacts,
   normalizeUntaggedPdfFacts,
+  preservePdfFigures,
 } from "@atlcli/import-pdf/browser-worker";
 import {
   createPageAttachmentWriterV1,
@@ -272,6 +273,13 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     const adapter = createBrowserPdfiumFactsAdapter({ wasmBinary: pdfiumWasm });
     const result = await adapter.analyze(fixtureBytes);
     const semantics = await normalizeTaggedPdfFacts(result.facts, result.factsDigest);
+    const figures = await preservePdfFigures(
+      result.facts,
+      result.factsDigest,
+      fixtureBytes,
+      adapter,
+      semantics,
+    );
     const untaggedFixtureBytes = new Uint8Array(${JSON.stringify([...PDF_IMPORT_UNTAGGED_FIXTURE_BYTES])});
     const untaggedResult = await adapter.analyze(untaggedFixtureBytes);
     const untaggedSemantics = await normalizeUntaggedPdfFacts(
@@ -287,8 +295,14 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       wasmSha256: result.facts.provenance.wasmSha256,
       factsDigest: result.factsDigest,
       semanticDigest: semantics.semanticDigest,
+      figureSemanticDigest: figures.semanticDigest,
       titleCandidate: semantics.document.titleCandidate,
       blockTypes: semantics.document.blocks.map((block) => block.type),
+      figureBlockTypes: figures.document.blocks.map((block) => block.type),
+      figureCount: figures.figures.length,
+      figureAssetCount: figures.document.assets.length,
+      figureModes: figures.figures.map((figure) => figure.mode),
+      figureAuthorAlt: figures.figures.every((figure) => figure.authorAlt),
       taggedTableRows: taggedTable?.type === "table" ? taggedTable.rows.length : 0,
       taggedTableCells: taggedTable?.type === "table"
         ? taggedTable.rows.reduce((count, row) => count + row.cells.length, 0)
@@ -521,8 +535,14 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
         wasmSha256: string;
         factsDigest: string;
         semanticDigest: string;
+        figureSemanticDigest: string;
         titleCandidate?: string;
         blockTypes: string[];
+        figureBlockTypes: string[];
+        figureCount: number;
+        figureAssetCount: number;
+        figureModes: string[];
+        figureAuthorAlt: boolean;
         taggedTableRows: number;
         taggedTableCells: number;
         taggedTableHeaders: number;
@@ -656,8 +676,14 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     || importResult.wasmSha256 !== PDFIUM_WASM_SHA256
     || !/^[a-f0-9]{64}$/u.test(importResult.factsDigest)
     || !/^[a-f0-9]{64}$/u.test(importResult.semanticDigest)
+    || !/^[a-f0-9]{64}$/u.test(importResult.figureSemanticDigest)
     || importResult.titleCandidate !== "Structured Garden Report"
     || importResult.blockTypes.join(",") !== "heading,paragraph,table"
+    || importResult.figureBlockTypes.join(",") !== "heading,paragraph,table,image,paragraph"
+    || importResult.figureCount !== 1
+    || importResult.figureAssetCount !== 1
+    || importResult.figureModes.join(",") !== "native-raster"
+    || !importResult.figureAuthorAlt
     || importResult.taggedTableRows !== 2
     || importResult.taggedTableCells !== 4
     || importResult.taggedTableHeaders !== 2

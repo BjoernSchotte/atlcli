@@ -5,6 +5,14 @@ import { verifyVendoredPdfium } from "../scripts/vendor-pdfium.js";
 
 const packageRoot = resolve(import.meta.dir, "..");
 const reviewedPdfiumFunctions = [
+  "FPDFBitmap_Create",
+  "FPDFBitmap_Destroy",
+  "FPDFBitmap_FillRect",
+  "FPDFBitmap_GetBuffer",
+  "FPDFBitmap_GetFormat",
+  "FPDFBitmap_GetHeight",
+  "FPDFBitmap_GetStride",
+  "FPDFBitmap_GetWidth",
   "FPDFAction_GetType",
   "FPDFAction_GetURIPath",
   "FPDFAnnot_GetLink",
@@ -22,6 +30,7 @@ const reviewedPdfiumFunctions = [
   "FPDFFormObj_GetObject",
   "FPDFImageObj_GetImageDataDecoded",
   "FPDFImageObj_GetImagePixelSize",
+  "FPDFImageObj_GetRenderedBitmap",
   "FPDFLink_GetAction",
   "FPDFPageObj_GetBounds",
   "FPDFPageObj_GetMarkedContentID",
@@ -38,6 +47,7 @@ const reviewedPdfiumFunctions = [
   "FPDFPage_GetMediaBox",
   "FPDFPage_GetObject",
   "FPDFPage_GetRotation",
+  "FPDF_RenderPageBitmap",
   "FPDFPage_GetTrimBox",
   "FPDFText_ClosePage",
   "FPDFText_CountChars",

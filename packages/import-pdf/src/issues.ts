@@ -12,6 +12,7 @@ export type PdfImportErrorCode =
   | "pdf/cancelled"
   | "pdf/engine-failure"
   | "pdf/provenance-drift"
+  | "pdf/asset-request-invalid"
   | "pdf/incomplete";
 
 export class PdfImportError extends Error {

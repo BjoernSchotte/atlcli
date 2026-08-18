@@ -733,3 +733,107 @@ URL, raw receipt, credential, or tenant-derived body is committed.
 PDF-05 is complete. Native tables require structure or a proved physical grid;
 alignment alone is never native. PDF-06 must materialize the rendered-region
 fallback before the CLI can offer visual preservation for approximated tables.
+
+## PDF-06 - Figures, extraction, and bounded rendered fallback
+
+### Result
+
+`atlcli.pdf-figure-policy/1` now correlates tagged `Figure` structure/MCIDs with
+public PDFium image and path-object facts. A one-to-one placed raster whose
+source and placement aspect ratios agree is extracted through
+`FPDFImageObj_GetRenderedBitmap`. Composite, vector, clipped, and table-fallback
+regions are instead rendered at 144 DPI through a reviewed public
+`FPDF_RenderPageBitmap` boundary. They are explicitly recorded as `attached`,
+never as native vector semantics.
+
+The host-neutral materializer accepts only caller-owned PDF bytes and the
+digest-pinned local PDFium WASM. It enforces per-asset and aggregate render
+pixel/byte budgets, a maximum 300 DPI, unique request IDs, valid normalized
+bounds, and exact public object paths. Each page and bitmap is closed in
+`finally`; document, input allocation, and library ownership are then released
+in reverse order. Cooperative cancellation is observed before and between
+requests, while worker termination remains the hard-cancellation boundary.
+
+Assets are deterministic PNGs with SHA-256 identities and filenames of the
+form `pdf-pNNN-<digest>.png`. Identical bytes produce one asset with multiple
+source references while each placement retains its own image block. Tagged
+author alt and captions are retained. Missing author alt is reported and never
+invented. Both shared target projections are proven: Cloud ADF receives the
+resolved media ID/collection/alt, and Data Center Storage receives the exact
+attachment filename/alt.
+
+### Neutral figure and fallback goldens
+
+```text
+bun run test packages/import-pdf packages/import-core --test-name-pattern figure
+7 pass, 0 fail, 55 assertions
+
+bun run test packages/import-pdf
+31 pass, 0 fail, 398 assertions
+```
+
+| Family | Result |
+|---|---|
+| real tagged | one native raster; author alt and caption retained; final block order is heading, paragraph, table, image, caption |
+| real untagged | one native raster plus one rendered vector region; two placements share the proved caption; both missing-alt outcomes reported |
+| alignment-only table | exact linearized text plus one bounded rendered table region; outcome is attached, not native |
+| duplicate synthetic placement | two independent figure blocks reference one content-addressed PNG asset |
+| lifecycle/adversarial | pixel and DPI budgets, invalid object paths, cancellation after request one, and faults after bitmap/render all fail with stable codes, clean up, and recover deterministically |
+
+The real untagged fixture produced a 240 x 160 native PNG (153,838 bytes) and
+a 384 x 351 rendered vector PNG (539,595 bytes). Repeated runs produced the
+same semantic and asset digests. Manual rendered-image inspection confirmed
+that the raster shapes and the complete vector frame/diagonals are visible and
+bounded; no customer artifact was used or retained.
+
+### Repository and packaged-consumer proof
+
+```text
+bun run typecheck
+pass
+
+bun run build
+33 tasks pass
+
+bun run check:browser
+36 browser entrypoints pass
+
+bun install --frozen-lockfile
+pass
+
+bun run test scripts/api-report.test.ts scripts/publishable-deps.test.ts packages/import-pdf
+37 pass, 0 fail, 413 assertions
+
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+```
+
+Fresh API and closure reports have zero reachable-but-unexported gaps. Packed
+Bun, filesystem-link, plain Node 22/npm, and Vite 8.1.4 consumers remain green.
+The production Vite hook loads the emitted local PDFium WASM, analyzes the real
+tagged neutral fixture, materializes its figure, and proves one native raster,
+one deterministic asset, retained author alt, and the expected final block
+sequence. The browser gate inventory now explicitly locks both `import-core`
+and `import-pdf` browser entrypoints.
+
+A full repository run outside the sandbox completed 8,304 tests with 16
+documented skips and one failure in the pre-existing viewer-only PDF.js
+baseline under full-suite concurrency. The exact PDF.js test passed immediately
+in isolation (1 pass, 0 fail); all PDFium importer and Figure tests passed in
+the full run. This task therefore does not claim a fully green monorepo run,
+and the unrelated concurrency-sensitive viewer probe remains visible.
+
+### Built-CLI live guard
+
+The freshly built CLI previewed and published the existing neutral generated
+DOCX in the authorized `mayflower` / `DOCSY` environment. Readback preserved
+the heading, paragraphs, and list at version 1. The exact owned page was
+deleted, final GET returned 404, and an exact title query returned zero pages.
+No live ID, URL, raw receipt, credential, or tenant-derived body is committed.
+
+### Decision
+
+PDF-06 is complete. Native raster extraction is limited to proved one-to-one
+objects; vector/composite and weak table semantics retain visible fidelity only
+through bounded, explicitly attached rendered regions. PDF-07 may now expose
+these decisions in the review-first CLI vertical slice.

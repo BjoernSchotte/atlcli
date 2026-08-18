@@ -1294,11 +1294,11 @@ bun run typecheck
 
 **Work:**
 
-- [ ] Correlate figure tags/bounds/operator objects with visible output.
-- [ ] Extract one-to-one rasters; render composite/vector/clipped regions under budgets.
-- [ ] Dedupe bytes while preserving placements/captions; report missing author alt text.
-- [ ] Prove deterministic asset MIME/name/digest, Cloud media and DC filename projection.
-- [ ] Prove cancellation and canvas/resource cleanup.
+- [x] Correlate figure tags/bounds with visible PDFium image/path page objects; keep the unavailable operator-list capability explicit.
+- [x] Extract one-to-one rasters; render composite/vector/clipped regions under budgets.
+- [x] Dedupe bytes while preserving placements/captions; report missing author alt text.
+- [x] Prove deterministic asset MIME/name/digest, Cloud media and DC filename projection.
+- [x] Prove cancellation and canvas/resource cleanup.
 
 **Verify:**
 

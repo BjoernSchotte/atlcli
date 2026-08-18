@@ -53,6 +53,12 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
 
+// export: encodeRgbaPng
+export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
+
+// export: expandNormalizedRect
+export declare function expandNormalizedRect(rect: PdfNormalizedRect, margin?: number): PdfNormalizedRect;
+
 // export: extractGeometryFragments
 export declare function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragmentV1[];
 
@@ -86,6 +92,9 @@ export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: 
 // export: normalizeUntaggedPdfFacts
 export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfUntaggedSemanticsV1>;
 
+// export: pageHasQualifiedDigitalLayout
+export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
 
@@ -95,11 +104,30 @@ export declare const PDF_ANALYSIS_HARD_BUDGETS: Readonly<PdfAnalysisBudgets>;
 // export: PDF_ANALYSIS_POLICY_REVISION
 export declare const PDF_ANALYSIS_POLICY_REVISION: "atlcli.pdf-analysis-policy/1";
 
+// export: PDF_ASSET_MATERIALIZER_REVISION
+export declare const PDF_ASSET_MATERIALIZER_REVISION: "atlcli.pdfium-asset-materializer/1";
+
 // export: PDF_FACTS_ADAPTER_REVISION
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_FIGURE_POLICY_REVISION
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
+
+// export: PDF_FIGURE_POLICY_V1
+export declare const PDF_FIGURE_POLICY_V1: Readonly<{
+    readonly renderDpi: 144;
+    readonly maximumAspectRatioError: 0.08;
+    readonly visualJoinGap: 0.012;
+    readonly minimumVectorWidth: 0.08;
+    readonly minimumVectorHeight: 0.05;
+    readonly captionMaximumGap: 0.14;
+}>;
+
+// export: PDF_FIGURE_SEMANTICS_SCHEMA_V1
+export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantics/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
@@ -165,6 +193,11 @@ export interface PdfAnalysisBudgets {
     maxDecodedPixelsPerAsset: number;
     maxDecodedBytesTotal: number;
     maxDecodedBytesPerAsset: number;
+    maxRenderedPixelsTotal: number;
+    maxRenderedPixelsPerAsset: number;
+    maxRenderedBytesTotal: number;
+    maxRenderedBytesPerAsset: number;
+    maxRenderDpi: number;
     maxEvidenceEntries: number;
     maxCanonicalBytes: number;
     maxPageObjectDepth: number;
@@ -247,6 +280,44 @@ export interface PdfAnnotationFact {
     unsafeTargetReported: boolean;
 }
 
+// export: PdfAssetMaterializationOptions
+export interface PdfAssetMaterializationOptions {
+    signal?: AbortSignal;
+    budgets?: Partial<import("./budgets.js").PdfAnalysisBudgets>;
+    progress?: (event: PdfAssetMaterializationProgress) => void;
+}
+
+// export: PdfAssetMaterializationProgress
+export type PdfAssetMaterializationProgress = {
+    phase: "start";
+    completed: 0;
+    total: number;
+} | {
+    phase: "request-start";
+    completed: number;
+    total: number;
+    requestId: string;
+} | {
+    phase: "request-complete";
+    completed: number;
+    total: number;
+    requestId: string;
+} | {
+    phase: "cleanup";
+    completed: number;
+    total: number;
+};
+
+// export: PdfAssetMaterializationRequestV1
+export interface PdfAssetMaterializationRequestV1 {
+    id: string;
+    pageIndex: number;
+    kind: "image-object" | "rendered-region";
+    objectId?: string;
+    bbox?: PdfNormalizedRect;
+    dpi?: number;
+}
+
 // export: PdfCompletenessV1
 export interface PdfCompletenessV1 {
     expectedPages: number;
@@ -264,7 +335,7 @@ export interface PdfDecisionEvidenceV1 {
     confidence: number;
     decisionCode: string;
     outcome: ImportOutcome;
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION | typeof PDF_TABLE_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION | typeof PDF_TABLE_POLICY_REVISION | typeof PDF_FIGURE_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -294,6 +365,7 @@ export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" |
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
     analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV1>;
+    materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
 }
 
 // export: PdfFactsIssue
@@ -334,6 +406,37 @@ export interface PdfFactsV1 {
     issues: PdfFactsIssue[];
 }
 
+// export: PdfFigureBaseSemanticsV1
+export interface PdfFigureBaseSemanticsV1 {
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+}
+
+// export: PdfFigureDecisionV1
+export interface PdfFigureDecisionV1 {
+    sourceId: string;
+    pageIndex: number;
+    blockId: string;
+    assetId: string;
+    mode: "native-raster" | "rendered-region" | "table-region-fallback";
+    bbox: PdfNormalizedRect;
+    captionBlockId?: string;
+    authorAlt: boolean;
+    sha256: string;
+}
+
+// export: PdfFigureSemanticsV1
+export interface PdfFigureSemanticsV1 {
+    schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V1;
+    factsDigest: string;
+    policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    figures: PdfFigureDecisionV1[];
+    semanticDigest: string;
+}
+
 // export: PdfGeometryFragmentV1
 export interface PdfGeometryFragmentV1 {
     id: string;
@@ -369,7 +472,7 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/incomplete";
 
 // export: PDFIUM_ENGINE_VERSION
 export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
@@ -384,6 +487,19 @@ export interface PdfiumAdapterConfig {
 
 // export: PdfiumFactsAdapter
 export type PdfiumFactsAdapter = PdfFactsAdapter;
+
+// export: PdfMaterializedAssetV1
+export interface PdfMaterializedAssetV1 {
+    requestId: string;
+    pageIndex: number;
+    sourceKind: "image-object" | "rendered-region";
+    mediaType: "image/png";
+    width: number;
+    height: number;
+    bytes: Uint8Array;
+    sha256: string;
+    materializerRevision: typeof PDF_ASSET_MATERIALIZER_REVISION;
+}
 
 // export: PdfNormalizedRect
 export interface PdfNormalizedRect {
@@ -428,6 +544,7 @@ export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 // export: PdfPathObjectFact
 export interface PdfPathObjectFact {
     id: string;
+    mcid: number | null;
     bbox: PdfNormalizedRect | null;
     segmentCount: number;
     fillMode: number;
@@ -557,11 +674,17 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: preservePdfFigures
+export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
+
 // export: projectTaggedList
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
 
 // export: projectTaggedTable
 export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): PdfTableProjectionV1;
+
+// export: rectsTouch
+export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
@@ -655,6 +778,12 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
 
+// export: encodeRgbaPng
+export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
+
+// export: expandNormalizedRect
+export declare function expandNormalizedRect(rect: PdfNormalizedRect, margin?: number): PdfNormalizedRect;
+
 // export: extractGeometryFragments
 export declare function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragmentV1[];
 
@@ -688,6 +817,9 @@ export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: 
 // export: normalizeUntaggedPdfFacts
 export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfUntaggedSemanticsV1>;
 
+// export: pageHasQualifiedDigitalLayout
+export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
 
@@ -697,11 +829,30 @@ export declare const PDF_ANALYSIS_HARD_BUDGETS: Readonly<PdfAnalysisBudgets>;
 // export: PDF_ANALYSIS_POLICY_REVISION
 export declare const PDF_ANALYSIS_POLICY_REVISION: "atlcli.pdf-analysis-policy/1";
 
+// export: PDF_ASSET_MATERIALIZER_REVISION
+export declare const PDF_ASSET_MATERIALIZER_REVISION: "atlcli.pdfium-asset-materializer/1";
+
 // export: PDF_FACTS_ADAPTER_REVISION
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_FIGURE_POLICY_REVISION
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
+
+// export: PDF_FIGURE_POLICY_V1
+export declare const PDF_FIGURE_POLICY_V1: Readonly<{
+    readonly renderDpi: 144;
+    readonly maximumAspectRatioError: 0.08;
+    readonly visualJoinGap: 0.012;
+    readonly minimumVectorWidth: 0.08;
+    readonly minimumVectorHeight: 0.05;
+    readonly captionMaximumGap: 0.14;
+}>;
+
+// export: PDF_FIGURE_SEMANTICS_SCHEMA_V1
+export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantics/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
@@ -767,6 +918,11 @@ export interface PdfAnalysisBudgets {
     maxDecodedPixelsPerAsset: number;
     maxDecodedBytesTotal: number;
     maxDecodedBytesPerAsset: number;
+    maxRenderedPixelsTotal: number;
+    maxRenderedPixelsPerAsset: number;
+    maxRenderedBytesTotal: number;
+    maxRenderedBytesPerAsset: number;
+    maxRenderDpi: number;
     maxEvidenceEntries: number;
     maxCanonicalBytes: number;
     maxPageObjectDepth: number;
@@ -849,6 +1005,44 @@ export interface PdfAnnotationFact {
     unsafeTargetReported: boolean;
 }
 
+// export: PdfAssetMaterializationOptions
+export interface PdfAssetMaterializationOptions {
+    signal?: AbortSignal;
+    budgets?: Partial<import("./budgets.js").PdfAnalysisBudgets>;
+    progress?: (event: PdfAssetMaterializationProgress) => void;
+}
+
+// export: PdfAssetMaterializationProgress
+export type PdfAssetMaterializationProgress = {
+    phase: "start";
+    completed: 0;
+    total: number;
+} | {
+    phase: "request-start";
+    completed: number;
+    total: number;
+    requestId: string;
+} | {
+    phase: "request-complete";
+    completed: number;
+    total: number;
+    requestId: string;
+} | {
+    phase: "cleanup";
+    completed: number;
+    total: number;
+};
+
+// export: PdfAssetMaterializationRequestV1
+export interface PdfAssetMaterializationRequestV1 {
+    id: string;
+    pageIndex: number;
+    kind: "image-object" | "rendered-region";
+    objectId?: string;
+    bbox?: PdfNormalizedRect;
+    dpi?: number;
+}
+
 // export: PdfCompletenessV1
 export interface PdfCompletenessV1 {
     expectedPages: number;
@@ -866,7 +1060,7 @@ export interface PdfDecisionEvidenceV1 {
     confidence: number;
     decisionCode: string;
     outcome: ImportOutcome;
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION | typeof PDF_TABLE_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION | typeof PDF_TABLE_POLICY_REVISION | typeof PDF_FIGURE_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -896,6 +1090,7 @@ export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" |
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
     analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV1>;
+    materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
 }
 
 // export: PdfFactsIssue
@@ -936,6 +1131,37 @@ export interface PdfFactsV1 {
     issues: PdfFactsIssue[];
 }
 
+// export: PdfFigureBaseSemanticsV1
+export interface PdfFigureBaseSemanticsV1 {
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+}
+
+// export: PdfFigureDecisionV1
+export interface PdfFigureDecisionV1 {
+    sourceId: string;
+    pageIndex: number;
+    blockId: string;
+    assetId: string;
+    mode: "native-raster" | "rendered-region" | "table-region-fallback";
+    bbox: PdfNormalizedRect;
+    captionBlockId?: string;
+    authorAlt: boolean;
+    sha256: string;
+}
+
+// export: PdfFigureSemanticsV1
+export interface PdfFigureSemanticsV1 {
+    schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V1;
+    factsDigest: string;
+    policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    figures: PdfFigureDecisionV1[];
+    semanticDigest: string;
+}
+
 // export: PdfGeometryFragmentV1
 export interface PdfGeometryFragmentV1 {
     id: string;
@@ -971,7 +1197,7 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/incomplete";
 
 // export: PDFIUM_ENGINE_VERSION
 export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
@@ -986,6 +1212,19 @@ export interface PdfiumAdapterConfig {
 
 // export: PdfiumFactsAdapter
 export type PdfiumFactsAdapter = PdfFactsAdapter;
+
+// export: PdfMaterializedAssetV1
+export interface PdfMaterializedAssetV1 {
+    requestId: string;
+    pageIndex: number;
+    sourceKind: "image-object" | "rendered-region";
+    mediaType: "image/png";
+    width: number;
+    height: number;
+    bytes: Uint8Array;
+    sha256: string;
+    materializerRevision: typeof PDF_ASSET_MATERIALIZER_REVISION;
+}
 
 // export: PdfNormalizedRect
 export interface PdfNormalizedRect {
@@ -1030,6 +1269,7 @@ export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 // export: PdfPathObjectFact
 export interface PdfPathObjectFact {
     id: string;
+    mcid: number | null;
     bbox: PdfNormalizedRect | null;
     segmentCount: number;
     fillMode: number;
@@ -1159,11 +1399,17 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: preservePdfFigures
+export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
+
 // export: projectTaggedList
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
 
 // export: projectTaggedTable
 export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): PdfTableProjectionV1;
+
+// export: rectsTouch
+export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
@@ -1257,6 +1503,12 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
 
+// export: encodeRgbaPng
+export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
+
+// export: expandNormalizedRect
+export declare function expandNormalizedRect(rect: PdfNormalizedRect, margin?: number): PdfNormalizedRect;
+
 // export: extractGeometryFragments
 export declare function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragmentV1[];
 
@@ -1290,6 +1542,9 @@ export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: 
 // export: normalizeUntaggedPdfFacts
 export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfUntaggedSemanticsV1>;
 
+// export: pageHasQualifiedDigitalLayout
+export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
 
@@ -1299,11 +1554,30 @@ export declare const PDF_ANALYSIS_HARD_BUDGETS: Readonly<PdfAnalysisBudgets>;
 // export: PDF_ANALYSIS_POLICY_REVISION
 export declare const PDF_ANALYSIS_POLICY_REVISION: "atlcli.pdf-analysis-policy/1";
 
+// export: PDF_ASSET_MATERIALIZER_REVISION
+export declare const PDF_ASSET_MATERIALIZER_REVISION: "atlcli.pdfium-asset-materializer/1";
+
 // export: PDF_FACTS_ADAPTER_REVISION
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_FIGURE_POLICY_REVISION
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
+
+// export: PDF_FIGURE_POLICY_V1
+export declare const PDF_FIGURE_POLICY_V1: Readonly<{
+    readonly renderDpi: 144;
+    readonly maximumAspectRatioError: 0.08;
+    readonly visualJoinGap: 0.012;
+    readonly minimumVectorWidth: 0.08;
+    readonly minimumVectorHeight: 0.05;
+    readonly captionMaximumGap: 0.14;
+}>;
+
+// export: PDF_FIGURE_SEMANTICS_SCHEMA_V1
+export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantics/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
@@ -1369,6 +1643,11 @@ export interface PdfAnalysisBudgets {
     maxDecodedPixelsPerAsset: number;
     maxDecodedBytesTotal: number;
     maxDecodedBytesPerAsset: number;
+    maxRenderedPixelsTotal: number;
+    maxRenderedPixelsPerAsset: number;
+    maxRenderedBytesTotal: number;
+    maxRenderedBytesPerAsset: number;
+    maxRenderDpi: number;
     maxEvidenceEntries: number;
     maxCanonicalBytes: number;
     maxPageObjectDepth: number;
@@ -1451,6 +1730,44 @@ export interface PdfAnnotationFact {
     unsafeTargetReported: boolean;
 }
 
+// export: PdfAssetMaterializationOptions
+export interface PdfAssetMaterializationOptions {
+    signal?: AbortSignal;
+    budgets?: Partial<import("./budgets.js").PdfAnalysisBudgets>;
+    progress?: (event: PdfAssetMaterializationProgress) => void;
+}
+
+// export: PdfAssetMaterializationProgress
+export type PdfAssetMaterializationProgress = {
+    phase: "start";
+    completed: 0;
+    total: number;
+} | {
+    phase: "request-start";
+    completed: number;
+    total: number;
+    requestId: string;
+} | {
+    phase: "request-complete";
+    completed: number;
+    total: number;
+    requestId: string;
+} | {
+    phase: "cleanup";
+    completed: number;
+    total: number;
+};
+
+// export: PdfAssetMaterializationRequestV1
+export interface PdfAssetMaterializationRequestV1 {
+    id: string;
+    pageIndex: number;
+    kind: "image-object" | "rendered-region";
+    objectId?: string;
+    bbox?: PdfNormalizedRect;
+    dpi?: number;
+}
+
 // export: PdfCompletenessV1
 export interface PdfCompletenessV1 {
     expectedPages: number;
@@ -1468,7 +1785,7 @@ export interface PdfDecisionEvidenceV1 {
     confidence: number;
     decisionCode: string;
     outcome: ImportOutcome;
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION | typeof PDF_TABLE_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION | typeof PDF_TABLE_POLICY_REVISION | typeof PDF_FIGURE_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -1498,6 +1815,7 @@ export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" |
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
     analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV1>;
+    materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
 }
 
 // export: PdfFactsIssue
@@ -1538,6 +1856,37 @@ export interface PdfFactsV1 {
     issues: PdfFactsIssue[];
 }
 
+// export: PdfFigureBaseSemanticsV1
+export interface PdfFigureBaseSemanticsV1 {
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+}
+
+// export: PdfFigureDecisionV1
+export interface PdfFigureDecisionV1 {
+    sourceId: string;
+    pageIndex: number;
+    blockId: string;
+    assetId: string;
+    mode: "native-raster" | "rendered-region" | "table-region-fallback";
+    bbox: PdfNormalizedRect;
+    captionBlockId?: string;
+    authorAlt: boolean;
+    sha256: string;
+}
+
+// export: PdfFigureSemanticsV1
+export interface PdfFigureSemanticsV1 {
+    schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V1;
+    factsDigest: string;
+    policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    figures: PdfFigureDecisionV1[];
+    semanticDigest: string;
+}
+
 // export: PdfGeometryFragmentV1
 export interface PdfGeometryFragmentV1 {
     id: string;
@@ -1573,7 +1922,7 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/incomplete";
 
 // export: PDFIUM_ENGINE_VERSION
 export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
@@ -1588,6 +1937,19 @@ export interface PdfiumAdapterConfig {
 
 // export: PdfiumFactsAdapter
 export type PdfiumFactsAdapter = PdfFactsAdapter;
+
+// export: PdfMaterializedAssetV1
+export interface PdfMaterializedAssetV1 {
+    requestId: string;
+    pageIndex: number;
+    sourceKind: "image-object" | "rendered-region";
+    mediaType: "image/png";
+    width: number;
+    height: number;
+    bytes: Uint8Array;
+    sha256: string;
+    materializerRevision: typeof PDF_ASSET_MATERIALIZER_REVISION;
+}
 
 // export: PdfNormalizedRect
 export interface PdfNormalizedRect {
@@ -1632,6 +1994,7 @@ export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 // export: PdfPathObjectFact
 export interface PdfPathObjectFact {
     id: string;
+    mcid: number | null;
     bbox: PdfNormalizedRect | null;
     segmentCount: number;
     fillMode: number;
@@ -1761,11 +2124,17 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: preservePdfFigures
+export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
+
 // export: projectTaggedList
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
 
 // export: projectTaggedTable
 export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): PdfTableProjectionV1;
+
+// export: rectsTouch
+export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
@@ -1862,6 +2231,12 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
 
+// export: encodeRgbaPng
+export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
+
+// export: expandNormalizedRect
+export declare function expandNormalizedRect(rect: PdfNormalizedRect, margin?: number): PdfNormalizedRect;
+
 // export: extractGeometryFragments
 export declare function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragmentV1[];
 
@@ -1898,6 +2273,9 @@ export declare function normalizeTaggedPdfFacts(facts: PdfFactsV1, factsDigest: 
 // export: normalizeUntaggedPdfFacts
 export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest: string): Promise<PdfUntaggedSemanticsV1>;
 
+// export: pageHasQualifiedDigitalLayout
+export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+
 // export: PDF_ANALYSIS_BUDGET_REVISION
 export declare const PDF_ANALYSIS_BUDGET_REVISION: "atlcli.pdf-analysis-budgets/1";
 
@@ -1907,11 +2285,30 @@ export declare const PDF_ANALYSIS_HARD_BUDGETS: Readonly<PdfAnalysisBudgets>;
 // export: PDF_ANALYSIS_POLICY_REVISION
 export declare const PDF_ANALYSIS_POLICY_REVISION: "atlcli.pdf-analysis-policy/1";
 
+// export: PDF_ASSET_MATERIALIZER_REVISION
+export declare const PDF_ASSET_MATERIALIZER_REVISION: "atlcli.pdfium-asset-materializer/1";
+
 // export: PDF_FACTS_ADAPTER_REVISION
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_FIGURE_POLICY_REVISION
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
+
+// export: PDF_FIGURE_POLICY_V1
+export declare const PDF_FIGURE_POLICY_V1: Readonly<{
+    readonly renderDpi: 144;
+    readonly maximumAspectRatioError: 0.08;
+    readonly visualJoinGap: 0.012;
+    readonly minimumVectorWidth: 0.08;
+    readonly minimumVectorHeight: 0.05;
+    readonly captionMaximumGap: 0.14;
+}>;
+
+// export: PDF_FIGURE_SEMANTICS_SCHEMA_V1
+export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantics/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
@@ -1977,6 +2374,11 @@ export interface PdfAnalysisBudgets {
     maxDecodedPixelsPerAsset: number;
     maxDecodedBytesTotal: number;
     maxDecodedBytesPerAsset: number;
+    maxRenderedPixelsTotal: number;
+    maxRenderedPixelsPerAsset: number;
+    maxRenderedBytesTotal: number;
+    maxRenderedBytesPerAsset: number;
+    maxRenderDpi: number;
     maxEvidenceEntries: number;
     maxCanonicalBytes: number;
     maxPageObjectDepth: number;
@@ -2059,6 +2461,44 @@ export interface PdfAnnotationFact {
     unsafeTargetReported: boolean;
 }
 
+// export: PdfAssetMaterializationOptions
+export interface PdfAssetMaterializationOptions {
+    signal?: AbortSignal;
+    budgets?: Partial<import("./budgets.js").PdfAnalysisBudgets>;
+    progress?: (event: PdfAssetMaterializationProgress) => void;
+}
+
+// export: PdfAssetMaterializationProgress
+export type PdfAssetMaterializationProgress = {
+    phase: "start";
+    completed: 0;
+    total: number;
+} | {
+    phase: "request-start";
+    completed: number;
+    total: number;
+    requestId: string;
+} | {
+    phase: "request-complete";
+    completed: number;
+    total: number;
+    requestId: string;
+} | {
+    phase: "cleanup";
+    completed: number;
+    total: number;
+};
+
+// export: PdfAssetMaterializationRequestV1
+export interface PdfAssetMaterializationRequestV1 {
+    id: string;
+    pageIndex: number;
+    kind: "image-object" | "rendered-region";
+    objectId?: string;
+    bbox?: PdfNormalizedRect;
+    dpi?: number;
+}
+
 // export: PdfCompletenessV1
 export interface PdfCompletenessV1 {
     expectedPages: number;
@@ -2076,7 +2516,7 @@ export interface PdfDecisionEvidenceV1 {
     confidence: number;
     decisionCode: string;
     outcome: ImportOutcome;
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION | typeof PDF_TABLE_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION | typeof PDF_GEOMETRY_POLICY_REVISION | typeof PDF_TABLE_POLICY_REVISION | typeof PDF_FIGURE_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -2106,6 +2546,7 @@ export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" |
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
     analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV1>;
+    materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
 }
 
 // export: PdfFactsIssue
@@ -2146,6 +2587,37 @@ export interface PdfFactsV1 {
     issues: PdfFactsIssue[];
 }
 
+// export: PdfFigureBaseSemanticsV1
+export interface PdfFigureBaseSemanticsV1 {
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+}
+
+// export: PdfFigureDecisionV1
+export interface PdfFigureDecisionV1 {
+    sourceId: string;
+    pageIndex: number;
+    blockId: string;
+    assetId: string;
+    mode: "native-raster" | "rendered-region" | "table-region-fallback";
+    bbox: PdfNormalizedRect;
+    captionBlockId?: string;
+    authorAlt: boolean;
+    sha256: string;
+}
+
+// export: PdfFigureSemanticsV1
+export interface PdfFigureSemanticsV1 {
+    schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V1;
+    factsDigest: string;
+    policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV1[];
+    figures: PdfFigureDecisionV1[];
+    semanticDigest: string;
+}
+
 // export: PdfGeometryFragmentV1
 export interface PdfGeometryFragmentV1 {
     id: string;
@@ -2181,7 +2653,7 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/incomplete";
 
 // export: PDFIUM_ENGINE_VERSION
 export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
@@ -2196,6 +2668,19 @@ export interface PdfiumAdapterConfig {
 
 // export: PdfiumFactsAdapter
 export type PdfiumFactsAdapter = PdfFactsAdapter;
+
+// export: PdfMaterializedAssetV1
+export interface PdfMaterializedAssetV1 {
+    requestId: string;
+    pageIndex: number;
+    sourceKind: "image-object" | "rendered-region";
+    mediaType: "image/png";
+    width: number;
+    height: number;
+    bytes: Uint8Array;
+    sha256: string;
+    materializerRevision: typeof PDF_ASSET_MATERIALIZER_REVISION;
+}
 
 // export: PdfNormalizedRect
 export interface PdfNormalizedRect {
@@ -2240,6 +2725,7 @@ export type PdfPageKind = "digital" | "image-only" | "mixed" | "blank";
 // export: PdfPathObjectFact
 export interface PdfPathObjectFact {
     id: string;
+    mcid: number | null;
     bbox: PdfNormalizedRect | null;
     segmentCount: number;
     fillMode: number;
@@ -2369,11 +2855,17 @@ export interface PdfUntaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: preservePdfFigures
+export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
+
 // export: projectTaggedList
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
 
 // export: projectTaggedTable
 export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): PdfTableProjectionV1;
+
+// export: rectsTouch
+export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
