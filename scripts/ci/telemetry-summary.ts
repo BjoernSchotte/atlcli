@@ -19,9 +19,15 @@ import {
   type FileTiming,
   type TimingSnapshot,
 } from "./test-timings.js";
+import {
+  aggregateTurboTelemetry,
+  readSanitizedTurboArtifacts,
+  type AggregatedTurboTelemetry,
+  type SanitizedTurboTelemetry,
+} from "./turbo-run-summary.js";
 
 export interface CiTelemetrySummary {
-  schema: 1;
+  schema: 2;
   commitSha: string;
   sourceRun: string;
   proofMode: string;
@@ -38,6 +44,7 @@ export interface CiTelemetrySummary {
   slowestFiles: FileTiming[];
   timingSnapshot: TimingSnapshot;
   actions: ActionsTimingSummary;
+  turbo: AggregatedTurboTelemetry;
 }
 
 const ROUTE_ENVIRONMENT: ReadonlyArray<readonly [string, string]> = [
@@ -72,6 +79,7 @@ export function buildCiTelemetrySummary(options: {
   junit: Array<{ lane: string; xml: string }>;
   jobs: ActionsJob[];
   dependencies?: Record<string, string[]>;
+  turbo?: SanitizedTurboTelemetry[];
 }): CiTelemetrySummary {
   if (!/^[0-9a-f]{40}$/i.test(options.commitSha)) {
     throw new Error("telemetry commit SHA must contain 40 hexadecimal characters");
@@ -82,7 +90,7 @@ export function buildCiTelemetrySummary(options: {
   assertDisjointLaneOwnership(artifacts);
   const files = artifacts.flatMap((artifact) => artifact.files);
   return {
-    schema: 1,
+    schema: 2,
     commitSha: options.commitSha.toLowerCase(),
     sourceRun: options.sourceRun,
     proofMode: options.proofMode,
@@ -115,6 +123,7 @@ export function buildCiTelemetrySummary(options: {
       artifacts,
     }),
     actions: summarizeActionsJobs(options.jobs, options.dependencies),
+    turbo: aggregateTurboTelemetry(options.turbo ?? []),
   };
 }
 
@@ -128,6 +137,7 @@ export function telemetryMarkdown(summary: CiTelemetrySummary): string {
     `- Workflow wall time: ${summary.actions.workflowWallSeconds ?? "unavailable"}s`,
     `- Runner time: ${summary.actions.totalRunnerMinutes.toFixed(2)} min`,
     `- Sample class: \`${summary.actions.sampleClass}\``,
+    `- Turbo cache: ${summary.turbo.cacheHits} hit / ${summary.turbo.cacheMisses} miss / ${summary.turbo.cacheSkipped} other across ${summary.turbo.tasks} tasks`,
     "",
     "| Lane | Files | Cases | Testcase time |",
     "| --- | ---: | ---: | ---: |",
@@ -163,11 +173,17 @@ function option(args: readonly string[], name: string): string {
   return value;
 }
 
+function optionalOption(args: readonly string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const junitDirectory = option(args, "--junit");
   const jobsPath = option(args, "--jobs");
   const outPath = option(args, "--out");
+  const turboDirectory = optionalOption(args, "--turbo");
   const jobsPayload = JSON.parse(readFileSync(jobsPath, "utf8")) as {
     jobs?: ActionsJob[];
     dependencies?: Record<string, string[]>;
@@ -194,6 +210,7 @@ async function main(): Promise<void> {
     junit,
     jobs: jobsPayload.jobs,
     dependencies: jobsPayload.dependencies,
+    turbo: turboDirectory ? readSanitizedTurboArtifacts(turboDirectory) : [],
   });
   mkdirSync(dirname(resolve(outPath)), { recursive: true });
   writeFileSync(outPath, `${JSON.stringify(summary, null, 2)}\n`);

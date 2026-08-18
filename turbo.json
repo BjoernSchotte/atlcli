@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["package.json", "bun.lock", "tsconfig.json"],
+  "globalDependencies": ["package.json", "tsconfig.json"],
   "tasks": {
     "typecheck": {
       "cache": true,
@@ -19,10 +19,26 @@
         "$TURBO_ROOT$/patches/**"
       ]
     },
+    "//#typecheck:root": {
+      "cache": true,
+      "outputs": [],
+      "inputs": [
+        "tsconfig.json",
+        "package.json",
+        "bun.lock",
+        "apps/*/package.json",
+        "apps/*/src/**",
+        "packages/*/package.json",
+        "packages/*/src/**",
+        "scripts/**/*.ts",
+        "patches/**"
+      ]
+    },
     "//#check:browser:internal": {
       "cache": true,
       "outputs": [],
       "inputs": [
+        "bun.lock",
         "scripts/check-browser-build.ts",
         "packages/*/src/**",
         "packages/docx/fonts/**",

@@ -69,6 +69,8 @@ const PDF_PACKAGE_PREFIXES = [
 
 /** Transitive workspace inputs of the extension and browser export harness. */
 const BROWSER_PACKAGE_PREFIXES = [
+  "packages/action-palette-react/",
+  "packages/action-registry/",
   "packages/code-highlight/",
   "packages/confluence/",
   "packages/core/",

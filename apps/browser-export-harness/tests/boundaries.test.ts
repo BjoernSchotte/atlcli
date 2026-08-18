@@ -102,7 +102,9 @@ describe("browser harness boundaries", () => {
       scripts?: Record<string, string>;
     };
     expect(rootConfig.exclude).toContain("apps/browser-export-harness");
-    expect(rootPackage.scripts?.typecheck).toContain("typecheck:browser-export-harness");
+    expect(rootPackage.scripts?.typecheck).toContain(
+      "--filter=@atlcli/browser-export-harness",
+    );
     expect(read("package.json")).toContain("tsconfig.worker.json");
     expect(JSON.parse(read("tsconfig.worker.json")).exclude).toEqual([]);
     expect(JSON.parse(read("tsconfig.tools.json")).exclude).toEqual([]);
