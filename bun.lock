@@ -379,6 +379,18 @@
         "pizzip": "3.2.0",
       },
     },
+    "packages/import-pdf": {
+      "name": "@atlcli/import-pdf",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/core": "workspace:*",
+        "@atlcli/import-core": "workspace:*",
+        "@embedpdf/pdfium": "2.15.0",
+      },
+      "devDependencies": {
+        "@types/emscripten": "1.41.5",
+      },
+    },
     "packages/jira": {
       "name": "@atlcli/jira",
       "version": "0.6.0",
@@ -625,6 +637,8 @@
 
     "@atlcli/import-docx": ["@atlcli/import-docx@workspace:packages/import-docx"],
 
+    "@atlcli/import-pdf": ["@atlcli/import-pdf@workspace:packages/import-pdf"],
+
     "@atlcli/jira": ["@atlcli/jira@workspace:packages/jira"],
 
     "@atlcli/pdf": ["@atlcli/pdf@workspace:packages/pdf"],
@@ -716,6 +730,8 @@
     "@devicefarmer/adbkit-monkey": ["@devicefarmer/adbkit-monkey@1.2.1", "", {}, "sha512-ZzZY/b66W2Jd6NHbAhLyDWOEIBWC11VizGFk7Wx7M61JZRz7HR9Cq5P+65RKWUU7u6wgsE8Lmh9nE4Mz+U2eTg=="],
 
     "@dmsnell/diff-match-patch": ["@dmsnell/diff-match-patch@1.1.0", "", {}, "sha512-yejLPmM5pjsGvxS9gXablUSbInW7H976c/FJ4iQxWIm7/38xBySRemTPDe34lhg1gVLbJntX0+sH0jYfU+PN9A=="],
+
+    "@embedpdf/pdfium": ["@embedpdf/pdfium@2.15.0", "", {}, "sha512-KgpRND2MYcdbhzb2EMb4WzWcJYrR0A6JXvhMv4WthEHKt6qmNo2v/MC68bpYvpveYT9GNnUnY/+TG5MpXY3pRw=="],
 
     "@emmetio/abbreviation": ["@emmetio/abbreviation@2.3.3", "", { "dependencies": { "@emmetio/scanner": "^1.0.4" } }, "sha512-mgv58UrU3rh4YgbE/TzgLQwJ3pFsHHhCLqY20aJq+9comytTXUDNGG/SMtSeMJdkpxgXSXunBGLD8Boka3JyVA=="],
 
@@ -1268,6 +1284,8 @@
     "@types/debug": ["@types/debug@4.1.12", "", { "dependencies": { "@types/ms": "*" } }, "sha512-vIChWdVG3LG1SMxEvI/AK+FWJthlrqlTu7fbrlywTkkaONwk/UAGaULXRlf8vkzFBLVm0zkMdCquhL5aOjhXPQ=="],
 
     "@types/diff": ["@types/diff@8.0.0", "", { "dependencies": { "diff": "*" } }, "sha512-o7jqJM04gfaYrdCecCVMbZhNdG6T1MHg/oQoRFdERLV+4d+V7FijhiEAbFu0Usww84Yijk9yH58U4Jk4HbtzZw=="],
+
+    "@types/emscripten": ["@types/emscripten@1.41.5", "", {}, "sha512-cMQm7pxu6BxtHyqJ7mQZ2kXWV5SLmugybFdHCBbJ5eHzOo6VhBckEgAT3//rP5FwPHNPeEiq4SmQ5ucBwsOo4Q=="],
 
     "@types/estree": ["@types/estree@1.0.8", "", {}, "sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w=="],
 

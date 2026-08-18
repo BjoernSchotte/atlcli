@@ -1196,12 +1196,12 @@ bun install --frozen-lockfile
 
 **Work:**
 
-- [ ] Accept bytes only; validate signature, encryption, page count, safe options, deadlines, and cancellation before engine work.
-- [ ] Implement PDFium CLI and browser-worker loaders behind one `PdfFactsAdapter`; expose only owned normalized facts, never PDFium handles/pointers or host objects.
-- [ ] Collect page boxes/rotation/labels, mark info, outline, inert action/attachment presence, text/structure plus operator/page-object summaries through capability-labelled facts.
-- [ ] Classify every page/document and enforce completeness accounting.
-- [ ] Record engine kind/version/capabilities/options in preview provenance and canonical digests; reject preview/publication engine drift.
-- [ ] Add deterministic progress events and idempotent cleanup in `finally`; exercise every PDFium allocation/handle failure path.
+- [x] Accept bytes only; validate signature, encryption, page count, safe options, deadlines, and cancellation before engine work.
+- [x] Implement PDFium CLI and browser-worker loaders behind one `PdfFactsAdapter`; expose only owned normalized facts, never PDFium handles/pointers or host objects.
+- [x] Collect page boxes/rotation/labels, mark info, outline, inert action/attachment presence, text/structure plus operator/page-object summaries through capability-labelled facts.
+- [x] Classify every page/document and enforce completeness accounting.
+- [x] Record engine kind/version/capabilities/options in preview provenance and canonical digests; reject preview/publication engine drift.
+- [x] Add deterministic progress events and idempotent cleanup in `finally`; exercise every PDFium allocation/handle failure path.
 
 **Verify:**
 

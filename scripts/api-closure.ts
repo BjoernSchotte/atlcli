@@ -239,6 +239,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "ADF/Storage/preview projection boundary. Keep it experimental until both DOCX and PDF " +
       "parsers plus packed Node, Bun, and browser consumers prove the versioned contract.",
   },
+  "@atlcli/import-pdf": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the exact-pinned PDFium facts, safety-budget, and " +
+      "classification boundary for semantic PDF import. Keep it experimental until tagged and " +
+      "untagged semantics, publication, and CLI/browser-worker consumers clear the full MVP gates.",
+  },
   "@atlcli/plugin-api": {
     version: "0.x",
     frozen: false,

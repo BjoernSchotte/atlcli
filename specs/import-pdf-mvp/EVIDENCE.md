@@ -326,3 +326,105 @@ was committed.
 
 PDF-01 is complete. PDF-specific geometry, confidence, classification, and
 engine provenance remain outside the semantic core and belong to PDF-02 onward.
+
+## PDF-02 - Safe PDFium facts and page classification
+
+### Result
+
+`@atlcli/import-pdf` now owns the exact-pinned PDFium boundary for CLI and
+browser-worker consumers. The adapter accepts copied `Uint8Array` bytes and
+caller-injected local WASM only. It exposes normalized, serializable PDF facts;
+no PDFium pointer, handle, page object, URL loader, network primitive, or host
+object crosses the package boundary.
+
+The immutable production ceilings cover input bytes, page count, characters,
+structure nodes, page objects, assets, decoded pixels/bytes, evidence entries,
+canonical output size, and per-page/total deadlines. Callers may only tighten
+them. Signature, encryption, malformed loads, budget breaches, cancellation,
+concurrent adapter ownership, and provenance drift use stable error or reported
+outcomes. Every accepted page index is accounted for exactly once.
+
+PDFium facts include normalized character geometry, page dimensions/boxes,
+rotation and labels, structure roles/attributes/MCIDs, outline, inert
+annotation/action facts, recursive page-object/image summaries, and explicit
+capability gaps. Operator lists, native tables, OCR, and active-content
+execution are deliberately unavailable. Scanned, mixed, tagged,
+digital-untagged, encrypted, and rejected documents receive explicit
+classifications rather than an empty-success fallback.
+
+### Focused safety and lifecycle proof
+
+```text
+bun run test packages/import-pdf
+12 pass, 0 fail, 218 assertions
+```
+
+The suite proves deterministic facts/progress and normalized geometry; tagged
+structure/image/outline collection; scan, mixed, encrypted and active-content
+classification; hard input/page/text/image budgets; preflight and mid-run
+cancellation; exact 100-page completeness; busy-adapter rejection; browser and
+Node digest equality; packaged Node WASM loading; and provenance-drift
+rejection. Fault injection after every acquisition stage proves reverse-order
+cleanup and identical subsequent recovery. The public callsite snapshot admits
+only the reviewed `FPDF_*` plus `PDFiumExt_Init` allowlist and rejects fork-only
+`EPDF_*` calls.
+
+The vendoring step verifies before copying:
+
+```text
+@embedpdf/pdfium 2.15.0
+WASM bytes 4,633,788
+WASM SHA-256 c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8
+WebAssembly import modules: env, wasi_snapshot_preview1
+```
+
+The dry-run package contains the built JavaScript/declarations, the verified
+WASM, wrapper/PDFium licenses, and a provenance record. It contains no PDF.js
+dependency and has no install script or runtime dependency beyond the exact
+PDFium wrapper and existing AtlCLI packages.
+
+### Repository, package, and browser gates
+
+```text
+bun run build
+33 tasks pass
+
+bun run typecheck
+pass
+
+bun run check:browser
+36 browser entrypoints pass
+
+bun install --frozen-lockfile
+pass
+
+bun scripts/api-report.ts
+bun scripts/api-closure.ts
+all publishable reports unchanged
+
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+```
+
+The real consumer suite packed the publishable closure and proved the new root,
+Node, browser-worker, and raw-WASM subpaths from tarballs under Bun, plain Node
+22/npm, and Vite 8.1.4. The Vite production bundle emits distinct local Typst
+and PDFium WASM assets, verifies the PDFium SHA-256, contains no `eval`,
+`new Function`, or PDFium CDN literal, and analyzes a neutral one-page PDF to
+the expected complete `digital-untagged` facts.
+
+### Built-CLI live guard
+
+The freshly built CLI previewed a neutral DOCX with one heading, paragraph,
+and list, then created a version-1 page in the authorized `mayflower` / `DOCSY`
+test environment. Readback preserved the expected Storage body. The exact
+owned page was deleted and a final GET returned 404. The temporary fixture and
+raw live receipt were removed; no live ID, URL, credential, or tenant-derived
+body is committed.
+
+### Decision
+
+PDF-02 is complete. PDF.js remains outside the import package. Semantic block
+construction, reading-order decisions, tables, figures, and raster fallbacks
+remain owned by PDF-03 through PDF-05; this task establishes only the bounded,
+provenance-bound facts layer they consume.

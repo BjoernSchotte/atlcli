@@ -32,6 +32,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildDocx, para } from "../packages/docx/src/fixtures.js";
@@ -47,6 +48,7 @@ import {
  * closure is derived from the real manifests (never a hardcoded list). */
 const VITE_ROOTS = [
   "@atlcli/import-core",
+  "@atlcli/import-pdf",
   "@atlcli/docx",
   "@atlcli/pdf",
   "@atlcli/pdf-compiler-browser",
@@ -55,6 +57,10 @@ const VITE_ROOTS = [
 const DOCX_TEMPLATE_BYTES = buildDocx({
   body: para("$scroll.title") + para("$scroll.content"),
 });
+const PDF_IMPORT_FIXTURE_BYTES = readFileSync(
+  join(import.meta.dir, "../specs/import-pdf-mvp/fixtures/simple-untagged.pdf"),
+);
+const PDFIUM_WASM_SHA256 = "c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8";
 
 const VITE_VERSION = "8.1.4"; // same major the harness builds with
 
@@ -100,6 +106,7 @@ import {
   unzipDocx,
 } from "@atlcli/docx/browser-entry";
 import wasmUrl from "@atlcli/pdf-compiler-browser/wasm?url";
+import pdfiumWasmUrl from "@atlcli/import-pdf/wasm?url";
 import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
 import sansItalicUrl from "@atlcli/pdf/fonts/SourceSans3-It.ttf?url";
 import sansSemiBoldUrl from "@atlcli/pdf/fonts/SourceSans3-Semibold.ttf?url";
@@ -118,6 +125,7 @@ import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { IMPORT_DOCUMENT_SCHEMA_V2, documentToAdf } from "@atlcli/import-core";
+import { PDF_FACTS_SCHEMA_V1, createBrowserPdfiumFactsAdapter } from "@atlcli/import-pdf/browser-worker";
 import {
   createPageAttachmentWriterV1,
   storageToBlocks,
@@ -149,7 +157,11 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
   importCoreProof:
     documentToAdf({ blocks: [] }).type === "doc" &&
     IMPORT_DOCUMENT_SCHEMA_V2 === "atlcli.import-document/2",
+  importPdfProof:
+    PDF_FACTS_SCHEMA_V1 === "atlcli.pdf-facts/1" &&
+    typeof createBrowserPdfiumFactsAdapter === "function",
   wasmUrl,
+  pdfiumWasmUrl,
   fontUrls,
   expectedFonts: PDF_RUNTIME_ASSETS.fonts.map((font) => font.fileName),
   jobsEntrypointLoaded:
@@ -244,6 +256,20 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       filename: report.filename,
       hasHeading: documentXml.includes("Vite DOCX Heading"),
       hasBody: documentXml.includes("One ordered browser entry."),
+    };
+  },
+  async analyzePdfImport(loadBytes: LoadBytes) {
+    const fixtureBytes = new Uint8Array(${JSON.stringify([...PDF_IMPORT_FIXTURE_BYTES])});
+    const pdfiumWasm = await loadBytes(pdfiumWasmUrl);
+    const adapter = createBrowserPdfiumFactsAdapter({ wasmBinary: pdfiumWasm });
+    const result = await adapter.analyze(fixtureBytes);
+    return {
+      pageCount: result.facts.pageCount,
+      complete: result.facts.completeness.complete,
+      classification: result.facts.classification,
+      engine: result.facts.provenance.engine,
+      wasmSha256: result.facts.provenance.wasmSha256,
+      factsDigest: result.factsDigest,
     };
   },
   async compile(loadBytes: LoadBytes) {
@@ -385,8 +411,10 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
 
   const wasmAssets = assets.filter((a) => a.endsWith(".wasm"));
   const ttfAssets = assets.filter((a) => a.endsWith(".ttf"));
-  if (wasmAssets.length !== 1) {
-    throw new Error(`expected exactly one hashed .wasm asset, found: ${wasmAssets.join(", ")}`);
+  if (wasmAssets.length !== 2) {
+    throw new Error(
+      `expected exactly two hashed .wasm assets (Typst and PDFium), found: ${wasmAssets.join(", ")}`,
+    );
   }
 
   const javaScriptAssets = assets.filter((asset) => asset.endsWith(".js"));
@@ -419,15 +447,26 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
       throw new Error(`production chunk references "${forbidden}" — tarball resolution fell through`);
     }
   }
+  for (const [name, pattern] of [
+    ["eval", /(?:^|[^\w$.])eval\s*\(/m],
+    ["new Function", /\bnew\s+Function\s*\(/m],
+    ["PDFium CDN", /cdn\.jsdelivr\.net\/npm\/@embedpdf\/pdfium/i],
+  ] as const) {
+    if (pattern.test(chunkSource)) {
+      throw new Error(`production browser chunk contains forbidden ${name}`);
+    }
+  }
 
   // --- Execute the PRODUCTION chunk and compile with the EMITTED assets. ---
   const { hook, docxResult, attachmentResult } = await withBrowserBufferScope(async () => {
     await import(chunkPath);
     const hook = (globalThis as Record<string, unknown>).__ATLCLI_VITE_SMOKE as {
       wasmUrl: string;
+      pdfiumWasmUrl: string;
       fontUrls: Record<string, string>;
       expectedFonts: string[];
       importCoreProof: boolean;
+      importPdfProof: boolean;
       jobsEntrypointLoaded: boolean;
       attachmentContract(): Promise<{
         calls: number;
@@ -443,6 +482,14 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
         filename: string;
         hasHeading: boolean;
         hasBody: boolean;
+      }>;
+      analyzePdfImport(load: (url: string) => Promise<Uint8Array>): Promise<{
+        pageCount: number;
+        complete: boolean;
+        classification: string;
+        engine: string;
+        wasmSha256: string;
+        factsDigest: string;
       }>;
       compile(load: (url: string) => Promise<Uint8Array>): Promise<{
         byteLength: number;
@@ -462,6 +509,9 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     if (!hook) throw new Error("built chunk did not install the smoke hook — wrong chunk executed?");
     if (!hook.importCoreProof) {
       throw new Error("packed @atlcli/import-core browser entry did not execute its semantic projection");
+    }
+    if (!hook.importPdfProof) {
+      throw new Error("packed @atlcli/import-pdf browser-worker entry did not expose the facts adapter");
     }
     if (!hook.jobsEntrypointLoaded) {
       throw new Error(
@@ -531,7 +581,19 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     return path;
   };
 
-  resolveAsset(hook.wasmUrl);
+  const typstWasmPath = resolveAsset(hook.wasmUrl);
+  const pdfiumWasmPath = resolveAsset(hook.pdfiumWasmUrl);
+  if (typstWasmPath === pdfiumWasmPath) {
+    throw new Error("Typst and PDFium ?url imports unexpectedly resolved to the same asset");
+  }
+  const emittedPdfiumSha256 = createHash("sha256")
+    .update(readFileSync(pdfiumWasmPath))
+    .digest("hex");
+  if (emittedPdfiumSha256 !== PDFIUM_WASM_SHA256) {
+    throw new Error(
+      `emitted PDFium WASM digest drifted: ${emittedPdfiumSha256} != ${PDFIUM_WASM_SHA256}`,
+    );
+  }
   for (const fileName of hook.expectedFonts) {
     const url = hook.fontUrls[fileName];
     if (!url) throw new Error(`no ?url import for canonical font ${fileName}`);
@@ -541,6 +603,22 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   const result = await hook.compile(async (url) => new Uint8Array(readFileSync(resolveAsset(url))));
   if (!result.tagged || result.pageCount < 1 || result.byteLength < 1000) {
     throw new Error(`vite smoke compile produced implausible output: ${JSON.stringify(result)}`);
+  }
+
+  const importResult = await hook.analyzePdfImport(
+    async (url) => new Uint8Array(readFileSync(resolveAsset(url))),
+  );
+  if (
+    importResult.pageCount !== 1
+    || !importResult.complete
+    || importResult.classification !== "digital-untagged"
+    || importResult.engine !== "pdfium"
+    || importResult.wasmSha256 !== PDFIUM_WASM_SHA256
+    || !/^[a-f0-9]{64}$/u.test(importResult.factsDigest)
+  ) {
+    throw new Error(
+      `vite smoke PDF import produced implausible facts: ${JSON.stringify(importResult)}`,
+    );
   }
 
   // --- The PdfOutputSink.emit contract from the bundled consumer's position
