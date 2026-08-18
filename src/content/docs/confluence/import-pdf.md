@@ -12,10 +12,10 @@ Long PDFs become bounded page trees by default, so a 100-page PDF never becomes
 one oversized wiki page.
 
 > **Evidence status.** The PDF importer is experimental (`0.x`). Confluence
-> Cloud has a live-proven neutral one-page safety slice; the complete tagged,
-> table, figure, fallback, restricted-source, split-tree, and failure-injection
-> certification is still pending. Data Center is implemented and
-> contract-tested for one-page Storage imports, but is not project-live-certified.
+> Cloud is live-certified with neutral tagged, untagged, table, figure,
+> fallback, restricted-source, bounded split-tree, and failure-injection cases.
+> Data Center is implemented and contract-tested for one-page Storage imports,
+> but is not project-live-certified.
 > Browser Extension and Forge import UIs are not available. PDF.js remains the
 > browser viewer; PDFium is used only by the import capability.
 
@@ -331,14 +331,14 @@ document bytes into a public evidence artifact.
 | Capability | Confluence Cloud | Data Center |
 |---|---|---|
 | Native body | ADF | Storage format |
-| Safe one-page create | Implemented; neutral live safety slice proven | Implemented; contract-tested |
-| Bounded page tree | Implemented; complete live matrix pending | Rejected before mutation |
+| Safe one-page create | Implemented; neutral live matrix proven | Implemented; contract-tested |
+| Bounded page tree | Implemented; neutral 100-page live case proven | Rejected before mutation |
 | Figures/page-image assets | Attachment plus native media identity | Filename-based attachment media |
 | Original source retention | Opt-in, byte-verified | Opt-in, byte-verified by contract |
-| Restrictions/private staging | Implemented; full live matrix pending | Not supported; fails before mutation |
+| Restrictions/private staging | Implemented; restriction-before-bytes live-proven | Not supported; fails before mutation |
 | Labels | Implemented/read back | Contract-tested |
 | Content properties | Implemented/read back | Not supported for PDF import |
-| Project live certification | Pending complete PDF evidence task | Not certified |
+| Project live certification | Certified with neutral built-CLI cases | Not certified |
 
 Publication creates owned shells first, applies requested protection before
 sensitive bytes, uploads assets, writes final bodies, applies metadata, and

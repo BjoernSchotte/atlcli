@@ -8,9 +8,17 @@
  * particular live tenant.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import type { Profile } from "@atlcli/core";
+import { sha256Hex, type Profile } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
+import type { ImportAsset, ImportBlock } from "@atlcli/import-core";
 import { parseDocx } from "@atlcli/import-docx";
+import {
+  PDF_SPLIT_EDITABILITY_REVISION,
+  PDF_SPLIT_PLAN_SCHEMA_V1,
+  PDF_SPLIT_POLICY_SCHEMA_V1,
+  type PdfPlannedPageV1,
+  type PdfSplitPlanV1,
+} from "@atlcli/import-pdf";
 import {
   TINY_PNG,
   buildDocxFixture,
@@ -20,6 +28,10 @@ import {
   r,
 } from "../../../../packages/import-docx/src/test-support.js";
 import { publishOnePageDc } from "./wiki-import.js";
+import {
+  PdfPublicationTransactionError,
+  publishPdfDc,
+} from "./wiki-import-pdf-publication.js";
 
 interface RecordedRequest {
   method: string;
@@ -31,7 +43,9 @@ interface RecordedRequest {
 let server: ReturnType<typeof Bun.serve>;
 let requests: RecordedRequest[] = [];
 let failNextPut = false;
+let retryNextPut = false;
 const pages = new Map<string, { title: string; storage: string; version: number; labels: string[] }>();
+const attachments = new Map<string, Uint8Array>();
 let nextId = 100;
 
 beforeAll(() => {
@@ -45,6 +59,12 @@ beforeAll(() => {
         headers: Object.fromEntries(req.headers.entries()),
       };
       requests.push(record);
+      const downloadMatch = /^\/confluence\/download\/attachments\/(\d+)\/(.+)$/.exec(url.pathname);
+      if (req.method === "GET" && downloadMatch) {
+        const filename = decodeURIComponent(downloadMatch[2]);
+        const bytes = attachments.get(`${downloadMatch[1]}:${filename}`);
+        return bytes ? new Response(bytes.buffer as ArrayBuffer) : new Response("not found", { status: 404 });
+      }
       // Everything must live below the DC context path.
       if (!url.pathname.startsWith("/confluence/rest/api/")) {
         return new Response("wrong context path", { status: 404 });
@@ -67,11 +87,20 @@ beforeAll(() => {
       if (req.method === "POST" && attachMatch) {
         const form = await req.formData();
         const file = form.get("file") as File;
-        record.bodyText = `multipart file=${file?.name} size=${file ? (await file.arrayBuffer()).byteLength : 0}`;
+        const bytes = file ? new Uint8Array(await file.arrayBuffer()) : new Uint8Array();
+        record.bodyText = `multipart file=${file?.name} size=${bytes.byteLength}`;
+        if (file) attachments.set(`${attachMatch[1]}:${file.name}`, bytes);
         return Response.json({ results: [{ id: `att${nextId++}`, title: file?.name, metadata: { mediaType: file?.type }, extensions: {}, version: { number: 1 }, _links: { download: `/download/attachments/${attachMatch[1]}/${file?.name}` } }] });
       }
       const contentMatch = /^\/content\/(\d+)$/.exec(path);
       if (req.method === "PUT" && contentMatch) {
+        if (retryNextPut) {
+          retryNextPut = false;
+          return new Response(JSON.stringify({ message: "retryable" }), {
+            status: 429,
+            headers: { "Retry-After": "0", "Content-Type": "application/json" },
+          });
+        }
         if (failNextPut) {
           failNextPut = false;
           return new Response(JSON.stringify({ message: "injected failure" }), { status: 400 });
@@ -103,6 +132,9 @@ beforeAll(() => {
       }
       if (req.method === "DELETE" && contentMatch) {
         pages.delete(contentMatch[1]);
+        for (const key of [...attachments.keys()]) {
+          if (key.startsWith(`${contentMatch[1]}:`)) attachments.delete(key);
+        }
         return new Response(null, { status: 204 });
       }
       const labelMatch = /^\/content\/(\d+)\/label$/.exec(path);
@@ -145,6 +177,45 @@ function fixtureBytes(): Uint8Array {
     documentRels: imageRel("rId7", "media/image1.png"),
     parts: { "word/media/image1.png": TINY_PNG },
   });
+}
+
+function pdfPlan(asset: ImportAsset): PdfSplitPlanV1 {
+  const blocks: ImportBlock[] = [
+    { id: "pdf:p0:h1", type: "heading", level: 1, runs: [{ kind: "text", text: "DC PDF Contract" }] },
+    { id: "pdf:p0:p", type: "paragraph", runs: [{ kind: "text", text: "Storage body survives readback." }] },
+    { id: "pdf:p0:image", type: "image", assetId: asset.id, alt: "Neutral dot" },
+  ];
+  const root: PdfPlannedPageV1 = {
+    id: "pdf-page-root",
+    title: "DC PDF Contract",
+    sourcePageIndexes: [0],
+    sourcePageLabels: ["1"],
+    splitBasis: "page-range",
+    blocks,
+    assets: [asset],
+    children: [],
+    estimate: { adfBytes: 256, storageBytes: 256, nodes: 4, tableCells: 0, assets: 1, editability: "ok" },
+    bodyDigest: "b".repeat(64),
+  };
+  return {
+    schema: PDF_SPLIT_PLAN_SCHEMA_V1,
+    requested: {
+      schema: PDF_SPLIT_POLICY_SCHEMA_V1,
+      mode: { kind: "off" },
+      maxWikiPages: 50,
+      autoSinglePageMaxSourcePages: 20,
+      absoluteSinglePageMaxSourcePages: 40,
+      editabilityBudgetRevision: PDF_SPLIT_EDITABILITY_REVISION,
+    },
+    resolved: { kind: "single-page", reason: "explicit-off" },
+    root,
+    contentPageCount: 1,
+    totalWikiPages: 1,
+    sourceAssignments: [{ pageIndex: 0, plannedPageId: root.id }],
+    issues: [],
+    blockers: [],
+    digest: "d".repeat(64),
+  };
 }
 
 describe("DC contract: single-page publication over REST v1 with context path", () => {
@@ -218,5 +289,77 @@ describe("DC contract: single-page publication over REST v1 with context path", 
     page.storage = "<p>replaced by someone else</p>";
     const details = await client.getPageDetails(report.id);
     expect(details.storage).toBe("<p>replaced by someone else</p>");
+    await client.deletePage(report.id);
+  });
+
+  it("runs the PDF one-page transaction with source digest, filename media, labels, and retry", async () => {
+    requests = [];
+    const client = new ConfluenceClient(dcProfile());
+    const asset: ImportAsset = {
+      id: "pdf:asset:dot",
+      fileName: "neutral-dot.png",
+      mediaType: "image/png",
+      bytes: TINY_PNG,
+    };
+    const source = new TextEncoder().encode("%PDF-1.7\n% neutral DC contract\n");
+    retryNextPut = true;
+    const report = await publishPdfDc({
+      client,
+      spaceKey: "DCSPACE",
+      plan: pdfPlan(asset),
+      labels: ["pdf-import"],
+      sourceBytes: source,
+      sourceSha256: await sha256Hex(source),
+      attachSource: true,
+      issues: [],
+    });
+
+    expect(report.root.version).toBe(2);
+    expect(report.sourceAttachment?.byteLength).toBe(source.byteLength);
+    const pageId = report.root.id;
+    const calls = requests.map((request) => `${request.method} ${request.path.split("?")[0]}`);
+    expect(calls.filter((call) => call === `PUT /confluence/rest/api/content/${pageId}`)).toHaveLength(2);
+    expect(calls).toContain(`GET /confluence/download/attachments/${pageId}/${report.sourceAttachment!.filename}`);
+    expect(calls).toContain(`POST /confluence/rest/api/content/${pageId}/label`);
+    const finalPut = requests.filter((request) => request.method === "PUT").at(-1)?.bodyText ?? "";
+    expect(finalPut).toContain('"representation":"storage"');
+    expect(finalPut).toContain('ri:filename=\\"neutral-dot.png\\"');
+    expect(finalPut).toContain("<h1>DC PDF Contract</h1>");
+    await client.deletePage(pageId);
+  });
+
+  it("rolls the exact PDF page back after a non-retryable DC body error", async () => {
+    requests = [];
+    const client = new ConfluenceClient(dcProfile());
+    const asset: ImportAsset = {
+      id: "pdf:asset:dot",
+      fileName: "neutral-dot.png",
+      mediaType: "image/png",
+      bytes: TINY_PNG,
+    };
+    const source = new TextEncoder().encode("%PDF-1.7\n% neutral rollback\n");
+    failNextPut = true;
+    try {
+      await publishPdfDc({
+        client,
+        spaceKey: "DCSPACE",
+        plan: pdfPlan(asset),
+        labels: ["pdf-import"],
+        sourceBytes: source,
+        sourceSha256: await sha256Hex(source),
+        attachSource: true,
+        issues: [],
+      });
+      throw new Error("Expected the DC PDF transaction to fail.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PdfPublicationTransactionError);
+      const transaction = error as PdfPublicationTransactionError;
+      expect(transaction.rollback.failed).toEqual([]);
+      expect(transaction.rollback.attempted).toHaveLength(1);
+      expect(transaction.rollback.deleted).toEqual(transaction.rollback.attempted);
+      expect(pages.has(transaction.rollback.attempted[0])).toBe(false);
+      const calls = requests.map((request) => `${request.method} ${request.path.split("?")[0]}`);
+      expect(calls.at(-1)).toBe(`DELETE /confluence/rest/api/content/${transaction.rollback.attempted[0]}`);
+    }
   });
 });

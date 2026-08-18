@@ -1256,6 +1256,9 @@ bun run docs:check
 bun run docs:build
 94 pages built
 
+bun run docs:build
+94 pages built
+
 bun run test
 8,348 pass, 16 documented skips, 1 failure
 
@@ -1292,3 +1295,132 @@ security, performance, docs, and a cleanup-verified built-CLI Cloud guard are
 proved without overclaiming OCR, product UI, Forge hosting, or Data Center live
 certification. PDF-11 may now execute the full neutral Cloud matrix and final
 deterministic Data Center proof.
+
+## PDF-11 - Live Cloud and deterministic Data Center proof
+
+**Recorded:** 2026-08-18
+**Task starting HEAD:** `fd8504be0b6012707c614500ddec3985f8b5282f`
+
+The checked-in `test:e2e:import-pdf` command builds the CLI and runs only when
+`ATLCLI_IMPORT_PDF_E2E=1`. It uses generated neutral fixtures, the authorized
+`mayflower` profile, and `DOCSY`. It does not persist or echo raw receipts,
+page IDs, URLs, tenant bodies, or credentials.
+
+### Cloud feature and transaction matrix
+
+```text
+bun run test:e2e:import-pdf
+8 pass, 0 fail, 167 assertions
+```
+
+The built CLI published and an independent `ConfluenceClient` read back:
+
+- tagged heading/text, native ADF table, native media, and attachment identity;
+- qualified two-column untagged text in the expected reading order;
+- a grid-qualified untagged native table;
+- one extracted raster figure plus one visible rendered fallback with distinct
+  attachment digests;
+- a private page whose restriction preceded source bytes, with a byte-identical
+  opt-in source attachment, label, and content property;
+- a heading-rich 100-source-page bounded tree whose source indexes were exactly
+  `0..99` once, whose content pages each covered at most 40 source pages, and
+  whose root contained the native child index and internal links; and
+- the existing neutral DOCX built-CLI path after the shared publisher changes.
+
+Seven real Cloud failure injections covered the boundary after shell,
+restriction, source upload, content-asset upload, body update, metadata, and
+semantic readback. Each raised the typed transaction error, rolled back the
+exact owned page IDs in reverse order, reported zero rollback failures, and
+left no readable ID or exact title.
+
+Every successful case used ownership-marked `finally` cleanup. Independent
+post-cleanup ID reads failed, exact-title queries returned zero results, and a
+final prefix search returned no PDF E2E page. Attachments disappeared with
+their owned pages. No live identifier or receipt is recorded here.
+
+### Live-discovered semantic readback normalization
+
+The first neutral 100-page run correctly rolled all nine owned pages back when
+semantic readback detected a link difference. Cloud had removed only the
+optional title slug from internal page URLs while preserving origin, space,
+numeric page ID, query, and fragment. The shared readback normalizer now treats
+only that presentation slug as non-semantic. Regression tests prove that a
+different internal page ID and any external path drift still fail. The bounded
+tree then passed without weakening text, table, media, or link-identity checks.
+
+### Data Center contract
+
+```text
+bun run test apps/cli/src/commands/wiki-import-dc.contract.test.ts
+5 pass, 0 fail, 36 assertions
+```
+
+The deterministic REST server proves context-path routing, bearer PAT auth,
+REST v1 Storage bodies, filename-based media, source-attachment byte download,
+labels, retry after `429`, semantic readback, and exact rollback after a
+non-retryable body failure. A resolved page tree remains rejected before
+mutation. This is contract evidence, not a Data Center project-live claim.
+
+### Repository gates
+
+```text
+bun run test packages/import-confluence packages/import-pdf \
+  apps/cli/src/commands/wiki-import.test.ts \
+  apps/cli/src/commands/wiki-import-publication.test.ts \
+  apps/cli/src/commands/wiki-import-pdf.test.ts \
+  apps/cli/src/commands/wiki-import-pdf-publication.test.ts \
+  apps/cli/src/commands/wiki-import-destination.test.ts \
+  apps/cli/src/commands/wiki-import-dc.contract.test.ts \
+  apps/cli/src/e2e/wiki-import-pdf-live.e2e.test.ts
+89 pass, 8 opt-in skips, 0 fail, 699 assertions
+
+bun install --frozen-lockfile
+pass; lockfile unchanged
+
+bun run typecheck
+pass
+
+bun run build
+34 tasks pass
+
+bun run check:browser
+37 entrypoints pass
+
+bun run check:browser-export-harness
+pass
+
+bun run test:browser-export-harness
+6 pass, 0 fail
+
+bun run docs:check
+0 errors, 0 warnings, 0 hints
+
+bun scripts/consumer-smoke.ts
+12 pass, 0 fail on a clean repeat across tarball/filelink, Node 22, and Vite
+```
+
+The full parallel monorepo run reported `8,351 pass`, `24 skip`, and one failure
+across 698 files. Its sole failure was the previously documented viewer-only
+PDF.js baseline under whole-suite concurrency; that exact test immediately
+passed alone (`1 pass`, `0 fail`, `5 assertions`). All PDFium importer,
+Cloud/DC, adversarial, packaging, browser, and DOCX compatibility cases were
+green in the full run. The ledger therefore does not claim an entirely green
+parallel root suite.
+
+### Decision
+
+PDF-11 and the PDF import MVP are complete. Cloud is live-certified with the
+neutral built-CLI matrix and exact cleanup. Data Center remains implemented,
+contract-tested, and explicitly not project-live-certified. PDFium remains the
+import engine; PDF.js remains the viewer. OCR, browser/Forge import UI, and a
+Data Center live claim remain outside this MVP.
+
+After all temporary E2E resources were removed, one private neutral showcase
+tree was intentionally retained at the user's request. The built CLI imported
+the 100-page heading-rich fixture with default automatic splitting into one
+index root and eight content pages. The publication receipt assigned source
+pages `0..99` exactly once, used no title rename, and kept every content page at
+20 source pages or fewer. Independent normal CLI reads confirmed version 2,
+the native index links, four direct chapter children, and the neutral showcase
+label. Its page ID, URL, title, and tenant response are intentionally absent
+from this committed ledger.

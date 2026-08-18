@@ -109,9 +109,28 @@ function adfMarks(node: Record<string, unknown>): string[] | undefined {
     const attrs = mark.attrs && typeof mark.attrs === "object" && !Array.isArray(mark.attrs)
       ? mark.attrs as Record<string, unknown>
       : {};
-    return `link:${typeof attrs.href === "string" ? attrs.href : ""}`;
+    return `link:${typeof attrs.href === "string" ? normalizeConfluencePageHref(attrs.href) : ""}`;
   }).sort();
   return marks.length > 0 ? marks : undefined;
+}
+
+/**
+ * Cloud canonicalizes an internal page link by dropping its optional,
+ * presentation-only title slug on ADF readback. The origin, space, numeric page
+ * identity, query and anchor remain semantic and are therefore retained.
+ * External links and every non-matching path stay byte-strict.
+ */
+function normalizeConfluencePageHref(href: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(href);
+  } catch {
+    return href;
+  }
+  const match = /^(.*\/wiki\/spaces\/[^/]+\/pages\/\d+)(?:\/[^/]*)?$/u.exec(parsed.pathname);
+  if (!match) return href;
+  parsed.pathname = match[1]!;
+  return parsed.toString();
 }
 
 function adfTokens(input: unknown): SemanticToken[] {

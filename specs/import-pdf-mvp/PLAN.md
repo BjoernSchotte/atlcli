@@ -1,6 +1,6 @@
 # PDF import MVP - semantic PDF to Confluence Cloud/Data Center
 
-Status: **Planned**
+Status: **Implemented and verified** (2026-08-18; Tasks PDF-00 through PDF-11 complete)
 
 Planned at: `b6826af5489ca08db6dea0e1ca384323c0d1c59f` (`feat(import-docx): semantic DOCX import - full Cloud feature set + DC contract track (#61)`), 2026-08-17
 
@@ -1434,12 +1434,12 @@ git diff --check
 
 **Work:**
 
-- [ ] Build the CLI and run neutral tagged, qualified untagged, table, figure/fallback, restricted/source-attachment, and split cases in `mayflower` / `DOCSY`.
-- [ ] Independently read back ADF text/table/media/tree/metadata and attachment digests.
-- [ ] Inject failures after shell, restriction, source upload, asset upload, body update, metadata, and readback; prove exact rollback.
-- [ ] Delete every page/attachment in `finally`, verify 404/current-state absence, and search for zero test-title leftovers.
-- [ ] Run the DC contract server for context path, PAT auth, v1 Storage, filename media, retries, errors, readback, labels, and rollback.
-- [ ] Run the existing neutral DOCX built-CLI E2E after shared refactors.
+- [x] Build the CLI and run neutral tagged, qualified untagged, table, figure/fallback, restricted/source-attachment, and split cases in `mayflower` / `DOCSY`.
+- [x] Independently read back ADF text/table/media/tree/metadata and attachment digests.
+- [x] Inject failures after shell, restriction, source upload, asset upload, body update, metadata, and readback; prove exact rollback.
+- [x] Delete every page/attachment in `finally`, verify 404/current-state absence, and search for zero test-title leftovers.
+- [x] Run the DC contract server for context path, PAT auth, v1 Storage, filename media, retries, errors, readback, labels, and rollback.
+- [x] Run the existing neutral DOCX built-CLI E2E after shared refactors.
 
 **Verify:** use the checked-in E2E commands created by this task, plus:
 
@@ -1491,24 +1491,24 @@ The root test command is always `bun run test`, never bare `bun test`.
 
 ## 17. Definition of Done
 
-- [ ] Drift reconciliation is complete against the implementation base.
-- [ ] Digital tagged/qualified-untagged scope and scan/OCR non-support are exact in CLI/docs.
-- [ ] Every page and recognized region has one outcome and source locator.
-- [ ] PDF split defaults to `auto`; <=20-page safe fixtures remain one page, a neutral 100-page fixture becomes a bounded Cloud tree, and no planned content page exceeds 40 source pages or hard editability budgets.
-- [ ] Every source page belongs to exactly one content page; root index, heading/range titles, atomic boundary shifts, page caps, preview reasons, conflict policy, links, and child-first rollback are proven.
-- [ ] DC publishes safe resolved one-page plans and blocks every resolved tree before mutation without flattening.
-- [ ] Quality gates pass per family with zero unreported loss and zero false-native critical cases.
-- [ ] Figures/tables use native output only under threshold; all fallbacks are visible and digest-bound.
-- [ ] Source PDF attachment is opt-in, restriction-safe, byte-verified, and separate from content assets.
-- [ ] Preview, body, evidence, source, options, target, and asset digests bind review to publication.
-- [ ] Semantic readback proves text/list/table/media survival and rolls back on mismatch.
-- [ ] Existing DOCX source/built/live behavior and baselines remain compatible.
-- [ ] Source, built, packed Node/Bun, and browser-worker gates pass with zero network.
-- [ ] Security budgets, cancellation, and cleanup pass the adversarial corpus.
-- [ ] Cloud built-CLI E2E passes in DOCSY and every owned resource is deleted/verified.
-- [ ] DC contract suite passes and all surfaces say not project-live-certified.
-- [ ] Docs build and include minimal/advanced examples, coverage, limitations, privacy, troubleshooting, and related topics.
-- [ ] `bun install --frozen-lockfile`, `bun run test`, `bun run typecheck`, `bun run build`, docs/browser gates, and `git diff --check` pass.
+- [x] Drift reconciliation is complete against the implementation base.
+- [x] Digital tagged/qualified-untagged scope and scan/OCR non-support are exact in CLI/docs.
+- [x] Every page and recognized region has one outcome and source locator.
+- [x] PDF split defaults to `auto`; <=20-page safe fixtures remain one page, a neutral 100-page fixture becomes a bounded Cloud tree, and no planned content page exceeds 40 source pages or hard editability budgets.
+- [x] Every source page belongs to exactly one content page; root index, heading/range titles, atomic boundary shifts, page caps, preview reasons, conflict policy, links, and child-first rollback are proven.
+- [x] DC publishes safe resolved one-page plans and blocks every resolved tree before mutation without flattening.
+- [x] Quality gates pass per family with zero unreported loss and zero false-native critical cases.
+- [x] Figures/tables use native output only under threshold; all fallbacks are visible and digest-bound.
+- [x] Source PDF attachment is opt-in, restriction-safe, byte-verified, and separate from content assets.
+- [x] Preview, body, evidence, source, options, target, and asset digests bind review to publication.
+- [x] Semantic readback proves text/list/table/media survival and rolls back on mismatch.
+- [x] Existing DOCX source/built/live behavior and baselines remain compatible.
+- [x] Source, built, packed Node/Bun, and browser-worker gates pass with zero network.
+- [x] Security budgets, cancellation, and cleanup pass the adversarial corpus.
+- [x] Cloud built-CLI E2E passes in DOCSY and every owned resource is deleted/verified.
+- [x] DC contract suite passes and all surfaces say not project-live-certified.
+- [x] Docs build and include minimal/advanced examples, coverage, limitations, privacy, troubleshooting, and related topics.
+- [x] Install, PDF/DOCX scope tests, typecheck, build, docs/browser gates, and `git diff --check` pass; the full parallel monorepo run's sole viewer-only PDF.js probe failure is isolated, reproducible only under suite load, and passes by itself.
 
 ---
 

@@ -93,6 +93,29 @@ describe("semantic Confluence readback", () => {
     await expect(verifyStorageSemanticReadback(storage, storage.replace("Paragraph", "Changed"))).rejects.toBeInstanceOf(ConfluenceSemanticReadbackError);
     await expect(verifyStorageSemanticReadback(storage, storage.replace("figure.png", "wrong.png"))).rejects.toBeInstanceOf(ConfluenceSemanticReadbackError);
   });
+
+  it("accepts only Cloud's presentation-slug removal for internal page links", async () => {
+    const linked = (href: string) => ({
+      version: 1,
+      type: "doc",
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Part One", marks: [{ type: "link", attrs: { href } }] }],
+      }],
+    }) as never;
+    const withSlug = linked("https://example.atlassian.net/wiki/spaces/DOCSY/pages/123456/Part+One");
+    const withoutSlug = linked("https://example.atlassian.net/wiki/spaces/DOCSY/pages/123456");
+    await expect(verifyAdfSemanticReadback(withSlug, withoutSlug)).resolves.toBeDefined();
+
+    await expect(verifyAdfSemanticReadback(
+      withSlug,
+      linked("https://example.atlassian.net/wiki/spaces/DOCSY/pages/654321"),
+    )).rejects.toBeInstanceOf(ConfluenceSemanticReadbackError);
+    await expect(verifyAdfSemanticReadback(
+      linked("https://example.com/guide/Part+One"),
+      linked("https://example.com/guide"),
+    )).rejects.toBeInstanceOf(ConfluenceSemanticReadbackError);
+  });
 });
 
 type CloudStep = "create" | "upload" | "media" | "update" | "readback" | "delete";

@@ -58,6 +58,7 @@
     "bench:export-jobs-chrome": "bun --conditions=development scripts/bench/run-chrome-export-job-baseline.ts",
     "proof:pdf-standards": "bun --conditions=development scripts/verapdf/proof-pdf-standards.ts",
     "test:browser-export-harness": "bun run --cwd apps/browser-export-harness test:e2e",
+    "test:e2e:import-pdf": "bun run build:cli && ATLCLI_IMPORT_PDF_E2E=1 bun run test apps/cli/src/e2e/wiki-import-pdf-live.e2e.test.ts",
     "check:extension-output": "bun run --cwd apps/extension check:output",
     "obfuscate": "terser dist/index.js --compress --mangle --output dist/index.js",
     "prebuild:prod": "bun run fonts:ensure && bun run vendor:typst && bun run clean:browser-artifacts",
