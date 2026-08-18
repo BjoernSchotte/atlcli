@@ -1,6 +1,6 @@
 # PDF import MVP - semantic PDF to Confluence Cloud/Data Center
 
-Status: **Implemented and verified** (2026-08-18; Tasks PDF-00 through PDF-11 complete)
+Status: **Implemented and verified** (2026-08-18; Tasks PDF-00 through PDF-12 complete)
 
 Planned at: `b6826af5489ca08db6dea0e1ca384323c0d1c59f` (`feat(import-docx): semantic DOCX import - full Cloud feature set + DC contract track (#61)`), 2026-08-17
 
@@ -1453,6 +1453,50 @@ git diff --check
 
 **Suggested commit:** `test(import-pdf): record Cloud and DC evidence`
 
+### Task PDF-12 - Completion-audit regressions and final visual proof
+
+**Depends on:** PDF-11 and user review of the retained neutral showcase.
+
+**Files:** PDF figure ordering, the PDF.js feasibility probe boundary, focused
+regressions, sanitized `EVIDENCE.md`, and the retained neutral DOCSY showcase.
+
+**Work:**
+
+- [x] Preserve vertical source order when a rendered-region fallback is merged
+  with native text; prove the real 100-page atomic-region label stays before
+  its source rectangle without weakening overlapping table fallbacks.
+- [x] Run the viewer-only PDF.js baseline in an isolated process so unrelated
+  test globals cannot make the 698-file parallel suite nondeterministic.
+- [x] Run the complete root suite and all build/type/docs/browser/consumer gates
+  from the final source with no failing test.
+- [x] Publish and independently read back a corrected private 100-page DOCSY
+  showcase, verify exact page assignment and label-before-image order, then
+  remove the superseded showcase tree and prove its exact owned pages absent.
+- [x] Record only sanitized metrics and scan the staged diff for customer data,
+  credentials, live IDs/URLs, and raw receipts before commit and push.
+
+**Verify:**
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+bun run docs:check
+bun run docs:build
+bun run check:browser
+bun run check:browser-export-harness
+bun run test:browser-export-harness
+bun scripts/consumer-smoke.ts
+git diff --check
+```
+
+**Expected:** the full suite is green; source text and rendered regions preserve
+their visual order; one corrected neutral Cloud tree remains for review; every
+superseded or temporary owned resource is absent; Data Center evidence remains
+contract-only.
+
+**Suggested commit:** `fix(import-pdf): preserve rendered fallback order`
+
 ---
 
 ## 15. Verification matrix
@@ -1508,7 +1552,7 @@ The root test command is always `bun run test`, never bare `bun test`.
 - [x] Cloud built-CLI E2E passes in DOCSY and every owned resource is deleted/verified.
 - [x] DC contract suite passes and all surfaces say not project-live-certified.
 - [x] Docs build and include minimal/advanced examples, coverage, limitations, privacy, troubleshooting, and related topics.
-- [x] Install, PDF/DOCX scope tests, typecheck, build, docs/browser gates, and `git diff --check` pass; the full parallel monorepo run's sole viewer-only PDF.js probe failure is isolated, reproducible only under suite load, and passes by itself.
+- [x] `bun install --frozen-lockfile`, `bun run test`, `bun run typecheck`, `bun run build`, docs/browser gates, consumer smoke, and `git diff --check` pass from the final source.
 
 ---
 

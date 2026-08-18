@@ -1424,3 +1424,95 @@ pages `0..99` exactly once, used no title rename, and kept every content page at
 the native index links, four direct chapter children, and the neutral showcase
 label. Its page ID, URL, title, and tenant response are intentionally absent
 from this committed ledger.
+
+## PDF-12 - Completion audit, ordering regression, and final visual proof
+
+**Recorded:** 2026-08-18
+
+User review of the retained neutral showcase exposed one real presentation
+defect. The synthetic source intentionally contains empty bordered rectangles,
+but each `Atomic table segment` label appears above its rectangle in the PDF.
+The imported page instead placed the rectangle first. The merge comparator had
+treated blocks whose Y origins differed by up to `0.03` page units as the same
+row; at this page size that incorrectly grouped a label with the rectangle
+starting below it and then sorted them by X position.
+
+The importer now carries normalized block height into the merge and uses actual
+vertical-range overlap to identify same-row items. A regression against the
+real neutral 100-page fixture proves the source order is paragraph token,
+segment label, then visible image fallback. Existing overlapping table and
+figure cases remain green.
+
+The viewer-only PDF.js comparison also moved behind an isolated Bun child
+process. The former 698-file failure was caused by unrelated process-global
+canvas/DOM state in the shared parallel test process, not by PDFium import
+behavior. The isolated comparison still checks the same normalized facts and
+now passes both alone and inside the complete root run.
+
+### Final local proof
+
+```text
+bun run test packages/import-pdf/src/figures.test.ts \
+  packages/import-pdf/src/split.test.ts \
+  apps/cli/src/commands/wiki-import-pdf.test.ts \
+  packages/import-confluence/src \
+  apps/cli/src/e2e/wiki-import-pdf-dc.e2e.test.ts
+28 pass, 0 fail, 195 assertions
+
+bun run test
+8,353 pass, 24 skip, 0 fail, 42,462 assertions, 698 files
+
+bun install --frozen-lockfile
+pass; lockfile unchanged
+
+bun run typecheck
+pass
+
+bun run build
+34 tasks pass
+
+bun run docs:check
+0 errors, 0 warnings, 0 hints
+
+bun run docs:build
+94 pages built
+
+bun run check:browser
+37 entrypoints pass
+
+bun run check:browser-export-harness
+pass
+
+bun run test:browser-export-harness
+6 pass, 0 fail
+
+bun scripts/consumer-smoke.ts
+tarball consumer, DOCX, and PDF smokes pass
+```
+
+### Final Cloud proof and cleanup
+
+The final built-CLI Cloud matrix passed with `8 pass`, `0 fail`, and `170`
+assertions. It now independently asserts that the atomic-region label precedes
+the first media node. A corrected private neutral 100-page showcase was then
+published with the reviewed automatic split: one index root, eight content
+pages, source pages `0..99` assigned exactly once, no title rename, and no
+content page above 20 source pages. Normal CLI readback and an authenticated
+browser review both proved label-before-image order and the complete visible
+page tree.
+
+The superseded showcase and an intermediate verification tree were deleted
+child-first using their exact owned page sets. All temporary E2E resources were
+removed in `finally`, and the final E2E title-prefix search returned zero
+results. Only the corrected private neutral showcase remains for user review.
+No live page ID, URL, title, raw receipt, credential, tenant body, or customer
+artifact is recorded in this ledger.
+
+### Decision
+
+PDF-12 closes the completion audit. Source order is protected by a real-fixture
+regression and live readback, PDF.js comparison is process-isolated, the full
+root suite is green, and every planned local, browser, packaging, Cloud, and
+cleanup gate passes from the final source. Data Center remains implemented and
+contract-tested, not project-live-certified; OCR and browser/Forge import UI
+remain outside this MVP.

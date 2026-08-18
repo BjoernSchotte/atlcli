@@ -144,6 +144,21 @@ describe("PDF figure and rendered fallback preservation", () => {
     }));
   });
 
+  it("keeps a paragraph above a rendered region ahead of that image", async () => {
+    const adapter = await createNodePdfiumFactsAdapter();
+    const bytes = await fixture("heading-rich-100.pdf");
+    const analyzed = await adapter.analyze(bytes);
+    const base = await normalizeUntaggedPdfFacts(analyzed.facts, analyzed.factsDigest);
+    const result = await preservePdfFigures(analyzed.facts, analyzed.factsDigest, bytes, adapter, base);
+    const pageBlocks = result.document.blocks.filter((block) =>
+      (block.sourceRefs ?? []).some((sourceRef) => sourceRef.startsWith("pdf:p38:"))
+    );
+
+    expect(pageBlocks.map((block) => block.type)).toEqual(["paragraph", "paragraph", "image"]);
+    expect(JSON.stringify(pageBlocks[1])).toContain("Atomic table segment 1 of 3");
+    expect(pageBlocks[2]).toMatchObject({ type: "image", presentation: "region-fallback" });
+  });
+
   it("deduplicates identical bytes while preserving two independent placements", async () => {
     const realAdapter = await createNodePdfiumFactsAdapter();
     const bytes = await fixture("figure.pdf");

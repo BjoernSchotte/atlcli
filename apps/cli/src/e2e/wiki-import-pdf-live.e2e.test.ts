@@ -85,6 +85,7 @@ interface AdfSummary {
   text: string;
   mediaIds: string[];
   linkHrefs: string[];
+  flow: string[];
 }
 
 interface PublishedProof {
@@ -141,7 +142,7 @@ function flattenPages(root: PublishedPage): PublishedPage[] {
 
 function summarizeAdf(value: string): AdfSummary {
   const root = JSON.parse(value) as Record<string, unknown>;
-  const summary: AdfSummary = { types: [], text: "", mediaIds: [], linkHrefs: [] };
+  const summary: AdfSummary = { types: [], text: "", mediaIds: [], linkHrefs: [], flow: [] };
   const walk = (value: unknown): void => {
     if (Array.isArray(value)) {
       value.forEach(walk);
@@ -150,10 +151,16 @@ function summarizeAdf(value: string): AdfSummary {
     if (!value || typeof value !== "object") return;
     const node = value as Record<string, unknown>;
     if (typeof node.type === "string") summary.types.push(node.type);
-    if (typeof node.text === "string") summary.text += node.text;
+    if (typeof node.text === "string") {
+      summary.text += node.text;
+      summary.flow.push(`text:${node.text}`);
+    }
     if (node.type === "media" && node.attrs && typeof node.attrs === "object") {
       const id = (node.attrs as Record<string, unknown>).id;
-      if (typeof id === "string") summary.mediaIds.push(id);
+      if (typeof id === "string") {
+        summary.mediaIds.push(id);
+        summary.flow.push(`media:${id}`);
+      }
     }
     if (Array.isArray(node.marks)) {
       for (const mark of node.marks) {
@@ -384,6 +391,13 @@ describe.skipIf(!RUN).serial("built CLI PDF import live Cloud certification", ()
       const root = summaries.get(receipt.page.id)!;
       expect(root.types).toContain("bulletList");
       expect(root.linkHrefs.length).toBeGreaterThan(0);
+      const atomicPage = pages.find((page) => page.sourcePageIndexes?.includes(38));
+      expect(atomicPage).toBeDefined();
+      const atomicFlow = summaries.get(atomicPage!.id)!.flow;
+      const label = atomicFlow.findIndex((entry) => entry.includes("Atomic table segment 1 of 3"));
+      const image = atomicFlow.findIndex((entry) => entry.startsWith("media:"));
+      expect(label).toBeGreaterThanOrEqual(0);
+      expect(image).toBeGreaterThan(label);
       },
     );
   }, CASE_TIMEOUT_MS);

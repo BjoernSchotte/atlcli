@@ -4,13 +4,31 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { semanticDigest } from "./canonical.ts";
 import { analyzeWithPdfium } from "./pdfium.ts";
-import { analyzeWithPdfjs } from "./pdfjs.ts";
-import type { StructureNode } from "./types.ts";
+import type { PdfFacts, StructureNode } from "./types.ts";
 
-const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), "../../fixtures");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const FIXTURES = resolve(HERE, "../../fixtures");
 
 async function fixture(name: string): Promise<Uint8Array> {
   return new Uint8Array(await readFile(resolve(FIXTURES, name)));
+}
+
+async function isolatedPdfjsFixture(name: string): Promise<PdfFacts> {
+  const child = Bun.spawn([
+    process.execPath,
+    "--conditions=development",
+    resolve(HERE, "pdfjs-child.ts"),
+    resolve(FIXTURES, name),
+  ], { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(`Isolated PDF.js probe failed with exit ${exitCode}: ${stderr.trim()}`);
+  }
+  return JSON.parse(stdout) as PdfFacts;
 }
 
 function flatten(nodes: StructureNode[]): StructureNode[] {
@@ -111,7 +129,7 @@ describe("PDF-00 PDFium facts contract", () => {
 
 describe("PDF-00 viewer-only PDF.js baseline", () => {
   test("matches core tagged tokens, roles, image, annotation, and outline", async () => {
-    const facts = await analyzeWithPdfjs(await fixture("complex-tagged.pdf"));
+    const facts = await isolatedPdfjsFixture("complex-tagged.pdf");
     const roles = flatten(facts.pages[0]?.structures ?? []).map((node) => node.type);
     expect(facts.pages[0]?.text).toContain("Structured Garden Report");
     expect(roles).toEqual(expect.arrayContaining(["H1", "Table", "TH", "TD", "Figure", "Caption"]));

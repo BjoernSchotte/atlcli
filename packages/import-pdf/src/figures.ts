@@ -277,7 +277,7 @@ function tableFallbackCandidates(base: PdfFigureBaseSemanticsV1): VisualCandidat
 function blockLocation(
   block: ImportBlock,
   evidence: readonly PdfDecisionEvidenceV1[],
-): { pageIndex: number; y: number; x: number } {
+): { pageIndex: number; y: number; x: number; height: number } {
   const refs = new Set([block.id, ...(block.sourceRefs ?? [])]);
   const matches = evidence.filter((item) =>
     refs.has(item.sourceId) || (item.targetNodeId ? refs.has(item.targetNodeId) : false)
@@ -287,12 +287,13 @@ function blockLocation(
     pageIndex: matches[0]?.locator.pageIndex ?? 0,
     y: box?.y ?? Number.MAX_SAFE_INTEGER,
     x: box?.x ?? 0,
+    height: box?.height ?? 0,
   };
 }
 
 function mergeBlocks(
   baseBlocks: readonly ImportBlock[],
-  additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number }>,
+  additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }>,
   evidence: readonly PdfDecisionEvidenceV1[],
 ): ImportBlock[] {
   const tokens = [
@@ -305,7 +306,10 @@ function mergeBlocks(
     ...additions.map((addition, index) => ({ ...addition, order: index, kind: 0 })),
   ].sort((a, b) => {
     if (a.pageIndex !== b.pageIndex) return a.pageIndex - b.pageIndex;
-    if (Math.abs(a.y - b.y) <= 0.03) return a.x - b.x || a.kind - b.kind || a.order - b.order;
+    const verticalOverlap = a.height > 0
+      && b.height > 0
+      && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
+    if (verticalOverlap) return a.x - b.x || a.y - b.y || a.kind - b.kind || a.order - b.order;
     return a.y - b.y || a.x - b.x || a.kind - b.kind || a.order - b.order;
   });
   for (const token of tokens) delete token.block.pageBoundaryBefore;
@@ -365,7 +369,7 @@ export async function preservePdfFigures(
     .filter((issue) => issue.code !== "pdf-import/tagged-figure-deferred")
     .map((issue) => ({ ...issue }));
   const evidence = base.evidence.filter((item) => item.decisionCode !== "pdf/tagged-figure-deferred");
-  const additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number }> = [];
+  const additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }> = [];
   const figures: PdfFigureDecisionV1[] = [];
   for (const candidate of candidates) {
     const asset = byRequest.get(candidate.request.id);
@@ -403,6 +407,7 @@ export async function preservePdfFigures(
       pageIndex: candidate.pageIndex,
       y: candidate.bbox.y,
       x: candidate.bbox.x,
+      height: candidate.bbox.height,
     });
     if (candidate.captionBlock) {
       const captionBox = unionRects(base.evidence
@@ -413,6 +418,7 @@ export async function preservePdfFigures(
         pageIndex: candidate.pageIndex,
         y: captionBox?.y ?? candidate.bbox.y + candidate.bbox.height + 0.001,
         x: captionBox?.x ?? candidate.bbox.x,
+        height: captionBox?.height ?? 0,
       });
     }
     const attached = candidate.mode !== "native-raster";
