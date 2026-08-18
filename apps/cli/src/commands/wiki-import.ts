@@ -24,10 +24,21 @@ import {
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
-  SplitTitleConflictError,
   assessEditability,
-  buildGovernance,
   buildImportPreview,
+  documentToAdf,
+  renderImportPreview,
+  type AdfMediaResolution,
+  documentToStorage,
+  IMPORT_DOCUMENT_SCHEMA_V2,
+  importReferenceKey,
+  storageTagSequence,
+  type ImportBlock,
+  type AdfNode,
+} from "@atlcli/import-core";
+import {
+  SplitTitleConflictError,
+  buildGovernance,
   governanceHasEffects,
   principalId,
   renderGovernanceSummary,
@@ -37,16 +48,10 @@ import {
   type PolicyLayerInput,
   type ResolvedImportPolicy,
   countPages,
-  documentToAdf,
   parseDocx,
-  renderImportPreview,
   splitDocument,
-  type AdfMediaResolution,
   type ImportPagePlan,
-  documentToStorage,
   extractDocxEntriesFromZip,
-  storageTagSequence,
-  type ImportBlock,
   type ImportComment,
   type ImportedDocument,
   type SplitResult,
@@ -64,7 +69,6 @@ import {
   recipeApplicability,
   renderSemanticDiffLines,
   validateBaseline,
-  type AdfNode,
   type ImportedPageBaselineV1,
 } from "@atlcli/import-docx";
 
@@ -1408,7 +1412,15 @@ export async function publishOnePage(
     };
   } = {},
 ): Promise<PublishedPageReport> {
-  const pageDoc: ImportedDocument = { blocks, assets, comments: [], commentOwners: new Map(), issues: [] };
+  const pageDoc: ImportedDocument = {
+    schema: IMPORT_DOCUMENT_SCHEMA_V2,
+    sourceKind: "docx",
+    blocks,
+    assets,
+    comments: [],
+    commentOwners: new Map(),
+    issues: [],
+  };
   const hasAssets = assets.length > 0;
   const useShell = hasAssets || options.forceShell === true;
   const page = await client.createPageAdf({
@@ -1662,7 +1674,15 @@ export async function finalizePageContent(
   assets: ImportedDocument["assets"],
   encode: { anchors?: ReadonlyMap<string, string> },
 ): Promise<{ page: PublishedPageReport; readbackValue: string }> {
-  const pageDoc: ImportedDocument = { blocks, assets, comments: [], commentOwners: new Map(), issues: [] };
+  const pageDoc: ImportedDocument = {
+    schema: IMPORT_DOCUMENT_SCHEMA_V2,
+    sourceKind: "docx",
+    blocks,
+    assets,
+    comments: [],
+    commentOwners: new Map(),
+    issues: [],
+  };
   let media: Map<string, AdfMediaResolution> | undefined;
   if (assets.length > 0) {
     for (const asset of assets) {
@@ -1684,7 +1704,16 @@ export async function finalizePageContent(
       media.set(asset.id, { fileId, collection: `contentId-${pageId}` });
     }
   }
-  const adf = documentToAdf(pageDoc, { ...(media ? { media } : {}), ...(encode.anchors ? { anchors: encode.anchors } : {}) });
+  const references = encode.anchors
+    ? new Map([...encode.anchors].map(([target, url]) => [
+        importReferenceKey({ namespace: "docx-bookmark", target }),
+        url,
+      ]))
+    : undefined;
+  const adf = documentToAdf(pageDoc, {
+    ...(media ? { media } : {}),
+    ...(references ? { references } : {}),
+  });
   const updated = await client.updatePageAdf({ id: pageId, title, adf, version: 2 });
   const readbackValue = await verifyPageContent(client, pageId, title, adf);
   return {

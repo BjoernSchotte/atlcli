@@ -1166,11 +1166,11 @@ bun run check:browser
 
 **Work:**
 
-- [ ] Define `ImportDocumentV2`, blocks, assets, outcomes, IDs, table spans, and target projection contracts proven by both sources.
-- [ ] Move pure ADF/Storage/preview/editability/canonical functions; retain Word-specific extensions in `@atlcli/import-docx`.
-- [ ] Update DOCX parser/split/baseline/publisher callers in one atomic cutover; no permanent re-export compatibility layer unless a packed external consumer is proven.
-- [ ] Preserve current DOCX output snapshots/digests or document an unavoidable schema-versioned change with migration proof.
-- [ ] Add dependency-boundary, API report/closure, source/dist/pack, Node/Bun/browser-entry gates.
+- [x] Define `ImportDocumentV2`, blocks, assets, outcomes, IDs, table spans, and target projection contracts proven by both sources.
+- [x] Move pure ADF/Storage/preview/editability/canonical functions; retain Word-specific extensions in `@atlcli/import-docx`.
+- [x] Update DOCX parser/split/baseline/publisher callers in one atomic cutover; no permanent re-export compatibility layer unless a packed external consumer is proven.
+- [x] Preserve current DOCX output snapshots/digests or document an unavoidable schema-versioned change with migration proof.
+- [x] Add dependency-boundary, API report/closure, source/dist/pack, Node/Bun/browser-entry gates.
 
 **Verify:**
 

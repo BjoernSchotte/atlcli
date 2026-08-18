@@ -46,6 +46,7 @@ import {
 /** Browser DOCX/PDF roots plus background wiring; the transitive @atlcli
  * closure is derived from the real manifests (never a hardcoded list). */
 const VITE_ROOTS = [
+  "@atlcli/import-core",
   "@atlcli/docx",
   "@atlcli/pdf",
   "@atlcli/pdf-compiler-browser",
@@ -116,6 +117,7 @@ import { runPdfExport, isPdfBytesHandle, PDF_RUNTIME_ASSETS } from "@atlcli/pdf"
 import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
+import { IMPORT_DOCUMENT_SCHEMA_V2, documentToAdf } from "@atlcli/import-core";
 import {
   createPageAttachmentWriterV1,
   storageToBlocks,
@@ -144,6 +146,9 @@ const fontUrls: Record<string, string> = {
 type LoadBytes = (url: string) => Promise<Uint8Array>;
 
 (globalThis as Record<string, unknown>).__ATLCLI_VITE_SMOKE = {
+  importCoreProof:
+    documentToAdf({ blocks: [] }).type === "doc" &&
+    IMPORT_DOCUMENT_SCHEMA_V2 === "atlcli.import-document/2",
   wasmUrl,
   fontUrls,
   expectedFonts: PDF_RUNTIME_ASSETS.fonts.map((font) => font.fileName),
@@ -422,6 +427,7 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
       wasmUrl: string;
       fontUrls: Record<string, string>;
       expectedFonts: string[];
+      importCoreProof: boolean;
       jobsEntrypointLoaded: boolean;
       attachmentContract(): Promise<{
         calls: number;
@@ -454,6 +460,9 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
       }>;
     };
     if (!hook) throw new Error("built chunk did not install the smoke hook — wrong chunk executed?");
+    if (!hook.importCoreProof) {
+      throw new Error("packed @atlcli/import-core browser entry did not execute its semantic projection");
+    }
     if (!hook.jobsEntrypointLoaded) {
       throw new Error(
         "packed @atlcli/export-wiring/jobs did not expose both PDF and TypeScript DOCX executors",

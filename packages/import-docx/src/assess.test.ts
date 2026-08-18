@@ -1,12 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { EDITABILITY_BUDGETS, assessEditability } from "./assess.js";
-import { buildImportPreview } from "./preview.js";
+import { EDITABILITY_BUDGETS, assessEditability, buildImportPreview, type ImportBlock } from "@atlcli/import-core";
 import { parseDocx } from "./parse.js";
 import { buildDocxFixture, p, r } from "./test-support.js";
-import type { ImportBlock } from "./model.js";
-
 function paragraphs(count: number, text: string): ImportBlock[] {
-  return Array.from({ length: count }, () => ({
+  return Array.from({ length: count }, (_, index) => ({
+    id: `test:paragraph:${index + 1}`,
     type: "paragraph" as const,
     runs: [{ kind: "text" as const, text }],
   }));

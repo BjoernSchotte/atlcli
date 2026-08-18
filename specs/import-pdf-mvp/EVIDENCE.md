@@ -228,3 +228,101 @@ committed.
   live PDF page-tree evidence remain owned by PDF-01 through PDF-11.
 - PDFium third-party notices/SBOM and the existing PDF.js viewer advisory remain
   explicit release/security follow-ups.
+
+## PDF-01 - Source-neutral semantic core
+
+### Result
+
+`@atlcli/import-core` now owns the versioned, source-neutral
+`atlcli.import-document/2` model and the pure canonical, ADF, Storage,
+editability, and preview projections. The model carries stable node/asset IDs,
+all five no-silent-loss outcomes, table spans, source-owned opaque references,
+and split/fallback hints without admitting PDF geometry or DOCX parser details.
+
+`@atlcli/import-docx` retains only Word-specific parsing, bookmarks, comments,
+split behavior, recipes, governance, and baselines. Its barrel deliberately does
+not re-export the moved core functions. The CLI imports both packages directly;
+there is no compatibility layer or duplicate target encoder.
+
+The new package is classified `public-0.x`, not released, so the repository's
+existing API-report, closure, dependency, and tarball guards cover it. Its root
+and browser entry expose the same 38-symbol experimental surface. The production
+source has one browser-safe dependency on `@atlcli/core` and no Node/Bun,
+filesystem, CLI, Confluence client, DOCX parser, or PDF parser edge.
+
+### Behavior lock and focused proof
+
+```text
+bun run test packages/import-core packages/import-docx apps/cli/src/commands/wiki-import.test.ts
+102 pass, 0 fail, 361 assertions
+
+bun run test scripts/api-report.test.ts scripts/publishable-deps.test.ts
+6 pass, 0 fail
+
+bun run test apps/cli/src/commands/wiki-import-dc.contract.test.ts
+3 pass, 0 fail, 22 assertions
+```
+
+The pre-extraction neutral DOCX preview remains exactly:
+
+```text
+heading=1, paragraph=2, list=1
+ADF SHA-256 beecac58ae32f52ced9670c4f765136e4ebd2fce1642195cc63f518e9a571023
+```
+
+Tests also cover deterministic schema/IDs, table row/column spans, exact asset
+filenames, source-reference resolution, evidence exclusion from ADF/Storage,
+canonical key ordering, and the absence of source-neutral re-exports from the
+DOCX barrel.
+
+### Package and host proof
+
+The opt-in real consumer suite built and packed the publishable dependency
+closure, installed only the resulting tarballs into fresh projects, rejected
+all leaked `workspace:` ranges, and exercised the core through its built output:
+
+```text
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+
+tarball Bun: DOCX_SMOKE_OK; PDF_SMOKE_OK
+filesystem-link Bun: DOCX_SMOKE_OK; PDF_SMOKE_OK
+plain Node 22.18.0 / npm 10.9.3: DOCX_SMOKE_OK; PDF_SMOKE_OK
+Vite 8.1.4 browser build: import-core projection, DOCX, and PDF smokes OK
+```
+
+The Vite fixture imports the packed browser condition and executes a real empty
+ADF projection. The Node fixture imports the packed default entry and the
+consumer TypeScript fixture names `ImportDocumentV2` with
+`skipLibCheck: false`.
+
+```text
+bun run typecheck
+pass
+
+bun run build
+32 tasks pass
+
+bun run check:browser
+35 browser entrypoints pass
+
+bun install --frozen-lockfile
+pass
+```
+
+Local Turbo cache warnings about restricted cache I/O were non-fatal; all named
+commands exited zero.
+
+### Live transaction proof
+
+The freshly built CLI previewed the neutral DOCX and retained the frozen digest.
+In the authorized `mayflower` / `DOCSY` environment it then created one neutral
+version-1 page, read back the expected heading/paragraph/list Storage body,
+deleted that exact import-owned page by ID, and verified that a final read
+returned 404. No live ID, URL, raw receipt, credential, or tenant-derived body
+was committed.
+
+### Decision
+
+PDF-01 is complete. PDF-specific geometry, confidence, classification, and
+engine provenance remain outside the semantic core and belong to PDF-02 onward.

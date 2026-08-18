@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
 import { parseDocx } from "./parse.js";
-import { documentToAdf } from "./adf.js";
+import { documentToAdf } from "@atlcli/import-core";
 import { DEFAULT_STYLES, buildDocxFixture, p, r } from "./test-support.js";
 
 const STYLES_WITH_QUOTE_AND_CODE = DEFAULT_STYLES.replace(

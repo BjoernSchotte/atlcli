@@ -231,6 +231,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
     reasoning:
       "STAYS 0.x: never API-reviewed, Bun-only engines (webhook server is Bun.serve-native).",
   },
+  "@atlcli/import-core": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the source-neutral semantic import model and pure " +
+      "ADF/Storage/preview projection boundary. Keep it experimental until both DOCX and PDF " +
+      "parsers plus packed Node, Bun, and browser consumers prove the versioned contract.",
+  },
   "@atlcli/plugin-api": {
     version: "0.x",
     frozen: false,

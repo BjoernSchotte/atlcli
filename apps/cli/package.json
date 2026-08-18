@@ -19,6 +19,7 @@
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/export-node": "workspace:*",
     "@atlcli/export-wiring": "workspace:*",
+    "@atlcli/import-core": "workspace:*",
     "@atlcli/import-docx": "workspace:*",
     "@atlcli/jira": "workspace:*",
     "@atlcli/pdf": "workspace:*",

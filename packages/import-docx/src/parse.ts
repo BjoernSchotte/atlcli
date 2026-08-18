@@ -11,7 +11,6 @@
 import { unzipDocx, readPartText, DOCX_TEMPLATE_INTAKE_BUDGET } from "@atlcli/docx/scan";
 import type {
   ImportAsset,
-  ImportBlock,
   ImportImageBlock,
   ImportIssue,
   ImportListBlock,
@@ -19,6 +18,10 @@ import type {
   ImportRun,
   ImportRunMarks,
   ImportTableRow,
+} from "@atlcli/import-core";
+import { IMPORT_DOCUMENT_SCHEMA_V2 } from "@atlcli/import-core";
+import type {
+  DocxImportBlock as ImportBlock,
   ImportedDocument,
   ImportComment,
 } from "./model.js";
@@ -93,6 +96,14 @@ interface ParseContext {
   footnoteRefs: string[];
   /** issue codes already reported once (deduplicated counters). */
   reported: Map<string, number>;
+  /** Deterministic traversal identity counter for target blocks and cells. */
+  nextNodeId: number;
+}
+
+function nodeId(ctx: ParseContext, kind: string): string {
+  const id = `docx:${kind}:${ctx.nextNodeId}`;
+  ctx.nextNodeId += 1;
+  return id;
 }
 
 function report(
@@ -431,6 +442,7 @@ function extractDrawing(drawing: XmlElement, ctx: ParseContext): ImportImageBloc
   const alt = docPr ? (attr(docPr, "descr") ?? attr(docPr, "name")) : undefined;
 
   return {
+    id: nodeId(ctx, "image"),
     type: "image",
     assetId: part,
     ...(alt ? { alt } : {}),
@@ -469,9 +481,10 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
             const hash = href.indexOf("#");
             marks = {
               ...inherited,
-              fileLink: {
-                path: (hash === -1 ? href : href.slice(0, hash)).replace(/\\/g, "/"),
-                ...(hash !== -1 && href.slice(hash + 1) ? { anchor: href.slice(hash + 1) } : {}),
+              reference: {
+                namespace: "docx-file",
+                target: (hash === -1 ? href : href.slice(0, hash)).replace(/\\/g, "/"),
+                ...(hash !== -1 && href.slice(hash + 1) ? { fragment: href.slice(hash + 1) } : {}),
               },
             };
           } else {
@@ -486,7 +499,7 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
         } else if (anchor) {
           // Cross-reference to a bookmark: carried as a typed mark and
           // resolved to a page link at encode time (plan 009 link rewrite).
-          marks = { ...inherited, anchorLink: { anchor } };
+          marks = { ...inherited, reference: { namespace: "docx-bookmark", target: anchor } };
         }
         runs.push(...parseRuns(child, ctx, marks));
         break;
@@ -537,7 +550,10 @@ function parseRuns(el: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
         const instr = attr(child, "instr", W_NS) ?? "";
         const refMatch = /^\s*(?:REF|PAGEREF)\s+([^\s\\]+)/.exec(instr);
         if (refMatch) {
-          runs.push(...parseRuns(child, ctx, { ...inherited, anchorLink: { anchor: refMatch[1] } }));
+          runs.push(...parseRuns(child, ctx, {
+            ...inherited,
+            reference: { namespace: "docx-bookmark", target: refMatch[1] },
+          }));
           break;
         }
         report(
@@ -606,7 +622,7 @@ function parseRun(run: XmlElement, ctx: ParseContext, inherited?: ImportRunMarks
     }
   }
   const cleaned: ImportRunMarks | undefined =
-    marks.bold || marks.italic || marks.code || marks.link || marks.anchorLink || marks.fileLink
+    marks.bold || marks.italic || marks.code || marks.link || marks.reference
       ? marks
       : undefined;
 
@@ -848,9 +864,9 @@ function headingLevel(p: XmlElement, ctx: ParseContext): number | undefined {
 }
 
 /** Convert a run of consecutive numbered paragraphs into a nested list block. */
-function buildList(paragraphs: NumberedParagraph[]): ImportListBlock {
+function buildList(paragraphs: NumberedParagraph[], ctx: ParseContext): ImportListBlock {
   const base = Math.min(...paragraphs.map((p) => p.ilvl));
-  const root: ImportListBlock = { type: "list", ordered: paragraphs[0].ordered, items: [] };
+  const root: ImportListBlock = { id: nodeId(ctx, "list"), type: "list", ordered: paragraphs[0].ordered, items: [] };
   // Stack of lists by depth; index 0 is `root` at `base`.
   const stack: ImportListBlock[] = [root];
 
@@ -861,16 +877,16 @@ function buildList(paragraphs: NumberedParagraph[]): ImportListBlock {
       const parent = stack[stack.length - 1];
       if (parent.items.length === 0) {
         // A child level cannot exist without a parent item; synthesize one.
-        parent.items.push({ blocks: [{ type: "paragraph", runs: [] }] });
+        parent.items.push({ blocks: [{ id: nodeId(ctx, "paragraph"), type: "paragraph", runs: [] }] });
       }
       const parentItem = parent.items[parent.items.length - 1];
-      const child: ImportListBlock = { type: "list", ordered: p.ordered, items: [] };
+      const child: ImportListBlock = { id: nodeId(ctx, "list"), type: "list", ordered: p.ordered, items: [] };
       parentItem.child = child;
       stack.push(child);
     }
     const target = stack[stack.length - 1];
     if (target.items.length === 0) target.ordered = p.ordered;
-    const item: ImportListItem = { blocks: [{ type: "paragraph", runs: p.runs }] };
+    const item: ImportListItem = { blocks: [{ id: nodeId(ctx, "paragraph"), type: "paragraph", runs: p.runs }] };
     target.items.push(item);
   }
   return root;
@@ -911,11 +927,11 @@ function parseTable(tbl: XmlElement, ctx: ParseContext, depth: number): ImportBl
             "Vertically merged table cells were imported as separate cells.",
           );
         }
-        return { header: isHeaderRow, blocks: parseBlocks(tc, ctx, depth + 1) };
+        return { id: nodeId(ctx, "table-cell"), header: isHeaderRow, blocks: parseBlocks(tc, ctx, depth + 1) };
       });
     if (cells.length > 0) rows.push({ cells });
   }
-  return rows.length > 0 ? [{ type: "table", rows }] : [];
+  return rows.length > 0 ? [{ id: nodeId(ctx, "table"), type: "table", rows }] : [];
 }
 
 function runsToPlainText(runs: ImportRun[]): string {
@@ -931,15 +947,15 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
 
   const flushPending = () => {
     if (pendingList.length > 0) {
-      blocks.push(buildList(pendingList));
+      blocks.push(buildList(pendingList, ctx));
       pendingList = [];
     }
     if (pendingQuote.length > 0) {
-      blocks.push({ type: "blockquote", blocks: pendingQuote });
+      blocks.push({ id: nodeId(ctx, "blockquote"), type: "blockquote", blocks: pendingQuote });
       pendingQuote = [];
     }
     if (pendingCode.length > 0) {
-      blocks.push({ type: "code", text: pendingCode.join("\n") });
+      blocks.push({ id: nodeId(ctx, "code"), type: "code", text: pendingCode.join("\n") });
       pendingCode = [];
     }
   };
@@ -976,6 +992,7 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
           flushPending();
           blocks.push(
             ownBlock({
+              id: nodeId(ctx, "heading"),
               type: "heading",
               level: level as 1 | 2 | 3 | 4 | 5 | 6,
               runs,
@@ -1001,7 +1018,7 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
           // Only list/code groups can be open here; flushing them cannot
           // touch an open quote group (groups are mutually exclusive).
           if (pendingList.length > 0 || pendingCode.length > 0) flushPending();
-          pendingQuote.push({ type: "paragraph", runs });
+          pendingQuote.push({ id: nodeId(ctx, "paragraph"), type: "paragraph", runs });
           blocks.push(...images);
           break;
         }
@@ -1018,6 +1035,7 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
           // body paragraphs (Word's spacing artifacts).
           blocks.push(
             ownBlock({
+              id: nodeId(ctx, "paragraph"),
               type: "paragraph",
               runs,
               ...(bookmarks.length > 0 ? { bookmarks } : {}),
@@ -1124,6 +1142,7 @@ export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): Impo
     footnotes: parseFootnotes(readOptional("word/footnotes.xml")),
     footnoteRefs: [],
     reported: new Map(),
+    nextNodeId: 1,
   };
 
   for (const key of Object.keys(policy.styleMappings ?? {})) {
@@ -1166,7 +1185,7 @@ export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): Impo
         first = false;
         runs.push(...parseRuns(para, footnoteCtx));
       }
-      blocks.push({ type: "paragraph", runs });
+      blocks.push({ id: nodeId(ctx, "paragraph"), type: "paragraph", runs });
     }
     report(
       ctx,
@@ -1196,6 +1215,8 @@ export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): Impo
   );
 
   return {
+    schema: IMPORT_DOCUMENT_SCHEMA_V2,
+    sourceKind: "docx",
     titleCandidate,
     blocks,
     assets: [...ctx.assets.values()],

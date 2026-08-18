@@ -96,6 +96,7 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/pdf-template-authoring/src/index.browser.ts",
   "packages/docx-template-intake/src/index.browser.ts",
   "packages/docx-template-intake/src/application.ts",
+  "packages/import-core/src/index.browser.ts",
   "packages/export-macros/src/index.ts",
   "packages/export-macros/src/internal.ts",
   "packages/export-wiring/src/index.ts",

@@ -441,6 +441,11 @@ import {
 // the skipLibCheck:false proof covers every package the engines matrix
 // marks Node-compatible (jira is deliberately absent — Bun-only).
 import { getActiveProfile } from "@atlcli/core";
+import {
+  IMPORT_DOCUMENT_SCHEMA_V2,
+  documentToAdf,
+  type ImportDocumentV2,
+} from "@atlcli/import-core";
 import { renderDiagram, type DiagramRenderResult } from "@atlcli/diagram";
 import type { AtlcliPlugin } from "@atlcli/plugin-api";
 
@@ -483,6 +488,8 @@ const surfaces: unknown[] = [
   PDF_RUNTIME_ASSETS.fonts.length,
   converted.blocks.length,
   getActiveProfile,
+  IMPORT_DOCUMENT_SCHEMA_V2,
+  documentToAdf,
   renderDiagram,
   resolveMacroBlocks,
   packTemplate,
@@ -498,10 +505,18 @@ const surfaces: unknown[] = [
   pdfSink,
   emittedByteShape,
 ];
+const _importDocument: ImportDocumentV2 = {
+  schema: IMPORT_DOCUMENT_SCHEMA_V2,
+  sourceKind: "docx",
+  blocks: [],
+  assets: [],
+  issues: [],
+};
 const _extraTypes: [DiagramRenderResult, AtlcliPlugin, TemplateManifest] | null = null;
 void _extraTypes;
 const _envParts: [TemplateSource, OutputSink, PdfExportEnv, PdfCompilePort, PdfCompileResult, RunPdfExportInput, BrowserPdfCompilerAssets] | null = null;
 void surfaces;
+void _importDocument;
 void _envParts;
 export {};
 `;
