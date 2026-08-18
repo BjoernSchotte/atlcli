@@ -259,6 +259,7 @@ export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-untagged-semantics/1
 export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as const;
 export const PDF_TABLE_POLICY_REVISION = "atlcli.pdf-table-policy/1" as const;
 export const PDF_FIGURE_POLICY_REVISION = "atlcli.pdf-figure-policy/1" as const;
+export const PDF_VISUAL_FALLBACK_POLICY_REVISION = "atlcli.pdf-visual-fallback-policy/1" as const;
 
 export interface PdfSourceLocatorV1 {
   pageIndex: number;
@@ -295,7 +296,8 @@ export interface PdfDecisionEvidenceV1 {
     | typeof PDF_TAGGED_POLICY_REVISION
     | typeof PDF_GEOMETRY_POLICY_REVISION
     | typeof PDF_TABLE_POLICY_REVISION
-    | typeof PDF_FIGURE_POLICY_REVISION;
+    | typeof PDF_FIGURE_POLICY_REVISION
+    | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
 export interface PdfTaggedPageOutcomeV1 {

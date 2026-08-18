@@ -1,14 +1,12 @@
 import { sha256Hex } from "@atlcli/core";
-import type { ImportAsset, ImportBlock, ImportDocumentV2, ImportIssue } from "@atlcli/import-core";
+import type { ImportBlock, ImportDocumentV2, ImportIssue } from "@atlcli/import-core";
 import { digestPdfCanonical } from "./canonical.js";
 import {
-  PDF_ASSET_MATERIALIZER_REVISION,
   PDF_GEOMETRY_POLICY_REVISION,
   PDF_TAGGED_POLICY_REVISION,
   type PdfDecisionEvidenceV1,
   type PdfFactsAdapter,
   type PdfFactsV1,
-  type PdfMaterializedAssetV1,
 } from "./contracts.js";
 import { preservePdfFigures } from "./figures.js";
 import {
@@ -31,6 +29,7 @@ import {
   type PdfSplitPolicyV1,
 } from "./split.js";
 import { normalizeUntaggedPdfFacts } from "./untagged.js";
+import { materializePdfVisualFallbacks } from "./visual-fallbacks.js";
 
 export const PDF_IMPORT_REVIEW_SCHEMA_V1 = "atlcli.pdf-import-review/1" as const;
 export const PDF_IMPORT_PLAN_SCHEMA_V1 = "atlcli.pdf-import-plan/1" as const;
@@ -98,88 +97,6 @@ function sanitizedDocument(document: ImportDocumentV2): Record<string, unknown> 
       byteLength: asset.bytes.byteLength,
     })),
   };
-}
-
-async function addPageImages(
-  sourceBytes: Uint8Array,
-  adapter: PdfFactsAdapter,
-  document: ImportDocumentV2,
-  evidence: readonly PdfDecisionEvidenceV1[],
-  pageIndexes: readonly number[],
-): Promise<{ document: ImportDocumentV2; evidence: PdfDecisionEvidenceV1[] }> {
-  if (pageIndexes.length === 0) return { document, evidence: [...evidence] };
-  const requests = pageIndexes.map((pageIndex) => ({
-    id: `pdf:p${pageIndex}:page-image`,
-    pageIndex,
-    kind: "rendered-region" as const,
-    bbox: { x: 0, y: 0, width: 1, height: 1 },
-    dpi: 144,
-  }));
-  const materialized = await adapter.materialize(sourceBytes, requests);
-  if (materialized.length !== requests.length) {
-    throw new PdfImportError("pdf/incomplete", "Page-image fallback did not materialize every requested page.");
-  }
-  const assets = new Map<string, ImportAsset>(document.assets.map((asset) => [asset.id, asset]));
-  const blocks: ImportBlock[] = [...document.blocks];
-  const covered = new Set(pageIndexes);
-  const fallbackCoveredCodes = new Set([
-    "pdf-import/image-only-page",
-    "pdf-import/geometry-page-fallback-required",
-    "pdf-import/tagged-structure-missing",
-    "pdf-import/tagged-text-unclaimed",
-    "pdf-import/tagged-node-demoted",
-  ]);
-  const issues: ImportIssue[] = document.issues.map((issue) =>
-    issue.outcome === "reported"
-      && fallbackCoveredCodes.has(issue.code)
-      && typeof issue.context?.pageIndex === "number"
-      && covered.has(issue.context.pageIndex)
-      ? { ...issue, outcome: "attached" }
-      : issue
-  );
-  const nextEvidence = [...evidence];
-  for (const pageIndex of pageIndexes) {
-    const asset = materialized.find((item) => item.requestId === `pdf:p${pageIndex}:page-image`);
-    if (!asset || asset.materializerRevision !== PDF_ASSET_MATERIALIZER_REVISION) {
-      throw new PdfImportError("pdf/incomplete", "Page-image fallback failed materializer verification.");
-    }
-    const id = `pdf:asset:${asset.sha256}`;
-    if (!assets.has(id)) assets.set(id, {
-      id,
-      sourceRefs: [`pdf:p${pageIndex}`],
-      fileName: `pdf-page-${String(pageIndex + 1).padStart(3, "0")}-${asset.sha256.slice(0, 12)}.png`,
-      mediaType: "image/png",
-      bytes: new Uint8Array(asset.bytes),
-    });
-    const blockId = `pdf:p${pageIndex}:page-image-block`;
-    blocks.push({
-      id: blockId,
-      type: "image",
-      assetId: id,
-      presentation: "page-fallback",
-      sourceRefs: [`pdf:p${pageIndex}`],
-      ...(pageIndex > 0 ? { pageBoundaryBefore: true } : {}),
-    });
-    nextEvidence.push({
-      sourceId: `pdf:p${pageIndex}`,
-      targetNodeId: blockId,
-      locator: { pageIndex, bbox: { x: 0, y: 0, width: 1, height: 1 } },
-      basis: ["rendered-region"],
-      confidence: 1,
-      decisionCode: "pdf/page-image-fallback-attached",
-      outcome: "attached",
-      analyzerRevision: PDF_GEOMETRY_POLICY_REVISION,
-    });
-    issues.push({
-      code: "pdf-import/page-image-fallback-attached",
-      severity: "warning",
-      outcome: "attached",
-      message: "The source page is preserved as a rendered image and is not accessible editable text.",
-      sourceRefs: [`pdf:p${pageIndex}`],
-      context: { pageIndex, width: asset.width, height: asset.height },
-    });
-  }
-  return { document: { ...document, blocks, assets: [...assets.values()], issues }, evidence: nextEvidence };
 }
 
 function pageSummaries(
@@ -258,7 +175,7 @@ export async function buildPdfImportReview(
   const fallbackAssessments = assessPdfVisualFallbacks(analyzed.facts, base);
   const pagesRequiringFallback = fallbackAssessmentPageIndexes(fallbackAssessments);
   const withPageImages = scanPolicy === "page-image"
-    ? await addPageImages(sourceBytes, adapter, visual.document, visual.evidence, pagesRequiringFallback)
+    ? await materializePdfVisualFallbacks(sourceBytes, adapter, visual.document, visual.evidence, fallbackAssessments)
     : { document: visual.document, evidence: visual.evidence };
   const override = await applyPdfImportOverrides(withPageImages.document, options.overrides);
   const semanticDigest = await digestPdfCanonical({

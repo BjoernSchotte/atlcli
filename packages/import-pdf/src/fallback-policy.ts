@@ -6,8 +6,7 @@ import type {
   PdfTaggedPageOutcomeV1,
   PdfUntaggedPageOutcomeV1,
 } from "./contracts.js";
-
-export const PDF_VISUAL_FALLBACK_POLICY_REVISION = "atlcli.pdf-visual-fallback-policy/1" as const;
+export { PDF_VISUAL_FALLBACK_POLICY_REVISION } from "./contracts.js";
 
 /** Tiny tag boxes are commonly producer residue and must not trigger a visible fallback. */
 export const PDF_DEGENERATE_TAG_MAX_AREA = 0.0001;

@@ -291,7 +291,7 @@ function blockLocation(
   };
 }
 
-function mergeBlocks(
+export function mergePdfBlocksByEvidence(
   baseBlocks: readonly ImportBlock[],
   additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }>,
   evidence: readonly PdfDecisionEvidenceV1[],
@@ -486,7 +486,7 @@ export async function preservePdfFigures(
   }
   const document: ImportDocumentV2 = {
     ...base.document,
-    blocks: mergeBlocks(base.document.blocks, additions, evidence),
+    blocks: mergePdfBlocksByEvidence(base.document.blocks, additions, evidence),
     assets: [...base.document.assets, ...documentAssets.values()],
     issues,
   };
