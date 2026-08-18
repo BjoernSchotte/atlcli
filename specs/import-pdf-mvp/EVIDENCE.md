@@ -950,3 +950,100 @@ PDF-07 is complete. Review and split planning are real and digest-bound, while
 confirmed PDF publication remains fail-closed until PDF-08 factors the shared
 transaction and strengthens semantic readback. This prevents a preview-only
 vertical slice from claiming mutation safety it has not yet implemented.
+
+## PDF-08 - Shared verified Confluence publication
+
+### Result
+
+`@atlcli/import-confluence` is the smallest source-neutral seam proved by both
+`ImportDocumentV2.sourceKind` values. It accepts a prepared page plus injected
+Cloud/DC client ports and owns target projection, attachment/media correlation,
+semantic readback, immediate owned-ID registration, and reverse-order rollback.
+It has no concrete Confluence client, authentication, filesystem, CLI, DOCX or
+PDF policy branch. DOCX comments, baseline-guarded in-place updates, recipes,
+batch orchestration, and source-specific split policy remain in their existing
+owners.
+
+Cloud direct-create, attachment shell/finalize, and DOCX split finalization now
+use that seam. Data Center single-page publication uses the same prepared page
+contract and retains REST v1 Storage plus filename media. The CLI's three
+rollback paths use one exact-ID helper which deduplicates ownership and deletes
+children before parents; it never discovers or deletes pages outside the
+transaction ledger.
+
+### Semantic readback
+
+`atlcli.confluence-semantic-readback/1` fingerprints bounded semantic tokens,
+not just the top-level block sequence. ADF proof includes recursive node order,
+text and marks/links, heading levels, list structure, table headers and spans,
+and media file ID/collection/alt. Storage proof parses the supported XHTML
+subset and includes corresponding text, lists, tables/spans, links, code, and
+attachment filenames. Receipts contain only counts and digests, never source
+body text.
+
+Tests reject changed text, lost table spans, and changed media identity on both
+target representations. Cloud's explicit semantic default table spans of one
+are normalized to the encoder's omitted form; spans greater than one remain
+strict. Invalid/malformed or over-budget readback fails the transaction.
+
+### Transaction and DOCX compatibility proof
+
+The Cloud failure matrix injects faults at shell creation, the post-shell
+restriction hook, attachment upload, media correlation, body update, readback,
+and semantic verification. Every post-create case registers exactly one owned
+ID before failing and rolls it back exactly once. A separate proof records
+child-first deduplicated rollback and exact failed IDs. Data Center semantic
+drift fails after ownership registration.
+
+DOCX regression tests lock direct create, image shell/upload/finalize ordering,
+parent-first split shell creation, deterministic root/child finalization,
+inline replies/resolved comments outside the shared package, baseline-guarded
+in-place update with successor baseline sealing, semantic-drift failure, and
+the existing REST v1 Data Center contract.
+
+```text
+bun run test packages/import-confluence packages/import-docx packages/import-pdf packages/confluence apps/cli/src/commands/wiki-import.test.ts apps/cli/src/commands/wiki-import-publication.test.ts apps/cli/src/commands/wiki-import-dc.contract.test.ts
+1786 pass, 0 fail, 2 snapshots, 5114 assertions
+
+bun run test packages/import-confluence apps/cli/src/commands/wiki-import-publication.test.ts
+13 pass, 0 fail, 77 assertions
+
+bun run test scripts/api-report.test.ts scripts/publishable-deps.test.ts packages/import-confluence scripts/check-browser-build.test.ts
+41 pass, 0 fail, 154 assertions
+
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts
+12 pass, 0 fail
+
+bun run build
+34 tasks pass
+
+bun run check:browser
+37 browser entrypoints pass
+
+bunx tsc --noEmit
+pass
+```
+
+Fresh API and closure reports classify the package as experimental `0.x` and
+have zero reachable-but-unexported gaps. Packed Bun, production file-link Bun,
+plain Node 22/npm, and Vite 8.1.4 consumers all remain green.
+
+### Built-CLI live proof and cleanup
+
+The first built-CLI DOCX publication in the authorized `mayflower` / `DOCSY`
+environment exposed Cloud's explicit default table-span normalization. The
+strict verifier rejected it and the transaction rolled its exact owned page
+back; the same title was immediately available again. After adding the
+default-span regression, the rebuilt CLI published the neutral generated DOCX
+at version 2. Independent readback preserved headings, paragraphs, a table and
+its cell text, one image attachment reference, and the second section. The
+exact owned page was deleted; final GET returned 404 and exact title search
+returned zero pages. No live ID, URL, receipt, credential, tenant-derived body,
+or private PDF is committed.
+
+### Decision
+
+PDF-08 is complete. Both import sources now have a common prepared-page and
+verified target transaction without moving source-specific behavior into a
+generic abstraction. PDF-09 may enable PDF publication and bounded page trees
+on top of this proven seam.

@@ -1346,11 +1346,11 @@ bun run typecheck
 
 **Work:**
 
-- [ ] Extract the smallest shared prepared-plan/publish/rollback contract proven by DOCX and PDF.
-- [ ] Keep source-specific comments, updates, recipes, and batch logic out of the shared publisher.
-- [ ] Add Section 11.4 semantic readback for Cloud and supported DC subset.
-- [ ] Prove exact owned-ID rollback at every transaction failure point.
-- [ ] Behavior-lock DOCX create/image/split/update/comment/DC flows.
+- [x] Extract the smallest shared prepared-plan/publish/rollback contract proven by DOCX and PDF.
+- [x] Keep source-specific comments, updates, recipes, and batch logic out of the shared publisher.
+- [x] Add Section 11.4 semantic readback for Cloud and supported DC subset.
+- [x] Prove exact owned-ID rollback at every transaction failure point.
+- [x] Behavior-lock DOCX create/image/split/update/comment/DC flows.
 
 **Verify:**
 

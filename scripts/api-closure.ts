@@ -239,6 +239,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "ADF/Storage/preview projection boundary. Keep it experimental until both DOCX and PDF " +
       "parsers plus packed Node, Bun, and browser consumers prove the versioned contract.",
   },
+  "@atlcli/import-confluence": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the host-neutral prepared-page publication, semantic " +
+      "readback, and exact owned-page rollback boundary shared by semantic importers. Keep it " +
+      "experimental until DOCX and PDF Cloud/Data Center transactions and browser hosts prove it.",
+  },
   "@atlcli/import-pdf": {
     version: "0.x",
     frozen: false,

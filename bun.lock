@@ -73,8 +73,10 @@
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/export-node": "workspace:*",
         "@atlcli/export-wiring": "workspace:*",
+        "@atlcli/import-confluence": "workspace:*",
         "@atlcli/import-core": "workspace:*",
         "@atlcli/import-docx": "workspace:*",
+        "@atlcli/import-pdf": "workspace:*",
         "@atlcli/jira": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/pdf-compiler-browser": "workspace:*",
@@ -358,6 +360,15 @@
         "@atlcli/template-pack": "workspace:*",
       },
     },
+    "packages/import-confluence": {
+      "name": "@atlcli/import-confluence",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/core": "workspace:*",
+        "@atlcli/import-core": "workspace:*",
+        "saxes": "6.0.0",
+      },
+    },
     "packages/import-core": {
       "name": "@atlcli/import-core",
       "version": "0.1.0",
@@ -386,6 +397,7 @@
         "@atlcli/core": "workspace:*",
         "@atlcli/import-core": "workspace:*",
         "@embedpdf/pdfium": "2.15.0",
+        "yaml": "2.9.0",
       },
       "devDependencies": {
         "@types/emscripten": "1.41.5",
@@ -632,6 +644,8 @@
     "@atlcli/export-wiring": ["@atlcli/export-wiring@workspace:packages/export-wiring"],
 
     "@atlcli/extension": ["@atlcli/extension@workspace:apps/extension"],
+
+    "@atlcli/import-confluence": ["@atlcli/import-confluence@workspace:packages/import-confluence"],
 
     "@atlcli/import-core": ["@atlcli/import-core@workspace:packages/import-core"],
 

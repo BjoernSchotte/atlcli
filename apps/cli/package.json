@@ -20,6 +20,7 @@
     "@atlcli/export-node": "workspace:*",
     "@atlcli/export-wiring": "workspace:*",
     "@atlcli/import-core": "workspace:*",
+    "@atlcli/import-confluence": "workspace:*",
     "@atlcli/import-docx": "workspace:*",
     "@atlcli/import-pdf": "workspace:*",
     "@atlcli/jira": "workspace:*",
