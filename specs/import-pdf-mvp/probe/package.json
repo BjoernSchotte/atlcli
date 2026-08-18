@@ -1,0 +1,22 @@
+{
+  "name": "@atlcli/import-pdf-feasibility-probe",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "bun run src/build.ts",
+    "browser:smoke": "bun run src/browser-smoke.ts",
+    "bench": "bun run src/bench.ts",
+    "inspect": "bun run src/inspect.ts",
+    "probe": "bun run src/probe.ts",
+    "test": "bun --conditions=development test"
+  },
+  "dependencies": {
+    "@embedpdf/pdfium": "2.15.0",
+    "pdfjs-dist": "6.2.108"
+  },
+  "devDependencies": {
+    "playwright": "1.55.1"
+  }
+}

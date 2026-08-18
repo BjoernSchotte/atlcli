@@ -226,6 +226,12 @@ PDFium provides a different low-level surface: text pages and character boxes, s
 
 A transient, untracked neutral bake-off using `pdfjs-dist` 6.1.200 and `@embedpdf/pdfium` 2.15.0 recovered all expected tokens from a simple fixture with both engines. On a complex tagged fixture both exposed the same four tagged tables, nine tagged figures with matching alternative text, eighteen annotations, and one physical-image fact. PDFium was materially faster in that local cold/warm sample. These results justify making PDFium the preferred CLI candidate, but they are not release evidence: PDF-00 must reproduce them with committed neutral fixtures, exact dependency/provenance records, quality metrics, RSS/cancellation data, and packed-runtime proofs in `EVIDENCE.md`.
 
+At PDF-00 execution time, `pdfjs-dist` 6.1.200 is affected by
+GHSA-hq66-cqwq-w95j. The committed comparison probe therefore uses the first
+verified patched release, `pdfjs-dist` 6.2.108, while the shipped viewer's
+separate dependency update remains subject to its own Extension/Forge output
+gates. No vulnerable PDF.js release may be added as a new probe dependency.
+
 A raw PDFium WASM binding is not automatically an AtlCLI contract. Task PDF-00 must prove the normalized facts boundary in built CLI/Bun/Node, the packaged Extension worker, and deployed Forge Custom UI separately. Cross-host equality applies to canonical normalized PDFium facts and semantic decisions, not pointers, process-global IDs, raster bytes, or timing. PDF.js receives its existing viewer/output regression gates only.
 
 ### 3.5 Mandatory drift check
@@ -1111,26 +1117,30 @@ Tasks remain unchecked until evidence exists.
 
 **Depends on:** nothing.
 
-**Files:** `specs/import-pdf-mvp/DRIFT.md`, `EVIDENCE.md`, temporary neutral probes/fixtures only; no production code. The prior transient bake-off findings may inform this task but are not themselves release evidence or a production dependency.
+**Files:** `specs/import-pdf-mvp/DRIFT.md`, `EVIDENCE.md`,
+`fixtures/**`, and the isolated private `probe/**` package with its own exact
+manifest/lock; no workspace manifest, root lockfile, or production code. The
+prior transient bake-off findings may inform this task but are not themselves
+release evidence or a production dependency.
 
 **Work:**
 
-- [ ] Execute Section 3.5 drift check against `b6826af5`.
-- [ ] Inventory actual DOCX source/target/publisher contracts and lock current fixture digests.
-- [ ] Build committed neutral simple-untagged and complex-tagged fixtures plus scan/mixed/table/figure/adversarial probes; record source and expected-feature digests.
-- [ ] Add heading-rich and heading-poor neutral 100-page fixtures; define expected root indexes, child ranges/hierarchy, atomic boundary shifts, page counts, and zero duplicate/unassigned source pages.
-- [ ] Reproduce the transient bake-off with exact candidate pins, initially `@embedpdf/pdfium` 2.15.0 and `pdfjs-dist` 6.1.200; reverify that these are still the intended upstream artifacts before selection.
-- [ ] Prove PDFium correlation among structure nodes/attributes, text and character boxes, annotations, destinations, page objects/images, and page/region rendering. Explicitly measure table roles/spans, figure bounds/alternative text, and visible-composition gaps.
-- [ ] Use a temporary public-API PDF.js probe as the bake-off baseline for structure IDs, text items, operator/image facts, annotations, destinations, and rendering; do not turn that probe into production importer code.
-- [ ] Define and test the owned PDFium `PdfFactsAdapter` contract. Use PDF.js only as the bake-off baseline when comparing token completeness, reading order, structure roles, tables/spans, figures/alt text, annotations, physical-image facts, and duplicate/false-native rates.
-- [ ] Prove exact PDFium dependency/WASM/runtime shape in Bun source, built Bun, packed Bun, Node 20/22/24, and a neutral Chromium worker with local assets and zero network. Run small Extension and deployed Forge Custom UI feasibility smokes where their owning workspaces are available; absence of a host integration does not become a false MVP claim. Keep the existing PDF.js viewer/output regression suite green independently.
-- [ ] Audit PDFium wrapper and binary provenance, notices/licenses, integrity, install scripts, public/supported API surface, bundle/pack size, platform assumptions, and update path.
-- [ ] Inject failures and cancellation at every PDFium lifecycle stage; prove balanced handle/buffer cleanup, bounded WASM memory growth, deadlines, and RSS.
-- [ ] Benchmark both engines for classification, text/order, table/figure facts, memory, cold/warm latency, cancellation, and render bounds. Apply Section 13.4 without trading away semantic quality.
-- [ ] Record a host capability matrix: PDFium for CLI, Extension import, and Forge Custom UI import only where each host gate passes; PDF.js remains viewer-only; explicit failure where PDFium lacks a capability; no cross-engine fallback.
-- [ ] Record PDF Oxide as deferred or rejected for the MVP unless a fresh exact version clears the same facts, quality, runtime, and packaging gates.
-- [ ] Run an OCR bake-off only as research; record GO/NO-GO against Section 19.1 without adding OCR to MVP scope.
-- [ ] Freeze initial analyzer, policy, and budget revisions.
+- [x] Execute Section 3.5 drift check against `b6826af5`.
+- [x] Inventory actual DOCX source/target/publisher contracts and lock current fixture digests.
+- [x] Build committed neutral simple-untagged and complex-tagged fixtures plus scan/mixed/table/figure/adversarial probes; record source and expected-feature digests.
+- [x] Add heading-rich and heading-poor neutral 100-page fixtures; define expected root indexes, child ranges/hierarchy, atomic boundary shifts, page counts, and zero duplicate/unassigned source pages.
+- [x] Reproduce the transient bake-off with exact candidate pins: `@embedpdf/pdfium` 2.15.0 and the patched viewer-only comparator `pdfjs-dist` 6.2.108; record the existing 6.1.200 viewer advisory separately and do not make viewer remediation part of the importer dependency graph.
+- [x] Prove PDFium correlation among structure nodes/attributes, text and character boxes, annotations, destinations, page objects/images, and page/region rendering. Explicitly measure table roles/spans, figure bounds/alternative text, and visible-composition gaps.
+- [x] Use a temporary public-API PDF.js probe as the bake-off baseline for structure IDs, text items, operator/image facts, annotations, destinations, and rendering; do not turn that probe into production importer code.
+- [x] Define and test the owned PDFium `PdfFactsAdapter` contract. Use PDF.js only as the bake-off baseline when comparing token completeness, reading order, structure roles, tables/spans, figures/alt text, annotations, physical-image facts, and duplicate/false-native rates.
+- [x] Prove exact PDFium dependency/WASM/runtime shape in Bun source, built Bun, packed Bun, Node 20/22/24, and a neutral Chromium worker with local assets and zero network. Run small Extension and deployed Forge Custom UI feasibility smokes where their owning workspaces are available; absence of a host integration does not become a false MVP claim. Keep the existing PDF.js viewer/output regression suite green independently.
+- [x] Audit PDFium wrapper and binary provenance, notices/licenses, integrity, install scripts, public/supported API surface, bundle/pack size, platform assumptions, and update path.
+- [x] Inject failures and cancellation at every PDFium lifecycle stage; prove balanced handle/buffer cleanup, bounded WASM memory growth, deadlines, and RSS.
+- [x] Benchmark both engines for classification, text/order, table/figure facts, memory, cold/warm latency, cancellation, and render bounds. Apply Section 13.4 without trading away semantic quality.
+- [x] Record a host capability matrix: PDFium for CLI, Extension import, and Forge Custom UI import only where each host gate passes; PDF.js remains viewer-only; explicit failure where PDFium lacks a capability; no cross-engine fallback.
+- [x] Record PDF Oxide as deferred or rejected for the MVP unless a fresh exact version clears the same facts, quality, runtime, and packaging gates.
+- [x] Run an OCR bake-off only as research; record GO/NO-GO against Section 19.1 without adding OCR to MVP scope.
+- [x] Freeze initial analyzer, policy, and budget revisions.
 
 **Verify:**
 
@@ -1150,7 +1160,9 @@ bun run check:browser
 
 **Depends on:** PDF-00.
 
-**Files:** new `packages/import-core/**`; scoped moves from `packages/import-docx/src/{model,adf,storage,preview,assess,canonical}.ts`; package manifests/lock/API reports/tests.
+**Files:** new `packages/import-core/**`; scoped moves from
+`packages/import-docx/src/{model,adf,storage,preview,assess}.ts` plus
+`canonicalJson` from `baseline.ts`; package manifests/lock/API reports/tests.
 
 **Work:**
 
