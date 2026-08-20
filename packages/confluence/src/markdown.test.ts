@@ -7,6 +7,7 @@ import {
   isImageFile,
   replaceAttachmentPaths,
   extractAttachmentRefs,
+  updateDrawioAttachmentVersions,
 } from "./markdown.js";
 
 describe("markdownToStorage", () => {
@@ -1108,6 +1109,90 @@ Example: \`![alt](./page.attachments/example.png)\` syntax
     expect(refs).toHaveLength(1);
     expect(refs).toContain("real.png");
     expect(refs).not.toContain("example.png");
+  });
+
+  test("includes source and preview for a preserved Draw.io macro", () => {
+    const md = `:::confluence drawio
+<!--raw
+<ac:structured-macro ac:name="drawio"><ac:parameter ac:name="diagramName">architecture.drawio</ac:parameter></ac:structured-macro>
+-->
+*[drawio macro]*
+:::
+`;
+
+    expect(extractAttachmentRefs(md)).toEqual(["architecture.drawio", "architecture.drawio.png"]);
+  });
+
+  test("renders a Draw.io preview and restores the original macro", () => {
+    const storage = '<ac:structured-macro ac:name="drawio" ac:macro-id="m1"><ac:parameter ac:name="diagramName">architecture.drawio</ac:parameter><ac:parameter ac:name="width">1024</ac:parameter><ac:parameter ac:name="height">768.5</ac:parameter><ac:parameter ac:name="custom">keep-me</ac:parameter></ac:structured-macro>';
+    const markdown = storageToMarkdown(storage);
+
+    expect(markdown).toContain("<!--atlcli:drawio");
+    expect(markdown).toContain("![architecture.drawio](./attachments/architecture.drawio.png){width=1024 height=768.5}");
+    expect(extractAttachmentRefs(markdown)).toEqual(["architecture.drawio", "architecture.drawio.png"]);
+
+    const roundTrip = markdownToStorage(markdown);
+    expect(roundTrip).toContain(storage);
+    expect(roundTrip).not.toContain("<ac:image>");
+  });
+
+  test("updates Draw.io macro versions after an attachment upload", () => {
+    const storage = '<ac:structured-macro ac:name="drawio"><ac:parameter ac:name="contentVer">1</ac:parameter><ac:parameter ac:name="revision">1</ac:parameter><ac:parameter ac:name="diagramName">architecture.drawio</ac:parameter></ac:structured-macro>';
+
+    const updated = updateDrawioAttachmentVersions(
+      storage,
+      new Map([["architecture.drawio", 2]]),
+    );
+
+    expect(updated).toContain('<ac:parameter ac:name="contentVer">2</ac:parameter>');
+    expect(updated).toContain('<ac:parameter ac:name="revision">2</ac:parameter>');
+  });
+
+  test("leaves a Draw.io macro untouched when its diagram is not in the versions map", () => {
+    const storage = '<ac:structured-macro ac:name="drawio"><ac:parameter ac:name="contentVer">1</ac:parameter><ac:parameter ac:name="revision">1</ac:parameter><ac:parameter ac:name="diagramName">other.drawio</ac:parameter></ac:structured-macro>';
+
+    const updated = updateDrawioAttachmentVersions(
+      storage,
+      new Map([["architecture.drawio", 2]]),
+    );
+
+    expect(updated).toBe(storage);
+  });
+
+  test("leaves a Draw.io macro untouched when it has no contentVer/revision parameters", () => {
+    const storage = '<ac:structured-macro ac:name="drawio"><ac:parameter ac:name="diagramName">architecture.drawio</ac:parameter></ac:structured-macro>';
+
+    const updated = updateDrawioAttachmentVersions(
+      storage,
+      new Map([["architecture.drawio", 2]]),
+    );
+
+    expect(updated).toBe(storage);
+  });
+
+  test("does not add attachment refs for a Draw.io macro without a diagram name", () => {
+    const md = `:::confluence drawio
+<!--raw
+<ac:structured-macro ac:name="drawio"></ac:structured-macro>
+-->
+*[drawio macro]*
+:::
+`;
+
+    expect(extractAttachmentRefs(md)).toEqual([]);
+  });
+
+  test("roundtrips inc-drawio and drawio-sketch macro variants", () => {
+    for (const macroName of ["inc-drawio", "drawio-sketch"]) {
+      const storage = `<ac:structured-macro ac:name="${macroName}"><ac:parameter ac:name="diagramName">architecture.drawio</ac:parameter></ac:structured-macro>`;
+      const markdown = storageToMarkdown(storage);
+
+      expect(markdown).toContain("<!--atlcli:drawio");
+      expect(extractAttachmentRefs(markdown)).toEqual(["architecture.drawio", "architecture.drawio.png"]);
+
+      const roundTrip = markdownToStorage(markdown);
+      expect(roundTrip).toContain(storage);
+    }
   });
 });
 

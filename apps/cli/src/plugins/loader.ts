@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import drawioPlugin from "../../../../plugins/plugin-drawio/src/index.js";
 import gitPlugin from "../../../../plugins/plugin-git/src/index.js";
 import type {
   AtlcliPlugin,
@@ -19,7 +20,7 @@ import type {
   CommandContext,
 } from "@atlcli/plugin-api";
 
-const BUILTIN_PLUGINS: readonly AtlcliPlugin[] = [gitPlugin];
+const BUILTIN_PLUGINS: readonly AtlcliPlugin[] = [gitPlugin, drawioPlugin];
 
 /** Get all plugins compiled into the atlcli executable. */
 export function getBuiltinPlugins(): AtlcliPlugin[] {

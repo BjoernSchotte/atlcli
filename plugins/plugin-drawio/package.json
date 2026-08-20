@@ -1,0 +1,27 @@
+{
+  "name": "atlcli-plugin-drawio",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Draw.io previews for atlcli Confluence sync",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "atlcli": {
+    "plugin": true
+  },
+  "keywords": [
+    "atlcli",
+    "drawio",
+    "confluence"
+  ],
+  "author": "Antonio Murgia",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BjoernSchotte/atlcli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BjoernSchotte/atlcli/issues"
+  },
+  "homepage": "https://github.com/BjoernSchotte/atlcli#readme",
+  "license": "Apache-2.0"
+}

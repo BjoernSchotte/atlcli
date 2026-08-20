@@ -130,6 +130,15 @@ const MACRO_REGEX = /^:::(info|note|warning|tip|expand|toc)(?:[ \t]+(.+))?\n([\s
 // Regex for preserved confluence macros (unknown/3rd-party)
 const CONFLUENCE_MACRO_REGEX = /^:::confluence\s+(\S+)\n([\s\S]*?)^:::\s*$/gm;
 
+// Draw.io macro names. Single source of truth so both regexes below stay in
+// sync when a new variant is added.
+const DRAWIO_MACRO_NAMES = "drawio|inc-drawio|drawio-sketch";
+const DRAWIO_RAW_MACRO_REGEX = new RegExp(
+  `^:::confluence\\s+(${DRAWIO_MACRO_NAMES})\\n[\\s\\S]*?<!--raw\\n([\\s\\S]*?)\\n-->[\\s\\S]*?^:::\\s*$`,
+  "gm",
+);
+const DRAWIO_MANAGED_MACRO_REGEX = /^<!--atlcli:drawio\n([\s\S]*?)\n-->\n!\[[^\]]*\]\(\.\/(?:[\w.-]+\.attachments\/|attachments\/)[^)]+\)(?:\{[^}]+\})?\s*$/gm;
+
 /**
  * Convert ::: macro blocks to placeholders, render markdown, then replace placeholders.
  * @param markdown - The markdown content to convert
@@ -907,6 +916,14 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Restore managed Draw.io blocks before generic Markdown rendering. The
+  // original macro XML is retained verbatim, including app-specific metadata.
+  processed = processed.replace(DRAWIO_MANAGED_MACRO_REGEX, (_, rawXml) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    macros.push({ placeholder, html: rawXml });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -1429,6 +1446,16 @@ export function replaceAttachmentPaths(markdown: string, pageFilename: string): 
 export function extractAttachmentRefs(markdown: string): string[] {
   const refs: Set<string> = new Set();
 
+  // A Draw.io macro owns both its editable source and the generated PNG shown
+  // by the Confluence app. Preserved raw macros otherwise have no Markdown
+  // attachment reference, so the source was invisible to docs push.
+  for (const match of markdown.matchAll(DRAWIO_RAW_MACRO_REGEX)) {
+    addDrawioAttachmentRefs(refs, match[2]);
+  }
+  for (const match of markdown.matchAll(DRAWIO_MANAGED_MACRO_REGEX)) {
+    addDrawioAttachmentRefs(refs, match[1]);
+  }
+
   // Remove code blocks and inline code to avoid matching examples
   const withoutCode = markdown
     .replace(/```[\s\S]*?```/g, "") // Remove fenced code blocks
@@ -1461,6 +1488,61 @@ export function extractAttachmentRefs(markdown: string): string[] {
   }
 
   return Array.from(refs);
+}
+
+export function updateDrawioAttachmentVersions(
+  storage: string,
+  versions: ReadonlyMap<string, number>,
+): string {
+  if (versions.size === 0) return storage;
+
+  return storage.replace(
+    /<ac:structured-macro\b[\s\S]*?<\/ac:structured-macro>/g,
+    (macro) => {
+      const diagramName = drawioDiagramName(macro);
+      const version = diagramName ? versions.get(diagramName) : undefined;
+      if (version === undefined) return macro;
+
+      return macro
+        .replace(
+          /(<ac:parameter\s+ac:name="contentVer">)\d+(<\/ac:parameter>)/,
+          `$1${version}$2`,
+        )
+        .replace(
+          /(<ac:parameter\s+ac:name="revision">)\d+(<\/ac:parameter>)/,
+          `$1${version}$2`,
+        );
+    },
+  );
+}
+
+function addDrawioAttachmentRefs(refs: Set<string>, rawXml: string): void {
+  const diagramName = drawioDiagramName(rawXml);
+  if (!diagramName) return;
+  refs.add(diagramName);
+  refs.add(`${diagramName}.png`);
+}
+
+function drawioDiagramName(rawXml: string): string | undefined {
+  return drawioParameter(rawXml, "diagramName") ?? drawioParameter(rawXml, "name");
+}
+
+function drawioDimensions(rawXml: string): { width?: string; height?: string } {
+  return { width: drawioParameter(rawXml, "width"), height: drawioParameter(rawXml, "height") };
+}
+
+// Cache compiled regexes per parameter name; drawioParameter is called in a
+// loop over every macro and parameter, so avoid rebuilding the RegExp each time.
+const drawioParameterRegexCache = new Map<string, RegExp>();
+
+/** Extract the text content of an `<ac:parameter ac:name="...">` element. */
+function drawioParameter(rawXml: string, name: string): string | undefined {
+  let regex = drawioParameterRegexCache.get(name);
+  if (!regex) {
+    regex = new RegExp(`<ac:parameter\\s+ac:name="${name}"[^>]*>([\\s\\S]*?)<\\/ac:parameter>`, "i");
+    drawioParameterRegexCache.set(name, regex);
+  }
+  return rawXml.match(regex)?.[1].trim() || undefined;
 }
 
 /**
@@ -3030,7 +3112,24 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
   });
 
   const markdown = service.turndown(preprocessed);
-  return markdown.trim() + "\n";
+  // Draw.io blocks survive turndown as a generic `*[drawio macro]*` placeholder
+  // (the raw XML is preserved via CONFLUENCE_MACRO_REGEX). Rewrite those into a
+  // managed preview block so the source/preview pair is visible to docs push.
+  return renderDrawioPreviewBlocks(markdown).trim() + "\n";
+}
+
+function renderDrawioPreviewBlocks(markdown: string): string {
+  return markdown.replace(DRAWIO_RAW_MACRO_REGEX, (block, _macroName, rawXml) => {
+    const diagramName = drawioDiagramName(rawXml);
+    if (!diagramName) return block;
+
+    const { width, height } = drawioDimensions(rawXml);
+    const dimensions = [width && `width=${width}`, height && `height=${height}`]
+      .filter(Boolean)
+      .join(" ");
+    const suffix = dimensions ? `{${dimensions}}` : "";
+    return `<!--atlcli:drawio\n${rawXml}\n-->\n![${diagramName}](./attachments/${diagramName}.png)${suffix}`;
+  });
 }
 
 /**

@@ -36,6 +36,7 @@ import {
   storageToMarkdown,
   replaceAttachmentPaths,
   extractAttachmentRefs,
+  updateDrawioAttachmentVersions,
   isImageFile,
   // Local storage
   findAtlcliDir,
@@ -2417,13 +2418,14 @@ async function pushFile(params: {
 
   // Strip frontmatter before converting to storage format
   const conversionOptions = buildConversionOptions(baseUrl);
-  const storage = markdownToStorage(markdownContent, conversionOptions);
+  let storage = markdownToStorage(markdownContent, conversionOptions);
 
   // Check for attachment references and upload them
   const pageFilename = basename(filePath);
   const pageDir = dirname(filePath);
   const attachmentRefs = extractAttachmentRefs(markdownContent);
   const attachmentsDir = join(pageDir, getAttachmentsDirName(pageFilename));
+  const updatedDrawioVersions = new Map<string, number>();
 
   if (pageId) {
     // Upload attachments before updating the page
@@ -2466,12 +2468,15 @@ async function pushFile(params: {
 
           if (existing) {
             // Update existing attachment
-            await client.updateAttachment({
+            const updatedAttachment = await client.updateAttachment({
               attachmentId: existing.id,
               pageId,
               filename,
               data,
             });
+            if (filename.toLowerCase().endsWith(".drawio") && updatedAttachment.version !== undefined) {
+              updatedDrawioVersions.set(filename, updatedAttachment.version);
+            }
 
             // Update attachment state after successful upload
             if (state && attachmentEntry) {
@@ -2490,6 +2495,9 @@ async function pushFile(params: {
               filename,
               data,
             });
+            if (filename.toLowerCase().endsWith(".drawio") && newAttachment.version !== undefined) {
+              updatedDrawioVersions.set(filename, newAttachment.version);
+            }
 
             // Add new attachment to state
             if (state && newAttachment) {
@@ -2513,6 +2521,12 @@ async function pushFile(params: {
             output(`Warning: Could not upload attachment ${filename}`, opts);
           }
         }
+      }
+
+      // Bump Draw.io macro contentVer/revision only when a .drawio attachment
+      // was actually uploaded this push.
+      if (updatedDrawioVersions.size > 0) {
+        storage = updateDrawioAttachmentVersions(storage, updatedDrawioVersions);
       }
 
       // Check for locally deleted attachments (in state but file doesn't exist)
