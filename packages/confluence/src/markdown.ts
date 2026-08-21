@@ -10,6 +10,7 @@ import { sha256HexOfUtf8 } from "./sha256.js";
 import { encodeBase64, decodeBase64 } from "@atlcli/core";
 import { stripFrontmatter } from "./frontmatter.js";
 import { normalizeEmojiShortName } from "./emoji-projection.js";
+import { parseXml, type XmlElement } from "./export-blocks.js";
 
 // ============ Smart Link Types and Utilities ============
 
@@ -1524,25 +1525,33 @@ function addDrawioAttachmentRefs(refs: Set<string>, rawXml: string): void {
 }
 
 function drawioDiagramName(rawXml: string): string | undefined {
-  return drawioParameter(rawXml, "diagramName") ?? drawioParameter(rawXml, "name");
+  const params = drawioParameters(rawXml);
+  return params.find((p) => p.name === "diagramname" || p.name === "name")?.value;
 }
 
 function drawioDimensions(rawXml: string): { width?: string; height?: string } {
-  return { width: drawioParameter(rawXml, "width"), height: drawioParameter(rawXml, "height") };
+  const params = drawioParameters(rawXml);
+  return {
+    width: params.find((p) => p.name === "width")?.value,
+    height: params.find((p) => p.name === "height")?.value,
+  };
 }
 
-// Cache compiled regexes per parameter name; drawioParameter is called in a
-// loop over every macro and parameter, so avoid rebuilding the RegExp each time.
-const drawioParameterRegexCache = new Map<string, RegExp>();
+// Read `<ac:parameter ac:name="…">value</ac:parameter>` pairs via the shared
+// parseXml tokenizer (house rule: never regex-slice storage XML — a non-greedy
+// close-tag regex mis-slices nested macros, see macro-extract.ts / export-blocks.ts).
+function drawioParameters(rawXml: string): { name: string; value: string }[] {
+  const nodes = parseXml(rawXml);
+  return nodes.flatMap((node) => {
+    if (node.type !== "element") return [];
+    return node.children
+      .filter((c): c is XmlElement => c.type === "element" && c.name === "ac:parameter")
+      .map((p) => ({ name: (p.attrs["ac:name"] ?? "").toLowerCase(), value: elementText(p).trim() }));
+  });
+}
 
-/** Extract the text content of an `<ac:parameter ac:name="...">` element. */
-function drawioParameter(rawXml: string, name: string): string | undefined {
-  let regex = drawioParameterRegexCache.get(name);
-  if (!regex) {
-    regex = new RegExp(`<ac:parameter\\s+ac:name="${name}"[^>]*>([\\s\\S]*?)<\\/ac:parameter>`, "i");
-    drawioParameterRegexCache.set(name, regex);
-  }
-  return rawXml.match(regex)?.[1].trim() || undefined;
+function elementText(node: XmlElement): string {
+  return node.children.map((c) => (c.type === "text" ? c.text : elementText(c))).join("");
 }
 
 /**
