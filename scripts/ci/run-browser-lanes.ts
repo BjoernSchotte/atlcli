@@ -41,16 +41,16 @@ async function main(): Promise<void> {
   if (!process.env.ATLCLI_BROWSER_EVIDENCE_ROOT?.trim()) {
     throw new Error("ATLCLI_BROWSER_EVIDENCE_ROOT is required");
   }
-  const parallelExitCodes = await runCommands(parallelBrowserLaneCommands());
-  for (const [index, exitCode] of parallelExitCodes.entries()) {
-    if (exitCode !== 0) {
-      console.error(`::error::Browser lane ${PARALLEL_BROWSER_LANES[index]} exited with code ${exitCode}`);
-    }
-  }
   const isolatedExitCodes = await runCommands(isolatedBrowserLaneCommands());
   for (const [index, exitCode] of isolatedExitCodes.entries()) {
     if (exitCode !== 0) {
       console.error(`::error::Browser lane ${ISOLATED_BROWSER_LANES[index]} exited with code ${exitCode}`);
+    }
+  }
+  const parallelExitCodes = await runCommands(parallelBrowserLaneCommands());
+  for (const [index, exitCode] of parallelExitCodes.entries()) {
+    if (exitCode !== 0) {
+      console.error(`::error::Browser lane ${PARALLEL_BROWSER_LANES[index]} exited with code ${exitCode}`);
     }
   }
   process.exitCode = [...parallelExitCodes, ...isolatedExitCodes]

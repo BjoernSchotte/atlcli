@@ -651,8 +651,8 @@ describe("CI workflow policy", () => {
     expect(laneRunner).toContain("research-worker-rovo");
     expect(laneOrchestrator).toContain('["research-worker-rovo", "jobs"]');
     expect(laneOrchestrator).toContain('["neutral-palette"]');
-    expect(laneOrchestrator.indexOf("parallelBrowserLaneCommands()"))
-      .toBeLessThan(laneOrchestrator.indexOf("isolatedBrowserLaneCommands()"));
+    expect(laneOrchestrator.indexOf("const isolatedExitCodes"))
+      .toBeLessThan(laneOrchestrator.indexOf("const parallelExitCodes"));
     for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
       expect(laneRunner).toContain(`test:${suite}-extension-browser:prebuilt`);
     }
