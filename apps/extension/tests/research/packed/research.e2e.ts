@@ -70,6 +70,7 @@ import {
   RESEARCH_CRITIQUE_SCHEMA_V1,
 } from "@atlcli/research/browser/agent";
 import { EXTENSION_ROOT, OUTPUT_DIR } from "../../build-helper.js";
+import { createPackedBrowserEvidence } from "../../support/packed-browser-evidence.js";
 
 const SITE_ORIGIN = "https://packed-research.atlassian.net";
 const PACKED_CHAT_HOST_IDENTITY = {
@@ -3512,6 +3513,7 @@ let context: BrowserContext;
 let page: Page;
 let extensionId: string;
 let suiteRoot: string;
+const browserEvidence = createPackedBrowserEvidence("research");
 
 const PACKED_QUALITY_CHECKS: readonly ChatReleaseCandidateCheckV1[] = [
   "source-selection",
@@ -3615,14 +3617,15 @@ test.beforeAll(async () => {
   cpSync(OUTPUT_DIR, extensionDir, { recursive: true });
   installHarness(extensionDir);
 
-  context = await chromium.launchPersistentContext(userDataDir, {
+  context = await chromium.launchPersistentContext(userDataDir, browserEvidence.launchOptions({
     channel: "chromium",
     headless: true,
     args: [
       `--disable-extensions-except=${extensionDir}`,
       `--load-extension=${extensionDir}`,
     ],
-  });
+  }));
+  await browserEvidence.attachContext(context);
   let serviceWorker = context.serviceWorkers().find(isExtensionBackgroundWorker);
   while (!serviceWorker) {
     const candidate = await context.waitForEvent("serviceworker", {
@@ -3677,6 +3680,14 @@ test.beforeAll(async () => {
   await installEventCapture(page);
 });
 
+test.beforeEach(async ({}, testInfo) => {
+  await browserEvidence.startTest(testInfo);
+});
+
+test.afterEach(async ({}, testInfo) => {
+  await browserEvidence.finishTest(testInfo);
+});
+
 test.afterAll(async () => {
   try {
     await writePackedReleaseProof(
@@ -3690,8 +3701,12 @@ test.afterAll(async () => {
       packedLifecycleRuns,
     );
   } finally {
-    await context?.close();
-    if (suiteRoot) rmSync(suiteRoot, { recursive: true, force: true });
+    try {
+      if (context) await browserEvidence.closeContext(context);
+    } finally {
+      browserEvidence.finalize();
+      if (suiteRoot) rmSync(suiteRoot, { recursive: true, force: true });
+    }
   }
 });
 

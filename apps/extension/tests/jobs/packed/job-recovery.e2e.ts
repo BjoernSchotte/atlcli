@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
 import { EXTENSION_ROOT, OUTPUT_DIR } from "../../build-helper.js";
+import { createPackedBrowserEvidence } from "../../support/packed-browser-evidence.js";
 
 const JOB_A = "123e4567-e89b-42d3-a456-426614174000";
 const JOB_B = "223e4567-e89b-42d3-a456-426614174000";
@@ -35,6 +36,7 @@ let baseExtensionDir: string;
 let userDataDir: string;
 let page: Page;
 let packedOffscreen: ChildTargetSession | undefined;
+const browserEvidence = createPackedBrowserEvidence("jobs");
 
 class ChildTargetSession {
   private id = 0;
@@ -355,11 +357,12 @@ async function createPackedPngBytes(): Promise<number[]> {
 }
 
 async function launchPackedBrowser(): Promise<void> {
-  context = await chromium.launchPersistentContext(userDataDir, {
+  context = await chromium.launchPersistentContext(userDataDir, browserEvidence.launchOptions({
     channel: "chromium",
     headless: true,
     args: [`--disable-extensions-except=${baseExtensionDir}`, `--load-extension=${baseExtensionDir}`],
-  });
+  }));
+  await browserEvidence.attachContext(context);
   let serviceWorker = context.serviceWorkers()[0];
   serviceWorker ??= await context.waitForEvent("serviceworker", { timeout: 30_000 });
   extensionId = new URL(serviceWorker.url()).host;
@@ -471,6 +474,10 @@ test.beforeAll(async () => {
   await launchPackedBrowser();
 });
 
+test.beforeEach(async ({}, testInfo) => {
+  await browserEvidence.startTest(testInfo);
+});
+
 test.beforeEach(async () => {
   await packedOffscreen?.close();
   packedOffscreen = undefined;
@@ -508,10 +515,18 @@ test.beforeEach(async () => {
   });
 });
 
+test.afterEach(async ({}, testInfo) => {
+  await browserEvidence.finishTest(testInfo);
+});
+
 test.afterAll(async () => {
-  await packedOffscreen?.close();
-  await context?.close();
-  rmSync(suiteRoot, { recursive: true, force: true });
+  try {
+    await packedOffscreen?.close();
+    if (context) await browserEvidence.closeContext(context);
+  } finally {
+    browserEvidence.finalize();
+    rmSync(suiteRoot, { recursive: true, force: true });
+  }
 });
 
 async function sendWake(ids?: string[]): Promise<{ kind: string; claimedJobId?: string }> {
@@ -2217,7 +2232,7 @@ test("a full persistent-browser restart automatically reclaims checkpointed work
   const originalExtensionId = extensionId;
   await packedOffscreen?.close();
   packedOffscreen = undefined;
-  await context.close();
+  await browserEvidence.closeContext(context);
   installBrowserRestartFetchStub();
   await launchPackedBrowser();
 

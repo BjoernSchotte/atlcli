@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { OUTPUT_DIR } from "../../build-helper.js";
+import { createPackedBrowserEvidence } from "../../support/packed-browser-evidence.js";
 
 const ORIGIN = "https://fixture.atlassian.net";
 const URLS = {
@@ -51,6 +52,7 @@ let suiteRoot: string;
 let extensionId: string;
 let missingCapabilityFixture = false;
 let extensionWorker: Worker;
+const browserEvidence = createPackedBrowserEvidence("palette");
 
 function paletteFrame(page: Page): FrameLocator {
   return page.frameLocator("atlcli-action-palette-root iframe");
@@ -225,11 +227,12 @@ test.beforeAll(async ({}, workerInfo) => {
         `${deps}.executors.map(${executor}=>${executor}.capability).filter(${executor}=>${executor}!=="atlcli.capability.export.pdf"))`,
     ));
   }
-  context = await chromium.launchPersistentContext(userDataDir, {
+  context = await chromium.launchPersistentContext(userDataDir, browserEvidence.launchOptions({
     channel: "chromium",
     headless: true,
     args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
-  });
+  }));
+  await browserEvidence.attachContext(context);
   extensionWorker = context.serviceWorkers()[0] ??
     await context.waitForEvent("serviceworker", { timeout: 30_000 });
   extensionId = new URL(extensionWorker.url()).host;
@@ -237,9 +240,21 @@ test.beforeAll(async ({}, workerInfo) => {
   await storagePage.goto(`chrome-extension://${extensionId}/storage-probe.html`);
 });
 
+test.beforeEach(async ({}, testInfo) => {
+  await browserEvidence.startTest(testInfo);
+});
+
+test.afterEach(async ({}, testInfo) => {
+  await browserEvidence.finishTest(testInfo);
+});
+
 test.afterAll(async () => {
-  await context?.close();
-  rmSync(suiteRoot, { recursive: true, force: true });
+  try {
+    if (context) await browserEvidence.closeContext(context);
+  } finally {
+    browserEvidence.finalize();
+    rmSync(suiteRoot, { recursive: true, force: true });
+  }
 });
 
 test("mounts only on Atlassian and derives every MVP context", async () => {
