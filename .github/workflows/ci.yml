@@ -447,7 +447,9 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: browser-assets-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .
+          # upload-artifact stores both inputs relative to their common apps/
+          # root, so restore that root explicitly in each isolated runner.
+          path: apps
 
       - name: Verify prebuilt browser assets
         run: |

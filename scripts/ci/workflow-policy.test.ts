@@ -647,6 +647,7 @@ describe("CI workflow policy", () => {
     expect(browser).toContain("rm -rf .turbo/runs");
     expect(browser).toContain("name: browser-assets-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(browser).toContain("actions/download-artifact@v8");
+    expect(browser).toContain("path: apps\n");
     expect(browser).toContain("lane: [neutral-palette, research-worker-rovo, jobs]");
     expect(browser).toContain('bun scripts/ci/run-browser-lane.ts "${{ matrix.lane }}"');
     expect(browser).not.toContain("bun scripts/ci/run-browser-lanes.ts");
