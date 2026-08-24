@@ -1,5 +1,5 @@
-import { watch } from "node:fs";
-import { dirname, extname } from "node:path";
+import { existsSync, watch, type FSWatcher } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
 import type { AtlcliPlugin, CommandContext } from "@atlcli/plugin-api";
 import { renderDrawioPreviews, renderDrawioPreview, type PreviewOptions, type PreviewResult } from "./preview.js";
 
@@ -20,7 +20,23 @@ export function pushDirectoryFrom(context: CommandContext): string {
   // contains the full subcommand path (e.g. ["docs", "push", "./docs"]), so
   // args[0] is the literal "docs" subcommand, not the target directory. The
   // real target is the 4th element of the command path: ["wiki","docs","push",<target>].
-  const target = context.command.slice(3)[0] ?? process.cwd();
+  const positional = context.command.slice(3)[0];
+  const flagDirectory = typeof context.flags.dir === "string" ? context.flags.dir : undefined;
+  const target = positional ?? flagDirectory ?? process.cwd();
+
+  // `--page-id` resolves a file from .atlcli state later in the command. The
+  // hook deliberately avoids duplicating that state contract; scanning the
+  // initialized root is conservative and guarantees the selected page is in
+  // scope even when the command starts in a nested directory.
+  if (typeof context.flags["page-id"] === "string") {
+    let current = resolve(extname(target).toLowerCase() === ".md" ? dirname(target) : target);
+    while (true) {
+      if (existsSync(join(current, ".atlcli"))) return current;
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  }
   return extname(target).toLowerCase() === ".md" ? dirname(target) : target;
 }
 
@@ -52,13 +68,22 @@ async function previewHandler(context: CommandContext): Promise<void> {
   }
 }
 
-async function watchHandler(context: CommandContext): Promise<void> {
-  const directory = directoryFrom(context);
+type WatchFactory = (directory: string, options: { recursive: true }) => FSWatcher;
+
+export function watchSourcePath(directory: string, filename: string): string {
+  return join(resolve(directory), filename);
+}
+
+export async function watchHandler(
+  context: CommandContext,
+  watchFactory: WatchFactory = watch as WatchFactory,
+): Promise<void> {
+  const directory = resolve(directoryFrom(context));
   const options = optionsFrom(context);
   writeResults(context, await renderDrawioPreviews(directory, options));
   if (!context.output.json) console.log(`Watching Draw.io files in ${directory}`);
 
-  const watcher = watch(directory, { recursive: true });
+  const watcher = watchFactory(directory, { recursive: true });
   const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
   const flushPending = () => {
@@ -66,21 +91,11 @@ async function watchHandler(context: CommandContext): Promise<void> {
     pending.clear();
   };
 
-  const shutdown = () => {
-    flushPending();
-    watcher.close();
-  };
-
-  watcher.on("error", (error) => {
-    console.error(`Draw.io watch error: ${error.message}`);
-    shutdown();
-  });
-
   // fs.watch emits "rename" for newly created files and "change" for edits.
   // Handle both so a brand-new .drawio file triggers a preview immediately.
   watcher.on("change", (_event, filename) => {
     if (!filename || !filename.toString().toLowerCase().endsWith(".drawio")) return;
-    const source = `${directory}/${filename}`;
+    const source = watchSourcePath(directory, filename.toString());
     const existing = pending.get(source);
     if (existing) clearTimeout(existing);
     pending.set(source, setTimeout(async () => {
@@ -91,11 +106,24 @@ async function watchHandler(context: CommandContext): Promise<void> {
 
   // Handle SIGINT/SIGTERM/SIGHUP so `kill <pid>` and container shutdown exit
   // cleanly instead of leaking the watcher.
-  await new Promise<void>((resolve) => {
-    const onSignal = () => {
-      shutdown();
-      resolve();
+  await new Promise<void>((resolveDone) => {
+    let settled = false;
+    const onSignal = () => shutdown();
+    const shutdown = () => {
+      if (settled) return;
+      settled = true;
+      flushPending();
+      watcher.close();
+      process.off("SIGINT", onSignal);
+      process.off("SIGTERM", onSignal);
+      process.off("SIGHUP", onSignal);
+      resolveDone();
     };
+
+    watcher.on("error", (error) => {
+      console.error(`Draw.io watch error: ${error.message}`);
+      shutdown();
+    });
     process.once("SIGINT", onSignal);
     process.once("SIGTERM", onSignal);
     process.once("SIGHUP", onSignal);

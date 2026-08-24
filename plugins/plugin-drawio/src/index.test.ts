@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
+import type { FSWatcher } from "node:fs";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import type { CommandContext } from "@atlcli/plugin-api";
-import { pushDirectoryFrom, directoryFrom } from "./index.js";
+import { pushDirectoryFrom, directoryFrom, watchHandler, watchSourcePath } from "./index.js";
 
 /**
  * Build a CommandContext the way apps/cli/src/index.ts does for beforeCommand
@@ -12,11 +17,15 @@ import { pushDirectoryFrom, directoryFrom } from "./index.js";
  * (see apps/cli/src/index.ts:104-114). The plugin-command path slices the
  * subcommand off, but the hook path does not.
  */
-function hookContext(command: string[], args: string[]): CommandContext {
+function hookContext(
+  command: string[],
+  args: string[],
+  flags: CommandContext["flags"] = {},
+): CommandContext {
   return {
     command,
     args,
-    flags: {},
+    flags,
     output: { json: false },
   };
 }
@@ -38,6 +47,24 @@ describe("drawio plugin wiki docs push hook", () => {
     expect(pushDirectoryFrom(ctx)).toBe(".");
   });
 
+  test("resolves --dir when no positional push target was supplied", () => {
+    const ctx = hookContext(["wiki", "docs", "push"], ["docs", "push"], { dir: "./docs" });
+    expect(pushDirectoryFrom(ctx)).toBe("./docs");
+  });
+
+  test("uses the initialized root for --page-id from a nested directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-drawio-hook-"));
+    try {
+      const nested = join(root, "nested");
+      await mkdir(join(root, ".atlcli"));
+      await mkdir(nested);
+      const ctx = hookContext(["wiki", "docs", "push"], ["docs", "push"], { "page-id": "123", dir: nested });
+      expect(pushDirectoryFrom(ctx)).toBe(root);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("resolves the parent directory when the target is a single .md file", () => {
     // `atlcli wiki docs push ./guide/readme.md`
     const ctx = hookContext(
@@ -53,5 +80,27 @@ describe("drawio plugin wiki docs push hook", () => {
     const ctx = hookContext(["drawio", "preview"], ["./diagrams"]);
 
     expect(directoryFrom(ctx)).toBe("./diagrams");
+  });
+
+  test("watch events resolve relative directories exactly once", () => {
+    expect(watchSourcePath("./docs", "nested/a.drawio")).toBe(resolve("./docs/nested/a.drawio"));
+  });
+
+  test("watch resolves and closes when the watcher emits an error", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-drawio-watch-"));
+    try {
+      const emitter = new EventEmitter() as EventEmitter & { close: () => void };
+      let closed = false;
+      emitter.close = () => { closed = true; };
+      const ctx = hookContext(["drawio", "watch"], [root]);
+      const run = watchHandler(ctx, (() => {
+        setTimeout(() => emitter.emit("error", new Error("watch failed")), 0);
+        return emitter as unknown as FSWatcher;
+      }));
+      await run;
+      expect(closed).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

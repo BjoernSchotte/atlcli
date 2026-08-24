@@ -7,8 +7,8 @@ import {
   isImageFile,
   replaceAttachmentPaths,
   extractAttachmentRefs,
-  updateDrawioAttachmentVersions,
 } from "./markdown.js";
+import { updateDrawioAttachmentVersions } from "./drawio-storage.js";
 
 describe("markdownToStorage", () => {
   test("converts basic markdown to HTML", () => {
@@ -1123,6 +1123,18 @@ Example: \`![alt](./page.attachments/example.png)\` syntax
     expect(extractAttachmentRefs(md)).toEqual(["architecture.drawio", "architecture.drawio.png"]);
   });
 
+  test("does not turn an unsafe remote Draw.io name into a local attachment path", () => {
+    const md = `:::confluence drawio
+<!--raw
+<ac:structured-macro ac:name="drawio"><ac:parameter ac:name="diagramName">../../secret.drawio</ac:parameter></ac:structured-macro>
+-->
+*[drawio macro]*
+:::
+`;
+
+    expect(extractAttachmentRefs(md)).toEqual([]);
+  });
+
   test("renders a Draw.io preview and restores the original macro", () => {
     const storage = '<ac:structured-macro ac:name="drawio" ac:macro-id="m1"><ac:parameter ac:name="diagramName">architecture.drawio</ac:parameter><ac:parameter ac:name="width">1024</ac:parameter><ac:parameter ac:name="height">768.5</ac:parameter><ac:parameter ac:name="custom">keep-me</ac:parameter></ac:structured-macro>';
     const markdown = storageToMarkdown(storage);
@@ -1136,6 +1148,12 @@ Example: \`![alt](./page.attachments/example.png)\` syntax
     expect(roundTrip).not.toContain("<ac:image>");
   });
 
+  test("accepts the legacy unversioned managed marker", () => {
+    const macro = '<ac:structured-macro ac:name="drawio"><ac:parameter ac:name="diagramName">legacy.drawio</ac:parameter></ac:structured-macro>';
+    const markdown = `<!--atlcli:drawio\n${macro}\n-->\n![legacy.drawio](./attachments/legacy.drawio.png)`;
+    expect(markdownToStorage(markdown)).toContain(macro);
+  });
+
   test("updates Draw.io macro versions after an attachment upload", () => {
     const storage = '<ac:structured-macro ac:name="drawio"><ac:parameter ac:name="contentVer">1</ac:parameter><ac:parameter ac:name="revision">1</ac:parameter><ac:parameter ac:name="diagramName">architecture.drawio</ac:parameter></ac:structured-macro>';
 
@@ -1146,6 +1164,22 @@ Example: \`![alt](./page.attachments/example.png)\` syntax
 
     expect(updated).toContain('<ac:parameter ac:name="contentVer">2</ac:parameter>');
     expect(updated).toContain('<ac:parameter ac:name="revision">2</ac:parameter>');
+  });
+
+  test("updates a Draw.io macro nested inside another macro", () => {
+    const inner = '<ac:structured-macro ac:name="drawio"><ac:parameter ac:name="contentVer">1</ac:parameter><ac:parameter ac:name="revision">1</ac:parameter><ac:parameter ac:name="diagramName">architecture.drawio</ac:parameter></ac:structured-macro>';
+    const storage = `<ac:structured-macro ac:name="expand"><ac:rich-text-body>${inner}</ac:rich-text-body></ac:structured-macro>`;
+
+    const updated = updateDrawioAttachmentVersions(storage, new Map([["architecture.drawio", 7]]));
+    expect(updated).toContain('<ac:parameter ac:name="contentVer">7</ac:parameter>');
+    expect(updated).toContain('<ac:parameter ac:name="revision">7</ac:parameter>');
+    expect(updated).toContain('<ac:structured-macro ac:name="expand">');
+  });
+
+  test("does not update matching parameters on a non-Draw.io macro", () => {
+    const storage = '<ac:structured-macro ac:name="third-party"><ac:parameter ac:name="contentVer">1</ac:parameter><ac:parameter ac:name="revision">1</ac:parameter><ac:parameter ac:name="name">architecture.drawio</ac:parameter></ac:structured-macro>';
+
+    expect(updateDrawioAttachmentVersions(storage, new Map([["architecture.drawio", 9]]))).toBe(storage);
   });
 
   test("leaves a Draw.io macro untouched when its diagram is not in the versions map", () => {

@@ -13318,6 +13318,9 @@ export interface UnresolvedMediaIdentity {
 // export: updateAttachmentState
 export declare function updateAttachmentState(state: AtlcliState, pageId: string, attachmentId: string, update: Partial<AttachmentState>): void;
 
+// export: updateDrawioAttachmentVersions
+export declare function updateDrawioAttachmentVersions(storage: string, versions: ReadonlyMap<string, number>): string;
+
 // export: updatePageState
 export declare function updatePageState(state: AtlcliState, pageId: string, update: Partial<PageState>): void;
 

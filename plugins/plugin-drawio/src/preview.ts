@@ -1,7 +1,8 @@
 import { spawn } from "bun";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, rename, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 
 /** Minimal shape of the subprocess returned by the spawner. */
 export interface DrawioSubprocess {
@@ -48,10 +49,10 @@ export async function findDrawioSources(directory: string): Promise<string[]> {
     for (const entry of entries) {
       if (entry.name === ".atlcli" || entry.name === "node_modules") continue;
       const path = join(current, entry.name);
-      // Follow directory symlinks so symlinked .drawio trees are not skipped.
-      if (entry.isDirectory() || entry.isSymbolicLink()) {
-        const isDir = entry.isDirectory() || (await stat(path)).isDirectory();
-        if (isDir) await visit(path);
+      // Never follow symlinks: a docs push must not traverse or write outside
+      // the selected tree, and directory cycles must not hang discovery.
+      if (entry.isDirectory()) {
+        await visit(path);
       } else if (entry.isFile() && extname(entry.name).toLowerCase() === ".drawio") {
         sources.push(path);
       }
@@ -64,6 +65,7 @@ export async function findDrawioSources(directory: string): Promise<string[]> {
 
 export async function renderDrawioPreview(source: string, options: PreviewOptions = {}): Promise<PreviewResult> {
   const output = previewOutputPath(source);
+  const temporaryOutput = join(dirname(output), `.${randomUUID()}.atlcli-drawio.png`);
   const executable = options.executable || process.env.ATLCLI_DRAWIO_EXECUTABLE || "drawio";
 
   try {
@@ -75,17 +77,46 @@ export async function renderDrawioPreview(source: string, options: PreviewOption
     }
 
     const spawnFn = options.spawn ?? spawn;
-    const subprocess = spawnFn(buildDrawioCommand(source, output, executable), {
+    const subprocess = spawnFn(buildDrawioCommand(source, temporaryOutput, executable), {
       cwd: dirname(source),
       stdout: "pipe",
       stderr: "pipe",
     });
 
     const timeoutMs = options.timeoutMs ?? 60_000;
-    const timeout = setTimeout(() => subprocess.kill(), timeoutMs);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutResult = Symbol("timeout");
+    const stderrPromise = new Response(subprocess.stderr).text();
     try {
-      const [stderr, exitCode] = await Promise.all([new Response(subprocess.stderr).text(), subprocess.exited]);
-      const outputExists = await stat(output).then(() => true).catch(() => false);
+      const exitCode = await Promise.race([
+        subprocess.exited,
+        new Promise<typeof timeoutResult>((resolveTimeout) => {
+          timeout = setTimeout(() => resolveTimeout(timeoutResult), timeoutMs);
+        }),
+      ]);
+      if (exitCode === timeoutResult) {
+        try {
+          subprocess.kill();
+        } catch {
+          // The process may already have disappeared between timeout and kill.
+        }
+        // A GUI process can acknowledge termination late and write after the
+        // immediate finally cleanup. Remove the UUID temp again on real exit.
+        void subprocess.exited
+          .then(() => rm(temporaryOutput, { force: true }))
+          .catch(() => rm(temporaryOutput, { force: true }))
+          .catch(() => {});
+        void stderrPromise.catch(() => {});
+        return {
+          source,
+          output,
+          status: "failed",
+          message: `Draw.io timed out after ${timeoutMs}ms`,
+        };
+      }
+
+      const stderr = await stderrPromise;
+      const outputExists = await stat(temporaryOutput).then(() => true).catch(() => false);
       if (exitCode !== 0 || !outputExists) {
         return {
           source,
@@ -94,9 +125,11 @@ export async function renderDrawioPreview(source: string, options: PreviewOption
           message: stderr.trim() || `Draw.io exited with code ${exitCode}`,
         };
       }
+      await rename(temporaryOutput, output);
       return { source, output, status: "rendered" };
     } finally {
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
+      await rm(temporaryOutput, { force: true }).catch(() => {});
     }
   } catch (error) {
     return {

@@ -137,6 +137,7 @@ import {
   type EditorVersion,
 } from "@atlcli/confluence/internal";
 import type { Ignore } from "@atlcli/confluence/internal";
+import { readAttachmentFile, resolveAttachmentFile } from "./docs-attachments.js";
 import { handleSync, syncHelp } from "./sync.js";
 
 /** Sync state for bidirectional sync tracking */
@@ -2444,9 +2445,13 @@ async function pushFile(params: {
       const attachmentStates = existingPageState?.attachments || {};
 
       for (const filename of attachmentRefs) {
-        const localPath = join(attachmentsDir, filename);
+        const localPath = resolveAttachmentFile(attachmentsDir, filename);
+        if (!localPath) {
+          if (!opts.json) output(`Warning: Refusing unsafe attachment path ${filename}`, opts);
+          continue;
+        }
         try {
-          const data = await readFile(localPath);
+          const data = await readAttachmentFile(attachmentsDir, filename);
           const localHash = hashContent(data.toString("base64"));
           const existing = existingByName.get(filename);
 
@@ -2535,7 +2540,11 @@ async function pushFile(params: {
         const referencedFiles = new Set(attachmentRefs);
 
         for (const [attId, attState] of Object.entries(pageState.attachments)) {
-          const localAttPath = join(attachmentsDir, attState.filename);
+          const localAttPath = resolveAttachmentFile(attachmentsDir, attState.filename);
+          if (!localAttPath) {
+            if (!opts.json) output(`Warning: Refusing unsafe attachment path ${attState.filename}`, opts);
+            continue;
+          }
 
           // If file doesn't exist locally AND not referenced in markdown, delete from Confluence
           if (!existsSync(localAttPath) && !referencedFiles.has(attState.filename)) {
@@ -2715,9 +2724,13 @@ async function pushFile(params: {
   // Upload attachments after creating the page
   if (attachmentRefs.length > 0) {
     for (const filename of attachmentRefs) {
-      const localPath = join(attachmentsDir, filename);
+      const localPath = resolveAttachmentFile(attachmentsDir, filename);
+      if (!localPath) {
+        if (!opts.json) output(`Warning: Refusing unsafe attachment path ${filename}`, opts);
+        continue;
+      }
       try {
-        const data = await readFile(localPath);
+        const data = await readAttachmentFile(attachmentsDir, filename);
         await client.uploadAttachment({
           pageId: page.id,
           filename,

@@ -138,7 +138,8 @@ const DRAWIO_RAW_MACRO_REGEX = new RegExp(
   `^:::confluence\\s+(${DRAWIO_MACRO_NAMES})\\n[\\s\\S]*?<!--raw\\n([\\s\\S]*?)\\n-->[\\s\\S]*?^:::\\s*$`,
   "gm",
 );
-const DRAWIO_MANAGED_MACRO_REGEX = /^<!--atlcli:drawio\n([\s\S]*?)\n-->\n!\[[^\]]*\]\(\.\/(?:[\w.-]+\.attachments\/|attachments\/)[^)]+\)(?:\{[^}]+\})?\s*$/gm;
+// `/v1` is canonical. The unversioned form remains accepted as legacy input.
+const DRAWIO_MANAGED_MACRO_REGEX = /^<!--atlcli:drawio(?:\/v1)?\n([\s\S]*?)\n-->\n!\[[^\]]*\]\(\.\/(?:[\w.-]+\.attachments\/|attachments\/)[^)]+\)(?:\{[^}]+\})?\s*$/gm;
 
 /**
  * Convert ::: macro blocks to placeholders, render markdown, then replace placeholders.
@@ -1491,32 +1492,6 @@ export function extractAttachmentRefs(markdown: string): string[] {
   return Array.from(refs);
 }
 
-export function updateDrawioAttachmentVersions(
-  storage: string,
-  versions: ReadonlyMap<string, number>,
-): string {
-  if (versions.size === 0) return storage;
-
-  return storage.replace(
-    /<ac:structured-macro\b[\s\S]*?<\/ac:structured-macro>/g,
-    (macro) => {
-      const diagramName = drawioDiagramName(macro);
-      const version = diagramName ? versions.get(diagramName) : undefined;
-      if (version === undefined) return macro;
-
-      return macro
-        .replace(
-          /(<ac:parameter\s+ac:name="contentVer">)\d+(<\/ac:parameter>)/,
-          `$1${version}$2`,
-        )
-        .replace(
-          /(<ac:parameter\s+ac:name="revision">)\d+(<\/ac:parameter>)/,
-          `$1${version}$2`,
-        );
-    },
-  );
-}
-
 function addDrawioAttachmentRefs(refs: Set<string>, rawXml: string): void {
   const diagramName = drawioDiagramName(rawXml);
   if (!diagramName) return;
@@ -1526,7 +1501,11 @@ function addDrawioAttachmentRefs(refs: Set<string>, rawXml: string): void {
 
 function drawioDiagramName(rawXml: string): string | undefined {
   const params = drawioParameters(rawXml);
-  return params.find((p) => p.name === "diagramname" || p.name === "name")?.value;
+  const value = params.find((p) => p.name === "diagramname" || p.name === "name")?.value;
+  if (!value || value === "." || value === ".." || value.includes("/") || value.includes("\\") || value.includes("\0")) {
+    return undefined;
+  }
+  return value;
 }
 
 function drawioDimensions(rawXml: string): { width?: string; height?: string } {
@@ -3137,7 +3116,7 @@ function renderDrawioPreviewBlocks(markdown: string): string {
       .filter(Boolean)
       .join(" ");
     const suffix = dimensions ? `{${dimensions}}` : "";
-    return `<!--atlcli:drawio\n${rawXml}\n-->\n![${diagramName}](./attachments/${diagramName}.png)${suffix}`;
+    return `<!--atlcli:drawio/v1\n${rawXml}\n-->\n![${diagramName}](./attachments/${diagramName}.png)${suffix}`;
   });
 }
 

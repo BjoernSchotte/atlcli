@@ -435,6 +435,19 @@ the source and preview attachment. Use `--executable <path>` with `drawio previe
 or `drawio watch` when the Draw.io executable is not named `drawio`; the
 `ATLCLI_DRAWIO_EXECUTABLE` environment variable provides the same override.
 
+The generated Markdown contains a versioned `atlcli:drawio/v1` compatibility
+marker with the original Storage XHTML. Do not edit that marker directly. Files
+created with the earlier unversioned marker remain supported. Diagram discovery
+does not follow symbolic links outside the selected documentation tree.
+
+:::note[Watch sync]
+The automatic pre-push preview hook currently applies to `atlcli wiki docs push`.
+The long-running `atlcli wiki docs sync` command still uses its existing Storage
+sync path; run `atlcli drawio watch ./docs` alongside it when editing diagrams.
+Draw.io will move into the shared semantic sync model when Markdown, ADF and
+Storage writers are available.
+:::
+
 ### Validation
 
 Pre-push validation checks for:

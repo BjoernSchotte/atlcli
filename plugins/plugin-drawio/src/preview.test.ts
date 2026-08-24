@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, symlink, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -83,6 +83,19 @@ describe("Draw.io previews", () => {
     });
   });
 
+  test("does not follow directory symlinks outside the selected tree", async () => {
+    await withTempDir(async (dir) => {
+      const scanRoot = join(dir, "scan");
+      const outside = join(dir, "outside");
+      await mkdir(scanRoot);
+      await mkdir(outside);
+      await writeFile(join(outside, "secret.drawio"), "secret");
+      await symlink(outside, join(scanRoot, "linked"), "dir");
+
+      expect(await findDrawioSources(scanRoot)).toEqual([]);
+    });
+  });
+
   test("skips a preview when the output is newer than the source", async () => {
     await withTempDir(async (dir) => {
       const source = join(dir, "a.drawio");
@@ -126,6 +139,66 @@ describe("Draw.io previews", () => {
 
       const result = await renderDrawioPreview(source, optionsWithSpawn(false, 0));
       expect(result.status).toBe("failed");
+    });
+  });
+
+  test("does not accept or destroy a stale preview when Draw.io writes no new output", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "a.drawio");
+      const output = previewOutputPath(source);
+      await writeFile(source, "source");
+      await writeFile(output, "previous-good-preview");
+
+      const result = await renderDrawioPreview(source, optionsWithSpawn(false, 0));
+      expect(result.status).toBe("failed");
+      expect(await readFile(output, "utf8")).toBe("previous-good-preview");
+    });
+  });
+
+  test("returns after its timeout even when the child never settles", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "a.drawio");
+      await writeFile(source, "source");
+      let killed = false;
+      const spawnNever: DrawioSpawner = () => ({
+        stderr: new ReadableStream({ start(controller) { controller.close(); } }),
+        exited: new Promise<number>(() => {}),
+        kill: () => { killed = true; },
+      });
+
+      const started = performance.now();
+      const result = await renderDrawioPreview(source, { force: true, timeoutMs: 10, spawn: spawnNever });
+      expect(performance.now() - started).toBeLessThan(500);
+      expect(result.status).toBe("failed");
+      expect(result.message).toContain("timed out");
+      expect(killed).toBe(true);
+    });
+  });
+
+  test("removes a temp preview written after a delayed process exit", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "a.drawio");
+      await writeFile(source, "source");
+      let resolveExit: (code: number) => void = () => {};
+      let temporaryOutput = "";
+      const delayedExit: DrawioSpawner = (cmd) => {
+        temporaryOutput = cmd[cmd.indexOf("--output") + 1];
+        return {
+          stderr: new ReadableStream({ start(controller) { controller.close(); } }),
+          exited: new Promise<number>((resolve) => { resolveExit = resolve; }),
+          kill: () => {
+            setTimeout(async () => {
+              await writeFile(temporaryOutput, "late-output");
+              resolveExit(137);
+            }, 10);
+          },
+        };
+      };
+
+      const result = await renderDrawioPreview(source, { force: true, timeoutMs: 1, spawn: delayedExit });
+      expect(result.status).toBe("failed");
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 30));
+      expect(await readFile(temporaryOutput).then(() => true).catch(() => false)).toBe(false);
     });
   });
 
