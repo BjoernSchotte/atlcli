@@ -93,7 +93,7 @@ const PACKED_STRUCTURED_LONG_STORAGE = [
   "<h1>Late evidence</h1>",
   "<p>The packed navigation decision is approved in this late section.</p>",
 ].join("");
-const FAKE_KEY = "sk-ant-packed-extension-test-only";
+const FAKE_KEY = "synthetic-packed-extension-provider-key";
 const RESEARCH_ANTHROPIC_SESSION_KEY = "research-anthropic-key-v1";
 const RESEARCH_ANTHROPIC_DEVICE_KEY = "research-anthropic-device-key-v1";
 const PACKED_REDACTION_API_KEY = "sk-ant-test-packed-redaction-only";
