@@ -120,12 +120,18 @@ describe("browser evidence manifest", () => {
     expect(() => classifyBrowserEvidencePath("playwright-report/index.html")).toThrow("not allowed");
   });
 
-  test("requires complete failure media and forbids it on passed suites", async () => {
+  test("requires a trace and visual failure proof and forbids it on passed suites", async () => {
     const rootDirectory = root();
     const incomplete = suite(rootDirectory, "worker");
     mkdirSync(join(incomplete, "failures", "case-1"), { recursive: true });
     writeFileSync(join(incomplete, "failures", "case-1", "trace-1.zip"), await trace({ "trace.trace": "safe" }));
-    await expect(writeManifest(incomplete, "failed")).rejects.toThrow("missing screenshot evidence");
+    await expect(writeManifest(incomplete, "failed")).rejects.toThrow("missing visual evidence");
+
+    writeFileSync(
+      join(incomplete, "failures", "case-1", "screenshot-1.png"),
+      new Uint8Array([137, 80, 78, 71]),
+    );
+    await expect(writeManifest(incomplete, "failed")).resolves.toMatchObject({ status: "failed" });
 
     const complete = await failedSuite(rootDirectory);
     await expect(writeManifest(complete, "passed")).rejects.toThrow("passed suite must not publish failure evidence");
@@ -232,6 +238,27 @@ describe("browser evidence validator", () => {
       expect((error as Error).message).toContain(`rule ${rule}`);
       expect((error as Error).message).not.toContain(content);
     }
+  });
+
+  test("permits only the explicitly bound CI workspace path", async () => {
+    const rootDirectory = root();
+    const directory = await failedSuite(rootDirectory, "research");
+    const workspace = "/home/runner/work/atlcli/atlcli";
+    writeFileSync(join(directory, "summary.json"), JSON.stringify({ source: `${workspace}/tests/synthetic.ts` }));
+    writeFileSync(
+      join(directory, "failures", "case-01", "trace-1.zip"),
+      await trace({ "trace.trace": JSON.stringify({ source: `${workspace}/tests/synthetic.ts` }) }),
+    );
+    await writeManifest(directory, "failed");
+    await expect(validateBrowserEvidence(rootDirectory, {
+      allowedWorkspacePath: workspace,
+    })).resolves.toMatchObject({ sha: SHA });
+
+    writeFileSync(join(directory, "summary.json"), JSON.stringify({ source: "/home/private-user/project/file.ts" }));
+    await writeManifest(directory, "failed");
+    await expect(validateBrowserEvidence(rootDirectory, {
+      allowedWorkspacePath: workspace,
+    })).rejects.toThrow("rule private-home-path");
   });
 
   test("allows only the packed suites' explicit synthetic Atlassian hosts", async () => {

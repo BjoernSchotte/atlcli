@@ -375,7 +375,7 @@ jobs:
       - name: Build packed MV3 extension once
         run: bun run build:extension
 
-      - name: Run three browser evidence lanes in parallel
+      - name: Run parallel browser lanes and isolated performance gates
         run: bun scripts/ci/run-browser-lanes.ts
 
       - name: Validate synthetic browser evidence

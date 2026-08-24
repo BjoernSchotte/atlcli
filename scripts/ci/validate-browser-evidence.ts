@@ -106,6 +106,7 @@ export interface BrowserEvidenceMetadata {
 export interface BrowserEvidenceValidationOptions {
   expectedSha?: string;
   expectedRun?: { id: string; attempt: number };
+  allowedWorkspacePath?: string;
   limits?: Partial<Omit<BrowserEvidenceLimits, "maxFileBytes">> & {
     maxFileBytes?: Partial<Record<BrowserEvidenceKind, number>>;
   };
@@ -247,8 +248,9 @@ function parseManifest(value: unknown, suiteDirectory: string): BrowserEvidenceM
   }
   const failureKinds = new Set(files.filter(({ path }) => path.startsWith("failures/")).map(({ kind }) => kind));
   if (manifest.status === "failed") {
-    for (const required of ["trace", "screenshot", "video"] as const) {
-      if (!failureKinds.has(required)) throw new Error(`failed suite is missing ${required} evidence`);
+    if (!failureKinds.has("trace")) throw new Error("failed suite is missing trace evidence");
+    if (!failureKinds.has("screenshot") && !failureKinds.has("video")) {
+      throw new Error("failed suite is missing visual evidence");
     }
   } else if (failureKinds.size > 0) {
     throw new Error("passed suite must not publish failure evidence");
@@ -277,13 +279,30 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function scanSensitiveText(text: string, displayPath: string): void {
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function scanSensitiveText(
+  text: string,
+  displayPath: string,
+  allowedWorkspacePath?: string,
+): void {
+  const scanned = allowedWorkspacePath
+    ? text.replace(
+        new RegExp(
+          `${escapeRegularExpression(resolve(allowedWorkspacePath))}(?=$|[/\\\\\\s"'])`,
+          "gu",
+        ),
+        "<workspace>",
+      )
+    : text;
   for (const rule of SENSITIVE_RULES) {
-    if (rule.pattern.test(text)) {
+    if (rule.pattern.test(scanned)) {
       throw new Error(`sensitive content rule ${rule.name} matched in ${displayPath}`);
     }
   }
-  for (const match of text.matchAll(ATLASSIAN_HOST_PATTERN)) {
+  for (const match of scanned.matchAll(ATLASSIAN_HOST_PATTERN)) {
     if (!SYNTHETIC_ATLASSIAN_HOSTS.has(match[0].toLocaleLowerCase("en-US"))) {
       throw new Error(`sensitive content rule non-synthetic-atlassian-host matched in ${displayPath}`);
     }
@@ -299,7 +318,12 @@ function decodeText(bytes: Uint8Array, displayPath: string): string {
   }
 }
 
-async function scanTrace(bytes: Uint8Array, displayPath: string, limits: BrowserEvidenceLimits): Promise<void> {
+async function scanTrace(
+  bytes: Uint8Array,
+  displayPath: string,
+  limits: BrowserEvidenceLimits,
+  allowedWorkspacePath?: string,
+): Promise<void> {
   const entries = inspectZipCentralDirectory(bytes, {
     maxEntries: limits.maxTraceEntries,
     maxEntrySize: limits.maxTraceEntryBytes,
@@ -321,7 +345,11 @@ async function scanTrace(bytes: Uint8Array, displayPath: string, limits: Browser
       throw new Error(`trace entry size mismatch: ${displayPath}#${entry.path}`);
     }
     if (knownTextEntry) {
-      scanSensitiveText(decodeText(content, `${displayPath}#${entry.path}`), `${displayPath}#${entry.path}`);
+      scanSensitiveText(
+        decodeText(content, `${displayPath}#${entry.path}`),
+        `${displayPath}#${entry.path}`,
+        allowedWorkspacePath,
+      );
       continue;
     }
     if (content.includes(0)) continue;
@@ -329,6 +357,7 @@ async function scanTrace(bytes: Uint8Array, displayPath: string, limits: Browser
       scanSensitiveText(
         new TextDecoder("utf-8", { fatal: true }).decode(content),
         `${displayPath}#${entry.path}`,
+        allowedWorkspacePath,
       );
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("sensitive content rule ")) throw error;
@@ -427,6 +456,9 @@ export async function validateBrowserEvidence(
     throw new Error("browser evidence root must be a real directory");
   }
   const limits = limitsWithOverrides(options.limits);
+  const allowedWorkspacePath = options.allowedWorkspacePath
+    ? resolve(options.allowedWorkspacePath)
+    : undefined;
   const entries = await readdir(root, { withFileTypes: true });
   if (entries.length === 0) throw new Error("browser evidence root is empty");
   if (entries.length > limits.maxSuites) throw new Error("browser evidence suite count exceeds limit");
@@ -485,9 +517,9 @@ export async function validateBrowserEvidence(
       const displayPath = `${suiteName}/${file.path}`;
       if (file.kind === "junit" || file.kind === "json" || file.kind === "html" || file.kind === "text") {
         if (bytes.byteLength > limits.maxTextScanBytes) throw new Error(`text evidence exceeds scan limit: ${displayPath}`);
-        scanSensitiveText(decodeText(bytes, displayPath), displayPath);
+        scanSensitiveText(decodeText(bytes, displayPath), displayPath, allowedWorkspacePath);
       } else if (file.kind === "trace") {
-        await scanTrace(bytes, displayPath, limits);
+        await scanTrace(bytes, displayPath, limits, allowedWorkspacePath);
       }
     }
     suites.push({ suite: suiteName, status: manifest.status, files: manifest.files.length, bytes: suiteBytes });
@@ -522,6 +554,7 @@ async function main(): Promise<void> {
   const receipt = await validateBrowserEvidence(root, {
     expectedSha: sha,
     expectedRun: { id: runId, attempt: Number(runAttemptText) },
+    allowedWorkspacePath: Bun.env.GITHUB_WORKSPACE,
   });
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }

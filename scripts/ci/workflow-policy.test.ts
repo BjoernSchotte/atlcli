@@ -631,6 +631,7 @@ describe("CI workflow policy", () => {
   it("builds the packed MV3 extension once before all prebuilt browser suites", async () => {
     const ci = await workflow("ci.yml");
     const laneRunner = await readFile(join(REPO_ROOT, "scripts/ci/run-browser-lane.ts"), "utf8");
+    const laneOrchestrator = await readFile(join(REPO_ROOT, "scripts/ci/run-browser-lanes.ts"), "utf8");
     const extension = JSON.parse(await readFile(join(REPO_ROOT, "apps/extension/package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };
@@ -648,6 +649,10 @@ describe("CI workflow policy", () => {
     expect(browser).not.toContain("- parallel:");
     expect(laneRunner).toContain("neutral-palette");
     expect(laneRunner).toContain("research-worker-rovo");
+    expect(laneOrchestrator).toContain('["research-worker-rovo", "jobs"]');
+    expect(laneOrchestrator).toContain('["neutral-palette"]');
+    expect(laneOrchestrator.indexOf("parallelBrowserLaneCommands()"))
+      .toBeLessThan(laneOrchestrator.indexOf("isolatedBrowserLaneCommands()"));
     for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
       expect(laneRunner).toContain(`test:${suite}-extension-browser:prebuilt`);
     }
