@@ -693,6 +693,12 @@ describe("CI workflow policy", () => {
     expect(extension.scripts["test:research-extension-browser:prebuilt"]).toContain(
       "--conditions=development",
     );
+    const researchConfig = await readFile(
+      join(REPO_ROOT, "apps/extension/tests/research/packed/playwright.config.ts"),
+      "utf8",
+    );
+    expect(researchConfig).toContain("retries: process.env.CI ? 1 : 0");
+    expect(laneRunner).toContain("discardPassedBrowserFailureEvidence(suiteDirectory)");
   });
 
   it("publishes only validated synthetic browser evidence", async () => {

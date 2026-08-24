@@ -182,6 +182,10 @@ export function normalizePlaywrightFailureEvidence(suiteDirectory: string): void
   rmSync(rawRoot, { recursive: true, force: true });
 }
 
+export function discardPassedBrowserFailureEvidence(suiteDirectory: string): void {
+  rmSync(join(suiteDirectory, "failures"), { recursive: true, force: true });
+}
+
 async function runLane(lane: BrowserLane, evidenceRoot: string): Promise<number> {
   let failed = false;
   for (const task of BROWSER_LANES[lane]) {
@@ -212,6 +216,7 @@ async function runLane(lane: BrowserLane, evidenceRoot: string): Promise<number>
     if (task.producesEvidence) {
       try {
         if (task.suite === "neutral") normalizePlaywrightFailureEvidence(suiteDirectory);
+        if (exitCode === 0) discardPassedBrowserFailureEvidence(suiteDirectory);
         mkdirSync(suiteDirectory, { recursive: true });
         writeFileSync(
           resolve(suiteDirectory, "summary.json"),

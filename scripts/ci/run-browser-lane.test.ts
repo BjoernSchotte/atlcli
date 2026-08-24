@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   BROWSER_LANES,
+  discardPassedBrowserFailureEvidence,
   normalizePlaywrightFailureEvidence,
   parseBrowserLane,
   suiteEvidenceDirectory,
@@ -134,5 +135,17 @@ describe("browser lane plan", () => {
     expect(() => normalizePlaywrightFailureEvidence(suite)).toThrow(
       "symbolic links are forbidden",
     );
+  });
+
+  test("removes failed-attempt media after a successful retry", () => {
+    const suite = mkdtempSync(join(tmpdir(), "atlcli-retried-evidence-"));
+    roots.push(suite);
+    const failure = join(suite, "failures", "0123456789abcdef0123");
+    mkdirSync(failure, { recursive: true });
+    writeFileSync(join(failure, "trace-1.zip"), "failed first attempt");
+
+    discardPassedBrowserFailureEvidence(suite);
+
+    expect(readdirSync(suite)).toEqual([]);
   });
 });

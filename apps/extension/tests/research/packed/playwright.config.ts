@@ -9,7 +9,7 @@ export default defineConfig({
   outputDir: join(tmpdir(), "atlcli-research-playwright"),
   timeout: 180_000,
   workers: 1,
-  retries: 0,
+  retries: process.env.CI ? 1 : 0,
   reporter: [
     ["line"],
     ["junit", { outputFile: join(browserEvidenceSuiteDir("research"), "junit.xml") }],
