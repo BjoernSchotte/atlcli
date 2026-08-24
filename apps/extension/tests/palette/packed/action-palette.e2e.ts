@@ -114,14 +114,18 @@ async function closeWithEscape(page: Page, frame: FrameLocator): Promise<void> {
   await expect(host).toBeHidden();
 }
 
-async function closeWithBackdrop(frame: FrameLocator): Promise<void> {
+async function closeWithBackdrop(page: Page, frame: FrameLocator): Promise<void> {
   const backdrop = frame.locator(".atlcli-action-palette-backdrop");
-  // Schedule click after evaluate returns for the same iframe lifecycle reason
-  // as closeWithEscape. Trusted pointer behavior is covered by the live probe.
+  // Leave enough time for Chromium to acknowledge evaluate before the click
+  // deliberately tears down the extension iframe. A zero-delay timer can run
+  // first on a loaded CI runner and strand the Playwright protocol call.
   await backdrop.evaluate((element) => {
-    setTimeout(() => (element as HTMLElement).click(), 0);
+    setTimeout(() => (element as HTMLElement).click(), 100);
   });
-  await expect(frame.getByTestId("palette-search")).toBeHidden();
+  const host = page.locator("atlcli-action-palette-root");
+  await expect(host).toHaveAttribute("aria-hidden", "true");
+  await expect(host).toHaveAttribute("hidden", "");
+  await expect(host).toBeHidden();
 }
 
 async function assertFullViewportHost(page: Page): Promise<void> {
@@ -295,7 +299,7 @@ test("survives SPA navigation, adversarial CSS, zoom, and fifty toggle cycles", 
 
   expect(await toggle(page)).toBe(true);
   let frame = await expectOpen(page, /Confluence · DOCSY/);
-  await closeWithBackdrop(frame);
+  await closeWithBackdrop(page, frame);
   expect(await toggle(page)).toBe(true);
   frame = await expectOpen(page, /Confluence · DOCSY/);
   const searchBox = await frame.getByTestId("palette-search").boundingBox();
