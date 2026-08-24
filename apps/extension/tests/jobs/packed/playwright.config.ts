@@ -1,6 +1,7 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
+import { browserEvidenceSuiteDir } from "../../support/packed-browser-evidence.js";
 
 export default defineConfig({
   testDir: ".",
@@ -9,5 +10,8 @@ export default defineConfig({
   timeout: 180_000,
   workers: 1,
   retries: 0,
-  use: { trace: "retain-on-failure" },
+  reporter: [
+    ["line"],
+    ["junit", { outputFile: join(browserEvidenceSuiteDir("jobs"), "junit.xml") }],
+  ],
 });

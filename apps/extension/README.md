@@ -169,6 +169,43 @@ The repository-level `bun run check:browser-export-harness` and
 `bun run test:browser-export-harness` commands prove the reusable DOCX/PDF package contracts in
 an independent production Vite/Chromium host.
 
+### Parallel packed-browser checks
+
+Build the production artifacts once, then run either the complete local
+orchestrator or one fixed lane:
+
+```bash
+bun run build:browser-export-harness
+bun run build:extension
+
+# Performance-sensitive checks first; long jobs/research checks then overlap.
+ATLCLI_BROWSER_EVIDENCE_ROOT="$PWD/.artifacts/browser-evidence" \
+  bun scripts/ci/run-browser-lanes.ts
+
+# Useful when separate worktrees or homelab workers own separate lanes.
+ATLCLI_BROWSER_EVIDENCE_ROOT="$PWD/.artifacts/browser-evidence-jobs" \
+  bun scripts/ci/run-browser-lane.ts jobs
+```
+
+The fixed lanes are `neutral-palette`, `research-worker-rovo`, and `jobs`.
+Give every concurrently running worktree or worker its own evidence root; the
+default is already worktree-local, but an explicit path makes the ownership
+visible. Local and homelab runs enforce the palette latency budget by default.
+Set `ATLCLI_BROWSER_ASSERT_TIMING=0` only on an uncontrolled shared runner;
+functional, network-isolation, long-task, and bundle-size checks still run.
+
+Each suite writes JUnit, a summary, and a SHA/run/digest-bound manifest. Passed
+suites discard browser media. Failed suites retain an opaque test directory
+with a Playwright trace plus screenshots and videos. GitHub CI builds the
+browser artifacts once and fans the three lanes out to separate runners. It
+uploads evidence only after the synthetic-evidence validator has rejected live
+tenant data, credentials, private paths, unsafe archives, and unexpected files.
+
+Live Atlassian-account checks are intentionally outside GitHub CI and its
+artifact publication path. Run those only on an authorized local or homelab
+worker, keep profiles and captures outside Git, and clean up created tenant
+resources after the run.
+
 ## Design notes
 
 - The compact shell has a scalable product-area switcher. **Publishing** is active;

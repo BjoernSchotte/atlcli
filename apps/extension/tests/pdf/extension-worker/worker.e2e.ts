@@ -11,11 +11,13 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OUTPUT_DIR } from "../../build-helper.js";
+import { createPackedBrowserEvidence } from "../../support/packed-browser-evidence.js";
 
 let context: BrowserContext;
 let extensionId: string;
 let serviceWorkerUrl: string;
 let testRoot: string;
+const browserEvidence = createPackedBrowserEvidence("worker");
 
 function singleAsset(prefix: string, suffix: string): string {
   const matches = readdirSync(join(OUTPUT_DIR, "assets")).filter(
@@ -72,23 +74,36 @@ try {
 `
   );
 
-  context = await chromium.launchPersistentContext(userDataDir, {
+  context = await chromium.launchPersistentContext(userDataDir, browserEvidence.launchOptions({
     channel: "chromium",
     headless: true,
     args: [
       `--disable-extensions-except=${extensionDir}`,
       `--load-extension=${extensionDir}`,
     ],
-  });
+  }));
+  await browserEvidence.attachContext(context);
   let serviceWorker = context.serviceWorkers()[0];
   serviceWorker ??= await context.waitForEvent("serviceworker", { timeout: 30_000 });
   serviceWorkerUrl = serviceWorker.url();
   extensionId = new URL(serviceWorker.url()).host;
 });
 
+test.beforeEach(async ({}, testInfo) => {
+  await browserEvidence.startTest(testInfo);
+});
+
+test.afterEach(async ({}, testInfo) => {
+  await browserEvidence.finishTest(testInfo);
+});
+
 test.afterAll(async () => {
-  await context?.close();
-  rmSync(testRoot, { recursive: true, force: true });
+  try {
+    if (context) await browserEvidence.closeContext(context);
+  } finally {
+    browserEvidence.finalize();
+    rmSync(testRoot, { recursive: true, force: true });
+  }
 });
 
 test("loads the release manifest, service worker, and side panel from the explicit artifact", async () => {

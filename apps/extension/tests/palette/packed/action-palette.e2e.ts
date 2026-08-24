@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { OUTPUT_DIR } from "../../build-helper.js";
+import { createPackedBrowserEvidence } from "../../support/packed-browser-evidence.js";
 
 const ORIGIN = "https://fixture.atlassian.net";
 const URLS = {
@@ -51,6 +52,7 @@ let suiteRoot: string;
 let extensionId: string;
 let missingCapabilityFixture = false;
 let extensionWorker: Worker;
+const browserEvidence = createPackedBrowserEvidence("palette");
 
 function paletteFrame(page: Page): FrameLocator {
   return page.frameLocator("atlcli-action-palette-root iframe");
@@ -112,14 +114,18 @@ async function closeWithEscape(page: Page, frame: FrameLocator): Promise<void> {
   await expect(host).toBeHidden();
 }
 
-async function closeWithBackdrop(frame: FrameLocator): Promise<void> {
+async function closeWithBackdrop(page: Page, frame: FrameLocator): Promise<void> {
   const backdrop = frame.locator(".atlcli-action-palette-backdrop");
-  // Schedule click after evaluate returns for the same iframe lifecycle reason
-  // as closeWithEscape. Trusted pointer behavior is covered by the live probe.
+  // Leave enough time for Chromium to acknowledge evaluate before the click
+  // deliberately tears down the extension iframe. A zero-delay timer can run
+  // first on a loaded CI runner and strand the Playwright protocol call.
   await backdrop.evaluate((element) => {
-    setTimeout(() => (element as HTMLElement).click(), 0);
+    setTimeout(() => (element as HTMLElement).click(), 100);
   });
-  await expect(frame.getByTestId("palette-search")).toBeHidden();
+  const host = page.locator("atlcli-action-palette-root");
+  await expect(host).toHaveAttribute("aria-hidden", "true");
+  await expect(host).toHaveAttribute("hidden", "");
+  await expect(host).toBeHidden();
 }
 
 async function assertFullViewportHost(page: Page): Promise<void> {
@@ -225,11 +231,12 @@ test.beforeAll(async ({}, workerInfo) => {
         `${deps}.executors.map(${executor}=>${executor}.capability).filter(${executor}=>${executor}!=="atlcli.capability.export.pdf"))`,
     ));
   }
-  context = await chromium.launchPersistentContext(userDataDir, {
+  context = await chromium.launchPersistentContext(userDataDir, browserEvidence.launchOptions({
     channel: "chromium",
     headless: true,
     args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
-  });
+  }));
+  await browserEvidence.attachContext(context);
   extensionWorker = context.serviceWorkers()[0] ??
     await context.waitForEvent("serviceworker", { timeout: 30_000 });
   extensionId = new URL(extensionWorker.url()).host;
@@ -237,9 +244,21 @@ test.beforeAll(async ({}, workerInfo) => {
   await storagePage.goto(`chrome-extension://${extensionId}/storage-probe.html`);
 });
 
+test.beforeEach(async ({}, testInfo) => {
+  await browserEvidence.startTest(testInfo);
+});
+
+test.afterEach(async ({}, testInfo) => {
+  await browserEvidence.finishTest(testInfo);
+});
+
 test.afterAll(async () => {
-  await context?.close();
-  rmSync(suiteRoot, { recursive: true, force: true });
+  try {
+    if (context) await browserEvidence.closeContext(context);
+  } finally {
+    browserEvidence.finalize();
+    rmSync(suiteRoot, { recursive: true, force: true });
+  }
 });
 
 test("mounts only on Atlassian and derives every MVP context", async () => {
@@ -280,7 +299,7 @@ test("survives SPA navigation, adversarial CSS, zoom, and fifty toggle cycles", 
 
   expect(await toggle(page)).toBe(true);
   let frame = await expectOpen(page, /Confluence · DOCSY/);
-  await closeWithBackdrop(frame);
+  await closeWithBackdrop(page, frame);
   expect(await toggle(page)).toBe(true);
   frame = await expectOpen(page, /Confluence · DOCSY/);
   const searchBox = await frame.getByTestId("palette-search").boundingBox();
@@ -479,6 +498,7 @@ test("keeps loading and bounded transport-error states accessible", async () => 
 
 test("meets cold, warm, network, long-task, and packed-size budgets", async () => {
   const releaseConsumer = process.env.ATLCLI_RELEASE_CONSUMER === "1";
+  const assertTiming = process.env.ATLCLI_BROWSER_ASSERT_TIMING !== "0";
   const coldMs: number[] = [];
   for (let iteration = 0; iteration < 35; iteration += 1) {
     const page = await openFixture(`${URLS.confluenceView}?cold=${iteration}`);
@@ -556,10 +576,10 @@ test("meets cold, warm, network, long-task, and packed-size budgets", async () =
   console.info(`PALETTE_PACKED_PERFORMANCE ${JSON.stringify(evidence)}`);
   expect(coldMs).toHaveLength(30);
   expect(warmMs).toHaveLength(30);
-  // Timing is a source-quality gate in canonical main CI. A release reruns
-  // this suite against packaged bytes to prove behavior, network isolation,
-  // and size without measuring shared-runner scheduling noise a second time.
-  if (!releaseConsumer) {
+  // Local and homelab runs enforce latency by default. Shared GitHub runners
+  // record the samples but opt out because host scheduling is not controlled.
+  // Release consumers also avoid re-measuring the source-quality budget.
+  if (assertTiming && !releaseConsumer) {
     expect(evidence.summary.coldP95Ms).toBeLessThanOrEqual(200);
     expect(evidence.summary.warmP95Ms).toBeLessThanOrEqual(100);
     expect(evidence.summary.maxLongTaskMs).toBeLessThan(50);

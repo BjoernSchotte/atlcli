@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { APP_SETTINGS_STORAGE_KEY } from "../../../utils/ports/settings.js";
 import { ROVO_HIDDEN_ATTRIBUTE } from "../../../utils/rovo-visibility.js";
 import { OUTPUT_DIR } from "../../build-helper.js";
+import { createPackedBrowserEvidence } from "../../support/packed-browser-evidence.js";
 
 const CONFLUENCE_URL =
   "https://fixture.atlassian.net/wiki/spaces/DOCSY/pages/42/Rovo-test";
@@ -32,6 +33,7 @@ const CONFLUENCE_FIXTURE = `<!doctype html>
 let context: BrowserContext;
 let storagePage: Page;
 let suiteRoot: string;
+const browserEvidence = createPackedBrowserEvidence("rovo");
 
 async function setHideRovo(value: boolean): Promise<void> {
   await storagePage.evaluate(
@@ -68,19 +70,24 @@ test.beforeAll(async () => {
     "<!doctype html><meta charset=utf-8><title>Storage probe</title>",
   );
 
-  context = await chromium.launchPersistentContext(userDataDir, {
+  context = await chromium.launchPersistentContext(userDataDir, browserEvidence.launchOptions({
     channel: "chromium",
     headless: true,
     args: [
       `--disable-extensions-except=${extensionDir}`,
       `--load-extension=${extensionDir}`,
     ],
-  });
+  }));
+  await browserEvidence.attachContext(context);
   const serviceWorker = context.serviceWorkers()[0] ??
     await context.waitForEvent("serviceworker", { timeout: 30_000 });
   const extensionId = new URL(serviceWorker.url()).host;
   storagePage = await context.newPage();
   await storagePage.goto(`chrome-extension://${extensionId}/storage-probe.html`);
+});
+
+test.beforeEach(async ({}, testInfo) => {
+  await browserEvidence.startTest(testInfo);
 });
 
 test.beforeEach(async () => {
@@ -89,9 +96,17 @@ test.beforeEach(async () => {
   });
 });
 
+test.afterEach(async ({}, testInfo) => {
+  await browserEvidence.finishTest(testInfo);
+});
+
 test.afterAll(async () => {
-  await context?.close();
-  rmSync(suiteRoot, { recursive: true, force: true });
+  try {
+    if (context) await browserEvidence.closeContext(context);
+  } finally {
+    browserEvidence.finalize();
+    rmSync(suiteRoot, { recursive: true, force: true });
+  }
 });
 
 test("leaves Confluence unchanged by default", async () => {
