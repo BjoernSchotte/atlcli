@@ -314,6 +314,8 @@ jobs:
     if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.browserHarness == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      ATLCLI_BROWSER_EVIDENCE_ROOT: ${{ github.workspace }}/.artifacts/browser-evidence
     steps:
       - uses: actions/checkout@v7
 
@@ -370,29 +372,37 @@ jobs:
       - name: Assert conformance-case registry
         run: bun run assert:conformance-cases
 
-      - name: Run browser export harness E2E
-        run: bun run test:browser-export-harness
-
       - name: Build packed MV3 extension once
         run: bun run build:extension
 
-      - name: Verify PDF.js worker in the built MV3 extension
-        run: bun run --cwd apps/extension test:worker-extension-browser:prebuilt
+      - name: Run three browser evidence lanes in parallel
+        run: bun scripts/ci/run-browser-lanes.ts
 
-      - name: Verify durable export jobs in the built MV3 extension
-        run: bun run --cwd apps/extension test:jobs-extension-browser:prebuilt
+      - name: Validate synthetic browser evidence
+        id: browser-evidence-validation
+        if: always()
+        run: bun scripts/ci/validate-browser-evidence.ts "$ATLCLI_BROWSER_EVIDENCE_ROOT"
 
-      - name: Verify Research in the built MV3 extension
-        run: bun run --cwd apps/extension test:research-extension-browser:prebuilt
+      - name: Upload browser evidence summaries
+        if: always() && steps.browser-evidence-validation.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-evidence-summary-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .artifacts/browser-evidence/*/junit.xml
+            .artifacts/browser-evidence/*/summary.json
+            .artifacts/browser-evidence/*/manifest.json
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Verify Rovo visibility in the built MV3 extension
-        run: bun run --cwd apps/extension test:rovo-extension-browser:prebuilt
-
-      - name: Verify action palette in the built MV3 extension
-        run: bun run --cwd apps/extension test:palette-extension-browser:prebuilt
-
-      - name: Shape-parity gate
-        run: bun run check:parity
+      - name: Upload browser failure evidence
+        if: failure() && steps.browser-evidence-validation.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-evidence-failures-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/browser-evidence/*/failures
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Sanitize Turbo run summaries
         if: always()

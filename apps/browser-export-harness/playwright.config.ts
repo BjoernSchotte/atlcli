@@ -1,3 +1,4 @@
+import { join, resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.ATLCLI_HARNESS_PORT ?? "4179");
@@ -9,6 +10,10 @@ const browserChannel = process.env.ATLCLI_PLAYWRIGHT_CHANNEL as
   | "chrome"
   | "chromium"
   | undefined;
+const evidenceDir = resolve(
+  process.env.ATLCLI_BROWSER_EVIDENCE_DIR ??
+    join(import.meta.dirname, "../../.artifacts/browser-evidence/neutral"),
+);
 
 export default defineConfig({
   testDir: "./tests",
@@ -18,12 +23,23 @@ export default defineConfig({
   retries: 0,
   timeout: 120_000,
   expect: { timeout: 60_000 },
-  reporter: "line",
+  reporter: [
+    ["line"],
+    ["junit", { outputFile: join(evidenceDir, "junit.xml") }],
+  ],
+  outputDir: join(evidenceDir, ".playwright"),
   use: {
     ...devices["Desktop Chrome"],
     baseURL: mountUrl,
     headless: true,
-    trace: "retain-on-failure",
+    trace: {
+      mode: "retain-on-failure",
+      screenshots: true,
+      snapshots: true,
+      sources: false,
+    },
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
   },
   webServer: {
     command: "bun scripts/serve-dist.ts",
