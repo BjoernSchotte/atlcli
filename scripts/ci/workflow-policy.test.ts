@@ -623,27 +623,51 @@ describe("CI workflow policy", () => {
 
   it("runs the browser gate in parallel with product quality", async () => {
     const ci = await workflow("ci.yml");
-    const browser = ci.slice(ci.indexOf("  browser-export-harness:"), ci.indexOf("  required:"));
+    const browser = ci.slice(ci.indexOf("  browser-export-assets:"), ci.indexOf("  required:"));
     expect(browser).toContain("needs: changes");
     expect(browser).not.toContain("needs: test");
   });
 
-  it("builds the packed MV3 extension once before all prebuilt browser suites", async () => {
+  it("builds packed browser assets once before isolated parallel browser jobs", async () => {
     const ci = await workflow("ci.yml");
+    const laneRunner = await readFile(join(REPO_ROOT, "scripts/ci/run-browser-lane.ts"), "utf8");
+    const laneOrchestrator = await readFile(join(REPO_ROOT, "scripts/ci/run-browser-lanes.ts"), "utf8");
     const extension = JSON.parse(await readFile(join(REPO_ROOT, "apps/extension/package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };
-    const browser = ci.slice(ci.indexOf("  browser-export-harness:"), ci.indexOf("  required:"));
+    const harness = JSON.parse(await readFile(join(REPO_ROOT, "apps/browser-export-harness/package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    const browser = ci.slice(ci.indexOf("  browser-export-assets:"), ci.indexOf("  required:"));
 
     expect(browser.match(/bun run build:extension/g)).toHaveLength(1);
     expect(browser).not.toContain("bun run --cwd apps/extension build");
     expect(browser).toContain("path: .turbo/cache");
     expect(browser).toContain("--source browser-harness");
     expect(browser).toContain("rm -rf .turbo/runs");
+    expect(browser).toContain("name: browser-assets-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(browser).toContain("actions/download-artifact@v8");
+    expect(browser).toContain("path: apps\n");
+    expect(browser).toContain("lane: [neutral-palette, research-worker-rovo, jobs]");
+    expect(browser).toContain('bun scripts/ci/run-browser-lane.ts "${{ matrix.lane }}"');
+    expect(browser).not.toContain("bun scripts/ci/run-browser-lanes.ts");
+    expect(browser).toContain('ATLCLI_BROWSER_ASSERT_TIMING: "0"');
+    expect(laneRunner).toContain("neutral-palette");
+    expect(laneRunner).toContain("research-worker-rovo");
+    expect(laneOrchestrator).toContain('["research-worker-rovo", "jobs"]');
+    expect(laneOrchestrator).toContain('["neutral-palette"]');
+    expect(laneOrchestrator.indexOf("const isolatedExitCodes"))
+      .toBeLessThan(laneOrchestrator.indexOf("const parallelExitCodes"));
     for (const suite of ["worker", "jobs", "research", "rovo", "palette"]) {
-      expect(browser).toContain(`test:${suite}-extension-browser:prebuilt`);
+      expect(laneRunner).toContain(`test:${suite}-extension-browser:prebuilt`);
     }
-    expect(browser).not.toMatch(/test:(?:worker|jobs|research|rovo|palette)-extension-browser\s*$/m);
+    expect(laneRunner).not.toMatch(/test:(?:worker|jobs|research|rovo|palette)-extension-browser\s*$/m);
+    expect(harness.scripts["test:e2e"]).toBe(
+      "bun --conditions=development run test:e2e:prebuilt",
+    );
+    expect(harness.scripts["check:parity"]).toBe(
+      "bun --conditions=development run check:parity:prebuilt",
+    );
 
     // Local commands remain self-contained; CI alone opts into the prebuilt
     // variants after its one explicit build.
@@ -669,6 +693,32 @@ describe("CI workflow policy", () => {
     expect(extension.scripts["test:research-extension-browser:prebuilt"]).toContain(
       "--conditions=development",
     );
+    const researchConfig = await readFile(
+      join(REPO_ROOT, "apps/extension/tests/research/packed/playwright.config.ts"),
+      "utf8",
+    );
+    expect(researchConfig).toContain("retries: process.env.CI ? 1 : 0");
+    expect(laneRunner).toContain("discardPassedBrowserFailureEvidence(suiteDirectory)");
+  });
+
+  it("publishes only validated synthetic browser evidence", async () => {
+    const ci = await workflow("ci.yml");
+    const browser = ci.slice(ci.indexOf("  browser-export-assets:"), ci.indexOf("  required:"));
+    const validation = browser.indexOf("id: browser-evidence-validation");
+    const summaryUpload = browser.indexOf("name: Upload browser evidence summaries");
+    const failureUpload = browser.indexOf("name: Upload browser failure evidence");
+
+    expect(browser).toContain("ATLCLI_BROWSER_EVIDENCE_ROOT:");
+    expect(validation).toBeGreaterThan(-1);
+    expect(summaryUpload).toBeGreaterThan(validation);
+    expect(failureUpload).toBeGreaterThan(validation);
+    expect(browser).toContain("steps.browser-evidence-validation.outcome == 'success'");
+    expect(browser).toContain("browser-evidence-summary-${{ matrix.lane }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(browser).toContain("browser-evidence-failures-${{ matrix.lane }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(browser).toContain("retention-days: 14");
+    expect(browser).toContain("retention-days: 7");
+    expect(browser).not.toContain("ATLCLI_E2E");
+    expect(browser).not.toContain("browser-profile");
   });
 
   it("keeps system Chrome as a scheduled non-required neutral canary", async () => {
