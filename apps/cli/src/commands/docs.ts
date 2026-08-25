@@ -36,6 +36,7 @@ import {
   storageToMarkdown,
   replaceAttachmentPaths,
   extractAttachmentRefs,
+  updateDrawioAttachmentVersions,
   isImageFile,
   // Local storage
   findAtlcliDir,
@@ -136,6 +137,7 @@ import {
   type EditorVersion,
 } from "@atlcli/confluence/internal";
 import type { Ignore } from "@atlcli/confluence/internal";
+import { readAttachmentFile, resolveAttachmentFile } from "./docs-attachments.js";
 import { handleSync, syncHelp } from "./sync.js";
 
 /** Sync state for bidirectional sync tracking */
@@ -2417,13 +2419,14 @@ async function pushFile(params: {
 
   // Strip frontmatter before converting to storage format
   const conversionOptions = buildConversionOptions(baseUrl);
-  const storage = markdownToStorage(markdownContent, conversionOptions);
+  let storage = markdownToStorage(markdownContent, conversionOptions);
 
   // Check for attachment references and upload them
   const pageFilename = basename(filePath);
   const pageDir = dirname(filePath);
   const attachmentRefs = extractAttachmentRefs(markdownContent);
   const attachmentsDir = join(pageDir, getAttachmentsDirName(pageFilename));
+  const updatedDrawioVersions = new Map<string, number>();
 
   if (pageId) {
     // Upload attachments before updating the page
@@ -2442,9 +2445,13 @@ async function pushFile(params: {
       const attachmentStates = existingPageState?.attachments || {};
 
       for (const filename of attachmentRefs) {
-        const localPath = join(attachmentsDir, filename);
+        const localPath = resolveAttachmentFile(attachmentsDir, filename);
+        if (!localPath) {
+          if (!opts.json) output(`Warning: Refusing unsafe attachment path ${filename}`, opts);
+          continue;
+        }
         try {
-          const data = await readFile(localPath);
+          const data = await readAttachmentFile(attachmentsDir, filename);
           const localHash = hashContent(data.toString("base64"));
           const existing = existingByName.get(filename);
 
@@ -2466,12 +2473,15 @@ async function pushFile(params: {
 
           if (existing) {
             // Update existing attachment
-            await client.updateAttachment({
+            const updatedAttachment = await client.updateAttachment({
               attachmentId: existing.id,
               pageId,
               filename,
               data,
             });
+            if (filename.toLowerCase().endsWith(".drawio") && updatedAttachment.version !== undefined) {
+              updatedDrawioVersions.set(filename, updatedAttachment.version);
+            }
 
             // Update attachment state after successful upload
             if (state && attachmentEntry) {
@@ -2490,6 +2500,9 @@ async function pushFile(params: {
               filename,
               data,
             });
+            if (filename.toLowerCase().endsWith(".drawio") && newAttachment.version !== undefined) {
+              updatedDrawioVersions.set(filename, newAttachment.version);
+            }
 
             // Add new attachment to state
             if (state && newAttachment) {
@@ -2515,13 +2528,23 @@ async function pushFile(params: {
         }
       }
 
+      // Bump Draw.io macro contentVer/revision only when a .drawio attachment
+      // was actually uploaded this push.
+      if (updatedDrawioVersions.size > 0) {
+        storage = updateDrawioAttachmentVersions(storage, updatedDrawioVersions);
+      }
+
       // Check for locally deleted attachments (in state but file doesn't exist)
       const pageState = state?.pages[pageId];
       if (state && pageState?.attachments && atlcliDir) {
         const referencedFiles = new Set(attachmentRefs);
 
         for (const [attId, attState] of Object.entries(pageState.attachments)) {
-          const localAttPath = join(attachmentsDir, attState.filename);
+          const localAttPath = resolveAttachmentFile(attachmentsDir, attState.filename);
+          if (!localAttPath) {
+            if (!opts.json) output(`Warning: Refusing unsafe attachment path ${attState.filename}`, opts);
+            continue;
+          }
 
           // If file doesn't exist locally AND not referenced in markdown, delete from Confluence
           if (!existsSync(localAttPath) && !referencedFiles.has(attState.filename)) {
@@ -2701,9 +2724,13 @@ async function pushFile(params: {
   // Upload attachments after creating the page
   if (attachmentRefs.length > 0) {
     for (const filename of attachmentRefs) {
-      const localPath = join(attachmentsDir, filename);
+      const localPath = resolveAttachmentFile(attachmentsDir, filename);
+      if (!localPath) {
+        if (!opts.json) output(`Warning: Refusing unsafe attachment path ${filename}`, opts);
+        continue;
+      }
       try {
-        const data = await readFile(localPath);
+        const data = await readAttachmentFile(attachmentsDir, filename);
         await client.uploadAttachment({
           pageId: page.id,
           filename,
