@@ -17,6 +17,12 @@ export interface ImportPdfWorkerSuccess {
     wasmSha256: string;
     factsDigest: string;
     semanticDigest: string;
+    factsSchemaV2: string;
+    semanticSchemaV2: string;
+    semanticDigestV2: string;
+    boundaryCountV2: number;
+    unresolvedBoundaryCountV2: number;
+    pageModesV2: string[];
     titleCandidate: string | null;
     blockTypes: string[];
   };

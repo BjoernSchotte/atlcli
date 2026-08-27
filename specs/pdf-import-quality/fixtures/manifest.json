@@ -379,6 +379,12 @@
             "text": "Authored north-east remains hard-hyphenated."
           },
           {
+            "id": "script-heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Script Boundaries"
+          },
+          {
             "id": "rtl",
             "pageIndex": 0,
             "type": "paragraph",

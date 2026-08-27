@@ -496,6 +496,30 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
           ],
           PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.punctuation,
         );
+      } else if (
+        generatedWhitespace.length > 0
+        && isClosingPunctuation(previous.value)
+        && isWord(anchor.value)
+        && relation.sameLine !== false
+      ) {
+        addBoundary(
+          previous,
+          anchor,
+          "insert-space",
+          [
+            "generated-whitespace",
+            "punctuation",
+            ...(relation.sameLine !== null ? ["baseline" as const] : []),
+            ...(relation.gapGlyphFactor !== null ? ["glyph-gap" as const] : []),
+          ],
+          PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.generatedWhitespace,
+        );
+        appendPiece(
+          state.pieces,
+          " ",
+          generatedWhitespace.map(({ character }) => character.index),
+          true,
+        );
       } else if (generatedWhitespace.length > 0 && relation.sameLine === false) {
         if (wordPair && scriptMatch && !cjkPair) {
           addBoundary(

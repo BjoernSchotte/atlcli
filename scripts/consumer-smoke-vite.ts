@@ -133,12 +133,14 @@ import {
   PDF_FACTS_SCHEMA_V1,
   PDF_FACTS_SCHEMA_V2,
   PDF_TAGGED_SEMANTICS_SCHEMA_V2,
+  PDF_UNTAGGED_SEMANTICS_SCHEMA_V2,
   assemblePdfTextV2,
   createBrowserPdfiumFactsAdapter,
   createBrowserPdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
   normalizeTaggedPdfFactsV2,
   normalizeUntaggedPdfFacts,
+  normalizeUntaggedPdfFactsV2,
   preservePdfFigures,
 } from "@atlcli/import-pdf/browser-worker";
 import {
@@ -176,9 +178,11 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     PDF_FACTS_SCHEMA_V1 === "atlcli.pdf-facts/1" &&
     PDF_FACTS_SCHEMA_V2 === "atlcli.pdf-facts/2" &&
     PDF_TAGGED_SEMANTICS_SCHEMA_V2 === "atlcli.pdf-tagged-semantics/2" &&
+    PDF_UNTAGGED_SEMANTICS_SCHEMA_V2 === "atlcli.pdf-untagged-semantics/2" &&
     PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 === "atlcli.pdf-text-assembly-policy/2" &&
     typeof assemblePdfTextV2 === "function" &&
     typeof normalizeTaggedPdfFactsV2 === "function" &&
+    typeof normalizeUntaggedPdfFactsV2 === "function" &&
     typeof createBrowserPdfiumFactsAdapter === "function" &&
     typeof createBrowserPdfiumFactsAdapterV2 === "function",
   wasmUrl,
@@ -284,8 +288,8 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     const pdfiumWasm = await loadBytes(pdfiumWasmUrl);
     const adapter = createBrowserPdfiumFactsAdapter({ wasmBinary: pdfiumWasm });
     const result = await adapter.analyze(fixtureBytes);
-    const resultV2 = await createBrowserPdfiumFactsAdapterV2({ wasmBinary: pdfiumWasm })
-      .analyze(fixtureBytes);
+    const adapterV2 = createBrowserPdfiumFactsAdapterV2({ wasmBinary: pdfiumWasm });
+    const resultV2 = await adapterV2.analyze(fixtureBytes);
     const semantics = await normalizeTaggedPdfFacts(result.facts, result.factsDigest);
     const semanticsV2 = await normalizeTaggedPdfFactsV2(resultV2.facts, resultV2.factsDigest);
     const figures = await preservePdfFigures(
@@ -297,9 +301,14 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     );
     const untaggedFixtureBytes = new Uint8Array(${JSON.stringify([...PDF_IMPORT_UNTAGGED_FIXTURE_BYTES])});
     const untaggedResult = await adapter.analyze(untaggedFixtureBytes);
+    const untaggedResultV2 = await adapterV2.analyze(untaggedFixtureBytes);
     const untaggedSemantics = await normalizeUntaggedPdfFacts(
       untaggedResult.facts,
       untaggedResult.factsDigest,
+    );
+    const untaggedSemanticsV2 = await normalizeUntaggedPdfFactsV2(
+      untaggedResultV2.facts,
+      untaggedResultV2.factsDigest,
     );
     const taggedTable = semantics.document.blocks.find((block) => block.type === "table");
     return {
@@ -339,6 +348,14 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       untaggedBlockTypes: untaggedSemantics.document.blocks.map((block) => block.type),
       untaggedFallbackPages: untaggedSemantics.requiresFallbackPages,
       untaggedSemanticDigest: untaggedSemantics.semanticDigest,
+      untaggedSemanticsSchemaV2: untaggedSemanticsV2.schema,
+      untaggedSemanticDigestV2: untaggedSemanticsV2.semanticDigest,
+      untaggedBoundaryCountV2: untaggedSemanticsV2.boundaries.length,
+      untaggedUnresolvedBoundaryCountV2: untaggedSemanticsV2.pageOutcomes.reduce(
+        (count, page) => count + page.unresolvedBoundaryCount,
+        0,
+      ),
+      untaggedPageModesV2: untaggedSemanticsV2.pageOutcomes.map((page) => page.mode),
     };
   },
   async compile(loadBytes: LoadBytes) {
@@ -582,6 +599,11 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
         untaggedBlockTypes: string[];
         untaggedFallbackPages: number[];
         untaggedSemanticDigest: string;
+        untaggedSemanticsSchemaV2: string;
+        untaggedSemanticDigestV2: string;
+        untaggedBoundaryCountV2: number;
+        untaggedUnresolvedBoundaryCountV2: number;
+        untaggedPageModesV2: string[];
       }>;
       compile(load: (url: string) => Promise<Uint8Array>): Promise<{
         byteLength: number;
@@ -730,6 +752,11 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     || importResult.untaggedBlockTypes.join(",") !== "heading,paragraph,paragraph,paragraph,heading,list"
     || importResult.untaggedFallbackPages.length !== 0
     || !/^[a-f0-9]{64}$/u.test(importResult.untaggedSemanticDigest)
+    || importResult.untaggedSemanticsSchemaV2 !== "atlcli.pdf-untagged-semantics/2"
+    || !/^[a-f0-9]{64}$/u.test(importResult.untaggedSemanticDigestV2)
+    || importResult.untaggedBoundaryCountV2 !== 51
+    || importResult.untaggedUnresolvedBoundaryCountV2 !== 0
+    || importResult.untaggedPageModesV2.join(",") !== "geometry-native"
   ) {
     throw new Error(
       `vite smoke PDF import produced implausible facts: ${JSON.stringify(importResult)}`,

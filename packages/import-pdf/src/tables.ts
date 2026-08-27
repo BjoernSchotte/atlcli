@@ -25,7 +25,13 @@ import {
   pdfTextBoundaryDecisionIdsV2,
 } from "./assembly-evidence.js";
 import { correlateTaggedTextWithLinksV2, taggedRuns, taggedRunsV2 } from "./links.js";
-import type { PdfGeometryFragmentV1, PdfReadingOrderPageV1 } from "./reading-order.js";
+import {
+  assembleGeometryFragmentsV2,
+  type PdfGeometryFragmentV1,
+  type PdfGeometryFragmentV2,
+  type PdfReadingOrderPageV1,
+  type PdfReadingOrderPageV2,
+} from "./reading-order.js";
 import { structureChildrenV2, structureRole, structureRoleV2 } from "./structure.js";
 import {
   correlateTaggedText,
@@ -805,5 +811,322 @@ export function analyzeUntaggedTable(
       evidence: [],
       issues: [],
       claimedCharacterIndexes: [],
+    };
+}
+
+function nativeUntaggedGridV2(
+  page: PdfPageFactsV2,
+  analysis: PdfReadingOrderPageV2,
+): PdfTableProjectionV2 | null {
+  const paths = page.paths.filter((path) =>
+    path.segmentCount >= 2
+    && path.bbox
+    && (
+      path.stroke
+      || path.fillMode !== 0 && (
+        path.bbox.width <= PDF_TABLE_POLICY_V1.pathAxisTolerance
+        || path.bbox.height <= PDF_TABLE_POLICY_V1.pathAxisTolerance
+      )
+    )
+  );
+  const vertical = paths.filter((path) =>
+    path.bbox!.width <= PDF_TABLE_POLICY_V1.pathAxisTolerance
+    && path.bbox!.height > PDF_TABLE_POLICY_V1.pathAxisTolerance
+  );
+  const horizontal = paths.filter((path) =>
+    path.bbox!.height <= PDF_TABLE_POLICY_V1.pathAxisTolerance
+    && path.bbox!.width > PDF_TABLE_POLICY_V1.pathAxisTolerance
+  );
+  const xs = uniqueCoordinates(vertical.map((path) => path.bbox!.x));
+  const ys = uniqueCoordinates(horizontal.map((path) => path.bbox!.y));
+  if (xs.length < 3 || ys.length < 3) return null;
+  const minX = xs[0]!;
+  const maxX = xs.at(-1)!;
+  const minY = ys[0]!;
+  const maxY = ys.at(-1)!;
+  if (
+    maxX - minX < PDF_TABLE_POLICY_V1.minimumGridWidth
+    || maxY - minY < PDF_TABLE_POLICY_V1.minimumGridHeight
+  ) return null;
+  const coversExtent = (
+    intervals: ReadonlyArray<readonly [number, number]>,
+    minimum: number,
+    maximum: number,
+  ): boolean => {
+    const ordered = [...intervals].sort((left, right) => left[0] - right[0]);
+    if (ordered.length === 0 || ordered[0]![0] > minimum + PDF_TABLE_POLICY_V1.gridJoinTolerance) {
+      return false;
+    }
+    let coveredUntil = ordered[0]![1];
+    for (const [start, end] of ordered.slice(1)) {
+      if (start > coveredUntil + PDF_TABLE_POLICY_V1.gridJoinTolerance) return false;
+      coveredUntil = Math.max(coveredUntil, end);
+    }
+    return coveredUntil >= maximum - PDF_TABLE_POLICY_V1.gridJoinTolerance;
+  };
+  const completeVerticals = xs.every((x) => coversExtent(
+    vertical.filter((path) =>
+      Math.abs(path.bbox!.x - x) <= PDF_TABLE_POLICY_V1.gridJoinTolerance
+    ).map((path) => [path.bbox!.y, path.bbox!.y + path.bbox!.height] as const),
+    minY,
+    maxY,
+  ));
+  const completeHorizontals = ys.every((y) => coversExtent(
+    horizontal.filter((path) =>
+      Math.abs(path.bbox!.y - y) <= PDF_TABLE_POLICY_V1.gridJoinTolerance
+    ).map((path) => [path.bbox!.x, path.bbox!.x + path.bbox!.width] as const),
+    minX,
+    maxX,
+  ));
+  if (!completeVerticals || !completeHorizontals) return null;
+  const gridFragments = analysis.fragments.filter((fragment) => {
+    const centerX = fragment.bbox.x + fragment.bbox.width / 2;
+    const centerY = fragment.bbox.y + fragment.bbox.height / 2;
+    return !fragment.furniture && !fragment.duplicateOf
+      && centerX > minX && centerX < maxX && centerY > minY && centerY < maxY;
+  });
+  const rowCount = ys.length - 1;
+  const columnCount = xs.length - 1;
+  if (
+    rowCount > PDF_TABLE_POLICY_V1.maximumRows
+    || columnCount > PDF_TABLE_POLICY_V1.maximumColumns
+  ) return null;
+  const cells = Array.from({ length: rowCount }, () =>
+    Array.from({ length: columnCount }, () => [] as PdfGeometryFragmentV2[])
+  );
+  for (const fragment of gridFragments) {
+    const centerX = fragment.bbox.x + fragment.bbox.width / 2;
+    const centerY = fragment.bbox.y + fragment.bbox.height / 2;
+    const row = ys.findIndex((edge, index) =>
+      index < ys.length - 1 && centerY > edge && centerY < ys[index + 1]!
+    );
+    const column = xs.findIndex((edge, index) =>
+      index < xs.length - 1 && centerX > edge && centerX < xs[index + 1]!
+    );
+    if (row < 0 || column < 0) return null;
+    cells[row]![column]!.push(fragment);
+  }
+  if (cells.some((row) => row.some((cell) => cell.length === 0))) return null;
+  const firstWeights = cells[0]!.flat().map((fragment) => fragment.fontWeight);
+  const otherWeights = cells.slice(1).flat(2).map((fragment) => fragment.fontWeight);
+  const firstRowHeader = firstWeights.length > 0
+    && firstWeights.every((weight) => weight >= PDF_TABLE_POLICY_V1.boldHeaderWeight)
+    && otherWeights.some((weight) => weight < PDF_TABLE_POLICY_V1.boldHeaderWeight);
+  const tableId = `pdf:p${page.index}:grid-v2:${minX.toFixed(6)}:${minY.toFixed(6)}`;
+  const evidence: PdfDecisionEvidenceV2[] = [];
+  const issues: ImportIssue[] = [];
+  const boundaries: PdfTextBoundaryDecisionV2[] = [];
+  const transformations: PdfTextTransformationV2[] = [];
+  let tableOutcome: ReturnType<typeof pdfTextAssemblyOutcomeV2> = "native";
+  const rows: ImportTableRow[] = cells.map((row, rowIndex) => ({
+    cells: row.map((fragments, columnIndex) => {
+      fragments.sort((left, right) =>
+        left.bbox.y - right.bbox.y
+        || left.bbox.x - right.bbox.x
+        || left.sourceOrder - right.sourceOrder
+      );
+      const id = `${tableId}:cell:${rowIndex}:${columnIndex}`;
+      const assembly = assembleGeometryFragmentsV2(page, id, fragments);
+      appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
+      issues.push(...pdfTextAssemblyIssuesV2(assembly, page.index, id));
+      const outcome = pdfTextAssemblyOutcomeV2(assembly);
+      if (outcome !== "native") tableOutcome = outcome;
+      const linked = taggedRunsV2(
+        assembly,
+        fragments.flatMap((fragment) => fragment.characters),
+        page.annotations,
+      );
+      const bbox = unionRects(fragments.map((fragment) => fragment.bbox));
+      evidence.push({
+        sourceId: id,
+        targetNodeId: id,
+        locator: {
+          ...tableLocatorV2(
+            page,
+            id,
+            bbox ?? undefined,
+            [],
+            assembly.characterIndexes,
+          ),
+          ...(linked.annotationIds[0] ? { annotationId: linked.annotationIds[0] } : {}),
+        },
+        basis: [
+          "text-geometry",
+          "path-object",
+          "text-boundary",
+          ...(firstRowHeader && rowIndex === 0 ? ["font-evidence" as const] : []),
+          ...(linked.annotationIds.length > 0 ? ["annotation" as const] : []),
+        ],
+        confidence: pdfTextAssemblyConfidenceV2(assembly),
+        decisionCode: outcome === "native"
+          ? "pdf/table-untagged-grid-cell-native"
+          : "pdf/table-untagged-grid-cell-boundary-unresolved",
+        outcome,
+        analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+        boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(assembly),
+      });
+      return {
+        id,
+        sourceRefs: fragments.map((fragment) => fragment.id),
+        header: firstRowHeader && rowIndex === 0,
+        blocks: [{
+          id: `${id}:paragraph`,
+          type: "paragraph" as const,
+          runs: linked.runs,
+          sourceRefs: fragments.map((fragment) => fragment.id),
+        }],
+      };
+    }),
+  }));
+  const bbox = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  evidence.push({
+    sourceId: tableId,
+    targetNodeId: tableId,
+    locator: tableLocatorV2(
+      page,
+      tableId,
+      bbox,
+      [],
+      gridFragments.flatMap((fragment) => fragment.assembly.characterIndexes),
+    ),
+    basis: ["text-geometry", "path-object", "text-boundary"],
+    confidence: tableOutcome === "native"
+      ? Math.min(1, ...evidence.map((item) => item.confidence))
+      : 0,
+    decisionCode: tableOutcome === "native"
+      ? "pdf/table-untagged-grid-native"
+      : "pdf/table-untagged-grid-boundary-unresolved",
+    outcome: tableOutcome,
+    analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+    boundaryDecisionIds: [...new Set(evidence.flatMap((item) => item.boundaryDecisionIds))],
+  });
+  return {
+    mode: tableOutcome === "native" ? "native" : "linearized-render-required",
+    sourceId: tableId,
+    pageIndex: page.index,
+    bbox,
+    fragmentIds: gridFragments.map((fragment) => fragment.id),
+    blocks: [{ id: tableId, type: "table", rows, sourceRefs: paths.map((path) => path.id) }],
+    evidence,
+    issues,
+    claimedCharacterIndexes: gridFragments.flatMap((fragment) =>
+      fragment.assembly.characterIndexes
+    ),
+    boundaries,
+    transformations,
+  };
+}
+
+function alignedRowsV2(analysis: PdfReadingOrderPageV2): PdfGeometryFragmentV2[][] {
+  const candidates = analysis.fragments.filter((fragment) =>
+    !fragment.furniture && !fragment.duplicateOf
+  );
+  const rows: PdfGeometryFragmentV2[][] = [];
+  for (const fragment of [...candidates].sort((left, right) =>
+    left.bbox.y - right.bbox.y || left.bbox.x - right.bbox.x
+  )) {
+    const row = rows.find((existing) =>
+      Math.abs(existing[0]!.bbox.y - fragment.bbox.y)
+        <= PDF_TABLE_POLICY_V1.alignedRowTolerance
+    );
+    if (row) row.push(fragment);
+    else rows.push([fragment]);
+  }
+  const width = Math.max(0, ...rows.map((row) => row.length));
+  if (width < PDF_TABLE_POLICY_V1.minimumAlignedColumns) return [];
+  const rectangular = rows.filter((row) => row.length === width)
+    .map((row) => row.sort((left, right) => left.bbox.x - right.bbox.x));
+  if (rectangular.length < PDF_TABLE_POLICY_V1.minimumAlignedRows) return [];
+  const anchors = rectangular[0]!.map((fragment) => fragment.bbox.x);
+  return rectangular.every((row) => row.every((fragment, index) =>
+    Math.abs(fragment.bbox.x - anchors[index]!) <= PDF_TABLE_POLICY_V1.alignedColumnTolerance
+  )) ? rectangular : [];
+}
+
+function linearizedUntaggedCandidateV2(
+  page: PdfPageFactsV2,
+  analysis: PdfReadingOrderPageV2,
+): PdfTableProjectionV2 | null {
+  const rows = alignedRowsV2(analysis);
+  if (rows.length === 0) return null;
+  const sourceId = `pdf:p${page.index}:aligned-table-candidate-v2`;
+  const evidence: PdfDecisionEvidenceV2[] = [];
+  const issues: ImportIssue[] = [];
+  const boundaries: PdfTextBoundaryDecisionV2[] = [];
+  const transformations: PdfTextTransformationV2[] = [];
+  const blocks = rows.map((fragments, rowIndex) => {
+    const id = `${sourceId}:linear-row:${rowIndex}`;
+    for (const fragment of fragments) {
+      appendPdfTextAssemblyV2({ boundaries, transformations }, fragment.assembly);
+      issues.push(...pdfTextAssemblyIssuesV2(fragment.assembly, page.index, fragment.id));
+      evidence.push({
+        sourceId: fragment.id,
+        targetNodeId: id,
+        locator: tableLocatorV2(
+          page,
+          fragment.id,
+          fragment.bbox,
+          [],
+          fragment.assembly.characterIndexes,
+        ),
+        basis: ["text-geometry", "text-boundary"],
+        confidence: Math.min(0.5, pdfTextAssemblyConfidenceV2(fragment.assembly)),
+        decisionCode: "pdf/table-alignment-only-linearized",
+        outcome: "approximated",
+        analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+        boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(fragment.assembly),
+      });
+    }
+    return {
+      id,
+      type: "paragraph" as const,
+      runs: [{ kind: "text" as const, text: fragments.map((fragment) => fragment.text).join(" | ") }],
+      sourceRefs: fragments.map((fragment) => fragment.id),
+    };
+  });
+  const all = rows.flat();
+  const bbox = unionRects(all.map((fragment) => fragment.bbox));
+  return {
+    mode: "linearized-render-required",
+    sourceId,
+    pageIndex: page.index,
+    ...(bbox ? { bbox } : {}),
+    fragmentIds: all.map((fragment) => fragment.id),
+    blocks,
+    evidence,
+    issues: [
+      ...issues,
+      {
+        code: "pdf-import/table-alignment-only-linearized",
+        severity: "warning",
+        outcome: "approximated",
+        message: "Aligned text without a proven grid was not promoted to a native table; rows were linearized and require a rendered-region fallback.",
+        sourceRefs: [sourceId],
+        context: { pageIndex: page.index, rows: rows.length, columns: rows[0]!.length },
+      },
+    ],
+    claimedCharacterIndexes: all.flatMap((fragment) => fragment.assembly.characterIndexes),
+    boundaries,
+    transformations,
+  };
+}
+
+export function analyzeUntaggedTableV2(
+  page: PdfPageFactsV2,
+  analysis: PdfReadingOrderPageV2,
+): PdfTableProjectionV2 {
+  return nativeUntaggedGridV2(page, analysis)
+    ?? linearizedUntaggedCandidateV2(page, analysis)
+    ?? {
+      mode: "none",
+      sourceId: `pdf:p${page.index}:table-v2:none`,
+      pageIndex: page.index,
+      fragmentIds: [],
+      blocks: [],
+      evidence: [],
+      issues: [],
+      claimedCharacterIndexes: [],
+      boundaries: [],
+      transformations: [],
     };
 }

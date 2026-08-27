@@ -345,7 +345,9 @@ export const PDF_TAGGED_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-tagged-semantics/2" as
 export const PDF_TAGGED_POLICY_REVISION = "atlcli.pdf-tagged-policy/1" as const;
 export const PDF_TAGGED_POLICY_REVISION_V2 = "atlcli.pdf-tagged-policy/2" as const;
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-untagged-semantics/1" as const;
+export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-untagged-semantics/2" as const;
 export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as const;
+export const PDF_GEOMETRY_POLICY_REVISION_V2 = "atlcli.pdf-geometry-policy/2" as const;
 export const PDF_TABLE_POLICY_REVISION = "atlcli.pdf-table-policy/1" as const;
 export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/2" as const;
 export const PDF_FIGURE_POLICY_REVISION = "atlcli.pdf-figure-policy/1" as const;
@@ -397,6 +399,7 @@ export interface PdfDecisionEvidenceV2
   boundaryDecisionIds: string[];
   analyzerRevision:
     | typeof PDF_TAGGED_POLICY_REVISION_V2
+    | typeof PDF_GEOMETRY_POLICY_REVISION_V2
     | typeof PDF_TABLE_POLICY_REVISION_V2
     | typeof PDF_FIGURE_POLICY_REVISION
     | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
@@ -460,6 +463,25 @@ export interface PdfUntaggedSemanticsV1 {
   document: ImportDocumentV2;
   evidence: PdfDecisionEvidenceV1[];
   pageOutcomes: PdfUntaggedPageOutcomeV1[];
+  requiresFallbackPages: number[];
+  semanticDigest: string;
+}
+
+export interface PdfUntaggedPageOutcomeV2 extends PdfUntaggedPageOutcomeV1 {
+  boundaryDecisionCount: number;
+  unresolvedBoundaryCount: number;
+}
+
+export interface PdfUntaggedSemanticsV2 {
+  schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V2;
+  factsDigest: string;
+  policyRevision: typeof PDF_GEOMETRY_POLICY_REVISION_V2;
+  textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+  document: ImportDocumentV2;
+  evidence: PdfDecisionEvidenceV2[];
+  boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+  transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+  pageOutcomes: PdfUntaggedPageOutcomeV2[];
   requiresFallbackPages: number[];
   semanticDigest: string;
 }

@@ -184,6 +184,27 @@ describe("PDF V2 text assembly", () => {
     ]);
   });
 
+  it("preserves a generated separator after closing punctuation", () => {
+    const result = assemblePdfTextV2(input("punctuation-space", [
+      ...word("word", 0, 0.1),
+      character(",", 4, 0.15, { run: "pdf:p0:text-run:1" }),
+      generatedWhitespace(" ", 5),
+      ...word("next", 6, 0.18, { run: "pdf:p0:text-run:2" }),
+    ]));
+
+    expect(result.text).toBe("word, next");
+    expect(result.boundaries).toEqual([
+      expect.objectContaining({ leftCharacterIndex: 3, rightCharacterIndex: 4, action: "no-space" }),
+      expect.objectContaining({
+        leftCharacterIndex: 4,
+        rightCharacterIndex: 6,
+        action: "insert-space",
+        basis: ["generated-whitespace", "punctuation", "baseline", "glyph-gap"],
+        confidence: 0.98,
+      }),
+    ]);
+  });
+
   it("dehyphenates generated line evidence but retains an authored hard hyphen", () => {
     const generated = assemblePdfTextV2(input("generated-hyphen", [
       ...word("coor", 0, 0.1),
