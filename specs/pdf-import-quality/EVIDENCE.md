@@ -407,6 +407,139 @@ private input was used.
 - [x] No customer PDF or customer-derived artifact was read, staged, or
       written.
 
+## PIQ-06
+
+PIQ-06 is complete. Producer-shaped tagged tables and list bodies now retain
+all representable source structure, while unsupported shapes and unmatched
+Figures remain explicit rather than being silently dropped or over-closed.
+
+### Tables, lists, and Figures
+
+- a pure V2 row collector accepts direct `TR` children and flattens allowlisted
+  `THead`, `TBody`, and `TFoot` wrappers in exact kid order; nested neutral
+  containers qualify only when they contain rows without sibling semantic
+  content;
+- absent `RowSpan` and `ColSpan` default to one only inside the existing
+  complete, non-overlapping grid proof. Rotated grids, nested tables, malformed
+  wrappers, holes, and overlaps remain linearized with explicit evidence;
+- rendered table fallbacks are keyed and cropped per table source ID, so two
+  separate tables on one page produce two bounded candidates rather than one
+  page-wide union;
+- V2 list projection traverses every ordered `LBody` paragraph plus one
+  compatible nested list. Inline producer bodies remain supported. Multiple
+  nested lists and unknown children each receive exact residual evidence and
+  issues instead of first-child selection;
+- list labels and every accepted paragraph have leaf ownership evidence.
+  Reported aggregate and residual evidence is diagnostic and cannot become a
+  competing confirmed character owner;
+- deferred Figure evidence is removed only for a source ID with a verified
+  materialized candidate. Unmatched Figures remain reported and select the
+  smallest proven fallback scope: bounded region, page, or report-only;
+- visual fallback assessment consumes the post-materialization evidence, so a
+  successfully attached Figure closes only its own deferred report.
+
+The independent positive structure fixture produces two native tables and one
+ordered list whose item contains two paragraphs and one nested list. All 117
+visible characters have one final owner, with zero duplicates, zero residual
+characters, and no visual fallback. The independent negative fixture reports
+both incompatible nested lists, keeps 91 residual characters visible through
+page fallback, and records zero duplicate ownership attempts. A form-backed
+Figure without a materializable candidate remains report-only.
+
+### Verification
+
+```text
+bun run test packages/import-pdf/src/tables.test.ts \
+  packages/import-pdf/src/tagged.test.ts \
+  packages/import-pdf/src/figures.test.ts \
+  packages/import-pdf/src/fallback-policy.test.ts
+37 pass
+0 fail
+233 expect() calls
+```
+
+```text
+bun run test packages/import-pdf/src \
+  apps/cli/src/commands/wiki-import-pdf.test.ts \
+  apps/cli/src/commands/wiki-import-pdf-publication.test.ts
+126 pass
+0 fail
+1100 expect() calls
+```
+
+```text
+bun --conditions=development run --cwd apps/cli src/index.ts wiki import \
+  ../../specs/pdf-import-quality/fixtures/independent-structures-tagged.pdf \
+  --space DOCSY --json
+review schema /2
+2 native tables
+1 complete ordered list plus 1 nested list
+117 visible and 117 uniquely owned characters
+0 duplicate ownership attempts
+0 residual reported characters
+1 unmatched Figure at report-only scope
+0 blockers
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
+```text
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun scripts/api-report.ts --update
+bun scripts/api-closure.ts --update
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun scripts/consumer-smoke.ts
+tarball consumer smoke PASS
+DOCX smoke PASS
+PDF smoke PASS
+
+bun scripts/consumer-smoke-vite.ts
+Vite 8.1.4 tarball consumer PASS
+DOCX browser smoke PASS
+PDF browser smoke PASS
+```
+
+```text
+bun run test:browser-export-harness
+6 pass
+0 fail
+```
+
+The packed consumer tests required temporary-directory access and the browser
+E2E required a local loopback port outside the sandbox. Only committed neutral
+fixtures were used. No customer PDF, customer-derived artifact, tenant
+identifier, live URL, or private content entered Git, evidence, or test output.
+
+### Task gate
+
+- [x] Wrapper rows retain exact source order and absent spans default safely.
+- [x] Nested, rotated, malformed, overlapping, and incomplete tables fail
+      closed.
+- [x] Separate tables receive separate rendered fallback candidates.
+- [x] Every representable list paragraph and compatible nested list projects;
+      every unsupported child remains explicit residual evidence.
+- [x] Figure reports close by verified source ID only; unmatched Figures retain
+      their smallest safe fallback scope.
+- [x] Exact structure, text, character ownership, and fallback counts pass.
+- [x] Full importer, CLI, typecheck, build, API, packed consumer, and browser
+      gates pass.
+- [x] No customer PDF or customer-derived artifact entered Git or evidence.
+
 ## PIQ-05
 
 ### Character ownership and hybrid recovery
