@@ -9,7 +9,7 @@ live URLs, page IDs, raw receipts, and private input digests are prohibited.
 
 Acceptance correction: **OPEN**. PIQ-00 through PIQ-10 remain valid for their
 neutral corpus, but they do not prove the multi-page native-table outcome now
-specified by PIQ-11 through PIQ-15. No release recommendation may be inferred
+specified by PIQ-11 through PIQ-18. No release recommendation may be inferred
 from the earlier PASS rows until those tasks pass.
 
 | Task | Result | Date |
@@ -30,6 +30,9 @@ from the earlier PASS rows until those tasks pass.
 | PIQ-13 | OPEN | 2026-08-27 |
 | PIQ-14 | OPEN | 2026-08-27 |
 | PIQ-15 | OPEN | 2026-08-27 |
+| PIQ-16 | OPEN | 2026-08-27 |
+| PIQ-17 | OPEN | 2026-08-27 |
+| PIQ-18 | OPEN | 2026-08-27 |
 
 ## PIQ-00
 
@@ -456,12 +459,15 @@ outcome.
 ### Checkpoint result
 
 - [x] The premature overall completion claim is withdrawn.
-- [x] PIQ-11 through PIQ-15 are specified with fail-closed acceptance gates.
+- [x] PIQ-11 through PIQ-18 are specified with fail-closed acceptance gates.
 - [x] The correction contains only repository facts and neutral requirements.
 - [ ] Page-external structure children are classified and proven.
-- [ ] Tagged blank cells and punctuation line joins are native and proven.
+- [ ] Usable siblings survive page-external or unresolved container children.
+- [ ] Tagged blank cells are native and proven.
+- [ ] Safe punctuation line joins are deterministic and proven.
 - [ ] Multi-page table continuation is reconciled and proven.
-- [ ] Grid ambiguity is region-scoped and proven.
+- [ ] Local connected grids are detected before global reading order.
+- [ ] Remaining grid ambiguity is region-scoped and proven.
 - [ ] Neutral and live publication acceptance passes.
 
 ## Post-implementation geometry and line-wrap hardening
