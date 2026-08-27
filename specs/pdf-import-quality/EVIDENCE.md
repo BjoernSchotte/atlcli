@@ -13,7 +13,13 @@ live URLs, page IDs, raw receipts, and private input digests are prohibited.
 | PIQ-01 | PASS | 2026-08-27 |
 | PIQ-02 | PASS | 2026-08-27 |
 | PIQ-03 | PASS | 2026-08-27 |
-| PIQ-04 through PIQ-10 | NOT RUN | - |
+| PIQ-04 | PASS | 2026-08-27 |
+| PIQ-05 | PASS | 2026-08-27 |
+| PIQ-06 | PASS | 2026-08-27 |
+| PIQ-07 | PASS | 2026-08-27 |
+| PIQ-08 | PASS | 2026-08-27 |
+| PIQ-09 | PASS | 2026-08-27 |
+| PIQ-10 | PASS | 2026-08-27 |
 
 ## PIQ-00
 
@@ -406,6 +412,129 @@ private input was used.
       pass.
 - [x] No customer PDF or customer-derived artifact was read, staged, or
       written.
+
+## PIQ-10
+
+PIQ-10 is complete. The final prescribed matrix passes against the current
+checkout, including the full monorepo suite, semantic quality gate,
+performance budgets, public API guard, documentation, and neutral built-CLI
+Cloud publication with verified cleanup.
+
+### Pinned versions and neutral inputs
+
+- AtlCLI `0.17.2`;
+- `@atlcli/import-pdf` `0.1.0`;
+- Bun `1.3.14`;
+- `@embedpdf/pdfium` `2.15.0`;
+- vendored PDFium WASM SHA-256
+  `c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8`;
+- facts and semantic production contracts use `/2`, text assembly policy uses
+  `/2`, and production review/plan use `/3` while prior public revisions
+  remain compatible.
+
+The final fixture test independently verified these committed neutral PDF
+digests against `manifest.json`:
+
+| Fixture | SHA-256 |
+|---|---|
+| `tagged-fragmented-boundaries` | `45ce6c5d5bf4554d59bf15777677e8c1856a9ba34692b47038507c3deb5986bf` |
+| `tagged-structures-positive` | `aefd197a939482fe350a5c82250fd219fb9fc5d23895bcab42f8de88c1c60a6f` |
+| `tagged-structures-negative` | `1d3d4368f7347c8fe84b7c2bc101ad30fddd376e505848ec6ba9bdcde7bdad14` |
+| `untagged-fragmented-boundaries` | `bb4864067ce71ec8cbed5f43f69abde854eb331ec5826ca29ac016ee1dd290f3` |
+| `producer-word` | `abd78bedabfdc0e3e24745aa35515cc619041ddf10df2ff5525d470569052dec` |
+| `producer-libreoffice` | `cab1614b8e6db27e30b6f76a0fb63b1c64e22aeee392c65d546ccde3e7844b6b` |
+| `producer-browser` | `a7282415f72fc860964b75533c62dfefe1ce75ac4f11a25b9ec2fcc84d04bc7f` |
+
+### Semantic quality result
+
+- 7 of 7 fixture rows and 4 of 4 producer families pass;
+- accounted-page rate, exact fragmented-text rate, exact ordered-block-pair
+  rate, word-boundary precision/recall, tagged-list F1, tagged-table-cell F1,
+  and explicit-span F1 are all `1.0`;
+- unreported visible-character loss, duplicate ownership, false-native cases,
+  unresolved boundaries in native blocks, and unsafe promoted links are all
+  `0`.
+
+### Final verification matrix
+
+```text
+bun run test packages/import-pdf
+114 pass, 0 fail, 1015 expect() calls across 17 files
+
+bun run check:import-pdf-quality
+7/7 fixtures pass; 4/4 producer families pass
+
+bun run typecheck
+4 successful tasks, 0 failed tasks
+
+bun run build
+34 successful tasks, 0 failed tasks
+
+bun run test scripts/api-report.test.ts
+5 pass, 0 fail, 14 expect() calls
+
+bun run test
+8513 pass, 26 intentional skips, 0 fail
+43350 expect() calls across 716 files
+
+bun run docs:check
+3 files checked; 0 errors, 0 warnings, 0 hints
+
+bun run test:e2e:import-pdf
+10 pass, 0 fail, 205 expect() calls
+owned-resource deletion and no-current-state proof pass
+
+git diff --check
+pass
+
+git status --short
+clean after removal of test-generated consumer outputs
+```
+
+The full monorepo suite ran in the host environment because its local HTTP
+server and packed-consumer tests require loopback and temporary-directory
+access that the restricted sandbox does not provide.
+
+### Performance result
+
+The five-sample neutral 100-page, 25 MiB benchmark passes every gate:
+
+| Gate | Result | Budget |
+|---|---:|---:|
+| analysis p95 | `199.410459 ms` | `30000 ms` |
+| first progress p95 | `5.830042 ms` | `500 ms` |
+| cancellation p95 | `0.571583 ms` | `1000 ms` |
+| peak RSS | `575553536 bytes` | `786432000 bytes` |
+
+All samples are deterministic, recover to the same facts digest, observe a
+stable WASM-memory plateau, and cancel after one page.
+
+### Live cleanup and privacy result
+
+- the current Bun-built CLI published only committed neutral fixtures;
+- exact source extraction and independent ordered ADF readback both pass;
+- the failure matrix rolls back every exactly owned resource;
+- normal-case cleanup proves every owned page absent by ID and exact title;
+- no raw ADF, source body, tenant/page identifier, live URL, receipt, profile,
+  credential, browser capture, or generated live artifact is retained;
+- the only PDFs introduced by this branch are the seven manifest-allowlisted
+  neutral corpus fixtures listed above. The motivating private PDF and every
+  customer-derived artifact remain outside Git.
+
+### Release recommendation
+
+The PDF import quality work is a merge candidate after normal draft-PR review
+and green remote CI. No release was created. A release remains a separate,
+explicit operation and must start with the repository's required dry-run.
+
+### Task gate
+
+- [x] Every command in the prescribed PIQ-10 order passes.
+- [x] Every producer family passes independently; aggregates hide no failure.
+- [x] Time, RSS, cancellation, lifecycle, and determinism budgets pass.
+- [x] Current built-CLI Cloud publication and cleanup pass.
+- [x] Final evidence contains only bounded neutral facts and digests.
+- [x] No private PDF, customer-derived artifact, or tenant data entered Git.
 
 ## PIQ-06
 
