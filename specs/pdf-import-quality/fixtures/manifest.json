@@ -225,6 +225,7 @@
             "id": "list-nested",
             "pageIndex": 0,
             "type": "list-paragraph",
+            "depth": 1,
             "text": "Verify the nested reading."
           },
           {
@@ -248,7 +249,11 @@
           "fallbackPages": [],
           "duplicateCharacterOwners": 0
         },
-        "safeLinks": []
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/tagged-figure-deferred"
+        ],
+        "tableSpans": []
       }
     },
     {
@@ -315,7 +320,13 @@
           ],
           "duplicateCharacterOwners": 0
         },
-        "safeLinks": []
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/table-tagged-linearized",
+          "pdf-import/tagged-list-item-residual",
+          "pdf-import/hybrid-page-fallback-required"
+        ],
+        "tableSpans": []
       }
     },
     {
@@ -539,6 +550,24 @@
             "text": "港の信号は明確です"
           },
           {
+            "id": "list-inspect",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-record",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the stable reading."
+          },
+          {
+            "id": "list-publish",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the neutral summary."
+          },
+          {
             "id": "table-header",
             "pageIndex": 0,
             "type": "table-row",
@@ -568,7 +597,9 @@
           "fallbackPages": [],
           "duplicateCharacterOwners": 0
         },
-        "safeLinks": []
+        "safeLinks": [],
+        "requiredIssueCodes": [],
+        "tableSpans": []
       }
     },
     {
@@ -636,6 +667,24 @@
             "text": "港の信号は明確です"
           },
           {
+            "id": "list-inspect",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-record",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the stable reading."
+          },
+          {
+            "id": "list-publish",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the neutral summary."
+          },
+          {
             "id": "table-header",
             "pageIndex": 0,
             "type": "table-row",
@@ -661,13 +710,20 @@
         ],
         "ownership": {
           "localizedRepairRegions": 0,
-          "unlocalizablePages": [],
+          "unlocalizablePages": [
+            0
+          ],
           "fallbackPages": [
             0
           ],
           "duplicateCharacterOwners": 0
         },
-        "safeLinks": []
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/tagged-text-geometry-degenerate",
+          "pdf-import/hybrid-page-fallback-required"
+        ],
+        "tableSpans": []
       }
     },
     {
@@ -734,6 +790,24 @@
             "text": "港の信号は明確です"
           },
           {
+            "id": "list-inspect",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-record",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the stable reading."
+          },
+          {
+            "id": "list-publish",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the neutral summary."
+          },
+          {
             "id": "table-header",
             "pageIndex": 0,
             "type": "table-row",
@@ -765,7 +839,9 @@
         },
         "safeLinks": [
           "https://example.com/neutral-harbor"
-        ]
+        ],
+        "requiredIssueCodes": [],
+        "tableSpans": []
       }
     }
   ]

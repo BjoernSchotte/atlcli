@@ -540,6 +540,143 @@ identifier, live URL, or private content entered Git, evidence, or test output.
       gates pass.
 - [x] No customer PDF or customer-derived artifact entered Git or evidence.
 
+## PIQ-07
+
+PIQ-07 is complete. The documented source-fidelity thresholds now run as one
+body-free Bun gate, with an independent result row for every neutral fixture
+and producer family.
+
+### Executable semantic gate
+
+- `scripts/quality/import-pdf-quality.ts` reads the neutral truth manifest,
+  runs the current V2 review pipeline, and emits fixture IDs, counts, rates,
+  booleans, and stable failure codes only;
+- each fixture independently enforces accounted pages, zero unreported visible
+  loss, zero duplicate ownership, zero false-native negative outcomes, exact
+  fragmented text, word-boundary precision/recall, ordered block pairs,
+  tagged list/nesting F1, tagged table cell-text F1, span F1, exact manifest
+  boundary decisions, exact fallback scope, required issue codes, zero
+  unresolved native boundaries, and zero promoted unsafe links;
+- an aggregate cannot hide a failed producer because `passed` requires every
+  fixture row to pass its class-specific thresholds;
+- the manifest now includes the complete producer list items, explicit nested
+  depth, required non-native issue codes, and span truth without changing any
+  committed PDF bytes;
+- the guard-the-guard test perturbs one expected block string and one expected
+  boundary action. Each mutation fails only its owning fixture row;
+- the gate exposed a pinned LibreOffice negative whose text-layer characters
+  had no material rendered glyph height. V2 tagged normalization now reports
+  that nine-character run with `pdf/tagged-text-geometry-degenerate` instead of
+  publishing it as native; auto mode retains a page fallback with
+  `missing-geometry` and zero duplicate owners.
+
+The semantic gate passes all seven fixtures and all independent, Word,
+LibreOffice, and browser producer rows. Aggregate accounted pages, fragmented
+text, boundary precision/recall, ordered blocks, tagged lists, tagged tables,
+and spans are all `1.0`. Unreported loss, duplicate ownership, false-native
+negatives, unresolved native boundaries, and promoted unsafe links are all
+zero. The JSON report contains no expected or extracted source body.
+
+### Verification
+
+```text
+bun run check:import-pdf-quality
+7 of 7 fixture rows pass
+4 of 4 producer families pass
+all rate/F1 gates 1.0
+all loss/duplicate/false-native/unsafe-link counts 0
+```
+
+```text
+bun run test scripts/quality/import-pdf-quality.test.ts
+3 pass
+0 fail
+54 expect() calls
+```
+
+```text
+bun run test packages/import-pdf/src \
+  scripts/quality/import-pdf-quality.test.ts \
+  apps/cli/src/commands/wiki-import-pdf.test.ts \
+  apps/cli/src/commands/wiki-import-pdf-publication.test.ts
+130 pass
+0 fail
+1155 expect() calls
+```
+
+```text
+bun --conditions=development run --cwd apps/cli src/index.ts wiki import \
+  ../../specs/pdf-import-quality/fixtures/producer-libreoffice.pdf \
+  --space DOCSY --json
+9 residual reported characters
+0 duplicate ownership attempts
+page fallback: missing-geometry
+default publication blocker present
+```
+
+```text
+bun run bench:import-pdf
+5 deterministic samples
+analysis p95: 195.612 ms / 30000 ms budget
+first progress p95: 5.620 ms / 500 ms budget
+cancellation p95: 0.690 ms / 1000 ms budget
+peak RSS: 575799296 bytes / 786432000 byte budget
+recovery and WASM plateau: pass
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun scripts/consumer-smoke.ts
+tarball consumer smoke PASS
+DOCX smoke PASS
+PDF smoke PASS
+
+bun scripts/consumer-smoke-vite.ts
+Vite 8.1.4 tarball consumer PASS
+DOCX browser smoke PASS
+PDF browser smoke PASS
+```
+
+```text
+bun run test:browser-export-harness
+6 pass
+0 fail
+```
+
+Peak-RSS measurement, packed consumer installation, and the browser E2E needed
+their normal host facilities outside the sandbox. Only committed neutral
+fixtures were read. No customer PDF, customer-derived artifact, tenant
+identifier, live URL, or private body entered Git, the quality report, or this
+evidence.
+
+### Task gate
+
+- [x] One Bun command enforces every documented semantic threshold per fixture.
+- [x] No aggregate can hide a failing producer or critical negative family.
+- [x] Block and boundary guard mutations fail for the expected reason.
+- [x] A real text-layer-only negative is no longer reported as native.
+- [x] Quality output is body-free and contains stable fixture metrics only.
+- [x] Performance, cancellation, recovery, and memory budgets remain green.
+- [x] Full importer, CLI, typecheck, build, API, packed consumer, and browser
+      gates pass.
+- [x] No customer PDF or customer-derived artifact entered Git or evidence.
+
 ## PIQ-05
 
 ### Character ownership and hybrid recovery
