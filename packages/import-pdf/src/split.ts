@@ -9,7 +9,12 @@ import {
   type ImportListBlock,
 } from "@atlcli/import-core";
 import { digestPdfCanonical } from "./canonical.js";
-import type { PdfDecisionEvidenceV1, PdfFactsV1 } from "./contracts.js";
+import type {
+  PdfDecisionEvidenceV1,
+  PdfDecisionEvidenceV2,
+  PdfFactsV1,
+  PdfFactsV2,
+} from "./contracts.js";
 import { PdfImportError } from "./issues.js";
 
 export const PDF_SPLIT_POLICY_SCHEMA_V1 = "atlcli.pdf-split-policy/1" as const;
@@ -90,6 +95,10 @@ interface Segment {
   page?: PdfPlannedPageV1;
 }
 
+type PdfSplitFacts = Pick<PdfFactsV1, "pageCount" | "pages">
+  | Pick<PdfFactsV2, "pageCount" | "pages">;
+type PdfSplitEvidence = PdfDecisionEvidenceV1 | PdfDecisionEvidenceV2;
+
 function splitInvalid(message: string, context?: Record<string, string | number>): never {
   throw new PdfImportError("pdf/split-policy-invalid", message, context);
 }
@@ -127,7 +136,7 @@ function text(block: ImportBlock): string {
   return block.runs.map((run) => run.kind === "text" ? run.text : " ").join("").replace(/\s+/gu, " ").trim();
 }
 
-function matchingPages(block: ImportBlock, evidence: readonly PdfDecisionEvidenceV1[]): number[] {
+function matchingPages(block: ImportBlock, evidence: readonly PdfSplitEvidence[]): number[] {
   const ids = new Set([block.id, ...(block.sourceRefs ?? [])]);
   return [...new Set(evidence.filter((item) =>
     ids.has(item.sourceId) || (item.targetNodeId ? ids.has(item.targetNodeId) : false)
@@ -136,7 +145,7 @@ function matchingPages(block: ImportBlock, evidence: readonly PdfDecisionEvidenc
 
 function assignBlocks(
   document: ImportDocumentV2,
-  evidence: readonly PdfDecisionEvidenceV1[],
+  evidence: readonly PdfSplitEvidence[],
   pageCount: number,
 ): AssignedBlock[] {
   let inferredPage = 0;
@@ -165,11 +174,11 @@ function assetIds(blocks: readonly ImportBlock[]): Set<string> {
   return result;
 }
 
-function pageLabels(facts: PdfFactsV1, indexes: readonly number[]): string[] {
+function pageLabels(facts: PdfSplitFacts, indexes: readonly number[]): string[] {
   return indexes.map((index) => facts.pages[index]?.label ?? String(index + 1));
 }
 
-function safeRangeLabel(facts: PdfFactsV1, start: number, end: number): string {
+function safeRangeLabel(facts: PdfSplitFacts, start: number, end: number): string {
   const all = facts.pages.map((page, index) => page.label ?? String(index + 1));
   const unique = new Set(all).size === all.length;
   const safe = (value: string): boolean => value.length > 0 && value.length <= 40 && !/\p{Cc}/u.test(value);
@@ -303,7 +312,7 @@ async function plannedPage(
   id: string,
   title: string,
   basis: PdfSplitBasisV1,
-  facts: PdfFactsV1,
+  facts: PdfSplitFacts,
   document: ImportDocumentV2,
   sourcePageIndexes: number[],
 ): Promise<PdfPlannedPageV1> {
@@ -406,10 +415,30 @@ async function populateRootIndex(root: PdfPlannedPageV1, source: ImportDocumentV
   root.bodyDigest = await digestPdfCanonical({ adf, storage });
 }
 
-export async function planPdfSplit(
+export function planPdfSplit(
   facts: PdfFactsV1,
   document: ImportDocumentV2,
   evidence: readonly PdfDecisionEvidenceV1[],
+  options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+  },
+): Promise<PdfSplitPlanV1>;
+export function planPdfSplit(
+  facts: PdfFactsV2,
+  document: ImportDocumentV2,
+  evidence: readonly PdfDecisionEvidenceV2[],
+  options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+  },
+): Promise<PdfSplitPlanV1>;
+export async function planPdfSplit(
+  facts: PdfSplitFacts,
+  document: ImportDocumentV2,
+  evidence: readonly PdfSplitEvidence[],
   options: {
     rootTitle: string;
     policy: PdfSplitPolicyV1;

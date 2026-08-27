@@ -16,12 +16,12 @@ import {
 } from "./contracts.js";
 import { digestPdfFacts } from "./canonical.js";
 import { encodeRgbaPng } from "./fallbacks.js";
-import { preservePdfFigures } from "./figures.js";
+import { preservePdfFigures, preservePdfFiguresV2 } from "./figures.js";
 import { isPdfImportError, type PdfImportErrorCode } from "./issues.js";
-import { createNodePdfiumFactsAdapter } from "./node.js";
+import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
 import { createPdfiumFactsAdapter, createPdfiumFactsAdapterForTest } from "./adapter/pdfium.js";
 import type { PdfiumFailureStage } from "./adapter/contracts.js";
-import { normalizeTaggedPdfFacts } from "./normalize.js";
+import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
 import { normalizeUntaggedPdfFacts } from "./untagged.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
@@ -46,6 +46,31 @@ async function expectCode(promise: Promise<unknown>, code: PdfImportErrorCode): 
 }
 
 describe("PDF figure and rendered fallback preservation", () => {
+  it("preserves tagged figures through the V2 evidence contract", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = await fixture("complex-tagged.pdf");
+    const analyzed = await adapter.analyze(bytes);
+    const base = await normalizeTaggedPdfFactsV2(analyzed.facts, analyzed.factsDigest);
+    const result = await preservePdfFiguresV2(
+      analyzed.facts,
+      analyzed.factsDigest,
+      bytes,
+      adapter,
+      base,
+    );
+
+    expect(result.schema).toBe("atlcli.pdf-figure-semantics/2");
+    expect(result.figures).toHaveLength(1);
+    expect(result.figures[0]).toMatchObject({
+      mode: "native-raster",
+      captionBlockId: "pdf:p0:struct:3.1:caption",
+      authorAlt: true,
+    });
+    expect(result.evidence.every((entry) => Array.isArray(entry.boundaryDecisionIds))).toBe(true);
+    expect(result.evidence.find((entry) => entry.decisionCode === "pdf/figure-raster-native"))
+      .toMatchObject({ boundaryDecisionIds: [] });
+  });
+
   it("extracts the tagged one-to-one raster with author alt and caption", async () => {
     const adapter = await createNodePdfiumFactsAdapter();
     const bytes = await fixture("complex-tagged.pdf");

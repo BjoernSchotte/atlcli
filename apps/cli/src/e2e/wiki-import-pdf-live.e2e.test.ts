@@ -23,8 +23,8 @@ import {
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
-  buildPdfImportReview,
-  createPdfiumFactsAdapter,
+  buildPdfImportReviewV2,
+  createPdfiumFactsAdapterV2,
   parsePdfSplitPolicy,
 } from "@atlcli/import-pdf";
 import type { DestinationGovernance } from "@atlcli/import-docx";
@@ -443,7 +443,7 @@ describe.skipIf(!RUN).serial("built CLI PDF import live Cloud certification", ()
       "after-readback",
     ] as const) {
       const title = makeE2eTitle(`import-pdf-fail-${stage}`);
-      const review = await buildPdfImportReview(sourceBytes, createPdfiumFactsAdapter({ wasmBinary }), {
+      const review = await buildPdfImportReviewV2(sourceBytes, createPdfiumFactsAdapterV2({ wasmBinary }), {
         target: {
           spaceKey: E2E_SPACE_KEY,
           title,

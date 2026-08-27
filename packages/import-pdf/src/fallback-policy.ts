@@ -1,10 +1,14 @@
 import type {
   PdfDecisionEvidenceV1,
+  PdfDecisionEvidenceV2,
   PdfFactsV1,
+  PdfFactsV2,
   PdfNormalizedRect,
   PdfSourceLocatorV1,
   PdfTaggedPageOutcomeV1,
+  PdfTaggedPageOutcomeV2,
   PdfUntaggedPageOutcomeV1,
+  PdfUntaggedPageOutcomeV2,
 } from "./contracts.js";
 export { PDF_VISUAL_FALLBACK_POLICY_REVISION } from "./contracts.js";
 
@@ -27,6 +31,13 @@ export interface PdfPageFallbackAssessmentV1 {
 export type PdfFallbackSemanticBaseV1 = {
   evidence: PdfDecisionEvidenceV1[];
   pageOutcomes: Array<PdfTaggedPageOutcomeV1 | PdfUntaggedPageOutcomeV1>;
+  requiresGeometryPages?: number[];
+  requiresFallbackPages?: number[];
+};
+
+export type PdfFallbackSemanticBaseV2 = {
+  evidence: PdfDecisionEvidenceV2[];
+  pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2>;
   requiresGeometryPages?: number[];
   requiresFallbackPages?: number[];
 };
@@ -54,8 +65,8 @@ function uniqueLocators(locators: readonly PdfSourceLocatorV1[]): PdfSourceLocat
 }
 
 export function assessPdfVisualFallbacks(
-  facts: Pick<PdfFactsV1, "pages">,
-  base: PdfFallbackSemanticBaseV1,
+  facts: Pick<PdfFactsV1 | PdfFactsV2, "pages">,
+  base: PdfFallbackSemanticBaseV1 | PdfFallbackSemanticBaseV2,
 ): PdfPageFallbackAssessmentV1[] {
   const geometryRequired = new Set(base.requiresGeometryPages ?? []);
   const fallbackRequired = new Set(base.requiresFallbackPages ?? []);

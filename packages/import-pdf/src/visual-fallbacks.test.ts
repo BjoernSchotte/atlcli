@@ -4,11 +4,17 @@ import { IMPORT_DOCUMENT_SCHEMA_V2, type ImportDocumentV2 } from "@atlcli/import
 import {
   PDF_ASSET_MATERIALIZER_REVISION,
   type PdfDecisionEvidenceV1,
+  type PdfDecisionEvidenceV2,
   type PdfFactsAdapter,
+  type PdfFactsAdapterV2,
 } from "./contracts.js";
 import { encodeRgbaPng } from "./fallbacks.js";
 import type { PdfPageFallbackAssessmentV1 } from "./fallback-policy.js";
-import { materializePdfVisualFallbacks, pdfVisualFallbackRegions } from "./visual-fallbacks.js";
+import {
+  materializePdfVisualFallbacks,
+  materializePdfVisualFallbacksV2,
+  pdfVisualFallbackRegions,
+} from "./visual-fallbacks.js";
 
 function evidence(sourceId: string, targetNodeId: string, y: number): PdfDecisionEvidenceV1 {
   return {
@@ -39,6 +45,33 @@ async function adapter(): Promise<PdfFactsAdapter> {
       sha256: digest,
       materializerRevision: PDF_ASSET_MATERIALIZER_REVISION,
     })),
+  };
+}
+
+async function adapterV2(): Promise<PdfFactsAdapterV2> {
+  const png = encodeRgbaPng(2, 2, new Uint8Array(16).fill(120));
+  const digest = await sha256Hex(png);
+  return {
+    analyze: () => Promise.reject(new Error("not used")),
+    materialize: async (_source, requests) => requests.map((request) => ({
+      requestId: request.id,
+      pageIndex: request.pageIndex,
+      sourceKind: "rendered-region" as const,
+      mediaType: "image/png" as const,
+      width: 2,
+      height: 2,
+      bytes: png,
+      sha256: digest,
+      materializerRevision: PDF_ASSET_MATERIALIZER_REVISION,
+    })),
+  };
+}
+
+function evidenceV2(sourceId: string, targetNodeId: string, y: number): PdfDecisionEvidenceV2 {
+  return {
+    ...evidence(sourceId, targetNodeId, y),
+    boundaryDecisionIds: [],
+    analyzerRevision: "atlcli.pdf-tagged-policy/2",
   };
 }
 
@@ -110,6 +143,23 @@ describe("PDF visual fallback materialization", () => {
     expect(result.document.issues[0]?.outcome).toBe("attached");
     expect(result.evidence.at(-1)).toMatchObject({
       decisionCode: "pdf/region-image-fallback-attached",
+      analyzerRevision: "atlcli.pdf-visual-fallback-policy/1",
+    });
+  });
+
+  it("attaches fallback evidence without leaving the V2 contract", async () => {
+    const result = await materializePdfVisualFallbacksV2(
+      new Uint8Array([1, 2, 3]),
+      await adapterV2(),
+      document(),
+      [evidenceV2("source:before", "block:before", 0.1), evidenceV2("source:after", "block:after", 0.8)],
+      [regionAssessment()],
+    );
+
+    expect(result.evidence.every((entry) => Array.isArray(entry.boundaryDecisionIds))).toBe(true);
+    expect(result.evidence.at(-1)).toMatchObject({
+      decisionCode: "pdf/region-image-fallback-attached",
+      boundaryDecisionIds: [],
       analyzerRevision: "atlcli.pdf-visual-fallback-policy/1",
     });
   });
