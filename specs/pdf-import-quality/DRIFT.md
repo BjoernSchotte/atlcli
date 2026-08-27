@@ -46,3 +46,17 @@ metadata, digest, identifier, URL, receipt, or capture may enter Git, CI output,
 commits, or pull-request communication.
 
 No STOP condition was reached.
+
+## PIQ-01 plan reconciliation
+
+The implementation audit found that switching the production adapter to V2 in
+PIQ-02 would make the existing V1 semantic pipeline and public factory contract
+incoherent before the shared assembler exists. The plan now keeps PIQ-02
+additive: it introduces V2 facts/factories plus an internal V2-to-V1 projection
+while preserving V1 behavior and digests. PIQ-04 owns the atomic production,
+policy, semantic-schema, and dependent-digest cutover.
+
+The audit also added an explicit unresolved structure-kid variant, the V2
+analysis-policy revision, reachable-closure regeneration, and the real browser
+harness parity gates. No source implementation changed as part of this plan
+reconciliation.
