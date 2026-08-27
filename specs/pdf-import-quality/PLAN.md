@@ -1,6 +1,8 @@
 # PDF import quality: evidence-based text and structure reconstruction
 
-Status: **Implementation complete** (PIQ-00 through PIQ-10 complete, 2026-08-27)
+Status: **Reopened after acceptance review** (PIQ-00 through PIQ-10 implemented;
+PIQ-11 through PIQ-15 required before the native-table goal is complete,
+2026-08-27)
 
 Planned at: `cb981dea1f83d4dd5e17932239e42f99a1a607c7`
 (`feat(drawio): add Draw.io previews and Confluence sync integration (#197)`)
@@ -30,6 +32,11 @@ and cross-host PDFium parity all change together.
 | PIQ-08 | DONE | `EVIDENCE.md#piq-08` |
 | PIQ-09 | DONE | `EVIDENCE.md#piq-09` |
 | PIQ-10 | DONE | `EVIDENCE.md#piq-10` |
+| PIQ-11 | OPEN | page-external structure-child classification and container recovery |
+| PIQ-12 | OPEN | native tagged blank cells and deterministic punctuation line joins |
+| PIQ-13 | OPEN | multi-page table continuation and repeated-header reconciliation |
+| PIQ-14 | OPEN | region-scoped grid detection and fallback containment |
+| PIQ-15 | OPEN | neutral multi-page producer and live publication acceptance |
 
 > **Executor instructions:** Read this plan completely before changing code.
 > Run the drift and privacy checks in Task PIQ-00 first. Execute tasks in
@@ -1201,6 +1208,156 @@ same extraction error cannot appear in both expected and actual values.
 
 ## 13. Unresolved questions
 
-None before implementation. Task PIQ-00 may discover a persisted V1 consumer;
-if it does, the required migration path is a STOP condition and must be added
-to this plan before code changes continue.
+No product decision is required before PIQ-11. The implementation must first
+prove that structure paths and child indexes are stable across page-scoped
+PDFium views for the neutral multi-page producer corpus. If that invariant
+does not hold, revise the facts design rather than inferring page-external
+children from unstable paths.
+
+---
+
+## 14. Acceptance correction: multi-page native tables
+
+The PIQ-00 through PIQ-10 evidence proves the original neutral corpus, but the
+corpus is too narrow to close the product outcome. In particular, its table
+cases do not prove a producer-authored table that continues across PDF pages,
+repeats its header, contains an intentional blank cell, shares a page with
+ordinary body content or a real figure, and is exposed through PDFium's
+page-scoped structure view.
+
+The current implementation has four independent fail-closed decisions that
+combine into a false whole-page fallback:
+
+1. `structureNodeV2()` records a child as generically `unresolved` whenever
+   both page-scoped PDFium child lookups return no value. The fact contract
+   cannot distinguish a child that belongs to another page from a malformed
+   or unavailable child.
+2. `projectNodeV2()` returns before visiting any resolved children when their
+   semantic container has one unresolved child position. A document-level
+   container can therefore discard otherwise usable on-page paragraphs,
+   lists, headings, figures, and tables.
+3. `validTaggedGridV2()` rejects intentional blank cells and any unresolved
+   text boundary. Safe punctuation transitions across physical lines are not
+   yet qualified consistently when the producer emits no whitespace marker.
+4. `nativeUntaggedGridV2()` pools thin paths over the whole page, derives one
+   global bounding box, consumes already assembled page fragments, and
+   requires every cell to contain a fragment. Decorative rules, fragments
+   spanning cell boundaries, and valid blank cells can therefore suppress an
+   otherwise complete local grid. The downstream geometry qualifier can then
+   turn the local table ambiguity into a page fallback.
+
+PIQ-11 through PIQ-15 are required work, not optional hardening.
+
+### PIQ-11 - Distinguish page-external structure children
+
+Reconcile V2 structure facts across all analyzed pages before computing the
+facts digest:
+
+- classify an unresolved child position as `page-external` only when the same
+  canonical structure path and child index resolves consistently on another
+  page;
+- retain `unresolved` for positions that remain unavailable everywhere or
+  conflict across page views;
+- include the classification and referenced page indexes in deterministic,
+  body-free facts;
+- let semantic containers visit every resolved on-page child even when a true
+  unresolved sibling remains; hybrid ownership, not a container-wide early
+  return, decides whether visible content is missing;
+- skip proven page-external children in current-page table row groups without
+  counting them as corruption;
+- revise all affected facts, policy, and semantic digests and refresh the
+  public API report only after Node/browser parity passes.
+
+If cross-page structure paths are not stable across the neutral producer
+corpus, stop. Do not guess based on role counts or private-document shapes.
+
+### PIQ-12 - Preserve qualified tagged tables with blank cells
+
+Change tagged-table qualification so an intentional empty `TH` or `TD` is a
+native empty cell when its role, position, spans, child state, and surrounding
+grid are complete. Empty text alone is not corruption. A cell with unresolved
+children, invalid Unicode, ambiguous ownership, rotation, a nested table, or
+an invalid span still fails closed.
+
+Extend the shared text-boundary policy with producer-neutral physical-line
+rules for punctuation transitions such as word-to-opening punctuation and
+closing punctuation-to-word. The rule must use structure order, baseline,
+script, and punctuation evidence; it must not use document phrases, a
+dictionary, or a language model. Exact CJK, RTL, hyphen, and link-boundary
+negatives remain mandatory.
+
+After PIQ-11 and these boundary rules, a complete current-page table segment
+must become an editable `ImportBlock` table even when another segment of the
+same logical table is on an adjacent page.
+
+### PIQ-13 - Reconcile table continuations across pages
+
+Add a document-level table-continuation pass after page-local tagged
+projection and before split planning:
+
+- derive a stable logical table key from reconciled structure identity, never
+  from extracted body text;
+- merge only adjacent segments with the same logical table, compatible column
+  count, spans, roles, and qualified ownership;
+- retain the first header and remove only a later header proven to be a
+  repeated `THead` for that logical table;
+- preserve source references and page provenance for every merged row;
+- when continuation proof is incomplete, emit two editable tables at the page
+  boundary instead of replacing either page with an image.
+
+The target encoders already support native ADF and Storage tables. PIQ-13 must
+prove their output and semantic readback for the merged multi-page result.
+
+### PIQ-14 - Detect local grids before global reading order
+
+Replace the one-page-one-grid assumption with connected orthogonal path
+components. For each candidate component:
+
+- validate its own horizontal and vertical extent, ignoring unrelated page
+  rules and borders;
+- derive cell rectangles before assembling page-level fragments;
+- assign source characters or text runs bijectively to cells, so a fragment
+  cannot bridge table columns;
+- allow geometrically proven empty cells;
+- remove the accepted table region from general column detection;
+- scope an unresolved table fallback to the table bounding box. Page fallback
+  remains valid only for unlocalizable, overlapping, or dispersed residual
+  content.
+
+Tagged structure remains the primary route when it qualifies. This geometry
+work is the independent recovery lane and cross-check, not permission to
+override trustworthy tags.
+
+### PIQ-15 - Prove the actual product outcome without private fixtures
+
+Add a neutral, licensed multi-page producer fixture and independent oracle
+covering all of these in one document:
+
+- ordinary heading, paragraph, and list content before a table;
+- a tagged table continued onto the next page with a repeated header;
+- an intentional blank header or body cell;
+- punctuation-bearing wrapped cell content without an emitted whitespace
+  marker;
+- a decorative page rule outside the table;
+- a real raster figure followed by body text and a second native table.
+
+Required assertions:
+
+- all ordinary body content is editable and ordered;
+- the continued table is one native table with exact rows, cells, spans, and a
+  single header, or two native page-local tables only in the explicitly
+  unmerged negative case;
+- the figure is the only image for its source region;
+- no table page or mixed-content page receives a page-fallback image;
+- every visible character has one ownership outcome and every fallback is
+  localized;
+- ADF, Storage, preview, split planning, Node/browser facts, built package,
+  and Bun source execution agree;
+- the neutral DOCSY publication has exact semantic readback and is deleted in
+  `finally` with the existing absence proof.
+
+Only after PIQ-15 passes may a private, local acceptance document be imported
+again with the current Bun source. Its bytes and derived content remain outside
+Git, PR text, logs, CI, and committed evidence. The product goal is complete
+only when that local acceptance import contains editable tables and ordinary
+content without table-driven page images.

@@ -7,6 +7,11 @@ live URLs, page IDs, raw receipts, and private input digests are prohibited.
 
 ## Status
 
+Acceptance correction: **OPEN**. PIQ-00 through PIQ-10 remain valid for their
+neutral corpus, but they do not prove the multi-page native-table outcome now
+specified by PIQ-11 through PIQ-15. No release recommendation may be inferred
+from the earlier PASS rows until those tasks pass.
+
 | Task | Result | Date |
 |---|---|---|
 | PIQ-00 | PASS | 2026-08-27 |
@@ -20,6 +25,11 @@ live URLs, page IDs, raw receipts, and private input digests are prohibited.
 | PIQ-08 | PASS | 2026-08-27 |
 | PIQ-09 | PASS | 2026-08-27 |
 | PIQ-10 | PASS | 2026-08-27 |
+| PIQ-11 | OPEN | 2026-08-27 |
+| PIQ-12 | OPEN | 2026-08-27 |
+| PIQ-13 | OPEN | 2026-08-27 |
+| PIQ-14 | OPEN | 2026-08-27 |
+| PIQ-15 | OPEN | 2026-08-27 |
 
 ## PIQ-00
 
@@ -412,6 +422,47 @@ private input was used.
       pass.
 - [x] No customer PDF or customer-derived artifact was read, staged, or
       written.
+
+## Acceptance correction checkpoint
+
+This is a sanitized code-inspection checkpoint, not implementation evidence.
+No private source bytes, text, images, metadata, identifiers, URLs, hashes,
+counts derived from private content, or tenant receipts are recorded here.
+
+The current production path proves these remaining gaps directly from source:
+
+- `packages/import-pdf/src/adapter/pdfium.ts` maps every child position for
+  which both page-scoped PDFium child calls return no value to the single
+  `child-handle-and-mcid-unavailable` reason. The facts contract has no
+  page-external variant.
+- `packages/import-pdf/src/normalize.ts` returns immediately when a structure
+  node is in `unresolvedNodeIds`, including semantic containers, before
+  visiting resolved children.
+- `packages/import-pdf/src/tables.ts` treats unresolved row-wrapper children
+  as `row-wrapper-content`, rejects a tagged cell when its assembled text is
+  empty, and rejects a table when any cell has an unresolved boundary.
+- the same module derives one untagged grid from every eligible thin path on a
+  page and rejects the grid when any resulting cell has no already assembled
+  fragment.
+- `packages/import-pdf/src/untagged.ts` adds table and page-geometry failure
+  reasons to the page qualification set, so a local table ambiguity can
+  suppress native projection for the full page.
+
+The earlier neutral corpus contains producer tables but not the combined
+multi-page continuation, repeated header, blank cell, mixed body/figure, and
+decorative-rule case. Its PASS result therefore does not close that product
+outcome.
+
+### Checkpoint result
+
+- [x] The premature overall completion claim is withdrawn.
+- [x] PIQ-11 through PIQ-15 are specified with fail-closed acceptance gates.
+- [x] The correction contains only repository facts and neutral requirements.
+- [ ] Page-external structure children are classified and proven.
+- [ ] Tagged blank cells and punctuation line joins are native and proven.
+- [ ] Multi-page table continuation is reconciled and proven.
+- [ ] Grid ambiguity is region-scoped and proven.
+- [ ] Neutral and live publication acceptance passes.
 
 ## Post-implementation geometry and line-wrap hardening
 
