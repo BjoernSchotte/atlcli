@@ -346,8 +346,10 @@ export const PDF_TAGGED_POLICY_REVISION = "atlcli.pdf-tagged-policy/1" as const;
 export const PDF_TAGGED_POLICY_REVISION_V2 = "atlcli.pdf-tagged-policy/2" as const;
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-untagged-semantics/1" as const;
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-untagged-semantics/2" as const;
+export const PDF_HYBRID_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-hybrid-semantics/2" as const;
 export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as const;
 export const PDF_GEOMETRY_POLICY_REVISION_V2 = "atlcli.pdf-geometry-policy/2" as const;
+export const PDF_HYBRID_POLICY_REVISION_V2 = "atlcli.pdf-hybrid-policy/2" as const;
 export const PDF_TABLE_POLICY_REVISION = "atlcli.pdf-table-policy/1" as const;
 export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/2" as const;
 export const PDF_FIGURE_POLICY_REVISION = "atlcli.pdf-figure-policy/1" as const;
@@ -400,6 +402,7 @@ export interface PdfDecisionEvidenceV2
   analyzerRevision:
     | typeof PDF_TAGGED_POLICY_REVISION_V2
     | typeof PDF_GEOMETRY_POLICY_REVISION_V2
+    | typeof PDF_HYBRID_POLICY_REVISION_V2
     | typeof PDF_TABLE_POLICY_REVISION_V2
     | typeof PDF_FIGURE_POLICY_REVISION
     | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
@@ -482,6 +485,49 @@ export interface PdfUntaggedSemanticsV2 {
   boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
   transformations: import("./text-assembly.js").PdfTextTransformationV2[];
   pageOutcomes: PdfUntaggedPageOutcomeV2[];
+  requiresFallbackPages: number[];
+  semanticDigest: string;
+}
+
+export interface PdfCharacterOwnershipV2 {
+  pageIndex: number;
+  characterIndex: number;
+  ownerSourceId: string;
+  targetNodeId?: string;
+  basis: "tagged" | "geometry" | "fallback" | "reported";
+  outcome: ImportOutcome;
+}
+
+export interface PdfHybridPageOutcomeV2 {
+  pageIndex: number;
+  mode: "hybrid-native" | "hybrid-repaired" | "fallback-required";
+  projectedNodeIds: string[];
+  visibleCharacterCount: number;
+  uniquelyOwnedCharacterCount: number;
+  explicitBoundaryCount: number;
+  inferredBoundaryCount: number;
+  unresolvedBoundaryCount: number;
+  geometryRepairedCharacterCount: number;
+  geometryRepairRegionCount: number;
+  duplicateOwnershipAttemptCount: number;
+  residualReportedCharacterCount: number;
+  fallbackScope: "none" | "region" | "page";
+  fallbackReasonCodes: string[];
+  fallbackRegionLocators: PdfSourceLocatorV1[];
+  normalizedFallbackArea: number;
+}
+
+export interface PdfHybridSemanticsV2 {
+  schema: typeof PDF_HYBRID_SEMANTICS_SCHEMA_V2;
+  factsDigest: string;
+  policyRevision: typeof PDF_HYBRID_POLICY_REVISION_V2;
+  textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+  document: ImportDocumentV2;
+  evidence: PdfDecisionEvidenceV2[];
+  boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+  transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+  ownership: PdfCharacterOwnershipV2[];
+  pageOutcomes: PdfHybridPageOutcomeV2[];
   requiresFallbackPages: number[];
   semanticDigest: string;
 }

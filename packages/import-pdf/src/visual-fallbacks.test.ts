@@ -75,7 +75,7 @@ function evidenceV2(sourceId: string, targetNodeId: string, y: number): PdfDecis
   };
 }
 
-function document(): ImportDocumentV2 {
+function document(issueCode = "pdf-import/tagged-node-demoted"): ImportDocumentV2 {
   return {
     schema: IMPORT_DOCUMENT_SCHEMA_V2,
     sourceKind: "pdf",
@@ -85,7 +85,7 @@ function document(): ImportDocumentV2 {
     ],
     assets: [],
     issues: [{
-      code: "pdf-import/tagged-node-demoted",
+      code: issueCode,
       severity: "warning",
       outcome: "reported",
       message: "Neutral localized gap.",
@@ -161,6 +161,28 @@ describe("PDF visual fallback materialization", () => {
       decisionCode: "pdf/region-image-fallback-attached",
       boundaryDecisionIds: [],
       analyzerRevision: "atlcli.pdf-visual-fallback-policy/1",
+    });
+  });
+
+  it("closes a localized hybrid report when its bounded crop is attached", async () => {
+    const result = await materializePdfVisualFallbacksV2(
+      new Uint8Array([1, 2, 3]),
+      await adapterV2(),
+      document("pdf-import/hybrid-region-fallback-required"),
+      [evidenceV2("source:before", "block:before", 0.1), evidenceV2("source:after", "block:after", 0.8)],
+      [{
+        ...regionAssessment(),
+        reasonCodes: ["unresolved-text-boundary"],
+      }],
+    );
+
+    expect(result.document.issues[0]).toMatchObject({
+      code: "pdf-import/hybrid-region-fallback-required",
+      outcome: "attached",
+    });
+    expect(result.evidence.at(-1)).toMatchObject({
+      decisionCode: "pdf/region-image-fallback-attached",
+      outcome: "attached",
     });
   });
 

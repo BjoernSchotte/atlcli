@@ -3,6 +3,7 @@ import type {
   PdfDecisionEvidenceV2,
   PdfFactsV1,
   PdfFactsV2,
+  PdfHybridPageOutcomeV2,
   PdfNormalizedRect,
   PdfSourceLocatorV1,
   PdfTaggedPageOutcomeV1,
@@ -37,7 +38,7 @@ export type PdfFallbackSemanticBaseV1 = {
 
 export type PdfFallbackSemanticBaseV2 = {
   evidence: PdfDecisionEvidenceV2[];
-  pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2>;
+  pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2 | PdfHybridPageOutcomeV2>;
   requiresGeometryPages?: number[];
   requiresFallbackPages?: number[];
 };
@@ -52,6 +53,12 @@ function taggedOutcome(
   outcome: PdfTaggedPageOutcomeV1 | PdfUntaggedPageOutcomeV1 | undefined,
 ): outcome is PdfTaggedPageOutcomeV1 {
   return outcome !== undefined && "corruptTagCount" in outcome;
+}
+
+function hybridOutcome(
+  outcome: PdfTaggedPageOutcomeV1 | PdfUntaggedPageOutcomeV1 | PdfHybridPageOutcomeV2 | undefined,
+): outcome is PdfHybridPageOutcomeV2 {
+  return outcome !== undefined && "fallbackScope" in outcome;
 }
 
 function uniqueLocators(locators: readonly PdfSourceLocatorV1[]): PdfSourceLocatorV1[] {
@@ -72,6 +79,16 @@ export function assessPdfVisualFallbacks(
   const fallbackRequired = new Set(base.requiresFallbackPages ?? []);
   return facts.pages.map((page) => {
     const outcome = base.pageOutcomes.find((item) => item.pageIndex === page.index);
+    if (hybridOutcome(outcome)) {
+      return {
+        pageIndex: page.index,
+        scope: outcome.fallbackScope,
+        reasonCodes: outcome.fallbackReasonCodes,
+        regionLocators: outcome.fallbackRegionLocators,
+        claimedCharacterCount: outcome.uniquelyOwnedCharacterCount - outcome.residualReportedCharacterCount,
+        unclaimedCharacterCount: outcome.residualReportedCharacterCount,
+      };
+    }
     const claimedCharacterCount = outcome && taggedOutcome(outcome)
       ? outcome.claimedCharacterCount
       : outcome && "accountedCharacterCount" in outcome

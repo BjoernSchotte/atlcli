@@ -588,7 +588,7 @@ function projectNodeV2(
 
 function eligibleCharactersV2(page: PdfPageFactsV2): number[] {
   return page.characters
-    .filter((character) => character.mcid !== null && normalizeVisible(character.value))
+    .filter((character) => normalizeVisible(character.value))
     .map((character) => character.index);
 }
 
@@ -652,7 +652,7 @@ export async function normalizeTaggedPdfFactsV2(
         code: "pdf-import/tagged-text-unclaimed",
         severity: "warning",
         outcome: "reported",
-        message: "Visible marked text is not uniquely represented by the accepted structure projection.",
+        message: "Visible text is not uniquely represented by the accepted structure projection.",
         sourceRefs: [`pdf:p${page.index}`],
         context: { pageIndex: page.index, characters: unclaimed.length },
       });

@@ -92,13 +92,32 @@ describe("PDF import review V2", () => {
         boundaryDecisionCount: number;
         unresolvedBoundaryCount: number;
         transformationCount: number;
+        visibleCharacterCount: number;
+        uniquelyOwnedCharacterCount: number;
+        explicitBoundaryCount: number;
+        inferredBoundaryCount: number;
+        geometryRepairedCharacterCount: number;
+        geometryRepairRegionCount: number;
+        duplicateOwnershipAttemptCount: number;
+        residualReportedCharacterCount: number;
+        normalizedFallbackArea: number;
       };
     };
     expect(report.quality).toEqual({
       boundaryDecisionCount: 48,
       unresolvedBoundaryCount: 0,
       transformationCount: review.transformations.length,
+      visibleCharacterCount: 314,
+      uniquelyOwnedCharacterCount: 314,
+      explicitBoundaryCount: 38,
+      inferredBoundaryCount: 10,
+      geometryRepairedCharacterCount: 0,
+      geometryRepairRegionCount: 0,
+      duplicateOwnershipAttemptCount: 0,
+      residualReportedCharacterCount: 0,
+      normalizedFallbackArea: 0,
     });
     expect(renderPdfImportReview(review)).toContain("boundaries 48, unresolved 0");
+    expect(renderPdfImportReview(review)).toContain("ownership 314/314, duplicates 0, residual 0");
   });
 });

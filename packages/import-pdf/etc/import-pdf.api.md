@@ -43,6 +43,9 @@ export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTex
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
 
+// export: auditPdfCharacterOwnershipV2
+export declare function auditPdfCharacterOwnershipV2(facts: Pick<PdfFactsV2, "pages">, evidence: readonly PdfDecisionEvidenceV2[]): PdfCharacterOwnershipAuditV2;
+
 // export: buildPdfImportReview
 export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
     target: PdfReviewTargetV1;
@@ -202,6 +205,9 @@ export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBloc
     height: number;
 }>, evidence: readonly PdfDecisionEvidenceV2[]): ImportBlock[];
 
+// export: normalizeHybridPdfFactsV2
+export declare function normalizeHybridPdfFactsV2(facts: PdfFactsV2, factsDigest: string): Promise<PdfHybridSemanticsV2>;
+
 // export: normalizePdfText
 export declare function normalizePdfText(value: string): string;
 
@@ -328,6 +334,19 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
+
+// export: PDF_HYBRID_POLICY_REVISION_V2
+export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/2";
+
+// export: PDF_HYBRID_POLICY_V2
+export declare const PDF_HYBRID_POLICY_V2: Readonly<{
+    readonly localizedRegionJoinGap: 0.04;
+    readonly maximumLocalizedRegions: 2;
+    readonly maximumLocalizedRegionArea: 0.35;
+}>;
+
+// export: PDF_HYBRID_SEMANTICS_SCHEMA_V2
+export declare const PDF_HYBRID_SEMANTICS_SCHEMA_V2: "atlcli.pdf-hybrid-semantics/2";
 
 // export: PDF_IMPORT_OVERRIDES_MAX_BYTES
 export declare const PDF_IMPORT_OVERRIDES_MAX_BYTES: number;
@@ -608,6 +627,26 @@ export interface PdfAssetMaterializationRequestV1 {
     dpi?: number;
 }
 
+// export: PdfCharacterOwnershipAuditV2
+export interface PdfCharacterOwnershipAuditV2 {
+    ownership: PdfCharacterOwnershipV2[];
+    duplicateOwnershipAttemptCount: number;
+    duplicateOwnershipAttemptsByPage: Array<{
+        pageIndex: number;
+        count: number;
+    }>;
+}
+
+// export: PdfCharacterOwnershipV2
+export interface PdfCharacterOwnershipV2 {
+    pageIndex: number;
+    characterIndex: number;
+    ownerSourceId: string;
+    targetNodeId?: string;
+    basis: "tagged" | "geometry" | "fallback" | "reported";
+    outcome: ImportOutcome;
+}
+
 // export: PdfCompletenessV1
 export interface PdfCompletenessV1 {
     expectedPages: number;
@@ -631,7 +670,7 @@ export interface PdfDecisionEvidenceV1 {
 // export: PdfDecisionEvidenceV2
 export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "analyzerRevision"> {
     boundaryDecisionIds: string[];
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_HYBRID_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -812,6 +851,42 @@ export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "char
     physicalLineIndex: number;
 }
 
+// export: PdfHybridPageOutcomeV2
+export interface PdfHybridPageOutcomeV2 {
+    pageIndex: number;
+    mode: "hybrid-native" | "hybrid-repaired" | "fallback-required";
+    projectedNodeIds: string[];
+    visibleCharacterCount: number;
+    uniquelyOwnedCharacterCount: number;
+    explicitBoundaryCount: number;
+    inferredBoundaryCount: number;
+    unresolvedBoundaryCount: number;
+    geometryRepairedCharacterCount: number;
+    geometryRepairRegionCount: number;
+    duplicateOwnershipAttemptCount: number;
+    residualReportedCharacterCount: number;
+    fallbackScope: "none" | "region" | "page";
+    fallbackReasonCodes: string[];
+    fallbackRegionLocators: PdfSourceLocatorV1[];
+    normalizedFallbackArea: number;
+}
+
+// export: PdfHybridSemanticsV2
+export interface PdfHybridSemanticsV2 {
+    schema: typeof PDF_HYBRID_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_HYBRID_POLICY_REVISION_V2;
+    textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+    transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+    ownership: PdfCharacterOwnershipV2[];
+    pageOutcomes: PdfHybridPageOutcomeV2[];
+    requiresFallbackPages: number[];
+    semanticDigest: string;
+}
+
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
     id: string;
@@ -900,6 +975,7 @@ export interface PdfImportReviewV2 extends Omit<PdfImportReviewV1, "schema" | "f
     evidence: PdfDecisionEvidenceV2[];
     boundaries: PdfTextBoundaryDecisionV2[];
     transformations: PdfTextTransformationV2[];
+    ownership: PdfCharacterOwnershipV2[];
     pages: PdfPageReviewSummaryV2[];
 }
 
@@ -996,6 +1072,15 @@ export interface PdfPageReviewSummaryV1 {
 export interface PdfPageReviewSummaryV2 extends PdfPageReviewSummaryV1 {
     boundaryDecisionCount: number;
     unresolvedBoundaryCount: number;
+    visibleCharacterCount: number;
+    uniquelyOwnedCharacterCount: number;
+    explicitBoundaryCount: number;
+    inferredBoundaryCount: number;
+    geometryRepairedCharacterCount: number;
+    geometryRepairRegionCount: number;
+    duplicateOwnershipAttemptCount: number;
+    residualReportedCharacterCount: number;
+    normalizedFallbackArea: number;
 }
 
 // export: PdfPathObjectFact
@@ -1542,6 +1627,9 @@ export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvena
 // export: assessPdfVisualFallbacks
 export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1 | PdfFactsV2, "pages">, base: PdfFallbackSemanticBaseV1 | PdfFallbackSemanticBaseV2): PdfPageFallbackAssessmentV1[];
 
+// export: auditPdfCharacterOwnershipV2
+export declare function auditPdfCharacterOwnershipV2(facts: Pick<PdfFactsV2, "pages">, evidence: readonly PdfDecisionEvidenceV2[]): PdfCharacterOwnershipAuditV2;
+
 // export: buildPdfImportReview
 export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
     target: PdfReviewTargetV1;
@@ -1719,6 +1807,9 @@ export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBloc
     height: number;
 }>, evidence: readonly PdfDecisionEvidenceV2[]): ImportBlock[];
 
+// export: normalizeHybridPdfFactsV2
+export declare function normalizeHybridPdfFactsV2(facts: PdfFactsV2, factsDigest: string): Promise<PdfHybridSemanticsV2>;
+
 // export: normalizePdfText
 export declare function normalizePdfText(value: string): string;
 
@@ -1857,6 +1948,19 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
+
+// export: PDF_HYBRID_POLICY_REVISION_V2
+export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/2";
+
+// export: PDF_HYBRID_POLICY_V2
+export declare const PDF_HYBRID_POLICY_V2: Readonly<{
+    readonly localizedRegionJoinGap: 0.04;
+    readonly maximumLocalizedRegions: 2;
+    readonly maximumLocalizedRegionArea: 0.35;
+}>;
+
+// export: PDF_HYBRID_SEMANTICS_SCHEMA_V2
+export declare const PDF_HYBRID_SEMANTICS_SCHEMA_V2: "atlcli.pdf-hybrid-semantics/2";
 
 // export: PDF_IMPORT_OVERRIDES_MAX_BYTES
 export declare const PDF_IMPORT_OVERRIDES_MAX_BYTES: number;
@@ -2146,6 +2250,26 @@ export interface PdfAssetMaterializationRequestV1 {
     dpi?: number;
 }
 
+// export: PdfCharacterOwnershipAuditV2
+export interface PdfCharacterOwnershipAuditV2 {
+    ownership: PdfCharacterOwnershipV2[];
+    duplicateOwnershipAttemptCount: number;
+    duplicateOwnershipAttemptsByPage: Array<{
+        pageIndex: number;
+        count: number;
+    }>;
+}
+
+// export: PdfCharacterOwnershipV2
+export interface PdfCharacterOwnershipV2 {
+    pageIndex: number;
+    characterIndex: number;
+    ownerSourceId: string;
+    targetNodeId?: string;
+    basis: "tagged" | "geometry" | "fallback" | "reported";
+    outcome: ImportOutcome;
+}
+
 // export: PdfCompletenessV1
 export interface PdfCompletenessV1 {
     expectedPages: number;
@@ -2169,7 +2293,7 @@ export interface PdfDecisionEvidenceV1 {
 // export: PdfDecisionEvidenceV2
 export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "analyzerRevision"> {
     boundaryDecisionIds: string[];
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_HYBRID_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -2291,7 +2415,7 @@ export type PdfFallbackSemanticBaseV1 = {
 // export: PdfFallbackSemanticBaseV2
 export type PdfFallbackSemanticBaseV2 = {
     evidence: PdfDecisionEvidenceV2[];
-    pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2>;
+    pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2 | PdfHybridPageOutcomeV2>;
     requiresGeometryPages?: number[];
     requiresFallbackPages?: number[];
 };
@@ -2367,6 +2491,42 @@ export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "char
     characters: PdfTextCharacterFactV2[];
     assembly: PdfTextAssemblyV2;
     physicalLineIndex: number;
+}
+
+// export: PdfHybridPageOutcomeV2
+export interface PdfHybridPageOutcomeV2 {
+    pageIndex: number;
+    mode: "hybrid-native" | "hybrid-repaired" | "fallback-required";
+    projectedNodeIds: string[];
+    visibleCharacterCount: number;
+    uniquelyOwnedCharacterCount: number;
+    explicitBoundaryCount: number;
+    inferredBoundaryCount: number;
+    unresolvedBoundaryCount: number;
+    geometryRepairedCharacterCount: number;
+    geometryRepairRegionCount: number;
+    duplicateOwnershipAttemptCount: number;
+    residualReportedCharacterCount: number;
+    fallbackScope: "none" | "region" | "page";
+    fallbackReasonCodes: string[];
+    fallbackRegionLocators: PdfSourceLocatorV1[];
+    normalizedFallbackArea: number;
+}
+
+// export: PdfHybridSemanticsV2
+export interface PdfHybridSemanticsV2 {
+    schema: typeof PDF_HYBRID_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_HYBRID_POLICY_REVISION_V2;
+    textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+    transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+    ownership: PdfCharacterOwnershipV2[];
+    pageOutcomes: PdfHybridPageOutcomeV2[];
+    requiresFallbackPages: number[];
+    semanticDigest: string;
 }
 
 // export: PdfImageObjectFact
@@ -2457,6 +2617,7 @@ export interface PdfImportReviewV2 extends Omit<PdfImportReviewV1, "schema" | "f
     evidence: PdfDecisionEvidenceV2[];
     boundaries: PdfTextBoundaryDecisionV2[];
     transformations: PdfTextTransformationV2[];
+    ownership: PdfCharacterOwnershipV2[];
     pages: PdfPageReviewSummaryV2[];
 }
 
@@ -2563,6 +2724,15 @@ export interface PdfPageReviewSummaryV1 {
 export interface PdfPageReviewSummaryV2 extends PdfPageReviewSummaryV1 {
     boundaryDecisionCount: number;
     unresolvedBoundaryCount: number;
+    visibleCharacterCount: number;
+    uniquelyOwnedCharacterCount: number;
+    explicitBoundaryCount: number;
+    inferredBoundaryCount: number;
+    geometryRepairedCharacterCount: number;
+    geometryRepairRegionCount: number;
+    duplicateOwnershipAttemptCount: number;
+    residualReportedCharacterCount: number;
+    normalizedFallbackArea: number;
 }
 
 // export: PdfPathObjectFact
@@ -3109,6 +3279,9 @@ export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTex
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
 
+// export: auditPdfCharacterOwnershipV2
+export declare function auditPdfCharacterOwnershipV2(facts: Pick<PdfFactsV2, "pages">, evidence: readonly PdfDecisionEvidenceV2[]): PdfCharacterOwnershipAuditV2;
+
 // export: buildPdfImportReview
 export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
     target: PdfReviewTargetV1;
@@ -3268,6 +3441,9 @@ export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBloc
     height: number;
 }>, evidence: readonly PdfDecisionEvidenceV2[]): ImportBlock[];
 
+// export: normalizeHybridPdfFactsV2
+export declare function normalizeHybridPdfFactsV2(facts: PdfFactsV2, factsDigest: string): Promise<PdfHybridSemanticsV2>;
+
 // export: normalizePdfText
 export declare function normalizePdfText(value: string): string;
 
@@ -3394,6 +3570,19 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
+
+// export: PDF_HYBRID_POLICY_REVISION_V2
+export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/2";
+
+// export: PDF_HYBRID_POLICY_V2
+export declare const PDF_HYBRID_POLICY_V2: Readonly<{
+    readonly localizedRegionJoinGap: 0.04;
+    readonly maximumLocalizedRegions: 2;
+    readonly maximumLocalizedRegionArea: 0.35;
+}>;
+
+// export: PDF_HYBRID_SEMANTICS_SCHEMA_V2
+export declare const PDF_HYBRID_SEMANTICS_SCHEMA_V2: "atlcli.pdf-hybrid-semantics/2";
 
 // export: PDF_IMPORT_OVERRIDES_MAX_BYTES
 export declare const PDF_IMPORT_OVERRIDES_MAX_BYTES: number;
@@ -3674,6 +3863,26 @@ export interface PdfAssetMaterializationRequestV1 {
     dpi?: number;
 }
 
+// export: PdfCharacterOwnershipAuditV2
+export interface PdfCharacterOwnershipAuditV2 {
+    ownership: PdfCharacterOwnershipV2[];
+    duplicateOwnershipAttemptCount: number;
+    duplicateOwnershipAttemptsByPage: Array<{
+        pageIndex: number;
+        count: number;
+    }>;
+}
+
+// export: PdfCharacterOwnershipV2
+export interface PdfCharacterOwnershipV2 {
+    pageIndex: number;
+    characterIndex: number;
+    ownerSourceId: string;
+    targetNodeId?: string;
+    basis: "tagged" | "geometry" | "fallback" | "reported";
+    outcome: ImportOutcome;
+}
+
 // export: PdfCompletenessV1
 export interface PdfCompletenessV1 {
     expectedPages: number;
@@ -3697,7 +3906,7 @@ export interface PdfDecisionEvidenceV1 {
 // export: PdfDecisionEvidenceV2
 export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "analyzerRevision"> {
     boundaryDecisionIds: string[];
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_HYBRID_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -3878,6 +4087,42 @@ export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "char
     physicalLineIndex: number;
 }
 
+// export: PdfHybridPageOutcomeV2
+export interface PdfHybridPageOutcomeV2 {
+    pageIndex: number;
+    mode: "hybrid-native" | "hybrid-repaired" | "fallback-required";
+    projectedNodeIds: string[];
+    visibleCharacterCount: number;
+    uniquelyOwnedCharacterCount: number;
+    explicitBoundaryCount: number;
+    inferredBoundaryCount: number;
+    unresolvedBoundaryCount: number;
+    geometryRepairedCharacterCount: number;
+    geometryRepairRegionCount: number;
+    duplicateOwnershipAttemptCount: number;
+    residualReportedCharacterCount: number;
+    fallbackScope: "none" | "region" | "page";
+    fallbackReasonCodes: string[];
+    fallbackRegionLocators: PdfSourceLocatorV1[];
+    normalizedFallbackArea: number;
+}
+
+// export: PdfHybridSemanticsV2
+export interface PdfHybridSemanticsV2 {
+    schema: typeof PDF_HYBRID_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_HYBRID_POLICY_REVISION_V2;
+    textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+    transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+    ownership: PdfCharacterOwnershipV2[];
+    pageOutcomes: PdfHybridPageOutcomeV2[];
+    requiresFallbackPages: number[];
+    semanticDigest: string;
+}
+
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
     id: string;
@@ -3966,6 +4211,7 @@ export interface PdfImportReviewV2 extends Omit<PdfImportReviewV1, "schema" | "f
     evidence: PdfDecisionEvidenceV2[];
     boundaries: PdfTextBoundaryDecisionV2[];
     transformations: PdfTextTransformationV2[];
+    ownership: PdfCharacterOwnershipV2[];
     pages: PdfPageReviewSummaryV2[];
 }
 
@@ -4062,6 +4308,15 @@ export interface PdfPageReviewSummaryV1 {
 export interface PdfPageReviewSummaryV2 extends PdfPageReviewSummaryV1 {
     boundaryDecisionCount: number;
     unresolvedBoundaryCount: number;
+    visibleCharacterCount: number;
+    uniquelyOwnedCharacterCount: number;
+    explicitBoundaryCount: number;
+    inferredBoundaryCount: number;
+    geometryRepairedCharacterCount: number;
+    geometryRepairRegionCount: number;
+    duplicateOwnershipAttemptCount: number;
+    residualReportedCharacterCount: number;
+    normalizedFallbackArea: number;
 }
 
 // export: PdfPathObjectFact
@@ -4608,6 +4863,9 @@ export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvena
 // export: assessPdfVisualFallbacks
 export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1 | PdfFactsV2, "pages">, base: PdfFallbackSemanticBaseV1 | PdfFallbackSemanticBaseV2): PdfPageFallbackAssessmentV1[];
 
+// export: auditPdfCharacterOwnershipV2
+export declare function auditPdfCharacterOwnershipV2(facts: Pick<PdfFactsV2, "pages">, evidence: readonly PdfDecisionEvidenceV2[]): PdfCharacterOwnershipAuditV2;
+
 // export: buildPdfImportReview
 export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
     target: PdfReviewTargetV1;
@@ -4794,6 +5052,9 @@ export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBloc
     height: number;
 }>, evidence: readonly PdfDecisionEvidenceV2[]): ImportBlock[];
 
+// export: normalizeHybridPdfFactsV2
+export declare function normalizeHybridPdfFactsV2(facts: PdfFactsV2, factsDigest: string): Promise<PdfHybridSemanticsV2>;
+
 // export: normalizePdfText
 export declare function normalizePdfText(value: string): string;
 
@@ -4932,6 +5193,19 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
+
+// export: PDF_HYBRID_POLICY_REVISION_V2
+export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/2";
+
+// export: PDF_HYBRID_POLICY_V2
+export declare const PDF_HYBRID_POLICY_V2: Readonly<{
+    readonly localizedRegionJoinGap: 0.04;
+    readonly maximumLocalizedRegions: 2;
+    readonly maximumLocalizedRegionArea: 0.35;
+}>;
+
+// export: PDF_HYBRID_SEMANTICS_SCHEMA_V2
+export declare const PDF_HYBRID_SEMANTICS_SCHEMA_V2: "atlcli.pdf-hybrid-semantics/2";
 
 // export: PDF_IMPORT_OVERRIDES_MAX_BYTES
 export declare const PDF_IMPORT_OVERRIDES_MAX_BYTES: number;
@@ -5221,6 +5495,26 @@ export interface PdfAssetMaterializationRequestV1 {
     dpi?: number;
 }
 
+// export: PdfCharacterOwnershipAuditV2
+export interface PdfCharacterOwnershipAuditV2 {
+    ownership: PdfCharacterOwnershipV2[];
+    duplicateOwnershipAttemptCount: number;
+    duplicateOwnershipAttemptsByPage: Array<{
+        pageIndex: number;
+        count: number;
+    }>;
+}
+
+// export: PdfCharacterOwnershipV2
+export interface PdfCharacterOwnershipV2 {
+    pageIndex: number;
+    characterIndex: number;
+    ownerSourceId: string;
+    targetNodeId?: string;
+    basis: "tagged" | "geometry" | "fallback" | "reported";
+    outcome: ImportOutcome;
+}
+
 // export: PdfCompletenessV1
 export interface PdfCompletenessV1 {
     expectedPages: number;
@@ -5244,7 +5538,7 @@ export interface PdfDecisionEvidenceV1 {
 // export: PdfDecisionEvidenceV2
 export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "analyzerRevision"> {
     boundaryDecisionIds: string[];
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_HYBRID_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -5366,7 +5660,7 @@ export type PdfFallbackSemanticBaseV1 = {
 // export: PdfFallbackSemanticBaseV2
 export type PdfFallbackSemanticBaseV2 = {
     evidence: PdfDecisionEvidenceV2[];
-    pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2>;
+    pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2 | PdfHybridPageOutcomeV2>;
     requiresGeometryPages?: number[];
     requiresFallbackPages?: number[];
 };
@@ -5442,6 +5736,42 @@ export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "char
     characters: PdfTextCharacterFactV2[];
     assembly: PdfTextAssemblyV2;
     physicalLineIndex: number;
+}
+
+// export: PdfHybridPageOutcomeV2
+export interface PdfHybridPageOutcomeV2 {
+    pageIndex: number;
+    mode: "hybrid-native" | "hybrid-repaired" | "fallback-required";
+    projectedNodeIds: string[];
+    visibleCharacterCount: number;
+    uniquelyOwnedCharacterCount: number;
+    explicitBoundaryCount: number;
+    inferredBoundaryCount: number;
+    unresolvedBoundaryCount: number;
+    geometryRepairedCharacterCount: number;
+    geometryRepairRegionCount: number;
+    duplicateOwnershipAttemptCount: number;
+    residualReportedCharacterCount: number;
+    fallbackScope: "none" | "region" | "page";
+    fallbackReasonCodes: string[];
+    fallbackRegionLocators: PdfSourceLocatorV1[];
+    normalizedFallbackArea: number;
+}
+
+// export: PdfHybridSemanticsV2
+export interface PdfHybridSemanticsV2 {
+    schema: typeof PDF_HYBRID_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_HYBRID_POLICY_REVISION_V2;
+    textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+    transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+    ownership: PdfCharacterOwnershipV2[];
+    pageOutcomes: PdfHybridPageOutcomeV2[];
+    requiresFallbackPages: number[];
+    semanticDigest: string;
 }
 
 // export: PdfImageObjectFact
@@ -5532,6 +5862,7 @@ export interface PdfImportReviewV2 extends Omit<PdfImportReviewV1, "schema" | "f
     evidence: PdfDecisionEvidenceV2[];
     boundaries: PdfTextBoundaryDecisionV2[];
     transformations: PdfTextTransformationV2[];
+    ownership: PdfCharacterOwnershipV2[];
     pages: PdfPageReviewSummaryV2[];
 }
 
@@ -5638,6 +5969,15 @@ export interface PdfPageReviewSummaryV1 {
 export interface PdfPageReviewSummaryV2 extends PdfPageReviewSummaryV1 {
     boundaryDecisionCount: number;
     unresolvedBoundaryCount: number;
+    visibleCharacterCount: number;
+    uniquelyOwnedCharacterCount: number;
+    explicitBoundaryCount: number;
+    inferredBoundaryCount: number;
+    geometryRepairedCharacterCount: number;
+    geometryRepairRegionCount: number;
+    duplicateOwnershipAttemptCount: number;
+    residualReportedCharacterCount: number;
+    normalizedFallbackArea: number;
 }
 
 // export: PdfPathObjectFact

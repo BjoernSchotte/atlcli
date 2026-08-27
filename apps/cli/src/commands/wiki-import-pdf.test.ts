@@ -59,9 +59,23 @@ describe("wiki import PDF review-first planning", () => {
     expect(first.split.resolved.kind).toBe("single-page");
     expect(first.split.totalWikiPages).toBe(1);
     expect(first.digests).toEqual(second.digests);
-    expect(first.quality).toMatchObject({ unresolvedBoundaryCount: 0 });
+    expect(first.quality).toMatchObject({
+      unresolvedBoundaryCount: 0,
+      visibleCharacterCount: 294,
+      uniquelyOwnedCharacterCount: 294,
+      duplicateOwnershipAttemptCount: 0,
+      residualReportedCharacterCount: 0,
+      geometryRepairRegionCount: 0,
+      normalizedFallbackArea: 0,
+    });
     expect(first.quality.boundaryDecisionCount).toBeGreaterThan(0);
     expect(first.pages[0].boundaryDecisionCount).toBe(first.quality.boundaryDecisionCount);
+    expect(first.pages[0]).toMatchObject({
+      visibleCharacterCount: 294,
+      uniquelyOwnedCharacterCount: 294,
+      duplicateOwnershipAttemptCount: 0,
+      residualReportedCharacterCount: 0,
+    });
     expect(first.document).toBeUndefined();
     expect(first.facts).toBeUndefined();
     expect(first.split.root.blocks).toBeUndefined();

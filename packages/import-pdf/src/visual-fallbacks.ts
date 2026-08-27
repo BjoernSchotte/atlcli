@@ -137,8 +137,13 @@ async function materializePdfVisualFallbackCandidates<E extends PdfVisualFallbac
   const assets = new Map<string, ImportAsset>(document.assets.map((asset) => [asset.id, asset]));
   const additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }> = [];
   const nextEvidence = [...evidence];
+  const regionCoveredCodes = new Set([
+    "pdf-import/tagged-node-demoted",
+    "pdf-import/hybrid-region-fallback-required",
+    "pdf-import/text-boundary-unresolved",
+  ]);
   const issues: ImportIssue[] = document.issues.map((issue) => {
-    if (issue.outcome !== "reported" || issue.code !== "pdf-import/tagged-node-demoted") return issue;
+    if (issue.outcome !== "reported" || !regionCoveredCodes.has(issue.code)) return issue;
     const covered = candidates.some((candidate) =>
       candidate.kind === "region" && candidate.sourceRefs.some((sourceRef) => issue.sourceRefs?.includes(sourceRef))
     );
@@ -151,6 +156,9 @@ async function materializePdfVisualFallbackCandidates<E extends PdfVisualFallbac
     "pdf-import/tagged-structure-missing",
     "pdf-import/tagged-text-unclaimed",
     "pdf-import/tagged-node-demoted",
+    "pdf-import/hybrid-page-fallback-required",
+    "pdf-import/hybrid-region-fallback-required",
+    "pdf-import/text-boundary-unresolved",
   ]);
   for (let index = 0; index < issues.length; index += 1) {
     const issue = issues[index]!;

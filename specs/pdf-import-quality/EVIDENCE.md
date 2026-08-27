@@ -407,6 +407,131 @@ private input was used.
 - [x] No customer PDF or customer-derived artifact was read, staged, or
       written.
 
+## PIQ-05
+
+### Character ownership and hybrid recovery
+
+- V2 `auto` now uses a pure hybrid reconciler for tagged PDFs. Accepted tagged
+  nodes retain semantic ownership while every visible unclaimed character is
+  routed through localized geometry analysis;
+- explicit `tags` remains tags-only and reports the unclaimed residue, while
+  explicit `geometry` remains geometry-only. Neither explicit route executes a
+  hybrid repair;
+- the final ledger assigns every non-whitespace visible character exactly one
+  deterministic tagged, geometry, fallback, or reported owner. Conflicting
+  attempts are counted separately and fail closed;
+- localized residual fragments are joined only within a versioned normalized
+  gap. At most two independently localized regions may be repaired; distant
+  regions remain separate, and dispersed, overlapping, oversized, rotated, or
+  otherwise unqualified residue escalates safely;
+- unresolved localized residue selects a bounded region fallback. Missing or
+  dispersed residue retains page fallback. Materialized region/page fallbacks
+  close the corresponding reported issues and update the final ownership
+  outcome to `attached`;
+- semantic and review digests now bind the ownership ledger, policy revision,
+  boundary counts, repair metrics, duplicate attempts, residual counts, and
+  fallback area;
+- JSON and terminal previews expose only body-free per-page and aggregate
+  ownership/repair metrics. The V1 review contract remains unchanged.
+
+The positive independent tagged fixture produces eight exact editable blocks.
+All 158 visible characters have unique owners; 28 residual characters become
+one editable approximated repair, with 14 explicit boundaries, 12 inferred
+boundaries, zero unresolved boundaries, zero duplicate attempts, zero residual
+reported characters, and no fallback.
+
+The negative independent tagged fixture retains page fallback: all 160 visible
+characters have deterministic owners, 73 remain explicitly reported until the
+page image is attached, no geometry repair is accepted, no duplicate attempt
+occurs, and normalized fallback area is `1`. A synthetic two-region probe
+proves that distant localized regions remain two repairs rather than becoming
+one oversized crop.
+
+### Verification
+
+```text
+bun run test packages/import-pdf/src/hybrid.test.ts \
+  packages/import-pdf/src/fallback-policy.test.ts \
+  packages/import-pdf/src/visual-fallbacks.test.ts \
+  packages/import-pdf/src/review-v2.test.ts \
+  packages/import-pdf/src/tagged.test.ts \
+  packages/import-pdf/src/split.test.ts \
+  apps/cli/src/commands/wiki-import-pdf.test.ts
+38 pass
+0 fail
+250 expect() calls
+```
+
+```text
+bun run test packages/import-pdf \
+  apps/cli/src/commands/wiki-import-pdf.test.ts \
+  apps/cli/src/commands/wiki-import-pdf-publication.test.ts
+118 pass
+0 fail
+1052 expect() calls
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
+```text
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun scripts/api-report.ts --update
+bun scripts/api-closure.ts --update
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun scripts/consumer-smoke.ts
+tarball consumer smoke PASS
+DOCX smoke PASS
+PDF smoke PASS
+```
+
+```text
+bun scripts/consumer-smoke-vite.ts
+Vite 8.1.4 tarball consumer PASS
+DOCX browser smoke PASS
+PDF browser smoke PASS
+```
+
+```text
+bun run --cwd apps/browser-export-harness test:e2e
+6 pass
+0 fail
+```
+
+The packed consumer tests required temporary-directory access and the browser
+E2E required a local loopback port outside the sandbox. Only existing neutral,
+repository-owned fixtures were used. No customer PDF, derived private content,
+tenant identifier, live URL, or new PDF file was read, generated, recorded, or
+staged.
+
+### Task gate
+
+- [x] `auto` repairs localized tagged residue without duplicating tagged text.
+- [x] Explicit tags and geometry modes retain their distinct routing.
+- [x] Every visible character has one final owner; conflicting attempts are
+      counted and publication fails closed.
+- [x] Localized repair, region fallback, and page fallback remain distinct.
+- [x] Fallback attachment closes the covered report and ownership outcome.
+- [x] Semantic, issue, split, and plan digests repeat identically.
+- [x] Split planning assigns every source page exactly once.
+- [x] Full importer, CLI, typecheck, build, API, packed consumer, and browser
+      gates pass.
+- [x] No customer PDF or customer-derived artifact entered Git or evidence.
+
 ## PIQ-04 production cutover
 
 PIQ-04 is complete. The tagged and geometry lanes proven in the preceding

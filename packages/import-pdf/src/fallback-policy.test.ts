@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type {
   PdfDecisionEvidenceV1,
   PdfFactsV1,
+  PdfHybridPageOutcomeV2,
   PdfTaggedPageOutcomeV1,
   PdfUntaggedPageOutcomeV1,
 } from "./contracts.js";
@@ -36,6 +37,28 @@ function demoted(bbox?: { x: number; y: number; width: number; height: number })
     decisionCode: "pdf/tagged-node-demoted",
     outcome: "reported",
     analyzerRevision: "atlcli.pdf-tagged-policy/1",
+  };
+}
+
+function hybrid(overrides: Partial<PdfHybridPageOutcomeV2> = {}): PdfHybridPageOutcomeV2 {
+  return {
+    pageIndex: 0,
+    mode: "fallback-required",
+    projectedNodeIds: [],
+    visibleCharacterCount: 12,
+    uniquelyOwnedCharacterCount: 12,
+    explicitBoundaryCount: 2,
+    inferredBoundaryCount: 1,
+    unresolvedBoundaryCount: 0,
+    geometryRepairedCharacterCount: 0,
+    geometryRepairRegionCount: 0,
+    duplicateOwnershipAttemptCount: 0,
+    residualReportedCharacterCount: 4,
+    fallbackScope: "page",
+    fallbackReasonCodes: ["dispersed-residual-regions"],
+    fallbackRegionLocators: [],
+    normalizedFallbackArea: 1,
+    ...overrides,
   };
 }
 
@@ -98,6 +121,34 @@ describe("PDF visual fallback assessment", () => {
     expect(assessPdfVisualFallbacks(facts("image-only"), {
       evidence: [], pageOutcomes: [geometry], requiresFallbackPages: [0],
     })[0]).toMatchObject({ scope: "page", reasonCodes: ["image-only-page"] });
+  });
+
+  it("uses the hybrid reconciler's localized scope and body-free ownership counts", () => {
+    const locator = {
+      pageIndex: 0,
+      structurePath: "neutral:residual",
+      characterIndexes: [8, 9, 10, 11],
+      bbox: { x: 0.2, y: 0.3, width: 0.2, height: 0.05 },
+    };
+    const result = assessPdfVisualFallbacks(facts(), {
+      evidence: [],
+      pageOutcomes: [hybrid({
+        fallbackScope: "region",
+        fallbackReasonCodes: ["unresolved-text-boundary"],
+        fallbackRegionLocators: [locator],
+        normalizedFallbackArea: 0.01,
+      })],
+      requiresFallbackPages: [0],
+    });
+
+    expect(result).toEqual([{
+      pageIndex: 0,
+      scope: "region",
+      reasonCodes: ["unresolved-text-boundary"],
+      regionLocators: [locator],
+      claimedCharacterCount: 8,
+      unclaimedCharacterCount: 4,
+    }]);
   });
 
   it("uses explicit dimension and area limits for degenerate boxes", () => {

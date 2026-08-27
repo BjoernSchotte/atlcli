@@ -183,13 +183,14 @@ describe("tagged PDF semantic extraction", () => {
       ["paragraph", "German Umlaute: Äpfel, Öl, Ufer."],
     ]);
     expect(normalized.pageOutcomes).toEqual([expect.objectContaining({
-      mode: "tagged-native",
+      mode: "geometry-required",
       claimedCharacterCount: 143,
-      unclaimedCharacterCount: 0,
+      unclaimedCharacterCount: 28,
       corruptTagCount: 0,
       boundaryDecisionCount: 22,
       unresolvedBoundaryCount: 0,
     })]);
+    expect(normalized.requiresGeometryPages).toEqual([0]);
     expect(normalized.boundaries.filter((boundary) =>
       boundary.leftCharacterIndex === 30 && boundary.rightCharacterIndex === 32
       || boundary.leftCharacterIndex === 38 && boundary.rightCharacterIndex === 40
