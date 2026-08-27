@@ -341,10 +341,13 @@ export interface PdfFactsAdapterV2 {
 }
 
 export const PDF_TAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-tagged-semantics/1" as const;
+export const PDF_TAGGED_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-tagged-semantics/2" as const;
 export const PDF_TAGGED_POLICY_REVISION = "atlcli.pdf-tagged-policy/1" as const;
+export const PDF_TAGGED_POLICY_REVISION_V2 = "atlcli.pdf-tagged-policy/2" as const;
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-untagged-semantics/1" as const;
 export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as const;
 export const PDF_TABLE_POLICY_REVISION = "atlcli.pdf-table-policy/1" as const;
+export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/2" as const;
 export const PDF_FIGURE_POLICY_REVISION = "atlcli.pdf-figure-policy/1" as const;
 export const PDF_VISUAL_FALLBACK_POLICY_REVISION = "atlcli.pdf-visual-fallback-policy/1" as const;
 
@@ -355,12 +358,14 @@ export interface PdfSourceLocatorV1 {
   structurePath?: string;
   markedContentIds?: string[];
   annotationId?: string;
+  characterIndexes?: number[];
   objectFingerprint?: string;
 }
 
 export type PdfEvidenceBasis =
   | "structure-tree"
   | "marked-content"
+  | "text-boundary"
   | "outline"
   | "text-geometry"
   | "font-evidence"
@@ -387,6 +392,16 @@ export interface PdfDecisionEvidenceV1 {
     | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
+export interface PdfDecisionEvidenceV2
+  extends Omit<PdfDecisionEvidenceV1, "analyzerRevision"> {
+  boundaryDecisionIds: string[];
+  analyzerRevision:
+    | typeof PDF_TAGGED_POLICY_REVISION_V2
+    | typeof PDF_TABLE_POLICY_REVISION_V2
+    | typeof PDF_FIGURE_POLICY_REVISION
+    | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
+}
+
 export interface PdfTaggedPageOutcomeV1 {
   pageIndex: number;
   mode: "tagged-native" | "geometry-required";
@@ -403,6 +418,25 @@ export interface PdfTaggedSemanticsV1 {
   document: ImportDocumentV2;
   evidence: PdfDecisionEvidenceV1[];
   pageOutcomes: PdfTaggedPageOutcomeV1[];
+  requiresGeometryPages: number[];
+  semanticDigest: string;
+}
+
+export interface PdfTaggedPageOutcomeV2 extends PdfTaggedPageOutcomeV1 {
+  boundaryDecisionCount: number;
+  unresolvedBoundaryCount: number;
+}
+
+export interface PdfTaggedSemanticsV2 {
+  schema: typeof PDF_TAGGED_SEMANTICS_SCHEMA_V2;
+  factsDigest: string;
+  policyRevision: typeof PDF_TAGGED_POLICY_REVISION_V2;
+  textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+  document: ImportDocumentV2;
+  evidence: PdfDecisionEvidenceV2[];
+  boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+  transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+  pageOutcomes: PdfTaggedPageOutcomeV2[];
   requiresGeometryPages: number[];
   semanticDigest: string;
 }

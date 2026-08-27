@@ -1,24 +1,34 @@
 import { describe, expect, it } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { documentToAdf, type ImportBlock, type ImportRun } from "@atlcli/import-core";
+import {
+  documentToAdf,
+  documentToStorage,
+  type ImportBlock,
+  type ImportRun,
+} from "@atlcli/import-core";
 import {
   PDF_FACTS_ADAPTER_REVISION,
   PDF_FACTS_SCHEMA_V1,
   PDFIUM_ENGINE_VERSION,
   PDFIUM_WASM_SHA256,
   PDF_ANALYSIS_POLICY_REVISION,
+  PDF_TAGGED_POLICY_REVISION_V2,
+  PDF_TAGGED_SEMANTICS_SCHEMA_V2,
   type PdfFactsV1,
   type PdfPageFactsV1,
   type PdfStructureNodeFact,
   type PdfTextCharacterFact,
 } from "./contracts.js";
-import { createNodePdfiumFactsAdapter } from "./node.js";
-import { normalizeTaggedPdfFacts } from "./normalize.js";
+import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
+import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
 import { textDirection } from "./text.js";
 import { digestPdfFacts } from "./canonical.js";
+import { PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 } from "./text-assembly.js";
+import { generateUnresolvedStructureKidProbe } from "../../../specs/pdf-import-quality/fixtures/generate-core.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
+const qualityFixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
 
 function textOf(block: ImportBlock): string {
   if (block.type !== "heading" && block.type !== "paragraph") return "";
@@ -137,6 +147,108 @@ async function normalizeSynthetic(facts: PdfFactsV1) {
 }
 
 describe("tagged PDF semantic extraction", () => {
+  it("routes fragmented tagged text through the V2 assembly contract", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-fragmented-tagged.pdf")),
+    );
+    const first = await adapter.analyze(bytes);
+    const second = await adapter.analyze(bytes);
+    const normalized = await normalizeTaggedPdfFactsV2(first.facts, first.factsDigest);
+    const repeated = await normalizeTaggedPdfFactsV2(second.facts, second.factsDigest);
+
+    expect(normalized.schema).toBe(PDF_TAGGED_SEMANTICS_SCHEMA_V2);
+    expect(normalized.policyRevision).toBe(PDF_TAGGED_POLICY_REVISION_V2);
+    expect(normalized.textAssemblyPolicyRevision).toBe(PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2);
+    expect(normalized.semanticDigest).toBe(repeated.semanticDigest);
+    expect(normalized.document.blocks.map((block) => [block.type, textOf(block)])).toEqual([
+      ["heading", "Neutral Harbor Evidence"],
+      ["paragraph", "Harbor signals remain clear."],
+      ["paragraph", "Seasonal coordination stays stable."],
+      ["paragraph", "مرحبا بالميناء"],
+      ["paragraph", "港の信号"],
+      ["paragraph", "office"],
+      ["paragraph", "German Umlaute: Äpfel, Öl, Ufer."],
+    ]);
+    expect(normalized.pageOutcomes).toEqual([expect.objectContaining({
+      mode: "tagged-native",
+      claimedCharacterCount: 143,
+      unclaimedCharacterCount: 0,
+      corruptTagCount: 0,
+      boundaryDecisionCount: 22,
+      unresolvedBoundaryCount: 0,
+    })]);
+    expect(normalized.boundaries.filter((boundary) =>
+      boundary.leftCharacterIndex === 30 && boundary.rightCharacterIndex === 32
+      || boundary.leftCharacterIndex === 38 && boundary.rightCharacterIndex === 40
+      || boundary.leftCharacterIndex === 67 && boundary.rightCharacterIndex === 69
+    )).toEqual([
+      expect.objectContaining({
+        action: "insert-space",
+        basis: ["generated-whitespace", "text-run", "structure-order", "baseline", "glyph-gap"],
+        confidence: 0.98,
+      }),
+      expect.objectContaining({
+        action: "insert-space",
+        basis: ["generated-whitespace", "text-run", "structure-order", "baseline", "glyph-gap"],
+        confidence: 0.98,
+      }),
+      expect.objectContaining({
+        action: "dehyphenate",
+        basis: ["hyphen", "structure-order", "baseline", "script"],
+        confidence: 0.99,
+      }),
+    ]);
+    expect(normalized.document.blocks[1]).toMatchObject({
+      type: "paragraph",
+      runs: [
+        { kind: "text", text: "Harbor " },
+        {
+          kind: "text",
+          text: "signals",
+          marks: { link: { href: "https://example.com/neutral-harbor" } },
+        },
+        { kind: "text", text: " remain clear." },
+      ],
+    });
+    expect(documentToAdf(normalized.document).content.map((node) => node.type)).toEqual([
+      "heading", "paragraph", "paragraph", "paragraph", "paragraph", "paragraph", "paragraph",
+    ]);
+    expect(documentToStorage(normalized.document)).toContain(
+      '<p>Harbor <a href="https://example.com/neutral-harbor">signals</a> remain clear.</p>',
+    );
+    expect(normalized.document.issues.map((issue) => issue.code)).not.toContain(
+      "pdf-import/text-boundary-unresolved",
+    );
+  });
+
+  it("demotes an unresolved V2 structure child without exposing source text in diagnostics", async () => {
+    const raw = await (await createNodePdfiumFactsAdapterV2()).analyze(
+      generateUnresolvedStructureKidProbe(),
+    );
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+
+    expect(result.document.blocks).toEqual([]);
+    expect(result.requiresGeometryPages).toEqual([0]);
+    expect(result.pageOutcomes[0]).toMatchObject({
+      mode: "geometry-required",
+      corruptTagCount: 1,
+      unclaimedCharacterCount: 16,
+    });
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/tagged-structure-kid-unresolved",
+      outcome: "reported",
+      context: { pageIndex: 0 },
+    }));
+    expect(result.evidence).toContainEqual(expect.objectContaining({
+      decisionCode: "pdf/tagged-structure-kid-unresolved",
+      outcome: "reported",
+      confidence: 0,
+      boundaryDecisionIds: [],
+    }));
+    expect(JSON.stringify(result.document.issues)).not.toContain("Unresolved Harbor");
+  });
+
   it("correlates a real tagged golden without page loss or outline dependence", async () => {
     const adapter = await createNodePdfiumFactsAdapter();
     const bytes = new Uint8Array(await readFile(resolve(fixtureRoot, "complex-tagged.pdf")));
