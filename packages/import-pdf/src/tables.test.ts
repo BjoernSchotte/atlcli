@@ -9,10 +9,12 @@ import {
 } from "./contracts.js";
 import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
 import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
-import { projectTaggedTable } from "./tables.js";
-import { normalizeUntaggedPdfFacts } from "./untagged.js";
+import { analyzeGeometryReadingOrderV2 } from "./reading-order.js";
+import { analyzeUntaggedTableV2, projectTaggedTable } from "./tables.js";
+import { normalizeUntaggedPdfFacts, normalizeUntaggedPdfFactsV2 } from "./untagged.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
+const qualityFixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
 
 function tableBlock(blocks: readonly ImportBlock[]) {
   const table = blocks.find((block) => block.type === "table");
@@ -92,6 +94,62 @@ function syntheticTaggedPage(table: PdfStructureNodeFact, values: readonly strin
 }
 
 describe("PDF table reconstruction", () => {
+  it("assembles every real V2 geometry table cell before publication", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(
+      new Uint8Array(await readFile(resolve(fixtureRoot, "table-positive.pdf"))),
+    );
+    const result = await normalizeUntaggedPdfFactsV2(raw.facts, raw.factsDigest);
+    const table = tableBlock(result.document.blocks);
+
+    expect(table.rows.flatMap((row) => row.cells).map((cell) => textRuns(cell.blocks[0]!))).toEqual([
+      "Plot", "Apples", "Pears", "North", "12", "8", "South", "9", "11",
+    ]);
+    expect(result.requiresFallbackPages).toEqual([]);
+    expect(result.pageOutcomes[0]).toMatchObject({
+      mode: "geometry-native",
+      boundaryDecisionCount: 6,
+      unresolvedBoundaryCount: 0,
+    });
+    expect(result.evidence.filter((item) =>
+      item.decisionCode === "pdf/table-untagged-grid-cell-native"
+    )).toHaveLength(9);
+    expect(result.evidence.filter((item) =>
+      item.decisionCode === "pdf/table-untagged-grid-cell-native"
+    ).every((item) => item.boundaryDecisionIds.every((id) =>
+      result.boundaries.some((boundary) => boundary.id === id)
+    ))).toBe(true);
+    expect(documentToStorage(result.document)).toContain(
+      "<tr><td><p>Plot</p></td><td><p>Apples</p></td><td><p>Pears</p></td></tr>",
+    );
+  });
+
+  it("rejects a painted grid when one segmented line has incomplete coverage", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "producer-word.pdf")),
+    ));
+    const page = raw.facts.pages[0]!;
+    const incompletePage = {
+      ...page,
+      paths: page.paths.filter((path) => !(
+        path.fillMode !== 0
+        && path.bbox
+        && path.bbox.x > 0.48
+        && path.bbox.x < 0.51
+        && path.bbox.y > 0.44
+        && path.bbox.height > 0.02
+      )),
+    };
+    const table = analyzeUntaggedTableV2(
+      incompletePage,
+      analyzeGeometryReadingOrderV2(incompletePage),
+    );
+
+    expect(table.mode).toBe("none");
+    expect(table.blocks).toEqual([]);
+  });
+
   it("routes every real V2 tagged cell through shared assembly evidence", async () => {
     const adapter = await createNodePdfiumFactsAdapterV2();
     const raw = await adapter.analyze(

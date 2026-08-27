@@ -169,7 +169,14 @@ export function projectTaggedListV2(
   let ordered = false;
   for (const [itemIndex, item] of childrenWithRoleV2(node, "LI").entries()) {
     const label = childrenWithRoleV2(item, "Lbl")[0];
-    const body = childrenWithRoleV2(item, "LBody")[0] ?? item;
+    const explicitBody = childrenWithRoleV2(item, "LBody")[0];
+    const body = explicitBody ?? {
+      ...item,
+      directMcids: [],
+      kids: item.kids.filter((kid) =>
+        kid.kind !== "element" || structureRoleV2(kid.node) !== "Lbl"
+      ),
+    };
     const labelCorrelation = label ? correlateTaggedTextWithLinksV2(page, label) : null;
     if (labelCorrelation) {
       appendPdfTextAssemblyV2(aggregate, labelCorrelation.assembly);

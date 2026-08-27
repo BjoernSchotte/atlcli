@@ -10,8 +10,14 @@
 // export: analyzeGeometryReadingOrder
 export declare function analyzeGeometryReadingOrder(page: PdfPageFactsV1, ignoredFragmentIds?: ReadonlySet<string>): PdfReadingOrderPageV1;
 
+// export: analyzeGeometryReadingOrderV2
+export declare function analyzeGeometryReadingOrderV2(page: PdfPageFactsV2, ignoredFragmentIds?: ReadonlySet<string>): PdfReadingOrderPageV2;
+
 // export: analyzeUntaggedTable
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
+
+// export: analyzeUntaggedTableV2
+export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2): PdfTableProjectionV2;
 
 // export: AppliedPdfImportOverridesV1
 export interface AppliedPdfImportOverridesV1 {
@@ -26,6 +32,9 @@ export interface AppliedPdfImportOverridesV1 {
 
 // export: applyPdfImportOverrides
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
+
+// export: assembleGeometryFragmentsV2
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[]): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -46,6 +55,9 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: calibrateGeometryFontSizesV2
+export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
 
 // export: canonicalizePdfTextSourceFragmentV2
 export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
@@ -128,6 +140,9 @@ export declare function expandNormalizedRect(rect: PdfNormalizedRect, margin?: n
 // export: extractGeometryFragments
 export declare function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragmentV1[];
 
+// export: extractGeometryFragmentsV2
+export declare function extractGeometryFragmentsV2(page: PdfPageFactsV2): PdfGeometryFragmentV2[];
+
 // export: flattenStructure
 export declare function flattenStructure(nodes: readonly PdfStructureNodeFact[]): PdfStructureNodeFact[];
 
@@ -136,6 +151,9 @@ export declare function flattenStructureV2(nodes: readonly PdfStructureNodeFactV
 
 // export: geometryBodyFontSize
 export declare function geometryBodyFontSize(pages: readonly PdfReadingOrderPageV1[]): number;
+
+// export: geometryBodyFontSizeV2
+export declare function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number;
 
 // export: headingHierarchyGap
 export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
@@ -181,11 +199,16 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
     allowTagged?: boolean;
 }): Promise<PdfUntaggedSemanticsV1>;
 
+// export: normalizeUntaggedPdfFactsV2
+export declare function normalizeUntaggedPdfFactsV2(facts: PdfFactsV2, factsDigest: string, options?: {
+    allowTagged?: boolean;
+}): Promise<PdfUntaggedSemanticsV2>;
+
 // export: orderedDescendantMcidsV2
 export declare function orderedDescendantMcidsV2(node: PdfStructureNodeFactV2): number[];
 
 // export: pageHasQualifiedDigitalLayout
-export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+export declare function pageHasQualifiedDigitalLayout(page: Pick<PdfPageFactsV1, "kind" | "text" | "images">): boolean;
 
 // export: ParsedPdfImportOverridesV1
 export interface ParsedPdfImportOverridesV1 {
@@ -245,8 +268,31 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantic
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
+// export: PDF_GEOMETRY_POLICY_REVISION_V2
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/2";
+
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
+    readonly maxColumns: 2;
+    readonly columnGap: 0.18;
+    readonly minimumLinesPerColumn: 2;
+    readonly fragmentGap: 0.025;
+    readonly fragmentGapGlyphFactor: 4;
+    readonly conflictingOverlapRatio: 0.25;
+    readonly duplicateOverlapRatio: 0.7;
+    readonly headingFontRatio: 1.15;
+    readonly headingFontDeltaPoints: 1.5;
+    readonly maximumHeadingLength: 120;
+    readonly maximumHorizontalAngleRadians: 0.12;
+}>;
+
+// export: PDF_GEOMETRY_POLICY_V2
+export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
+    readonly lineClusterCenterGlyphFactor: 0.7;
+    readonly minimumLineClusterTolerance: 0.0025;
+    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
+    readonly paragraphMaximumIndentDelta: 0.02;
+    readonly paragraphMaximumFontDeltaPoints: 0.5;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -365,6 +411,9 @@ export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
 
 // export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-untagged-semantics/1";
+
+// export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V2
+export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-untagged-semantics/2";
 
 // export: PDF_VISUAL_FALLBACK_POLICY_REVISION
 export declare const PDF_VISUAL_FALLBACK_POLICY_REVISION: "atlcli.pdf-visual-fallback-policy/1";
@@ -553,7 +602,7 @@ export interface PdfDecisionEvidenceV1 {
 // export: PdfDecisionEvidenceV2
 export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "analyzerRevision"> {
     boundaryDecisionIds: string[];
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -707,6 +756,13 @@ export interface PdfGeometryFragmentV1 {
     column: number;
     furniture: boolean;
     duplicateOf?: string;
+}
+
+// export: PdfGeometryFragmentV2
+export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "characters"> {
+    characters: PdfTextCharacterFactV2[];
+    assembly: PdfTextAssemblyV2;
+    physicalLineIndex: number;
 }
 
 // export: PdfImageObjectFact
@@ -922,6 +978,12 @@ export interface PdfReadingOrderPageV1 {
     ordered: PdfGeometryFragmentV1[];
     columnCount: number;
     qualificationReasons: string[];
+}
+
+// export: PdfReadingOrderPageV2
+export interface PdfReadingOrderPageV2 extends Omit<PdfReadingOrderPageV1, "fragments" | "ordered"> {
+    fragments: PdfGeometryFragmentV2[];
+    ordered: PdfGeometryFragmentV2[];
 }
 
 // export: PdfReviewTargetV1
@@ -1219,6 +1281,12 @@ export interface PdfUntaggedPageOutcomeV1 {
     qualificationReasons: string[];
 }
 
+// export: PdfUntaggedPageOutcomeV2
+export interface PdfUntaggedPageOutcomeV2 extends PdfUntaggedPageOutcomeV1 {
+    boundaryDecisionCount: number;
+    unresolvedBoundaryCount: number;
+}
+
 // export: PdfUntaggedSemanticsV1
 export interface PdfUntaggedSemanticsV1 {
     schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V1;
@@ -1227,6 +1295,21 @@ export interface PdfUntaggedSemanticsV1 {
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
     pageOutcomes: PdfUntaggedPageOutcomeV1[];
+    requiresFallbackPages: number[];
+    semanticDigest: string;
+}
+
+// export: PdfUntaggedSemanticsV2
+export interface PdfUntaggedSemanticsV2 {
+    schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_GEOMETRY_POLICY_REVISION_V2;
+    textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+    transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+    pageOutcomes: PdfUntaggedPageOutcomeV2[];
     requiresFallbackPages: number[];
     semanticDigest: string;
 }
@@ -1347,8 +1430,14 @@ export declare function unresolvedStructureKidIndexesV2(node: PdfStructureNodeFa
 // export: analyzeGeometryReadingOrder
 export declare function analyzeGeometryReadingOrder(page: PdfPageFactsV1, ignoredFragmentIds?: ReadonlySet<string>): PdfReadingOrderPageV1;
 
+// export: analyzeGeometryReadingOrderV2
+export declare function analyzeGeometryReadingOrderV2(page: PdfPageFactsV2, ignoredFragmentIds?: ReadonlySet<string>): PdfReadingOrderPageV2;
+
 // export: analyzeUntaggedTable
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
+
+// export: analyzeUntaggedTableV2
+export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2): PdfTableProjectionV2;
 
 // export: AppliedPdfImportOverridesV1
 export interface AppliedPdfImportOverridesV1 {
@@ -1366,6 +1455,9 @@ export declare function applyPdfFallbackPresentation(document: ImportDocumentV2,
 
 // export: applyPdfImportOverrides
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
+
+// export: assembleGeometryFragmentsV2
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[]): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -1389,6 +1481,9 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: calibrateGeometryFontSizesV2
+export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
 
 // export: canonicalizePdfTextSourceFragmentV2
 export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
@@ -1471,6 +1566,9 @@ export declare function expandNormalizedRect(rect: PdfNormalizedRect, margin?: n
 // export: extractGeometryFragments
 export declare function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragmentV1[];
 
+// export: extractGeometryFragmentsV2
+export declare function extractGeometryFragmentsV2(page: PdfPageFactsV2): PdfGeometryFragmentV2[];
+
 // export: fallbackAssessmentPageIndexes
 export declare function fallbackAssessmentPageIndexes(assessments: readonly PdfPageFallbackAssessmentV1[]): number[];
 
@@ -1482,6 +1580,9 @@ export declare function flattenStructureV2(nodes: readonly PdfStructureNodeFactV
 
 // export: geometryBodyFontSize
 export declare function geometryBodyFontSize(pages: readonly PdfReadingOrderPageV1[]): number;
+
+// export: geometryBodyFontSizeV2
+export declare function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number;
 
 // export: headingHierarchyGap
 export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
@@ -1536,11 +1637,16 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
     allowTagged?: boolean;
 }): Promise<PdfUntaggedSemanticsV1>;
 
+// export: normalizeUntaggedPdfFactsV2
+export declare function normalizeUntaggedPdfFactsV2(facts: PdfFactsV2, factsDigest: string, options?: {
+    allowTagged?: boolean;
+}): Promise<PdfUntaggedSemanticsV2>;
+
 // export: orderedDescendantMcidsV2
 export declare function orderedDescendantMcidsV2(node: PdfStructureNodeFactV2): number[];
 
 // export: pageHasQualifiedDigitalLayout
-export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+export declare function pageHasQualifiedDigitalLayout(page: Pick<PdfPageFactsV1, "kind" | "text" | "images">): boolean;
 
 // export: ParsedPdfImportOverridesV1
 export interface ParsedPdfImportOverridesV1 {
@@ -1612,8 +1718,31 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantic
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
+// export: PDF_GEOMETRY_POLICY_REVISION_V2
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/2";
+
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
+    readonly maxColumns: 2;
+    readonly columnGap: 0.18;
+    readonly minimumLinesPerColumn: 2;
+    readonly fragmentGap: 0.025;
+    readonly fragmentGapGlyphFactor: 4;
+    readonly conflictingOverlapRatio: 0.25;
+    readonly duplicateOverlapRatio: 0.7;
+    readonly headingFontRatio: 1.15;
+    readonly headingFontDeltaPoints: 1.5;
+    readonly maximumHeadingLength: 120;
+    readonly maximumHorizontalAngleRadians: 0.12;
+}>;
+
+// export: PDF_GEOMETRY_POLICY_V2
+export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
+    readonly lineClusterCenterGlyphFactor: 0.7;
+    readonly minimumLineClusterTolerance: 0.0025;
+    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
+    readonly paragraphMaximumIndentDelta: 0.02;
+    readonly paragraphMaximumFontDeltaPoints: 0.5;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -1732,6 +1861,9 @@ export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
 
 // export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-untagged-semantics/1";
+
+// export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V2
+export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-untagged-semantics/2";
 
 // export: PDF_VISUAL_FALLBACK_JOIN_GAP
 export declare const PDF_VISUAL_FALLBACK_JOIN_GAP = 0.012;
@@ -1929,7 +2061,7 @@ export interface PdfDecisionEvidenceV1 {
 // export: PdfDecisionEvidenceV2
 export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "analyzerRevision"> {
     boundaryDecisionIds: string[];
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -2094,6 +2226,13 @@ export interface PdfGeometryFragmentV1 {
     column: number;
     furniture: boolean;
     duplicateOf?: string;
+}
+
+// export: PdfGeometryFragmentV2
+export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "characters"> {
+    characters: PdfTextCharacterFactV2[];
+    assembly: PdfTextAssemblyV2;
+    physicalLineIndex: number;
 }
 
 // export: PdfImageObjectFact
@@ -2321,6 +2460,12 @@ export interface PdfReadingOrderPageV1 {
     qualificationReasons: string[];
 }
 
+// export: PdfReadingOrderPageV2
+export interface PdfReadingOrderPageV2 extends Omit<PdfReadingOrderPageV1, "fragments" | "ordered"> {
+    fragments: PdfGeometryFragmentV2[];
+    ordered: PdfGeometryFragmentV2[];
+}
+
 // export: PdfReviewTargetV1
 export interface PdfReviewTargetV1 {
     spaceKey: string;
@@ -2616,6 +2761,12 @@ export interface PdfUntaggedPageOutcomeV1 {
     qualificationReasons: string[];
 }
 
+// export: PdfUntaggedPageOutcomeV2
+export interface PdfUntaggedPageOutcomeV2 extends PdfUntaggedPageOutcomeV1 {
+    boundaryDecisionCount: number;
+    unresolvedBoundaryCount: number;
+}
+
 // export: PdfUntaggedSemanticsV1
 export interface PdfUntaggedSemanticsV1 {
     schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V1;
@@ -2624,6 +2775,21 @@ export interface PdfUntaggedSemanticsV1 {
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
     pageOutcomes: PdfUntaggedPageOutcomeV1[];
+    requiresFallbackPages: number[];
+    semanticDigest: string;
+}
+
+// export: PdfUntaggedSemanticsV2
+export interface PdfUntaggedSemanticsV2 {
+    schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_GEOMETRY_POLICY_REVISION_V2;
+    textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+    transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+    pageOutcomes: PdfUntaggedPageOutcomeV2[];
     requiresFallbackPages: number[];
     semanticDigest: string;
 }
@@ -2750,8 +2916,14 @@ export declare function unresolvedStructureKidIndexesV2(node: PdfStructureNodeFa
 // export: analyzeGeometryReadingOrder
 export declare function analyzeGeometryReadingOrder(page: PdfPageFactsV1, ignoredFragmentIds?: ReadonlySet<string>): PdfReadingOrderPageV1;
 
+// export: analyzeGeometryReadingOrderV2
+export declare function analyzeGeometryReadingOrderV2(page: PdfPageFactsV2, ignoredFragmentIds?: ReadonlySet<string>): PdfReadingOrderPageV2;
+
 // export: analyzeUntaggedTable
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
+
+// export: analyzeUntaggedTableV2
+export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2): PdfTableProjectionV2;
 
 // export: AppliedPdfImportOverridesV1
 export interface AppliedPdfImportOverridesV1 {
@@ -2766,6 +2938,9 @@ export interface AppliedPdfImportOverridesV1 {
 
 // export: applyPdfImportOverrides
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
+
+// export: assembleGeometryFragmentsV2
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[]): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -2786,6 +2961,9 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: calibrateGeometryFontSizesV2
+export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
 
 // export: canonicalizePdfTextSourceFragmentV2
 export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
@@ -2868,6 +3046,9 @@ export declare function expandNormalizedRect(rect: PdfNormalizedRect, margin?: n
 // export: extractGeometryFragments
 export declare function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragmentV1[];
 
+// export: extractGeometryFragmentsV2
+export declare function extractGeometryFragmentsV2(page: PdfPageFactsV2): PdfGeometryFragmentV2[];
+
 // export: flattenStructure
 export declare function flattenStructure(nodes: readonly PdfStructureNodeFact[]): PdfStructureNodeFact[];
 
@@ -2876,6 +3057,9 @@ export declare function flattenStructureV2(nodes: readonly PdfStructureNodeFactV
 
 // export: geometryBodyFontSize
 export declare function geometryBodyFontSize(pages: readonly PdfReadingOrderPageV1[]): number;
+
+// export: geometryBodyFontSizeV2
+export declare function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number;
 
 // export: headingHierarchyGap
 export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
@@ -2921,11 +3105,16 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
     allowTagged?: boolean;
 }): Promise<PdfUntaggedSemanticsV1>;
 
+// export: normalizeUntaggedPdfFactsV2
+export declare function normalizeUntaggedPdfFactsV2(facts: PdfFactsV2, factsDigest: string, options?: {
+    allowTagged?: boolean;
+}): Promise<PdfUntaggedSemanticsV2>;
+
 // export: orderedDescendantMcidsV2
 export declare function orderedDescendantMcidsV2(node: PdfStructureNodeFactV2): number[];
 
 // export: pageHasQualifiedDigitalLayout
-export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+export declare function pageHasQualifiedDigitalLayout(page: Pick<PdfPageFactsV1, "kind" | "text" | "images">): boolean;
 
 // export: ParsedPdfImportOverridesV1
 export interface ParsedPdfImportOverridesV1 {
@@ -2985,8 +3174,31 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantic
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
+// export: PDF_GEOMETRY_POLICY_REVISION_V2
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/2";
+
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
+    readonly maxColumns: 2;
+    readonly columnGap: 0.18;
+    readonly minimumLinesPerColumn: 2;
+    readonly fragmentGap: 0.025;
+    readonly fragmentGapGlyphFactor: 4;
+    readonly conflictingOverlapRatio: 0.25;
+    readonly duplicateOverlapRatio: 0.7;
+    readonly headingFontRatio: 1.15;
+    readonly headingFontDeltaPoints: 1.5;
+    readonly maximumHeadingLength: 120;
+    readonly maximumHorizontalAngleRadians: 0.12;
+}>;
+
+// export: PDF_GEOMETRY_POLICY_V2
+export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
+    readonly lineClusterCenterGlyphFactor: 0.7;
+    readonly minimumLineClusterTolerance: 0.0025;
+    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
+    readonly paragraphMaximumIndentDelta: 0.02;
+    readonly paragraphMaximumFontDeltaPoints: 0.5;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -3105,6 +3317,9 @@ export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
 
 // export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-untagged-semantics/1";
+
+// export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V2
+export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-untagged-semantics/2";
 
 // export: PDF_VISUAL_FALLBACK_POLICY_REVISION
 export declare const PDF_VISUAL_FALLBACK_POLICY_REVISION: "atlcli.pdf-visual-fallback-policy/1";
@@ -3293,7 +3508,7 @@ export interface PdfDecisionEvidenceV1 {
 // export: PdfDecisionEvidenceV2
 export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "analyzerRevision"> {
     boundaryDecisionIds: string[];
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -3447,6 +3662,13 @@ export interface PdfGeometryFragmentV1 {
     column: number;
     furniture: boolean;
     duplicateOf?: string;
+}
+
+// export: PdfGeometryFragmentV2
+export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "characters"> {
+    characters: PdfTextCharacterFactV2[];
+    assembly: PdfTextAssemblyV2;
+    physicalLineIndex: number;
 }
 
 // export: PdfImageObjectFact
@@ -3662,6 +3884,12 @@ export interface PdfReadingOrderPageV1 {
     ordered: PdfGeometryFragmentV1[];
     columnCount: number;
     qualificationReasons: string[];
+}
+
+// export: PdfReadingOrderPageV2
+export interface PdfReadingOrderPageV2 extends Omit<PdfReadingOrderPageV1, "fragments" | "ordered"> {
+    fragments: PdfGeometryFragmentV2[];
+    ordered: PdfGeometryFragmentV2[];
 }
 
 // export: PdfReviewTargetV1
@@ -3959,6 +4187,12 @@ export interface PdfUntaggedPageOutcomeV1 {
     qualificationReasons: string[];
 }
 
+// export: PdfUntaggedPageOutcomeV2
+export interface PdfUntaggedPageOutcomeV2 extends PdfUntaggedPageOutcomeV1 {
+    boundaryDecisionCount: number;
+    unresolvedBoundaryCount: number;
+}
+
 // export: PdfUntaggedSemanticsV1
 export interface PdfUntaggedSemanticsV1 {
     schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V1;
@@ -3967,6 +4201,21 @@ export interface PdfUntaggedSemanticsV1 {
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
     pageOutcomes: PdfUntaggedPageOutcomeV1[];
+    requiresFallbackPages: number[];
+    semanticDigest: string;
+}
+
+// export: PdfUntaggedSemanticsV2
+export interface PdfUntaggedSemanticsV2 {
+    schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_GEOMETRY_POLICY_REVISION_V2;
+    textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+    transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+    pageOutcomes: PdfUntaggedPageOutcomeV2[];
     requiresFallbackPages: number[];
     semanticDigest: string;
 }
@@ -4087,8 +4336,14 @@ export declare function unresolvedStructureKidIndexesV2(node: PdfStructureNodeFa
 // export: analyzeGeometryReadingOrder
 export declare function analyzeGeometryReadingOrder(page: PdfPageFactsV1, ignoredFragmentIds?: ReadonlySet<string>): PdfReadingOrderPageV1;
 
+// export: analyzeGeometryReadingOrderV2
+export declare function analyzeGeometryReadingOrderV2(page: PdfPageFactsV2, ignoredFragmentIds?: ReadonlySet<string>): PdfReadingOrderPageV2;
+
 // export: analyzeUntaggedTable
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
+
+// export: analyzeUntaggedTableV2
+export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2): PdfTableProjectionV2;
 
 // export: AppliedPdfImportOverridesV1
 export interface AppliedPdfImportOverridesV1 {
@@ -4106,6 +4361,9 @@ export declare function applyPdfFallbackPresentation(document: ImportDocumentV2,
 
 // export: applyPdfImportOverrides
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
+
+// export: assembleGeometryFragmentsV2
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[]): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -4129,6 +4387,9 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: calibrateGeometryFontSizesV2
+export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
 
 // export: canonicalizePdfTextSourceFragmentV2
 export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
@@ -4217,6 +4478,9 @@ export declare function expandNormalizedRect(rect: PdfNormalizedRect, margin?: n
 // export: extractGeometryFragments
 export declare function extractGeometryFragments(page: PdfPageFactsV1): PdfGeometryFragmentV1[];
 
+// export: extractGeometryFragmentsV2
+export declare function extractGeometryFragmentsV2(page: PdfPageFactsV2): PdfGeometryFragmentV2[];
+
 // export: fallbackAssessmentPageIndexes
 export declare function fallbackAssessmentPageIndexes(assessments: readonly PdfPageFallbackAssessmentV1[]): number[];
 
@@ -4228,6 +4492,9 @@ export declare function flattenStructureV2(nodes: readonly PdfStructureNodeFactV
 
 // export: geometryBodyFontSize
 export declare function geometryBodyFontSize(pages: readonly PdfReadingOrderPageV1[]): number;
+
+// export: geometryBodyFontSizeV2
+export declare function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number;
 
 // export: headingHierarchyGap
 export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
@@ -4285,11 +4552,16 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
     allowTagged?: boolean;
 }): Promise<PdfUntaggedSemanticsV1>;
 
+// export: normalizeUntaggedPdfFactsV2
+export declare function normalizeUntaggedPdfFactsV2(facts: PdfFactsV2, factsDigest: string, options?: {
+    allowTagged?: boolean;
+}): Promise<PdfUntaggedSemanticsV2>;
+
 // export: orderedDescendantMcidsV2
 export declare function orderedDescendantMcidsV2(node: PdfStructureNodeFactV2): number[];
 
 // export: pageHasQualifiedDigitalLayout
-export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
+export declare function pageHasQualifiedDigitalLayout(page: Pick<PdfPageFactsV1, "kind" | "text" | "images">): boolean;
 
 // export: ParsedPdfImportOverridesV1
 export interface ParsedPdfImportOverridesV1 {
@@ -4361,8 +4633,31 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantic
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
+// export: PDF_GEOMETRY_POLICY_REVISION_V2
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/2";
+
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
+    readonly maxColumns: 2;
+    readonly columnGap: 0.18;
+    readonly minimumLinesPerColumn: 2;
+    readonly fragmentGap: 0.025;
+    readonly fragmentGapGlyphFactor: 4;
+    readonly conflictingOverlapRatio: 0.25;
+    readonly duplicateOverlapRatio: 0.7;
+    readonly headingFontRatio: 1.15;
+    readonly headingFontDeltaPoints: 1.5;
+    readonly maximumHeadingLength: 120;
+    readonly maximumHorizontalAngleRadians: 0.12;
+}>;
+
+// export: PDF_GEOMETRY_POLICY_V2
+export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
+    readonly lineClusterCenterGlyphFactor: 0.7;
+    readonly minimumLineClusterTolerance: 0.0025;
+    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
+    readonly paragraphMaximumIndentDelta: 0.02;
+    readonly paragraphMaximumFontDeltaPoints: 0.5;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -4481,6 +4776,9 @@ export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
 
 // export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-untagged-semantics/1";
+
+// export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V2
+export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-untagged-semantics/2";
 
 // export: PDF_VISUAL_FALLBACK_JOIN_GAP
 export declare const PDF_VISUAL_FALLBACK_JOIN_GAP = 0.012;
@@ -4678,7 +4976,7 @@ export interface PdfDecisionEvidenceV1 {
 // export: PdfDecisionEvidenceV2
 export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "analyzerRevision"> {
     boundaryDecisionIds: string[];
-    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
+    analyzerRevision: typeof PDF_TAGGED_POLICY_REVISION_V2 | typeof PDF_GEOMETRY_POLICY_REVISION_V2 | typeof PDF_TABLE_POLICY_REVISION_V2 | typeof PDF_FIGURE_POLICY_REVISION | typeof PDF_VISUAL_FALLBACK_POLICY_REVISION;
 }
 
 // export: PdfDocumentClassification
@@ -4843,6 +5141,13 @@ export interface PdfGeometryFragmentV1 {
     column: number;
     furniture: boolean;
     duplicateOf?: string;
+}
+
+// export: PdfGeometryFragmentV2
+export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "characters"> {
+    characters: PdfTextCharacterFactV2[];
+    assembly: PdfTextAssemblyV2;
+    physicalLineIndex: number;
 }
 
 // export: PdfImageObjectFact
@@ -5070,6 +5375,12 @@ export interface PdfReadingOrderPageV1 {
     qualificationReasons: string[];
 }
 
+// export: PdfReadingOrderPageV2
+export interface PdfReadingOrderPageV2 extends Omit<PdfReadingOrderPageV1, "fragments" | "ordered"> {
+    fragments: PdfGeometryFragmentV2[];
+    ordered: PdfGeometryFragmentV2[];
+}
+
 // export: PdfReviewTargetV1
 export interface PdfReviewTargetV1 {
     spaceKey: string;
@@ -5365,6 +5676,12 @@ export interface PdfUntaggedPageOutcomeV1 {
     qualificationReasons: string[];
 }
 
+// export: PdfUntaggedPageOutcomeV2
+export interface PdfUntaggedPageOutcomeV2 extends PdfUntaggedPageOutcomeV1 {
+    boundaryDecisionCount: number;
+    unresolvedBoundaryCount: number;
+}
+
 // export: PdfUntaggedSemanticsV1
 export interface PdfUntaggedSemanticsV1 {
     schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V1;
@@ -5373,6 +5690,21 @@ export interface PdfUntaggedSemanticsV1 {
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
     pageOutcomes: PdfUntaggedPageOutcomeV1[];
+    requiresFallbackPages: number[];
+    semanticDigest: string;
+}
+
+// export: PdfUntaggedSemanticsV2
+export interface PdfUntaggedSemanticsV2 {
+    schema: typeof PDF_UNTAGGED_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_GEOMETRY_POLICY_REVISION_V2;
+    textAssemblyPolicyRevision: import("./text-assembly.js").PdfTextAssemblyV2["policyRevision"];
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: import("./text-assembly.js").PdfTextBoundaryDecisionV2[];
+    transformations: import("./text-assembly.js").PdfTextTransformationV2[];
+    pageOutcomes: PdfUntaggedPageOutcomeV2[];
     requiresFallbackPages: number[];
     semanticDigest: string;
 }

@@ -406,3 +406,116 @@ private input was used.
       pass.
 - [x] No customer PDF or customer-derived artifact was read, staged, or
       written.
+
+## PIQ-04 geometry-lane checkpoint
+
+This is a proven intermediate checkpoint, not completion of PIQ-04. The
+tagged and geometry V2 lanes are now independently proven; the atomic
+production cutover remains open.
+
+### Geometry V2 routing
+
+- V2 geometry first clusters characters into physical lines, then assembles
+  every fragment, paragraph continuation, list item, and untagged table cell
+  through the shared text-boundary engine;
+- paragraph lines join only with adjacent physical-line, column, font, indent,
+  punctuation, lowercase-continuation, and vertical-gap evidence;
+- generated line breaks and hyphens remain in the assembly input, so every
+  join, dehyphenation, hard-hyphen retention, and synthesized space has a
+  stable boundary decision;
+- RTL normalization covers both whole-line reverse-order output and producer
+  output whose words require independent geometric reversal. RTL-only
+  alignment does not create a false extra column;
+- untagged tables accept either stroked paths or thin painted path segments,
+  but only when interval coverage proves every grid line complete. Alignment
+  without that proof remains non-native;
+- when a producer reports no usable font size, repeated occurrences of the
+  same glyph provide a document-local scale calibration. Script-specific
+  glyph dimensions without cross-fragment evidence remain body text;
+- boundary decisions, transformations, exact character indexes, confidence,
+  and outcomes are bound into the `/2` untagged semantic digest;
+- V1 normalization and the production review route remain unchanged until the
+  remaining PIQ-04 cutover can happen atomically.
+
+The independent fragmented geometry fixture produces ten exact editable
+blocks with one qualified physical-line join, punctuation attachment, hard
+hyphen retention, logical RTL, CJK without invented space, a ligature
+expansion, and a safe link. It accounts for all 281 eligible characters with
+33 boundary decisions and zero unresolved boundaries.
+
+The pinned neutral Word producer now produces the exact heading, paragraphs,
+logical RTL, CJK, ordered list, and native two-column table. It accounts for
+all 352 eligible characters with 48 boundary decisions, one qualified column,
+zero unresolved boundaries, and no fallback. A deliberately unresolved
+geometry boundary still removes the page from native output with a body-free
+issue.
+
+### Verification
+
+```text
+bun run test packages/import-pdf/src/text-assembly.test.ts \
+  packages/import-pdf/src/untagged.test.ts \
+  packages/import-pdf/src/tables.test.ts \
+  packages/import-pdf/src/fixtures.test.ts
+32 pass
+0 fail
+381 expect() calls
+```
+
+```text
+bun run test packages/import-pdf
+92 pass
+0 fail
+895 expect() calls
+```
+
+```text
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun scripts/api-report.ts --update
+bun scripts/api-closure.ts --update
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun scripts/consumer-smoke-vite.ts
+Vite 8.1.4 tarball consumer PASS
+V2 untagged semantic schema, digest, geometry-native page outcome, and 51
+boundary decisions loaded from built browser package output
+```
+
+```text
+bun run test:browser-export-harness
+6 pass
+0 fail
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
+The tarball smoke required temporary-directory access and the browser E2E
+required a local loopback port outside the sandbox. No external service or
+private input was used.
+
+### Checkpoint gate
+
+- [x] Geometry fragments, paragraph continuations, lists, links, and untagged
+      table cells use one V2 assembler without changing the V1 production path.
+- [x] Exact ADF and Storage text plus neutral boundary evidence pass.
+- [x] The independent fixture and three producer families preserve logical
+      text; the previously failing Word producer is native without fallback.
+- [x] Incomplete geometry and unresolved text boundaries fail closed.
+- [x] Full importer, build, typecheck, API, packed consumer, and browser gates
+      pass.
+- [x] No customer PDF or customer-derived artifact was read, staged, or
+      written.

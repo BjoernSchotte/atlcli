@@ -35,6 +35,18 @@ function textOf(block: ImportBlock): string {
   return block.runs.map((run) => run.kind === "text" ? run.text : "\n").join("");
 }
 
+function semanticTextOf(block: ImportBlock): string {
+  if (block.type === "heading" || block.type === "paragraph") return textOf(block);
+  if (block.type === "list") {
+    return block.items.map((item) => textOf(item.blocks[0]!)).join(" | ");
+  }
+  if (block.type === "table") {
+    return block.rows.map((row) => row.cells.map((cell) => textOf(cell.blocks[0]!)).join(" | "))
+      .join(" / ");
+  }
+  return block.type;
+}
+
 function structure(
   id: string,
   type: string,
@@ -220,6 +232,46 @@ describe("tagged PDF semantic extraction", () => {
     expect(normalized.document.issues.map((issue) => issue.code)).not.toContain(
       "pdf-import/text-boundary-unresolved",
     );
+  });
+
+  it("preserves exact semantics across the pinned browser and LibreOffice producers", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const cases = [
+      { file: "producer-browser.pdf", claimed: 352, boundaries: 82 },
+      { file: "producer-libreoffice.pdf", claimed: 349, boundaries: 53 },
+    ] as const;
+    for (const fixture of cases) {
+      const raw = await adapter.analyze(new Uint8Array(
+        await readFile(resolve(qualityFixtureRoot, fixture.file)),
+      ));
+      const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+
+      expect(result.document.blocks.map((block) => [block.type, semanticTextOf(block)])).toEqual([
+        ["heading", "Neutral Harbor Field Notes"],
+        ["paragraph", "Harbor signals remain clear across styled text runs."],
+        ["paragraph", "Seasonal coordination continues safely across a visual line wrap."],
+        ["paragraph", "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral."],
+        ["paragraph", "مرحبا بالميناء"],
+        ["paragraph", "港の信号は明確です"],
+        ["list", "Inspect the northern marker. | Record the stable reading. | Publish the neutral summary."],
+        ["table", "Zone | Signal / North | Clear / South | Stable"],
+      ]);
+      expect(result.requiresGeometryPages).toEqual([]);
+      expect(result.pageOutcomes).toEqual([expect.objectContaining({
+        mode: "tagged-native",
+        claimedCharacterCount: fixture.claimed,
+        unclaimedCharacterCount: 0,
+        corruptTagCount: 0,
+        boundaryDecisionCount: fixture.boundaries,
+        unresolvedBoundaryCount: 0,
+      })]);
+      expect(result.evidence.every((item) => item.boundaryDecisionIds.every((id) =>
+        result.boundaries.some((boundary) => boundary.id === id)
+      ))).toBe(true);
+      const storage = documentToStorage(result.document);
+      expect(storage).toContain("<ol><li><p>Inspect the northern marker.</p></li>");
+      expect(storage).not.toContain("<ol><li><p>1.");
+    }
   });
 
   it("demotes an unresolved V2 structure child without exposing source text in diagnostics", async () => {
