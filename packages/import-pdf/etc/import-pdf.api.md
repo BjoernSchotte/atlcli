@@ -29,6 +29,7 @@ export declare function applyPdfImportOverrides(document: ImportDocumentV2, pars
 
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
+export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
 
 // export: buildPdfImportReview
 export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
@@ -68,6 +69,9 @@ export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStruc
 // export: createBrowserPdfiumFactsAdapter
 export declare function createBrowserPdfiumFactsAdapter(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapter;
 
+// export: createBrowserPdfiumFactsAdapterV2
+export declare function createBrowserPdfiumFactsAdapterV2(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapterV2;
+
 // export: derivePdfSplitTitleRenames
 export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames: ReadonlyMap<string, string>): Promise<PdfSplitPlanV1>;
 
@@ -82,6 +86,9 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
+
+// export: digestPdfFactsV2
+export declare function digestPdfFactsV2(facts: PdfFactsV2, maxBytes?: number): Promise<string>;
 
 // export: encodeRgbaPng
 export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
@@ -133,6 +140,9 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
     allowTagged?: boolean;
 }): Promise<PdfUntaggedSemanticsV1>;
 
+// export: orderedDescendantMcidsV2
+export declare function orderedDescendantMcidsV2(node: PdfStructureNodeFactV2): number[];
+
 // export: pageHasQualifiedDigitalLayout
 export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
 
@@ -157,14 +167,23 @@ export declare const PDF_ANALYSIS_HARD_BUDGETS: Readonly<PdfAnalysisBudgets>;
 // export: PDF_ANALYSIS_POLICY_REVISION
 export declare const PDF_ANALYSIS_POLICY_REVISION: "atlcli.pdf-analysis-policy/1";
 
+// export: PDF_ANALYSIS_POLICY_REVISION_V2
+export declare const PDF_ANALYSIS_POLICY_REVISION_V2: "atlcli.pdf-analysis-policy/2";
+
 // export: PDF_ASSET_MATERIALIZER_REVISION
 export declare const PDF_ASSET_MATERIALIZER_REVISION: "atlcli.pdfium-asset-materializer/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
+// export: PDF_FACTS_ADAPTER_REVISION_V2
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/2";
+
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_FACTS_SCHEMA_V2
+export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 
 // export: PDF_FIGURE_POLICY_REVISION
 export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
@@ -344,9 +363,27 @@ export interface PdfAnalysisProvenanceV1 {
     capabilities: PdfEngineCapabilitiesV1;
 }
 
+// export: PdfAnalysisProvenanceV2
+export interface PdfAnalysisProvenanceV2 {
+    engine: "pdfium";
+    engineVersion: typeof PDFIUM_ENGINE_VERSION;
+    wasmSha256: typeof PDFIUM_WASM_SHA256;
+    adapterRevision: typeof PDF_FACTS_ADAPTER_REVISION_V2;
+    policyRevision: typeof PDF_ANALYSIS_POLICY_REVISION_V2;
+    optionsDigest: string;
+    capabilities: PdfEngineCapabilitiesV2;
+}
+
 // export: PdfAnalysisResultV1
 export interface PdfAnalysisResultV1 {
     facts: PdfFactsV1;
+    factsDigest: string;
+    telemetry: PdfAnalysisTelemetry;
+}
+
+// export: PdfAnalysisResultV2
+export interface PdfAnalysisResultV2 {
+    facts: PdfFactsV2;
     factsDigest: string;
     telemetry: PdfAnalysisTelemetry;
 }
@@ -451,12 +488,22 @@ export interface PdfEngineCapabilitiesV1 {
     activeContentExecution: false;
 }
 
+// export: PdfEngineCapabilitiesV2
+export interface PdfEngineCapabilitiesV2 extends PdfEngineCapabilitiesV1 {
+}
+
 // export: PdfEvidenceBasis
 export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
     analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV1>;
+    materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
+}
+
+// export: PdfFactsAdapterV2
+export interface PdfFactsAdapterV2 {
+    analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV2>;
     materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
 }
 
@@ -483,6 +530,33 @@ export interface PdfFactsV1 {
     classification: PdfDocumentClassification;
     completeness: PdfCompletenessV1;
     pages: PdfPageFactsV1[];
+    outline: Array<{
+        title: string;
+        pageIndex: number | null;
+        depth: number;
+    }>;
+    inertFeatures: {
+        javascriptActionCount: number;
+        attachmentCount: number;
+        namedDestinationCount: number;
+        formType: number;
+    };
+    loadError: number | null;
+    issues: PdfFactsIssue[];
+}
+
+// export: PdfFactsV2
+export interface PdfFactsV2 {
+    schema: typeof PDF_FACTS_SCHEMA_V2;
+    provenance: PdfAnalysisProvenanceV2;
+    inputSha256: string;
+    inputBytes: number;
+    pageCount: number;
+    tagged: boolean;
+    encrypted: boolean;
+    classification: PdfDocumentClassification;
+    completeness: PdfCompletenessV1;
+    pages: PdfPageFactsV2[];
     outline: Array<{
         title: string;
         pageIndex: number | null;
@@ -640,6 +714,9 @@ export interface PdfiumAdapterConfig {
 // export: PdfiumFactsAdapter
 export type PdfiumFactsAdapter = PdfFactsAdapter;
 
+// export: PdfiumFactsAdapterV2
+export type PdfiumFactsAdapterV2 = PdfFactsAdapterV2;
+
 // export: PdfMaterializedAssetV1
 export interface PdfMaterializedAssetV1 {
     requestId: string;
@@ -688,6 +765,12 @@ export interface PdfPageFactsV1 {
     images: PdfImageObjectFact[];
     paths: PdfPathObjectFact[];
     annotations: PdfAnnotationFact[];
+}
+
+// export: PdfPageFactsV2
+export interface PdfPageFactsV2 extends Omit<PdfPageFactsV1, "characters" | "structures"> {
+    characters: PdfTextCharacterFactV2[];
+    structures: PdfStructureNodeFactV2[];
 }
 
 // export: PdfPageKind
@@ -833,6 +916,21 @@ export interface PdfStructureAttributeFact {
     value: boolean | number | string | PdfStructureAttributeFact[] | null;
 }
 
+// export: PdfStructureKidFactV2
+export type PdfStructureKidFactV2 = {
+    kind: "mcid";
+    index: number;
+    mcid: number;
+} | {
+    kind: "element";
+    index: number;
+    node: PdfStructureNodeFactV2;
+} | {
+    kind: "unresolved";
+    index: number;
+    reason: "child-handle-and-mcid-unavailable";
+};
+
 // export: PdfStructureNodeFact
 export interface PdfStructureNodeFact {
     id: string;
@@ -846,6 +944,20 @@ export interface PdfStructureNodeFact {
     childMcids: number[];
     attributes: PdfStructureAttributeFact[];
     children: PdfStructureNodeFact[];
+}
+
+// export: PdfStructureNodeFactV2
+export interface PdfStructureNodeFactV2 {
+    id: string;
+    type: string;
+    title: string;
+    alt: string;
+    actualText: string;
+    language: string;
+    elementId: string;
+    directMcids: number[];
+    kids: PdfStructureKidFactV2[];
+    attributes: PdfStructureAttributeFact[];
 }
 
 // export: PdfTableProjectionMode
@@ -899,6 +1011,11 @@ export interface PdfTextCharacterFact {
     generated: boolean;
     hyphen: boolean;
     unicodeMapError: boolean;
+}
+
+// export: PdfTextCharacterFactV2
+export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
+    textRunId: string | null;
 }
 
 // export: PdfTextDirection
@@ -1028,6 +1145,7 @@ export declare function applyPdfImportOverrides(document: ImportDocumentV2, pars
 
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
+export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
 
 // export: assessPdfVisualFallbacks
 export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1, "pages">, base: PdfFallbackSemanticBaseV1): PdfPageFallbackAssessmentV1[];
@@ -1070,6 +1188,9 @@ export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStruc
 // export: createPdfiumFactsAdapter
 export declare function createPdfiumFactsAdapter(config: PdfiumAdapterConfig): PdfiumFactsAdapter;
 
+// export: createPdfiumFactsAdapterV2
+export declare function createPdfiumFactsAdapterV2(config: PdfiumAdapterConfig): PdfiumFactsAdapterV2;
+
 // export: derivePdfSplitTitleRenames
 export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames: ReadonlyMap<string, string>): Promise<PdfSplitPlanV1>;
 
@@ -1084,6 +1205,9 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
+
+// export: digestPdfFactsV2
+export declare function digestPdfFactsV2(facts: PdfFactsV2, maxBytes?: number): Promise<string>;
 
 // export: encodeRgbaPng
 export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
@@ -1147,6 +1271,9 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
     allowTagged?: boolean;
 }): Promise<PdfUntaggedSemanticsV1>;
 
+// export: orderedDescendantMcidsV2
+export declare function orderedDescendantMcidsV2(node: PdfStructureNodeFactV2): number[];
+
 // export: pageHasQualifiedDigitalLayout
 export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
 
@@ -1171,6 +1298,9 @@ export declare const PDF_ANALYSIS_HARD_BUDGETS: Readonly<PdfAnalysisBudgets>;
 // export: PDF_ANALYSIS_POLICY_REVISION
 export declare const PDF_ANALYSIS_POLICY_REVISION: "atlcli.pdf-analysis-policy/1";
 
+// export: PDF_ANALYSIS_POLICY_REVISION_V2
+export declare const PDF_ANALYSIS_POLICY_REVISION_V2: "atlcli.pdf-analysis-policy/2";
+
 // export: PDF_ASSET_MATERIALIZER_REVISION
 export declare const PDF_ASSET_MATERIALIZER_REVISION: "atlcli.pdfium-asset-materializer/1";
 
@@ -1186,8 +1316,14 @@ export declare const PDF_DEGENERATE_TAG_MAX_WIDTH = 0.01;
 // export: PDF_FACTS_ADAPTER_REVISION
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
+// export: PDF_FACTS_ADAPTER_REVISION_V2
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/2";
+
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_FACTS_SCHEMA_V2
+export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 
 // export: PDF_FALLBACK_PRESENTATION_REVISION
 export declare const PDF_FALLBACK_PRESENTATION_REVISION: "atlcli.pdf-fallback-presentation/1";
@@ -1379,9 +1515,27 @@ export interface PdfAnalysisProvenanceV1 {
     capabilities: PdfEngineCapabilitiesV1;
 }
 
+// export: PdfAnalysisProvenanceV2
+export interface PdfAnalysisProvenanceV2 {
+    engine: "pdfium";
+    engineVersion: typeof PDFIUM_ENGINE_VERSION;
+    wasmSha256: typeof PDFIUM_WASM_SHA256;
+    adapterRevision: typeof PDF_FACTS_ADAPTER_REVISION_V2;
+    policyRevision: typeof PDF_ANALYSIS_POLICY_REVISION_V2;
+    optionsDigest: string;
+    capabilities: PdfEngineCapabilitiesV2;
+}
+
 // export: PdfAnalysisResultV1
 export interface PdfAnalysisResultV1 {
     facts: PdfFactsV1;
+    factsDigest: string;
+    telemetry: PdfAnalysisTelemetry;
+}
+
+// export: PdfAnalysisResultV2
+export interface PdfAnalysisResultV2 {
+    facts: PdfFactsV2;
     factsDigest: string;
     telemetry: PdfAnalysisTelemetry;
 }
@@ -1486,12 +1640,22 @@ export interface PdfEngineCapabilitiesV1 {
     activeContentExecution: false;
 }
 
+// export: PdfEngineCapabilitiesV2
+export interface PdfEngineCapabilitiesV2 extends PdfEngineCapabilitiesV1 {
+}
+
 // export: PdfEvidenceBasis
 export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
     analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV1>;
+    materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
+}
+
+// export: PdfFactsAdapterV2
+export interface PdfFactsAdapterV2 {
+    analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV2>;
     materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
 }
 
@@ -1518,6 +1682,33 @@ export interface PdfFactsV1 {
     classification: PdfDocumentClassification;
     completeness: PdfCompletenessV1;
     pages: PdfPageFactsV1[];
+    outline: Array<{
+        title: string;
+        pageIndex: number | null;
+        depth: number;
+    }>;
+    inertFeatures: {
+        javascriptActionCount: number;
+        attachmentCount: number;
+        namedDestinationCount: number;
+        formType: number;
+    };
+    loadError: number | null;
+    issues: PdfFactsIssue[];
+}
+
+// export: PdfFactsV2
+export interface PdfFactsV2 {
+    schema: typeof PDF_FACTS_SCHEMA_V2;
+    provenance: PdfAnalysisProvenanceV2;
+    inputSha256: string;
+    inputBytes: number;
+    pageCount: number;
+    tagged: boolean;
+    encrypted: boolean;
+    classification: PdfDocumentClassification;
+    completeness: PdfCompletenessV1;
+    pages: PdfPageFactsV2[];
     outline: Array<{
         title: string;
         pageIndex: number | null;
@@ -1686,6 +1877,9 @@ export interface PdfiumAdapterConfig {
 // export: PdfiumFactsAdapter
 export type PdfiumFactsAdapter = PdfFactsAdapter;
 
+// export: PdfiumFactsAdapterV2
+export type PdfiumFactsAdapterV2 = PdfFactsAdapterV2;
+
 // export: PdfMaterializedAssetV1
 export interface PdfMaterializedAssetV1 {
     requestId: string;
@@ -1734,6 +1928,12 @@ export interface PdfPageFactsV1 {
     images: PdfImageObjectFact[];
     paths: PdfPathObjectFact[];
     annotations: PdfAnnotationFact[];
+}
+
+// export: PdfPageFactsV2
+export interface PdfPageFactsV2 extends Omit<PdfPageFactsV1, "characters" | "structures"> {
+    characters: PdfTextCharacterFactV2[];
+    structures: PdfStructureNodeFactV2[];
 }
 
 // export: PdfPageFallbackAssessmentV1
@@ -1889,6 +2089,21 @@ export interface PdfStructureAttributeFact {
     value: boolean | number | string | PdfStructureAttributeFact[] | null;
 }
 
+// export: PdfStructureKidFactV2
+export type PdfStructureKidFactV2 = {
+    kind: "mcid";
+    index: number;
+    mcid: number;
+} | {
+    kind: "element";
+    index: number;
+    node: PdfStructureNodeFactV2;
+} | {
+    kind: "unresolved";
+    index: number;
+    reason: "child-handle-and-mcid-unavailable";
+};
+
 // export: PdfStructureNodeFact
 export interface PdfStructureNodeFact {
     id: string;
@@ -1902,6 +2117,20 @@ export interface PdfStructureNodeFact {
     childMcids: number[];
     attributes: PdfStructureAttributeFact[];
     children: PdfStructureNodeFact[];
+}
+
+// export: PdfStructureNodeFactV2
+export interface PdfStructureNodeFactV2 {
+    id: string;
+    type: string;
+    title: string;
+    alt: string;
+    actualText: string;
+    language: string;
+    elementId: string;
+    directMcids: number[];
+    kids: PdfStructureKidFactV2[];
+    attributes: PdfStructureAttributeFact[];
 }
 
 // export: PdfTableProjectionMode
@@ -1955,6 +2184,11 @@ export interface PdfTextCharacterFact {
     generated: boolean;
     hyphen: boolean;
     unicodeMapError: boolean;
+}
+
+// export: PdfTextCharacterFactV2
+export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
+    textRunId: string | null;
 }
 
 // export: PdfTextDirection
@@ -2087,6 +2321,7 @@ export declare function applyPdfImportOverrides(document: ImportDocumentV2, pars
 
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
+export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
 
 // export: buildPdfImportReview
 export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
@@ -2126,6 +2361,9 @@ export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStruc
 // export: createBrowserPdfiumFactsAdapter
 export declare function createBrowserPdfiumFactsAdapter(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapter;
 
+// export: createBrowserPdfiumFactsAdapterV2
+export declare function createBrowserPdfiumFactsAdapterV2(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapterV2;
+
 // export: derivePdfSplitTitleRenames
 export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames: ReadonlyMap<string, string>): Promise<PdfSplitPlanV1>;
 
@@ -2140,6 +2378,9 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
+
+// export: digestPdfFactsV2
+export declare function digestPdfFactsV2(facts: PdfFactsV2, maxBytes?: number): Promise<string>;
 
 // export: encodeRgbaPng
 export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
@@ -2191,6 +2432,9 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
     allowTagged?: boolean;
 }): Promise<PdfUntaggedSemanticsV1>;
 
+// export: orderedDescendantMcidsV2
+export declare function orderedDescendantMcidsV2(node: PdfStructureNodeFactV2): number[];
+
 // export: pageHasQualifiedDigitalLayout
 export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
 
@@ -2215,14 +2459,23 @@ export declare const PDF_ANALYSIS_HARD_BUDGETS: Readonly<PdfAnalysisBudgets>;
 // export: PDF_ANALYSIS_POLICY_REVISION
 export declare const PDF_ANALYSIS_POLICY_REVISION: "atlcli.pdf-analysis-policy/1";
 
+// export: PDF_ANALYSIS_POLICY_REVISION_V2
+export declare const PDF_ANALYSIS_POLICY_REVISION_V2: "atlcli.pdf-analysis-policy/2";
+
 // export: PDF_ASSET_MATERIALIZER_REVISION
 export declare const PDF_ASSET_MATERIALIZER_REVISION: "atlcli.pdfium-asset-materializer/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
+// export: PDF_FACTS_ADAPTER_REVISION_V2
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/2";
+
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_FACTS_SCHEMA_V2
+export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 
 // export: PDF_FIGURE_POLICY_REVISION
 export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
@@ -2402,9 +2655,27 @@ export interface PdfAnalysisProvenanceV1 {
     capabilities: PdfEngineCapabilitiesV1;
 }
 
+// export: PdfAnalysisProvenanceV2
+export interface PdfAnalysisProvenanceV2 {
+    engine: "pdfium";
+    engineVersion: typeof PDFIUM_ENGINE_VERSION;
+    wasmSha256: typeof PDFIUM_WASM_SHA256;
+    adapterRevision: typeof PDF_FACTS_ADAPTER_REVISION_V2;
+    policyRevision: typeof PDF_ANALYSIS_POLICY_REVISION_V2;
+    optionsDigest: string;
+    capabilities: PdfEngineCapabilitiesV2;
+}
+
 // export: PdfAnalysisResultV1
 export interface PdfAnalysisResultV1 {
     facts: PdfFactsV1;
+    factsDigest: string;
+    telemetry: PdfAnalysisTelemetry;
+}
+
+// export: PdfAnalysisResultV2
+export interface PdfAnalysisResultV2 {
+    facts: PdfFactsV2;
     factsDigest: string;
     telemetry: PdfAnalysisTelemetry;
 }
@@ -2509,12 +2780,22 @@ export interface PdfEngineCapabilitiesV1 {
     activeContentExecution: false;
 }
 
+// export: PdfEngineCapabilitiesV2
+export interface PdfEngineCapabilitiesV2 extends PdfEngineCapabilitiesV1 {
+}
+
 // export: PdfEvidenceBasis
 export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
     analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV1>;
+    materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
+}
+
+// export: PdfFactsAdapterV2
+export interface PdfFactsAdapterV2 {
+    analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV2>;
     materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
 }
 
@@ -2541,6 +2822,33 @@ export interface PdfFactsV1 {
     classification: PdfDocumentClassification;
     completeness: PdfCompletenessV1;
     pages: PdfPageFactsV1[];
+    outline: Array<{
+        title: string;
+        pageIndex: number | null;
+        depth: number;
+    }>;
+    inertFeatures: {
+        javascriptActionCount: number;
+        attachmentCount: number;
+        namedDestinationCount: number;
+        formType: number;
+    };
+    loadError: number | null;
+    issues: PdfFactsIssue[];
+}
+
+// export: PdfFactsV2
+export interface PdfFactsV2 {
+    schema: typeof PDF_FACTS_SCHEMA_V2;
+    provenance: PdfAnalysisProvenanceV2;
+    inputSha256: string;
+    inputBytes: number;
+    pageCount: number;
+    tagged: boolean;
+    encrypted: boolean;
+    classification: PdfDocumentClassification;
+    completeness: PdfCompletenessV1;
+    pages: PdfPageFactsV2[];
     outline: Array<{
         title: string;
         pageIndex: number | null;
@@ -2698,6 +3006,9 @@ export interface PdfiumAdapterConfig {
 // export: PdfiumFactsAdapter
 export type PdfiumFactsAdapter = PdfFactsAdapter;
 
+// export: PdfiumFactsAdapterV2
+export type PdfiumFactsAdapterV2 = PdfFactsAdapterV2;
+
 // export: PdfMaterializedAssetV1
 export interface PdfMaterializedAssetV1 {
     requestId: string;
@@ -2746,6 +3057,12 @@ export interface PdfPageFactsV1 {
     images: PdfImageObjectFact[];
     paths: PdfPathObjectFact[];
     annotations: PdfAnnotationFact[];
+}
+
+// export: PdfPageFactsV2
+export interface PdfPageFactsV2 extends Omit<PdfPageFactsV1, "characters" | "structures"> {
+    characters: PdfTextCharacterFactV2[];
+    structures: PdfStructureNodeFactV2[];
 }
 
 // export: PdfPageKind
@@ -2891,6 +3208,21 @@ export interface PdfStructureAttributeFact {
     value: boolean | number | string | PdfStructureAttributeFact[] | null;
 }
 
+// export: PdfStructureKidFactV2
+export type PdfStructureKidFactV2 = {
+    kind: "mcid";
+    index: number;
+    mcid: number;
+} | {
+    kind: "element";
+    index: number;
+    node: PdfStructureNodeFactV2;
+} | {
+    kind: "unresolved";
+    index: number;
+    reason: "child-handle-and-mcid-unavailable";
+};
+
 // export: PdfStructureNodeFact
 export interface PdfStructureNodeFact {
     id: string;
@@ -2904,6 +3236,20 @@ export interface PdfStructureNodeFact {
     childMcids: number[];
     attributes: PdfStructureAttributeFact[];
     children: PdfStructureNodeFact[];
+}
+
+// export: PdfStructureNodeFactV2
+export interface PdfStructureNodeFactV2 {
+    id: string;
+    type: string;
+    title: string;
+    alt: string;
+    actualText: string;
+    language: string;
+    elementId: string;
+    directMcids: number[];
+    kids: PdfStructureKidFactV2[];
+    attributes: PdfStructureAttributeFact[];
 }
 
 // export: PdfTableProjectionMode
@@ -2957,6 +3303,11 @@ export interface PdfTextCharacterFact {
     generated: boolean;
     hyphen: boolean;
     unicodeMapError: boolean;
+}
+
+// export: PdfTextCharacterFactV2
+export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
+    textRunId: string | null;
 }
 
 // export: PdfTextDirection
@@ -3086,6 +3437,7 @@ export declare function applyPdfImportOverrides(document: ImportDocumentV2, pars
 
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
+export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
 
 // export: assessPdfVisualFallbacks
 export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1, "pages">, base: PdfFallbackSemanticBaseV1): PdfPageFallbackAssessmentV1[];
@@ -3128,8 +3480,14 @@ export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStruc
 // export: createNodePdfiumFactsAdapter
 export declare function createNodePdfiumFactsAdapter(): Promise<PdfiumFactsAdapter>;
 
+// export: createNodePdfiumFactsAdapterV2
+export declare function createNodePdfiumFactsAdapterV2(): Promise<PdfiumFactsAdapterV2>;
+
 // export: createPdfiumFactsAdapter
 export declare function createPdfiumFactsAdapter(config: PdfiumAdapterConfig): PdfiumFactsAdapter;
+
+// export: createPdfiumFactsAdapterV2
+export declare function createPdfiumFactsAdapterV2(config: PdfiumAdapterConfig): PdfiumFactsAdapterV2;
 
 // export: derivePdfSplitTitleRenames
 export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames: ReadonlyMap<string, string>): Promise<PdfSplitPlanV1>;
@@ -3145,6 +3503,9 @@ export declare function digestPdfCanonical(value: unknown, maxBytes?: number): P
 
 // export: digestPdfFacts
 export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Promise<string>;
+
+// export: digestPdfFactsV2
+export declare function digestPdfFactsV2(facts: PdfFactsV2, maxBytes?: number): Promise<string>;
 
 // export: encodeRgbaPng
 export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
@@ -3211,6 +3572,9 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
     allowTagged?: boolean;
 }): Promise<PdfUntaggedSemanticsV1>;
 
+// export: orderedDescendantMcidsV2
+export declare function orderedDescendantMcidsV2(node: PdfStructureNodeFactV2): number[];
+
 // export: pageHasQualifiedDigitalLayout
 export declare function pageHasQualifiedDigitalLayout(page: PdfPageFactsV1): boolean;
 
@@ -3235,6 +3599,9 @@ export declare const PDF_ANALYSIS_HARD_BUDGETS: Readonly<PdfAnalysisBudgets>;
 // export: PDF_ANALYSIS_POLICY_REVISION
 export declare const PDF_ANALYSIS_POLICY_REVISION: "atlcli.pdf-analysis-policy/1";
 
+// export: PDF_ANALYSIS_POLICY_REVISION_V2
+export declare const PDF_ANALYSIS_POLICY_REVISION_V2: "atlcli.pdf-analysis-policy/2";
+
 // export: PDF_ASSET_MATERIALIZER_REVISION
 export declare const PDF_ASSET_MATERIALIZER_REVISION: "atlcli.pdfium-asset-materializer/1";
 
@@ -3250,8 +3617,14 @@ export declare const PDF_DEGENERATE_TAG_MAX_WIDTH = 0.01;
 // export: PDF_FACTS_ADAPTER_REVISION
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
+// export: PDF_FACTS_ADAPTER_REVISION_V2
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/2";
+
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
+
+// export: PDF_FACTS_SCHEMA_V2
+export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 
 // export: PDF_FALLBACK_PRESENTATION_REVISION
 export declare const PDF_FALLBACK_PRESENTATION_REVISION: "atlcli.pdf-fallback-presentation/1";
@@ -3443,9 +3816,27 @@ export interface PdfAnalysisProvenanceV1 {
     capabilities: PdfEngineCapabilitiesV1;
 }
 
+// export: PdfAnalysisProvenanceV2
+export interface PdfAnalysisProvenanceV2 {
+    engine: "pdfium";
+    engineVersion: typeof PDFIUM_ENGINE_VERSION;
+    wasmSha256: typeof PDFIUM_WASM_SHA256;
+    adapterRevision: typeof PDF_FACTS_ADAPTER_REVISION_V2;
+    policyRevision: typeof PDF_ANALYSIS_POLICY_REVISION_V2;
+    optionsDigest: string;
+    capabilities: PdfEngineCapabilitiesV2;
+}
+
 // export: PdfAnalysisResultV1
 export interface PdfAnalysisResultV1 {
     facts: PdfFactsV1;
+    factsDigest: string;
+    telemetry: PdfAnalysisTelemetry;
+}
+
+// export: PdfAnalysisResultV2
+export interface PdfAnalysisResultV2 {
+    facts: PdfFactsV2;
     factsDigest: string;
     telemetry: PdfAnalysisTelemetry;
 }
@@ -3550,12 +3941,22 @@ export interface PdfEngineCapabilitiesV1 {
     activeContentExecution: false;
 }
 
+// export: PdfEngineCapabilitiesV2
+export interface PdfEngineCapabilitiesV2 extends PdfEngineCapabilitiesV1 {
+}
+
 // export: PdfEvidenceBasis
 export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
     analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV1>;
+    materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
+}
+
+// export: PdfFactsAdapterV2
+export interface PdfFactsAdapterV2 {
+    analyze(data: Uint8Array, options?: PdfAnalysisOptions): Promise<PdfAnalysisResultV2>;
     materialize(data: Uint8Array, requests: readonly PdfAssetMaterializationRequestV1[], options?: PdfAssetMaterializationOptions): Promise<PdfMaterializedAssetV1[]>;
 }
 
@@ -3582,6 +3983,33 @@ export interface PdfFactsV1 {
     classification: PdfDocumentClassification;
     completeness: PdfCompletenessV1;
     pages: PdfPageFactsV1[];
+    outline: Array<{
+        title: string;
+        pageIndex: number | null;
+        depth: number;
+    }>;
+    inertFeatures: {
+        javascriptActionCount: number;
+        attachmentCount: number;
+        namedDestinationCount: number;
+        formType: number;
+    };
+    loadError: number | null;
+    issues: PdfFactsIssue[];
+}
+
+// export: PdfFactsV2
+export interface PdfFactsV2 {
+    schema: typeof PDF_FACTS_SCHEMA_V2;
+    provenance: PdfAnalysisProvenanceV2;
+    inputSha256: string;
+    inputBytes: number;
+    pageCount: number;
+    tagged: boolean;
+    encrypted: boolean;
+    classification: PdfDocumentClassification;
+    completeness: PdfCompletenessV1;
+    pages: PdfPageFactsV2[];
     outline: Array<{
         title: string;
         pageIndex: number | null;
@@ -3750,6 +4178,9 @@ export interface PdfiumAdapterConfig {
 // export: PdfiumFactsAdapter
 export type PdfiumFactsAdapter = PdfFactsAdapter;
 
+// export: PdfiumFactsAdapterV2
+export type PdfiumFactsAdapterV2 = PdfFactsAdapterV2;
+
 // export: PdfMaterializedAssetV1
 export interface PdfMaterializedAssetV1 {
     requestId: string;
@@ -3798,6 +4229,12 @@ export interface PdfPageFactsV1 {
     images: PdfImageObjectFact[];
     paths: PdfPathObjectFact[];
     annotations: PdfAnnotationFact[];
+}
+
+// export: PdfPageFactsV2
+export interface PdfPageFactsV2 extends Omit<PdfPageFactsV1, "characters" | "structures"> {
+    characters: PdfTextCharacterFactV2[];
+    structures: PdfStructureNodeFactV2[];
 }
 
 // export: PdfPageFallbackAssessmentV1
@@ -3953,6 +4390,21 @@ export interface PdfStructureAttributeFact {
     value: boolean | number | string | PdfStructureAttributeFact[] | null;
 }
 
+// export: PdfStructureKidFactV2
+export type PdfStructureKidFactV2 = {
+    kind: "mcid";
+    index: number;
+    mcid: number;
+} | {
+    kind: "element";
+    index: number;
+    node: PdfStructureNodeFactV2;
+} | {
+    kind: "unresolved";
+    index: number;
+    reason: "child-handle-and-mcid-unavailable";
+};
+
 // export: PdfStructureNodeFact
 export interface PdfStructureNodeFact {
     id: string;
@@ -3966,6 +4418,20 @@ export interface PdfStructureNodeFact {
     childMcids: number[];
     attributes: PdfStructureAttributeFact[];
     children: PdfStructureNodeFact[];
+}
+
+// export: PdfStructureNodeFactV2
+export interface PdfStructureNodeFactV2 {
+    id: string;
+    type: string;
+    title: string;
+    alt: string;
+    actualText: string;
+    language: string;
+    elementId: string;
+    directMcids: number[];
+    kids: PdfStructureKidFactV2[];
+    attributes: PdfStructureAttributeFact[];
 }
 
 // export: PdfTableProjectionMode
@@ -4019,6 +4485,11 @@ export interface PdfTextCharacterFact {
     generated: boolean;
     hyphen: boolean;
     unicodeMapError: boolean;
+}
+
+// export: PdfTextCharacterFactV2
+export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
+    textRunId: string | null;
 }
 
 // export: PdfTextDirection

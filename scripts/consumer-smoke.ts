@@ -448,15 +448,20 @@ import {
 } from "@atlcli/import-core";
 import {
   PDF_FACTS_SCHEMA_V1,
+  PDF_FACTS_SCHEMA_V2,
   createPdfiumFactsAdapter,
+  createPdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
   normalizeUntaggedPdfFacts,
   preservePdfFigures,
   type PdfFigureSemanticsV1,
+  type PdfFactsAdapterV2,
   type PdfFactsV1,
+  type PdfFactsV2,
   type PdfTaggedSemanticsV1,
   type PdfUntaggedSemanticsV1,
 } from "@atlcli/import-pdf";
+import { createNodePdfiumFactsAdapterV2 } from "@atlcli/import-pdf/node";
 import { renderDiagram, type DiagramRenderResult } from "@atlcli/diagram";
 import type { AtlcliPlugin } from "@atlcli/plugin-api";
 
@@ -502,7 +507,10 @@ const surfaces: unknown[] = [
   IMPORT_DOCUMENT_SCHEMA_V2,
   documentToAdf,
   PDF_FACTS_SCHEMA_V1,
+  PDF_FACTS_SCHEMA_V2,
   createPdfiumFactsAdapter,
+  createPdfiumFactsAdapterV2,
+  createNodePdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
   normalizeUntaggedPdfFacts,
   preservePdfFigures,
@@ -529,6 +537,8 @@ const _importDocument: ImportDocumentV2 = {
   issues: [],
 };
 const _pdfFacts: PdfFactsV1 | null = null;
+const _pdfFactsV2: PdfFactsV2 | null = null;
+const _pdfFactsAdapterV2: PdfFactsAdapterV2 | null = null;
 const _pdfTagged: PdfTaggedSemanticsV1 | null = null;
 const _pdfUntagged: PdfUntaggedSemanticsV1 | null = null;
 const _pdfFigures: PdfFigureSemanticsV1 | null = null;
@@ -538,6 +548,8 @@ const _envParts: [TemplateSource, OutputSink, PdfExportEnv, PdfCompilePort, PdfC
 void surfaces;
 void _importDocument;
 void _pdfFacts;
+void _pdfFactsV2;
+void _pdfFactsAdapterV2;
 void _pdfTagged;
 void _pdfUntagged;
 void _pdfFigures;

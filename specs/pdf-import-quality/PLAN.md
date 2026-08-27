@@ -1,6 +1,6 @@
 # PDF import quality: evidence-based text and structure reconstruction
 
-Status: **Implementation in progress** (PIQ-00 and PIQ-01 complete, 2026-08-27)
+Status: **Implementation in progress** (PIQ-00 through PIQ-02 complete, 2026-08-27)
 
 Planned at: `cb981dea1f83d4dd5e17932239e42f99a1a607c7`
 (`feat(drawio): add Draw.io previews and Confluence sync integration (#197)`)
@@ -21,7 +21,7 @@ and cross-host PDFium parity all change together.
 |---|---|---|
 | PIQ-00 | DONE | `DRIFT.md`; `EVIDENCE.md#piq-00` |
 | PIQ-01 | DONE | `EVIDENCE.md#piq-01` |
-| PIQ-02 | TODO | - |
+| PIQ-02 | DONE | `EVIDENCE.md#piq-02` |
 | PIQ-03 | TODO | - |
 | PIQ-04 | TODO | - |
 | PIQ-05 | TODO | - |

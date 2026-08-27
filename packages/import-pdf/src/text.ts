@@ -2,6 +2,7 @@ import type {
   PdfNormalizedRect,
   PdfPageFactsV1,
   PdfStructureNodeFact,
+  PdfStructureNodeFactV2,
   PdfTextCharacterFact,
 } from "./contracts.js";
 
@@ -22,6 +23,24 @@ export function descendantMcids(node: PdfStructureNodeFact): number[] {
   return [...new Set(values.filter((value) => Number.isSafeInteger(value) && value >= 0))].sort(
     (a, b) => a - b,
   );
+}
+
+/** Ordered V2 traversal uses direct MCIDs only when no ordered kid is usable. */
+export function orderedDescendantMcidsV2(node: PdfStructureNodeFactV2): number[] {
+  const values: number[] = [];
+  const visit = (current: PdfStructureNodeFactV2): void => {
+    const usableKids = current.kids.filter((kid) => kid.kind !== "unresolved");
+    if (usableKids.length === 0) {
+      values.push(...current.directMcids);
+      return;
+    }
+    for (const kid of current.kids) {
+      if (kid.kind === "mcid") values.push(kid.mcid);
+      else if (kid.kind === "element") visit(kid.node);
+    }
+  };
+  visit(node);
+  return [...new Set(values.filter((value) => Number.isSafeInteger(value) && value >= 0))];
 }
 
 export function normalizePdfText(value: string): string {

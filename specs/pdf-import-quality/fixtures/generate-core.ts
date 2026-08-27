@@ -8,10 +8,16 @@ const encoder = new TextEncoder();
 
 type PdfObject = string | Uint8Array;
 
+interface UnresolvedStructKidSpec {
+  unresolved: true;
+}
+
+type StructKidSpec = number | StructNodeSpec | UnresolvedStructKidSpec;
+
 interface StructNodeSpec {
   role: string;
   page: number;
-  kids?: Array<number | StructNodeSpec>;
+  kids?: StructKidSpec[];
   alt?: string;
   actualText?: string;
   attributes?: Record<string, string | number>;
@@ -157,7 +163,7 @@ function buildDocument(spec: DocumentSpec): Uint8Array {
     parentIds.set(node, parentId);
     for (const kid of node.kids ?? []) {
       if (typeof kid === "number") mcidOwners[node.page]!.set(kid, id);
-      else allocateNode(kid, id);
+      else if (!("unresolved" in kid)) allocateNode(kid, id);
     }
   };
   if (structRootId !== null) {
@@ -206,7 +212,11 @@ function buildDocument(spec: DocumentSpec): Uint8Array {
 
   if (structRootId !== null && parentTreeId !== null) {
     for (const [node, id] of nodeIds) {
-      const kidParts = (node.kids ?? []).map((kid) => typeof kid === "number" ? String(kid) : `${nodeIds.get(kid)} 0 R`);
+      const kidParts = (node.kids ?? []).map((kid) => {
+        if (typeof kid === "number") return String(kid);
+        if ("unresolved" in kid) return "null";
+        return `${nodeIds.get(kid)} 0 R`;
+      });
       const attributes = node.attributes
         ? `/A << /O /Layout ${Object.entries(node.attributes).map(([key, value]) => `/${key} ${typeof value === "number" ? value : pdfString(value)}`).join(" ")} >>`
         : "";
@@ -473,6 +483,21 @@ export function generateCoreFixtures(): Record<keyof typeof CORE_FIXTURES, Uint8
   return Object.fromEntries(
     Object.entries(CORE_FIXTURES).map(([name, generate]) => [name, generate()]),
   ) as Record<keyof typeof CORE_FIXTURES, Uint8Array>;
+}
+
+/** Runtime-only malformed structure probe; intentionally not part of the committed PDF corpus. */
+export function generateUnresolvedStructureKidProbe(): Uint8Array {
+  return buildDocument({
+    title: "Neutral Unresolved Structure Probe",
+    tagged: true,
+    pages: [{
+      content: [
+        contentText("P", 0, "Neutral", 72, 775),
+        contentText("P", 1, "evidence.", 115, 775),
+      ],
+      structures: [{ role: "P", page: 0, kids: [0, { unresolved: true }, 1] }],
+    }],
+  });
 }
 
 async function main(): Promise<void> {

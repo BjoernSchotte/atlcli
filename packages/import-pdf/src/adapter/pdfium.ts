@@ -2,32 +2,42 @@ import { sha256Hex } from "@atlcli/core";
 import { init, type WrappedPdfiumModule } from "@embedpdf/pdfium";
 import {
   PDF_FACTS_ADAPTER_REVISION,
+  PDF_FACTS_ADAPTER_REVISION_V2,
   PDF_FACTS_SCHEMA_V1,
+  PDF_FACTS_SCHEMA_V2,
   PDF_ASSET_MATERIALIZER_REVISION,
   PDFIUM_ENGINE_VERSION,
   PDFIUM_WASM_SHA256,
   PDF_ANALYSIS_POLICY_REVISION,
+  PDF_ANALYSIS_POLICY_REVISION_V2,
   type PdfAnalysisOptions,
   type PdfAnalysisProgress,
   type PdfAnalysisResultV1,
+  type PdfAnalysisResultV2,
   type PdfAnalysisTelemetry,
   type PdfAssetMaterializationOptions,
   type PdfAssetMaterializationRequestV1,
   type PdfAnnotationFact,
   type PdfEngineCapabilitiesV1,
+  type PdfEngineCapabilitiesV2,
   type PdfFactsIssue,
   type PdfFactsV1,
+  type PdfFactsV2,
   type PdfImageObjectFact,
   type PdfMaterializedAssetV1,
   type PdfNormalizedRect,
   type PdfPathObjectFact,
   type PdfPageFactsV1,
+  type PdfPageFactsV2,
   type PdfStructureAttributeFact,
   type PdfStructureNodeFact,
+  type PdfStructureKidFactV2,
+  type PdfStructureNodeFactV2,
   type PdfTextCharacterFact,
+  type PdfTextCharacterFactV2,
 } from "../contracts.js";
 import { resolvePdfAnalysisBudgets, type PdfAnalysisBudgets } from "../budgets.js";
-import { digestPdfCanonical, digestPdfFacts } from "../canonical.js";
+import { digestPdfCanonical, digestPdfFacts, digestPdfFactsV2 } from "../canonical.js";
 import { classifyPdfDocument, classifyPdfPage } from "../classify.js";
 import { PdfImportError, isPdfImportError } from "../issues.js";
 import { encodeRgbaPng } from "../fallbacks.js";
@@ -36,6 +46,7 @@ import type {
   PdfiumAdapterTestConfig,
   PdfiumFailureStage,
   PdfiumFactsAdapter,
+  PdfiumFactsAdapterV2,
 } from "./contracts.js";
 
 const PAGE_OBJECT_IMAGE = 3;
@@ -60,6 +71,7 @@ const CAPABILITIES: PdfEngineCapabilitiesV1 = Object.freeze({
   ocr: false,
   activeContentExecution: false,
 });
+const CAPABILITIES_V2: PdfEngineCapabilitiesV2 = CAPABILITIES;
 
 interface PdfiumMemory {
   HEAPU8: Uint8Array;
@@ -392,14 +404,14 @@ function structureAttributes(
   return result;
 }
 
-function structureNode(
+function structureNodeV2(
   module: WrappedPdfiumModule,
   element: number,
   pageIndex: number,
   path: number[],
   control: Control,
   pageCounter: { value: number },
-): PdfStructureNodeFact {
+): PdfStructureNodeFactV2 {
   const depth = path.length;
   budget(
     depth <= control.budgets.maxStructureDepth,
@@ -425,28 +437,34 @@ function structureNode(
   );
   countEvidence(control);
 
-  const mcids: number[] = [];
+  const directMcids: number[] = [];
   const markedCount = Math.max(0, module.FPDF_StructElement_GetMarkedContentIdCount(element));
   for (let index = 0; index < markedCount; index += 1) {
     const mcid = module.FPDF_StructElement_GetMarkedContentIdAtIndex(element, index);
-    if (mcid >= 0) mcids.push(mcid);
+    if (mcid >= 0) directMcids.push(mcid);
   }
-  if (mcids.length === 0) {
+  if (directMcids.length === 0) {
     const mcid = module.FPDF_StructElement_GetMarkedContentID(element);
-    if (mcid >= 0) mcids.push(mcid);
+    if (mcid >= 0) directMcids.push(mcid);
   }
 
-  const children: PdfStructureNodeFact[] = [];
-  const childMcids: number[] = [];
+  const kids: PdfStructureKidFactV2[] = [];
   const childCount = Math.max(0, module.FPDF_StructElement_CountChildren(element));
   for (let index = 0; index < childCount; index += 1) {
     check(control, "structure-child");
     const child = module.FPDF_StructElement_GetChildAtIndex(element, index);
-    if (child) children.push(structureNode(module, child, pageIndex, [...path, index], control, pageCounter));
-    else {
-      const mcid = module.FPDF_StructElement_GetChildMarkedContentID(element, index);
-      if (mcid >= 0) childMcids.push(mcid);
+    if (child) {
+      kids.push({
+        kind: "element",
+        index,
+        node: structureNodeV2(module, child, pageIndex, [...path, index], control, pageCounter),
+      });
+      continue;
     }
+    const mcid = module.FPDF_StructElement_GetChildMarkedContentID(element, index);
+    kids.push(mcid >= 0
+      ? { kind: "mcid", index, mcid }
+      : { kind: "unresolved", index, reason: "child-handle-and-mcid-unavailable" });
   }
   return {
     id: `pdf:p${pageIndex}:struct:${path.join(".")}`,
@@ -456,19 +474,18 @@ function structureNode(
     actualText: readUtf16(module, (pointer, bytes) => module.FPDF_StructElement_GetActualText(element, pointer, bytes)),
     language: readUtf16(module, (pointer, bytes) => module.FPDF_StructElement_GetLang(element, pointer, bytes)),
     elementId: readUtf16(module, (pointer, bytes) => module.FPDF_StructElement_GetID(element, pointer, bytes)),
-    mcids,
-    childMcids,
+    directMcids,
+    kids,
     attributes: structureAttributes(module, element, control),
-    children,
   };
 }
 
-function extractStructures(
+function extractStructuresV2(
   module: WrappedPdfiumModule,
   page: number,
   pageIndex: number,
   control: Control,
-): PdfStructureNodeFact[] {
+): PdfStructureNodeFactV2[] {
   const tree = module.FPDF_StructTree_GetForPage(page);
   if (!tree) return [];
   try {
@@ -483,21 +500,21 @@ function extractStructures(
           index,
         });
       }
-      return structureNode(module, child, pageIndex, [index], control, pageCounter);
+      return structureNodeV2(module, child, pageIndex, [index], control, pageCounter);
     });
   } finally {
     module.FPDF_StructTree_Close(tree);
   }
 }
 
-function extractText(
+function extractTextV2(
   module: WrappedPdfiumModule,
   page: number,
   pageIndex: number,
   pageWidth: number,
   pageHeight: number,
   control: Control,
-): { text: string; characters: PdfTextCharacterFact[] } {
+): { text: string; characters: PdfTextCharacterFactV2[] } {
   const textPage = module.FPDFText_LoadPage(page);
   if (!textPage) return { text: "", characters: [] };
   try {
@@ -518,13 +535,24 @@ function extractText(
       control.budgets.maxTextItemsTotal,
     );
     countEvidence(control, count);
-    const characters: PdfTextCharacterFact[] = [];
+    const characters: PdfTextCharacterFactV2[] = [];
+    const textRunIds = new Map<number, string>();
+    let nextTextRunOrdinal = 0;
     for (let index = 0; index < count; index += 1) {
       if ((index & 1023) === 0) check(control, "text-characters");
       const unicode = module.FPDFText_GetUnicode(textPage, index);
       const textObject = module.FPDFText_GetTextObject(textPage, index);
       const raw = rawCharacterRect(module, textPage, index);
       const mcid = textObject ? module.FPDFPageObj_GetMarkedContentID(textObject) : -1;
+      let textRunId: string | null = null;
+      if (textObject) {
+        textRunId = textRunIds.get(textObject) ?? null;
+        if (textRunId === null) {
+          textRunId = `pdf:p${pageIndex}:text-run:${nextTextRunOrdinal}`;
+          nextTextRunOrdinal += 1;
+          textRunIds.set(textObject, textRunId);
+        }
+      }
       characters.push({
         index,
         unicode,
@@ -534,6 +562,7 @@ function extractText(
         fontWeight: Math.max(0, module.FPDFText_GetFontWeight(textPage, index)),
         angleRadians: round(module.FPDFText_GetCharAngle(textPage, index), 6),
         mcid: mcid >= 0 ? mcid : null,
+        textRunId,
         generated: module.FPDFText_IsGenerated(textPage, index) > 0,
         hyphen: module.FPDFText_IsHyphen(textPage, index) > 0,
         unicodeMapError: module.FPDFText_HasUnicodeMapError(textPage, index) > 0,
@@ -844,12 +873,13 @@ function sanitizedEngineError(error: unknown, stage: string): PdfImportError {
   return new PdfImportError("pdf/engine-failure", "PDFium analysis failed.", { stage });
 }
 
-async function analyzePdfium(
+async function analyzePdfiumV2(
   data: Uint8Array,
   wasmBinary: Uint8Array,
   options: PdfAnalysisOptions,
   failAt?: PdfiumFailureStage,
-): Promise<PdfAnalysisResultV1> {
+  factsDigestMaxBytes?: number,
+): Promise<PdfAnalysisResultV2> {
   const budgets = resolvePdfAnalysisBudgets(options.budgets);
   validateInput(data, budgets);
   const actualWasmDigest = await sha256Hex(wasmBinary);
@@ -859,7 +889,7 @@ async function analyzePdfium(
   const optionsDigest = await digestPdfCanonical({
     budgetRevision: "atlcli.pdf-analysis-budgets/1",
     budgets,
-    policyRevision: PDF_ANALYSIS_POLICY_REVISION,
+    policyRevision: PDF_ANALYSIS_POLICY_REVISION_V2,
   });
   const started = now();
   const telemetry: PdfAnalysisTelemetry = {
@@ -917,16 +947,16 @@ async function analyzePdfium(
       engine: "pdfium" as const,
       engineVersion: PDFIUM_ENGINE_VERSION,
       wasmSha256: PDFIUM_WASM_SHA256,
-      adapterRevision: PDF_FACTS_ADAPTER_REVISION,
-      policyRevision: PDF_ANALYSIS_POLICY_REVISION,
+      adapterRevision: PDF_FACTS_ADAPTER_REVISION_V2,
+      policyRevision: PDF_ANALYSIS_POLICY_REVISION_V2,
       optionsDigest,
-      capabilities: CAPABILITIES,
+      capabilities: CAPABILITIES_V2,
     };
     if (!document) {
       const loadError = module.FPDF_GetLastError();
       const encrypted = loadError === PDFIUM_LOAD_ERROR_PASSWORD;
-      const facts: PdfFactsV1 = {
-        schema: PDF_FACTS_SCHEMA_V1,
+      const facts: PdfFactsV2 = {
+        schema: PDF_FACTS_SCHEMA_V2,
         provenance,
         inputSha256,
         inputBytes: data.byteLength,
@@ -954,7 +984,10 @@ async function analyzePdfium(
           context: { loadError },
         }],
       };
-      const factsDigest = await digestPdfFacts(facts, budgets.maxCanonicalBytes);
+      const factsDigest = await digestPdfFactsV2(
+        facts,
+        factsDigestMaxBytes ?? budgets.maxCanonicalBytes,
+      );
       return { facts, factsDigest, telemetry };
     }
     check(control, "after-load");
@@ -973,7 +1006,7 @@ async function analyzePdfium(
       outcome: "reported",
       message: "The selected public PDFium contract exposes page-object summaries, not an operator list.",
     }];
-    const pages: PdfPageFactsV1[] = [];
+    const pages: PdfPageFactsV2[] = [];
     const pagesStarted = now();
     for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
       check(control, "page-loop");
@@ -1019,8 +1052,8 @@ async function analyzePdfium(
             module!.FPDFPage_GetArtBox(page, pointer, pointer + 4, pointer + 8, pointer + 12),
           ),
         };
-        const text = extractText(module, page, pageIndex, widthPoints, heightPoints, control);
-        const structures = extractStructures(module, page, pageIndex, control);
+        const text = extractTextV2(module, page, pageIndex, widthPoints, heightPoints, control);
+        const structures = extractStructuresV2(module, page, pageIndex, control);
         const objects = extractObjects(module, page, pageIndex, widthPoints, heightPoints, control);
         const annotations = extractAnnotations(
           module,
@@ -1117,8 +1150,8 @@ async function analyzePdfium(
       budgets.maxEvidenceEntries,
     );
     countEvidence(control, issues.length);
-    const facts: PdfFactsV1 = {
-      schema: PDF_FACTS_SCHEMA_V1,
+    const facts: PdfFactsV2 = {
+      schema: PDF_FACTS_SCHEMA_V2,
       provenance,
       inputSha256,
       inputBytes: data.byteLength,
@@ -1138,7 +1171,10 @@ async function analyzePdfium(
       loadError: null,
       issues,
     };
-    const factsDigest = await digestPdfFacts(facts, budgets.maxCanonicalBytes);
+    const factsDigest = await digestPdfFactsV2(
+      facts,
+      factsDigestMaxBytes ?? budgets.maxCanonicalBytes,
+    );
     check(control, "facts-digest");
     emit(options, { phase: "complete", completedPages, totalPages });
     return { facts, factsDigest, telemetry };
@@ -1152,6 +1188,117 @@ async function analyzePdfium(
     telemetry.totalMs = round(now() - started);
     emit(options, { phase: "cleanup", completedPages, totalPages });
   }
+}
+
+function projectTextCharacterV1(character: PdfTextCharacterFactV2): PdfTextCharacterFact {
+  return {
+    index: character.index,
+    unicode: character.unicode,
+    value: character.value,
+    bbox: character.bbox,
+    fontSizePoints: character.fontSizePoints,
+    fontWeight: character.fontWeight,
+    angleRadians: character.angleRadians,
+    mcid: character.mcid,
+    generated: character.generated,
+    hyphen: character.hyphen,
+    unicodeMapError: character.unicodeMapError,
+  };
+}
+
+function projectStructureNodeV1(node: PdfStructureNodeFactV2): PdfStructureNodeFact {
+  return {
+    id: node.id,
+    type: node.type,
+    title: node.title,
+    alt: node.alt,
+    actualText: node.actualText,
+    language: node.language,
+    elementId: node.elementId,
+    mcids: [...node.directMcids],
+    childMcids: node.kids.flatMap((kid) => kid.kind === "mcid" ? [kid.mcid] : []),
+    attributes: node.attributes,
+    children: node.kids.flatMap((kid) =>
+      kid.kind === "element" ? [projectStructureNodeV1(kid.node)] : []
+    ),
+  };
+}
+
+function projectPageFactsV1(page: PdfPageFactsV2): PdfPageFactsV1 {
+  return {
+    index: page.index,
+    ...(page.label === undefined ? {} : { label: page.label }),
+    widthPoints: page.widthPoints,
+    heightPoints: page.heightPoints,
+    boxes: page.boxes,
+    rotation: page.rotation,
+    kind: page.kind,
+    text: page.text,
+    characters: page.characters.map(projectTextCharacterV1),
+    structures: page.structures.map(projectStructureNodeV1),
+    objectTypeCounts: page.objectTypeCounts,
+    operatorSummary: page.operatorSummary,
+    images: page.images,
+    paths: page.paths,
+    annotations: page.annotations,
+  };
+}
+
+function projectFactsV1(facts: PdfFactsV2, optionsDigest: string): PdfFactsV1 {
+  return {
+    schema: PDF_FACTS_SCHEMA_V1,
+    provenance: {
+      engine: "pdfium",
+      engineVersion: PDFIUM_ENGINE_VERSION,
+      wasmSha256: PDFIUM_WASM_SHA256,
+      adapterRevision: PDF_FACTS_ADAPTER_REVISION,
+      policyRevision: PDF_ANALYSIS_POLICY_REVISION,
+      optionsDigest,
+      capabilities: CAPABILITIES,
+    },
+    inputSha256: facts.inputSha256,
+    inputBytes: facts.inputBytes,
+    pageCount: facts.pageCount,
+    tagged: facts.tagged,
+    encrypted: facts.encrypted,
+    classification: facts.classification,
+    completeness: facts.completeness,
+    pages: facts.pages.map(projectPageFactsV1),
+    outline: facts.outline,
+    inertFeatures: facts.inertFeatures,
+    loadError: facts.loadError,
+    issues: facts.issues,
+  };
+}
+
+async function analyzePdfiumV1(
+  data: Uint8Array,
+  wasmBinary: Uint8Array,
+  options: PdfAnalysisOptions,
+  failAt?: PdfiumFailureStage,
+): Promise<PdfAnalysisResultV1> {
+  // The V1 compatibility path must enforce its own canonical-size budget on
+  // the projected V1 facts. V2-only evidence must not make an otherwise valid
+  // V1 analysis fail before that projection is available.
+  const resultV2 = await analyzePdfiumV2(
+    data,
+    wasmBinary,
+    options,
+    failAt,
+    Number.MAX_SAFE_INTEGER,
+  );
+  const budgets = resolvePdfAnalysisBudgets(options.budgets);
+  const optionsDigest = await digestPdfCanonical({
+    budgetRevision: "atlcli.pdf-analysis-budgets/1",
+    budgets,
+    policyRevision: PDF_ANALYSIS_POLICY_REVISION,
+  });
+  const facts = projectFactsV1(resultV2.facts, optionsDigest);
+  return {
+    facts,
+    factsDigest: await digestPdfFacts(facts, budgets.maxCanonicalBytes),
+    telemetry: resultV2.telemetry,
+  };
 }
 
 function pageObjectAtPath(
@@ -1445,11 +1592,19 @@ async function materializePdfium(
   }
 }
 
-function createAdapter(config: PdfiumAdapterTestConfig): PdfiumFactsAdapter {
+function createAdapter<TResult extends PdfAnalysisResultV1 | PdfAnalysisResultV2>(
+  config: PdfiumAdapterTestConfig,
+  analyzer: (
+    data: Uint8Array,
+    wasmBinary: Uint8Array,
+    options: PdfAnalysisOptions,
+    failAt?: PdfiumFailureStage,
+  ) => Promise<TResult>,
+) {
   const wasmBinary = new Uint8Array(config.wasmBinary);
   let active = false;
   return {
-    analyze(data, options = {}) {
+    analyze(data: Uint8Array, options: PdfAnalysisOptions = {}) {
       if (!(data instanceof Uint8Array)) {
         return Promise.reject(
           new PdfImportError("pdf/input-type-invalid", "PDF input must be supplied as Uint8Array bytes."),
@@ -1465,12 +1620,16 @@ function createAdapter(config: PdfiumAdapterTestConfig): PdfiumFactsAdapter {
       }
       active = true;
       const ownedData = new Uint8Array(data);
-      return analyzePdfium(ownedData, wasmBinary, options, config.failAt)
+      return analyzer(ownedData, wasmBinary, options, config.failAt)
         .finally(() => {
           active = false;
         });
     },
-    materialize(data, requests, options = {}) {
+    materialize(
+      data: Uint8Array,
+      requests: readonly PdfAssetMaterializationRequestV1[],
+      options: PdfAssetMaterializationOptions = {},
+    ) {
       if (!(data instanceof Uint8Array)) {
         return Promise.reject(
           new PdfImportError("pdf/input-type-invalid", "PDF input must be supplied as Uint8Array bytes."),
@@ -1494,10 +1653,21 @@ function createAdapter(config: PdfiumAdapterTestConfig): PdfiumFactsAdapter {
 }
 
 export function createPdfiumFactsAdapter(config: PdfiumAdapterConfig): PdfiumFactsAdapter {
-  return createAdapter(config);
+  return createAdapter(config, analyzePdfiumV1);
+}
+
+export function createPdfiumFactsAdapterV2(config: PdfiumAdapterConfig): PdfiumFactsAdapterV2 {
+  return createAdapter(config, analyzePdfiumV2);
 }
 
 /** @internal Test-only lifecycle fault injection. */
 export function createPdfiumFactsAdapterForTest(config: PdfiumAdapterTestConfig): PdfiumFactsAdapter {
-  return createAdapter(config);
+  return createAdapter(config, analyzePdfiumV1);
+}
+
+/** @internal Test-only V2 lifecycle fault injection. */
+export function createPdfiumFactsAdapterV2ForTest(
+  config: PdfiumAdapterTestConfig,
+): PdfiumFactsAdapterV2 {
+  return createAdapter(config, analyzePdfiumV2);
 }

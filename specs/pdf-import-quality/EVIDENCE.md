@@ -11,7 +11,8 @@ live URLs, page IDs, raw receipts, and private input digests are prohibited.
 |---|---|---|
 | PIQ-00 | PASS | 2026-08-27 |
 | PIQ-01 | PASS | 2026-08-27 |
-| PIQ-02 through PIQ-10 | NOT RUN | - |
+| PIQ-02 | PASS | 2026-08-27 |
+| PIQ-03 through PIQ-10 | NOT RUN | - |
 
 ## PIQ-00
 
@@ -124,3 +125,98 @@ all tasks succeeded.
 - [x] Exact truth is richer than token matching and remains importer-independent.
 - [x] Final PDFs were rendered and visually reviewed.
 - [x] Focused tests, the full importer suite, typecheck, and privacy scans pass.
+
+## PIQ-02
+
+### Additive V2 facts
+
+- V2 character facts retain a stable first-seen per-page text-run ordinal;
+  parser handles are never serialized;
+- V2 structure facts retain exact mixed child-index order, including explicit
+  unresolved gaps, and preserve direct MCIDs only as a non-duplicating fallback;
+- separate injected, Node, and browser V2 factories emit identical canonical
+  facts and digests;
+- the production factory continues to return V1 through an internal projection;
+- two pinned neutral V1 facts digests and their V1 options digest remain exact;
+- a regression gate proves that a tight canonical-size budget is applied to
+  the public V1 projection rather than the larger internal V2 evidence;
+- lifecycle fault cleanup, cancellation, hard-budget rejection, deterministic
+  recovery, and the reviewed public PDFium allowlist remain intact;
+- the public API report and reachable closure contain only the intended
+  additive import-PDF symbols and no reachable-but-unexported gaps.
+
+The unresolved-child case is generated in memory from a neutral deterministic
+probe and is not added as another committed PDF binary.
+
+### Verification
+
+```text
+bun run test packages/import-pdf/src/pdfium.test.ts \
+  packages/import-pdf/src/package-boundary.test.ts
+20 pass
+0 fail
+```
+
+```text
+bun run test packages/import-pdf
+65 pass
+0 fail
+767 expect() calls
+```
+
+```text
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun scripts/api-report.ts --update
+bun scripts/api-closure.ts --update
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun run build:browser-export-harness
+1 successful task
+0 failed tasks
+
+bun run test:browser-export-harness
+6 pass
+0 fail
+```
+
+The browser E2E required execution outside the filesystem/network sandbox so
+its local server could bind its loopback port. No external service or private
+input was used.
+
+```text
+bun scripts/consumer-smoke-vite.ts
+Vite 8.1.4 tarball consumer PASS
+V1 and V2 browser facts surfaces loaded from built package output
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
+The build and typecheck emitted only non-fatal restricted-cache IO warnings
+after all tasks succeeded.
+
+### PIQ-02 gate
+
+- [x] V2 facts and injected, Node, and browser factories are additive.
+- [x] Stable text runs and exact mixed structure-child order are deterministic.
+- [x] Unusable child positions remain explicit and direct fallback does not
+      duplicate usable ordered MCIDs.
+- [x] Existing V1 schema, revisions, factory type, representative digests, and
+      canonical-size budget behavior remain stable.
+- [x] Browser/Node parity, lifecycle, cancellation, hard budgets, and PDFium
+      package boundaries pass.
+- [x] Public API report, reachable closure, built tarball consumer, full
+      importer suite, build, typecheck, and privacy boundary pass.
