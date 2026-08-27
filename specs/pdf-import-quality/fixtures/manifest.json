@@ -143,6 +143,7 @@
             "basis": [
               "hyphen",
               "structure-order",
+              "baseline",
               "script"
             ]
           }
