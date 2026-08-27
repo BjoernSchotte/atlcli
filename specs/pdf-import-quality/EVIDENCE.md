@@ -677,6 +677,142 @@ evidence.
       gates pass.
 - [x] No customer PDF or customer-derived artifact entered Git or evidence.
 
+## PIQ-08
+
+PIQ-08 is complete. Production preview now uses a versioned V3 review schema
+that surfaces source-fidelity quality separately from the unchanged
+Confluence semantic-readback transport check.
+
+### Versioned source-fidelity review
+
+- V1 and V2 review contracts remain callable and retain their prior report and
+  terminal behavior. V3 upgrades the completed V2 analysis without changing
+  projected blocks, assets, split assignments, or publisher readback;
+- every V3 page reports explicit, inferred, dehyphenated, and unresolved
+  boundaries; tagged, geometry, and fallback character owners; duplicate and
+  unowned characters; reported residuals; geometry-repaired characters and
+  regions; fallback scope; and normalized fallback area;
+- dehyphenation is explicitly a visible subset of inferred boundaries, so the
+  established V2 inferred count remains compatible;
+- each page has a body-free fidelity decision code:
+  `pdf/source-fidelity-accounted`, `pdf/text-boundary-unresolved`, or
+  `pdf/character-ownership-failed`;
+- ownership failures add the warning issue
+  `pdf-import/character-ownership-failed` with page index and counts only. The
+  existing `pdf-import/text-boundary-unresolved` issue remains authoritative;
+- `--unsupported fail` now adds page-labelled, code-labelled blockers for
+  every unresolved boundary and every duplicate/unowned character;
+- all new page counts, decision codes, issue summaries, blockers, and the V3
+  review-policy revision participate in the semantic and plan digests;
+- JSON and terminal preview contain bounded counts, labels, codes, locators,
+  and normalized areas, never the affected source body;
+- CLI and the neutral executable quality gate use V3. The public Node and
+  browser tarball consumers both exercise the new surface;
+- the documentation now distinguishes extraction fidelity from Confluence
+  semantic readback, explains hybrid/local fallback and boundary diagnostics,
+  adds merged-word/ownership troubleshooting, and repeats the prohibition on
+  committing customer PDFs or derived artifacts.
+
+The publisher and its semantic-readback implementation were not changed.
+
+### Verification
+
+```text
+bun run test packages/import-pdf/src/review-v2.test.ts \
+  apps/cli/src/commands/wiki-import-pdf.test.ts
+10 pass
+0 fail
+89 expect() calls
+```
+
+```text
+bun run docs:check
+3 files checked
+0 errors, 0 warnings, 0 hints
+```
+
+```text
+bun run check:import-pdf-quality
+7 of 7 fixture rows pass
+4 of 4 producer families pass
+all rate/F1 gates 1.0
+all loss/duplicate/false-native/unsafe-link counts 0
+
+bun run test scripts/quality/import-pdf-quality.test.ts
+3 pass
+0 fail
+54 expect() calls
+```
+
+```text
+bun run test packages/import-pdf/src \
+  scripts/quality/import-pdf-quality.test.ts \
+  apps/cli/src/commands/wiki-import-pdf.test.ts
+123 pass
+0 fail
+1130 expect() calls
+```
+
+```text
+bun --conditions=development run --cwd apps/cli src/index.ts wiki import \
+  ../../specs/pdf-import-quality/fixtures/independent-fragmented-tagged.pdf \
+  --space DOCSY --scan-policy report
+page 1: explicit 14, inferred 12, dehyphenated 1, unresolved 0
+ownership: 158/158; tagged 130, geometry 28, fallback 0, unowned 0
+repair: 28 characters in 1 region; fallback none
+decision: pdf/source-fidelity-accounted
+no extracted body emitted
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun scripts/consumer-smoke.ts
+tarball consumer smoke PASS
+DOCX smoke PASS
+PDF smoke PASS
+
+bun scripts/consumer-smoke-vite.ts
+Vite 8.1.4 tarball consumer PASS
+DOCX browser smoke PASS
+PDF browser smoke PASS
+review V3 browser decision: pdf/source-fidelity-accounted
+```
+
+Packed consumer installation used its normal host registry access. All PDF
+verification read only committed neutral fixtures. No customer PDF,
+customer-derived body, image, identifier, live URL, or private receipt entered
+Git, preview output, tests, API reports, or this evidence.
+
+### Task gate
+
+- [x] V1/V2 remain compatible and production preview uses V3.
+- [x] Every requested source-fidelity count is present per page and digest-bound.
+- [x] Unresolved boundaries and ownership failures have stable issue/decision
+      codes and fail-closed policy tests.
+- [x] Standard JSON and terminal output identify page, counts, decision, and
+      fallback scope without source body text.
+- [x] Extraction fidelity is documented separately from unchanged semantic
+      readback.
+- [x] Focused, quality, full importer, docs, typecheck, build, API, Node
+      consumer, and browser consumer gates pass.
+- [x] No customer PDF or customer-derived artifact entered Git or evidence.
+
 ## PIQ-05
 
 ### Character ownership and hybrid recovery

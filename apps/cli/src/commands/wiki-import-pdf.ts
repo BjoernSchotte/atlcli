@@ -16,7 +16,7 @@ import {
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
-  buildPdfImportReviewV2,
+  buildPdfImportReviewV3,
   createPdfiumFactsAdapterV2,
   derivePdfSplitTitleRenames,
   isPdfImportError,
@@ -278,7 +278,7 @@ export async function handlePdfWikiImport(
     const adapter = createPdfiumFactsAdapterV2({ wasmBinary: wasm });
     const sourceSha256 = await sha256Hex(bytes);
     const overrides = await loadOverrides(getFlag(flags, "overrides"), sourceSha256, opts);
-    const review = await buildPdfImportReviewV2(bytes, adapter, {
+    const review = await buildPdfImportReviewV3(bytes, adapter, {
       target,
       splitPolicy,
       titleConflict,

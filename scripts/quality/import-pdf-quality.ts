@@ -4,10 +4,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ImportBlock, ImportRun } from "@atlcli/import-core";
 import {
-  buildPdfImportReviewV2,
+  buildPdfImportReviewV3,
   parsePdfSplitPolicy,
   type PdfDecisionEvidenceV2,
-  type PdfImportReviewV2,
+  type PdfImportReviewV3,
 } from "../../packages/import-pdf/src/index.js";
 import { createNodePdfiumFactsAdapterV2 } from "../../packages/import-pdf/src/node.js";
 
@@ -86,7 +86,7 @@ export interface PdfQualityObservation {
   spans: PdfQualityExpectedSpan[];
   links: string[];
   issueCodes: string[];
-  review: PdfImportReviewV2;
+  review: PdfImportReviewV3;
 }
 
 interface MatchCounts {
@@ -254,7 +254,7 @@ export async function collectPdfQualityObservations(
   const observations: PdfQualityObservation[] = [];
   for (const fixture of manifest.fixtures) {
     const sourceBytes = new Uint8Array(await readFile(resolve(FIXTURE_ROOT, fixture.path)));
-    const review = await buildPdfImportReviewV2(sourceBytes, adapter, {
+    const review = await buildPdfImportReviewV3(sourceBytes, adapter, {
       target: {
         spaceKey: "DOCSY",
         title: `Neutral quality ${fixture.id}`,
@@ -348,7 +348,7 @@ function wordBoundaryMatches(expected: string, actual: string): MatchCounts {
 
 function expectedBoundaryExact(
   expected: readonly PdfQualityExpectedBoundary[],
-  review: PdfImportReviewV2,
+  review: PdfImportReviewV3,
 ): boolean {
   return expected.every((truth) => review.boundaries.some((actual) =>
     review.evidence.some((entry) =>
