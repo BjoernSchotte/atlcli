@@ -53,11 +53,15 @@ describe("wiki import PDF review-first planning", () => {
     await handleWikiImport([file], { space: "DOCSY", json: true }, { json: true });
     const second = JSON.parse(stdout.join(""));
     expect(first.mode).toBe("pdf-preview");
+    expect(first.schema).toBe("atlcli.pdf-import-review/2");
     expect(first.source).toMatchObject({ pageCount: 1, classification: "digital-untagged" });
     expect(first.target).toMatchObject({ spaceKey: "DOCSY", title: "simple-untagged", deployment: "unresolved-offline" });
     expect(first.split.resolved.kind).toBe("single-page");
     expect(first.split.totalWikiPages).toBe(1);
     expect(first.digests).toEqual(second.digests);
+    expect(first.quality).toMatchObject({ unresolvedBoundaryCount: 0 });
+    expect(first.quality.boundaryDecisionCount).toBeGreaterThan(0);
+    expect(first.pages[0].boundaryDecisionCount).toBe(first.quality.boundaryDecisionCount);
     expect(first.document).toBeUndefined();
     expect(first.facts).toBeUndefined();
     expect(first.split.root.blocks).toBeUndefined();

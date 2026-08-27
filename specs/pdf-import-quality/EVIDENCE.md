@@ -407,6 +407,120 @@ private input was used.
 - [x] No customer PDF or customer-derived artifact was read, staged, or
       written.
 
+## PIQ-04 production cutover
+
+PIQ-04 is complete. The tagged and geometry lanes proven in the preceding
+checkpoints now flow through one additive V2 production review contract.
+
+### Atomic V2 route
+
+- the CLI production command uses the V2 PDFium facts adapter and
+  `buildPdfImportReviewV2`; the existing V1 adapter, normalizers, review
+  builder, schemas, and digest meanings remain exported unchanged;
+- review schema `atlcli.pdf-import-review/2` binds the V2 facts digest,
+  tagged/geometry policy revision, text-assembly policy revision, semantic
+  evidence, boundary decisions, transformations, fallbacks, overrides, split
+  result, and blockers into the semantic and plan digests;
+- figure semantics have an additive `/2` schema. Tagged captions use the same
+  V2 assembly segments as published text, and new figure evidence remains a
+  valid V2 record without fabricating boundary ownership;
+- visual fallback materialization preserves V2 evidence, while fallback
+  assessment and split planning accept both versioned contracts without
+  changing their existing V1 policy meanings;
+- JSON and terminal previews expose only body-free boundary totals,
+  unresolved counts, and transformation totals. They do not include boundary
+  source text;
+- the public API report exposes explicit V1 and V2 overloads. The reachable
+  closure contains no private type gaps.
+
+The exact neutral Word producer review emits review schema `/2`, the expected
+heading, paragraphs, logical RTL, CJK, ordered list, and native two-column
+table. It reports 48 boundary decisions, zero unresolved boundaries, no
+fallback, and no publication blocker.
+
+### Verification
+
+```text
+bun run test packages/import-pdf/src/review-v2.test.ts \
+  packages/import-pdf/src/figures.test.ts \
+  packages/import-pdf/src/visual-fallbacks.test.ts \
+  apps/cli/src/commands/wiki-import-pdf.test.ts
+21 pass
+0 fail
+151 expect() calls
+```
+
+```text
+bun run test packages/import-pdf/src apps/cli/src/commands/wiki-import-pdf.test.ts
+102 pass
+0 fail
+976 expect() calls
+```
+
+```text
+bun --conditions=development run --cwd apps/cli src/index.ts wiki import \
+  ../../specs/pdf-import-quality/fixtures/producer-word.pdf \
+  --space DOCSY --json
+review schema /2
+48 boundary decisions
+0 unresolved boundaries
+1 native table
+0 fallbacks
+0 blockers
+```
+
+```text
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
+```text
+bun scripts/api-report.ts --update
+bun scripts/api-closure.ts --update
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun scripts/consumer-smoke.ts
+tarball consumer smoke PASS
+DOCX smoke PASS
+PDF smoke PASS
+skipLibCheck:false consumer typecheck PASS
+```
+
+```text
+bun run test:browser-export-harness
+6 pass
+0 fail
+```
+
+The tarball consumer required temporary-directory access and the browser E2E
+required a local loopback port outside the sandbox. No external service,
+customer PDF, customer-derived artifact, tenant identifier, or live URL was
+used or recorded.
+
+### Task gate
+
+- [x] Production facts, semantic review, policy revisions, and dependent
+      digests move together to V2.
+- [x] Tagged, geometry, link, list, and table text use the shared assembler.
+- [x] Figures and visual fallbacks retain valid V2 evidence.
+- [x] Boundary metrics are body-free in JSON and terminal previews.
+- [x] Existing V1 entry points retain their versioned behavior.
+- [x] Full importer, CLI, build, typecheck, API, packed consumer, and browser
+      gates pass.
+- [x] No customer or tenant-derived material entered Git or evidence output.
+
 ## PIQ-04 geometry-lane checkpoint
 
 This is a proven intermediate checkpoint, not completion of PIQ-04. The

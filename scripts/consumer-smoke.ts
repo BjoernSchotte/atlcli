@@ -451,15 +451,20 @@ import {
   PDF_FACTS_SCHEMA_V1,
   PDF_FACTS_SCHEMA_V2,
   assemblePdfTextV2,
+  buildPdfImportReviewV2,
   createPdfiumFactsAdapter,
   createPdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
+  normalizeTaggedPdfFactsV2,
   normalizeUntaggedPdfFacts,
+  normalizeUntaggedPdfFactsV2,
   preservePdfFigures,
+  preservePdfFiguresV2,
   type PdfFigureSemanticsV1,
   type PdfFactsAdapterV2,
   type PdfFactsV1,
   type PdfFactsV2,
+  type PdfImportReviewV2,
   type PdfTextAssemblyV2,
   type PdfTaggedSemanticsV1,
   type PdfUntaggedSemanticsV1,
@@ -513,12 +518,16 @@ const surfaces: unknown[] = [
   PDF_FACTS_SCHEMA_V2,
   PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2,
   assemblePdfTextV2,
+  buildPdfImportReviewV2,
   createPdfiumFactsAdapter,
   createPdfiumFactsAdapterV2,
   createNodePdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
+  normalizeTaggedPdfFactsV2,
   normalizeUntaggedPdfFacts,
+  normalizeUntaggedPdfFactsV2,
   preservePdfFigures,
+  preservePdfFiguresV2,
   renderDiagram,
   resolveMacroBlocks,
   packTemplate,
@@ -544,6 +553,7 @@ const _importDocument: ImportDocumentV2 = {
 const _pdfFacts: PdfFactsV1 | null = null;
 const _pdfFactsV2: PdfFactsV2 | null = null;
 const _pdfFactsAdapterV2: PdfFactsAdapterV2 | null = null;
+const _pdfImportReviewV2: PdfImportReviewV2 | null = null;
 const _pdfTextAssemblyV2: PdfTextAssemblyV2 = assemblePdfTextV2({
   sourceId: "consumer-smoke",
   characters: [],
@@ -560,6 +570,7 @@ void _importDocument;
 void _pdfFacts;
 void _pdfFactsV2;
 void _pdfFactsAdapterV2;
+void _pdfImportReviewV2;
 void _pdfTextAssemblyV2;
 void _pdfTagged;
 void _pdfUntagged;

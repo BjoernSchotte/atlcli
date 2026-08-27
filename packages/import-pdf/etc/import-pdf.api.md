@@ -56,6 +56,19 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
 
+// export: buildPdfImportReviewV2
+export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: {
+    target: PdfReviewTargetV1;
+    splitPolicy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+    readingOrder?: PdfReadingOrderModeV1;
+    scanPolicy?: PdfScanPolicyV1;
+    visualFallback?: PdfVisualFallbackModeV1;
+    unsupported?: "report" | "fail";
+    attachSource?: boolean;
+    overrides?: ParsedPdfImportOverridesV1;
+}): Promise<PdfImportReviewV2>;
+
 // export: calibrateGeometryFontSizesV2
 export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
 
@@ -181,6 +194,13 @@ export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBloc
     x: number;
     height: number;
 }>, evidence: readonly PdfDecisionEvidenceV1[]): ImportBlock[];
+export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBlock[], additions: Array<{
+    block: ImportBlock;
+    pageIndex: number;
+    y: number;
+    x: number;
+    height: number;
+}>, evidence: readonly PdfDecisionEvidenceV2[]): ImportBlock[];
 
 // export: normalizePdfText
 export declare function normalizePdfText(value: string): string;
@@ -265,6 +285,9 @@ export declare const PDF_FIGURE_POLICY_V1: Readonly<{
 // export: PDF_FIGURE_SEMANTICS_SCHEMA_V1
 export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantics/1";
 
+// export: PDF_FIGURE_SEMANTICS_SCHEMA_V2
+export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantics/2";
+
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
@@ -318,8 +341,14 @@ export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-override
 // export: PDF_IMPORT_PLAN_SCHEMA_V1
 export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
 
+// export: PDF_IMPORT_PLAN_SCHEMA_V2
+export declare const PDF_IMPORT_PLAN_SCHEMA_V2: "atlcli.pdf-import-plan/2";
+
 // export: PDF_IMPORT_REVIEW_SCHEMA_V1
 export declare const PDF_IMPORT_REVIEW_SCHEMA_V1: "atlcli.pdf-import-review/1";
+
+// export: PDF_IMPORT_REVIEW_SCHEMA_V2
+export declare const PDF_IMPORT_REVIEW_SCHEMA_V2: "atlcli.pdf-import-review/2";
 
 // export: PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES
 export declare const PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES = 200;
@@ -717,6 +746,13 @@ export interface PdfFigureBaseSemanticsV1 {
     evidence: PdfDecisionEvidenceV1[];
 }
 
+// export: PdfFigureBaseSemanticsV2
+export interface PdfFigureBaseSemanticsV2 {
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+}
+
 // export: PdfFigureDecisionV1
 export interface PdfFigureDecisionV1 {
     sourceId: string;
@@ -737,6 +773,17 @@ export interface PdfFigureSemanticsV1 {
     policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
+    figures: PdfFigureDecisionV1[];
+    semanticDigest: string;
+}
+
+// export: PdfFigureSemanticsV2
+export interface PdfFigureSemanticsV2 {
+    schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
     figures: PdfFigureDecisionV1[];
     semanticDigest: string;
 }
@@ -812,6 +859,7 @@ export interface PdfImportOverridesV1 {
 
 // export: pdfImportReviewReport
 export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
+export declare function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
 
 // export: PdfImportReviewV1
 export interface PdfImportReviewV1 {
@@ -843,6 +891,16 @@ export interface PdfImportReviewV1 {
     assetDigests: string[];
     issueDigest: string;
     planDigest: string;
+}
+
+// export: PdfImportReviewV2
+export interface PdfImportReviewV2 extends Omit<PdfImportReviewV1, "schema" | "facts" | "evidence" | "pages"> {
+    schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V2;
+    facts: PdfFactsV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: PdfTextBoundaryDecisionV2[];
+    transformations: PdfTextTransformationV2[];
+    pages: PdfPageReviewSummaryV2[];
 }
 
 // export: PDFIUM_ENGINE_VERSION
@@ -932,6 +990,12 @@ export interface PdfPageReviewSummaryV1 {
     fallback: "none" | "required" | "page-image" | "reported";
     fallbackScope: PdfFallbackScopeV1;
     fallbackReasons: string[];
+}
+
+// export: PdfPageReviewSummaryV2
+export interface PdfPageReviewSummaryV2 extends PdfPageReviewSummaryV1 {
+    boundaryDecisionCount: number;
+    unresolvedBoundaryCount: number;
 }
 
 // export: PdfPathObjectFact
@@ -1323,9 +1387,17 @@ export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocument
     policy: PdfSplitPolicyV1;
     titleConflict?: "fail" | "rename";
 }): Promise<PdfSplitPlanV1>;
+export declare function planPdfSplit(facts: PdfFactsV2, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV2[], options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+}): Promise<PdfSplitPlanV1>;
 
 // export: preservePdfFigures
 export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
+
+// export: preservePdfFiguresV2
+export declare function preservePdfFiguresV2(facts: PdfFactsV2, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, base: PdfFigureBaseSemanticsV2): Promise<PdfFigureSemanticsV2>;
 
 // export: projectTaggedList
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
@@ -1344,6 +1416,7 @@ export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, g
 
 // export: renderPdfImportReview
 export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
+export declare function renderPdfImportReview(review: PdfImportReviewV2): string;
 
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
@@ -1467,7 +1540,7 @@ export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvena
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
 
 // export: assessPdfVisualFallbacks
-export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1, "pages">, base: PdfFallbackSemanticBaseV1): PdfPageFallbackAssessmentV1[];
+export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1 | PdfFactsV2, "pages">, base: PdfFallbackSemanticBaseV1 | PdfFallbackSemanticBaseV2): PdfPageFallbackAssessmentV1[];
 
 // export: buildPdfImportReview
 export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
@@ -1481,6 +1554,19 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: buildPdfImportReviewV2
+export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: {
+    target: PdfReviewTargetV1;
+    splitPolicy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+    readingOrder?: PdfReadingOrderModeV1;
+    scanPolicy?: PdfScanPolicyV1;
+    visualFallback?: PdfVisualFallbackModeV1;
+    unsupported?: "report" | "fail";
+    attachSource?: boolean;
+    overrides?: ParsedPdfImportOverridesV1;
+}): Promise<PdfImportReviewV2>;
 
 // export: calibrateGeometryFontSizesV2
 export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
@@ -1611,6 +1697,12 @@ export declare function materializePdfVisualFallbacks(sourceBytes: Uint8Array, a
     evidence: PdfDecisionEvidenceV1[];
 }>;
 
+// export: materializePdfVisualFallbacksV2
+export declare function materializePdfVisualFallbacksV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV2[], assessments: readonly PdfPageFallbackAssessmentV1[]): Promise<{
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+}>;
+
 // export: mergePdfBlocksByEvidence
 export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBlock[], additions: Array<{
     block: ImportBlock;
@@ -1619,6 +1711,13 @@ export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBloc
     x: number;
     height: number;
 }>, evidence: readonly PdfDecisionEvidenceV1[]): ImportBlock[];
+export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBlock[], additions: Array<{
+    block: ImportBlock;
+    pageIndex: number;
+    y: number;
+    x: number;
+    height: number;
+}>, evidence: readonly PdfDecisionEvidenceV2[]): ImportBlock[];
 
 // export: normalizePdfText
 export declare function normalizePdfText(value: string): string;
@@ -1715,6 +1814,9 @@ export declare const PDF_FIGURE_POLICY_V1: Readonly<{
 // export: PDF_FIGURE_SEMANTICS_SCHEMA_V1
 export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantics/1";
 
+// export: PDF_FIGURE_SEMANTICS_SCHEMA_V2
+export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantics/2";
+
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
@@ -1768,8 +1870,14 @@ export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-override
 // export: PDF_IMPORT_PLAN_SCHEMA_V1
 export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
 
+// export: PDF_IMPORT_PLAN_SCHEMA_V2
+export declare const PDF_IMPORT_PLAN_SCHEMA_V2: "atlcli.pdf-import-plan/2";
+
 // export: PDF_IMPORT_REVIEW_SCHEMA_V1
 export declare const PDF_IMPORT_REVIEW_SCHEMA_V1: "atlcli.pdf-import-review/1";
+
+// export: PDF_IMPORT_REVIEW_SCHEMA_V2
+export declare const PDF_IMPORT_REVIEW_SCHEMA_V2: "atlcli.pdf-import-review/2";
 
 // export: PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES
 export declare const PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES = 200;
@@ -2180,11 +2288,26 @@ export type PdfFallbackSemanticBaseV1 = {
     requiresFallbackPages?: number[];
 };
 
+// export: PdfFallbackSemanticBaseV2
+export type PdfFallbackSemanticBaseV2 = {
+    evidence: PdfDecisionEvidenceV2[];
+    pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2>;
+    requiresGeometryPages?: number[];
+    requiresFallbackPages?: number[];
+};
+
 // export: PdfFigureBaseSemanticsV1
 export interface PdfFigureBaseSemanticsV1 {
     factsDigest: string;
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
+}
+
+// export: PdfFigureBaseSemanticsV2
+export interface PdfFigureBaseSemanticsV2 {
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
 }
 
 // export: PdfFigureDecisionV1
@@ -2207,6 +2330,17 @@ export interface PdfFigureSemanticsV1 {
     policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
+    figures: PdfFigureDecisionV1[];
+    semanticDigest: string;
+}
+
+// export: PdfFigureSemanticsV2
+export interface PdfFigureSemanticsV2 {
+    schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
     figures: PdfFigureDecisionV1[];
     semanticDigest: string;
 }
@@ -2282,6 +2416,7 @@ export interface PdfImportOverridesV1 {
 
 // export: pdfImportReviewReport
 export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
+export declare function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
 
 // export: PdfImportReviewV1
 export interface PdfImportReviewV1 {
@@ -2313,6 +2448,16 @@ export interface PdfImportReviewV1 {
     assetDigests: string[];
     issueDigest: string;
     planDigest: string;
+}
+
+// export: PdfImportReviewV2
+export interface PdfImportReviewV2 extends Omit<PdfImportReviewV1, "schema" | "facts" | "evidence" | "pages"> {
+    schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V2;
+    facts: PdfFactsV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: PdfTextBoundaryDecisionV2[];
+    transformations: PdfTextTransformationV2[];
+    pages: PdfPageReviewSummaryV2[];
 }
 
 // export: PDFIUM_ENGINE_VERSION
@@ -2412,6 +2557,12 @@ export interface PdfPageReviewSummaryV1 {
     fallback: "none" | "required" | "page-image" | "reported";
     fallbackScope: PdfFallbackScopeV1;
     fallbackReasons: string[];
+}
+
+// export: PdfPageReviewSummaryV2
+export interface PdfPageReviewSummaryV2 extends PdfPageReviewSummaryV1 {
+    boundaryDecisionCount: number;
+    unresolvedBoundaryCount: number;
 }
 
 // export: PdfPathObjectFact
@@ -2809,9 +2960,17 @@ export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocument
     policy: PdfSplitPolicyV1;
     titleConflict?: "fail" | "rename";
 }): Promise<PdfSplitPlanV1>;
+export declare function planPdfSplit(facts: PdfFactsV2, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV2[], options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+}): Promise<PdfSplitPlanV1>;
 
 // export: preservePdfFigures
 export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
+
+// export: preservePdfFiguresV2
+export declare function preservePdfFiguresV2(facts: PdfFactsV2, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, base: PdfFigureBaseSemanticsV2): Promise<PdfFigureSemanticsV2>;
 
 // export: projectTaggedList
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
@@ -2830,6 +2989,7 @@ export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, g
 
 // export: renderPdfImportReview
 export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
+export declare function renderPdfImportReview(review: PdfImportReviewV2): string;
 
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
@@ -2962,6 +3122,19 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
 
+// export: buildPdfImportReviewV2
+export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: {
+    target: PdfReviewTargetV1;
+    splitPolicy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+    readingOrder?: PdfReadingOrderModeV1;
+    scanPolicy?: PdfScanPolicyV1;
+    visualFallback?: PdfVisualFallbackModeV1;
+    unsupported?: "report" | "fail";
+    attachSource?: boolean;
+    overrides?: ParsedPdfImportOverridesV1;
+}): Promise<PdfImportReviewV2>;
+
 // export: calibrateGeometryFontSizesV2
 export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
 
@@ -3087,6 +3260,13 @@ export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBloc
     x: number;
     height: number;
 }>, evidence: readonly PdfDecisionEvidenceV1[]): ImportBlock[];
+export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBlock[], additions: Array<{
+    block: ImportBlock;
+    pageIndex: number;
+    y: number;
+    x: number;
+    height: number;
+}>, evidence: readonly PdfDecisionEvidenceV2[]): ImportBlock[];
 
 // export: normalizePdfText
 export declare function normalizePdfText(value: string): string;
@@ -3171,6 +3351,9 @@ export declare const PDF_FIGURE_POLICY_V1: Readonly<{
 // export: PDF_FIGURE_SEMANTICS_SCHEMA_V1
 export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantics/1";
 
+// export: PDF_FIGURE_SEMANTICS_SCHEMA_V2
+export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantics/2";
+
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
@@ -3224,8 +3407,14 @@ export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-override
 // export: PDF_IMPORT_PLAN_SCHEMA_V1
 export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
 
+// export: PDF_IMPORT_PLAN_SCHEMA_V2
+export declare const PDF_IMPORT_PLAN_SCHEMA_V2: "atlcli.pdf-import-plan/2";
+
 // export: PDF_IMPORT_REVIEW_SCHEMA_V1
 export declare const PDF_IMPORT_REVIEW_SCHEMA_V1: "atlcli.pdf-import-review/1";
+
+// export: PDF_IMPORT_REVIEW_SCHEMA_V2
+export declare const PDF_IMPORT_REVIEW_SCHEMA_V2: "atlcli.pdf-import-review/2";
 
 // export: PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES
 export declare const PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES = 200;
@@ -3623,6 +3812,13 @@ export interface PdfFigureBaseSemanticsV1 {
     evidence: PdfDecisionEvidenceV1[];
 }
 
+// export: PdfFigureBaseSemanticsV2
+export interface PdfFigureBaseSemanticsV2 {
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+}
+
 // export: PdfFigureDecisionV1
 export interface PdfFigureDecisionV1 {
     sourceId: string;
@@ -3643,6 +3839,17 @@ export interface PdfFigureSemanticsV1 {
     policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
+    figures: PdfFigureDecisionV1[];
+    semanticDigest: string;
+}
+
+// export: PdfFigureSemanticsV2
+export interface PdfFigureSemanticsV2 {
+    schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
     figures: PdfFigureDecisionV1[];
     semanticDigest: string;
 }
@@ -3718,6 +3925,7 @@ export interface PdfImportOverridesV1 {
 
 // export: pdfImportReviewReport
 export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
+export declare function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
 
 // export: PdfImportReviewV1
 export interface PdfImportReviewV1 {
@@ -3749,6 +3957,16 @@ export interface PdfImportReviewV1 {
     assetDigests: string[];
     issueDigest: string;
     planDigest: string;
+}
+
+// export: PdfImportReviewV2
+export interface PdfImportReviewV2 extends Omit<PdfImportReviewV1, "schema" | "facts" | "evidence" | "pages"> {
+    schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V2;
+    facts: PdfFactsV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: PdfTextBoundaryDecisionV2[];
+    transformations: PdfTextTransformationV2[];
+    pages: PdfPageReviewSummaryV2[];
 }
 
 // export: PDFIUM_ENGINE_VERSION
@@ -3838,6 +4056,12 @@ export interface PdfPageReviewSummaryV1 {
     fallback: "none" | "required" | "page-image" | "reported";
     fallbackScope: PdfFallbackScopeV1;
     fallbackReasons: string[];
+}
+
+// export: PdfPageReviewSummaryV2
+export interface PdfPageReviewSummaryV2 extends PdfPageReviewSummaryV1 {
+    boundaryDecisionCount: number;
+    unresolvedBoundaryCount: number;
 }
 
 // export: PdfPathObjectFact
@@ -4229,9 +4453,17 @@ export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocument
     policy: PdfSplitPolicyV1;
     titleConflict?: "fail" | "rename";
 }): Promise<PdfSplitPlanV1>;
+export declare function planPdfSplit(facts: PdfFactsV2, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV2[], options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+}): Promise<PdfSplitPlanV1>;
 
 // export: preservePdfFigures
 export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
+
+// export: preservePdfFiguresV2
+export declare function preservePdfFiguresV2(facts: PdfFactsV2, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, base: PdfFigureBaseSemanticsV2): Promise<PdfFigureSemanticsV2>;
 
 // export: projectTaggedList
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
@@ -4250,6 +4482,7 @@ export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, g
 
 // export: renderPdfImportReview
 export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
+export declare function renderPdfImportReview(review: PdfImportReviewV2): string;
 
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
@@ -4373,7 +4606,7 @@ export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvena
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
 
 // export: assessPdfVisualFallbacks
-export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1, "pages">, base: PdfFallbackSemanticBaseV1): PdfPageFallbackAssessmentV1[];
+export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1 | PdfFactsV2, "pages">, base: PdfFallbackSemanticBaseV1 | PdfFallbackSemanticBaseV2): PdfPageFallbackAssessmentV1[];
 
 // export: buildPdfImportReview
 export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
@@ -4387,6 +4620,19 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: buildPdfImportReviewV2
+export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: {
+    target: PdfReviewTargetV1;
+    splitPolicy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+    readingOrder?: PdfReadingOrderModeV1;
+    scanPolicy?: PdfScanPolicyV1;
+    visualFallback?: PdfVisualFallbackModeV1;
+    unsupported?: "report" | "fail";
+    attachSource?: boolean;
+    overrides?: ParsedPdfImportOverridesV1;
+}): Promise<PdfImportReviewV2>;
 
 // export: calibrateGeometryFontSizesV2
 export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
@@ -4526,6 +4772,12 @@ export declare function materializePdfVisualFallbacks(sourceBytes: Uint8Array, a
     evidence: PdfDecisionEvidenceV1[];
 }>;
 
+// export: materializePdfVisualFallbacksV2
+export declare function materializePdfVisualFallbacksV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV2[], assessments: readonly PdfPageFallbackAssessmentV1[]): Promise<{
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
+}>;
+
 // export: mergePdfBlocksByEvidence
 export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBlock[], additions: Array<{
     block: ImportBlock;
@@ -4534,6 +4786,13 @@ export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBloc
     x: number;
     height: number;
 }>, evidence: readonly PdfDecisionEvidenceV1[]): ImportBlock[];
+export declare function mergePdfBlocksByEvidence(baseBlocks: readonly ImportBlock[], additions: Array<{
+    block: ImportBlock;
+    pageIndex: number;
+    y: number;
+    x: number;
+    height: number;
+}>, evidence: readonly PdfDecisionEvidenceV2[]): ImportBlock[];
 
 // export: normalizePdfText
 export declare function normalizePdfText(value: string): string;
@@ -4630,6 +4889,9 @@ export declare const PDF_FIGURE_POLICY_V1: Readonly<{
 // export: PDF_FIGURE_SEMANTICS_SCHEMA_V1
 export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V1: "atlcli.pdf-figure-semantics/1";
 
+// export: PDF_FIGURE_SEMANTICS_SCHEMA_V2
+export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantics/2";
+
 // export: PDF_GEOMETRY_POLICY_REVISION
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
@@ -4683,8 +4945,14 @@ export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-override
 // export: PDF_IMPORT_PLAN_SCHEMA_V1
 export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
 
+// export: PDF_IMPORT_PLAN_SCHEMA_V2
+export declare const PDF_IMPORT_PLAN_SCHEMA_V2: "atlcli.pdf-import-plan/2";
+
 // export: PDF_IMPORT_REVIEW_SCHEMA_V1
 export declare const PDF_IMPORT_REVIEW_SCHEMA_V1: "atlcli.pdf-import-review/1";
+
+// export: PDF_IMPORT_REVIEW_SCHEMA_V2
+export declare const PDF_IMPORT_REVIEW_SCHEMA_V2: "atlcli.pdf-import-review/2";
 
 // export: PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES
 export declare const PDF_SPLIT_ABSOLUTE_MAX_WIKI_PAGES = 200;
@@ -5095,11 +5363,26 @@ export type PdfFallbackSemanticBaseV1 = {
     requiresFallbackPages?: number[];
 };
 
+// export: PdfFallbackSemanticBaseV2
+export type PdfFallbackSemanticBaseV2 = {
+    evidence: PdfDecisionEvidenceV2[];
+    pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2>;
+    requiresGeometryPages?: number[];
+    requiresFallbackPages?: number[];
+};
+
 // export: PdfFigureBaseSemanticsV1
 export interface PdfFigureBaseSemanticsV1 {
     factsDigest: string;
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
+}
+
+// export: PdfFigureBaseSemanticsV2
+export interface PdfFigureBaseSemanticsV2 {
+    factsDigest: string;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
 }
 
 // export: PdfFigureDecisionV1
@@ -5122,6 +5405,17 @@ export interface PdfFigureSemanticsV1 {
     policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
     document: ImportDocumentV2;
     evidence: PdfDecisionEvidenceV1[];
+    figures: PdfFigureDecisionV1[];
+    semanticDigest: string;
+}
+
+// export: PdfFigureSemanticsV2
+export interface PdfFigureSemanticsV2 {
+    schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V2;
+    factsDigest: string;
+    policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+    document: ImportDocumentV2;
+    evidence: PdfDecisionEvidenceV2[];
     figures: PdfFigureDecisionV1[];
     semanticDigest: string;
 }
@@ -5197,6 +5491,7 @@ export interface PdfImportOverridesV1 {
 
 // export: pdfImportReviewReport
 export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
+export declare function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
 
 // export: PdfImportReviewV1
 export interface PdfImportReviewV1 {
@@ -5228,6 +5523,16 @@ export interface PdfImportReviewV1 {
     assetDigests: string[];
     issueDigest: string;
     planDigest: string;
+}
+
+// export: PdfImportReviewV2
+export interface PdfImportReviewV2 extends Omit<PdfImportReviewV1, "schema" | "facts" | "evidence" | "pages"> {
+    schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V2;
+    facts: PdfFactsV2;
+    evidence: PdfDecisionEvidenceV2[];
+    boundaries: PdfTextBoundaryDecisionV2[];
+    transformations: PdfTextTransformationV2[];
+    pages: PdfPageReviewSummaryV2[];
 }
 
 // export: PDFIUM_ENGINE_VERSION
@@ -5327,6 +5632,12 @@ export interface PdfPageReviewSummaryV1 {
     fallback: "none" | "required" | "page-image" | "reported";
     fallbackScope: PdfFallbackScopeV1;
     fallbackReasons: string[];
+}
+
+// export: PdfPageReviewSummaryV2
+export interface PdfPageReviewSummaryV2 extends PdfPageReviewSummaryV1 {
+    boundaryDecisionCount: number;
+    unresolvedBoundaryCount: number;
 }
 
 // export: PdfPathObjectFact
@@ -5724,9 +6035,17 @@ export declare function planPdfSplit(facts: PdfFactsV1, document: ImportDocument
     policy: PdfSplitPolicyV1;
     titleConflict?: "fail" | "rename";
 }): Promise<PdfSplitPlanV1>;
+export declare function planPdfSplit(facts: PdfFactsV2, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV2[], options: {
+    rootTitle: string;
+    policy: PdfSplitPolicyV1;
+    titleConflict?: "fail" | "rename";
+}): Promise<PdfSplitPlanV1>;
 
 // export: preservePdfFigures
 export declare function preservePdfFigures(facts: PdfFactsV1, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapter, base: PdfFigureBaseSemanticsV1): Promise<PdfFigureSemanticsV1>;
+
+// export: preservePdfFiguresV2
+export declare function preservePdfFiguresV2(facts: PdfFactsV2, factsDigest: string, sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, base: PdfFigureBaseSemanticsV2): Promise<PdfFigureSemanticsV2>;
 
 // export: projectTaggedList
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
@@ -5745,6 +6064,7 @@ export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, g
 
 // export: renderPdfImportReview
 export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
+export declare function renderPdfImportReview(review: PdfImportReviewV2): string;
 
 // export: resolvePdfAnalysisBudgets
 export declare function resolvePdfAnalysisBudgets(requested: Partial<PdfAnalysisBudgets> | undefined): PdfAnalysisBudgets;
