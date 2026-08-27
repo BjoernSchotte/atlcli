@@ -22,6 +22,7 @@ export * from "./figures.js";
 export * from "./overrides.js";
 export * from "./split.js";
 export * from "./review.js";
+export * from "./hybrid.js";
 export { createPdfiumFactsAdapter, createPdfiumFactsAdapterV2 } from "./adapter/pdfium.js";
 export type {
   PdfiumAdapterConfig,
