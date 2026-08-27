@@ -34,6 +34,126 @@ from the earlier PASS rows until those tasks pass.
 | PIQ-17 | OPEN | 2026-08-27 |
 | PIQ-18 | OPEN | 2026-08-27 |
 
+## Temporary multi-engine oracle spike
+
+Result: **diagnostic architecture GO; production integration NOT proven**.
+This checkpoint does not complete PIQ-11 through PIQ-18 and does not change
+the production importer or Confluence publication path.
+
+### Design and privacy boundary
+
+- the current PDFium `2.15.0` V2 review is the production baseline;
+- PDF.js `6.1.200` supplies an independent page-structure summary;
+- Apache PDFBox `3.0.8` traverses the full document structure tree and
+  materializes table rows/cells internally;
+- Poppler `pdftotext 26.03.0` supplies independent text and bounding-box
+  coverage;
+- pdfplumber `0.11.9` supplies independent line- and text-grid candidates;
+- Docling, PaddleOCR, OCR, language models, and document-specific repair rules
+  were not used;
+- engine outputs are not combined by voting; expected structure comes from an
+  independent generator, documented standards example, or reviewed source;
+- cell text exists only in the in-memory PDFBox-to-Bun pipe. The emitted report
+  contains non-identifying labels and aggregate counts only;
+- no downloaded public PDF, generated spike PDF, render, JSON report, PDFBox
+  JAR, or private input/derivative is committed.
+
+The PDFBox application JAR was downloaded from the official Apache page and
+its published SHA-512 was verified before execution. The veraPDF corpus was
+read from its official repository at commit
+`a146f4f07c1598410630533a193c2dd4fc44419f` (CC BY 4.0).
+
+### Independent inputs and results
+
+| Input | Independent truth | Current PDFium result | Oracle result |
+|---|---|---|---|
+| generated fragmented tagged text | generator operations and structure tree | no fallback; zero unresolved structure children | PDF.js/PDFBox role-count delta `0` |
+| generated tagged structures | exactly two tables with eight cells | two editable tables; no fallback | PDFBox materializes two tables/eight cells; table-token coverage in PDFium facts `1.0` |
+| generated fragmented untagged text | generator operations and rendered page | no fallback; zero unowned characters | all lanes complete; no false structure advantage reported |
+| W3C complex table | official PDF20 example plus visual inspection: one six-column table, two header rows, four body rows, row/column spans | zero editable tables; one page fallback; four unresolved structure children | PDFBox: one table, six rows, 35 structural cells including four empty span placeholders, zero unknown children; every materialized table token occurs in PDFium facts, while raw page-plus-MCID reference overlap is `0.825` |
+| veraPDF `7.5-t01-pass-e` | atomic tagged-table pass case | one editable table; no fallback | PDFBox and pdfplumber each identify one table; exact token coverage |
+| veraPDF `7.5-t01-fail-a` | atomic PDF/UA failure case for the same visible table family | one editable table; no fallback | same import shape as the pass case; the PDF/UA conformance distinction is not itself an import-fidelity decision |
+
+pdfplumber reports four line-table candidates for the W3C page because merged
+and row-spanning cells divide the raw grid. That is useful local geometry
+evidence but not evidence for four logical tables. The documented/visual
+oracle and full structure tree determine that the page contains one table.
+
+The body-free private lane was executed locally but is deliberately excluded
+from committed counts, document characteristics, URLs, hashes, and results.
+It cannot satisfy PIQ-18 until the neutral fixture, production implementation,
+DOCSY readback, and no-fallback gates pass.
+
+### What the spike proves
+
+- the missing information is structural correlation, not missing born-digital
+  text: the full-structure adapter can materialize cell content and an
+  independent multiset check confirms that every table token exists in
+  PDFium's text stream;
+- exact cross-engine page-plus-MCID overlap is not complete even in the public
+  W3C example. Production reconciliation must classify empty/page-external
+  references and cannot assume that both parsers expose identical MCID keys;
+- a full-document structure view can expose table identity across source page
+  boundaries, which the current page-scoped failure path cannot preserve;
+- structure and local geometry provide complementary evidence: one recovers
+  authored semantics and the other localizes visible grids;
+- a separate neutral oracle IR is viable; inventing PDFium provenance for
+  another parser or selecting the majority parser would make evidence weaker;
+- the spike does not yet prove spans in ADF/Storage, production dependency
+  packaging, deterministic continuation merge, localized fallback, or live
+  Confluence fidelity.
+
+### Verification
+
+```text
+bun run test scripts/experiments/pdf-oracle-spike.test.ts
+4 pass
+0 fail
+8 expect() calls
+```
+
+```text
+bun run test packages/import-pdf scripts/experiments/pdf-oracle-spike.test.ts
+121 pass
+0 fail
+1033 expect() calls
+```
+
+```text
+bun run check:import-pdf-quality
+passed: true
+7 fixtures passed
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
+```text
+bun run test:e2e:import-pdf
+10 pass
+0 fail
+205 expect() calls
+```
+
+The live gate built the current CLI, published and independently read back only
+the existing neutral fixtures in DOCSY, and exercised its cleanup/rollback
+paths. It did not publish the private input or change the production importer.
+
+All six neutral/public runs reported `targetArchitectureCarries: true`: every
+engine completed, page counts agreed, and the PDFBox structure traversal was
+acyclic. Only the W3C case reported an actionable oracle advantage; the other
+cases act as agreement and false-positive controls.
+
+Public references:
+
+- <https://www.w3.org/WAI/WCAG22/Techniques/pdf/PDF20>
+- <https://www.w3.org/WAI/WCAG22/working-examples/pdf-complex-table/complex-table.pdf>
+- <https://github.com/veraPDF/veraPDF-corpus>
+- <https://pdfbox.apache.org/download.cgi>
+
 ## PIQ-00
 
 ### Baseline
