@@ -205,6 +205,26 @@ describe("PDF V2 text assembly", () => {
     ]);
   });
 
+  it("joins a physical line continuation after closing punctuation", () => {
+    const result = assemblePdfTextV2(input("punctuation-line-wrap", [
+      ...word("clause", 0, 0.1),
+      character(",", 6, 0.16, { run: "pdf:p0:text-run:1" }),
+      generatedWhitespace("\r", 7),
+      generatedWhitespace("\n", 8),
+      ...word("continued", 9, 0.1, { run: "pdf:p0:text-run:2", y: 0.15 }),
+    ]));
+
+    expect(result.text).toBe("clause, continued");
+    expect(result.unresolvedBoundaryCount).toBe(0);
+    expect(result.boundaries).toContainEqual(expect.objectContaining({
+      leftCharacterIndex: 6,
+      rightCharacterIndex: 9,
+      action: "join-line",
+      basis: ["generated-whitespace", "punctuation", "baseline", "script"],
+      confidence: 0.95,
+    }));
+  });
+
   it("dehyphenates generated line evidence but retains an authored hard hyphen", () => {
     const generated = assemblePdfTextV2(input("generated-hyphen", [
       ...word("coor", 0, 0.1),

@@ -3,7 +3,7 @@ import { digestPdfCanonical } from "./canonical.js";
 import type { PdfTextDirection } from "./text.js";
 
 export const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 =
-  "atlcli.pdf-text-assembly-policy/2" as const;
+  "atlcli.pdf-text-assembly-policy/3" as const;
 
 const PRESENTATION_LIGATURES = Object.freeze({
   "\ufb00": "ff",
@@ -521,12 +521,20 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
           true,
         );
       } else if (generatedWhitespace.length > 0 && relation.sameLine === false) {
-        if (wordPair && scriptMatch && !cjkPair) {
+        const punctuationLineWrap = isClosingPunctuation(previous.value)
+          && isWord(anchor.value)
+          && !isCjk(anchor.value);
+        if (wordPair && scriptMatch && !cjkPair || punctuationLineWrap) {
           addBoundary(
             previous,
             anchor,
             "join-line",
-            ["generated-whitespace", "baseline", "script"],
+            [
+              "generated-whitespace",
+              ...(punctuationLineWrap ? ["punctuation" as const] : []),
+              "baseline",
+              "script",
+            ],
             PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.lineJoin,
           );
           appendPiece(

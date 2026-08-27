@@ -12,12 +12,14 @@ import {
   PDF_UNTAGGED_SEMANTICS_SCHEMA_V2,
   type PdfFactsV1,
   type PdfPageFactsV1,
+  type PdfPageFactsV2,
   type PdfTextCharacterFact,
 } from "./contracts.js";
 import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
 import { digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
 import { normalizeUntaggedPdfFacts, normalizeUntaggedPdfFactsV2 } from "./untagged.js";
 import { PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 } from "./text-assembly.js";
+import { analyzeGeometryReadingOrderV2 } from "./reading-order.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
 const qualityFixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
@@ -130,7 +132,60 @@ async function normalizeSynthetic(page: PdfPageFactsV1) {
   return normalizeUntaggedPdfFacts(facts, await digestPdfFacts(facts));
 }
 
+function pageWithLinesV2(
+  lines: Array<{ text: string; x: number; y: number }>,
+): PdfPageFactsV2 {
+  const page = pageWithLines(lines);
+  return {
+    ...page,
+    characters: page.characters.map((character) => ({
+      ...character,
+      textRunId: character.generated ? null : `run:${character.index}`,
+    })),
+    structures: [],
+  };
+}
+
 describe("untagged PDF conservative geometry semantics", () => {
+  it("does not infer columns from an indented line and a numeric page footer", () => {
+    const analysis = analyzeGeometryReadingOrderV2(pageWithLinesV2([
+      { text: "Neutral body line one spans the available content width.", x: 0.1, y: 0.2 },
+      { text: "Neutral body line two spans the available content width.", x: 0.1, y: 0.3 },
+      { text: "Indented note", x: 0.36, y: 0.4 },
+      { text: "Neutral body line three spans the available content width.", x: 0.1, y: 0.5 },
+      { text: "Neutral body line four spans the available content width.", x: 0.1, y: 0.6 },
+      { text: "17", x: 0.87, y: 0.95 },
+    ]));
+
+    expect(analysis.columnCount).toBe(1);
+    expect(analysis.qualificationReasons).toEqual([]);
+    expect(analysis.fragments.find((fragment) => fragment.text === "17")?.furniture).toBe(true);
+    expect(analysis.ordered.map((fragment) => fragment.text)).toEqual([
+      "Neutral body line one spans the available content width.",
+      "Neutral body line two spans the available content width.",
+      "Indented note",
+      "Neutral body line three spans the available content width.",
+      "Neutral body line four spans the available content width.",
+    ]);
+  });
+
+  it("retains repeated vertically aligned V2 column evidence", () => {
+    const analysis = analyzeGeometryReadingOrderV2(pageWithLinesV2([
+      { text: "Left one", x: 0.08, y: 0.2 },
+      { text: "Right one", x: 0.56, y: 0.2 },
+      { text: "Left two", x: 0.08, y: 0.3 },
+      { text: "Right two", x: 0.56, y: 0.3 },
+      { text: "Left three", x: 0.08, y: 0.4 },
+      { text: "Right three", x: 0.56, y: 0.4 },
+    ]));
+
+    expect(analysis.columnCount).toBe(2);
+    expect(analysis.qualificationReasons).toEqual([]);
+    expect(analysis.ordered.map((fragment) => fragment.text)).toEqual([
+      "Left one", "Left two", "Left three", "Right one", "Right two", "Right three",
+    ]);
+  });
+
   it("routes clustered physical lines and paragraphs through V2 assembly", async () => {
     const adapter = await createNodePdfiumFactsAdapterV2();
     const bytes = new Uint8Array(

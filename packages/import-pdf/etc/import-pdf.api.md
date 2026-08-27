@@ -297,7 +297,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/2";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/3";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -321,6 +321,10 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly paragraphMaximumLineGapGlyphFactor: 2.4;
     readonly paragraphMaximumIndentDelta: 0.02;
     readonly paragraphMaximumFontDeltaPoints: 0.5;
+    readonly pageNumberFooterMinimumX: 0.75;
+    readonly pageNumberFooterMinimumY: 0.9;
+    readonly columnStartPrecision: 100;
+    readonly columnAlignmentGlyphFactor: 0.7;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -436,11 +440,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/2";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/3";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/2";
+    readonly revision: "atlcli.pdf-text-assembly-policy/3";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -1969,7 +1973,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/2";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/3";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -1993,6 +1997,10 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly paragraphMaximumLineGapGlyphFactor: 2.4;
     readonly paragraphMaximumIndentDelta: 0.02;
     readonly paragraphMaximumFontDeltaPoints: 0.5;
+    readonly pageNumberFooterMinimumX: 0.75;
+    readonly pageNumberFooterMinimumY: 0.9;
+    readonly columnStartPrecision: 100;
+    readonly columnAlignmentGlyphFactor: 0.7;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -2108,11 +2116,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/2";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/3";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/2";
+    readonly revision: "atlcli.pdf-text-assembly-policy/3";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -3649,7 +3657,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/2";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/3";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -3673,6 +3681,10 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly paragraphMaximumLineGapGlyphFactor: 2.4;
     readonly paragraphMaximumIndentDelta: 0.02;
     readonly paragraphMaximumFontDeltaPoints: 0.5;
+    readonly pageNumberFooterMinimumX: 0.75;
+    readonly pageNumberFooterMinimumY: 0.9;
+    readonly columnStartPrecision: 100;
+    readonly columnAlignmentGlyphFactor: 0.7;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -3788,11 +3800,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/2";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/3";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/2";
+    readonly revision: "atlcli.pdf-text-assembly-policy/3";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -5330,7 +5342,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/2";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/3";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -5354,6 +5366,10 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly paragraphMaximumLineGapGlyphFactor: 2.4;
     readonly paragraphMaximumIndentDelta: 0.02;
     readonly paragraphMaximumFontDeltaPoints: 0.5;
+    readonly pageNumberFooterMinimumX: 0.75;
+    readonly pageNumberFooterMinimumY: 0.9;
+    readonly columnStartPrecision: 100;
+    readonly columnAlignmentGlyphFactor: 0.7;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -5469,11 +5485,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/2";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/3";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/2";
+    readonly revision: "atlcli.pdf-text-assembly-policy/3";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;

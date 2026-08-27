@@ -183,7 +183,7 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     PDF_IMPORT_REVIEW_SCHEMA_V3 === "atlcli.pdf-import-review/3" &&
     PDF_TAGGED_SEMANTICS_SCHEMA_V2 === "atlcli.pdf-tagged-semantics/2" &&
     PDF_UNTAGGED_SEMANTICS_SCHEMA_V2 === "atlcli.pdf-untagged-semantics/2" &&
-    PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 === "atlcli.pdf-text-assembly-policy/2" &&
+    PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 === "atlcli.pdf-text-assembly-policy/3" &&
     typeof assemblePdfTextV2 === "function" &&
     typeof buildPdfImportReviewV3 === "function" &&
     typeof normalizeTaggedPdfFactsV2 === "function" &&

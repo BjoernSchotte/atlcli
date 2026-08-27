@@ -413,6 +413,70 @@ private input was used.
 - [x] No customer PDF or customer-derived artifact was read, staged, or
       written.
 
+## Post-implementation geometry and line-wrap hardening
+
+The completed V2 production path now rejects two additional false-positive
+fallback causes with neutral regression coverage:
+
+- a bare Roman or decimal page number is page furniture only when it is in the
+  lower-right footer zone;
+- a horizontal gap becomes a column boundary only when both start positions
+  repeat and at least two vertically aligned fragments support both sides;
+- an indented singleton therefore remains in one-column source order, while
+  repeated aligned two-column evidence retains column-first order;
+- generated physical-line whitespace after closing punctuation joins to a
+  following non-CJK word with one provenance-bound synthesized space.
+
+The geometry and shared text-assembly policy literals advance to `/3`. V1
+behavior remains unchanged, and the generated public API report records the
+new literal values.
+
+### Verification
+
+```text
+bun run test packages/import-pdf/src apps/cli/src/commands/wiki-import-pdf.test.ts
+123 pass
+0 fail
+1086 expect() calls
+```
+
+```text
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
+```text
+bun scripts/api-report.ts --update
+bun scripts/api-closure.ts --update
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun scripts/consumer-smoke-vite.ts
+Vite tarball, DOCX, and PDF smoke pass
+```
+
+```text
+bun run test:e2e:import-pdf
+10 live cases pass
+0 fail
+205 expect() calls
+owned neutral DOCSY resources cleaned up
+```
+
+No private source, derived artifact, tenant identifier, live URL, raw receipt,
+or private body was added to this evidence or to the repository.
+
 ## PIQ-10
 
 PIQ-10 is complete. The final prescribed matrix passes against the current

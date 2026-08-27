@@ -239,6 +239,10 @@ export const PDF_GEOMETRY_POLICY_V2 = Object.freeze({
   paragraphMaximumLineGapGlyphFactor: 2.4,
   paragraphMaximumIndentDelta: 0.02,
   paragraphMaximumFontDeltaPoints: 0.5,
+  pageNumberFooterMinimumX: 0.75,
+  pageNumberFooterMinimumY: 0.9,
+  columnStartPrecision: 100,
+  columnAlignmentGlyphFactor: 0.7,
 } as const);
 
 export interface PdfGeometryFragmentV2
@@ -252,6 +256,13 @@ export interface PdfReadingOrderPageV2
   extends Omit<PdfReadingOrderPageV1, "fragments" | "ordered"> {
   fragments: PdfGeometryFragmentV2[];
   ordered: PdfGeometryFragmentV2[];
+}
+
+function pageFurnitureV2(text: string, bbox: PdfNormalizedRect): boolean {
+  if (pageFurniture(text, bbox)) return true;
+  return bbox.x >= PDF_GEOMETRY_POLICY_V2.pageNumberFooterMinimumX
+    && bbox.y >= PDF_GEOMETRY_POLICY_V2.pageNumberFooterMinimumY
+    && /^[ivxlcdm\d]+$/iu.test(text.trim());
 }
 
 function isGeometryAnchorV2(character: PdfTextCharacterFactV2): boolean {
@@ -460,7 +471,7 @@ export function extractGeometryFragmentsV2(page: PdfPageFactsV2): PdfGeometryFra
         direction: assembly.direction,
         sourceOrder: fragments.length,
         column: 0,
-        furniture: pageFurniture(assembly.text, assembly.bbox),
+        furniture: pageFurnitureV2(assembly.text, assembly.bbox),
         physicalLineIndex: lineIndex,
       });
     }
@@ -479,13 +490,46 @@ function assignColumnsV2(
   const columnEvidence = content.some((fragment) => fragment.direction !== "rtl")
     ? content.filter((fragment) => fragment.direction !== "rtl")
     : content;
-  const xs = [...new Set(columnEvidence.map((fragment) => Math.round(fragment.bbox.x * 100) / 100))]
+  const startGroups = new Map<number, PdfGeometryFragmentV2[]>();
+  for (const fragment of columnEvidence) {
+    const start = Math.round(
+      fragment.bbox.x * PDF_GEOMETRY_POLICY_V2.columnStartPrecision,
+    ) / PDF_GEOMETRY_POLICY_V2.columnStartPrecision;
+    const group = startGroups.get(start) ?? [];
+    group.push(fragment);
+    startGroups.set(start, group);
+  }
+  const xs = [...startGroups.entries()]
+    .filter(([, group]) => group.length >= PDF_GEOMETRY_POLICY_V2.minimumLinesPerColumn)
+    .map(([start]) => start)
     .sort((left, right) => left - right);
   const boundaries: number[] = [];
   for (let index = 1; index < xs.length; index += 1) {
-    if (xs[index]! - xs[index - 1]! >= PDF_GEOMETRY_POLICY_V2.columnGap) {
-      boundaries.push((xs[index]! + xs[index - 1]!) / 2);
+    const leftStart = xs[index - 1]!;
+    const rightStart = xs[index]!;
+    if (rightStart - leftStart < PDF_GEOMETRY_POLICY_V2.columnGap) continue;
+    const boundary = (rightStart + leftStart) / 2;
+    const left = columnEvidence.filter((fragment) => fragment.bbox.x < boundary);
+    const right = columnEvidence.filter((fragment) => fragment.bbox.x > boundary);
+    const alignedLeft = new Set<string>();
+    const alignedRight = new Set<string>();
+    for (const leftFragment of left) {
+      for (const rightFragment of right) {
+        const centerDelta = Math.abs(
+          verticalCenter(leftFragment.bbox) - verticalCenter(rightFragment.bbox),
+        );
+        const tolerance = Math.max(leftFragment.bbox.height, rightFragment.bbox.height)
+          * PDF_GEOMETRY_POLICY_V2.columnAlignmentGlyphFactor;
+        if (centerDelta <= tolerance) {
+          alignedLeft.add(leftFragment.id);
+          alignedRight.add(rightFragment.id);
+        }
+      }
     }
+    if (
+      alignedLeft.size >= PDF_GEOMETRY_POLICY_V2.minimumLinesPerColumn
+      && alignedRight.size >= PDF_GEOMETRY_POLICY_V2.minimumLinesPerColumn
+    ) boundaries.push(boundary);
   }
   fragments.forEach((fragment) => {
     if (!fragment.furniture && !fragment.duplicateOf && !ignored.has(fragment.id)) {
