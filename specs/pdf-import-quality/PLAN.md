@@ -1,6 +1,6 @@
 # PDF import quality: evidence-based text and structure reconstruction
 
-Status: **Implementation in progress** (PIQ-00 complete, 2026-08-27)
+Status: **Implementation in progress** (PIQ-00 and PIQ-01 complete, 2026-08-27)
 
 Planned at: `cb981dea1f83d4dd5e17932239e42f99a1a607c7`
 (`feat(drawio): add Draw.io previews and Confluence sync integration (#197)`)
@@ -20,7 +20,7 @@ and cross-host PDFium parity all change together.
 | Task | Status | Evidence |
 |---|---|---|
 | PIQ-00 | DONE | `DRIFT.md`; `EVIDENCE.md#piq-00` |
-| PIQ-01 | TODO | - |
+| PIQ-01 | DONE | `EVIDENCE.md#piq-01` |
 | PIQ-02 | TODO | - |
 | PIQ-03 | TODO | - |
 | PIQ-04 | TODO | - |
@@ -127,10 +127,13 @@ public package report. Do not change their meaning while retaining their names
 and revision strings.
 
 Add V2 contracts for facts that need the new information. Keep V1 exports for
-the repository's deprecation window and update the committed API report. The
-production adapter and semantic pipeline move atomically to V2; a V1-to-V2
-adapter is required only if Task PIQ-00 finds a persisted V1 consumer. There is
-no reason to persist or round-trip V1 merely for the implementation itself.
+the repository's deprecation window and update the committed API report.
+PIQ-02 adds V2 facts, factories, and an internal V2-to-V1 projection without
+changing the production factory or V1 digests. PIQ-04 then moves the production
+adapter, semantic schemas, policy revision, and dependent digests atomically to
+V2 after the shared assembler can consume the new facts. A V1-to-V2 adapter is
+required only if Task PIQ-00 finds a persisted V1 consumer. There is no reason
+to persist or round-trip V1 merely for the implementation itself.
 
 ### 2.3 Keep source order and visual order distinct
 
@@ -327,6 +330,8 @@ version boundaries below are required.
 export const PDF_FACTS_SCHEMA_V2 = "atlcli.pdf-facts/2" as const;
 export const PDF_FACTS_ADAPTER_REVISION_V2 =
   "atlcli.pdfium-public-fpdf/2" as const;
+export const PDF_ANALYSIS_POLICY_REVISION_V2 =
+  "atlcli.pdf-analysis-policy/2" as const;
 
 export interface PdfTextCharacterFactV2 {
   index: number;
@@ -346,7 +351,12 @@ export interface PdfTextCharacterFactV2 {
 
 export type PdfStructureKidFactV2 =
   | { kind: "mcid"; index: number; mcid: number }
-  | { kind: "element"; index: number; node: PdfStructureNodeFactV2 };
+  | { kind: "element"; index: number; node: PdfStructureNodeFactV2 }
+  | {
+      kind: "unresolved";
+      index: number;
+      reason: "child-handle-and-mcid-unavailable";
+    };
 
 export interface PdfStructureNodeFactV2 {
   id: string;
@@ -369,14 +379,18 @@ Rules:
 1. The adapter assigns `textRunId` from a per-page `Map<PdfiumHandle, ordinal>`.
    The handle itself is never serialized, compared across pages, or exposed.
 2. `kids` follows `FPDF_StructElement_CountChildren` index order exactly.
-3. If the child API yields no usable entries, `directMcids` is the explicit
-   fallback. Do not append both sources and duplicate the same MCID.
+3. If a child index yields neither an element nor a usable MCID, retain an
+   `unresolved` kid at that exact index. If the complete child API yields no
+   usable entries, `directMcids` is the explicit fallback. Do not append both
+   sources and duplicate the same MCID.
 4. Logical MCID traversal preserves first occurrence. It does not numerically
    sort IDs.
-5. V2 facts, adapter revision, analysis policy, semantics schemas, and all
-   dependent digests change atomically.
-6. Update `packages/import-pdf/etc/import-pdf.api.md` with
-   `bun scripts/api-report.ts --update`; do not edit it by hand.
+5. PIQ-02 adds the complete V2 facts surface and factories while the existing
+   production factory continues to emit V1 through an internal V2-to-V1
+   projection. PIQ-04 performs the production policy/semantic cutover and all
+   dependent digest changes atomically.
+6. Update both `packages/import-pdf/etc/import-pdf.api.md` and its reachable
+   closure with the repository scripts; do not edit either report by hand.
 
 ### 5.2 Boundary decisions and assembly
 
@@ -573,7 +587,7 @@ coverage where the shared semantic document changes.
 
 Commit logical units with conventional messages such as:
 
-- `test(import-pdf): add fragmented text quality corpus`
+- `test(import-pdf): add neutral quality corpus`
 - `feat(import-pdf): preserve ordered text evidence`
 - `fix(import-pdf): reconstruct word boundaries`
 - `fix(import-pdf): localize tagged geometry repairs`
@@ -625,6 +639,11 @@ planned spec/evidence files.
 
 ### PIQ-01 - Add the neutral fragmented-text and producer corpus
 
+**Status: DONE (2026-08-27).** Four byte-deterministic Bun fixtures and three
+pinned neutral producer exports are bound by
+`specs/pdf-import-quality/fixtures/manifest.json`. The sanitized proof is in
+`specs/pdf-import-quality/EVIDENCE.md#piq-01`.
+
 Create `specs/pdf-import-quality/fixtures/` with a manifest and neutral
 authoring sources where practical. Extend the existing generator or add a
 focused generator in this directory; do not overload unrelated MVP fixtures.
@@ -670,7 +689,11 @@ present.
 ### PIQ-02 - Introduce V2 facts with ordered kids and stable text runs
 
 Modify `packages/import-pdf/src/contracts.ts` and
-`packages/import-pdf/src/adapter/pdfium.ts` to implement Section 5.1.
+`packages/import-pdf/src/adapter/pdfium.ts` to implement Section 5.1
+additively. Add separate Node and browser V2 factories plus an internal
+V2-to-V1 projection for the existing factory. Do not change V1 contract
+semantics, the production factory return type, V1 revision literals, or V1
+digests in this task; PIQ-04 owns that atomic cutover.
 
 Update all test fact builders explicitly; do not fill required V2 evidence via
 unsafe casts. Add adapter tests proving:
@@ -680,6 +703,7 @@ unsafe casts. Add adapter tests proving:
 - repeated analysis emits identical V2 facts and digest;
 - raw pointer values never appear in canonical facts;
 - mixed structure kids retain exact index order;
+- an unusable child index remains an explicit `unresolved` kid;
 - direct-MCID fallback does not duplicate IDs;
 - browser and Node adapters produce equal canonical V2 facts;
 - lifecycle, cancellation, and hard budgets still pass.
@@ -698,11 +722,15 @@ bun run test packages/import-pdf/src/pdfium.test.ts \
   packages/import-pdf/src/package-boundary.test.ts
 bun run build
 bun scripts/api-report.ts --update
+bun scripts/api-closure.ts --update
 bun run test scripts/api-report.test.ts
+bun run build:browser-export-harness
+bun run test:browser-export-harness
 ```
 
 Expected: deterministic V2 parity passes; only intended import-PDF public
-contracts and their reachable closure change.
+contracts and their reachable closure change. Existing V1 factories and
+digests remain byte-for-byte stable.
 
 ### PIQ-03 - Implement the shared text assembler
 
@@ -756,6 +784,10 @@ Replace independent text joining in:
 - `packages/import-pdf/src/untagged.ts`;
 - `packages/import-pdf/src/lists.ts`;
 - `packages/import-pdf/src/tables.ts`.
+
+At the start of this task, move the production facts factory and semantic
+pipeline atomically to V2. Change the analysis-policy and semantic schema
+revisions here, not in PIQ-02, and review every dependent digest change.
 
 Tagged correlation follows ordered V2 structure kids. Geometry analysis first
 clusters physical lines, then forms fragments and blocks. Adjacent physical

@@ -1,0 +1,33 @@
+{
+  "schema": "atlcli.import-pdf.producer-source/v1",
+  "title": "Neutral Harbor Field Notes",
+  "paragraphs": [
+    [
+      { "text": "Harbor " },
+      { "text": "signals", "bold": true },
+      { "text": " remain clear across styled text runs." }
+    ],
+    [
+      { "text": "Seasonal coordination continues safely across a visual line wrap." }
+    ],
+    [
+      { "text": "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral." }
+    ],
+    [
+      { "text": "مرحبا بالميناء" }
+    ],
+    [
+      { "text": "港の信号は明確です" }
+    ]
+  ],
+  "listItems": [
+    "Inspect the northern marker.",
+    "Record the stable reading.",
+    "Publish the neutral summary."
+  ],
+  "table": [
+    ["Zone", "Signal"],
+    ["North", "Clear"],
+    ["South", "Stable"]
+  ]
+}
