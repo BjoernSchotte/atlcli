@@ -237,11 +237,10 @@ describe("tagged PDF semantic extraction", () => {
     );
   });
 
-  it("preserves exact semantics across the pinned browser and LibreOffice producers", async () => {
+  it("preserves exact semantics across the pinned browser producer", async () => {
     const adapter = await createNodePdfiumFactsAdapterV2();
     const cases = [
       { file: "producer-browser.pdf", claimed: 352, boundaries: 82 },
-      { file: "producer-libreoffice.pdf", claimed: 349, boundaries: 53 },
     ] as const;
     for (const fixture of cases) {
       const raw = await adapter.analyze(new Uint8Array(
@@ -275,6 +274,40 @@ describe("tagged PDF semantic extraction", () => {
       expect(storage).toContain("<ol><li><p>Inspect the northern marker.</p></li>");
       expect(storage).not.toContain("<ol><li><p>1.");
     }
+  });
+
+  it("does not call a text-layer-only producer glyph run native", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "producer-libreoffice.pdf")),
+    ));
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+    const hybrid = await normalizeHybridPdfFactsV2(raw.facts, raw.factsDigest);
+    const degenerate = result.evidence.find((entry) =>
+      entry.decisionCode === "pdf/tagged-text-geometry-degenerate"
+    );
+
+    expect(result.document.blocks.map((block) => [block.type, semanticTextOf(block)]))
+      .not.toContainEqual(["paragraph", "港の信号は明確です"]);
+    expect(result.requiresGeometryPages).toEqual([0]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/tagged-text-geometry-degenerate",
+      outcome: "reported",
+      context: { pageIndex: 0, markedContentIds: 1 },
+    }));
+    expect(degenerate).toMatchObject({
+      outcome: "reported",
+      confidence: 0,
+      basis: ["structure-tree", "marked-content", "text-boundary", "text-geometry"],
+    });
+    expect(degenerate?.locator.characterIndexes).toHaveLength(9);
+    expect(hybrid.pageOutcomes).toEqual([expect.objectContaining({
+      mode: "fallback-required",
+      fallbackScope: "page",
+      fallbackReasonCodes: ["missing-geometry"],
+      duplicateOwnershipAttemptCount: 0,
+    })]);
+    expect(JSON.stringify(result.document.issues)).not.toContain("港の信号は明確です");
   });
 
   it("preserves wrapped tables and complete ordered list bodies without ownership gaps", async () => {

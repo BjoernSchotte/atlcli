@@ -55,6 +55,7 @@
     "bench:adf-validator": "bun --conditions=development scripts/bench/adf-validate.ts",
     "bench:adf-source": "bun --conditions=development scripts/bench/run-adf-source-bench.ts",
     "bench:import-pdf": "bun --conditions=development scripts/bench/run-import-pdf-bench.ts",
+    "check:import-pdf-quality": "bun --conditions=development scripts/quality/import-pdf-quality.ts",
     "bench:export-baseline-node": "bun --conditions=development scripts/bench/run-export-baseline.ts",
     "bench:export-baseline-chrome": "bun --conditions=development scripts/bench/run-chrome-export-baseline.ts",
     "bench:export-jobs-node": "bun --conditions=development scripts/bench/run-export-job-baseline.ts",

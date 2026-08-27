@@ -21,6 +21,7 @@ import {
   type PdfTaggedPageOutcomeV2,
   type PdfTaggedSemanticsV1,
   type PdfTaggedSemanticsV2,
+  type PdfTextCharacterFactV2,
 } from "./contracts.js";
 import { digestPdfCanonical, digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
 import {
@@ -387,6 +388,20 @@ function locatorV2(
   };
 }
 
+function lacksMaterialTaggedTextGeometry(
+  page: PdfPageFactsV2,
+  characters: readonly PdfTextCharacterFactV2[],
+): boolean {
+  const visible = characters.filter((character) => normalizeVisible(character.value));
+  if (visible.length === 0) return false;
+  return visible.every((character) => {
+    if (!character.bbox) return true;
+    const renderedHeightPoints = character.bbox.height * page.heightPoints;
+    const minimumHeightPoints = Math.max(0.25, character.fontSizePoints * 0.05);
+    return renderedHeightPoints < minimumHeightPoints;
+  });
+}
+
 function reportDeferredV2(
   page: PdfPageFactsV2,
   node: PdfStructureNodeFactV2,
@@ -509,27 +524,40 @@ function projectNodeV2(
   appendPdfTextAssemblyV2(state, correlated.assembly);
   state.issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, node.id));
   const mcids = orderedDescendantMcidsV2(node);
+  const degenerateTextGeometry = lacksMaterialTaggedTextGeometry(page, correlated.characters);
   const corrupt = mcids.length === 0
     || mcids.some((mcid) => corruptMcids.has(mcid))
     || unresolvedStructureKidIndexesV2(node).length > 0
     || correlated.hasUnicodeError
-    || correlated.text.length === 0;
+    || correlated.text.length === 0
+    || degenerateTextGeometry;
   if (corrupt) {
     state.corruptTagCount += 1;
     state.issues.push({
-      code: "pdf-import/tagged-node-demoted",
+      code: degenerateTextGeometry
+        ? "pdf-import/tagged-text-geometry-degenerate"
+        : "pdf-import/tagged-node-demoted",
       severity: "warning",
       outcome: "reported",
-      message: "A tagged text node is missing, ambiguous, or has invalid Unicode mapping and requires geometry fallback.",
+      message: degenerateTextGeometry
+        ? "A tagged text node has no material rendered glyph geometry and requires fallback review."
+        : "A tagged text node is missing, ambiguous, or has invalid Unicode mapping and requires geometry fallback.",
       sourceRefs: [node.id],
       context: { pageIndex: page.index, markedContentIds: mcids.length },
     });
     state.evidence.push({
       sourceId: node.id,
       locator: locatorV2(page, node, correlated),
-      basis: ["structure-tree", "marked-content", "text-boundary"],
+      basis: [
+        "structure-tree",
+        "marked-content",
+        "text-boundary",
+        ...(degenerateTextGeometry ? ["text-geometry" as const] : []),
+      ],
       confidence: 0,
-      decisionCode: "pdf/tagged-node-demoted",
+      decisionCode: degenerateTextGeometry
+        ? "pdf/tagged-text-geometry-degenerate"
+        : "pdf/tagged-node-demoted",
       outcome: "reported",
       analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
       boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(correlated.assembly),

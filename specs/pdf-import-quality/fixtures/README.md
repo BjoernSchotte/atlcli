@@ -18,6 +18,19 @@ provenance, exact ordered blocks, boundary actions with source-character
 indexes, structure outcomes, ownership/fallback expectations, and safe links.
 The expected semantics are authored independently of the importer.
 
+## Run the semantic quality gate
+
+```bash
+bun run check:import-pdf-quality
+bun run test scripts/quality/import-pdf-quality.test.ts
+```
+
+The first command evaluates every fixture and producer family independently.
+Its JSON output contains only fixture IDs, counts, rates, and gate codes—never
+expected or extracted body text. The focused test also perturbs one expected
+block and one expected boundary to prove that the owning fixture fails instead
+of being hidden by an aggregate.
+
 ## Regenerate the independent core
 
 ```bash
