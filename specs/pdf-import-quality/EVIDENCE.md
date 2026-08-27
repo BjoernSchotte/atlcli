@@ -813,6 +813,91 @@ Git, preview output, tests, API reports, or this evidence.
       consumer, and browser consumer gates pass.
 - [x] No customer PDF or customer-derived artifact entered Git or evidence.
 
+## PIQ-09
+
+PIQ-09 is complete. The current checkout's Bun-built CLI now publishes the
+neutral fragmented tagged fixture and proves exact source extraction separately
+from exact Confluence ADF semantic readback.
+
+### Independent extraction and publication proof
+
+- the live suite reads `tagged-fragmented-boundaries` truth from the committed
+  neutral manifest and resolves only its generated fixture path;
+- before publication, the V3 source review is independently summarized as
+  ordered semantic blocks and compared exactly with all eight manifest blocks;
+- extraction also proves the expected single localized repair region, zero
+  unresolved boundaries, zero unowned/duplicate characters, no fallback, and
+  `pdf/source-fidelity-accounted`;
+- publication runs through `bun run build:cli` and the resulting current
+  `dist/index.js`, not an installed release;
+- Confluence readback uses a separate ADF tree walker. It records ordered
+  heading/paragraph/list/table-row summaries, link destinations, media IDs,
+  table count, and fallback scope without using body-wide concatenation for
+  the new case;
+- the ordered ADF summary matches all eight neutral block strings exactly.
+  Links, tables, media, fallbacks, and attachments are independently asserted
+  empty for this fixture;
+- extraction and ADF readback share only the independent neutral truth, so a
+  transport success cannot hide a wrong extraction and an extraction success
+  cannot replace publication readback;
+- the shared resource tracker deletes the owned live page in `finally`; the
+  existing page-ID 404 and exact-title absence checks prove no current state
+  remains;
+- the failure-injection matrix now builds V3 reviews as production does and
+  retains exact child-first rollback proof for every sensitive stage;
+- live output contains test names and bounded counts only. No page ID, tenant
+  ID, URL, raw ADF, API receipt, or source body is written to evidence or disk.
+
+The production publisher and semantic-readback implementation were not
+changed.
+
+### Verification
+
+```text
+bun run test apps/cli/src/e2e/wiki-import-pdf-live.e2e.test.ts
+0 pass
+10 skip
+0 fail
+```
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
+```text
+bun run test:e2e:import-pdf
+current Bun CLI build: pass
+10 live cases pass
+0 fail
+205 expect() calls
+fragmented extraction: 8 exact ordered blocks
+fragmented ADF readback: 8 exact ordered blocks
+fragmented links/tables/media/fallbacks/attachments: 0
+owned-page cleanup and no-current-state proof: pass
+```
+
+```text
+git status --short
+only the intended live E2E test and sanitized plan/evidence changes
+no generated live artifact
+```
+
+Only committed neutral fixtures were published to `DOCSY`. No customer PDF,
+customer-derived artifact, tenant identifier, live URL, raw receipt, or private
+body entered Git, logs retained by the task, or this evidence.
+
+### Task gate
+
+- [x] The current Bun build, not an installed release, publishes the fixture.
+- [x] Exact manifest extraction is separate from exact ordered ADF readback.
+- [x] Ordered text, links, table/media identity, and fallback scope are checked.
+- [x] The new case uses no body-wide text concatenation or token-only checks.
+- [x] Every owned page is cleaned and verified absent by ID and title.
+- [x] Live evidence is sanitized and no generated artifact is tracked.
+- [x] No customer PDF or customer-derived artifact entered Git or evidence.
+
 ## PIQ-05
 
 ### Character ownership and hybrid recovery
