@@ -1,6 +1,6 @@
 # PDF import quality: evidence-based text and structure reconstruction
 
-Status: **Planned** (2026-08-27)
+Status: **Implementation in progress** (PIQ-00 complete, 2026-08-27)
 
 Planned at: `cb981dea1f83d4dd5e17932239e42f99a1a607c7`
 (`feat(drawio): add Draw.io previews and Confluence sync integration (#197)`)
@@ -14,6 +14,22 @@ Estimated effort: **XL / 5-8 implementation weeks**
 Risk: **HIGH** - public PDF facts contracts, tagged reading order, geometry
 heuristics, semantic digests, fallback policy, producer-specific structures,
 and cross-host PDFium parity all change together.
+
+## Implementation status
+
+| Task | Status | Evidence |
+|---|---|---|
+| PIQ-00 | DONE | `DRIFT.md`; `EVIDENCE.md#piq-00` |
+| PIQ-01 | TODO | - |
+| PIQ-02 | TODO | - |
+| PIQ-03 | TODO | - |
+| PIQ-04 | TODO | - |
+| PIQ-05 | TODO | - |
+| PIQ-06 | TODO | - |
+| PIQ-07 | TODO | - |
+| PIQ-08 | TODO | - |
+| PIQ-09 | TODO | - |
+| PIQ-10 | TODO | - |
 
 > **Executor instructions:** Read this plan completely before changing code.
 > Run the drift and privacy checks in Task PIQ-00 first. Execute tasks in
@@ -570,6 +586,10 @@ Do not push or open another PR unless the operator explicitly instructs it.
 ## 8. Implementation tasks
 
 ### PIQ-00 - Record drift, privacy boundary, and baseline
+
+**Status: DONE (2026-08-27).** The sanitized proof is recorded in
+`specs/pdf-import-quality/DRIFT.md` and
+`specs/pdf-import-quality/EVIDENCE.md#piq-00`.
 
 Create:
 
