@@ -60,3 +60,13 @@ The audit also added an explicit unresolved structure-kid variant, the V2
 analysis-policy revision, reachable-closure regeneration, and the real browser
 harness parity gates. No source implementation changed as part of this plan
 reconciliation.
+
+## PIQ-02 compatibility review
+
+PIQ-02 remains additive as reconciled above. The existing production factory
+still returns V1 facts, revision literals are unchanged, and two pinned neutral
+V1 facts digests plus their options digest remain exact. A targeted review also
+found and closed a potential canonical-size-budget drift: internal V2 evidence
+is no longer allowed to reject a V1 result that remains within the caller's V1
+budget. The public V2 surface is covered by built Node/browser parity and the
+regenerated API report and reachable closure.

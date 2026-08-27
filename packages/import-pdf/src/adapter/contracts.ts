@@ -1,4 +1,4 @@
-import type { PdfFactsAdapter } from "../contracts.js";
+import type { PdfFactsAdapter, PdfFactsAdapterV2 } from "../contracts.js";
 
 export interface PdfiumAdapterConfig {
   /** Caller-owned local bytes are copied at construction and digest-verified. */
@@ -24,3 +24,4 @@ export interface PdfiumAdapterTestConfig extends PdfiumAdapterConfig {
 }
 
 export type PdfiumFactsAdapter = PdfFactsAdapter;
+export type PdfiumFactsAdapterV2 = PdfFactsAdapterV2;

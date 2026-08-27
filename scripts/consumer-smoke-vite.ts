@@ -130,7 +130,9 @@ import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { IMPORT_DOCUMENT_SCHEMA_V2, documentToAdf } from "@atlcli/import-core";
 import {
   PDF_FACTS_SCHEMA_V1,
+  PDF_FACTS_SCHEMA_V2,
   createBrowserPdfiumFactsAdapter,
+  createBrowserPdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
   normalizeUntaggedPdfFacts,
   preservePdfFigures,
@@ -168,7 +170,9 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     IMPORT_DOCUMENT_SCHEMA_V2 === "atlcli.import-document/2",
   importPdfProof:
     PDF_FACTS_SCHEMA_V1 === "atlcli.pdf-facts/1" &&
-    typeof createBrowserPdfiumFactsAdapter === "function",
+    PDF_FACTS_SCHEMA_V2 === "atlcli.pdf-facts/2" &&
+    typeof createBrowserPdfiumFactsAdapter === "function" &&
+    typeof createBrowserPdfiumFactsAdapterV2 === "function",
   wasmUrl,
   pdfiumWasmUrl,
   fontUrls,
@@ -272,6 +276,8 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     const pdfiumWasm = await loadBytes(pdfiumWasmUrl);
     const adapter = createBrowserPdfiumFactsAdapter({ wasmBinary: pdfiumWasm });
     const result = await adapter.analyze(fixtureBytes);
+    const resultV2 = await createBrowserPdfiumFactsAdapterV2({ wasmBinary: pdfiumWasm })
+      .analyze(fixtureBytes);
     const semantics = await normalizeTaggedPdfFacts(result.facts, result.factsDigest);
     const figures = await preservePdfFigures(
       result.facts,
@@ -294,6 +300,8 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       engine: result.facts.provenance.engine,
       wasmSha256: result.facts.provenance.wasmSha256,
       factsDigest: result.factsDigest,
+      factsSchemaV2: resultV2.facts.schema,
+      factsDigestV2: resultV2.factsDigest,
       semanticDigest: semantics.semanticDigest,
       figureSemanticDigest: figures.semanticDigest,
       titleCandidate: semantics.document.titleCandidate,
@@ -534,6 +542,8 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
         engine: string;
         wasmSha256: string;
         factsDigest: string;
+        factsSchemaV2: string;
+        factsDigestV2: string;
         semanticDigest: string;
         figureSemanticDigest: string;
         titleCandidate?: string;
@@ -675,6 +685,8 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     || importResult.engine !== "pdfium"
     || importResult.wasmSha256 !== PDFIUM_WASM_SHA256
     || !/^[a-f0-9]{64}$/u.test(importResult.factsDigest)
+    || importResult.factsSchemaV2 !== "atlcli.pdf-facts/2"
+    || !/^[a-f0-9]{64}$/u.test(importResult.factsDigestV2)
     || !/^[a-f0-9]{64}$/u.test(importResult.semanticDigest)
     || !/^[a-f0-9]{64}$/u.test(importResult.figureSemanticDigest)
     || importResult.titleCandidate !== "Structured Garden Report"

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { createPdfiumFactsAdapter } from "./adapter/pdfium.js";
-import type { PdfiumFactsAdapter } from "./adapter/contracts.js";
+import { createPdfiumFactsAdapter, createPdfiumFactsAdapterV2 } from "./adapter/pdfium.js";
+import type { PdfiumFactsAdapter, PdfiumFactsAdapterV2 } from "./adapter/contracts.js";
 
 export async function loadPackagedPdfiumWasm(): Promise<Uint8Array> {
   const path = fileURLToPath(import.meta.resolve("@atlcli/import-pdf/wasm"));
@@ -10,6 +10,10 @@ export async function loadPackagedPdfiumWasm(): Promise<Uint8Array> {
 
 export async function createNodePdfiumFactsAdapter(): Promise<PdfiumFactsAdapter> {
   return createPdfiumFactsAdapter({ wasmBinary: await loadPackagedPdfiumWasm() });
+}
+
+export async function createNodePdfiumFactsAdapterV2(): Promise<PdfiumFactsAdapterV2> {
+  return createPdfiumFactsAdapterV2({ wasmBinary: await loadPackagedPdfiumWasm() });
 }
 
 export * from "./index.js";
