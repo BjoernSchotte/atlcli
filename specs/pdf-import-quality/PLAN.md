@@ -1,6 +1,6 @@
 # PDF import quality: evidence-based text and structure reconstruction
 
-Status: **Implementation in progress** (PIQ-00 through PIQ-09 complete, 2026-08-27)
+Status: **Implementation complete** (PIQ-00 through PIQ-10 complete, 2026-08-27)
 
 Planned at: `cb981dea1f83d4dd5e17932239e42f99a1a607c7`
 (`feat(drawio): add Draw.io previews and Confluence sync integration (#197)`)
@@ -29,7 +29,7 @@ and cross-host PDFium parity all change together.
 | PIQ-07 | DONE | `EVIDENCE.md#piq-07` |
 | PIQ-08 | DONE | `EVIDENCE.md#piq-08` |
 | PIQ-09 | DONE | `EVIDENCE.md#piq-09` |
-| PIQ-10 | TODO | - |
+| PIQ-10 | DONE | `EVIDENCE.md#piq-10` |
 
 > **Executor instructions:** Read this plan completely before changing code.
 > Run the drift and privacy checks in Task PIQ-00 first. Execute tasks in
@@ -1111,34 +1111,34 @@ documented provenance instead of recording private production input.
 
 All must hold:
 
-- [ ] V2 facts preserve deterministic text-run identity and ordered mixed
+- [x] V2 facts preserve deterministic text-run identity and ordered mixed
       structure kids.
-- [ ] V1 public contracts are either retained with reviewed deprecation or a
+- [x] V1 public contracts are either retained with reviewed deprecation or a
       documented consumer migration exists; no `/1` literal silently changes
       meaning.
-- [ ] Tagged, link, geometry, list, and table text use one shared assembler.
-- [ ] Exact neutral fragmented-text cases contain the expected word boundaries
+- [x] Tagged, link, geometry, list, and table text use one shared assembler.
+- [x] Exact neutral fragmented-text cases contain the expected word boundaries
       in IR, ADF, Storage, preview digest, and Cloud readback.
-- [ ] No material unresolved boundary is classified as confidence-1 `native`.
-- [ ] Every visible character has exactly one final ownership outcome.
-- [ ] `auto` performs tags-first localized geometry recovery without text
+- [x] No material unresolved boundary is classified as confidence-1 `native`.
+- [x] Every visible character has exactly one final ownership outcome.
+- [x] `auto` performs tags-first localized geometry recovery without text
       duplication.
-- [ ] Localized residuals avoid page fallback; unlocalizable negatives still
+- [x] Localized residuals avoid page fallback; unlocalizable negatives still
       require it.
-- [ ] `THead`/`TBody`/`TFoot` tables and complete supported list bodies pass
+- [x] `THead`/`TBody`/`TFoot` tables and complete supported list bodies pass
       exact neutral tests.
-- [ ] Unmatched tagged Figures retain explicit evidence/fallback.
-- [ ] The quality gate runs from one Bun command and enforces every producer
+- [x] Unmatched tagged Figures retain explicit evidence/fallback.
+- [x] The quality gate runs from one Bun command and enforces every producer
       family separately.
-- [ ] Preview shows body-free boundary/ownership metrics and policy blockers.
-- [ ] Public API reports and reachable-closure guards pass.
-- [ ] `bun run test packages/import-pdf`, `bun run check:import-pdf-quality`,
+- [x] Preview shows body-free boundary/ownership metrics and policy blockers.
+- [x] Public API reports and reachable-closure guards pass.
+- [x] `bun run test packages/import-pdf`, `bun run check:import-pdf-quality`,
       `bun run typecheck`, `bun run build`, `bun run test`,
       `bun run bench:import-pdf`, and `bun run docs:check` pass.
-- [ ] Neutral built-CLI Cloud E2E passes and cleans every owned resource.
-- [ ] `specs/pdf-import-quality/EVIDENCE.md` contains only sanitized neutral
+- [x] Neutral built-CLI Cloud E2E passes and cleans every owned resource.
+- [x] `specs/pdf-import-quality/EVIDENCE.md` contains only sanitized neutral
       evidence.
-- [ ] Git contains no customer PDF, derived content/media, private digest,
+- [x] Git contains no customer PDF, derived content/media, private digest,
       tenant identifier, live URL/receipt, or browser capture.
 
 ---
