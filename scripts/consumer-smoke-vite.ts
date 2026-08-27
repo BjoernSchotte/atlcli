@@ -132,15 +132,18 @@ import {
   PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2,
   PDF_FACTS_SCHEMA_V1,
   PDF_FACTS_SCHEMA_V2,
+  PDF_IMPORT_REVIEW_SCHEMA_V3,
   PDF_TAGGED_SEMANTICS_SCHEMA_V2,
   PDF_UNTAGGED_SEMANTICS_SCHEMA_V2,
   assemblePdfTextV2,
+  buildPdfImportReviewV3,
   createBrowserPdfiumFactsAdapter,
   createBrowserPdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
   normalizeTaggedPdfFactsV2,
   normalizeUntaggedPdfFacts,
   normalizeUntaggedPdfFactsV2,
+  parsePdfSplitPolicy,
   preservePdfFigures,
 } from "@atlcli/import-pdf/browser-worker";
 import {
@@ -177,10 +180,12 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
   importPdfProof:
     PDF_FACTS_SCHEMA_V1 === "atlcli.pdf-facts/1" &&
     PDF_FACTS_SCHEMA_V2 === "atlcli.pdf-facts/2" &&
+    PDF_IMPORT_REVIEW_SCHEMA_V3 === "atlcli.pdf-import-review/3" &&
     PDF_TAGGED_SEMANTICS_SCHEMA_V2 === "atlcli.pdf-tagged-semantics/2" &&
     PDF_UNTAGGED_SEMANTICS_SCHEMA_V2 === "atlcli.pdf-untagged-semantics/2" &&
     PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 === "atlcli.pdf-text-assembly-policy/2" &&
     typeof assemblePdfTextV2 === "function" &&
+    typeof buildPdfImportReviewV3 === "function" &&
     typeof normalizeTaggedPdfFactsV2 === "function" &&
     typeof normalizeUntaggedPdfFactsV2 === "function" &&
     typeof createBrowserPdfiumFactsAdapter === "function" &&
@@ -292,6 +297,17 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     const resultV2 = await adapterV2.analyze(fixtureBytes);
     const semantics = await normalizeTaggedPdfFacts(result.facts, result.factsDigest);
     const semanticsV2 = await normalizeTaggedPdfFactsV2(resultV2.facts, resultV2.factsDigest);
+    const reviewV3 = await buildPdfImportReviewV3(fixtureBytes, adapterV2, {
+      target: {
+        spaceKey: "DOCSY",
+        title: "Neutral browser review",
+        deployment: "unresolved-offline",
+        supportsPageTree: null,
+        evidence: "offline-unresolved",
+      },
+      splitPolicy: parsePdfSplitPolicy("off"),
+      scanPolicy: "report",
+    });
     const figures = await preservePdfFigures(
       result.facts,
       result.factsDigest,
@@ -328,6 +344,12 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
         0,
       ),
       taggedPageModesV2: semanticsV2.pageOutcomes.map((page) => page.mode),
+      reviewSchemaV3: reviewV3.schema,
+      reviewDecisionCodesV3: reviewV3.pages.flatMap((page) => page.fidelityDecisionCodes),
+      reviewUnownedCharacterCountV3: reviewV3.pages.reduce(
+        (count, page) => count + page.unownedCharacterCount,
+        0,
+      ),
       semanticDigest: semantics.semanticDigest,
       figureSemanticDigest: figures.semanticDigest,
       titleCandidate: semantics.document.titleCandidate,
@@ -583,6 +605,9 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
         taggedBoundaryCountV2: number;
         taggedUnresolvedBoundaryCountV2: number;
         taggedPageModesV2: string[];
+        reviewSchemaV3: string;
+        reviewDecisionCodesV3: string[];
+        reviewUnownedCharacterCountV3: number;
         semanticDigest: string;
         figureSemanticDigest: string;
         titleCandidate?: string;
@@ -736,6 +761,9 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     || importResult.taggedBoundaryCountV2 !== 16
     || importResult.taggedUnresolvedBoundaryCountV2 !== 0
     || importResult.taggedPageModesV2.join(",") !== "tagged-native"
+    || importResult.reviewSchemaV3 !== "atlcli.pdf-import-review/3"
+    || importResult.reviewDecisionCodesV3.join(",") !== "pdf/source-fidelity-accounted"
+    || importResult.reviewUnownedCharacterCountV3 !== 0
     || !/^[a-f0-9]{64}$/u.test(importResult.semanticDigest)
     || !/^[a-f0-9]{64}$/u.test(importResult.figureSemanticDigest)
     || importResult.titleCandidate !== "Structured Garden Report"

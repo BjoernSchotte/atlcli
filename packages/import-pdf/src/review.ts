@@ -49,6 +49,13 @@ export const PDF_IMPORT_REVIEW_SCHEMA_V1 = "atlcli.pdf-import-review/1" as const
 export const PDF_IMPORT_PLAN_SCHEMA_V1 = "atlcli.pdf-import-plan/1" as const;
 export const PDF_IMPORT_REVIEW_SCHEMA_V2 = "atlcli.pdf-import-review/2" as const;
 export const PDF_IMPORT_PLAN_SCHEMA_V2 = "atlcli.pdf-import-plan/2" as const;
+export const PDF_IMPORT_REVIEW_SCHEMA_V3 = "atlcli.pdf-import-review/3" as const;
+export const PDF_IMPORT_PLAN_SCHEMA_V3 = "atlcli.pdf-import-plan/3" as const;
+
+export const PDF_SOURCE_FIDELITY_ACCOUNTED_DECISION_V3 = "pdf/source-fidelity-accounted" as const;
+export const PDF_TEXT_BOUNDARY_UNRESOLVED_DECISION_V3 = "pdf/text-boundary-unresolved" as const;
+export const PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3 = "pdf/character-ownership-failed" as const;
+export const PDF_IMPORT_REVIEW_POLICY_REVISION_V3 = "atlcli.pdf-import-review-policy/3" as const;
 
 export type PdfReadingOrderModeV1 = "auto" | "tags" | "geometry";
 export type PdfScanPolicyV1 = "fail" | "page-image" | "report";
@@ -89,6 +96,21 @@ export interface PdfPageReviewSummaryV2 extends PdfPageReviewSummaryV1 {
   normalizedFallbackArea: number;
 }
 
+export type PdfSourceFidelityDecisionCodeV3 =
+  | typeof PDF_SOURCE_FIDELITY_ACCOUNTED_DECISION_V3
+  | typeof PDF_TEXT_BOUNDARY_UNRESOLVED_DECISION_V3
+  | typeof PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3;
+
+export interface PdfPageReviewSummaryV3 extends PdfPageReviewSummaryV2 {
+  /** A separately visible subset of inferred boundary decisions. */
+  dehyphenatedBoundaryCount: number;
+  taggedOwnedCharacterCount: number;
+  geometryOwnedCharacterCount: number;
+  fallbackOwnedCharacterCount: number;
+  unownedCharacterCount: number;
+  fidelityDecisionCodes: PdfSourceFidelityDecisionCodeV3[];
+}
+
 export interface PdfImportReviewV1 {
   schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V1;
   source: { sha256: string; byteLength: number; pageCount: number; classification: PdfFactsV1["classification"] };
@@ -126,7 +148,24 @@ export interface PdfImportReviewV2
   pages: PdfPageReviewSummaryV2[];
 }
 
-type PdfImportReview = PdfImportReviewV1 | PdfImportReviewV2;
+export interface PdfImportReviewV3 extends Omit<PdfImportReviewV2, "schema" | "pages"> {
+  schema: typeof PDF_IMPORT_REVIEW_SCHEMA_V3;
+  pages: PdfPageReviewSummaryV3[];
+}
+
+export interface PdfImportReviewBuildOptionsV2 {
+  target: PdfReviewTargetV1;
+  splitPolicy: PdfSplitPolicyV1;
+  titleConflict?: "fail" | "rename";
+  readingOrder?: PdfReadingOrderModeV1;
+  scanPolicy?: PdfScanPolicyV1;
+  visualFallback?: PdfVisualFallbackModeV1;
+  unsupported?: "report" | "fail";
+  attachSource?: boolean;
+  overrides?: ParsedPdfImportOverridesV1;
+}
+
+type PdfImportReview = PdfImportReviewV1 | PdfImportReviewV2 | PdfImportReviewV3;
 
 function reviewInvalid(message: string): never {
   throw new PdfImportError("pdf/override-invalid", message);
@@ -399,17 +438,7 @@ export async function buildPdfImportReview(
 export async function buildPdfImportReviewV2(
   sourceBytes: Uint8Array,
   adapter: PdfFactsAdapterV2,
-  options: {
-    target: PdfReviewTargetV1;
-    splitPolicy: PdfSplitPolicyV1;
-    titleConflict?: "fail" | "rename";
-    readingOrder?: PdfReadingOrderModeV1;
-    scanPolicy?: PdfScanPolicyV1;
-    visualFallback?: PdfVisualFallbackModeV1;
-    unsupported?: "report" | "fail";
-    attachSource?: boolean;
-    overrides?: ParsedPdfImportOverridesV1;
-  },
+  options: PdfImportReviewBuildOptionsV2,
 ): Promise<PdfImportReviewV2> {
   const readingOrder = options.readingOrder ?? "auto";
   const scanPolicy = options.scanPolicy ?? "fail";
@@ -586,8 +615,138 @@ export async function buildPdfImportReviewV2(
   };
 }
 
+function fidelityPageDigestSummaryV3(page: PdfPageReviewSummaryV3): Record<string, unknown> {
+  return {
+    pageIndex: page.pageIndex,
+    pageLabel: page.pageLabel,
+    explicitBoundaryCount: page.explicitBoundaryCount,
+    inferredBoundaryCount: page.inferredBoundaryCount,
+    dehyphenatedBoundaryCount: page.dehyphenatedBoundaryCount,
+    unresolvedBoundaryCount: page.unresolvedBoundaryCount,
+    visibleCharacterCount: page.visibleCharacterCount,
+    uniquelyOwnedCharacterCount: page.uniquelyOwnedCharacterCount,
+    taggedOwnedCharacterCount: page.taggedOwnedCharacterCount,
+    geometryOwnedCharacterCount: page.geometryOwnedCharacterCount,
+    fallbackOwnedCharacterCount: page.fallbackOwnedCharacterCount,
+    duplicateOwnershipAttemptCount: page.duplicateOwnershipAttemptCount,
+    unownedCharacterCount: page.unownedCharacterCount,
+    residualReportedCharacterCount: page.residualReportedCharacterCount,
+    geometryRepairedCharacterCount: page.geometryRepairedCharacterCount,
+    geometryRepairRegionCount: page.geometryRepairRegionCount,
+    fallbackScope: page.fallbackScope,
+    normalizedFallbackArea: page.normalizedFallbackArea,
+    fidelityDecisionCodes: page.fidelityDecisionCodes,
+  };
+}
+
+/** Upgrade a completed V2 analysis without re-reading source bytes or changing publication projection. */
+export async function upgradePdfImportReviewV3(review: PdfImportReviewV2): Promise<PdfImportReviewV3> {
+  const pages = review.pages.map((page): PdfPageReviewSummaryV3 => {
+    const pageBoundaryIds = new Set(review.evidence
+      .filter((entry) => entry.locator.pageIndex === page.pageIndex)
+      .flatMap((entry) => entry.boundaryDecisionIds));
+    const pageBoundaries = review.boundaries.filter((boundary) => pageBoundaryIds.has(boundary.id));
+    const pageOwnership = review.ownership.filter((entry) => entry.pageIndex === page.pageIndex);
+    const unownedCharacterCount = pageOwnership.filter((entry) => entry.ownerSourceId.endsWith(":unowned")).length;
+    const fidelityDecisionCodes: PdfSourceFidelityDecisionCodeV3[] = [];
+    if (page.unresolvedBoundaryCount > 0) {
+      fidelityDecisionCodes.push(PDF_TEXT_BOUNDARY_UNRESOLVED_DECISION_V3);
+    }
+    if (unownedCharacterCount > 0 || page.duplicateOwnershipAttemptCount > 0) {
+      fidelityDecisionCodes.push(PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3);
+    }
+    if (fidelityDecisionCodes.length === 0) {
+      fidelityDecisionCodes.push(PDF_SOURCE_FIDELITY_ACCOUNTED_DECISION_V3);
+    }
+    return {
+      ...page,
+      issueCount: page.issueCount + (fidelityDecisionCodes.includes(PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3) ? 1 : 0),
+      dehyphenatedBoundaryCount: pageBoundaries.filter((boundary) => boundary.action === "dehyphenate").length,
+      taggedOwnedCharacterCount: pageOwnership.filter((entry) => entry.basis === "tagged").length,
+      geometryOwnedCharacterCount: pageOwnership.filter((entry) => entry.basis === "geometry").length,
+      fallbackOwnedCharacterCount: pageOwnership.filter((entry) => entry.basis === "fallback").length,
+      unownedCharacterCount,
+      fidelityDecisionCodes,
+    };
+  });
+  const ownershipIssues: ImportIssue[] = pages
+    .filter((page) => page.fidelityDecisionCodes.includes(PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3))
+    .map((page) => ({
+      code: "pdf-import/character-ownership-failed",
+      severity: "warning",
+      outcome: "reported",
+      message: "Visible source characters do not have exactly one verified semantic or fallback owner.",
+      sourceRefs: [`pdf:p${page.pageIndex}`],
+      context: {
+        pageIndex: page.pageIndex,
+        unownedCharacters: page.unownedCharacterCount,
+        duplicateOwnershipAttempts: page.duplicateOwnershipAttemptCount,
+      },
+    }));
+  const document: ImportDocumentV2 = {
+    ...review.document,
+    issues: [...review.document.issues, ...ownershipIssues],
+  };
+  const blockers = [...review.blockers];
+  if (review.options.unsupported === "fail") {
+    for (const page of pages) {
+      if (page.unresolvedBoundaryCount > 0) {
+        blockers.push(
+          `Source page ${page.pageLabel}: ${PDF_TEXT_BOUNDARY_UNRESOLVED_DECISION_V3} `
+          + `(${page.unresolvedBoundaryCount} unresolved boundary decision(s)).`,
+        );
+      }
+      if (page.unownedCharacterCount > 0 || page.duplicateOwnershipAttemptCount > 0) {
+        blockers.push(
+          `Source page ${page.pageLabel}: ${PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3} `
+          + `(${page.unownedCharacterCount} unowned character(s), `
+          + `${page.duplicateOwnershipAttemptCount} duplicate ownership attempt(s)).`,
+        );
+      }
+    }
+  }
+  const fidelityPages = pages.map(fidelityPageDigestSummaryV3);
+  const issueDigest = await digestPdfCanonical(document.issues.map(standardIssue));
+  const semanticDigest = await digestPdfCanonical({
+    schema: PDF_IMPORT_REVIEW_SCHEMA_V3,
+    reviewPolicyRevision: PDF_IMPORT_REVIEW_POLICY_REVISION_V3,
+    priorSemanticDigest: review.semanticDigest,
+    fidelityPages,
+    ownershipIssues: ownershipIssues.map(standardIssue),
+  });
+  const planDigest = await digestPdfCanonical({
+    schema: PDF_IMPORT_PLAN_SCHEMA_V3,
+    reviewPolicyRevision: PDF_IMPORT_REVIEW_POLICY_REVISION_V3,
+    priorPlanDigest: review.planDigest,
+    semanticDigest,
+    issueDigest,
+    fidelityPages,
+    blockers,
+  });
+  return {
+    ...review,
+    schema: PDF_IMPORT_REVIEW_SCHEMA_V3,
+    document,
+    override: { ...review.override, document },
+    pages,
+    blockers,
+    issueDigest,
+    semanticDigest,
+    planDigest,
+  };
+}
+
+export async function buildPdfImportReviewV3(
+  sourceBytes: Uint8Array,
+  adapter: PdfFactsAdapterV2,
+  options: PdfImportReviewBuildOptionsV2,
+): Promise<PdfImportReviewV3> {
+  return upgradePdfImportReviewV3(await buildPdfImportReviewV2(sourceBytes, adapter, options));
+}
+
 export function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
 export function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
+export function pdfImportReviewReport(review: PdfImportReviewV3): Record<string, unknown>;
 export function pdfImportReviewReport(review: PdfImportReview): Record<string, unknown> {
   const outcomeTotals: Record<string, number> = {};
   for (const entry of review.evidence) outcomeTotals[entry.outcome] = (outcomeTotals[entry.outcome] ?? 0) + 1;
@@ -642,6 +801,18 @@ export function pdfImportReviewReport(review: PdfImportReview): Record<string, u
         uniquelyOwnedCharacterCount: review.pages.reduce((sum, page) => sum + page.uniquelyOwnedCharacterCount, 0),
         explicitBoundaryCount: review.pages.reduce((sum, page) => sum + page.explicitBoundaryCount, 0),
         inferredBoundaryCount: review.pages.reduce((sum, page) => sum + page.inferredBoundaryCount, 0),
+        ...(review.schema === PDF_IMPORT_REVIEW_SCHEMA_V3 ? {
+          dehyphenatedBoundaryCount: review.pages.reduce((sum, page) =>
+            sum + page.dehyphenatedBoundaryCount, 0),
+          taggedOwnedCharacterCount: review.pages.reduce((sum, page) =>
+            sum + page.taggedOwnedCharacterCount, 0),
+          geometryOwnedCharacterCount: review.pages.reduce((sum, page) =>
+            sum + page.geometryOwnedCharacterCount, 0),
+          fallbackOwnedCharacterCount: review.pages.reduce((sum, page) =>
+            sum + page.fallbackOwnedCharacterCount, 0),
+          unownedCharacterCount: review.pages.reduce((sum, page) =>
+            sum + page.unownedCharacterCount, 0),
+        } : {}),
         geometryRepairedCharacterCount: review.pages.reduce((sum, page) =>
           sum + page.geometryRepairedCharacterCount, 0),
         geometryRepairRegionCount: review.pages.reduce((sum, page) => sum + page.geometryRepairRegionCount, 0),
@@ -702,6 +873,7 @@ export function pdfImportReviewReport(review: PdfImportReview): Record<string, u
 
 export function renderPdfImportReview(review: PdfImportReviewV1): string;
 export function renderPdfImportReview(review: PdfImportReviewV2): string;
+export function renderPdfImportReview(review: PdfImportReviewV3): string;
 export function renderPdfImportReview(review: PdfImportReview): string {
   const lines = [
     "PDF import preview",
@@ -726,11 +898,21 @@ export function renderPdfImportReview(review: PdfImportReview): string {
     const outcomes = Object.entries(page.outcomes).map(([key, value]) => `${key}:${value}`).join(", ") || "no semantic nodes";
     const scope = page.fallbackScope === "none" ? "" : `; scope ${page.fallbackScope} (${page.fallbackReasons.join(", ")})`;
     const boundaries = "boundaryDecisionCount" in page
-      ? `; boundaries ${page.boundaryDecisionCount}, unresolved ${page.unresolvedBoundaryCount}`
-        + `; ownership ${page.uniquelyOwnedCharacterCount}/${page.visibleCharacterCount}`
-        + `, duplicates ${page.duplicateOwnershipAttemptCount}, residual ${page.residualReportedCharacterCount}`
-        + `; repairs ${page.geometryRepairedCharacterCount} chars/${page.geometryRepairRegionCount} regions`
-        + `; fallback area ${page.normalizedFallbackArea.toFixed(4)}`
+      ? ("dehyphenatedBoundaryCount" in page
+        ? `; boundaries explicit ${page.explicitBoundaryCount}, inferred ${page.inferredBoundaryCount}`
+          + `, dehyphenated ${page.dehyphenatedBoundaryCount}, unresolved ${page.unresolvedBoundaryCount}`
+          + `; ownership ${page.uniquelyOwnedCharacterCount}/${page.visibleCharacterCount}`
+          + ` (tagged ${page.taggedOwnedCharacterCount}, geometry ${page.geometryOwnedCharacterCount}, `
+          + `fallback ${page.fallbackOwnedCharacterCount}, unowned ${page.unownedCharacterCount})`
+          + `, duplicates ${page.duplicateOwnershipAttemptCount}, residual ${page.residualReportedCharacterCount}`
+          + `; repairs ${page.geometryRepairedCharacterCount} chars/${page.geometryRepairRegionCount} regions`
+          + `; fallback area ${page.normalizedFallbackArea.toFixed(4)}`
+          + `; decision ${page.fidelityDecisionCodes.join(", ")}`
+        : `; boundaries ${page.boundaryDecisionCount}, unresolved ${page.unresolvedBoundaryCount}`
+          + `; ownership ${page.uniquelyOwnedCharacterCount}/${page.visibleCharacterCount}`
+          + `, duplicates ${page.duplicateOwnershipAttemptCount}, residual ${page.residualReportedCharacterCount}`
+          + `; repairs ${page.geometryRepairedCharacterCount} chars/${page.geometryRepairRegionCount} regions`
+          + `; fallback area ${page.normalizedFallbackArea.toFixed(4)}`)
       : "";
     lines.push(`  Page ${page.pageLabel}: ${page.kind}; ${outcomes}${boundaries}; fallback ${page.fallback}${scope}`);
   }
