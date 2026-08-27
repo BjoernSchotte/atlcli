@@ -27,6 +27,9 @@ export interface AppliedPdfImportOverridesV1 {
 // export: applyPdfImportOverrides
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
+// export: assemblePdfTextV2
+export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
+
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
@@ -43,6 +46,9 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: canonicalizePdfTextSourceFragmentV2
+export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
 
 // export: charactersForMcids
 export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
@@ -89,6 +95,9 @@ export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Pr
 
 // export: digestPdfFactsV2
 export declare function digestPdfFactsV2(facts: PdfFactsV2, maxBytes?: number): Promise<string>;
+
+// export: digestPdfTextAssemblyV2
+export declare function digestPdfTextAssemblyV2(assembly: PdfTextAssemblyV2): Promise<string>;
 
 // export: encodeRgbaPng
 export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
@@ -279,6 +288,39 @@ export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
+
+// export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/2";
+
+// export: PDF_TEXT_ASSEMBLY_POLICY_V2
+export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
+    readonly revision: "atlcli.pdf-text-assembly-policy/2";
+    readonly maximumAngleDeltaRadians: 0.12;
+    readonly minimumSameLineVerticalOverlap: 0.25;
+    readonly sameLineCenterDeltaGlyphFactor: 0.55;
+    readonly differentLineCenterDeltaGlyphFactor: 1.2;
+    readonly insertSpaceGapGlyphFactor: 0.75;
+    readonly noSpaceGapGlyphFactor: 0.35;
+    readonly confidence: Readonly<{
+        authored: 1;
+        generatedWhitespace: 0.98;
+        dehyphenated: 0.99;
+        lineJoin: 0.95;
+        punctuation: 0.99;
+        script: 0.98;
+        strongGeometry: 0.9;
+        unresolved: 0.25;
+    }>;
+    readonly presentationLigatures: Readonly<{
+        readonly ﬀ: "ff";
+        readonly ﬁ: "fi";
+        readonly ﬂ: "fl";
+        readonly ﬃ: "ffi";
+        readonly ﬄ: "ffl";
+        readonly ﬅ: "st";
+        readonly ﬆ: "st";
+    }>;
+}>;
 
 // export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-untagged-semantics/1";
@@ -998,6 +1040,57 @@ export interface PdfTaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: PdfTextAssemblyInputV2
+export interface PdfTextAssemblyInputV2 {
+    sourceId: string;
+    characters: readonly PdfTextCharacterFactV2[];
+    orderBasis: "structure-order" | "geometry";
+    actualText?: string;
+    markedCharacterIndexes?: readonly number[];
+}
+
+// export: PdfTextAssemblyIssueV2
+export interface PdfTextAssemblyIssueV2 {
+    code: "pdf-import/actual-text-mark-unmapped";
+    characterIndexes: number[];
+}
+
+// export: PdfTextAssemblyV2
+export interface PdfTextAssemblyV2 {
+    policyRevision: typeof PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2;
+    text: string;
+    segments: Array<{
+        text: string;
+        characterIndexes: number[];
+        synthesized: boolean;
+    }>;
+    characterIndexes: number[];
+    boundaries: PdfTextBoundaryDecisionV2[];
+    transformations: PdfTextTransformationV2[];
+    issues: PdfTextAssemblyIssueV2[];
+    unresolvedBoundaryCount: number;
+    bbox: PdfNormalizedRect | null;
+    direction: PdfTextDirection;
+    hasUnicodeError: boolean;
+    usedActualText: boolean;
+}
+
+// export: PdfTextBoundaryActionV2
+export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
+
+// export: PdfTextBoundaryBasisV2
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text";
+
+// export: PdfTextBoundaryDecisionV2
+export interface PdfTextBoundaryDecisionV2 {
+    id: string;
+    leftCharacterIndex: number | null;
+    rightCharacterIndex: number | null;
+    action: PdfTextBoundaryActionV2;
+    basis: PdfTextBoundaryBasisV2[];
+    confidence: number;
+}
+
 // export: PdfTextCharacterFact
 export interface PdfTextCharacterFact {
     index: number;
@@ -1020,6 +1113,14 @@ export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
 
 // export: PdfTextDirection
 export type PdfTextDirection = "ltr" | "rtl" | "neutral";
+
+// export: PdfTextTransformationV2
+export interface PdfTextTransformationV2 {
+    id: string;
+    action: "expand-presentation-ligature" | "use-actual-text";
+    characterIndexes: number[];
+    confidence: number;
+}
 
 // export: PdfUntaggedPageOutcomeV1
 export interface PdfUntaggedPageOutcomeV1 {
@@ -1143,6 +1244,9 @@ export declare function applyPdfFallbackPresentation(document: ImportDocumentV2,
 // export: applyPdfImportOverrides
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
+// export: assemblePdfTextV2
+export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
+
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
@@ -1162,6 +1266,9 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: canonicalizePdfTextSourceFragmentV2
+export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
 
 // export: charactersForMcids
 export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
@@ -1208,6 +1315,9 @@ export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Pr
 
 // export: digestPdfFactsV2
 export declare function digestPdfFactsV2(facts: PdfFactsV2, maxBytes?: number): Promise<string>;
+
+// export: digestPdfTextAssemblyV2
+export declare function digestPdfTextAssemblyV2(assembly: PdfTextAssemblyV2): Promise<string>;
 
 // export: encodeRgbaPng
 export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
@@ -1422,6 +1532,39 @@ export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
+
+// export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/2";
+
+// export: PDF_TEXT_ASSEMBLY_POLICY_V2
+export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
+    readonly revision: "atlcli.pdf-text-assembly-policy/2";
+    readonly maximumAngleDeltaRadians: 0.12;
+    readonly minimumSameLineVerticalOverlap: 0.25;
+    readonly sameLineCenterDeltaGlyphFactor: 0.55;
+    readonly differentLineCenterDeltaGlyphFactor: 1.2;
+    readonly insertSpaceGapGlyphFactor: 0.75;
+    readonly noSpaceGapGlyphFactor: 0.35;
+    readonly confidence: Readonly<{
+        authored: 1;
+        generatedWhitespace: 0.98;
+        dehyphenated: 0.99;
+        lineJoin: 0.95;
+        punctuation: 0.99;
+        script: 0.98;
+        strongGeometry: 0.9;
+        unresolved: 0.25;
+    }>;
+    readonly presentationLigatures: Readonly<{
+        readonly ﬀ: "ff";
+        readonly ﬁ: "fi";
+        readonly ﬂ: "fl";
+        readonly ﬃ: "ffi";
+        readonly ﬄ: "ffl";
+        readonly ﬅ: "st";
+        readonly ﬆ: "st";
+    }>;
+}>;
 
 // export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-untagged-semantics/1";
@@ -2171,6 +2314,57 @@ export interface PdfTaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: PdfTextAssemblyInputV2
+export interface PdfTextAssemblyInputV2 {
+    sourceId: string;
+    characters: readonly PdfTextCharacterFactV2[];
+    orderBasis: "structure-order" | "geometry";
+    actualText?: string;
+    markedCharacterIndexes?: readonly number[];
+}
+
+// export: PdfTextAssemblyIssueV2
+export interface PdfTextAssemblyIssueV2 {
+    code: "pdf-import/actual-text-mark-unmapped";
+    characterIndexes: number[];
+}
+
+// export: PdfTextAssemblyV2
+export interface PdfTextAssemblyV2 {
+    policyRevision: typeof PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2;
+    text: string;
+    segments: Array<{
+        text: string;
+        characterIndexes: number[];
+        synthesized: boolean;
+    }>;
+    characterIndexes: number[];
+    boundaries: PdfTextBoundaryDecisionV2[];
+    transformations: PdfTextTransformationV2[];
+    issues: PdfTextAssemblyIssueV2[];
+    unresolvedBoundaryCount: number;
+    bbox: PdfNormalizedRect | null;
+    direction: PdfTextDirection;
+    hasUnicodeError: boolean;
+    usedActualText: boolean;
+}
+
+// export: PdfTextBoundaryActionV2
+export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
+
+// export: PdfTextBoundaryBasisV2
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text";
+
+// export: PdfTextBoundaryDecisionV2
+export interface PdfTextBoundaryDecisionV2 {
+    id: string;
+    leftCharacterIndex: number | null;
+    rightCharacterIndex: number | null;
+    action: PdfTextBoundaryActionV2;
+    basis: PdfTextBoundaryBasisV2[];
+    confidence: number;
+}
+
 // export: PdfTextCharacterFact
 export interface PdfTextCharacterFact {
     index: number;
@@ -2193,6 +2387,14 @@ export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
 
 // export: PdfTextDirection
 export type PdfTextDirection = "ltr" | "rtl" | "neutral";
+
+// export: PdfTextTransformationV2
+export interface PdfTextTransformationV2 {
+    id: string;
+    action: "expand-presentation-ligature" | "use-actual-text";
+    characterIndexes: number[];
+    confidence: number;
+}
 
 // export: PdfUntaggedPageOutcomeV1
 export interface PdfUntaggedPageOutcomeV1 {
@@ -2319,6 +2521,9 @@ export interface AppliedPdfImportOverridesV1 {
 // export: applyPdfImportOverrides
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
+// export: assemblePdfTextV2
+export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
+
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
@@ -2335,6 +2540,9 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: canonicalizePdfTextSourceFragmentV2
+export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
 
 // export: charactersForMcids
 export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
@@ -2381,6 +2589,9 @@ export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Pr
 
 // export: digestPdfFactsV2
 export declare function digestPdfFactsV2(facts: PdfFactsV2, maxBytes?: number): Promise<string>;
+
+// export: digestPdfTextAssemblyV2
+export declare function digestPdfTextAssemblyV2(assembly: PdfTextAssemblyV2): Promise<string>;
 
 // export: encodeRgbaPng
 export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
@@ -2571,6 +2782,39 @@ export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
+
+// export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/2";
+
+// export: PDF_TEXT_ASSEMBLY_POLICY_V2
+export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
+    readonly revision: "atlcli.pdf-text-assembly-policy/2";
+    readonly maximumAngleDeltaRadians: 0.12;
+    readonly minimumSameLineVerticalOverlap: 0.25;
+    readonly sameLineCenterDeltaGlyphFactor: 0.55;
+    readonly differentLineCenterDeltaGlyphFactor: 1.2;
+    readonly insertSpaceGapGlyphFactor: 0.75;
+    readonly noSpaceGapGlyphFactor: 0.35;
+    readonly confidence: Readonly<{
+        authored: 1;
+        generatedWhitespace: 0.98;
+        dehyphenated: 0.99;
+        lineJoin: 0.95;
+        punctuation: 0.99;
+        script: 0.98;
+        strongGeometry: 0.9;
+        unresolved: 0.25;
+    }>;
+    readonly presentationLigatures: Readonly<{
+        readonly ﬀ: "ff";
+        readonly ﬁ: "fi";
+        readonly ﬂ: "fl";
+        readonly ﬃ: "ffi";
+        readonly ﬄ: "ffl";
+        readonly ﬅ: "st";
+        readonly ﬆ: "st";
+    }>;
+}>;
 
 // export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-untagged-semantics/1";
@@ -3290,6 +3534,57 @@ export interface PdfTaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: PdfTextAssemblyInputV2
+export interface PdfTextAssemblyInputV2 {
+    sourceId: string;
+    characters: readonly PdfTextCharacterFactV2[];
+    orderBasis: "structure-order" | "geometry";
+    actualText?: string;
+    markedCharacterIndexes?: readonly number[];
+}
+
+// export: PdfTextAssemblyIssueV2
+export interface PdfTextAssemblyIssueV2 {
+    code: "pdf-import/actual-text-mark-unmapped";
+    characterIndexes: number[];
+}
+
+// export: PdfTextAssemblyV2
+export interface PdfTextAssemblyV2 {
+    policyRevision: typeof PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2;
+    text: string;
+    segments: Array<{
+        text: string;
+        characterIndexes: number[];
+        synthesized: boolean;
+    }>;
+    characterIndexes: number[];
+    boundaries: PdfTextBoundaryDecisionV2[];
+    transformations: PdfTextTransformationV2[];
+    issues: PdfTextAssemblyIssueV2[];
+    unresolvedBoundaryCount: number;
+    bbox: PdfNormalizedRect | null;
+    direction: PdfTextDirection;
+    hasUnicodeError: boolean;
+    usedActualText: boolean;
+}
+
+// export: PdfTextBoundaryActionV2
+export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
+
+// export: PdfTextBoundaryBasisV2
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text";
+
+// export: PdfTextBoundaryDecisionV2
+export interface PdfTextBoundaryDecisionV2 {
+    id: string;
+    leftCharacterIndex: number | null;
+    rightCharacterIndex: number | null;
+    action: PdfTextBoundaryActionV2;
+    basis: PdfTextBoundaryBasisV2[];
+    confidence: number;
+}
+
 // export: PdfTextCharacterFact
 export interface PdfTextCharacterFact {
     index: number;
@@ -3312,6 +3607,14 @@ export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
 
 // export: PdfTextDirection
 export type PdfTextDirection = "ltr" | "rtl" | "neutral";
+
+// export: PdfTextTransformationV2
+export interface PdfTextTransformationV2 {
+    id: string;
+    action: "expand-presentation-ligature" | "use-actual-text";
+    characterIndexes: number[];
+    confidence: number;
+}
 
 // export: PdfUntaggedPageOutcomeV1
 export interface PdfUntaggedPageOutcomeV1 {
@@ -3435,6 +3738,9 @@ export declare function applyPdfFallbackPresentation(document: ImportDocumentV2,
 // export: applyPdfImportOverrides
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
+// export: assemblePdfTextV2
+export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
+
 // export: assertPdfAnalysisProvenance
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV1, actual: PdfAnalysisProvenanceV1): void;
 export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvenanceV2, actual: PdfAnalysisProvenanceV2): void;
@@ -3454,6 +3760,9 @@ export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: P
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
 }): Promise<PdfImportReviewV1>;
+
+// export: canonicalizePdfTextSourceFragmentV2
+export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
 
 // export: charactersForMcids
 export declare function charactersForMcids(page: PdfPageFactsV1, mcids: readonly number[]): PdfTextCharacterFact[];
@@ -3506,6 +3815,9 @@ export declare function digestPdfFacts(facts: PdfFactsV1, maxBytes?: number): Pr
 
 // export: digestPdfFactsV2
 export declare function digestPdfFactsV2(facts: PdfFactsV2, maxBytes?: number): Promise<string>;
+
+// export: digestPdfTextAssemblyV2
+export declare function digestPdfTextAssemblyV2(assembly: PdfTextAssemblyV2): Promise<string>;
 
 // export: encodeRgbaPng
 export declare function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array;
@@ -3724,6 +4036,39 @@ export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
 
+// export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/2";
+
+// export: PDF_TEXT_ASSEMBLY_POLICY_V2
+export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
+    readonly revision: "atlcli.pdf-text-assembly-policy/2";
+    readonly maximumAngleDeltaRadians: 0.12;
+    readonly minimumSameLineVerticalOverlap: 0.25;
+    readonly sameLineCenterDeltaGlyphFactor: 0.55;
+    readonly differentLineCenterDeltaGlyphFactor: 1.2;
+    readonly insertSpaceGapGlyphFactor: 0.75;
+    readonly noSpaceGapGlyphFactor: 0.35;
+    readonly confidence: Readonly<{
+        authored: 1;
+        generatedWhitespace: 0.98;
+        dehyphenated: 0.99;
+        lineJoin: 0.95;
+        punctuation: 0.99;
+        script: 0.98;
+        strongGeometry: 0.9;
+        unresolved: 0.25;
+    }>;
+    readonly presentationLigatures: Readonly<{
+        readonly ﬀ: "ff";
+        readonly ﬁ: "fi";
+        readonly ﬂ: "fl";
+        readonly ﬃ: "ffi";
+        readonly ﬄ: "ffl";
+        readonly ﬅ: "st";
+        readonly ﬆ: "st";
+    }>;
+}>;
+
 // export: PDF_UNTAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-untagged-semantics/1";
 
@@ -4472,6 +4817,57 @@ export interface PdfTaggedSemanticsV1 {
     semanticDigest: string;
 }
 
+// export: PdfTextAssemblyInputV2
+export interface PdfTextAssemblyInputV2 {
+    sourceId: string;
+    characters: readonly PdfTextCharacterFactV2[];
+    orderBasis: "structure-order" | "geometry";
+    actualText?: string;
+    markedCharacterIndexes?: readonly number[];
+}
+
+// export: PdfTextAssemblyIssueV2
+export interface PdfTextAssemblyIssueV2 {
+    code: "pdf-import/actual-text-mark-unmapped";
+    characterIndexes: number[];
+}
+
+// export: PdfTextAssemblyV2
+export interface PdfTextAssemblyV2 {
+    policyRevision: typeof PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2;
+    text: string;
+    segments: Array<{
+        text: string;
+        characterIndexes: number[];
+        synthesized: boolean;
+    }>;
+    characterIndexes: number[];
+    boundaries: PdfTextBoundaryDecisionV2[];
+    transformations: PdfTextTransformationV2[];
+    issues: PdfTextAssemblyIssueV2[];
+    unresolvedBoundaryCount: number;
+    bbox: PdfNormalizedRect | null;
+    direction: PdfTextDirection;
+    hasUnicodeError: boolean;
+    usedActualText: boolean;
+}
+
+// export: PdfTextBoundaryActionV2
+export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
+
+// export: PdfTextBoundaryBasisV2
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text";
+
+// export: PdfTextBoundaryDecisionV2
+export interface PdfTextBoundaryDecisionV2 {
+    id: string;
+    leftCharacterIndex: number | null;
+    rightCharacterIndex: number | null;
+    action: PdfTextBoundaryActionV2;
+    basis: PdfTextBoundaryBasisV2[];
+    confidence: number;
+}
+
 // export: PdfTextCharacterFact
 export interface PdfTextCharacterFact {
     index: number;
@@ -4494,6 +4890,14 @@ export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
 
 // export: PdfTextDirection
 export type PdfTextDirection = "ltr" | "rtl" | "neutral";
+
+// export: PdfTextTransformationV2
+export interface PdfTextTransformationV2 {
+    id: string;
+    action: "expand-presentation-ligature" | "use-actual-text";
+    characterIndexes: number[];
+    confidence: number;
+}
 
 // export: PdfUntaggedPageOutcomeV1
 export interface PdfUntaggedPageOutcomeV1 {

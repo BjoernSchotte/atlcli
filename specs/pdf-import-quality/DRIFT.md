@@ -70,3 +70,17 @@ found and closed a potential canonical-size-budget drift: internal V2 evidence
 is no longer allowed to reject a V1 result that remains within the caller's V1
 budget. The public V2 surface is covered by built Node/browser parity and the
 regenerated API report and reachable closure.
+
+## PIQ-03 cutover boundary
+
+PIQ-03's wording to move assembly out of legacy callers conflicts with the
+PIQ-02 reconciliation and PIQ-04's explicit ownership of the atomic production
+cutover. Routing only some callers now would create the divergence the plan is
+designed to remove and would change production V1 semantics before dependent
+schema and policy revisions move together.
+
+PIQ-03 therefore adds and publicly proves the pure V2 assembler, its fixed
+policy, and Node/browser surface without altering `normalizePdfText`, tagged,
+link, or geometry production callers. PIQ-04 remains responsible for moving
+all those callers together, changing the production facts factory and semantic
+revisions, and reviewing every resulting digest change.

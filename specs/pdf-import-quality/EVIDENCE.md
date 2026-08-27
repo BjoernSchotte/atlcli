@@ -12,7 +12,8 @@ live URLs, page IDs, raw receipts, and private input digests are prohibited.
 | PIQ-00 | PASS | 2026-08-27 |
 | PIQ-01 | PASS | 2026-08-27 |
 | PIQ-02 | PASS | 2026-08-27 |
-| PIQ-03 through PIQ-10 | NOT RUN | - |
+| PIQ-03 | PASS | 2026-08-27 |
+| PIQ-04 through PIQ-10 | NOT RUN | - |
 
 ## PIQ-00
 
@@ -218,5 +219,91 @@ after all tasks succeeded.
       canonical-size budget behavior remain stable.
 - [x] Browser/Node parity, lifecycle, cancellation, hard budgets, and PDFium
       package boundaries pass.
-- [x] Public API report, reachable closure, built tarball consumer, full
-      importer suite, build, typecheck, and privacy boundary pass.
+
+## PIQ-03
+
+### Shared text assembly
+
+- one pure, source-neutral assembler preserves caller-supplied logical order
+  and emits exact boundary actions, evidence bases, confidence, source indexes,
+  stable decision IDs, transformations, and unresolved counts;
+- all geometry thresholds, confidence values, and presentation-ligature rules
+  live in one frozen `/2` policy;
+- safe canonicalization retains line and soft-hyphen evidence until assembly;
+- authored/generated whitespace, qualified run gaps, physical-line joins,
+  punctuation, hard/generated hyphens, CJK, RTL, ligatures, NFC, conflicting
+  geometry, and aligned/misaligned/empty `ActualText` have exact assertions;
+- neutral tagged and untagged PDF facts calibrate exact run-gap, line-join, and
+  dehyphenation decisions without creating expectations from importer output;
+- issues and decision IDs contain opaque locators and indexes, not source body;
+- the new surface is exported consistently for Node and browser consumers;
+- legacy V1 production assembly remains unchanged until PIQ-04 can switch all
+  callers and dependent semantic revisions atomically.
+
+### Verification
+
+```text
+bun run test packages/import-pdf/src/text.test.ts \
+  packages/import-pdf/src/text-assembly.test.ts
+16 pass
+0 fail
+54 expect() calls
+```
+
+```text
+bun run test packages/import-pdf
+79 pass
+0 fail
+819 expect() calls
+```
+
+```text
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun scripts/api-report.ts --update
+bun scripts/api-closure.ts --update
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun scripts/consumer-smoke-vite.ts
+Vite 8.1.4 tarball consumer PASS
+text-assembly /2 browser surface loaded from built package output
+```
+
+```text
+bun run test:browser-export-harness
+6 pass
+0 fail
+```
+
+The tarball smoke required temporary-directory access and the browser E2E
+required a local loopback port outside the sandbox. No external service or
+private input was used.
+
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
+Build and typecheck emitted only non-fatal restricted-cache IO warnings after
+all tasks succeeded.
+
+### PIQ-03 gate
+
+- [x] Every required boundary family has exact evidence and final-text proof.
+- [x] `ActualText` is authoritative, including aligned and empty values;
+      unalignable marks are reported without source-body disclosure.
+- [x] Three pure runs produce identical assembly and digest.
+- [x] Neutral PDF facts calibrate the fixed geometry policy.
+- [x] Full importer, build, typecheck, API, packed consumer, and browser gates
+      pass.
+- [x] No private PDF or private-derived artifact was read or written.
