@@ -181,37 +181,146 @@ export function projectTaggedListV2(
     if (labelCorrelation) {
       appendPdfTextAssemblyV2(aggregate, labelCorrelation.assembly);
       issues.push(...pdfTextAssemblyIssuesV2(labelCorrelation.assembly, page.index, label!.id));
-      labelCorrelation.characters.forEach((character) => claimed.add(character.index));
     }
     const labelText = labelCorrelation?.text ?? "";
-    ordered ||= /^\s*(?:\d+|[a-z]+)[.)]\s*$/iu.test(labelText);
-    const paragraph = childrenWithRoleV2(body, "P")[0] ?? body;
-    const correlated = correlateTaggedTextWithLinksV2(page, paragraph);
-    appendPdfTextAssemblyV2(aggregate, correlated.assembly);
-    issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, item.id));
-    const mcids = orderedDescendantMcidsV2(paragraph);
-    const unresolvedStructure = paragraph.kids.some((kid) => kid.kind === "unresolved");
-    if (
-      !correlated.text
-      || mcids.length === 0
-      || mcids.some((mcid) => corruptMcids.has(mcid))
-      || correlated.hasUnicodeError
-      || unresolvedStructure
-    ) {
+    const bodyChildren = structureChildrenV2(body);
+    const inlineBody = bodyChildren.length > 0 && bodyChildren.every((child) =>
+      ["NonStruct", "Span", "Strong", "Em", "Link", "Quote"].includes(structureRoleV2(child))
+    );
+    const paragraphNodes = bodyChildren.length === 0 || inlineBody
+      ? [body]
+      : bodyChildren.filter((child) => structureRoleV2(child) === "P");
+    const nestedNodes = bodyChildren.filter((child) => structureRoleV2(child) === "L");
+    const unknownNodes = inlineBody ? [] : bodyChildren.filter((child) =>
+      !["P", "L"].includes(structureRoleV2(child))
+    );
+    const nestedIndex = nestedNodes[0] ? bodyChildren.indexOf(nestedNodes[0]) : -1;
+    const lastParagraphIndex = Math.max(-1, ...paragraphNodes.map((paragraph) =>
+      bodyChildren.indexOf(paragraph)
+    ));
+    const compatibleNested = nestedNodes.length === 1
+      && unknownNodes.length === 0
+      && nestedIndex > lastParagraphIndex;
+    const residualNodes = [
+      ...unknownNodes,
+      ...(compatibleNested ? [] : nestedNodes),
+    ];
+    for (const [residualIndex, residual] of residualNodes.entries()) {
+      const correlated = correlateTaggedTextWithLinksV2(page, residual);
+      appendPdfTextAssemblyV2(aggregate, correlated.assembly);
+      issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, residual.id));
+      evidence.push({
+        sourceId: residual.id,
+        locator: {
+          pageIndex: page.index,
+          ...(page.label ? { pageLabel: page.label } : {}),
+          ...(correlated.bbox ? { bbox: correlated.bbox } : {}),
+          structurePath: residual.id,
+          markedContentIds: orderedDescendantMcidsV2(residual)
+            .map((mcid) => `p${page.index}:mcid:${mcid}`),
+          characterIndexes: correlated.assembly.characterIndexes,
+        },
+        basis: ["structure-tree", "marked-content", "text-boundary"],
+        confidence: 0,
+        decisionCode: "pdf/tagged-list-item-residual",
+        outcome: "reported",
+        analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
+        boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(correlated.assembly),
+      });
       issues.push({
-        code: "pdf-import/tagged-list-item-demoted",
+        code: "pdf-import/tagged-list-item-residual",
         severity: "warning",
         outcome: "reported",
-        message: "A tagged list item could not be correlated uniquely and requires geometry fallback.",
-        sourceRefs: [item.id],
-        context: { pageIndex: page.index, itemIndex },
+        message: "A list-item child cannot be represented in neutral list order and remains explicit fallback evidence.",
+        sourceRefs: [residual.id],
+        context: {
+          pageIndex: page.index,
+          itemIndex,
+          residualIndex,
+          role: structureRoleV2(residual),
+        },
       });
-      continue;
     }
-    correlated.characters.forEach((character) => claimed.add(character.index));
-    const tagged = taggedRunsV2(correlated.assembly, correlated.characters, page.annotations);
-    const paragraphId = `${item.id}:paragraph`;
-    const nested = childrenWithRoleV2(body, "L")[0];
+
+    const blocks: ImportListBlock["items"][number]["blocks"] = [];
+    for (const [paragraphIndex, paragraph] of paragraphNodes.entries()) {
+      const correlated = correlateTaggedTextWithLinksV2(page, paragraph);
+      appendPdfTextAssemblyV2(aggregate, correlated.assembly);
+      issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, paragraph.id));
+      const mcids = orderedDescendantMcidsV2(paragraph);
+      const unresolvedStructure = paragraph.kids.some((kid) => kid.kind === "unresolved");
+      if (
+        !correlated.text
+        || mcids.length === 0
+        || mcids.some((mcid) => corruptMcids.has(mcid))
+        || correlated.hasUnicodeError
+        || unresolvedStructure
+      ) {
+        issues.push({
+          code: "pdf-import/tagged-list-item-demoted",
+          severity: "warning",
+          outcome: "reported",
+          message: "A tagged list-item paragraph could not be correlated uniquely and requires fallback.",
+          sourceRefs: [paragraph.id],
+          context: { pageIndex: page.index, itemIndex, paragraphIndex },
+        });
+        evidence.push({
+          sourceId: paragraph.id,
+          locator: {
+            pageIndex: page.index,
+            ...(page.label ? { pageLabel: page.label } : {}),
+            ...(correlated.bbox ? { bbox: correlated.bbox } : {}),
+            structurePath: paragraph.id,
+            markedContentIds: mcids.map((mcid) => `p${page.index}:mcid:${mcid}`),
+            characterIndexes: correlated.assembly.characterIndexes,
+          },
+          basis: ["structure-tree", "marked-content", "text-boundary"],
+          confidence: 0,
+          decisionCode: "pdf/tagged-list-item-paragraph-demoted",
+          outcome: "reported",
+          analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
+          boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(correlated.assembly),
+        });
+        continue;
+      }
+      correlated.characters.forEach((character) => claimed.add(character.index));
+      const tagged = taggedRunsV2(correlated.assembly, correlated.characters, page.annotations);
+      const paragraphId = `${paragraph.id}:paragraph`;
+      blocks.push({
+        id: paragraphId,
+        type: "paragraph",
+        runs: tagged.runs,
+        sourceRefs: [paragraph.id],
+      });
+      evidence.push({
+        sourceId: paragraph.id,
+        targetNodeId: paragraphId,
+        locator: {
+          pageIndex: page.index,
+          ...(page.label ? { pageLabel: page.label } : {}),
+          ...(correlated.bbox ? { bbox: correlated.bbox } : {}),
+          structurePath: paragraph.id,
+          markedContentIds: mcids.map((mcid) => `p${page.index}:mcid:${mcid}`),
+          characterIndexes: correlated.assembly.characterIndexes,
+          ...(tagged.annotationIds[0] ? { annotationId: tagged.annotationIds[0] } : {}),
+        },
+        basis: [
+          "structure-tree",
+          "marked-content",
+          "text-boundary",
+          ...(correlated.bbox ? ["text-geometry" as const] : []),
+          ...(tagged.annotationIds.length > 0 ? ["annotation" as const] : []),
+        ],
+        confidence: pdfTextAssemblyConfidenceV2(correlated.assembly),
+        decisionCode: correlated.assembly.unresolvedBoundaryCount > 0
+          ? "pdf/tagged-list-item-boundary-unresolved"
+          : "pdf/tagged-list-item-paragraph-native",
+        outcome: pdfTextAssemblyOutcomeV2(correlated.assembly),
+        analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
+        boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(correlated.assembly),
+      });
+    }
+    const nested = compatibleNested ? nestedNodes[0] : undefined;
     const child = nested ? projectTaggedListV2(page, nested, corruptMcids) : null;
     if (child) {
       child.claimedCharacterIndexes.forEach((index) => claimed.add(index));
@@ -220,36 +329,66 @@ export function projectTaggedListV2(
       evidence.push(...child.evidence);
       issues.push(...child.issues);
     }
+    if (blocks.length === 0) {
+      issues.push({
+        code: "pdf-import/tagged-list-item-demoted",
+        severity: "warning",
+        outcome: "reported",
+        message: "A tagged list item has no representable paragraph content.",
+        sourceRefs: [item.id],
+        context: { pageIndex: page.index, itemIndex },
+      });
+      continue;
+    }
+    const labelMcids = label ? orderedDescendantMcidsV2(label) : [];
+    const validLabel = labelCorrelation
+      && labelMcids.length > 0
+      && !labelMcids.some((mcid) => corruptMcids.has(mcid))
+      && !labelCorrelation.hasUnicodeError
+      && labelCorrelation.assembly.unresolvedBoundaryCount === 0;
+    if (validLabel) {
+      ordered ||= /^\s*(?:\d+|[a-z]+)[.)]\s*$/iu.test(labelText);
+      labelCorrelation.characters.forEach((character) => claimed.add(character.index));
+      evidence.push({
+        sourceId: label!.id,
+        targetNodeId: blocks[0]!.id,
+        locator: {
+          pageIndex: page.index,
+          ...(page.label ? { pageLabel: page.label } : {}),
+          ...(labelCorrelation.bbox ? { bbox: labelCorrelation.bbox } : {}),
+          structurePath: label!.id,
+          markedContentIds: labelMcids.map((mcid) => `p${page.index}:mcid:${mcid}`),
+          characterIndexes: labelCorrelation.assembly.characterIndexes,
+        },
+        basis: ["structure-tree", "marked-content", "text-boundary"],
+        confidence: pdfTextAssemblyConfidenceV2(labelCorrelation.assembly),
+        decisionCode: "pdf/tagged-list-label-native",
+        outcome: "native",
+        analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
+        boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(labelCorrelation.assembly),
+      });
+    } else if (label) {
+      evidence.push({
+        sourceId: label.id,
+        locator: {
+          pageIndex: page.index,
+          structurePath: label.id,
+          markedContentIds: labelMcids.map((mcid) => `p${page.index}:mcid:${mcid}`),
+          characterIndexes: labelCorrelation?.assembly.characterIndexes ?? [],
+        },
+        basis: ["structure-tree", "marked-content", "text-boundary"],
+        confidence: 0,
+        decisionCode: "pdf/tagged-list-label-demoted",
+        outcome: "reported",
+        analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
+        boundaryDecisionIds: labelCorrelation
+          ? pdfTextBoundaryDecisionIdsV2(labelCorrelation.assembly)
+          : [],
+      });
+    }
     items.push({
-      blocks: [{ id: paragraphId, type: "paragraph", runs: tagged.runs, sourceRefs: [item.id] }],
+      blocks,
       ...(child?.block ? { child: child.block } : {}),
-    });
-    evidence.push({
-      sourceId: item.id,
-      targetNodeId: paragraphId,
-      locator: {
-        pageIndex: page.index,
-        ...(page.label ? { pageLabel: page.label } : {}),
-        ...(correlated.bbox ? { bbox: correlated.bbox } : {}),
-        structurePath: item.id,
-        markedContentIds: mcids.map((mcid) => `p${page.index}:mcid:${mcid}`),
-        characterIndexes: correlated.assembly.characterIndexes,
-        ...(tagged.annotationIds[0] ? { annotationId: tagged.annotationIds[0] } : {}),
-      },
-      basis: [
-        "structure-tree",
-        "marked-content",
-        "text-boundary",
-        ...(correlated.bbox ? ["text-geometry" as const] : []),
-        ...(tagged.annotationIds.length > 0 ? ["annotation" as const] : []),
-      ],
-      confidence: pdfTextAssemblyConfidenceV2(correlated.assembly),
-      decisionCode: correlated.assembly.unresolvedBoundaryCount > 0
-        ? "pdf/tagged-list-item-boundary-unresolved"
-        : "pdf/tagged-list-item-native",
-      outcome: pdfTextAssemblyOutcomeV2(correlated.assembly),
-      analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
-      boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(correlated.assembly),
     });
   }
   if (items.length === 0) {

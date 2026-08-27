@@ -5,12 +5,19 @@ import { documentToAdf, documentToStorage, type ImportBlock } from "@atlcli/impo
 import {
   type PdfPageFactsV1,
   type PdfStructureNodeFact,
+  type PdfStructureNodeFactV2,
   type PdfTextCharacterFact,
 } from "./contracts.js";
 import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
 import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
 import { analyzeGeometryReadingOrderV2 } from "./reading-order.js";
-import { analyzeUntaggedTableV2, projectTaggedTable } from "./tables.js";
+import { flattenStructureV2, structureRoleV2 } from "./structure.js";
+import {
+  analyzeUntaggedTableV2,
+  collectTaggedTableRowsV2,
+  projectTaggedTable,
+  projectTaggedTableV2,
+} from "./tables.js";
 import { normalizeUntaggedPdfFacts, normalizeUntaggedPdfFactsV2 } from "./untagged.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
@@ -173,6 +180,82 @@ describe("PDF table reconstruction", () => {
     expect(documentToStorage(result.document)).toContain(
       "<tr><th><p>Plot</p></th><th><p>Yield</p></th></tr>",
     );
+  });
+
+  it("collects wrapped V2 rows in source order and defaults absent spans to one", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-structures-tagged.pdf")),
+    ));
+    const page = raw.facts.pages[0]!;
+    const tables = flattenStructureV2(page.structures).filter((candidate) =>
+      structureRoleV2(candidate) === "Table"
+    );
+    const wrapped = tables[0]!;
+    const collected = collectTaggedTableRowsV2(wrapped);
+    const projection = projectTaggedTableV2(page, wrapped, new Set());
+    const table = tableBlock(projection.blocks);
+
+    expect(collected).toMatchObject({ valid: true, reason: "qualified" });
+    expect(collected.rows.map((row) => structureRoleV2(row))).toEqual(["TR", "TR", "TR"]);
+    expect(projection.mode).toBe("native");
+    expect(table.rows.flatMap((row) => row.cells).map((cell) => textRuns(cell.blocks[0]!))).toEqual([
+      "Zone", "Signal", "North", "Clear", "Summary", "Stable",
+    ]);
+    expect(table.rows.flatMap((row) => row.cells).every((cell) =>
+      cell.rowspan === undefined && cell.colspan === undefined
+    )).toBe(true);
+    expect(documentToAdf({ blocks: projection.blocks }).content[0]?.content)
+      .toHaveLength(3);
+    expect(documentToStorage({ blocks: projection.blocks, assets: [] })).toContain(
+      "<tr><td><p>Summary</p></td><td><p>Stable</p></td></tr>",
+    );
+  });
+
+  it("rejects semantic wrapper content, nested tables, and rotated tagged grids", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const positive = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-structures-tagged.pdf")),
+    ));
+    const positivePage = positive.facts.pages[0]!;
+    const wrapped = flattenStructureV2(positivePage.structures).find((candidate) =>
+      structureRoleV2(candidate) === "Table"
+    )!;
+    const contaminated = structuredClone(wrapped);
+    const wrapper = flattenStructureV2([contaminated]).find((candidate) =>
+      ["THead", "TBody", "TFoot"].includes(structureRoleV2(candidate))
+    )!;
+    wrapper.kids.push({ kind: "mcid", index: wrapper.kids.length, mcid: 999 });
+
+    expect(collectTaggedTableRowsV2(contaminated)).toMatchObject({
+      valid: false,
+      reason: "row-wrapper-content",
+    });
+    expect(projectTaggedTableV2({ ...positivePage, rotation: 90 }, wrapped, new Set()).mode)
+      .toBe("linearized-render-required");
+
+    const negative = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-negative-tagged.pdf")),
+    ));
+    const negativePage = negative.facts.pages[0]!;
+    const nested = flattenStructureV2(negativePage.structures).find((candidate) =>
+      structureRoleV2(candidate) === "Table"
+    )!;
+    const nestedProjection = projectTaggedTableV2(negativePage, nested, new Set());
+    const linearized = nestedProjection.blocks.map(textRuns).join("\n");
+
+    expect(nestedProjection.mode).toBe("linearized-render-required");
+    expect(linearized.split("Outer")).toHaveLength(2);
+    expect(linearized.split("Nested")).toHaveLength(2);
+
+    const browser = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "producer-browser.pdf")),
+    ));
+    const browserTable = flattenStructureV2(browser.facts.pages[0]!.structures).find((candidate) =>
+      structureRoleV2(candidate) === "Table"
+    ) as PdfStructureNodeFactV2;
+    expect(browserTable.directMcids.length).toBeGreaterThan(0);
+    expect(collectTaggedTableRowsV2(browserTable).valid).toBe(true);
   });
 
   it("projects the real tagged table with header identity and exact target encodings", async () => {

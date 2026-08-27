@@ -406,19 +406,37 @@ type PdfFigureBaseSemantics = PdfFigureBaseSemanticsV1 | PdfFigureBaseSemanticsV
 type PdfFigureAdapter = PdfFactsAdapter | PdfFactsAdapterV2;
 
 function tableFallbackCandidates(base: PdfFigureBaseSemantics): VisualCandidate[] {
-  const byPage = new Map<number, PdfFigureEvidence[]>();
-  for (const evidence of base.evidence) {
-    if (!evidence.decisionCode.includes("table") || evidence.outcome !== "approximated" || !evidence.locator.bbox) continue;
-    byPage.set(evidence.locator.pageIndex, [...(byPage.get(evidence.locator.pageIndex) ?? []), evidence]);
-  }
-  return [...byPage.entries()].flatMap(([pageIndex, evidence]) => {
+  const seen = new Set<string>();
+  return base.document.issues.flatMap((issue) => {
+    if (
+      issue.outcome !== "approximated"
+      || !["pdf-import/table-tagged-linearized", "pdf-import/table-alignment-only-linearized"].includes(issue.code)
+    ) return [];
+    const sourceId = issue.sourceRefs?.[0];
+    const pageIndex = issue.context?.pageIndex;
+    if (!sourceId || typeof pageIndex !== "number" || seen.has(sourceId)) return [];
+    seen.add(sourceId);
+    const tableBlocks = base.document.blocks.filter((block) =>
+      block.id === sourceId
+      || block.id.startsWith(`${sourceId}:`)
+      || block.sourceRefs?.includes(sourceId) === true
+    );
+    const targetIds = new Set(tableBlocks.flatMap((block) => [block.id, ...(block.sourceRefs ?? [])]));
+    const evidence = base.evidence.filter((item) =>
+      item.locator.pageIndex === pageIndex
+      && item.outcome === "approximated"
+      && (
+        item.sourceId === sourceId
+        || targetIds.has(item.sourceId)
+        || Boolean(item.targetNodeId && targetIds.has(item.targetNodeId))
+      )
+    );
     const bbox = unionRects(evidence.map((item) => item.locator.bbox));
     if (!bbox) return [];
-    const sourceId = `pdf:p${pageIndex}:table-region-fallback`;
     const expanded = expandNormalizedRect(bbox);
     return [{
       sourceId,
-      sourceRefs: evidence.map((item) => item.sourceId),
+      sourceRefs: [sourceId, ...evidence.map((item) => item.sourceId)],
       pageIndex,
       bbox: expanded,
       request: {
@@ -549,11 +567,18 @@ async function preservePdfFigureCandidates<E extends PdfFigureEvidence>(
     throw new PdfImportError("pdf/incomplete", "PDF visual materialization did not return every requested asset.");
   }
   const byRequest = new Map(materialized.map((asset) => [asset.requestId, asset]));
+  const materializedSourceIds = new Set(candidates.map((candidate) => candidate.sourceId));
   const documentAssets = new Map<string, ImportAsset>();
   const issues: ImportIssue[] = base.document.issues
-    .filter((issue) => issue.code !== "pdf-import/tagged-figure-deferred")
+    .filter((issue) =>
+      issue.code !== "pdf-import/tagged-figure-deferred"
+      || !issue.sourceRefs?.some((sourceRef) => materializedSourceIds.has(sourceRef))
+    )
     .map((issue) => ({ ...issue }));
-  const evidence = base.evidence.filter((item) => item.decisionCode !== "pdf/tagged-figure-deferred");
+  const evidence = base.evidence.filter((item) =>
+    item.decisionCode !== "pdf/tagged-figure-deferred"
+    || !materializedSourceIds.has(item.sourceId)
+  );
   const additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }> = [];
   const figures: PdfFigureDecisionV1[] = [];
   for (const candidate of candidates) {

@@ -79,8 +79,44 @@ export function assessPdfVisualFallbacks(
   const fallbackRequired = new Set(base.requiresFallbackPages ?? []);
   return facts.pages.map((page) => {
     const outcome = base.pageOutcomes.find((item) => item.pageIndex === page.index);
-    if (hybridOutcome(outcome)) {
+    const deferredFigures = base.evidence.filter((item) =>
+      item.locator.pageIndex === page.index
+      && item.decisionCode === "pdf/tagged-figure-deferred"
+      && item.outcome === "reported"
+    );
+    const figureAssessment = (claimedCharacterCount: number, unclaimedCharacterCount: number) => {
+      const localized = deferredFigures.filter((item) => item.locator.bbox);
+      if (localized.length === deferredFigures.length) {
+        return {
+          pageIndex: page.index,
+          scope: "region" as const,
+          reasonCodes: ["localized-unmatched-figure"],
+          regionLocators: uniqueLocators(localized.map((item) => item.locator)),
+          claimedCharacterCount,
+          unclaimedCharacterCount,
+        };
+      }
+      if (localized.length > 0) {
+        return {
+          pageIndex: page.index,
+          scope: "page" as const,
+          reasonCodes: ["partially-unlocalized-unmatched-figure"],
+          regionLocators: [],
+          claimedCharacterCount,
+          unclaimedCharacterCount,
+        };
+      }
       return {
+        pageIndex: page.index,
+        scope: "report-only" as const,
+        reasonCodes: ["unlocalized-unmatched-figure"],
+        regionLocators: [],
+        claimedCharacterCount,
+        unclaimedCharacterCount,
+      };
+    };
+    if (hybridOutcome(outcome)) {
+      const hybrid = {
         pageIndex: page.index,
         scope: outcome.fallbackScope,
         reasonCodes: outcome.fallbackReasonCodes,
@@ -88,6 +124,9 @@ export function assessPdfVisualFallbacks(
         claimedCharacterCount: outcome.uniquelyOwnedCharacterCount - outcome.residualReportedCharacterCount,
         unclaimedCharacterCount: outcome.residualReportedCharacterCount,
       };
+      return hybrid.scope !== "none" || deferredFigures.length === 0
+        ? hybrid
+        : figureAssessment(hybrid.claimedCharacterCount, hybrid.unclaimedCharacterCount);
     }
     const claimedCharacterCount = outcome && taggedOutcome(outcome)
       ? outcome.claimedCharacterCount
@@ -132,6 +171,9 @@ export function assessPdfVisualFallbacks(
         reasonCodes: ["unclaimed-visible-text"],
         regionLocators: [],
       };
+    }
+    if (deferredFigures.length > 0) {
+      return figureAssessment(claimedCharacterCount, unclaimedCharacterCount);
     }
     if (outcome.corruptTagCount === 0) {
       return { ...common, scope: "none" as const, reasonCodes: [], regionLocators: [] };

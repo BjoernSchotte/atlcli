@@ -79,6 +79,7 @@ function isVisibleCharacter(value: string): boolean {
 }
 
 function ownershipBasis(entry: PdfDecisionEvidenceV2): PdfCharacterOwnershipV2["basis"] {
+  if (entry.outcome === "reported" || entry.outcome === "rejected") return "reported";
   if (entry.decisionCode.includes("fallback")) return "fallback";
   if (entry.analyzerRevision === PDF_TAGGED_POLICY_REVISION_V2 || entry.basis.includes("structure-tree")) {
     return entry.targetNodeId ? "tagged" : "reported";
@@ -125,6 +126,11 @@ export function auditPdfCharacterOwnershipV2(
       };
       const existing = ownership.get(key);
       if (!existing) ownership.set(key, candidate);
+      else if (existing.basis === "reported" && candidate.basis !== "reported") {
+        ownership.set(key, candidate);
+      } else if (candidate.basis === "reported" || existing.basis === "reported") {
+        continue;
+      }
       else if (
         existing.ownerSourceId !== candidate.ownerSourceId
         || existing.targetNodeId !== candidate.targetNodeId
@@ -273,7 +279,11 @@ export async function normalizeHybridPdfFactsV2(
   for (const page of facts.pages) {
     const initialAudit = auditPdfCharacterOwnershipV2(facts, evidence);
     const taggedOwned = new Set(initialAudit.ownership.filter((entry) =>
-      entry.pageIndex === page.index && entry.basis === "tagged" && entry.targetNodeId
+      entry.pageIndex === page.index
+      && entry.basis === "tagged"
+      && entry.targetNodeId
+      && entry.outcome !== "reported"
+      && entry.outcome !== "rejected"
     ).map((entry) => entry.characterIndex));
     const visible = page.characters.filter((character) => isVisibleCharacter(character.value));
     const residualIndexes = new Set(visible

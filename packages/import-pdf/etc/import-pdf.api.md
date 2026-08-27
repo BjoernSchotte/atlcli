@@ -90,6 +90,9 @@ export declare function classifyPdfDocument(tagged: boolean, pages: readonly Pic
 // export: classifyPdfPage
 export declare function classifyPdfPage(text: string, imageCount: number): PdfPageKind;
 
+// export: collectTaggedTableRowsV2
+export declare function collectTaggedTableRowsV2(table: PdfStructureNodeFactV2): PdfTaggedTableRowsV2;
+
 // export: CorrelatedTaggedText
 export interface CorrelatedTaggedText {
     text: string;
@@ -1335,6 +1338,13 @@ export interface PdfTaggedSemanticsV2 {
     semanticDigest: string;
 }
 
+// export: PdfTaggedTableRowsV2
+export interface PdfTaggedTableRowsV2 {
+    rows: PdfStructureNodeFactV2[];
+    valid: boolean;
+    reason: "qualified" | "row-count" | "row-wrapper-content" | "row-structure";
+}
+
 // export: PdfTextAssemblyInputV2
 export interface PdfTextAssemblyInputV2 {
     sourceId: string;
@@ -1673,6 +1683,9 @@ export declare function classifyPdfDocument(tagged: boolean, pages: readonly Pic
 
 // export: classifyPdfPage
 export declare function classifyPdfPage(text: string, imageCount: number): PdfPageKind;
+
+// export: collectTaggedTableRowsV2
+export declare function collectTaggedTableRowsV2(table: PdfStructureNodeFactV2): PdfTaggedTableRowsV2;
 
 // export: CorrelatedTaggedText
 export interface CorrelatedTaggedText {
@@ -2987,6 +3000,13 @@ export interface PdfTaggedSemanticsV2 {
     semanticDigest: string;
 }
 
+// export: PdfTaggedTableRowsV2
+export interface PdfTaggedTableRowsV2 {
+    rows: PdfStructureNodeFactV2[];
+    valid: boolean;
+    reason: "qualified" | "row-count" | "row-wrapper-content" | "row-structure";
+}
+
 // export: PdfTextAssemblyInputV2
 export interface PdfTextAssemblyInputV2 {
     sourceId: string;
@@ -3325,6 +3345,9 @@ export declare function classifyPdfDocument(tagged: boolean, pages: readonly Pic
 
 // export: classifyPdfPage
 export declare function classifyPdfPage(text: string, imageCount: number): PdfPageKind;
+
+// export: collectTaggedTableRowsV2
+export declare function collectTaggedTableRowsV2(table: PdfStructureNodeFactV2): PdfTaggedTableRowsV2;
 
 // export: CorrelatedTaggedText
 export interface CorrelatedTaggedText {
@@ -4571,6 +4594,13 @@ export interface PdfTaggedSemanticsV2 {
     semanticDigest: string;
 }
 
+// export: PdfTaggedTableRowsV2
+export interface PdfTaggedTableRowsV2 {
+    rows: PdfStructureNodeFactV2[];
+    valid: boolean;
+    reason: "qualified" | "row-count" | "row-wrapper-content" | "row-structure";
+}
+
 // export: PdfTextAssemblyInputV2
 export interface PdfTextAssemblyInputV2 {
     sourceId: string;
@@ -4909,6 +4939,9 @@ export declare function classifyPdfDocument(tagged: boolean, pages: readonly Pic
 
 // export: classifyPdfPage
 export declare function classifyPdfPage(text: string, imageCount: number): PdfPageKind;
+
+// export: collectTaggedTableRowsV2
+export declare function collectTaggedTableRowsV2(table: PdfStructureNodeFactV2): PdfTaggedTableRowsV2;
 
 // export: CorrelatedTaggedText
 export interface CorrelatedTaggedText {
@@ -6230,6 +6263,13 @@ export interface PdfTaggedSemanticsV2 {
     pageOutcomes: PdfTaggedPageOutcomeV2[];
     requiresGeometryPages: number[];
     semanticDigest: string;
+}
+
+// export: PdfTaggedTableRowsV2
+export interface PdfTaggedTableRowsV2 {
+    rows: PdfStructureNodeFactV2[];
+    valid: boolean;
+    reason: "qualified" | "row-count" | "row-wrapper-content" | "row-structure";
 }
 
 // export: PdfTextAssemblyInputV2

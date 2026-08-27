@@ -21,9 +21,11 @@ import {
   type PdfTextCharacterFact,
 } from "./contracts.js";
 import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
+import { normalizeHybridPdfFactsV2 } from "./hybrid.js";
 import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
+import { flattenStructureV2, structureRoleV2 } from "./structure.js";
 import { textDirection } from "./text.js";
-import { digestPdfFacts } from "./canonical.js";
+import { digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
 import { PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 } from "./text-assembly.js";
 import { generateUnresolvedStructureKidProbe } from "../../../specs/pdf-import-quality/fixtures/generate-core.js";
 
@@ -273,6 +275,94 @@ describe("tagged PDF semantic extraction", () => {
       expect(storage).toContain("<ol><li><p>Inspect the northern marker.</p></li>");
       expect(storage).not.toContain("<ol><li><p>1.");
     }
+  });
+
+  it("preserves wrapped tables and complete ordered list bodies without ownership gaps", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-structures-tagged.pdf")),
+    ));
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+    const hybrid = await normalizeHybridPdfFactsV2(raw.facts, raw.factsDigest);
+
+    expect(result.document.blocks.map((block) => block.type)).toEqual(["table", "list", "table"]);
+    const firstTable = result.document.blocks[0];
+    const list = result.document.blocks[1];
+    const secondTable = result.document.blocks[2];
+    if (firstTable?.type !== "table" || list?.type !== "list" || secondTable?.type !== "table") {
+      throw new Error("expected table, list, table");
+    }
+    expect(firstTable.rows.map((row) => row.cells.map((cell) => textOf(cell.blocks[0]!))))
+      .toEqual([["Zone", "Signal"], ["North", "Clear"], ["Summary", "Stable"]]);
+    expect(list.items[0]?.blocks.map(textOf)).toEqual([
+      "Inspect the northern marker.",
+      "Record a second paragraph.",
+    ]);
+    expect(list.items[0]?.child?.items[0]?.blocks.map(textOf)).toEqual([
+      "Verify the nested reading.",
+    ]);
+    expect(secondTable.rows[0]?.cells.map((cell) => textOf(cell.blocks[0]!)))
+      .toEqual(["East", "Watch"]);
+    const storage = documentToStorage(result.document);
+    expect(storage).toContain("Record a second paragraph.");
+    expect(storage).toContain("Verify the nested reading.");
+    expect(documentToAdf(result.document).content.map((node) => node.type))
+      .toEqual(["table", "orderedList", "table"]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/tagged-figure-deferred",
+      outcome: "reported",
+    }));
+    expect(result.evidence).toContainEqual(expect.objectContaining({
+      decisionCode: "pdf/tagged-figure-deferred",
+      outcome: "reported",
+    }));
+    expect(hybrid.pageOutcomes).toEqual([expect.objectContaining({
+      mode: "hybrid-native",
+      visibleCharacterCount: 117,
+      uniquelyOwnedCharacterCount: 117,
+      duplicateOwnershipAttemptCount: 0,
+      residualReportedCharacterCount: 0,
+      fallbackScope: "none",
+    })]);
+  });
+
+  it("reports every incompatible list child instead of silently taking the first", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const negative = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-negative-tagged.pdf")),
+    ));
+    const result = await normalizeTaggedPdfFactsV2(negative.facts, negative.factsDigest);
+    const residual = result.evidence.filter((entry) =>
+      entry.decisionCode === "pdf/tagged-list-item-residual"
+    );
+    const list = result.document.blocks.find((block) => block.type === "list");
+
+    expect(residual.map((entry) => entry.locator.characterIndexes?.length)).toEqual([20, 21]);
+    expect(result.document.issues.filter((issue) =>
+      issue.code === "pdf-import/tagged-list-item-residual"
+    )).toHaveLength(2);
+    expect(list?.type).toBe("list");
+    if (list?.type !== "list") throw new Error("expected list");
+    expect(list.items[0]?.child).toBeUndefined();
+    expect(list.items[0]?.blocks.map(textOf)).toEqual(["Multiple nested lists stay explicit."]);
+
+    const mutated = structuredClone(negative.facts);
+    const listRoot = flattenStructureV2(mutated.pages[0]!.structures).find((candidate) =>
+      structureRoleV2(candidate) === "L"
+    )!;
+    const paragraph = flattenStructureV2([listRoot]).find((candidate) =>
+      structureRoleV2(candidate) === "P"
+    )!;
+    paragraph.type = "Note";
+    const withUnknown = await normalizeTaggedPdfFactsV2(mutated, await digestPdfFactsV2(mutated));
+    expect(withUnknown.evidence).toContainEqual(expect.objectContaining({
+      sourceId: paragraph.id,
+      decisionCode: "pdf/tagged-list-item-residual",
+      outcome: "reported",
+    }));
+    expect(withUnknown.document.issues.some((issue) =>
+      issue.code === "pdf-import/tagged-list-item-residual" && issue.sourceRefs?.includes(paragraph.id)
+    )).toBe(true);
   });
 
   it("demotes an unresolved V2 structure child without exposing source text in diagnostics", async () => {

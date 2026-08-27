@@ -139,6 +139,7 @@ async function materializePdfVisualFallbackCandidates<E extends PdfVisualFallbac
   const nextEvidence = [...evidence];
   const regionCoveredCodes = new Set([
     "pdf-import/tagged-node-demoted",
+    "pdf-import/tagged-figure-deferred",
     "pdf-import/hybrid-region-fallback-required",
     "pdf-import/text-boundary-unresolved",
   ]);
@@ -156,6 +157,7 @@ async function materializePdfVisualFallbackCandidates<E extends PdfVisualFallbac
     "pdf-import/tagged-structure-missing",
     "pdf-import/tagged-text-unclaimed",
     "pdf-import/tagged-node-demoted",
+    "pdf-import/tagged-figure-deferred",
     "pdf-import/hybrid-page-fallback-required",
     "pdf-import/hybrid-region-fallback-required",
     "pdf-import/text-boundary-unresolved",

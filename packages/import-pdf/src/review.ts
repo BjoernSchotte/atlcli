@@ -291,7 +291,10 @@ export async function buildPdfImportReview(
     adapter,
     base,
   );
-  const fallbackAssessments = assessPdfVisualFallbacks(analyzed.facts, base);
+  const fallbackAssessments = assessPdfVisualFallbacks(analyzed.facts, {
+    ...base,
+    evidence: visual.evidence,
+  });
   const pagesRequiringFallback = fallbackAssessmentPageIndexes(fallbackAssessments);
   const withPageImages = scanPolicy === "page-image"
     ? await materializePdfVisualFallbacks(sourceBytes, adapter, visual.document, visual.evidence, fallbackAssessments)
@@ -435,7 +438,10 @@ export async function buildPdfImportReviewV2(
     adapter,
     base,
   );
-  const fallbackAssessments = assessPdfVisualFallbacks(analyzed.facts, base);
+  const fallbackAssessments = assessPdfVisualFallbacks(analyzed.facts, {
+    ...base,
+    evidence: visual.evidence,
+  });
   const pagesRequiringFallback = fallbackAssessmentPageIndexes(fallbackAssessments);
   const withPageImages = scanPolicy === "page-image"
     ? await materializePdfVisualFallbacksV2(sourceBytes, adapter, visual.document, visual.evidence, fallbackAssessments)

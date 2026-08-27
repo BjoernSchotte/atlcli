@@ -186,10 +186,10 @@ describe("PDF hybrid semantic reconciliation", () => {
       geometryRepairedCharacterCount: 0,
       geometryRepairRegionCount: 0,
       duplicateOwnershipAttemptCount: 0,
-      residualReportedCharacterCount: 73,
+      residualReportedCharacterCount: 91,
       normalizedFallbackArea: 1,
     });
-    expect(reported.ownership.filter((entry) => entry.outcome === "reported")).toHaveLength(73);
+    expect(reported.ownership.filter((entry) => entry.outcome === "reported")).toHaveLength(91);
     expect(reported.evidence).toContainEqual(expect.objectContaining({
       decisionCode: "pdf/hybrid-page-fallback-required",
       outcome: "reported",

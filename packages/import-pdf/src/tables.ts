@@ -32,7 +32,7 @@ import {
   type PdfReadingOrderPageV1,
   type PdfReadingOrderPageV2,
 } from "./reading-order.js";
-import { structureChildrenV2, structureRole, structureRoleV2 } from "./structure.js";
+import { flattenStructureV2, structureChildrenV2, structureRole, structureRoleV2 } from "./structure.js";
 import {
   correlateTaggedText,
   descendantMcids,
@@ -83,6 +83,47 @@ export interface PdfTableProjectionV2 {
   claimedCharacterIndexes: number[];
   boundaries: PdfTextBoundaryDecisionV2[];
   transformations: PdfTextTransformationV2[];
+}
+
+export interface PdfTaggedTableRowsV2 {
+  rows: PdfStructureNodeFactV2[];
+  valid: boolean;
+  reason: "qualified" | "row-count" | "row-wrapper-content" | "row-structure";
+}
+
+const TAGGED_TABLE_ROW_GROUP_ROLES = new Set(["THead", "TBody", "TFoot"]);
+const TAGGED_TABLE_NEUTRAL_CONTAINER_ROLES = new Set(["Document", "Part", "Art", "Sect", "Div"]);
+
+/** Collects table rows in exact structure-kid order without accepting sibling semantic content. */
+export function collectTaggedTableRowsV2(table: PdfStructureNodeFactV2): PdfTaggedTableRowsV2 {
+  const rows: PdfStructureNodeFactV2[] = [];
+  let reason: PdfTaggedTableRowsV2["reason"] = "qualified";
+  const visit = (container: PdfStructureNodeFactV2, nested: boolean): void => {
+    const rowsBefore = rows.length;
+    if (nested && container.directMcids.length > 0) reason = "row-wrapper-content";
+    for (const kid of container.kids) {
+      if (kid.kind !== "element") {
+        if (nested) reason = "row-wrapper-content";
+        continue;
+      }
+      const role = structureRoleV2(kid.node);
+      if (role === "TR") {
+        rows.push(kid.node);
+        continue;
+      }
+      if (TAGGED_TABLE_ROW_GROUP_ROLES.has(role) || TAGGED_TABLE_NEUTRAL_CONTAINER_ROLES.has(role)) {
+        visit(kid.node, true);
+        continue;
+      }
+      reason = "row-structure";
+    }
+    if (nested && rows.length === rowsBefore) reason = "row-structure";
+  };
+  visit(table, false);
+  if (rows.length === 0 || rows.length > PDF_TABLE_POLICY_V1.maximumRows) {
+    reason = "row-count";
+  }
+  return { rows, valid: reason === "qualified", reason };
 }
 
 function tableLocator(
@@ -384,11 +425,15 @@ function validTaggedGridV2(
       const rowspan = attributeNumber(cell.attributes, "rowspan");
       const colspan = attributeNumber(cell.attributes, "colspan");
       const correlated = correlateTaggedTextWithLinksV2(page, cell);
+      const nestedTable = flattenStructureV2(structureChildrenV2(cell))
+        .some((descendant) => structureRoleV2(descendant) === "Table");
       if (
         mcids.length === 0
         || mcids.some((mcid) => corruptMcids.has(mcid))
         || correlated.text.length === 0
         || correlated.hasUnicodeError
+        || correlated.characters.some((character) => Math.abs(character.angleRadians) > 0.001)
+        || nestedTable
         || correlated.assembly.unresolvedBoundaryCount > 0
         || unresolvedStructureKidIndexesV2(cell).length > 0
         || rowspan === null
@@ -507,8 +552,13 @@ export function projectTaggedTableV2(
   table: PdfStructureNodeFactV2,
   corruptMcids: ReadonlySet<number>,
 ): PdfTableProjectionV2 {
-  const rows = structureChildrenV2(table);
-  const qualification = validTaggedGridV2(page, rows, corruptMcids);
+  const collected = collectTaggedTableRowsV2(table);
+  const rows = collected.rows;
+  const qualification = page.rotation !== 0
+    ? { valid: false, reason: "page-rotation" }
+    : !collected.valid
+      ? collected
+      : validTaggedGridV2(page, rows, corruptMcids);
   if (!qualification.valid) {
     return linearizeTaggedTableV2(page, table, rows, qualification.reason);
   }
