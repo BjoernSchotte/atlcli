@@ -92,11 +92,19 @@ describe("PDF V2 text assembly", () => {
       basis: ["literal-whitespace"],
       confidence: 1,
     }]);
-    expect(result.segments).toEqual([{
-      text: "Alpha Beta",
-      characterIndexes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-      synthesized: false,
-    }]);
+    expect(result.segments).toEqual([
+      ...[..."Alpha"].map((text, index) => ({
+        text,
+        characterIndexes: [index],
+        synthesized: false,
+      })),
+      { text: " ", characterIndexes: [5], synthesized: false },
+      ...[..."Beta"].map((text, offset) => ({
+        text,
+        characterIndexes: [offset + 6],
+        synthesized: false,
+      })),
+    ]);
   });
 
   it("inserts one same-line word space only for a qualified run gap", () => {
@@ -154,7 +162,7 @@ describe("PDF V2 text assembly", () => {
       basis: ["generated-whitespace", "baseline", "script"],
       confidence: 0.95,
     });
-    expect(result.segments[1]).toEqual({
+    expect(result.segments.find((segment) => segment.synthesized)).toEqual({
       text: " ",
       characterIndexes: [7, 8],
       synthesized: true,

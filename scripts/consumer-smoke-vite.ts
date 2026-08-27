@@ -132,10 +132,12 @@ import {
   PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2,
   PDF_FACTS_SCHEMA_V1,
   PDF_FACTS_SCHEMA_V2,
+  PDF_TAGGED_SEMANTICS_SCHEMA_V2,
   assemblePdfTextV2,
   createBrowserPdfiumFactsAdapter,
   createBrowserPdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
+  normalizeTaggedPdfFactsV2,
   normalizeUntaggedPdfFacts,
   preservePdfFigures,
 } from "@atlcli/import-pdf/browser-worker";
@@ -173,8 +175,10 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
   importPdfProof:
     PDF_FACTS_SCHEMA_V1 === "atlcli.pdf-facts/1" &&
     PDF_FACTS_SCHEMA_V2 === "atlcli.pdf-facts/2" &&
+    PDF_TAGGED_SEMANTICS_SCHEMA_V2 === "atlcli.pdf-tagged-semantics/2" &&
     PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 === "atlcli.pdf-text-assembly-policy/2" &&
     typeof assemblePdfTextV2 === "function" &&
+    typeof normalizeTaggedPdfFactsV2 === "function" &&
     typeof createBrowserPdfiumFactsAdapter === "function" &&
     typeof createBrowserPdfiumFactsAdapterV2 === "function",
   wasmUrl,
@@ -283,6 +287,7 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     const resultV2 = await createBrowserPdfiumFactsAdapterV2({ wasmBinary: pdfiumWasm })
       .analyze(fixtureBytes);
     const semantics = await normalizeTaggedPdfFacts(result.facts, result.factsDigest);
+    const semanticsV2 = await normalizeTaggedPdfFactsV2(resultV2.facts, resultV2.factsDigest);
     const figures = await preservePdfFigures(
       result.facts,
       result.factsDigest,
@@ -306,6 +311,14 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       factsDigest: result.factsDigest,
       factsSchemaV2: resultV2.facts.schema,
       factsDigestV2: resultV2.factsDigest,
+      taggedSemanticsSchemaV2: semanticsV2.schema,
+      taggedSemanticDigestV2: semanticsV2.semanticDigest,
+      taggedBoundaryCountV2: semanticsV2.boundaries.length,
+      taggedUnresolvedBoundaryCountV2: semanticsV2.pageOutcomes.reduce(
+        (count, page) => count + page.unresolvedBoundaryCount,
+        0,
+      ),
+      taggedPageModesV2: semanticsV2.pageOutcomes.map((page) => page.mode),
       semanticDigest: semantics.semanticDigest,
       figureSemanticDigest: figures.semanticDigest,
       titleCandidate: semantics.document.titleCandidate,
@@ -548,6 +561,11 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
         factsDigest: string;
         factsSchemaV2: string;
         factsDigestV2: string;
+        taggedSemanticsSchemaV2: string;
+        taggedSemanticDigestV2: string;
+        taggedBoundaryCountV2: number;
+        taggedUnresolvedBoundaryCountV2: number;
+        taggedPageModesV2: string[];
         semanticDigest: string;
         figureSemanticDigest: string;
         titleCandidate?: string;
@@ -691,6 +709,11 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     || !/^[a-f0-9]{64}$/u.test(importResult.factsDigest)
     || importResult.factsSchemaV2 !== "atlcli.pdf-facts/2"
     || !/^[a-f0-9]{64}$/u.test(importResult.factsDigestV2)
+    || importResult.taggedSemanticsSchemaV2 !== "atlcli.pdf-tagged-semantics/2"
+    || !/^[a-f0-9]{64}$/u.test(importResult.taggedSemanticDigestV2)
+    || importResult.taggedBoundaryCountV2 !== 16
+    || importResult.taggedUnresolvedBoundaryCountV2 !== 0
+    || importResult.taggedPageModesV2.join(",") !== "tagged-native"
     || !/^[a-f0-9]{64}$/u.test(importResult.semanticDigest)
     || !/^[a-f0-9]{64}$/u.test(importResult.figureSemanticDigest)
     || importResult.titleCandidate !== "Structured Garden Report"

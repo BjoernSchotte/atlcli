@@ -284,6 +284,12 @@ bun run test:browser-export-harness
 0 fail
 ```
 
+```text
+bun run typecheck
+4 successful tasks
+0 failed tasks
+```
+
 The tarball smoke required temporary-directory access and the browser E2E
 required a local loopback port outside the sandbox. No external service or
 private input was used.
@@ -307,3 +313,96 @@ all tasks succeeded.
 - [x] Full importer, build, typecheck, API, packed consumer, and browser gates
       pass.
 - [x] No private PDF or private-derived artifact was read or written.
+
+## PIQ-04 tagged-lane checkpoint
+
+This is a proven intermediate checkpoint, not completion of PIQ-04. The
+geometry lane and atomic production cutover remain open.
+
+### Tagged V2 routing
+
+- V2 tagged correlation follows ordered mixed structure kids and retains
+  generated whitespace or hyphen bridge evidence between adjacent MCIDs;
+- paragraphs, headings, safe link runs, list items, and tagged table cells all
+  consume the shared text-assembly segments;
+- synthesized separators inherit a link only when their nearest source
+  characters resolve to the same safe annotation;
+- mismatching `ActualText` never receives a source link and emits a body-free
+  issue instead;
+- boundary decisions, transformations, exact character indexes, confidence,
+  and outcomes are bound into the `/2` semantic digest;
+- an unresolved structure-child position is explicitly reported and demoted
+  to geometry rather than being silently skipped;
+- V1 tagged normalization and the production route remain unchanged until the
+  remaining PIQ-04 lanes can cut over atomically.
+
+The neutral fragmented tagged fixture produces seven exact editable blocks,
+including qualified spaces, generated-hyphen removal, RTL, CJK, ligature
+expansion, umlauts, and the bounded safe link. It records 22 boundary
+decisions, zero unresolved boundaries, and all 143 eligible tagged characters
+are claimed exactly once. The separate untagged residue remains intentionally
+out of this checkpoint; PIQ-05 owns hybrid recovery.
+
+### Verification
+
+```text
+bun run test packages/import-pdf/src/text-assembly.test.ts \
+  packages/import-pdf/src/links-v2.test.ts \
+  packages/import-pdf/src/tagged.test.ts \
+  packages/import-pdf/src/tables.test.ts
+28 pass
+0 fail
+146 expect() calls
+```
+
+```text
+bun run test packages/import-pdf
+85 pass
+0 fail
+845 expect() calls
+```
+
+```text
+bun run build
+34 successful tasks
+0 failed tasks
+```
+
+```text
+bun scripts/api-report.ts --update
+bun scripts/api-closure.ts --update
+bun run test scripts/api-report.test.ts
+5 pass
+0 fail
+14 expect() calls
+```
+
+```text
+bun scripts/consumer-smoke-vite.ts
+Vite 8.1.4 tarball consumer PASS
+V2 tagged semantic schema, digest, page outcome, and 16 boundary decisions
+loaded from built browser package output
+```
+
+```text
+bun run test:browser-export-harness
+6 pass
+0 fail
+```
+
+The tarball smoke required temporary-directory access and the browser E2E
+required a local loopback port outside the sandbox. No external service or
+private input was used.
+
+### Checkpoint gate
+
+- [x] Tagged text, links, list items, and tagged table cells use one V2
+      assembler without changing the V1 production path.
+- [x] Exact ADF and Storage text, safe link boundaries, and neutral boundary
+      evidence pass.
+- [x] Unresolved structure and `ActualText` mark mismatch fail closed with
+      body-free diagnostics.
+- [x] Full importer, build, typecheck, API, packed consumer, and browser gates
+      pass.
+- [x] No customer PDF or customer-derived artifact was read, staged, or
+      written.

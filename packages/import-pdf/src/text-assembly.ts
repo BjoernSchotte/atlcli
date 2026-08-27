@@ -306,14 +306,9 @@ function appendPiece(
   synthesized: boolean,
 ): void {
   if (!text) return;
-  const previous = pieces.at(-1);
-  if (previous?.synthesized === synthesized) {
-    previous.text += text;
-    for (const index of characterIndexes) {
-      if (!previous.characterIndexes.includes(index)) previous.characterIndexes.push(index);
-    }
-    return;
-  }
+  // Keep source pieces granular enough for downstream link/mark projection.
+  // A presentation ligature may expand to multiple output code points, but it
+  // still remains one segment tied to its single source character.
   pieces.push({ text, characterIndexes: [...new Set(characterIndexes)], synthesized });
 }
 

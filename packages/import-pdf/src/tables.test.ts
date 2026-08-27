@@ -7,8 +7,8 @@ import {
   type PdfStructureNodeFact,
   type PdfTextCharacterFact,
 } from "./contracts.js";
-import { createNodePdfiumFactsAdapter } from "./node.js";
-import { normalizeTaggedPdfFacts } from "./normalize.js";
+import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
+import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
 import { projectTaggedTable } from "./tables.js";
 import { normalizeUntaggedPdfFacts } from "./untagged.js";
 
@@ -92,6 +92,31 @@ function syntheticTaggedPage(table: PdfStructureNodeFact, values: readonly strin
 }
 
 describe("PDF table reconstruction", () => {
+  it("routes every real V2 tagged cell through shared assembly evidence", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(
+      new Uint8Array(await readFile(resolve(fixtureRoot, "complex-tagged.pdf"))),
+    );
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+    const table = tableBlock(result.document.blocks);
+
+    expect(table.rows.flatMap((row) => row.cells).map((cell) => textRuns(cell.blocks[0]!))).toEqual([
+      "Plot", "Yield", "North", "Twelve",
+    ]);
+    expect(result.evidence.filter((item) =>
+      item.decisionCode === "pdf/table-tagged-cell-native"
+    )).toEqual(Array.from({ length: 4 }, () => expect.objectContaining({
+      outcome: "native",
+      boundaryDecisionIds: [],
+    })));
+    expect(documentToAdf(result.document).content[2]?.content?.[0]?.content?.map((cell) => cell.type)).toEqual([
+      "tableHeader", "tableHeader",
+    ]);
+    expect(documentToStorage(result.document)).toContain(
+      "<tr><th><p>Plot</p></th><th><p>Yield</p></th></tr>",
+    );
+  });
+
   it("projects the real tagged table with header identity and exact target encodings", async () => {
     const adapter = await createNodePdfiumFactsAdapter();
     const raw = await adapter.analyze(
