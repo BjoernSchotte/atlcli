@@ -1,6 +1,6 @@
 # PDF import quality: evidence-based text and structure reconstruction
 
-Status: **Implementation in progress** (PIQ-00 through PIQ-02 complete, 2026-08-27)
+Status: **Implementation in progress** (PIQ-00 through PIQ-03 complete, 2026-08-27)
 
 Planned at: `cb981dea1f83d4dd5e17932239e42f99a1a607c7`
 (`feat(drawio): add Draw.io previews and Confluence sync integration (#197)`)
@@ -22,7 +22,7 @@ and cross-host PDFium parity all change together.
 | PIQ-00 | DONE | `DRIFT.md`; `EVIDENCE.md#piq-00` |
 | PIQ-01 | DONE | `EVIDENCE.md#piq-01` |
 | PIQ-02 | DONE | `EVIDENCE.md#piq-02` |
-| PIQ-03 | TODO | - |
+| PIQ-03 | DONE | `EVIDENCE.md#piq-03` |
 | PIQ-04 | TODO | - |
 | PIQ-05 | TODO | - |
 | PIQ-06 | TODO | - |
@@ -733,6 +733,10 @@ contracts and their reachable closure change. Existing V1 factories and
 digests remain byte-for-byte stable.
 
 ### PIQ-03 - Implement the shared text assembler
+
+**Status: DONE (2026-08-27).** The assembler is additive and exported for
+Node/browser consumers. Production V1 routing remains unchanged until the
+atomic PIQ-04 cutover; see `DRIFT.md` and `EVIDENCE.md#piq-03`.
 
 Create `packages/import-pdf/src/text-assembly.ts` and its focused test file.
 Move layout-sensitive assembly out of `normalizePdfText`, `correlateTaggedText`,

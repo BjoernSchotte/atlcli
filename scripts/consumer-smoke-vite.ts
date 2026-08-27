@@ -129,8 +129,10 @@ import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { IMPORT_DOCUMENT_SCHEMA_V2, documentToAdf } from "@atlcli/import-core";
 import {
+  PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2,
   PDF_FACTS_SCHEMA_V1,
   PDF_FACTS_SCHEMA_V2,
+  assemblePdfTextV2,
   createBrowserPdfiumFactsAdapter,
   createBrowserPdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
@@ -171,6 +173,8 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
   importPdfProof:
     PDF_FACTS_SCHEMA_V1 === "atlcli.pdf-facts/1" &&
     PDF_FACTS_SCHEMA_V2 === "atlcli.pdf-facts/2" &&
+    PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 === "atlcli.pdf-text-assembly-policy/2" &&
+    typeof assemblePdfTextV2 === "function" &&
     typeof createBrowserPdfiumFactsAdapter === "function" &&
     typeof createBrowserPdfiumFactsAdapterV2 === "function",
   wasmUrl,

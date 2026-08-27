@@ -447,8 +447,10 @@ import {
   type ImportDocumentV2,
 } from "@atlcli/import-core";
 import {
+  PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2,
   PDF_FACTS_SCHEMA_V1,
   PDF_FACTS_SCHEMA_V2,
+  assemblePdfTextV2,
   createPdfiumFactsAdapter,
   createPdfiumFactsAdapterV2,
   normalizeTaggedPdfFacts,
@@ -458,6 +460,7 @@ import {
   type PdfFactsAdapterV2,
   type PdfFactsV1,
   type PdfFactsV2,
+  type PdfTextAssemblyV2,
   type PdfTaggedSemanticsV1,
   type PdfUntaggedSemanticsV1,
 } from "@atlcli/import-pdf";
@@ -508,6 +511,8 @@ const surfaces: unknown[] = [
   documentToAdf,
   PDF_FACTS_SCHEMA_V1,
   PDF_FACTS_SCHEMA_V2,
+  PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2,
+  assemblePdfTextV2,
   createPdfiumFactsAdapter,
   createPdfiumFactsAdapterV2,
   createNodePdfiumFactsAdapterV2,
@@ -539,6 +544,11 @@ const _importDocument: ImportDocumentV2 = {
 const _pdfFacts: PdfFactsV1 | null = null;
 const _pdfFactsV2: PdfFactsV2 | null = null;
 const _pdfFactsAdapterV2: PdfFactsAdapterV2 | null = null;
+const _pdfTextAssemblyV2: PdfTextAssemblyV2 = assemblePdfTextV2({
+  sourceId: "consumer-smoke",
+  characters: [],
+  orderBasis: "geometry",
+});
 const _pdfTagged: PdfTaggedSemanticsV1 | null = null;
 const _pdfUntagged: PdfUntaggedSemanticsV1 | null = null;
 const _pdfFigures: PdfFigureSemanticsV1 | null = null;
@@ -550,6 +560,7 @@ void _importDocument;
 void _pdfFacts;
 void _pdfFactsV2;
 void _pdfFactsAdapterV2;
+void _pdfTextAssemblyV2;
 void _pdfTagged;
 void _pdfUntagged;
 void _pdfFigures;

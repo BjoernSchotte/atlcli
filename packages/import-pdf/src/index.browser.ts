@@ -4,6 +4,7 @@ export * from "./issues.js";
 export * from "./canonical.js";
 export * from "./classify.js";
 export * from "./text.js";
+export * from "./text-assembly.js";
 export * from "./structure.js";
 export * from "./headings.js";
 export * from "./lists.js";
