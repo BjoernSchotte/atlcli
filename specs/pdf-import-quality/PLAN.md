@@ -327,6 +327,71 @@ geometry projectors own semantic interpretation. The hybrid reconciler owns
 character uniqueness and fallback scope. Publication remains unchanged and
 continues to verify target transport semantics.
 
+### 4.1 Temporary multi-engine spike decision
+
+A non-production spike under `scripts/experiments/pdf-oracle/` validates the
+data flow needed by PIQ-11 through PIQ-17 without Docling, PaddleOCR, OCR, or a
+language model. It keeps the existing PDFium review as the baseline and runs
+four independent diagnostic projections:
+
+```mermaid
+flowchart LR
+  B["PDF bytes"] --> P["PDFium V2 facts\nproduction baseline"]
+  B --> J["PDF.js page structure\ndiagnostic"]
+  B --> X["PDFBox full-document structure\nmaterialization oracle"]
+  B --> L["Poppler text/bbox\ncoverage oracle"]
+  B --> G["pdfplumber local geometry\ngrid oracle"]
+  P --> C["Body-free comparison"]
+  J --> C
+  X --> C
+  L --> C
+  G --> C
+  C --> D["Fixture truth / authoring oracle\ndecides expected result"]
+```
+
+The spike establishes these implementation decisions:
+
+1. Do not make a non-PDFium result look like `PdfFactsV2`. Introduce a
+   separate internal `PdfStructureOracleV1` or equivalent contract with an
+   explicit engine, version, document/page scope, structure paths, page
+   references, MCID references, table row/cell roles, spans, and provenance.
+2. Keep PDFium characters, geometry, ownership, and production lifecycle as
+   the primary lane. A structure oracle supplies missing relationships, not a
+   second untracked body-text authority.
+3. Attempt to correlate oracle cells back to PDFium text runs or characters
+   through page and MCID references, but do not make exact MCID overlap a hard
+   assumption. The spike materializes cell text internally and proves complete
+   table-token coverage in the PDFium text stream, while the W3C case also
+   proves that raw page-plus-MCID reference overlap can remain incomplete.
+   PIQ-11 must therefore classify missing, empty, page-external, and
+   parser-renumbered references before choosing a bounded text source.
+4. Treat PDFBox as the full-document reference adapter because it traverses a
+   single structure tree across page boundaries. Evaluate PDF.js separately as
+   the lower-deployment-cost in-process adapter; do not assume its page-local
+   structure tree proves multi-page identity.
+5. Keep Poppler as an independent text/bounding-box coverage oracle and
+   pdfplumber as a geometry-grid oracle for fixtures and diagnostics. Raw grid
+   candidate counts are not logical table counts when row or column spans are
+   present.
+6. Never select a result by parser majority. A committed independent authoring
+   oracle, a standards fixture's documented structure, or a reviewed source
+   document decides the expected result. Engine disagreement becomes evidence
+   and a fail-closed reason.
+7. Invoke additional engines conditionally in a future production design: for
+   example, when PDFium reports unresolved structure children, a page fallback
+   for born-digital text, or an incomplete table. The temporary spike does not
+   choose an embedded JVM, sidecar, or PDF.js production dependency.
+8. Preserve the privacy boundary. Materialized text is transient process
+   memory. Reports, tests, specs, commits, PR text, and CI artifacts contain
+   only neutral fixture truth and body-free aggregates.
+
+The current evidence is a **GO for the neutral-IR architecture** and a **NO-GO
+for production cutover**. It proves that complementary parsers expose the
+missing relationships and can materialize cell content, but it does not yet
+prove deterministic span handling, continuation identity, bounded fallback,
+deployment cost, or live Confluence publication. PIQ-11 through PIQ-18 remain
+open and retain their completion gates.
+
 ---
 
 ## 5. Target contracts
