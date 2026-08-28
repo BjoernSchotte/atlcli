@@ -13,6 +13,9 @@ export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
 // export: boxResampleRgba
 export declare function boxResampleRgba(source: Uint8Array, sourceWidth: number, sourceHeight: number, targetWidth: number, targetHeight: number): Uint8Array;
 
+// export: classifyImageBitmapEligibilityV1
+export declare function classifyImageBitmapEligibilityV1(bytes: Uint8Array): ImageBitmapEligibilityV1;
+
 // export: DecodedRaster
 export interface DecodedRaster {
     pixels: Uint8Array;
@@ -71,6 +74,21 @@ export interface ExportImageQualityV1 {
 // export: IMAGE_NORMALIZER_VERSION
 export declare const IMAGE_NORMALIZER_VERSION = 1;
 
+// export: ImageBitmapEligibilityV1
+export type ImageBitmapEligibilityV1 = {
+    kind: "eligible";
+    format: "png" | "jpeg";
+    width: number;
+    height: number;
+    mayHaveAlpha: boolean;
+} | {
+    kind: "ineligible";
+    reason: ImageBitmapIneligibleReasonV1;
+};
+
+// export: ImageBitmapIneligibleReasonV1
+export type ImageBitmapIneligibleReasonV1 = "not-png-or-jpeg" | "malformed-raster-header" | "unsupported-png-shape" | "unsupported-jpeg-shape" | "animated-raster" | "unsupported-orientation" | "embedded-color-metadata";
+
 // export: ImageFormat
 export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
 
@@ -108,7 +126,7 @@ export declare function planRasterNormalizationV1(request: RasterNormalizeReques
 export declare const PRINT_PROFILE_PPI = 300;
 
 // export: RasterKeptReason
-export type RasterKeptReason = "not-raster" | "undecodable" | "no-downscale" | "decode-budget-exceeded";
+export type RasterKeptReason = "not-raster" | "undecodable" | "no-downscale" | "decode-budget-exceeded" | "unsupported-raster-shape";
 
 // export: RasterNormalizationPlanResultV1
 export type RasterNormalizationPlanResultV1 = {

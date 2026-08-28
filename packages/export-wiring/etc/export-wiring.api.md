@@ -1108,6 +1108,17 @@ export interface PdfRasterNormalizerLeaseFactoryV1 {
         request: PdfExportJobRequestV1;
         signal: AbortSignal;
     }): Promise<PdfRasterNormalizerLeaseV1>;
+    acquireFallback?(input: {
+        jobId: string;
+        leaseEpoch: number;
+        request: PdfExportJobRequestV1;
+        signal: AbortSignal;
+        failedEvidence: PdfRasterNormalizerEvidenceV1;
+        failure: {
+            backend: "image-bitmap";
+            code: PdfRasterNormalizerRetryCodeV1;
+        };
+    }): Promise<PdfRasterNormalizerLeaseV1>;
 }
 
 // export: PdfRasterNormalizerLeaseV1
@@ -1116,6 +1127,18 @@ export interface PdfRasterNormalizerLeaseV1 {
     evidence: PdfRasterNormalizerEvidenceV1;
     release(): void | Promise<void>;
 }
+
+// export: PdfRasterNormalizerRetryableErrorV1
+export declare class PdfRasterNormalizerRetryableErrorV1 extends Error {
+    readonly code: PdfRasterNormalizerRetryCodeV1;
+    readonly backend: "image-bitmap";
+    constructor(code: PdfRasterNormalizerRetryCodeV1, options?: {
+        cause?: unknown;
+    });
+}
+
+// export: PdfRasterNormalizerRetryCodeV1
+export type PdfRasterNormalizerRetryCodeV1 = "capability-unavailable" | "native-path-failed";
 
 // export: PdfReadyToRenderCheckpointV1
 export interface PdfReadyToRenderCheckpointV1 {
