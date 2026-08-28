@@ -29,6 +29,11 @@ export { decodePngRaster, type DecodedRaster } from "./decode-png.js";
 export { decodeJpegRaster } from "./decode-jpeg.js";
 export { boxResampleRgba } from "./resample.js";
 export {
+  classifyImageBitmapEligibilityV1,
+  type ImageBitmapEligibilityV1,
+  type ImageBitmapIneligibleReasonV1,
+} from "./image-bitmap-eligibility.js";
+export {
   resolveEffectivePpi,
   ExportImageQualityError,
   EXPORT_IMAGE_PPI_MIN,
