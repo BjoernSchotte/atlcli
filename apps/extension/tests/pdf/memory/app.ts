@@ -1,5 +1,12 @@
 import type { ExportBlock } from "@atlcli/confluence/browser";
 import {
+  normalizeRasterAssetV1,
+  planRasterNormalizationV1,
+  sha256Hex,
+  type RasterNormalizeRequestV1,
+  type RasterNormalizeResultV1,
+} from "@atlcli/export-media";
+import {
   pdfBytesFromUint8Array,
   preparePdfDocument,
   validatePdfOutput,
@@ -22,6 +29,10 @@ import type {
   MemoryWorkerPhase,
   MemoryWorkerRequest,
   MemoryWorkerResponse,
+  RasterNormalizerCorpusSummary,
+  RasterNormalizerInputSummary,
+  RasterNormalizerState,
+  RasterNormalizerVariant,
 } from "./protocol.js";
 
 const CHAPTERS = 6;
@@ -41,6 +52,59 @@ let worker: Worker | undefined;
 let workerPhase: MemoryWorkerPhase = "booting";
 let workerError: Error | undefined;
 const workerDetails = new Map<string, Record<string, number>>();
+
+interface LoadedRasterNormalizerCorpus {
+  manifest: CorpusManifest;
+  blocks: ExportBlock[];
+  mediaTypes: Map<string, string>;
+  assets: Map<string, Uint8Array>;
+}
+
+type NormalizerDetail = Record<string, number | string | boolean>;
+
+type NormalizerWorkerResponse =
+  | { kind: "ready"; variant: RasterNormalizerVariant; detail: NormalizerDetail }
+  | {
+      kind: "phase";
+      id: number;
+      phase: "source-held" | "decoded-held" | "target-held" | "encoded-held";
+      detail: NormalizerDetail;
+    }
+  | {
+      kind: "result";
+      id: number;
+      result: RasterNormalizeResultV1;
+      elapsedMs: number;
+      detail: NormalizerDetail;
+    }
+  | { kind: "error"; id?: number; message: string };
+
+let normalizerInput: LoadedRasterNormalizerCorpus | undefined;
+let normalizerWorker: Worker | undefined;
+let normalizerPreparePromise: Promise<RasterNormalizerCorpusSummary> | undefined;
+let normalizerReadyResolve: ((state: RasterNormalizerState) => void) | undefined;
+let normalizerReadyReject: ((error: Error) => void) | undefined;
+let normalizerRequestId = 0;
+let normalizerQueue: Promise<void> = Promise.resolve();
+const normalizerPending = new Map<
+  number,
+  {
+    resolve: (result: RasterNormalizeResultV1) => void;
+    reject: (error: Error) => void;
+  }
+>();
+const probedFormats = new Set<"png" | "jpeg">();
+let normalizerState: RasterNormalizerState = {
+  variant: null,
+  phase: "idle",
+  sequence: 0,
+  completedCalls: 0,
+  normalizedCalls: 0,
+  keptCalls: 0,
+  done: false,
+  detail: null,
+  error: null,
+};
 
 function output(message: string): void {
   const state = document.querySelector<HTMLOutputElement>('[data-testid="memory-state"]');
@@ -156,8 +220,20 @@ interface CorpusManifest {
   scale: number;
   manifestSha256: string;
   minAggregateBytes: number;
-  counts: { uniqueAssets: number; uniqueAssetBytes: number; chapters: number };
-  manifest: Array<{ filename: string; mediaType: string; byteLength: number }>;
+  counts: {
+    uniqueAssets: number;
+    uniqueAssetBytes: number;
+    chapters: number;
+    placements?: number;
+  };
+  manifest: Array<{
+    filename: string;
+    mediaType: string;
+    byteLength: number;
+    width?: number;
+    height?: number;
+    role?: string;
+  }>;
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -231,6 +307,328 @@ async function prepareCorpusFixture(
   };
   output(`corpus-prepared:${summary.bundleBytes}`);
   return summary;
+}
+
+function installImageHeavyBenchmarkBudgets(): void {
+  const host = globalThis as typeof globalThis & Record<symbol, unknown>;
+  host[Symbol.for("atlcli.pdf.benchmark-asset-budget")] = {
+    maxAssetBytes: 32 * 1024 * 1024,
+    maxTotalBytes: 512 * 1024 * 1024,
+  };
+  host[Symbol.for("atlcli.extension.benchmark-pdf-job-limits")] = {
+    jobMaxBytes: 512 * 1024 * 1024,
+    storeMaxBytes: 1024 * 1024 * 1024,
+  };
+}
+
+async function loadRasterNormalizerCorpus(): Promise<RasterNormalizerInputSummary> {
+  installImageHeavyBenchmarkBudgets();
+  const manifest = await fetchJson<CorpusManifest>("image-heavy/manifest.json");
+  const blocks = await fetchJson<ExportBlock[]>("image-heavy/blocks.json");
+  const mediaTypes = new Map(manifest.manifest.map((entry) => [entry.filename, entry.mediaType]));
+  const assets = new Map<string, Uint8Array>();
+  for (const entry of manifest.manifest) {
+    const response = await fetch(`image-heavy/${entry.filename}`);
+    if (!response.ok) {
+      throw new Error(`Corpus asset fetch failed (${response.status}): ${entry.filename}`);
+    }
+    assets.set(entry.filename, new Uint8Array(await response.arrayBuffer()));
+  }
+  normalizerInput = { manifest, blocks, mediaTypes, assets };
+  const summary: RasterNormalizerInputSummary = {
+    scale: manifest.scale,
+    manifestSha256: manifest.manifestSha256,
+    sourceAssets: manifest.counts.uniqueAssets,
+    sourceAssetBytes: manifest.counts.uniqueAssetBytes,
+    placements: manifest.counts.placements ?? 0,
+  };
+  output(`normalizer-corpus-loaded:${summary.sourceAssetBytes}`);
+  return summary;
+}
+
+function snapshotNormalizerState(): RasterNormalizerState {
+  return {
+    ...normalizerState,
+    detail: normalizerState.detail ? { ...normalizerState.detail } : null,
+  };
+}
+
+function failNormalizer(error: Error, id?: number): void {
+  normalizerState = {
+    ...normalizerState,
+    phase: "error",
+    sequence: normalizerState.sequence + 1,
+    done: true,
+    error: error.message,
+  };
+  if (id !== undefined) {
+    const pending = normalizerPending.get(id);
+    normalizerPending.delete(id);
+    pending?.reject(error);
+  } else {
+    for (const pending of normalizerPending.values()) pending.reject(error);
+    normalizerPending.clear();
+  }
+  normalizerReadyReject?.(error);
+  normalizerReadyResolve = undefined;
+  normalizerReadyReject = undefined;
+  output(`normalizer-error:${error.message}`);
+}
+
+function handleNormalizerMessage(event: MessageEvent<NormalizerWorkerResponse>): void {
+  const message = event.data;
+  if (message.kind === "error") {
+    failNormalizer(new Error(message.message), message.id);
+    return;
+  }
+  if (message.kind === "ready") {
+    normalizerState = {
+      ...normalizerState,
+      phase: "ready",
+      sequence: normalizerState.sequence + 1,
+      detail: message.detail,
+    };
+    normalizerReadyResolve?.(snapshotNormalizerState());
+    normalizerReadyResolve = undefined;
+    normalizerReadyReject = undefined;
+    output(`normalizer-ready:${message.variant}`);
+    return;
+  }
+  if (message.kind === "phase") {
+    normalizerState = {
+      ...normalizerState,
+      phase: message.phase,
+      sequence: normalizerState.sequence + 1,
+      detail: { requestId: message.id, ...message.detail },
+    };
+    output(`normalizer:${normalizerState.variant}:${message.phase}`);
+    return;
+  }
+  const pending = normalizerPending.get(message.id);
+  normalizerPending.delete(message.id);
+  normalizerState = {
+    ...normalizerState,
+    phase: "running",
+    sequence: normalizerState.sequence + 1,
+    completedCalls: normalizerState.completedCalls + 1,
+    normalizedCalls:
+      normalizerState.normalizedCalls + (message.result.kind === "normalized" ? 1 : 0),
+    keptCalls: normalizerState.keptCalls + (message.result.kind === "kept" ? 1 : 0),
+    detail: {
+      requestId: message.id,
+      elapsedMs: message.elapsedMs,
+      ...message.detail,
+    },
+  };
+  pending?.resolve(message.result);
+}
+
+async function startRasterNormalizerWorker(
+  value: RasterNormalizerVariant,
+): Promise<RasterNormalizerState> {
+  if (!normalizerInput) throw new Error("Load the normalizer corpus before starting its worker.");
+  normalizerWorker?.terminate();
+  normalizerWorker = undefined;
+  normalizerRequestId = 0;
+  normalizerQueue = Promise.resolve();
+  normalizerPending.clear();
+  probedFormats.clear();
+  normalizerPreparePromise = undefined;
+  normalizerState = {
+    variant: value,
+    phase: "booting",
+    sequence: 0,
+    completedCalls: 0,
+    normalizedCalls: 0,
+    keptCalls: 0,
+    done: false,
+    detail: null,
+    error: null,
+  };
+  if (value === "pure-ts") {
+    // Lane 1 is the actual current product shape: the pinned pure-TS codec on
+    // the extension panel thread. It is intentionally not granted disposable
+    // worker lifetime semantics that the three candidate lanes must earn.
+    normalizerState = {
+      ...normalizerState,
+      phase: "ready",
+      sequence: 1,
+      detail: { executionContext: "panel-main-current" },
+    };
+    output("normalizer-ready:pure-ts");
+    return snapshotNormalizerState();
+  }
+  normalizerWorker = new Worker(new URL("./normalizer-worker.ts", import.meta.url), {
+    type: "module",
+    name: `atlcli-memory-normalizer-${value}`,
+  });
+  normalizerWorker.addEventListener("message", handleNormalizerMessage);
+  normalizerWorker.addEventListener("error", (event) => {
+    failNormalizer(new Error(event.message || "Raster normalizer worker failed."));
+  });
+  const ready = new Promise<RasterNormalizerState>((resolve, reject) => {
+    normalizerReadyResolve = resolve;
+    normalizerReadyReject = reject;
+  });
+  normalizerWorker.postMessage({ kind: "init", variant: value });
+  return ready;
+}
+
+function postRasterNormalize(
+  request: RasterNormalizeRequestV1,
+): Promise<RasterNormalizeResultV1> {
+  if (!normalizerWorker) throw new Error("The raster normalizer worker is not running.");
+  const id = ++normalizerRequestId;
+  const planned = planRasterNormalizationV1(request);
+  const probe = planned.kind === "normalize" && !probedFormats.has(planned.plan.sourceFormat);
+  if (planned.kind === "normalize" && probe) probedFormats.add(planned.plan.sourceFormat);
+  const bytes = request.bytes.slice();
+  const response = new Promise<RasterNormalizeResultV1>((resolve, reject) => {
+    normalizerPending.set(id, { resolve, reject });
+  });
+  normalizerWorker.postMessage(
+    { kind: "normalize", id, request: { ...request, bytes }, probe },
+    [bytes.buffer],
+  );
+  return response;
+}
+
+function normalizeRasterInWorker(
+  request: RasterNormalizeRequestV1,
+): Promise<RasterNormalizeResultV1> {
+  const result = normalizerQueue.then(() => postRasterNormalize(request));
+  normalizerQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+function normalizeRasterInPanel(request: RasterNormalizeRequestV1): RasterNormalizeResultV1 {
+  const result = normalizeRasterAssetV1(request);
+  normalizerState = {
+    ...normalizerState,
+    completedCalls: normalizerState.completedCalls + 1,
+    normalizedCalls: normalizerState.normalizedCalls + (result.kind === "normalized" ? 1 : 0),
+    keptCalls: normalizerState.keptCalls + (result.kind === "kept" ? 1 : 0),
+  };
+  return result;
+}
+
+function startRasterNormalizerPrepare(): void {
+  if (
+    !normalizerInput ||
+    !normalizerState.variant ||
+    (normalizerState.variant !== "pure-ts" && !normalizerWorker)
+  ) {
+    throw new Error("Load the corpus and start its normalizer worker before preparing.");
+  }
+  if (normalizerPreparePromise) throw new Error("Raster normalizer preparation already started.");
+  const input = normalizerInput;
+  const value = normalizerState.variant;
+  const startedAt = performance.now();
+  normalizerState = {
+    ...normalizerState,
+    phase: "running",
+    sequence: normalizerState.sequence + 1,
+    detail: null,
+  };
+  normalizerPreparePromise = (async () => {
+    const prepared = await preparePdfDocument(
+      input.blocks,
+      {
+        async resolve(ref) {
+          const name = ref.filename ?? "";
+          const bytes = input.assets.get(name);
+          if (!bytes) throw new Error(`Missing corpus asset ${name}.`);
+          return {
+            bytes,
+            mediaType: input.mediaTypes.get(name) ?? "application/octet-stream",
+            filename: name,
+          };
+        },
+      },
+      {
+        imageQuality: { imageProfile: "standard" },
+        rasterNormalizer: {
+          normalize:
+            value === "pure-ts" ? normalizeRasterInPanel : normalizeRasterInWorker,
+        },
+      },
+    );
+    bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: `Image-heavy normalizer ${value} fixture`,
+        space: "DOCSY",
+        version: 1,
+        exporter: "atlcli Chrome/V8 raster normalizer ratchet",
+        exportedAt: new Date("2026-08-28T00:00:00.000Z"),
+      },
+      settings: { cover: false, outline: true },
+    });
+    const assetBytes = bundle.assets.reduce((total, asset) => total + asset.bytes.byteLength, 0);
+    const digestRecipe = bundle.assets
+      .map((asset) => `${asset.path}:${asset.mediaType}:${sha256Hex(asset.bytes)}`)
+      .join("\n");
+    const prepareMs = performance.now() - startedAt;
+    const summary: RasterNormalizerCorpusSummary = {
+      variant: value,
+      chapters: input.manifest.counts.chapters,
+      images: bundle.assets.length,
+      assetBytes,
+      bundleBytes: sourceBundleBytes(bundle),
+      scale: input.manifest.scale,
+      manifestSha256: input.manifest.manifestSha256,
+      minAggregateBytes: input.manifest.minAggregateBytes,
+      notes: prepared.notes.length,
+      normalizedCalls: normalizerState.normalizedCalls,
+      keptCalls: normalizerState.keptCalls,
+      prepareMs,
+      outputAssetSha256: sha256Hex(new TextEncoder().encode(digestRecipe)),
+    };
+    // At this point the prepared bundle owns all output buffers. Release the
+    // 100 MiB source corpus before the worker-termination and compiler gates.
+    input.assets.clear();
+    normalizerInput = undefined;
+    normalizerState = {
+      ...normalizerState,
+      phase: "complete",
+      sequence: normalizerState.sequence + 1,
+      done: true,
+      detail: {
+        prepareMs,
+        bundleBytes: summary.bundleBytes,
+        assetBytes: summary.assetBytes,
+      },
+    };
+    output(`normalizer-complete:${value}:${summary.bundleBytes}`);
+    return summary;
+  })().catch((error) => {
+    const normalized = error instanceof Error ? error : new Error(String(error));
+    failNormalizer(normalized);
+    throw normalized;
+  });
+}
+
+function continueRasterNormalizer(): void {
+  if (normalizerState.error) throw new Error(normalizerState.error);
+  normalizerWorker?.postMessage({ kind: "continue" });
+}
+
+async function readRasterNormalizerResult(): Promise<RasterNormalizerCorpusSummary> {
+  if (!normalizerPreparePromise) throw new Error("Raster normalizer preparation has not started.");
+  return normalizerPreparePromise;
+}
+
+function terminateRasterNormalizer(): void {
+  normalizerWorker?.terminate();
+  normalizerWorker = undefined;
+  normalizerState = {
+    ...normalizerState,
+    phase: "terminated",
+    sequence: normalizerState.sequence + 1,
+  };
+  output(`normalizer-terminated:${normalizerState.variant ?? "none"}`);
 }
 
 async function storePreparedJob(): Promise<{ jobId: string }> {
@@ -467,6 +865,11 @@ async function readIdbPayload(
 }
 
 async function cleanup(): Promise<void> {
+  terminateRasterNormalizer();
+  normalizerInput?.assets.clear();
+  normalizerInput = undefined;
+  normalizerPreparePromise = undefined;
+  normalizerPending.clear();
   releaseDelivery();
   releaseDownloadBlob();
   await pdfjsViewer?.destroy().catch(() => undefined);
@@ -491,6 +894,13 @@ async function cleanup(): Promise<void> {
 window.atlcliMemoryProbe = {
   prepareFixture,
   prepareCorpusFixture,
+  loadRasterNormalizerCorpus,
+  startRasterNormalizerWorker,
+  startRasterNormalizerPrepare,
+  rasterNormalizerState: snapshotNormalizerState,
+  continueRasterNormalizer,
+  readRasterNormalizerResult,
+  terminateRasterNormalizer,
   storePreparedJob,
   readMetaInventory,
   releaseMetaInventory() {

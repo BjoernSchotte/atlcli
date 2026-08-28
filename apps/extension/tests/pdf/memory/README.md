@@ -70,3 +70,34 @@ This is a benchmark and an architecture gate, not a stable performance budget:
 absolute figures can move with Chrome, V8, Typst, PDF.js, fonts, and the host
 platform. The structural assertions intentionally check only the conclusions
 the design relies on.
+
+## Raster normalizer paths 1–4
+
+The `ratchets raster-normalizer paths 1-4` test compares the current panel-main
+pure-TS normalizer with disposable-worker WebCodecs, target-sized ImageBitmap,
+and Pica 10 lanes. Every lane uses the same full image-heavy corpus, target
+planner, pinned encoder, job store, compiler, and PDF validator. Candidate
+workers pause on one PNG and one JPEG at source/decoded/target/encoded holds,
+then must disappear before Typst starts.
+
+The test samples the whole Chromium process-tree RSS every 25 ms in addition
+to CDP heap data. That is essential: browser-native decode surfaces do not
+appear in V8 backing storage and WebCodecs can otherwise look artificially
+cheap. Results print as `ATLCLI_RASTER_NORMALIZER_RATCHET_RESULT`; the reviewed
+host-local interpretation is recorded in
+`specs/issue-118-adaptive-browser-pdf-memory/RATCHET.md`.
+
+Run just this ratchet after building the harness:
+
+```bash
+bun run --cwd apps/extension prebench:memory-chrome
+node node_modules/@playwright/test/cli.js test \
+  --config apps/extension/tests/pdf/memory/playwright.config.ts \
+  --grep "ratchets raster-normalizer paths 1-4"
+```
+
+For diagnosis, select one lane with `ATLCLI_RASTER_VARIANT=pure-ts`,
+`webcodecs`, `image-bitmap`, or `pica`. The default remains the repo-pinned
+Playwright Chromium because current branded Chrome ignores command-line
+unpacked-extension loading. `ATLCLI_MEMORY_BROWSER_CHANNEL=chrome` is an
+explicit compatibility probe, not the reproducible performance lane.

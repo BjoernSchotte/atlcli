@@ -7,7 +7,11 @@ import { decodeJpegRaster } from "./decode-jpeg.js";
 import { decodePngRaster, inflateZlib } from "./decode-png.js";
 import { encodeJpeg } from "./encode-jpeg.js";
 import { encodePng } from "./encode-png.js";
-import { normalizeRasterAssetV1 } from "./normalize.js";
+import {
+  encodeRasterTargetV1,
+  normalizeRasterAssetV1,
+  planRasterNormalizationV1,
+} from "./normalize.js";
 import {
   ExportImageQualityError,
   resolveEffectivePpi,
@@ -274,6 +278,53 @@ describe("profiles", () => {
 
 describe("normalizeRasterAssetV1", () => {
   const envelope = { renderEnvelopeWidthPt: 470, ppi: 180 } as const;
+
+  it("exposes a host-neutral plan and pinned encoder identical to the legacy composition", () => {
+    const source = encodeJpeg(rgb(gradientRgba(1600, 1200)), 1600, 1200, 90);
+    const request = { bytes: source, mediaType: "image/jpeg", ...envelope };
+    const planned = planRasterNormalizationV1(request);
+    if (planned.kind !== "normalize") throw new Error(`kept: ${JSON.stringify(planned)}`);
+    expect(planned.plan).toEqual({
+      sourceFormat: "jpeg",
+      sourceWidth: 1600,
+      sourceHeight: 1200,
+      targetWidth: 1175,
+      targetHeight: 881,
+    });
+
+    const decoded = decodeJpegRaster(source)!;
+    const pixels = boxResampleRgba(
+      decoded.pixels,
+      decoded.width,
+      decoded.height,
+      planned.plan.targetWidth,
+      planned.plan.targetHeight,
+    );
+    const composed = encodeRasterTargetV1({
+      plan: planned.plan,
+      pixels,
+      hasAlpha: decoded.hasAlpha,
+    });
+    const direct = normalizeRasterAssetV1(request);
+    if (direct.kind !== "normalized") throw new Error(`kept: ${JSON.stringify(direct)}`);
+    expect(sha256Hex(composed.bytes)).toBe(sha256Hex(direct.bytes));
+    expect(composed).toMatchObject({ width: 1176, height: 888, mediaType: "image/jpeg" });
+  });
+
+  it("rejects a host adapter returning the wrong target buffer length", () => {
+    const source = encodePng(rgb(gradientRgba(400, 200)), 400, 200, false);
+    const planned = planRasterNormalizationV1({
+      bytes: source,
+      mediaType: "image/png",
+      renderEnvelopeWidthPt: 470,
+      ppi: 72,
+      authored: { widthPx: 300 },
+    });
+    if (planned.kind !== "normalize") throw new Error(`kept: ${JSON.stringify(planned)}`);
+    expect(() =>
+      encodeRasterTargetV1({ plan: planned.plan, pixels: new Uint8Array(4), hasAlpha: false }),
+    ).toThrow("expected");
+  });
 
   it("downscales a large JPEG, keeps it JPEG, and is deterministic", () => {
     const source = encodeJpeg(rgb(gradientRgba(1600, 1200)), 1600, 1200, 90);

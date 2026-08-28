@@ -41,8 +41,14 @@ export {
   type ExportImageQualityV1,
 } from "./profile.js";
 export {
+  encodeRasterTargetV1,
   normalizeRasterAssetV1,
+  planRasterNormalizationV1,
+  type EncodeRasterTargetRequestV1,
   type RasterKeptReason,
+  type RasterNormalizationPlanResultV1,
+  type RasterNormalizationPlanV1,
+  type RasterNormalizerPortV1,
   type RasterNormalizeRequestV1,
   type RasterNormalizeResultV1,
 } from "./normalize.js";

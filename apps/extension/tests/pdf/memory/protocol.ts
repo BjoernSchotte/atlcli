@@ -32,9 +32,63 @@ export interface MemoryCorpusFixtureSummary extends MemoryFixtureSummary {
   notes: number;
 }
 
+export type RasterNormalizerVariant =
+  | "pure-ts"
+  | "webcodecs"
+  | "image-bitmap"
+  | "pica";
+
+export type RasterNormalizerPhase =
+  | "idle"
+  | "booting"
+  | "ready"
+  | "source-held"
+  | "decoded-held"
+  | "target-held"
+  | "encoded-held"
+  | "running"
+  | "complete"
+  | "terminated"
+  | "error";
+
+export interface RasterNormalizerState {
+  variant: RasterNormalizerVariant | null;
+  phase: RasterNormalizerPhase;
+  sequence: number;
+  completedCalls: number;
+  normalizedCalls: number;
+  keptCalls: number;
+  done: boolean;
+  detail: Record<string, number | string | boolean> | null;
+  error: string | null;
+}
+
+export interface RasterNormalizerInputSummary {
+  scale: number;
+  manifestSha256: string;
+  sourceAssets: number;
+  sourceAssetBytes: number;
+  placements: number;
+}
+
+export interface RasterNormalizerCorpusSummary extends MemoryCorpusFixtureSummary {
+  variant: RasterNormalizerVariant;
+  normalizedCalls: number;
+  keptCalls: number;
+  prepareMs: number;
+  outputAssetSha256: string;
+}
+
 export interface MemoryProbeApi {
   prepareFixture(): Promise<MemoryFixtureSummary>;
   prepareCorpusFixture(profile?: "original" | "standard"): Promise<MemoryCorpusFixtureSummary>;
+  loadRasterNormalizerCorpus(): Promise<RasterNormalizerInputSummary>;
+  startRasterNormalizerWorker(variant: RasterNormalizerVariant): Promise<RasterNormalizerState>;
+  startRasterNormalizerPrepare(): void;
+  rasterNormalizerState(): RasterNormalizerState;
+  continueRasterNormalizer(): void;
+  readRasterNormalizerResult(): Promise<RasterNormalizerCorpusSummary>;
+  terminateRasterNormalizer(): void;
   storePreparedJob(): Promise<{ jobId: string }>;
   readMetaInventory(): Promise<{ jobs: number; inputBytes: number }>;
   releaseMetaInventory(): void;

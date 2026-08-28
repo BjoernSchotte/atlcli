@@ -36,6 +36,18 @@ export declare function encodeJpeg(pixels: Uint8Array, width: number, height: nu
 // export: encodePng
 export declare function encodePng(pixels: Uint8Array, width: number, height: number, alpha: boolean): Uint8Array;
 
+// export: EncodeRasterTargetRequestV1
+export interface EncodeRasterTargetRequestV1 {
+    plan: RasterNormalizationPlanV1;
+    pixels: Uint8Array | Uint8ClampedArray;
+    hasAlpha: boolean;
+}
+
+// export: encodeRasterTargetV1
+export declare function encodeRasterTargetV1(request: EncodeRasterTargetRequestV1): Extract<RasterNormalizeResultV1, {
+    kind: "normalized";
+}>;
+
 // export: EXPORT_IMAGE_PPI_MAX
 export declare const EXPORT_IMAGE_PPI_MAX = 1200;
 
@@ -89,11 +101,32 @@ export declare function normalizeRasterAssetV1(request: RasterNormalizeRequestV1
 // export: parseSvgSize
 export declare function parseSvgSize(source: string): TargetSize | null;
 
+// export: planRasterNormalizationV1
+export declare function planRasterNormalizationV1(request: RasterNormalizeRequestV1): RasterNormalizationPlanResultV1;
+
 // export: PRINT_PROFILE_PPI
 export declare const PRINT_PROFILE_PPI = 300;
 
 // export: RasterKeptReason
 export type RasterKeptReason = "not-raster" | "undecodable" | "no-downscale" | "decode-budget-exceeded";
+
+// export: RasterNormalizationPlanResultV1
+export type RasterNormalizationPlanResultV1 = {
+    kind: "normalize";
+    plan: RasterNormalizationPlanV1;
+} | {
+    kind: "kept";
+    reason: RasterKeptReason;
+};
+
+// export: RasterNormalizationPlanV1
+export interface RasterNormalizationPlanV1 {
+    sourceFormat: "png" | "jpeg";
+    sourceWidth: number;
+    sourceHeight: number;
+    targetWidth: number;
+    targetHeight: number;
+}
 
 // export: RasterNormalizeRequestV1
 export interface RasterNormalizeRequestV1 {
@@ -120,6 +153,11 @@ export type RasterNormalizeResultV1 = {
     kind: "kept";
     reason: RasterKeptReason;
 };
+
+// export: RasterNormalizerPortV1
+export interface RasterNormalizerPortV1 {
+    normalize(request: RasterNormalizeRequestV1): RasterNormalizeResultV1 | Promise<RasterNormalizeResultV1>;
+}
 
 // export: resolveEffectivePpi
 export declare function resolveEffectivePpi(quality: ExportImageQualityV1): number | null;

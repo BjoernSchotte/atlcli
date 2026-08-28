@@ -86,6 +86,7 @@
     "happy-dom": "^20.0.2",
     "langchain": "1.5.4",
     "langsmith": "0.7.17",
+    "pica": "10.0.3",
     "tailwindcss": "^4.3.3",
     "vite": "8.1.4",
     "wxt": "^0.20.27",

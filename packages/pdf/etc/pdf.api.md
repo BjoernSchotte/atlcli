@@ -1230,6 +1230,7 @@ export interface PreparePdfOptions {
         pageUrl?: string;
     };
     imageQuality?: ExportImageQualityV1;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: renderPreparedPdfExport
@@ -2763,6 +2764,7 @@ export interface PreparePdfOptions {
         pageUrl?: string;
     };
     imageQuality?: ExportImageQualityV1;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: renderPreparedPdfExport
@@ -4296,6 +4298,7 @@ export interface PreparePdfOptions {
         pageUrl?: string;
     };
     imageQuality?: ExportImageQualityV1;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: renderPreparedPdfExport
@@ -5099,6 +5102,7 @@ export interface PreparePdfOptions {
         pageUrl?: string;
     };
     imageQuality?: ExportImageQualityV1;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: preservePdfSourceCellColor

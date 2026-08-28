@@ -124,6 +124,101 @@ met with a 74.84% measured peak reduction**, now asserted in the harness
 (`peakReduction ≥ 0.4` at scale 1). Prepare-side normalization of the 100 MiB
 corpus runs in-page as part of the measured cycle.
 
+### Phase 1 follow-up — browser raster path ratchet (2026-08-28)
+
+Question: after the profile's 74.84% primary win, can a browser-native or
+WASM resize path make normalization faster and/or lower its own peak without
+moving memory into an unobserved native allocator?
+
+Built: an optional async `RasterNormalizerPortV1` in the real PDF preparation
+pipeline, a statically bundled MV3 normalizer worker, and four measured lanes:
+
+1. current pinned pure-TS decode + box resize on the extension panel thread;
+2. WebCodecs `ImageDecoder` in a disposable worker;
+3. target-sized `createImageBitmap` in a disposable worker;
+4. Pica 10.0.3 (`mks2013`, JS+inline-WASM, no nested/Blob worker) in a
+   disposable worker.
+
+All lanes consume the exact same header-only target plan and pinned PNG/JPEG
+encoder. Only decode/resize and lifetime differ. The full scale-1 corpus
+(100.29 MiB, 76 unique assets, 190 placements) is already resident before the
+normalizer baseline. Whole-Chromium process-tree RSS is sampled every 25 ms so
+native `ImageBitmap`/`VideoFrame` allocations cannot hide outside the V8 heap;
+PNG and JPEG source/decoded/target/encoded holds are separately forced-GC
+sampled. Candidate workers are terminated and their CDP targets proven gone
+before the identical IndexedDB → Typst worker → tagged-PDF path starts.
+
+Lane: `ATLCLI_RASTER_NORMALIZER_RATCHET_RESULT`, macOS arm64, repo-pinned
+Chromium 140.0.7339.16. One full four-lane run; byte/digest stability was also
+observed in an earlier full run and targeted Pica rerun.
+
+| Raster path | execution | prepare | normalizer peak RSS delta | RSS after cleanup vs baseline | bundle | Typst peak | whole-Chrome peak |
+|---|---|---:|---:|---:|---:|---:|---:|
+| pure TS (current) | panel main | 39.09 s | +226.05 MiB | baseline (−14.64 MiB noise) | 16.65 MiB | 395.29 MiB | 1617.14 MiB |
+| WebCodecs | disposable worker | **12.05 s** | **+672.37 MiB** | **+405.06 MiB** | **14.81 MiB** | **383.52 MiB** | **2024.92 MiB** |
+| ImageBitmap | disposable worker | 13.52 s | **+191.83 MiB** | +5.72 MiB | 17.21 MiB | 398.08 MiB | 1633.67 MiB |
+| Pica 10 | disposable worker | 18.89 s | +217.05 MiB | +11.93 MiB | 19.05 MiB | 409.20 MiB | 1643.28 MiB |
+
+Every successful lane normalized 133 calls, kept the same 57 no-op/logo
+placements, deduplicated to the same 76 output assets, compiled to a tagged
+PDF, and produced a stable per-lane output-asset digest across repeated runs.
+The different filters intentionally produce different bytes. Candidate worker
+targets are gone before compile in all three lanes.
+
+OS RSS is deliberately the native-allocation safety signal, but noisier than
+the phase-pinned compiler attribution. Repeated normalizer peak deltas were:
+pure TS **+187.48 to +251.08 MiB**, WebCodecs **+668.34 to +672.37 MiB**,
+ImageBitmap **+191.83 to +196.14 MiB**, and Pica **+216.17 to +217.05 MiB**.
+Therefore the small pure/ImageBitmap/Pica differences are inconclusive; only
+WebCodecs' regression is far outside observed noise.
+
+Important findings:
+
+- **ImageBitmap is the only path that earns a continued product PoC.** It is
+  2.9× faster than current pure TS, stays in the current path's noisy RSS band,
+  returns process RSS to within 5.72 MiB of baseline, and decodes both sampled
+  PNG and JPEG directly at the exact 1175px target. Its slightly larger output
+  makes the subsequent Typst peak 2.79 MiB higher than current; therefore this
+  is a responsiveness/lifetime win with memory non-regression, not another
+  whole-export memory order of magnitude. Adoption still requires pixel-golden
+  quality, color/alpha/EXIF, two-run determinism, cancellation, and
+  supported-browser gates.
+- **Keep pure TS as the deterministic fallback.** It remains the reference
+  for unsupported browsers and exact cross-host behavior. Moving this same
+  implementation to a disposable worker can be evaluated separately if panel
+  responsiveness alone justifies it.
+- **Pica is a quality challenger, not a memory solution.** It is 2.1× faster
+  than current but fully decodes the sampled JPEG (2400×1792), keeps an
+  ~8.8 MiB WASM/backing high-water until termination, emits the largest bundle,
+  and raises the downstream Typst peak. Pica 10 also fails to detect
+  `OffscreenCanvas` when it already runs inside the outer worker; the spike
+  uses its public `createCanvas` host seam to bind the proven platform canvas.
+  Continue only if visual goldens show a material quality advantage over
+  target-sized ImageBitmap.
+- **Do not pursue WebCodecs for this path yet.** It is fastest and emits the
+  smallest bundle, but its native process peak is ~3× the current normalizer
+  delta and ~405 MiB remains after its worker target is gone. The sampled PNG
+  ignored desired dimensions (2200×1400), while the JPEG decoded to 900×672
+  and was then upscaled to the 1175×877 target, adding a quality concern. V8
+  heap alone reported only ~4.45 MiB and would have falsely called this lane a
+  win. Reconsider only after a current-browser matrix proves both native-RSS
+  release and exact decode geometry.
+
+The installed branded Chrome 151.0.7922.175 was checked as the current-browser
+anchor. As expected for current branded Chrome, command-line unpacked-extension
+loading did not create a service worker; the reproducible quantitative lane
+therefore remains Chrome-for-Testing/Chromium. This is an explicit matrix gap,
+not evidence that Chrome 151 fixes or retains the WebCodecs behavior.
+
+Consequence for broader candidates: **do not add wasm-vips/jSquash to the PDF
+runtime on memory grounds now.** The existing profile already owns the large
+win, and ImageBitmap has a much smaller integration/trust surface. A vips lane
+only becomes rational if pixel-quality or required-format gates defeat
+ImageBitmap; it must then use this same disposable-worker/RSS ratchet. jSquash
+can still be evaluated independently for build-time Astro publisher assets,
+where its value proposition is compressed output rather than PDF runtime
+memory.
+
 ## Phase 2 — Typst runtime candidate lanes
 
 Built: `bench:runtime-lane` (`atlcli.runtime-lane/1`) — isolated Bun child
