@@ -33,6 +33,7 @@ export interface PureTsRasterNormalizerReceiptV1 {
   requests: number;
   normalized: number;
   kept: number;
+  cacheHits: number;
   heartbeatSamples: number;
   heartbeatP95Ms: number | null;
   heartbeatMaxMs: number | null;
@@ -43,6 +44,8 @@ export interface PureTsRasterNormalizerLeaseFactoryOptionsV1 {
   createWorker(): RasterNormalizerWorkerLikeV1;
   operationTimeoutMs?: number;
   heartbeatIntervalMs?: number;
+  /** Reuse results only when the caller guarantees an exact source view stays immutable. */
+  memoizeImmutableSourceViews?: boolean;
   now?: () => number;
   scheduleTimeout?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimeout?: (id: ReturnType<typeof setTimeout>) => void;
@@ -55,6 +58,7 @@ interface ResolvedPureTsRasterNormalizerOptionsV1 {
   createWorker(): RasterNormalizerWorkerLikeV1;
   operationTimeoutMs: number;
   heartbeatIntervalMs: number;
+  memoizeImmutableSourceViews: boolean;
   now(): number;
   scheduleTimeout(fn: () => void, ms: number): ReturnType<typeof setTimeout>;
   clearTimeout(id: ReturnType<typeof setTimeout>): void;
@@ -103,6 +107,7 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
   #heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   #heartbeatExpectedAt = 0;
   #heartbeatSamples: number[] = [];
+  #cache = new WeakMap<Uint8Array, Map<string, Promise<RasterNormalizeResultV1>>>();
   #tail: Promise<void> = Promise.resolve();
   #pendingRejects = new Set<(error: unknown) => void>();
   #nextId = 0;
@@ -110,6 +115,7 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
   #requests = 0;
   #normalized = 0;
   #kept = 0;
+  #cacheHits = 0;
   #closed = false;
   #released = false;
   #outcome: PureTsRasterNormalizerReceiptV1["outcome"] = "released";
@@ -142,6 +148,30 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
       return Promise.resolve(planned);
     }
 
+    const cacheKey = [
+      planned.plan.sourceFormat,
+      planned.plan.sourceWidth,
+      planned.plan.sourceHeight,
+      planned.plan.targetWidth,
+      planned.plan.targetHeight,
+    ].join(":");
+    let cacheEntries: Map<string, Promise<RasterNormalizeResultV1>> | undefined;
+    if (this.#options.memoizeImmutableSourceViews) {
+      cacheEntries = this.#cache.get(request.bytes);
+      if (!cacheEntries) {
+        cacheEntries = new Map();
+        this.#cache.set(request.bytes, cacheEntries);
+      }
+      const cached = cacheEntries.get(cacheKey);
+      if (cached) {
+        this.#cacheHits += 1;
+        return cached.then((result) => {
+          this.#recordResult(result);
+          return result;
+        });
+      }
+    }
+
     const result = new Promise<RasterNormalizeResultV1>((resolve, reject) => {
       this.#pendingRejects.add(reject);
       const run = this.#tail.then(() => this.#run(request));
@@ -150,6 +180,10 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
         () => undefined,
       );
       run.then(resolve, reject).finally(() => this.#pendingRejects.delete(reject));
+    });
+    cacheEntries?.set(cacheKey, result);
+    void result.catch(() => {
+      if (cacheEntries?.get(cacheKey) === result) cacheEntries.delete(cacheKey);
     });
     return result;
   }
@@ -170,6 +204,7 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
       requests: this.#requests,
       normalized: this.#normalized,
       kept: this.#kept,
+      cacheHits: this.#cacheHits,
       heartbeatSamples: this.#heartbeatSamples.length,
       heartbeatP95Ms,
       heartbeatMaxMs: this.#heartbeatSamples.length > 0
@@ -280,8 +315,7 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
     this.#stopHeartbeat();
 
     if (response.kind === "result") {
-      if (response.result.kind === "normalized") this.#normalized += 1;
-      else this.#kept += 1;
+      this.#recordResult(response.result);
       active.resolve(response.result);
       return;
     }
@@ -330,6 +364,11 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
       this.#options.clearHeartbeat(this.#heartbeatTimer);
       this.#heartbeatTimer = undefined;
     }
+  }
+
+  #recordResult(result: RasterNormalizeResultV1): void {
+    if (result.kind === "normalized") this.#normalized += 1;
+    else this.#kept += 1;
   }
 
   #fatal(error: unknown, fallback: string): void {
@@ -398,6 +437,7 @@ export function createPureTsRasterNormalizerLeaseFactoryV1(
     createWorker: input.createWorker,
     operationTimeoutMs,
     heartbeatIntervalMs,
+    memoizeImmutableSourceViews: input.memoizeImmutableSourceViews ?? false,
     now: input.now ?? (() => performance.now()),
     scheduleTimeout: input.scheduleTimeout ?? ((fn, ms) => setTimeout(fn, ms)),
     clearTimeout: input.clearTimeout ?? ((id) => clearTimeout(id)),

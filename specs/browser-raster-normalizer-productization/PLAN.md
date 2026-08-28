@@ -1,8 +1,9 @@
 # Browser raster normalizer productization
 
-- Status: Draft implementation plan
+- Status: Implementation in progress; productive pure-worker measurement gate passed
 - Scope baseline: `0b101e56` (`perf(pdf): add browser raster normalizer ratchet`)
 - Evidence: `specs/issue-118-adaptive-browser-pdf-memory/RATCHET.md`
+- Productive evidence: `specs/browser-raster-normalizer-productization/RATCHET.md`
 - Parent work: [Issue #118](https://github.com/BjoernSchotte/atlcli/issues/118)
 - Draft implementation PR: [#201](https://github.com/BjoernSchotte/atlcli/pull/201)
 

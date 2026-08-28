@@ -34,9 +34,27 @@ export interface MemoryCorpusFixtureSummary extends MemoryFixtureSummary {
 
 export type RasterNormalizerVariant =
   | "pure-ts"
+  | "pure-worker"
   | "webcodecs"
   | "image-bitmap"
   | "pica";
+
+export interface ProductiveRasterNormalizerReceiptV1 {
+  schema: "atlcli.extension-raster-normalizer-receipt/1";
+  backend: "pure-ts";
+  revision: string;
+  jobId: string;
+  leaseEpoch: number;
+  workerStarted: boolean;
+  requests: number;
+  normalized: number;
+  kept: number;
+  cacheHits: number;
+  heartbeatSamples: number;
+  heartbeatP95Ms: number | null;
+  heartbeatMaxMs: number | null;
+  outcome: "released" | "aborted" | "worker-error" | "timeout";
+}
 
 export type RasterNormalizerPhase =
   | "idle"
@@ -88,7 +106,7 @@ export interface MemoryProbeApi {
   rasterNormalizerState(): RasterNormalizerState;
   continueRasterNormalizer(): void;
   readRasterNormalizerResult(): Promise<RasterNormalizerCorpusSummary>;
-  terminateRasterNormalizer(): void;
+  terminateRasterNormalizer(): Promise<ProductiveRasterNormalizerReceiptV1 | null>;
   storePreparedJob(): Promise<{ jobId: string }>;
   readMetaInventory(): Promise<{ jobs: number; inputBytes: number }>;
   releaseMetaInventory(): void;
@@ -97,7 +115,7 @@ export interface MemoryProbeApi {
   continueWorker(): void;
   phase(): MemoryWorkerPhase;
   workerDetail(phase: Exclude<MemoryWorkerPhase, "error">): Record<string, number> | null;
-  readCompiledResult(): Promise<{ byteLength: number }>;
+  readCompiledResult(): Promise<{ byteLength: number; sha256: string }>;
   /** Test-only: seed a synthetic held result so delivery probes run standalone. */
   seedResult(byteLength: number): { byteLength: number };
   /** Old productive delivery shape: concatenated array + anchor Blob copy. */

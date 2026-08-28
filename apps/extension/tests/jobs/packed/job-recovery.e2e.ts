@@ -367,6 +367,7 @@ interface PackedRasterNormalizerReceiptV1 {
   requests: number;
   normalized: number;
   kept: number;
+  cacheHits: number;
   heartbeatSamples: number;
   heartbeatP95Ms: number | null;
   heartbeatMaxMs: number | null;

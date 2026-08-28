@@ -43,6 +43,20 @@ function mib(bytes: number): number {
   return Number((bytes / MIB).toFixed(2));
 }
 
+function median(values: readonly number[]): number {
+  if (values.length === 0) throw new Error("Cannot take the median of no samples.");
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? sorted[middle]!
+    : (sorted[middle - 1]! + sorted[middle]!) / 2;
+}
+
+function ratio(candidate: number, reference: number): number {
+  if (reference <= 0) throw new Error(`Ratchet reference must be positive, received ${reference}.`);
+  return Number((candidate / reference).toFixed(3));
+}
+
 function delta(before: HeapUsage, after: HeapUsage): HeapDelta {
   return {
     usedMiB: mib(after.usedSize - before.usedSize),
@@ -250,7 +264,9 @@ async function attachRasterNormalizerWorker(root: CDPSession): Promise<ChildTarg
       (candidate) =>
         candidate.type === "worker" &&
         (candidate.title.includes("atlcli-memory-normalizer") ||
-          candidate.url.includes("normalizer-worker")),
+          candidate.title.includes("atlcli-memory-productive-raster-normalizer") ||
+          candidate.url.includes("normalizer-worker") ||
+          candidate.url.includes("raster-normalizer")),
     );
     if (target) {
       const { sessionId } = (await root.send("Target.attachToTarget", {
@@ -272,7 +288,9 @@ async function rasterNormalizerWorkerExists(root: CDPSession): Promise<boolean> 
     (candidate) =>
       candidate.type === "worker" &&
       (candidate.title.includes("atlcli-memory-normalizer") ||
-        candidate.url.includes("normalizer-worker")),
+        candidate.title.includes("atlcli-memory-productive-raster-normalizer") ||
+        candidate.url.includes("normalizer-worker") ||
+        candidate.url.includes("raster-normalizer")),
   );
 }
 
@@ -655,11 +673,15 @@ interface RasterNormalizerVariantResult {
       workerFromReady: HeapDelta;
     }>;
     workerTargetReleased: boolean;
+    productiveReceipt: Awaited<
+      ReturnType<MemoryProbeApi["terminateRasterNormalizer"]>
+    >;
   };
   compiler: {
     attribution: ReturnType<typeof computeWorkerMemoryAttribution>;
     processRssPeakMiB: number;
     pdfBytes: number;
+    pdfSha256: string;
     tagged: boolean;
   };
 }
@@ -681,10 +703,10 @@ async function runRasterNormalizerVariant(
 
     const readyState = await page.evaluate((value) =>
       window.atlcliMemoryProbe.startRasterNormalizerWorker(value), variant);
-    if (variant !== "pure-ts") {
+    if (variant !== "pure-ts" && variant !== "pure-worker") {
       normalizerSession = await attachRasterNormalizerWorker(cdp);
     }
-    const workerReady = normalizerSession ? await normalizerSession.heap() : undefined;
+    let workerReady = normalizerSession ? await normalizerSession.heap() : undefined;
     const readyRss = chromeProcessTreeRss(profileDir);
 
     const normalizerRssSamples: number[] = [readyRss.rssMiB];
@@ -697,6 +719,10 @@ async function runRasterNormalizerVariant(
     })();
 
     await page.evaluate(() => window.atlcliMemoryProbe.startRasterNormalizerPrepare());
+    if (variant === "pure-worker") {
+      normalizerSession = await attachRasterNormalizerWorker(cdp);
+      workerReady = await normalizerSession.heap();
+    }
     const sampledSequences = new Set<number>();
     const phaseSamples: RasterNormalizerVariantResult["normalizer"]["phaseSamples"] = [];
     while (true) {
@@ -733,7 +759,8 @@ async function runRasterNormalizerVariant(
     normalizerRssSamples.push(beforeTerminateRss.rssMiB);
     await normalizerSession?.close();
     normalizerSession = undefined;
-    await page.evaluate(() => window.atlcliMemoryProbe.terminateRasterNormalizer());
+    const productiveReceipt = await page.evaluate(() =>
+      window.atlcliMemoryProbe.terminateRasterNormalizer());
     await expect.poll(() => rasterNormalizerWorkerExists(cdp), { timeout: 10_000 }).toBe(false);
     await new Promise((resolve) => setTimeout(resolve, 250));
     const panelAfterTerminate = await pageHeap(cdp);
@@ -802,11 +829,13 @@ async function runRasterNormalizerVariant(
             : null,
         phaseSamples,
         workerTargetReleased: !(await rasterNormalizerWorkerExists(cdp)),
+        productiveReceipt,
       },
       compiler: {
         attribution,
         processRssPeakMiB: Math.max(...compilerRssSamples),
         pdfBytes: compiled.byteLength,
+        pdfSha256: compiled.sha256,
         tagged: validation.tagged,
       },
     };
@@ -821,6 +850,129 @@ async function runRasterNormalizerVariant(
     await closeHarness(harness);
   }
 }
+
+test("ratchets the productive pure raster worker against panel-main", async () => {
+  test.setTimeout(3_600_000);
+  const runCount = Number(process.env.ATLCLI_PRODUCTIVE_RASTER_RUNS ?? "2");
+  if (!Number.isSafeInteger(runCount) || runCount < 2 || runCount > 5) {
+    throw new Error("ATLCLI_PRODUCTIVE_RASTER_RUNS must be an integer in [2, 5].");
+  }
+
+  const results: RasterNormalizerVariantResult[] = [];
+  for (let iteration = 0; iteration < runCount; iteration += 1) {
+    for (const variant of ["pure-ts", "pure-worker"] as const) {
+      const result = await runRasterNormalizerVariant(variant);
+      results.push(result);
+      console.log(
+        `ATLCLI_PRODUCTIVE_RASTER_VARIANT_RESULT\n${JSON.stringify({ iteration: iteration + 1, ...result }, null, 2)}`,
+      );
+    }
+  }
+
+  const panel = results.filter((result) => result.variant === "pure-ts");
+  const worker = results.filter((result) => result.variant === "pure-worker");
+  const panelPrepareMedianMs = median(panel.map((result) => result.output.prepareMs));
+  const workerPrepareMedianMs = median(worker.map((result) => result.output.prepareMs));
+  const panelNormalizerPeakMedianMiB = median(
+    panel.map((result) => result.normalizer.peakDeltaMiB),
+  );
+  const workerNormalizerPeakMedianMiB = median(
+    worker.map((result) => result.normalizer.peakDeltaMiB),
+  );
+  const panelWholeChromePeakMedianMiB = median(panel.map((result) =>
+    Math.max(result.normalizer.peakProcessRssMiB, result.compiler.processRssPeakMiB)
+  ));
+  const workerWholeChromePeakMedianMiB = median(worker.map((result) =>
+    Math.max(result.normalizer.peakProcessRssMiB, result.compiler.processRssPeakMiB)
+  ));
+  const workerCleanupResidualMedianMiB = median(worker.map((result) =>
+    Number((
+      result.normalizer.afterTerminateProcessRssMiB -
+      result.normalizer.baselineProcessRssMiB
+    ).toFixed(2))
+  ));
+  const report = {
+    schema: "atlcli.chrome-productive-raster-normalizer-ratchet/v1",
+    measuredAt: new Date().toISOString(),
+    host: { platform: process.platform, arch: process.arch },
+    runCount,
+    runtime: results[0]?.runtime,
+    corpus: {
+      scale: results[0]?.input.scale,
+      manifestSha256: results[0]?.input.manifestSha256,
+      sourceAssetBytes: results[0]?.input.sourceAssetBytes,
+      placements: results[0]?.input.placements,
+    },
+    medians: {
+      panelPrepareMs: Number(panelPrepareMedianMs.toFixed(2)),
+      workerPrepareMs: Number(workerPrepareMedianMs.toFixed(2)),
+      prepareRatio: ratio(workerPrepareMedianMs, panelPrepareMedianMs),
+      panelNormalizerPeakDeltaMiB: Number(panelNormalizerPeakMedianMiB.toFixed(2)),
+      workerNormalizerPeakDeltaMiB: Number(workerNormalizerPeakMedianMiB.toFixed(2)),
+      normalizerPeakRatio: ratio(
+        workerNormalizerPeakMedianMiB,
+        panelNormalizerPeakMedianMiB,
+      ),
+      panelWholeChromePeakMiB: Number(panelWholeChromePeakMedianMiB.toFixed(2)),
+      workerWholeChromePeakMiB: Number(workerWholeChromePeakMedianMiB.toFixed(2)),
+      wholeChromePeakRatio: ratio(
+        workerWholeChromePeakMedianMiB,
+        panelWholeChromePeakMedianMiB,
+      ),
+      workerCleanupResidualMiB: Number(workerCleanupResidualMedianMiB.toFixed(2)),
+      workerHeartbeatP95Ms: median(worker.map((result) =>
+        result.normalizer.productiveReceipt?.heartbeatP95Ms ?? Number.POSITIVE_INFINITY
+      )),
+    },
+    results,
+  };
+  console.log(
+    `ATLCLI_PRODUCTIVE_RASTER_NORMALIZER_RATCHET_RESULT\n${JSON.stringify(report, null, 2)}`,
+  );
+
+  expect(panel).toHaveLength(runCount);
+  expect(worker).toHaveLength(runCount);
+  expect(new Set(results.map((result) => result.input.manifestSha256)).size).toBe(1);
+  expect(new Set(results.map((result) => result.output.outputAssetSha256)).size).toBe(1);
+  expect(new Set(results.map((result) => result.compiler.pdfSha256)).size).toBe(1);
+  expect(new Set(results.map((result) => result.output.bundleBytes)).size).toBe(1);
+  for (const result of results) {
+    expect(result.output.manifestSha256).toBe(result.input.manifestSha256);
+    expect(result.output.normalizedCalls).toBeGreaterThan(0);
+    expect(result.compiler.tagged).toBe(true);
+    expect(result.normalizer.workerTargetReleased).toBe(true);
+  }
+  for (const result of panel) {
+    expect(result.normalizer.productiveReceipt).toBeNull();
+  }
+  for (const result of worker) {
+    expect(result.normalizer.productiveReceipt).toMatchObject({
+      schema: "atlcli.extension-raster-normalizer-receipt/1",
+      backend: "pure-ts",
+      jobId: "memory-productive-pure-worker",
+      leaseEpoch: 1,
+      workerStarted: true,
+      requests: result.output.normalizedCalls + result.output.keptCalls,
+      normalized: result.output.normalizedCalls,
+      kept: result.output.keptCalls,
+      outcome: "released",
+    });
+    expect(result.normalizer.productiveReceipt?.heartbeatSamples).toBeGreaterThan(0);
+    expect(result.normalizer.productiveReceipt?.heartbeatP95Ms).not.toBeNull();
+    expect(result.normalizer.productiveReceipt!.heartbeatP95Ms!).toBeLessThan(50);
+    expect(result.normalizer.productiveReceipt!.cacheHits).toBeGreaterThan(0);
+  }
+  expect(ratio(workerPrepareMedianMs, panelPrepareMedianMs)).toBeLessThanOrEqual(1.15);
+  expect(ratio(
+    workerNormalizerPeakMedianMiB,
+    panelNormalizerPeakMedianMiB,
+  )).toBeLessThanOrEqual(0.95);
+  expect(ratio(
+    workerWholeChromePeakMedianMiB,
+    panelWholeChromePeakMedianMiB,
+  )).toBeLessThanOrEqual(1.15);
+  expect(workerCleanupResidualMedianMiB).toBeLessThanOrEqual(32);
+});
 
 test("ratchets raster-normalizer paths 1-4 in the real MV3 PDF pipeline", async () => {
   test.setTimeout(3_600_000);
@@ -879,7 +1031,7 @@ test("ratchets raster-normalizer paths 1-4 in the real MV3 PDF pipeline", async 
     if (result.input.scale === 1) {
       expect(result.input.sourceAssetBytes).toBeGreaterThanOrEqual(100 * MIB);
     }
-    if (result.variant !== "pure-ts") {
+    if (result.variant !== "pure-ts" && result.variant !== "pure-worker") {
       expect(result.normalizer.phaseSamples).toHaveLength(8);
       expect(new Set(result.normalizer.phaseSamples.map((sample) => sample.detail?.sourceFormat)))
         .toEqual(new Set(["png", "jpeg"]));

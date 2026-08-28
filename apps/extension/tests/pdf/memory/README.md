@@ -101,3 +101,23 @@ For diagnosis, select one lane with `ATLCLI_RASTER_VARIANT=pure-ts`,
 Playwright Chromium because current branded Chrome ignores command-line
 unpacked-extension loading. `ATLCLI_MEMORY_BROWSER_CHANNEL=chrome` is an
 explicit compatibility probe, not the reproducible performance lane.
+
+## Productive pure-worker ratchet
+
+The required productization gate uses the real production host adapter and
+worker rather than the dated four-lane benchmark worker. It runs panel-main
+and productive pure-worker paths twice, compares output-asset and tagged-PDF
+digests, samples process-tree RSS at 25 ms, checks the body-free heartbeat
+receipt, and proves the worker target is gone before Typst starts:
+
+```bash
+bun run --cwd apps/extension prebench:memory-chrome
+node node_modules/@playwright/test/cli.js test \
+  --config apps/extension/tests/pdf/memory/playwright.config.ts \
+  --grep "productive pure raster worker"
+```
+
+The accepted machine-local evidence and exact runtime are recorded in
+`specs/browser-raster-normalizer-productization/RATCHET.md`. Pica and
+WebCodecs remain historical evidence lanes and are not part of this required
+product gate.

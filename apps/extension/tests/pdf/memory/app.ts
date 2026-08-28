@@ -6,6 +6,8 @@ import {
   type RasterNormalizeRequestV1,
   type RasterNormalizeResultV1,
 } from "@atlcli/export-media";
+import type { PdfRasterNormalizerLeaseV1 } from "@atlcli/export-wiring/jobs";
+import type { PdfExportJobRequestV1 } from "@atlcli/export-jobs";
 import {
   pdfBytesFromUint8Array,
   preparePdfDocument,
@@ -22,6 +24,10 @@ import {
 } from "../../../utils/pdf/job-store.js";
 import { collectArtifactHandleV1 } from "../../../utils/export-jobs/artifact-delivery.js";
 import { openPdfViewer } from "../../../utils/pdf/viewer.js";
+import {
+  createPureTsRasterNormalizerLeaseFactoryV1,
+  type PureTsRasterNormalizerReceiptV1,
+} from "../../../utils/pdf/raster-normalizer-worker-host.js";
 import type {
   MemoryCorpusFixtureSummary,
   MemoryFixtureSummary,
@@ -29,6 +35,7 @@ import type {
   MemoryWorkerPhase,
   MemoryWorkerRequest,
   MemoryWorkerResponse,
+  ProductiveRasterNormalizerReceiptV1,
   RasterNormalizerCorpusSummary,
   RasterNormalizerInputSummary,
   RasterNormalizerState,
@@ -39,6 +46,37 @@ const CHAPTERS = 6;
 const IMAGE_WIDTH = 1_200;
 const IMAGE_HEIGHT = 1_200;
 const PROBE_DB = "atlcli-chrome-memory-probe";
+const PRODUCTIVE_NORMALIZER_JOB_ID = "memory-productive-pure-worker";
+const PRODUCTIVE_NORMALIZER_REQUEST = {
+  schema: "atlcli.export-job-request/1",
+  id: PRODUCTIVE_NORMALIZER_JOB_ID,
+  idempotencyKey: "memory:productive-pure-worker",
+  format: "pdf",
+  renderer: "pdf-typst",
+  source: {
+    kind: "confluence",
+    siteOrigin: "https://memory.invalid",
+    locator: { kind: "page-id", id: "neutral-memory-fixture", version: 1 },
+    scope: { kind: "page" },
+  },
+  authRef: "session:https://memory.invalid",
+  displayName: "Neutral memory fixture",
+  requestedFilename: "neutral-memory-fixture.pdf",
+  createdAt: 0,
+  priority: "interactive",
+  output: { policy: "collect" },
+  template: {
+    kind: "builtin",
+    id: "builtin.editorial-indigo",
+    manifestVersion: "1.0.0",
+  },
+  settings: {},
+  options: {
+    resolveMacros: false,
+    exportedAt: 0,
+    imageProfile: "standard",
+  },
+} satisfies PdfExportJobRequestV1;
 
 let bundle: PdfSourceBundle | undefined;
 let jobId: string | undefined;
@@ -81,6 +119,9 @@ type NormalizerWorkerResponse =
 
 let normalizerInput: LoadedRasterNormalizerCorpus | undefined;
 let normalizerWorker: Worker | undefined;
+let productiveNormalizerLease: PdfRasterNormalizerLeaseV1 | undefined;
+let productiveNormalizerAbort: AbortController | undefined;
+let productiveNormalizerReceipt: PureTsRasterNormalizerReceiptV1 | null = null;
 let normalizerPreparePromise: Promise<RasterNormalizerCorpusSummary> | undefined;
 let normalizerReadyResolve: ((state: RasterNormalizerState) => void) | undefined;
 let normalizerReadyReject: ((error: Error) => void) | undefined;
@@ -427,8 +468,7 @@ async function startRasterNormalizerWorker(
   value: RasterNormalizerVariant,
 ): Promise<RasterNormalizerState> {
   if (!normalizerInput) throw new Error("Load the normalizer corpus before starting its worker.");
-  normalizerWorker?.terminate();
-  normalizerWorker = undefined;
+  await terminateRasterNormalizer();
   normalizerRequestId = 0;
   normalizerQueue = Promise.resolve();
   normalizerPending.clear();
@@ -456,6 +496,39 @@ async function startRasterNormalizerWorker(
       detail: { executionContext: "panel-main-current" },
     };
     output("normalizer-ready:pure-ts");
+    return snapshotNormalizerState();
+  }
+  if (value === "pure-worker") {
+    productiveNormalizerReceipt = null;
+    productiveNormalizerAbort = new AbortController();
+    const factory = createPureTsRasterNormalizerLeaseFactoryV1({
+      createWorker: () =>
+        new Worker(new URL("../../../workers/raster-normalizer.ts", import.meta.url), {
+          type: "module",
+          name: "atlcli-memory-productive-raster-normalizer",
+        }),
+      memoizeImmutableSourceViews: true,
+      onReceipt: (receipt) => {
+        productiveNormalizerReceipt = receipt;
+      },
+    });
+    productiveNormalizerLease = await factory.acquire({
+      jobId: PRODUCTIVE_NORMALIZER_JOB_ID,
+      leaseEpoch: 1,
+      request: PRODUCTIVE_NORMALIZER_REQUEST,
+      signal: productiveNormalizerAbort.signal,
+    });
+    normalizerState = {
+      ...normalizerState,
+      phase: "ready",
+      sequence: 1,
+      detail: {
+        executionContext: "disposable-worker",
+        backend: productiveNormalizerLease.evidence.backend,
+        revision: productiveNormalizerLease.evidence.revision,
+      },
+    };
+    output("normalizer-ready:pure-worker");
     return snapshotNormalizerState();
   }
   normalizerWorker = new Worker(new URL("./normalizer-worker.ts", import.meta.url), {
@@ -515,11 +588,31 @@ function normalizeRasterInPanel(request: RasterNormalizeRequestV1): RasterNormal
   return result;
 }
 
+async function normalizeRasterInProductiveWorker(
+  request: RasterNormalizeRequestV1,
+): Promise<RasterNormalizeResultV1> {
+  if (!productiveNormalizerLease) {
+    throw new Error("The productive raster normalizer lease is unavailable.");
+  }
+  const result = await productiveNormalizerLease.rasterNormalizer.normalize(request);
+  normalizerState = {
+    ...normalizerState,
+    phase: "running",
+    sequence: normalizerState.sequence + 1,
+    completedCalls: normalizerState.completedCalls + 1,
+    normalizedCalls: normalizerState.normalizedCalls + (result.kind === "normalized" ? 1 : 0),
+    keptCalls: normalizerState.keptCalls + (result.kind === "kept" ? 1 : 0),
+  };
+  return result;
+}
+
 function startRasterNormalizerPrepare(): void {
   if (
     !normalizerInput ||
     !normalizerState.variant ||
-    (normalizerState.variant !== "pure-ts" && !normalizerWorker)
+    (normalizerState.variant === "pure-worker"
+      ? !productiveNormalizerLease
+      : normalizerState.variant !== "pure-ts" && !normalizerWorker)
   ) {
     throw new Error("Load the corpus and start its normalizer worker before preparing.");
   }
@@ -552,13 +645,17 @@ function startRasterNormalizerPrepare(): void {
         imageQuality: { imageProfile: "standard" },
         rasterNormalizer: {
           normalize:
-            value === "pure-ts" ? normalizeRasterInPanel : normalizeRasterInWorker,
+            value === "pure-ts"
+              ? normalizeRasterInPanel
+              : value === "pure-worker"
+                ? normalizeRasterInProductiveWorker
+                : normalizeRasterInWorker,
         },
       },
     );
     bundle = serializePdfDocument(prepared, {
       metadata: {
-        title: `Image-heavy normalizer ${value} fixture`,
+        title: "Image-heavy normalizer fixture",
         space: "DOCSY",
         version: 1,
         exporter: "atlcli Chrome/V8 raster normalizer ratchet",
@@ -620,15 +717,24 @@ async function readRasterNormalizerResult(): Promise<RasterNormalizerCorpusSumma
   return normalizerPreparePromise;
 }
 
-function terminateRasterNormalizer(): void {
+async function terminateRasterNormalizer(): Promise<
+  ProductiveRasterNormalizerReceiptV1 | null
+> {
   normalizerWorker?.terminate();
   normalizerWorker = undefined;
+  const lease = productiveNormalizerLease;
+  productiveNormalizerLease = undefined;
+  if (lease) await lease.release();
+  productiveNormalizerAbort = undefined;
   normalizerState = {
     ...normalizerState,
     phase: "terminated",
     sequence: normalizerState.sequence + 1,
   };
   output(`normalizer-terminated:${normalizerState.variant ?? "none"}`);
+  return productiveNormalizerReceipt === null
+    ? null
+    : structuredClone(productiveNormalizerReceipt);
 }
 
 async function storePreparedJob(): Promise<{ jobId: string }> {
@@ -683,12 +789,12 @@ async function startCompile(): Promise<void> {
   worker.postMessage({ kind: "compile", jobId } satisfies MemoryWorkerRequest);
 }
 
-async function readCompiledResult(): Promise<{ byteLength: number }> {
+async function readCompiledResult(): Promise<{ byteLength: number; sha256: string }> {
   if (!jobId) throw new Error("No memory fixture job exists.");
   const stored = await getPdfJob(jobId, undefined, { bundle: false, pdf: true });
   if (!stored?.pdf) throw new Error("The memory fixture produced no stored PDF.");
   pdf = stored.pdf;
-  return { byteLength: pdf.byteLength };
+  return { byteLength: pdf.byteLength, sha256: sha256Hex(pdf) };
 }
 
 const DELIVERY_CHUNK_BYTES = 1024 * 1024;
@@ -865,7 +971,7 @@ async function readIdbPayload(
 }
 
 async function cleanup(): Promise<void> {
-  terminateRasterNormalizer();
+  await terminateRasterNormalizer();
   normalizerInput?.assets.clear();
   normalizerInput = undefined;
   normalizerPreparePromise = undefined;

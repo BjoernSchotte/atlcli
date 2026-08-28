@@ -121,6 +121,8 @@ const rasterNormalizerLeaseFactory = PRODUCTIVE_RASTER_NORMALIZER_MODE_V1 === "p
           type: "module",
           name: "atlcli-pdf-raster-normalizer",
         }),
+      // Resolver-owned asset views stay immutable for the prepare attempt.
+      memoizeImmutableSourceViews: true,
       onReceipt: (receipt) => {
         latestRasterNormalizerReceipt = receipt;
       },

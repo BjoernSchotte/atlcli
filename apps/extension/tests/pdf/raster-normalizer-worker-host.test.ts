@@ -146,6 +146,34 @@ describe("disposable productive pure-TS raster worker host", () => {
     expect(worker.terminated).toBe(true);
   });
 
+  it("memoizes only an explicitly immutable exact source view and target", async () => {
+    const worker = new FakeRasterWorker();
+    worker.autoNormalize = true;
+    const receipts: PureTsRasterNormalizerReceiptV1[] = [];
+    const lease = await acquire(createPureTsRasterNormalizerLeaseFactoryV1({
+      createWorker: () => worker,
+      memoizeImmutableSourceViews: true,
+      onReceipt: (receipt) => receipts.push(receipt),
+    }));
+    const request = rasterRequest();
+
+    const [first, second] = await Promise.all([
+      lease.rasterNormalizer.normalize(request),
+      lease.rasterNormalizer.normalize(request),
+    ]);
+
+    expect(first).toEqual(normalizeRasterAssetV1(request));
+    expect(second).toBe(first);
+    expect(worker.posted.filter(({ message }) => message.kind === "normalize")).toHaveLength(1);
+    await lease.release();
+    expect(receipts).toEqual([expect.objectContaining({
+      requests: 2,
+      normalized: 2,
+      kept: 0,
+      cacheHits: 1,
+    })]);
+  });
+
   it("serializes concurrent calls through one worker queue", async () => {
     const worker = new FakeRasterWorker();
     const lease = await acquire(createPureTsRasterNormalizerLeaseFactoryV1({
