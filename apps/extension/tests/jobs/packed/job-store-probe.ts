@@ -711,6 +711,7 @@ const probe = {
     id: string,
     scopeKind: "page" | "tree" = "page",
     siteOrigin = "https://site.atlassian.net",
+    imageProfile: "original" | "standard" | "print" = "original",
   ): Promise<string> {
     const catalog = new IndexedDbExportJobCatalog();
     const submitted = await submitExtensionPdfExport({
@@ -737,6 +738,7 @@ const probe = {
             },
           }
         : {}),
+      ...(imageProfile === "original" ? {} : { imageProfile }),
     }, {
       catalog,
       requestId: id,

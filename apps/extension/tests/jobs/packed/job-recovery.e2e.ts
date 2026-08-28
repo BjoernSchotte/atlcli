@@ -26,6 +26,7 @@ const JOB_N = "113e4567-e89b-42d3-a456-426614174001";
 const JOB_O = "213e4567-e89b-42d3-a456-426614174001";
 const JOB_P = "313e4567-e89b-42d3-a456-426614174001";
 const JOB_Q = "413e4567-e89b-42d3-a456-426614174001";
+const JOB_R = "513e4567-e89b-42d3-a456-426614174001";
 const SHA_ABC =
   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -335,15 +336,15 @@ async function readOffscreenWhiteboardFetches(): Promise<number> {
   return result.result.value;
 }
 
-async function createPackedPngBytes(): Promise<number[]> {
-  return page.evaluate(async () => {
+async function createPackedPngBytes(width = 2, height = 2): Promise<number[]> {
+  return page.evaluate(async ({ rasterWidth, rasterHeight }) => {
     const canvas = document.createElement("canvas");
-    canvas.width = 2;
-    canvas.height = 2;
+    canvas.width = rasterWidth;
+    canvas.height = rasterHeight;
     const drawing = canvas.getContext("2d");
     if (!drawing) throw new Error("Packed test canvas has no 2D context.");
     drawing.fillStyle = "#0052cc";
-    drawing.fillRect(0, 0, 2, 2);
+    drawing.fillRect(0, 0, rasterWidth, rasterHeight);
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
         (value) => value
@@ -353,7 +354,43 @@ async function createPackedPngBytes(): Promise<number[]> {
       );
     });
     return [...new Uint8Array(await blob.arrayBuffer())];
+  }, { rasterWidth: width, rasterHeight: height });
+}
+
+interface PackedRasterNormalizerReceiptV1 {
+  schema: "atlcli.extension-raster-normalizer-receipt/1";
+  backend: "pure-ts";
+  revision: string;
+  jobId: string;
+  leaseEpoch: number;
+  workerStarted: boolean;
+  requests: number;
+  normalized: number;
+  kept: number;
+  heartbeatSamples: number;
+  heartbeatP95Ms: number | null;
+  heartbeatMaxMs: number | null;
+  outcome: "released" | "aborted" | "worker-error" | "timeout";
+}
+
+async function readPackedRasterNormalizerReceipt(): Promise<
+  PackedRasterNormalizerReceiptV1 | null
+> {
+  if (!packedOffscreen) throw new Error("Packed offscreen target is not attached.");
+  const result = await packedOffscreen.send<{
+    result?: { value?: unknown };
+    exceptionDetails?: unknown;
+  }>("Runtime.evaluate", {
+    expression:
+      "globalThis.__atlcliPdfRasterNormalizerDiagnosticsV1?.snapshot?.() ?? null",
+    returnByValue: true,
   });
+  if (result.exceptionDetails) {
+    throw new Error(
+      `Could not read packed raster normalizer receipt: ${JSON.stringify(result)}`,
+    );
+  }
+  return result.result?.value as PackedRasterNormalizerReceiptV1 | null;
 }
 
 async function launchPackedBrowser(): Promise<void> {
@@ -657,19 +694,21 @@ async function submitPackedDocx(
 async function submitPackedPdf(
   jobId: string,
   siteOrigin = "https://site.atlassian.net",
+  imageProfile: "original" | "standard" | "print" = "original",
 ): Promise<string> {
-  return page.evaluate(async ({ id, origin }) => {
+  return page.evaluate(async ({ id, origin, profile }) => {
     const probe = (globalThis as unknown as {
       exportJobStoreProbe: {
         submitPdf(
           exportJobId: string,
           scopeKind?: "page" | "tree",
           siteOrigin?: string,
+          imageProfile?: "original" | "standard" | "print",
         ): Promise<string>;
       };
     }).exportJobStoreProbe;
-    return probe.submitPdf(id, "page", origin);
-  }, { id: jobId, origin: siteOrigin });
+    return probe.submitPdf(id, "page", origin, profile);
+  }, { id: jobId, origin: siteOrigin, profile: imageProfile });
 }
 
 async function submitPackedTreePdf(jobId: string): Promise<string> {
@@ -1186,6 +1225,55 @@ test("a packed MV3 PDF resolves embedded Whiteboard ADF offline", async () => {
     code: "macro-degraded",
     macroName: "native-embed:whiteboard",
   });
+});
+
+test("a packed standard PDF uses and disposes the productive pure raster worker", async () => {
+  await ensureCatalog();
+  const assetPath = `/wiki/download/attachments/${JOB_R}/large.png`;
+  const storage = {
+    [JOB_R]:
+      '<p>Productive pure worker proof</p>' +
+      '<ac:image ac:alt="Large neutral raster"><ri:attachment ri:filename="large.png"/></ac:image>',
+  };
+  const sourcePng = await createPackedPngBytes(1_600, 800);
+  await installOffscreenFetchStub([], storage, [], {}, {
+    [assetPath]: sourcePng,
+  });
+
+  await expect(
+    submitPackedPdf(JOB_R, "https://site.atlassian.net", "standard"),
+  ).resolves.toBe(JOB_R);
+  const succeeded = await waitForJobState(JOB_R, "succeeded", 90_000);
+  expect(succeeded.snapshot).toMatchObject({
+    state: "succeeded",
+    leaseEpoch: 1,
+    reportSummary: { completeness: "complete" },
+    stats: {
+      pages: { discovered: 1, fetched: 1, composed: 1 },
+      assets: { discovered: 1, fetched: 1, embedded: 1 },
+    },
+  });
+
+  const receipt = await readPackedRasterNormalizerReceipt();
+  expect(receipt).toMatchObject({
+    schema: "atlcli.extension-raster-normalizer-receipt/1",
+    backend: "pure-ts",
+    jobId: JOB_R,
+    leaseEpoch: 1,
+    workerStarted: true,
+    requests: 1,
+    normalized: 1,
+    kept: 0,
+    outcome: "released",
+  });
+  expect(receipt?.heartbeatSamples).toBeGreaterThan(0);
+
+  const session = await context.newCDPSession(page);
+  await expect.poll(async () =>
+    (await getTargets(session)).some((target) =>
+      target.url.includes("raster-normalizer")
+    ), { timeout: 10_000 }).toBe(false);
+  await session.detach();
 });
 
 test("a real service-worker restart does not interrupt an offscreen PDF job", async () => {

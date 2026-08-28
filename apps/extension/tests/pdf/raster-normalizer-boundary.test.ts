@@ -34,4 +34,23 @@ describe("productive raster normalizer boundary", () => {
     expect(source).not.toContain("importScripts");
     expect(source).not.toContain("Blob(");
   });
+
+  it("wires one static module worker behind the productive offscreen kill switch", async () => {
+    const offscreen = await readFile(
+      resolve(extensionRoot, "entrypoints", "offscreen", "main.ts"),
+      "utf8",
+    );
+    const executor = await readFile(
+      resolve(extensionRoot, "utils", "export-jobs", "pdf-executor.ts"),
+      "utf8",
+    );
+    expect(offscreen).toContain(
+      'new Worker(new URL("../../workers/raster-normalizer.ts", import.meta.url)',
+    );
+    expect(offscreen).toContain('type: "module"');
+    expect(offscreen).toContain('"disabled" | "pure-worker"');
+    expect(offscreen).toContain('PRODUCTIVE_RASTER_NORMALIZER_MODE_V1 === "pure-worker"');
+    expect(offscreen).not.toContain("URL.createObjectURL");
+    expect(executor).toContain("rasterNormalizerLeaseFactory: options.rasterNormalizerLeaseFactory");
+  });
 });

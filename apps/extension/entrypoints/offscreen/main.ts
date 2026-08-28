@@ -24,6 +24,10 @@ import {
 import { createExtensionExportQueueRunner } from "../../utils/export-jobs/queue-runner.js";
 import { BrowserRenderReservationPoolV1 } from "../../utils/export-jobs/render-reservation.js";
 import { runClaimedExtensionExportJob } from "../../utils/export-jobs/runtime.js";
+import {
+  createPureTsRasterNormalizerLeaseFactoryV1,
+  type PureTsRasterNormalizerReceiptV1,
+} from "../../utils/pdf/raster-normalizer-worker-host.js";
 import { ResearchAgentWorkerHost } from "../../utils/research/worker-host.js";
 import {
   normalizeAnthropicApiKey,
@@ -34,6 +38,32 @@ import {
 } from "@atlcli/research/browser";
 
 const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
+
+/** Compile-time rollback seam retained through the first measured release. */
+type ProductiveRasterNormalizerModeV1 = "disabled" | "pure-worker";
+const PRODUCTIVE_RASTER_NORMALIZER_MODE_V1: ProductiveRasterNormalizerModeV1 =
+  "pure-worker";
+
+interface ProductiveRasterNormalizerDiagnosticsV1 {
+  schema: "atlcli.extension-raster-normalizer-diagnostics/1";
+  mode: ProductiveRasterNormalizerModeV1;
+  snapshot(): PureTsRasterNormalizerReceiptV1 | null;
+}
+
+let latestRasterNormalizerReceipt: PureTsRasterNormalizerReceiptV1 | null = null;
+const rasterNormalizerDiagnostics: ProductiveRasterNormalizerDiagnosticsV1 = Object.freeze({
+  schema: "atlcli.extension-raster-normalizer-diagnostics/1",
+  mode: PRODUCTIVE_RASTER_NORMALIZER_MODE_V1,
+  snapshot: () => latestRasterNormalizerReceipt === null
+    ? null
+    : structuredClone(latestRasterNormalizerReceipt),
+});
+Object.defineProperty(globalThis, "__atlcliPdfRasterNormalizerDiagnosticsV1", {
+  value: rasterNormalizerDiagnostics,
+  configurable: false,
+  enumerable: false,
+  writable: false,
+});
 
 /**
  * MV3 can discard this document without an orderly worker shutdown. On every
@@ -84,11 +114,24 @@ const exportBytes = new IndexedDbExportByteStore({
 // PR-H binds DOCX to this exact pool as well. The global heavy slot therefore
 // already lives at the host boundary rather than inside either format engine.
 const renderPool = new BrowserRenderReservationPoolV1();
+const rasterNormalizerLeaseFactory = PRODUCTIVE_RASTER_NORMALIZER_MODE_V1 === "pure-worker"
+  ? createPureTsRasterNormalizerLeaseFactoryV1({
+      createWorker: () =>
+        new Worker(new URL("../../workers/raster-normalizer.ts", import.meta.url), {
+          type: "module",
+          name: "atlcli-pdf-raster-normalizer",
+        }),
+      onReceipt: (receipt) => {
+        latestRasterNormalizerReceipt = receipt;
+      },
+    })
+  : undefined;
 const pdfExecutor = createProductiveExtensionPdfExecutor({
   catalog: exportCatalog,
   bytes: exportBytes,
   compilerHost: pdfHost,
   renderPool,
+  ...(rasterNormalizerLeaseFactory ? { rasterNormalizerLeaseFactory } : {}),
 });
 let docxExecutorPromise:
   | Promise<ExportJobExecutor<ExportJobRequestV1>>
