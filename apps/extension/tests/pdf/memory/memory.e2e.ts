@@ -703,7 +703,11 @@ async function runRasterNormalizerVariant(
 
     const readyState = await page.evaluate((value) =>
       window.atlcliMemoryProbe.startRasterNormalizerWorker(value), variant);
-    if (variant !== "pure-ts" && variant !== "pure-worker") {
+    if (
+      variant !== "pure-ts"
+      && variant !== "pure-worker"
+      && variant !== "image-bitmap-worker"
+    ) {
       normalizerSession = await attachRasterNormalizerWorker(cdp);
     }
     let workerReady = normalizerSession ? await normalizerSession.heap() : undefined;
@@ -719,7 +723,7 @@ async function runRasterNormalizerVariant(
     })();
 
     await page.evaluate(() => window.atlcliMemoryProbe.startRasterNormalizerPrepare());
-    if (variant === "pure-worker") {
+    if (variant === "pure-worker" || variant === "image-bitmap-worker") {
       normalizerSession = await attachRasterNormalizerWorker(cdp);
       workerReady = await normalizerSession.heap();
     }
@@ -972,6 +976,139 @@ test("ratchets the productive pure raster worker against panel-main", async () =
     panelWholeChromePeakMedianMiB,
   )).toBeLessThanOrEqual(1.15);
   expect(workerCleanupResidualMedianMiB).toBeLessThanOrEqual(32);
+});
+
+test("ratchets the productive ImageBitmap worker against pure-worker", async () => {
+  test.setTimeout(3_600_000);
+  const runCount = Number(process.env.ATLCLI_PRODUCTIVE_RASTER_RUNS ?? "2");
+  if (!Number.isSafeInteger(runCount) || runCount < 2 || runCount > 5) {
+    throw new Error("ATLCLI_PRODUCTIVE_RASTER_RUNS must be an integer in [2, 5].");
+  }
+
+  const results: RasterNormalizerVariantResult[] = [];
+  for (let iteration = 0; iteration < runCount; iteration += 1) {
+    for (const variant of ["pure-worker", "image-bitmap-worker"] as const) {
+      const result = await runRasterNormalizerVariant(variant);
+      results.push(result);
+      console.log(
+        `ATLCLI_PRODUCTIVE_IMAGE_BITMAP_VARIANT_RESULT\n${JSON.stringify({ iteration: iteration + 1, ...result }, null, 2)}`,
+      );
+    }
+  }
+
+  const pure = results.filter((result) => result.variant === "pure-worker");
+  const imageBitmap = results.filter((result) => result.variant === "image-bitmap-worker");
+  const prepareMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => result.output.prepareMs));
+  const normalizerPeakMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => result.normalizer.peakDeltaMiB));
+  const cleanupResidualMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => Number((
+      result.normalizer.afterTerminateProcessRssMiB
+      - result.normalizer.baselineProcessRssMiB
+    ).toFixed(2))));
+  const typstPeakMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => result.compiler.attribution.peak.totalMiB));
+  const wholeChromePeakMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) =>
+      Math.max(result.normalizer.peakProcessRssMiB, result.compiler.processRssPeakMiB)
+    ));
+  const assetBytesMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => result.output.assetBytes));
+
+  const purePrepareMedianMs = prepareMedian(pure);
+  const imagePrepareMedianMs = prepareMedian(imageBitmap);
+  const pureNormalizerPeakMedianMiB = normalizerPeakMedian(pure);
+  const imageNormalizerPeakMedianMiB = normalizerPeakMedian(imageBitmap);
+  const imageCleanupResidualMedianMiB = cleanupResidualMedian(imageBitmap);
+  const pureTypstPeakMedianMiB = typstPeakMedian(pure);
+  const imageTypstPeakMedianMiB = typstPeakMedian(imageBitmap);
+  const pureWholeChromePeakMedianMiB = wholeChromePeakMedian(pure);
+  const imageWholeChromePeakMedianMiB = wholeChromePeakMedian(imageBitmap);
+  const pureAssetBytesMedian = assetBytesMedian(pure);
+  const imageAssetBytesMedian = assetBytesMedian(imageBitmap);
+  const report = {
+    schema: "atlcli.chrome-productive-image-bitmap-ratchet/v1",
+    measuredAt: new Date().toISOString(),
+    host: { platform: process.platform, arch: process.arch },
+    runCount,
+    runtime: results[0]?.runtime,
+    corpus: {
+      scale: results[0]?.input.scale,
+      manifestSha256: results[0]?.input.manifestSha256,
+      sourceAssetBytes: results[0]?.input.sourceAssetBytes,
+      placements: results[0]?.input.placements,
+    },
+    medians: {
+      purePrepareMs: Number(purePrepareMedianMs.toFixed(2)),
+      imageBitmapPrepareMs: Number(imagePrepareMedianMs.toFixed(2)),
+      prepareRatio: ratio(imagePrepareMedianMs, purePrepareMedianMs),
+      pureNormalizerPeakDeltaMiB: Number(pureNormalizerPeakMedianMiB.toFixed(2)),
+      imageBitmapNormalizerPeakDeltaMiB: Number(imageNormalizerPeakMedianMiB.toFixed(2)),
+      normalizerPeakRatio: ratio(imageNormalizerPeakMedianMiB, pureNormalizerPeakMedianMiB),
+      imageBitmapCleanupResidualMiB: Number(imageCleanupResidualMedianMiB.toFixed(2)),
+      pureTypstPeakMiB: Number(pureTypstPeakMedianMiB.toFixed(2)),
+      imageBitmapTypstPeakMiB: Number(imageTypstPeakMedianMiB.toFixed(2)),
+      typstPeakRatio: ratio(imageTypstPeakMedianMiB, pureTypstPeakMedianMiB),
+      pureWholeChromePeakMiB: Number(pureWholeChromePeakMedianMiB.toFixed(2)),
+      imageBitmapWholeChromePeakMiB: Number(imageWholeChromePeakMedianMiB.toFixed(2)),
+      wholeChromePeakRatio: ratio(
+        imageWholeChromePeakMedianMiB,
+        pureWholeChromePeakMedianMiB,
+      ),
+      assetBytesRatio: ratio(imageAssetBytesMedian, pureAssetBytesMedian),
+      imageBitmapHeartbeatP95Ms: median(imageBitmap.map((result) =>
+        result.normalizer.productiveReceipt?.heartbeatP95Ms ?? Number.POSITIVE_INFINITY
+      )),
+    },
+    results,
+  };
+  console.log(
+    `ATLCLI_PRODUCTIVE_IMAGE_BITMAP_RATCHET_RESULT\n${JSON.stringify(report, null, 2)}`,
+  );
+
+  expect(pure).toHaveLength(runCount);
+  expect(imageBitmap).toHaveLength(runCount);
+  expect(new Set(results.map((result) => result.input.manifestSha256)).size).toBe(1);
+  expect(new Set(pure.map((result) => result.output.outputAssetSha256)).size).toBe(1);
+  expect(new Set(imageBitmap.map((result) => result.output.outputAssetSha256)).size).toBe(1);
+  expect(new Set(pure.map((result) => result.compiler.pdfSha256)).size).toBe(1);
+  expect(new Set(imageBitmap.map((result) => result.compiler.pdfSha256)).size).toBe(1);
+  expect(new Set(results.map((result) => result.output.images)).size).toBe(1);
+  for (const result of results) {
+    expect(result.output.manifestSha256).toBe(result.input.manifestSha256);
+    expect(result.output.normalizedCalls).toBeGreaterThan(0);
+    expect(result.compiler.tagged).toBe(true);
+    expect(result.normalizer.workerTargetReleased).toBe(true);
+  }
+  for (const result of imageBitmap) {
+    expect(result.normalizer.productiveReceipt).toMatchObject({
+      schema: "atlcli.extension-raster-normalizer-receipt/1",
+      backend: "image-bitmap",
+      revision: "image-bitmap-v1",
+      workerStarted: true,
+      requests: result.output.normalizedCalls + result.output.keptCalls,
+      normalized: result.output.normalizedCalls,
+      kept: result.output.keptCalls,
+      outcome: "released",
+    });
+    expect(result.normalizer.productiveReceipt?.heartbeatSamples).toBeGreaterThan(0);
+    expect(result.normalizer.productiveReceipt?.heartbeatP95Ms).not.toBeNull();
+    expect(result.normalizer.productiveReceipt!.heartbeatP95Ms!).toBeLessThan(50);
+    expect(result.normalizer.productiveReceipt!.cacheHits).toBeGreaterThan(0);
+  }
+  expect(ratio(imagePrepareMedianMs, purePrepareMedianMs)).toBeLessThanOrEqual(0.60);
+  expect(ratio(
+    imageNormalizerPeakMedianMiB,
+    pureNormalizerPeakMedianMiB,
+  )).toBeLessThanOrEqual(1.15);
+  expect(imageCleanupResidualMedianMiB).toBeLessThanOrEqual(32);
+  expect(ratio(imageTypstPeakMedianMiB, pureTypstPeakMedianMiB)).toBeLessThanOrEqual(1.10);
+  expect(ratio(
+    imageWholeChromePeakMedianMiB,
+    pureWholeChromePeakMedianMiB,
+  )).toBeLessThanOrEqual(1.10);
+  expect(ratio(imageAssetBytesMedian, pureAssetBytesMedian)).toBeLessThanOrEqual(1.10);
 });
 
 test("ratchets raster-normalizer paths 1-4 in the real MV3 PDF pipeline", async () => {

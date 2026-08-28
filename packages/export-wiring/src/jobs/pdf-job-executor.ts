@@ -193,6 +193,28 @@ export interface PdfRasterNormalizerLeaseV1 {
   release(): void | Promise<void>;
 }
 
+export type PdfRasterNormalizerRetryCodeV1 =
+  | "capability-unavailable"
+  | "native-path-failed";
+
+/**
+ * Body-free marker for a failed preferred browser-native attempt. The shared
+ * executor may use it to discard the complete prepare and retry once through
+ * the host-supplied deterministic fallback; ordinary codec failures are not
+ * automatically retried.
+ */
+export class PdfRasterNormalizerRetryableErrorV1 extends Error {
+  readonly backend = "image-bitmap" as const;
+
+  constructor(
+    readonly code: PdfRasterNormalizerRetryCodeV1,
+    options?: { cause?: unknown },
+  ) {
+    super(`ImageBitmap raster normalizer failed (${code}).`, options);
+    this.name = "PdfRasterNormalizerRetryableErrorV1";
+  }
+}
+
 /** Lazy host factory. The shared executor never owns a Worker-specific type. */
 export interface PdfRasterNormalizerLeaseFactoryV1 {
   acquire(input: {
@@ -200,6 +222,22 @@ export interface PdfRasterNormalizerLeaseFactoryV1 {
     leaseEpoch: number;
     request: PdfExportJobRequestV1;
     signal: AbortSignal;
+  }): Promise<PdfRasterNormalizerLeaseV1>;
+  /**
+   * Optional one-shot deterministic fallback after the preferred native path
+   * failed. The executor releases the failed lease and re-resolves the whole
+   * source before calling this method; the returned lease must be pure-ts.
+   */
+  acquireFallback?(input: {
+    jobId: string;
+    leaseEpoch: number;
+    request: PdfExportJobRequestV1;
+    signal: AbortSignal;
+    failedEvidence: PdfRasterNormalizerEvidenceV1;
+    failure: {
+      backend: "image-bitmap";
+      code: PdfRasterNormalizerRetryCodeV1;
+    };
   }): Promise<PdfRasterNormalizerLeaseV1>;
 }
 
@@ -287,6 +325,21 @@ function validateRasterNormalizerLease(lease: PdfRasterNormalizerLeaseV1): void 
   ) {
     throw new Error("Raster normalizer lease is incomplete.");
   }
+}
+
+function rasterNormalizerRetryFailure(
+  error: unknown,
+): PdfRasterNormalizerRetryableErrorV1 | undefined {
+  const seen = new Set<object>();
+  let current = error;
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (current instanceof PdfRasterNormalizerRetryableErrorV1) return current;
+    if (typeof current !== "object" || current === null || seen.has(current)) return undefined;
+    seen.add(current);
+    if (!("cause" in current)) return undefined;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
 }
 
 async function releaseRasterNormalizerLease(
@@ -721,6 +774,17 @@ export function createPdfExportJobExecutor(
       let estimate: ResourceEstimateV1;
       let resultKey: PdfExportResultRecoveryKeyV1 | undefined;
       let sourcePageCount = checkpoint?.sourcePageCount ?? 1;
+      const resolveFreshInput = async (): Promise<NonNullable<typeof resolved>> => {
+        const next = await options.resolveInput(request, context);
+        throwIfAborted(context.signal);
+        if (templatePack) {
+          next.input = {
+            ...next.input,
+            templatePack,
+          };
+        }
+        return next;
+      };
       if (checkpoint) {
         validateCheckpoint(checkpoint, request, context);
         // Commit and publication are separate fenced writes. Recovery must heal
@@ -753,14 +817,7 @@ export function createPdfExportJobExecutor(
           throwIfAborted(context.signal);
         }
         await progress(context, now, "discover", 0, null, "Discovering PDF source hierarchy");
-        resolved = await options.resolveInput(request, context);
-        throwIfAborted(context.signal);
-        if (templatePack) {
-          resolved.input = {
-            ...resolved.input,
-            templatePack,
-          };
-        }
+        resolved = await resolveFreshInput();
         sourcePageCount = resolved.telemetry?.sourcePageCount ?? 1;
         nonNegativeSafeInteger(sourcePageCount, "telemetry.sourcePageCount");
         estimate = options.estimateRender(resolved.input, request);
@@ -780,35 +837,94 @@ export function createPdfExportJobExecutor(
         throwIfAborted(context.signal);
 
         if (!checkpoint) {
-          let newlyPrepared: PreparedPdfExportV1;
-          let rasterNormalizerLease: PdfRasterNormalizerLeaseV1 | undefined;
-          try {
-            if (
-              options.rasterNormalizerLeaseFactory &&
-              request.options.imageProfile !== undefined &&
-              request.options.imageProfile !== "original"
-            ) {
-              rasterNormalizerLease = await options.rasterNormalizerLeaseFactory.acquire({
-                jobId: context.jobId,
-                leaseEpoch: context.leaseEpoch,
+          let newlyPrepared: PreparedPdfExportV1 | undefined;
+          let fallbackFailure:
+            | {
+                marker: PdfRasterNormalizerRetryableErrorV1;
+                evidence: PdfRasterNormalizerEvidenceV1;
+              }
+            | undefined;
+          for (let prepareAttempt = 0; prepareAttempt < 2; prepareAttempt += 1) {
+            let rasterNormalizerLease: PdfRasterNormalizerLeaseV1 | undefined;
+            let prepareFailure: { error: unknown } | undefined;
+            try {
+              if (
+                options.rasterNormalizerLeaseFactory
+                && request.options.imageProfile !== undefined
+                && request.options.imageProfile !== "original"
+              ) {
+                rasterNormalizerLease = prepareAttempt === 0
+                  ? await options.rasterNormalizerLeaseFactory.acquire({
+                      jobId: context.jobId,
+                      leaseEpoch: context.leaseEpoch,
+                      request,
+                      signal: context.signal,
+                    })
+                  : await options.rasterNormalizerLeaseFactory.acquireFallback!({
+                      jobId: context.jobId,
+                      leaseEpoch: context.leaseEpoch,
+                      request,
+                      signal: context.signal,
+                      failedEvidence: fallbackFailure!.evidence,
+                      failure: {
+                        backend: fallbackFailure!.marker.backend,
+                        code: fallbackFailure!.marker.code,
+                      },
+                    });
+                validateRasterNormalizerLease(rasterNormalizerLease);
+                if (prepareAttempt === 1 && rasterNormalizerLease.evidence.backend !== "pure-ts") {
+                  throw new Error("Raster normalizer fallback must use the pure-ts backend.");
+                }
+                throwIfAborted(context.signal);
+              }
+              newlyPrepared = await prepareResolvedPdfExport(
+                resolved!,
                 request,
-                signal: context.signal,
-              });
-              validateRasterNormalizerLease(rasterNormalizerLease);
-              throwIfAborted(context.signal);
+                context.signal,
+                now,
+                rasterNormalizerLease?.rasterNormalizer,
+              );
+            } catch (error) {
+              prepareFailure = { error };
+            } finally {
+              // The source graph may dwarf the compiler bundle. Drop the final
+              // executor-owned reference immediately after each complete
+              // preparation attempt settles, before any fallback is acquired.
+              resolved = undefined;
+              await releaseRasterNormalizerLease(rasterNormalizerLease);
             }
-            newlyPrepared = await prepareResolvedPdfExport(
-              resolved!,
-              request,
-              context.signal,
-              now,
-              rasterNormalizerLease?.rasterNormalizer,
-            );
-          } finally {
-            // The source graph may dwarf the compiler bundle. Drop the final
-            // executor-owned reference immediately after preparation settles.
-            resolved = undefined;
-            await releaseRasterNormalizerLease(rasterNormalizerLease);
+            if (!prepareFailure) break;
+
+            const marker = rasterNormalizerRetryFailure(prepareFailure.error);
+            if (
+              prepareAttempt !== 0
+              || !marker
+              || !rasterNormalizerLease
+              || rasterNormalizerLease.evidence.backend !== "image-bitmap"
+              || !options.rasterNormalizerLeaseFactory?.acquireFallback
+            ) {
+              throw prepareFailure.error;
+            }
+            fallbackFailure = { marker, evidence: rasterNormalizerLease.evidence };
+
+            // The first prepare is discarded in full. Re-resolve from the
+            // durable source boundary and prove that admission identity did
+            // not drift before the one allowed pure-worker retry.
+            resolved = await resolveFreshInput();
+            const retrySourcePageCount = resolved.telemetry?.sourcePageCount ?? 1;
+            nonNegativeSafeInteger(retrySourcePageCount, "telemetry.sourcePageCount");
+            const retryEstimate = options.estimateRender(resolved.input, request);
+            validateEstimate(retryEstimate);
+            if (
+              retrySourcePageCount !== sourcePageCount
+              || !sameEstimate(retryEstimate, estimate)
+            ) {
+              resolved = undefined;
+              throw new Error("Raster normalizer fallback source identity changed between attempts.");
+            }
+          }
+          if (!newlyPrepared) {
+            throw new Error("PDF preparation completed without a prepared payload.");
           }
           throwIfAborted(context.signal);
           const fingerprint = await fingerprintPreparedPdfExport(newlyPrepared, estimate, context.signal);

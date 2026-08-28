@@ -40,6 +40,7 @@ import type {
 } from "./confluence-source-plan-checkpoint.js";
 import {
   createPdfExportJobExecutor,
+  PdfRasterNormalizerRetryableErrorV1,
   PdfRenderRestartLimitError,
   type CreatePdfExportJobExecutorOptionsV1,
   type PdfExportResultIntentV1,
@@ -692,6 +693,115 @@ describe("createPdfExportJobExecutor", () => {
       .toEqual({ acquisitions: 2, releases: 2, commits: 1, resolveCalls: 2 });
     expect(callsByLease.get(2)).toBe(2);
     expect(order.indexOf("normalizer-release-2")).toBeLessThan(order.indexOf("compile"));
+  });
+
+  it("discards a failed ImageBitmap prepare and retries the whole source once with pure-ts", async () => {
+    const order: string[] = [];
+    const ready = new MemoryReadyStore(order);
+    const resolveCalls = { count: 0 };
+    const pixels = new Uint8Array(32 * 32 * 4).fill(0xff);
+    const png = encodePng(pixels, 32, 32, false);
+    const poison = encodePng(new Uint8Array(8 * 8 * 4).fill(0x11), 8, 8, false);
+    let imageCalls = 0;
+    let pureCalls = 0;
+    let releases = 0;
+    const resolveInput = async () => {
+      return {
+        input: {
+          ...engineInput().input,
+          blocks: ["first.png", "second.png"].map((filename) => ({
+            type: "image" as const,
+            source: { kind: "attachment" as const, filename },
+            alt: `Neutral ${filename}`,
+          })),
+        },
+        env: {
+          assets: {
+            resolve: async (ref: { filename?: string }) => ({
+              bytes: png,
+              mediaType: "image/png",
+              filename: ref.filename,
+            }),
+          },
+        },
+      };
+    };
+    const rasterNormalizerLeaseFactory: PdfRasterNormalizerLeaseFactoryV1 = {
+      async acquire() {
+        order.push("image-acquire");
+        return {
+          rasterNormalizer: {
+            normalize(request) {
+              imageCalls += 1;
+              if (imageCalls === 2) {
+                throw new PdfRasterNormalizerRetryableErrorV1("native-path-failed");
+              }
+              const reference = normalizeRasterAssetV1(request);
+              if (reference.kind === "kept") return reference;
+              return { ...reference, bytes: poison };
+            },
+          },
+          evidence: {
+            schema: "atlcli.pdf-raster-normalizer-evidence/1",
+            backend: "image-bitmap",
+            revision: "image-bitmap-v1",
+          },
+          release() {
+            releases += 1;
+            order.push("image-release");
+          },
+        };
+      },
+      async acquireFallback(input) {
+        expect(input.failedEvidence).toMatchObject({
+          backend: "image-bitmap",
+          revision: "image-bitmap-v1",
+        });
+        expect(input.failure).toEqual({
+          backend: "image-bitmap",
+          code: "native-path-failed",
+        });
+        order.push("pure-acquire");
+        return {
+          rasterNormalizer: {
+            normalize(request) {
+              pureCalls += 1;
+              return normalizeRasterAssetV1(request);
+            },
+          },
+          evidence: {
+            schema: "atlcli.pdf-raster-normalizer-evidence/1",
+            backend: "pure-ts",
+            revision: "pure-ts-v1",
+          },
+          release() {
+            releases += 1;
+            order.push("pure-release");
+          },
+        };
+      },
+    };
+    const fixture = executorOptions({
+      ready,
+      order,
+      resolveCalls,
+      resolveInput,
+      rasterNormalizerLeaseFactory,
+    });
+    const executor = createPdfExportJobExecutor(fixture.options);
+
+    const result = await executor.execute(
+      rasterRequest(),
+      executionContext({ order }).context,
+    );
+
+    expect(result.stagedArtifact.filename).toBe("test.pdf");
+    expect({ imageCalls, pureCalls, releases, commits: ready.commits, resolveCalls: resolveCalls.count })
+      .toEqual({ imageCalls: 2, pureCalls: 2, releases: 2, commits: 1, resolveCalls: 2 });
+    expect(order.indexOf("image-release")).toBeLessThan(order.indexOf("pure-acquire"));
+    expect(order.indexOf("pure-release")).toBeLessThan(order.indexOf("compile"));
+    expect(ready.prepared?.bundle?.assets).toHaveLength(1);
+    expect(ready.prepared?.bundle?.assets[0]?.bytes).not.toEqual(poison);
   });
 
   it("restarts from ready-to-render once without resolving source again", async () => {

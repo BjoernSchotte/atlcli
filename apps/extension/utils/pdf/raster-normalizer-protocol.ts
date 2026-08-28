@@ -8,16 +8,30 @@ export const RASTER_NORMALIZER_WORKER_SCHEMA_V1 =
   "atlcli.raster-normalizer-worker/1" as const;
 export const PURE_TS_RASTER_NORMALIZER_BACKEND_V1 = "pure-ts" as const;
 export const PURE_TS_RASTER_NORMALIZER_REVISION_V1 = "pure-ts-v1" as const;
+export const IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1 = "image-bitmap" as const;
+export const IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1 = "image-bitmap-v1" as const;
+
+export type RasterNormalizerWorkerBackendV1 =
+  | typeof PURE_TS_RASTER_NORMALIZER_BACKEND_V1
+  | typeof IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1;
+export type RasterNormalizerWorkerRevisionV1 =
+  | typeof PURE_TS_RASTER_NORMALIZER_REVISION_V1
+  | typeof IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1;
 
 /** Mirrors the productive per-asset ceiling without granting a larger worker input. */
 export const RASTER_NORMALIZER_WORKER_MAX_BYTES_V1 = 64 * 1024 * 1024;
 
-export interface RasterNormalizerWorkerInitRequestV1 {
+export type RasterNormalizerWorkerInitRequestV1 = {
   schema: typeof RASTER_NORMALIZER_WORKER_SCHEMA_V1;
   kind: "init";
   backend: typeof PURE_TS_RASTER_NORMALIZER_BACKEND_V1;
   revision: typeof PURE_TS_RASTER_NORMALIZER_REVISION_V1;
-}
+} | {
+  schema: typeof RASTER_NORMALIZER_WORKER_SCHEMA_V1;
+  kind: "init";
+  backend: typeof IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1;
+  revision: typeof IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1;
+};
 
 export interface RasterNormalizerWorkerNormalizeRequestV1 {
   schema: typeof RASTER_NORMALIZER_WORKER_SCHEMA_V1;
@@ -43,12 +57,17 @@ export type RasterNormalizerWorkerRequestV1 =
   | RasterNormalizerWorkerCancelRequestV1
   | RasterNormalizerWorkerShutdownRequestV1;
 
-export interface RasterNormalizerWorkerReadyResponseV1 {
+export type RasterNormalizerWorkerReadyResponseV1 = {
   schema: typeof RASTER_NORMALIZER_WORKER_SCHEMA_V1;
   kind: "ready";
   backend: typeof PURE_TS_RASTER_NORMALIZER_BACKEND_V1;
   revision: typeof PURE_TS_RASTER_NORMALIZER_REVISION_V1;
-}
+} | {
+  schema: typeof RASTER_NORMALIZER_WORKER_SCHEMA_V1;
+  kind: "ready";
+  backend: typeof IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1;
+  revision: typeof IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1;
+};
 
 export interface RasterNormalizerWorkerResultResponseV1 {
   schema: typeof RASTER_NORMALIZER_WORKER_SCHEMA_V1;
@@ -61,7 +80,12 @@ export interface RasterNormalizerWorkerErrorResponseV1 {
   schema: typeof RASTER_NORMALIZER_WORKER_SCHEMA_V1;
   kind: "error";
   id?: number;
-  code: "cancelled" | "normalization-failed" | "protocol-error";
+  code:
+    | "cancelled"
+    | "normalization-failed"
+    | "capability-unavailable"
+    | "native-path-failed"
+    | "protocol-error";
   message: string;
   fatal: boolean;
 }
@@ -76,7 +100,21 @@ const KEPT_REASONS = new Set<RasterKeptReason>([
   "undecodable",
   "no-downscale",
   "decode-budget-exceeded",
+  "unsupported-raster-shape",
 ]);
+
+function isBackendRevisionPair(
+  backend: unknown,
+  revision: unknown,
+): backend is RasterNormalizerWorkerBackendV1 {
+  return (
+    backend === PURE_TS_RASTER_NORMALIZER_BACKEND_V1
+    && revision === PURE_TS_RASTER_NORMALIZER_REVISION_V1
+  ) || (
+    backend === IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1
+    && revision === IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1
+  );
+}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -175,8 +213,7 @@ export function parseRasterNormalizerWorkerRequestV1(
   if (value.kind === "init") {
     if (
       !hasExactKeys(value, ["schema", "kind", "backend", "revision"])
-      || value.backend !== PURE_TS_RASTER_NORMALIZER_BACKEND_V1
-      || value.revision !== PURE_TS_RASTER_NORMALIZER_REVISION_V1
+      || !isBackendRevisionPair(value.backend, value.revision)
     ) {
       throw new Error("Raster normalizer worker init request is invalid.");
     }
@@ -216,8 +253,7 @@ export function parseRasterNormalizerWorkerResponseV1(
   if (value.kind === "ready") {
     if (
       !hasExactKeys(value, ["schema", "kind", "backend", "revision"])
-      || value.backend !== PURE_TS_RASTER_NORMALIZER_BACKEND_V1
-      || value.revision !== PURE_TS_RASTER_NORMALIZER_REVISION_V1
+      || !isBackendRevisionPair(value.backend, value.revision)
     ) {
       throw new Error("Raster normalizer worker ready response is invalid.");
     }
@@ -240,6 +276,8 @@ export function parseRasterNormalizerWorkerResponseV1(
       || ![
         "cancelled",
         "normalization-failed",
+        "capability-unavailable",
+        "native-path-failed",
         "protocol-error",
       ].includes(value.code as string)
       || typeof value.message !== "string"

@@ -5,11 +5,19 @@ import {
   type RasterNormalizeRequestV1,
 } from "@atlcli/export-media";
 import {
+  PdfRasterNormalizerRetryableErrorV1,
+  type PdfRasterNormalizerLeaseFactoryV1,
+} from "@atlcli/export-wiring/jobs";
+import {
+  createImageBitmapRasterNormalizerLeaseFactoryV1,
   createPureTsRasterNormalizerLeaseFactoryV1,
+  type ImageBitmapRasterNormalizerReceiptV1,
   type PureTsRasterNormalizerReceiptV1,
   type RasterNormalizerWorkerLikeV1,
 } from "../../utils/pdf/raster-normalizer-worker-host.js";
 import {
+  IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1,
+  IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1,
   PURE_TS_RASTER_NORMALIZER_BACKEND_V1,
   PURE_TS_RASTER_NORMALIZER_REVISION_V1,
   RASTER_NORMALIZER_WORKER_SCHEMA_V1,
@@ -42,15 +50,38 @@ class FakeRasterWorker implements RasterNormalizerWorkerLikeV1 {
   }> = [];
   terminated = false;
   autoNormalize = false;
+  initError: "capability-unavailable" | undefined;
+  normalizeError: "native-path-failed" | undefined;
 
   postMessage(message: RasterNormalizerWorkerRequestV1, transfer: Transferable[] = []): void {
     this.posted.push({ message, transfer });
     if (message.kind === "init") {
+      if (this.initError) {
+        this.emit({
+          schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
+          kind: "error",
+          code: this.initError,
+          message: "synthetic capability failure",
+          fatal: true,
+        });
+        return;
+      }
       this.emit({
         schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
         kind: "ready",
-        backend: PURE_TS_RASTER_NORMALIZER_BACKEND_V1,
-        revision: PURE_TS_RASTER_NORMALIZER_REVISION_V1,
+        backend: message.backend,
+        revision: message.revision,
+      });
+      return;
+    }
+    if (message.kind === "normalize" && this.normalizeError) {
+      this.emit({
+        schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
+        kind: "error",
+        id: message.id,
+        code: this.normalizeError,
+        message: "synthetic native failure",
+        fatal: true,
       });
       return;
     }
@@ -84,7 +115,7 @@ async function flush(): Promise<void> {
 }
 
 function acquire(
-  factory: ReturnType<typeof createPureTsRasterNormalizerLeaseFactoryV1>,
+  factory: PdfRasterNormalizerLeaseFactoryV1,
   signal = new AbortController().signal,
 ) {
   return factory.acquire({
@@ -313,5 +344,80 @@ describe("disposable productive pure-TS raster worker host", () => {
     expect(workers).toHaveLength(2);
     expect(workers.every((worker) => worker.terminated)).toBe(true);
     expect(receipts.map(({ outcome }) => outcome)).toEqual(["timeout", "released"]);
+  });
+});
+
+describe("disposable productive ImageBitmap raster worker host", () => {
+  it("keeps an ineligible raster without constructing a worker", async () => {
+    let workers = 0;
+    const receipts: ImageBitmapRasterNormalizerReceiptV1[] = [];
+    const lease = await acquire(createImageBitmapRasterNormalizerLeaseFactoryV1({
+      createWorker() {
+        workers += 1;
+        return new FakeRasterWorker();
+      },
+      onReceipt: (receipt) => receipts.push(receipt),
+    }));
+    const request = rasterRequest();
+    request.bytes = request.bytes.slice();
+    request.bytes[24] = 16;
+
+    await expect(lease.rasterNormalizer.normalize(request)).resolves.toEqual({
+      kind: "kept",
+      reason: "unsupported-raster-shape",
+    });
+    await lease.release();
+
+    expect(workers).toBe(0);
+    expect(receipts).toEqual([expect.objectContaining({
+      backend: IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1,
+      revision: IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1,
+      workerStarted: false,
+      kept: 1,
+    })]);
+  });
+
+  it("surfaces capability probe failure as a body-free retry marker", async () => {
+    const worker = new FakeRasterWorker();
+    worker.initError = "capability-unavailable";
+    const request = rasterRequest();
+    const sourceBefore = request.bytes.slice();
+    const lease = await acquire(createImageBitmapRasterNormalizerLeaseFactoryV1({
+      createWorker: () => worker,
+    }));
+
+    const failed = lease.rasterNormalizer.normalize(request);
+    await expect(failed).rejects.toBeInstanceOf(PdfRasterNormalizerRetryableErrorV1);
+    await expect(failed).rejects.toMatchObject({
+      backend: "image-bitmap",
+      code: "capability-unavailable",
+    });
+    expect(request.bytes).toEqual(sourceBefore);
+    expect(worker.terminated).toBe(true);
+    await lease.release();
+  });
+
+  it("surfaces a native operation failure without detaching caller bytes", async () => {
+    const worker = new FakeRasterWorker();
+    worker.normalizeError = "native-path-failed";
+    const request = rasterRequest();
+    const sourceBefore = request.bytes.slice();
+    const lease = await acquire(createImageBitmapRasterNormalizerLeaseFactoryV1({
+      createWorker: () => worker,
+    }));
+
+    const failed = lease.rasterNormalizer.normalize(request);
+    await expect(failed).rejects.toMatchObject({
+      name: "PdfRasterNormalizerRetryableErrorV1",
+      backend: "image-bitmap",
+      code: "native-path-failed",
+    });
+    expect(request.bytes).toEqual(sourceBefore);
+    const init = worker.posted.find(({ message }) => message.kind === "init");
+    expect(init?.message).toMatchObject({
+      backend: IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1,
+      revision: IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1,
+    });
+    await lease.release();
   });
 });

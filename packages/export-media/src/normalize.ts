@@ -43,7 +43,8 @@ export type RasterKeptReason =
   | "not-raster"
   | "undecodable"
   | "no-downscale"
-  | "decode-budget-exceeded";
+  | "decode-budget-exceeded"
+  | "unsupported-raster-shape";
 
 export type RasterNormalizeResultV1 =
   | {

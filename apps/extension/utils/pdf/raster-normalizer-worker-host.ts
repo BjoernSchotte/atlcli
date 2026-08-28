@@ -1,4 +1,5 @@
 import {
+  classifyImageBitmapEligibilityV1,
   planRasterNormalizationV1,
   type RasterNormalizerPortV1,
   type RasterNormalizeRequestV1,
@@ -8,12 +9,17 @@ import type {
   PdfRasterNormalizerLeaseFactoryV1,
   PdfRasterNormalizerLeaseV1,
 } from "@atlcli/export-wiring/jobs";
+import { PdfRasterNormalizerRetryableErrorV1 } from "@atlcli/export-wiring/jobs";
 import {
+  IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1,
+  IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1,
   parseRasterNormalizerWorkerResponseV1,
   PURE_TS_RASTER_NORMALIZER_BACKEND_V1,
   PURE_TS_RASTER_NORMALIZER_REVISION_V1,
   RASTER_NORMALIZER_WORKER_SCHEMA_V1,
+  type RasterNormalizerWorkerBackendV1,
   type RasterNormalizerWorkerRequestV1,
+  type RasterNormalizerWorkerRevisionV1,
 } from "./raster-normalizer-protocol.js";
 
 export interface RasterNormalizerWorkerLikeV1 {
@@ -23,10 +29,8 @@ export interface RasterNormalizerWorkerLikeV1 {
   onerror: ((event: ErrorEvent) => void) | null;
 }
 
-export interface PureTsRasterNormalizerReceiptV1 {
+interface RasterNormalizerReceiptBaseV1 {
   schema: "atlcli.extension-raster-normalizer-receipt/1";
-  backend: typeof PURE_TS_RASTER_NORMALIZER_BACKEND_V1;
-  revision: typeof PURE_TS_RASTER_NORMALIZER_REVISION_V1;
   jobId: string;
   leaseEpoch: number;
   workerStarted: boolean;
@@ -40,7 +44,23 @@ export interface PureTsRasterNormalizerReceiptV1 {
   outcome: "released" | "aborted" | "worker-error" | "timeout";
 }
 
-export interface PureTsRasterNormalizerLeaseFactoryOptionsV1 {
+export interface ProductiveRasterNormalizerReceiptV1
+  extends RasterNormalizerReceiptBaseV1 {
+  backend: RasterNormalizerWorkerBackendV1;
+  revision: RasterNormalizerWorkerRevisionV1;
+}
+
+export type PureTsRasterNormalizerReceiptV1 = ProductiveRasterNormalizerReceiptV1 & {
+  backend: typeof PURE_TS_RASTER_NORMALIZER_BACKEND_V1;
+  revision: typeof PURE_TS_RASTER_NORMALIZER_REVISION_V1;
+};
+
+export type ImageBitmapRasterNormalizerReceiptV1 = ProductiveRasterNormalizerReceiptV1 & {
+  backend: typeof IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1;
+  revision: typeof IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1;
+};
+
+interface RasterNormalizerLeaseFactoryOptionsBaseV1 {
   createWorker(): RasterNormalizerWorkerLikeV1;
   operationTimeoutMs?: number;
   heartbeatIntervalMs?: number;
@@ -51,10 +71,26 @@ export interface PureTsRasterNormalizerLeaseFactoryOptionsV1 {
   clearTimeout?: (id: ReturnType<typeof setTimeout>) => void;
   scheduleHeartbeat?: (fn: () => void, ms: number) => ReturnType<typeof setInterval>;
   clearHeartbeat?: (id: ReturnType<typeof setInterval>) => void;
+}
+
+export interface PureTsRasterNormalizerLeaseFactoryOptionsV1
+  extends RasterNormalizerLeaseFactoryOptionsBaseV1 {
   onReceipt?: (receipt: PureTsRasterNormalizerReceiptV1) => void;
 }
 
-interface ResolvedPureTsRasterNormalizerOptionsV1 {
+export interface ImageBitmapRasterNormalizerLeaseFactoryOptionsV1
+  extends RasterNormalizerLeaseFactoryOptionsBaseV1 {
+  onReceipt?: (receipt: ImageBitmapRasterNormalizerReceiptV1) => void;
+}
+
+export interface ImageBitmapWithPureTsFallbackOptionsV1
+  extends RasterNormalizerLeaseFactoryOptionsBaseV1 {
+  onReceipt?: (receipt: ProductiveRasterNormalizerReceiptV1) => void;
+}
+
+interface ResolvedRasterNormalizerOptionsV1 {
+  backend: RasterNormalizerWorkerBackendV1;
+  revision: RasterNormalizerWorkerRevisionV1;
   createWorker(): RasterNormalizerWorkerLikeV1;
   operationTimeoutMs: number;
   heartbeatIntervalMs: number;
@@ -64,7 +100,7 @@ interface ResolvedPureTsRasterNormalizerOptionsV1 {
   clearTimeout(id: ReturnType<typeof setTimeout>): void;
   scheduleHeartbeat(fn: () => void, ms: number): ReturnType<typeof setInterval>;
   clearHeartbeat(id: ReturnType<typeof setInterval>): void;
-  onReceipt?: (receipt: PureTsRasterNormalizerReceiptV1) => void;
+  onReceipt?: (receipt: ProductiveRasterNormalizerReceiptV1) => void;
 }
 
 interface ActiveRequest {
@@ -88,15 +124,17 @@ function percentile95(values: readonly number[]): number | null {
 }
 
 function boundedError(error: unknown, fallback: string): Error {
+  if (error instanceof PdfRasterNormalizerRetryableErrorV1) return error;
+  if (error instanceof DOMException && error.name === "AbortError") return error;
   const message = error instanceof Error ? error.message : String(error ?? "");
   return new Error((message.trim() || fallback).slice(0, 512));
 }
 
-class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
+class DisposableRasterNormalizerV1 implements RasterNormalizerPortV1 {
   readonly #jobId: string;
   readonly #leaseEpoch: number;
   readonly #signal: AbortSignal;
-  readonly #options: ResolvedPureTsRasterNormalizerOptionsV1;
+  readonly #options: ResolvedRasterNormalizerOptionsV1;
 
   #worker: RasterNormalizerWorkerLikeV1 | undefined;
   #ready: Promise<void> | undefined;
@@ -118,7 +156,7 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
   #cacheHits = 0;
   #closed = false;
   #released = false;
-  #outcome: PureTsRasterNormalizerReceiptV1["outcome"] = "released";
+  #outcome: RasterNormalizerReceiptBaseV1["outcome"] = "released";
 
   readonly #abort = (): void => {
     if (this.#closed) return;
@@ -130,7 +168,7 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
     jobId: string;
     leaseEpoch: number;
     signal: AbortSignal;
-    options: ResolvedPureTsRasterNormalizerOptionsV1;
+    options: ResolvedRasterNormalizerOptionsV1;
   }) {
     this.#jobId = input.jobId;
     this.#leaseEpoch = input.leaseEpoch;
@@ -146,6 +184,18 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
     if (planned.kind === "kept") {
       this.#kept += 1;
       return Promise.resolve(planned);
+    }
+    if (this.#options.backend === IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1) {
+      const eligibility = classifyImageBitmapEligibilityV1(request.bytes);
+      if (
+        eligibility.kind === "ineligible"
+        || eligibility.format !== planned.plan.sourceFormat
+        || eligibility.width !== planned.plan.sourceWidth
+        || eligibility.height !== planned.plan.sourceHeight
+      ) {
+        this.#kept += 1;
+        return Promise.resolve({ kind: "kept", reason: "unsupported-raster-shape" });
+      }
     }
 
     const cacheKey = [
@@ -194,10 +244,10 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
     this.#signal.removeEventListener("abort", this.#abort);
     if (!this.#closed) this.#close(new Error("Raster normalizer lease was released."));
     const heartbeatP95Ms = percentile95(this.#heartbeatSamples);
-    const receipt: PureTsRasterNormalizerReceiptV1 = Object.freeze({
+    const receipt: ProductiveRasterNormalizerReceiptV1 = Object.freeze({
       schema: "atlcli.extension-raster-normalizer-receipt/1",
-      backend: PURE_TS_RASTER_NORMALIZER_BACKEND_V1,
-      revision: PURE_TS_RASTER_NORMALIZER_REVISION_V1,
+      backend: this.#options.backend,
+      revision: this.#options.revision,
       jobId: this.#jobId,
       leaseEpoch: this.#leaseEpoch,
       workerStarted: this.#workerStarted,
@@ -274,9 +324,9 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
       worker.postMessage({
         schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
         kind: "init",
-        backend: PURE_TS_RASTER_NORMALIZER_BACKEND_V1,
-        revision: PURE_TS_RASTER_NORMALIZER_REVISION_V1,
-      });
+        backend: this.#options.backend,
+        revision: this.#options.revision,
+      } as RasterNormalizerWorkerRequestV1);
     } catch (error) {
       this.#fatal(error, "Raster normalizer worker initialization failed.");
     }
@@ -293,7 +343,12 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
     }
 
     if (response.kind === "ready") {
-      if (!this.#readyResolve || this.#active) {
+      if (
+        !this.#readyResolve
+        || this.#active
+        || response.backend !== this.#options.backend
+        || response.revision !== this.#options.revision
+      ) {
         this.#fatal("Unexpected ready response.", "Raster normalizer worker protocol failed.");
         return;
       }
@@ -302,6 +357,12 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
       this.#readyResolve = undefined;
       this.#readyReject = undefined;
       resolve();
+      return;
+    }
+
+    if (response.kind === "error" && response.id === undefined && this.#readyReject) {
+      const error = this.#workerResponseError(response.code, response.message);
+      this.#fatal(error, "Raster normalizer worker initialization failed.");
       return;
     }
 
@@ -320,11 +381,23 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
       return;
     }
 
-    const error = response.code === "cancelled"
-      ? new DOMException(response.message, "AbortError")
-      : new Error(response.message);
+    const error = this.#workerResponseError(response.code, response.message);
     active.reject(error);
     if (response.fatal) this.#fatal(error, "Raster normalizer worker failed.");
+  }
+
+  #workerResponseError(
+    code: "cancelled" | "normalization-failed" | "capability-unavailable" | "native-path-failed" | "protocol-error",
+    message: string,
+  ): Error {
+    if (code === "cancelled") return new DOMException(message, "AbortError");
+    if (
+      this.#options.backend === IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1
+      && (code === "capability-unavailable" || code === "native-path-failed")
+    ) {
+      return new PdfRasterNormalizerRetryableErrorV1(code);
+    }
+    return boundedError(message, "Raster normalizer worker failed.");
   }
 
   #armTimeout(label: string): void {
@@ -425,6 +498,65 @@ class DisposablePureTsRasterNormalizerV1 implements RasterNormalizerPortV1 {
 export function createPureTsRasterNormalizerLeaseFactoryV1(
   input: PureTsRasterNormalizerLeaseFactoryOptionsV1,
 ): PdfRasterNormalizerLeaseFactoryV1 {
+  const { onReceipt, ...base } = input;
+  return createRasterNormalizerLeaseFactoryV1({
+    ...base,
+    backend: PURE_TS_RASTER_NORMALIZER_BACKEND_V1,
+    revision: PURE_TS_RASTER_NORMALIZER_REVISION_V1,
+    ...(onReceipt
+      ? { onReceipt: (receipt) => onReceipt(receipt as PureTsRasterNormalizerReceiptV1) }
+      : {}),
+  });
+}
+
+export function createImageBitmapRasterNormalizerLeaseFactoryV1(
+  input: ImageBitmapRasterNormalizerLeaseFactoryOptionsV1,
+): PdfRasterNormalizerLeaseFactoryV1 {
+  const { onReceipt, ...base } = input;
+  return createRasterNormalizerLeaseFactoryV1({
+    ...base,
+    backend: IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1,
+    revision: IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1,
+    ...(onReceipt
+      ? { onReceipt: (receipt) => onReceipt(receipt as ImageBitmapRasterNormalizerReceiptV1) }
+      : {}),
+  });
+}
+
+/** Preferred native lease plus exactly one deterministic pure-worker fallback. */
+export function createImageBitmapWithPureTsFallbackLeaseFactoryV1(
+  input: ImageBitmapWithPureTsFallbackOptionsV1,
+): PdfRasterNormalizerLeaseFactoryV1 {
+  const { onReceipt, ...base } = input;
+  const preferred = createImageBitmapRasterNormalizerLeaseFactoryV1({
+    ...base,
+    ...(onReceipt ? { onReceipt } : {}),
+  });
+  const fallback = createPureTsRasterNormalizerLeaseFactoryV1({
+    ...base,
+    ...(onReceipt ? { onReceipt } : {}),
+  });
+  return {
+    acquire: (leaseInput) => preferred.acquire(leaseInput),
+    async acquireFallback(fallbackInput) {
+      if (
+        fallbackInput.failedEvidence.backend !== IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1
+        || fallbackInput.failure.backend !== IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1
+      ) {
+        throw new Error("Pure raster fallback requires a failed ImageBitmap attempt.");
+      }
+      return fallback.acquire(fallbackInput);
+    },
+  };
+}
+
+function createRasterNormalizerLeaseFactoryV1(
+  input: RasterNormalizerLeaseFactoryOptionsBaseV1 & {
+    backend: RasterNormalizerWorkerBackendV1;
+    revision: RasterNormalizerWorkerRevisionV1;
+    onReceipt?: (receipt: ProductiveRasterNormalizerReceiptV1) => void;
+  },
+): PdfRasterNormalizerLeaseFactoryV1 {
   const operationTimeoutMs = input.operationTimeoutMs ?? DEFAULT_OPERATION_TIMEOUT_MS;
   const heartbeatIntervalMs = input.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
   if (!Number.isSafeInteger(operationTimeoutMs) || operationTimeoutMs < 1_000) {
@@ -433,7 +565,9 @@ export function createPureTsRasterNormalizerLeaseFactoryV1(
   if (!Number.isSafeInteger(heartbeatIntervalMs) || heartbeatIntervalMs < 1) {
     throw new RangeError("Raster normalizer heartbeat interval must be a positive integer.");
   }
-  const options: ResolvedPureTsRasterNormalizerOptionsV1 = {
+  const options: ResolvedRasterNormalizerOptionsV1 = {
+    backend: input.backend,
+    revision: input.revision,
     createWorker: input.createWorker,
     operationTimeoutMs,
     heartbeatIntervalMs,
@@ -448,7 +582,7 @@ export function createPureTsRasterNormalizerLeaseFactoryV1(
   return {
     async acquire({ jobId, leaseEpoch, signal }): Promise<PdfRasterNormalizerLeaseV1> {
       if (signal.aborted) throw abortReason(signal);
-      const normalizer = new DisposablePureTsRasterNormalizerV1({
+      const normalizer = new DisposableRasterNormalizerV1({
         jobId,
         leaseEpoch,
         signal,
@@ -458,8 +592,8 @@ export function createPureTsRasterNormalizerLeaseFactoryV1(
         rasterNormalizer: normalizer,
         evidence: {
           schema: "atlcli.pdf-raster-normalizer-evidence/1",
-          backend: PURE_TS_RASTER_NORMALIZER_BACKEND_V1,
-          revision: PURE_TS_RASTER_NORMALIZER_REVISION_V1,
+          backend: options.backend,
+          revision: options.revision,
         },
         release: () => normalizer.release(),
       };

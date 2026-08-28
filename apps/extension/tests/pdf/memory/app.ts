@@ -25,8 +25,9 @@ import {
 import { collectArtifactHandleV1 } from "../../../utils/export-jobs/artifact-delivery.js";
 import { openPdfViewer } from "../../../utils/pdf/viewer.js";
 import {
+  createImageBitmapRasterNormalizerLeaseFactoryV1,
   createPureTsRasterNormalizerLeaseFactoryV1,
-  type PureTsRasterNormalizerReceiptV1,
+  type ProductiveRasterNormalizerReceiptV1 as HostRasterNormalizerReceiptV1,
 } from "../../../utils/pdf/raster-normalizer-worker-host.js";
 import type {
   MemoryCorpusFixtureSummary,
@@ -121,7 +122,7 @@ let normalizerInput: LoadedRasterNormalizerCorpus | undefined;
 let normalizerWorker: Worker | undefined;
 let productiveNormalizerLease: PdfRasterNormalizerLeaseV1 | undefined;
 let productiveNormalizerAbort: AbortController | undefined;
-let productiveNormalizerReceipt: PureTsRasterNormalizerReceiptV1 | null = null;
+let productiveNormalizerReceipt: HostRasterNormalizerReceiptV1 | null = null;
 let normalizerPreparePromise: Promise<RasterNormalizerCorpusSummary> | undefined;
 let normalizerReadyResolve: ((state: RasterNormalizerState) => void) | undefined;
 let normalizerReadyReject: ((error: Error) => void) | undefined;
@@ -498,20 +499,23 @@ async function startRasterNormalizerWorker(
     output("normalizer-ready:pure-ts");
     return snapshotNormalizerState();
   }
-  if (value === "pure-worker") {
+  if (value === "pure-worker" || value === "image-bitmap-worker") {
     productiveNormalizerReceipt = null;
     productiveNormalizerAbort = new AbortController();
-    const factory = createPureTsRasterNormalizerLeaseFactoryV1({
+    const factoryOptions = {
       createWorker: () =>
         new Worker(new URL("../../../workers/raster-normalizer.ts", import.meta.url), {
           type: "module",
-          name: "atlcli-memory-productive-raster-normalizer",
+          name: `atlcli-memory-productive-raster-normalizer-${value}`,
         }),
       memoizeImmutableSourceViews: true,
-      onReceipt: (receipt) => {
+      onReceipt: (receipt: HostRasterNormalizerReceiptV1) => {
         productiveNormalizerReceipt = receipt;
       },
-    });
+    };
+    const factory = value === "pure-worker"
+      ? createPureTsRasterNormalizerLeaseFactoryV1(factoryOptions)
+      : createImageBitmapRasterNormalizerLeaseFactoryV1(factoryOptions);
     productiveNormalizerLease = await factory.acquire({
       jobId: PRODUCTIVE_NORMALIZER_JOB_ID,
       leaseEpoch: 1,
@@ -528,7 +532,7 @@ async function startRasterNormalizerWorker(
         revision: productiveNormalizerLease.evidence.revision,
       },
     };
-    output("normalizer-ready:pure-worker");
+    output(`normalizer-ready:${value}`);
     return snapshotNormalizerState();
   }
   normalizerWorker = new Worker(new URL("./normalizer-worker.ts", import.meta.url), {
@@ -610,7 +614,7 @@ function startRasterNormalizerPrepare(): void {
   if (
     !normalizerInput ||
     !normalizerState.variant ||
-    (normalizerState.variant === "pure-worker"
+    (normalizerState.variant === "pure-worker" || normalizerState.variant === "image-bitmap-worker"
       ? !productiveNormalizerLease
       : normalizerState.variant !== "pure-ts" && !normalizerWorker)
   ) {
@@ -647,7 +651,7 @@ function startRasterNormalizerPrepare(): void {
           normalize:
             value === "pure-ts"
               ? normalizeRasterInPanel
-              : value === "pure-worker"
+              : value === "pure-worker" || value === "image-bitmap-worker"
                 ? normalizeRasterInProductiveWorker
                 : normalizeRasterInWorker,
         },

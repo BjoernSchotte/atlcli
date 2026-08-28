@@ -32,7 +32,9 @@ describe("productive raster normalizer boundary", () => {
     expect(source).not.toMatch(/\b(?:chrome|browser)\./u);
     expect(source).not.toContain("new Worker");
     expect(source).not.toContain("importScripts");
-    expect(source).not.toContain("Blob(");
+    // ImageBitmap decodes byte-backed input through a data Blob. Keep the
+    // executable Blob-worker escape hatch closed without rejecting that input.
+    expect(source).not.toContain("URL.createObjectURL");
   });
 
   it("wires one static module worker behind the productive offscreen kill switch", async () => {

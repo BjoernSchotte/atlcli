@@ -32,6 +32,8 @@
     "test:palette-extension-browser:prebuilt": "node --conditions=development ../../node_modules/@playwright/test/cli.js test --config tests/palette/packed/playwright.config.ts",
     "prebench:memory-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && bun --conditions=development tests/pdf/memory/generate-corpus.ts && vite build --config tests/pdf/memory/vite.config.ts",
     "bench:memory-chrome": "playwright test --config tests/pdf/memory/playwright.config.ts",
+    "pretest:raster-quality-chrome": "vite build --config tests/pdf/raster-quality/vite.config.ts",
+    "test:raster-quality-chrome": "playwright test --config tests/pdf/raster-quality/playwright.config.ts",
     "prebench:export-baseline-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && vite build --config tests/export-baseline/vite.config.ts",
     "bench:export-baseline-chrome": "playwright test --config tests/export-baseline/playwright.config.ts",
     "prebench:export-jobs-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && vite build --config tests/export-job-baseline/vite.config.ts",

@@ -35,13 +35,14 @@ export interface MemoryCorpusFixtureSummary extends MemoryFixtureSummary {
 export type RasterNormalizerVariant =
   | "pure-ts"
   | "pure-worker"
+  | "image-bitmap-worker"
   | "webcodecs"
   | "image-bitmap"
   | "pica";
 
 export interface ProductiveRasterNormalizerReceiptV1 {
   schema: "atlcli.extension-raster-normalizer-receipt/1";
-  backend: "pure-ts";
+  backend: "pure-ts" | "image-bitmap";
   revision: string;
   jobId: string;
   leaseEpoch: number;

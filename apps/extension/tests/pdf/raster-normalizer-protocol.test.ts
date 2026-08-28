@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { encodePng } from "@atlcli/export-media";
 import {
+  IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1,
+  IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1,
   parseRasterNormalizerWorkerRequestV1,
   parseRasterNormalizerWorkerResponseV1,
   PURE_TS_RASTER_NORMALIZER_BACKEND_V1,
@@ -25,6 +27,12 @@ describe("productive raster normalizer worker protocol", () => {
       kind: "init",
       backend: PURE_TS_RASTER_NORMALIZER_BACKEND_V1,
       revision: PURE_TS_RASTER_NORMALIZER_REVISION_V1,
+    }).kind).toBe("init");
+    expect(parseRasterNormalizerWorkerRequestV1({
+      schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
+      kind: "init",
+      backend: IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1,
+      revision: IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1,
     }).kind).toBe("init");
     expect(parseRasterNormalizerWorkerRequestV1({
       schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
@@ -78,6 +86,12 @@ describe("productive raster normalizer worker protocol", () => {
     }).kind).toBe("ready");
     expect(parseRasterNormalizerWorkerResponseV1({
       schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
+      kind: "ready",
+      backend: IMAGE_BITMAP_RASTER_NORMALIZER_BACKEND_V1,
+      revision: IMAGE_BITMAP_RASTER_NORMALIZER_REVISION_V1,
+    }).kind).toBe("ready");
+    expect(parseRasterNormalizerWorkerResponseV1({
+      schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
       kind: "result",
       id: 1,
       result: { kind: "kept", reason: "undecodable" },
@@ -104,6 +118,19 @@ describe("productive raster normalizer worker protocol", () => {
       message: "synthetic",
       fatal: true,
     }).kind).toBe("error");
+    expect(parseRasterNormalizerWorkerResponseV1({
+      schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
+      kind: "error",
+      code: "capability-unavailable",
+      message: "synthetic",
+      fatal: true,
+    }).kind).toBe("error");
+    expect(parseRasterNormalizerWorkerResponseV1({
+      schema: RASTER_NORMALIZER_WORKER_SCHEMA_V1,
+      kind: "result",
+      id: 3,
+      result: { kind: "kept", reason: "unsupported-raster-shape" },
+    }).kind).toBe("result");
   });
 
   it("fails closed for drifted, duplicate-looking, and unbounded responses", () => {
