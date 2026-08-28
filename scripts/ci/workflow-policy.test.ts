@@ -62,6 +62,7 @@ const requiredGateEnv = {
   MACOS: "success",
   WINDOWS: "success",
   BROWSER: "success",
+  RASTER_BROWSER: "success",
 };
 
 function runRequiredGate(
@@ -467,6 +468,7 @@ describe("CI workflow policy", () => {
     expect(required).toContain("CONSUMER_REQUIRED: ${{ needs.changes.outputs.consumer }}");
     expect(required).toContain("PDF_REQUIRED: ${{ needs.changes.outputs.pdfPlatform }}");
     expect(required).toContain("BROWSER_REQUIRED: ${{ needs.changes.outputs.browserHarness }}");
+    expect(required).toContain("RASTER_BROWSER: ${{ needs.raster-normalizer-browser-ratchet.result }}");
     expect(required).toContain("DOCS_REQUIRED: ${{ needs.changes.outputs.docs }}");
     expect(required).toContain("README_MEDIA_REQUIRED: ${{ needs.changes.outputs.readmeMedia }}");
     expect(required).toContain("EVENT_NAME: ${{ github.event_name }}");
@@ -498,6 +500,7 @@ describe("CI workflow policy", () => {
         MACOS: "skipped",
         WINDOWS: "skipped",
         BROWSER: "skipped",
+        RASTER_BROWSER: "skipped",
         README_MEDIA: "skipped",
       }).exitCode,
     ).toBe(0);
@@ -514,6 +517,7 @@ describe("CI workflow policy", () => {
         MACOS: "skipped",
         WINDOWS: "skipped",
         BROWSER: "skipped",
+        RASTER_BROWSER: "skipped",
       }).exitCode,
     ).toBe(0);
 
@@ -529,6 +533,7 @@ describe("CI workflow policy", () => {
         MACOS: "skipped",
         WINDOWS: "skipped",
         BROWSER: "skipped",
+        RASTER_BROWSER: "skipped",
       }).exitCode,
     ).toBe(0);
 
@@ -540,6 +545,7 @@ describe("CI workflow policy", () => {
       { MACOS: "skipped" },
       { WINDOWS: "skipped" },
       { BROWSER: "skipped" },
+      { RASTER_BROWSER: "skipped" },
       { README_MEDIA: "skipped" },
       { CHANGES: "skipped" },
       {
@@ -626,6 +632,25 @@ describe("CI workflow policy", () => {
     const browser = ci.slice(ci.indexOf("  browser-export-assets:"), ci.indexOf("  required:"));
     expect(browser).toContain("needs: changes");
     expect(browser).not.toContain("needs: test");
+  });
+
+  it("ratchets raster quality and paired RSS on pinned and current Linux Chrome", async () => {
+    const ci = await workflow("ci.yml");
+    const raster = block(ci, /^ {2}raster-normalizer-browser-ratchet:\s*$/, 2);
+    expect(raster).not.toBeNull();
+    expect(raster).toContain("needs: changes");
+    expect(raster).toContain("browser: [pinned-chromium-140, current-cft-stable]");
+    expect(raster).toContain("last-known-good-versions-with-downloads.json");
+    expect(raster).toContain("chrome-for-testing-public/$version/linux64/chrome-linux64.zip");
+    expect(raster).toContain("ATLCLI_RASTER_QUALITY_EXECUTABLE_PATH=$browser");
+    expect(raster).toContain("ATLCLI_MEMORY_EXECUTABLE_PATH=$browser");
+    expect(raster).toContain('ATLCLI_PRODUCTIVE_RASTER_ASSERT_TIMING: "0"');
+    expect(raster).toContain("test:raster-quality-chrome");
+    expect(raster).toContain("prebench:memory-chrome");
+    expect(raster).toContain('--grep "productive ImageBitmap"');
+    expect(raster).toContain(".artifacts/raster-quality/${{ matrix.browser }}");
+    expect(raster).toContain(".artifacts/raster-memory/${{ matrix.browser }}");
+    expect(raster).not.toContain("needs: test");
   });
 
   it("builds packed browser assets once before isolated parallel browser jobs", async () => {

@@ -1,5 +1,5 @@
 import { expect, test, chromium, type BrowserContext, type CDPSession, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -357,11 +357,12 @@ interface Harness {
 
 async function openHarness(): Promise<Harness> {
   const profileDir = mkdtempSync(join(tmpdir(), "atlcli-chrome-memory-profile-"));
+  const executablePath = process.env.ATLCLI_MEMORY_EXECUTABLE_PATH;
   const channel = process.env.ATLCLI_MEMORY_BROWSER_CHANNEL === "chrome"
     ? "chrome"
     : "chromium";
   const context = await chromium.launchPersistentContext(profileDir, {
-    channel,
+    ...(executablePath ? { executablePath } : { channel }),
     headless: process.env.ATLCLI_MEMORY_HEADED !== "1",
     args: [
       `--disable-extensions-except=${OUTPUT_DIR}`,
@@ -978,9 +979,10 @@ test("ratchets the productive pure raster worker against panel-main", async () =
   expect(workerCleanupResidualMedianMiB).toBeLessThanOrEqual(32);
 });
 
-test("ratchets the productive ImageBitmap worker against pure-worker", async () => {
+test("ratchets the productive ImageBitmap worker against pure-worker", async ({}, testInfo) => {
   test.setTimeout(3_600_000);
   const runCount = Number(process.env.ATLCLI_PRODUCTIVE_RASTER_RUNS ?? "2");
+  const assertTiming = process.env.ATLCLI_PRODUCTIVE_RASTER_ASSERT_TIMING !== "0";
   if (!Number.isSafeInteger(runCount) || runCount < 2 || runCount > 5) {
     throw new Error("ATLCLI_PRODUCTIVE_RASTER_RUNS must be an integer in [2, 5].");
   }
@@ -1032,6 +1034,7 @@ test("ratchets the productive ImageBitmap worker against pure-worker", async () 
     measuredAt: new Date().toISOString(),
     host: { platform: process.platform, arch: process.arch },
     runCount,
+    assertTiming,
     runtime: results[0]?.runtime,
     corpus: {
       scale: results[0]?.input.scale,
@@ -1066,6 +1069,12 @@ test("ratchets the productive ImageBitmap worker against pure-worker", async () 
   console.log(
     `ATLCLI_PRODUCTIVE_IMAGE_BITMAP_RATCHET_RESULT\n${JSON.stringify(report, null, 2)}`,
   );
+  const reportPath = testInfo.outputPath("productive-image-bitmap-ratchet.json");
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  await testInfo.attach("productive-image-bitmap-ratchet", {
+    path: reportPath,
+    contentType: "application/json",
+  });
 
   expect(pure).toHaveLength(runCount);
   expect(imageBitmap).toHaveLength(runCount);
@@ -1094,10 +1103,14 @@ test("ratchets the productive ImageBitmap worker against pure-worker", async () 
     });
     expect(result.normalizer.productiveReceipt?.heartbeatSamples).toBeGreaterThan(0);
     expect(result.normalizer.productiveReceipt?.heartbeatP95Ms).not.toBeNull();
-    expect(result.normalizer.productiveReceipt!.heartbeatP95Ms!).toBeLessThan(50);
+    if (assertTiming) {
+      expect(result.normalizer.productiveReceipt!.heartbeatP95Ms!).toBeLessThan(50);
+    }
     expect(result.normalizer.productiveReceipt!.cacheHits).toBeGreaterThan(0);
   }
-  expect(ratio(imagePrepareMedianMs, purePrepareMedianMs)).toBeLessThanOrEqual(0.60);
+  if (assertTiming) {
+    expect(ratio(imagePrepareMedianMs, purePrepareMedianMs)).toBeLessThanOrEqual(0.60);
+  }
   expect(ratio(
     imageNormalizerPeakMedianMiB,
     pureNormalizerPeakMedianMiB,

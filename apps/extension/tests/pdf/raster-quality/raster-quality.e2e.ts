@@ -33,6 +33,11 @@ const NAMED_BYTE_OUTLIERS = Object.freeze({
   "png-grayscale-alpha": 1.2,
 } satisfies Record<string, number>);
 
+const EXPECTED_PURE_ASSET_SHA256 =
+  "e7d22397bfab95d172b53918ca92b512c550924108200504569505d4a5612818";
+const EXPECTED_IMAGE_BITMAP_ASSET_SHA256 =
+  "a5429970a39d2a1cd1a44034549a3a9c9fb8e04d4a691239287dc4e554a73b5b";
+
 interface Harness {
   context: BrowserContext;
   page: Page;
@@ -41,11 +46,12 @@ interface Harness {
 
 async function openHarness(): Promise<Harness> {
   const profileDir = mkdtempSync(join(tmpdir(), "atlcli-raster-quality-profile-"));
+  const executablePath = process.env.ATLCLI_RASTER_QUALITY_EXECUTABLE_PATH;
   const channel = process.env.ATLCLI_RASTER_QUALITY_BROWSER_CHANNEL === "chrome"
     ? "chrome"
     : "chromium";
   const context = await chromium.launchPersistentContext(profileDir, {
-    channel,
+    ...(executablePath ? { executablePath } : { channel }),
     headless: process.env.ATLCLI_RASTER_QUALITY_HEADED !== "1",
     args: [
       `--disable-extensions-except=${OUTPUT_DIR}`,
@@ -94,6 +100,8 @@ test("pins ImageBitmap eligibility, pixels, bytes, and contact sheets", async ({
     const [first, second] = report.runs;
     expect(first.pureAssetSha256).toBe(second.pureAssetSha256);
     expect(first.candidateAssetSha256).toBe(second.candidateAssetSha256);
+    expect(first.pureAssetSha256).toBe(EXPECTED_PURE_ASSET_SHA256);
+    expect(first.candidateAssetSha256).toBe(EXPECTED_IMAGE_BITMAP_ASSET_SHA256);
     expect(first.candidateAssetBytes).toBeLessThanOrEqual(first.pureAssetBytes * 1.1);
     for (const run of report.runs) {
       expect(run.pureReceipt).toMatchObject({

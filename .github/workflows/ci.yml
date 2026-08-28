@@ -485,6 +485,124 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  raster-normalizer-browser-ratchet:
+    name: Raster normalizer / ${{ matrix.browser }}
+    needs: changes
+    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.browserHarness == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [pinned-chromium-140, current-cft-stable]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ATLCLI_RASTER_QUALITY_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/raster-quality/${{ matrix.browser }}
+      ATLCLI_MEMORY_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/raster-memory/${{ matrix.browser }}
+      # Shared runners keep paired RSS/cleanup gates, digest stability, and
+      # lifecycle proof. Host-local/homelab owns latency assertions.
+      ATLCLI_PRODUCTIVE_RASTER_ASSERT_TIMING: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Restore pinned PDF fonts
+        uses: actions/cache@v6
+        with:
+          path: packages/pdf/.fonts
+          key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
+
+      - name: Restore Playwright Chromium
+        if: matrix.browser == 'pinned-chromium-140'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-1.55.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Provision pinned PDF fonts
+        run: bun run fonts:ensure
+
+      - name: Install pinned Playwright Chromium and dependencies
+        if: matrix.browser == 'pinned-chromium-140'
+        run: bunx playwright@1.55.0 install --with-deps chromium
+
+      - name: Install browser system dependencies
+        if: matrix.browser == 'current-cft-stable'
+        run: bunx playwright@1.55.0 install-deps chromium
+
+      - name: Resolve official Chrome for Testing Stable
+        if: matrix.browser == 'current-cft-stable'
+        run: |
+          metadata_url="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+          metadata="$RUNNER_TEMP/chrome-for-testing.json"
+          archive="$RUNNER_TEMP/chrome-for-testing-linux64.zip"
+          root="$RUNNER_TEMP/chrome-for-testing-stable"
+          curl --fail --location --silent --show-error "$metadata_url" --output "$metadata"
+          mapfile -t resolved < <(bun -e '
+            const data = await Bun.file(process.argv[1]).json();
+            const stable = data?.channels?.Stable;
+            const download = stable?.downloads?.chrome?.find((item) => item.platform === "linux64");
+            if (typeof stable?.version !== "string" || typeof download?.url !== "string") process.exit(1);
+            console.log(stable.version);
+            console.log(download.url);
+          ' "$metadata")
+          version="${resolved[0]:-}"
+          url="${resolved[1]:-}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          expected="https://storage.googleapis.com/chrome-for-testing-public/$version/linux64/chrome-linux64.zip"
+          test "$url" = "$expected"
+          curl --fail --location --silent --show-error "$url" --output "$archive"
+          archive_sha256="$(sha256sum "$archive" | cut -d ' ' -f 1)"
+          unzip -q "$archive" -d "$root"
+          browser="$root/chrome-linux64/chrome"
+          test -x "$browser"
+          "${browser}" --version
+          echo "ATLCLI_RASTER_QUALITY_EXECUTABLE_PATH=$browser" >> "$GITHUB_ENV"
+          echo "ATLCLI_MEMORY_EXECUTABLE_PATH=$browser" >> "$GITHUB_ENV"
+          {
+            echo "### Current Chrome for Testing raster ratchet"
+            echo
+            echo "- Version: \`$version\`"
+            echo "- Archive SHA-256: \`$archive_sha256\`"
+            echo "- Metadata: \`$metadata_url\`"
+            echo "- Download: \`$url\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run deterministic raster quality gate
+        run: bun run --cwd apps/extension test:raster-quality-chrome
+
+      - name: Build productive raster memory harness
+        run: bun run --cwd apps/extension prebench:memory-chrome
+
+      - name: Run paired productive RSS and cleanup gate
+        run: >-
+          node --conditions=development node_modules/@playwright/test/cli.js test
+          --config apps/extension/tests/pdf/memory/playwright.config.ts
+          --grep "productive ImageBitmap"
+
+      - name: Upload raster quality and memory evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: raster-normalizer-${{ matrix.browser }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .artifacts/raster-quality/${{ matrix.browser }}
+            .artifacts/raster-memory/${{ matrix.browser }}
+          if-no-files-found: warn
+          retention-days: 14
+
   # Compatibility signal only. GitHub runner Chrome is intentionally not a
   # substitute for Playwright-matched Chromium in the required MV3 proof.
   browser-system-chrome-canary:
@@ -562,6 +680,7 @@ jobs:
       - pdf-cli-macos
       - pdf-sink-windows
       - browser-export-harness
+      - raster-normalizer-browser-ratchet
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -609,6 +728,7 @@ jobs:
           MACOS: ${{ needs.pdf-cli-macos.result }}
           WINDOWS: ${{ needs.pdf-sink-windows.result }}
           BROWSER: ${{ needs.browser-export-harness.result }}
+          RASTER_BROWSER: ${{ needs.raster-normalizer-browser-ratchet.result }}
         run: |
           require_result() {
             local gate="$1"
@@ -630,7 +750,7 @@ jobs:
           fi
 
           if [[ "$PROOF_MODE" == "superseded" ]]; then
-            for result in "$PRIVACY" "$DOCS" "$README_MEDIA" "$DRAFT_QUALITY" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$BROWSER"; do
+            for result in "$PRIVACY" "$DOCS" "$README_MEDIA" "$DRAFT_QUALITY" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$BROWSER" "$RASTER_BROWSER"; do
               if [[ "$result" != "skipped" ]]; then
                 echo "::error::Superseded proof unexpectedly executed a product gate with result=$result"
                 exit 1
@@ -667,6 +787,7 @@ jobs:
             require_result "macOS PDF" "false" "$MACOS"
             require_result "Windows PDF sink" "false" "$WINDOWS"
             require_result "Browser export harness" "false" "$BROWSER"
+            require_result "Raster normalizer browser ratchet" "false" "$RASTER_BROWSER"
             exit 0
           fi
 
@@ -676,6 +797,7 @@ jobs:
           require_result "macOS PDF" "$PDF_REQUIRED" "$MACOS"
           require_result "Windows PDF sink" "$PDF_REQUIRED" "$WINDOWS"
           require_result "Browser export harness" "$BROWSER_REQUIRED" "$BROWSER"
+          require_result "Raster normalizer browser ratchet" "$BROWSER_REQUIRED" "$RASTER_BROWSER"
 
   # Measurement is deliberately downstream from, and non-blocking for, the
   # stable required check. A telemetry failure stays visible without delaying
