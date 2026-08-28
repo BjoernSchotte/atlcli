@@ -23,6 +23,7 @@ import {
   type RunPdfExportInput,
 } from "@atlcli/pdf";
 import { resolveCodeThemeId } from "@atlcli/code-highlight/registry";
+import type { RasterNormalizerPortV1 } from "@atlcli/export-media";
 import {
   buildProductiveExportTelemetryV1,
 } from "./productive-telemetry.js";
@@ -173,6 +174,35 @@ export interface PdfExportResultStoreV1 {
   ): Promise<ExportJobExecutionResultV1>;
 }
 
+/** The only productive raster backends admitted by the issue #118 plan. */
+export type PdfRasterNormalizerBackendV1 = "image-bitmap" | "pure-ts";
+
+/** Body-free, bounded evidence attached to one attempt-scoped normalizer. */
+export interface PdfRasterNormalizerEvidenceV1 {
+  schema: "atlcli.pdf-raster-normalizer-evidence/1";
+  backend: PdfRasterNormalizerBackendV1;
+  /** Static implementation revision, limited to a safe token by the executor. */
+  revision: string;
+}
+
+/** A live normalizer belongs to one prepare attempt and is never persisted. */
+export interface PdfRasterNormalizerLeaseV1 {
+  rasterNormalizer: RasterNormalizerPortV1;
+  evidence: PdfRasterNormalizerEvidenceV1;
+  /** Must be idempotent; the executor invokes it exactly once after prepare settles. */
+  release(): void | Promise<void>;
+}
+
+/** Lazy host factory. The shared executor never owns a Worker-specific type. */
+export interface PdfRasterNormalizerLeaseFactoryV1 {
+  acquire(input: {
+    jobId: string;
+    leaseEpoch: number;
+    request: PdfExportJobRequestV1;
+    signal: AbortSignal;
+  }): Promise<PdfRasterNormalizerLeaseV1>;
+}
+
 export interface CreatePdfExportJobExecutorOptionsV1 {
   resolveInput(
     request: PdfExportJobRequestV1,
@@ -194,6 +224,11 @@ export interface CreatePdfExportJobExecutorOptionsV1 {
   compiler: PdfCompilePort;
   renderReservations: PdfRenderReservationPortV1;
   results: PdfExportResultStoreV1;
+  /**
+   * Optional browser-host normalizer factory. It is reached only for a fresh,
+   * non-original prepare; checkpoint-only retries never acquire a lease.
+   */
+  rasterNormalizerLeaseFactory?: PdfRasterNormalizerLeaseFactoryV1;
   /** Host-wide immutable pack storage; required only for `template.kind=pack`. */
   templatePacks?: Pick<TemplatePackStoreV1, "get">;
   now?: () => number;
@@ -233,6 +268,36 @@ function validateEstimate(estimate: ResourceEstimateV1): void {
   nonNegativeSafeInteger(estimate.rasterPixels, "estimate.rasterPixels");
   if (!(["measured", "estimated", "unknown"] as const).includes(estimate.confidence)) {
     throw new RangeError("estimate.confidence is invalid.");
+  }
+}
+
+function validateRasterNormalizerLease(lease: PdfRasterNormalizerLeaseV1): void {
+  if (
+    lease.evidence.schema !== "atlcli.pdf-raster-normalizer-evidence/1" ||
+    (lease.evidence.backend !== "pure-ts" && lease.evidence.backend !== "image-bitmap")
+  ) {
+    throw new Error("Raster normalizer lease evidence is invalid.");
+  }
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(lease.evidence.revision)) {
+    throw new Error("Raster normalizer revision must be a bounded static token.");
+  }
+  if (
+    typeof lease.rasterNormalizer?.normalize !== "function" ||
+    typeof lease.release !== "function"
+  ) {
+    throw new Error("Raster normalizer lease is incomplete.");
+  }
+}
+
+async function releaseRasterNormalizerLease(
+  lease: PdfRasterNormalizerLeaseV1 | undefined,
+): Promise<void> {
+  if (!lease) return;
+  try {
+    await lease.release();
+  } catch {
+    // Cleanup is best-effort and must never replace the primary export result
+    // or failure. Productive adapters still terminate eagerly and idempotently.
   }
 }
 
@@ -593,6 +658,7 @@ async function prepareResolvedPdfExport(
   request: PdfExportJobRequestV1,
   signal: AbortSignal,
   now: () => number,
+  rasterNormalizer?: RasterNormalizerPortV1,
 ): Promise<PreparedPdfExportV1> {
   return preparePdfExport(
     {
@@ -615,7 +681,11 @@ async function prepareResolvedPdfExport(
         : {}),
       signal,
     },
-    { ...resolved.env, now },
+    {
+      ...resolved.env,
+      now,
+      ...(rasterNormalizer ? { rasterNormalizer } : {}),
+    },
   );
 }
 
@@ -711,17 +781,34 @@ export function createPdfExportJobExecutor(
 
         if (!checkpoint) {
           let newlyPrepared: PreparedPdfExportV1;
+          let rasterNormalizerLease: PdfRasterNormalizerLeaseV1 | undefined;
           try {
+            if (
+              options.rasterNormalizerLeaseFactory &&
+              request.options.imageProfile !== undefined &&
+              request.options.imageProfile !== "original"
+            ) {
+              rasterNormalizerLease = await options.rasterNormalizerLeaseFactory.acquire({
+                jobId: context.jobId,
+                leaseEpoch: context.leaseEpoch,
+                request,
+                signal: context.signal,
+              });
+              validateRasterNormalizerLease(rasterNormalizerLease);
+              throwIfAborted(context.signal);
+            }
             newlyPrepared = await prepareResolvedPdfExport(
               resolved!,
               request,
               context.signal,
               now,
+              rasterNormalizerLease?.rasterNormalizer,
             );
           } finally {
             // The source graph may dwarf the compiler bundle. Drop the final
             // executor-owned reference immediately after preparation settles.
             resolved = undefined;
+            await releaseRasterNormalizerLease(rasterNormalizerLease);
           }
           throwIfAborted(context.signal);
           const fingerprint = await fingerprintPreparedPdfExport(newlyPrepared, estimate, context.signal);

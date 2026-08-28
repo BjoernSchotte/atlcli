@@ -794,6 +794,7 @@ export interface CreatePdfExportJobExecutorOptionsV1 {
     compiler: PdfCompilePort;
     renderReservations: PdfRenderReservationPortV1;
     results: PdfExportResultStoreV1;
+    rasterNormalizerLeaseFactory?: PdfRasterNormalizerLeaseFactoryV1;
     templatePacks?: Pick<TemplatePackStoreV1, "get">;
     now?: () => number;
 }
@@ -1087,6 +1088,33 @@ export interface PdfExportResultStoreV1 {
 export interface PdfPreparedPayloadBindingV1 {
     byteLength: number;
     sha256: string;
+}
+
+// export: PdfRasterNormalizerBackendV1
+export type PdfRasterNormalizerBackendV1 = "image-bitmap" | "pure-ts";
+
+// export: PdfRasterNormalizerEvidenceV1
+export interface PdfRasterNormalizerEvidenceV1 {
+    schema: "atlcli.pdf-raster-normalizer-evidence/1";
+    backend: PdfRasterNormalizerBackendV1;
+    revision: string;
+}
+
+// export: PdfRasterNormalizerLeaseFactoryV1
+export interface PdfRasterNormalizerLeaseFactoryV1 {
+    acquire(input: {
+        jobId: string;
+        leaseEpoch: number;
+        request: PdfExportJobRequestV1;
+        signal: AbortSignal;
+    }): Promise<PdfRasterNormalizerLeaseV1>;
+}
+
+// export: PdfRasterNormalizerLeaseV1
+export interface PdfRasterNormalizerLeaseV1 {
+    rasterNormalizer: RasterNormalizerPortV1;
+    evidence: PdfRasterNormalizerEvidenceV1;
+    release(): void | Promise<void>;
 }
 
 // export: PdfReadyToRenderCheckpointV1

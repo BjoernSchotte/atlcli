@@ -1216,6 +1216,7 @@ export interface PreparePdfExportEnv {
     assets: PdfAssetResolver;
     now?: () => number;
     macros?: MacroResolutionOptions;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: PreparePdfOptions
@@ -2750,6 +2751,7 @@ export interface PreparePdfExportEnv {
     assets: PdfAssetResolver;
     now?: () => number;
     macros?: MacroResolutionOptions;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: PreparePdfOptions
@@ -4284,6 +4286,7 @@ export interface PreparePdfExportEnv {
     assets: PdfAssetResolver;
     now?: () => number;
     macros?: MacroResolutionOptions;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: PreparePdfOptions

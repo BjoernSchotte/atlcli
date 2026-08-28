@@ -16,6 +16,7 @@ import {
   createAtlcliTypstTemplate,
 } from "@atlcli/pdf/internal";
 import { packTemplate, validateManifest } from "@atlcli/template-pack";
+import { normalizeRasterAssetV1 } from "@atlcli/export-media";
 import {
   InMemoryTemplatePackStoreV1,
   templatePackReference,
@@ -43,6 +44,7 @@ import {
   type CreatePdfExportJobExecutorOptionsV1,
   type PdfExportResultIntentV1,
   type PdfExportResultRecoveryKeyV1,
+  type PdfRasterNormalizerLeaseFactoryV1,
   type PdfReadyToRenderCheckpointV1,
   type PdfReadyToRenderStoreV1,
 } from "./pdf-job-executor.js";
@@ -81,6 +83,13 @@ function request(): PdfExportJobRequestV1 {
     settings: {},
     options: { resolveMacros: true, profile: "tagged" },
   };
+}
+
+function rasterRequest(profile: "original" | "standard" | "print" = "standard"):
+  PdfExportJobRequestV1 {
+  const value = request();
+  value.options.imageProfile = profile;
+  return value;
 }
 
 async function canonicalPackBytes(): Promise<{
@@ -244,6 +253,7 @@ function executorOptions(input: {
   resolveCalls?: { count: number };
   resolveInput?: CreatePdfExportJobExecutorOptionsV1["resolveInput"];
   resultStageHook?: () => void;
+  rasterNormalizerLeaseFactory?: PdfRasterNormalizerLeaseFactoryV1;
 }) {
   const order = input.order ?? [];
   const ready = input.ready ?? new MemoryReadyStore(order);
@@ -335,6 +345,9 @@ function executorOptions(input: {
           };
         },
       },
+      ...(input.rasterNormalizerLeaseFactory
+        ? { rasterNormalizerLeaseFactory: input.rasterNormalizerLeaseFactory }
+        : {}),
       now: (() => {
         let value = 100;
         return () => value++;
@@ -413,6 +426,188 @@ describe("createPdfExportJobExecutor", () => {
       "artifact-stage",
       "reservation-release",
     ]);
+  });
+
+  it("acquires one normalizer lease for fresh non-original prepare and releases it before Typst", async () => {
+    const order: string[] = [];
+    let acquisitions = 0;
+    let releases = 0;
+    const fixture = executorOptions({
+      order,
+      rasterNormalizerLeaseFactory: {
+        async acquire(input) {
+          acquisitions += 1;
+          expect(input).toMatchObject({ jobId: "job-1", leaseEpoch: 1 });
+          expect(input.request.options.imageProfile).toBe("standard");
+          order.push("normalizer-acquire");
+          return {
+            rasterNormalizer: { normalize: normalizeRasterAssetV1 },
+            evidence: {
+              schema: "atlcli.pdf-raster-normalizer-evidence/1",
+              backend: "pure-ts",
+              revision: "pure-ts-v1",
+            },
+            release() {
+              releases += 1;
+              order.push("normalizer-release");
+            },
+          };
+        },
+      },
+    });
+
+    await createPdfExportJobExecutor(fixture.options).execute(
+      rasterRequest(),
+      executionContext({ order }).context,
+    );
+
+    expect({ acquisitions, releases }).toEqual({ acquisitions: 1, releases: 1 });
+    expect(order.indexOf("normalizer-acquire")).toBeLessThan(
+      order.indexOf("normalizer-release"),
+    );
+    expect(order.indexOf("normalizer-release")).toBeLessThan(order.indexOf("compile"));
+  });
+
+  it("never acquires a normalizer lease for original or checkpoint-only work", async () => {
+    let acquisitions = 0;
+    const factory: PdfRasterNormalizerLeaseFactoryV1 = {
+      async acquire() {
+        acquisitions += 1;
+        throw new Error("must not acquire");
+      },
+    };
+    const originalFixture = executorOptions({ rasterNormalizerLeaseFactory: factory });
+    await createPdfExportJobExecutor(originalFixture.options).execute(
+      rasterRequest("original"),
+      executionContext().context,
+    );
+
+    const order: string[] = [];
+    const ready = new MemoryReadyStore(order);
+    let compileCalls = 0;
+    const recoveryFixture = executorOptions({
+      ready,
+      order,
+      rasterNormalizerLeaseFactory: {
+        async acquire() {
+          acquisitions += 1;
+          return {
+            rasterNormalizer: { normalize: normalizeRasterAssetV1 },
+            evidence: {
+              schema: "atlcli.pdf-raster-normalizer-evidence/1",
+              backend: "pure-ts",
+              revision: "pure-ts-v1",
+            },
+            release() {},
+          };
+        },
+      },
+      compiler: {
+        async compile() {
+          compileCalls += 1;
+          if (compileCalls === 1) throw new Error("synthetic worker loss");
+          return { pdf: validPdf.slice(), diagnostics: [], compilerVersion: "test" };
+        },
+      },
+    });
+    await expect(createPdfExportJobExecutor(recoveryFixture.options).execute(
+      rasterRequest(),
+      executionContext({ order }).context,
+    )).rejects.toThrow("synthetic worker loss");
+    await createPdfExportJobExecutor(recoveryFixture.options).execute(
+      rasterRequest(),
+      executionContext({ leaseEpoch: 2, order }).context,
+    );
+
+    expect(acquisitions).toBe(1);
+  });
+
+  it("releases after prepare failure and preserves the primary error if release also fails", async () => {
+    const order: string[] = [];
+    const fixture = executorOptions({
+      order,
+      resolveInput: async () => ({
+        ...engineInput(),
+        input: {
+          ...engineInput().input,
+          settings: { page: "invalid" as never },
+        },
+      }),
+      rasterNormalizerLeaseFactory: {
+        async acquire() {
+          order.push("normalizer-acquire");
+          return {
+            rasterNormalizer: { normalize: normalizeRasterAssetV1 },
+            evidence: {
+              schema: "atlcli.pdf-raster-normalizer-evidence/1",
+              backend: "pure-ts",
+              revision: "pure-ts-v1",
+            },
+            release() {
+              order.push("normalizer-release");
+              throw new Error("synthetic release failure");
+            },
+          };
+        },
+      },
+    });
+
+    await expect(createPdfExportJobExecutor(fixture.options).execute(
+      rasterRequest(),
+      executionContext({ order }).context,
+    )).rejects.toThrow(/settings\.page|page/i);
+    expect(order.filter((entry) => entry === "normalizer-release")).toHaveLength(1);
+  });
+
+  it("releases exactly once when cancellation occurs inside raster normalization", async () => {
+    const controller = new AbortController();
+    let releases = 0;
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+      0, 0, 0, 1, 0, 0, 0, 1,
+    ]);
+    const fixture = executorOptions({
+      resolveInput: async () => ({
+        input: {
+          ...engineInput().input,
+          blocks: [{
+            type: "image" as const,
+            source: { kind: "attachment" as const, filename: "neutral.png" },
+            alt: "Neutral fixture",
+          }],
+        },
+        env: {
+          assets: { resolve: async () => ({ bytes: png, mediaType: "image/png" }) },
+        },
+      }),
+      rasterNormalizerLeaseFactory: {
+        async acquire() {
+          return {
+            rasterNormalizer: {
+              normalize() {
+                controller.abort(new DOMException("cancelled in normalizer", "AbortError"));
+                throw controller.signal.reason;
+              },
+            },
+            evidence: {
+              schema: "atlcli.pdf-raster-normalizer-evidence/1",
+              backend: "pure-ts",
+              revision: "pure-ts-v1",
+            },
+            release() {
+              releases += 1;
+            },
+          };
+        },
+      },
+    });
+
+    await expect(createPdfExportJobExecutor(fixture.options).execute(
+      rasterRequest(),
+      executionContext({ signal: controller.signal }).context,
+    )).rejects.toMatchObject({ name: "AbortError" });
+    expect(releases).toBe(1);
   });
 
   it("restarts from ready-to-render once without resolving source again", async () => {
