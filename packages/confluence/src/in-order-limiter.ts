@@ -49,8 +49,8 @@ export function createInOrderLimiter(
       const item = queue.shift();
       if (!item) return;
       active += 1;
-      void item
-        .task()
+      void Promise.resolve()
+        .then(() => item.task())
         .then(
           (value) => finished.set(item.index, { ok: true, value }),
           (reason) => finished.set(item.index, { ok: false, reason })

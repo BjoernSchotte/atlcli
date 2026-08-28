@@ -569,6 +569,17 @@ describe("PDF asset preparation", () => {
     expect(portSettled).toBe(true);
     expect(asyncPort.assets[0]!.bytes).toEqual(standard.assets[0]!.bytes);
 
+    await expect(
+      preparePdfDocument(images(1), resolver, {
+        imageQuality: { imageProfile: "standard" },
+        rasterNormalizer: {
+          normalize() {
+            throw new Error("worker lost");
+          },
+        },
+      }),
+    ).rejects.toThrow("Raster normalization failed: worker lost");
+
     // Invalid combination fails before any fetch.
     await expect(
       preparePdfDocument(images(1), resolver, {

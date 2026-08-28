@@ -355,17 +355,28 @@ export async function preparePdfDocument(
   ): Promise<string> => {
     let asset = validateResolvedAsset(rawAsset, maxAssetBytes);
     if (effectivePpi !== null) {
-      const normalized = await normalizeLimit(() =>
-        Promise.resolve(normalizeRaster({
-          bytes: asset.bytes,
-          mediaType: asset.mediaType,
-          renderEnvelopeWidthPt: envelopePt,
-          ppi: effectivePpi,
-          ...(meta.authoredWidthPx !== undefined
-            ? { authored: { widthPx: meta.authoredWidthPx } }
-            : {}),
-        })),
-      );
+      let normalized;
+      try {
+        normalized = await normalizeLimit(() =>
+          Promise.resolve(normalizeRaster({
+            bytes: asset.bytes,
+            mediaType: asset.mediaType,
+            renderEnvelopeWidthPt: envelopePt,
+            ppi: effectivePpi,
+            ...(meta.authoredWidthPx !== undefined
+              ? { authored: { widthPx: meta.authoredWidthPx } }
+              : {}),
+          })),
+        );
+      } catch (error) {
+        if (isAbortError(error) || error instanceof AssetPipelineError) throw error;
+        throw new AssetPipelineError(
+          `Raster normalization failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          { cause: error },
+        );
+      }
       if (normalized.kind === "normalized") {
         profileStats.normalized += 1;
         profileStats.sourceBytes += asset.bytes.byteLength;
