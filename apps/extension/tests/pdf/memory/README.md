@@ -121,3 +121,36 @@ The accepted machine-local evidence and exact runtime are recorded in
 `specs/browser-raster-normalizer-productization/RATCHET.md`. Pica and
 WebCodecs remain historical evidence lanes and are not part of this required
 product gate.
+
+## Productive ImageBitmap ratchet and browser matrix
+
+The winning candidate is compared directly with the productive pure worker,
+twice per runtime. It preserves the complete tagged-PDF pipeline while
+asserting output stability, worker termination before Typst, paired
+process-tree RSS, cleanup, Typst peak, whole-Chrome peak, asset bytes, and the
+body-free productive receipt:
+
+```bash
+bun run --cwd apps/extension prebench:memory-chrome
+node --conditions=development node_modules/@playwright/test/cli.js test \
+  --config apps/extension/tests/pdf/memory/playwright.config.ts \
+  --grep "productive ImageBitmap"
+```
+
+The default remains pinned Chromium. To repeat the same gate with an official
+Chrome for Testing binary, pass its executable explicitly:
+
+```bash
+ATLCLI_MEMORY_EXECUTABLE_PATH=/path/to/chrome \
+  node --conditions=development node_modules/@playwright/test/cli.js test \
+  --config apps/extension/tests/pdf/memory/playwright.config.ts \
+  --grep "productive ImageBitmap"
+```
+
+Required Linux CI runs pinned Chromium and current official Chrome for Testing
+Stable. It preserves the paired memory, cleanup, determinism, and lifecycle
+assertions but sets `ATLCLI_PRODUCTIVE_RASTER_ASSERT_TIMING=0`: shared runners
+record prepare and heartbeat timing without treating noisy host latency as a
+product regression. Local and homelab runs retain the timing gates by default.
+Set `ATLCLI_MEMORY_OUTPUT_DIR` when a caller needs the attached JSON report in
+a durable artifact directory.

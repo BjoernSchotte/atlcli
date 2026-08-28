@@ -1,6 +1,7 @@
 # Browser raster normalizer productization
 
-- Status: Implementation in progress; productive pure-worker measurement gate passed
+- Status: Phases 0-3 passed; automated Phase 4 browser/RSS matrix passed;
+  branded-Chrome UI gate and Phase 5 rollout remain
 - Scope baseline: `0b101e56` (`perf(pdf): add browser raster normalizer ratchet`)
 - Evidence: `specs/issue-118-adaptive-browser-pdf-memory/RATCHET.md`
 - Productive evidence: `specs/browser-raster-normalizer-productization/RATCHET.md`
@@ -32,6 +33,22 @@ Pica and WebCodecs are closed product paths:
 The backend is an internal implementation detail. Users continue to choose
 `original`, `standard`, `print`, or an explicit PPI; they do not choose a
 decoder library.
+
+## Implementation checkpoint
+
+The productive pure worker, conservative ImageBitmap eligibility classifier,
+target-sized ImageBitmap backend, typed whole-prepare fallback, neutral quality
+corpus, and paired RSS ratchet are implemented on PR #201. macOS arm64 and
+required Linux x64 passed repo-pinned Chromium 140 and official Chrome for
+Testing Stable 152.0.7977.64. The exact quality digests matched across all four
+cells; current-Stable Linux measured 114.40 MiB versus 207.09 MiB normalizer RSS
+delta for ImageBitmap versus pure worker, while pinned Linux remained inside
+the non-regression gate at 147.31 MiB versus 143.66 MiB.
+
+ImageBitmap is not yet the production default. Phase 4 still requires the
+explicit current branded-Chrome unpacked-extension UI run. Phase 5 then changes
+the single extension host constant, proves the packed durable-job matrix, and
+reruns the final exact-SHA checks before the plan is complete.
 
 ## Evidence carried forward
 
