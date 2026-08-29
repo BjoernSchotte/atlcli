@@ -122,10 +122,10 @@ The accepted machine-local evidence and exact runtime are recorded in
 WebCodecs remain historical evidence lanes and are not part of this required
 product gate.
 
-## Productive ImageBitmap ratchet and browser matrix
+## Productive ImageBitmap default ratchet and browser matrix
 
-The winning candidate is compared directly with the productive pure worker,
-twice per runtime. It preserves the complete tagged-PDF pipeline while
+The productive extension default is compared directly with its pure-worker
+fallback, twice per runtime. It preserves the complete tagged-PDF pipeline while
 asserting output stability, worker termination before Typst, paired
 process-tree RSS, cleanup, Typst peak, whole-Chrome peak, asset bytes, and the
 body-free productive receipt:

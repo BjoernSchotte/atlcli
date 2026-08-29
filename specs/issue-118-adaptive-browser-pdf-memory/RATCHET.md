@@ -219,6 +219,24 @@ can still be evaluated independently for build-time Astro publisher assets,
 where its value proposition is compressed output rather than PDF runtime
 memory.
 
+### Productization result (2026-08-29)
+
+The follow-up gates are complete and supersede the provisional PoC wording
+above. Productive ImageBitmap passed the neutral eligibility/quality corpus,
+two-run digest stability, normal unpacked-extension UI load, packed MV3 job,
+worker-lifecycle, and paired macOS/Linux RSS matrix in pinned Chromium 140 and
+official Chrome for Testing Stable 152. Prepare time was 0.201x/0.260x of the
+pure worker on the two macOS runtimes. Normalizer RSS was 1.088x/0.868x there
+and 1.025x/0.552x in Linux, all within the 1.15x non-regression gate; cleanup,
+Typst peak, whole-Chrome peak, and output bytes also passed their bounds.
+
+Therefore the extension now selects ImageBitmap internally for the proven
+non-`original` eligibility set. Pure TS remains the deterministic complete-
+attempt fallback and compile-time rollback. This does not change the earlier
+memory conclusion: the image profile's 74.84% Typst-worker peak reduction is
+the primary large-tree lever; ImageBitmap mainly shortens prepare work and
+bounds its lifetime without introducing a native-RSS regression.
+
 ## Phase 2 — Typst runtime candidate lanes
 
 Built: `bench:runtime-lane` (`atlcli.runtime-lane/1`) — isolated Bun child

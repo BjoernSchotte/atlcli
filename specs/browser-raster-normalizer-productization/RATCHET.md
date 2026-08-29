@@ -181,3 +181,37 @@ review of every source/pure/ImageBitmap triplet at both 100% and 400% showed no
 crop, rotation, blank output, transparency loss, visible halo, or other
 regression. Only the committed synthetic corpus was displayed; no tenant or
 customer data was loaded.
+
+## Packed rollout gate
+
+Implementation SHA `8130ac60` selects `image-bitmap` in the extension's single
+compile-time host mode while retaining both the `pure-worker` rollback branch
+and the omitted-lease panel-main emergency path. `original` still bypasses the
+normalizer entirely.
+
+The final WXT production build passed the output audit with its normative CSP,
+static module worker, and complete export runtime intact. The 25-test packed
+durable-job suite then passed against that artifact. Its neutral `standard`
+PDF case recorded backend `image-bitmap`, one request, one normalized asset,
+zero kept assets, a responsive heartbeat, outcome `released`, and no remaining
+raster-worker CDP target. The separate built-worker browser suite passed 3/3,
+the focused host/protocol/executor set passed 47/47, and the repository
+typecheck passed.
+
+The final two-run local repeat after selecting that default used pinned
+Chromium 140 and the same 100.29 MiB corpus. Median prepare time fell from
+38.317 s to 8.490 s (**0.222x**), normalized asset bytes to **0.946x**, Typst
+peak from 395.23 to 389.96 MiB (**0.987x**), and whole-Chrome peak from 1602.10
+to 1596.41 MiB (**0.996x**). Normalizer RSS was deliberately treated as a
+non-regression result, not a claimed material saving: 153.60 versus 153.09 MiB
+(**0.997x**). Cleanup finished 28.87 MiB below the pre-normalizer baseline,
+heartbeat p95 was 2.1 ms, the worker target disappeared before Typst, and both
+PDFs remained tagged. The final repository gate passed 8,486 tests with 25
+declared skips and zero failures, followed by typecheck, complete build, and
+the extension output/CSP audit.
+
+Decision: **GO for ImageBitmap as the internal extension default for the
+proven eligibility set.** This is a prepare-speed and host-responsiveness win
+with paired RSS non-regression; the explicit image profile remains the much
+larger whole-export memory lever. Pure TS remains the deterministic whole-
+attempt fallback and one-line rollback.
