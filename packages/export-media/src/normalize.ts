@@ -43,7 +43,8 @@ export type RasterKeptReason =
   | "not-raster"
   | "undecodable"
   | "no-downscale"
-  | "decode-budget-exceeded";
+  | "decode-budget-exceeded"
+  | "unsupported-raster-shape";
 
 export type RasterNormalizeResultV1 =
   | {
@@ -57,13 +58,47 @@ export type RasterNormalizeResultV1 =
     }
   | { kind: "kept"; reason: RasterKeptReason };
 
-export function normalizeRasterAssetV1(
+/**
+ * Optional host boundary for raster decode/resize implementations.
+ *
+ * The default implementation stays synchronous and deterministic. Browser
+ * hosts may inject an async disposable-worker adapter (for example
+ * WebCodecs, ImageBitmap, or Pica) while keeping the target and pinned output
+ * contracts in this package.
+ */
+export interface RasterNormalizerPortV1 {
+  normalize(
+    request: RasterNormalizeRequestV1,
+  ): RasterNormalizeResultV1 | Promise<RasterNormalizeResultV1>;
+}
+
+/**
+ * Pure target plan shared by the deterministic normalizer and browser-hosted
+ * decoder experiments. Host adapters may change how pixels are decoded and
+ * resized, but they must all consume this exact geometry contract.
+ */
+export interface RasterNormalizationPlanV1 {
+  sourceFormat: "png" | "jpeg";
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+}
+
+export type RasterNormalizationPlanResultV1 =
+  | { kind: "normalize"; plan: RasterNormalizationPlanV1 }
+  | { kind: "kept"; reason: RasterKeptReason };
+
+/** Header-only, allocation-bounded planning; never decodes source pixels. */
+export function planRasterNormalizationV1(
   request: RasterNormalizeRequestV1,
-): RasterNormalizeResultV1 {
+): RasterNormalizationPlanResultV1 {
   const info = decodeImageInfo(request.bytes);
   // GIF may be animated and both PNG-decoder paths would lie about it; SVG
   // and unknown formats are vector/unsupported — all kept untouched.
-  if (!info || info.format === "gif") return { kind: "kept", reason: "not-raster" };
+  if (!info || info.format === "gif" || info.format === "svg") {
+    return { kind: "kept", reason: "not-raster" };
+  }
 
   // Rendered width in inches: the smaller of the authored CSS width and the
   // envelope cap (authored heights follow via aspect at the resample stage).
@@ -84,55 +119,113 @@ export function normalizeRasterAssetV1(
     return { kind: "kept", reason: "decode-budget-exceeded" };
   }
 
-  const decoded =
-    info.format === "png" ? decodePngRaster(request.bytes)
-    : info.format === "jpeg" ? decodeJpegRaster(request.bytes)
-    : null;
-  if (!decoded) return { kind: "kept", reason: "undecodable" };
+  return {
+    kind: "normalize",
+    plan: {
+      sourceFormat: info.format,
+      sourceWidth: info.width,
+      sourceHeight: info.height,
+      targetWidth,
+      targetHeight: Math.max(1, Math.round((info.height * targetWidth) / info.width)),
+    },
+  };
+}
 
-  const targetHeight = Math.max(1, Math.round((decoded.height * targetWidth) / decoded.width));
-  const resampled = boxResampleRgba(
-    decoded.pixels,
-    decoded.width,
-    decoded.height,
-    targetWidth,
-    targetHeight,
+export interface EncodeRasterTargetRequestV1 {
+  plan: RasterNormalizationPlanV1;
+  /** Exactly targetWidth × targetHeight × 4 RGBA bytes. */
+  pixels: Uint8Array | Uint8ClampedArray;
+  /** Whether any source/output pixel needs a non-opaque alpha channel. */
+  hasAlpha: boolean;
+}
+
+/**
+ * Pinned output stage shared by pure-TS and native browser decoder lanes.
+ * Keeping encoding here prevents Chrome-version-specific Canvas encoders from
+ * turning a decoder benchmark into an output-codec comparison.
+ */
+export function encodeRasterTargetV1(
+  request: EncodeRasterTargetRequestV1,
+): Extract<RasterNormalizeResultV1, { kind: "normalized" }> {
+  const { plan } = request;
+  const expectedBytes = plan.targetWidth * plan.targetHeight * 4;
+  if (request.pixels.byteLength !== expectedBytes) {
+    throw new RangeError(
+      `Raster target contains ${request.pixels.byteLength} bytes; expected ${expectedBytes}.`,
+    );
+  }
+  const pixels = new Uint8Array(
+    request.pixels.buffer,
+    request.pixels.byteOffset,
+    request.pixels.byteLength,
   );
 
-  if (info.format === "jpeg") {
+  if (plan.sourceFormat === "jpeg") {
     // The pinned JPEG encoder works in whole 8x8 blocks; pad the target up to
-    // the next multiple of 8 via the resampler target itself (round up, still
-    // strictly below source width thanks to MIN_DOWNSCALE_RATIO).
-    const paddedWidth = Math.ceil(targetWidth / 8) * 8;
-    const paddedHeight = Math.ceil(targetHeight / 8) * 8;
+    // the next multiple of 8 via edge replication, never invented black.
+    const paddedWidth = Math.ceil(plan.targetWidth / 8) * 8;
+    const paddedHeight = Math.ceil(plan.targetHeight / 8) * 8;
     const padded =
-      paddedWidth === targetWidth && paddedHeight === targetHeight
-        ? resampled
-        : padRgba(resampled, targetWidth, targetHeight, paddedWidth, paddedHeight);
+      paddedWidth === plan.targetWidth && paddedHeight === plan.targetHeight
+        ? pixels
+        : padRgba(
+            pixels,
+            plan.targetWidth,
+            plan.targetHeight,
+            paddedWidth,
+            paddedHeight,
+          );
     return {
       kind: "normalized",
       bytes: encodeJpeg(rgbaToRgb(padded), paddedWidth, paddedHeight, NORMALIZED_JPEG_QUALITY),
       mediaType: "image/jpeg",
       width: paddedWidth,
       height: paddedHeight,
-      sourceWidth: decoded.width,
-      sourceHeight: decoded.height,
+      sourceWidth: plan.sourceWidth,
+      sourceHeight: plan.sourceHeight,
     };
   }
+
   return {
     kind: "normalized",
     bytes: encodePng(
-      decoded.hasAlpha ? resampled : rgbaToRgb(resampled),
-      targetWidth,
-      targetHeight,
-      decoded.hasAlpha,
+      request.hasAlpha ? pixels : rgbaToRgb(pixels),
+      plan.targetWidth,
+      plan.targetHeight,
+      request.hasAlpha,
     ),
     mediaType: "image/png",
-    width: targetWidth,
-    height: targetHeight,
-    sourceWidth: decoded.width,
-    sourceHeight: decoded.height,
+    width: plan.targetWidth,
+    height: plan.targetHeight,
+    sourceWidth: plan.sourceWidth,
+    sourceHeight: plan.sourceHeight,
   };
+}
+
+export function normalizeRasterAssetV1(
+  request: RasterNormalizeRequestV1,
+): RasterNormalizeResultV1 {
+  const planned = planRasterNormalizationV1(request);
+  if (planned.kind === "kept") return planned;
+  const { plan } = planned;
+
+  const decoded =
+    plan.sourceFormat === "png" ? decodePngRaster(request.bytes)
+    : plan.sourceFormat === "jpeg" ? decodeJpegRaster(request.bytes)
+    : null;
+  if (!decoded) return { kind: "kept", reason: "undecodable" };
+  if (decoded.width !== plan.sourceWidth || decoded.height !== plan.sourceHeight) {
+    return { kind: "kept", reason: "undecodable" };
+  }
+
+  const resampled = boxResampleRgba(
+    decoded.pixels,
+    decoded.width,
+    decoded.height,
+    plan.targetWidth,
+    plan.targetHeight,
+  );
+  return encodeRasterTargetV1({ plan, pixels: resampled, hasAlpha: decoded.hasAlpha });
 }
 
 /** Edge-replicate pad (bottom/right) so JPEG's 8x8 blocks never invent black. */

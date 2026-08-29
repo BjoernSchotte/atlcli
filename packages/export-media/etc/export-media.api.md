@@ -13,6 +13,9 @@ export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
 // export: boxResampleRgba
 export declare function boxResampleRgba(source: Uint8Array, sourceWidth: number, sourceHeight: number, targetWidth: number, targetHeight: number): Uint8Array;
 
+// export: classifyImageBitmapEligibilityV1
+export declare function classifyImageBitmapEligibilityV1(bytes: Uint8Array): ImageBitmapEligibilityV1;
+
 // export: DecodedRaster
 export interface DecodedRaster {
     pixels: Uint8Array;
@@ -36,6 +39,18 @@ export declare function encodeJpeg(pixels: Uint8Array, width: number, height: nu
 // export: encodePng
 export declare function encodePng(pixels: Uint8Array, width: number, height: number, alpha: boolean): Uint8Array;
 
+// export: EncodeRasterTargetRequestV1
+export interface EncodeRasterTargetRequestV1 {
+    plan: RasterNormalizationPlanV1;
+    pixels: Uint8Array | Uint8ClampedArray;
+    hasAlpha: boolean;
+}
+
+// export: encodeRasterTargetV1
+export declare function encodeRasterTargetV1(request: EncodeRasterTargetRequestV1): Extract<RasterNormalizeResultV1, {
+    kind: "normalized";
+}>;
+
 // export: EXPORT_IMAGE_PPI_MAX
 export declare const EXPORT_IMAGE_PPI_MAX = 1200;
 
@@ -58,6 +73,21 @@ export interface ExportImageQualityV1 {
 
 // export: IMAGE_NORMALIZER_VERSION
 export declare const IMAGE_NORMALIZER_VERSION = 1;
+
+// export: ImageBitmapEligibilityV1
+export type ImageBitmapEligibilityV1 = {
+    kind: "eligible";
+    format: "png" | "jpeg";
+    width: number;
+    height: number;
+    mayHaveAlpha: boolean;
+} | {
+    kind: "ineligible";
+    reason: ImageBitmapIneligibleReasonV1;
+};
+
+// export: ImageBitmapIneligibleReasonV1
+export type ImageBitmapIneligibleReasonV1 = "not-png-or-jpeg" | "malformed-raster-header" | "unsupported-png-shape" | "unsupported-jpeg-shape" | "animated-raster" | "unsupported-orientation" | "embedded-color-metadata";
 
 // export: ImageFormat
 export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
@@ -89,11 +119,32 @@ export declare function normalizeRasterAssetV1(request: RasterNormalizeRequestV1
 // export: parseSvgSize
 export declare function parseSvgSize(source: string): TargetSize | null;
 
+// export: planRasterNormalizationV1
+export declare function planRasterNormalizationV1(request: RasterNormalizeRequestV1): RasterNormalizationPlanResultV1;
+
 // export: PRINT_PROFILE_PPI
 export declare const PRINT_PROFILE_PPI = 300;
 
 // export: RasterKeptReason
-export type RasterKeptReason = "not-raster" | "undecodable" | "no-downscale" | "decode-budget-exceeded";
+export type RasterKeptReason = "not-raster" | "undecodable" | "no-downscale" | "decode-budget-exceeded" | "unsupported-raster-shape";
+
+// export: RasterNormalizationPlanResultV1
+export type RasterNormalizationPlanResultV1 = {
+    kind: "normalize";
+    plan: RasterNormalizationPlanV1;
+} | {
+    kind: "kept";
+    reason: RasterKeptReason;
+};
+
+// export: RasterNormalizationPlanV1
+export interface RasterNormalizationPlanV1 {
+    sourceFormat: "png" | "jpeg";
+    sourceWidth: number;
+    sourceHeight: number;
+    targetWidth: number;
+    targetHeight: number;
+}
 
 // export: RasterNormalizeRequestV1
 export interface RasterNormalizeRequestV1 {
@@ -120,6 +171,11 @@ export type RasterNormalizeResultV1 = {
     kind: "kept";
     reason: RasterKeptReason;
 };
+
+// export: RasterNormalizerPortV1
+export interface RasterNormalizerPortV1 {
+    normalize(request: RasterNormalizeRequestV1): RasterNormalizeResultV1 | Promise<RasterNormalizeResultV1>;
+}
 
 // export: resolveEffectivePpi
 export declare function resolveEffectivePpi(quality: ExportImageQualityV1): number | null;

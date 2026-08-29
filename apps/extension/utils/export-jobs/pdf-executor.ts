@@ -13,6 +13,7 @@ import {
   createPdfExportJobExecutor,
   type PdfExportJobEngineInputV1,
   type PdfExportResultStoreV1,
+  type PdfRasterNormalizerLeaseFactoryV1,
   type PdfReadyToRenderStoreV1,
 } from "@atlcli/export-wiring/jobs";
 import type { PdfCompilePort } from "@atlcli/pdf/browser";
@@ -96,6 +97,7 @@ export interface CreateProductiveExtensionPdfExecutorOptionsV1 {
   ) => ResourceEstimateV1;
   readyToRender?: PdfReadyToRenderStoreV1;
   results?: PdfExportResultStoreV1;
+  rasterNormalizerLeaseFactory?: PdfRasterNormalizerLeaseFactoryV1;
   templatePacks?: Pick<TemplatePackStoreV1, "get">;
   createCompiler?: (
     request: PdfExportJobRequestV1,
@@ -160,6 +162,9 @@ export function createProductiveExtensionPdfExecutor(
         compiler,
         renderReservations: options.renderPool.pdf,
         results,
+        ...(options.rasterNormalizerLeaseFactory
+          ? { rasterNormalizerLeaseFactory: options.rasterNormalizerLeaseFactory }
+          : {}),
         ...(options.templatePacks
           ? { templatePacks: options.templatePacks }
           : {}),

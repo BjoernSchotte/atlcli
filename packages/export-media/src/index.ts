@@ -29,6 +29,11 @@ export { decodePngRaster, type DecodedRaster } from "./decode-png.js";
 export { decodeJpegRaster } from "./decode-jpeg.js";
 export { boxResampleRgba } from "./resample.js";
 export {
+  classifyImageBitmapEligibilityV1,
+  type ImageBitmapEligibilityV1,
+  type ImageBitmapIneligibleReasonV1,
+} from "./image-bitmap-eligibility.js";
+export {
   resolveEffectivePpi,
   ExportImageQualityError,
   EXPORT_IMAGE_PPI_MIN,
@@ -41,8 +46,14 @@ export {
   type ExportImageQualityV1,
 } from "./profile.js";
 export {
+  encodeRasterTargetV1,
   normalizeRasterAssetV1,
+  planRasterNormalizationV1,
+  type EncodeRasterTargetRequestV1,
   type RasterKeptReason,
+  type RasterNormalizationPlanResultV1,
+  type RasterNormalizationPlanV1,
+  type RasterNormalizerPortV1,
   type RasterNormalizeRequestV1,
   type RasterNormalizeResultV1,
 } from "./normalize.js";

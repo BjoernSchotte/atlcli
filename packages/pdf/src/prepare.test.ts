@@ -541,6 +541,45 @@ describe("PDF asset preparation", () => {
     expect(again.assets[0]!.path).toBe(standard.assets[0]!.path);
     expect(standard.assets[0]!.path).not.toBe(original.assets[0]!.path);
 
+    // Browser hosts can move decode/resize into a disposable worker without
+    // forking PDF preparation. The async boundary must be awaited and retain
+    // the exact pinned output contract.
+    const { normalizeRasterAssetV1 } = await import("@atlcli/export-media");
+    let portCalls = 0;
+    let activePortCalls = 0;
+    let maxActivePortCalls = 0;
+    let portSettled = false;
+    const asyncPort = await preparePdfDocument(images(2), resolver, {
+      imageQuality: { imageProfile: "standard" },
+      rasterNormalizer: {
+        normalize: async (request) => {
+          portCalls += 1;
+          activePortCalls += 1;
+          maxActivePortCalls = Math.max(maxActivePortCalls, activePortCalls);
+          await Promise.resolve();
+          const result = normalizeRasterAssetV1(request);
+          activePortCalls -= 1;
+          portSettled = true;
+          return result;
+        },
+      },
+    });
+    expect(portCalls).toBe(2);
+    expect(maxActivePortCalls).toBe(1);
+    expect(portSettled).toBe(true);
+    expect(asyncPort.assets[0]!.bytes).toEqual(standard.assets[0]!.bytes);
+
+    await expect(
+      preparePdfDocument(images(1), resolver, {
+        imageQuality: { imageProfile: "standard" },
+        rasterNormalizer: {
+          normalize() {
+            throw new Error("worker lost");
+          },
+        },
+      }),
+    ).rejects.toThrow("Raster normalization failed: worker lost");
+
     // Invalid combination fails before any fetch.
     await expect(
       preparePdfDocument(images(1), resolver, {

@@ -24,6 +24,7 @@ import {
 } from "./template-pack.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import { packTemplate, validateManifest } from "@atlcli/template-pack";
+import { normalizeRasterAssetV1 } from "@atlcli/export-media";
 
 const validPdf = new TextEncoder().encode(
   "%PDF-1.7\n/Type/Page /StructTreeRoot /MarkInfo /Outlines /FontFile2\n%%EOF\n"
@@ -95,6 +96,49 @@ describe("neutral runPdfExport", () => {
     expect(prepared.schema).toBe("atlcli.prepared-pdf-export/1");
     expect(prepared.codeTheme).toBe("github-light");
     expect(stagedReport.codeTheme).toBe("github-light");
+  });
+
+  it("forwards an optional raster normalizer without changing the pinned pure output", async () => {
+    const imageBlocks: ExportBlock[] = [{
+      type: "image",
+      source: { kind: "attachment", filename: "neutral.png" },
+      alt: "Neutral one-pixel fixture",
+    }];
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+      0, 0, 0, 1, 0, 0, 0, 1,
+    ]);
+    const imageAssets = {
+      resolve: async () => ({ bytes: png, mediaType: "image/png" }),
+    };
+    const input = {
+      blocks: imageBlocks,
+      metadata,
+      filename: "Raster.pdf",
+      imageQuality: { imageProfile: "standard" as const },
+    };
+    const clock = (): (() => number) => {
+      let tick = 0;
+      return () => tick++;
+    };
+
+    const baseline = await preparePdfExport(input, { assets: imageAssets, now: clock() });
+    let calls = 0;
+    const throughPort = await preparePdfExport(input, {
+      assets: imageAssets,
+      now: clock(),
+      rasterNormalizer: {
+        normalize(request) {
+          calls += 1;
+          return normalizeRasterAssetV1(request);
+        },
+      },
+    });
+
+    expect(calls).toBe(1);
+    expect(throughPort).toEqual(baseline);
+    expect(throughPort.bundle?.assets[0]?.bytes).toEqual(png);
   });
 
   it("persists and reports a non-default code theme", async () => {

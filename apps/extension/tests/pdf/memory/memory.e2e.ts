@@ -1,10 +1,17 @@
 import { expect, test, chromium, type BrowserContext, type CDPSession, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { computeWorkerMemoryAttribution } from "./attribution.js";
-import type { MemoryProbeApi, MemoryWorkerPhase } from "./protocol.js";
+import type {
+  MemoryProbeApi,
+  MemoryWorkerPhase,
+  RasterNormalizerPhase,
+  RasterNormalizerState,
+  RasterNormalizerVariant,
+} from "./protocol.js";
 
 const OUTPUT_DIR = fileURLToPath(
   new URL("../../../.output/chrome-memory-mv3", import.meta.url)
@@ -34,6 +41,20 @@ interface NetworkProbeRequest {
 
 function mib(bytes: number): number {
   return Number((bytes / MIB).toFixed(2));
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) throw new Error("Cannot take the median of no samples.");
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? sorted[middle]!
+    : (sorted[middle - 1]! + sorted[middle]!) / 2;
+}
+
+function ratio(candidate: number, reference: number): number {
+  if (reference <= 0) throw new Error(`Ratchet reference must be positive, received ${reference}.`);
+  return Number((candidate / reference).toFixed(3));
 }
 
 function delta(before: HeapUsage, after: HeapUsage): HeapDelta {
@@ -233,6 +254,89 @@ async function attachCompilerWorker(root: CDPSession): Promise<ChildTargetSessio
   throw new Error("The Chrome memory compiler worker target did not appear.");
 }
 
+async function attachRasterNormalizerWorker(root: CDPSession): Promise<ChildTargetSession> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const { targetInfos } = (await root.send("Target.getTargets")) as {
+      targetInfos: Array<{ targetId: string; type: string; title: string; url: string }>;
+    };
+    const target = targetInfos.find(
+      (candidate) =>
+        candidate.type === "worker" &&
+        (candidate.title.includes("atlcli-memory-normalizer") ||
+          candidate.title.includes("atlcli-memory-productive-raster-normalizer") ||
+          candidate.url.includes("normalizer-worker") ||
+          candidate.url.includes("raster-normalizer")),
+    );
+    if (target) {
+      const { sessionId } = (await root.send("Target.attachToTarget", {
+        targetId: target.targetId,
+        flatten: false,
+      })) as { sessionId: string };
+      return new ChildTargetSession(root, sessionId);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("The Chrome raster-normalizer worker target did not appear.");
+}
+
+async function rasterNormalizerWorkerExists(root: CDPSession): Promise<boolean> {
+  const { targetInfos } = (await root.send("Target.getTargets")) as {
+    targetInfos: Array<{ type: string; title: string; url: string }>;
+  };
+  return targetInfos.some(
+    (candidate) =>
+      candidate.type === "worker" &&
+      (candidate.title.includes("atlcli-memory-normalizer") ||
+        candidate.title.includes("atlcli-memory-productive-raster-normalizer") ||
+        candidate.url.includes("normalizer-worker") ||
+        candidate.url.includes("raster-normalizer")),
+  );
+}
+
+interface ProcessTreeRss {
+  rssMiB: number;
+  processCount: number;
+}
+
+/** Whole Chromium process-tree RSS, including native ImageBitmap/VideoFrame allocations. */
+function chromeProcessTreeRss(profileDir: string): ProcessTreeRss {
+  const output = execFileSync("ps", ["-axo", "pid=,ppid=,rss=,command="], {
+    encoding: "utf8",
+  });
+  const rows = output
+    .split("\n")
+    .map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
+    .filter((match): match is RegExpMatchArray => match !== null)
+    .map((match) => ({
+      pid: Number(match[1]),
+      ppid: Number(match[2]),
+      rssKiB: Number(match[3]),
+      command: match[4] ?? "",
+    }));
+  const processIds = new Set(
+    rows.filter((row) => row.command.includes(profileDir)).map((row) => row.pid),
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const row of rows) {
+      if (!processIds.has(row.pid) && processIds.has(row.ppid)) {
+        processIds.add(row.pid);
+        changed = true;
+      }
+    }
+  }
+  if (processIds.size === 0) {
+    throw new Error(`Could not locate Chromium processes for profile ${profileDir}.`);
+  }
+  const rssKiB = rows.reduce(
+    (total, row) => total + (processIds.has(row.pid) ? row.rssKiB : 0),
+    0,
+  );
+  return { rssMiB: Number((rssKiB / 1024).toFixed(2)), processCount: processIds.size };
+}
+
 async function waitForPhase(
   page: Page,
   phase: MemoryWorkerPhase,
@@ -253,9 +357,13 @@ interface Harness {
 
 async function openHarness(): Promise<Harness> {
   const profileDir = mkdtempSync(join(tmpdir(), "atlcli-chrome-memory-profile-"));
+  const executablePath = process.env.ATLCLI_MEMORY_EXECUTABLE_PATH;
+  const channel = process.env.ATLCLI_MEMORY_BROWSER_CHANNEL === "chrome"
+    ? "chrome"
+    : "chromium";
   const context = await chromium.launchPersistentContext(profileDir, {
-    channel: "chromium",
-    headless: true,
+    ...(executablePath ? { executablePath } : { channel }),
+    headless: process.env.ATLCLI_MEMORY_HEADED !== "1",
     args: [
       `--disable-extensions-except=${OUTPUT_DIR}`,
       `--load-extension=${OUTPUT_DIR}`,
@@ -263,7 +371,9 @@ async function openHarness(): Promise<Harness> {
     ],
   });
   let serviceWorker = context.serviceWorkers()[0];
-  serviceWorker ??= await context.waitForEvent("serviceworker", { timeout: 30_000 });
+  serviceWorker ??= await context.waitForEvent("serviceworker", {
+    timeout: process.env.ATLCLI_MEMORY_HEADED === "1" ? 180_000 : 30_000,
+  });
   const extensionId = new URL(serviceWorker.url()).host;
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/index.html`);
@@ -528,6 +638,560 @@ async function runImageHeavyCycle(profile: "original" | "standard"): Promise<Pro
     await closeHarness(harness);
   }
 }
+
+const NORMALIZER_PROBE_PHASES = new Set<RasterNormalizerPhase>([
+  "source-held",
+  "decoded-held",
+  "target-held",
+  "encoded-held",
+]);
+
+interface RasterNormalizerVariantResult {
+  variant: RasterNormalizerVariant;
+  runtime: Harness["browserVersion"];
+  input: Awaited<ReturnType<MemoryProbeApi["loadRasterNormalizerCorpus"]>>;
+  output: Awaited<ReturnType<MemoryProbeApi["readRasterNormalizerResult"]>>;
+  support: RasterNormalizerState["detail"];
+  normalizer: {
+    executionContext: "panel-main-current" | "disposable-worker";
+    baselineProcessRssMiB: number;
+    readyProcessRssMiB: number;
+    peakProcessRssMiB: number;
+    peakDeltaMiB: number;
+    beforeTerminateProcessRssMiB: number;
+    afterTerminateProcessRssMiB: number;
+    releasedFromPeakMiB: number;
+    panelBaseline: HeapDelta;
+    panelAfterTerminate: HeapDelta;
+    workerReady: HeapDelta | null;
+    workerComplete: HeapDelta | null;
+    workerPhasePeakMiB: number | null;
+    phaseSamples: Array<{
+      phase: RasterNormalizerPhase;
+      detail: RasterNormalizerState["detail"];
+      processRssMiB: number;
+      worker: HeapDelta;
+      workerFromReady: HeapDelta;
+    }>;
+    workerTargetReleased: boolean;
+    productiveReceipt: Awaited<
+      ReturnType<MemoryProbeApi["terminateRasterNormalizer"]>
+    >;
+  };
+  compiler: {
+    attribution: ReturnType<typeof computeWorkerMemoryAttribution>;
+    processRssPeakMiB: number;
+    pdfBytes: number;
+    pdfSha256: string;
+    tagged: boolean;
+  };
+}
+
+async function runRasterNormalizerVariant(
+  variant: RasterNormalizerVariant,
+): Promise<RasterNormalizerVariantResult> {
+  let harness: Harness | undefined;
+  let normalizerSession: ChildTargetSession | undefined;
+  let compilerSession: ChildTargetSession | undefined;
+  let stopRssSampler = false;
+  let rssSampler: Promise<void> | undefined;
+  try {
+    harness = await openHarness();
+    const { page, cdp, profileDir, browserVersion } = harness;
+    const input = await page.evaluate(() => window.atlcliMemoryProbe.loadRasterNormalizerCorpus());
+    const panelBaseline = await pageHeap(cdp);
+    const baselineRss = chromeProcessTreeRss(profileDir);
+
+    const readyState = await page.evaluate((value) =>
+      window.atlcliMemoryProbe.startRasterNormalizerWorker(value), variant);
+    if (
+      variant !== "pure-ts"
+      && variant !== "pure-worker"
+      && variant !== "image-bitmap-worker"
+    ) {
+      normalizerSession = await attachRasterNormalizerWorker(cdp);
+    }
+    let workerReady = normalizerSession ? await normalizerSession.heap() : undefined;
+    const readyRss = chromeProcessTreeRss(profileDir);
+
+    const normalizerRssSamples: number[] = [readyRss.rssMiB];
+    stopRssSampler = false;
+    rssSampler = (async () => {
+      while (!stopRssSampler) {
+        normalizerRssSamples.push(chromeProcessTreeRss(profileDir).rssMiB);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    })();
+
+    await page.evaluate(() => window.atlcliMemoryProbe.startRasterNormalizerPrepare());
+    if (variant === "pure-worker" || variant === "image-bitmap-worker") {
+      normalizerSession = await attachRasterNormalizerWorker(cdp);
+      workerReady = await normalizerSession.heap();
+    }
+    const sampledSequences = new Set<number>();
+    const phaseSamples: RasterNormalizerVariantResult["normalizer"]["phaseSamples"] = [];
+    while (true) {
+      const state = await page.evaluate(() => window.atlcliMemoryProbe.rasterNormalizerState());
+      if (state.phase === "error") throw new Error(state.error ?? `${variant} normalization failed.`);
+      if (
+        normalizerSession &&
+        NORMALIZER_PROBE_PHASES.has(state.phase) &&
+        !sampledSequences.has(state.sequence)
+      ) {
+        sampledSequences.add(state.sequence);
+        const workerHeap = await normalizerSession.heap();
+        const processRss = chromeProcessTreeRss(profileDir).rssMiB;
+        normalizerRssSamples.push(processRss);
+        phaseSamples.push({
+          phase: state.phase,
+          detail: state.detail,
+          processRssMiB: processRss,
+          worker: absolute(workerHeap),
+          workerFromReady: delta(workerReady!, workerHeap),
+        });
+        await page.evaluate(() => window.atlcliMemoryProbe.continueRasterNormalizer());
+      }
+      if (state.done) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    stopRssSampler = true;
+    await rssSampler;
+    rssSampler = undefined;
+
+    const output = await page.evaluate(() => window.atlcliMemoryProbe.readRasterNormalizerResult());
+    const workerComplete = normalizerSession ? await normalizerSession.heap() : undefined;
+    const beforeTerminateRss = chromeProcessTreeRss(profileDir);
+    normalizerRssSamples.push(beforeTerminateRss.rssMiB);
+    await normalizerSession?.close();
+    normalizerSession = undefined;
+    const productiveReceipt = await page.evaluate(() =>
+      window.atlcliMemoryProbe.terminateRasterNormalizer());
+    await expect.poll(() => rasterNormalizerWorkerExists(cdp), { timeout: 10_000 }).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const panelAfterTerminate = await pageHeap(cdp);
+    const afterTerminateRss = chromeProcessTreeRss(profileDir);
+    const peakProcessRssMiB = Math.max(...normalizerRssSamples);
+
+    await page.evaluate(() => window.atlcliMemoryProbe.storePreparedJob());
+    await pageHeap(cdp);
+    await page.evaluate(() => window.atlcliMemoryProbe.startWorker());
+    await waitForPhase(page, "warm", 300_000);
+    compilerSession = await attachCompilerWorker(cdp);
+    const compilerSamples: Array<Parameters<typeof computeWorkerMemoryAttribution>[0][number]> = [];
+    const compilerRssSamples: number[] = [];
+    const captureCompiler = async (
+      phase: Exclude<MemoryWorkerPhase, "error">,
+    ): Promise<void> => {
+      compilerSamples.push(
+        attributionSample(
+          phase,
+          await compilerSession!.heap(),
+          await workerDetail(page, phase),
+        ),
+      );
+      compilerRssSamples.push(chromeProcessTreeRss(profileDir).rssMiB);
+    };
+    await captureCompiler("warm");
+    await page.evaluate(() => window.atlcliMemoryProbe.startCompile());
+    await waitForPhase(page, "bundle-received", 300_000);
+    await captureCompiler("bundle-received");
+    await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
+    await waitForPhase(page, "vfs-ready", 300_000);
+    await captureCompiler("vfs-ready");
+    await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
+    await waitForPhase(page, "compiled-held", 1_200_000);
+    await captureCompiler("compiled-held");
+    await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
+    await waitForPhase(page, "complete", 600_000);
+    await captureCompiler("complete");
+    const compiled = await page.evaluate(() => window.atlcliMemoryProbe.readCompiledResult());
+    const validation = await page.evaluate(() => window.atlcliMemoryProbe.validateResult());
+    const attribution = computeWorkerMemoryAttribution(compilerSamples);
+
+    const result: RasterNormalizerVariantResult = {
+      variant,
+      runtime: browserVersion,
+      input,
+      output,
+      support: readyState.detail,
+      normalizer: {
+        executionContext: variant === "pure-ts" ? "panel-main-current" : "disposable-worker",
+        baselineProcessRssMiB: baselineRss.rssMiB,
+        readyProcessRssMiB: readyRss.rssMiB,
+        peakProcessRssMiB,
+        peakDeltaMiB: Number((peakProcessRssMiB - baselineRss.rssMiB).toFixed(2)),
+        beforeTerminateProcessRssMiB: beforeTerminateRss.rssMiB,
+        afterTerminateProcessRssMiB: afterTerminateRss.rssMiB,
+        releasedFromPeakMiB: Number((peakProcessRssMiB - afterTerminateRss.rssMiB).toFixed(2)),
+        panelBaseline: absolute(panelBaseline),
+        panelAfterTerminate: absolute(panelAfterTerminate),
+        workerReady: workerReady ? absolute(workerReady) : null,
+        workerComplete: workerComplete ? absolute(workerComplete) : null,
+        workerPhasePeakMiB:
+          phaseSamples.length > 0
+            ? Math.max(...phaseSamples.map((sample) =>
+                sample.worker.usedMiB + sample.worker.embedderMiB + sample.worker.backingMiB))
+            : null,
+        phaseSamples,
+        workerTargetReleased: !(await rasterNormalizerWorkerExists(cdp)),
+        productiveReceipt,
+      },
+      compiler: {
+        attribution,
+        processRssPeakMiB: Math.max(...compilerRssSamples),
+        pdfBytes: compiled.byteLength,
+        pdfSha256: compiled.sha256,
+        tagged: validation.tagged,
+      },
+    };
+    await page.evaluate(() => window.atlcliMemoryProbe.cleanup());
+    await cdp.detach();
+    return result;
+  } finally {
+    stopRssSampler = true;
+    await rssSampler?.catch(() => undefined);
+    await normalizerSession?.close().catch(() => undefined);
+    await compilerSession?.close().catch(() => undefined);
+    await closeHarness(harness);
+  }
+}
+
+test("ratchets the productive pure raster worker against panel-main", async () => {
+  test.setTimeout(3_600_000);
+  const runCount = Number(process.env.ATLCLI_PRODUCTIVE_RASTER_RUNS ?? "2");
+  if (!Number.isSafeInteger(runCount) || runCount < 2 || runCount > 5) {
+    throw new Error("ATLCLI_PRODUCTIVE_RASTER_RUNS must be an integer in [2, 5].");
+  }
+
+  const results: RasterNormalizerVariantResult[] = [];
+  for (let iteration = 0; iteration < runCount; iteration += 1) {
+    for (const variant of ["pure-ts", "pure-worker"] as const) {
+      const result = await runRasterNormalizerVariant(variant);
+      results.push(result);
+      console.log(
+        `ATLCLI_PRODUCTIVE_RASTER_VARIANT_RESULT\n${JSON.stringify({ iteration: iteration + 1, ...result }, null, 2)}`,
+      );
+    }
+  }
+
+  const panel = results.filter((result) => result.variant === "pure-ts");
+  const worker = results.filter((result) => result.variant === "pure-worker");
+  const panelPrepareMedianMs = median(panel.map((result) => result.output.prepareMs));
+  const workerPrepareMedianMs = median(worker.map((result) => result.output.prepareMs));
+  const panelNormalizerPeakMedianMiB = median(
+    panel.map((result) => result.normalizer.peakDeltaMiB),
+  );
+  const workerNormalizerPeakMedianMiB = median(
+    worker.map((result) => result.normalizer.peakDeltaMiB),
+  );
+  const panelWholeChromePeakMedianMiB = median(panel.map((result) =>
+    Math.max(result.normalizer.peakProcessRssMiB, result.compiler.processRssPeakMiB)
+  ));
+  const workerWholeChromePeakMedianMiB = median(worker.map((result) =>
+    Math.max(result.normalizer.peakProcessRssMiB, result.compiler.processRssPeakMiB)
+  ));
+  const workerCleanupResidualMedianMiB = median(worker.map((result) =>
+    Number((
+      result.normalizer.afterTerminateProcessRssMiB -
+      result.normalizer.baselineProcessRssMiB
+    ).toFixed(2))
+  ));
+  const report = {
+    schema: "atlcli.chrome-productive-raster-normalizer-ratchet/v1",
+    measuredAt: new Date().toISOString(),
+    host: { platform: process.platform, arch: process.arch },
+    runCount,
+    runtime: results[0]?.runtime,
+    corpus: {
+      scale: results[0]?.input.scale,
+      manifestSha256: results[0]?.input.manifestSha256,
+      sourceAssetBytes: results[0]?.input.sourceAssetBytes,
+      placements: results[0]?.input.placements,
+    },
+    medians: {
+      panelPrepareMs: Number(panelPrepareMedianMs.toFixed(2)),
+      workerPrepareMs: Number(workerPrepareMedianMs.toFixed(2)),
+      prepareRatio: ratio(workerPrepareMedianMs, panelPrepareMedianMs),
+      panelNormalizerPeakDeltaMiB: Number(panelNormalizerPeakMedianMiB.toFixed(2)),
+      workerNormalizerPeakDeltaMiB: Number(workerNormalizerPeakMedianMiB.toFixed(2)),
+      normalizerPeakRatio: ratio(
+        workerNormalizerPeakMedianMiB,
+        panelNormalizerPeakMedianMiB,
+      ),
+      panelWholeChromePeakMiB: Number(panelWholeChromePeakMedianMiB.toFixed(2)),
+      workerWholeChromePeakMiB: Number(workerWholeChromePeakMedianMiB.toFixed(2)),
+      wholeChromePeakRatio: ratio(
+        workerWholeChromePeakMedianMiB,
+        panelWholeChromePeakMedianMiB,
+      ),
+      workerCleanupResidualMiB: Number(workerCleanupResidualMedianMiB.toFixed(2)),
+      workerHeartbeatP95Ms: median(worker.map((result) =>
+        result.normalizer.productiveReceipt?.heartbeatP95Ms ?? Number.POSITIVE_INFINITY
+      )),
+    },
+    results,
+  };
+  console.log(
+    `ATLCLI_PRODUCTIVE_RASTER_NORMALIZER_RATCHET_RESULT\n${JSON.stringify(report, null, 2)}`,
+  );
+
+  expect(panel).toHaveLength(runCount);
+  expect(worker).toHaveLength(runCount);
+  expect(new Set(results.map((result) => result.input.manifestSha256)).size).toBe(1);
+  expect(new Set(results.map((result) => result.output.outputAssetSha256)).size).toBe(1);
+  expect(new Set(results.map((result) => result.compiler.pdfSha256)).size).toBe(1);
+  expect(new Set(results.map((result) => result.output.bundleBytes)).size).toBe(1);
+  for (const result of results) {
+    expect(result.output.manifestSha256).toBe(result.input.manifestSha256);
+    expect(result.output.normalizedCalls).toBeGreaterThan(0);
+    expect(result.compiler.tagged).toBe(true);
+    expect(result.normalizer.workerTargetReleased).toBe(true);
+  }
+  for (const result of panel) {
+    expect(result.normalizer.productiveReceipt).toBeNull();
+  }
+  for (const result of worker) {
+    expect(result.normalizer.productiveReceipt).toMatchObject({
+      schema: "atlcli.extension-raster-normalizer-receipt/1",
+      backend: "pure-ts",
+      jobId: "memory-productive-pure-worker",
+      leaseEpoch: 1,
+      workerStarted: true,
+      requests: result.output.normalizedCalls + result.output.keptCalls,
+      normalized: result.output.normalizedCalls,
+      kept: result.output.keptCalls,
+      outcome: "released",
+    });
+    expect(result.normalizer.productiveReceipt?.heartbeatSamples).toBeGreaterThan(0);
+    expect(result.normalizer.productiveReceipt?.heartbeatP95Ms).not.toBeNull();
+    expect(result.normalizer.productiveReceipt!.heartbeatP95Ms!).toBeLessThan(50);
+    expect(result.normalizer.productiveReceipt!.cacheHits).toBeGreaterThan(0);
+  }
+  expect(ratio(workerPrepareMedianMs, panelPrepareMedianMs)).toBeLessThanOrEqual(1.15);
+  expect(ratio(
+    workerNormalizerPeakMedianMiB,
+    panelNormalizerPeakMedianMiB,
+  )).toBeLessThanOrEqual(0.95);
+  expect(ratio(
+    workerWholeChromePeakMedianMiB,
+    panelWholeChromePeakMedianMiB,
+  )).toBeLessThanOrEqual(1.15);
+  expect(workerCleanupResidualMedianMiB).toBeLessThanOrEqual(32);
+});
+
+test("ratchets the productive ImageBitmap worker against pure-worker", async ({}, testInfo) => {
+  test.setTimeout(3_600_000);
+  const runCount = Number(process.env.ATLCLI_PRODUCTIVE_RASTER_RUNS ?? "2");
+  const assertTiming = process.env.ATLCLI_PRODUCTIVE_RASTER_ASSERT_TIMING !== "0";
+  if (!Number.isSafeInteger(runCount) || runCount < 2 || runCount > 5) {
+    throw new Error("ATLCLI_PRODUCTIVE_RASTER_RUNS must be an integer in [2, 5].");
+  }
+
+  const results: RasterNormalizerVariantResult[] = [];
+  for (let iteration = 0; iteration < runCount; iteration += 1) {
+    for (const variant of ["pure-worker", "image-bitmap-worker"] as const) {
+      const result = await runRasterNormalizerVariant(variant);
+      results.push(result);
+      console.log(
+        `ATLCLI_PRODUCTIVE_IMAGE_BITMAP_VARIANT_RESULT\n${JSON.stringify({ iteration: iteration + 1, ...result }, null, 2)}`,
+      );
+    }
+  }
+
+  const pure = results.filter((result) => result.variant === "pure-worker");
+  const imageBitmap = results.filter((result) => result.variant === "image-bitmap-worker");
+  const prepareMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => result.output.prepareMs));
+  const normalizerPeakMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => result.normalizer.peakDeltaMiB));
+  const cleanupResidualMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => Number((
+      result.normalizer.afterTerminateProcessRssMiB
+      - result.normalizer.baselineProcessRssMiB
+    ).toFixed(2))));
+  const typstPeakMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => result.compiler.attribution.peak.totalMiB));
+  const wholeChromePeakMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) =>
+      Math.max(result.normalizer.peakProcessRssMiB, result.compiler.processRssPeakMiB)
+    ));
+  const assetBytesMedian = (lane: RasterNormalizerVariantResult[]): number =>
+    median(lane.map((result) => result.output.assetBytes));
+
+  const purePrepareMedianMs = prepareMedian(pure);
+  const imagePrepareMedianMs = prepareMedian(imageBitmap);
+  const pureNormalizerPeakMedianMiB = normalizerPeakMedian(pure);
+  const imageNormalizerPeakMedianMiB = normalizerPeakMedian(imageBitmap);
+  const imageCleanupResidualMedianMiB = cleanupResidualMedian(imageBitmap);
+  const pureTypstPeakMedianMiB = typstPeakMedian(pure);
+  const imageTypstPeakMedianMiB = typstPeakMedian(imageBitmap);
+  const pureWholeChromePeakMedianMiB = wholeChromePeakMedian(pure);
+  const imageWholeChromePeakMedianMiB = wholeChromePeakMedian(imageBitmap);
+  const pureAssetBytesMedian = assetBytesMedian(pure);
+  const imageAssetBytesMedian = assetBytesMedian(imageBitmap);
+  const report = {
+    schema: "atlcli.chrome-productive-image-bitmap-ratchet/v1",
+    measuredAt: new Date().toISOString(),
+    host: { platform: process.platform, arch: process.arch },
+    runCount,
+    assertTiming,
+    runtime: results[0]?.runtime,
+    corpus: {
+      scale: results[0]?.input.scale,
+      manifestSha256: results[0]?.input.manifestSha256,
+      sourceAssetBytes: results[0]?.input.sourceAssetBytes,
+      placements: results[0]?.input.placements,
+    },
+    medians: {
+      purePrepareMs: Number(purePrepareMedianMs.toFixed(2)),
+      imageBitmapPrepareMs: Number(imagePrepareMedianMs.toFixed(2)),
+      prepareRatio: ratio(imagePrepareMedianMs, purePrepareMedianMs),
+      pureNormalizerPeakDeltaMiB: Number(pureNormalizerPeakMedianMiB.toFixed(2)),
+      imageBitmapNormalizerPeakDeltaMiB: Number(imageNormalizerPeakMedianMiB.toFixed(2)),
+      normalizerPeakRatio: ratio(imageNormalizerPeakMedianMiB, pureNormalizerPeakMedianMiB),
+      imageBitmapCleanupResidualMiB: Number(imageCleanupResidualMedianMiB.toFixed(2)),
+      pureTypstPeakMiB: Number(pureTypstPeakMedianMiB.toFixed(2)),
+      imageBitmapTypstPeakMiB: Number(imageTypstPeakMedianMiB.toFixed(2)),
+      typstPeakRatio: ratio(imageTypstPeakMedianMiB, pureTypstPeakMedianMiB),
+      pureWholeChromePeakMiB: Number(pureWholeChromePeakMedianMiB.toFixed(2)),
+      imageBitmapWholeChromePeakMiB: Number(imageWholeChromePeakMedianMiB.toFixed(2)),
+      wholeChromePeakRatio: ratio(
+        imageWholeChromePeakMedianMiB,
+        pureWholeChromePeakMedianMiB,
+      ),
+      assetBytesRatio: ratio(imageAssetBytesMedian, pureAssetBytesMedian),
+      imageBitmapHeartbeatP95Ms: median(imageBitmap.map((result) =>
+        result.normalizer.productiveReceipt?.heartbeatP95Ms ?? Number.POSITIVE_INFINITY
+      )),
+    },
+    results,
+  };
+  console.log(
+    `ATLCLI_PRODUCTIVE_IMAGE_BITMAP_RATCHET_RESULT\n${JSON.stringify(report, null, 2)}`,
+  );
+  const reportPath = testInfo.outputPath("productive-image-bitmap-ratchet.json");
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  await testInfo.attach("productive-image-bitmap-ratchet", {
+    path: reportPath,
+    contentType: "application/json",
+  });
+
+  expect(pure).toHaveLength(runCount);
+  expect(imageBitmap).toHaveLength(runCount);
+  expect(new Set(results.map((result) => result.input.manifestSha256)).size).toBe(1);
+  expect(new Set(pure.map((result) => result.output.outputAssetSha256)).size).toBe(1);
+  expect(new Set(imageBitmap.map((result) => result.output.outputAssetSha256)).size).toBe(1);
+  expect(new Set(pure.map((result) => result.compiler.pdfSha256)).size).toBe(1);
+  expect(new Set(imageBitmap.map((result) => result.compiler.pdfSha256)).size).toBe(1);
+  expect(new Set(results.map((result) => result.output.images)).size).toBe(1);
+  for (const result of results) {
+    expect(result.output.manifestSha256).toBe(result.input.manifestSha256);
+    expect(result.output.normalizedCalls).toBeGreaterThan(0);
+    expect(result.compiler.tagged).toBe(true);
+    expect(result.normalizer.workerTargetReleased).toBe(true);
+  }
+  for (const result of imageBitmap) {
+    expect(result.normalizer.productiveReceipt).toMatchObject({
+      schema: "atlcli.extension-raster-normalizer-receipt/1",
+      backend: "image-bitmap",
+      revision: "image-bitmap-v1",
+      workerStarted: true,
+      requests: result.output.normalizedCalls + result.output.keptCalls,
+      normalized: result.output.normalizedCalls,
+      kept: result.output.keptCalls,
+      outcome: "released",
+    });
+    expect(result.normalizer.productiveReceipt?.heartbeatSamples).toBeGreaterThan(0);
+    expect(result.normalizer.productiveReceipt?.heartbeatP95Ms).not.toBeNull();
+    if (assertTiming) {
+      expect(result.normalizer.productiveReceipt!.heartbeatP95Ms!).toBeLessThan(50);
+    }
+    expect(result.normalizer.productiveReceipt!.cacheHits).toBeGreaterThan(0);
+  }
+  if (assertTiming) {
+    expect(ratio(imagePrepareMedianMs, purePrepareMedianMs)).toBeLessThanOrEqual(0.60);
+  }
+  expect(ratio(
+    imageNormalizerPeakMedianMiB,
+    pureNormalizerPeakMedianMiB,
+  )).toBeLessThanOrEqual(1.15);
+  expect(imageCleanupResidualMedianMiB).toBeLessThanOrEqual(32);
+  expect(ratio(imageTypstPeakMedianMiB, pureTypstPeakMedianMiB)).toBeLessThanOrEqual(1.10);
+  expect(ratio(
+    imageWholeChromePeakMedianMiB,
+    pureWholeChromePeakMedianMiB,
+  )).toBeLessThanOrEqual(1.10);
+  expect(ratio(imageAssetBytesMedian, pureAssetBytesMedian)).toBeLessThanOrEqual(1.10);
+});
+
+test("ratchets raster-normalizer paths 1-4 in the real MV3 PDF pipeline", async () => {
+  test.setTimeout(3_600_000);
+  const allVariants: RasterNormalizerVariant[] = [
+    "pure-ts",
+    "webcodecs",
+    "image-bitmap",
+    "pica",
+  ];
+  const requestedVariant = process.env.ATLCLI_RASTER_VARIANT as
+    | RasterNormalizerVariant
+    | undefined;
+  if (requestedVariant && !allVariants.includes(requestedVariant)) {
+    throw new Error(`Unknown ATLCLI_RASTER_VARIANT=${requestedVariant}.`);
+  }
+  const variants = requestedVariant ? [requestedVariant] : allVariants;
+  const results: RasterNormalizerVariantResult[] = [];
+  const failures: Array<{ variant: RasterNormalizerVariant; error: string }> = [];
+  for (const variant of variants) {
+    try {
+      const result = await runRasterNormalizerVariant(variant);
+      results.push(result);
+      console.log(
+        `ATLCLI_RASTER_NORMALIZER_VARIANT_RESULT\n${JSON.stringify(result, null, 2)}`,
+      );
+    } catch (error) {
+      failures.push({
+        variant,
+        error: error instanceof Error ? error.stack ?? error.message : String(error),
+      });
+    }
+  }
+  const report = {
+    schema: "atlcli.chrome-raster-normalizer-ratchet/v1",
+    measuredAt: new Date().toISOString(),
+    host: { platform: process.platform, arch: process.arch },
+    results,
+    failures,
+  };
+  console.log(`ATLCLI_RASTER_NORMALIZER_RATCHET_RESULT\n${JSON.stringify(report, null, 2)}`);
+
+  // Structural ratchet: unsupported candidates are recorded, but the current
+  // lane must stay healthy and every successful candidate must traverse the
+  // same ≥100 MiB corpus, produce a tagged PDF, and release its worker target.
+  const reference = results.find((result) => result.variant === "pure-ts") ?? results[0];
+  expect(reference).toBeDefined();
+  if (!requestedVariant) expect(reference!.variant).toBe("pure-ts");
+  for (const result of results) {
+    expect(result.input.manifestSha256).toBe(reference!.input.manifestSha256);
+    expect(result.output.manifestSha256).toBe(result.input.manifestSha256);
+    expect(result.output.normalizedCalls).toBeGreaterThan(0);
+    expect(result.output.bundleBytes).toBeLessThan(result.input.sourceAssetBytes * 0.75);
+    expect(result.compiler.tagged).toBe(true);
+    expect(result.compiler.attribution.basis).not.toBe("wasm-unavailable");
+    expect(result.normalizer.workerTargetReleased).toBe(true);
+    if (result.input.scale === 1) {
+      expect(result.input.sourceAssetBytes).toBeGreaterThanOrEqual(100 * MIB);
+    }
+    if (result.variant !== "pure-ts" && result.variant !== "pure-worker") {
+      expect(result.normalizer.phaseSamples).toHaveLength(8);
+      expect(new Set(result.normalizer.phaseSamples.map((sample) => sample.detail?.sourceFormat)))
+        .toEqual(new Set(["png", "jpeg"]));
+    }
+  }
+  const outputAssetCounts = new Set(results.map((result) => result.output.images));
+  const normalizedCallCounts = new Set(results.map((result) => result.output.normalizedCalls));
+  expect(outputAssetCounts.size).toBe(1);
+  expect(normalizedCallCounts.size).toBe(1);
+});
 
 test("measures the standard profile against original on the image-heavy corpus (issue #118 P1)", async () => {
   test.setTimeout(3_600_000);

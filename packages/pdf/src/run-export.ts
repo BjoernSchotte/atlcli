@@ -35,7 +35,10 @@ import {
   resolveCodeThemeId,
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
-import type { ExportImageQualityV1 } from "@atlcli/export-media";
+import type {
+  ExportImageQualityV1,
+  RasterNormalizerPortV1,
+} from "@atlcli/export-media";
 
 export interface PdfOutputSink {
   /**
@@ -115,6 +118,11 @@ export interface PreparePdfExportEnv {
   assets: PdfAssetResolver;
   now?: () => number;
   macros?: MacroResolutionOptions;
+  /**
+   * Optional attempt-scoped raster normalizer supplied by a browser host.
+   * Omitting it preserves the pinned in-process pure-TypeScript path.
+   */
+  rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 /** Complete engine state that can be persisted as a ready-to-render checkpoint. */
@@ -386,6 +394,7 @@ export async function preparePdfExport(
       // export's blocks carry no page id of their own, but the caller knows it.
       ...(input.page?.id ? { pageContext: { pageId: input.page.id } } : {}),
       ...(input.imageQuality ? { imageQuality: input.imageQuality } : {}),
+      ...(env.rasterNormalizer ? { rasterNormalizer: env.rasterNormalizer } : {}),
     });
     throwIfAborted(input.signal);
     bundle = serializePdfDocument(prepared, {

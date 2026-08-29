@@ -191,6 +191,16 @@ into the durable job, so Retry and Run again render with the same quality. The
 CLI equivalents are `--pdf-images` and `--pdf-images-ppi` (see
 [DOCX and PDF Export](/confluence/export/#image-quality-profiles)).
 
+:::note[How browser memory is bounded]
+For Standard and Print, the extension prepares supported PNG/JPEG assets in a
+short-lived image worker and disposes it before the PDF compiler starts.
+Unsupported image shapes remain unchanged, and a browser-native decode failure
+restarts the complete prepare once through the deterministic fallback. This is
+automatic: **Original** still starts no image worker, and there is no decoder
+setting to manage. The image-quality profile remains the main control for peak
+memory on large trees.
+:::
+
 ## Code themes
 
 The **Code theme** selector is shared by PDF preview, PDF export, Word export,

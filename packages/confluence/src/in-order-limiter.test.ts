@@ -42,4 +42,15 @@ describe("createInOrderLimiter", () => {
       })
     ).rejects.toThrow("boom");
   });
+
+  test("propagates a synchronous task failure and continues the queue", async () => {
+    const limit = createInOrderLimiter(1);
+    const failed = limit(() => {
+      throw new Error("sync boom");
+    });
+    const next = limit(async () => 42);
+
+    await expect(failed).rejects.toThrow("sync boom");
+    await expect(next).resolves.toBe(42);
+  });
 });

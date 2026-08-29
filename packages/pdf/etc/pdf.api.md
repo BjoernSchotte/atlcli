@@ -1216,6 +1216,7 @@ export interface PreparePdfExportEnv {
     assets: PdfAssetResolver;
     now?: () => number;
     macros?: MacroResolutionOptions;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: PreparePdfOptions
@@ -1230,6 +1231,7 @@ export interface PreparePdfOptions {
         pageUrl?: string;
     };
     imageQuality?: ExportImageQualityV1;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: renderPreparedPdfExport
@@ -2749,6 +2751,7 @@ export interface PreparePdfExportEnv {
     assets: PdfAssetResolver;
     now?: () => number;
     macros?: MacroResolutionOptions;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: PreparePdfOptions
@@ -2763,6 +2766,7 @@ export interface PreparePdfOptions {
         pageUrl?: string;
     };
     imageQuality?: ExportImageQualityV1;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: renderPreparedPdfExport
@@ -4282,6 +4286,7 @@ export interface PreparePdfExportEnv {
     assets: PdfAssetResolver;
     now?: () => number;
     macros?: MacroResolutionOptions;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: PreparePdfOptions
@@ -4296,6 +4301,7 @@ export interface PreparePdfOptions {
         pageUrl?: string;
     };
     imageQuality?: ExportImageQualityV1;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: renderPreparedPdfExport
@@ -5099,6 +5105,7 @@ export interface PreparePdfOptions {
         pageUrl?: string;
     };
     imageQuality?: ExportImageQualityV1;
+    rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 // export: preservePdfSourceCellColor

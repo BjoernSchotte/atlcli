@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { IDBFactory } from "fake-indexeddb";
 import type { ExportBlock } from "@atlcli/confluence/browser";
 import type { ExportJobRequestV1 } from "@atlcli/export-jobs";
+import { encodePng, normalizeRasterAssetV1 } from "@atlcli/export-media";
 import type { PutPdfJobInput, StoredPdfJob } from "../../utils/pdf/job-store.js";
 import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
@@ -47,7 +48,7 @@ describe("productive extension PDF executor", () => {
       maxJobBytes: EXTENSION_PDF_SPOOL_LIMITS_V1.maxJobBytes,
       maxTotalBytes: EXTENSION_PDF_SPOOL_LIMITS_V1.maxTotalBytes,
     });
-    const request = createExtensionPdfJobRequest(input(), {
+    const request = createExtensionPdfJobRequest({ ...input(), imageProfile: "standard" }, {
       requestId: "outer-pdf",
       now,
     });
@@ -62,12 +63,19 @@ describe("productive extension PDF executor", () => {
     const blocks: ExportBlock[] = [{
       type: "paragraph",
       content: [{ type: "text", text: "Background PDF" }],
+    }, {
+      type: "image",
+      source: { kind: "attachment", filename: "neutral.png" },
+      alt: "Neutral generated raster",
     }];
+    const pixels = new Uint8Array(32 * 32 * 4).fill(0xff);
+    const raster = encodePng(pixels, 32, 32, false);
     const pdf = new TextEncoder().encode(
       "%PDF-1.7\n/Type/Page /StructTreeRoot /MarkInfo /Outlines /FontFile2\n%%EOF\n",
     );
     const privateJobs = new Map<string, StoredPdfJob>();
     const compilerCalls: Array<{ jobId: string; parentJobId?: string; hidden?: boolean }> = [];
+    const lifecycle: string[] = [];
     let nextLegacyId = 0;
 
     const executor = createProductiveExtensionPdfExecutor({
@@ -77,6 +85,7 @@ describe("productive extension PDF executor", () => {
       renderPool: new BrowserRenderReservationPoolV1(),
       compilerHost: {
         async compile(jobId) {
+          lifecycle.push("compile");
           const stored = privateJobs.get(jobId);
           if (!stored) throw new Error("Private compiler row was not created.");
           compilerCalls.push({
@@ -109,12 +118,30 @@ describe("productive extension PDF executor", () => {
         },
         env: {
           assets: {
-            resolve: async () => {
-              throw new Error("No assets expected.");
-            },
+            resolve: async () => ({
+              bytes: raster,
+              mediaType: "image/png",
+              filename: "neutral.png",
+            }),
           },
         },
       }),
+      rasterNormalizerLeaseFactory: {
+        async acquire() {
+          lifecycle.push("normalizer-acquire");
+          return {
+            rasterNormalizer: { normalize: normalizeRasterAssetV1 },
+            evidence: {
+              schema: "atlcli.pdf-raster-normalizer-evidence/1",
+              backend: "pure-ts",
+              revision: "pure-ts-v1",
+            },
+            release() {
+              lifecycle.push("normalizer-release");
+            },
+          };
+        },
+      },
       storageOptions: { factory },
       privateCompilerDeps: {
         makeJobId: () => `private-${++nextLegacyId}`,
@@ -164,6 +191,11 @@ describe("productive extension PDF executor", () => {
       hidden: true,
     }]);
     expect(privateJobs.size).toBe(0);
+    expect(lifecycle).toEqual([
+      "normalizer-acquire",
+      "normalizer-release",
+      "compile",
+    ]);
     expect(await catalog.list()).toHaveLength(1);
     expect(await catalog.listLegacyBridges()).toEqual([]);
 

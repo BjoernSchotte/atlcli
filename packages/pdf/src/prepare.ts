@@ -18,6 +18,7 @@ import {
   normalizeRasterAssetV1,
   resolveEffectivePpi,
   type ExportImageQualityV1,
+  type RasterNormalizerPortV1,
 } from "@atlcli/export-media";
 import { LANDSCAPE_TEXT_WIDTH_PT, PORTRAIT_TEXT_WIDTH_PT } from "./serialize.js";
 import type {
@@ -189,6 +190,12 @@ export interface PreparePdfOptions {
    * keeps the ORIGINAL bytes for anything it cannot decode faithfully.
    */
   imageQuality?: ExportImageQualityV1;
+  /**
+   * Optional async raster host used by browser runtimes. Omitted keeps the
+   * pinned pure-TypeScript implementation. The port changes only pixel
+   * decode/resize execution; target geometry and output codec remain shared.
+   */
+  rasterNormalizer?: RasterNormalizerPortV1;
 }
 
 /**
@@ -320,6 +327,14 @@ export async function preparePdfDocument(
   // aggregate-only diagnostics — counts and bytes, never media or names.
   const effectivePpi = options.imageQuality ? resolveEffectivePpi(options.imageQuality) : null;
   const envelopePt = effectivePpi === null ? 0 : renderEnvelopeWidthPt(blocks);
+  const normalizeRaster = options.rasterNormalizer
+    ? (request: Parameters<RasterNormalizerPortV1["normalize"]>[0]) =>
+        options.rasterNormalizer!.normalize(request)
+    : normalizeRasterAssetV1;
+  // Decoded rasters are the largest prepare-side allocation. The port may be
+  // backed by native browser APIs, but PDF preparation still owns the
+  // single-heavy-work invariant and deterministic completion order.
+  const normalizeLimit = createInOrderLimiter(1);
   const profileStats = {
     normalized: 0,
     sourceBytes: 0,
@@ -333,22 +348,35 @@ export async function preparePdfDocument(
     options.onProgress?.({ phase: "assets", done: assetsDone, total: assetTotal, ...(detail ? { detail } : {}) });
   };
 
-  const addAsset = (
+  const addAsset = async (
     rawAsset: PdfResolvedAsset,
     prefix: string,
     meta: { filename: string; pageId?: string; authoredWidthPx?: number }
-  ): string => {
+  ): Promise<string> => {
     let asset = validateResolvedAsset(rawAsset, maxAssetBytes);
     if (effectivePpi !== null) {
-      const normalized = normalizeRasterAssetV1({
-        bytes: asset.bytes,
-        mediaType: asset.mediaType,
-        renderEnvelopeWidthPt: envelopePt,
-        ppi: effectivePpi,
-        ...(meta.authoredWidthPx !== undefined
-          ? { authored: { widthPx: meta.authoredWidthPx } }
-          : {}),
-      });
+      let normalized;
+      try {
+        normalized = await normalizeLimit(() =>
+          Promise.resolve(normalizeRaster({
+            bytes: asset.bytes,
+            mediaType: asset.mediaType,
+            renderEnvelopeWidthPt: envelopePt,
+            ppi: effectivePpi,
+            ...(meta.authoredWidthPx !== undefined
+              ? { authored: { widthPx: meta.authoredWidthPx } }
+              : {}),
+          })),
+        );
+      } catch (error) {
+        if (isAbortError(error) || error instanceof AssetPipelineError) throw error;
+        throw new AssetPipelineError(
+          `Raster normalization failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          { cause: error },
+        );
+      }
       if (normalized.kind === "normalized") {
         profileStats.normalized += 1;
         profileStats.sourceBytes += asset.bytes.byteLength;
@@ -431,7 +459,7 @@ export async function preparePdfDocument(
             options.signal ? { signal: options.signal } : {},
           ),
         );
-        const assetPath = addAsset(resolved, "inline-image", {
+        const assetPath = await addAsset(resolved, "inline-image", {
           filename,
           ...(owningPage ? { pageId: owningPage } : {}),
           ...(node.width !== undefined ? { authoredWidthPx: node.width } : {}),
@@ -586,7 +614,7 @@ export async function preparePdfDocument(
                   options.signal ? { signal: options.signal } : {}
                 )
               );
-              const assetPath = addAsset(resolved, "image", {
+              const assetPath = await addAsset(resolved, "image", {
                 filename,
                 ...(owningPage ? { pageId: owningPage } : {}),
                 ...(block.width !== undefined ? { authoredWidthPx: block.width } : {}),
@@ -681,7 +709,7 @@ export async function preparePdfDocument(
             const rendered = await renderDiagram(block.code);
             if (rendered.kind === "svg") {
               const bytes = new TextEncoder().encode(rendered.svg);
-              const assetPath = addAsset(
+              const assetPath = await addAsset(
                 { bytes, mediaType: "image/svg+xml", filename: "diagram.svg" },
                 "diagram",
                 { filename: "diagram.svg" }
@@ -780,7 +808,7 @@ export async function preparePdfDocument(
             const caption = await prepareCaption(block.caption, `${path}.caption`);
             const { caption: _sourceCaption, ...chart } = block;
             const svg = renderTanStackChartSvgV1(block.chart);
-            const visualAssetPath = addAsset(
+            const visualAssetPath = await addAsset(
               { bytes: new TextEncoder().encode(svg), mediaType: "image/svg+xml", filename: "chart.svg" },
               "chart",
               { filename: "chart.svg" },

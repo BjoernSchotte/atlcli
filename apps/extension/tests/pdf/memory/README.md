@@ -70,3 +70,87 @@ This is a benchmark and an architecture gate, not a stable performance budget:
 absolute figures can move with Chrome, V8, Typst, PDF.js, fonts, and the host
 platform. The structural assertions intentionally check only the conclusions
 the design relies on.
+
+## Raster normalizer paths 1–4
+
+The `ratchets raster-normalizer paths 1-4` test compares the current panel-main
+pure-TS normalizer with disposable-worker WebCodecs, target-sized ImageBitmap,
+and Pica 10 lanes. Every lane uses the same full image-heavy corpus, target
+planner, pinned encoder, job store, compiler, and PDF validator. Candidate
+workers pause on one PNG and one JPEG at source/decoded/target/encoded holds,
+then must disappear before Typst starts.
+
+The test samples the whole Chromium process-tree RSS every 25 ms in addition
+to CDP heap data. That is essential: browser-native decode surfaces do not
+appear in V8 backing storage and WebCodecs can otherwise look artificially
+cheap. Results print as `ATLCLI_RASTER_NORMALIZER_RATCHET_RESULT`; the reviewed
+host-local interpretation is recorded in
+`specs/issue-118-adaptive-browser-pdf-memory/RATCHET.md`.
+
+Run just this ratchet after building the harness:
+
+```bash
+bun run --cwd apps/extension prebench:memory-chrome
+node node_modules/@playwright/test/cli.js test \
+  --config apps/extension/tests/pdf/memory/playwright.config.ts \
+  --grep "ratchets raster-normalizer paths 1-4"
+```
+
+For diagnosis, select one lane with `ATLCLI_RASTER_VARIANT=pure-ts`,
+`webcodecs`, `image-bitmap`, or `pica`. The default remains the repo-pinned
+Playwright Chromium because current branded Chrome ignores command-line
+unpacked-extension loading. `ATLCLI_MEMORY_BROWSER_CHANNEL=chrome` is an
+explicit compatibility probe, not the reproducible performance lane.
+
+## Productive pure-worker ratchet
+
+The required productization gate uses the real production host adapter and
+worker rather than the dated four-lane benchmark worker. It runs panel-main
+and productive pure-worker paths twice, compares output-asset and tagged-PDF
+digests, samples process-tree RSS at 25 ms, checks the body-free heartbeat
+receipt, and proves the worker target is gone before Typst starts:
+
+```bash
+bun run --cwd apps/extension prebench:memory-chrome
+node node_modules/@playwright/test/cli.js test \
+  --config apps/extension/tests/pdf/memory/playwright.config.ts \
+  --grep "productive pure raster worker"
+```
+
+The accepted machine-local evidence and exact runtime are recorded in
+`specs/browser-raster-normalizer-productization/RATCHET.md`. Pica and
+WebCodecs remain historical evidence lanes and are not part of this required
+product gate.
+
+## Productive ImageBitmap default ratchet and browser matrix
+
+The productive extension default is compared directly with its pure-worker
+fallback, twice per runtime. It preserves the complete tagged-PDF pipeline while
+asserting output stability, worker termination before Typst, paired
+process-tree RSS, cleanup, Typst peak, whole-Chrome peak, asset bytes, and the
+body-free productive receipt:
+
+```bash
+bun run --cwd apps/extension prebench:memory-chrome
+node --conditions=development node_modules/@playwright/test/cli.js test \
+  --config apps/extension/tests/pdf/memory/playwright.config.ts \
+  --grep "productive ImageBitmap"
+```
+
+The default remains pinned Chromium. To repeat the same gate with an official
+Chrome for Testing binary, pass its executable explicitly:
+
+```bash
+ATLCLI_MEMORY_EXECUTABLE_PATH=/path/to/chrome \
+  node --conditions=development node_modules/@playwright/test/cli.js test \
+  --config apps/extension/tests/pdf/memory/playwright.config.ts \
+  --grep "productive ImageBitmap"
+```
+
+Required Linux CI runs pinned Chromium and current official Chrome for Testing
+Stable. It preserves the paired memory, cleanup, determinism, and lifecycle
+assertions but sets `ATLCLI_PRODUCTIVE_RASTER_ASSERT_TIMING=0`: shared runners
+record prepare and heartbeat timing without treating noisy host latency as a
+product regression. Local and homelab runs retain the timing gates by default.
+Set `ATLCLI_MEMORY_OUTPUT_DIR` when a caller needs the attached JSON report in
+a durable artifact directory.

@@ -4,10 +4,10 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "memory.e2e.ts",
-  outputDir: process.env.ATLCLI_MEMORY_OUTPUT_DIR
-    ?? join(tmpdir(), "atlcli-extension-memory-playwright"),
-  timeout: 240_000,
+  testMatch: "raster-quality.e2e.ts",
+  outputDir: process.env.ATLCLI_RASTER_QUALITY_OUTPUT_DIR
+    ?? join(tmpdir(), "atlcli-raster-quality-playwright"),
+  timeout: 180_000,
   workers: 1,
   retries: 0,
   reporter: "line",

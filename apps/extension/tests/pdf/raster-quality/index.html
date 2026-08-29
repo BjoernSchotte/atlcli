@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>atlcli raster quality ratchet</title>
+    <style>
+      :root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; }
+      body { margin: 0; padding: 16px; background: #f7f7f5; color: #172033; }
+      output { display: block; margin: 0 0 16px; font-weight: 700; }
+      #quality-sheet { display: grid; gap: 16px; width: max-content; }
+      .fixture { border: 1px solid #c9ced8; border-radius: 8px; padding: 10px; background: white; }
+      .fixture h2 { margin: 0 0 8px; font-size: 14px; }
+      .comparison { display: grid; grid-template-columns: repeat(3, max-content); gap: 10px; align-items: start; }
+      figure { margin: 0; }
+      figcaption { margin-bottom: 4px; font-size: 11px; color: #536078; }
+      .checker { padding: 4px; border: 1px solid #d5d9e1; background-color: #fff; background-image: linear-gradient(45deg,#ddd 25%,transparent 25%),linear-gradient(-45deg,#ddd 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ddd 75%),linear-gradient(-45deg,transparent 75%,#ddd 75%); background-size: 12px 12px; background-position: 0 0,0 6px,6px -6px,-6px 0; }
+      img { display: block; image-rendering: auto; }
+      [data-scale="4"] img { image-rendering: pixelated; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Raster quality ratchet</h1>
+      <output data-testid="quality-state">ready</output>
+      <section id="quality-sheet" data-testid="quality-sheet"></section>
+    </main>
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>

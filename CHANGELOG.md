@@ -49,6 +49,11 @@ All notable changes to atlcli will be documented in this file.
 - **export:** Buffer large tree/space exports through bounded, restartable
   source and content-addressed asset checkpoints. One global heavy-render slot
   prevents DOCX and PDF memory peaks from overlapping.
+- **extension:** Prepare eligible non-original PDF rasters with target-sized
+  ImageBitmap decoding in a disposable worker. Unsupported or failed native
+  paths retain the deterministic pure-TypeScript fallback, and the worker is
+  released before Typst compilation; public image-profile semantics are
+  unchanged.
 
 ### Documentation
 
