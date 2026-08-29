@@ -159,3 +159,25 @@ cells passed on the recorded implementation SHA. Shared runners record but do
 not assert prepare/heartbeat latency; the paired memory and output gates remain
 fail-closed. The separate current branded-Chrome UI load is a release gate and
 is not substituted by command-line extension flags.
+
+## Branded Chrome unpacked-extension gate
+
+On 2026-08-29, the built neutral MV3 quality harness was loaded through the
+normal **Extensions -> Load unpacked** UI in the installed branded Google
+Chrome 150 on macOS arm64. This proves the user-visible unpacked-extension
+installation path; it is not used as a substitute for the current-engine
+matrix, which separately passed official Chrome for Testing Stable 152.
+
+The UI-loaded extension completed all 13 supported fixtures and kept all 12
+unsupported controls without starting a worker for the unsupported-only run.
+Two consecutive runs reproduced the matrix digests above and the 1.033x
+candidate/pure aggregate-byte ratio. Both leases reported `released`; the two
+supported runs used and disposed their workers, while the unsupported run
+reported `workerStarted: false`.
+
+The in-browser numerical gate reproduced RGB MAE 3.2833, RMSE 18.665, p95 13,
+alpha MAE 0.055, alpha max 1, and the two already named byte outliers. Manual
+review of every source/pure/ImageBitmap triplet at both 100% and 400% showed no
+crop, rotation, blank output, transparency loss, visible halo, or other
+regression. Only the committed synthetic corpus was displayed; no tenant or
+customer data was loaded.

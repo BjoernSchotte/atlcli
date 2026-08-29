@@ -1,7 +1,7 @@
 # Browser raster normalizer productization
 
-- Status: Phases 0-3 passed; automated Phase 4 browser/RSS matrix passed;
-  branded-Chrome UI gate and Phase 5 rollout remain
+- Status: Phases 0-4 passed; Phase 5 default rollout and final exact-SHA
+  verification remain
 - Scope baseline: `0b101e56` (`perf(pdf): add browser raster normalizer ratchet`)
 - Evidence: `specs/issue-118-adaptive-browser-pdf-memory/RATCHET.md`
 - Productive evidence: `specs/browser-raster-normalizer-productization/RATCHET.md`
@@ -45,10 +45,14 @@ cells; current-Stable Linux measured 114.40 MiB versus 207.09 MiB normalizer RSS
 delta for ImageBitmap versus pure worker, while pinned Linux remained inside
 the non-regression gate at 147.31 MiB versus 143.66 MiB.
 
-ImageBitmap is not yet the production default. Phase 4 still requires the
-explicit current branded-Chrome unpacked-extension UI run. Phase 5 then changes
-the single extension host constant, proves the packed durable-job matrix, and
-reruns the final exact-SHA checks before the plan is complete.
+ImageBitmap is not yet the production default. The built neutral harness also
+passed a normal **Load unpacked** UI run in installed branded Google Chrome 150
+on macOS, including two-run determinism, lifecycle and unsupported-input gates,
+and review of every triplet at 100% and 400%. That UI gate proves the normal
+extension-loading path; official Chrome for Testing Stable 152 separately
+covers the current engine. Phase 5 now changes the single extension host
+constant, proves the packed durable-job matrix, and reruns the final exact-SHA
+checks before the plan is complete.
 
 ## Evidence carried forward
 
