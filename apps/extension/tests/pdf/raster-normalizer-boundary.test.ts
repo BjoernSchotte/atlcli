@@ -50,8 +50,14 @@ describe("productive raster normalizer boundary", () => {
       'new Worker(new URL("../../workers/raster-normalizer.ts", import.meta.url)',
     );
     expect(offscreen).toContain('type: "module"');
-    expect(offscreen).toContain('"disabled" | "pure-worker"');
+    expect(offscreen).toContain(
+      '"disabled" | "pure-worker" | "image-bitmap"',
+    );
+    expect(offscreen).toContain(
+      '"image-bitmap" as ProductiveRasterNormalizerModeV1;',
+    );
     expect(offscreen).toContain('PRODUCTIVE_RASTER_NORMALIZER_MODE_V1 === "pure-worker"');
+    expect(offscreen).toContain('PRODUCTIVE_RASTER_NORMALIZER_MODE_V1 === "image-bitmap"');
     expect(offscreen).not.toContain("URL.createObjectURL");
     expect(executor).toContain("rasterNormalizerLeaseFactory: options.rasterNormalizerLeaseFactory");
   });

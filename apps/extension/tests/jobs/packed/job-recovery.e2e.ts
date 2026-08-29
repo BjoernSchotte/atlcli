@@ -359,7 +359,7 @@ async function createPackedPngBytes(width = 2, height = 2): Promise<number[]> {
 
 interface PackedRasterNormalizerReceiptV1 {
   schema: "atlcli.extension-raster-normalizer-receipt/1";
-  backend: "pure-ts";
+  backend: "pure-ts" | "image-bitmap";
   revision: string;
   jobId: string;
   leaseEpoch: number;
@@ -1228,12 +1228,12 @@ test("a packed MV3 PDF resolves embedded Whiteboard ADF offline", async () => {
   });
 });
 
-test("a packed standard PDF uses and disposes the productive pure raster worker", async () => {
+test("a packed standard PDF uses and disposes the productive ImageBitmap raster worker", async () => {
   await ensureCatalog();
   const assetPath = `/wiki/download/attachments/${JOB_R}/large.png`;
   const storage = {
     [JOB_R]:
-      '<p>Productive pure worker proof</p>' +
+      '<p>Productive ImageBitmap worker proof</p>' +
       '<ac:image ac:alt="Large neutral raster"><ri:attachment ri:filename="large.png"/></ac:image>',
   };
   const sourcePng = await createPackedPngBytes(1_600, 800);
@@ -1258,7 +1258,7 @@ test("a packed standard PDF uses and disposes the productive pure raster worker"
   const receipt = await readPackedRasterNormalizerReceipt();
   expect(receipt).toMatchObject({
     schema: "atlcli.extension-raster-normalizer-receipt/1",
-    backend: "pure-ts",
+    backend: "image-bitmap",
     jobId: JOB_R,
     leaseEpoch: 1,
     workerStarted: true,

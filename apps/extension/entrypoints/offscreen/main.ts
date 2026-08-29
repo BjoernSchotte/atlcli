@@ -43,8 +43,8 @@ const BROWSER_RESEARCH_RECOVERY_LEASE_MS_V1 = 60_000;
 
 /** Compile-time rollback seam retained through the first measured release. */
 type ProductiveRasterNormalizerModeV1 = "disabled" | "pure-worker" | "image-bitmap";
-const PRODUCTIVE_RASTER_NORMALIZER_MODE_V1: ProductiveRasterNormalizerModeV1 =
-  "pure-worker";
+const PRODUCTIVE_RASTER_NORMALIZER_MODE_V1 =
+  "image-bitmap" as ProductiveRasterNormalizerModeV1;
 
 interface ProductiveRasterNormalizerDiagnosticsV1 {
   schema: "atlcli.extension-raster-normalizer-diagnostics/1";
