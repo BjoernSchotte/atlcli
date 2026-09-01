@@ -13,7 +13,7 @@
 import { describe, expect, it } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import {
   getActiveProfile,
   loadConfig,
@@ -23,10 +23,11 @@ import {
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import {
-  buildPdfImportReview,
-  createPdfiumFactsAdapter,
+  buildPdfImportReviewV3,
+  createPdfiumFactsAdapterV2,
   parsePdfSplitPolicy,
 } from "@atlcli/import-pdf";
+import type { ImportBlock, ImportRun } from "@atlcli/import-core";
 import type { DestinationGovernance } from "@atlcli/import-docx";
 import {
   buildDocxFixture,
@@ -55,6 +56,8 @@ const PROFILE_NAME = process.env.ATLCLI_E2E_PROFILE?.trim() || "mayflower";
 const ROOT = resolve(import.meta.dir, "../../../..");
 const CLI = resolve(ROOT, "dist/index.js");
 const FIXTURES = resolve(ROOT, "specs/import-pdf-mvp/fixtures");
+const QUALITY_FIXTURES = resolve(ROOT, "specs/pdf-import-quality/fixtures");
+const QUALITY_MANIFEST = resolve(QUALITY_FIXTURES, "manifest.json");
 const PDFIUM_WASM = resolve(ROOT, "packages/import-pdf/vendor/pdfium.wasm");
 const CASE_TIMEOUT_MS = 10 * 60_000;
 
@@ -86,6 +89,34 @@ interface AdfSummary {
   mediaIds: string[];
   linkHrefs: string[];
   flow: string[];
+}
+
+interface OrderedTextBlockSummary {
+  type: "heading" | "paragraph" | "list-paragraph" | "table-row";
+  depth: number;
+  text: string;
+}
+
+interface OrderedContentSummary {
+  blocks: OrderedTextBlockSummary[];
+  linkHrefs: string[];
+  mediaIds: string[];
+  tableCount: number;
+  fallbackScopes: Array<"region" | "page">;
+}
+
+interface PdfQualityTruthEntry {
+  id: string;
+  path: string;
+  expected: {
+    orderedBlocks: Array<Omit<OrderedTextBlockSummary, "depth"> & {
+      id: string;
+      pageIndex: number;
+      depth?: number;
+    }>;
+    safeLinks: string[];
+    ownership: { fallbackPages: number[]; localizedRepairRegions: number };
+  };
 }
 
 interface PublishedProof {
@@ -179,6 +210,160 @@ function summarizeAdf(value: string): AdfSummary {
   return summary;
 }
 
+function runsSummary(runs: readonly ImportRun[]): { text: string; linkHrefs: string[] } {
+  return {
+    text: runs.map((run) => run.kind === "text" ? run.text : "\n").join("").normalize("NFC"),
+    linkHrefs: runs.flatMap((run) =>
+      run.kind === "text" && run.marks?.link?.href ? [run.marks.link.href] : []
+    ),
+  };
+}
+
+function summarizeOrderedImportBlocks(blocks: readonly ImportBlock[]): OrderedContentSummary {
+  const summary: OrderedContentSummary = {
+    blocks: [],
+    linkHrefs: [],
+    mediaIds: [],
+    tableCount: 0,
+    fallbackScopes: [],
+  };
+  const visit = (block: ImportBlock, depth: number, listParagraph = false): void => {
+    if (block.type === "heading" || block.type === "paragraph") {
+      const inline = runsSummary(block.runs);
+      summary.blocks.push({
+        type: listParagraph ? "list-paragraph" : block.type,
+        depth,
+        text: inline.text,
+      });
+      summary.linkHrefs.push(...inline.linkHrefs);
+      return;
+    }
+    if (block.type === "list") {
+      for (const item of block.items) {
+        item.blocks.forEach((child) => visit(child, depth, true));
+        if (item.child) visit(item.child, depth + 1);
+      }
+      return;
+    }
+    if (block.type === "table") {
+      summary.tableCount += 1;
+      for (const row of block.rows) {
+        const cells = row.cells.map((cell) => cell.blocks.map((child) => {
+          if (child.type !== "heading" && child.type !== "paragraph") return child.type;
+          const inline = runsSummary(child.runs);
+          summary.linkHrefs.push(...inline.linkHrefs);
+          return inline.text;
+        }).join("\n"));
+        summary.blocks.push({ type: "table-row", depth, text: cells.join(" | ").normalize("NFC") });
+      }
+      return;
+    }
+    if (block.type === "image") {
+      summary.mediaIds.push(block.assetId);
+      if (block.presentation === "region-fallback") summary.fallbackScopes.push("region");
+      if (block.presentation === "page-fallback") summary.fallbackScopes.push("page");
+      return;
+    }
+    if (block.type === "blockquote" || block.type === "disclosure") {
+      block.blocks.forEach((child) => visit(child, depth));
+    }
+  };
+  blocks.forEach((block) => visit(block, 0));
+  return summary;
+}
+
+function summarizeOrderedAdf(value: string): OrderedContentSummary {
+  const root = JSON.parse(value) as Record<string, unknown>;
+  const summary: OrderedContentSummary = {
+    blocks: [],
+    linkHrefs: [],
+    mediaIds: [],
+    tableCount: 0,
+    fallbackScopes: [],
+  };
+  const contentOf = (node: Record<string, unknown>): Record<string, unknown>[] =>
+    Array.isArray(node.content)
+      ? node.content.filter((child): child is Record<string, unknown> => Boolean(child) && typeof child === "object")
+      : [];
+  const inlineSummary = (node: Record<string, unknown>): { text: string; linkHrefs: string[] } => {
+    let text = typeof node.text === "string" ? node.text : node.type === "hardBreak" ? "\n" : "";
+    const linkHrefs: string[] = [];
+    if (Array.isArray(node.marks)) {
+      for (const mark of node.marks) {
+        if (!mark || typeof mark !== "object") continue;
+        const record = mark as Record<string, unknown>;
+        if (record.type !== "link" || !record.attrs || typeof record.attrs !== "object") continue;
+        const href = (record.attrs as Record<string, unknown>).href;
+        if (typeof href === "string") linkHrefs.push(href);
+      }
+    }
+    for (const child of contentOf(node)) {
+      const inline = inlineSummary(child);
+      text += inline.text;
+      linkHrefs.push(...inline.linkHrefs);
+    }
+    return { text: text.normalize("NFC"), linkHrefs };
+  };
+  const media = (node: Record<string, unknown>): void => {
+    if (node.type === "media" && node.attrs && typeof node.attrs === "object") {
+      const attrs = node.attrs as Record<string, unknown>;
+      if (typeof attrs.id === "string") summary.mediaIds.push(attrs.id);
+      if (typeof attrs.alt === "string") {
+        if (attrs.alt.startsWith("Visual fallback for source page")) summary.fallbackScopes.push("region");
+        if (attrs.alt.startsWith("Original visual view of source page")) summary.fallbackScopes.push("page");
+      }
+    }
+    contentOf(node).forEach(media);
+  };
+  const visit = (node: Record<string, unknown>, depth: number, listParagraph = false): void => {
+    if (node.type === "heading" || node.type === "paragraph") {
+      const inline = inlineSummary(node);
+      summary.blocks.push({
+        type: listParagraph ? "list-paragraph" : node.type,
+        depth,
+        text: inline.text,
+      });
+      summary.linkHrefs.push(...inline.linkHrefs);
+      return;
+    }
+    if (node.type === "bulletList" || node.type === "orderedList") {
+      for (const item of contentOf(node)) {
+        for (const child of contentOf(item)) {
+          if (child.type === "bulletList" || child.type === "orderedList") visit(child, depth + 1);
+          else visit(child, depth, true);
+        }
+      }
+      return;
+    }
+    if (node.type === "table") {
+      summary.tableCount += 1;
+      for (const row of contentOf(node)) {
+        const cells = contentOf(row).map((cell) => {
+          const inline = inlineSummary(cell);
+          summary.linkHrefs.push(...inline.linkHrefs);
+          return inline.text;
+        });
+        summary.blocks.push({ type: "table-row", depth, text: cells.join(" | ").normalize("NFC") });
+      }
+      return;
+    }
+    if (node.type === "mediaSingle" || node.type === "media") {
+      media(node);
+      return;
+    }
+    contentOf(node).forEach((child) => visit(child, depth));
+  };
+  visit(root, 0);
+  return summary;
+}
+
+async function pdfQualityTruth(id: string): Promise<PdfQualityTruthEntry> {
+  const manifest = JSON.parse(await readFile(QUALITY_MANIFEST, "utf8")) as { fixtures?: PdfQualityTruthEntry[] };
+  const fixture = manifest.fixtures?.find((candidate) => candidate.id === id);
+  if (!fixture) throw new Error(`Neutral PDF quality truth ${id} is missing.`);
+  return fixture;
+}
+
 async function stampAndTrack(
   tracker: E2eResourceTracker,
   port: E2eConfluencePort,
@@ -209,6 +394,7 @@ async function withPublishedPdf(
     receipt: PdfCliReceipt;
     pages: PublishedPage[];
     summaries: Map<string, AdfSummary>;
+    orderedSummaries: Map<string, OrderedContentSummary>;
     client: ConfluenceClient;
   }) => Promise<void> | void,
 ): Promise<void> {
@@ -221,7 +407,7 @@ async function withPublishedPdf(
     { confluence: port },
     async (tracker): Promise<PublishedProof> => {
       const receipt = await runBuiltCli<PdfCliReceipt>([
-        "wiki", "import", resolve(FIXTURES, fixture),
+        "wiki", "import", isAbsolute(fixture) ? fixture : resolve(FIXTURES, fixture),
         "--profile", PROFILE_NAME,
         "--space", E2E_SPACE_KEY,
         "--title", title,
@@ -234,14 +420,16 @@ async function withPublishedPdf(
       expect(receipt.pagesCreated).toBe(pages.length);
       await stampAndTrack(tracker, port, pages);
       const summaries = new Map<string, AdfSummary>();
+      const orderedSummaries = new Map<string, OrderedContentSummary>();
       for (const page of pages) {
         const adf = await client.getPageAdf(page.id);
         summaries.set(page.id, summarizeAdf(adf.body.value));
+        orderedSummaries.set(page.id, summarizeOrderedAdf(adf.body.value));
         const details = await client.getPageDetails(page.id);
         expect(details.title).toBe(page.title);
         if (page.parentId !== undefined) expect(details.parentId).toBe(page.parentId);
       }
-      await verify({ receipt, pages, summaries, client });
+      await verify({ receipt, pages, summaries, orderedSummaries, client });
       return { ids: pages.map((page) => page.id), titles: pages.map((page) => page.title) };
     },
     {
@@ -323,6 +511,65 @@ describe.skipIf(!RUN).serial("built CLI PDF import live Cloud certification", ()
       expect(summary.mediaIds).toHaveLength(1);
       expect((await attachmentDigests(client, receipt.page.id)).size).toBeGreaterThanOrEqual(1);
     });
+  }, CASE_TIMEOUT_MS);
+
+  it("proves fragmented extraction before exact ordered ADF semantic readback", async () => {
+    const truth = await pdfQualityTruth("tagged-fragmented-boundaries");
+    expect(truth.path).toBe("independent-fragmented-tagged.pdf");
+    const expectedBlocks = truth.expected.orderedBlocks.map((block) => ({
+      type: block.type,
+      depth: block.depth ?? 0,
+      text: block.text.normalize("NFC"),
+    }));
+    const fixturePath = resolve(QUALITY_FIXTURES, truth.path);
+    const sourceBytes = new Uint8Array(await readFile(fixturePath));
+    const wasmBinary = new Uint8Array(await readFile(PDFIUM_WASM));
+    const extraction = await buildPdfImportReviewV3(
+      sourceBytes,
+      createPdfiumFactsAdapterV2({ wasmBinary }),
+      {
+        target: {
+          spaceKey: E2E_SPACE_KEY,
+          title: "Neutral fragmented extraction proof",
+          deployment: "cloud",
+          supportsPageTree: true,
+          evidence: "profile",
+        },
+        splitPolicy: parsePdfSplitPolicy("off"),
+        scanPolicy: "report",
+      },
+    );
+    const extracted = summarizeOrderedImportBlocks(extraction.document.blocks);
+    expect(extraction.schema).toBe("atlcli.pdf-import-review/3");
+    expect(extracted.blocks).toEqual(expectedBlocks);
+    expect(extracted.linkHrefs).toEqual(truth.expected.safeLinks);
+    expect(extracted.tableCount).toBe(0);
+    expect(extracted.mediaIds).toEqual([]);
+    expect(extracted.fallbackScopes).toEqual([]);
+    expect(extraction.pages).toEqual([expect.objectContaining({
+      geometryRepairRegionCount: truth.expected.ownership.localizedRepairRegions,
+      fallbackScope: "none",
+      unresolvedBoundaryCount: 0,
+      unownedCharacterCount: 0,
+      duplicateOwnershipAttemptCount: 0,
+      fidelityDecisionCodes: ["pdf/source-fidelity-accounted"],
+    })]);
+
+    await withPublishedPdf(
+      "import-pdf-fragmented",
+      fixturePath,
+      ["--split", "off", "--scan-policy", "report"],
+      async ({ receipt, orderedSummaries, client }) => {
+        const readback = orderedSummaries.get(receipt.page.id)!;
+        expect(receipt.source.sha256).toBe(extraction.source.sha256);
+        expect(readback.blocks).toEqual(expectedBlocks);
+        expect(readback.linkHrefs).toEqual(truth.expected.safeLinks);
+        expect(readback.tableCount).toBe(0);
+        expect(readback.mediaIds).toEqual([]);
+        expect(readback.fallbackScopes).toEqual([]);
+        expect(await client.listAttachments(receipt.page.id)).toEqual([]);
+      },
+    );
   }, CASE_TIMEOUT_MS);
 
   it("publishes qualified two-column untagged text in the proven reading order", async () => {
@@ -443,7 +690,7 @@ describe.skipIf(!RUN).serial("built CLI PDF import live Cloud certification", ()
       "after-readback",
     ] as const) {
       const title = makeE2eTitle(`import-pdf-fail-${stage}`);
-      const review = await buildPdfImportReview(sourceBytes, createPdfiumFactsAdapter({ wasmBinary }), {
+      const review = await buildPdfImportReviewV3(sourceBytes, createPdfiumFactsAdapterV2({ wasmBinary }), {
         target: {
           spaceKey: E2E_SPACE_KEY,
           title,

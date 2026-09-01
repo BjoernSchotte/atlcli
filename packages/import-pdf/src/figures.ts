@@ -10,24 +10,29 @@ import {
   PDF_FIGURE_POLICY_REVISION,
   type PdfAssetMaterializationRequestV1,
   type PdfDecisionEvidenceV1,
+  type PdfDecisionEvidenceV2,
   type PdfFactsAdapter,
+  type PdfFactsAdapterV2,
   type PdfFactsV1,
+  type PdfFactsV2,
   type PdfMaterializedAssetV1,
   type PdfNormalizedRect,
   type PdfPageFactsV1,
+  type PdfPageFactsV2,
   type PdfStructureNodeFact,
 } from "./contracts.js";
-import { digestPdfCanonical, digestPdfFacts } from "./canonical.js";
+import { digestPdfCanonical, digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
 import { expandNormalizedRect, rectsTouch } from "./fallbacks.js";
 import { PdfImportError } from "./issues.js";
-import { taggedRuns } from "./links.js";
-import { analyzeGeometryReadingOrder } from "./reading-order.js";
-import { flattenStructure, structureRole } from "./structure.js";
-import { analyzeUntaggedTable } from "./tables.js";
-import { correlateTaggedText, unionRects } from "./text.js";
+import { correlateTaggedTextWithLinksV2, taggedRuns, taggedRunsV2 } from "./links.js";
+import { analyzeGeometryReadingOrder, analyzeGeometryReadingOrderV2 } from "./reading-order.js";
+import { flattenStructure, flattenStructureV2, structureChildrenV2, structureRole, structureRoleV2 } from "./structure.js";
+import { analyzeUntaggedTable, analyzeUntaggedTableV2 } from "./tables.js";
+import { correlateTaggedText, orderedDescendantMcidsV2, unionRects } from "./text.js";
 import { pageHasQualifiedDigitalLayout } from "./untagged.js";
 
 export const PDF_FIGURE_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-figure-semantics/1" as const;
+export const PDF_FIGURE_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-figure-semantics/2" as const;
 
 export const PDF_FIGURE_POLICY_V1 = Object.freeze({
   renderDpi: 144,
@@ -42,6 +47,12 @@ export interface PdfFigureBaseSemanticsV1 {
   factsDigest: string;
   document: ImportDocumentV2;
   evidence: PdfDecisionEvidenceV1[];
+}
+
+export interface PdfFigureBaseSemanticsV2 {
+  factsDigest: string;
+  document: ImportDocumentV2;
+  evidence: PdfDecisionEvidenceV2[];
 }
 
 export interface PdfFigureDecisionV1 {
@@ -62,6 +73,16 @@ export interface PdfFigureSemanticsV1 {
   policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
   document: ImportDocumentV2;
   evidence: PdfDecisionEvidenceV1[];
+  figures: PdfFigureDecisionV1[];
+  semanticDigest: string;
+}
+
+export interface PdfFigureSemanticsV2 {
+  schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V2;
+  factsDigest: string;
+  policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+  document: ImportDocumentV2;
+  evidence: PdfDecisionEvidenceV2[];
   figures: PdfFigureDecisionV1[];
   semanticDigest: string;
 }
@@ -95,7 +116,10 @@ function visualOrder(
   return a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x;
 }
 
-function aspectMatches(page: PdfPageFactsV1, image: PdfPageFactsV1["images"][number]): boolean {
+function aspectMatches(
+  page: Pick<PdfPageFactsV1, "widthPoints" | "heightPoints">,
+  image: PdfPageFactsV1["images"][number],
+): boolean {
   if (!image.bbox || image.pixelWidth < 1 || image.pixelHeight < 1 || image.bbox.height <= 0) return false;
   const placed = (image.bbox.width * page.widthPoints) / (image.bbox.height * page.heightPoints);
   const pixels = image.pixelWidth / image.pixelHeight;
@@ -146,6 +170,61 @@ function taggedCandidates(page: PdfPageFactsV1): VisualCandidate[] {
             captionText.characters,
             page.annotations,
             captionText.usedActualText ? captionText.text : undefined,
+          ).runs,
+          sourceRefs: [caption!.id],
+        },
+      } : {}),
+    });
+  }
+  return candidates;
+}
+
+function taggedCandidatesV2(page: PdfPageFactsV2): VisualCandidate[] {
+  const candidates: VisualCandidate[] = [];
+  const figures = flattenStructureV2(page.structures)
+    .filter((node) => structureRoleV2(node) === "Figure");
+  for (const figure of figures) {
+    const ownMcids = new Set(orderedDescendantMcidsV2(figure));
+    const images = page.images.filter((image) => image.mcid !== null && ownMcids.has(image.mcid));
+    const paths = page.paths.filter((path) => path.mcid !== null && ownMcids.has(path.mcid));
+    const bbox = unionRects([...images.map((image) => image.bbox), ...paths.map((path) => path.bbox)]);
+    if (!bbox) continue;
+    const caption = structureChildrenV2(figure)
+      .find((child) => structureRoleV2(child) === "Caption");
+    const captionText = caption ? correlateTaggedTextWithLinksV2(page, caption) : null;
+    const captionBlockId = captionText?.text ? `${caption!.id}:caption` : undefined;
+    const direct = images.length === 1 && paths.length === 0 && aspectMatches(page, images[0]!);
+    const sourceId = figure.id;
+    candidates.push({
+      sourceId,
+      sourceRefs: [figure.id, ...images.map((image) => image.id), ...paths.map((path) => path.id)],
+      pageIndex: page.index,
+      bbox: direct ? bbox : expandNormalizedRect(bbox),
+      request: direct
+        ? {
+            id: `${sourceId}:asset`,
+            pageIndex: page.index,
+            kind: "image-object",
+            objectId: images[0]!.id,
+          }
+        : {
+            id: `${sourceId}:asset`,
+            pageIndex: page.index,
+            kind: "rendered-region",
+            bbox: expandNormalizedRect(bbox),
+            dpi: PDF_FIGURE_POLICY_V1.renderDpi,
+          },
+      mode: direct ? "native-raster" : "rendered-region",
+      ...(figure.alt.trim() ? { alt: figure.alt.trim() } : {}),
+      ...(captionBlockId && captionText ? {
+        captionBlockId,
+        captionBlock: {
+          id: captionBlockId,
+          type: "paragraph",
+          runs: taggedRunsV2(
+            captionText.assembly,
+            captionText.characters,
+            page.annotations,
           ).runs,
           sourceRefs: [caption!.id],
         },
@@ -246,20 +325,118 @@ function untaggedCandidates(page: PdfPageFactsV1): VisualCandidate[] {
   return candidates;
 }
 
-function tableFallbackCandidates(base: PdfFigureBaseSemanticsV1): VisualCandidate[] {
-  const byPage = new Map<number, PdfDecisionEvidenceV1[]>();
-  for (const evidence of base.evidence) {
-    if (!evidence.decisionCode.includes("table") || evidence.outcome !== "approximated" || !evidence.locator.bbox) continue;
-    byPage.set(evidence.locator.pageIndex, [...(byPage.get(evidence.locator.pageIndex) ?? []), evidence]);
+function untaggedCandidatesV2(page: PdfPageFactsV2): VisualCandidate[] {
+  if (!pageHasQualifiedDigitalLayout(page)) return [];
+  const analysis = analyzeGeometryReadingOrderV2(page);
+  const table = analyzeUntaggedTableV2(page, analysis);
+  const tablePaths = new Set(
+    table.mode === "native" && table.blocks[0]?.type === "table"
+      ? table.blocks[0].sourceRefs ?? []
+      : [],
+  );
+  const items: VisualItem[] = [
+    ...page.images.flatMap((image) => image.bbox ? [{
+      id: image.id,
+      kind: "image" as const,
+      bbox: image.bbox,
+      objectId: image.id,
+    }] : []),
+    ...page.paths.flatMap((path) => path.bbox && !tablePaths.has(path.id) ? [{
+      id: path.id,
+      kind: "path" as const,
+      bbox: path.bbox,
+    }] : []),
+  ];
+  const candidates: VisualCandidate[] = [];
+  const components = visualComponents(items)
+    .map((component) => ({ component, bbox: unionRects(component.map((item) => item.bbox))! }))
+    .filter(({ component, bbox }) =>
+      component.some((item) => item.kind === "image")
+      || (bbox.width >= PDF_FIGURE_POLICY_V1.minimumVectorWidth
+        && bbox.height >= PDF_FIGURE_POLICY_V1.minimumVectorHeight)
+    )
+    .sort((left, right) => visualOrder(left, right));
+  const captionFragments = analysis.fragments.filter((fragment) =>
+    /^(?:figure|fig\.?|abbildung)\s*\d+/iu.test(fragment.text)
+  );
+  for (const [index, entry] of components.entries()) {
+    const images = entry.component.filter((item) => item.kind === "image");
+    const paths = entry.component.filter((item) => item.kind === "path");
+    const imageFact = images.length === 1
+      ? page.images.find((image) => image.id === images[0]!.id)
+      : undefined;
+    const direct = images.length === 1 && paths.length === 0
+      && imageFact && aspectMatches(page, imageFact);
+    const sourceId = direct ? imageFact.id : `pdf:p${page.index}:visual-v2:${index}`;
+    const caption = captionFragments
+      .map((fragment) => ({
+        fragment,
+        gap: fragment.bbox.y - (entry.bbox.y + entry.bbox.height),
+      }))
+      .filter(({ gap }) => gap >= -0.01 && gap <= PDF_FIGURE_POLICY_V1.captionMaximumGap)
+      .sort((left, right) => left.gap - right.gap)[0]?.fragment;
+    candidates.push({
+      sourceId,
+      sourceRefs: entry.component.map((item) => item.id),
+      pageIndex: page.index,
+      bbox: direct ? entry.bbox : expandNormalizedRect(entry.bbox),
+      request: direct
+        ? {
+            id: `${sourceId}:asset`,
+            pageIndex: page.index,
+            kind: "image-object",
+            objectId: imageFact.id,
+          }
+        : {
+            id: `${sourceId}:asset`,
+            pageIndex: page.index,
+            kind: "rendered-region",
+            bbox: expandNormalizedRect(entry.bbox),
+            dpi: PDF_FIGURE_POLICY_V1.renderDpi,
+          },
+      mode: direct ? "native-raster" : "rendered-region",
+      ...(caption ? { captionBlockId: `${caption.id}:paragraph` } : {}),
+    });
   }
-  return [...byPage.entries()].flatMap(([pageIndex, evidence]) => {
+  return candidates;
+}
+
+type PdfFigureEvidence = PdfDecisionEvidenceV1 | PdfDecisionEvidenceV2;
+type PdfFigureBaseSemantics = PdfFigureBaseSemanticsV1 | PdfFigureBaseSemanticsV2;
+type PdfFigureAdapter = PdfFactsAdapter | PdfFactsAdapterV2;
+
+function tableFallbackCandidates(base: PdfFigureBaseSemantics): VisualCandidate[] {
+  const seen = new Set<string>();
+  return base.document.issues.flatMap((issue) => {
+    if (
+      issue.outcome !== "approximated"
+      || !["pdf-import/table-tagged-linearized", "pdf-import/table-alignment-only-linearized"].includes(issue.code)
+    ) return [];
+    const sourceId = issue.sourceRefs?.[0];
+    const pageIndex = issue.context?.pageIndex;
+    if (!sourceId || typeof pageIndex !== "number" || seen.has(sourceId)) return [];
+    seen.add(sourceId);
+    const tableBlocks = base.document.blocks.filter((block) =>
+      block.id === sourceId
+      || block.id.startsWith(`${sourceId}:`)
+      || block.sourceRefs?.includes(sourceId) === true
+    );
+    const targetIds = new Set(tableBlocks.flatMap((block) => [block.id, ...(block.sourceRefs ?? [])]));
+    const evidence = base.evidence.filter((item) =>
+      item.locator.pageIndex === pageIndex
+      && item.outcome === "approximated"
+      && (
+        item.sourceId === sourceId
+        || targetIds.has(item.sourceId)
+        || Boolean(item.targetNodeId && targetIds.has(item.targetNodeId))
+      )
+    );
     const bbox = unionRects(evidence.map((item) => item.locator.bbox));
     if (!bbox) return [];
-    const sourceId = `pdf:p${pageIndex}:table-region-fallback`;
     const expanded = expandNormalizedRect(bbox);
     return [{
       sourceId,
-      sourceRefs: evidence.map((item) => item.sourceId),
+      sourceRefs: [sourceId, ...evidence.map((item) => item.sourceId)],
       pageIndex,
       bbox: expanded,
       request: {
@@ -276,7 +453,7 @@ function tableFallbackCandidates(base: PdfFigureBaseSemanticsV1): VisualCandidat
 
 function blockLocation(
   block: ImportBlock,
-  evidence: readonly PdfDecisionEvidenceV1[],
+  evidence: readonly PdfFigureEvidence[],
 ): { pageIndex: number; y: number; x: number; height: number } {
   const refs = new Set([block.id, ...(block.sourceRefs ?? [])]);
   const matches = evidence.filter((item) =>
@@ -291,10 +468,10 @@ function blockLocation(
   };
 }
 
-export function mergePdfBlocksByEvidence(
+function mergePdfBlocksByEvidenceInternal(
   baseBlocks: readonly ImportBlock[],
   additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }>,
-  evidence: readonly PdfDecisionEvidenceV1[],
+  evidence: readonly PdfFigureEvidence[],
 ): ImportBlock[] {
   const tokens = [
     ...baseBlocks.map((block, index) => ({
@@ -321,6 +498,24 @@ export function mergePdfBlocksByEvidence(
   return tokens.map((token) => token.block);
 }
 
+export function mergePdfBlocksByEvidence(
+  baseBlocks: readonly ImportBlock[],
+  additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }>,
+  evidence: readonly PdfDecisionEvidenceV1[],
+): ImportBlock[];
+export function mergePdfBlocksByEvidence(
+  baseBlocks: readonly ImportBlock[],
+  additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }>,
+  evidence: readonly PdfDecisionEvidenceV2[],
+): ImportBlock[];
+export function mergePdfBlocksByEvidence(
+  baseBlocks: readonly ImportBlock[],
+  additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }>,
+  evidence: readonly PdfFigureEvidence[],
+): ImportBlock[] {
+  return mergePdfBlocksByEvidenceInternal(baseBlocks, additions, evidence);
+}
+
 function sanitizedDigestDocument(document: ImportDocumentV2, assets: readonly PdfMaterializedAssetV1[]) {
   const digests = new Map(assets.map((asset) => [asset.sha256, asset]));
   return {
@@ -342,33 +537,48 @@ function sanitizedDigestDocument(document: ImportDocumentV2, assets: readonly Pd
   };
 }
 
-export async function preservePdfFigures(
-  facts: PdfFactsV1,
+interface PreservedFigureSemantics<E extends PdfFigureEvidence> {
+  factsDigest: string;
+  policyRevision: typeof PDF_FIGURE_POLICY_REVISION;
+  document: ImportDocumentV2;
+  evidence: E[];
+  figures: PdfFigureDecisionV1[];
+  semanticDigest: string;
+}
+
+function versionedFigureEvidence<E extends PdfFigureEvidence>(
+  entry: PdfDecisionEvidenceV1,
+  v2: boolean,
+): E {
+  return (v2 ? { ...entry, boundaryDecisionIds: [] } : entry) as E;
+}
+
+async function preservePdfFigureCandidates<E extends PdfFigureEvidence>(
   factsDigest: string,
   sourceBytes: Uint8Array,
-  adapter: PdfFactsAdapter,
-  base: PdfFigureBaseSemanticsV1,
-): Promise<PdfFigureSemanticsV1> {
-  if (await digestPdfFacts(facts) !== factsDigest || base.factsDigest !== factsDigest) {
-    throw new PdfImportError("pdf/provenance-drift", "Figure materialization facts differ from the reviewed semantics.");
-  }
-  if (await sha256Hex(sourceBytes) !== facts.inputSha256 || sourceBytes.byteLength !== facts.inputBytes) {
-    throw new PdfImportError("pdf/provenance-drift", "Figure materialization bytes differ from the analyzed PDF.");
-  }
-  const candidates = [
-    ...facts.pages.flatMap((page) => facts.tagged ? taggedCandidates(page) : untaggedCandidates(page)),
-    ...tableFallbackCandidates(base),
-  ].sort((a, b) => visualOrder(a, b) || a.sourceId.localeCompare(b.sourceId));
+  adapter: PdfFigureAdapter,
+  base: { document: ImportDocumentV2; evidence: E[] },
+  candidates: VisualCandidate[],
+  schema: typeof PDF_FIGURE_SEMANTICS_SCHEMA_V1 | typeof PDF_FIGURE_SEMANTICS_SCHEMA_V2,
+  v2: boolean,
+): Promise<PreservedFigureSemantics<E>> {
   const materialized = await adapter.materialize(sourceBytes, candidates.map((candidate) => candidate.request));
   if (materialized.length !== candidates.length) {
     throw new PdfImportError("pdf/incomplete", "PDF visual materialization did not return every requested asset.");
   }
   const byRequest = new Map(materialized.map((asset) => [asset.requestId, asset]));
+  const materializedSourceIds = new Set(candidates.map((candidate) => candidate.sourceId));
   const documentAssets = new Map<string, ImportAsset>();
   const issues: ImportIssue[] = base.document.issues
-    .filter((issue) => issue.code !== "pdf-import/tagged-figure-deferred")
+    .filter((issue) =>
+      issue.code !== "pdf-import/tagged-figure-deferred"
+      || !issue.sourceRefs?.some((sourceRef) => materializedSourceIds.has(sourceRef))
+    )
     .map((issue) => ({ ...issue }));
-  const evidence = base.evidence.filter((item) => item.decisionCode !== "pdf/tagged-figure-deferred");
+  const evidence = base.evidence.filter((item) =>
+    item.decisionCode !== "pdf/tagged-figure-deferred"
+    || !materializedSourceIds.has(item.sourceId)
+  );
   const additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }> = [];
   const figures: PdfFigureDecisionV1[] = [];
   for (const candidate of candidates) {
@@ -422,7 +632,7 @@ export async function preservePdfFigures(
       });
     }
     const attached = candidate.mode !== "native-raster";
-    evidence.push({
+    evidence.push(versionedFigureEvidence<E>({
       sourceId: candidate.sourceId,
       targetNodeId: blockId,
       locator: {
@@ -435,9 +645,9 @@ export async function preservePdfFigures(
       decisionCode: attached ? "pdf/figure-rendered-region-attached" : "pdf/figure-raster-native",
       outcome: attached ? "attached" : "native",
       analyzerRevision: PDF_FIGURE_POLICY_REVISION,
-    });
+    }, v2));
     if (candidate.captionBlock) {
-      evidence.push({
+      evidence.push(versionedFigureEvidence<E>({
         sourceId: candidate.captionBlock.sourceRefs?.[0] ?? candidate.captionBlock.id,
         targetNodeId: candidate.captionBlock.id,
         locator: { pageIndex: candidate.pageIndex },
@@ -446,7 +656,7 @@ export async function preservePdfFigures(
         decisionCode: "pdf/figure-caption-native",
         outcome: "native",
         analyzerRevision: PDF_FIGURE_POLICY_REVISION,
-      });
+      }, v2));
     }
     if (!candidate.alt && candidate.mode !== "table-region-fallback") {
       issues.push({
@@ -486,12 +696,12 @@ export async function preservePdfFigures(
   }
   const document: ImportDocumentV2 = {
     ...base.document,
-    blocks: mergePdfBlocksByEvidence(base.document.blocks, additions, evidence),
+    blocks: mergePdfBlocksByEvidenceInternal(base.document.blocks, additions, evidence),
     assets: [...base.document.assets, ...documentAssets.values()],
     issues,
   };
   const digestInput = {
-    schema: PDF_FIGURE_SEMANTICS_SCHEMA_V1,
+    schema,
     factsDigest,
     policyRevision: PDF_FIGURE_POLICY_REVISION,
     document: sanitizedDigestDocument(document, materialized),
@@ -499,12 +709,73 @@ export async function preservePdfFigures(
     figures,
   };
   return {
-    schema: PDF_FIGURE_SEMANTICS_SCHEMA_V1,
     factsDigest,
     policyRevision: PDF_FIGURE_POLICY_REVISION,
     document,
     evidence,
     figures,
     semanticDigest: await digestPdfCanonical(digestInput),
+  };
+}
+
+export async function preservePdfFigures(
+  facts: PdfFactsV1,
+  factsDigest: string,
+  sourceBytes: Uint8Array,
+  adapter: PdfFactsAdapter,
+  base: PdfFigureBaseSemanticsV1,
+): Promise<PdfFigureSemanticsV1> {
+  if (await digestPdfFacts(facts) !== factsDigest || base.factsDigest !== factsDigest) {
+    throw new PdfImportError("pdf/provenance-drift", "Figure materialization facts differ from the reviewed semantics.");
+  }
+  if (await sha256Hex(sourceBytes) !== facts.inputSha256 || sourceBytes.byteLength !== facts.inputBytes) {
+    throw new PdfImportError("pdf/provenance-drift", "Figure materialization bytes differ from the analyzed PDF.");
+  }
+  const candidates = [
+    ...facts.pages.flatMap((page) => facts.tagged ? taggedCandidates(page) : untaggedCandidates(page)),
+    ...tableFallbackCandidates(base),
+  ].sort((left, right) => visualOrder(left, right) || left.sourceId.localeCompare(right.sourceId));
+  return {
+    schema: PDF_FIGURE_SEMANTICS_SCHEMA_V1,
+    ...await preservePdfFigureCandidates(
+      factsDigest,
+      sourceBytes,
+      adapter,
+      base,
+      candidates,
+      PDF_FIGURE_SEMANTICS_SCHEMA_V1,
+      false,
+    ),
+  };
+}
+
+export async function preservePdfFiguresV2(
+  facts: PdfFactsV2,
+  factsDigest: string,
+  sourceBytes: Uint8Array,
+  adapter: PdfFactsAdapterV2,
+  base: PdfFigureBaseSemanticsV2,
+): Promise<PdfFigureSemanticsV2> {
+  if (await digestPdfFactsV2(facts) !== factsDigest || base.factsDigest !== factsDigest) {
+    throw new PdfImportError("pdf/provenance-drift", "Figure materialization facts differ from the reviewed semantics.");
+  }
+  if (await sha256Hex(sourceBytes) !== facts.inputSha256 || sourceBytes.byteLength !== facts.inputBytes) {
+    throw new PdfImportError("pdf/provenance-drift", "Figure materialization bytes differ from the analyzed PDF.");
+  }
+  const candidates = [
+    ...facts.pages.flatMap((page) => facts.tagged ? taggedCandidatesV2(page) : untaggedCandidatesV2(page)),
+    ...tableFallbackCandidates(base),
+  ].sort((left, right) => visualOrder(left, right) || left.sourceId.localeCompare(right.sourceId));
+  return {
+    schema: PDF_FIGURE_SEMANTICS_SCHEMA_V2,
+    ...await preservePdfFigureCandidates(
+      factsDigest,
+      sourceBytes,
+      adapter,
+      base,
+      candidates,
+      PDF_FIGURE_SEMANTICS_SCHEMA_V2,
+      true,
+    ),
   };
 }

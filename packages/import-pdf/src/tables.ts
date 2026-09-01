@@ -7,16 +7,40 @@ import {
 } from "@atlcli/import-core";
 import {
   PDF_TABLE_POLICY_REVISION,
+  PDF_TABLE_POLICY_REVISION_V2,
   type PdfDecisionEvidenceV1,
+  type PdfDecisionEvidenceV2,
   type PdfNormalizedRect,
   type PdfPageFactsV1,
+  type PdfPageFactsV2,
   type PdfStructureAttributeFact,
   type PdfStructureNodeFact,
+  type PdfStructureNodeFactV2,
 } from "./contracts.js";
-import { taggedRuns } from "./links.js";
-import type { PdfGeometryFragmentV1, PdfReadingOrderPageV1 } from "./reading-order.js";
-import { structureRole } from "./structure.js";
-import { correlateTaggedText, descendantMcids, unionRects } from "./text.js";
+import {
+  appendPdfTextAssemblyV2,
+  pdfTextAssemblyConfidenceV2,
+  pdfTextAssemblyIssuesV2,
+  pdfTextAssemblyOutcomeV2,
+  pdfTextBoundaryDecisionIdsV2,
+} from "./assembly-evidence.js";
+import { correlateTaggedTextWithLinksV2, taggedRuns, taggedRunsV2 } from "./links.js";
+import {
+  assembleGeometryFragmentsV2,
+  type PdfGeometryFragmentV1,
+  type PdfGeometryFragmentV2,
+  type PdfReadingOrderPageV1,
+  type PdfReadingOrderPageV2,
+} from "./reading-order.js";
+import { flattenStructureV2, structureChildrenV2, structureRole, structureRoleV2 } from "./structure.js";
+import {
+  correlateTaggedText,
+  descendantMcids,
+  orderedDescendantMcidsV2,
+  unresolvedStructureKidIndexesV2,
+  unionRects,
+} from "./text.js";
+import type { PdfTextBoundaryDecisionV2, PdfTextTransformationV2 } from "./text-assembly.js";
 
 export const PDF_TABLE_POLICY_V1 = Object.freeze({
   maximumRows: 250,
@@ -45,6 +69,61 @@ export interface PdfTableProjectionV1 {
   evidence: PdfDecisionEvidenceV1[];
   issues: ImportIssue[];
   claimedCharacterIndexes: number[];
+}
+
+export interface PdfTableProjectionV2 {
+  mode: PdfTableProjectionMode;
+  sourceId: string;
+  pageIndex: number;
+  bbox?: PdfNormalizedRect;
+  fragmentIds: string[];
+  blocks: ImportBlock[];
+  evidence: PdfDecisionEvidenceV2[];
+  issues: ImportIssue[];
+  claimedCharacterIndexes: number[];
+  boundaries: PdfTextBoundaryDecisionV2[];
+  transformations: PdfTextTransformationV2[];
+}
+
+export interface PdfTaggedTableRowsV2 {
+  rows: PdfStructureNodeFactV2[];
+  valid: boolean;
+  reason: "qualified" | "row-count" | "row-wrapper-content" | "row-structure";
+}
+
+const TAGGED_TABLE_ROW_GROUP_ROLES = new Set(["THead", "TBody", "TFoot"]);
+const TAGGED_TABLE_NEUTRAL_CONTAINER_ROLES = new Set(["Document", "Part", "Art", "Sect", "Div"]);
+
+/** Collects table rows in exact structure-kid order without accepting sibling semantic content. */
+export function collectTaggedTableRowsV2(table: PdfStructureNodeFactV2): PdfTaggedTableRowsV2 {
+  const rows: PdfStructureNodeFactV2[] = [];
+  let reason: PdfTaggedTableRowsV2["reason"] = "qualified";
+  const visit = (container: PdfStructureNodeFactV2, nested: boolean): void => {
+    const rowsBefore = rows.length;
+    if (nested && container.directMcids.length > 0) reason = "row-wrapper-content";
+    for (const kid of container.kids) {
+      if (kid.kind !== "element") {
+        if (nested) reason = "row-wrapper-content";
+        continue;
+      }
+      const role = structureRoleV2(kid.node);
+      if (role === "TR") {
+        rows.push(kid.node);
+        continue;
+      }
+      if (TAGGED_TABLE_ROW_GROUP_ROLES.has(role) || TAGGED_TABLE_NEUTRAL_CONTAINER_ROLES.has(role)) {
+        visit(kid.node, true);
+        continue;
+      }
+      reason = "row-structure";
+    }
+    if (nested && rows.length === rowsBefore) reason = "row-structure";
+  };
+  visit(table, false);
+  if (rows.length === 0 || rows.length > PDF_TABLE_POLICY_V1.maximumRows) {
+    reason = "row-count";
+  }
+  return { rows, valid: reason === "qualified", reason };
 }
 
 function tableLocator(
@@ -279,6 +358,297 @@ export function projectTaggedTable(
   };
 }
 
+function tableLocatorV2(
+  page: PdfPageFactsV2,
+  sourceId: string,
+  bbox?: PdfNormalizedRect,
+  mcids: readonly number[] = [],
+  characterIndexes: readonly number[] = [],
+) {
+  return {
+    pageIndex: page.index,
+    ...(page.label ? { pageLabel: page.label } : {}),
+    ...(bbox ? { bbox } : {}),
+    structurePath: sourceId,
+    ...(mcids.length > 0
+      ? { markedContentIds: mcids.map((mcid) => `p${page.index}:mcid:${mcid}`) }
+      : {}),
+    ...(characterIndexes.length > 0 ? { characterIndexes: [...characterIndexes] } : {}),
+  };
+}
+
+function taggedCellV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2) {
+  const correlated = correlateTaggedTextWithLinksV2(page, node);
+  const linked = taggedRunsV2(correlated.assembly, correlated.characters, page.annotations);
+  const rowspan = attributeNumber(node.attributes, "rowspan")!;
+  const colspan = attributeNumber(node.attributes, "colspan")!;
+  const paragraphId = `${node.id}:paragraph`;
+  return {
+    cell: {
+      id: `${node.id}:cell`,
+      sourceRefs: [node.id],
+      header: structureRoleV2(node) === "TH",
+      ...(rowspan > 1 ? { rowspan } : {}),
+      ...(colspan > 1 ? { colspan } : {}),
+      blocks: [{
+        id: paragraphId,
+        type: "paragraph" as const,
+        runs: linked.runs,
+        sourceRefs: [node.id],
+      }],
+    } satisfies ImportTableCell,
+    correlated,
+  };
+}
+
+function validTaggedGridV2(
+  page: PdfPageFactsV2,
+  rows: readonly PdfStructureNodeFactV2[],
+  corruptMcids: ReadonlySet<number>,
+): { valid: boolean; reason: string } {
+  if (rows.length === 0 || rows.length > PDF_TABLE_POLICY_V1.maximumRows) {
+    return { valid: false, reason: "row-count" };
+  }
+  const occupied = new Map<string, string>();
+  let width = 0;
+  for (const [rowIndex, row] of rows.entries()) {
+    const cells = structureChildrenV2(row);
+    if (structureRoleV2(row) !== "TR" || cells.length === 0) {
+      return { valid: false, reason: "row-structure" };
+    }
+    let columnIndex = 0;
+    for (const cell of cells) {
+      const role = structureRoleV2(cell);
+      if (role !== "TH" && role !== "TD") return { valid: false, reason: "cell-role" };
+      while (occupied.has(`${rowIndex}:${columnIndex}`)) columnIndex += 1;
+      const mcids = orderedDescendantMcidsV2(cell);
+      const rowspan = attributeNumber(cell.attributes, "rowspan");
+      const colspan = attributeNumber(cell.attributes, "colspan");
+      const correlated = correlateTaggedTextWithLinksV2(page, cell);
+      const nestedTable = flattenStructureV2(structureChildrenV2(cell))
+        .some((descendant) => structureRoleV2(descendant) === "Table");
+      if (
+        mcids.length === 0
+        || mcids.some((mcid) => corruptMcids.has(mcid))
+        || correlated.text.length === 0
+        || correlated.hasUnicodeError
+        || correlated.characters.some((character) => Math.abs(character.angleRadians) > 0.001)
+        || nestedTable
+        || correlated.assembly.unresolvedBoundaryCount > 0
+        || unresolvedStructureKidIndexesV2(cell).length > 0
+        || rowspan === null
+        || colspan === null
+        || rowspan < 1
+        || colspan < 1
+        || rowspan > PDF_TABLE_POLICY_V1.maximumSpan
+        || colspan > PDF_TABLE_POLICY_V1.maximumSpan
+        || rowIndex + rowspan > rows.length
+      ) return { valid: false, reason: "cell-evidence" };
+      for (let rowOffset = 0; rowOffset < rowspan; rowOffset += 1) {
+        for (let columnOffset = 0; columnOffset < colspan; columnOffset += 1) {
+          const key = `${rowIndex + rowOffset}:${columnIndex + columnOffset}`;
+          if (occupied.has(key)) return { valid: false, reason: "span-overlap" };
+          occupied.set(key, cell.id);
+        }
+      }
+      columnIndex += colspan;
+      width = Math.max(width, columnIndex);
+    }
+  }
+  if (width === 0 || width > PDF_TABLE_POLICY_V1.maximumColumns) {
+    return { valid: false, reason: "column-count" };
+  }
+  for (let row = 0; row < rows.length; row += 1) {
+    for (let column = 0; column < width; column += 1) {
+      if (!occupied.has(`${row}:${column}`)) return { valid: false, reason: "grid-hole" };
+    }
+  }
+  return { valid: true, reason: "qualified" };
+}
+
+function linearizeTaggedTableV2(
+  page: PdfPageFactsV2,
+  table: PdfStructureNodeFactV2,
+  rows: readonly PdfStructureNodeFactV2[],
+  reason: string,
+): PdfTableProjectionV2 {
+  const blocks: ImportBlock[] = [];
+  const evidence: PdfDecisionEvidenceV2[] = [];
+  const issues: ImportIssue[] = [];
+  const claimed = new Set<number>();
+  const boxes: PdfNormalizedRect[] = [];
+  const boundaries: PdfTextBoundaryDecisionV2[] = [];
+  const transformations: PdfTextTransformationV2[] = [];
+  for (const [rowIndex, row] of rows.entries()) {
+    const cells = structureChildrenV2(row).filter((cell) =>
+      ["TH", "TD"].includes(structureRoleV2(cell))
+    );
+    const texts = cells.map((cell) => {
+      const correlated = correlateTaggedTextWithLinksV2(page, cell);
+      appendPdfTextAssemblyV2({ boundaries, transformations }, correlated.assembly);
+      issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, cell.id));
+      correlated.characters.forEach((character) => claimed.add(character.index));
+      if (correlated.bbox) boxes.push(correlated.bbox);
+      return correlated.text;
+    });
+    if (texts.length === 0) continue;
+    const id = `${table.id}:linear-row:${rowIndex}`;
+    blocks.push({
+      id,
+      type: "paragraph",
+      runs: [{ kind: "text", text: texts.join(" | ") }],
+      sourceRefs: cells.map((cell) => cell.id),
+    });
+    for (const cell of cells) {
+      const correlated = correlateTaggedTextWithLinksV2(page, cell);
+      const unresolved = correlated.assembly.unresolvedBoundaryCount > 0;
+      evidence.push({
+        sourceId: cell.id,
+        targetNodeId: id,
+        locator: tableLocatorV2(
+          page,
+          cell.id,
+          correlated.bbox ?? undefined,
+          orderedDescendantMcidsV2(cell),
+          correlated.assembly.characterIndexes,
+        ),
+        basis: ["structure-tree", "marked-content", "text-boundary"],
+        confidence: unresolved ? pdfTextAssemblyConfidenceV2(correlated.assembly) : 0.7,
+        decisionCode: unresolved
+          ? "pdf/table-tagged-boundary-unresolved"
+          : "pdf/table-tagged-linearized",
+        outcome: unresolved ? "reported" : "approximated",
+        analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+        boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(correlated.assembly),
+      });
+    }
+  }
+  const bbox = unionRects(boxes);
+  issues.push({
+    code: "pdf-import/table-tagged-linearized",
+    severity: "warning",
+    outcome: "approximated",
+    message: "Tagged table evidence was not a complete non-overlapping grid; cell text was linearized and a rendered-region fallback is required.",
+    sourceRefs: [table.id],
+    context: { pageIndex: page.index, reason, rows: rows.length },
+  });
+  return {
+    mode: "linearized-render-required",
+    sourceId: table.id,
+    pageIndex: page.index,
+    ...(bbox ? { bbox } : {}),
+    fragmentIds: [],
+    blocks,
+    evidence,
+    issues,
+    claimedCharacterIndexes: [...claimed].sort((left, right) => left - right),
+    boundaries,
+    transformations,
+  };
+}
+
+export function projectTaggedTableV2(
+  page: PdfPageFactsV2,
+  table: PdfStructureNodeFactV2,
+  corruptMcids: ReadonlySet<number>,
+): PdfTableProjectionV2 {
+  const collected = collectTaggedTableRowsV2(table);
+  const rows = collected.rows;
+  const qualification = page.rotation !== 0
+    ? { valid: false, reason: "page-rotation" }
+    : !collected.valid
+      ? collected
+      : validTaggedGridV2(page, rows, corruptMcids);
+  if (!qualification.valid) {
+    return linearizeTaggedTableV2(page, table, rows, qualification.reason);
+  }
+  const projectedRows: ImportTableRow[] = [];
+  const evidence: PdfDecisionEvidenceV2[] = [];
+  const issues: ImportIssue[] = [];
+  const claimed = new Set<number>();
+  const boxes: PdfNormalizedRect[] = [];
+  const boundaries: PdfTextBoundaryDecisionV2[] = [];
+  const transformations: PdfTextTransformationV2[] = [];
+  for (const row of rows) {
+    const projectedCells: ImportTableCell[] = [];
+    for (const node of structureChildrenV2(row)) {
+      const projected = taggedCellV2(page, node);
+      const assembly = projected.correlated.assembly;
+      projectedCells.push(projected.cell);
+      projected.correlated.characters.forEach((character) => claimed.add(character.index));
+      if (projected.correlated.bbox) boxes.push(projected.correlated.bbox);
+      appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
+      issues.push(...pdfTextAssemblyIssuesV2(assembly, page.index, node.id));
+      evidence.push({
+        sourceId: node.id,
+        targetNodeId: projected.cell.id,
+        locator: tableLocatorV2(
+          page,
+          node.id,
+          projected.correlated.bbox ?? undefined,
+          orderedDescendantMcidsV2(node),
+          assembly.characterIndexes,
+        ),
+        basis: [
+          "structure-tree",
+          "marked-content",
+          "text-boundary",
+          ...(projected.correlated.bbox ? ["text-geometry" as const] : []),
+        ],
+        confidence: pdfTextAssemblyConfidenceV2(assembly),
+        decisionCode: assembly.unresolvedBoundaryCount > 0
+          ? "pdf/table-tagged-cell-boundary-unresolved"
+          : "pdf/table-tagged-cell-native",
+        outcome: pdfTextAssemblyOutcomeV2(assembly),
+        analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+        boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(assembly),
+      });
+    }
+    projectedRows.push({ cells: projectedCells });
+  }
+  const id = `${table.id}:table`;
+  const bbox = unionRects(boxes);
+  const cellEvidence = evidence.filter((item) => item.decisionCode.includes("cell"));
+  const outcome = cellEvidence.some((item) => item.outcome !== "native") ? "reported" : "native";
+  evidence.push({
+    sourceId: table.id,
+    targetNodeId: id,
+    locator: tableLocatorV2(
+      page,
+      table.id,
+      bbox ?? undefined,
+      orderedDescendantMcidsV2(table),
+      [...claimed].sort((left, right) => left - right),
+    ),
+    basis: [
+      "structure-tree",
+      "marked-content",
+      "text-boundary",
+      ...(bbox ? ["text-geometry" as const] : []),
+    ],
+    confidence: cellEvidence.length > 0
+      ? Math.min(...cellEvidence.map((item) => item.confidence))
+      : 0,
+    decisionCode: outcome === "native" ? "pdf/table-tagged-native" : "pdf/table-tagged-reported",
+    outcome,
+    analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+    boundaryDecisionIds: [...new Set(cellEvidence.flatMap((item) => item.boundaryDecisionIds))],
+  });
+  return {
+    mode: outcome === "native" ? "native" : "linearized-render-required",
+    sourceId: table.id,
+    pageIndex: page.index,
+    ...(bbox ? { bbox } : {}),
+    fragmentIds: [],
+    blocks: [{ id, type: "table", rows: projectedRows, sourceRefs: [table.id] }],
+    evidence,
+    issues,
+    claimedCharacterIndexes: [...claimed].sort((left, right) => left - right),
+    boundaries,
+    transformations,
+  };
+}
+
 function uniqueCoordinates(values: readonly number[]): number[] {
   const sorted = [...values].sort((a, b) => a - b);
   const result: number[] = [];
@@ -491,5 +861,322 @@ export function analyzeUntaggedTable(
       evidence: [],
       issues: [],
       claimedCharacterIndexes: [],
+    };
+}
+
+function nativeUntaggedGridV2(
+  page: PdfPageFactsV2,
+  analysis: PdfReadingOrderPageV2,
+): PdfTableProjectionV2 | null {
+  const paths = page.paths.filter((path) =>
+    path.segmentCount >= 2
+    && path.bbox
+    && (
+      path.stroke
+      || path.fillMode !== 0 && (
+        path.bbox.width <= PDF_TABLE_POLICY_V1.pathAxisTolerance
+        || path.bbox.height <= PDF_TABLE_POLICY_V1.pathAxisTolerance
+      )
+    )
+  );
+  const vertical = paths.filter((path) =>
+    path.bbox!.width <= PDF_TABLE_POLICY_V1.pathAxisTolerance
+    && path.bbox!.height > PDF_TABLE_POLICY_V1.pathAxisTolerance
+  );
+  const horizontal = paths.filter((path) =>
+    path.bbox!.height <= PDF_TABLE_POLICY_V1.pathAxisTolerance
+    && path.bbox!.width > PDF_TABLE_POLICY_V1.pathAxisTolerance
+  );
+  const xs = uniqueCoordinates(vertical.map((path) => path.bbox!.x));
+  const ys = uniqueCoordinates(horizontal.map((path) => path.bbox!.y));
+  if (xs.length < 3 || ys.length < 3) return null;
+  const minX = xs[0]!;
+  const maxX = xs.at(-1)!;
+  const minY = ys[0]!;
+  const maxY = ys.at(-1)!;
+  if (
+    maxX - minX < PDF_TABLE_POLICY_V1.minimumGridWidth
+    || maxY - minY < PDF_TABLE_POLICY_V1.minimumGridHeight
+  ) return null;
+  const coversExtent = (
+    intervals: ReadonlyArray<readonly [number, number]>,
+    minimum: number,
+    maximum: number,
+  ): boolean => {
+    const ordered = [...intervals].sort((left, right) => left[0] - right[0]);
+    if (ordered.length === 0 || ordered[0]![0] > minimum + PDF_TABLE_POLICY_V1.gridJoinTolerance) {
+      return false;
+    }
+    let coveredUntil = ordered[0]![1];
+    for (const [start, end] of ordered.slice(1)) {
+      if (start > coveredUntil + PDF_TABLE_POLICY_V1.gridJoinTolerance) return false;
+      coveredUntil = Math.max(coveredUntil, end);
+    }
+    return coveredUntil >= maximum - PDF_TABLE_POLICY_V1.gridJoinTolerance;
+  };
+  const completeVerticals = xs.every((x) => coversExtent(
+    vertical.filter((path) =>
+      Math.abs(path.bbox!.x - x) <= PDF_TABLE_POLICY_V1.gridJoinTolerance
+    ).map((path) => [path.bbox!.y, path.bbox!.y + path.bbox!.height] as const),
+    minY,
+    maxY,
+  ));
+  const completeHorizontals = ys.every((y) => coversExtent(
+    horizontal.filter((path) =>
+      Math.abs(path.bbox!.y - y) <= PDF_TABLE_POLICY_V1.gridJoinTolerance
+    ).map((path) => [path.bbox!.x, path.bbox!.x + path.bbox!.width] as const),
+    minX,
+    maxX,
+  ));
+  if (!completeVerticals || !completeHorizontals) return null;
+  const gridFragments = analysis.fragments.filter((fragment) => {
+    const centerX = fragment.bbox.x + fragment.bbox.width / 2;
+    const centerY = fragment.bbox.y + fragment.bbox.height / 2;
+    return !fragment.furniture && !fragment.duplicateOf
+      && centerX > minX && centerX < maxX && centerY > minY && centerY < maxY;
+  });
+  const rowCount = ys.length - 1;
+  const columnCount = xs.length - 1;
+  if (
+    rowCount > PDF_TABLE_POLICY_V1.maximumRows
+    || columnCount > PDF_TABLE_POLICY_V1.maximumColumns
+  ) return null;
+  const cells = Array.from({ length: rowCount }, () =>
+    Array.from({ length: columnCount }, () => [] as PdfGeometryFragmentV2[])
+  );
+  for (const fragment of gridFragments) {
+    const centerX = fragment.bbox.x + fragment.bbox.width / 2;
+    const centerY = fragment.bbox.y + fragment.bbox.height / 2;
+    const row = ys.findIndex((edge, index) =>
+      index < ys.length - 1 && centerY > edge && centerY < ys[index + 1]!
+    );
+    const column = xs.findIndex((edge, index) =>
+      index < xs.length - 1 && centerX > edge && centerX < xs[index + 1]!
+    );
+    if (row < 0 || column < 0) return null;
+    cells[row]![column]!.push(fragment);
+  }
+  if (cells.some((row) => row.some((cell) => cell.length === 0))) return null;
+  const firstWeights = cells[0]!.flat().map((fragment) => fragment.fontWeight);
+  const otherWeights = cells.slice(1).flat(2).map((fragment) => fragment.fontWeight);
+  const firstRowHeader = firstWeights.length > 0
+    && firstWeights.every((weight) => weight >= PDF_TABLE_POLICY_V1.boldHeaderWeight)
+    && otherWeights.some((weight) => weight < PDF_TABLE_POLICY_V1.boldHeaderWeight);
+  const tableId = `pdf:p${page.index}:grid-v2:${minX.toFixed(6)}:${minY.toFixed(6)}`;
+  const evidence: PdfDecisionEvidenceV2[] = [];
+  const issues: ImportIssue[] = [];
+  const boundaries: PdfTextBoundaryDecisionV2[] = [];
+  const transformations: PdfTextTransformationV2[] = [];
+  let tableOutcome: ReturnType<typeof pdfTextAssemblyOutcomeV2> = "native";
+  const rows: ImportTableRow[] = cells.map((row, rowIndex) => ({
+    cells: row.map((fragments, columnIndex) => {
+      fragments.sort((left, right) =>
+        left.bbox.y - right.bbox.y
+        || left.bbox.x - right.bbox.x
+        || left.sourceOrder - right.sourceOrder
+      );
+      const id = `${tableId}:cell:${rowIndex}:${columnIndex}`;
+      const assembly = assembleGeometryFragmentsV2(page, id, fragments);
+      appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
+      issues.push(...pdfTextAssemblyIssuesV2(assembly, page.index, id));
+      const outcome = pdfTextAssemblyOutcomeV2(assembly);
+      if (outcome !== "native") tableOutcome = outcome;
+      const linked = taggedRunsV2(
+        assembly,
+        fragments.flatMap((fragment) => fragment.characters),
+        page.annotations,
+      );
+      const bbox = unionRects(fragments.map((fragment) => fragment.bbox));
+      evidence.push({
+        sourceId: id,
+        targetNodeId: id,
+        locator: {
+          ...tableLocatorV2(
+            page,
+            id,
+            bbox ?? undefined,
+            [],
+            assembly.characterIndexes,
+          ),
+          ...(linked.annotationIds[0] ? { annotationId: linked.annotationIds[0] } : {}),
+        },
+        basis: [
+          "text-geometry",
+          "path-object",
+          "text-boundary",
+          ...(firstRowHeader && rowIndex === 0 ? ["font-evidence" as const] : []),
+          ...(linked.annotationIds.length > 0 ? ["annotation" as const] : []),
+        ],
+        confidence: pdfTextAssemblyConfidenceV2(assembly),
+        decisionCode: outcome === "native"
+          ? "pdf/table-untagged-grid-cell-native"
+          : "pdf/table-untagged-grid-cell-boundary-unresolved",
+        outcome,
+        analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+        boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(assembly),
+      });
+      return {
+        id,
+        sourceRefs: fragments.map((fragment) => fragment.id),
+        header: firstRowHeader && rowIndex === 0,
+        blocks: [{
+          id: `${id}:paragraph`,
+          type: "paragraph" as const,
+          runs: linked.runs,
+          sourceRefs: fragments.map((fragment) => fragment.id),
+        }],
+      };
+    }),
+  }));
+  const bbox = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  evidence.push({
+    sourceId: tableId,
+    targetNodeId: tableId,
+    locator: tableLocatorV2(
+      page,
+      tableId,
+      bbox,
+      [],
+      gridFragments.flatMap((fragment) => fragment.assembly.characterIndexes),
+    ),
+    basis: ["text-geometry", "path-object", "text-boundary"],
+    confidence: tableOutcome === "native"
+      ? Math.min(1, ...evidence.map((item) => item.confidence))
+      : 0,
+    decisionCode: tableOutcome === "native"
+      ? "pdf/table-untagged-grid-native"
+      : "pdf/table-untagged-grid-boundary-unresolved",
+    outcome: tableOutcome,
+    analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+    boundaryDecisionIds: [...new Set(evidence.flatMap((item) => item.boundaryDecisionIds))],
+  });
+  return {
+    mode: tableOutcome === "native" ? "native" : "linearized-render-required",
+    sourceId: tableId,
+    pageIndex: page.index,
+    bbox,
+    fragmentIds: gridFragments.map((fragment) => fragment.id),
+    blocks: [{ id: tableId, type: "table", rows, sourceRefs: paths.map((path) => path.id) }],
+    evidence,
+    issues,
+    claimedCharacterIndexes: gridFragments.flatMap((fragment) =>
+      fragment.assembly.characterIndexes
+    ),
+    boundaries,
+    transformations,
+  };
+}
+
+function alignedRowsV2(analysis: PdfReadingOrderPageV2): PdfGeometryFragmentV2[][] {
+  const candidates = analysis.fragments.filter((fragment) =>
+    !fragment.furniture && !fragment.duplicateOf
+  );
+  const rows: PdfGeometryFragmentV2[][] = [];
+  for (const fragment of [...candidates].sort((left, right) =>
+    left.bbox.y - right.bbox.y || left.bbox.x - right.bbox.x
+  )) {
+    const row = rows.find((existing) =>
+      Math.abs(existing[0]!.bbox.y - fragment.bbox.y)
+        <= PDF_TABLE_POLICY_V1.alignedRowTolerance
+    );
+    if (row) row.push(fragment);
+    else rows.push([fragment]);
+  }
+  const width = Math.max(0, ...rows.map((row) => row.length));
+  if (width < PDF_TABLE_POLICY_V1.minimumAlignedColumns) return [];
+  const rectangular = rows.filter((row) => row.length === width)
+    .map((row) => row.sort((left, right) => left.bbox.x - right.bbox.x));
+  if (rectangular.length < PDF_TABLE_POLICY_V1.minimumAlignedRows) return [];
+  const anchors = rectangular[0]!.map((fragment) => fragment.bbox.x);
+  return rectangular.every((row) => row.every((fragment, index) =>
+    Math.abs(fragment.bbox.x - anchors[index]!) <= PDF_TABLE_POLICY_V1.alignedColumnTolerance
+  )) ? rectangular : [];
+}
+
+function linearizedUntaggedCandidateV2(
+  page: PdfPageFactsV2,
+  analysis: PdfReadingOrderPageV2,
+): PdfTableProjectionV2 | null {
+  const rows = alignedRowsV2(analysis);
+  if (rows.length === 0) return null;
+  const sourceId = `pdf:p${page.index}:aligned-table-candidate-v2`;
+  const evidence: PdfDecisionEvidenceV2[] = [];
+  const issues: ImportIssue[] = [];
+  const boundaries: PdfTextBoundaryDecisionV2[] = [];
+  const transformations: PdfTextTransformationV2[] = [];
+  const blocks = rows.map((fragments, rowIndex) => {
+    const id = `${sourceId}:linear-row:${rowIndex}`;
+    for (const fragment of fragments) {
+      appendPdfTextAssemblyV2({ boundaries, transformations }, fragment.assembly);
+      issues.push(...pdfTextAssemblyIssuesV2(fragment.assembly, page.index, fragment.id));
+      evidence.push({
+        sourceId: fragment.id,
+        targetNodeId: id,
+        locator: tableLocatorV2(
+          page,
+          fragment.id,
+          fragment.bbox,
+          [],
+          fragment.assembly.characterIndexes,
+        ),
+        basis: ["text-geometry", "text-boundary"],
+        confidence: Math.min(0.5, pdfTextAssemblyConfidenceV2(fragment.assembly)),
+        decisionCode: "pdf/table-alignment-only-linearized",
+        outcome: "approximated",
+        analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+        boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(fragment.assembly),
+      });
+    }
+    return {
+      id,
+      type: "paragraph" as const,
+      runs: [{ kind: "text" as const, text: fragments.map((fragment) => fragment.text).join(" | ") }],
+      sourceRefs: fragments.map((fragment) => fragment.id),
+    };
+  });
+  const all = rows.flat();
+  const bbox = unionRects(all.map((fragment) => fragment.bbox));
+  return {
+    mode: "linearized-render-required",
+    sourceId,
+    pageIndex: page.index,
+    ...(bbox ? { bbox } : {}),
+    fragmentIds: all.map((fragment) => fragment.id),
+    blocks,
+    evidence,
+    issues: [
+      ...issues,
+      {
+        code: "pdf-import/table-alignment-only-linearized",
+        severity: "warning",
+        outcome: "approximated",
+        message: "Aligned text without a proven grid was not promoted to a native table; rows were linearized and require a rendered-region fallback.",
+        sourceRefs: [sourceId],
+        context: { pageIndex: page.index, rows: rows.length, columns: rows[0]!.length },
+      },
+    ],
+    claimedCharacterIndexes: all.flatMap((fragment) => fragment.assembly.characterIndexes),
+    boundaries,
+    transformations,
+  };
+}
+
+export function analyzeUntaggedTableV2(
+  page: PdfPageFactsV2,
+  analysis: PdfReadingOrderPageV2,
+): PdfTableProjectionV2 {
+  return nativeUntaggedGridV2(page, analysis)
+    ?? linearizedUntaggedCandidateV2(page, analysis)
+    ?? {
+      mode: "none",
+      sourceId: `pdf:p${page.index}:table-v2:none`,
+      pageIndex: page.index,
+      fragmentIds: [],
+      blocks: [],
+      evidence: [],
+      issues: [],
+      claimedCharacterIndexes: [],
+      boundaries: [],
+      transformations: [],
     };
 }

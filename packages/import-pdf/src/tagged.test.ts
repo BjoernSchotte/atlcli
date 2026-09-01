@@ -1,28 +1,52 @@
 import { describe, expect, it } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { documentToAdf, type ImportBlock, type ImportRun } from "@atlcli/import-core";
+import {
+  documentToAdf,
+  documentToStorage,
+  type ImportBlock,
+  type ImportRun,
+} from "@atlcli/import-core";
 import {
   PDF_FACTS_ADAPTER_REVISION,
   PDF_FACTS_SCHEMA_V1,
   PDFIUM_ENGINE_VERSION,
   PDFIUM_WASM_SHA256,
   PDF_ANALYSIS_POLICY_REVISION,
+  PDF_TAGGED_POLICY_REVISION_V2,
+  PDF_TAGGED_SEMANTICS_SCHEMA_V2,
   type PdfFactsV1,
   type PdfPageFactsV1,
   type PdfStructureNodeFact,
   type PdfTextCharacterFact,
 } from "./contracts.js";
-import { createNodePdfiumFactsAdapter } from "./node.js";
-import { normalizeTaggedPdfFacts } from "./normalize.js";
+import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
+import { normalizeHybridPdfFactsV2 } from "./hybrid.js";
+import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
+import { flattenStructureV2, structureRoleV2 } from "./structure.js";
 import { textDirection } from "./text.js";
-import { digestPdfFacts } from "./canonical.js";
+import { digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
+import { PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 } from "./text-assembly.js";
+import { generateUnresolvedStructureKidProbe } from "../../../specs/pdf-import-quality/fixtures/generate-core.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
+const qualityFixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
 
 function textOf(block: ImportBlock): string {
   if (block.type !== "heading" && block.type !== "paragraph") return "";
   return block.runs.map((run) => run.kind === "text" ? run.text : "\n").join("");
+}
+
+function semanticTextOf(block: ImportBlock): string {
+  if (block.type === "heading" || block.type === "paragraph") return textOf(block);
+  if (block.type === "list") {
+    return block.items.map((item) => textOf(item.blocks[0]!)).join(" | ");
+  }
+  if (block.type === "table") {
+    return block.rows.map((row) => row.cells.map((cell) => textOf(cell.blocks[0]!)).join(" | "))
+      .join(" / ");
+  }
+  return block.type;
 }
 
 function structure(
@@ -137,6 +161,270 @@ async function normalizeSynthetic(facts: PdfFactsV1) {
 }
 
 describe("tagged PDF semantic extraction", () => {
+  it("routes fragmented tagged text through the V2 assembly contract", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-fragmented-tagged.pdf")),
+    );
+    const first = await adapter.analyze(bytes);
+    const second = await adapter.analyze(bytes);
+    const normalized = await normalizeTaggedPdfFactsV2(first.facts, first.factsDigest);
+    const repeated = await normalizeTaggedPdfFactsV2(second.facts, second.factsDigest);
+
+    expect(normalized.schema).toBe(PDF_TAGGED_SEMANTICS_SCHEMA_V2);
+    expect(normalized.policyRevision).toBe(PDF_TAGGED_POLICY_REVISION_V2);
+    expect(normalized.textAssemblyPolicyRevision).toBe(PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2);
+    expect(normalized.semanticDigest).toBe(repeated.semanticDigest);
+    expect(normalized.document.blocks.map((block) => [block.type, textOf(block)])).toEqual([
+      ["heading", "Neutral Harbor Evidence"],
+      ["paragraph", "Harbor signals remain clear."],
+      ["paragraph", "Seasonal coordination stays stable."],
+      ["paragraph", "مرحبا بالميناء"],
+      ["paragraph", "港の信号"],
+      ["paragraph", "office"],
+      ["paragraph", "German Umlaute: Äpfel, Öl, Ufer."],
+    ]);
+    expect(normalized.pageOutcomes).toEqual([expect.objectContaining({
+      mode: "geometry-required",
+      claimedCharacterCount: 143,
+      unclaimedCharacterCount: 28,
+      corruptTagCount: 0,
+      boundaryDecisionCount: 22,
+      unresolvedBoundaryCount: 0,
+    })]);
+    expect(normalized.requiresGeometryPages).toEqual([0]);
+    expect(normalized.boundaries.filter((boundary) =>
+      boundary.leftCharacterIndex === 30 && boundary.rightCharacterIndex === 32
+      || boundary.leftCharacterIndex === 38 && boundary.rightCharacterIndex === 40
+      || boundary.leftCharacterIndex === 67 && boundary.rightCharacterIndex === 69
+    )).toEqual([
+      expect.objectContaining({
+        action: "insert-space",
+        basis: ["generated-whitespace", "text-run", "structure-order", "baseline", "glyph-gap"],
+        confidence: 0.98,
+      }),
+      expect.objectContaining({
+        action: "insert-space",
+        basis: ["generated-whitespace", "text-run", "structure-order", "baseline", "glyph-gap"],
+        confidence: 0.98,
+      }),
+      expect.objectContaining({
+        action: "dehyphenate",
+        basis: ["hyphen", "structure-order", "baseline", "script"],
+        confidence: 0.99,
+      }),
+    ]);
+    expect(normalized.document.blocks[1]).toMatchObject({
+      type: "paragraph",
+      runs: [
+        { kind: "text", text: "Harbor " },
+        {
+          kind: "text",
+          text: "signals",
+          marks: { link: { href: "https://example.com/neutral-harbor" } },
+        },
+        { kind: "text", text: " remain clear." },
+      ],
+    });
+    expect(documentToAdf(normalized.document).content.map((node) => node.type)).toEqual([
+      "heading", "paragraph", "paragraph", "paragraph", "paragraph", "paragraph", "paragraph",
+    ]);
+    expect(documentToStorage(normalized.document)).toContain(
+      '<p>Harbor <a href="https://example.com/neutral-harbor">signals</a> remain clear.</p>',
+    );
+    expect(normalized.document.issues.map((issue) => issue.code)).not.toContain(
+      "pdf-import/text-boundary-unresolved",
+    );
+  });
+
+  it("preserves exact semantics across the pinned browser producer", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const cases = [
+      { file: "producer-browser.pdf", claimed: 352, boundaries: 82 },
+    ] as const;
+    for (const fixture of cases) {
+      const raw = await adapter.analyze(new Uint8Array(
+        await readFile(resolve(qualityFixtureRoot, fixture.file)),
+      ));
+      const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+
+      expect(result.document.blocks.map((block) => [block.type, semanticTextOf(block)])).toEqual([
+        ["heading", "Neutral Harbor Field Notes"],
+        ["paragraph", "Harbor signals remain clear across styled text runs."],
+        ["paragraph", "Seasonal coordination continues safely across a visual line wrap."],
+        ["paragraph", "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral."],
+        ["paragraph", "مرحبا بالميناء"],
+        ["paragraph", "港の信号は明確です"],
+        ["list", "Inspect the northern marker. | Record the stable reading. | Publish the neutral summary."],
+        ["table", "Zone | Signal / North | Clear / South | Stable"],
+      ]);
+      expect(result.requiresGeometryPages).toEqual([]);
+      expect(result.pageOutcomes).toEqual([expect.objectContaining({
+        mode: "tagged-native",
+        claimedCharacterCount: fixture.claimed,
+        unclaimedCharacterCount: 0,
+        corruptTagCount: 0,
+        boundaryDecisionCount: fixture.boundaries,
+        unresolvedBoundaryCount: 0,
+      })]);
+      expect(result.evidence.every((item) => item.boundaryDecisionIds.every((id) =>
+        result.boundaries.some((boundary) => boundary.id === id)
+      ))).toBe(true);
+      const storage = documentToStorage(result.document);
+      expect(storage).toContain("<ol><li><p>Inspect the northern marker.</p></li>");
+      expect(storage).not.toContain("<ol><li><p>1.");
+    }
+  });
+
+  it("does not call a text-layer-only producer glyph run native", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "producer-libreoffice.pdf")),
+    ));
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+    const hybrid = await normalizeHybridPdfFactsV2(raw.facts, raw.factsDigest);
+    const degenerate = result.evidence.find((entry) =>
+      entry.decisionCode === "pdf/tagged-text-geometry-degenerate"
+    );
+
+    expect(result.document.blocks.map((block) => [block.type, semanticTextOf(block)]))
+      .not.toContainEqual(["paragraph", "港の信号は明確です"]);
+    expect(result.requiresGeometryPages).toEqual([0]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/tagged-text-geometry-degenerate",
+      outcome: "reported",
+      context: { pageIndex: 0, markedContentIds: 1 },
+    }));
+    expect(degenerate).toMatchObject({
+      outcome: "reported",
+      confidence: 0,
+      basis: ["structure-tree", "marked-content", "text-boundary", "text-geometry"],
+    });
+    expect(degenerate?.locator.characterIndexes).toHaveLength(9);
+    expect(hybrid.pageOutcomes).toEqual([expect.objectContaining({
+      mode: "fallback-required",
+      fallbackScope: "page",
+      fallbackReasonCodes: ["missing-geometry"],
+      duplicateOwnershipAttemptCount: 0,
+    })]);
+    expect(JSON.stringify(result.document.issues)).not.toContain("港の信号は明確です");
+  });
+
+  it("preserves wrapped tables and complete ordered list bodies without ownership gaps", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-structures-tagged.pdf")),
+    ));
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+    const hybrid = await normalizeHybridPdfFactsV2(raw.facts, raw.factsDigest);
+
+    expect(result.document.blocks.map((block) => block.type)).toEqual(["table", "list", "table"]);
+    const firstTable = result.document.blocks[0];
+    const list = result.document.blocks[1];
+    const secondTable = result.document.blocks[2];
+    if (firstTable?.type !== "table" || list?.type !== "list" || secondTable?.type !== "table") {
+      throw new Error("expected table, list, table");
+    }
+    expect(firstTable.rows.map((row) => row.cells.map((cell) => textOf(cell.blocks[0]!))))
+      .toEqual([["Zone", "Signal"], ["North", "Clear"], ["Summary", "Stable"]]);
+    expect(list.items[0]?.blocks.map(textOf)).toEqual([
+      "Inspect the northern marker.",
+      "Record a second paragraph.",
+    ]);
+    expect(list.items[0]?.child?.items[0]?.blocks.map(textOf)).toEqual([
+      "Verify the nested reading.",
+    ]);
+    expect(secondTable.rows[0]?.cells.map((cell) => textOf(cell.blocks[0]!)))
+      .toEqual(["East", "Watch"]);
+    const storage = documentToStorage(result.document);
+    expect(storage).toContain("Record a second paragraph.");
+    expect(storage).toContain("Verify the nested reading.");
+    expect(documentToAdf(result.document).content.map((node) => node.type))
+      .toEqual(["table", "orderedList", "table"]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/tagged-figure-deferred",
+      outcome: "reported",
+    }));
+    expect(result.evidence).toContainEqual(expect.objectContaining({
+      decisionCode: "pdf/tagged-figure-deferred",
+      outcome: "reported",
+    }));
+    expect(hybrid.pageOutcomes).toEqual([expect.objectContaining({
+      mode: "hybrid-native",
+      visibleCharacterCount: 117,
+      uniquelyOwnedCharacterCount: 117,
+      duplicateOwnershipAttemptCount: 0,
+      residualReportedCharacterCount: 0,
+      fallbackScope: "none",
+    })]);
+  });
+
+  it("reports every incompatible list child instead of silently taking the first", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const negative = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-negative-tagged.pdf")),
+    ));
+    const result = await normalizeTaggedPdfFactsV2(negative.facts, negative.factsDigest);
+    const residual = result.evidence.filter((entry) =>
+      entry.decisionCode === "pdf/tagged-list-item-residual"
+    );
+    const list = result.document.blocks.find((block) => block.type === "list");
+
+    expect(residual.map((entry) => entry.locator.characterIndexes?.length)).toEqual([20, 21]);
+    expect(result.document.issues.filter((issue) =>
+      issue.code === "pdf-import/tagged-list-item-residual"
+    )).toHaveLength(2);
+    expect(list?.type).toBe("list");
+    if (list?.type !== "list") throw new Error("expected list");
+    expect(list.items[0]?.child).toBeUndefined();
+    expect(list.items[0]?.blocks.map(textOf)).toEqual(["Multiple nested lists stay explicit."]);
+
+    const mutated = structuredClone(negative.facts);
+    const listRoot = flattenStructureV2(mutated.pages[0]!.structures).find((candidate) =>
+      structureRoleV2(candidate) === "L"
+    )!;
+    const paragraph = flattenStructureV2([listRoot]).find((candidate) =>
+      structureRoleV2(candidate) === "P"
+    )!;
+    paragraph.type = "Note";
+    const withUnknown = await normalizeTaggedPdfFactsV2(mutated, await digestPdfFactsV2(mutated));
+    expect(withUnknown.evidence).toContainEqual(expect.objectContaining({
+      sourceId: paragraph.id,
+      decisionCode: "pdf/tagged-list-item-residual",
+      outcome: "reported",
+    }));
+    expect(withUnknown.document.issues.some((issue) =>
+      issue.code === "pdf-import/tagged-list-item-residual" && issue.sourceRefs?.includes(paragraph.id)
+    )).toBe(true);
+  });
+
+  it("demotes an unresolved V2 structure child without exposing source text in diagnostics", async () => {
+    const raw = await (await createNodePdfiumFactsAdapterV2()).analyze(
+      generateUnresolvedStructureKidProbe(),
+    );
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+
+    expect(result.document.blocks).toEqual([]);
+    expect(result.requiresGeometryPages).toEqual([0]);
+    expect(result.pageOutcomes[0]).toMatchObject({
+      mode: "geometry-required",
+      corruptTagCount: 1,
+      unclaimedCharacterCount: 16,
+    });
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/tagged-structure-kid-unresolved",
+      outcome: "reported",
+      context: { pageIndex: 0 },
+    }));
+    expect(result.evidence).toContainEqual(expect.objectContaining({
+      decisionCode: "pdf/tagged-structure-kid-unresolved",
+      outcome: "reported",
+      confidence: 0,
+      boundaryDecisionIds: [],
+    }));
+    expect(JSON.stringify(result.document.issues)).not.toContain("Unresolved Harbor");
+  });
+
   it("correlates a real tagged golden without page loss or outline dependence", async () => {
     const adapter = await createNodePdfiumFactsAdapter();
     const bytes = new Uint8Array(await readFile(resolve(fixtureRoot, "complex-tagged.pdf")));

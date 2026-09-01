@@ -1,0 +1,848 @@
+{
+  "schema": "atlcli.import-pdf.quality-fixture/v1",
+  "license": "Apache-2.0",
+  "provenance": "Neutral AtlCLI-authored corpus only; no customer or tenant input.",
+  "privacyContract": {
+    "allowlistedUrlHosts": [
+      "example.com"
+    ],
+    "forbiddenMetadata": [
+      "/CreationDate",
+      "/ModDate",
+      "/Metadata",
+      "/EmbeddedFiles",
+      "/JavaScript"
+    ]
+  },
+  "authoringSources": [
+    {
+      "path": "producer-source.json",
+      "sha256": "81eae3eed5f8d62cf30bdb108a8a7811764f105845944064977d3abf64402058"
+    },
+    {
+      "path": "producer-source.html",
+      "sha256": "8dcc3335cf64c0adf328605241a21a5b85c71332a9433df137417ef172aa3cc9"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "tagged-fragmented-boundaries",
+      "path": "independent-fragmented-tagged.pdf",
+      "class": "tagged",
+      "reproduction": "generated",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "split-text-objects",
+        "ordered-mixed-structure-kids",
+        "style-and-link-boundary",
+        "generated-hyphen",
+        "actual-text",
+        "rtl",
+        "cjk",
+        "ligature",
+        "umlauts",
+        "localized-untagged-residue"
+      ],
+      "producer": {
+        "family": "independent",
+        "product": "AtlCLI deterministic Bun PDF writer",
+        "version": "1",
+        "platform": "host-neutral",
+        "options": "fixed object order, xref, metadata, and document ID"
+      },
+      "authoringSource": "generate-core.ts",
+      "sha256": "45ce6c5d5bf4554d59bf15777677e8c1856a9ba34692b47038507c3deb5986bf",
+      "bytes": 3795,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Harbor Evidence"
+          },
+          {
+            "id": "fragmented",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Harbor signals remain clear."
+          },
+          {
+            "id": "hyphenated-line",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination stays stable."
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "港の信号"
+          },
+          {
+            "id": "ligature",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "office"
+          },
+          {
+            "id": "umlauts",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "German Umlaute: Äpfel, Öl, Ufer."
+          },
+          {
+            "id": "localized-residue",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Localized unmarked repair note."
+          }
+        ],
+        "boundaries": [
+          {
+            "id": "harbor-signals",
+            "pageIndex": 0,
+            "leftCharacterIndex": 30,
+            "rightCharacterIndex": 32,
+            "action": "insert-space",
+            "basis": [
+              "generated-whitespace",
+              "text-run",
+              "structure-order",
+              "baseline",
+              "glyph-gap"
+            ]
+          },
+          {
+            "id": "signals-remain",
+            "pageIndex": 0,
+            "leftCharacterIndex": 38,
+            "rightCharacterIndex": 40,
+            "action": "insert-space",
+            "basis": [
+              "generated-whitespace",
+              "text-run",
+              "structure-order",
+              "baseline",
+              "glyph-gap"
+            ]
+          },
+          {
+            "id": "generated-line-hyphen",
+            "pageIndex": 0,
+            "leftCharacterIndex": 67,
+            "rightCharacterIndex": 69,
+            "action": "dehyphenate",
+            "basis": [
+              "hyphen",
+              "structure-order",
+              "baseline",
+              "script"
+            ]
+          }
+        ],
+        "structureOutcomes": [
+          "ordered-mixed-kids",
+          "logical-rtl-preserved",
+          "actual-text-authoritative"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 1,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [
+          "https://example.com/neutral-harbor"
+        ]
+      }
+    },
+    {
+      "id": "tagged-structures-positive",
+      "path": "independent-structures-tagged.pdf",
+      "class": "tagged",
+      "reproduction": "generated",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "table-row-groups",
+        "default-one-table-spans",
+        "multiple-tables",
+        "multi-paragraph-list-item",
+        "supported-nested-list",
+        "unmatched-form-figure"
+      ],
+      "producer": {
+        "family": "independent",
+        "product": "AtlCLI deterministic Bun PDF writer",
+        "version": "1",
+        "platform": "host-neutral",
+        "options": "fixed object order, xref, metadata, and document ID"
+      },
+      "authoringSource": "generate-core.ts",
+      "sha256": "aefd197a939482fe350a5c82250fd219fb9fc5d23895bcab42f8de88c1c60a6f",
+      "bytes": 5599,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "primary-table-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Zone | Signal"
+          },
+          {
+            "id": "primary-table-body",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "North | Clear"
+          },
+          {
+            "id": "primary-table-footer",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Summary | Stable"
+          },
+          {
+            "id": "list-first-paragraph",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-second-paragraph",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record a second paragraph."
+          },
+          {
+            "id": "list-nested",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "depth": 1,
+            "text": "Verify the nested reading."
+          },
+          {
+            "id": "secondary-table",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "East | Watch"
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "row-groups-native-after-piq-06",
+          "default-spans-one-after-piq-06",
+          "tables-remain-separate",
+          "complete-list-body-after-piq-06",
+          "unmatched-figure-reported"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/tagged-figure-deferred"
+        ],
+        "tableSpans": []
+      }
+    },
+    {
+      "id": "tagged-structures-negative",
+      "path": "independent-negative-tagged.pdf",
+      "class": "tagged",
+      "reproduction": "generated",
+      "criticalNegative": true,
+      "qualityFamilies": [
+        "nested-table-negative",
+        "multiple-nested-lists-negative",
+        "unlocalizable-untagged-residue"
+      ],
+      "producer": {
+        "family": "independent",
+        "product": "AtlCLI deterministic Bun PDF writer",
+        "version": "1",
+        "platform": "host-neutral",
+        "options": "fixed object order, xref, metadata, and document ID"
+      },
+      "authoringSource": "generate-core.ts",
+      "sha256": "1d3d4368f7347c8fe84b7c2bc101ad30fddd376e505848ec6ba9bdcde7bdad14",
+      "bytes": 3886,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Explicit negative structures"
+          },
+          {
+            "id": "outer-table",
+            "pageIndex": 0,
+            "type": "table-cell",
+            "text": "Outer"
+          },
+          {
+            "id": "nested-table",
+            "pageIndex": 0,
+            "type": "table-cell",
+            "text": "Nested"
+          },
+          {
+            "id": "list-body",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Multiple nested lists stay explicit."
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "nested-table-fallback",
+          "multiple-nested-lists-reported"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [
+            0
+          ],
+          "fallbackPages": [
+            0
+          ],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/table-tagged-linearized",
+          "pdf-import/tagged-list-item-residual",
+          "pdf-import/hybrid-page-fallback-required"
+        ],
+        "tableSpans": []
+      }
+    },
+    {
+      "id": "untagged-fragmented-boundaries",
+      "path": "independent-fragmented-untagged.pdf",
+      "class": "digital-untagged",
+      "reproduction": "generated",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "split-text-objects",
+        "generated-crlf",
+        "geometry-line-clustering",
+        "punctuation",
+        "authored-hard-hyphen",
+        "rtl",
+        "cjk",
+        "ligature",
+        "safe-link-boundary"
+      ],
+      "producer": {
+        "family": "independent",
+        "product": "AtlCLI deterministic Bun PDF writer",
+        "version": "1",
+        "platform": "host-neutral",
+        "options": "fixed object order, xref, metadata, and document ID"
+      },
+      "authoringSource": "generate-core.ts",
+      "sha256": "bb4864067ce71ec8cbed5f43f69abde854eb331ec5826ca29ac016ee1dd290f3",
+      "bytes": 2453,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Geometry Evidence"
+          },
+          {
+            "id": "fragmented",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "River markers remain stable."
+          },
+          {
+            "id": "wrapped",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Wrapped routes continue safely without explicit breaks."
+          },
+          {
+            "id": "punctuation",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Punctuation, brackets and links stay attached."
+          },
+          {
+            "id": "hard-hyphen",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Authored north-east remains hard-hyphenated."
+          },
+          {
+            "id": "script-heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Script Boundaries"
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "港の信号"
+          },
+          {
+            "id": "ligature",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "office"
+          },
+          {
+            "id": "hyphenated-line",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination stays stable."
+          }
+        ],
+        "boundaries": [
+          {
+            "id": "river-markers",
+            "pageIndex": 0,
+            "leftCharacterIndex": 31,
+            "rightCharacterIndex": 33,
+            "action": "insert-space",
+            "basis": [
+              "generated-whitespace",
+              "text-run",
+              "baseline",
+              "glyph-gap"
+            ]
+          },
+          {
+            "id": "wrapped-physical-lines",
+            "pageIndex": 0,
+            "leftCharacterIndex": 79,
+            "rightCharacterIndex": 82,
+            "action": "join-line",
+            "basis": [
+              "generated-whitespace",
+              "baseline",
+              "script"
+            ]
+          },
+          {
+            "id": "punctuation-attached",
+            "pageIndex": 0,
+            "leftCharacterIndex": 125,
+            "rightCharacterIndex": 126,
+            "action": "no-space",
+            "basis": [
+              "text-run",
+              "punctuation",
+              "baseline"
+            ]
+          },
+          {
+            "id": "authored-hard-hyphen",
+            "pageIndex": 0,
+            "leftCharacterIndex": 176,
+            "rightCharacterIndex": 178,
+            "action": "retain-hyphen",
+            "basis": [
+              "hyphen",
+              "script"
+            ]
+          }
+        ],
+        "structureOutcomes": [
+          "geometry-reading-order",
+          "logical-rtl-preserved",
+          "cjk-no-invented-space"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [
+          "https://example.com/neutral-river"
+        ]
+      }
+    },
+    {
+      "id": "producer-word",
+      "path": "producer-word.pdf",
+      "class": "digital-untagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "word",
+        "style-boundary",
+        "rtl",
+        "cjk",
+        "list",
+        "table"
+      ],
+      "producer": {
+        "family": "word",
+        "product": "Microsoft Word for Mac",
+        "version": "16.112",
+        "platform": "macOS arm64",
+        "options": "Save As PDF; optimal for printing; no online service"
+      },
+      "authoringSource": "producer-source.json",
+      "sha256": "abd78bedabfdc0e3e24745aa35515cc619041ddf10df2ff5525d470569052dec",
+      "bytes": 51801,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Harbor Field Notes"
+          },
+          {
+            "id": "styled",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Harbor signals remain clear across styled text runs."
+          },
+          {
+            "id": "wrapped",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination continues safely across a visual line wrap."
+          },
+          {
+            "id": "umlauts",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral."
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "港の信号は明確です"
+          },
+          {
+            "id": "list-inspect",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-record",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the stable reading."
+          },
+          {
+            "id": "list-publish",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the neutral summary."
+          },
+          {
+            "id": "table-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Zone | Signal"
+          },
+          {
+            "id": "table-north",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "North | Clear"
+          },
+          {
+            "id": "table-south",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "South | Stable"
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-untagged",
+          "geometry-required"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [],
+        "tableSpans": []
+      }
+    },
+    {
+      "id": "producer-libreoffice",
+      "path": "producer-libreoffice.pdf",
+      "class": "tagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": true,
+      "qualityFamilies": [
+        "libreoffice",
+        "style-boundary",
+        "rtl",
+        "cjk-text-layer",
+        "list",
+        "table",
+        "producer-rendering-negative"
+      ],
+      "producer": {
+        "family": "libreoffice",
+        "product": "LibreOfficeDev",
+        "version": "26.8.0.0.alpha0",
+        "platform": "macOS arm64",
+        "options": "headless writer_pdf_Export"
+      },
+      "authoringSource": "producer-source.json",
+      "sha256": "cab1614b8e6db27e30b6f76a0fb63b1c64e22aeee392c65d546ccde3e7844b6b",
+      "bytes": 35222,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Harbor Field Notes"
+          },
+          {
+            "id": "styled",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Harbor signals remain clear across styled text runs."
+          },
+          {
+            "id": "wrapped",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination continues safely across a visual line wrap."
+          },
+          {
+            "id": "umlauts",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral."
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk-text-layer",
+            "pageIndex": 0,
+            "type": "reported",
+            "text": "港の信号は明確です"
+          },
+          {
+            "id": "list-inspect",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-record",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the stable reading."
+          },
+          {
+            "id": "list-publish",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the neutral summary."
+          },
+          {
+            "id": "table-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Zone | Signal"
+          },
+          {
+            "id": "table-north",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "North | Clear"
+          },
+          {
+            "id": "table-south",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "South | Stable"
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-tagged",
+          "cjk-text-layer-present-but-glyph-not-visible"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [
+            0
+          ],
+          "fallbackPages": [
+            0
+          ],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/tagged-text-geometry-degenerate",
+          "pdf-import/hybrid-page-fallback-required"
+        ],
+        "tableSpans": []
+      }
+    },
+    {
+      "id": "producer-browser",
+      "path": "producer-browser.pdf",
+      "class": "tagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "browser-print",
+        "style-link-boundary",
+        "rtl",
+        "cjk",
+        "list",
+        "table"
+      ],
+      "producer": {
+        "family": "browser",
+        "product": "Google Chrome",
+        "version": "151.0.7922.174",
+        "platform": "macOS arm64",
+        "options": "headless print-to-pdf; no PDF header or footer"
+      },
+      "authoringSource": "producer-source.html",
+      "sha256": "a7282415f72fc860964b75533c62dfefe1ce75ac4f11a25b9ec2fcc84d04bc7f",
+      "bytes": 74486,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Harbor Field Notes"
+          },
+          {
+            "id": "styled",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Harbor signals remain clear across styled text runs."
+          },
+          {
+            "id": "wrapped",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination continues safely across a visual line wrap."
+          },
+          {
+            "id": "umlauts",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral."
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "港の信号は明確です"
+          },
+          {
+            "id": "list-inspect",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-record",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the stable reading."
+          },
+          {
+            "id": "list-publish",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the neutral summary."
+          },
+          {
+            "id": "table-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Zone | Signal"
+          },
+          {
+            "id": "table-north",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "North | Clear"
+          },
+          {
+            "id": "table-south",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "South | Stable"
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-tagged",
+          "safe-link-retained"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [
+          "https://example.com/neutral-harbor"
+        ],
+        "requiredIssueCodes": [],
+        "tableSpans": []
+      }
+    }
+  ]
+}

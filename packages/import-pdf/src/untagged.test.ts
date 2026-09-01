@@ -1,22 +1,28 @@
 import { describe, expect, it } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { documentToAdf, type ImportBlock } from "@atlcli/import-core";
+import { documentToAdf, documentToStorage, type ImportBlock } from "@atlcli/import-core";
 import {
   PDF_FACTS_ADAPTER_REVISION,
   PDF_FACTS_SCHEMA_V1,
   PDFIUM_ENGINE_VERSION,
   PDFIUM_WASM_SHA256,
   PDF_ANALYSIS_POLICY_REVISION,
+  PDF_GEOMETRY_POLICY_REVISION_V2,
+  PDF_UNTAGGED_SEMANTICS_SCHEMA_V2,
   type PdfFactsV1,
   type PdfPageFactsV1,
+  type PdfPageFactsV2,
   type PdfTextCharacterFact,
 } from "./contracts.js";
-import { createNodePdfiumFactsAdapter } from "./node.js";
-import { digestPdfFacts } from "./canonical.js";
-import { normalizeUntaggedPdfFacts } from "./untagged.js";
+import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
+import { digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
+import { normalizeUntaggedPdfFacts, normalizeUntaggedPdfFactsV2 } from "./untagged.js";
+import { PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 } from "./text-assembly.js";
+import { analyzeGeometryReadingOrderV2 } from "./reading-order.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
+const qualityFixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
 
 function blockText(block: ImportBlock): string {
   if (block.type === "heading" || block.type === "paragraph") {
@@ -126,7 +132,228 @@ async function normalizeSynthetic(page: PdfPageFactsV1) {
   return normalizeUntaggedPdfFacts(facts, await digestPdfFacts(facts));
 }
 
+function pageWithLinesV2(
+  lines: Array<{ text: string; x: number; y: number }>,
+): PdfPageFactsV2 {
+  const page = pageWithLines(lines);
+  return {
+    ...page,
+    characters: page.characters.map((character) => ({
+      ...character,
+      textRunId: character.generated ? null : `run:${character.index}`,
+    })),
+    structures: [],
+  };
+}
+
 describe("untagged PDF conservative geometry semantics", () => {
+  it("does not infer columns from an indented line and a numeric page footer", () => {
+    const analysis = analyzeGeometryReadingOrderV2(pageWithLinesV2([
+      { text: "Neutral body line one spans the available content width.", x: 0.1, y: 0.2 },
+      { text: "Neutral body line two spans the available content width.", x: 0.1, y: 0.3 },
+      { text: "Indented note", x: 0.36, y: 0.4 },
+      { text: "Neutral body line three spans the available content width.", x: 0.1, y: 0.5 },
+      { text: "Neutral body line four spans the available content width.", x: 0.1, y: 0.6 },
+      { text: "17", x: 0.87, y: 0.95 },
+    ]));
+
+    expect(analysis.columnCount).toBe(1);
+    expect(analysis.qualificationReasons).toEqual([]);
+    expect(analysis.fragments.find((fragment) => fragment.text === "17")?.furniture).toBe(true);
+    expect(analysis.ordered.map((fragment) => fragment.text)).toEqual([
+      "Neutral body line one spans the available content width.",
+      "Neutral body line two spans the available content width.",
+      "Indented note",
+      "Neutral body line three spans the available content width.",
+      "Neutral body line four spans the available content width.",
+    ]);
+  });
+
+  it("retains repeated vertically aligned V2 column evidence", () => {
+    const analysis = analyzeGeometryReadingOrderV2(pageWithLinesV2([
+      { text: "Left one", x: 0.08, y: 0.2 },
+      { text: "Right one", x: 0.56, y: 0.2 },
+      { text: "Left two", x: 0.08, y: 0.3 },
+      { text: "Right two", x: 0.56, y: 0.3 },
+      { text: "Left three", x: 0.08, y: 0.4 },
+      { text: "Right three", x: 0.56, y: 0.4 },
+    ]));
+
+    expect(analysis.columnCount).toBe(2);
+    expect(analysis.qualificationReasons).toEqual([]);
+    expect(analysis.ordered.map((fragment) => fragment.text)).toEqual([
+      "Left one", "Left two", "Left three", "Right one", "Right two", "Right three",
+    ]);
+  });
+
+  it("routes clustered physical lines and paragraphs through V2 assembly", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-fragmented-untagged.pdf")),
+    );
+    const first = await adapter.analyze(bytes);
+    const second = await adapter.analyze(bytes);
+    const result = await normalizeUntaggedPdfFactsV2(first.facts, first.factsDigest);
+    const repeated = await normalizeUntaggedPdfFactsV2(second.facts, second.factsDigest);
+
+    expect(result.schema).toBe(PDF_UNTAGGED_SEMANTICS_SCHEMA_V2);
+    expect(result.policyRevision).toBe(PDF_GEOMETRY_POLICY_REVISION_V2);
+    expect(result.textAssemblyPolicyRevision).toBe(PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2);
+    expect(result.semanticDigest).toBe(repeated.semanticDigest);
+    expect(result.document.blocks.map((block) => [block.type, blockText(block)])).toEqual([
+      ["heading", "Neutral Geometry Evidence"],
+      ["paragraph", "River markers remain stable."],
+      ["paragraph", "Wrapped routes continue safely without explicit breaks."],
+      ["paragraph", "Punctuation, brackets and links stay attached."],
+      ["paragraph", "Authored north-east remains hard-hyphenated."],
+      ["heading", "Neutral Script Boundaries"],
+      ["paragraph", "مرحبا بالميناء"],
+      ["paragraph", "港の信号"],
+      ["paragraph", "office"],
+      ["paragraph", "Seasonal coordination stays stable."],
+    ]);
+    expect(result.pageOutcomes).toEqual([expect.objectContaining({
+      mode: "geometry-native",
+      columnCount: 1,
+      sourceFragmentCount: 11,
+      suppressedFragmentCount: 0,
+      accountedCharacterCount: 281,
+      unaccountedCharacterCount: 0,
+      qualificationReasons: [],
+      boundaryDecisionCount: 33,
+      unresolvedBoundaryCount: 0,
+    })]);
+    expect(result.boundaries.filter((boundary) =>
+      boundary.leftCharacterIndex === 31 && boundary.rightCharacterIndex === 33
+      || boundary.leftCharacterIndex === 79 && boundary.rightCharacterIndex === 82
+      || boundary.leftCharacterIndex === 125 && boundary.rightCharacterIndex === 126
+      || boundary.leftCharacterIndex === 176 && boundary.rightCharacterIndex === 178
+    )).toEqual([
+      expect.objectContaining({
+        action: "insert-space",
+        basis: ["generated-whitespace", "text-run", "baseline", "glyph-gap"],
+        confidence: 0.98,
+      }),
+      expect.objectContaining({
+        action: "join-line",
+        basis: ["generated-whitespace", "baseline", "script"],
+        confidence: 0.95,
+      }),
+      expect.objectContaining({
+        action: "no-space",
+        basis: ["text-run", "punctuation", "baseline"],
+        confidence: 0.99,
+      }),
+      expect.objectContaining({
+        action: "retain-hyphen",
+        basis: ["hyphen", "script"],
+        confidence: 1,
+      }),
+    ]);
+    expect(result.evidence.every((item) =>
+      item.outcome !== "native" || item.confidence < 1 || item.boundaryDecisionIds.length === 0
+    )).toBe(true);
+    expect(documentToAdf(result.document).content.map((node) => node.type)).toEqual([
+      "heading", "paragraph", "paragraph", "paragraph", "paragraph",
+      "heading", "paragraph", "paragraph", "paragraph", "paragraph",
+    ]);
+    const storage = documentToStorage(result.document);
+    expect(storage).toContain("<p>Wrapped routes continue safely without explicit breaks.</p>");
+    expect(storage).toContain("<p>مرحبا بالميناء</p><p>港の信号</p><p>office</p>");
+    expect(storage).toContain('href="https://example.com/neutral-river"');
+  });
+
+  it("keeps an unresolved V2 geometry boundary out of native output", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "independent-fragmented-untagged.pdf")),
+    ));
+    const facts = structuredClone(raw.facts);
+    const separator = facts.pages[0]?.characters.find((character) => character.index === 32);
+    const right = facts.pages[0]?.characters.find((character) => character.index === 33);
+    if (!separator || !right?.bbox) throw new Error("expected neutral boundary characters");
+    separator.value = "";
+    separator.unicode = 0;
+    right.bbox.x = 0.168;
+    const result = await normalizeUntaggedPdfFactsV2(facts, await digestPdfFactsV2(facts));
+
+    expect(result.document.blocks).toEqual([]);
+    expect(result.requiresFallbackPages).toEqual([0]);
+    expect(result.pageOutcomes[0]).toMatchObject({
+      mode: "fallback-required",
+      qualificationReasons: ["unresolved-text-boundary"],
+      unresolvedBoundaryCount: 1,
+    });
+    expect(result.boundaries).toContainEqual(expect.objectContaining({
+      leftCharacterIndex: 31,
+      rightCharacterIndex: 33,
+      action: "unresolved",
+      confidence: 0.25,
+    }));
+    expect(result.evidence.every((item) => item.outcome !== "native")).toBe(true);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/text-boundary-unresolved",
+      outcome: "reported",
+      context: { pageIndex: 0, boundaries: 1 },
+    }));
+  });
+
+  it("normalizes the pinned Word producer with RTL, calibrated heading, list, and filled grid", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const raw = await adapter.analyze(new Uint8Array(
+      await readFile(resolve(qualityFixtureRoot, "producer-word.pdf")),
+    ));
+    const result = await normalizeUntaggedPdfFactsV2(raw.facts, raw.factsDigest);
+
+    expect(result.document.blocks.map((block) => [block.type, blockText(block)])).toEqual([
+      ["heading", "Neutral Harbor Field Notes"],
+      ["paragraph", "Harbor signals remain clear across styled text runs."],
+      ["paragraph", "Seasonal coordination continues safely across a visual line wrap."],
+      ["paragraph", "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral."],
+      ["paragraph", "مرحبا بالميناء"],
+      ["paragraph", "港の信号は明確です"],
+      ["list", "list"],
+      ["table", "table"],
+    ]);
+    const list = result.document.blocks[6]!;
+    expect(list.type).toBe("list");
+    if (list.type !== "list") throw new Error("expected native list");
+    expect(list.items.map((item) => blockText(item.blocks[0]!))).toEqual([
+      "Inspect the northern marker.",
+      "Record the stable reading.",
+      "Publish the neutral summary.",
+    ]);
+    const table = result.document.blocks[7]!;
+    expect(table.type).toBe("table");
+    if (table.type !== "table") throw new Error("expected native table");
+    expect(table.rows.map((row) => row.cells.map((cell) => blockText(cell.blocks[0]!)))).toEqual([
+      ["Zone", "Signal"],
+      ["North", "Clear"],
+      ["South", "Stable"],
+    ]);
+    expect(result.requiresFallbackPages).toEqual([]);
+    expect(result.pageOutcomes).toEqual([expect.objectContaining({
+      mode: "geometry-native",
+      columnCount: 1,
+      sourceFragmentCount: 15,
+      accountedCharacterCount: 352,
+      unaccountedCharacterCount: 0,
+      qualificationReasons: [],
+      boundaryDecisionCount: 48,
+      unresolvedBoundaryCount: 0,
+    })]);
+    expect(result.evidence).toContainEqual(expect.objectContaining({
+      decisionCode: "pdf/table-untagged-grid-native",
+      outcome: "native",
+    }));
+    expect(result.evidence.every((item) => item.boundaryDecisionIds.every((id) =>
+      result.boundaries.some((boundary) => boundary.id === id)
+    ))).toBe(true);
+    expect(documentToStorage(result.document)).toContain(
+      "<h1>Neutral Harbor Field Notes</h1>",
+    );
+  });
+
   it("qualifies a simple golden with headings, safe links, and one native list", async () => {
     const adapter = await createNodePdfiumFactsAdapter();
     const bytes = new Uint8Array(await readFile(resolve(fixtureRoot, "simple-untagged.pdf")));

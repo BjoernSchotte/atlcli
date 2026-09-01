@@ -14,17 +14,19 @@ import {
   type PdfAssetMaterializationRequestV1,
   type PdfFactsAdapter,
 } from "./contracts.js";
-import { digestPdfFacts } from "./canonical.js";
+import { digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
 import { encodeRgbaPng } from "./fallbacks.js";
-import { preservePdfFigures } from "./figures.js";
+import { assessPdfVisualFallbacks } from "./fallback-policy.js";
+import { preservePdfFigures, preservePdfFiguresV2 } from "./figures.js";
 import { isPdfImportError, type PdfImportErrorCode } from "./issues.js";
-import { createNodePdfiumFactsAdapter } from "./node.js";
+import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
 import { createPdfiumFactsAdapter, createPdfiumFactsAdapterForTest } from "./adapter/pdfium.js";
 import type { PdfiumFailureStage } from "./adapter/contracts.js";
-import { normalizeTaggedPdfFacts } from "./normalize.js";
+import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
 import { normalizeUntaggedPdfFacts } from "./untagged.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
+const qualityFixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
 
 async function fixture(name: string): Promise<Uint8Array> {
   return new Uint8Array(await readFile(resolve(fixtureRoot, name)));
@@ -46,6 +48,98 @@ async function expectCode(promise: Promise<unknown>, code: PdfImportErrorCode): 
 }
 
 describe("PDF figure and rendered fallback preservation", () => {
+  it("preserves tagged figures through the V2 evidence contract", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = await fixture("complex-tagged.pdf");
+    const analyzed = await adapter.analyze(bytes);
+    const base = await normalizeTaggedPdfFactsV2(analyzed.facts, analyzed.factsDigest);
+    const result = await preservePdfFiguresV2(
+      analyzed.facts,
+      analyzed.factsDigest,
+      bytes,
+      adapter,
+      base,
+    );
+
+    expect(result.schema).toBe("atlcli.pdf-figure-semantics/2");
+    expect(result.figures).toHaveLength(1);
+    expect(result.figures[0]).toMatchObject({
+      mode: "native-raster",
+      captionBlockId: "pdf:p0:struct:3.1:caption",
+      authorAlt: true,
+    });
+    expect(result.evidence.every((entry) => Array.isArray(entry.boundaryDecisionIds))).toBe(true);
+    expect(result.evidence.find((entry) => entry.decisionCode === "pdf/figure-raster-native"))
+      .toMatchObject({ boundaryDecisionIds: [] });
+  });
+
+  it("closes only materialized tagged figures and keeps unmatched source IDs reportable", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = await fixture("complex-tagged.pdf");
+    const analyzed = await adapter.analyze(bytes);
+    const facts = structuredClone(analyzed.facts);
+    const unmatchedSourceId = "pdf:p0:struct:unmatched-figure";
+    facts.pages[0]!.structures.push({
+      id: unmatchedSourceId,
+      type: "Figure",
+      title: "",
+      alt: "",
+      actualText: "",
+      language: "",
+      elementId: "",
+      directMcids: [],
+      kids: [],
+      attributes: [],
+    });
+    const factsDigest = await digestPdfFactsV2(facts);
+    const base = await normalizeTaggedPdfFactsV2(facts, factsDigest);
+    const result = await preservePdfFiguresV2(facts, factsDigest, bytes, adapter, base);
+
+    expect(result.figures).toHaveLength(1);
+    expect(result.document.issues.filter((issue) =>
+      issue.code === "pdf-import/tagged-figure-deferred"
+    )).toEqual([expect.objectContaining({ sourceRefs: [unmatchedSourceId], outcome: "reported" })]);
+    expect(result.evidence.filter((entry) =>
+      entry.decisionCode === "pdf/tagged-figure-deferred"
+    )).toEqual([expect.objectContaining({ sourceId: unmatchedSourceId, outcome: "reported" })]);
+  });
+
+  it("retains a real unmatched form figure as explicit report-only fallback evidence", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = new Uint8Array(await readFile(
+      resolve(qualityFixtureRoot, "independent-structures-tagged.pdf"),
+    ));
+    const analyzed = await adapter.analyze(bytes);
+    const base = await normalizeTaggedPdfFactsV2(analyzed.facts, analyzed.factsDigest);
+    const result = await preservePdfFiguresV2(
+      analyzed.facts,
+      analyzed.factsDigest,
+      bytes,
+      adapter,
+      base,
+    );
+    const assessments = assessPdfVisualFallbacks(analyzed.facts, {
+      ...base,
+      evidence: result.evidence,
+    });
+
+    expect(result.figures).toEqual([]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/tagged-figure-deferred",
+      sourceRefs: ["pdf:p0:struct:3"],
+      outcome: "reported",
+    }));
+    expect(result.evidence).toContainEqual(expect.objectContaining({
+      sourceId: "pdf:p0:struct:3",
+      decisionCode: "pdf/tagged-figure-deferred",
+      outcome: "reported",
+    }));
+    expect(assessments[0]).toMatchObject({
+      scope: "report-only",
+      reasonCodes: ["unlocalized-unmatched-figure"],
+    });
+  });
+
   it("extracts the tagged one-to-one raster with author alt and caption", async () => {
     const adapter = await createNodePdfiumFactsAdapter();
     const bytes = await fixture("complex-tagged.pdf");
@@ -142,6 +236,66 @@ describe("PDF figure and rendered fallback preservation", () => {
       code: "pdf-import/table-region-fallback-attached",
       outcome: "attached",
     }));
+  });
+
+  it("materializes separate rendered fallbacks for separate table source IDs on one page", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = new Uint8Array(await readFile(
+      resolve(qualityFixtureRoot, "independent-negative-tagged.pdf"),
+    ));
+    const analyzed = await adapter.analyze(bytes);
+    const base = await normalizeTaggedPdfFactsV2(analyzed.facts, analyzed.factsDigest);
+    const augmented = structuredClone(base);
+    const originalIssue = augmented.document.issues.find((issue) =>
+      issue.code === "pdf-import/table-tagged-linearized"
+    )!;
+    const originalEvidence = augmented.evidence.find((entry) =>
+      entry.decisionCode === "pdf/table-tagged-linearized"
+    )!;
+    const secondTableId = "neutral:table:second";
+    const secondRowId = `${secondTableId}:linear-row:0`;
+    const secondCellId = `${secondTableId}:cell:0`;
+    augmented.document.blocks.push({
+      id: secondRowId,
+      type: "paragraph",
+      runs: [{ kind: "text", text: "Second | Table" }],
+      sourceRefs: [secondCellId],
+    });
+    augmented.document.issues.push({
+      ...originalIssue,
+      sourceRefs: [secondTableId],
+      context: { ...originalIssue.context, pageIndex: 0 },
+    });
+    augmented.evidence.push({
+      ...originalEvidence,
+      sourceId: secondCellId,
+      targetNodeId: secondRowId,
+      locator: {
+        ...originalEvidence.locator,
+        structurePath: secondCellId,
+        bbox: { x: 0.55, y: 0.72, width: 0.25, height: 0.08 },
+        characterIndexes: [],
+        markedContentIds: [],
+      },
+      boundaryDecisionIds: [],
+    });
+    const result = await preservePdfFiguresV2(
+      analyzed.facts,
+      analyzed.factsDigest,
+      bytes,
+      adapter,
+      augmented,
+    );
+    const fallbacks = result.figures.filter((figure) => figure.mode === "table-region-fallback");
+
+    expect(fallbacks).toHaveLength(2);
+    expect(fallbacks.map((figure) => figure.sourceId)).toEqual([
+      originalIssue.sourceRefs![0]!, secondTableId,
+    ]);
+    expect(fallbacks[0]!.bbox).not.toEqual(fallbacks[1]!.bbox);
+    expect(result.document.issues.filter((issue) =>
+      issue.code === "pdf-import/table-region-fallback-attached"
+    )).toHaveLength(2);
   });
 
   it("keeps a paragraph above a rendered region ahead of that image", async () => {
