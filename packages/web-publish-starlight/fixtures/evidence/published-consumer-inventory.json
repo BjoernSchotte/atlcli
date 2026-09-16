@@ -182,7 +182,7 @@
     {
       "path": "pagefind/pagefind-entry.json",
       "byteLength": 228,
-      "sha256": "1a062fcc67235a8494fd9bc2a1d91ad4f2f159a62a90fd2ed726fa79e3fec832"
+      "sha256": "4df89d72590063014d74ed016272a74146448146ad7ccc778e6b4a865ec710df"
     },
     {
       "path": "pagefind/pagefind-highlight.js",
@@ -213,6 +213,11 @@
       "path": "pagefind/pagefind-worker.js",
       "byteLength": 41255,
       "sha256": "4ca50d25bcab9e1c3afbc00ab5f7761114e83c8fc1b83d38655af1558b650c2a"
+    },
+    {
+      "path": "pagefind/pagefind.ar_3635c1e0a4.pf_meta",
+      "byteLength": 126,
+      "sha256": "4144f540ae76fc78ab61cd50428f023b61d575777bcc6081c6c8e9e294579267"
     },
     {
       "path": "pagefind/pagefind.ar_e5b338e201.pf_meta",
