@@ -243,6 +243,15 @@ For a native release-mode development helper, run
 Set `ATLCLI_NFS_HELPER` to the emitted executable. The adjacent build manifest
 records checksums and protocol identity; see the [helper build guide](../../packages/confluence-nfs/README.md).
 
+Unix CLI archives built with NFS include `atlcli-confluence-nfs` beside `atlcli`
+and dependency notices. Keep both executables together. The shell installer
+verifies the release checksum and accepts only the expected regular files before
+installing them. A downgrade to an older CLI-only archive removes the previous
+NFS companion, so it cannot be mistaken for a matching helper. If checksums cannot
+be retrieved or verified, installation stops; retry once the release assets are
+available. Homebrew companion support remains pending in the separate tap.
+
+
 ## Mermaid
 
 A fenced `mermaid` block writes a native `mermaid` macro for **Mermaid Integration

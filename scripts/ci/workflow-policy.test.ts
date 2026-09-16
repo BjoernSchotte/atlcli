@@ -96,6 +96,9 @@ describe("CI workflow policy", () => {
     expect(nfs).toContain('ATLCLI_NFS_LIVE: "0"');
     expect(nfs).toContain("getconf GNU_LIBC_VERSION");
     expect(nfs).toContain('bun scripts/release-artifacts.ts build --channel dev --dry-run');
+    expect(nfs).toContain('bun run fonts:ensure');
+    expect(nfs.indexOf('bun run fonts:ensure')).toBeLessThan(nfs.indexOf('bun scripts/release-artifacts.ts build'));
+    expect(nfs).toContain('bun run test scripts/install-binary.test.ts');
     expect(nfs).toContain('tar -xzf "$RUNNER_TEMP/nfs-release/atlcli-${{ matrix.target }}.tar.gz"');
     expect(nfs).toContain('"$RUNNER_TEMP/nfs-helper/atlcli" --version');
     expect(nfs).toContain("nfs-helper-build.json");

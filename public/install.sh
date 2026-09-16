@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 REPO="BjoernSchotte/atlcli"
 INSTALL_DIR="${ATLCLI_INSTALL:-$HOME/.atlcli}"
@@ -40,15 +40,13 @@ verify_checksum() {
 
   local checksums
   checksums=$(curl -fsSL "$checksums_url" 2>/dev/null) || {
-    warn "Could not download checksums — skipping verification"
-    return 0
+    error "Could not download release checksums"
   }
 
   local expected
-  expected=$(echo "$checksums" | grep -F "$(basename "$file")" | awk '{print $1}')
-  if [ -z "$expected" ]; then
-    warn "No checksum found for $(basename "$file") — skipping verification"
-    return 0
+  expected=$(printf '%s\n' "$checksums" | awk -v name="$(basename "$file")" '$2 == name || $2 == "*" name {print $1}')
+  if [[ ! "$expected" =~ ^[a-f0-9]{64}$ ]]; then
+    error "Missing, duplicate or invalid checksum for $(basename "$file")"
   fi
 
   local actual
@@ -57,8 +55,7 @@ verify_checksum() {
   elif command -v shasum >/dev/null 2>&1; then
     actual=$(shasum -a 256 "$file" | awk '{print $1}')
   else
-    warn "Neither sha256sum nor shasum available — skipping verification"
-    return 0
+    error "Install sha256sum or shasum to verify the release"
   fi
 
   if [ "$actual" != "$expected" ]; then
@@ -89,11 +86,32 @@ install_atlcli() {
 
   verify_checksum "$tmpdir/$asset" "$base_url/checksums.txt"
 
-  if ! tar -xzf "$tmpdir/$asset" -C "$BIN_DIR"; then
+  # Inspect the exact flat file set before extraction; never follow archive links.
+  local entries
+  entries=$(tar -tzf "$tmpdir/$asset") || error "Invalid release archive"
+  local expected_entries="atlcli"
+  if printf '%s\n' "$entries" | grep -qx 'atlcli-confluence-nfs'; then
+    expected_entries=$(printf '%s\n' LICENSE-nfsserve THIRD-PARTY-nfs.html atlcli atlcli-confluence-nfs nfs-helper-build.json)
+  fi
+  if [ "$(printf '%s\n' "$entries" | LC_ALL=C sort)" != "$expected_entries" ]; then
+    error "Unexpected release archive files"
+  fi
+  tar -tvzf "$tmpdir/$asset" | awk 'substr($0, 1, 1) != "-" {exit 1}' || error "Release archive contains non-regular files"
+  mkdir "$tmpdir/extracted"
+  if ! tar -xzf "$tmpdir/$asset" -C "$tmpdir/extracted"; then
     error "Failed to extract archive"
   fi
 
-  chmod +x "$BIN_DIR/atlcli"
+  chmod +x "$tmpdir/extracted/atlcli"
+  if [ -f "$tmpdir/extracted/atlcli-confluence-nfs" ]; then
+    chmod +x "$tmpdir/extracted/atlcli-confluence-nfs"
+    mv "$tmpdir/extracted/atlcli-confluence-nfs" "$BIN_DIR/atlcli-confluence-nfs"
+    mv "$tmpdir/extracted/LICENSE-nfsserve" "$tmpdir/extracted/THIRD-PARTY-nfs.html" "$tmpdir/extracted/nfs-helper-build.json" "$BIN_DIR/"
+  else
+    # Older CLI-only releases must not discover an incompatible leftover helper.
+    rm -f "$BIN_DIR/atlcli-confluence-nfs" "$BIN_DIR/LICENSE-nfsserve" "$BIN_DIR/THIRD-PARTY-nfs.html" "$BIN_DIR/nfs-helper-build.json"
+  fi
+  mv "$tmpdir/extracted/atlcli" "$BIN_DIR/atlcli"
   info "Installed to $BIN_DIR/atlcli"
 }
 

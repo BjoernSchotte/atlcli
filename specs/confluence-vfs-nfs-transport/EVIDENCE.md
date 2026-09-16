@@ -438,3 +438,28 @@ is the pre-existing test tree with copied implementation files, so its dry-run
 receipt is not a claim of a clean PR-head release. The new four-platform archive
 CI results remain to be inspected after this push; no installer or release was
 published.
+
+
+## Slice 19 — installer acceptance and clean-runner archive fix
+
+CI run 35154223316 exposed a missing prerequisite in the new native archive test:
+all four fresh runners failed CLI compilation because PDF font assets were absent.
+The NFS workflow now runs the existing pinned `fonts:ensure` provisioning before
+the archive builder; a policy assertion protects that order. This was not an NFS
+protocol failure. Four-platform archive acceptance is still pending the new run.
+
+The public shell installer now stages and checks the expected flat regular-file
+set before replacing executables. It installs the matching helper/notices and
+removes only known companion files on a CLI-only downgrade. Missing, malformed,
+duplicate or mismatched checksums stop installation; missing checksum tooling
+also fails instead of silently bypassing verification. Unexpected archive members
+and symlinks are rejected before altering installed files.
+
+Three executable installer tests / 23 assertions passed on both macOS arm64 and
+Linux x64. They exercised upgrade/downgrade, a path containing spaces, preservation
+of unrelated files, rejected checksums/members/symlinks, and installation plus
+offline execution of both binaries from actual locally built native CLI archives.
+The test replaces only the download command and uses the real installer/system
+tar in a temporary home. Native NFS CI now runs this installer proof on its own
+built archive. CI policy tests and typecheck passed. Homebrew's separate tap still
+installs only `atlcli` and needs a companion-aware change; no tap was published.
