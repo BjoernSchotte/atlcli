@@ -149,6 +149,33 @@ rustfmt passed, and all 19 tests in the planned native job passed on macOS
 (274 assertions). Typecheck passed. GitHub runner execution is checked after
 pushing this workflow; local success alone is not remote CI certification.
 
+## Slice 6: durable staging foundation
+
+Added a non-evictable SQLite staging journal separate from BodyCache, using WAL,
+FULL synchronous writes and macOS fullfsync. Admission is scoped to an explicit
+profile/export identity. Byte-range edits, truncation, sparse extension and a
+publication snapshot are committed transactionally. Database files are private.
+
+An in-flight publication retains its original bytes/base version across restart.
+Completing revision R advances the remote base version without overwriting or
+clearing a newer staged R+1. Ambiguous/failing publication preserves both the
+intent and bytes. Payload quotas reject additional data without modifying the
+last acknowledged image; they do not claim to bound SQLite/WAL physical overhead.
+
+On both macOS and Linux, 5 tests passed (27 assertions), including a child that
+acknowledges bytes and an intent then is killed with SIGKILL before recovery.
+Tests also cover reverse-order Unicode byte writes, zero-fill extension, version
+fencing, scope mismatch and quota failure. This is process-crash recovery proof,
+not a hardware power-loss simulation. The tests are added to required NFS CI.
+
+The journal is not yet wired into NFS mutations. Remote publication policy,
+rename/create durability and ambiguous API reconciliation remain outstanding;
+the mount remains RO. These storage primitives apply to either pending choice
+of automatic or explicit publication and do not decide that policy implicitly.
+
+CI follow-up for slice 5: GitHub run 35147632981 completed the native NFS jobs
+successfully on ubuntu-latest and macos-14.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

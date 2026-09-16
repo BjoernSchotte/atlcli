@@ -39,4 +39,4 @@ jobs:
           ATLCLI_NFS_LIVE: "0"
         run: |
           export ATLCLI_NFS_TEST_HELPER="$PWD/packages/confluence-nfs/target/debug/atlcli-confluence-nfs"
-          bun run test apps/cli/src/vfs/nfs-framing.test.ts apps/cli/src/vfs/nfs-filesystem.test.ts apps/cli/src/vfs/nfs-bridge.test.ts apps/cli/src/vfs/nfs-bridge-failures.test.ts apps/cli/src/vfs/mount-transport.test.ts
+          bun run test apps/cli/src/vfs/nfs-framing.test.ts apps/cli/src/vfs/nfs-filesystem.test.ts apps/cli/src/vfs/nfs-bridge.test.ts apps/cli/src/vfs/nfs-bridge-failures.test.ts apps/cli/src/vfs/nfs-journal.test.ts apps/cli/src/vfs/mount-transport.test.ts
