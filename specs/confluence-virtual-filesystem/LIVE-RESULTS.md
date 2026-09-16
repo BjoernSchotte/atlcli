@@ -133,6 +133,16 @@ creation ledger allowed cleanup even when the initial native-write run crashed.
 
 ## Remaining boundaries
 
+### Follow-up: recursive searches through folders
+
+A user-reported `grep -r -i <term> *` failure was reproduced read-only in the
+larger space. The tree walker sent folder IDs to the page direct-children
+endpoint, which returns 404. It now dispatches folders to `getFolderChildren`.
+The fake client now rejects the wrong endpoint too, and a regression searches
+through two nested folders. After the fix, the same live walk reaches the
+expected 300-page prefetch guard (1,419 candidate pages), with zero bodies fetched.
+The 386 focused VFS tests pass. The original failure was not caused by glob quoting.
+
 - This is a targeted feature verification, not a new full-repository test run.
 - Finder/editor UI, actual Spotlight indexing behaviour, Windows WebClient,
   Linux kernel mounts, Homebrew and release-binary startup gates remain unverified.

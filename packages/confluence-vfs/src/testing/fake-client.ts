@@ -343,7 +343,9 @@ export class FakeConfluenceClient implements VfsClient {
     options: { limit?: number } = {},
   ): Promise<FolderChild[]> {
     this.record("getPageDirectChildren", pageId);
-    this.mustPage(pageId);
+    if (this.mustPage(pageId).type !== "page") {
+      throw new FakeHttpError(404, "Confluence API error (404): not a page");
+    }
     return this.childrenOf(pageId)
       .slice(0, options.limit ?? this.pageSize)
       .map((p) => this.toChild(p));
@@ -396,7 +398,9 @@ export class FakeConfluenceClient implements VfsClient {
     options: { limit?: number } = {},
   ): Promise<FolderChild[]> {
     this.record("getFolderChildren", folderId);
-    this.mustPage(folderId);
+    if (this.mustPage(folderId).type !== "folder") {
+      throw new FakeHttpError(404, "Confluence API error (404): not a folder");
+    }
     return this.childrenOf(folderId)
       .slice(0, options.limit ?? this.pageSize)
       .map((p) => this.toChild(p));

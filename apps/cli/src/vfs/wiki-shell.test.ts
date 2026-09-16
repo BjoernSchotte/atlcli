@@ -169,6 +169,25 @@ describe("reading", () => {
 });
 
 describe("grep", () => {
+  it("searches a glob through real folder endpoints, including nested folders", async () => {
+    const client = seeded()
+      .seedPage({ id: "104", title: "Library", type: "folder", spaceKey: "DOCSY", parentId: "100" })
+      .seedPage({ id: "105", title: "Practices", type: "folder", spaceKey: "DOCSY", parentId: "104" })
+      .seedPage({ id: "106", title: "Craft", spaceKey: "DOCSY", parentId: "105",
+        storage: "<p>Craftsmanship</p>" });
+    const { shell, vfs } = await makeShell(client, { mode: "ro" });
+    try {
+      const result = await shell.exec("grep -r -i craftsmanship *");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("library-104/practices-105/craft-106/_index.md:Craftsmanship");
+      expect(client.callsTo("getFolderChildren")).toBe(2);
+      expect(client.callsTo("createPage")).toBe(0);
+      expect(client.callsTo("updatePage")).toBe(0);
+    } finally {
+      await vfs.close();
+    }
+  });
+
   it("finds dotted words and fresh content without visiting history or attachments", async () => {
     const client = seeded();
     client.seedPage({ id: "104", title: "Tokens", spaceKey: "DOCSY", parentId: "100",

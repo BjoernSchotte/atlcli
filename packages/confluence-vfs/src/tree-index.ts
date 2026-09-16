@@ -285,7 +285,9 @@ export class TreeIndex {
 
   private async fetchChildrenCloud(id: string, spaceKey: string): Promise<TreeNode[]> {
     const listed = await this.request(
-      () => this.opts.client.getPageDirectChildren(id, { limit: 250 }),
+      () => this.nodes.get(id)?.type === "folder"
+        ? this.opts.client.getFolderChildren(id, { limit: 250 })
+        : this.opts.client.getPageDirectChildren(id, { limit: 250 }),
       undefined,
     );
     return listed.filter(isListable).map((child) => this.fromFolderChild(child, id, spaceKey));
