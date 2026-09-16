@@ -4,13 +4,13 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { platform, tmpdir } from "node:os";
-import { isMounted, runMountCommand, type MountRecord } from "../commands/wiki-mount.js";
+import { isMounted, readMounts, processIdentity, runMountCommand, type MountRecord } from "../commands/wiki-mount.js";
 
 const run = process.env.ATLCLI_NFS_CLI_E2E === "1";
 const binary = process.env.ATLCLI_NFS_TEST_CLI;
 const command = binary ? [resolve(binary)] : [process.execPath, "--conditions=development", "run", "--cwd",
   resolve(import.meta.dir, "../.."), "src/index.ts"];
-for (const scenario of ["signal", "busy", "explicit", "helper-crash"] as const) {
+for (const scenario of ["signal", "busy", "explicit", "helper-crash", "parent-crash"] as const) {
 it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${scenario}`, async () => {
   const root = mkdtempSync(join(tmpdir(), "atlcli-nfs-cli-"));
   const mountpoint = join(root, "wiki docs");
@@ -57,6 +57,25 @@ it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${sc
     const file = await open(join(mountpoint, "_index.md"), "r");
     try { expect((await file.readFile()).byteLength).toBeGreaterThan(0); }
     finally { await file.close(); }
+    if (scenario === "parent-crash") {
+      expect(record!.helperIdentity).toBeTruthy();
+      process.kill(record!.pid, "SIGKILL");
+      await Promise.race([exited, Bun.sleep(10000).then(() => { throw new Error("Killed CLI did not exit"); })]);
+      const helperDeadline = Date.now() + 5000;
+      while (processIdentity(record!.helperPid!) === record!.helperIdentity && Date.now() < helperDeadline) await Bun.sleep(25);
+      expect(processIdentity(record!.helperPid!)).not.toBe(record!.helperIdentity);
+      expect(isMounted(mountpoint)).toBe(true); // SIGKILL cannot run the parent's detach handler.
+      const orphaned = readMounts(cache);
+      expect(orphaned).toHaveLength(1);
+      expect(orphaned[0]!.status).toBe("orphaned");
+      expect(orphaned[0]!.serverAlive).toBe(false);
+      expect(readdirSync(join(cache, "mounts")).some(name => name.endsWith(".json"))).toBe(true);
+      expect(await runMountCommand([...command, "wiki", "mount", "unmount", mountpoint,
+        "--profile", "mayflower", "--cache-dir", cache, "--json"], true)).toBe(0);
+      expect(isMounted(mountpoint)).toBe(false);
+      expect(readMounts(cache)).toEqual([]);
+      return;
+    }
     if (scenario === "busy") {
       holder = spawn("/bin/sleep", ["30"], { cwd: mountpoint, stdio: "ignore" });
       await new Promise<void>((resolveSpawn, reject) => { holder!.once("spawn", resolveSpawn); holder!.once("error", reject); });

@@ -280,3 +280,12 @@ A fenced `mermaid` block writes a native `mermaid` macro for **Mermaid Integrati
 for Confluence**. That app must be installed. Inline sources round-trip through
 Markdown; attachment-backed variants remain preserved raw macros. See
 [macro syntax and examples](../../src/content/docs/confluence/macros.md#mermaid-diagrams).
+
+
+After an NFS mount process is killed with SIGKILL, its helper exits when the
+private pipe closes, but the OS volume can remain attached. `wiki mount list`
+keeps that record and reports `orphaned`; it must not be mistaken for a working
+server. Run `atlcli wiki mount unmount <mountpoint>` using the same `--cache-dir`
+if one was specified. Once detached, start a fresh mount: old filehandles do not
+survive a helper restart. The recovery command uses regular unmount, without
+forced or lazy detachment. Close applications using the volume if it is busy.

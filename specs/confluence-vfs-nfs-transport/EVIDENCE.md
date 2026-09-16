@@ -666,3 +666,26 @@ identity, and cleans up the temporary folder and both pages.
 
 This slice does not claim stable handles for every generated view, independent
 attachment renames, or the still-open read snapshot/publication contracts.
+
+
+## Slice 28 — parent crash, orphan retention and regular recovery
+
+The CLI lifecycle test now kills the actual recorded parent PID with SIGKILL,
+waits for the helper process identity to disappear, verifies that the still
+attached volume and mount record are retained with status orphaned and
+serverAlive=false, then runs the public unmount command. It asserts normal
+detachment and removal of state. The test touches only its own isolated DOCSY
+read-only mount, without forced/lazy unmount or signalling unrelated processes.
+
+All five source-CLI lifecycle cases passed live on Linux: normal signal, busy
+mount retry, explicit unmount, helper crash and parent crash (5 tests / 61
+assertions). No production change was needed for this previously uncovered
+case. Typecheck passed. All test mounts and local test directories were cleaned.
+
+A real-helper regression also closes the parent pipe after readiness, both at
+a frame boundary and during a header. The helper exits without a timeout kill.
+The failure suite passed on macOS and Linux (5 tests / 14 assertions each).
+This proves the pipe-loss mechanism on both systems; it does not substitute for
+a complete native macOS CLI parent-crash/remount acceptance test, which remains
+open while the local mayflower profile is unavailable. Pending-write crash
+recovery remains part of the uncompleted RW gate.
