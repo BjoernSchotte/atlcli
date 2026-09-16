@@ -924,7 +924,10 @@ export interface VfsWriteResult {
 // export: VirtualDirs
 export declare class VirtualDirs {
     private readonly opts;
+    private readonly attachmentListings;
     constructor(opts: VirtualDirsOptions);
+    invalidateAttachments(pageId: string): void;
+    private listAttachments;
     spaceJson(spaceKey: string): Promise<string>;
     meJson(identity: {
         accountId: string;
@@ -970,6 +973,7 @@ export interface VirtualDirsOptions {
     instanceUrl: string;
     profile: string;
     offline: boolean;
+    metadataTtlMs?: number;
     logger: VfsLogger;
     now: () => number;
     sleep?: (ms: number) => Promise<void>;

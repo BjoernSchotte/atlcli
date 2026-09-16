@@ -141,6 +141,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
         instanceUrl: runtime.instanceUrl,
         profile: opts.profile,
         offline: opts.offline,
+        metadataTtlMs: opts.treeTtlMs,
         logger: opts.logger,
         now: opts.now,
         sleep: opts.sleep,
@@ -982,6 +983,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
             filename,
             data: bytes,
           });
+      this.virtual?.invalidateAttachments(node.id);
       this.audit?.record({
         op: "upload-attachment",
         path,
@@ -1144,6 +1146,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       );
       if (!found) throw new VfsError("ENOENT", `No such attachment: ${path}`, { path });
       await this.opts.client.deleteAttachment(found.id);
+      this.virtual?.invalidateAttachments(resolved.node.id);
       this.audit?.record({
         op: "delete-attachment",
         path,

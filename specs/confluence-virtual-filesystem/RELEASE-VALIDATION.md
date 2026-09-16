@@ -157,6 +157,25 @@ After releasing that process, a second Ctrl-C unmounted and exited with code 0.
 Shutdown tries ordinary umount then noninteractive sudo; failure keeps the
 server and mount state available rather than stranding a dead filesystem.
 
+## Glow directory navigation
+
+A native Linux Glow 3.0.0 directory scan exposed repeated attachment-list API
+requests: 23 attachment PROPFINDs consumed 14.7 seconds, with 1,629 backend
+calls at the intermediate measurement. Attachment metadata now shares one
+in-flight/cached result per page, using the existing tree TTL, bounded to 256
+pages. Failed requests are evicted; upload/update/delete invalidate the page.
+Non-ID editor/git probes no longer load children that cannot match.
+
+With a fresh VFS cache and a correctly sized real Glow pseudo-terminal,
+`_index.md` appeared after **687 ms**, with **14 backend requests** and zero
+rate-limit responses. The 23 attachment PROPFINDs took **146 ms** combined.
+The original terminal had no window size, so no end-to-end before/after
+speedup is claimed from its total runtime. Probe mounts/servers were cleaned.
+The final focused run passed **488 tests / 1,477 assertions**, including TTL,
+concurrent deduplication, errors, mutation invalidation and untouched shell
+metadata-only behaviour. The last full repository suite below predates these
+follow-up fixes; current focused tests, typecheck and build pass.
+
 ## Final repository checks
 
 After the production fixes: `bun run test` reports **9,008 pass, 40 skip, zero

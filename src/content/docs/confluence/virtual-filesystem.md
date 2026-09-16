@@ -384,6 +384,14 @@ atlcli wiki vfs conflicts list       # writes that could not be merged
 
 ## Troubleshooting
 
+### Browsing a page with Glow
+
+For a single-space mount, open `glow -t <mountpoint>/<page-directory>/`
+to select its Markdown files, or open `_index.md` directly. Glow recursively
+scans directories, including `_attachments`; attachment metadata is shared
+within the tree TTL so this does not issue one attachment-list request per
+file property. Only files actually read require attachment downloads.
+
 ### Linux editor save briefly appears empty
 
 With davfs2, inode attributes may lag an editor save for about one second.

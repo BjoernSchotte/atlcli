@@ -189,7 +189,8 @@ export class PathResolver {
       const side = this.resolveSideObject(currentNode, segment, rest, path);
       if (side) return side;
 
-      const children = await this.index.loadChildren(currentId);
+      // Names without an ID cannot match a page; editor/git probes need no listing.
+      const children = parseName(segment).idCandidate === undefined ? [] : await this.index.loadChildren(currentId);
       const match = this.matchChild(children, segment);
 
       if (!match) {

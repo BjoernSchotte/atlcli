@@ -92,6 +92,15 @@ describe("resolve", () => {
     expect((await vfs.stat("/DOCSY/architecture-102.md")).id).toBe("102");
   });
 
+  it("rejects non-page names without loading the probed directory", async () => {
+    await vfs.stat("/DOCSY/architecture-102");
+    client.resetCalls();
+    await expect(vfs.stat("/DOCSY/architecture-102/.git")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(vfs.stat("/DOCSY/architecture-102/.gitignore")).rejects.toMatchObject({ code: "ENOENT" });
+    expect(client.requestCount).toBe(0);
+    expect(vfs.index.isUnloaded("102")).toBe(true);
+  });
+
   it("resolves a nested page one level at a time", async () => {
     const stat = await vfs.stat("/DOCSY/architecture-102/deployment-103");
     expect(stat.id).toBe("103");

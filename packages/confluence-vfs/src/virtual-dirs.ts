@@ -21,7 +21,7 @@ import type { PageComments } from "@atlcli/confluence";
 import type { VfsClient } from "./client-port.js";
 import { BodyCache } from "./body-cache.js";
 import { mapClientError, withRateLimitRetry } from "./errors.js";
-import type { VfsLogger } from "./options.js";
+import { VFS_DEFAULTS, type VfsLogger } from "./options.js";
 import { formatDirName, vfsSlug } from "./path-mapper.js";
 import { RECENT_WINDOWS, type RecentWindow } from "./resolver.js";
 import type { TreeIndex, TreeNode } from "./tree-index.js";
@@ -40,6 +40,7 @@ export interface VirtualDirsOptions {
   instanceUrl: string;
   profile: string;
   offline: boolean;
+  metadataTtlMs?: number;
   logger: VfsLogger;
   now: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -61,7 +62,37 @@ function linkEntry(name: string): VfsDirent {
 }
 
 export class VirtualDirs {
+  private readonly attachmentListings = new Map<string, {
+    expires: number;
+    result: Promise<Awaited<ReturnType<VfsClient["listAttachments"]>>>;
+  }>();
+
   constructor(private readonly opts: VirtualDirsOptions) {}
+
+  invalidateAttachments(pageId: string): void {
+    this.attachmentListings.delete(pageId);
+  }
+
+  private listAttachments(pageId: string, path?: string) {
+    const cached = this.attachmentListings.get(pageId);
+    if (cached && this.opts.now() < cached.expires) return cached.result;
+    this.attachmentListings.delete(pageId);
+    // Bound session metadata; attachment bytes still use the existing blob cache.
+    if (this.attachmentListings.size >= 256) {
+      this.attachmentListings.delete(this.attachmentListings.keys().next().value!);
+    }
+    const entry = {
+      expires: Infinity,
+      result: this.request(() => this.opts.client.listAttachments(pageId), path),
+    };
+    this.attachmentListings.set(pageId, entry);
+    void entry.result.then(() => {
+      entry.expires = this.opts.now() + (this.opts.metadataTtlMs ?? VFS_DEFAULTS.treeTtlMs);
+    }, () => {
+      if (this.attachmentListings.get(pageId) === entry) this.attachmentListings.delete(pageId);
+    });
+    return entry.result;
+  }
 
   // ------------------------------------------------------------ WP4.1 json
 
@@ -107,7 +138,7 @@ export class VirtualDirs {
    * directory of gigabyte PDFs costs one request and no transfer.
    */
   async attachmentsReaddir(node: TreeNode): Promise<VfsDirent[]> {
-    const attachments = await this.request(() => this.opts.client.listAttachments(node.id));
+    const attachments = await this.listAttachments(node.id);
     return attachments.map((attachment) => ({
       name: attachment.filename,
       kind: "attachment" as const,
@@ -123,7 +154,7 @@ export class VirtualDirs {
     filename: string,
     path: string,
   ): Promise<{ id: string; size: number; mediaType: string; version: number; mtime: Date }> {
-    const attachments = await this.request(() => this.opts.client.listAttachments(node.id), path);
+    const attachments = await this.listAttachments(node.id, path);
     const found = attachments.find((attachment) => attachment.filename === filename);
     if (!found) throw new VfsError("ENOENT", `No such attachment: ${path}`, { path });
     return {
@@ -137,7 +168,7 @@ export class VirtualDirs {
 
   /** Downloads on a real read only, then serves from the blob cache. */
   async attachmentBytes(node: TreeNode, filename: string, path: string): Promise<Uint8Array> {
-    const attachments = await this.request(() => this.opts.client.listAttachments(node.id), path);
+    const attachments = await this.listAttachments(node.id, path);
     const found = attachments.find((attachment) => attachment.filename === filename);
     if (!found) throw new VfsError("ENOENT", `No such attachment: ${path}`, { path });
 

@@ -117,6 +117,47 @@ describe("_attachments", () => {
     await vfs.close();
   });
 
+  it("shares one listing across concurrent and sequential attachment stats, then expires", async () => {
+    const client = withAttachments();
+    const vfs = await openVfs(client);
+    const directory = "/DOCSY/architecture-102/_attachments";
+    await Promise.all(Array.from({ length: 10 }, (_, i) => vfs.stat(`${directory}/file-${i}.bin`)));
+    await vfs.readdir(directory);
+    await vfs.stat(`${directory}/file-3.bin`);
+    expect(client.callsTo("listAttachments")).toBe(1);
+    expect(client.callsTo("downloadAttachment")).toBe(0);
+    clock += 60_001;
+    await vfs.stat(`${directory}/file-3.bin`);
+    expect(client.callsTo("listAttachments")).toBe(2);
+    await vfs.close();
+  });
+
+  it("invalidates listed sizes after attachment writes and deletion", async () => {
+    const client = withAttachments();
+    const vfs = await openVfs(client, { mode: "rw", allowDelete: true });
+    const path = "/DOCSY/architecture-102/_attachments/file-3.bin";
+    expect((await vfs.stat(path)).size).toBe(1003);
+    await vfs.writeFile(path, new Uint8Array(42));
+    expect((await vfs.stat(path)).size).toBe(42);
+    await vfs.rm(path);
+    await expect(vfs.stat(path)).rejects.toMatchObject({ code: "ENOENT" });
+    await vfs.close();
+  });
+
+  it("does not retain failed attachment listings", async () => {
+    const client = withAttachments();
+    const list = client.listAttachments.bind(client);
+    let first = true;
+    client.listAttachments = async (pageId) => {
+      if (first) { first = false; throw new Error("temporary failure"); }
+      return list(pageId);
+    };
+    const vfs = await openVfs(client);
+    await expect(vfs.readdir("/DOCSY/architecture-102/_attachments")).rejects.toThrow();
+    expect(await vfs.readdir("/DOCSY/architecture-102/_attachments")).toHaveLength(10);
+    await vfs.close();
+  });
+
   it("reports the exact size from metadata without a download", async () => {
     const client = withAttachments();
     const vfs = await openVfs(client);
