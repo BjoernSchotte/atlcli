@@ -60,6 +60,18 @@ describe("mode", () => {
   });
 });
 
+describe("write controls", () => {
+  it("keeps coalescing and terminal prompts unless explicitly disabled", () => {
+    expect(resolve({}).syncWrites).toBe(false);
+    expect(resolve({}).confirm).toBe(false);
+    const options = resolve({ "sync-writes": true, confirm: true });
+    expect(options.syncWrites).toBe(true);
+    expect(options.confirm).toBe(true);
+    expect(options.mode).toBe("ro");
+    expect(options.allowDelete).toBe(false);
+  });
+});
+
 describe("spaces", () => {
   it("splits a comma-separated flag", () => {
     expect(resolve({ space: "DOCSY, TEAM ,OPS" }).spaces).toEqual(["DOCSY", "TEAM", "OPS"]);
@@ -157,6 +169,8 @@ describe("help", () => {
       "-c ",
       "--mode ro|rw",
       "--allow-delete",
+      "--confirm",
+      "--sync-writes",
       "--cache-dir",
       "--offline",
       "--cwd",
@@ -181,6 +195,51 @@ describe("help", () => {
     const help = wikiShHelp();
     for (const command of ["cql ", "page-id", "page-url", "vfs-status"]) {
       expect(help).toContain(command);
+    }
+  });
+});
+
+
+describe("interactive confirmation", () => {
+  it("uses one reader and does not execute confirmation answers as commands", async () => {
+    const child = Bun.spawn([process.execPath, "--conditions=development", "-e", `
+      import { runInteractive } from "./apps/cli/src/commands/wiki-sh.ts";
+      let confirm;
+      const shell = {
+        complete: async (line) => [[], line],
+        exec: async (script) => {
+          const accepted = await confirm("Delete fixture?");
+          return { stdout: "executed=" + script + ";accepted=" + accepted + "\\n", stderr: "", exitCode: 0 };
+        },
+      };
+      await runInteractive(shell, { spaces: ["DOCSY"], mode: "rw", allowDelete: true }, (fn) => { confirm = fn; });
+    `], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    const reader = child.stdout.getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    async function until(text: string): Promise<void> {
+      while (!output.includes(text)) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error(`REPL exited before ${text}: ${output}`);
+        output += decoder.decode(chunk.value);
+      }
+    }
+    try {
+      await until("DOCSY # ");
+      output = "";
+      child.stdin.write("rm fixture.md\n");
+      await until("Delete fixture? [y/N] ");
+      child.stdin.write("n\n");
+      await until("accepted=false");
+      await until("DOCSY # ");
+      child.stdin.write("exit\n");
+      child.stdin.end();
+      expect(await child.exited).toBe(0);
+      expect(output).toContain("executed=rm fixture.md;accepted=false");
+      expect(output).not.toContain("executed=n");
+    } finally {
+      child.kill();
+      reader.releaseLock();
     }
   });
 });

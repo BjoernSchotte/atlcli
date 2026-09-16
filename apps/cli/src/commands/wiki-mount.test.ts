@@ -142,5 +142,6 @@ describe("help", () => {
 
   it("says writing is off by default", () => {
     expect(wikiMountHelp()).toContain("default: ro");
+    expect(wikiMountHelp()).toContain("--sync-writes");
   });
 });

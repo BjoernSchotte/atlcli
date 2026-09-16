@@ -166,6 +166,7 @@ async function handleMount(
     spaces,
     mode,
     allowDelete: hasFlag(flags, "allow-delete"),
+    ...(hasFlag(flags, "sync-writes") ? { coalesceMs: 0 } : {}),
     cacheDir,
     offline: false,
   });
@@ -350,6 +351,7 @@ Options:
   --space <KEY[,KEY]>  Spaces to expose (default: the profile's space)
   --mode ro|rw         Write posture (default: ro)
   --allow-delete       Additionally allow deletion, which moves pages to the trash
+  --sync-writes        Persist each write immediately (disable 500 ms coalescing)
   --cache-dir <path>   Cache root (default: ~/.atlcli/vfs)
   --port <n>           Bind to a fixed port (default: a free one)
   --profile <name>     Use a specific auth profile

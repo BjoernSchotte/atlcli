@@ -172,6 +172,11 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     }
   }
 
+  /** Undefined for custom clients without transport instrumentation. */
+  getRequestStats(): { requests: number; rateLimits: number } | undefined {
+    return this.opts.client.getRequestStats?.();
+  }
+
   /** The single source of truth for what this filesystem may change. */
   get guard(): ModeGuard {
     return { mode: this.opts.mode, allowDelete: this.opts.allowDelete };

@@ -37,6 +37,7 @@ export interface VfsClient {
   /** Cloud or Data Center; decides which tree traversal the index uses. */
   readonly deploymentType: DeploymentType;
   getInstanceUrl(): string;
+  getRequestStats?(): { requests: number; rateLimits: number };
 
   // --- identity -----------------------------------------------------------
   getCurrentUser(options?: {

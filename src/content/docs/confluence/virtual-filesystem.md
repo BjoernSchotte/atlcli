@@ -318,6 +318,8 @@ limits output, not downloads.
 | `-c <script>` | string | — | no | Run one script; exit with its exit code |
 | `--mode ro\|rw` | enum | `ro` | no | Write posture |
 | `--allow-delete` | flag | off | no | Needed for `rm`, on top of `rw` |
+| `--confirm` | flag | off | no | Skip terminal confirmation for deletion and cross-space moves; does not grant write/delete permission |
+| `--sync-writes` | flag | off | no | Persist writes immediately instead of coalescing for 500 ms |
 | `--cache-dir <path>` | path | `~/.atlcli/vfs` | no | Cache root |
 | `--offline` | flag | off | no | Read the cache only; issue no requests |
 | `--cwd <path>` | path | the first space | no | Starting directory |
@@ -335,6 +337,7 @@ limits output, not downloads.
 | `--space <KEY[,KEY]>` | string list | the profile's space | yes, unless configured | Spaces to expose |
 | `--mode ro\|rw` | enum | `ro` | no | Write posture |
 | `--allow-delete` | flag | off | no | Needed for deletion |
+| `--sync-writes` | flag | off | no | Persist writes immediately instead of coalescing for 500 ms |
 | `--cache-dir <path>` | path | `~/.atlcli/vfs` | no | Cache root |
 | `--port <n>` | number | a free port | no | Bind to a fixed port |
 

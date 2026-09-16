@@ -47,6 +47,8 @@ export const ALLOWED_COMMANDS = [
 ] as const satisfies readonly CommandName[];
 
 export interface WikiShellOptions {
+  /** Interactive frontends only; absent means the explicit CLI gates suffice. */
+  confirmMutation?: (message: string) => Promise<boolean>;
   vfs: ConfluenceVfsImpl;
   /** Spaces to mount, each at `/<KEY>`. */
   spaces: string[];
@@ -73,7 +75,7 @@ export interface WikiShell {
   /** readline candidates and the unquoted/escaped word being completed. */
   complete(line: string): Promise<[string[], string]>;
   /** Requests made and cache hits, for `--json` and `vfs-status`. */
-  stats(): { requests: number; cacheHits: number; cacheMisses: number; prefetched: number };
+  stats(): { requests: number | null; rateLimits: number | null; cacheHits: number; cacheMisses: number; prefetched: number };
 }
 
 /**
@@ -349,7 +351,31 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
 
   // Slugs are aliases for an ID, so the bundled mv mistakes a new title for
   // an existing destination directory and tries to move the page into itself.
+  // Bundled rm/mv accept only boolean options. Preserve operands after --.
+  const mutationOperands = (args: string[]) => {
+    const end = args.indexOf("--");
+    return end < 0 ? args.filter((arg) => !arg.startsWith("-"))
+      : [...args.slice(0, end).filter((arg) => !arg.startsWith("-")), ...args.slice(end + 1)];
+  };
+  const declined = (command: string) => ({ stdout: "", stderr: `${command}: cancelled\n`, exitCode: 1 });
+  const rm = defineCommand("rm", async (args, ctx) => {
+    const paths = mutationOperands(args);
+    if (!args.slice(0, args.indexOf("--") < 0 ? args.length : args.indexOf("--")).includes("--help") && paths.length && options.confirmMutation &&
+        options.vfs.guard.mode === "rw" && options.vfs.guard.allowDelete &&
+        !await options.confirmMutation(`Move to Confluence trash: ${paths.map((p) => JSON.stringify(p)).join(", ")}?`)) {
+      return declined("rm");
+    }
+    return ctx.origCommand!(args);
+  }, { trusted: true });
   const mv = defineCommand("mv", async (args, ctx) => {
+    const paths = mutationOperands(args);
+    if (!args.slice(0, args.indexOf("--") < 0 ? args.length : args.indexOf("--")).includes("--help") && paths.length >= 2 && options.confirmMutation && options.vfs.guard.mode === "rw") {
+      const destination = spaceOf(ctx.cwd, posix.resolve(ctx.cwd, paths.at(-1)!));
+      if (paths.slice(0, -1).some((path) => spaceOf(ctx.cwd, posix.resolve(ctx.cwd, path)) !== destination) &&
+          !await options.confirmMutation(`Move across Confluence spaces: ${paths.map((p) => JSON.stringify(p)).join(", ")}?`)) {
+        return declined("mv");
+      }
+    }
     const operands = args[0] === "--" ? args.slice(1) : args;
     if (operands.length === 2 && operands.every((arg) => !arg.startsWith("-"))) {
       const from = posix.resolve(ctx.cwd, operands[0]!);
@@ -416,13 +442,15 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
         `cache hits:  ${stats?.hits ?? 0} hit, ${stats?.misses ?? 0} miss`,
         `prefetched:  ${prefetched} page bodies this session`,
         `nodes known: ${options.vfs.index.loadedNodes().length}`,
+        `requests:    ${options.vfs.getRequestStats()?.requests ?? "unavailable"}`,
+        `rate limits: ${options.vfs.getRequestStats()?.rateLimits ?? "unavailable"}`,
       ];
       return { stdout: `${lines.join("\n")}\n`, stderr: "", exitCode: 0 };
     },
     { trusted: true },
   );
 
-  const customCommands = [grep, fgrep, egrep, find, cql, pageId, pageUrl, vfsStatus, mv];
+  const customCommands = [grep, fgrep, egrep, find, cql, pageId, pageUrl, vfsStatus, mv, rm];
   const bash = new Bash({
     defenseInDepth: false,
     cwd: options.cwd ?? `/${spaces[0]}`,
@@ -496,7 +524,8 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
     stats() {
       const stats = options.vfs.cache?.stats();
       return {
-        requests: 0,
+        requests: options.vfs.getRequestStats()?.requests ?? null,
+        rateLimits: options.vfs.getRequestStats()?.rateLimits ?? null,
         cacheHits: stats?.hits ?? 0,
         cacheMisses: stats?.misses ?? 0,
         prefetched,

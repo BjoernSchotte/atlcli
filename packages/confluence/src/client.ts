@@ -557,6 +557,20 @@ export interface ConfluenceClientOptions {
 const retrySchedulerHook = Symbol.for("atlcli.confluence.retry-scheduler.test-hook");
 
 export class ConfluenceClient {
+  private requestStats = { requests: 0, rateLimits: 0 };
+
+  /** Content-free counters for actual HTTP attempts, including retries and v2. */
+  getRequestStats(): { requests: number; rateLimits: number } {
+    return { ...this.requestStats };
+  }
+
+  private async countedFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+    this.requestStats.requests++;
+    const response = await fetch(input, init);
+    if (response.status === 429) this.requestStats.rateLimits++;
+    return response;
+  }
+
   private confluenceBaseUrl: string;
   /** Hosting model exposed to capability adapters such as tree traversal. */
   public readonly deploymentType: DeploymentType;
@@ -829,7 +843,7 @@ export class ConfluenceClient {
       const attemptStartedAt = Date.now();
       let res: Response;
       try {
-        res = await fetch(
+        res = await this.countedFetch(
           url.toString(),
           this.applyFetchOptions({
             method,
@@ -1021,7 +1035,7 @@ export class ConfluenceClient {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       options.signal?.throwIfAborted();
-      const res = await fetch(url.toString(), this.applyFetchOptions({
+      const res = await this.countedFetch(url.toString(), this.applyFetchOptions({
         method,
         headers: {
           Authorization: this.authHeader,
@@ -3297,7 +3311,7 @@ export class ConfluenceClient {
 
     // Do not retry multipart POSTs: after an ambiguous 429/5xx/transport
     // failure, Confluence may already have created the attachment/version.
-    const res = await fetch(url.toString(), this.applyFetchOptions({
+    const res = await this.countedFetch(url.toString(), this.applyFetchOptions({
       method: "POST",
       headers: {
         Authorization: this.authHeader,
@@ -3376,7 +3390,7 @@ export class ConfluenceClient {
 
       let response: Response;
       try {
-        response = await fetch(url, this.applyFetchOptions({
+        response = await this.countedFetch(url, this.applyFetchOptions({
           ...init,
           headers,
         }));
@@ -3483,12 +3497,13 @@ export class ConfluenceClient {
             init,
             this.sessionRedirectPolicy,
             {
+              fetchFn: (input, init) => this.countedFetch(input, init),
               loginRedirectError: (status) => this.authRedirectError(status),
               blockedRedirectError: (target, reason) =>
                 new SessionRedirectBlockedError("Confluence attachment download", target, reason),
             }
           )
-        : await fetch(url.toString(), init);
+        : await this.countedFetch(url.toString(), init);
 
       if (res.status === 429) {
         const delayMs =
@@ -3675,7 +3690,7 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), this.applyFetchOptions({
+      const res = await this.countedFetch(url.toString(), this.applyFetchOptions({
         method: options.method ?? "GET",
         headers: {
           Authorization: this.authHeader,

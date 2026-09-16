@@ -274,3 +274,26 @@ typecheck 4/4 and build 35/35 successful. Tests cover indexed false positives,
 empty results, outages, truncation, quiet early exit, explicit files, aliases,
 version refresh, scope restrictions, unsupported-pattern fallback and exhaustive
 opt-out. No push performed.
+
+
+## Remaining-plan closure: CLI controls and telemetry
+
+`--sync-writes` now disables write coalescing in both frontends. Interactive
+shell deletion and cross-space moves ask once before mutation; `--confirm`
+skips that prompt, while noninteractive scripts retain the existing mode/delete
+gates. One readline reader handles both shell commands and answers. Tests cover
+force flags, relative cross-space paths and filenames after `--`.
+
+HTTP request and 429 counters now cover v1, v2, attachments and retries; shell
+JSON and `vfs-status` expose them. Custom clients without instrumentation report
+unavailable rather than a fabricated zero. A real local HTTP regression verifies
+both REST versions plus attachment transports.
+
+Validation: command and real-interpreter regressions, workspace typecheck/build,
+12 DOCSY live shell/WebDAV/native-macOS tests and the synthetic search harness
+passed. The search harness removed all five temporary DOCSY pages; MAYFLOWER
+remained GET-only. API reports regenerated for the additive public methods.
+
+User accepted single-profile testing for this iteration: no second identity is
+available. Windows is unavailable; Linux native validation will run separately
+on the user's homelab. Neither is represented as a passing platform test.

@@ -176,6 +176,10 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     private readonly sessionAliases;
     private readonly enrichInFlight;
     constructor(opts: ResolvedVfsOptions, runtime?: VfsRuntime, cache?: BodyCache);
+    getRequestStats(): {
+        requests: number;
+        rateLimits: number;
+    } | undefined;
     get guard(): ModeGuard;
     private readQueryHints;
     private writeQueryHints;
@@ -187,8 +191,28 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     flush(): Promise<void>;
     private requireWriteBack;
     searchPageIds(cql: string): Promise<string[]>;
+    searchExcerpts(cql: string, options?: {
+        maxResults?: number;
+        spaces?: string[];
+    }): Promise<{
+        results: {
+            id: string;
+            path: string;
+            title: string;
+            excerpt: string;
+            spaceKey: string;
+            version?: number;
+        }[];
+        totalSize?: number;
+        truncated: boolean;
+        complete: boolean;
+    }>;
     searchPaths(cql: string): Promise<string[]>;
-    subtreePageIds(path: string, spaceKey: string): Promise<string[]>;
+    subtreePageIds(path: string, spaceKey: string, options?: {
+        shouldVisit?: (node: TreeNode) => boolean;
+    }): Promise<string[]>;
+    get prefetchMaxPages(): number;
+    withBodyBudget<T>(budget: number, task: () => Promise<T>): Promise<T>;
     prefetch(ids: string[], options?: {
         budget?: number;
         reason?: string;
@@ -295,7 +319,10 @@ export declare function normalizeStorage(storage: string): string;
 // export: PageStore
 export declare class PageStore {
     private readonly opts;
+    private readonly bodyBudget;
     constructor(opts: PageStoreOptions);
+    withBodyBudget<T>(budget: number, task: () => Promise<T>): Promise<T>;
+    private reserveBodyDownloads;
     readBody(node: TreeNode, path: string): Promise<string>;
     readVersion(node: TreeNode, version: number, path: string): Promise<string>;
     prefetchBodies(ids: string[], options?: {
@@ -586,7 +613,9 @@ export declare class TreeIndex {
     loadSubtree(rootId: string, options?: {
         maxDepth?: number;
         maxNodes?: number;
+        shouldVisit?: (node: TreeNode) => boolean;
     }): Promise<TreeNode[]>;
+    revalidatePages(ids: readonly string[]): Promise<void>;
     revalidate(id: string): Promise<void>;
     isStale(id: string): boolean;
     upsert(partial: Partial<TreeNode> & {
@@ -640,6 +669,10 @@ export declare const VFS_DEFAULTS: {
 export interface VfsClient {
     readonly deploymentType: DeploymentType;
     getInstanceUrl(): string;
+    getRequestStats?(): {
+        requests: number;
+        rateLimits: number;
+    };
     getCurrentUser(options?: {
         signal?: AbortSignal;
     }): Promise<{
@@ -670,6 +703,9 @@ export interface VfsClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getPageMetadata(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage>;
     getPage(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePage & {
@@ -688,6 +724,12 @@ export interface VfsClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        cursor?: string;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
     search(cql: string, options?: {
         limit?: number;
         start?: number;
@@ -1068,6 +1110,7 @@ export declare class FakeConfluenceClient implements VfsClient {
     getFolderChildren(folderId: string, options?: {
         limit?: number;
     }): Promise<FolderChild[]>;
+    getPageMetadata(id: string): Promise<ConfluencePage>;
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
@@ -1082,6 +1125,10 @@ export declare class FakeConfluenceClient implements VfsClient {
         limit?: number;
         start?: number;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<ConfluenceDetailedSearchResults>;
     searchPages(cql: string, limit?: number): Promise<ConfluenceSearchResult[]>;
     private runCql;
     getLabels(pageId: string): Promise<LabelInfo[]>;

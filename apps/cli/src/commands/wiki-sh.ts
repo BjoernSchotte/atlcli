@@ -21,6 +21,7 @@ import {
   isInteractive,
   loadConfig,
   output,
+  promptConfirm,
   resolveDefaults,
   resolveVfsConfig,
   type OutputOptions,
@@ -40,6 +41,8 @@ export interface ResolvedShellOptions {
   spaces: string[];
   mode: VfsMode;
   allowDelete: boolean;
+  syncWrites: boolean;
+  confirm: boolean;
   cacheDir: string;
   offline: boolean;
   cwd: string | undefined;
@@ -92,6 +95,8 @@ export function resolveShellOptions(
     spaces,
     mode,
     allowDelete: hasFlag(flags, "allow-delete"),
+    syncWrites: hasFlag(flags, "sync-writes"),
+    confirm: hasFlag(flags, "confirm"),
     cacheDir: getFlag(flags, "cache-dir") ?? vfsConfig.cacheDir ?? DEFAULT_CACHE_DIR,
     offline: hasFlag(flags, "offline"),
     cwd: getFlag(flags, "cwd"),
@@ -148,6 +153,7 @@ export async function handleWikiSh(
     spaces: resolved.spaces,
     mode: resolved.mode,
     allowDelete: resolved.allowDelete,
+    ...(resolved.syncWrites ? { coalesceMs: 0 } : {}),
     cacheDir: resolved.cacheDir,
     offline: resolved.offline,
     ...(resolved.prefetchMax !== undefined ? { prefetchMaxPages: resolved.prefetchMax } : {}),
@@ -156,6 +162,9 @@ export async function handleWikiSh(
   });
 
   const diagnostics: string[] = [];
+  // The REPL replaces this with its own reader so confirmation never competes
+  // with another readline interface for terminal input.
+  let confirmMutation = promptConfirm;
   try {
     // Dynamic import so every other atlcli command stays off just-bash's path
     // (WP6.8; the measured effect is in spikes/vfs-just-bash/README.md).
@@ -167,6 +176,8 @@ export async function handleWikiSh(
       timeoutMs: resolved.timeoutMs,
       cqlGrep: resolved.cqlGrep,
       prefetchMax: resolved.prefetchMax,
+      ...(isInteractive() && !resolved.confirm
+        ? { confirmMutation: (message: string) => confirmMutation(message) } : {}),
       onDiagnostic: (line) => {
         diagnostics.push(line);
         // The chosen path is *always* named, so a user can see why a search was
@@ -182,7 +193,7 @@ export async function handleWikiSh(
         : await readStdin();
 
     if (script === undefined) {
-      await runInteractive(shell, resolved);
+      await runInteractive(shell, resolved, (confirm) => { confirmMutation = confirm; });
       return;
     }
 
@@ -195,6 +206,8 @@ export async function handleWikiSh(
           stderr: result.stderr,
           exitCode: result.exitCode,
           diagnostics,
+          requests: stats.requests,
+          rateLimits: stats.rateLimits,
           cacheHits: stats.cacheHits,
           cacheMisses: stats.cacheMisses,
           prefetched: stats.prefetched,
@@ -218,9 +231,10 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function runInteractive(
+export async function runInteractive(
   shell: WikiShell,
   resolved: ResolvedShellOptions,
+  setConfirmation: (confirm: (message: string) => Promise<boolean>) => void,
 ): Promise<void> {
   const prompt = `${resolved.spaces[0]} ${resolved.mode === "rw" ? "#" : "$"} `;
   process.stderr.write(
@@ -236,22 +250,40 @@ async function runInteractive(
       );
     },
   });
-  rl.prompt();
-  for await (const line of rl) {
-    const script = line.trim();
-    if (script === "exit" || script === "quit") break;
-    if (script) {
-      try {
-        const result = await shell.exec(script);
-        if (result.stdout) process.stdout.write(result.stdout);
-        if (result.stderr) process.stderr.write(result.stderr);
-      } catch (error) {
-        process.stderr.write(`${describe(error)}\n`);
+  let closed = false;
+  rl.once("close", () => { closed = true; });
+  const question = (message: string): Promise<string | undefined> => new Promise((resolve) => {
+    if (closed) return resolve(undefined);
+    const onClose = (): void => resolve(undefined);
+    rl.once("close", onClose);
+    rl.question(message, (answer) => {
+      rl.off("close", onClose);
+      resolve(answer);
+    });
+  });
+  setConfirmation(async (message) => {
+    const answer = await question(`${message} [y/N] `);
+    return answer?.trim().toLowerCase().startsWith("y") ?? false;
+  });
+  try {
+    while (!closed) {
+      const line = await question(prompt);
+      if (line === undefined) break;
+      const script = line.trim();
+      if (script === "exit" || script === "quit") break;
+      if (script) {
+        try {
+          const result = await shell.exec(script);
+          if (result.stdout) process.stdout.write(result.stdout);
+          if (result.stderr) process.stderr.write(result.stderr);
+        } catch (error) {
+          process.stderr.write(`${describe(error)}\n`);
+        }
       }
     }
-    rl.prompt();
+  } finally {
+    rl.close();
   }
-  rl.close();
 }
 
 function describe(error: unknown): string {
@@ -275,6 +307,8 @@ Options:
   -c <script>          Run one script and exit with its exit code
   --mode ro|rw         Write posture (default: ro)
   --allow-delete       Additionally allow rm, which moves pages to the trash
+  --confirm            Skip terminal prompts for rm and cross-space mv
+  --sync-writes        Persist each write immediately (disable 500 ms coalescing)
   --cache-dir <path>   Cache root (default: ~/.atlcli/vfs)
   --offline            Read only from the cache; issue no requests
   --cwd <path>         Start in this directory
@@ -288,6 +322,8 @@ Options:
 Notes:
   Writing is off by default. --mode rw enables create, update, rename and move;
   rm additionally needs --allow-delete, and only ever moves a page to the trash.
+  With a terminal, rm and cross-space mv prompt unless --confirm is set.
+  Without a terminal, existing write/delete permissions are sufficient.
 
   Recursive grep uses CQL candidates by default, then verifies Markdown locally.
   Index gaps and indexing delay can omit matches; --no-cql searches exhaustively.
