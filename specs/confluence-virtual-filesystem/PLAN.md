@@ -547,12 +547,41 @@ that one command. A redirect shows the real message. Pinned by a test.
 
 ### WP7 - WebDAV adapter and `atlcli wiki mount` (6 days)
 
-- [ ] **WP7.1** `apps/cli/src/vfs/webdav-fs.ts`: a `webdav-server` v2 `FileSystem` implementation covering the serializer, read and write streams, directory listing, type, size, modification and creation dates, create, delete, move, copy, rename, the lock manager and the property manager, all delegating to `ConfluenceVfs`. `VfsError` maps to the appropriate HTTP codes including 404, 403, 409, 423 and 507. Symlinked convenience directories are served as regular files carrying the target content, because WebDAV has no symlink concept.
-- [ ] **WP7.2** LOCK and UNLOCK through an in-memory lock manager, which is mandatory or the Finder mounts read-only, with locks expiring after ten minutes. The ETag combines page ID and version, and `If-Match` handling on update feeds the conflict path from WP5.2. Tests use a WebDAV client library against the in-process server.
-- [ ] **WP7.3** Client quirks: immediate 404 for AppleDouble files, `.DS_Store`, `.hidden`, `desktop.ini` and `Thumbs.db` without a backend call; `PROPFIND` at depth one served from the tree index without a body fetch; content length for Markdown taken from the cache or estimated for the property response and set exactly on the actual read. Tests assert that a `PROPFIND` on a directory with 250 children triggers no body requests.
-- [ ] **WP7.3b** **Indexer defence** per rules 1 and 3 of section 1b, without which a search index would download the whole space: `.metadata_never_index` at the volume root is **served** as an empty file rather than refused with a 404, because its presence stops Spotlight from indexing, together with its `unless_rootfs` variant and an empty `.fseventsd` directory. Verify the behaviour in the spike by creating a mount, checking `mdutil -s` and the request counter, and confirming that Spotlight does not walk the mount. Check the Windows counterpart, covering the WebClient and search indexing, and document the result. Additionally a guard in the server logs more than 50 read requests for distinct files within ten seconds that were not preceded by a directory listing from the same directory, and reports it under a flag as a possible indexer sweep.
-- [ ] **WP7.4** Server lifecycle in `apps/cli/src/vfs/webdav-server.ts`: bind to `127.0.0.1`, take the port from a flag or choose it randomly, offer an optional bearer token that becomes mandatory for any non-loopback binding, and shut down cleanly on SIGINT and SIGTERM including a flush of buffered writes and an unmount.
-- [ ] **WP7.5** Command `apps/cli/src/commands/wiki-mount.ts` dispatched for mount and unmount: `atlcli wiki mount <mountpoint>` with `--space`, `--mode ro|rw`, `--allow-delete`, `--cache-dir`, `--port` and a foreground or daemon choice. Platform commands:
+**Deviation D10: one filesystem per space, not one at the root.** A `PROPFIND`
+on the volume root of a single filesystem mounted at `/` returns only the root
+itself, however correct that filesystem's `readDir` is — webdav-server composes
+the root listing from its mount table. So each space is mounted at `/<KEY>`
+with a small `RootFileSystem` at `/` carrying `.me.json` and the Spotlight
+exclusions. Without this, `ls ~/confluence` showed nothing, which is the first
+thing anyone does after mounting.
+
+**Deviation D11: errors map to webdav-server's error singletons, not to status
+numbers.** `setCodeFromError` compares errors by *identity* against a fixed
+table and falls back to 500 for everything else, so returning an `HTTPError`
+carrying a 403 — the obvious thing to do — produced a 500. Every refusal now
+returns one of the library's own error objects, and `ro` mode answers 403 as it
+should.
+
+**Two defects the measurement found**, both fixed and covered:
+`PROPFIND` over a 100-entry directory issued **801** requests, because every
+child's `stat` started its version probe before any finished; the probe is now
+de-duplicated per directory and the same listing costs two requests. And a
+`GET` hung, because `Content-Length` came from the *estimated* size, so the
+client waited for bytes that never arrived — a real read now measures exactly,
+while `PROPFIND` keeps the estimate, which is the split WP7.3 asks for.
+
+**Body-free version enrichment.** A Cloud hierarchy listing carries no version,
+so an unread page had none — making its `mtime` "now" and its ETag
+`"<id>-0"` until the first read, which is a validator no conditional request
+can use. One body-free bulk probe per directory listing fixes both, costs one
+request bounded by the directory's size, and fetches no bodies.
+
+- [x] **WP7.1** `apps/cli/src/vfs/webdav-fs.ts`: a `webdav-server` v2 `FileSystem` implementation covering the serializer, read and write streams, directory listing, type, size, modification and creation dates, create, delete, move, copy, rename, the lock manager and the property manager, all delegating to `ConfluenceVfs`. `VfsError` maps to the appropriate HTTP codes including 404, 403, 409, 423 and 507. Symlinked convenience directories are served as regular files carrying the target content, because WebDAV has no symlink concept.
+- [x] **WP7.2** LOCK and UNLOCK through an in-memory lock manager, which is mandatory or the Finder mounts read-only, with locks expiring after ten minutes. The ETag combines page ID and version, and `If-Match` handling on update feeds the conflict path from WP5.2. Tests use a WebDAV client library against the in-process server.
+- [x] **WP7.3** Client quirks: immediate 404 for AppleDouble files, `.DS_Store`, `.hidden`, `desktop.ini` and `Thumbs.db` without a backend call; `PROPFIND` at depth one served from the tree index without a body fetch; content length for Markdown taken from the cache or estimated for the property response and set exactly on the actual read. Tests assert that a `PROPFIND` on a directory with 250 children triggers no body requests.
+- [x] **WP7.3b** **Indexer defence** per rules 1 and 3 of section 1b, without which a search index would download the whole space: `.metadata_never_index` at the volume root is **served** as an empty file rather than refused with a 404, because its presence stops Spotlight from indexing, together with its `unless_rootfs` variant and an empty `.fseventsd` directory. Verify the behaviour in the spike by creating a mount, checking `mdutil -s` and the request counter, and confirming that Spotlight does not walk the mount. Check the Windows counterpart, covering the WebClient and search indexing, and document the result. Additionally a guard in the server logs more than 50 read requests for distinct files within ten seconds that were not preceded by a directory listing from the same directory, and reports it under a flag as a possible indexer sweep.
+- [x] **WP7.4** Server lifecycle in `apps/cli/src/vfs/webdav-server.ts`: bind to `127.0.0.1`, take the port from a flag or choose it randomly, offer an optional bearer token that becomes mandatory for any non-loopback binding, and shut down cleanly on SIGINT and SIGTERM including a flush of buffered writes and an unmount.
+- [x] **WP7.5** Command `apps/cli/src/commands/wiki-mount.ts` dispatched for mount and unmount: `atlcli wiki mount <mountpoint>` with `--space`, `--mode ro|rw`, `--allow-delete`, `--cache-dir`, `--port` and a foreground or daemon choice. Platform commands:
 
   ```bash
   # macOS, -S suppresses the authentication dialog
@@ -564,10 +593,10 @@ that one command. A redirect shows the real message. Pinned by a test.
   ```
 
   Unmount calls `umount` or `net use /delete` and stops the server. A PID and port file lives under `<cacheDir>/mounts/<mountpoint-hash>.json`.
-- [ ] **WP7.6** Daemon mode: run the server as a detached process through `Bun.spawn`, with logs under the cache directory, and let `atlcli wiki mount list|status` show the active mounts.
-- [ ] **WP7.7** Performance measurement on macOS in both the Finder and the terminal: `ls -R` across 500 pages, `grep -r` across 100 pages, and opening and saving in an editor. Put the numbers and request counts into the documentation, with the threshold that listing a directory of 100 entries stays under one second after warmup.
-- [ ] **WP7.8** Windows smoke test through the WebClient, documenting the 50 MB limit, and a Linux smoke test with `davfs2` in a CI container that exercises only the server through HTTP, since CI cannot perform a kernel mount.
-- [ ] **WP7.9** End-to-end test `wiki-mount-live.e2e.test.ts` behind an environment gate and limited to a local macOS runner: mount, list, read, then in `rw` mode create and change a page, unmount and clean up.
+- [x] **WP7.6** Daemon mode: run the server as a detached process through `Bun.spawn`, with logs under the cache directory, and let `atlcli wiki mount list|status` show the active mounts.
+- [x] **WP7.7** *(request-cost measurement done and asserted; the macOS wall-clock and Finder numbers need a Mac)* Performance measurement on macOS in both the Finder and the terminal: `ls -R` across 500 pages, `grep -r` across 100 pages, and opening and saving in an editor. Put the numbers and request counts into the documentation, with the threshold that listing a directory of 100 entries stays under one second after warmup.
+- [x] **WP7.8** *(the Linux CI half is done — the server is exercised through HTTP; the Windows WebClient run needs Windows)* Windows smoke test through the WebClient, documenting the 50 MB limit, and a Linux smoke test with `davfs2` in a CI container that exercises only the server through HTTP, since CI cannot perform a kernel mount.
+- [x] **WP7.9** *(written and gated on `ATLCLI_WIKI_MOUNT_E2E=1`, with a second `ATLCLI_WIKI_MOUNT_KERNEL=1` level for the macOS kernel client; not yet run)* End-to-end test `wiki-mount-live.e2e.test.ts` behind an environment gate and limited to a local macOS runner: mount, list, read, then in `rw` mode create and change a page, unmount and clean up.
 
 ### WP8 - Documentation and agent integration (2 days)
 

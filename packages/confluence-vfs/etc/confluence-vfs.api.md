@@ -174,6 +174,7 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     readonly audit: AuditLog | undefined;
     private readonly resolver;
     private readonly sessionAliases;
+    private readonly enrichInFlight;
     constructor(opts: ResolvedVfsOptions, runtime?: VfsRuntime, cache?: BodyCache);
     get guard(): ModeGuard;
     private readQueryHints;
@@ -207,6 +208,7 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     stat(path: string): Promise<VfsStat>;
     private statOf;
     readdir(path: string): Promise<VfsDirent[]>;
+    private enrichVersions;
     private readdirRoot;
     private readdirSpace;
     private readdirContainer;

@@ -92,6 +92,16 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * the process that did the create, never a persisted second naming scheme.
    */
   private readonly sessionAliases = new Map<string, string>();
+  /**
+   * In-flight version probes, keyed by container.
+   *
+   * Without this, a `PROPFIND` over a 100-entry directory fires one probe per
+   * entry: every child's `stat` starts before any probe finishes, so each one
+   * sees the same set of missing versions. The performance test measured 801
+   * requests for what should be two. De-duplicating here makes the probe what
+   * it was meant to be — one request per directory, whatever asks for it.
+   */
+  private readonly enrichInFlight = new Map<string, Promise<void>>();
 
   constructor(
     private readonly opts: ResolvedVfsOptions,
@@ -415,6 +425,14 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
         version: meta.version,
       };
     }
+    if (
+      (resolved.kind === "body" || resolved.kind === "container") &&
+      resolved.node.version === undefined
+    ) {
+      // Probe the whole sibling set rather than this one file, so a directory
+      // of stats still costs one request rather than one per entry.
+      await this.enrichVersions(resolved.node.parentId);
+    }
     if (resolved.kind === "by-id-link" && this.virtual) {
       // Addressing a page by id must work even for a branch the index has not
       // walked, so this may cost one lookup.
@@ -537,8 +555,10 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       case "root":
         return this.readdirRoot();
       case "space":
+        await this.enrichVersions(resolved.homepageId);
         return this.readdirSpace(resolved.spaceKey, resolved.homepageId);
       case "container":
+        await this.enrichVersions(resolved.node.id);
         return this.readdirContainer(resolved.node);
       case "attachments-dir":
       case "versions-dir":
@@ -553,6 +573,55 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       default:
         throw new VfsError("ENOTDIR", `Not a directory: ${path}`, { path });
     }
+  }
+
+  /**
+   * Fill in the versions a Cloud hierarchy listing does not carry.
+   *
+   * `direct-children` returns ids, titles and positions but no version, so a
+   * page that was listed and never read has none — and anything derived from
+   * it is wrong: `mtime` falls back to now, and a WebDAV `ETag` reads
+   * `"<id>-0"` until the first read changes it, which is precisely the kind of
+   * unstable validator that makes conditional requests useless.
+   *
+   * One body-free bulk probe per directory listing fixes all of it. It is one
+   * request, bounded by the directory's own size, and it fetches no bodies —
+   * so rules 1 and 2 both hold. Data Center listings already carry versions,
+   * and there is no bulk probe there, so it is skipped.
+   */
+  private async enrichVersions(containerId: string | null): Promise<void> {
+    if (!containerId || this.opts.offline) return;
+    if (this.opts.client.deploymentType !== "cloud") return;
+    const node = this.index.node(containerId);
+    if (!node || node.children === "unloaded") return;
+    const missing = node.children.filter((id) => this.index.node(id)?.version === undefined);
+    if (missing.length === 0) return;
+
+    const pending = this.enrichInFlight.get(containerId);
+    if (pending) return pending;
+
+    const task = (async (): Promise<void> => {
+      try {
+        const versions = await this.opts.client.getPageVersions(missing);
+        for (const [id, info] of versions) {
+          this.index.upsert({ id, version: info.version, lastModified: info.lastModified });
+        }
+        // Ids the probe did not return are gone or invisible; marking them
+        // version 0 stops the probe from being retried for every later stat.
+        for (const id of missing) {
+          if (!versions.has(id) && this.index.node(id)?.version === undefined) {
+            this.index.upsert({ id, version: 0 });
+          }
+        }
+      } catch (error) {
+        // A failed probe costs accuracy, never the listing itself.
+        this.opts.logger.debug("could not enrich versions", { error: String(error) });
+      } finally {
+        this.enrichInFlight.delete(containerId);
+      }
+    })();
+    this.enrichInFlight.set(containerId, task);
+    return task;
   }
 
   private async readdirRoot(): Promise<VfsDirent[]> {

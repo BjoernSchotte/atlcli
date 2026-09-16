@@ -1,0 +1,371 @@
+/**
+ * The WebDAV frontend, driven over real HTTP (WP7.1–7.3b, WP7.8).
+ *
+ * The server runs in-process on loopback and every assertion goes through an
+ * actual request, because the things worth testing here are protocol-level:
+ * does `PROPFIND` fetch bodies, does `LOCK` return a token, does an
+ * AppleDouble probe reach the backend. A unit test of the adapter class would
+ * answer none of those.
+ *
+ * This is also the Linux CI story for WP7.8: a kernel mount is impossible in a
+ * container, so the server is exercised through HTTP exactly as a mounted
+ * client would.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
+import {
+  isClientDropping,
+  isIndexerShield,
+  SweepDetector,
+} from "./webdav-fs.js";
+import {
+  generateBearerToken,
+  isLoopback,
+  startWebdavServer,
+  type RunningWebdavServer,
+} from "./webdav-server.js";
+
+let root: string;
+let client: FakeConfluenceClient;
+let vfs: ConfluenceVfsImpl;
+let server: RunningWebdavServer;
+
+function seeded(children = 3): FakeConfluenceClient {
+  const fake = new FakeConfluenceClient()
+    .seedSpace({ id: "sp-1", key: "DOCSY", name: "Docs", homepageId: "100" })
+    .seedPage({ id: "100", title: "Docs Home", spaceKey: "DOCSY", storage: "<p>Home.</p>" });
+  for (let i = 0; i < children; i++) {
+    fake.seedPage({
+      id: String(200 + i),
+      title: `Page ${i}`,
+      spaceKey: "DOCSY",
+      parentId: "100",
+      position: i,
+      storage: `<h1>Page ${i}</h1><p>Body ${i}.</p>`,
+    });
+  }
+  return fake;
+}
+
+async function start(
+  fake: FakeConfluenceClient,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
+  client = fake;
+  vfs = await ConfluenceVfsImpl.open({
+    profile: "mayflower",
+    client: fake,
+    spaces: ["DOCSY"],
+    mode: "rw",
+    allowDelete: true,
+    cacheDir: root,
+    offline: false,
+    coalesceMs: 0,
+    ...overrides,
+  });
+  server = await startWebdavServer({ vfs, spaces: ["DOCSY"] });
+}
+
+async function dav(
+  path: string,
+  init: RequestInit & { depth?: string } = {},
+): Promise<{ status: number; body: string }> {
+  const headers = new Headers(init.headers);
+  if (init.depth !== undefined) headers.set("Depth", init.depth);
+  const response = await fetch(new URL(path, server.url), { ...init, headers });
+  return { status: response.status, body: await response.text() };
+}
+
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), "vfs-dav-"));
+});
+
+afterEach(async () => {
+  await server?.stop();
+  await vfs?.close();
+  rmSync(root, { recursive: true, force: true });
+});
+
+describe("listing", () => {
+  it("serves PROPFIND at depth 1", async () => {
+    await start(seeded());
+    const result = await dav("/DOCSY", { method: "PROPFIND", depth: "1" });
+    expect(result.status).toBe(207);
+    expect(result.body).toContain("page-0-200");
+    expect(result.body).toContain("_index.md");
+  });
+
+  /**
+   * Rule 2, at the protocol level. A Finder window over a large directory must
+   * cost one listing, not one body fetch per row.
+   */
+  it("fetches no bodies for a PROPFIND over a 250-entry directory", async () => {
+    await start(seeded(250));
+    client.resetCalls();
+    const result = await dav("/DOCSY", { method: "PROPFIND", depth: "1" });
+    expect(result.status).toBe(207);
+    expect(client.callsTo("getPage")).toBe(0);
+    expect(client.callsTo("getPagesBulk")).toBe(0);
+  });
+
+  it("reports a size for an unread page rather than zero", async () => {
+    await start(seeded());
+    const result = await dav("/DOCSY/page-0-200.md", { method: "PROPFIND", depth: "0" });
+    expect(result.body).toMatch(/<D:getcontentlength>[1-9]\d*<\/D:getcontentlength>/);
+  });
+});
+
+describe("reading", () => {
+  it("GETs a page as Markdown", async () => {
+    await start(seeded());
+    const result = await dav("/DOCSY/page-0-200.md", { method: "GET" });
+    expect(result.status).toBe(200);
+    expect(result.body).toContain("# Page 0");
+    expect(result.body).toContain("atlcli:");
+  });
+
+  it("answers 404 for a page that is not there", async () => {
+    await start(seeded());
+    expect((await dav("/DOCSY/ghost-999999.md", { method: "GET" })).status).toBe(404);
+  });
+
+  it("gives an ETag built from the page id and version", async () => {
+    await start(seeded());
+    // webdav-server exposes the ETag through PROPFIND rather than as a GET
+    // header, which is where an If-Match client reads it anyway.
+    const result = await dav("/DOCSY/page-0-200.md", { method: "PROPFIND", depth: "0" });
+    expect(result.body).toContain('<D:getetag>"200-1"</D:getetag>');
+  });
+
+  /**
+   * A stable validator matters more than it looks: the version comes from a
+   * body-free probe on the listing, so the ETag a client caches before reading
+   * is the same one it sees afterwards. Without that it would be `"200-0"`
+   * until the first read and every conditional request would miss.
+   */
+  it("gives the same ETag before and after the body is read", async () => {
+    await start(seeded());
+    const before = await dav("/DOCSY/page-0-200.md", { method: "PROPFIND", depth: "0" });
+    await dav("/DOCSY/page-0-200.md", { method: "GET" });
+    const after = await dav("/DOCSY/page-0-200.md", { method: "PROPFIND", depth: "0" });
+    const etag = (body: string): string => /<D:getetag>([^<]*)<\/D:getetag>/.exec(body)?.[1] ?? "";
+    expect(etag(before.body)).toBe('"200-1"');
+    expect(etag(after.body)).toBe(etag(before.body));
+  });
+
+  it("sets an exact Content-Length on a GET and an estimate on a PROPFIND", async () => {
+    await start(seeded());
+    const propfind = await dav("/DOCSY/page-0-200.md", { method: "PROPFIND", depth: "0" });
+    // The property response may not fetch a body, so it carries the estimate.
+    expect(propfind.body).toContain("<D:getcontentlength>4096</D:getcontentlength>");
+
+    const response = await fetch(new URL("/DOCSY/page-0-200.md", server.url));
+    const body = await response.text();
+    // The read must be exact, or the client waits for bytes that never come.
+    expect(response.headers.get("content-length")).toBe(String(Buffer.byteLength(body, "utf8")));
+  });
+});
+
+describe("locking", () => {
+  /**
+   * Without a working LOCK the macOS Finder mounts the volume read-only, so
+   * this is the single protocol feature the mount depends on most.
+   */
+  it("returns a lock token, which is what makes the Finder mount read-write", async () => {
+    await start(seeded());
+    const result = await dav("/DOCSY/page-0-200.md", {
+      method: "LOCK",
+      headers: { "Content-Type": "application/xml", Timeout: "Second-600" },
+      body: `<?xml version="1.0" encoding="utf-8"?><D:lockinfo xmlns:D="DAV:"><D:lockscope><D:exclusive/></D:lockscope><D:locktype><D:write/></D:locktype><D:owner><D:href>atlcli</D:href></D:owner></D:lockinfo>`,
+    });
+    expect(result.status).toBe(200);
+    expect(result.body).toContain("locktoken");
+  });
+
+  it("advertises the DAV capabilities on OPTIONS", async () => {
+    await start(seeded());
+    const response = await fetch(new URL("/", server.url), { method: "OPTIONS" });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("allow") ?? "").toContain("LOCK");
+  });
+});
+
+describe("writing", () => {
+  it("PUTs a changed body back as a page update", async () => {
+    await start(seeded());
+    const original = (await dav("/DOCSY/page-0-200.md", { method: "GET" })).body;
+    const result = await dav("/DOCSY/page-0-200.md", {
+      method: "PUT",
+      body: original.replace("Body 0.", "Body zero, edited."),
+    });
+    expect([200, 201, 204]).toContain(result.status);
+    expect(client.peekPage("200")?.storage).toContain("edited");
+  });
+
+  it("refuses a PUT with 403 in ro mode", async () => {
+    await start(seeded(), { mode: "ro", allowDelete: false });
+    const result = await dav("/DOCSY/page-0-200.md", { method: "PUT", body: "nope" });
+    expect(result.status).toBe(403);
+    expect(client.callsTo("updatePage")).toBe(0);
+  });
+
+  it("DELETEs into the trash", async () => {
+    await start(seeded());
+    await dav("/DOCSY", { method: "PROPFIND", depth: "1" });
+    const result = await dav("/DOCSY/page-0-200", { method: "DELETE" });
+    expect([200, 204]).toContain(result.status);
+    expect(client.isTrashed("200")).toBe(true);
+  });
+
+  it("MOVEs a page to another parent", async () => {
+    await start(seeded());
+    await dav("/DOCSY", { method: "PROPFIND", depth: "1" });
+    await dav("/DOCSY/page-1-201", { method: "PROPFIND", depth: "1" });
+    const result = await dav("/DOCSY/page-0-200", {
+      method: "MOVE",
+      headers: { Destination: new URL("/DOCSY/page-1-201/page-0-200", server.url).toString() },
+    });
+    expect([201, 204]).toContain(result.status);
+    expect(client.peekPage("200")?.parentId).toBe("201");
+  });
+});
+
+describe("client quirks", () => {
+  it("answers AppleDouble and desktop droppings without touching the backend", async () => {
+    await start(seeded());
+    await dav("/DOCSY", { method: "PROPFIND", depth: "1" });
+    client.resetCalls();
+    for (const name of ["._page-0-200.md", ".DS_Store", "desktop.ini", "Thumbs.db"]) {
+      expect((await dav(`/DOCSY/${name}`, { method: "GET" })).status).toBe(404);
+    }
+    expect(client.requestCount).toBe(0);
+  });
+
+  /**
+   * WP7.3b. These files must *exist* for Spotlight to skip the volume; a 404
+   * is an invitation to index, and indexing a demand-driven filesystem means
+   * downloading every page of every space.
+   */
+  it("serves the Spotlight exclusions as empty files rather than refusing them", async () => {
+    await start(seeded());
+    for (const name of [".metadata_never_index", ".metadata_never_index_unless_rootfs"]) {
+      const result = await dav(`/${name}`, { method: "GET" });
+      expect(result.status).toBe(200);
+      expect(result.body).toBe("");
+    }
+  });
+
+  it("lists the exclusions at the volume root, so a client can find them", async () => {
+    await start(seeded());
+    const result = await dav("/", { method: "PROPFIND", depth: "1" });
+    expect(result.body).toContain(".metadata_never_index");
+  });
+
+  it("accepts and discards a client writing its own droppings", async () => {
+    await start(seeded());
+    const result = await dav("/DOCSY/.DS_Store", { method: "PUT", body: "junk" });
+    expect([200, 201, 204]).toContain(result.status);
+    expect(client.callsTo("createPage")).toBe(0);
+  });
+});
+
+describe("the sweep detector", () => {
+  it("reports many unlisted reads in a short window", () => {
+    const seen: unknown[] = [];
+    let now = 0;
+    const detector = new SweepDetector(5, 1000, (report) => seen.push(report), () => now);
+    for (let i = 0; i < 5; i++) {
+      now += 10;
+      detector.noteRead("/DOCSY");
+    }
+    expect(seen).toHaveLength(1);
+    expect(detector.suspected).toBe(true);
+  });
+
+  it("stays quiet for reads that follow a listing, which is ordinary browsing", () => {
+    const seen: unknown[] = [];
+    let now = 0;
+    const detector = new SweepDetector(3, 1000, (report) => seen.push(report), () => now);
+    detector.noteListing("/DOCSY");
+    for (let i = 0; i < 10; i++) {
+      now += 10;
+      detector.noteRead("/DOCSY");
+    }
+    expect(seen).toHaveLength(0);
+  });
+
+  it("stays quiet when the reads are spread out", () => {
+    const seen: unknown[] = [];
+    let now = 0;
+    const detector = new SweepDetector(3, 1000, (report) => seen.push(report), () => now);
+    for (let i = 0; i < 10; i++) {
+      now += 5000;
+      detector.noteRead("/DOCSY");
+    }
+    expect(seen).toHaveLength(0);
+  });
+
+  it("reports once, not once per read after the threshold", () => {
+    const seen: unknown[] = [];
+    let now = 0;
+    const detector = new SweepDetector(3, 10_000, (report) => seen.push(report), () => now);
+    for (let i = 0; i < 50; i++) {
+      now += 10;
+      detector.noteRead("/DOCSY");
+    }
+    expect(seen).toHaveLength(1);
+  });
+});
+
+describe("the name guards", () => {
+  it("recognises the droppings and the shields", () => {
+    for (const name of ["._x", ".DS_Store", "desktop.ini", "Thumbs.db", ".hidden"]) {
+      expect(isClientDropping(name)).toBe(true);
+    }
+    expect(isClientDropping("page-0-200.md")).toBe(false);
+    expect(isIndexerShield(".metadata_never_index")).toBe(true);
+    expect(isIndexerShield("page-0-200.md")).toBe(false);
+  });
+});
+
+describe("the binding rule", () => {
+  it("knows which hostnames are loopback", () => {
+    expect(isLoopback("127.0.0.1")).toBe(true);
+    expect(isLoopback("::1")).toBe(true);
+    expect(isLoopback("localhost")).toBe(true);
+    expect(isLoopback("0.0.0.0")).toBe(false);
+    expect(isLoopback("192.168.1.10")).toBe(false);
+  });
+
+  it("refuses a non-loopback binding without a token", async () => {
+    const fake = seeded();
+    const unbound = await ConfluenceVfsImpl.open({
+      profile: "mayflower",
+      client: fake,
+      spaces: ["DOCSY"],
+      mode: "ro",
+      allowDelete: false,
+      cacheDir: root,
+      offline: false,
+    });
+    try {
+      await expect(
+        startWebdavServer({ vfs: unbound, spaces: ["DOCSY"], hostname: "0.0.0.0" }),
+      ).rejects.toThrow(/without authentication/);
+    } finally {
+      await unbound.close();
+    }
+    // Keep afterEach happy.
+    await start(seeded());
+  });
+
+  it("generates a token with enough entropy to be worth having", () => {
+    const token = generateBearerToken();
+    expect(token.length).toBeGreaterThanOrEqual(32);
+    expect(generateBearerToken()).not.toBe(token);
+  });
+});

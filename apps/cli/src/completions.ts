@@ -76,7 +76,20 @@ const SUBCOMMANDS: Record<string, string[]> = {
     "undo",
     "validate",
   ],
-  wiki: ["docs", "my", "page", "publish", "recent", "search", "sh", "space", "template", "vfs"],
+  wiki: [
+    "docs",
+    "mount",
+    "my",
+    "page",
+    "publish",
+    "recent",
+    "search",
+    "sh",
+    "space",
+    "template",
+    "unmount",
+    "vfs",
+  ],
 };
 
 // Nested subcommands (command -> subcommand -> sub-subcommands)
@@ -84,6 +97,7 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
   wiki: {
     docs: ["add", "check", "diff", "init", "pull", "push", "resolve", "status", "sync", "watch"],
     publish: ["plan", "refresh", "build", "verify", "run", "status", "prune"],
+    mount: ["list", "status", "unmount"],
     vfs: ["cache", "conflicts"],
     page: [
       "archive",
@@ -263,6 +277,16 @@ const COMMAND_FLAGS: Record<string, string[]> = {
     "--space",
     "--timeout",
   ],
+  "wiki mount": [
+    "--allow-delete",
+    "--cache-dir",
+    "--json",
+    "--mode",
+    "--port",
+    "--profile",
+    "--space",
+  ],
+  "wiki unmount": ["--cache-dir", "--json", "--profile"],
   "wiki vfs cache": ["--cache-dir", "--json", "--profile"],
   "wiki vfs conflicts": ["--cache-dir", "--json", "--profile"],
 
