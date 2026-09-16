@@ -370,6 +370,20 @@ feature. 74 converter/write-back/NFS filesystem tests passed (321 assertions),
 plus native macOS synthetic and Linux live single/combined read proofs and
 typecheck. A fresh remote PR run must confirm mergeability after this push.
 
+## Slice 16: four-architecture native CI matrix
+
+Expanded required NFS proof to Linux x64/arm64 on Ubuntu 22.04 and macOS arm64/x64
+on macos-14/macos-15-intel. Runner platform/architecture must match the matrix
+before building. Each lane compiles its own release helper with Rust 1.92.0 and
+runs the existing synthetic native-mount, wire, resource-limit and journal tests.
+Successful lanes upload the build manifest and measured OS/glibc version as
+short-lived evidence. No live credentials enter these jobs.
+
+55 CI routing/policy tests passed (634 assertions). The preceding main merge is
+now reported MERGEABLE by GitHub, resolving the missing CI trigger. Native results
+for the new matrix remain pending until the pushed workflow executes; local
+macOS arm64/Linux x64 evidence does not substitute for the two additional lanes.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

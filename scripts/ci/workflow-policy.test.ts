@@ -83,6 +83,21 @@ function runRequiredGate(
 }
 
 describe("CI workflow policy", () => {
+  it("requires native release-helper mount proof on every supported Unix architecture", async () => {
+    const nfs = await workflow("reusable-nfs.yml");
+    for (const [os, target] of [["ubuntu-22.04", "linux-x64"], ["ubuntu-22.04-arm", "linux-arm64"],
+      ["macos-14", "darwin-arm64"], ["macos-15-intel", "darwin-x64"]]) {
+      expect(nfs).toContain(`- os: ${os}\n            target: ${target}`);
+    }
+    expect(nfs).toContain("Verify native runner architecture");
+    expect(nfs).toContain('bun scripts/build-nfs-helper.ts "$RUNNER_TEMP/nfs-helper"');
+    expect(nfs).toContain('ATLCLI_NFS_TEST_HELPER="$RUNNER_TEMP/nfs-helper/atlcli-confluence-nfs"');
+    expect(nfs).toContain('ATLCLI_NFS_KERNEL: "1"');
+    expect(nfs).toContain('ATLCLI_NFS_LIVE: "0"');
+    expect(nfs).toContain("getconf GNU_LIBC_VERSION");
+    expect(nfs).toContain("nfs-helper-build.json");
+  });
+
   it("delegates the complete stable product bundle to the reusable artifact workflow", async () => {
     const release = await workflow("release.yml");
     const reusable = await workflow("reusable-release-artifacts.yml");

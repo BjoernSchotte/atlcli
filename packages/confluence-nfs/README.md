@@ -32,6 +32,24 @@ other architectures, complete third-party notices and CLI archive/installer/
 Homebrew integration remain WP5 acceptance work; do not label these artifacts a
 complete release bundle. Windows continues to use WebDAV.
 
+## Native CI matrix
+
+Required NFS CI builds and kernel-mounts the release-mode helper on these runners:
+
+| Target | Runner |
+| --- | --- |
+| Linux x64 GNU | ubuntu-22.04 |
+| Linux arm64 GNU | ubuntu-22.04-arm |
+| macOS arm64 | macos-14 |
+| macOS x64 | macos-15-intel |
+
+Runner architecture is asserted before building. Successful jobs retain the
+build manifest and measured OS/glibc version for seven days. These are native
+checks, not cross-compilation proxies; a configured lane is not evidence that
+it passed. See [GitHub runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+Linux release support is being evaluated on Ubuntu 22.04's GNU libc baseline;
+musl is outside this initial matrix. Final support claims require runner results.
+
 ## Review bundle build
 
 Keep native outputs under `<helpers>/<CLI-target>`, such as
