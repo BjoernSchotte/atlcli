@@ -32,8 +32,10 @@ This is provenance, not a signature or a byte-reproducibility certification.
 
 Native target mapping covers macOS arm64/x64 and Linux arm64/x64 (GNU libc).
 Native helper mounts passed on all four architectures in CI run 35153148522:
-Linux glibc 2.35, macOS arm64 14.8.9 and macOS x64 15.7.9. Installer/Homebrew
-integration and complete packaged CLI acceptance remain WP5 work; do not
+Linux glibc 2.35, macOS arm64 14.8.9 and macOS x64 15.7.9. The shell installer passed the same four native CI lanes. Homebrew support is
+prepared in [tap draft PR #1](https://github.com/BjoernSchotte/homebrew-tap/pull/1),
+with actual macOS arm64/Linux x64 installation proof; merging the tap and complete
+packaged CLI acceptance remain WP5 work; do not
 label these artifacts a complete release bundle. Windows continues to use WebDAV.
 
 ## Native CI matrix
@@ -76,7 +78,9 @@ Legacy single-binary archives remain accepted for older releases. The shared
 release workflow now builds native companions on the four declared Unix runners
 and passes them into this builder; Windows retains its CLI-only archive. Draft
 NFS CI also builds/extracts review archives, runs both offline version commands,
-and uses the extracted helper for kernel tests. Installer acceptance remains open.
+and uses the extracted helper for kernel tests. The shell installer is exercised
+against that archive on every native lane; the separate Homebrew draft and its
+remaining native architecture coverage are tracked in the evidence.
 
 ## Compiled CLI acceptance
 

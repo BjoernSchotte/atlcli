@@ -249,7 +249,8 @@ verifies the release checksum and accepts only the expected regular files before
 installing them. A downgrade to an older CLI-only archive removes the previous
 NFS companion, so it cannot be mistaken for a matching helper. If checksums cannot
 be retrieved or verified, installation stops; retry once the release assets are
-available. Homebrew companion support remains pending in the separate tap.
+available. Homebrew companion support is prepared in [tap draft PR #1](https://github.com/BjoernSchotte/homebrew-tap/pull/1)
+and is not available from the published tap until that change is merged.
 
 
 ## Mermaid

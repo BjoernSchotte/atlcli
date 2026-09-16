@@ -463,3 +463,37 @@ The test replaces only the download command and uses the real installer/system
 tar in a temporary home. Native NFS CI now runs this installer proof on its own
 built archive. CI policy tests and typecheck passed. Homebrew's separate tap still
 installs only `atlcli` and needs a companion-aware change; no tap was published.
+
+
+## Slice 20 — four-platform archive acceptance and Homebrew companion
+
+[CI run 35154749493](https://github.com/BjoernSchotte/atlcli/actions/runs/35154749493)
+is green at `64ce27d8`. All four native jobs built and extracted the CLI/helper
+archive, executed both binaries offline, exercised the real shell installer,
+and passed protocol/native mount tests with synthetic data. This closes the
+clean-runner font failure recorded in slice 19.
+
+The Homebrew code is in a separate repository. [Tap draft PR #1](https://github.com/BjoernSchotte/homebrew-tap/pull/1)
+(`94b7a0c`, preceded by `22ee27d`) updates both checked-in channel formulas and the
+dev formula generator. Each installs the optional helper next to the CLI and its
+license/build records in pkgshare. CLI-only archives remain supported; no version,
+release URL or checksum was changed. The generated dev formula cannot regress to
+installing only the CLI. Nine Ruby tests / 91 assertions and both syntax checks
+pass, including actual execution of all three install methods with both fixture
+layouts. A strict brew audit also found and fixed the stable formula's existing
+platform/conflict declaration ordering.
+
+Actual isolated Homebrew installs from locally built native archives passed on
+macOS arm64 and Linux x64, including brew test and helper/license checks. The Mac
+installed helper passed two native synthetic export tests. The Linux installed CLI,
+invoked via its Homebrew opt symlink without a helper override, passed all four
+live DOCSY lifecycle tests (44 assertions). Thus adjacent-helper discovery also
+works through the Homebrew path. The existing macOS atlcli 0.17.1 link was retained;
+the proof formula used a separate name and was kept unlinked/keg-only. Temporary
+proof formulas and taps were removed on both hosts. No release or tap merge ran.
+Homebrew install proof on macOS x64/Linux arm64 remains unverified.
+
+Operational note: the first Linux brew install triggered Homebrew's default
+cleanup of old package versions and download caches. This was unintended; later
+commands disabled automatic cleanup. The test-enabled Linux Homebrew developer
+mode was switched off during cleanup. No user CLI was unlinked or replaced.
