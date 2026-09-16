@@ -355,15 +355,10 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
   }
 
   /**
-   * Size, and the one place the demand principle and HTTP correctness pull
-   * against each other.
-   *
-   * A `PROPFIND` must not fetch bodies (rule 2), so it gets the core's
-   * estimate. A `GET` sets `Content-Length` from this number, and an estimate
-   * there is not a cosmetic inaccuracy — the client waits forever for bytes
-   * that never come. So on a real read the body is fetched (and cached, which
-   * the `openReadStream` right after it then hits) and the exact length
-   * returned. That is the split the plan asks for in WP7.3.
+   * DAV consumers cache inode sizes from PROPFIND before opening a file.
+   * Estimates truncate cold reads in davfs2, even when GET sends an exact
+   * Content-Length. Hydrate only unknown file lengths; directory/attachment
+   * metadata remains cheap. The shell's stat contract stays demand-driven.
    */
   protected _size(
     path: webdav.Path,
@@ -382,7 +377,7 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     }
     const target = this.vfsPath(path);
     // Only an HTTP-driven context carries the request; an internal one does
-    // not, and that is exactly the case that must keep the estimate.
+    // not, so internal metadata probes may keep the core estimate.
     const request = (ctx.context as { request?: { method?: string } } | undefined)?.request;
     const method = (request?.method ?? "").toUpperCase();
     if (method === "GET" || method === "HEAD") {
@@ -394,7 +389,10 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     }
     this.options.vfs
       .stat(target)
-      .then((stat) => callback(undefined, stat.size))
+      .then(async (stat) => callback(undefined,
+        method === "PROPFIND" && stat.isFile && stat.sizeEstimated
+          ? (await this.options.vfs.readFileBytes(target)).byteLength
+          : stat.size))
       .catch((error: unknown) => callback(httpErrorFor(error)));
   }
 

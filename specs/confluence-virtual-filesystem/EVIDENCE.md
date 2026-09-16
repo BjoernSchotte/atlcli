@@ -3,7 +3,9 @@
 **Current acceptance (2026-09-16):** [LIVE-RESULTS.md](./LIVE-RESULTS.md)
 contains DOCSY write/read, MAYFLOWER read-only, indexed grep/find and synthetic
 5,000-page shell results. [RELEASE-VALIDATION.md](./RELEASE-VALIDATION.md)
-contains the compiled macOS binary proof and startup comparison. The original
+contains compiled binary proofs, startup comparison and the Linux cold-read/write fix.
+Earlier zero-body PROPFIND measurements below are historical: the user now
+approves exact WebDAV lengths, which can load listed file bodies. The original
 container measurements below are historical, not the current acceptance status.
 
 | Gate | Current status |
@@ -13,12 +15,12 @@ container measurements below are historical, not the current acceptance status.
 | Request/429 counters and CLI write controls | Implemented; focused checks pass |
 | 5,000-page indexed shell | Tested with 50 candidates; cold 31 ms, warm 8 ms, 10,630 cache bytes; zero warm body reads |
 | Finder / Spotlight | Finder listing verified; mdutil says indexing/search disabled |
-| Native mount performance | Synthetic 500-page walk: 2,165 ms/zero bodies; warm 100-page listing: 13 ms/zero calls; native grep: 353 ms/101 bodies; RELEASE-VALIDATION |
+| Native mount performance | Exact-size synthetic 500-page walk: 2,012 ms/506 bodies; warm 100-page listing: 10 ms/zero bodies; subsequent grep: 296 ms/zero new bodies; RELEASE-VALIDATION |
 | TextEdit safe-save | Passed after local staging/backup fix; native save and independent API readback |
 | Compiled macOS artifact | 9 tests / 33 assertions passed; compiled live DOCSY listing: 876 ms, four requests, zero bodies |
 | Artifact growth / startup | +3.22% passes; +88–99 ms exceeds gate, accepted by user |
 | Full current suite/build/typecheck | 9,008 pass / 40 skip / zero failures; 44,544 assertions; typecheck 4/4; build 35/35 |
-| Linux / Windows | Native Linux artifact tests and read-only davfs2 mount pass after buffer fix; Linux writes and Windows unverified |
+| Linux / Windows | Native Linux artifact tests and read-only davfs2 mount pass after buffer fix; Linux cold reads/filesystem writes pass; Windows and Linux GUI editor-specific saves unverified |
 | Live permission isolation | Second identity missing; interim boundary accepted |
 | Homebrew lifecycle | Formula/equivalent command checked; installed version outdated |
 

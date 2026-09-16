@@ -36,8 +36,9 @@ This is the one thing to understand before anything else, because it is what
 separates the virtual filesystem from [Sync](/confluence/sync/).
 
 **The VFS loads only what you actually read.** Listing a directory costs one
-request for that directory. `ls`, `stat` and a Finder window never fetch a page
-body — only reading one does. A branch you never open is never fetched at all.
+request for that directory. Shell `ls` and `stat` never fetch a page body. OS mounts must report exact
+file sizes: listing file entries can fetch their contents when uncached.
+Listing child page directories does not fetch those children’s bodies. A branch you never open is never fetched at all.
 
 Three consequences:
 

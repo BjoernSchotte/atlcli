@@ -48,17 +48,18 @@ publishable release artifact.
 
 `bun --conditions=development scripts/vfs-mount-perf.ts` mounts a synthetic
 500-page backend using the native macOS WebDAV client and always unmounts it.
-The assertions verify zero listing body reads, a warm listing below one second,
+The assertions verify exact listed file sizes, a warm listing below one second,
 and exactly 100 matching Markdown pages. The successful run measured:
 
 | Operation | Time | Backend method calls | Body reads |
 | --- | ---: | ---: | ---: |
-| Native `ls -R`, 500 pages in five sections | 2,165 ms | 1,524 | 0 |
-| Warm native `ls`, section with 100 pages | 13 ms | 0 | 0 |
-| Native `grep -r --include=_index.md`, 100 pages | 353 ms | 202 | 101 |
+| Native `ls -R`, 500 pages in five sections | 2,012 ms | 2,535 | 506 |
+| Warm native `ls`, section with 100 pages | 10 ms | 1 | 0 |
+| Native `grep -r --include=_index.md`, 100 pages | 296 ms | 202 | 0 |
 
-The extra body is the section's own `_index.md`. Calls include version and
-metadata probes. This is a local synthetic backend, **not Cloud request latency**;
+The walk loads 500 page bodies, five section bodies and the homepage for exact
+file lengths. The subsequent grep reuses those bodies. Calls include version
+and metadata probes. This is a local synthetic backend, **not Cloud request latency**;
 these counts expose the cost of exhaustive native traversal. Native grep cannot
 use the shell's CQL planner. Finder listing and TextEdit save were separately
 verified against DOCSY; timed large-corpus Finder rendering remains unmeasured.
@@ -108,8 +109,7 @@ Homebrew install/test lifecycle remains unverified for this PR.
   4 ms; DOCSY listing: 38 entries in 143 ms, repeated in 1 ms. One 545-byte page
   read matched direct WebDAV GET byte-for-byte (combined check 134 ms).
   The existing read-only mount/server were left running for the user.
-  No wiki content or credentials were retained. Native Linux writes/editor
-  save behaviour remain unverified. Earlier arm64-emulated Linux failures
+  No wiki content or credentials were retained. Native Linux GUI editor-specific safe-save remains unverified. Earlier arm64-emulated Linux failures
   were environmental and are superseded by these native results.
 - Windows is unavailable; WebClient and Windows indexing remain untested.
 - Only the mayflower profile exists. The live two-identity permission test
@@ -124,6 +124,19 @@ DOCSY plus mayflower mounts `/` and exposes both space directories. Both
 multi-space probes were read-only. The macOS DOCSY kernel E2E passed seven
 tests, including creation, update, readback and cleanup of synthetic pages.
 Space-root listings retain the Spotlight exclusion files.
+
+## Native Linux cold-read truncation and edit regression
+
+The original estimated 4,096-byte PROPFIND size caused davfs2 to truncate a
+cold mounted read while direct GET returned all 14,415 bytes. The user approved
+exact WebDAV sizes even when this loads listed file bodies; shell stat/listing
+remains metadata-only. `scripts/vfs-linux-live.ts` creates one synthetic DOCSY
+page and tests a cold native read before any direct GET, exact stat size,
+byte equality with HTTP, a native filesystem edit, and independent API readback
+after unmount drains davfs2 uploads. It passed with **39,855 bytes** and preserved
+all **1,200** synthetic Unicode text repetitions plus the edited end marker.
+The page, temporary server, mount and VFS cache were cleaned up. macOS native
+read/write E2E also passed again (7 tests / 17 assertions).
 
 ## Final repository checks
 

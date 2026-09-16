@@ -33,9 +33,9 @@ rights; Linux prints the `davfs2` command rather than asking for your password.
 ### A cache, not a copy
 
 This is the part worth understanding. The VFS loads **only what you actually
-read**. Listing a directory costs one request for that directory; `ls`, `stat`
-and a Finder window never fetch a page body; a branch nobody opens is never
-fetched. The disk cache is a bounded LRU — 100 MB by default, attachments
+read**. Listing a directory costs one request for that directory; shell `ls` and `stat` never fetch page bodies. OS mounts load uncached
+file contents when needed to advertise exact sizes and avoid truncated native
+reads. Unvisited child page directories remain unloaded. The disk cache is a bounded LRU — 100 MB by default, attachments
 included — that is safe to delete at any moment, and a recursive operation that
 would need more than 300 page bodies stops and says so rather than quietly
 downloading a space.
@@ -126,7 +126,8 @@ for `AGENTS.md`, `CLAUDE.md` or a skill file.
       treated as a passing measurement.
 - [x] Final repository checks: 9,008 passed, 40 skipped, zero failures; typecheck and build pass.
 - [x] Native Linux x64 artifact tests and read-only davfs2 mount; davfs2 1.7.1 needs `buf_size 64` on kernel 6.17.
-- [ ] Native Linux writes/editor save behaviour.
+- [x] Native Linux full cold reads and filesystem edits with independent API readback; synthetic page cleaned.
+- [ ] Native Linux GUI editor-specific safe-save behaviour.
 - [ ] Windows WebClient and indexing; no Windows environment is available.
 - [ ] Two-identity live permission isolation; only mayflower is configured.
 - [ ] Actual Homebrew installation/test lifecycle for the new artifact. Formula

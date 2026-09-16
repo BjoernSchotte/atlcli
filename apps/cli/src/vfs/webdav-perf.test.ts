@@ -102,14 +102,14 @@ describe("request cost of a mounted volume", () => {
     expect(afterOne).toBe(2);
   });
 
-  it("fetches no bodies for a 500-page walk", async () => {
+  it("hydrates only the 11 opened containers, not 500 child pages", async () => {
     await start(bigSpace(10, 50));
     client.resetCalls();
 
     await propfind("/BIG");
     for (let s = 0; s < 10; s++) await propfind(`/BIG/section-${s}-${10_000 + s}`);
 
-    expect(client.callsTo("getPage")).toBe(0);
+    expect(client.callsTo("getPage")).toBe(11);
     expect(client.callsTo("getPagesBulk")).toBe(0);
     // Eleven listings plus one body-free version probe each.
     expect(client.callsTo("getPageDirectChildren")).toBe(11);
@@ -123,7 +123,7 @@ describe("request cost of a mounted volume", () => {
     expect(client.requestCount).toBe(0);
   });
 
-  it("keeps a 100-entry directory listing to a single round trip", async () => {
+  it("bounds a 100-entry directory listing to metadata plus its own body", async () => {
     await start(bigSpace(2, 100));
     await propfind("/BIG");
     client.resetCalls();
@@ -132,9 +132,9 @@ describe("request cost of a mounted volume", () => {
     expect(await propfind("/BIG/section-0-10000")).toBe(207);
     const elapsed = performance.now() - started;
 
-    // One listing plus one version probe. Against a real tenant those two
-    // requests are the whole cost; the protocol adds milliseconds.
-    expect(client.requestCount).toBeLessThanOrEqual(2);
+    // Listing/version metadata plus the opened section body and its labels.
+    // Child page directories must not cause body downloads.
+    expect(client.requestCount).toBeLessThanOrEqual(4);
     // The WP7.7 threshold, measured against a fake so it only catches an
     // adapter that became accidentally quadratic.
     expect(elapsed).toBeLessThan(1000);
@@ -172,7 +172,7 @@ describe("WP9.3b — the demand principle through the WebDAV adapter", () => {
    * WebDAV adapter", because the mount is the frontend that can be walked
    * without anyone asking it to.
    */
-  it("a PROPFIND across a large space writes no body and no blob", async () => {
+  it("PROPFIND hydrates visited containers only and no attachment blobs", async () => {
     await start(bigSpace(50, 100));
     client.resetCalls();
 
@@ -181,10 +181,10 @@ describe("WP9.3b — the demand principle through the WebDAV adapter", () => {
       await propfind(`/BIG/section-${section}-${10_000 + section}`);
     }
 
-    expect(client.callsTo("getPage")).toBe(0);
+    expect(client.callsTo("getPage")).toBe(11);
     expect(client.callsTo("getPagesBulk")).toBe(0);
     expect(client.callsTo("downloadAttachment")).toBe(0);
-    expect(vfs.cache!.stats().bodies).toBe(0);
+    expect(vfs.cache!.stats().bodies).toBe(11);
     expect(vfs.cache!.stats().attachments).toBe(0);
   });
 

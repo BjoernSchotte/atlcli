@@ -103,12 +103,12 @@ describe("listing", () => {
    * Rule 2, at the protocol level. A Finder window over a large directory must
    * cost one listing, not one body fetch per row.
    */
-  it("fetches no bodies for a PROPFIND over a 250-entry directory", async () => {
+  it("hydrates only the listed homepage body, not 250 child directories", async () => {
     await start(seeded(250));
     client.resetCalls();
     const result = await dav("/DOCSY", { method: "PROPFIND", depth: "1" });
     expect(result.status).toBe(207);
-    expect(client.callsTo("getPage")).toBe(0);
+    expect(client.callsTo("getPage")).toBe(1);
     expect(client.callsTo("getPagesBulk")).toBe(0);
   });
 
@@ -157,16 +157,18 @@ describe("reading", () => {
     expect(etag(after.body)).toBe(etag(before.body));
   });
 
-  it("sets an exact Content-Length on a GET and an estimate on a PROPFIND", async () => {
-    await start(seeded());
+  it("advertises the complete cold file length before GET, including bodies over 4 KiB", async () => {
+    const fake = seeded().seedPage({ id: "200", title: "Page 0", spaceKey: "DOCSY", parentId: "100", storage: `<p>${"long body ü ".repeat(1000)}END-MARKER</p>` });
+    await start(fake);
     const propfind = await dav("/DOCSY/page-0-200.md", { method: "PROPFIND", depth: "0" });
-    // The property response may not fetch a body, so it carries the estimate.
-    expect(propfind.body).toContain("<D:getcontentlength>4096</D:getcontentlength>");
 
     const response = await fetch(new URL("/DOCSY/page-0-200.md", server.url));
     const body = await response.text();
     // The read must be exact, or the client waits for bytes that never come.
     expect(response.headers.get("content-length")).toBe(String(Buffer.byteLength(body, "utf8")));
+    expect(Buffer.byteLength(body)).toBeGreaterThan(4096);
+    expect(body).toContain("END-MARKER");
+    expect(propfind.body).toContain(`<D:getcontentlength>${Buffer.byteLength(body)}</D:getcontentlength>`);
   });
 });
 

@@ -37,13 +37,13 @@ try {
   assert.equal(await runMountCommand(command.run), 0);
   mounted = true;
   const walk = await measure("ls-R-500-pages", ["/bin/ls", "-R", `${mount}/BIG`]);
-  assert.equal(walk.bodyReads, 0);
+  assert.equal(walk.bodyReads, 506, "one exact body length per listed page/container");
   const listing = await measure("warm-ls-100-pages", ["/bin/ls", `${mount}/BIG/section-0-10000`]);
   assert(listing.ms < 1000, "warm directory listing exceeds one second");
   assert.equal(listing.bodyReads, 0);
   const grep = await measure("native-grep-100-pages", ["/usr/bin/grep", "-r", "--include=_index.md", "syntheticneedle", `${mount}/BIG/section-0-10000`]);
   assert.equal(grep.lines, 100);
-  assert(grep.bodyReads >= 100 && grep.bodyReads <= 101, "only searched page bodies and section body may load");
+  assert.equal(grep.bodyReads, 0, "the preceding recursive listing already cached exact bodies");
 } finally {
   if (mounted) {
     const command = unmountCommandFor("darwin", mount);

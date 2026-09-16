@@ -15,7 +15,7 @@ and release acceptance remains partial.** Current follow-up branch:
 | 5,000-page shell load test | Passed | Bounded candidate reads and warm cache reuse; LIVE-RESULTS |
 | macOS compiled executable | Passed | Nine artifact tests; [RELEASE-VALIDATION.md](./RELEASE-VALIDATION.md) |
 | Startup gate | Failed, accepted deviation | Measured +88–99 ms; user accepted embedded shell for now |
-| Linux / Windows | Linux read-only passed / Windows unavailable | Native artifact tests and davfs2 listing/read passed; Linux writes unverified |
+| Linux / Windows | Linux read/write passed / Windows unavailable | Native artifact tests, both mount layouts, cold reads and filesystem writes passed |
 | Two-identity permissions | Pending, accepted interim boundary | Only one configured identity |
 | Homebrew | Partial | Formula and equivalent executable command checked; installed version is outdated |
 | Repository-wide final checks | Passed | 9,008 passed / 40 skipped / zero failures; typecheck 4/4 and build 35/35 |
@@ -97,7 +97,7 @@ The VFS is a **virtual** filesystem with a cache, **not** a mirror. That is what
 Four hard rules follow:
 
 1. **Directories load one at a time.** A `readdir` of one directory costs at most one request (`direct-children`). A space-wide `descendants` pass happens only for an explicitly recursive operation and is then scoped to the subtree being walked. Metadata for a branch never entered is not fetched.
-2. **Bodies only on a real read.** `ls`, `stat` and `PROPFIND` trigger no body fetch. Sizes come from the cache or are estimated; only the `GET` yields the exact length.
+2. **Shell bodies only on a real read.** Shell `ls` and `stat` remain metadata-only. User-approved mount exception: WebDAV PROPFIND must advertise exact file lengths, loading uncached listed files to prevent davfs2 cold-read truncation. Listing child directories does not fetch their bodies.
 3. **Prefetch is capped.** The fallback prefetch for `grep` has a hard ceiling. On reaching it the operation aborts with an explanatory message instead of quietly downloading a space. Going past it requires an explicit flag.
 4. **The disk cache is a bounded LRU.** The size limit is enforced during an operation, not afterwards. Attachment blobs count against it.
 
@@ -230,7 +230,7 @@ No open-source project mounts Confluence today; a GitHub search on 2026-09-15 re
 ### Design of the WebDAV frontend
 - Library: `webdav-server` v2 (2.6.3, 2026-08-04, Unlicense) with a pluggable `FileSystem`.
 - Bind to `127.0.0.1` only, on a random port, without authentication on loopback, with an optional bearer token in the header for multi-user hosts.
-- Mandatory for the macOS Finder: `LOCK` and `UNLOCK`, otherwise the volume mounts read-only; fast 404 responses for AppleDouble files; an ETag derived from page ID and version; `PROPFIND` answers served from the tree index without an API call.
+- Mandatory for the macOS Finder: `LOCK` and `UNLOCK`, otherwise the volume mounts read-only; fast 404 responses for AppleDouble files; an ETag derived from page ID and version; `PROPFIND` uses the tree index for directories and exact rendered lengths for files.
 - `atlcli wiki mount ~/confluence --space DOCSY` starts the server and calls `mount_webdav` on macOS or `net use` on Windows; on Linux it prints the `mount -t davfs` instructions.
 - Performance: WebDAV clients are chatty, with the Finder adding two to five times the request overhead. Confluence API latency dominates regardless, so the cache in section 8 decides the outcome rather than the protocol. `grep -r` through the mount stays slower than in frontend A because the kernel knows nothing of the CQL shortcut. The documentation therefore points at `atlcli wiki sh -c 'grep …'` for full-text search, which is how `slack-fuse` solves the same problem: 15 to 25 files per second through FUSE against 62,000 per second on its projection cache.
 
@@ -304,7 +304,7 @@ atlcli:
 
 ### Cache strategy
 1. **TreeIndex** in memory, per profile and space, **partial and demand-driven** per rule 1 of section 1b: listing a directory loads exactly that one level through `direct-children` in a single request. A `descendants` pass over a subtree happens only for explicitly recursive operations and stays confined to the nodes being walked. Branches never entered stay unloaded. The TTL is 60 seconds **per node**, and revalidation uses a body-free bulk GET of 250 IDs per request comparing `version.number`, only for the loaded IDs of the affected directory.
-2. **BodyCache** in SQLite keyed by page ID and version: versions are monotonic, entries are immutable, and invalidation happens only through the tree index. Reuses the `SyncDbAdapter` pattern from `packages/confluence/src/sync-db`. An entry is created **only** by a real read or a capped prefetch, never by `ls`, `stat` or `PROPFIND`.
+2. **BodyCache** in SQLite keyed by page ID and version: versions are monotonic, entries are immutable, and invalidation happens only through the tree index. Reuses the `SyncDbAdapter` pattern from `packages/confluence/src/sync-db`. An entry is created **only** by a real read or a capped prefetch, never by shell `ls` or `stat`. WebDAV PROPFIND may populate bodies for exact file lengths.
 3. **Cache location freely configurable** (decision 5): `--cache-dir <path>`, config `vfs.cacheDir` globally or per profile, default `~/.atlcli/vfs/`. Inside that directory the database always lives at `<profile>/<accountId>/<siteHash>.db`. Switching profiles means a different cache, so nobody can see content through the cache that their own token would not return. Pointing `--cache-dir` at a `docs pull` directory is **not** a goal; the two formats stay separate because the path schemes differ.
 4. **Prefetch, capped:** `grep -r` and repeated `cat` use bulk GET with bodies in batches of 250, at most 8 parallel requests, honouring `Retry-After` with jitter through the existing `retry-after.ts` and `in-order-limiter.ts`. The ceiling is `vfs.prefetchMaxPages`, default 300; above it the operation aborts with a message instead of quietly mirroring a space.
 5. **Disk cache as a bounded LRU:** `vfs.cacheMaxMb`, default 100, attachment blobs included, enforced while writing. The cache is not a mirror and may be deleted at any time without losing functionality.
@@ -577,7 +577,7 @@ child's `stat` started its version probe before any finished; the probe is now
 de-duplicated per directory and the same listing costs two requests. And a
 `GET` hung, because `Content-Length` came from the *estimated* size, so the
 client waited for bytes that never arrived — a real read now measures exactly,
-while `PROPFIND` keeps the estimate, which is the split WP7.3 asks for.
+The original PROPFIND estimate was later superseded: Linux davfs2 truncates cold reads at that estimate, so the user approved exact sizes for OS mounts.
 
 **Body-free version enrichment.** A Cloud hierarchy listing carries no version,
 so an unread page had none — making its `mtime` "now" and its ETag
@@ -587,7 +587,7 @@ request bounded by the directory's size, and fetches no bodies.
 
 - [x] **WP7.1** `apps/cli/src/vfs/webdav-fs.ts`: a `webdav-server` v2 `FileSystem` implementation covering the serializer, read and write streams, directory listing, type, size, modification and creation dates, create, delete, move, copy, rename, the lock manager and the property manager, all delegating to `ConfluenceVfs`. `VfsError` maps to the appropriate HTTP codes including 404, 403, 409, 423 and 507. Symlinked convenience directories are served as regular files carrying the target content, because WebDAV has no symlink concept.
 - [x] **WP7.2** LOCK and UNLOCK through an in-memory lock manager, which is mandatory or the Finder mounts read-only, with locks expiring after ten minutes. The ETag combines page ID and version, and `If-Match` handling on update feeds the conflict path from WP5.2. Tests use a WebDAV client library against the in-process server.
-- [x] **WP7.3** Client quirks: immediate 404 for AppleDouble files, `.DS_Store`, `.hidden`, `desktop.ini` and `Thumbs.db` without a backend call; `PROPFIND` at depth one served from the tree index without a body fetch; content length for Markdown taken from the cache or estimated for the property response and set exactly on the actual read. Tests assert that a `PROPFIND` on a directory with 250 children triggers no body requests.
+- [x] **WP7.3** Client quirks: immediate 404 for AppleDouble files, `.DS_Store`, `.hidden`, `desktop.ini` and `Thumbs.db` without a backend call; `PROPFIND` returns exact file lengths, loading uncached files when necessary. A 250-child listing fetches only its own container body, not the bodies of child directories. A >4 KiB regression and native Linux cold-read/write proof cover truncation.
 - [ ] **WP7.3b** **Indexer defence** per rules 1 and 3 of section 1b, without which a search index would download the whole space: `.metadata_never_index` at the volume root is **served** as an empty file rather than refused with a 404, because its presence stops Spotlight from indexing, together with its `unless_rootfs` variant and an empty `.fseventsd` directory. Verify the behaviour in the spike by creating a mount, checking `mdutil -s` and the request counter, and confirming that Spotlight does not walk the mount. Check the Windows counterpart, covering the WebClient and search indexing, and document the result. Additionally a guard in the server logs more than 50 read requests for distinct files within ten seconds that were not preceded by a directory listing from the same directory, and reports it under a flag as a possible indexer sweep. macOS mdutil reports indexing/search disabled; Windows counterpart remains unavailable, so the combined gate stays open.
 - [x] **WP7.4** Server lifecycle in `apps/cli/src/vfs/webdav-server.ts`: bind to `127.0.0.1`, take the port from a flag or choose it randomly, offer an optional bearer token that becomes mandatory for any non-loopback binding, and shut down cleanly on SIGINT and SIGTERM including a flush of buffered writes and an unmount.
 - [x] **WP7.5** Command `apps/cli/src/commands/wiki-mount.ts` dispatched for mount and unmount: `atlcli wiki mount <mountpoint>` with `--space`, `--mode ro|rw`, `--allow-delete`, `--cache-dir`, `--port` and a foreground or daemon choice. Platform commands:
@@ -620,7 +620,7 @@ request bounded by the directory's size, and fetches no bodies.
 - [x] **WP9.1** *(the checklist is [`SECURITY-REVIEW.md`](./SECURITY-REVIEW.md), with every claim enforced by a named test)* Security review of the write path: no purge calls anywhere, `ro` enforcing `EROFS` on every route including just-bash, WebDAV and the extra commands, tokens never appearing in the audit log or in JSON output, and the WebDAV server unauthenticated only on loopback. Checklist in the pull request.
 - [ ] **WP9.2** *(written and gated on `ATLCLI_VFS_PERMISSIONS_E2E=1` plus two profiles; not run — only one configured identity; user accepts this interim boundary)* Permission end-to-end test: a second profile with a restricted user, or a page restricted through `setContentRestrictions`, proving that the page is visible to profile A and returns `ENOENT` for profile B, and that A's cache gives B nothing because the databases are separate. With cleanup.
 - [x] **WP9.3** Real just-bash over a 5,000-page fake now verifies bounded indexed candidate reads, warm cache reuse, request counts and no hierarchy traversal. The measured corpus has 50 indexed candidates; cold search loads 50 bodies in seven client calls and warm search loads none in one call, with 10,630 cached bytes. Unsupported-pattern budget refusal is covered separately; see LIVE-RESULTS.md for actual timings and test scope.
-- [x] **WP9.3b** **Invariant test for the demand principle** from section 1b, as its own test that cannot be skipped: across a space of 5,000 pages, list ten directories, run `ls -R` on one subtree, `stat` a hundred files, and issue a `PROPFIND` through the WebDAV adapter. Expectation: no body rows in the cache, no attachment blobs on disk, request counts growing with the number of **visited** directories rather than with space size, and no branch never entered loaded in the index.
+- [x] **WP9.3b** **Invariant test for the demand principle** from section 1b, as its own test that cannot be skipped: across a space of 5,000 pages, list ten directories, run `ls -R` on one subtree, `stat` a hundred files, and issue a `PROPFIND` through the WebDAV adapter. Expectation: shell operations write no bodies; WebDAV loads only listed file bodies for exact lengths, no attachment blobs on disk, request counts growing with the number of **visited** directories rather than with space size, and no branch never entered loaded in the index.
 - [x] **WP9.4** Rate-limit behaviour: the fake returns 429 with `Retry-After`, and a test proves that concurrency is throttled and commands still succeed after the wait, without the user seeing an error, with only a note on stderr when the wait exceeds five seconds.
 - [ ] **WP9.5** macOS compiled-binary tests pass (9 tests/33 assertions), artifact growth passes, and startup fails with an explicitly accepted overhead. Homebrew formula inspection passes; actual install lifecycle remains pending; native Linux x64 artifact tests and read-only mount pass. Final repository-wide tests (9,008 pass, 40 skip, zero failures), typecheck and build pass. See RELEASE-VALIDATION.md.
 - [x] **WP9.6** *(draft in [`RELEASE-NOTES.md`](./RELEASE-NOTES.md); the dry run plans 0.17.2 → 0.18.0)* Draft the release notes and run `bun scripts/release.ts minor --dry-run`. No automatic release.
@@ -683,7 +683,7 @@ Each is argued where it applies; this is the index.
 ## 13. Open questions
 
 All implementation decisions are settled. Outstanding acceptance work is
-tracked in the status matrix above: timed large-corpus Finder rendering, Linux writes, Windows, live two-identity permissions,
+tracked in the status matrix above: timed large-corpus Finder rendering, Linux GUI editor safe-save, Windows, live two-identity permissions,
 and Homebrew lifecycle. Startup overhead is
 an accepted deviation, not an unresolved packaging decision. WP10 remains
 outside the v1 scope.
