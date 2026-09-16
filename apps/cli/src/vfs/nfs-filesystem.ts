@@ -168,12 +168,20 @@ export class NfsFilesystem {
   }
 
   async getattr(id: number): Promise<NfsAttributes> {
+    return this.attributes(id, true);
+  }
+
+  private async attributes(id: number, refreshDirectory: boolean): Promise<NfsAttributes> {
     const path = await this.pathFor(id);
     const stat = await this.vfs.stat(path);
     // Never publish estimated sizes to a kernel client.
     const size = stat.isDirectory ? 0 : stat.kind === "attachment" && !stat.sizeEstimated
       ? stat.size : (await this.vfs.readFileBytes(path)).byteLength;
-    const mtime = stat.isDirectory ? (await this.directoryView(id, path)).mtime : stat.mtime.getTime();
+    // Entry attributes must not enumerate an unopened child directory.
+    let mtime = stat.mtime.getTime();
+    if (stat.isDirectory) {
+      mtime = refreshDirectory ? (await this.directoryView(id, path)).mtime : this.directories.get(id)?.mtime ?? mtime;
+    }
     return { id, directory: stat.isDirectory, size, mtime };
   }
 
@@ -207,7 +215,7 @@ export class NfsFilesystem {
     if (after !== 0 && start === 0) throw Object.assign(new Error("Expired NFS directory cursor"), { code: "EBADCOOKIE" });
     const end = Math.min(start + count, names.length);
     const entries = [];
-    for (let i = start; i < end; i++) entries.push({ name: names[i], attr: await this.getattr(ids[i]) });
+    for (let i = start; i < end; i++) entries.push({ name: names[i], attr: await this.attributes(ids[i], false) });
     return { entries, end: end === names.length };
   }
 }

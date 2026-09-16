@@ -265,3 +265,21 @@ it("compares v1 numeric space IDs with v2 string folder space IDs", async () => 
   client.getFolder = async id => ({ ...await getFolder(id), spaceId: "43" });
   await expect(vfs.folderPath("500", "DOCSY")).rejects.toMatchObject({ code: "ENOENT" });
 });
+
+
+it("does not enumerate child directories while returning parent directory attributes", async () => {
+  const { fs, vfs, client } = await fixture();
+  const listing = await fs.readdir(1, 0, 256);
+  expect(listing.entries.filter(entry => entry.name.startsWith("child-"))).toHaveLength(4);
+  expect(client.callsTo("getPageDirectChildren")).toBe(1);
+  expect(client.callsTo("getPage")).toBe(1);
+  for (let id = 200; id < 204; id++) expect(vfs.index.isUnloaded(String(id))).toBe(true);
+  const requests = client.requestCount;
+  await fs.readdir(1, 0, 256);
+  expect(client.requestCount).toBe(requests);
+  const child = listing.entries.find(entry => entry.name === "child-0-200")!.attr.id;
+  await fs.readdir(child, 0, 256);
+  expect(client.callsTo("getPageDirectChildren")).toBe(2);
+  expect(vfs.index.isUnloaded("200")).toBe(false);
+  expect(vfs.index.isUnloaded("201")).toBe(true);
+});

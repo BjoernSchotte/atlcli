@@ -737,3 +737,28 @@ All seven journal tests passed on macOS and Linux (44 assertions each), includin
 SIGKILL recovery. Typecheck passed. Linux's five live DOCSY RO CLI lifecycle
 cases also passed (61 assertions); those are regression evidence for the
 existing mount, not proof of journal-backed remote publication. NFS remains RO.
+
+
+## Slice 31 — stop enumerating unopened children for directory-entry attributes
+
+Benchmark preparation found an avoidable hierarchy fan-out: readdir obtained
+each child entry's attributes through getattr, which refreshed that child's
+listing. A root with four page children therefore made five hierarchy requests
+instead of one. The failing request-count regression records that exact result.
+Entry attributes now use already observed directory metadata without listing
+its contents. Explicit GETATTR of a directory retains its listing refresh for
+cookie validation; this is not a claim that every metadata call is body-free.
+
+The corrected cold fixture performs one hierarchy request, leaves all four
+children unloaded, and performs no extra API requests for a warm repeat. Opening
+one child then performs exactly one additional hierarchy request. Real Rust/TCP
+pagination tests for both READDIR and READDIRPLUS verify one hierarchy request
+and all 32 child directories still unloaded, alongside unchanged pagination
+and BAD_COOKIE behavior.
+
+Validation on macOS and Linux: 17 filesystem tests / 233 assertions, plus both
+pagination procedures and three native mount cases (5 tests / 197 assertions).
+Linux single/combined mounts used live RO spaces; macOS and attachment fixtures
+were synthetic. Typecheck passed and mounts detached normally. No live content
+was changed. Comparative WebDAV/NFS wall-time, byte and RSS measurements remain
+open; request-count reduction alone is not a speed claim.

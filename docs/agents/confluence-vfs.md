@@ -215,6 +215,9 @@ fetched. Index lag can omit recent changes. Other find expressions retain the
 filesystem-metadata walk; `--no-cql` on `wiki sh` disables acceleration.
 
 Experimental NFS handles distinguish generated files in each selected space.
+NFS READDIR/READDIRPLUS entry attributes do not enumerate each child directory.
+Listing a child directory fetches its children on demand. An explicit directory
+GETATTR still refreshes its listing to validate pagination state.
 Attachment directory listings and stat use exact Confluence size metadata without
 downloading attachment contents. A read downloads the attachment through the
 shared body cache; subsequent ranges reuse it.

@@ -265,7 +265,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
 
   for (const procedure of [16, 17]) {
     it(`paginates NFS procedure ${procedure} without repeating or omitting entries`, async () => {
-      const { server, vfs } = await fixture(["DOCSY"], false);
+      const { server, vfs, client } = await fixture(["DOCSY"], false);
       const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
       const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
       for (const budget of [0, 128, 129, 256]) {
@@ -317,6 +317,8 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
         expect(received).toBeGreaterThan(0);
         expect(pages).toBeLessThan(100);
       }
+      expect(client.callsTo("getPageDirectChildren")).toBe(1);
+      expect(Array.from({ length: 32 }, (_, i) => vfs.index.isUnloaded(String(400 + i))).every(Boolean)).toBe(true);
       const expired = await rpc(server, 100003, procedure, Buffer.concat([
         opaque(root), cookie, Buffer.alloc(8, 255), procedure === 16 ? ints(512) : ints(512, 768),
       ]));
