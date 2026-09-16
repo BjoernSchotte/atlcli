@@ -215,6 +215,20 @@ describe("the cache is per profile and account", () => {
 });
 
 describe("prefetch", () => {
+  it("keeps the fetched version timestamp in the index and cached Markdown", async () => {
+    const client = seeded(1);
+    const vfs = await openVfs(client);
+    try {
+      await vfs.readdir("/DOCSY");
+      client.bumpVersion("200", "<p>External update</p>");
+      const modified = (await client.getPageVersions(["200"])).get("200")!.lastModified!;
+      await vfs.prefetch(["200"]);
+      expect(vfs.index.node("200")?.lastModified).toBe(modified);
+      expect(parseVfsFrontmatter(await vfs.readFile("/DOCSY/page-0-200.md")).frontmatter.lastModified).toBe(modified);
+      expect(client.callsTo("getPage")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
   function storeFor(vfs: ConfluenceVfsImpl, client: FakeConfluenceClient): PageStore {
     return new PageStore({ client, cache: vfs.cache!, index: vfs.index,
       instanceUrl: "https://example.atlassian.net/wiki", offline: false,

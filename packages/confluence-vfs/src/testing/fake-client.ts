@@ -278,6 +278,7 @@ export class FakeConfluenceClient implements VfsClient {
       id: page.id,
       title: page.title,
       version: page.version,
+      lastModified: page.lastModified,
       spaceKey: page.spaceKey,
       parentId: page.parentId ?? null,
       url: `${this.instanceUrl}/spaces/${page.spaceKey}/pages/${page.id}`,
@@ -426,7 +427,7 @@ export class FakeConfluenceClient implements VfsClient {
     if (!historic) {
       throw new FakeHttpError(404, `Confluence API error (404): no version ${version} of ${pageId}`);
     }
-    return { ...this.toPage(page), version, title: historic.title, storage: historic.storage };
+    return { ...this.toPage(page), version, lastModified: historic.when, title: historic.title, storage: historic.storage };
   }
 
   async getPagesBulk(

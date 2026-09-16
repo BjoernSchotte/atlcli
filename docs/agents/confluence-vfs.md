@@ -233,6 +233,10 @@ READ currently omits optional NFS attributes rather than combining bytes with
 separately fetched attributes from another version. Clients can use GETATTR;
 concurrent external changes across multiple READ requests are not yet covered
 by a stable version-snapshot guarantee.
+For current Markdown pages and page aliases, GETATTR derives the modification
+time from the same materialized Markdown used for its exact byte size when
+Confluence supplies the version timestamp. A cold fetch therefore cannot pair
+the newer body's size with the preceding metadata lookup's older timestamp.
 
 When a refreshed listing observes a moved page or folder, the shared tree index
 removes its old parent association while retaining its already loaded children.

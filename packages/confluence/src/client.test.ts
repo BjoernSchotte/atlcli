@@ -29,7 +29,7 @@ describe("Confluence page metadata", () => {
     globalThis.fetch = mock((url: string) => {
       requested = new URL(url);
       return Promise.resolve(Response.json({
-        id: "123", title: "Page", version: { number: 7 }, space: { key: "DOCSY" },
+        id: "123", title: "Page", version: { number: 7, when: "2026-09-17T12:34:56Z" }, space: { key: "DOCSY" },
         ancestors: [{ id: "100", title: "Home" }, { id: "102", title: "Parent" }],
         body: { storage: { value: "should never escape metadata" } },
       }));
@@ -39,6 +39,7 @@ describe("Confluence page metadata", () => {
     expect(requested!.searchParams.get("expand")).toBe("version,space,ancestors");
     expect(result).toMatchObject({ id: "123", spaceKey: "DOCSY", version: 7, parentId: "102" });
     expect(result).not.toHaveProperty("storage");
+    expect(result.lastModified).toBe("2026-09-17T12:34:56Z");
   });
 });
 

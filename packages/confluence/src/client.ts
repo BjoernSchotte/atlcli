@@ -232,6 +232,8 @@ export type ConfluencePage = {
   title: string;
   url?: string;
   version?: number;
+  /** Timestamp of this returned page version, when supplied by Confluence. */
+  lastModified?: string;
   spaceKey?: string;
   parentId?: string | null;
   ancestors?: { id: string; title: string }[];
@@ -1189,6 +1191,8 @@ export class ConfluenceClient {
       title: data.title,
       url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
       version: data.version?.number,
+      ...(typeof data.version?.when === "string" && Number.isFinite(Date.parse(data.version.when))
+        ? { lastModified: data.version.when } : {}),
       spaceKey: data.space?.key,
       parentId,
       ancestors,
@@ -2824,6 +2828,8 @@ export class ConfluenceClient {
             id,
             title: row.title,
             version: row.version?.number,
+            ...(typeof row.version?.createdAt === "string" && Number.isFinite(Date.parse(row.version.createdAt))
+              ? { lastModified: row.version.createdAt } : {}),
             // v2 reports a numeric `spaceId`, not a key. Callers that need the
             // key already know it (they asked for pages of a known space), so
             // this deliberately stays unset rather than guessing.

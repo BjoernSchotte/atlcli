@@ -219,6 +219,7 @@ export class PageStore {
       id: node.id,
       title: page.title,
       version,
+      ...(page.lastModified === undefined ? {} : { lastModified: page.lastModified }),
       parentId: page.parentId ?? node.parentId,
     });
     const refreshed = this.opts.index.node(node.id) ?? node;
@@ -330,6 +331,7 @@ export class PageStore {
       for (const page of pages) {
         const version = page.version ?? 1;
         this.opts.index.upsert({ id: page.id, title: page.title, version,
+          ...(page.lastModified === undefined ? {} : { lastModified: page.lastModified }),
           ...(page.parentId === undefined ? {} : { parentId: page.parentId }) });
         const node = this.opts.index.node(page.id);
         if (!node) continue;

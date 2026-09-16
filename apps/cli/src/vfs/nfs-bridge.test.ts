@@ -81,6 +81,9 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(attributes.readUInt32BE()).toBe(0);
     const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md"));
     expect(Number(attributes.readBigUInt64BE(24))).toBe(expected.length);
+    const modified = (await vfs.stat("/DOCSY/_index.md")).mtime.getTime();
+    expect(attributes.readUInt32BE(72)).toBe(Math.floor(modified / 1000));
+    expect(attributes.readUInt32BE(76)).toBe((modified % 1000) * 1_000_000);
     let bodyReads = 0;
     const readBytes = vfs.readFileBytes.bind(vfs);
     vfs.readFileBytes = async (path) => { bodyReads++; return readBytes(path); };

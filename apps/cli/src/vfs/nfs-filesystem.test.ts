@@ -61,6 +61,33 @@ it("reports exact cold byte size and reads split UTF-8 ranges through EOF", asyn
   await expect(fs.read(1, 0, 1)).rejects.toThrow();
 });
 
+it("reports the timestamp of the body fetched after older metadata was listed", async () => {
+  const { fs, vfs, client } = await fixture();
+  const page = await fs.lookup(1, "child-0-200");
+  const body = await fs.lookup(page, "_index.md");
+  const old = await vfs.stat("/DOCSY/child-0-200/_index.md");
+  client.bumpVersion("200", "<p>New external content 🐴</p>");
+  const latest = (await client.getPageVersions(["200"])).get("200")!;
+  expect(Date.parse(latest.lastModified!)).not.toBe(old.mtime.getTime());
+  const attr = await fs.getattr(body);
+  expect(attr.mtime).toBe(Date.parse(latest.lastModified!));
+  expect(attr.size).toBe((await vfs.readFileBytes("/DOCSY/child-0-200/_index.md")).byteLength);
+});
+
+it("does not take a newer index timestamp for an already materialized body", async () => {
+  const { fs, vfs } = await fixture();
+  const body = await fs.lookup(await fs.lookup(1, "child-0-200"), "_index.md");
+  const before = await vfs.stat("/DOCSY/child-0-200/_index.md");
+  const read = vfs.readFileBytes.bind(vfs);
+  vfs.readFileBytes = async path => {
+    const bytes = await read(path);
+    vfs.index.upsert({ id: "200", version: 2, lastModified: "2026-09-18T00:00:00Z" });
+    return bytes;
+  };
+  expect((await fs.getattr(body)).mtime).toBe(before.mtime.getTime());
+  expect((await vfs.stat("/DOCSY/child-0-200/_index.md")).mtime.getTime()).toBe(Date.parse("2026-09-18T00:00:00Z"));
+});
+
 it("paginates without duplicates and rejects unknown cursors/handles", async () => {
   const { fs } = await fixture();
   const all = await fs.readdir(1, 0, 256);
