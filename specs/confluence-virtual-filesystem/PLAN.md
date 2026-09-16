@@ -1,8 +1,22 @@
 # Confluence Virtual Filesystem for Coding Agents
 
-Status: concept with decisions recorded, not yet implemented
+Status: **implemented** — WP0 through WP9, on branch
+`claude/confluence-virtual-filesystem-vuf3fm`. Both frontends work, the core has
+no frontend dependency, and every invariant in section 1b is a test.
 
-Plan date: 2026-09-15 (research), 2026-09-16 (decisions, task plan)
+What is **not** done, and needs a machine this repository's CI does not have:
+the two live probes (WP0.3, WP0.3b) need the `mayflower` tenant; the macOS
+kernel mount, the Finder measurements and the Spotlight verification (WP7.3b,
+WP7.7, WP7.9) need a Mac; the Windows WebClient run (WP7.8) needs Windows; the
+startup re-measurement (WP9.5) needs release hardware. Each is written, gated
+and skips cleanly. Measurements and open items are collected in
+[`EVIDENCE.md`](./EVIDENCE.md).
+
+**Until WP0.3b measures the live search index, decision 12's guard stays at its
+strictest** — see deviation D9 under WP6.
+
+Plan date: 2026-09-15 (research), 2026-09-16 (decisions, task plan,
+implementation)
 
 Planned against: `2617984`
 
@@ -600,11 +614,11 @@ request bounded by the directory's size, and fetches no bodies.
 
 ### WP8 - Documentation and agent integration (2 days)
 
-- [ ] **WP8.1** `src/content/docs/confluence/virtual-filesystem.md` following the docs template: intro, prerequisites covering profile, token and space, steps for `wiki sh` and `wiki mount` separated by platform, an options reference giving type, default and whether each is required, a minimal example and an advanced agent workflow covering search, in-place editing, moving and the conflict file, troubleshooting covering a read-only Finder mount from a missing lock, 429 responses and concurrency, `EROFS` and the write mode, a reached prefetch budget, a `grep` reporting a full scan, and the Bun and defense-in-depth note, plus related topics linking `sync.md`, `search.md` and `file-format.md`. A dedicated section, **"A cache, not a copy"**, states the difference from `docs pull`: the VFS loads only what is read, the cache is bounded and deletable at any time, and `docs pull` stays the right tool for a full local copy.
-- [ ] **WP8.2** Extend `src/content/docs/reference/cli-commands` with `wiki sh`, `wiki mount`, `wiki unmount` and `wiki vfs cache`, and the config reference with the `vfs` section.
-- [ ] **WP8.3** A skill and agent snippet at `docs/agents/confluence-vfs.md`, also surfaced in the docs recipes section: a short guide for Claude Code, Codex and Cursor covering the single-command form, the space default, JSON output, the note that recursive search uses CQL with a recommended result limit, and the fact that writing requires the explicit write mode.
-- [ ] **WP8.4** A `README.md` section titled "Confluence as a filesystem" with two examples, plus an unreleased entry in `CHANGELOG.md`.
-- [ ] **WP8.5** Bring `specs/confluence-virtual-filesystem/PLAN.md`, this document, up to the actual state once the work is done: the status line, deviations, measured values and remaining points; place the measurements from WP0.4, WP7.7 and WP9.3 alongside it as `EVIDENCE.md`.
+- [x] **WP8.1** `src/content/docs/confluence/virtual-filesystem.md` following the docs template: intro, prerequisites covering profile, token and space, steps for `wiki sh` and `wiki mount` separated by platform, an options reference giving type, default and whether each is required, a minimal example and an advanced agent workflow covering search, in-place editing, moving and the conflict file, troubleshooting covering a read-only Finder mount from a missing lock, 429 responses and concurrency, `EROFS` and the write mode, a reached prefetch budget, a `grep` reporting a full scan, and the Bun and defense-in-depth note, plus related topics linking `sync.md`, `search.md` and `file-format.md`. A dedicated section, **"A cache, not a copy"**, states the difference from `docs pull`: the VFS loads only what is read, the cache is bounded and deletable at any time, and `docs pull` stays the right tool for a full local copy.
+- [x] **WP8.2** Extend `src/content/docs/reference/cli-commands` with `wiki sh`, `wiki mount`, `wiki unmount` and `wiki vfs cache`, and the config reference with the `vfs` section.
+- [x] **WP8.3** A skill and agent snippet at `docs/agents/confluence-vfs.md`, also surfaced in the docs recipes section: a short guide for Claude Code, Codex and Cursor covering the single-command form, the space default, JSON output, the note that recursive search uses CQL with a recommended result limit, and the fact that writing requires the explicit write mode.
+- [x] **WP8.4** A `README.md` section titled "Confluence as a filesystem" with two examples, plus an unreleased entry in `CHANGELOG.md`.
+- [x] **WP8.5** Bring `specs/confluence-virtual-filesystem/PLAN.md`, this document, up to the actual state once the work is done: the status line, deviations, measured values and remaining points; place the measurements from WP0.4, WP7.7 and WP9.3 alongside it as `EVIDENCE.md`.
 
 ### WP9 - Quality, security, release (3 days)
 
@@ -634,6 +648,26 @@ WP0 ──► WP1 ──► WP2 ──► WP3 ──► WP4 ──┐
 ```
 
 WP6 and WP7 can start in parallel once WP2 and WP3 read correctly; WP5 is pulled into both adapters afterwards.
+
+---
+
+## 11a. Deviations, collected
+
+Each is argued where it applies; this is the index.
+
+| # | Deviation | Why | Where |
+|---|-----------|-----|-------|
+| D1 | Every page is a directory; `<slug>-<id>.md` is an alias for its body | The plan's leaf/directory split needs one request per listed child to decide, which rule 1 forbids; guessing makes `ls -R` and `grep -r` skip subtrees | WP2 |
+| D2 | No `descendants` call; recursive walks go level by level | The client fixes that endpoint's depth at exactly 1 and throws otherwise, so it returns what `direct-children` does | WP2 |
+| D3 | Data Center revalidates by re-listing | `getPageVersions` is Cloud v2 only and throws elsewhere; the v1 listing already carries versions | WP2 |
+| D4 | *(withdrawn)* | The repository's frontmatter is nested under `atlcli:`, exactly as section 7 shows | WP3 |
+| D5 | `.labels/` resolves lazily and lists only what it has seen | Confluence has no endpoint enumerating a space's page labels | WP4 |
+| D6 | `.by-id/` lists nothing but a `README` | Populating it means enumerating the space | WP4 |
+| D7 | A rename costs a version | There is no title-only endpoint; a title change is an ordinary update | WP5 |
+| D8 | The lossy-conversion check compares normalised storage | The converter re-emits whitespace differently, so raw comparison flags every page | WP5 |
+| D9 | The `grep` shortcut requires an explicit whole-word assertion (`-w` or `\bword\b`) | Decision 12's guard is syntactic and cannot prevent the failure it was written to prevent: `grep -rl kubern` passes it and returns nothing | WP6 |
+| D10 | One WebDAV filesystem per space, plus a small root filesystem | A `PROPFIND` on the volume root of a single filesystem mounted at `/` returns only the root | WP7 |
+| D11 | WebDAV errors map to webdav-server's error singletons, not status numbers | `setCodeFromError` compares by identity and falls back to 500 for everything else | WP7 |
 
 ---
 

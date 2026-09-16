@@ -31,6 +31,7 @@ export default defineConfig({
           items: [
             { label: 'Overview', link: '/confluence/' },
             { label: 'Sync', link: '/confluence/sync/' },
+            { label: 'Virtual Filesystem', link: '/confluence/virtual-filesystem/' },
             { label: 'Pages', link: '/confluence/pages/' },
             { label: 'Spaces', link: '/confluence/spaces/' },
             { label: 'Folders', link: '/confluence/folders/' },
@@ -113,6 +114,7 @@ export default defineConfig({
             { label: 'CI/CD Docs', link: '/recipes/ci-cd-docs/' },
             { label: 'Export Automation', link: '/recipes/export-automation/' },
             { label: 'Issue Triage', link: '/recipes/issue-triage/' },
+            { label: 'Confluence for Coding Agents', link: '/recipes/confluence-vfs-agents/' },
           ],
         },
         {

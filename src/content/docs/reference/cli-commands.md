@@ -374,6 +374,58 @@ progress while another process can monitor or cancel them. There is no
 and [Export Jobs & Operations](/reference/export-jobs/) for recovery and
 retention.
 
+### Virtual Filesystem
+
+Confluence as a filesystem — an embedded shell, or a mounted OS volume. See
+[Virtual Filesystem](/confluence/virtual-filesystem/) for the full guide.
+
+```bash
+# One command with a real exit code — the form to give an agent
+atlcli wiki sh --space DOCSY -c 'grep -rlw kubernetes . | head'
+
+# Interactive, or a script on stdin
+atlcli wiki sh --space DOCSY
+cat script.sh | atlcli wiki sh --space DOCSY
+
+# Writing is off by default
+atlcli wiki sh --space DOCSY --mode rw -c 'sed -i "s/old/new/" page-623869955/_index.md'
+
+# Mount as a real volume
+atlcli wiki mount ~/confluence --space DOCSY
+atlcli wiki mount list
+atlcli wiki unmount ~/confluence
+
+# Maintenance
+atlcli wiki vfs cache stats
+atlcli wiki vfs cache clear
+atlcli wiki vfs conflicts list
+atlcli wiki vfs conflicts show <pageId>
+atlcli wiki vfs conflicts discard <pageId>
+```
+
+| Flag | Commands | Meaning |
+| --- | --- | --- |
+| `--space <KEY[,KEY]>` | `sh`, `mount` | Spaces to expose; defaults to the profile's space |
+| `-c <script>` | `sh` | Run one script and exit with its exit code |
+| `--mode ro\|rw` | `sh`, `mount` | Write posture. Default `ro` |
+| `--allow-delete` | `sh`, `mount` | Additionally allow deletion, which is always the trash |
+| `--cache-dir <path>` | all | Cache root; defaults to `~/.atlcli/vfs` |
+| `--offline` | `sh` | Read the cache only; issue no requests |
+| `--cwd <path>` | `sh` | Starting directory |
+| `--timeout <ms>` | `sh` | Wall-clock limit for the script. Default 120000 |
+| `--prefetch-max <n>` | `sh` | Ceiling on one prefetch. Default 300 |
+| `--cache-max-mb <n>` | `sh` | Disk cache ceiling. Default 100 |
+| `--no-cql` | `sh` | Never take the CQL shortcut in `grep` |
+| `--port <n>` | `mount` | Bind to a fixed port instead of a free one |
+| `--json` | all | JSON output; for `sh`, stdout, stderr, exit code and counters |
+
+`wiki sh` exits with the **bash** exit code, so `atlcli wiki sh -c 'grep -q x .'`
+composes from the outside exactly as it does inside.
+
+`grep` takes a CQL shortcut only when the pattern is marked as a whole word
+(`grep -rw`), because the search index matches words while `grep` matches
+substrings. The path taken is always printed on stderr.
+
 ### Static Web Publishing
 
 ```bash
