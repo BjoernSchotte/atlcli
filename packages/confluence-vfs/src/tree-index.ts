@@ -491,6 +491,12 @@ export class TreeIndex {
       childrenLoadedAt: partial.childrenLoadedAt ?? existing?.childrenLoadedAt,
       metaCheckedAt: partial.metaCheckedAt ?? existing?.metaCheckedAt ?? this.opts.now(),
     };
+    if (existing?.parentId && existing.parentId !== merged.parentId) {
+      const previousParent = this.nodes.get(existing.parentId);
+      if (previousParent && Array.isArray(previousParent.children)) {
+        previousParent.children = previousParent.children.filter((id) => id !== merged.id);
+      }
+    }
     this.nodes.set(merged.id, merged);
     return merged;
   }

@@ -502,3 +502,26 @@ describe("data center revalidation", () => {
     expect(client.callsTo("getChildren")).toBe(2);
   });
 });
+
+
+it.each(["page", "folder"])("detaches moved %s from the old parent without forgetting its loaded subtree", async (type) => {
+  const client = bigSpace(2, 0)
+    .seedPage({ id: "500", title: "Container", type, spaceKey: "DOCSY", parentId: "1000" })
+    .seedPage({ id: "501", title: "Nested page", spaceKey: "DOCSY", parentId: "500" });
+  const { index } = makeIndex(client);
+  await index.getHomepageId("DOCSY");
+  await index.loadChildren("100");
+  await index.loadChildren("1000");
+  await index.loadChildren("1001");
+  await index.loadChildren("500");
+  await client.movePage("500", "1001");
+  await index.loadChildren("1001", { force: true });
+  expect((await index.loadChildren("1000")).map(node => node.id)).not.toContain("500");
+  await index.loadChildren("1000", { force: true });
+  expect(index.node("500")?.parentId).toBe("1001");
+  expect(index.node("501")?.parentId).toBe("500");
+  expect((await index.loadChildren("1001")).map(node => node.id)).toEqual(["500"]);
+  expect((await index.loadChildren("500")).map(node => node.id)).toEqual(["501"]);
+  expect(client.callsTo("getFolderChildren")).toBe(type === "folder" ? 1 : 0);
+  expect(client.callsTo("getPage")).toBe(0);
+});

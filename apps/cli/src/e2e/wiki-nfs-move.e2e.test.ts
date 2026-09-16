@@ -40,6 +40,16 @@ test.skipIf(process.env.ATLCLI_NFS_MOVE_E2E !== "1")("live DOCSY page move prese
     expect(await fs.lookup(directory, "..")).toBe(newParent);
     expect(await fs.lookup(newParent, formatDirName(child.title, child.id))).toBe(directory);
     expect(await fs.lookup(directory, "_index.md")).toBe(file);
+
+    // Reverse the observation order: see the destination before refreshing the old parent.
+    await client.movePage(child.id, homepage);
+    expect((await client.getPageMetadata(child.id)).parentId).toBe(homepage);
+    await vfs.index.loadChildren(homepage, { force: true });
+    expect(vfs.index.node(parent.id)?.children).not.toContain(child.id);
+    await vfs.index.loadChildren(parent.id, { force: true });
+    expect(vfs.index.node(child.id)?.parentId).toBe(homepage);
+    expect(Buffer.from((await fs.read(file, 0, 65536)).data, "base64").toString()).toContain(marker);
+    expect(await fs.lookup(1, formatDirName(child.title, child.id))).toBe(directory);
   } finally {
     const errors: unknown[] = [];
     try { await vfs?.close(); } catch (error) { errors.push(error); }

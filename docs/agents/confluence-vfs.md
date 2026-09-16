@@ -223,6 +223,10 @@ separately fetched attributes from another version. Clients can use GETATTR;
 concurrent external changes across multiple READ requests are not yet covered
 by a stable version-snapshot guarantee.
 
+When a refreshed listing observes a moved page or folder, the shared tree index
+removes its old parent association while retaining its already loaded children.
+Refreshing the old parent afterwards therefore cannot erase the relocated subtree.
+
 Existing page/body handles also survive a page move after the changed hierarchy
 is observed: the adapter resolves the same page ID within the selected spaces.
 Attachment files and their `_attachments` directory also retain their handles

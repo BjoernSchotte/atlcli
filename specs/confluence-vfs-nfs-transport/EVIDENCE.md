@@ -591,3 +591,30 @@ Repository typecheck passed. No live content was modified.
 
 This covers attachments following a moved page. Folder relocation and attachment
 renames/moves independent of the owning page remain separate identity work.
+
+
+## Slice 25 — preserve relocated subtrees when listings refresh out of order
+
+A new regression failed because a node discovered under its new parent remained
+in its old parent's cached child list. Refreshing that old directory could then
+forget the relocated node and all loaded descendants. The shared TreeIndex.upsert
+now detaches a changed parent association when recording the new metadata. It
+retains the node's loaded subtree and performs no additional API requests. Both
+page and folder fixtures cover destination-first refresh, cached old-parent
+listing, subsequent old-parent refresh and retained descendant metadata.
+
+The complete VFS core suite passed: 331 tests / 824 assertions. The initial
+sandbox run could not bind its HTTP contract-test listener; the same suite
+passed with the required local-network permission. Typecheck passed. Native
+macOS and Linux NFS move/mount tests passed (4 tests / 48 assertions per host).
+Linux's single/combined-space mounts were live and RO; synthetic fixtures
+covered the wire move and large attachment.
+
+The live DOCSY move test now also moves its synthetic page back, observing the
+destination before the old parent, and verifies API parent metadata, retained
+index state, readable bytes and stable handles. It passed on Linux (1 test /
+11 assertions) and deleted both test pages. No MAYFLOWER writes occurred.
+
+Folder resolution by ID when the destination has not yet been observed remains
+open; this slice fixes a shared index prerequisite rather than claiming complete
+folder-handle recovery.
