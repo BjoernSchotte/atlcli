@@ -56,6 +56,7 @@ impl Bridge {
                 "EROFS" => nfsstat3::NFS3ERR_ROFS,
                 "EISDIR" => nfsstat3::NFS3ERR_ISDIR,
                 "ENOTDIR" => nfsstat3::NFS3ERR_NOTDIR,
+                "ENAMETOOLONG" => nfsstat3::NFS3ERR_NAMETOOLONG,
                 "EINVAL" => nfsstat3::NFS3ERR_INVAL,
                 "ENOSPC" => nfsstat3::NFS3ERR_NOSPC,
                 "EAGAIN" => nfsstat3::NFS3ERR_JUKEBOX,

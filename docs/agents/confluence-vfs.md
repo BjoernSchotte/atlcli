@@ -223,6 +223,9 @@ fetched. Index lag can omit recent changes. Other find expressions retain the
 filesystem-metadata walk; `--no-cql` on `wiki sh` disables acceleration.
 
 Experimental NFS handles distinguish generated files in each selected space.
+Expired object handles also fail metadata/access probes with `ESTALE`.
+NFS advertises a 255-byte filename-component limit and rejects longer UTF-8
+names with `ENAMETOOLONG`; names are never silently truncated.
 NFS READDIR/READDIRPLUS entry attributes do not enumerate each child directory.
 Listing a child directory fetches its children on demand. An explicit directory
 GETATTR still refreshes its listing to validate pagination state.

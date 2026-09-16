@@ -69,6 +69,41 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
 }
 
 describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
+  it("rejects expired object handles for ACCESS, FSSTAT and PATHCONF", async () => {
+    const { server, vfs, client } = await fixture(["DOCSY"], false);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("child-0-400"))]));
+    expect(lookup.readUInt32BE()).toBe(0);
+    const file = lookup.subarray(8, 8 + lookup.readUInt32BE(4));
+    await client.deletePage("400");
+    await vfs.index.loadChildren("100", { force: true });
+    for (const procedure of [4, 18, 20]) {
+      const reply = await rpc(server, 100003, procedure,
+        Buffer.concat([opaque(file), procedure === 4 ? ints(63) : Buffer.alloc(0)]));
+      expect(reply.readUInt32BE()).toBe(70); // NFS3ERR_STALE
+      expect(reply.readUInt32BE(4)).toBe(0); // absent attributes in error arm
+      expect(reply.length).toBe(8);
+    }
+  });
+
+  it("advertises and enforces the same 255-byte filename limit", async () => {
+    const { server } = await fixture(["DOCSY"], false);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const pathconf = await rpc(server, 100003, 20, opaque(root));
+    expect(pathconf.readUInt32BE()).toBe(0);
+    expect(pathconf.readUInt32BE(4)).toBe(1);
+    expect(pathconf.readUInt32BE(96)).toBe(255);
+    expect(pathconf.readUInt32BE(100)).toBe(1); // no_trunc
+    for (const name of ["x".repeat(256), "ü".repeat(128)]) {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(63); // NFS3ERR_NAMETOOLONG
+    }
+    const boundary = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("x".repeat(255)))]));
+    expect(boundary.readUInt32BE()).toBe(2); // valid length, nonexistent object
+  });
+
   it("mounts, resolves a file, reports exact attributes and reads Unicode bytes", async () => {
     const { server, vfs } = await fixture();
     const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));

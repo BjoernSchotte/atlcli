@@ -51,3 +51,12 @@ attributes and bytes from the same snapshot. This also avoids a second Markdown
 materialization per READ. GETATTR remains available; clients may request it
 separately. An atomic read-and-attributes hook remains the upgrade path, and this
 does not establish a snapshot across multiple READ requests.
+
+Metadata failure follow-up: ACCESS, FSSTAT and PATHCONF propagate getattr errors
+instead of returning NFS3_OK with absent attributes for an expired or inaccessible
+object. Their error replies contain the status and absent post-op attributes.
+PATHCONF advertises the adapter's actual 255-byte name limit, with no_trunc true;
+the Bun adapter and Rust bridge return NAMETOOLONG for larger UTF-8 names.
+Wire regressions cover deleted-object handles on all three procedures, PATHCONF
+fields, and ASCII/Unicode name boundaries. See RFC 1813 sections 3.3.4, 3.3.18,
+3.3.20 and filename handling: https://www.rfc-editor.org/rfc/rfc1813.html.

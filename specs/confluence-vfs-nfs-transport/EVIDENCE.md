@@ -885,3 +885,31 @@ no live content was changed. Typecheck passed.
 Slice 33's [CI run 35162120066](https://github.com/BjoernSchotte/atlcli/actions/runs/35162120066)
 also passed all four native Unix lanes. That run predates Slice 34 and is not
 proof of the new timestamp change.
+
+
+## Slice 35 — propagate stale metadata handles and correct PATHCONF limits
+
+Two actual-wire regressions failed against the previous helper. ACCESS returned
+NFS3_OK for a deleted object because the vendored handler swallowed getattr's
+STALE result; FSSTAT and PATHCONF used the same error-swallowing pattern. All
+three now return the original failure status with absent post-op attributes.
+The regression checks each error union's status, attribute discriminator and
+exact eight-byte body. This affects expired objects within a live session, in
+addition to the separately tested stale-session filehandle protection.
+
+PATHCONF also reported name_max=32768 while the Bun adapter already enforced
+255 bytes. The reply now reports 255 with no_trunc=true, and oversized names
+produce NFS3ERR_NAMETOOLONG rather than INVAL. The real-wire check covers
+256-byte ASCII, 128 two-byte Unicode characters, and a legal 255-byte name
+returning NOENT rather than a length error. The audited vendor patch notes link
+[RFC 1813](https://www.rfc-editor.org/rfc/rfc1813.html) and describe both changes.
+
+Validation: both native hosts passed the full 13-test wire/kernel suite with
+332 assertions, covering single DOCSY, combined spaces and complete attachment
+reads. Fixtures were synthetic; all mounts detached normally. Rust fmt/clippy
+and all four helper tests passed (clippy/tests also on Linux); TypeScript
+filesystem tests passed 19 cases / 281 assertions and typecheck passed.
+Linux live DOCSY RO lifecycle passed all five cases / 61 assertions without
+changing live content.
+No RW capability was enabled. Full RW publication, read snapshots and remaining
+performance/metadata acceptance are still open.

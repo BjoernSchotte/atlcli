@@ -145,8 +145,11 @@ export class NfsFilesystem {
   async lookup(parent: number, name: string): Promise<number> {
     const directory = await this.pathFor(parent);
     if (!(await this.vfs.stat(directory)).isDirectory) throw new VfsError("ENOTDIR", "Not a directory");
-    if (!name || /[\/\0]/.test(name) || Buffer.byteLength(name) > 255) {
+    if (!name || /[\/\0]/.test(name)) {
       throw new VfsError("EINVAL", "Invalid NFS filename");
+    }
+    if (Buffer.byteLength(name) > 255) {
+      throw Object.assign(new Error("NFS filenames must not exceed 255 bytes"), { code: "ENAMETOOLONG" });
     }
     if (name === ".") return parent;
     if (name === "..") return directory === this.root ? 1 : this.register(posix.dirname(directory));
