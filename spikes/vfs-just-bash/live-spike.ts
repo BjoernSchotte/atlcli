@@ -52,18 +52,16 @@ const space = await step("getSpace", () => client.getSpace(spaceKey));
 const rootChildren = await step("root direct-children", async () => {
   const homepageId = await client.getSpaceHomepageId(spaceKey);
   if (!homepageId) return [];
-  return (await client.getPageDirectChildren(homepageId, pageLimit)).results ?? [];
+  return await client.getPageDirectChildren(homepageId, { limit: pageLimit });
 });
 
 const sample = rootChildren.slice(0, pageLimit);
 await step(`bodies of ${sample.length} pages`, async () => {
   for (const page of sample) {
-    const detail = await client.getPage(page.id, "storage");
+    const detail = await client.getPage(page.id);
     fs.seed(
       `/${slugifyTitle(page.title)}-${page.id}.md`,
-      `---\natlcli:\n  id: "${page.id}"\n  title: "${page.title}"\n---\n\n${
-        detail.body?.storage?.value ?? ""
-      }\n`,
+      `---\natlcli:\n  id: "${page.id}"\n  title: "${page.title}"\n---\n\n${detail.storage}\n`,
     );
   }
 });

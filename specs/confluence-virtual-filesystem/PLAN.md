@@ -371,13 +371,18 @@ Results: [`spikes/vfs-just-bash/README.md`](../../spikes/vfs-just-bash/README.md
 
 ### WP1 - Package scaffold and core API (3 days)
 
-- [ ] **WP1.1** Create `packages/confluence-vfs/` with a `package.json` named `@atlcli/confluence-vfs` whose exports carry the `development` condition as `@atlcli/confluence` does, plus `tsconfig.json`, `src/index.ts`, build and typecheck scripts, and registration in the Turbo pipeline. `bun run typecheck` must pass.
-- [ ] **WP1.2** Core types in `src/types.ts`: `VfsNode` with `kind: "space" | "page" | "folder" | "attachment" | "virtual-dir" | "virtual-file" | "symlink"`, plus `id`, `title`, `slug`, `version`, `parentId`, `mtime` and optional `size`; `VfsStat`; and `VfsError` with the codes `ENOENT`, `EACCES`, `EROFS`, `EISDIR`, `ENOTDIR`, `EEXIST`, `EBUSY` and `ENOTEMPTY`.
-- [ ] **WP1.3** Core interface `ConfluenceVfs` in `src/vfs.ts`: `stat(path)`, `readdir(path)`, `readFile(path)`, `readFileBytes(path)`, `writeFile(path, content)`, `mkdir(path)`, `rename(from, to)`, `rm(path, {recursive})`, `copy(from, to)` and `readlink(path)`. All asynchronous, all throwing `VfsError`.
-- [ ] **WP1.4** Options type `VfsOptions`: `profile`, `client: ConfluenceClient`, optional `spaces?: string[]` restricting visible spaces, `mode: "ro" | "rw"`, `allowDelete: boolean`, `cacheDir: string`, `offline: boolean`, `concurrency: number` defaulting to 8, `treeTtlMs` defaulting to 60,000, and `logger`.
-- [ ] **WP1.5** Error mapping in `src/errors.ts`: HTTP 401 and 403 become `EACCES`, 404 becomes `ENOENT`, 409 becomes `EBUSY`, and 429 retries through the existing `retry-after.ts` before surfacing a `VfsError` that explains the wait. Unit tests for each case.
-- [ ] **WP1.6** `FakeConfluenceClient` in `src/testing/fake-client.ts` with in-memory spaces, pages, versions, labels and attachments, permission simulation through a set of visible IDs, and configurable 409 and 429 responses. This is the basis of every unit test.
-- [ ] **WP1.7** Mode guard: a central `assertWritable(op)` in `src/mode.ts`. In `ro` mode every write operation throws `EROFS`, and `rm` without `allowDelete` throws `EACCES` with an explanatory message. Tests cover all write operations in both modes.
+Deviation: `VfsOptions.client` is typed as the narrow `VfsClient` port in
+`src/client-port.ts` rather than `ConfluenceClient` itself, so WP1.6's fake is
+possible and so the VFS's whole Confluence surface is readable in one file
+(WP9.1). `client-port.test.ts` proves the real client still satisfies it.
+
+- [x] **WP1.1** Create `packages/confluence-vfs/` with a `package.json` named `@atlcli/confluence-vfs` whose exports carry the `development` condition as `@atlcli/confluence` does, plus `tsconfig.json`, `src/index.ts`, build and typecheck scripts, and registration in the Turbo pipeline. `bun run typecheck` must pass.
+- [x] **WP1.2** Core types in `src/types.ts`: `VfsNode` with `kind: "space" | "page" | "folder" | "attachment" | "virtual-dir" | "virtual-file" | "symlink"`, plus `id`, `title`, `slug`, `version`, `parentId`, `mtime` and optional `size`; `VfsStat`; and `VfsError` with the codes `ENOENT`, `EACCES`, `EROFS`, `EISDIR`, `ENOTDIR`, `EEXIST`, `EBUSY` and `ENOTEMPTY`.
+- [x] **WP1.3** Core interface `ConfluenceVfs` in `src/vfs.ts`: `stat(path)`, `readdir(path)`, `readFile(path)`, `readFileBytes(path)`, `writeFile(path, content)`, `mkdir(path)`, `rename(from, to)`, `rm(path, {recursive})`, `copy(from, to)` and `readlink(path)`. All asynchronous, all throwing `VfsError`.
+- [x] **WP1.4** Options type `VfsOptions`: `profile`, `client: ConfluenceClient`, optional `spaces?: string[]` restricting visible spaces, `mode: "ro" | "rw"`, `allowDelete: boolean`, `cacheDir: string`, `offline: boolean`, `concurrency: number` defaulting to 8, `treeTtlMs` defaulting to 60,000, and `logger`.
+- [x] **WP1.5** Error mapping in `src/errors.ts`: HTTP 401 and 403 become `EACCES`, 404 becomes `ENOENT`, 409 becomes `EBUSY`, and 429 retries through the existing `retry-after.ts` before surfacing a `VfsError` that explains the wait. Unit tests for each case.
+- [x] **WP1.6** `FakeConfluenceClient` in `src/testing/fake-client.ts` with in-memory spaces, pages, versions, labels and attachments, permission simulation through a set of visible IDs, and configurable 409 and 429 responses. This is the basis of every unit test.
+- [x] **WP1.7** Mode guard: a central `assertWritable(op)` in `src/mode.ts`. In `ro` mode every write operation throws `EROFS`, and `rm` without `allowDelete` throws `EACCES` with an explanatory message. Tests cover all write operations in both modes.
 
 ### WP2 - Path mapping and tree index (4 days)
 

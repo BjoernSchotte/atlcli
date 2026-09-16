@@ -71,7 +71,7 @@ try {
   const created = await client.createPage({
     spaceKey,
     title: `vfs-e2e-cql-semantics-${Date.now()}`,
-    body: `<p>${NEEDLES.join("</p><p>")}</p>`,
+    storage: `<p>${NEEDLES.join("</p><p>")}</p>`,
     parentId: homepageId ?? undefined,
   });
   pageId = created.id;
@@ -82,8 +82,8 @@ try {
   let indexed = false;
   for (let attempt = 0; attempt < 30 && !indexed; attempt++) {
     await new Promise((r) => setTimeout(r, 2000));
-    const probe = await client.search(sentinel, 1);
-    indexed = (probe.length ?? 0) > 0;
+    const probe = await client.search(sentinel, { limit: 1 });
+    indexed = probe.results.length > 0;
   }
   if (!indexed) {
     console.error("page never appeared in the search index after 60 s — results below are unusable");
@@ -94,7 +94,7 @@ try {
     const cql = `space = "${spaceKey}" AND id = ${pageId} AND text ~ "${probe.query}"`;
     let hit = false;
     try {
-      hit = (await client.search(cql, 5)).length > 0;
+      hit = (await client.search(cql, { limit: 5 })).results.length > 0;
     } catch (error) {
       console.error(`query ${probe.query} failed: ${String(error).slice(0, 120)}`);
     }
