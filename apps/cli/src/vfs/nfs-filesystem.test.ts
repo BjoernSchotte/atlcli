@@ -195,3 +195,23 @@ it("lists exact attachment sizes without downloads and caches complete ranged re
   }
   expect(client.callsTo("downloadAttachment")).toBe(1);
 });
+
+
+it("keeps attachment and attachment-directory handles when their owning page moves", async () => {
+  const { fs, vfs, client } = await fixture(["DOCSY"], "rw");
+  const bytes = Buffer.from("attachment Grüße 🐴");
+  client.seedAttachment({ id: "a1", pageId: "200", filename: "proof.txt", bytes,
+    mediaType: "text/plain", modified: "2026-09-10T00:00:00.000Z" });
+  const page = await fs.lookup(1, "child-0-200");
+  const directory = await fs.lookup(page, "_attachments");
+  const file = await fs.lookup(directory, "proof.txt");
+  await vfs.rename("/DOCSY/child-0-200", "/DOCSY/child-1-201/moved-200");
+  expect(Buffer.from((await fs.read(file, 0, 65536)).data, "base64")).toEqual(bytes);
+  expect(await fs.lookup(directory, "..")).toBe(page);
+  expect(await fs.lookup(page, "_attachments")).toBe(directory);
+  expect(await fs.lookup(directory, "proof.txt")).toBe(file);
+  expect((await fs.readdir(directory, 0, 256)).entries.map(entry => entry.attr.id)).toEqual([file]);
+  await vfs.rename("/DOCSY/child-1-201/moved-200", "/mayflower/outside-200");
+  await expect(fs.read(file, 0, 65536)).rejects.toMatchObject({ code: "ESTALE" });
+  await expect(fs.getattr(directory)).rejects.toMatchObject({ code: "ESTALE" });
+});

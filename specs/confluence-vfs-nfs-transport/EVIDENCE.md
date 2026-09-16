@@ -570,3 +570,24 @@ snapshot acceptance. Clients may issue additional GETATTR requests when READ
 omits attributes; no performance improvement is claimed without comparative
 measurements. Returning matching attributes atomically with bytes remains the
 upgrade path. The snapshot and document-publication decisions remain open.
+
+
+## Slice 24 — attachment handles follow their owning page
+
+A failing regression reproduced ESTALE for a previously opened attachment after
+its page moved. Attachment entries now retain their parent handle and basename;
+on a missing old path they resolve through that parent and recheck both identity
+and export scope. The attachment directory uses its page-scoped ID rather than
+its old path. The implementation reuses page-handle relocation and never scans
+the export. Out-of-export moves expire the attachment and directory handles.
+
+All 13 filesystem tests (208 assertions) passed on macOS and Linux. The real
+Rust/TCP relocation test now reads an old attachment handle before looking up
+the moved page and checks byte equality and unchanged opaque handles. That test
+and three native mount cases passed on both hosts (4 tests / 48 assertions).
+Linux DOCSY and combined-space mounts used the live profile read-only; relocation
+and large attachment data were synthetic. All test mounts detached normally.
+Repository typecheck passed. No live content was modified.
+
+This covers attachments following a moved page. Folder relocation and attachment
+renames/moves independent of the owning page remain separate identity work.

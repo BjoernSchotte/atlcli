@@ -11,7 +11,7 @@ export interface NfsAttributes {
 
 /** Read-only protocol projection. All paths are resolved inside the selected export. */
 export class NfsFilesystem {
-  private readonly paths = new Map<number, { path: string; identity: string }>();
+  private readonly paths = new Map<number, { path: string; identity: string; parent?: number; name?: string }>();
   private readonly identities = new Map<string, number>();
   private nextId = 2;
   private readonly directories = new Map<number, { signature: string; mtime: number }>();
@@ -40,7 +40,8 @@ export class NfsFilesystem {
   private identity(stat: VfsStat, path: string): string {
     // Generated views may share core IDs (e.g. space-json, label-dir). Their
     // export path distinguishes the view; real content keeps ID-based identity.
-    const view = stat.kind === "virtual-dir" || stat.kind === "virtual-file" ? `:${path}` : "";
+    const ownedAttachments = stat.kind === "virtual-dir" && /^[0-9]+\/_attachments$/.test(stat.id);
+    const view = !ownedAttachments && (stat.kind === "virtual-dir" || stat.kind === "virtual-file") ? `:${path}` : "";
     return `${stat.kind}:${stat.id}:${stat.isDirectory ? "directory" : "file"}${view}`;
   }
 
@@ -74,6 +75,20 @@ export class NfsFilesystem {
       if (id !== 1 && this.identity(stat, entry.path) !== entry.identity) return this.stale(id);
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        if (entry.parent !== undefined && entry.name !== undefined) {
+          try {
+            const relocated = posix.join(await this.pathFor(entry.parent), entry.name);
+            this.assertExport(relocated);
+            await this.checkResolvedScope(relocated);
+            if (this.identity(await this.vfs.stat(relocated), relocated) !== entry.identity) return this.stale(id);
+            entry.path = relocated;
+            return relocated;
+          } catch (relocationError) {
+            if (relocationError && typeof relocationError === "object" && "code" in relocationError &&
+                (relocationError.code === "ENOENT" || relocationError.code === "ESTALE")) return this.stale(id);
+            throw relocationError;
+          }
+        }
         // NFS handles name objects, not their last observed parent. Reuse the
         // core's scoped ID lookup instead of walking the export after a move.
         const page = /^page:([0-9]+):(directory|file)$/.exec(entry.identity);
@@ -107,14 +122,18 @@ export class NfsFilesystem {
     const stat = await this.vfs.stat(path);
     await this.checkResolvedScope(path);
     const identity = this.identity(stat, path);
+    const ownedAttachment = stat.kind === "attachment" ||
+      (stat.kind === "virtual-dir" && /^[0-9]+\/_attachments$/.test(stat.id));
+    const entry = { path, identity, ...(ownedAttachment
+      ? { parent: await this.register(posix.dirname(path)), name: posix.basename(path) } : {}) };
     const existing = this.identities.get(identity);
     if (existing !== undefined) {
-      this.paths.set(existing, { path, identity });
+      this.paths.set(existing, entry);
       return existing;
     }
     if (this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
     const id = this.nextId++;
-    this.paths.set(id, { path, identity });
+    this.paths.set(id, entry);
     this.identities.set(identity, id);
     return id;
   }
