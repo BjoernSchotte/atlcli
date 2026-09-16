@@ -64,6 +64,8 @@ export interface VfsClient {
     pageId: string,
     options?: { limit?: number },
   ): Promise<ConfluenceSearchResult[]>;
+  /** Ancestors root-first, so `.by-id/` can name a canonical path. */
+  getAncestors(pageId: string): Promise<{ id: string; title: string }[]>;
   getFolder(folderId: string): Promise<ConfluenceFolder>;
   getFolderChildren(
     folderId: string,

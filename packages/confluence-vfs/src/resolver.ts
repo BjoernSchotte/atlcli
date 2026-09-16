@@ -65,6 +65,8 @@ export type Resolved =
   | { kind: "comments-file"; node: TreeNode }
   | { kind: "conflict-file"; node: TreeNode }
   | { kind: "by-id-dir"; spaceKey: string }
+  | { kind: "by-id-readme"; spaceKey: string }
+  | { kind: "labels-readme"; spaceKey: string }
   | { kind: "by-id-link"; spaceKey: string; id: string }
   | { kind: "labels-dir"; spaceKey: string }
   | { kind: "label-dir"; spaceKey: string; label: string }
@@ -278,6 +280,7 @@ export class PathResolver {
   private resolveById(spaceKey: string, rest: string[], path: string): Resolved {
     if (rest.length === 0) return { kind: "by-id-dir", spaceKey };
     if (rest.length > 1) throw new VfsError("ENOTDIR", `Not a directory: ${path}`, { path });
+    if (rest[0] === "README") return { kind: "by-id-readme", spaceKey };
     const id = rest[0]!.replace(/\.md$/, "");
     if (!/^\d+$/.test(id)) throw enoent(path);
     return { kind: "by-id-link", spaceKey, id };
@@ -285,6 +288,7 @@ export class PathResolver {
 
   private resolveLabels(spaceKey: string, rest: string[], path: string): Resolved {
     if (rest.length === 0) return { kind: "labels-dir", spaceKey };
+    if (rest[0] === "README") return { kind: "labels-readme", spaceKey };
     if (rest.length === 1) return { kind: "label-dir", spaceKey, label: rest[0]! };
     if (rest.length === 2) {
       return { kind: "label-link", spaceKey, label: rest[0]!, name: rest[1]! };

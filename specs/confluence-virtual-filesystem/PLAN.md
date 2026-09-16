@@ -442,15 +442,34 @@ that `parseFrontmatter` still reads it.
 
 ### WP4 - Virtual directories and side objects (3 days)
 
-- [ ] **WP4.1** `_space.json` and `.me.json`, read-only JSON from `getSpace` and `getCurrentUser`.
-- [ ] **WP4.2** `_attachments/`: `readdir` from `listAttachments`, cached per page version; `readFileBytes` downloads through `downloadAttachment` into a blob file under the cache directory and streams from there; size and modification time come from the metadata so that `ls -l` triggers no download. Blobs count against the cache limit from WP3.6 and are evicted like bodies. Tests against the fake include listing a directory with ten attachments and loading zero bytes.
-- [ ] **WP4.3** `.versions/<n>.md`: `readdir` from `getPageVersions`, at most 50 entries; `readFile` through `getPageAtVersion` plus conversion, cached immutably. Read-only, returning `EROFS` on write.
-- [ ] **WP4.4** `.comments.md`: footer and inline comments through `getAllComments`, rendered as a Markdown list with author, date and resolution state. Read-only.
-- [ ] **WP4.5** `.by-id/<id>.md` as a symlink to the canonical path, supporting `readlink` and transparent `readFile`. Tests include an unknown ID returning `ENOENT`.
-- [ ] **WP4.6** `.labels/<label>/`: `readdir` of the label names from the space labels endpoint, which needs a new client method, with the contents coming from `getPagesByLabel` as symlinks. TTL as for the tree index.
-- [ ] **WP4.7** `.recent/{24h,7d,30d}/`: CQL of the form `space = KEY AND type = page AND lastmodified >= now("-7d")` through `searchPages`, returning symlinks, with a 60 second TTL.
-- [ ] **WP4.8** `.search/<query>/` with **lazy resolution** (decision 8): the directory name is the CQL and `space =` is appended; every path beneath it resolves on access, **without** a prior `mkdir`. Listing the search directory itself shows only `README` and the last twenty queries used, read from a file in the cache directory; that list may be lost without breaking anything. `mkdir` and `rmdir` only maintain the list. `README` explains the syntax and the limitation that a slash cannot appear in a name, so such queries go through the `cql` command. Tests: resolution without `mkdir`, the list being lost while resolution keeps working, and a slash in the query rejected with a clear message.
-- [ ] **WP4.9** Non-page children (whiteboard, database, embed) as `name-<id>.<type>.json`, read-only. Test included.
+**Deviation D5: `.labels/` resolves lazily, like `.search/`.** WP4.6 planned a
+new client method against "the space labels endpoint". No such endpoint exists:
+`GET /space/{key}/label` returns labels *of the space object*, and the only way
+to enumerate the labels used by a space's pages is to read every page — rule 1
+forbids exactly that. So `.labels/` lists the labels this session has already
+seen and resolves `.labels/<anything>/` regardless, which is decision 8's
+treatment of `.search/` applied for a harder reason. Its `README` says so.
+
+**Deviation D6: `.by-id/` lists nothing but a `README`.** Populating it means
+enumerating every page in the space, which is the whole-space copy section 1b
+forbids. Resolution by id works for any visible page, which is what the
+directory is for.
+
+**Note on symlink targets.** `.by-id/<id>.md` points at the page's canonical
+path, computed from the tree index when the ancestors are loaded and otherwise
+with one `getAncestors` call. The view directories (`.labels/`, `.recent/`,
+`.search/`) point back through `.by-id/` rather than at canonical paths, so
+listing a view never costs an ancestor walk per entry.
+
+- [x] **WP4.1** `_space.json` and `.me.json`, read-only JSON from `getSpace` and `getCurrentUser`.
+- [x] **WP4.2** `_attachments/`: `readdir` from `listAttachments`, cached per page version; `readFileBytes` downloads through `downloadAttachment` into a blob file under the cache directory and streams from there; size and modification time come from the metadata so that `ls -l` triggers no download. Blobs count against the cache limit from WP3.6 and are evicted like bodies. Tests against the fake include listing a directory with ten attachments and loading zero bytes.
+- [x] **WP4.3** `.versions/<n>.md`: `readdir` from `getPageVersions`, at most 50 entries; `readFile` through `getPageAtVersion` plus conversion, cached immutably. Read-only, returning `EROFS` on write.
+- [x] **WP4.4** `.comments.md`: footer and inline comments through `getAllComments`, rendered as a Markdown list with author, date and resolution state. Read-only.
+- [x] **WP4.5** `.by-id/<id>.md` as a symlink to the canonical path, supporting `readlink` and transparent `readFile`. Tests include an unknown ID returning `ENOENT`.
+- [x] **WP4.6** `.labels/<label>/`: `readdir` of the label names from the space labels endpoint, which needs a new client method, with the contents coming from `getPagesByLabel` as symlinks. TTL as for the tree index.
+- [x] **WP4.7** `.recent/{24h,7d,30d}/`: CQL of the form `space = KEY AND type = page AND lastmodified >= now("-7d")` through `searchPages`, returning symlinks, with a 60 second TTL.
+- [x] **WP4.8** `.search/<query>/` with **lazy resolution** (decision 8): the directory name is the CQL and `space =` is appended; every path beneath it resolves on access, **without** a prior `mkdir`. Listing the search directory itself shows only `README` and the last twenty queries used, read from a file in the cache directory; that list may be lost without breaking anything. `mkdir` and `rmdir` only maintain the list. `README` explains the syntax and the limitation that a slash cannot appear in a name, so such queries go through the `cql` command. Tests: resolution without `mkdir`, the list being lost while resolution keeps working, and a slash in the query rejected with a clear message.
+- [x] **WP4.9** Non-page children (whiteboard, database, embed) as `name-<id>.<type>.json`, read-only. Test included.
 
 ### WP5 - Write path (5 days)
 

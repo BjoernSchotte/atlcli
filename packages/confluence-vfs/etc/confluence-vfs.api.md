@@ -118,8 +118,12 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     readonly cache: BodyCache | undefined;
     readonly runtime: VfsRuntime | undefined;
     private readonly store;
+    private readonly virtual;
     private readonly resolver;
     constructor(opts: ResolvedVfsOptions, runtime?: VfsRuntime, cache?: BodyCache);
+    private readQueryHints;
+    private writeQueryHints;
+    private requireVirtual;
     static open(options: VfsOptions): Promise<ConfluenceVfsImpl>;
     saveSnapshot(): void;
     private restoreSnapshot;
@@ -193,6 +197,12 @@ export declare function joinPath(...parts: string[]): string;
 
 // export: mapClientError
 export declare function mapClientError(error: unknown, path?: string): VfsError;
+
+// export: MAX_REMEMBERED_QUERIES
+export declare const MAX_REMEMBERED_QUERIES = 20;
+
+// export: MAX_VERSIONS_LISTED
+export declare const MAX_VERSIONS_LISTED = 50;
 
 // export: MissingLeaf
 export interface MissingLeaf {
@@ -304,6 +314,9 @@ export declare function rememberIdentity(identityPath: string, identity: {
     displayName: string;
 }): void;
 
+// export: renderComments
+export declare function renderComments(node: TreeNode, comments: PageComments): string;
+
 // export: renderFrontmatter
 export declare function renderFrontmatter(frontmatter: VfsFrontmatter): string;
 
@@ -370,6 +383,12 @@ export type Resolved = {
     node: TreeNode;
 } | {
     kind: "by-id-dir";
+    spaceKey: string;
+} | {
+    kind: "by-id-readme";
+    spaceKey: string;
+} | {
+    kind: "labels-readme";
     spaceKey: string;
 } | {
     kind: "by-id-link";
@@ -570,6 +589,10 @@ export interface VfsClient {
     getChildren(pageId: string, options?: {
         limit?: number;
     }): Promise<ConfluenceSearchResult[]>;
+    getAncestors(pageId: string): Promise<{
+        id: string;
+        title: string;
+    }[]>;
     getFolder(folderId: string): Promise<ConfluenceFolder>;
     getFolderChildren(folderId: string, options?: {
         limit?: number;
@@ -781,6 +804,62 @@ export interface VfsWriteResult {
     created: boolean;
 }
 
+// export: VirtualDirs
+export declare class VirtualDirs {
+    private readonly opts;
+    constructor(opts: VirtualDirsOptions);
+    spaceJson(spaceKey: string): Promise<string>;
+    meJson(identity: {
+        accountId: string;
+        displayName: string;
+    }): Promise<string>;
+    attachmentsReaddir(node: TreeNode): Promise<VfsDirent[]>;
+    attachmentMeta(node: TreeNode, filename: string, path: string): Promise<{
+        id: string;
+        size: number;
+        mediaType: string;
+        version: number;
+        mtime: Date;
+    }>;
+    attachmentBytes(node: TreeNode, filename: string, path: string): Promise<Uint8Array>;
+    versionsReaddir(node: TreeNode): Promise<VfsDirent[]>;
+    private currentVersion;
+    commentsMarkdown(node: TreeNode, path: string): Promise<string>;
+    byIdReaddir(): VfsDirent[];
+    byIdReadme(spaceKey: string): string;
+    canonicalPath(id: string, spaceKey: string, path: string): Promise<string>;
+    loadNode(id: string, spaceKey: string, path: string): Promise<TreeNode>;
+    private segmentsFromIndex;
+    labelsReaddir(spaceKey: string): VfsDirent[];
+    labelsReadme(spaceKey: string): string;
+    private labelsOf;
+    labelReaddir(spaceKey: string, label: string): Promise<VfsDirent[]>;
+    recentReaddir(): VfsDirent[];
+    recentWindowReaddir(spaceKey: string, window: RecentWindow): Promise<VfsDirent[]>;
+    searchReaddir(): VfsDirent[];
+    searchReadme(spaceKey: string): string;
+    searchQueryReaddir(spaceKey: string, query: string): Promise<VfsDirent[]>;
+    rememberQuery(query: string): void;
+    forgetQuery(query: string): void;
+    private searchToLinks;
+    private request;
+}
+
+// export: VirtualDirsOptions
+export interface VirtualDirsOptions {
+    client: VfsClient;
+    index: TreeIndex;
+    cache: BodyCache;
+    instanceUrl: string;
+    profile: string;
+    offline: boolean;
+    logger: VfsLogger;
+    now: () => number;
+    sleep?: (ms: number) => Promise<void>;
+    readQueryHints: () => string[];
+    writeQueryHints: (queries: string[]) => void;
+}
+
 // export: withRateLimitRetry
 export declare function withRateLimitRetry<T>(task: () => Promise<T>, options?: RateLimitRetryOptions): Promise<T>;
 
@@ -863,6 +942,10 @@ export declare class FakeConfluenceClient implements VfsClient {
     getChildren(pageId: string, options?: {
         limit?: number;
     }): Promise<ConfluenceSearchResult[]>;
+    getAncestors(pageId: string): Promise<{
+        id: string;
+        title: string;
+    }[]>;
     getFolder(folderId: string): Promise<ConfluenceFolder>;
     getFolderChildren(folderId: string, options?: {
         limit?: number;

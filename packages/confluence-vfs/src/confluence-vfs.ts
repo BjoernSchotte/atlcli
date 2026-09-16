@@ -24,6 +24,7 @@ import {
   INDEX_FILE,
   RESERVED_NAMES,
   formatDirName,
+  parseName,
   splitParent,
   normalizePath,
 } from "./path-mapper.js";
@@ -31,6 +32,7 @@ import type { ResolvedVfsOptions, VfsOptions } from "./options.js";
 import { resolveVfsOptions } from "./options.js";
 import { PageStore } from "./page-store.js";
 import { PathResolver, isContainer, type Resolved } from "./resolver.js";
+import { VirtualDirs } from "./virtual-dirs.js";
 import { TreeIndex, type TreeNode } from "./tree-index.js";
 import { VfsError, type VfsDirent, type VfsNode, type VfsStat } from "./types.js";
 import type { ConfluenceVfs, VfsWriteResult } from "./vfs.js";
@@ -67,6 +69,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
   readonly cache: BodyCache | undefined;
   readonly runtime: VfsRuntime | undefined;
   private readonly store: PageStore | undefined;
+  private readonly virtual: VirtualDirs | undefined;
   private readonly resolver: PathResolver;
 
   constructor(
@@ -99,8 +102,54 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
         logger: opts.logger,
         sleep: opts.sleep,
       });
+      this.virtual = new VirtualDirs({
+        client: opts.client,
+        index: this.index,
+        cache,
+        instanceUrl: runtime.instanceUrl,
+        profile: opts.profile,
+        offline: opts.offline,
+        logger: opts.logger,
+        now: opts.now,
+        sleep: opts.sleep,
+        readQueryHints: () => this.readQueryHints(),
+        writeQueryHints: (queries) => this.writeQueryHints(queries),
+      });
       this.restoreSnapshot();
     }
+  }
+
+  /** The `.search/` hint list. Disposable by design (decision 8). */
+  private readQueryHints(): string[] {
+    if (!this.runtime) return [];
+    try {
+      const parsed = JSON.parse(
+        readFileSync(join(this.runtime.cacheDir, "search-hints.json"), "utf8"),
+      ) as unknown;
+      return Array.isArray(parsed) ? parsed.filter((q): q is string => typeof q === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private writeQueryHints(queries: string[]): void {
+    if (!this.runtime) return;
+    try {
+      mkdirSync(this.runtime.cacheDir, { recursive: true });
+      writeFileSync(join(this.runtime.cacheDir, "search-hints.json"), JSON.stringify(queries));
+    } catch {
+      // Losing the hint list is explicitly acceptable.
+    }
+  }
+
+  private requireVirtual(): VirtualDirs {
+    if (!this.virtual) {
+      throw new VfsError(
+        "EINVAL",
+        "This filesystem was built without a cache; use ConfluenceVfsImpl.open()",
+      );
+    }
+    return this.virtual;
   }
 
   /**
@@ -216,6 +265,28 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
   async stat(path: string): Promise<VfsStat> {
     const resolved = (await this.resolver.resolve(path)) as Resolved;
+    if (resolved.kind === "attachment" && this.virtual) {
+      // Attachment size and mtime come from the listing metadata, so `ls -l`
+      // over a directory of large files still downloads nothing.
+      const meta = await this.virtual.attachmentMeta(resolved.node, resolved.filename, path);
+      return {
+        kind: "attachment",
+        isDirectory: false,
+        isFile: true,
+        isSymbolicLink: false,
+        size: meta.size,
+        sizeEstimated: false,
+        mtime: meta.mtime,
+        mode: FILE_MODE,
+        id: meta.id,
+        version: meta.version,
+      };
+    }
+    if (resolved.kind === "by-id-link" && this.virtual) {
+      // Addressing a page by id must work even for a branch the index has not
+      // walked, so this may cost one lookup.
+      await this.virtual.loadNode(resolved.id, resolved.spaceKey, path);
+    }
     return this.statOf(resolved);
   }
 
@@ -306,12 +377,19 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       case "search-query":
         return dir(`${resolved.spaceKey}/${resolved.kind}`, epoch, "virtual-dir");
       case "search-readme":
-        return file(`${resolved.spaceKey}/.search/README`, epoch, "virtual-file", { readOnly: true });
+      case "by-id-readme":
+      case "labels-readme":
+        return file(`${resolved.spaceKey}/${resolved.kind}`, epoch, "virtual-file", {
+          readOnly: true,
+        });
       case "by-id-link":
+        return link(resolved.id, epoch);
       case "label-link":
       case "recent-link":
       case "search-link":
-        return link(`${resolved.spaceKey}/${resolved.kind}`, epoch);
+        // The link's identity is the page it points at, so an adapter can build
+        // an ETag from it without following the link first.
+        return link(parseName(resolved.name).idCandidate ?? resolved.name, epoch);
     }
   }
 
@@ -406,14 +484,30 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     return entries;
   }
 
-  /** Filled in by WP4; the resolver already knows these shapes. */
   private async readdirVirtual(resolved: Resolved, path: string): Promise<VfsDirent[]> {
-    void resolved;
-    throw new VfsError(
-      "EINVAL",
-      `The convenience directories are not implemented yet (${path})`,
-      { path },
-    );
+    const virtual = this.requireVirtual();
+    switch (resolved.kind) {
+      case "attachments-dir":
+        return virtual.attachmentsReaddir(resolved.node);
+      case "versions-dir":
+        return virtual.versionsReaddir(resolved.node);
+      case "by-id-dir":
+        return virtual.byIdReaddir();
+      case "labels-dir":
+        return virtual.labelsReaddir(resolved.spaceKey);
+      case "label-dir":
+        return virtual.labelReaddir(resolved.spaceKey, resolved.label);
+      case "recent-dir":
+        return virtual.recentReaddir();
+      case "recent-window":
+        return virtual.recentWindowReaddir(resolved.spaceKey, resolved.window);
+      case "search-dir":
+        return virtual.searchReaddir();
+      case "search-query":
+        return virtual.searchQueryReaddir(resolved.spaceKey, resolved.query);
+      default:
+        throw new VfsError("ENOTDIR", `Not a directory: ${path}`, { path });
+    }
   }
 
   // -------------------------------------------------------------- readFile
@@ -427,21 +521,44 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
         return this.requireStore().readVersion(resolved.node, resolved.version, path);
       case "non-page":
         return this.renderNonPage(resolved.node);
+      case "comments-file":
+        return this.requireVirtual().commentsMarkdown(resolved.node, path);
+      case "space-json":
+        return this.requireVirtual().spaceJson(resolved.spaceKey);
+      case "me-json":
+        return this.requireVirtual().meJson({
+          accountId: this.runtime?.accountId ?? "unknown",
+          displayName: this.runtime?.displayName ?? "unknown",
+        });
+      case "search-readme":
+        return this.requireVirtual().searchReadme(resolved.spaceKey);
+      case "by-id-readme":
+        return this.requireVirtual().byIdReadme(resolved.spaceKey);
+      case "labels-readme":
+        return this.requireVirtual().labelsReadme(resolved.spaceKey);
+      case "attachment":
+        return new TextDecoder().decode(await this.readFileBytes(path));
+      case "by-id-link":
+      case "label-link":
+      case "recent-link":
+      case "search-link":
+        // Reading through a symlink is transparent, as it is on a real
+        // filesystem: `cat .labels/runbook/x-1.md` reads the page.
+        return this.readFile(await this.readlink(path));
+      case "container":
+      case "space":
+      case "root":
+        throw new VfsError("EISDIR", `Is a directory: ${path}`, { path });
       default:
         break;
     }
-    if (resolved.kind === "container" || resolved.kind === "space" || resolved.kind === "root") {
-      throw new VfsError("EISDIR", `Is a directory: ${path}`, { path });
-    }
-    throw new VfsError("EINVAL", `Reading ${resolved.kind} is implemented in WP4 (${path})`, {
-      path,
-    });
+    throw new VfsError("EISDIR", `Is a directory: ${path}`, { path });
   }
 
   async readFileBytes(path: string): Promise<Uint8Array> {
     const resolved = (await this.resolver.resolve(path)) as Resolved;
     if (resolved.kind === "attachment") {
-      throw new VfsError("EINVAL", `Attachments are implemented in WP4 (${path})`, { path });
+      return this.requireVirtual().attachmentBytes(resolved.node, resolved.filename, path);
     }
     return new TextEncoder().encode(await this.readFile(path));
   }
@@ -491,8 +608,35 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     throw new VfsError("EINVAL", `copy is implemented in WP5 (${from})`, { path: from });
   }
 
+  /**
+   * Symlink targets.
+   *
+   * `.by-id/<id>.md` points at the page's canonical path. The view directories
+   * point back through `.by-id/`, which always resolves and needs no ancestor
+   * walk — so a page keeps exactly one home in the tree however many labels,
+   * searches or recency windows list it.
+   */
   async readlink(path: string): Promise<string> {
-    throw new VfsError("EINVAL", `Symlinks are implemented in WP4 (${path})`, { path });
+    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    switch (resolved.kind) {
+      case "by-id-link": {
+        const canonical = await this.requireVirtual().canonicalPath(
+          resolved.id,
+          resolved.spaceKey,
+          path,
+        );
+        return `${canonical}/${INDEX_FILE}`;
+      }
+      case "label-link":
+      case "recent-link":
+      case "search-link": {
+        const id = parseName(resolved.name).idCandidate;
+        if (!id) throw new VfsError("ENOENT", `No such link: ${path}`, { path });
+        return `/${resolved.spaceKey}/.by-id/${id}.md`;
+      }
+      default:
+        throw new VfsError("EINVAL", `Not a symlink: ${path}`, { path });
+    }
   }
 
   // -------------------------------------------------------------- plumbing

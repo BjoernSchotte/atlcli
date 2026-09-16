@@ -100,4 +100,11 @@ export {
   type VfsNodeKind,
   type VfsStat,
 } from "./types.js";
+export {
+  MAX_REMEMBERED_QUERIES,
+  MAX_VERSIONS_LISTED,
+  renderComments,
+  VirtualDirs,
+  type VirtualDirsOptions,
+} from "./virtual-dirs.js";
 export type { ConfluenceVfs, VfsWriteResult } from "./vfs.js";

@@ -368,6 +368,18 @@ export class FakeConfluenceClient implements VfsClient {
       }));
   }
 
+  async getAncestors(pageId: string): Promise<{ id: string; title: string }[]> {
+    this.record("getAncestors", pageId);
+    const page = this.mustPage(pageId);
+    const chain: { id: string; title: string }[] = [];
+    let current = page.parentId ? this.pages.get(page.parentId) : undefined;
+    while (current) {
+      chain.unshift({ id: current.id, title: current.title });
+      current = current.parentId ? this.pages.get(current.parentId) : undefined;
+    }
+    return chain;
+  }
+
   async getFolder(folderId: string): Promise<ConfluenceFolder> {
     this.record("getFolder", folderId);
     const folder = this.mustPage(folderId);
