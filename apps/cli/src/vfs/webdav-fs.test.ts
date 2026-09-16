@@ -195,6 +195,28 @@ describe("locking", () => {
 });
 
 describe("writing", () => {
+  it("enforces tagged and untagged If conditions without crashing macOS writes", async () => {
+    await start(seeded());
+    const path = "/DOCSY/page-0-200.md";
+    const lock = await fetch(new URL(path, server.url), {
+      method: "LOCK", headers: { "Content-Type": "application/xml" },
+      body: '<D:lockinfo xmlns:D="DAV:"><D:lockscope><D:exclusive/></D:lockscope><D:locktype><D:write/></D:locktype></D:lockinfo>',
+    });
+    await lock.text();
+    const token = lock.headers.get("lock-token")!;
+    expect(token).toBeTruthy();
+    for (const condition of ['(<opaquelocktoken:invalid>)', '(["200-999"])',
+      `<${new URL(path, server.url)}> (["200-999"])`]) {
+      expect((await dav(path, { method: "PUT", headers: { If: condition }, body: "rejected" })).status).toBe(412);
+    }
+    expect(client.callsTo("updatePage")).toBe(0);
+    expect((await dav(path, { method: "PUT", headers: { If: `(${token})` }, body: "accepted" })).status).toBe(200);
+    expect(client.peekPage("200")?.storage).toContain("accepted");
+    // Tagged resource paths must be relative to the mounted filesystem.
+    expect((await dav(path, { method: "PUT", headers: { If: `<${new URL(path, server.url)}> (${token})` }, body: "tagged" })).status).toBe(200);
+    expect(client.peekPage("200")?.storage).toContain("tagged");
+  });
+
   it("PUTs a changed body back as a page update", async () => {
     await start(seeded());
     const original = (await dav("/DOCSY/page-0-200.md", { method: "GET" })).body;

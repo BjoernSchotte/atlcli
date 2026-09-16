@@ -70,6 +70,14 @@ describe("demand principle: one directory, one request", () => {
     client = bigSpace(50, 3);
   });
 
+  it("reports the canonical key instead of exposing an empty space for an alias", async () => {
+    const getSpace = client.getSpace.bind(client);
+    client.getSpace = async () => ({ ...await getSpace("DOCSY"), key: "docsy" });
+    const { index } = makeIndex(client);
+    await expect(index.getHomepageId("DOCSY")).rejects.toThrow("use --space docsy");
+    expect(client.callsTo("getSpaceHomepageId")).toBe(0);
+  });
+
   it("costs one listing request per directory entered, whatever the space size", async () => {
     const { index } = makeIndex(client);
     await index.getHomepageId("DOCSY");

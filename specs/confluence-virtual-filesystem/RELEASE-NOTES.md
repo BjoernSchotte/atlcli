@@ -59,17 +59,17 @@ atlcli wiki vfs conflicts list
 
 ### Search
 
-`grep` can use Confluence's search index, which turns a subtree scan into one
-query — but only when you mark the pattern as a whole word:
+Recursive `grep` searches current page bodies with bounded bulk prefetch.
+Historical versions and attachments are not traversed implicitly. Whole-word
+and substring searches both use the actual Markdown:
 
 ```bash
-grep -rlw kubernetes .     # uses the index
-grep -rl  kubern .         # reads the subtree, and finds "kubernetes"
+grep -rlw kubernetes architecture-623869955
+grep -rl kubern architecture-623869955
 ```
 
-The index matches words while `grep` matches substrings, so an unmarked pattern
-takes the slower path rather than risking an empty result that reads like "not
-found". The path taken is always printed on stderr.
+Automatic CQL narrowing is disabled after live tests found missing whole-word
+matches inside dotted tokens. Use `cql` explicitly for indexed search.
 
 ### For agents
 
@@ -91,8 +91,8 @@ for `AGENTS.md`, `CLAUDE.md` or a skill file.
 
 ## Known limitations
 
-- A mounted volume cannot use the CQL shortcut, so full-text search over a mount
-  reads every page. Use `atlcli wiki sh` for search.
+- A mounted volume has no shell prefetch budget. Use `atlcli wiki sh` for
+  bounded current-page searches.
 - Inside the shell, `sed -i` reports every write failure as "No such file or
   directory", so a read-only refusal loses its reason there. A redirect
   (`echo … > page/_index.md`) shows the real message.
@@ -102,13 +102,12 @@ for `AGENTS.md`, `CLAUDE.md` or a skill file.
 
 ## Before releasing
 
-- [ ] Run the two live probes on a machine with the `mayflower` profile
-      (`spikes/vfs-just-bash/live-spike.ts` and `cql-text-semantics.ts`) and fold
-      the CQL table into `EVIDENCE.md`. The `grep` guard stays at its strictest
-      until that table exists.
-- [ ] Run `ATLCLI_WIKI_SH_E2E=1` and `ATLCLI_WIKI_MOUNT_E2E=1` against DOCSY.
-- [ ] On a Mac, run the kernel half (`ATLCLI_WIKI_MOUNT_KERNEL=1`) and confirm
-      the Finder mounts read-write and Spotlight leaves the volume alone.
+- [x] Run both live probes with `mayflower` / DOCSY; see `LIVE-RESULTS.md`.
+      CQL narrowing is disabled because the live table disproves the guard.
+- [x] Run `ATLCLI_WIKI_SH_E2E=1` and `ATLCLI_WIKI_MOUNT_E2E=1` against DOCSY.
+- [x] Native macOS kernel mount: list, read, create and edit, plus readable
+      Spotlight exclusion file.
+- [ ] Finder/editor UI and actual Spotlight indexing behaviour.
 - [ ] Re-measure startup on release hardware (WP9.5 / `EVIDENCE.md` section 1).
       On the CI container the feature adds 145 ms; the decision-11 gate is 15 ms
       and the container is roughly ten times slower than a developer machine.

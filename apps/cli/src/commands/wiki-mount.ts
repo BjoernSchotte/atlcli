@@ -11,7 +11,7 @@
  * fstab entry, and a CLI that silently asks for a password to mount a
  * filesystem is a CLI nobody should trust. So it prints the command.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
@@ -33,6 +33,15 @@ import { ConfluenceVfsImpl, type VfsMode } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
 
 type Flags = Record<string, string | boolean | string[]>;
+
+/** The OS client calls our WebDAV server while attaching and detaching. */
+export function runMountCommand(command: string[], quiet = false): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command[0]!, command.slice(1), { stdio: quiet ? "ignore" : "inherit" });
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+}
 
 const DEFAULT_CACHE_DIR = join(homedir(), ".atlcli", "vfs");
 
@@ -194,10 +203,10 @@ async function handleMount(
     process.stderr.write(attach.instructions);
   } else {
     mkdirSync(mountpoint, { recursive: true });
-    const result = spawnSync(attach.run[0]!, attach.run.slice(1), { stdio: "inherit" });
-    if (result.status !== 0) {
+    const status = await runMountCommand(attach.run);
+    if (status !== 0) {
       process.stderr.write(
-        `atlcli: ${attach.run[0]} exited with ${result.status ?? "a signal"}. ` +
+        `atlcli: ${attach.run[0]} exited with ${status ?? "a signal"}. ` +
           `The server is still running at ${running.url}; attach it manually if you prefer.\n`,
       );
     }
@@ -217,7 +226,7 @@ async function handleMount(
 
   await waitForShutdown(async () => {
     const detach = unmountCommandFor(platform(), mountpoint);
-    if ("run" in detach) spawnSync(detach.run[0]!, detach.run.slice(1), { stdio: "ignore" });
+    if ("run" in detach) await runMountCommand(detach.run, true);
     await running.stop();
     await vfs.close();
     rmSync(mountStatePath(cacheDir, mountpoint), { force: true });
@@ -299,7 +308,7 @@ async function handleUnmount(
   if ("instructions" in detach) {
     process.stderr.write(detach.instructions);
   } else {
-    spawnSync(detach.run[0]!, detach.run.slice(1), { stdio: "inherit" });
+    await runMountCommand(detach.run);
   }
 
   const file = mountStatePath(cacheDir, mountpoint);
@@ -355,7 +364,7 @@ Platform notes:
            instead of running it.
 
 Full-text search:
-  A mount cannot take the CQL shortcut — the kernel knows nothing about it — so
+  A mount does not enforce the shell prefetch budget — the kernel knows nothing about it — so
   a recursive grep over a mounted volume reads every page. Use
   'atlcli wiki sh -c "grep -rlw <word> ."' for search instead.
 `;

@@ -272,7 +272,7 @@ Options:
   --timeout <ms>       Wall-clock limit for the script (default: 120000)
   --prefetch-max <n>   Ceiling on one prefetch (default: 300)
   --cache-max-mb <n>   Disk cache ceiling (default: 100)
-  --no-cql             Never take the CQL shortcut in grep
+  --no-cql             Compatibility flag; CQL narrowing is disabled
   --json               Emit stdout, stderr, exit code and counters as JSON
   --profile <name>     Use a specific auth profile
 
@@ -280,10 +280,9 @@ Notes:
   Writing is off by default. --mode rw enables create, update, rename and move;
   rm additionally needs --allow-delete, and only ever moves a page to the trash.
 
-  grep takes a CQL shortcut only when you mark the pattern as a whole word
-  (grep -rw), because CQL matches words while grep matches substrings — an
-  unmarked pattern would risk a silently empty result. The path taken is always
-  printed on stderr.
+  Recursive grep searches current page bodies with bounded bulk prefetch.
+  CQL narrowing is disabled because the index can omit whole-word matches.
+  Use cql explicitly for indexed search; --no-cql remains accepted.
 
 Extra commands inside the shell:
   cql '<query>'    Run a CQL query and print paths

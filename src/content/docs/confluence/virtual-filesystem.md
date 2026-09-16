@@ -23,7 +23,7 @@ Two ways in, sharing one core:
 - [The mounted volume](#the-mounted-volume)
 - [What the tree looks like](#what-the-tree-looks-like)
 - [Writing](#writing)
-- [Search, and why `grep` sometimes wants `-w`](#search-and-why-grep-sometimes-wants--w)
+- [Search current page bodies](#search-current-page-bodies)
 - [Options reference](#options-reference)
 - [Configuration](#configuration)
 - [Maintenance](#maintenance)
@@ -129,9 +129,8 @@ because anything that can reach it can already read your files. Binding anywhere
 else **requires** a bearer token and is refused without one.
 
 :::caution[Search over a mount is slow]
-A mounted volume cannot use the CQL shortcut — the kernel knows nothing about
-it — so `grep -r` over a mount reads every page. For full-text search use
-`atlcli wiki sh -c 'grep -rlw <word> .'` instead.
+Recursive search over an OS mount is controlled by the calling tool and can
+read history and attachments. Use `atlcli wiki sh` for bounded current-page search.
 :::
 
 ## What the tree looks like
@@ -248,28 +247,26 @@ Some pages do not survive the Markdown round trip — a two-column layout, an
 inline colour span. The VFS warns once per page when you write one, naming it,
 rather than flattening it silently. Macros generally *do* round-trip.
 
-## Search, and why `grep` sometimes wants `-w`
+## Search current page bodies
 
-`grep -r` over a space can take a shortcut: ask Confluence's search index which
-pages contain the term, then fetch only those bodies. That is dramatically
-faster — but **the index matches whole words and `grep` matches substrings**.
-
-So the shortcut is only taken when you tell it the pattern is a whole word:
+Recursive `grep` searches current page Markdown within the requested subtree.
+It bulk-prefetches bodies up to the configured limit, then runs the shell's grep
+on those files. Versions, comments and attachments are not traversed implicitly;
+read or search their explicit file paths separately.
 
 ```bash
-grep -rlw kubernetes .            # CQL shortcut: one search, then the matches
-grep -rl  kubernetes .            # full scan: the capped prefetch, then grep
-grep -rl  kubern .                # full scan, and it finds "kubernetes"
+grep -rlw kubernetes architecture-623869955  # whole words
+grep -rl kubern architecture-623869955      # substrings
 ```
 
-Without `-w`, `grep -rl kubern` would return **nothing** through the index while
-the real `grep` finds every page containing "kubernetes" — a wrong answer, not a
-slow one. The path taken is always printed on stderr, and `--no-cql` (or
-`ATLCLI_VFS_NO_CQL=1`) turns the shortcut off entirely.
+Automatic CQL narrowing is disabled. A live probe found that Confluence's index
+misses `zqxdotted` inside `prefix.zqxdotted.suffix`, although `grep -w` matches it.
+The index also does not represent generated Markdown frontmatter or necessarily
+recent writes. Use the explicit `cql` command when you want indexed search.
+`--no-cql` and `cqlGrep` remain accepted for configuration compatibility.
 
-A full scan is not slow in the way it sounds: it fetches bodies in **one bulk
-request**, not one per page. It only fails when the subtree exceeds the prefetch
-ceiling, and then it says so.
+Narrow the subtree if the prefetch ceiling is exceeded. Piping to `head` bounds
+output only; it does not cancel the preceding search.
 
 ## Options reference
 
@@ -287,7 +284,7 @@ ceiling, and then it says so.
 | `--timeout <ms>` | number | `120000` | no | Wall-clock limit for the script |
 | `--prefetch-max <n>` | number | `300` | no | Ceiling on one prefetch |
 | `--cache-max-mb <n>` | number | `100` | no | Disk cache ceiling |
-| `--no-cql` | flag | off | no | Never take the CQL shortcut |
+| `--no-cql` | flag | off | no | Accepted for compatibility; CQL narrowing is disabled |
 | `--json` | flag | off | no | stdout, stderr, exit code and counters as JSON |
 
 ### `atlcli wiki mount`
@@ -326,7 +323,7 @@ value wins, key by key.
 | `spaces` | string[] | — | Used when `--space` is absent |
 | `cacheMaxMb` | number | `100` | Bodies and attachment blobs share this budget |
 | `prefetchMaxPages` | number | `300` | Hard ceiling for one prefetch |
-| `cqlGrep` | boolean | `true` | Allow the `grep` shortcut |
+| `cqlGrep` | boolean | `true` | Accepted for compatibility; narrowing is disabled |
 
 ## Maintenance
 
@@ -356,10 +353,19 @@ cannot be written. Create a page instead.
 
 ### `grep` says "full scan"
 
-That is the message telling you which path it took. Pass `-w` if your pattern is
-a whole word and you want the faster CQL path. If it *is* a whole word and you
-still get a full scan, the message names the reason — usually a regex character,
-a separator like `-` or `_`, or a pattern under three characters.
+This is expected: automatic CQL narrowing is disabled after live tests found
+missing whole-word matches. Narrow the subtree or use `cql` for explicit indexed
+search.
+
+### An externally created page is missing from a cached listing
+
+Tree listings have a 60-second TTL. Wait for expiry, or run with a fresh
+`--cache-dir` when verifying a newly created page from another client.
+
+### A space key resolves to a different key
+
+Use the canonical key named in the error. Space keys can contain lowercase
+letters; the VFS rejects aliases rather than returning a misleading empty tree.
 
 ### A recursive command aborts naming the prefetch limit
 

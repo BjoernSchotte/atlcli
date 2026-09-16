@@ -169,11 +169,11 @@ describe("help", () => {
     }
   });
 
-  it("says writing is off by default, and why grep needs -w", () => {
+  it("says writing is off by default and explains bounded grep", () => {
     const help = wikiShHelp();
     expect(help).toContain("Writing is off by default");
-    expect(help).toContain("whole word");
-    expect(help).toContain("silently empty");
+    expect(help).toContain("bounded bulk prefetch");
+    expect(help).toContain("CQL narrowing is disabled");
   });
 
   it("lists the extra commands", () => {

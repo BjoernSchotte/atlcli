@@ -57,17 +57,18 @@ atlcli wiki sh --space DOCSY -c 'cat .by-id/623869955.md'     # when you only ha
 
 ### Searching — read this part
 
-`grep` works, and there is a fast path, but it needs your help:
+Recursive `grep` searches current page bodies in the requested subtree, with
+bounded bulk prefetch. It does not implicitly search versions or attachments.
 
 ```bash
-grep -rlw kubernetes .        # whole word: uses the search index. Fast.
-grep -rl  kubernetes .        # substring: reads the subtree. Correct, slower.
+grep -rlw kubernetes .        # whole-word matches in current Markdown
+grep -rl  kubern .            # substring matches, including "kubernetes"
 ```
 
-**Pass `-w` when you mean a whole word.** Without it the shortcut is skipped,
-because Confluence's index matches words while `grep` matches substrings, and
-taking the shortcut anyway would let `grep -rl kubern` return nothing while the
-real answer is two pages. The command prints which path it took on stderr.
+CQL narrowing is disabled: live Confluence indexing misses some matches even
+with `-w` (for example a word inside a dotted token). Use `cql` explicitly when
+you want index semantics. Narrow the path when the prefetch limit is reached;
+`head` limits output, not the amount of content searched.
 
 For queries a path cannot express — dates, anything with a `/` — use `cql`:
 
@@ -145,8 +146,8 @@ The shortest useful snippet, if the above is too long for your context budget:
 ```markdown
 For Confluence, use `atlcli wiki sh --space DOCSY -c '<bash>'`. Spaces and pages
 are directories; a page's body is `_index.md`; names are `<slug>-<id>` and the id
-is what resolves. Search with `grep -rlw <word> .` (the `-w` enables the fast
-index path). Keep output small with `head`. Writing needs `--mode rw`, deletion
+is what resolves. Search current page bodies with `grep -rlw <word> <subtree>`.
+Narrow the subtree to bound reads; `head` only limits output. Writing needs `--mode rw`, deletion
 also `--allow-delete`; do not add them unless asked.
 ```
 

@@ -9,11 +9,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer } from "node:http";
 import {
   mountCommandFor,
   mountStateDir,
   mountStatePath,
   readMounts,
+  runMountCommand,
   unmountCommandFor,
   wikiMountHelp,
   type MountRecord,
@@ -30,6 +32,18 @@ afterEach(() => {
 });
 
 describe("platform commands", () => {
+  it("keeps the server responsive while the OS client is running", async () => {
+    const server = createServer((_req, res) => res.end("ready"));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as { port: number };
+    try {
+      const status = await runMountCommand([process.execPath, "-e",
+        `const r = await fetch('http://127.0.0.1:${port}', {signal: AbortSignal.timeout(1000)}); process.exit((await r.text()) === 'ready' ? 0 : 1);`], true);
+      expect(status).toBe(0);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
   it("uses mount_webdav on macOS, with the dialog suppressed", () => {
     const command = mountCommandFor("darwin", "http://127.0.0.1:8080/", "/Users/x/confluence", "atlcli-DOCSY");
     expect(command).toEqual({
@@ -120,9 +134,9 @@ describe("help", () => {
     expect(help).toContain("50 MB");
   });
 
-  it("points full-text search at wiki sh, because a mount cannot use CQL", () => {
+  it("points full-text search at wiki sh, because shell search bounds body reads", () => {
     const help = wikiMountHelp();
-    expect(help).toContain("cannot take the CQL shortcut");
+    expect(help).toContain("does not enforce the shell prefetch budget");
     expect(help).toContain("atlcli wiki sh");
   });
 

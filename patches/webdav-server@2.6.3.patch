@@ -1,0 +1,26 @@
+diff --git a/lib/helper/v2/IfParser.js b/lib/helper/v2/IfParser.js
+index 3496a360546d4de5bacb1c76924eb4a47d0da3fc..c1440f00e1623ab1bd7c1f48df3d1b0ed876d449 100644
+--- a/lib/helper/v2/IfParser.js
++++ b/lib/helper/v2/IfParser.js
+@@ -59,7 +59,7 @@ function parseInternal(group) {
+         }
+         match = rex.exec(group);
+     }
+-    if (andArray.length)
++    if (andArray.length === 0)
+         return (r, callback) => callback(null, true);
+     return function (resource, callback) {
+         let nb = andArray.length;
+@@ -127,10 +127,10 @@ function parseIfHeader(ifHeader) {
+             }
+         };
+         for (const orCondition of orArray) {
+-            if (!orCondition.path) {
++            if (orCondition.path) {
+                 const sPath = orCondition.path;
+                 ctx.server.getFileSystem(sPath, (fs, _, sub) => {
+-                    orCondition.actions(fs.resource(ctx, sPath), done);
++                    orCondition.actions(fs.resource(ctx, sub), done);
+                 });
+             }
+             else {

@@ -142,10 +142,22 @@ describe.skipIf(!RUN).serial("wiki sh against a live tenant", () => {
 
       const renamed = `${title}-renamed`;
       const rename = await shell.exec(`mv '${entry}' '${renamed}-${pageId}'`);
-      expect(rename.exitCode).toBe(0);
+      expect(rename.exitCode, rename.stderr).toBe(0);
 
-      const remove = await shell.exec(`rm -r '${renamed}-${pageId}'`);
+      const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY,
+        title: `${title}-parent`, storage: "<p>Temporary move destination.</p>",
+        parentId: (await client.getSpaceHomepageId(E2E_SPACE_KEY))! });
+      created.push(parent.id);
+      // Refresh the externally created parent before addressing it through the VFS.
+      await vfs.index.loadChildren((await client.getSpaceHomepageId(E2E_SPACE_KEY))!, { force: true });
+      const destination = `parent-${parent.id}/${renamed}-${pageId}`;
+      const move = await shell.exec(`mv '${renamed}-${pageId}' '${destination}'`);
+      expect(move.exitCode, move.stderr).toBe(0);
+      expect((await client.getPage(pageId)).parentId).toBe(parent.id);
+
+      const remove = await shell.exec(`rm -r '${destination}'`);
       expect(remove.exitCode).toBe(0);
+      created.splice(created.indexOf(pageId), 1);
       // Trashed, so it is gone from the listing.
       expect((await shell.exec(`ls | grep -F '${pageId}'`)).exitCode).toBe(1);
     } finally {

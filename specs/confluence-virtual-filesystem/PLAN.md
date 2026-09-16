@@ -4,16 +4,15 @@ Status: **implemented** — WP0 through WP9, on branch
 `claude/confluence-virtual-filesystem-vuf3fm`. Both frontends work, the core has
 no frontend dependency, and every invariant in section 1b is a test.
 
-What is **not** done, and needs a machine this repository's CI does not have:
-the two live probes (WP0.3, WP0.3b) need the `mayflower` tenant; the macOS
-kernel mount, the Finder measurements and the Spotlight verification (WP7.3b,
-WP7.7, WP7.9) need a Mac; the Windows WebClient run (WP7.8) needs Windows; the
-startup re-measurement (WP9.5) needs release hardware. Each is written, gated
-and skips cleanly. Measurements and open items are collected in
-[`EVIDENCE.md`](./EVIDENCE.md).
+Live follow-up on 2026-09-16: DOCSY read/write and the MAYFLOWER space
+(canonical key `mayflower`) read-only passed. Native macOS mounting and writes
+also passed after fixes. See [LIVE-RESULTS.md](./LIVE-RESULTS.md) for exact scope,
+reproduction commands and remaining release checks.
 
-**Until WP0.3b measures the live search index, decision 12's guard stays at its
-strictest** — see deviation D9 under WP6.
+**Decision 12 / D9 is superseded by live evidence:** even `grep -w` can match
+words that CQL omits. Automatic CQL narrowing is disabled; recursive grep uses
+bounded bulk prefetch of current page bodies. The historical work-package
+entries below describe the PR before this follow-up.
 
 Plan date: 2026-09-15 (research), 2026-09-16 (decisions, task plan,
 implementation)

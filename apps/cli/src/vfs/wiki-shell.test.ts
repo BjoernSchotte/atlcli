@@ -169,7 +169,38 @@ describe("reading", () => {
 });
 
 describe("grep", () => {
-  it("takes the CQL shortcut for an explicit whole-word match and says so", async () => {
+  it("finds dotted words and fresh content without visiting history or attachments", async () => {
+    const client = seeded();
+    client.seedPage({ id: "104", title: "Tokens", spaceKey: "DOCSY", parentId: "100",
+      storage: "<p>prefix.zqxdotted.suffix</p>" });
+    const { shell, vfs } = await makeShell(client);
+    const result = await shell.exec("grep -rnw zqxdotted .");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/tokens-104\/_index.md:\d+:.*zqxdotted/);
+    for (const method of ["searchPages", "getPageAtVersion", "getPageVersions", "listAttachments", "getPageComments"]) {
+      expect(client.callsTo(method)).toBe(0);
+    }
+    await vfs.close();
+  });
+
+  it("preserves explicit patterns, inversion, filters and file/subtree scope", async () => {
+    const { shell, vfs } = await makeShell(seeded());
+    for (const command of [
+      "grep -rln -e kubernetes architecture-102/_index.md",
+      "grep --recursive -l -- kubernetes architecture-102/_index.md",
+      "grep -rlv kubernetes architecture-102/_index.md",
+      "grep -rl --include='*.md' kubernetes architecture-102",
+    ]) {
+      const result = await shell.exec(command);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("architecture-102/_index.md");
+      expect(result.stdout).not.toContain("getting-started-101");
+      expect(result.stdout).not.toContain("deployment-103");
+    }
+    expect(await vfs.subtreePageIds("/DOCSY/architecture-102/_index.md", "DOCSY")).toEqual(["102"]);
+    await vfs.close();
+  });
+  it("scans current bodies for whole-word matches without CQL narrowing", async () => {
     const client = seeded();
     const { shell, vfs } = await makeShell(client);
     const result = await shell.exec("grep -rlw kubernetes .");
@@ -177,7 +208,7 @@ describe("grep", () => {
     expect(result.stdout).toContain("architecture-102");
     expect(result.stdout).toContain("getting-started-101");
     expect(result.stdout).not.toContain("deployment-103");
-    expect(diagnostics.some((d) => d.includes("CQL shortcut"))).toBe(true);
+    expect(diagnostics.some((d) => d.includes("full scan"))).toBe(true);
     // One bulk fetch for the candidates, not one per page in the space.
     expect(client.callsTo("getPagesBulk")).toBe(1);
     await vfs.close();
@@ -212,14 +243,14 @@ describe("grep", () => {
     const { shell, vfs } = await makeShell(seeded());
     const result = await shell.exec("grep -rl kubernetes .");
     expect(result.stdout).toContain("architecture-102");
-    expect(diagnostics.some((d) => d.includes("not marked as a whole word"))).toBe(true);
+    expect(diagnostics.some((d) => d.includes("CQL text indexing"))).toBe(true);
     await vfs.close();
   });
 
   it("accepts an explicitly anchored pattern", async () => {
     const { shell, vfs } = await makeShell(seeded());
     await shell.exec(String.raw`grep -rl '\bkubernetes\b' .`);
-    expect(diagnostics.some((d) => d.includes("CQL shortcut"))).toBe(true);
+    expect(diagnostics.some((d) => d.includes("full scan"))).toBe(true);
     await vfs.close();
   });
 
@@ -278,6 +309,16 @@ describe("grep", () => {
 });
 
 describe("writing", () => {
+  it("renames a page when the destination slug already resolves to the same ID", async () => {
+    const client = seeded();
+    const { shell, vfs } = await makeShell(client);
+    const result = await shell.exec("mv getting-started-101 renamed-101");
+    expect(result.exitCode).toBe(0);
+    expect(client.peekPage("101")?.title).toBe("Renamed");
+    expect(client.peekPage("101")?.parentId).toBe("100");
+    expect(client.callsTo("movePage")).toBe(0);
+    await vfs.close();
+  });
   it("edits a page in place with sed", async () => {
     const client = seeded();
     const { shell, vfs } = await makeShell(client);

@@ -1,5 +1,9 @@
 # Confluence VFS — measurements
 
+**Live follow-up (2026-09-16):** see [LIVE-RESULTS.md](./LIVE-RESULTS.md).
+It supersedes the unmeasured live rows and the CQL guard claims below; the
+original container measurements are retained as historical evidence.
+
 Numbers behind the decisions in
 [`PLAN.md`](./PLAN.md). Each section says what was measured, on what, and what
 is still missing.

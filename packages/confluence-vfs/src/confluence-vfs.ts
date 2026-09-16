@@ -343,18 +343,17 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    */
   async subtreePageIds(path: string, spaceKey: string): Promise<string[]> {
     const resolved = (await this.resolver.resolve(path)) as Resolved;
+    if (resolved.kind === "body") return resolved.node.type === "page" ? [resolved.node.id] : [];
     const rootId =
       resolved.kind === "container"
         ? resolved.node.id
         : resolved.kind === "space"
           ? resolved.homepageId
-          : resolved.kind === "body"
-            ? resolved.node.id
-            : undefined;
+          : undefined;
     if (!rootId) return [];
     void spaceKey;
     const walked = await this.index.loadSubtree(rootId);
-    return [rootId, ...walked.filter((node) => node.type === "page").map((node) => node.id)];
+    return [this.index.node(rootId)!, ...walked].filter((node) => node.type === "page").map((node) => node.id);
   }
 
   /** Fills the body cache for many pages at once, within the prefetch budget. */

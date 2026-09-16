@@ -1,10 +1,9 @@
 /**
  * The embedded shell (WP6.2–6.5).
  *
- * Builds a `Bash` over one `ConfluenceJustBashFs` per space, plus the four
- * overrides that make a REST-backed filesystem behave at shell speed:
- * `grep` and `find` avoid walking what they can answer from the index or from
- * CQL, and `cql`, `page-url`, `page-id` and `vfs-status` expose the things a
+ * Builds a `Bash` over one `ConfluenceJustBashFs` per space, plus commands for bounded
+ * current-body search and Confluence-specific rename semantics. `find` walks
+ * the filesystem metadata, while `cql`, `page-url`, `page-id` and `vfs-status` expose the things a
  * filesystem cannot.
  *
  * ## Why defense-in-depth is off
@@ -21,9 +20,9 @@
  * fixed, wrapping the backend calls in `runTrustedAsync()` (plan WP10).
  */
 import type { CommandName } from "just-bash";
-import type { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { canonicalPathOf, type ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { posix } from "node:path";
 import { ConfluenceJustBashFs } from "./just-bash-fs.js";
-import { cqlForPattern, qualifiesForCqlShortcut } from "./cql-guard.js";
 import { parseFindArgs, parseGrepArgs } from "./grep-flags.js";
 
 /**
@@ -106,92 +105,46 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
     return first && spaces.includes(first) ? first : undefined;
   };
 
-  /**
-   * `grep` (WP6.3).
-   *
-   * Three stages, and the third is the important one: whatever CQL says, the
-   * *real* grep runs over the resulting files, so line numbers, case handling
-   * and regex semantics are grep's own. CQL only ever narrows which bodies get
-   * fetched, and the guard (decision 12) refuses to narrow when narrowing could
-   * lose a match.
-   */
-  const grep = defineCommand(
-    "grep",
-    async (args, ctx) => {
-      const parsed = parseGrepArgs(args);
-      const original = ctx.origCommand;
-      if (!original) {
-        return { stdout: "", stderr: "grep: the bundled implementation is unavailable\n", exitCode: 2 };
+  // Live CQL misses grep whole-word matches inside dotted tokens. Search
+  // current page bodies instead; the bulk-fetch budget still bounds downloads.
+  const grep = defineCommand("grep", async (args, ctx) => {
+    const parsed = parseGrepArgs(args);
+    const original = ctx.origCommand!;
+    if (!parsed.recursive) return original(args.filter((a) => a !== "--no-cql"));
+    diagnostic("grep: full scan (CQL text indexing can omit whole-word matches)");
+    try {
+      const files = new Set<string>();
+      const ids = new Set<string>();
+      for (const path of parsed.paths.length ? parsed.paths : ["."]) {
+        const absolute = posix.resolve(ctx.cwd, path);
+        const spaceKey = spaceOf(ctx.cwd, absolute);
+        if (!spaceKey) throw new Error(`Recursive grep needs a path inside a mounted space: ${path}`);
+        const stat = await options.vfs.stat(absolute);
+        if (!stat.isDirectory) {
+          files.add(absolute);
+          if (stat.kind === "page") ids.add(stat.id);
+          continue;
+        }
+        const homepage = await options.vfs.index.getHomepageId(spaceKey);
+        for (const id of await options.vfs.subtreePageIds(absolute, spaceKey)) {
+          ids.add(id);
+          files.add(`${canonicalPathOf(options.vfs.index, options.vfs.index.node(id)!, homepage)}/_index.md`);
+        }
       }
-      // Non-recursive grep, or grep over stdin, has nothing to accelerate.
-      if (!parsed.recursive || parsed.pattern === undefined) {
-        return original(args.filter((a) => a !== "--no-cql"));
-      }
-
-      const forwarded = args.filter((a) => a !== "--no-cql");
-      const searchPaths = parsed.paths.length > 0 ? parsed.paths : ["."];
-      const spaceKey = spaceOf(ctx.cwd, searchPaths[0]!);
-      const cqlAllowed =
-        options.cqlGrep !== false && !parsed.noCql && ctx.env.get("ATLCLI_VFS_NO_CQL") !== "1";
-
-      if (!spaceKey) {
-        diagnostic(`grep: full scan (${searchPaths[0]} is not inside a space)`);
-        return original(forwarded);
-      }
-
-      const verdict = qualifiesForCqlShortcut(parsed.pattern, {
-        wordMatch: parsed.wordMatch,
-        fixedString: parsed.fixedString,
-        ignoreCase: parsed.ignoreCase,
-        extendedRegex: parsed.extendedRegex,
+      if (!files.size) return { stdout: "", stderr: "", exitCode: 1 };
+      const result = await options.vfs.prefetch([...ids], {
+        reason: "recursive grep",
+        ...(options.prefetchMax !== undefined ? { budget: options.prefetchMax } : {}),
       });
-
-      if (!cqlAllowed || !verdict.qualifies) {
-        const why = !cqlAllowed ? "the CQL shortcut is disabled" : verdict.reason;
-        diagnostic(`grep: full scan (${why})`);
-        try {
-          // The capped prefetch is what turns a full scan from N requests into
-          // a handful — and what refuses to quietly download a whole space.
-          const ids = await subtreeIds(options.vfs, spaceKey, searchPaths, ctx.cwd);
-          const result = await options.vfs.prefetch(ids, {
-            reason: `grep -r '${parsed.pattern}'`,
-            ...(options.prefetchMax !== undefined ? { budget: options.prefetchMax } : {}),
-          });
-          prefetched += result.fetched;
-        } catch (error) {
-          return {
-            stdout: "",
-            stderr: `grep: ${error instanceof Error ? error.message : String(error)}\n`,
-            exitCode: 2,
-          };
-        }
-        return original(forwarded);
-      }
-
-      const literal = verdict.literal ?? parsed.pattern;
-      diagnostic(`grep: CQL shortcut (text ~ "${literal}" in ${spaceKey})`);
-      try {
-        const matches = await options.vfs.searchPageIds(cqlForPattern(spaceKey, literal));
-        if (matches.length === 0) {
-          // No candidate pages: grep's own empty result, exit code 1.
-          return { stdout: "", stderr: "", exitCode: 1 };
-        }
-        const result = await options.vfs.prefetch(matches, {
-          reason: `grep -r '${parsed.pattern}'`,
-          ...(options.prefetchMax !== undefined ? { budget: options.prefetchMax } : {}),
-        });
-        prefetched += result.fetched;
-      } catch (error) {
-        return {
-          stdout: "",
-          stderr: `grep: ${error instanceof Error ? error.message : String(error)}\n`,
-          exitCode: 2,
-        };
-      }
-      return original(forwarded);
-    },
-    { trusted: true },
-  );
+      prefetched += result.fetched;
+      // Keep grep's own option/pattern semantics, replacing only file operands.
+      // Explicit files prevent a second walk through versions and attachments.
+      const forwarded = args.filter((arg, i) => arg !== "--no-cql" && !parsed.pathIndices.includes(i));
+      return original([...forwarded, ...files]);
+    } catch (error) {
+      return { stdout: "", stderr: `grep: ${String(error)}\n`, exitCode: 2 };
+    }
+  }, { trusted: true });
 
   /**
    * `find` (WP6.4).
@@ -210,7 +163,7 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
         return { stdout: "", stderr: "find: the bundled implementation is unavailable\n", exitCode: 2 };
       }
       if (parsed.timePredicate) {
-        diagnostic("find: CQL lastmodified");
+        diagnostic("find: filesystem metadata (time predicate)");
       } else if (parsed.hasUnsupportedPredicate) {
         diagnostic("find: full walk (a predicate needs the bundled implementation)");
       } else {
@@ -252,6 +205,31 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
     async (args, ctx) => resolveMeta(args, ctx.cwd, "id"),
     { trusted: true },
   );
+
+  // Slugs are aliases for an ID, so the bundled mv mistakes a new title for
+  // an existing destination directory and tries to move the page into itself.
+  const mv = defineCommand("mv", async (args, ctx) => {
+    const operands = args[0] === "--" ? args.slice(1) : args;
+    if (operands.length === 2 && operands.every((arg) => !arg.startsWith("-"))) {
+      const from = posix.resolve(ctx.cwd, operands[0]!);
+      const to = posix.resolve(ctx.cwd, operands[1]!);
+      if (posix.basename(from) !== posix.basename(to)) {
+        try {
+          const source = await options.vfs.resolve(from);
+          const target = await options.vfs.resolve(to);
+          if (source.id === target.id && source.kind === target.kind) {
+            await options.vfs.rename(from, to);
+            return { stdout: "", stderr: "", exitCode: 0 };
+          }
+        } catch (error) {
+          if ((error as { code?: string }).code !== "ENOENT") {
+            return { stdout: "", stderr: `mv: ${String(error)}\n`, exitCode: 1 };
+          }
+        }
+      }
+    }
+    return ctx.origCommand!(args);
+  }, { trusted: true });
 
   const pageUrl = defineCommand(
     "page-url",
@@ -308,7 +286,7 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
     cwd: options.cwd ?? `/${spaces[0]}`,
     fs: new MountableFs({ mounts }),
     commands: [...ALLOWED_COMMANDS],
-    customCommands: [grep, find, cql, pageId, pageUrl, vfsStatus],
+    customCommands: [grep, find, cql, pageId, pageUrl, vfsStatus, mv],
     executionLimits: {
       // An agent that asks for a whole space should get a bounded answer, not
       // a stalled session and a gigabyte of stdout.
@@ -348,21 +326,6 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
       };
     },
   };
-}
-
-/** Page ids beneath the paths a recursive grep was pointed at. */
-async function subtreeIds(
-  vfs: ConfluenceVfsImpl,
-  spaceKey: string,
-  paths: string[],
-  cwd: string,
-): Promise<string[]> {
-  const ids = new Set<string>();
-  for (const path of paths) {
-    const absolute = path.startsWith("/") ? path : `${cwd.replace(/\/$/, "")}/${path}`;
-    for (const id of await vfs.subtreePageIds(absolute, spaceKey)) ids.add(id);
-  }
-  return [...ids];
 }
 
 function formatBytes(bytes: number): string {

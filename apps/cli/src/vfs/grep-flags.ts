@@ -9,6 +9,7 @@
 export interface ParsedGrep {
   pattern: string | undefined;
   paths: string[];
+  pathIndices: number[];
   recursive: boolean;
   filesWithMatches: boolean;
   lineNumbers: boolean;
@@ -24,12 +25,13 @@ export interface ParsedGrep {
   noCql: boolean;
 }
 
-const TAKES_VALUE = new Set(["--include", "--exclude", "-m", "-A", "-B", "-C", "-e", "-f"]);
+const TAKES_VALUE = new Set(["--include", "--exclude", "--exclude-dir", "--regexp", "--file", "--max-count", "--after-context", "--before-context", "--context", "-m", "-A", "-B", "-C", "-e", "-f"]);
 
 export function parseGrepArgs(args: string[]): ParsedGrep {
   const parsed: ParsedGrep = {
     pattern: undefined,
     paths: [],
+    pathIndices: [],
     recursive: false,
     filesWithMatches: false,
     lineNumbers: false,
@@ -41,10 +43,22 @@ export function parseGrepArgs(args: string[]): ParsedGrep {
     passthrough: [],
     noCql: false,
   };
-  let patternTaken = false;
+  const separator = args.indexOf("--");
+  let patternTaken = (separator < 0 ? args : args.slice(0, separator)).some((arg) => /^(?:-[ef]|--(?:regexp|file)(?:=|$))/.test(arg));
+  let optionsEnded = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
+
+    if (!optionsEnded && arg === "--") {
+      optionsEnded = true;
+      continue;
+    }
+    if (optionsEnded) {
+      if (!patternTaken) { parsed.pattern = arg; patternTaken = true; }
+      else { parsed.paths.push(arg); parsed.pathIndices.push(i); }
+      continue;
+    }
 
     if (arg === "--no-cql") {
       parsed.noCql = true;
@@ -57,11 +71,16 @@ export function parseGrepArgs(args: string[]): ParsedGrep {
       continue;
     }
     if (arg.startsWith("--")) {
+      if (arg === "--recursive" || arg === "--dereference-recursive") parsed.recursive = true;
       parsed.passthrough.push(arg);
       if (TAKES_VALUE.has(arg) && args[i + 1] !== undefined) parsed.passthrough.push(args[++i]!);
       continue;
     }
     if (arg.startsWith("-") && arg !== "-") {
+      if (/^-[ef].+/.test(arg)) {
+        parsed.passthrough.push(arg);
+        continue;
+      }
       if (TAKES_VALUE.has(arg)) {
         parsed.passthrough.push(arg);
         if (args[i + 1] !== undefined) parsed.passthrough.push(args[++i]!);
@@ -107,6 +126,7 @@ export function parseGrepArgs(args: string[]): ParsedGrep {
       patternTaken = true;
     } else {
       parsed.paths.push(arg);
+      parsed.pathIndices.push(i);
     }
   }
 

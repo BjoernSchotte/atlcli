@@ -171,6 +171,11 @@ export class TreeIndex {
       throw offlineMiss(`Space ${key}`);
     }
     const space = await this.request(() => this.opts.client.getSpace(key), `/${key}`);
+    if (space.key !== key) {
+      throw new VfsError("EINVAL", `Space key '${key}' resolves to '${space.key}'; use --space ${space.key}`, {
+        path: `/${key}`,
+      });
+    }
     this.spaces.set(key, {
       space,
       homepageId: cached?.homepageId ?? null,
