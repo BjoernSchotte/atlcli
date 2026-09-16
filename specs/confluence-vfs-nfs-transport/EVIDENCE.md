@@ -193,6 +193,34 @@ transient busy unmount immediately after closing a read; test cleanup now retrie
 normal unmount for at most one second, without forced/lazy detachment. The repeat
 passed and the two leftover test mounts were normally detached. Typecheck passed.
 
+## Slice 8: paginated READDIR protocol correction
+
+An actual TCP regression against the unmodified nfsserve 0.11.0 helper failed:
+READDIR (procedure 16) repeated `.by-id` on its second page. READDIRPLUS (17)
+passed. The upstream READDIR handler ignored the client's cookie by calling
+`readdir_simple`, whose default always starts at zero. The patched handler now
+uses the same cookie-aware VFS operation as READDIRPLUS.
+
+The pinned crate source is included under packages/confluence-nfs/vendor/nfsserve,
+with original BSD-3-Clause license, crate digest, upstream revision and a short
+PATCHES.md. Only nfs_handlers.rs has functional source changes; inherited trailing whitespace
+in README.md and src/rpc.rs is normalized. Reply budget
+underflow and empty non-EOF replies also return TOOSMALL instead of panicking or
+trapping clients in a listing loop. Directory replies are buffered before writing
+so an error does not follow an already-sent success header. The adapter limits
+returned entries to 256; this is not a claim that all upstream wire allocations
+have been audited yet.
+
+The tests enumerate a 32-child synthetic directory across multiple replies for
+both procedures, checking every expected name exactly once. They exercise reply
+budgets 0, 128, 129 and 256, plus a zero READDIRPLUS directory budget, and then
+prove the same server remains usable. These tests run in required native NFS CI.
+Final macOS validation: 30 NFS tests, 486 assertions, including kernel mounts.
+Final Linux validation: 12 tests, 361 assertions, including live DOCSY and combined
+DOCSY/mayflower RO kernel mounts. Rust format/Clippy/tests and typecheck passed.
+Concurrent directory mutation/cookie invalidation still needs separate proof;
+this slice establishes pagination of an unchanged directory only.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

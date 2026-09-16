@@ -218,3 +218,7 @@ Experimental NFS handles distinguish generated files in each selected space.
 Deleted or replaced identities report `ESTALE`; look up the path again, or remount
 after a helper restart. Single-space and combined-space native reads are covered
 by the [NFS evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md).
+
+The NFS helper uses the pinned local nfsserve patch for correct multi-page
+READDIR results. Rebuild the helper alongside source updates; an older helper
+can repeat the first directory page. See its [patch notes](../../packages/confluence-nfs/vendor/nfsserve/PATCHES.md).

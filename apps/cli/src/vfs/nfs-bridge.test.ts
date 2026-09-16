@@ -45,14 +45,15 @@ async function rpc(server: RunningNfsServer, program: number, procedure: number,
     socket.on("end", () => reject(new Error("RPC closed before reply")));
   });
 }
-async function fixture(spaces = ["DOCSY"]) {
+async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1") {
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-wire-"));
   const client = new FakeConfluenceClient()
     .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
     .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Grüße 🐴</p>" })
     .seedSpace({ id: "s2", key: "mayflower", name: "Other", homepageId: "300" })
     .seedPage({ id: "300", title: "Other", spaceKey: "mayflower", storage: "<p>Other</p>" });
-  const live = process.env.ATLCLI_NFS_LIVE === "1";
+  for (let i = 0; i < 32; i++) client.seedPage({ id: String(400 + i), title: `Child ${i}`,
+    spaceKey: "DOCSY", parentId: "100", storage: "<p>Test</p>" });
   const profile = live ? getActiveProfile(await loadConfig(), "mayflower") : undefined;
   if (live && !profile) throw new Error("Missing mayflower test profile");
   const vfs = await ConfluenceVfsImpl.open({ profile: profile?.name ?? "fixture",
@@ -87,6 +88,65 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     await server.stop();
     await server.exited;
   });
+
+  for (const procedure of [16, 17]) {
+    it(`paginates NFS procedure ${procedure} without repeating or omitting entries`, async () => {
+      const { server, vfs } = await fixture(["DOCSY"], false);
+      const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+      const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+      for (const budget of [0, 128, 129, 256]) {
+        const rejected = await rpc(server, 100003, procedure, Buffer.concat([
+          opaque(root), Buffer.alloc(16), procedure === 16 ? ints(budget) : ints(512, budget),
+        ]));
+        expect(rejected.readUInt32BE()).toBe(10005); // NFS3ERR_TOOSMALL, helper remains usable
+      }
+      if (procedure === 17) {
+        const rejected = await rpc(server, 100003, procedure, Buffer.concat([
+          opaque(root), Buffer.alloc(16), ints(0, 768),
+        ]));
+        expect(rejected.readUInt32BE()).toBe(10005);
+      }
+      let cookie: Buffer = Buffer.alloc(8);
+      let verifier: Buffer = Buffer.alloc(8);
+      const names: string[] = [];
+      let pages = 0;
+      for (;;) {
+        const reply = await rpc(server, 100003, procedure, Buffer.concat([
+          opaque(root), cookie, verifier, procedure === 16 ? ints(512) : ints(512, 768),
+        ]));
+        expect(reply.readUInt32BE()).toBe(0);
+        let offset = 8 + (reply.readUInt32BE(4) ? 84 : 0);
+        verifier = reply.subarray(offset, offset + 8);
+        offset += 8;
+        let received = 0;
+        while (reply.readUInt32BE(offset)) {
+          offset += 12; // entry present and file ID
+          const length = reply.readUInt32BE(offset);
+          offset += 4;
+          const name = reply.subarray(offset, offset + length).toString();
+          expect(names).not.toContain(name);
+          names.push(name);
+          offset += (length + 3) & ~3;
+          cookie = reply.subarray(offset, offset + 8);
+          offset += 8;
+          if (procedure === 17) {
+            const attr = reply.readUInt32BE(offset);
+            offset += 4 + (attr ? 84 : 0);
+            const handle = reply.readUInt32BE(offset);
+            offset += 4;
+            if (handle) offset += 4 + ((reply.readUInt32BE(offset) + 3) & ~3);
+          }
+          received++;
+        }
+        pages++;
+        if (reply.readUInt32BE(offset + 4)) break;
+        expect(received).toBeGreaterThan(0);
+        expect(pages).toBeLessThan(100);
+      }
+      expect(pages).toBeGreaterThan(1);
+      expect(names.sort()).toEqual((await vfs.readdir("/DOCSY")).map((e) => e.name).sort());
+    });
+  }
 
   for (const spaces of [["DOCSY"], ["DOCSY", "mayflower"]]) {
     it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")(`reads full content through native kernel mount (${spaces.join(",")})`, async () => {
