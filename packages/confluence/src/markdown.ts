@@ -1,3 +1,4 @@
+import { mermaidMacroSource } from "./mermaid-macro.js";
 import MarkdownIt from "markdown-it";
 import taskLists from "markdown-it-task-lists";
 import sub from "markdown-it-sub";
@@ -78,6 +79,13 @@ md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx];
   const info = (token.info || "").trim();
   const content = token.content;
+
+  // This macro requires Mermaid Integration for Confluence to be installed.
+  const mermaid = info.match(/^mermaid(?:\{theme="(default|forest|dark|neutral)"\})?$/i);
+  if (mermaid) {
+    const theme = (mermaid[1] ?? "default").toLowerCase();
+    return `<ac:structured-macro ac:name="mermaid" ac:schema-version="1"><ac:parameter ac:name="theme">${theme}</ac:parameter>${serializePlainTextBody(JSON.stringify({ diagramDefinition: content }))}</ac:structured-macro>`;
+  }
 
   // Handle noformat blocks: ```noformat
   if (info.toLowerCase() === "noformat") {
@@ -1538,6 +1546,25 @@ function elementText(node: XmlElement): string {
  * that turndown can process.
  */
 function preprocessStorageMacros(storage: string, options?: ConversionOptions): string {
+  // Decode only self-contained, supported Mermaid macros. Everything else
+  // continues to the raw-XML preservation path below, including v2 attachments.
+  storage = storage.replace(
+    /<ac:structured-macro\b(?=[^>]*\bac:name="mermaid")[^>]*>(?:<!\[CDATA\[[\s\S]*?\]\]>|(?!<\/ac:structured-macro>)[\s\S])*<\/ac:structured-macro>/gi,
+    (raw) => {
+      const element = parseXml(raw)[0];
+      if (!element || element.type !== "element") return raw;
+      const parameters = element.children.filter((child): child is XmlElement => child.type === "element" && child.name === "ac:parameter");
+      if (parameters.some((parameter) => parameter.attrs["ac:name"] !== "theme")) return raw;
+      const themeParameter = parameters.find((parameter) => parameter.attrs["ac:name"] === "theme");
+      const theme = themeParameter?.children.map((child) => child.type === "text" ? child.text : "").join("") || "default";
+      if (!["default", "forest", "dark", "neutral"].includes(theme)) return raw;
+      const body = element.children.find((child): child is XmlElement => child.type === "element" && child.name === "ac:plain-text-body");
+      const source = mermaidMacroSource(body?.children.map((child) => child.type === "text" ? child.text : "").join("") ?? "");
+      if (source === undefined) return raw;
+      return `<pre data-macro="mermaid" data-theme="${theme}"><code>${escapeHtml(source)}</code></pre>`;
+    },
+  );
+
   // Strip table <colgroup>/<col> column-sizing metadata emitted by the modern
   // Confluence Cloud editor. See {@link stripTableColumnMetadata} for the full
   // rationale (shared with the spec-004 export-block walker).
@@ -3060,6 +3087,14 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       if (macroType === "noformat") {
         const text = codeNode?.textContent ?? "";
         return `\n\n\`\`\`noformat\n${text}\n\`\`\`\n\n`;
+      }
+
+      if (macroType === "mermaid") {
+        const text = String(codeNode?.textContent ?? "");
+        const theme = (node as any).getAttribute?.("data-theme") || "default";
+        const info = theme === "default" ? "mermaid" : `mermaid{theme="${theme}"}`;
+        const fence = "`".repeat(Math.max(3, ...Array.from(text.matchAll(/`+/g), (match) => match[0].length + 1)));
+        return `\n\n${fence}${info}\n${text.endsWith("\n") ? text : text + "\n"}${fence}\n\n`;
       }
 
       // Check if this is a Confluence code macro

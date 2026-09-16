@@ -12,6 +12,44 @@ atlcli provides extensive Confluence macro support with bidirectional conversion
 - Basic understanding of markdown syntax
 - For push operations: Edit permission on target Confluence space
 
+## Mermaid diagrams
+
+Install **Mermaid Integration for Confluence** (macro name `mermaid`) on the
+Confluence site before pushing Mermaid fences. Atlcli writes the source into
+that macro's inline JSON body; the app renders it in Confluence. No diagram
+image or source attachment is uploaded by atlcli.
+
+````markdown
+```mermaid
+flowchart LR
+  Plan --> Release
+```
+````
+
+For a themed cutover plan:
+
+````markdown
+```mermaid{theme="forest"}
+flowchart LR
+  Rehearsal --> Gate{Go / no-go}
+  Gate -->|Go| Cutover
+  Gate -->|No-go| Rollback
+  Cutover --> Validate
+```
+````
+
+Themes: `default` (the default), `forest`, `dark`, `neutral`. Inline macro
+sources return as editable Mermaid fences through `wiki docs pull`, `wiki sh`
+and WebDAV. The shared Storage and Cloud ADF export adapters also pass these
+sources to the existing PDF/DOCX diagram renderer.
+
+**Compatibility:** this mapping targets the named app, not every marketplace
+Mermaid app. Missing app installation means Confluence cannot render the macro.
+Attachment-backed v2 macros, malformed bodies and unrecognized parameters stay
+in the existing `:::confluence` raw-XML form; atlcli does not silently convert
+or discard their external sources. DOCX import does not infer Mermaid from an
+ordinary Word code paragraph.
+
 ## Panel Macros
 
 ### Info Panel

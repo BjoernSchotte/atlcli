@@ -360,6 +360,16 @@ checksum, wrong source, wrong architecture, wrong protocol and full-bundle sourc
 mismatch. Typecheck passed. Production workflow defaults, installers/Homebrew,
 all-architecture native execution and complete dependency notices remain open.
 
+## Slice 15: restore mergeability after parallel Mermaid delivery
+
+GitHub stopped scheduling PR runs after the base branch advanced to eb94264b
+(PR #204). The conflicting edit was only the tail of docs/agents/confluence-vfs.md:
+the NFS notes and Mermaid section are both retained. The complete main commit,
+including converter and VFS round-trip tests, is merged without replacing either
+feature. 74 converter/write-back/NFS filesystem tests passed (321 assertions),
+plus native macOS synthetic and Linux live single/combined read proofs and
+typecheck. A fresh remote PR run must confirm mergeability after this push.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

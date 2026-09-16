@@ -242,3 +242,10 @@ For a native release-mode development helper, run
 `bun scripts/build-nfs-helper.ts /tmp/atlcli-nfs-helper` with Rust 1.92.0 installed.
 Set `ATLCLI_NFS_HELPER` to the emitted executable. The adjacent build manifest
 records checksums and protocol identity; see the [helper build guide](../../packages/confluence-nfs/README.md).
+
+## Mermaid
+
+A fenced `mermaid` block writes a native `mermaid` macro for **Mermaid Integration
+for Confluence**. That app must be installed. Inline sources round-trip through
+Markdown; attachment-backed variants remain preserved raw macros. See
+[macro syntax and examples](../../src/content/docs/confluence/macros.md#mermaid-diagrams).
