@@ -1,3 +1,4 @@
+import { verifyNfsCompanion } from "./build-nfs-helper.js";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -28,6 +29,7 @@ import {
   type ReleaseIdentity,
 } from "./release-artifacts.js";
 import {
+  readReleaseTree,
   deterministicTarGz,
   deterministicZip,
   executableEntry,
@@ -110,7 +112,14 @@ export async function buildCliArchive(input: {
   target: (typeof CLI_TARGETS)[number];
   identity: ReleaseIdentity;
   outputDirectory: string;
+  nfsHelpersDirectory?: string;
+  allowDirtyHelper?: boolean;
 }): Promise<ArtifactDigest> {
+  const companions = input.nfsHelpersDirectory && !input.target.startsWith("windows-")
+    ? readReleaseTree(join(input.nfsHelpersDirectory, input.target)) : [];
+  if (input.nfsHelpersDirectory && !input.target.startsWith("windows-")) {
+    verifyNfsCompanion(companions, input.target, input.identity.sourceSha, input.allowDirtyHelper);
+  }
   const work = mkdtempSync(join(tmpdir(), `atlcli-${input.target}-`));
   const entryPoint = join(REPO_ROOT, "apps/cli/src/index.ts");
   return withRestoredFileMode(entryPoint, async () => {
@@ -141,7 +150,7 @@ export async function buildCliArchive(input: {
       const entry = executableEntry(executableName, binary);
       const archive = input.target.startsWith("windows-")
         ? await deterministicZip([entry])
-        : deterministicTarGz(entry);
+        : deterministicTarGz([entry, ...companions]);
       const name = cliAssetName(input.target);
       await Bun.write(join(input.outputDirectory, name), archive);
       return { name, size: archive.byteLength, sha256: sha256(archive) };
@@ -169,11 +178,12 @@ export async function buildReleaseArtifacts(input: {
   includeExtension?: boolean;
   dryRun: boolean;
   publishableSource: boolean;
+  nfsHelpersDirectory?: string;
 }): Promise<ReleaseArtifactBuildReceipt> {
   const outputDirectory = prepareReleaseOutputDirectory(input.outputDirectory);
   const artifacts: ArtifactDigest[] = [];
   for (const target of input.targets ?? CLI_TARGETS) {
-    artifacts.push(await buildCliArchive({ target, identity: input.identity, outputDirectory }));
+    artifacts.push(await buildCliArchive({ target, identity: input.identity, outputDirectory, nfsHelpersDirectory: input.nfsHelpersDirectory, allowDirtyHelper: input.dryRun }));
   }
 
   let extensionContentTreeSha256: string | null = null;
@@ -208,7 +218,10 @@ export async function buildReleaseArtifacts(input: {
 
 function value(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
-  return index < 0 ? undefined : args[index + 1];
+  if (index < 0) return undefined;
+  const next = args[index + 1];
+  if (!next || next.startsWith("--")) throw new Error(`${name} requires a value`);
+  return next;
 }
 
 function integer(args: string[], name: string, fallback: number): number {
@@ -263,6 +276,7 @@ export async function runReleaseArtifactBuildCli(args: string[]): Promise<void> 
     outputDirectory: value(args, "--output") ?? join(REPO_ROOT, ".artifacts", "dev-release"),
     targets: skipCli ? [] : requestedTargets.length > 0 ? requestedTargets : undefined,
     includeExtension: !args.includes("--skip-extension"),
+    nfsHelpersDirectory: value(args, "--nfs-helpers"),
     dryRun,
     publishableSource,
   });

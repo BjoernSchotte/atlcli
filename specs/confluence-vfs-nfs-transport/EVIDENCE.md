@@ -340,6 +340,26 @@ profile (checked without exposing config contents); credentials were not changed
 Release build assembly/allowlist, installers, Homebrew and remaining architecture/
 libc/license acceptance still need integration. No published release was changed.
 
+## Slice 14: companion admission in the actual release builder
+
+`release-artifacts.ts build --nfs-helpers <root>` now loads each Unix target's
+companion directory and validates exact filenames, helper digest, source commit,
+protocol identity, ELF/Mach-O architecture and required license presence before
+compiling the CLI. A missing option value fails rather than silently omitting the
+helper. The release verifier also validates these companions inside TAR archives.
+Historical single-binary archives and Windows remain supported. Dirty helper
+artifacts are review-only: dry-run builds can admit them, publication verification
+cannot. This is not a signed supply-chain attestation.
+
+Both local native hosts built actual dry-run release archives via this integrated
+path, not a separate packaging script. Linux's extracted CLI found its companion
+without an environment override and passed all four live DOCSY lifecycle tests
+(44 assertions). macOS's extracted CLI and helper version probes and two synthetic
+native mounts passed. Packaging tests cover all target headers plus tampered
+checksum, wrong source, wrong architecture, wrong protocol and full-bundle source
+mismatch. Typecheck passed. Production workflow defaults, installers/Homebrew,
+all-architecture native execution and complete dependency notices remain open.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

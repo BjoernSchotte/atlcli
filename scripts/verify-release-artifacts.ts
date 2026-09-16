@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { verifyNfsCompanion } from "./build-nfs-helper.js";
 
 import { createHash } from "node:crypto";
 import {
@@ -450,8 +451,13 @@ function assertBinaryIdentity(binary: Uint8Array, metadata: BuildMetadata): void
 
 async function inspectCliArchive(name: string, bytes: Uint8Array, metadata: BuildMetadata): Promise<void> {
   if (name.endsWith(".tar.gz")) {
-    const binary = inspectSingleBinaryTarGz(bytes);
-    if (binary.name !== "atlcli") throw new Error(`${name} must contain only atlcli`);
+    const entries = inspectTarGz(bytes);
+    const binary = entries.find((entry) => entry.name === "atlcli");
+    if (!binary) throw new Error(`${name} must contain atlcli`);
+    if (entries.length > 1) {
+      verifyNfsCompanion(entries.filter((entry) => entry.name !== "atlcli").map((entry) => ({ ...entry, path: entry.name })),
+        name.slice("atlcli-".length, -".tar.gz".length), metadata.sourceSha);
+    }
     if (binary.bytes.byteLength > 256 * 1024 * 1024) throw new Error(`${name} binary exceeds size limit`);
     if ((binary.mode & 0o111) === 0) throw new Error(`${name} binary is not executable`);
     assertBinaryIdentity(binary.bytes, metadata);

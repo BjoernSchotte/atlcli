@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { NFS_BRIDGE_VERSION } from "../apps/cli/src/vfs/nfs-framing.js";
-import { readReleaseTree, releaseTreeDigest } from "./release-archive.js";
+import { readReleaseTree, releaseTreeDigest, type ReleaseTreeEntry } from "./release-archive.js";
 
 const root = resolve(import.meta.dir, "..");
 const crate = join(root, "packages/confluence-nfs");
@@ -34,6 +34,36 @@ export function verifyNfsHelperIdentity(value: unknown, os = process.platform as
       identity.os !== expectedOs || identity.arch !== expectedArch || typeof identity.version !== "string") {
     throw new Error("NFS helper identity does not match the CLI protocol and native target");
   }
+}
+
+export function verifyNfsCompanion(entries: ReleaseTreeEntry[], target: string, sourceSha: string, allowDirty = false): void {
+  const [os, arch] = target.split("-");
+  if (target !== `${os}-${arch}`) throw new Error("Unsupported NFS target");
+  const triple = nativeNfsTarget(os!, arch!);
+  const names = entries.map((entry) => entry.path).sort();
+  if (JSON.stringify(names) !== JSON.stringify(["LICENSE-nfsserve", "atlcli-confluence-nfs", "nfs-helper-build.json"])) {
+    throw new Error("Unexpected NFS companion files");
+  }
+  const file = (name: string) => entries.find((entry) => entry.path === name)!;
+  const manifest = file("nfs-helper-build.json");
+  const binary = file("atlcli-confluence-nfs");
+  if (manifest.bytes.length > 65536 || binary.bytes.length < 32 || binary.bytes.length > 32 * 1024 * 1024 || !(binary.mode & 0o111)) {
+    throw new Error("Invalid NFS companion size or executable mode");
+  }
+  const receipt = JSON.parse(Buffer.from(manifest.bytes).toString("utf8"));
+  if (receipt.schema !== "atlcli.nfs-helper-build/v1" || receipt.target !== triple || receipt.sourceSha !== sourceSha ||
+      typeof receipt.dirty !== "boolean" || (!allowDirty && receipt.dirty) ||
+      !/^[a-f0-9]{64}$/.test(receipt.cargoLockSha256 ?? "") || !/^[a-f0-9]{64}$/.test(receipt.sourceTreeSha256 ?? "")) {
+    throw new Error("NFS companion provenance mismatch");
+  }
+  verifyNfsHelperIdentity(receipt.identity, os, arch);
+  if (createHash("sha256").update(binary.bytes).digest("hex") !== receipt.binarySha256) throw new Error("NFS helper checksum mismatch");
+  const bytes = Buffer.from(binary.bytes);
+  const architectureMatches = os === "linux"
+    ? bytes.subarray(0, 6).equals(Buffer.from([0x7f, 69, 76, 70, 2, 1])) && bytes.readUInt16LE(18) === (arch === "arm64" ? 183 : 62)
+    : bytes.readUInt32LE(0) === 0xfeedfacf && bytes.readUInt32LE(4) === (arch === "arm64" ? 0x0100000c : 0x01000007);
+  if (!architectureMatches) throw new Error("NFS helper executable architecture mismatch");
+  if (!Buffer.from(file("LICENSE-nfsserve").bytes).toString().includes("Redistribution")) throw new Error("NFS license missing");
 }
 
 export function buildNfsHelper(output: string): void {

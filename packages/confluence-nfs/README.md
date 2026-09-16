@@ -32,6 +32,27 @@ other architectures, complete third-party notices and CLI archive/installer/
 Homebrew integration remain WP5 acceptance work; do not label these artifacts a
 complete release bundle. Windows continues to use WebDAV.
 
+## Review bundle build
+
+Keep native outputs under `<helpers>/<CLI-target>`, such as
+`/tmp/nfs-helpers/darwin-arm64`. The release builder can then include validated
+companions without publishing anything:
+
+```sh
+bun scripts/build-nfs-helper.ts /tmp/nfs-helpers/darwin-arm64
+bun scripts/release-artifacts.ts build --channel dev --dry-run \
+  --target darwin-arm64 --skip-extension --nfs-helpers /tmp/nfs-helpers \
+  --output /tmp/nfs-review-bundle
+```
+
+Use `linux-x64`, `linux-arm64` or `darwin-x64` on the corresponding native host.
+Each helper must declare the same source commit as the CLI. Dirty helper builds
+are admitted only for review (`--dry-run`); the publication verifier rejects them.
+The builder validates exact companion filenames, checksum, bridge version and
+ELF/Mach-O architecture. It never executes a supplied foreign-target artifact.
+Legacy single-binary archives remain accepted; production workflow adoption and
+complete platform/license acceptance are still pending.
+
 ## Compiled CLI acceptance
 
 Place `atlcli-confluence-nfs` next to a compiled `atlcli`. Without

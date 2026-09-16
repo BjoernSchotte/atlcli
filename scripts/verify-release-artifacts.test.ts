@@ -1,3 +1,5 @@
+import { nativeNfsTarget } from "./build-nfs-helper.js";
+import { NFS_BRIDGE_VERSION } from "../apps/cli/src/vfs/nfs-framing.js";
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -39,6 +41,7 @@ async function writeFixture(input: {
   manifestPath?: string;
   forbiddenPath?: string;
   channel?: "stable" | "dev";
+  companion?: "valid" | "wrong-source";
 } = {}): Promise<string> {
   const channel = input.channel ?? "dev";
   const buildId = channel === "stable" ? "v0.17.2" : BUILD_ID;
@@ -71,7 +74,22 @@ async function writeFixture(input: {
     homebrewVersion,
   ].join("\0"));
   for (const target of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"] as const) {
-    const bytes = deterministicTarGz(executableEntry("atlcli", binary));
+    const entries = [executableEntry("atlcli", binary)];
+    if (input.companion) {
+      const [os, arch] = target.split("-");
+      const helper = Buffer.alloc(64);
+      if (os === "linux") { helper.set([0x7f, 69, 76, 70, 2, 1]); helper.writeUInt16LE(arch === "arm64" ? 183 : 62, 18); }
+      else { helper.writeUInt32LE(0xfeedfacf); helper.writeUInt32LE(arch === "arm64" ? 0x0100000c : 0x01000007, 4); }
+      const receipt = { schema: "atlcli.nfs-helper-build/v1", target: nativeNfsTarget(os!, arch!),
+        sourceSha: input.companion === "wrong-source" ? "a".repeat(40) : SOURCE_SHA, dirty: false,
+        sourceTreeSha256: "b".repeat(64), cargoLockSha256: "c".repeat(64), binarySha256: sha256(helper),
+        identity: { name: "atlcli-confluence-nfs", version: "0.1.0", bridgeVersion: NFS_BRIDGE_VERSION,
+          os: os === "darwin" ? "macos" : os, arch: arch === "arm64" ? "aarch64" : "x86_64" } };
+      entries.push(executableEntry("atlcli-confluence-nfs", helper),
+        { path: "LICENSE-nfsserve", bytes: Buffer.from("Redistribution"), mode: 0o644 },
+        { path: "nfs-helper-build.json", bytes: Buffer.from(JSON.stringify(receipt)), mode: 0o644 });
+    }
+    const bytes = deterministicTarGz(entries);
     const name = cliAssetName(target);
     writeFileSync(join(root, name), bytes);
     artifactDigests.push({ name, size: bytes.byteLength, sha256: sha256(bytes) });
@@ -191,6 +209,16 @@ function replaceAscii(bytes: Uint8Array, from: string, to: string): Uint8Array {
 }
 
 describe("release artifact verifier", () => {
+  test("verifies companion bundles and rejects a helper from another source revision", async () => {
+    for (const companion of ["valid", "wrong-source"] as const) {
+      const root = await writeFixture({ companion });
+      try {
+        if (companion === "valid") await verifyReleaseArtifacts({ directory: root, verifyExtensionRuntime: false });
+        else await expect(verifyReleaseArtifacts({ directory: root, verifyExtensionRuntime: false })).rejects.toThrow("provenance");
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
+  });
+
   test("removes only verifier-owned consumer extraction bytes", async () => {
     const root = await writeFixture();
     const extracted = join(root, "consumer-extension");
