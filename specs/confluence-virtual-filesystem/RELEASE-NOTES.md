@@ -1,7 +1,7 @@
 # Draft release notes — Confluence virtual filesystem
 
 For the next **minor** release (`bun scripts/release.ts minor`, which plans
-0.17.2 → 0.18.0). Additive: no existing command changes behaviour.
+0.17.2 → 0.18.0). New VFS command surface; see the indexed-search contract below.
 
 ---
 
@@ -59,17 +59,28 @@ atlcli wiki vfs conflicts list
 
 ### Search
 
-Recursive `grep` searches current page bodies with bounded bulk prefetch.
-Historical versions and attachments are not traversed implicitly. Whole-word
-and substring searches both use the actual Markdown:
+Recursive `grep` uses CQL by default to select candidate pages, then fetches
+only their current bodies and verifies actual Markdown with grep. Matching lines
+and line numbers come from the bodies. CQL index gaps and indexing lag can omit
+pages; a diagnostic states this explicitly.
 
 ```bash
-grep -rlw kubernetes architecture-623869955
-grep -rl kubern architecture-623869955
+grep -ri retrospektive *             # indexed candidates, local verification
+grep --no-cql -ri retrospektive *    # exhaustive bounded search
+find . -type f -name '*.md' -mtime -7
 ```
 
-Automatic CQL narrowing is disabled after live tests found missing whole-word
-matches inside dotted tokens. Use `cql` explicitly for indexed search.
+Unsupported grep patterns/options use bounded full scans. Explicit file operands
+are checked directly. Historical versions and attachments are not traversed
+implicitly. `--no-cql` is a VFS extension; standard `-v` still inverts matching.
+`cql` remains an optional backup; agents can use normal grep.
+
+Time-filtered find uses CQL only for the constrained `-type f -name '*.md'`
+page-file form with supported conjunctions of `-mtime`, `-newer`, `-newermt`
+and optional `-print`/`-print0`. It verifies metadata timestamps with zero page
+body downloads, returns `.by-id` paths, and excludes attachments/virtual files.
+Other expressions retain ordinary traversal. Index delay can omit results;
+more than 1,000 candidates fails visibly and emits no partial result.
 
 ### For agents
 
@@ -81,7 +92,9 @@ for `AGENTS.md`, `CLAUDE.md` or a skill file.
 
 ## New
 
-- `atlcli wiki sh` — the embedded shell
+- `atlcli wiki sh` — the embedded shell, with command/path tab completion
+- `--sync-writes` for shell and mount; terminal mutation prompts with `--confirm` bypass
+- Real HTTP-attempt and 429 counters in shell JSON and `vfs-status`
 - `atlcli wiki mount`, `atlcli wiki unmount` — the OS volume
 - `atlcli wiki vfs cache stats|clear` — the cache is visible and disposable
 - `atlcli wiki vfs conflicts list|show|resolve|discard` — failed writes are findable
@@ -100,16 +113,25 @@ for `AGENTS.md`, `CLAUDE.md` or a skill file.
 - Data Center: no bulk body fetch and no bulk version probe exist in REST v1, so
   prefetch falls back to one request per page.
 
-## Before releasing
+## Acceptance status before releasing
 
-- [x] Run both live probes with `mayflower` / DOCSY; see `LIVE-RESULTS.md`.
-      CQL narrowing is disabled because the live table disproves the guard.
-- [x] Run `ATLCLI_WIKI_SH_E2E=1` and `ATLCLI_WIKI_MOUNT_E2E=1` against DOCSY.
-- [x] Native macOS kernel mount: list, read, create and edit, plus readable
-      Spotlight exclusion file.
-- [ ] Finder/editor UI and actual Spotlight indexing behaviour.
-- [ ] Re-measure startup on release hardware (WP9.5 / `EVIDENCE.md` section 1).
-      On the CI container the feature adds 145 ms; the decision-11 gate is 15 ms
-      and the container is roughly ten times slower than a developer machine.
-- [ ] Verify the Homebrew formula and the compiled binaries with
-      `atlcli wiki sh --space DOCSY -c 'ls'`.
+- [x] Live mayflower/DOCSY read/write and MAYFLOWER read-only probes, with cleanup.
+- [x] Gated shell and mount E2E, including native macOS kernel mount writes.
+- [x] Finder listing and macOS mdutil indexing/search-disabled observation.
+- [x] TextEdit safe-save: native save and API readback passed after staging/backup fix.
+- [x] Compiled macOS arm64 executable: nine artifact smoke tests pass.
+- [x] Artifact growth gate: +3.22%, within both thresholds.
+- [x] Startup measured: +88–99 ms exceeds the 15 ms gate. **User accepted the
+      overhead for now**, so optional-shell packaging is deferred, not silently
+      treated as a passing measurement.
+- [x] Final repository checks: 9,008 passed, 40 skipped, zero failures; typecheck and build pass.
+- [ ] Native Linux x64 executable and davfs2 mount on the homelab.
+- [ ] Windows WebClient and indexing; no Windows environment is available.
+- [ ] Two-identity live permission isolation; only mayflower is configured.
+- [ ] Actual Homebrew installation/test lifecycle for the new artifact. Formula
+      inspection and equivalent executable command pass, but installed 0.17.1
+      is older than formula 0.17.2 and `brew test` refuses it.
+
+See [LIVE-RESULTS.md](./LIVE-RESULTS.md),
+[RELEASE-VALIDATION.md](./RELEASE-VALIDATION.md) and [PLAN.md](./PLAN.md).
+WP10 remains after v1. No release is authorized by these draft notes.

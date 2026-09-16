@@ -1,18 +1,30 @@
 # Confluence Virtual Filesystem for Coding Agents
 
-Status: **implemented** — WP0 through WP9, on branch
-`claude/confluence-virtual-filesystem-vuf3fm`. Both frontends work, the core has
-no frontend dependency, and every invariant in section 1b is a test.
+Status: **implementation complete for the listed v1 shell features; platform
+and release acceptance remains partial.** Current follow-up branch:
+`codex/pr202-vfs-live-fixes`. WP10 remains after v1.
 
-Live follow-up on 2026-09-16: DOCSY read/write and the MAYFLOWER space
-(canonical key `mayflower`) read-only passed. Native macOS mounting and writes
-also passed after fixes. See [LIVE-RESULTS.md](./LIVE-RESULTS.md) for exact scope,
-reproduction commands and remaining release checks.
+| Area | Current result | Evidence / remaining boundary |
+| --- | --- | --- |
+| DOCSY read/write; MAYFLOWER read-only | Passed | [LIVE-RESULTS.md](./LIVE-RESULTS.md); temporary resources cleaned |
+| Indexed grep and page-file time find | Implemented and tested | Candidate bodies only for grep; metadata only for find; index omissions disclosed |
+| CLI write controls and counters | Implemented and tested | `--sync-writes`, `--confirm`, request/429 counters, completion |
+| Native macOS mount and Finder | Passed | Listing, reading and kernel writes; Finder listing verified |
+| Spotlight | Observed disabled | `mdutil` reports indexing/search disabled on mounted volume; not a Windows claim |
+| Real editor safe-save | Passed | Local staging/backup fix; native TextEdit save plus independent API readback |
+| 5,000-page shell load test | Passed | Bounded candidate reads and warm cache reuse; LIVE-RESULTS |
+| macOS compiled executable | Passed | Nine artifact tests; [RELEASE-VALIDATION.md](./RELEASE-VALIDATION.md) |
+| Startup gate | Failed, accepted deviation | Measured +88–99 ms; user accepted embedded shell for now |
+| Linux / Windows | Pending / unavailable | Linux homelab follow-up; no Windows host |
+| Two-identity permissions | Pending, accepted interim boundary | Only one configured identity |
+| Homebrew | Partial | Formula and equivalent executable command checked; installed version is outdated |
+| Repository-wide final checks | Passed | 9,008 passed / 40 skipped / zero failures; typecheck 4/4 and build 35/35 |
 
-**Decision 12 / D9 is superseded by live evidence:** even `grep -w` can match
-words that CQL omits. Automatic CQL narrowing is disabled; recursive grep uses
-bounded bulk prefetch of current page bodies. The historical work-package
-entries below describe the PR before this follow-up.
+**Current search contract:** ordinary recursive grep uses CQL candidates by
+default, then checks actual Markdown with grep. Index gaps and indexing lag may
+omit pages; stderr states this explicitly. `grep --no-cql` requests exhaustive
+bounded search. This supersedes the earlier whole-word-only guard and the
+intermediate disabled-CQL implementation. See [SEARCH-PLAN.md](./SEARCH-PLAN.md).
 
 Plan date: 2026-09-15 (research), 2026-09-16 (decisions, task plan,
 implementation)
@@ -71,8 +83,8 @@ Sources: three parallel research passes (just-bash, mount technologies, Atlassia
 | 8 | `.search/` queries | **Lazy resolution, no registration step**, plus a losable list of the last twenty queries | State is never a prerequisite for correctness, and a daemon restart loses nothing that matters. Limitation: directory names cannot contain a slash, so such queries go through the `cql` command |
 | 9 | Conflict files | **Persisted** under `<cacheDir>/conflicts/`, with base and server version in the frontmatter | An edit the server rejected must not vanish with the session. Deleting a conflict file is a local operation, so it is allowed in `ro` mode and without `--allow-delete`. A dedicated subcommand makes open conflicts discoverable outside the shell |
 | 10 | Confirmation without a terminal | **`--allow-delete` is the confirmation**, no third flag | A third gate behind write mode and delete permission adds no protection. With a terminal, `rm` and cross-space `mv` prompt interactively and `--confirm` skips that (repo convention; `--yes` exists nowhere). Real protection: delete means trash, plus the audit log |
-| 11 | Bundle size | **Two measured gates instead of a number**: startup regression above 15 ms, artifact growth above 25 percent or 30 MB per target | If a gate is breached, the mount stays in the core and only the embedded shell becomes an optional package through the plugin API, because `webdav-server` is plain JavaScript with no WASM |
-| 12 | `grep` shortcut | **Conservative guard**: CQL only for plain literals at word boundaries, the chosen path always on stderr, with an off switch | The CQL text search matches by word, not by substring. A silently empty `grep` is a correctness bug rather than a performance topic, because the agent reads it as "does not occur". WP0.3b measures the real behaviour against live content |
+| 11 | Bundle size | Startup threshold 15 ms; growth threshold 25 percent or 30 MB per target | Size passes. Startup fails on macOS; user explicitly accepts the overhead for now, superseding the planned optional-shell packaging remedy. See RELEASE-VALIDATION.md |
+| 12 | `grep` shortcut | **User-selected indexed default**, with local body verification and visible index limitations | Direct and prefix CQL terms select candidates; `--no-cql` requests exhaustive search. Unsupported patterns use bounded full scans |
 
 ---
 
@@ -300,13 +312,13 @@ atlcli:
 
 ### Accelerating `grep` and `find`
 
-The shortcut is an optimization, never a change in semantics. It may make a result faster but must never make it smaller.
+Indexed search is an explicit trade-off: verified matching lines, but a page
+missing from the Confluence index can be omitted from the candidate set.
 
-- **Guard first** (decision 12): only a plain literal at word boundaries, at least three characters long, free of regex metacharacters and free of internal separators, qualifies for CQL. The reason is that the CQL text search matches by word and does not find parts of words. A silently empty `grep` would be a correctness bug, because an agent reads it as "does not occur".
-- **Qualifying case:** stage one runs CQL `space = DOCSY AND type = page AND text ~ "word"` in a single request. Stage two fetches the matching bodies through the capped bulk GET. Stage three runs the original just-bash `grep` over those files for exact regex semantics and line numbers.
-- **Non-qualifying case:** the capped prefetch of the subtree being walked. If it breaches the budget, `grep` aborts with a message naming the limit. There is no silent space download.
-- **Transparency:** the chosen path always appears on stderr, and `--no-cql` disables the shortcut.
-- `find -name` runs against the tree index without body requests and loads only the levels actually walked. `find -newer` and `-mtime` go through CQL `lastmodified`.
+- Recursive grep plans supported literals, fixed strings and simple alternatives into bounded direct-term/prefix CQL queries, scoped to selected subtrees. Only candidates are prefetched, then original grep verifies Markdown, regex semantics and line numbers.
+- Complex patterns, inverted/count/nonmatching-file output, pattern files and path filters use bounded exhaustive traversal. Explicit file operands are checked directly. `--no-cql`, `vfs.cqlGrep: false` and `ATLCLI_VFS_NO_CQL=1` disable candidate narrowing.
+- The path and index limitations are visible on stderr. No indexed candidates means no downloads, not proof that every wiki page lacks the pattern. Incomplete candidate pages fail explicitly rather than return a complete-looking negative answer.
+- `find -name` uses metadata without page bodies. The indexed time path requires **both** `-type f` and `-name '*.md'`, at least one `-mtime`, `-newer` or `-newermt` predicate, and only supported conjunctions plus optional `-print`/`-print0`. It searches page files only, excludes attachments/virtual files, uses widened `lastmodified` bounds, then verifies metadata timestamps. Results are stable `.by-id` paths. The candidate cap is 1,000; overflow fails with no partial output. Other expressions keep ordinary filesystem traversal. Index delay can omit results.
 - There is no `grep -l label:x`; the label directory serves that purpose.
 - Implementation: `defineCommand("grep", …, { trusted: true })` with `ctx.origCommand`, available from just-bash 3.4.0. This shortcut is impossible in the WebDAV frontend, where only the cache helps, which is why the documentation points full-text search at `wiki sh`.
 
@@ -376,10 +388,10 @@ Results: [`spikes/vfs-just-bash/README.md`](../../spikes/vfs-just-bash/README.md
 
 - [x] **WP0.1** Add `just-bash@3.4.2` as a dependency of `apps/cli`, pin the exact version, and confirm `bun install` completes without postinstall errors.
 - [x] **WP0.2** Spike script `spikes/vfs-just-bash/spike.ts` constructing `new Bash({ defenseInDepth: false, fs: new MountableFs({ mounts: [{ mountPoint: "/DOCSY", filesystem: fakeFs }] }) })` and running `ls -R`, `cat`, `grep -rn`, `find -name`, `sed`, `jq` and `echo > file` against a fake `IFileSystem` under Bun 1.3.14. Expectation: all succeed with no `DefenseInDepthBox` error.
-- [ ] **WP0.3** *(blocked: no live tenant in CI; script written, run it with the `mayflower` profile)* Spike against the real `ConfluenceClient` (profile `mayflower`, space `DOCSY`, read-only): `ls /DOCSY`, `cat` of one page, `grep -rl` across 20 pages. Log latency and request counts.
-- [ ] **WP0.3b** *(blocked: no live tenant in CI; script written, run it with the `mayflower` profile)* **Measure the semantics of the CQL text search**, the basis for decision 12: create a test page with known character sequences, then probe `text ~` against a whole word, a word prefix, a word interior, underscore and hyphen compounds, an umlaut and a digit sequence. Record the result as a table in `spikes/vfs-just-bash/README.md` and derive the final guard rule from it. Delete the test page afterwards.
+- [x] **WP0.3** Live read/request probes executed with mayflower/DOCSY; see LIVE-RESULTS.md.
+- [x] **WP0.3b** Live CQL semantics measured with synthetic DOCSY fixtures and cleanup. Index gaps are documented; decision 12 now reflects the user-selected indexed contract.
 - [x] **WP0.4** Bundle measurement: run `bun run build:cli` with and without just-bash, noting the size of `dist/index.js` and of the compiled binary; then apply the `commands: [...]` restriction, excluding python3, js-exec, sqlite3 and curl, and measure again. Record the result in `spikes/vfs-just-bash/README.md`.
-- [x] **WP0.5** *(server side verified under Bun; the macOS `mount_webdav`/Finder half stays open against WP7.9)* Smoke-test `webdav-server@2.6.3` under Bun: start it with an in-memory filesystem on `127.0.0.1:0`, exercise it with `curl -X PROPFIND`, and on macOS mount it with `mount_webdav` and list it in the Finder. Record whether it works, and any workarounds, in the spike readme.
+- [x] **WP0.5** *(server, native macOS mount and Finder listing verified; editor safe-save remains a separate gate)* Smoke-test `webdav-server@2.6.3` under Bun: start it with an in-memory filesystem on `127.0.0.1:0`, exercise it with `curl -X PROPFIND`, and on macOS mount it with `mount_webdav` and list it in the Finder. Record whether it works, and any workarounds, in the spike readme.
 - [x] **WP0.6** Document the decision: is the bundle size acceptable? If not, load just-bash through a dynamic import on the `wiki sh` path only, so that other commands carry no cost.
 
 ### WP1 - Package scaffold and core API (3 days)
@@ -507,7 +519,7 @@ differently and hashing raw text would flag every page.
 - [x] **WP5.3** New page: `writeFile` on a name that does not exist takes the title from frontmatter, or otherwise from the file name by turning the slug into a title with spaces and initial capitals; the parent ID comes from the directory, using `movePageToFolder` when that directory is a folder; then `createPage` runs. The file afterwards appears as `<slug>-<id>.md`, and the original name stays resolvable as an alias for the session. `EEXIST` applies when a page with that title already exists in the same directory. Tests included.
 - [x] **WP5.4** `mkdir <name>/` **always** creates a page with an empty body (decision 7), and `_index.md` appears and is writable. No `--folders` flag. Test included, plus a test that the `_index.md` of an **existing** Confluence folder returns `EROFS`, because folders have no body.
 - [x] **WP5.5** `rename` inside the same directory changes the title; into another directory of the same space it calls `movePage`; into another space or with a sort position it calls `movePageToPosition` against the existing v1 move endpoint. Renaming a directory moves the subtree in one call, since Confluence carries the children along. Tests per case, plus a test that the ID suffix cannot be altered by a rename, which returns `EINVAL`.
-- [x] **WP5.6** `rm`, only with `allowDelete`: a file calls `deletePage`, which is trash; a directory requires the recursive flag and otherwise returns `ENOTEMPTY`; a recursive directory delete calls `deletePage` on the parent page, since Confluence moves the children along. Purge is never called. Tests included.
+- [x] **WP5.6** `rm`, only with `allowDelete`: a file calls `deletePage`, which is trash; a directory requires the recursive flag and otherwise returns `ENOTEMPTY`; a recursive directory delete refreshes and bounds the subtree before explicitly trashing leaves before parents; Confluence does not cascade page deletion. Purge is never called. Tests included.
 - [x] **WP5.7** `copy` calls the existing `copyPage` with the target directory as parent. Test included.
 - [x] **WP5.8** Attachments in `rw` mode: writing into `_attachments/` calls `uploadAttachment` or `updateAttachment`, and `rm` calls `deleteAttachment`, only with `allowDelete`. Tests included.
 - [x] **WP5.9** Write coalescing: writes to the same file within 500 ms are merged, because WebDAV clients and editors write in chunks; `flush()` runs at the end of a session, and `--sync-writes` disables coalescing. Tests use a fake timer.
@@ -516,26 +528,10 @@ differently and hashing raw text would flag every page.
 
 ### WP6 - just-bash adapter and `atlcli wiki sh` (5 days)
 
-**Deviation D9: the `grep` guard needs the caller to assert a whole word.**
-Decision 12 specifies the guard as "a plain literal at word boundaries, at
-least three characters, free of regex metacharacters and internal separators".
-Every one of those conditions is about the pattern's *syntax*, and syntax
-cannot answer the question that decides correctness, which is about the
-*corpus*: is this literal a whole word in the pages being searched?
-
-The counterexample is one line. `grep -rl kubern .` is a plain alphanumeric
-literal of six characters with no metacharacters and no separators, so it
-passes the guard as specified — and `text ~ "kubern"` matches nothing while the
-real `grep` matches every page containing "kubernetes". That is precisely the
-silently-empty result decision 12 exists to prevent. It is pinned by a
-regression test.
-
-So the shortcut now additionally requires the caller to mark the pattern as a
-whole word, with `grep -w` or an explicit `\bliteral\b`, which is the one case
-where grep's semantics and CQL's provably agree. The cost is small: the
-*capped prefetch* is what makes a full scan cheap (one bulk request rather than
-N), and CQL only saves the difference between fetching a subtree and fetching
-the matches. The documentation and the agent snippet tell agents to pass `-w`.
+**Deviation D9: user-selected indexed default.** Live probes disproved the
+assumption that `-w` guarantees identical CQL and grep candidate sets. The user
+chose speed with visible possible index omissions. `grep --no-cql` retains
+exhaustive bounded search; `cql` remains an optional backup command.
 
 **Three defects the conformance suite found in the adapter**, all fixed and
 covered by tests: a write failure through a shell redirect escaped `exec()` as
@@ -550,13 +546,13 @@ that one command. A redirect shows the real message. Pinned by a test.
 
 - [x] **WP6.1** `apps/cli/src/vfs/just-bash-fs.ts`: a class `ConfluenceJustBashFs implements IFileSystem` delegating to `ConfluenceVfs`, with `resolvePath` built on `path.posix`, `getAllPaths()` returning the known paths from the tree index synchronously from memory, `readdirWithFileTypes` implemented so that `ls -l` and `find` avoid stat storms, `readFileBytes` for attachments, and `VfsError` translated into Node-style errors carrying a `code`. Conformance tests come from just-bash where exported, otherwise from our own set covering `ls`, `ls -la`, `cat`, `find`, `grep -rn`, `sed`, `awk`, `jq`, `wc`, `head`, `tail`, `tree`, globs, output redirection, `mkdir`, `mv`, `rm` and `cp`.
 - [x] **WP6.2** Bash factory `createWikiShell(opts)` constructing `new Bash({ … })` with `defenseInDepth: false`, a `MountableFs` holding one mount per space under its key, the working directory set to the primary space, a permitted command list excluding curl, python3, js-exec and sqlite3, execution limits of 120 seconds and an 8 MB output cap, and the custom commands. A code comment links just-bash issue #386 and carries a TODO to re-enable defense-in-depth.
-- [x] **WP6.3** `grep` override through `defineCommand("grep", …, { trusted: true })` with `ctx.origCommand`, parsing the flags `-r`, `-R`, `-l`, `-n`, `-i`, `-E`, `-F` and `--include`. The **conservative guard** from decision 12 takes the CQL shortcut only when the pattern is a plain literal at word boundaries, meaning no regex metacharacters, no internal underscores or hyphens, and at least three characters. It then runs CQL `space = KEY AND type = page AND text ~ "word"`, passes the matching IDs through `prefetchBodies`, and finally runs the original `grep` over those files for exact semantics and line numbers. Every other pattern goes through the capped prefetch of the subtree being walked from WP3.4, and if that breaches the budget, `grep` aborts with a message rather than returning silently. The chosen path is **always** named on stderr as either a CQL path or a full scan, and `--no-cql` together with an environment variable disables the shortcut. Non-recursive `grep` over single files or stdin passes through unchanged. Tests: flag parsing, the guard accepting plain literals, the guard rejecting partial-word, regex and underscore patterns, the budget abort, exact line numbers, and stderr naming the path.
-- [x] **WP6.4** `find` override: `-name`, `-iname`, `-path` and `-type` run against the tree index only; `-newer`, `-mtime` and `-newermt` go through CQL `lastmodified`; every other predicate falls through to the original `find`. Tests included.
-- [x] **WP6.5** Extra commands: `cql "<query>"` runs a query and prints paths, `page-url <path>` prints the Confluence URL, `page-id <path>` prints the ID, and `vfs-status` reports mode, cache state, request count and rate-limit counters. Tests included.
-- [x] **WP6.6** Command `apps/cli/src/commands/wiki-sh.ts` dispatched from `wiki.ts`, with a help text and the flags `--space <KEY[,KEY]>` defaulting from the profile, `-c <script>`, a stdin script when not attached to a terminal, an interactive prompt when attached, `--mode ro|rw`, `--allow-delete`, `--cache-dir`, `--offline`, `--cwd <path>`, `--timeout <ms>`, `--json` emitting stdout, stderr, exit code, request count, cache hits and prefetched pages, plus `--prefetch-max <n>` and `--no-cql`. Confirmation follows decision 10: with a terminal, `rm` and cross-space `mv` prompt and `--confirm` skips them; without a terminal, `--allow-delete` is the confirmation and no further flag exists. The exit code is the bash exit code. Tests follow `docs.test.ts`, covering flag parsing, help output, the JSON shape, and deletion succeeding without a terminal and without an extra flag.
+- [x] **WP6.3** Indexed recursive grep, fgrep and egrep use the bounded planner described in section 8 and SEARCH-PLAN.md; only candidate bodies are verified locally. Tests cover parsing, scoping, false positives, explicit-file inclusion, no-hit downloads, limits, fallback, quiet mode and cache reuse. `--no-cql` retains exhaustive bounded search.
+- [x] **WP6.4** Indexed time find is implemented for the constrained page-file form documented in section 8 (`-type f -name "*.md"` plus supported time predicates). It verifies modification metadata with zero body reads; broader expressions use the original find. Tests cover precision, references, unsupported expressions, truncation and fallback.
+- [x] **WP6.5** Extra commands: `cql "<query>"` runs a query and prints paths, `page-url <path>` prints the Confluence URL, `page-id <path>` prints the ID, and `vfs-status` reports mode, cache state, request count and rate-limit counters. Tests included. Request counters include HTTP attempts and 429 responses; unavailable client instrumentation is represented as null/unavailable rather than zero.
+- [x] **WP6.6** Command `apps/cli/src/commands/wiki-sh.ts` dispatched from `wiki.ts`, with a help text and the flags `--space <KEY[,KEY]>` defaulting from the profile, `-c <script>`, a stdin script when not attached to a terminal, an interactive prompt when attached, `--mode ro|rw`, `--allow-delete`, `--cache-dir`, `--offline`, `--cwd <path>`, `--timeout <ms>`, `--json` emitting stdout, stderr, exit code, request count, cache hits and prefetched pages, plus `--prefetch-max <n>`, `--no-cql`, `--sync-writes` and `--confirm`. Confirmation follows decision 10: with a terminal, `rm` and cross-space `mv` prompt and `--confirm` skips them; without a terminal, `--allow-delete` is the confirmation and no further flag exists. The exit code is the bash exit code. Tests follow `docs.test.ts`, covering flag parsing, help output, the JSON shape, and deletion succeeding without a terminal and without an extra flag.
 - [x] **WP6.7** Config extension in `@atlcli/core`: a `vfs` section carrying optional `cacheDir`, `mode`, `spaces`, `cacheMaxMb`, `prefetchMaxPages` and `cqlGrep`, both globally and per profile, with `atlcli config` showing and setting the values. Tests included.
-- [x] **WP6.8** Load just-bash through a dynamic import inside the command, so that the startup time of other commands stays unchanged. Add the measurement to the spike readme.
-- [x] **WP6.9** *(written and gated on `ATLCLI_WIKI_SH_E2E=1`; not yet run — no live tenant in CI)* End-to-end test `apps/cli/src/e2e/wiki-sh-live.e2e.test.ts` behind an environment gate: `ls`, `cat`, `grep -rl` and `find -name` against `DOCSY`; in `rw` mode create a page prefixed `vfs-e2e-`, change it, rename it, move it and delete it, with cleanup even on failure following the pattern in `e2e/cleanup.ts`.
+- [x] **WP6.8** just-bash is dynamically imported by the command, but compiled Bun bundles still incur startup parse cost. The original unchanged-startup goal is not met; the user accepts this deviation (RELEASE-VALIDATION.md).
+- [x] **WP6.9** *(executed successfully with `ATLCLI_WIKI_SH_E2E=1`, mayflower/DOCSY; cleanup confirmed)* End-to-end test `apps/cli/src/e2e/wiki-sh-live.e2e.test.ts` behind an environment gate: `ls`, `cat`, `grep -rl` and `find -name` against `DOCSY`; in `rw` mode create a page prefixed `vfs-e2e-`, change it, rename it, move it and delete it, with cleanup even on failure following the pattern in `e2e/cleanup.ts`.
 
 ### WP7 - WebDAV adapter and `atlcli wiki mount` (6 days)
 
@@ -592,7 +588,7 @@ request bounded by the directory's size, and fetches no bodies.
 - [x] **WP7.1** `apps/cli/src/vfs/webdav-fs.ts`: a `webdav-server` v2 `FileSystem` implementation covering the serializer, read and write streams, directory listing, type, size, modification and creation dates, create, delete, move, copy, rename, the lock manager and the property manager, all delegating to `ConfluenceVfs`. `VfsError` maps to the appropriate HTTP codes including 404, 403, 409, 423 and 507. Symlinked convenience directories are served as regular files carrying the target content, because WebDAV has no symlink concept.
 - [x] **WP7.2** LOCK and UNLOCK through an in-memory lock manager, which is mandatory or the Finder mounts read-only, with locks expiring after ten minutes. The ETag combines page ID and version, and `If-Match` handling on update feeds the conflict path from WP5.2. Tests use a WebDAV client library against the in-process server.
 - [x] **WP7.3** Client quirks: immediate 404 for AppleDouble files, `.DS_Store`, `.hidden`, `desktop.ini` and `Thumbs.db` without a backend call; `PROPFIND` at depth one served from the tree index without a body fetch; content length for Markdown taken from the cache or estimated for the property response and set exactly on the actual read. Tests assert that a `PROPFIND` on a directory with 250 children triggers no body requests.
-- [x] **WP7.3b** **Indexer defence** per rules 1 and 3 of section 1b, without which a search index would download the whole space: `.metadata_never_index` at the volume root is **served** as an empty file rather than refused with a 404, because its presence stops Spotlight from indexing, together with its `unless_rootfs` variant and an empty `.fseventsd` directory. Verify the behaviour in the spike by creating a mount, checking `mdutil -s` and the request counter, and confirming that Spotlight does not walk the mount. Check the Windows counterpart, covering the WebClient and search indexing, and document the result. Additionally a guard in the server logs more than 50 read requests for distinct files within ten seconds that were not preceded by a directory listing from the same directory, and reports it under a flag as a possible indexer sweep.
+- [ ] **WP7.3b** **Indexer defence** per rules 1 and 3 of section 1b, without which a search index would download the whole space: `.metadata_never_index` at the volume root is **served** as an empty file rather than refused with a 404, because its presence stops Spotlight from indexing, together with its `unless_rootfs` variant and an empty `.fseventsd` directory. Verify the behaviour in the spike by creating a mount, checking `mdutil -s` and the request counter, and confirming that Spotlight does not walk the mount. Check the Windows counterpart, covering the WebClient and search indexing, and document the result. Additionally a guard in the server logs more than 50 read requests for distinct files within ten seconds that were not preceded by a directory listing from the same directory, and reports it under a flag as a possible indexer sweep. macOS mdutil reports indexing/search disabled; Windows counterpart remains unavailable, so the combined gate stays open.
 - [x] **WP7.4** Server lifecycle in `apps/cli/src/vfs/webdav-server.ts`: bind to `127.0.0.1`, take the port from a flag or choose it randomly, offer an optional bearer token that becomes mandatory for any non-loopback binding, and shut down cleanly on SIGINT and SIGTERM including a flush of buffered writes and an unmount.
 - [x] **WP7.5** Command `apps/cli/src/commands/wiki-mount.ts` dispatched for mount and unmount: `atlcli wiki mount <mountpoint>` with `--space`, `--mode ro|rw`, `--allow-delete`, `--cache-dir`, `--port` and a foreground or daemon choice. Platform commands:
 
@@ -607,9 +603,9 @@ request bounded by the directory's size, and fetches no bodies.
 
   Unmount calls `umount` or `net use /delete` and stops the server. A PID and port file lives under `<cacheDir>/mounts/<mountpoint-hash>.json`.
 - [x] **WP7.6** Daemon mode: run the server as a detached process through `Bun.spawn`, with logs under the cache directory, and let `atlcli wiki mount list|status` show the active mounts.
-- [x] **WP7.7** *(request-cost measurement done and asserted; the macOS wall-clock and Finder numbers need a Mac)* Performance measurement on macOS in both the Finder and the terminal: `ls -R` across 500 pages, `grep -r` across 100 pages, and opening and saving in an editor. Put the numbers and request counts into the documentation, with the threshold that listing a directory of 100 entries stays under one second after warmup.
-- [x] **WP7.8** *(the Linux CI half is done — the server is exercised through HTTP; the Windows WebClient run needs Windows)* Windows smoke test through the WebClient, documenting the 50 MB limit, and a Linux smoke test with `davfs2` in a CI container that exercises only the server through HTTP, since CI cannot perform a kernel mount.
-- [x] **WP7.9** *(written and gated on `ATLCLI_WIKI_MOUNT_E2E=1`, with a second `ATLCLI_WIKI_MOUNT_KERNEL=1` level for the macOS kernel client; not yet run)* End-to-end test `wiki-mount-live.e2e.test.ts` behind an environment gate and limited to a local macOS runner: mount, list, read, then in `rw` mode create and change a page, unmount and clean up.
+- [ ] **WP7.7** *(request-cost invariants and native macOS/Finder reads verified; TextEdit safe-save and native terminal 500-page walk/100-page grep verified; timed large-corpus Finder rendering remains unmeasured)* Performance measurement on macOS in both the Finder and the terminal: `ls -R` across 500 pages, `grep -r` across 100 pages, and opening and saving in an editor. Put the numbers and request counts into the documentation, with the threshold that listing a directory of 100 entries stays under one second after warmup.
+- [ ] **WP7.8** *(the Linux CI half is done — the server is exercised through HTTP; Windows unavailable; native Linux homelab mount remains pending)* Windows smoke test through the WebClient, documenting the 50 MB limit, and a Linux smoke test with `davfs2` in a CI container that exercises only the server through HTTP, since CI cannot perform a kernel mount.
+- [x] **WP7.9** *(both `ATLCLI_WIKI_MOUNT_E2E=1` and `ATLCLI_WIKI_MOUNT_KERNEL=1` executed successfully against DOCSY; see LIVE-RESULTS.md)* End-to-end test `wiki-mount-live.e2e.test.ts` behind an environment gate and limited to a local macOS runner: mount, list, read, then in `rw` mode create and change a page, unmount and clean up.
 
 ### WP8 - Documentation and agent integration (2 days)
 
@@ -622,11 +618,11 @@ request bounded by the directory's size, and fetches no bodies.
 ### WP9 - Quality, security, release (3 days)
 
 - [x] **WP9.1** *(the checklist is [`SECURITY-REVIEW.md`](./SECURITY-REVIEW.md), with every claim enforced by a named test)* Security review of the write path: no purge calls anywhere, `ro` enforcing `EROFS` on every route including just-bash, WebDAV and the extra commands, tokens never appearing in the audit log or in JSON output, and the WebDAV server unauthenticated only on loopback. Checklist in the pull request.
-- [x] **WP9.2** *(written and gated on `ATLCLI_VFS_PERMISSIONS_E2E=1` plus two profiles; not yet run — CI has no tenant)* Permission end-to-end test: a second profile with a restricted user, or a page restricted through `setContentRestrictions`, proving that the page is visible to profile A and returns `ENOENT` for profile B, and that A's cache gives B nothing because the databases are separate. With cleanup.
-- [x] **WP9.3** Load test in the fake with 5,000 pages: listing individual directories, `ls -R`, `grep -r` with 50 CQL matches, and one pattern the guard rejects; record request counts, cache bytes written and runtime as a snapshot test with tolerance. Check whether a 300 page prefetch and a 100 MB cache are practical, and otherwise adjust the defaults with a stated reason.
+- [ ] **WP9.2** *(written and gated on `ATLCLI_VFS_PERMISSIONS_E2E=1` plus two profiles; not run — only one configured identity; user accepts this interim boundary)* Permission end-to-end test: a second profile with a restricted user, or a page restricted through `setContentRestrictions`, proving that the page is visible to profile A and returns `ENOENT` for profile B, and that A's cache gives B nothing because the databases are separate. With cleanup.
+- [x] **WP9.3** Real just-bash over a 5,000-page fake now verifies bounded indexed candidate reads, warm cache reuse, request counts and no hierarchy traversal. The measured corpus has 50 indexed candidates; cold search loads 50 bodies in seven client calls and warm search loads none in one call, with 10,630 cached bytes. Unsupported-pattern budget refusal is covered separately; see LIVE-RESULTS.md for actual timings and test scope.
 - [x] **WP9.3b** **Invariant test for the demand principle** from section 1b, as its own test that cannot be skipped: across a space of 5,000 pages, list ten directories, run `ls -R` on one subtree, `stat` a hundred files, and issue a `PROPFIND` through the WebDAV adapter. Expectation: no body rows in the cache, no attachment blobs on disk, request counts growing with the number of **visited** directories rather than with space size, and no branch never entered loaded in the index.
 - [x] **WP9.4** Rate-limit behaviour: the fake returns 429 with `Retry-After`, and a test proves that concurrency is throttled and commands still succeed after the wait, without the user seeing an error, with only a note on stderr when the wait exceeds five seconds.
-- [x] **WP9.5** *(typecheck, the full suite, the build and a built-bundle end-to-end run are green; the artifact is measured in `EVIDENCE.md` section 5a. The 26 repository-wide failures are pre-existing and environmental — `origin/main` fails identically for want of `poppler`. The macOS arm64 and Homebrew checks need those machines.)* Run `bun run typecheck`, `bun run test` and `bun run build`, compare bundle size against the previous release, and manually verify the Homebrew formula and the compiled binary on macOS arm64 and Linux x64 with a single listing command.
+- [ ] **WP9.5** macOS compiled-binary tests pass (9 tests/33 assertions), artifact growth passes, and startup fails with an explicitly accepted overhead. Homebrew formula inspection passes; actual install lifecycle and native Linux x64 execution remain pending. Final repository-wide tests (9,008 pass, 40 skip, zero failures), typecheck and build pass. See RELEASE-VALIDATION.md.
 - [x] **WP9.6** *(draft in [`RELEASE-NOTES.md`](./RELEASE-NOTES.md); the dry run plans 0.17.2 → 0.18.0)* Draft the release notes and run `bun scripts/release.ts minor --dry-run`. No automatic release.
 
 ### WP10 - After v1 (not part of this plan)
@@ -664,7 +660,7 @@ Each is argued where it applies; this is the index.
 | D6 | `.by-id/` lists nothing but a `README` | Populating it means enumerating the space | WP4 |
 | D7 | A rename costs a version | There is no title-only endpoint; a title change is an ordinary update | WP5 |
 | D8 | The lossy-conversion check compares normalised storage | The converter re-emits whitespace differently, so raw comparison flags every page | WP5 |
-| D9 | The `grep` shortcut requires an explicit whole-word assertion (`-w` or `\bword\b`) | Decision 12's guard is syntactic and cannot prevent the failure it was written to prevent: `grep -rl kubern` passes it and returns nothing | WP6 |
+| D9 | Indexed grep is the user-selected default; `--no-cql` is exhaustive | Live CQL omits some pages even for whole words; index gaps are explicit and matching lines are verified against candidate Markdown | WP6 |
 | D10 | One WebDAV filesystem per space, plus a small root filesystem | A `PROPFIND` on the volume root of a single filesystem mounted at `/` returns only the root | WP7 |
 | D11 | WebDAV errors map to webdav-server's error singletons, not status numbers | `setCodeFromError` compares by identity and falls back to 500 for everything else | WP7 |
 
@@ -675,23 +671,22 @@ Each is argued where it applies; this is the index.
 - **Bun compatibility of just-bash 3.x is the single largest risk.** A subagent reproduced the crash under Bun 1.3.11 and atlcli runs Bun 1.3.14. Setting `defenseInDepth: false` weakens security, but per the upstream threat model it only removes a secondary layer: atlcli runs agent scripts locally with user rights anyway, and the interpreter itself stays sandboxed with no network access and enforced limits. Even so, the spike comes first.
 - **The 409 conflict** is not formally listed in the v2 OpenAPI spec, which names only 200, 400, 401 and 404, but it is documented by community reports and by our own `docs push` experience. The robust approach is our own version check before every update.
 - **The rate-limit numbers** apply only to OAuth apps; no figures are published for API tokens. The concurrency ceiling near 8 is a conservative assumption drawn from the MCP server issue, not from Atlassian documentation.
-- **WebDAV performance was not measured**, only inferred from sources such as Finder chattiness and the `slack-fuse` figures. WP7.7 must measure it.
+- **WebDAV acceptance remains partial:** native mount/read/write, Finder listing, TextEdit safe-save and terminal performance checks pass; timed large-corpus Finder rendering remains unmeasured.
 - **ID-suffix paths** solve collisions and renames but make paths longer and less readable for humans, and they mean `docs pull` directories and VFS paths are not interchangeable. Accepted deliberately as decision 4.
 - **Correction against the first draft of this plan:** WP2.3 used to load the complete space tree at depth ten on the first listing. That contradicts the demand principle and is now level-by-level loading. The price is that a `find` over a deep tree issues more individual requests than a single descendants pass would, and the level loader needs a per-node state marker. It is the right trade, because an agent typically enters few directories rather than the whole space.
-- **The CQL shortcut stays the riskiest part of the design.** The guard from decision 12 is deliberately too strict, which means more full-text passes and therefore more budget aborts. A visible abort beats a silently empty result, but some users will have to raise the budget for legitimate searches.
-- **Indexers are an underestimated risk in the mount.** A search index or an antivirus scanner walking the volume would trigger exactly what the demand principle prevents. Whether the Spotlight exclusions hold on a WebDAV volume is not yet verified (WP7.3b).
+- **CQL index completeness is not guaranteed.** Ordinary grep exposes this accepted trade-off; use `--no-cql` when completeness matters. Index-backed no-hit output does not prove corpus absence.
+- **Indexers remain a mount risk.** macOS mdutil reports indexing/search disabled on the tested volume. Windows indexing is untested; no cross-platform guarantee follows from the macOS result.
 - Nothing in the space of "Confluence as a filesystem" exists as open source as of 2026-09-15. That is a market advantage, but it also means there are no proven solutions for the edge cases such as folders, whiteboards and inline comments.
 
 ---
 
 ## 13. Open questions
 
-All twelve decision questions are settled and recorded in section 1a, with the demand principle in section 1b. What remains needs a measurement rather than a decision:
-
-1. **The actual semantics of the CQL text search** against live content: where exactly does the boundary between match and non-match fall for word parts, underscores, hyphens and umlauts? The result of WP0.3b fixes the guard from decision 12 for good.
-2. **Do the Spotlight exclusions hold on a WebDAV volume?** If not, the mount needs a different defence against indexer sweeps, such as a refusal mode for bulk access. The result comes from WP7.3b.
-3. **Are the defaults sufficient**, meaning a 300 page prefetch and a 100 MB cache, for realistic agent sessions, or do they frustrate? The result comes from WP9.3.
-4. **Do the two measurement gates hold** for startup time and artifact size, or does the embedded shell become an optional package? The result comes from WP0.4.
+All implementation decisions are settled. Outstanding acceptance work is
+tracked in the status matrix above: timed large-corpus Finder rendering, native Linux, Windows, live two-identity permissions,
+and Homebrew lifecycle. Startup overhead is
+an accepted deviation, not an unresolved packaging decision. WP10 remains
+outside the v1 scope.
 
 ---
 

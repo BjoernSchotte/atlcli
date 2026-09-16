@@ -14,6 +14,9 @@
  *
  *   bun run build:cli && bun run test apps/cli/src/e2e/wiki-sh-built.e2e.test.ts
  *
+ * Set ATLCLI_VFS_TEST_BINARY=/absolute/path/to/atlcli to exercise a compiled
+ * release executable with the same HTTP stand-in and assertions.
+ *
  * The stand-in serves the handful of endpoints the VFS touches. It is not a
  * Confluence emulator and does not try to be — `FakeConfluenceClient` covers
  * behaviour; this covers packaging.
@@ -23,8 +26,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const BUNDLE = resolve(import.meta.dir, "../../../../dist/index.js");
-const RUN = existsSync(BUNDLE);
+const BINARY = process.env.ATLCLI_VFS_TEST_BINARY;
+const BUNDLE = BINARY ?? resolve(import.meta.dir, "../../../../dist/index.js");
+const RUN = Boolean(BINARY) || existsSync(BUNDLE);
 
 interface StandInPage {
   id: string;
@@ -181,7 +185,7 @@ afterAll(() => {
  * would deadlock. (It did, the first time.)
  */
 async function cli(...args: string[]): Promise<{ out: string; err: string; code: number }> {
-  const proc = Bun.spawn(["bun", BUNDLE, ...args], {
+  const proc = Bun.spawn([...(BINARY ? [BINARY] : ["bun", BUNDLE]), ...args], {
     env: { ...process.env, HOME: home, ATLCLI_API_TOKEN: "token" },
     stdin: "ignore",
     stdout: "pipe",
@@ -232,7 +236,9 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
   it("emits the documented --json shape", async () => {
     const result = await cli("wiki", "sh", "--space", "DOCSY", "--json", "-c", "ls");
     const parsed = JSON.parse(result.out) as Record<string, unknown>;
-    for (const key of ["stdout", "stderr", "exitCode", "diagnostics", "cacheHits", "prefetched"]) {
+    expect(parsed.requests).toBeGreaterThan(0);
+    expect(parsed.rateLimits).toBe(0);
+    for (const key of ["stdout", "stderr", "exitCode", "diagnostics", "cacheHits", "prefetched", "requests", "rateLimits"]) {
       expect(parsed).toHaveProperty(key);
     }
   });

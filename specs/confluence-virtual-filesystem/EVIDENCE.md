@@ -1,8 +1,26 @@
 # Confluence VFS — measurements
 
-**Live follow-up (2026-09-16):** see [LIVE-RESULTS.md](./LIVE-RESULTS.md).
-It supersedes the unmeasured live rows and the CQL guard claims below; the
-original container measurements are retained as historical evidence.
+**Current acceptance (2026-09-16):** [LIVE-RESULTS.md](./LIVE-RESULTS.md)
+contains DOCSY write/read, MAYFLOWER read-only, indexed grep/find and synthetic
+5,000-page shell results. [RELEASE-VALIDATION.md](./RELEASE-VALIDATION.md)
+contains the compiled macOS binary proof and startup comparison. The original
+container measurements below are historical, not the current acceptance status.
+
+| Gate | Current status |
+| --- | --- |
+| Live Cloud shell and native macOS mount | Passed; synthetic resources cleaned |
+| CQL semantics | Measured; indexed default explicitly accepts index gaps |
+| Request/429 counters and CLI write controls | Implemented; focused checks pass |
+| 5,000-page indexed shell | Tested with 50 candidates; cold 31 ms, warm 8 ms, 10,630 cache bytes; zero warm body reads |
+| Finder / Spotlight | Finder listing verified; mdutil says indexing/search disabled |
+| Native mount performance | Synthetic 500-page walk: 2,165 ms/zero bodies; warm 100-page listing: 13 ms/zero calls; native grep: 353 ms/101 bodies; RELEASE-VALIDATION |
+| TextEdit safe-save | Passed after local staging/backup fix; native save and independent API readback |
+| Compiled macOS artifact | 9 tests / 33 assertions passed; compiled live DOCSY listing: 876 ms, four requests, zero bodies |
+| Artifact growth / startup | +3.22% passes; +88–99 ms exceeds gate, accepted by user |
+| Full current suite/build/typecheck | 9,008 pass / 40 skip / zero failures; 44,544 assertions; typecheck 4/4; build 35/35 |
+| Linux / Windows | Native Linux homelab pending; Windows unavailable |
+| Live permission isolation | Second identity missing; interim boundary accepted |
+| Homebrew lifecycle | Formula/equivalent command checked; installed version outdated |
 
 Numbers behind the decisions in
 [`PLAN.md`](./PLAN.md). Each section says what was measured, on what, and what
@@ -190,7 +208,7 @@ representative files run at `origin/main` in a clean worktree give the
 which is not installed in this container. They are an environment gap, not a
 regression.
 
-## 6. Not yet measured
+## 6. Historical open measurements (superseded by current status above)
 
 | What | Needs | Work package |
 |------|-------|--------------|
@@ -210,6 +228,6 @@ bun --conditions=development spikes/vfs-just-bash/live-spike.ts --profile mayflo
 bun --conditions=development spikes/vfs-just-bash/cql-text-semantics.ts --profile mayflower --space DOCSY
 ```
 
-**Until WP0.3b's table exists, the `grep` guard stays at its strictest**: the
-CQL shortcut is taken only when the caller marks the pattern a whole word. That
-is the conservative direction — it costs full scans, never wrong answers.
+**Historical policy, superseded:** the whole-word guard did not guarantee index
+completeness. Ordinary grep now uses indexed candidates with visible limitations
+and body verification; `--no-cql` selects exhaustive bounded search.
