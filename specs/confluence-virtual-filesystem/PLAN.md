@@ -1,256 +1,255 @@
-# Confluence Virtual Filesystem (VFS) für Coding Agents
+# Confluence Virtual Filesystem for Coding Agents
 
-Status: Konzept mit getroffenen Entscheidungen, noch nicht implementiert
+Status: concept with decisions recorded, not yet implemented
 
-Plan date: 2026-09-15 (Recherche), 2026-09-16 (Entscheidungen, Aufgabenplan)
+Plan date: 2026-09-15 (research), 2026-09-16 (decisions, task plan)
 
 Planned against: `2617984`
 
 Priority: P2
 
-Estimated effort: L, etwa 6–7 fokussierte Wochen für eine Person über zehn
-unabhängig reviewbare Arbeitspakete (Abschnitt 11), inklusive Spike,
-Schreibpfad, WebDAV-Mount, Doku und Live-Proof gegen Cloud
+Estimated effort: L, roughly 6-7 focused weeks for one person across ten
+independently reviewable work packages (section 11), including the spike, the
+write path, the WebDAV mount, documentation, and a live proof against Cloud
 
-Risk: MED für den Lesepfad; HIGH für den Schreibpfad, solange Konflikt- und
-Merge-Verhalten nicht gegen echte gleichzeitige Confluence-Bearbeitung
-nachgewiesen ist
+Risk: MED for the read path; HIGH for the write path until conflict and merge
+behaviour is proven against real concurrent Confluence editing
 
 Supersedes: none
 
 Builds on: `spec/mcp-over-code.md`, `spec/local-storage-plan.md`,
 `spec/sqlite-sync-foundation.md`
 
-**Ziel:** Coding Agents (Claude Code, Codex, Cursor, …) arbeiten mit `ls`, `cd`, `cat`, `grep`, `find`, `sed` direkt auf Confluence-Inhalten. Sichtbarkeit exakt wie der authentifizierte Nutzer. Keine MCP-Tool-Aufrufe nötig.
+**Goal:** coding agents (Claude Code, Codex, Cursor, and others) work on Confluence content directly with `ls`, `cd`, `cat`, `grep`, `find` and `sed`. Visibility matches the authenticated user exactly. No MCP tool calls required.
 
-Quellen: drei parallele Recherchen (just-bash, Mount-Technologien, Atlassian-Auth/Prior Art), alle Quellen live geprüft am 2026-09-15. Befunde älter als 6 Monate sind mit **[alt]** markiert.
-
----
-
-## 1. Kurzfazit
-
-- **Machbar, und zwar kurzfristig.** atlcli hat alle Bausteine schon: `ConfluenceClient` (Hierarchie, Suche, Versionen, Move, Trash), `storageToMarkdown`/`markdownToStorage`, Pfad-Mapping (`hierarchy.ts`, Index-Pattern), Frontmatter mit Page-ID, SQLite-Sync-DB.
-- **Architektur:** ein gemeinsamer **VFS-Kern** (reine Logik: Pfad ↔ Page, Cache, Write-Back, CQL-Beschleunigung) mit **zwei Frontends, beide in v1**:
-  1. **`atlcli wiki sh`** – eingebettete Bash auf Basis von **just-bash** (Vercel Labs). Kein Mount, kein Treiber, funktioniert überall.
-  2. **`atlcli wiki mount`** – echter OS-Mount über einen **lokalen WebDAV-Server** (Loopback). Kext-frei auf macOS und Windows, Linux braucht `davfs2`.
-- **Nicht gewählt:** FUSE (macFUSE proprietär, FUSE-T nur nicht-kommerziell frei, Node-Bindings unter Bun unerprobt, Windows braucht WinFsp-Installer).
-- **just-bash mit deaktiviertem Defense-in-Depth**, drei bekannte Risiken (Bun-Crash bei aktivem DiD, `fetch` im Backend, `grep -r` ohne Cache) sind damit bzw. über den Cache abgedeckt.
-- **Berechtigungen:** Confluence erzwingt Sichtbarkeit serverseitig pro Aufrufer. Das VFS braucht keine eigene ACL-Logik, nur konsequent den Profil-Token des Nutzers und einen **profilgebundenen Cache**.
-- **Schreiben ist von Anfang an Teil des Kerns**, Modus `ro`/`rw` ist ein Parameter, Default `ro`.
+Sources: three parallel research passes (just-bash, mount technologies, Atlassian auth and prior art), every source verified live on 2026-09-15. Findings older than six months are marked **[dated]**.
 
 ---
 
-## 1a. Entscheidungen (2026-09-16)
+## 1. Summary
 
-| # | Frage | Entscheidung | Konsequenz |
-|---|---|---|---|
-| 1 | just-bash-Variante | **3.4.2 mit `defenseInDepth: false`** | `ctx.origCommand` für `grep`/`find`-Overrides nutzbar; Version pinnen; Bun-Issue #386 beobachten und DiD wieder aktivieren, sobald es gefixt ist |
-| 2 | Mount in v1? | **Ja**, `wiki sh` und `wiki mount` gehören beide zu v1 | Kern muss von Beginn an beide Adapter tragen; WebDAV-Spezifika (LOCK, ETag, `._*`) sind Teil des Plans |
-| 3 | OAuth 3LO | **Nein, API-Token reichen** (Cloud scoped/classic, DC-PAT) | Kein App-Registrierungs-Aufwand; kein geteiltes Punkte-Budget; Concurrency-Limit ~8 und `Retry-After` gegen Burst-Limits |
-| 4 | Pfad-Schema | **Slug mit ID-Suffix**: `architecture-623869955.md` | Pfade sind kollisionsfrei und über Umbenennungen hinweg auflösbar; Slug dient nur der Lesbarkeit |
-| 5 | Cache-Ort | **Frei wählbar** (`--cache-dir`, Config `vfs.cacheDir`), Default `~/.atlcli/vfs/` | Innerhalb des gewählten Verzeichnisses bleibt die Unterteilung nach Profil und Account-ID Pflicht (Berechtigungs-Isolation) |
-| 6 | Schreibrechte | **Parametrisierbar** `--mode ro|rw` (Default `ro`), zusätzlich `--allow-delete`; Schreibpfad wird direkt mitgebaut | Write-Back, Konfliktbehandlung und Audit sind Teil von Phase 1, nicht Nachrüstung |
-
-### Detailentscheidungen
-
-| # | Frage | Entscheidung | Konsequenz |
-|---|-------|--------------|------------|
-| 7 | `mkdir` im `rw`-Modus | **Immer eine Seite mit leerem Body, kein `--folders`-Flag** | Die Folder-API ist Cloud-only (`requestV2` ohne Deployment-Weiche) und Folder haben keinen Body, das Schreiben von `_index.md` müsste dort fehlschlagen. Bestehende Folder bleiben lesbar, ihr `_index.md` ist schreibgeschützt. AP5.4 schrumpft entsprechend |
-| 8 | `.search/`-Queries | **Faule Auflösung, keine Registrierung nötig**; zusätzlich eine verlierbare Liste der letzten 20 Queries | Zustand ist nie Voraussetzung für Korrektheit, ein Daemon-Neustart verliert nichts Wichtiges. Einschränkung: Verzeichnisnamen können keinen `/` enthalten, solche Queries nur über das `cql`-Kommando |
-| 9 | Konfliktdateien | **Persistent** unter `<cacheDir>/conflicts/`, mit Basis- und Serverversion in der Frontmatter | Eine abgelehnte Änderung darf nicht mit der Session verloren gehen. Löschen einer Konfliktdatei ist lokal, also auch im `ro`-Modus erlaubt und ohne `--allow-delete`. Eigenes Unterkommando macht offene Konflikte außerhalb der Shell auffindbar |
-| 10 | Bestätigung ohne Terminal | **`--allow-delete` ist die Bestätigung**, kein drittes Flag | Eine dritte Schranke hinter Schreibmodus und Löschfreigabe erzeugt keinen Schutz. Mit Terminal wird bei `rm` und Cross-Space-`mv` interaktiv gefragt, `--confirm` überspringt das (Repo-Konvention, `--yes` existiert nirgends). Echter Schutz: Löschen heißt Papierkorb, plus Audit-Log |
-| 11 | Bundle-Größe | **Zwei Messtore statt einer Zahl**: Startzeit-Regression über 15 ms, Artefaktwachstum über 25 % oder 30 MB je Ziel | Bei Verstoß bleibt der Mount im Kern und nur die eingebettete Shell wird optionales Paket über die Plugin-API, denn `webdav-server` ist reines JavaScript ohne WASM |
-| 12 | `grep`-Abkürzung | **Konservativer Wächter**: CQL nur bei einfachen Literalen an Wortgrenzen, gewählter Pfad immer auf stderr, Abschalter vorhanden | Die CQL-Textsuche arbeitet wortbasiert, nicht als Teilstring-Suche. Ein still leeres `grep` ist ein Korrektheitsfehler, kein Performance-Thema: der Agent liest es als „kommt nicht vor“. Tatsächliches Verhalten prüft AP0.3 gegen echte Inhalte |
+- **Feasible, and in the near term.** atlcli already has every building block: `ConfluenceClient` (hierarchy, search, versions, move, trash), `storageToMarkdown` and `markdownToStorage`, path mapping (`hierarchy.ts`, index pattern), frontmatter carrying the page ID, and the SQLite sync database.
+- **Architecture:** one shared **VFS core** (pure logic: path to page, cache, write-back, search acceleration) with **two frontends, both in v1**:
+  1. **`atlcli wiki sh`**, an embedded bash built on **just-bash** (Vercel Labs). No mount, no driver, works everywhere.
+  2. **`atlcli wiki mount`**, a real OS mount through a **local WebDAV server** on loopback. Free of kernel extensions on macOS and Windows; Linux needs `davfs2`.
+- **Not chosen:** FUSE. macFUSE is proprietary, FUSE-T is free for non-commercial use only, the Node bindings are untested under Bun, and Windows needs the WinFsp installer.
+- **just-bash with defense-in-depth disabled.** Three known risks (the Bun crash with defense-in-depth active, `fetch` inside the backend, and `grep -r` without a cache) are covered by that setting and by the cache design.
+- **Permissions:** Confluence enforces visibility server-side per caller. The VFS needs no access-control logic of its own, only the user's profile token used consistently and a **profile-scoped cache**.
+- **Writing is part of the core from the start.** The `ro`/`rw` mode is a parameter, default `ro`.
 
 ---
 
-## 1b. Bedarfsprinzip (bindende Invariante)
+## 1a. Decisions (2026-09-16)
 
-Das VFS ist ein **virtuelles** Dateisystem mit Cache, **kein** Spiegel. Es unterscheidet sich damit grundlegend von `docs pull`, das eine vollständige lokale Kopie anlegt.
+| # | Question | Decision | Consequence |
+|---|----------|----------|-------------|
+| 1 | just-bash variant | **3.4.2 with `defenseInDepth: false`** | `ctx.origCommand` stays available for the `grep` and `find` overrides; pin the version; watch Bun issue #386 and re-enable defense-in-depth once it is fixed |
+| 2 | Mount in v1? | **Yes**, `wiki sh` and `wiki mount` both belong to v1 | The core must carry both adapters from the start; WebDAV specifics (LOCK, ETag, AppleDouble files) are part of the plan |
+| 3 | OAuth 3LO | **No, API tokens are enough** (Cloud scoped and classic, Data Center PAT) | No app registration effort and no shared points budget; concurrency capped near 8 with `Retry-After` handling against burst limits |
+| 4 | Path scheme | **Slug with ID suffix**: `architecture-623869955.md` | Paths are collision-free and stay resolvable across renames; the slug exists only for readability |
+| 5 | Cache location | **Freely configurable** via `--cache-dir` or config `vfs.cacheDir`, default `~/.atlcli/vfs/` | Inside the chosen directory, partitioning by profile and account ID stays mandatory for permission isolation |
+| 6 | Write access | **Parameterized** `--mode ro\|rw` (default `ro`) plus `--allow-delete`; the write path is built in directly | Write-back, conflict handling and the audit log are part of phase 1, not a retrofit |
 
-**Invariante:** In das echte Dateisystem wird nur geschrieben, was für einen Cache-Hit tatsächlich gebraucht wurde. Keine Operation materialisiert einen ganzen Space oder Teilbaum „auf Vorrat“.
+### Detail decisions
 
-Daraus folgen vier harte Regeln:
-
-1. **Verzeichnisse laden einzeln.** `readdir` eines Verzeichnisses kostet höchstens einen Request (`direct-children`). Ein Space-weiter `descendants`-Lauf passiert nur bei einer ausdrücklich rekursiven Operation und ist dann auf den begangenen Teilbaum begrenzt. Metadaten eines nie betretenen Zweigs werden nicht geholt.
-2. **Bodies nur bei echtem Lesezugriff.** `ls`, `stat` und `PROPFIND` lösen keinen Body-Fetch aus. Größenangaben kommen aus dem Cache oder sind geschätzt; erst der `GET` liefert die exakte Länge.
-3. **Vorabruf ist gedeckelt.** Der Fallback-Vorabruf für `grep` hat eine harte Obergrenze. Wird sie erreicht, bricht die Operation mit einer erklärenden Meldung ab, statt stillschweigend einen Space herunterzuladen. Über die Grenze hinaus geht es nur mit ausdrücklichem Flag.
-4. **Der Plattencache ist ein begrenzter LRU.** Das Größenlimit wird schon während einer Operation durchgesetzt, nicht erst danach. Attachment-Blobs zählen mit.
-
-Ein Test hält die Invariante fest: `ls` und `stat` über einen Space mit 5.000 Seiten dürfen keine einzige Body-Zeile in den Cache schreiben.
-
----
-
-## 2. Warum ein Dateisystem statt MCP
-
-Belege aus 2025/2026 (Details in Abschnitt 10):
-
-- Anthropic „Code execution with MCP“: Tool-Definitionen als Dateibaum, 150k → 2k Tokens in einem Workflow **[alt, 2025-11]**.
-- Vercel „How to build agents with filesystems and bash“: Agentenkosten 1,00 $ → 0,25 $ pro Lauf **[alt, 2026-01]**.
-- Arize „MCP vs CLI skills“ (2026-05): gleiche Korrektheit, harte Aufgaben ≈ 2,00 $ / 71 Calls (MCP) vs. ≈ 0,19 $ / 7 Calls (CLI + Skill).
-- **Gegenbeleg** Vercel/Braintrust „Testing if bash is all you need“ (2026-01): reines Bash/Filesystem auf semistrukturierten Daten 53–63 % korrekt bei 7× Kosten gegenüber SQL. Lehre: das VFS braucht einen **strukturierten Suchpfad** (CQL), sonst brennt `grep -r` Tokens und API-Budget.
-- Atlassian selbst hat mit dem **Teamwork Graph CLI** (GA 2026-06-30) „CLI over MCP“ validiert, liefert aber keine Dateisicht, nur OAuth, und rechnet angereicherte Suchen in Rovo-Credits ab.
-
-**Differenzierung atlcli:** Datei-Sicht + `grep`, kostenlose REST-Nutzung ohne Credits, Data-Center-Support, Offline-Cache, bestehende Markdown-Konvertierung.
+| # | Question | Decision | Consequence |
+|---|----------|----------|-------------|
+| 7 | `mkdir` in `rw` mode | **Always a page with an empty body, no `--folders` flag** | The folder API is cloud-only (`requestV2` with no deployment branch) and folders have no body, so writing `_index.md` would have to fail there. Existing folders stay readable with a read-only `_index.md`. WP5.4 shrinks accordingly |
+| 8 | `.search/` queries | **Lazy resolution, no registration step**, plus a losable list of the last twenty queries | State is never a prerequisite for correctness, and a daemon restart loses nothing that matters. Limitation: directory names cannot contain a slash, so such queries go through the `cql` command |
+| 9 | Conflict files | **Persisted** under `<cacheDir>/conflicts/`, with base and server version in the frontmatter | An edit the server rejected must not vanish with the session. Deleting a conflict file is a local operation, so it is allowed in `ro` mode and without `--allow-delete`. A dedicated subcommand makes open conflicts discoverable outside the shell |
+| 10 | Confirmation without a terminal | **`--allow-delete` is the confirmation**, no third flag | A third gate behind write mode and delete permission adds no protection. With a terminal, `rm` and cross-space `mv` prompt interactively and `--confirm` skips that (repo convention; `--yes` exists nowhere). Real protection: delete means trash, plus the audit log |
+| 11 | Bundle size | **Two measured gates instead of a number**: startup regression above 15 ms, artifact growth above 25 percent or 30 MB per target | If a gate is breached, the mount stays in the core and only the embedded shell becomes an optional package through the plugin API, because `webdav-server` is plain JavaScript with no WASM |
+| 12 | `grep` shortcut | **Conservative guard**: CQL only for plain literals at word boundaries, the chosen path always on stderr, with an off switch | The CQL text search matches by word, not by substring. A silently empty `grep` is a correctness bug rather than a performance topic, because the agent reads it as "does not occur". WP0.3b measures the real behaviour against live content |
 
 ---
 
-## 3. Anforderungen
+## 1b. Demand principle (binding invariant)
 
-### Muss
-- Lesen: Spaces, Seitenbaum, Seiteninhalt als Markdown, Attachments, Labels, Versionen.
-- Sichtbarkeit exakt wie der Nutzer des aktiven Profils (Cloud API-Token, OAuth, DC-PAT).
-- `ls`, `cat`, `find`, `grep -r`, `tree` in akzeptabler Zeit für Spaces mit 1.000–5.000 Seiten.
-- Read-only per Default, Schreiben per Parameter (`--mode rw`).
-- Kein Kernel-Treiber, keine Admin-Rechte für den Default-Pfad.
-- **Bedarfsgesteuert:** nur tatsächlich gelesene Inhalte landen auf der Platte, keine vollständige Space-Kopie. Siehe Abschnitt 1b.
+The VFS is a **virtual** filesystem with a cache, **not** a mirror. That is what separates it fundamentally from `docs pull`, which creates a complete local copy.
 
-### Soll
-- Schreiben: Seite anlegen/ändern (`echo`, `sed -i`, Editor), umbenennen, verschieben (`mv`), in Papierkorb (`rm`).
-- Convenience-Verzeichnisse: Suche, Labels, kürzlich geändert, Versionen, Kommentare.
-- Wiederverwendung im eingebauten `chat`/`research`-Agenten als Bash-Tool.
+**Invariant:** only what was actually needed for a cache hit is written to the real filesystem. No operation materializes a whole space or subtree speculatively.
 
-### Nicht-Ziele (v1)
-- **Eine vollständige lokale Kopie.** Das VFS spiegelt keinen Space; dafür bleibt `docs pull` das richtige Werkzeug. Siehe Abschnitt 1b.
-- Whiteboards, Datenbanken, Embeds bearbeiten (nur als Platzhalter listen).
-- Confluence-Folder anlegen (Entscheidung 7); bestehende Folder werden gelesen.
-- Jira als Dateisystem (später über denselben Kern möglich: `/jira/ATLCLI/ATLCLI-123.md`).
-- Purge (endgültiges Löschen) und Space-Administration.
-- OAuth 2.0 (3LO) (Entscheidung 3).
+Four hard rules follow:
+
+1. **Directories load one at a time.** A `readdir` of one directory costs at most one request (`direct-children`). A space-wide `descendants` pass happens only for an explicitly recursive operation and is then scoped to the subtree being walked. Metadata for a branch never entered is not fetched.
+2. **Bodies only on a real read.** `ls`, `stat` and `PROPFIND` trigger no body fetch. Sizes come from the cache or are estimated; only the `GET` yields the exact length.
+3. **Prefetch is capped.** The fallback prefetch for `grep` has a hard ceiling. On reaching it the operation aborts with an explanatory message instead of quietly downloading a space. Going past it requires an explicit flag.
+4. **The disk cache is a bounded LRU.** The size limit is enforced during an operation, not afterwards. Attachment blobs count against it.
+
+One test pins the invariant down: `ls` and `stat` across a space of 5,000 pages must not write a single body row into the cache.
 
 ---
 
-## 4. Architekturüberblick
+## 2. Why a filesystem instead of MCP
+
+Evidence from 2025 and 2026 (details in section 14):
+
+- Anthropic, "Code execution with MCP": tool definitions as a file tree, 150k tokens down to 2k in one workflow **[dated, 2025-11]**.
+- Vercel, "How to build agents with filesystems and bash": agent cost 1.00 USD down to 0.25 USD per run **[dated, 2026-01]**.
+- Arize, "MCP vs CLI skills" (2026-05): equal correctness; on the hard tier roughly 2.00 USD and 71 calls for MCP against roughly 0.19 USD and 7 calls for a CLI plus a skill.
+- **Counter-evidence**, Vercel and Braintrust, "Testing if bash is all you need" (2026-01): bash and filesystem alone on semi-structured data reached 53 to 63 percent correctness at seven times the cost of SQL. The lesson: the VFS needs a **structured search path** (CQL), otherwise `grep -r` burns tokens and API budget.
+- Atlassian itself validated "CLI over MCP" with the **Teamwork Graph CLI** (GA 2026-06-30), but ships no file view, requires OAuth, and bills enriched searches in Rovo credits.
+
+**What sets atlcli apart:** a file view with real `grep`, free REST access without credits, Data Center support, an offline cache, and the existing Markdown conversion.
+
+---
+
+## 3. Requirements
+
+### Must
+- Read spaces, the page tree, page content as Markdown, attachments, labels and versions.
+- Visibility exactly as the user of the active profile sees it (Cloud API token, Data Center PAT).
+- `ls`, `cat`, `find`, `grep -r` and `tree` at acceptable speed for spaces of 1,000 to 5,000 pages.
+- Read-only by default, writing through a parameter (`--mode rw`).
+- No kernel driver and no administrator rights on the default path.
+- **Demand-driven:** only content actually read reaches the disk, never a complete space copy. See section 1b.
+
+### Should
+- Write: create and change a page (`echo`, `sed -i`, an editor), rename, move (`mv`), send to trash (`rm`).
+- Convenience directories: search, labels, recently changed, versions, comments.
+- Reuse inside the built-in `chat` and `research` agent as a bash tool.
+
+### Non-goals (v1)
+- **A complete local copy.** The VFS mirrors no space; `docs pull` remains the right tool for that. See section 1b.
+- Editing whiteboards, databases or embeds (listed as placeholders only).
+- Creating Confluence folders (decision 7); existing folders are read.
+- Jira as a filesystem (possible later through the same core: `/jira/ATLCLI/ATLCLI-123.md`).
+- Purge (permanent deletion) and space administration.
+- OAuth 2.0 (3LO) (decision 3).
+
+---
+
+## 4. Architecture overview
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ Frontends (imperative Shell)                                 │
-│  A) atlcli wiki sh  ── just-bash ── IFileSystem-Adapter      │
-│  B) atlcli wiki mount ── webdav-server v2 ── FS-Adapter      │
-│  C) chat/research Agent ── bash-Tool ── (A wiederverwendet)  │
+│ Frontends (imperative shell)                                 │
+│  A) atlcli wiki sh  ── just-bash ── IFileSystem adapter      │
+│  B) atlcli wiki mount ── webdav-server v2 ── FS adapter      │
+│  C) chat/research agent ── bash tool ── (reuses A)           │
 └───────────────┬──────────────────────────────────────────────┘
-                │  VfsNode-API (stat/readdir/read/write/rename/rm)
+                │  VfsNode API (stat/readdir/read/write/rename/rm)
 ┌───────────────▼──────────────────────────────────────────────┐
 │ packages/confluence-vfs (functional core)                    │
-│  • PathMapper:   /DOCSY/Parent/Child.md ⇄ pageId            │
-│  • TreeIndex:    Space-Baum im Speicher (id, title, parent)  │
-│  • BodyCache:    (pageId, version) → Markdown, SQLite/Disk   │
-│  • SearchBridge: grep/find → CQL, danach lokales Regex       │
-│  • WriteBack:    version+1, 409-Handling, 3-Way-Merge        │
+│  • PathMapper:   /DOCSY/parent/child.md ⇄ pageId            │
+│  • TreeIndex:    partial space tree (id, title, parent)      │
+│  • BodyCache:    (pageId, version) → Markdown, SQLite/disk   │
+│  • SearchBridge: grep/find → CQL, then local regex           │
+│  • WriteBack:    version+1, 409 handling, three-way merge    │
 │  • VirtualDirs:  /.search/, /.labels/, /.recent/, /.versions │
 └───────────────┬──────────────────────────────────────────────┘
                 │
-        ConfluenceClient (bestehend) ── REST v2 / v1 / DC v1
+        ConfluenceClient (existing) ── REST v2 / v1 / DC v1
 ```
 
-Prinzip „functional core, imperative shell“: der Kern kennt weder just-bash noch WebDAV, nur eine schmale asynchrone Node-API. Beide Frontends sind dünne Adapter. Tests laufen gegen den Kern mit einem Fake-Client.
+The "functional core, imperative shell" principle applies: the core knows neither just-bash nor WebDAV, only a narrow asynchronous Node-style API. Both frontends are thin adapters. Tests run against the core with a fake client.
 
 ---
 
-## 5. Frontend A: eingebettete Shell mit just-bash
+## 5. Frontend A: embedded shell with just-bash
 
-### Warum just-bash
-- Einzige gepflegte JS/TS-Bibliothek, die **Bash-Interpreter + asynchrones, pluggbares Dateisystem** kombiniert. Apache-2.0 wie atlcli.
-- Stand 2026-09-15: Version **3.4.2** (2026-08-22), letzte Commits 2026-09-07, 4,3k Stars, ~876k Downloads/Woche, offiziell noch „beta“.
-- Befehle: `ls cat find grep rg sed awk jq yq sort head tail wc tree diff xargs …`, Pipes, Redirections, Schleifen, Funktionen, Globs, Heredocs.
-- `IFileSystem` ist vollständig async (`readFile`, `writeFile`, `readdir`, `stat`, `mkdir`, `rm`, `mv`, …). Nur `resolvePath` und `getAllPaths` sind sync; `getAllPaths` darf `[]` liefern. Ein Subagent hat ein 40-Zeilen-Fake-REST-Backend über `MountableFs.mount("/confluence", fs)` getestet: `ls -R`, `grep -rn`, `find -name`, `sed`, `awk`, `jq`, `echo > file` und Globs funktionieren, nur `stat/readdir/readFile/writeFile` wurden aufgerufen.
-- Prior Art mit genau diesem Muster: Dropbox (`just-bash-dropbox`), S3/Postgres (`just-bash-openfs`), Redis (Upstash, 2026-04), SQLite (Turso AgentFS), Chroma (Mintlify ChromaFs, 2026-03).
+### Why just-bash
+- The only maintained JS or TS library combining a **bash interpreter with an asynchronous, pluggable filesystem**. Apache-2.0, matching atlcli.
+- As of 2026-09-15: version **3.4.2** (2026-08-22), last commits 2026-09-07, 4.3k stars, roughly 876k downloads per week, still labelled beta.
+- Commands: `ls cat find grep rg sed awk jq yq sort head tail wc tree diff xargs` and more, plus pipes, redirections, loops, functions, globs and heredocs.
+- `IFileSystem` is fully asynchronous (`readFile`, `writeFile`, `readdir`, `stat`, `mkdir`, `rm`, `mv` and the rest). Only `resolvePath` and `getAllPaths` are synchronous, and `getAllPaths` may return an empty array. A subagent tested a 40-line fake REST backend through `MountableFs.mount("/confluence", fs)`: `ls -R`, `grep -rn`, `find -name`, `sed`, `awk`, `jq`, `echo > file` and globs all worked, and only `stat`, `readdir`, `readFile` and `writeFile` were called.
+- Prior art using exactly this pattern: Dropbox (`just-bash-dropbox`), S3 and Postgres (`just-bash-openfs`), Redis (Upstash, 2026-04), SQLite (Turso AgentFS), Chroma (Mintlify ChromaFs, 2026-03).
 
-### Risiken und Gegenmaßnahmen
+### Risks and countermeasures
 
-| Risiko | Befund | Maßnahme |
-|---|---|---|
-| **Bun-Inkompatibilität** | 3.4.2 wirft unter Bun 1.3.x bei jedem `exec()` `DefenseInDepthBox: critical patches failed` (Issue #386, offen, ohne Antwort). | `defenseInDepth: false` setzen (Host-Code ist laut THREAT_MODEL ohnehin trusted), alternativ `just-bash/browser`-Export oder Pin auf 2.14.5 (das pinnt auch `@ai-sdk/sandbox-just-bash`). Falls nötig: `bun patch`, atlcli nutzt `patchedDependencies` bereits. |
-| **Backend-IO im Untrusted-Scope** | Bei aktivem Defense-in-Depth sind `fetch`, Timer und `process.env` im `IFileSystem` blockiert; `fetch` erscheint als `ENOENT`. | Jede Backend-Methode in `DefenseInDepthBox.runTrustedAsync()` kapseln (so macht es Commit #397 vom 2026-09-07 für Lazy-Provider), oder DiD aus. |
-| **`grep -r` = N Requests** | just-bash läuft den Baum mit `stat` + `readFile` pro Datei; Hook `searchFiles` (Issue #185) ist nicht gemerged. | `grep` per `defineCommand` + `ctx.origCommand` überschreiben: erst CQL, dann Original-grep nur auf Treffer-Bodies (Abschnitt 8). |
-| Paketgröße | 22,6 MB entpackt, 16 Runtime-Deps (QuickJS, sql.js, undici, …). | `commands: [...]` einschränken, Python/js-exec/sqlite nicht laden; Auswirkung auf `bun build --compile` messen. |
-| Beta-Status, Remote-Backend-Issues ohne Maintainer-Antwort | #181, #185, #386 offen. | Kleine Workarounds selbst tragen, Version pinnen, Conformance-Tests im eigenen Repo. |
+| Risk | Finding | Measure |
+|------|---------|---------|
+| **Bun incompatibility** | 3.4.2 throws `DefenseInDepthBox: critical patches failed` on every `exec()` under Bun 1.3.x (issue #386, open, unanswered). | Set `defenseInDepth: false`; the host code is trusted by design per the upstream threat model. Alternatives are the `just-bash/browser` export or pinning 2.14.5, which is what `@ai-sdk/sandbox-just-bash` pins. If needed, `bun patch`; atlcli already uses `patchedDependencies`. |
+| **Backend IO in the untrusted scope** | With defense-in-depth active, `fetch`, timers and `process.env` are blocked inside `IFileSystem`, and `fetch` surfaces as `ENOENT`. | Wrap every backend method in `DefenseInDepthBox.runTrustedAsync()`, which is what upstream commit #397 of 2026-09-07 did for lazy providers, or disable defense-in-depth. |
+| **`grep -r` costs N requests** | just-bash walks the tree with one `stat` and one `readFile` per file; the `searchFiles` hook (issue #185) is not merged. | Override `grep` through `defineCommand` plus `ctx.origCommand`: CQL first, then the original grep over the matching bodies only (section 8). |
+| Package size | 22.6 MB unpacked, 16 runtime dependencies (QuickJS, sql.js, undici and others). | Restrict the command set through `commands: [...]`, leaving Python, js-exec and sqlite unloaded; measure the effect on `bun build --compile`. |
+| Beta status, remote-backend issues without maintainer replies | Issues #181, #185 and #386 are open. | Carry small workarounds ourselves, pin the version, keep conformance tests in this repo. |
 
-### Nutzung
+### Usage
 
 ```bash
-# Einzelbefehl (Agent-freundlich, JSON-Exit-Code)
+# Single command, agent friendly, real exit code
 atlcli wiki sh --space DOCSY -c 'grep -rl "Kubernetes" /DOCSY | head'
 
-# Interaktive Session
+# Interactive session
 atlcli wiki sh --space DOCSY
 /DOCSY $ ls
-/DOCSY $ cat "Getting Started/_index.md"
+/DOCSY $ cat "getting-started-623869001.md"
 /DOCSY $ find . -name "*.md" -newer .recent/7d
 
-# Skript aus stdin
+# Script from stdin
 cat script.sh | atlcli wiki sh --space DOCSY --mode rw
 ```
 
-Für Claude Code reicht ein `AGENTS.md`/Skill-Snippet („Für Confluence: `atlcli wiki sh -c '…'`, Space DOCSY, `--limit 10`“). Das ist das Muster, das Atlassian im Rovo-MCP-README und Arize in ihrer Eval als größten Token-Sparer nennen.
+For Claude Code an `AGENTS.md` or skill snippet is enough: "for Confluence use `atlcli wiki sh -c '…'`, space DOCSY, keep result limits small". That is the pattern Atlassian names in the Rovo MCP readme and Arize names in their evaluation as the largest token saver.
 
-Gleicher Adapter, zweiter Konsument: der bestehende `chat`/`research`-Agent (DeepAgents + QuickJS) bekommt ein `bash`-Tool über dieselbe `IFileSystem`-Instanz (`bash-tool` von Vercel Labs, MIT, oder eigenes LangChain-Tool).
-
----
-
-## 6. Frontend B: OS-Mount über WebDAV
-
-### Bewertung der Mount-Technologien (Stand 2026-09-15)
-
-| Ansatz | macOS | Linux | Windows | Zusatzinstallation | Bewertung |
-|---|---|---|---|---|---|
-| **WebDAV-Server in Bun + OS-Client** | `mount_webdav`/Finder, kein sudo | `davfs2` + root/fstab | `net use X: http://localhost:PORT/`, alle Editionen (50-MB-Limit) | keine auf macOS/Win | **Empfehlung** |
-| NFSv3-Server (Rust `nfsserve` Sidecar) | eingebaut, kext-frei (rclone-erprobt) | `nfs-common` + root | nur Pro/Enterprise, „kinda works“ | Rust-Binary | Option 2, bessere Kernel-Caches |
-| FUSE via `fuse-napi` (N-API, Aug 2026, 0 Stars) | macFUSE 5.3.1+ (proprietäre Lizenz, kein Auto-Install) | libfuse3 | nicht unterstützt | macFUSE | nur Linux denkbar, Bun ungetestet |
-| FUSE-T | kext-frei, aber **nur nicht-kommerziell frei** | – | – | Cask | ungeeignet für Firmen-CLI |
-| `bun:ffi` → libfuse3 | – | – | – | – | Bun-FFI offiziell „experimental, not for production“ |
-| Apple FSKit / File Provider | signierte App-Extension nötig; FSKit-Backends von macFUSE/FUSE-T „experimental“, Bugs auf macOS 26.1/26.2 | – | ProjFS/Cloud Files | App-Bundle | nicht CLI-tauglich, 2027 neu bewerten |
-
-Kein einziges Open-Source-Projekt mountet Confluence heute (GitHub-Suche 2026-09-15 leer). Jira: `jirafs` (2018, verwaist). Notion: `notionfs` ist Sync, kein Mount.
-
-### Design des WebDAV-Frontends
-- Bibliothek: `webdav-server` v2 (2.6.3, 2026-08-04, Unlicense), pluggbares `FileSystem`.
-- Bindung nur an `127.0.0.1`, zufälliger Port, ohne Auth (Loopback), optional Bearer-Token im Header für Multi-User-Hosts.
-- Pflicht für macOS Finder: `LOCK`/`UNLOCK` (sonst read-only gemountet), schnelle 404 für `._*` AppleDouble-Dateien, ETag aus `(pageId, version)`, `PROPFIND`-Antworten aus dem TreeIndex ohne API-Call.
-- `atlcli wiki mount ~/confluence --space DOCSY` startet Server und ruft `mount_webdav` (macOS) bzw. `net use` (Windows) auf; Linux gibt `mount -t davfs`-Anleitung aus.
-- Leistung: WebDAV-Clients sind gesprächig (Finder 2–5× Overhead). Die Latenz dominiert aber die Confluence-API, darum ist der Cache (Abschnitt 8) entscheidend, nicht das Protokoll. `grep -r` durch den Mount bleibt langsamer als in Frontend A, weil der Kernel keine CQL-Abkürzung kennt. Empfehlung in der Doku: für Volltextsuche `atlcli wiki sh -c 'grep …'` oder das Cache-Verzeichnis nutzen (so löst es auch `slack-fuse`: 15–25 Dateien/s durch FUSE vs. 62.000/s auf dem Projektionscache).
+Second consumer of the same adapter: the existing `chat` and `research` agent (DeepAgents plus QuickJS) gains a `bash` tool over the same `IFileSystem` instance, either through `bash-tool` from Vercel Labs (MIT) or a LangChain tool of our own.
 
 ---
 
-## 7. Pfadlayout und Metadaten
+## 6. Frontend B: OS mount through WebDAV
 
-Das Layout folgt dem Index-Pattern aus `hierarchy.ts` (Seite mit Kindern = Verzeichnis mit `_index.md`), ergänzt um ein **ID-Suffix** in jedem Datei- und Verzeichnisnamen (Entscheidung 4).
+### Assessment of the mount technologies (as of 2026-09-15)
+
+| Approach | macOS | Linux | Windows | Extra install | Assessment |
+|----------|-------|-------|---------|---------------|------------|
+| **WebDAV server in Bun plus the OS client** | `mount_webdav` and Finder, no sudo | `davfs2` plus root or fstab | `net use X: http://localhost:PORT/`, all editions, 50 MB limit | none on macOS or Windows | **Recommended** |
+| NFSv3 server (Rust `nfsserve` sidecar) | built in, no kernel extension, proven by rclone | `nfs-common` plus root | Pro and Enterprise only, described upstream as barely working | Rust binary | Option 2, better kernel caching |
+| FUSE through `fuse-napi` (N-API, Aug 2026, 0 stars) | macFUSE 5.3.1 or later, proprietary license, no auto-install | libfuse3 | unsupported | macFUSE | Linux only at best, untested under Bun |
+| FUSE-T | free of kernel extensions but **free for non-commercial use only** | not applicable | not applicable | Homebrew cask | unsuitable for a corporate CLI |
+| `bun:ffi` against libfuse3 | not applicable | not applicable | not applicable | not applicable | Bun FFI is officially experimental and not for production |
+| Apple FSKit or File Provider | needs a signed app extension; the FSKit backends of macFUSE and FUSE-T are experimental with bugs on macOS 26.1 and 26.2 | not applicable | ProjFS or Cloud Files | app bundle | not viable from a CLI, reassess in 2027 |
+
+No open-source project mounts Confluence today; a GitHub search on 2026-09-15 returned nothing relevant. For Jira there is `jirafs` from 2018, abandoned. For Notion, `notionfs` is a sync tool rather than a mount.
+
+### Design of the WebDAV frontend
+- Library: `webdav-server` v2 (2.6.3, 2026-08-04, Unlicense) with a pluggable `FileSystem`.
+- Bind to `127.0.0.1` only, on a random port, without authentication on loopback, with an optional bearer token in the header for multi-user hosts.
+- Mandatory for the macOS Finder: `LOCK` and `UNLOCK`, otherwise the volume mounts read-only; fast 404 responses for AppleDouble files; an ETag derived from page ID and version; `PROPFIND` answers served from the tree index without an API call.
+- `atlcli wiki mount ~/confluence --space DOCSY` starts the server and calls `mount_webdav` on macOS or `net use` on Windows; on Linux it prints the `mount -t davfs` instructions.
+- Performance: WebDAV clients are chatty, with the Finder adding two to five times the request overhead. Confluence API latency dominates regardless, so the cache in section 8 decides the outcome rather than the protocol. `grep -r` through the mount stays slower than in frontend A because the kernel knows nothing of the CQL shortcut. The documentation therefore points at `atlcli wiki sh -c 'grep …'` for full-text search, which is how `slack-fuse` solves the same problem: 15 to 25 files per second through FUSE against 62,000 per second on its projection cache.
+
+---
+
+## 7. Path layout and metadata
+
+The layout follows the index pattern from `hierarchy.ts`, where a page with children becomes a directory holding `_index.md`, extended by an **ID suffix** in every file and directory name (decision 4).
 
 ```
-/                                        # Root: alle sichtbaren Spaces
-├── DOCSY/                               # Space-Key
+/                                        # root: every visible space
+├── DOCSY/                               # space key
 │   ├── _space.json                      # id, name, homepageId (read-only)
-│   ├── _index.md                        # Homepage-Body
-│   ├── getting-started-623869001.md     # Blattseite: <slug>-<id>.md
-│   ├── architecture-623869955/          # Seite mit Kindern: <slug>-<id>/
-│   │   ├── _index.md                    # eigener Body
-│   │   ├── _attachments/                # Lazy: Metadaten aus v2, Bytes bei open()
+│   ├── _index.md                        # homepage body
+│   ├── getting-started-623869001.md     # leaf page: <slug>-<id>.md
+│   ├── architecture-623869955/          # page with children: <slug>-<id>/
+│   │   ├── _index.md                    # its own body
+│   │   ├── _attachments/                # lazy: metadata from v2, bytes on open
 │   │   │   └── diagram.png
-│   │   ├── .versions/                   # Read-only, max. 50 mit Body
+│   │   ├── .versions/                   # read-only, at most 50 with bodies
 │   │   │   ├── 12.md
 │   │   │   └── 11.md
-│   │   ├── .comments.md                 # Footer-/Inline-Kommentare gerendert
+│   │   ├── .comments.md                 # footer and inline comments rendered
 │   │   └── deployment-623870112.md
-│   ├── runbooks-623871000/              # Confluence-Folder (type: folder)
-│   │   └── _index.md                    # nur Frontmatter
-│   ├── .by-id/                          # virtuell: stabile Adresse ohne Slug
+│   ├── runbooks-623871000/              # Confluence folder (type: folder)
+│   │   └── _index.md                    # frontmatter only
+│   ├── .by-id/                          # virtual: stable address without slug
 │   │   └── 623869955.md → ../architecture-623869955/_index.md
-│   ├── .labels/                         # virtuell: GET /labels/{id}/pages
-│   │   └── runbook/ → Symlinks auf Seiten
-│   ├── .recent/                         # virtuell: CQL lastmodified >= now("-7d")
+│   ├── .labels/                         # virtual: GET /labels/{id}/pages
+│   │   └── runbook/                     # symlinks to pages
+│   ├── .recent/                         # virtual: CQL lastmodified >= now("-7d")
 │   │   ├── 24h/ 7d/ 30d/
-│   └── .search/                         # virtuell: mkdir = Query anlegen
-│       └── text ~ "kubernetes"/         # ls = CQL ausführen, Symlinks
-└── .me.json                             # aktueller Nutzer, Profil, Deployment
+│   └── .search/                         # virtual: lazily resolved CQL
+│       └── text ~ "kubernetes"/         # listing runs the query, symlinks
+└── .me.json                             # current user, profile, deployment
 ```
 
-Regeln:
-- Dateiname = `slugifyTitle(title)` + `-` + Page-ID. Die ID ist der Schlüssel; der Slug-Teil wird beim Auflösen ignoriert, sodass `cat architecture-623869955/_index.md` auch nach einer Umbenennung funktioniert, wenn der Aufrufer die alte Slug-Form nutzt (Auflösung über die ID, `ls` zeigt den aktuellen Slug).
-- Kollisionen sind damit ausgeschlossen; `generateUniqueFilename()` wird nicht benötigt.
-- Für Agenten, die nur eine Page-ID kennen: `/DOCSY/.by-id/<id>.md` als Symlink auf die kanonische Datei.
-- Beim Anlegen neuer Dateien (`rw`) darf der Name ohne ID geschrieben werden (`echo > neue-seite.md`); nach dem `POST` benennt das VFS die Datei in `neue-seite-<id>.md` um und meldet den kanonischen Pfad in stderr/`--json`.
-- Nicht-Seiten-Kinder (Whiteboard, Database, Embed) erscheinen als `name-<id>.whiteboard.json` mit Link, read-only.
-- Frontmatter wie heute plus VFS-Felder:
+Rules:
+- A file name is `slugifyTitle(title)` followed by a hyphen and the page ID. The ID is the key and the slug part is ignored when resolving, so `cat architecture-623869955/_index.md` still works after a rename even if the caller uses the old slug form. Resolution goes through the ID and a listing shows the current slug.
+- Collisions are therefore impossible and `generateUniqueFilename()` is not needed.
+- For agents that only know a page ID: `/DOCSY/.by-id/<id>.md` is a symlink to the canonical file.
+- When creating new files in `rw` mode the name may be written without an ID, as in `echo > new-page.md`. After the `POST` the VFS renames the file to `new-page-<id>.md` and reports the canonical path on stderr and in `--json` output.
+- Non-page children (whiteboard, database, embed) appear as `name-<id>.<type>.json` carrying a link, read-only.
+- Frontmatter as it is today, plus VFS fields:
 
 ```markdown
 ---
@@ -265,324 +264,335 @@ atlcli:
 ---
 ```
 
-- `stat`: `mtime` = `version.createdAt`, `size` = Länge des gerenderten Markdowns (aus Cache; unbekannt → geschätzt aus Body-Größe, damit `ls -l` nicht N Requests auslöst).
-- Ein Symlink-Konzept (`.labels/x/page.md → ../../page.md`) hält Convenience-Verzeichnisse frei von Duplikaten; just-bash und WebDAV unterstützen beides (WebDAV: als Datei mit Weiterleitung im Body, da Clients keine Symlinks kennen).
+- For `stat`, `mtime` comes from `version.createdAt` and `size` is the length of the rendered Markdown taken from the cache. When it is unknown the size is estimated from the body size so that `ls -l` does not trigger N requests.
+- A symlink concept, such as a label directory pointing back at the canonical page, keeps the convenience directories free of duplicates. just-bash supports symlinks directly; WebDAV serves them as regular files carrying the target content, because WebDAV clients have no symlink concept.
 
 ---
 
-## 8. Cache, Rate Limits und `grep`
+## 8. Cache, rate limits and `grep`
 
-### API-Fakten (Cloud v2, Spec geprüft 2026-09-15)
-- Baum: `GET /spaces/{id}/pages?depth=root`, `GET /pages/{id}/direct-children` (das ältere `children` ist im Spec `deprecated`), `GET /pages/{id}/descendants?depth=10&limit=250` für `find`/`tree`.
-- Bulk: `GET /pages?id=a,b,c&limit=250` mit oder ohne `body-format=storage` – bis zu 250 Seiten pro Request, der einzige „Bulk-Body-Fetch“. Das ist der Cache-Validator (ohne Body) und der Prefetcher (mit Body).
-- Suche: nur v1 `GET /wiki/rest/api/search?cql=…` (nicht deprecated, Konsens 2026: bleibt). Liefert Excerpts.
-- Rate Limits: Punktemodell seit 2026-03-02 gilt für **OAuth/Connect/Forge-Apps** (Tier 1: 65.000 Punkte/h **global pro App**, GET auf Seiten = 2 Punkte). API-Token-Verkehr ist explizit ausgenommen und nur durch unveröffentlichte Burst-Limits begrenzt; in der Praxis 429 ab ~20–30 parallelen Calls (atlassian-mcp-server #171, 2026-05). DC: admin-konfiguriertes Token-Bucket, ebenfalls 429 + `Retry-After`.
+### API facts (Cloud v2, spec verified 2026-09-15)
+- Tree: `GET /spaces/{id}/pages?depth=root`, `GET /pages/{id}/direct-children` (the older `children` is marked deprecated in the spec), and `GET /pages/{id}/descendants?depth=10&limit=250` for `find` and `tree`.
+- Bulk: `GET /pages?id=a,b,c&limit=250` with or without `body-format=storage`, up to 250 pages per request. This is the only bulk body fetch, and it serves both as the cache validator without bodies and as the prefetcher with them.
+- Search: only v1 `GET /wiki/rest/api/search?cql=…`, which is not deprecated and which the 2026 consensus expects to stay. It returns excerpts.
+- Rate limits: the points model in force since 2026-03-02 applies to **OAuth, Connect and Forge apps**, where tier 1 grants 65,000 points per hour **globally per app** and a page GET costs two points. API-token traffic is explicitly excluded and bounded only by unpublished burst limits; in practice 429 responses appear from roughly 20 to 30 parallel calls (atlassian-mcp-server issue #171, 2026-05). Data Center uses an administrator-configured token bucket, also returning 429 with `Retry-After`.
 
-### Cache-Strategie
-1. **TreeIndex** (Speicher, pro Profil + Space), **partiell und bedarfsgesteuert** nach Regel 1 aus Abschnitt 1b: `ls` eines Verzeichnisses lädt genau diese eine Ebene über `direct-children`, ein Request. Ein `descendants`-Lauf über einen Teilbaum passiert nur bei ausdrücklich rekursiven Operationen und bleibt auf den begangenen Knoten beschränkt. Nie betretene Zweige bleiben ungeladen. TTL 60 s **pro Knoten**, Revalidierung per body-losem Bulk-GET (250 IDs/Request) über `version.number` nur für die geladenen IDs des betroffenen Verzeichnisses.
-2. **BodyCache** (SQLite, Schlüssel `(pageId, version)`): Versionen sind monoton, Einträge sind unveränderlich, Invalidierung nur über den TreeIndex. Wiederverwendung des `SyncDbAdapter`-Musters aus `packages/confluence/src/sync-db`. Ein Eintrag entsteht **nur** durch einen echten Lesezugriff oder einen gedeckelten Vorabruf, nie durch `ls`, `stat` oder `PROPFIND`.
-3. **Cache-Ort frei wählbar** (Entscheidung 5): `--cache-dir <pfad>`, Config `vfs.cacheDir` (global oder pro Profil), Default `~/.atlcli/vfs/`. Innerhalb des Verzeichnisses liegt die DB immer unter `<profile>/<accountId>/<siteHash>.db`. Profilwechsel = anderer Cache. Damit sieht niemand über den Cache Inhalte, die sein Token nicht liefern würde. Optional `--cache-dir` auf ein `docs pull`-Verzeichnis zeigen lassen ist **kein** Ziel; die beiden Formate bleiben getrennt (unterschiedliches Pfadschema).
-4. **Prefetch, gedeckelt:** `grep -r` und mehrfaches `cat` nutzen Bulk-GET mit Body in Batches à 250, maximal 8 parallele Requests, `Retry-After` mit Jitter (bestehendes `retry-after.ts`, `in-order-limiter.ts`). Obergrenze `vfs.prefetchMaxPages`, Default 300: darüber bricht die Operation mit Meldung ab, statt einen Space stillschweigend zu spiegeln.
-5. **Plattencache als begrenzter LRU:** `vfs.cacheMaxMb`, Default 100, Attachment-Blobs inklusive, Durchsetzung während des Schreibens. Der Cache ist kein Spiegel und darf jederzeit gelöscht werden, ohne dass Funktionalität verloren geht.
-6. **Offline-Modus:** `--offline` liest nur aus dem Cache und löst keine Requests aus. Ein `docs pull`-Verzeichnis ist **kein** Cache-Seed, weil das Pfadschema mit ID-Suffix abweicht.
+### Cache strategy
+1. **TreeIndex** in memory, per profile and space, **partial and demand-driven** per rule 1 of section 1b: listing a directory loads exactly that one level through `direct-children` in a single request. A `descendants` pass over a subtree happens only for explicitly recursive operations and stays confined to the nodes being walked. Branches never entered stay unloaded. The TTL is 60 seconds **per node**, and revalidation uses a body-free bulk GET of 250 IDs per request comparing `version.number`, only for the loaded IDs of the affected directory.
+2. **BodyCache** in SQLite keyed by page ID and version: versions are monotonic, entries are immutable, and invalidation happens only through the tree index. Reuses the `SyncDbAdapter` pattern from `packages/confluence/src/sync-db`. An entry is created **only** by a real read or a capped prefetch, never by `ls`, `stat` or `PROPFIND`.
+3. **Cache location freely configurable** (decision 5): `--cache-dir <path>`, config `vfs.cacheDir` globally or per profile, default `~/.atlcli/vfs/`. Inside that directory the database always lives at `<profile>/<accountId>/<siteHash>.db`. Switching profiles means a different cache, so nobody can see content through the cache that their own token would not return. Pointing `--cache-dir` at a `docs pull` directory is **not** a goal; the two formats stay separate because the path schemes differ.
+4. **Prefetch, capped:** `grep -r` and repeated `cat` use bulk GET with bodies in batches of 250, at most 8 parallel requests, honouring `Retry-After` with jitter through the existing `retry-after.ts` and `in-order-limiter.ts`. The ceiling is `vfs.prefetchMaxPages`, default 300; above it the operation aborts with a message instead of quietly mirroring a space.
+5. **Disk cache as a bounded LRU:** `vfs.cacheMaxMb`, default 100, attachment blobs included, enforced while writing. The cache is not a mirror and may be deleted at any time without losing functionality.
+6. **Offline mode:** `--offline` reads only from the cache and issues no requests. A `docs pull` directory is **not** a cache seed, because its path scheme lacks the ID suffix.
 
-### `grep` und `find` beschleunigen
+### Accelerating `grep` and `find`
 
-Die Abkürzung ist eine Optimierung, nie eine Änderung der Semantik. Sie darf ein Ergebnis beschleunigen, aber niemals verkleinern.
+The shortcut is an optimization, never a change in semantics. It may make a result faster but must never make it smaller.
 
-- **Wächter zuerst** (Entscheidung 12): Nur ein einfaches Literal an Wortgrenzen, ab drei Zeichen, ohne Regex-Metazeichen und ohne Binnen-Trennzeichen, qualifiziert für CQL. Grund: die CQL-Textsuche arbeitet wortbasiert und findet Wortteile nicht. Ein still leeres `grep` wäre ein Korrektheitsfehler, weil ein Agent es als „kommt nicht vor“ liest.
-- **Qualifizierter Fall:** Stufe 1 CQL `space = DOCSY AND type = page AND text ~ "wort"`, ein Request. Stufe 2 Bodies der Treffer per gedeckeltem Bulk-GET. Stufe 3 das Original-`grep` von just-bash auf diesen Dateien, für exakte Regex-Semantik und Zeilennummern.
-- **Nicht qualifizierter Fall:** gedeckelter Vorabruf des begangenen Teilbaums. Reißt er das Budget, bricht `grep` mit Meldung ab und nennt die Grenze. Kein stiller Space-Download.
-- **Transparenz:** Der gewählte Pfad steht immer auf stderr, `--no-cql` schaltet die Abkürzung ab.
-- `find -name` läuft auf dem Baum-Index, ohne Body-Requests, und lädt nur die tatsächlich begangenen Ebenen. `find -newer` und `-mtime` gehen über CQL `lastmodified`.
-- `grep -l label:x` gibt es nicht, dafür `.labels/x/`.
-- Implementierung: `defineCommand("grep", …, { trusted: true })` mit `ctx.origCommand` (just-bash ≥ 3.4.0). Im WebDAV-Frontend ist diese Abkürzung nicht möglich; dort greift nur der Cache, weshalb die Doku für Volltextsuche auf `wiki sh` verweist.
-
----
-
-## 9. Schreiben, Konflikte, Sicherheit
-
-### Semantik
-| Shell-Operation | Confluence-Aufruf |
-|---|---|
-| `cat > neu.md`, `touch` | `POST /pages` (parentId aus Verzeichnis, Titel aus Frontmatter oder Dateiname, Body `markdownToStorage`) |
-| `echo/sed -i` auf bestehende Datei | `PUT /pages/{id}` mit `version.number = cached + 1` |
-| `mv a.md b.md` (gleiches Verzeichnis) | `PUT /pages/{id}/title` |
-| `mv dir1/a.md dir2/` (gleicher Space) | `PUT /pages/{id}` mit neuem `parentId` |
-| `mv` in anderen Space, Reihenfolge | v1 `PUT /content/{id}/move/{before|after|append}/{target}` |
-| `mkdir neu/` | `POST /pages` mit leerem Body, Datei `_index.md` erscheint |
-| `rm a.md` | `DELETE /pages/{id}` = Papierkorb. `purge` wird nie angeboten |
-| `cp` | `copyPage` (bestehend) |
-| Schreiben in `.versions/`, `.labels/`, `_attachments/` | `EROFS`, außer Attachment-Upload (v1 `child/attachment`) |
-
-### Konflikte
-- Write-Back vergleicht die Frontmatter-`version` der Datei mit der Serverversion. Abweichung oder 409 („Version must be incremented“) → Refetch und 3-Way-Merge über bestehendes `merge.ts`; scheitert der Merge, entsteht `a.conflict.md` und der Schreibvorgang schlägt mit `EBUSY` fehl. Das entspricht dem Verhalten von `docs push`.
-- Editor-Writes kommen oft in mehreren Chunks (WebDAV: `PUT` + `LOCK`). Write-Coalescing: Änderungen 500 ms puffern, dann ein `PUT`. Frontmatter wird beim Zurückschreiben entfernt, `title` daraus übernommen.
-
-### Sicherheit
-- **Modus als Parameter** (Entscheidung 6): `--mode ro|rw`, Default `ro`; Config `vfs.mode` pro Profil. `rw` schaltet Create/Update/Rename/Move frei, `--allow-delete` zusätzlich Papierkorb. Im `ro`-Modus liefert jeder Schreibversuch `EROFS`. Das spiegelt Atlassians Rovo-MCP-Gruppen (`delete` per Default aus).
-- `--confirm-destructive` (Default im interaktiven Modus): `rm`/`mv` über Space-Grenzen fragen nach; im `-c`-Modus per Flag oder Umgebungsvariable freigeben.
-- Audit-Log: jede Schreiboperation als JSONL unter `~/.atlcli/vfs/audit.jsonl` (bestehendes JSONL-Logging, `spec/jsonl-logging.md`).
-- Tokens verlassen nie den Prozess; der WebDAV-Server ist unauthentifiziert nur auf Loopback, ansonsten Bearer-Pflicht.
-- Sichtbarkeit: Cloud v2 filtert Spaces, Seiten, Kinder serverseitig („Only pages that the user has permission to view will be returned“). Rovo MCP und TWG CLI geben dieselbe Garantie. Das VFS darf deshalb keine Cross-Profil-Caches teilen und muss bei 401/403/404 konsequent `ENOENT`/`EACCES` liefern statt zu raten.
-
-### Auth-Lage 2026
-- Cloud API-Tokens: scoped (Gateway `api.atlassian.com/ex/confluence/{cloudId}`) und classic. Vor 2024-12-15 erzeugte Tokens sind zwischen 2026-03-14 und 2026-05-12 abgelaufen (erledigt). **Kein veröffentlichtes Enddatum für classic Tokens auf REST**; einziger harter Termin ist JPD-GraphQL am 2026-10-31.
-- Atlassian-Policy seit 2026-01-01: verteilte Integrationen sollen Nutzer nicht zum Einfügen von API-Tokens auffordern. Ein persönliches CLI-Skript ist Grauzone. **Entscheidung 3: v1 bleibt bei API-Token** (Cloud scoped/classic, DC-PAT), OAuth 2.0 (3LO) wird nicht gebaut. Falls später nötig: Loopback-Redirect mit `offline_access` (Scopes: `read:page`, `write:page`, `delete:page`, `read:space`, `read:hierarchical-content`, `read:attachment`, `read:label`, `search:confluence`); OAuth-Verkehr würde im **globalen 65k-Punkte-Pool pro App** landen, API-Token bleiben deshalb ohnehin der leistungsfähigere Pfad.
-- DC: PAT als Bearer, v1-REST. Das VFS braucht einen Cloud-v2- und einen DC-v1-Backend-Adapter; `ConfluenceClient` kapselt das bereits über `deploymentType`.
+- **Guard first** (decision 12): only a plain literal at word boundaries, at least three characters long, free of regex metacharacters and free of internal separators, qualifies for CQL. The reason is that the CQL text search matches by word and does not find parts of words. A silently empty `grep` would be a correctness bug, because an agent reads it as "does not occur".
+- **Qualifying case:** stage one runs CQL `space = DOCSY AND type = page AND text ~ "word"` in a single request. Stage two fetches the matching bodies through the capped bulk GET. Stage three runs the original just-bash `grep` over those files for exact regex semantics and line numbers.
+- **Non-qualifying case:** the capped prefetch of the subtree being walked. If it breaches the budget, `grep` aborts with a message naming the limit. There is no silent space download.
+- **Transparency:** the chosen path always appears on stderr, and `--no-cql` disables the shortcut.
+- `find -name` runs against the tree index without body requests and loads only the levels actually walked. `find -newer` and `-mtime` go through CQL `lastmodified`.
+- There is no `grep -l label:x`; the label directory serves that purpose.
+- Implementation: `defineCommand("grep", …, { trusted: true })` with `ctx.origCommand`, available from just-bash 3.4.0. This shortcut is impossible in the WebDAV frontend, where only the cache helps, which is why the documentation points full-text search at `wiki sh`.
 
 ---
 
-## 10. Abhängigkeiten (Entscheidung)
+## 9. Writing, conflicts, security
 
-| Zweck | Paket | Version/Stand | Lizenz | Anmerkung |
-|---|---|---|---|---|
-| Bash-Interpreter + VFS-Interface | `just-bash` | 3.4.2 (2026-08-22), pinnen | Apache-2.0 | Bun: `defenseInDepth: false` oder Patch; `commands` einschränken |
-| Optional: AI-SDK-Tool für chat/research | `bash-tool` | 1.3.19 (2026-08-22) | MIT | Peer `just-bash ^3` |
-| WebDAV-Server | `webdav-server` | 2.6.3 (2026-08-04) | Unlicense | v2-API, custom FileSystem |
-| Cache | `bun:sqlite` | eingebaut | – | wie `sync-db` |
-| **Nicht** aufnehmen | `fuse-napi`, `@cocalc/fuse-native`, `@zenfs/core` | – | MIT / LGPL | FUSE: Treiberpflicht; ZenFS: LGPL, sync+async-Pflichtmethoden, keine Shell |
+### Semantics
+| Shell operation | Confluence call |
+|-----------------|-----------------|
+| `cat > new.md`, `touch` | `POST /pages` with the parent ID from the directory, the title from frontmatter or the file name, and the body through `markdownToStorage` |
+| `echo` or `sed -i` on an existing file | `PUT /pages/{id}` with `version.number = cached + 1` |
+| `mv a.md b.md` in the same directory | `PUT /pages/{id}/title` |
+| `mv dir1/a.md dir2/` within one space | `PUT /pages/{id}` with a new parent ID |
+| `mv` into another space, or reordering | v1 `PUT /content/{id}/move/{before\|after\|append}/{target}` |
+| `mkdir new/` | `POST /pages` with an empty body; `_index.md` appears |
+| `rm a.md` | `DELETE /pages/{id}`, which is trash. Purge is never offered |
+| `cp` | `copyPage` (existing) |
+| Writing into `.versions/`, `.labels/` or `_attachments/` | `EROFS`, except attachment upload through v1 `child/attachment` |
 
-Alternativen geprüft und verworfen: `memfs` (nur In-Memory), `unionfs` (2025 **[alt]**), `bash-emulator` (2016 **[alt]**), WebContainers (kommerzielle Lizenz für Produktion), `@wasmer/sdk` (kein Lazy-Backend), `@cloudflare/shell` (Fork von just-bash, experimentell), `@anthropic-ai/sandbox-runtime` (sandboxt echte Bash, kein VFS).
+### Conflicts
+- Write-back compares the file's frontmatter version against the server version. A mismatch, or a 409 stating that the version must be incremented, triggers a refetch and a three-way merge through the existing `merge.ts`. If the merge fails, a conflict file appears and the write fails with `EBUSY`. This matches the behaviour of `docs push`.
+- Editor writes often arrive in several chunks, since WebDAV clients combine `PUT` with `LOCK`. Write coalescing buffers changes for 500 ms and then issues one `PUT`. Frontmatter is stripped before writing back, with the title taken from it.
+
+### Security
+- **Mode as a parameter** (decision 6): `--mode ro|rw`, default `ro`, with config `vfs.mode` per profile. `rw` enables create, update, rename and move, and `--allow-delete` additionally enables trash. In `ro` mode every write attempt returns `EROFS`. This mirrors Atlassian's Rovo MCP permission groups, where delete is off by default.
+- Confirmation per decision 10: with a terminal, `rm` and cross-space `mv` prompt, and `--confirm` skips the prompts. Without a terminal, `--allow-delete` is the confirmation and no further flag exists.
+- Audit log: every write operation is recorded as JSONL under the cache directory, reusing the existing JSONL logging described in `spec/jsonl-logging.md`.
+- Tokens never leave the process. The WebDAV server is unauthenticated on loopback only; any other binding requires a bearer token.
+- Visibility: Cloud v2 filters spaces, pages and children server-side, stating that only pages the user may view are returned. Rovo MCP and the Teamwork Graph CLI give the same guarantee. The VFS must therefore never share caches across profiles, and must map 401, 403 and 404 consistently to `ENOENT` or `EACCES` rather than guessing.
+
+### Auth situation in 2026
+- Cloud API tokens come in scoped form, through the `api.atlassian.com/ex/confluence/{cloudId}` gateway, and in classic form. Tokens created before 2024-12-15 expired between 2026-03-14 and 2026-05-12, which has already happened. There is **no published end date for classic tokens on REST**; the only hard date found concerns Jira Product Discovery GraphQL on 2026-10-31.
+- Atlassian policy since 2026-01-01 says distributed integrations should not prompt users to paste API tokens. A personal CLI script sits in a grey area. **Decision 3 keeps v1 on API tokens** (Cloud scoped and classic, Data Center PAT) and does not build OAuth 2.0 (3LO). If it becomes necessary later: a loopback redirect with `offline_access` and the scopes `read:page`, `write:page`, `delete:page`, `read:space`, `read:hierarchical-content`, `read:attachment`, `read:label` and `search:confluence`. OAuth traffic would land in the **global 65,000 points per hour pool per app**, which is why API tokens remain the more capable path anyway.
+- Data Center uses a PAT as a bearer token against v1 REST. The VFS therefore needs a Cloud v2 and a Data Center v1 backend adapter, which `ConfluenceClient` already encapsulates through `deploymentType`.
 
 ---
 
-## 11. Implementierungsplan
+## 10. Dependencies (decided)
 
-Ziel v1: `wiki sh` **und** `wiki mount`, Lesen und Schreiben (`--mode ro|rw`), ID-Suffix-Pfade, frei wählbarer Cache, Bedarfsprinzip aus Abschnitt 1b. Aufwand grob 6–7 Wochen für eine Person; Arbeitspakete (AP) sind so geschnitten, dass AP2–AP5 parallel zu AP6/AP7 laufen können, sobald AP1 steht.
+| Purpose | Package | Version and date | License | Note |
+|---------|---------|------------------|---------|------|
+| Bash interpreter plus VFS interface | `just-bash` | 3.4.2 (2026-08-22), pinned | Apache-2.0 | Bun needs `defenseInDepth: false` or a patch; restrict the command set |
+| Optional AI SDK tool for chat and research | `bash-tool` | 1.3.19 (2026-08-22) | MIT | Peer dependency `just-bash ^3` |
+| WebDAV server | `webdav-server` | 2.6.3 (2026-08-04) | Unlicense | v2 API, custom FileSystem |
+| Cache | `bun:sqlite` | built in | not applicable | as in `sync-db` |
+| **Not** to be adopted | `fuse-napi`, `@cocalc/fuse-native`, `@zenfs/core` | not applicable | MIT and LGPL | FUSE requires a driver; ZenFS is LGPL with mandatory synchronous and asynchronous methods and offers no shell |
 
-Konventionen für alle APs:
-- Neue Logik als Package `packages/confluence-vfs` (functional core, keine CLI-Abhängigkeit), Adapter und Kommandos in `apps/cli`.
-- Jeder Task hat Tests (`bun run test`), Bugfixes bekommen Regressionstests.
-- Commits nach Conventional Commits: `feat(vfs): …`, `feat(cli): …`, `docs: …`.
-- E2E gegen Profil `mayflower`, Space `DOCSY`, Testseiten mit Präfix `vfs-e2e-` und danach löschen.
-- Kein Push ohne `bun run typecheck`.
+Alternatives checked and rejected: `memfs` (in-memory only), `unionfs` (2025, **[dated]**), `bash-emulator` (2016, **[dated]**), WebContainers (commercial license required in production), `@wasmer/sdk` (no lazy backend), `@cloudflare/shell` (an experimental fork of just-bash), and `@anthropic-ai/sandbox-runtime` (sandboxes real bash, provides no virtual filesystem).
 
-### AP0 – Spike und Absicherung (2 Tage)
+---
 
-- [ ] **AP0.1** `just-bash@3.4.2` als Dependency in `apps/cli` aufnehmen, Version exakt pinnen, `bun install` ohne Postinstall-Fehler.
-- [ ] **AP0.2** Spike-Skript `spikes/vfs-just-bash/spike.ts`: `new Bash({ defenseInDepth: false, fs: new MountableFs({ mounts: [{ mountPoint: "/DOCSY", filesystem: fakeFs }] }) })`, Befehle `ls -R`, `cat`, `grep -rn`, `find -name`, `sed`, `jq`, `echo > file` gegen ein Fake-`IFileSystem` unter Bun 1.3.14. Erwartung: alle laufen ohne `DefenseInDepthBox`-Fehler.
-- [ ] **AP0.3** Spike gegen echten `ConfluenceClient` (Profil `mayflower`, Space `DOCSY`, nur lesend): `ls /DOCSY`, `cat` einer Seite, `grep -rl` über 20 Seiten. Latenz und Request-Anzahl loggen.
-- [ ] **AP0.3b** **Semantik der CQL-Textsuche vermessen** (Grundlage für Entscheidung 12): Testseite mit bekannten Zeichenfolgen anlegen, dann `text ~` gegen ganzes Wort, Wortanfang, Wortmitte, Unterstrich- und Bindestrich-Verbund, Umlaut und Ziffernfolge prüfen. Ergebnis als Tabelle in `spikes/vfs-just-bash/README.md`; daraus die endgültige Wächter-Regel ableiten. Testseite danach löschen.
-- [ ] **AP0.4** Bundle-Messung: `bun run build:cli` mit und ohne just-bash, Größe von `dist/index.js` und der `--compile`-Binary notieren; `commands: [...]`-Restriktion (ohne python3, js-exec, sqlite3, curl) anwenden und erneut messen. Ergebnis in `spikes/vfs-just-bash/README.md`.
-- [ ] **AP0.5** `webdav-server@2.6.3` Smoke-Test unter Bun: In-Memory-FS auf `127.0.0.1:0` starten, mit `curl -X PROPFIND` und auf macOS mit `mount_webdav` mounten, `ls` im Finder-Mount. Ergebnis (funktioniert / Workarounds) im Spike-README.
-- [ ] **AP0.6** Entscheidung dokumentieren: Bundle-Größe akzeptabel? Falls nein: Lazy-Import von just-bash nur im `wiki sh`-Pfad (dynamic `import()`), damit andere Kommandos nicht belastet werden.
+## 11. Implementation plan
 
-### AP1 – Package-Gerüst und Kern-API (3 Tage)
+Target for v1: `wiki sh` **and** `wiki mount`, reading and writing through `--mode ro|rw`, ID-suffix paths, a configurable cache, and the demand principle from section 1b. Effort is roughly 6 to 7 weeks for one person. The work packages (WP) are cut so that WP2 to WP5 can run in parallel with WP6 and WP7 once WP1 stands.
 
-- [ ] **AP1.1** `packages/confluence-vfs/` anlegen: `package.json` (Name `@atlcli/confluence-vfs`, Exports mit `development`-Condition wie `@atlcli/confluence`), `tsconfig.json`, `src/index.ts`, Build- und Typecheck-Skripte, in Turbo-Pipeline aufnehmen. `bun run typecheck` grün.
-- [ ] **AP1.2** Kern-Typen in `src/types.ts`: `VfsNode` (`kind: "space" | "page" | "folder" | "attachment" | "virtual-dir" | "virtual-file" | "symlink"`, `id`, `title`, `slug`, `version`, `parentId`, `mtime`, `size?`), `VfsStat`, `VfsError` mit Codes `ENOENT | EACCES | EROFS | EISDIR | ENOTDIR | EEXIST | EBUSY | ENOTEMPTY`.
-- [ ] **AP1.3** Kern-Interface `ConfluenceVfs` in `src/vfs.ts`: `stat(path)`, `readdir(path)`, `readFile(path)`, `readFileBytes(path)`, `writeFile(path, content)`, `mkdir(path)`, `rename(from, to)`, `rm(path, {recursive})`, `copy(from, to)`, `readlink(path)`. Alle async, alle werfen `VfsError`.
-- [ ] **AP1.4** Optionen `VfsOptions`: `profile`, `client: ConfluenceClient`, `spaces?: string[]` (Einschränkung auf Spaces), `mode: "ro" | "rw"`, `allowDelete: boolean`, `cacheDir: string`, `offline: boolean`, `concurrency: number` (Default 8), `treeTtlMs` (Default 60 000), `logger`.
-- [ ] **AP1.5** Fehler-Mapping `src/errors.ts`: HTTP 401/403 → `EACCES`, 404 → `ENOENT`, 409 → `EBUSY`, 429 → Retry über bestehendes `retry-after.ts`, danach `EAGAIN`-ähnlicher `VfsError` mit Hinweis. Unit-Tests für jeden Fall.
-- [ ] **AP1.6** `FakeConfluenceClient` in `src/testing/fake-client.ts` (In-Memory-Spaces/-Seiten/-Versionen/-Labels/-Attachments, Berechtigungs-Simulation über „sichtbare IDs“, konfigurierbare 409/429). Grundlage aller Unit-Tests.
-- [ ] **AP1.7** Modus-Guard: zentrale `assertWritable(op)` in `src/mode.ts`; im `ro`-Modus wirft jede Schreiboperation `EROFS`, `rm` ohne `allowDelete` wirft `EACCES` mit erklärender Meldung. Tests für alle Schreiboperationen in beiden Modi.
+Conventions for every work package:
+- New logic goes into the package `packages/confluence-vfs` as a functional core with no CLI dependency; adapters and commands go into `apps/cli`.
+- Every task has tests run through `bun run test`, and bug fixes get regression tests.
+- Commits follow Conventional Commits: `feat(vfs):`, `feat(cli):`, `docs:`.
+- End-to-end runs use profile `mayflower` and space `DOCSY`, with test pages prefixed `vfs-e2e-` and deleted afterwards.
+- No push without `bun run typecheck`.
 
-### AP2 – Pfad-Mapping und Baum-Index (4 Tage)
+### WP0 - Spike and de-risking (2 days)
 
-- [ ] **AP2.1** `src/path-mapper.ts`: `formatName(title, id, hasChildren)` → `<slug>-<id>.md` bzw. `<slug>-<id>/`; `parseName(name)` → `{ slug, id }` mit Regex `^(.*)-(\d+)(\.md)?$`, Fallback für Namen ohne ID (neue Dateien im `rw`-Modus). Slug via `slugifyTitle()` aus `@atlcli/confluence`. Unit-Tests inkl. Titeln mit Zahlen am Ende (`Release-2026-12345` darf nur die Page-ID abtrennen, die aus dem TreeIndex bekannt ist).
-- [ ] **AP2.2** Auflösung `resolvePath(path)` → `VfsNode`: Segment für Segment; Space-Key → Space; Segment mit ID → Lookup per ID (Slug wird ignoriert); Segment ohne ID → Fehler `ENOENT` außer für reservierte Namen (`_index.md`, `_space.json`, `_attachments`, `.versions`, `.comments.md`, `.by-id`, `.labels`, `.recent`, `.search`, `.me.json`).
-- [ ] **AP2.3** `src/tree-index.ts` als **bedarfsgesteuerter, partieller** Index (Regel 1 aus Abschnitt 1b): `Map<id, TreeNode>` mit `children: id[] | "unloaded"` je Knoten. `loadChildren(id)` holt genau eine Ebene über `getPageDirectChildren` in `childPosition`-Reihenfolge; Space-Root über `listSpacesV2` plus Wurzelebene. Folders erscheinen als Kinder über denselben Aufruf, `getSpaceFolders` wird **nicht** pauschal aufgerufen. Test: Laden des Space-Roots und zweier Unterverzeichnisse kostet drei Requests, unabhängig von der Space-Größe.
-- [ ] **AP2.4** `loadSubtree(id, depth)` für ausdrücklich rekursive Operationen (`find`, `tree`, `ls -R`, rekursives `grep`): `getPageDescendants` auf **diesen** Knoten begrenzt, Batches à 250, markiert die besuchten Knoten als geladen. Nie automatisch beim einfachen `readdir`. Test: `find` in einem Unterverzeichnis lädt nicht den Nachbarzweig.
-- [ ] **AP2.5** Revalidierung: TTL `treeTtlMs`, **pro Knoten** statt global; nach Ablauf body-loser Bulk-GET (`GET /pages?id=…&limit=250`) über die bereits geladenen IDs des betroffenen Verzeichnisses, Vergleich `version.number`; Strukturänderungen über erneutes `loadChildren` desselben Knotens. Tests: Version-Bump, gelöschte Seite, neue Seite, verschobene Seite, und dass ein nie betretener Zweig bei der Revalidierung keinen Request auslöst.
-- [ ] **AP2.5b** `readdir` und `stat` aus dem Index ohne Body-Fetch (Regel 2). `stat` liefert `mtime` aus `version.createdAt`, `size` aus dem Cache, sonst geschätzt. Invarianten-Test: `ls -R` und `stat` über 5.000 Seiten im Fake schreiben keine einzige Body-Zeile in den Cache.
-- [ ] **AP2.6** Data-Center-Pfad: gleicher TreeIndex über v1 (`getChildren`/`getAllPages` mit `deploymentType: "data-center"`) im Fake abgedeckt; ein Contract-Test wie `wiki-import-dc.contract.test.ts`.
-- [ ] **AP2.7** Sichtbarkeit: Test, dass Seiten, die der Fake-Client als unsichtbar markiert, weder in `readdir` noch per `.by-id/` noch per direkter ID-Adresse auftauchen (`ENOENT`, nicht `EACCES`, um keine Existenz zu verraten, analog zur API).
+- [ ] **WP0.1** Add `just-bash@3.4.2` as a dependency of `apps/cli`, pin the exact version, and confirm `bun install` completes without postinstall errors.
+- [ ] **WP0.2** Spike script `spikes/vfs-just-bash/spike.ts` constructing `new Bash({ defenseInDepth: false, fs: new MountableFs({ mounts: [{ mountPoint: "/DOCSY", filesystem: fakeFs }] }) })` and running `ls -R`, `cat`, `grep -rn`, `find -name`, `sed`, `jq` and `echo > file` against a fake `IFileSystem` under Bun 1.3.14. Expectation: all succeed with no `DefenseInDepthBox` error.
+- [ ] **WP0.3** Spike against the real `ConfluenceClient` (profile `mayflower`, space `DOCSY`, read-only): `ls /DOCSY`, `cat` of one page, `grep -rl` across 20 pages. Log latency and request counts.
+- [ ] **WP0.3b** **Measure the semantics of the CQL text search**, the basis for decision 12: create a test page with known character sequences, then probe `text ~` against a whole word, a word prefix, a word interior, underscore and hyphen compounds, an umlaut and a digit sequence. Record the result as a table in `spikes/vfs-just-bash/README.md` and derive the final guard rule from it. Delete the test page afterwards.
+- [ ] **WP0.4** Bundle measurement: run `bun run build:cli` with and without just-bash, noting the size of `dist/index.js` and of the compiled binary; then apply the `commands: [...]` restriction, excluding python3, js-exec, sqlite3 and curl, and measure again. Record the result in `spikes/vfs-just-bash/README.md`.
+- [ ] **WP0.5** Smoke-test `webdav-server@2.6.3` under Bun: start it with an in-memory filesystem on `127.0.0.1:0`, exercise it with `curl -X PROPFIND`, and on macOS mount it with `mount_webdav` and list it in the Finder. Record whether it works, and any workarounds, in the spike readme.
+- [ ] **WP0.6** Document the decision: is the bundle size acceptable? If not, load just-bash through a dynamic import on the `wiki sh` path only, so that other commands carry no cost.
 
-### AP3 – Body-Cache und Konvertierung (3 Tage)
+### WP1 - Package scaffold and core API (3 days)
 
-- [ ] **AP3.1** `src/body-cache.ts` auf `bun:sqlite`: Tabelle `bodies(page_id, version, markdown, storage_hash, fetched_at)`, `attachments(id, page_id, filename, media_type, size, version, blob_path)`, Schlüssel `(page_id, version)`. Migrationen nach dem Muster in `sync-db/migrations.ts`.
-- [ ] **AP3.2** Cache-Ort: `resolveCacheDir(opts)` aus `--cache-dir` → Config `vfs.cacheDir` (Profil vor global) → Default `~/.atlcli/vfs/`; darunter fest `<profile>/<accountId>/<siteHash>.db`. `accountId` aus `getCurrentUser()` beim Start (ein Request, gecacht). Tests: Priorität der Quellen, Isolation zweier Profile im selben `--cache-dir`.
-- [ ] **AP3.3** `readFile` für `_index.md`/`<slug>-<id>.md`: Cache-Hit bei passender Version, sonst `getPage` mit `body-format=storage`, `storageToMarkdown()`, Frontmatter (`id, title, version, parentId, labels, lastModified, url`) voranstellen, in Cache schreiben. Roundtrip-Test Storage → Markdown → Storage über bestehende Fixtures.
-- [ ] **AP3.4** Prefetch `prefetchBodies(ids, { budget })` über `GET /pages?id=…&body-format=storage&limit=250` (neue Client-Methode `getPagesBulk` in `@atlcli/confluence`, mit Test), Concurrency über `createInOrderLimiter`, `Retry-After` honoriert. **Harte Obergrenze** `vfs.prefetchMaxPages` (Default 300, Regel 3): wird sie überschritten, bricht der Aufruf mit `VfsError` ab und nennt Seitenzahl, Grenze und das Flag zum Anheben; es wird nichts teilweise heruntergeladen. Tests: Grenze eingehalten, Grenze überschritten, Anheben per Option.
-- [ ] **AP3.5** `--offline`: nur Cache; Cache-Miss → `ENOENT` mit Meldung „nicht im Cache, ohne --offline erneut versuchen“. TreeIndex wird als JSON im Cache-Verzeichnis persistiert (`tree-<spaceKey>.json`), damit `ls` offline funktioniert. Tests.
-- [ ] **AP3.6** Cache-Wartung: `atlcli wiki vfs cache stats|clear [--space]` (Größe, Einträge, Alter, Trefferquote); Größenlimit `vfs.cacheMaxMb` (Default **100**, Regel 4) mit LRU-Eviction nach letztem Zugriff, **während** des Schreibens durchgesetzt, nicht erst danach; Attachment-Blobs zählen auf dasselbe Limit. Tests: Eviction mitten in einem Vorabruf, Blob und Body konkurrieren um dasselbe Budget, `stats` nach Eviction plausibel.
-- [ ] **AP3.7** `atlcli wiki vfs conflicts list|show|resolve|discard` für die persistenten Konfliktdateien aus AP5.2 (Entscheidung 9), damit offene Konflikte außerhalb einer Shell-Session auffindbar sind. Tests.
+- [ ] **WP1.1** Create `packages/confluence-vfs/` with a `package.json` named `@atlcli/confluence-vfs` whose exports carry the `development` condition as `@atlcli/confluence` does, plus `tsconfig.json`, `src/index.ts`, build and typecheck scripts, and registration in the Turbo pipeline. `bun run typecheck` must pass.
+- [ ] **WP1.2** Core types in `src/types.ts`: `VfsNode` with `kind: "space" | "page" | "folder" | "attachment" | "virtual-dir" | "virtual-file" | "symlink"`, plus `id`, `title`, `slug`, `version`, `parentId`, `mtime` and optional `size`; `VfsStat`; and `VfsError` with the codes `ENOENT`, `EACCES`, `EROFS`, `EISDIR`, `ENOTDIR`, `EEXIST`, `EBUSY` and `ENOTEMPTY`.
+- [ ] **WP1.3** Core interface `ConfluenceVfs` in `src/vfs.ts`: `stat(path)`, `readdir(path)`, `readFile(path)`, `readFileBytes(path)`, `writeFile(path, content)`, `mkdir(path)`, `rename(from, to)`, `rm(path, {recursive})`, `copy(from, to)` and `readlink(path)`. All asynchronous, all throwing `VfsError`.
+- [ ] **WP1.4** Options type `VfsOptions`: `profile`, `client: ConfluenceClient`, optional `spaces?: string[]` restricting visible spaces, `mode: "ro" | "rw"`, `allowDelete: boolean`, `cacheDir: string`, `offline: boolean`, `concurrency: number` defaulting to 8, `treeTtlMs` defaulting to 60,000, and `logger`.
+- [ ] **WP1.5** Error mapping in `src/errors.ts`: HTTP 401 and 403 become `EACCES`, 404 becomes `ENOENT`, 409 becomes `EBUSY`, and 429 retries through the existing `retry-after.ts` before surfacing a `VfsError` that explains the wait. Unit tests for each case.
+- [ ] **WP1.6** `FakeConfluenceClient` in `src/testing/fake-client.ts` with in-memory spaces, pages, versions, labels and attachments, permission simulation through a set of visible IDs, and configurable 409 and 429 responses. This is the basis of every unit test.
+- [ ] **WP1.7** Mode guard: a central `assertWritable(op)` in `src/mode.ts`. In `ro` mode every write operation throws `EROFS`, and `rm` without `allowDelete` throws `EACCES` with an explanatory message. Tests cover all write operations in both modes.
 
-### AP4 – Virtuelle Verzeichnisse und Nebenobjekte (3 Tage)
+### WP2 - Path mapping and tree index (4 days)
 
-- [ ] **AP4.1** `_space.json`, `.me.json` (read-only, JSON aus `getSpace`/`getCurrentUser`).
-- [ ] **AP4.2** `_attachments/`: `readdir` aus `listAttachments` (gecacht per Seitenversion), `readFileBytes` lädt über `downloadAttachment` in `<cacheDir>/blobs/<attachmentId>-<version>` und streamt von dort; `size`/`mtime` aus Metadaten, damit `ls -l` keinen Download auslöst. Blobs zählen auf das Cache-Limit aus AP3.6 und werden wie Bodies evictet. Tests mit Fake, darunter: `ls -l` über ein Verzeichnis mit zehn Anhängen lädt null Bytes.
-- [ ] **AP4.3** `.versions/<n>.md`: `readdir` aus `getPageVersions` (max. 50), `readFile` über `getPageAtVersion` + Konvertierung, unveränderlich gecacht. Read-only (`EROFS`).
-- [ ] **AP4.4** `.comments.md`: Footer- und Inline-Kommentare über `getAllComments`, gerendert als Markdown-Liste mit Autor, Datum, Auflösungsstatus. Read-only.
-- [ ] **AP4.5** `.by-id/<id>.md`: Symlink auf kanonischen Pfad; `readlink` und transparentes `readFile`. Tests inkl. unbekannter ID → `ENOENT`.
-- [ ] **AP4.6** `.labels/<label>/`: `readdir` der Label-Namen aus Space-Labels (`/spaces/{id}/content/labels`, neue Client-Methode), Inhalt über `getPagesByLabel` als Symlinks. TTL wie TreeIndex.
-- [ ] **AP4.7** `.recent/{24h,7d,30d}/`: CQL `space = KEY AND type = page AND lastmodified >= now("-7d")` über `searchPages`, Symlinks. TTL 60 s.
-- [ ] **AP4.8** `.search/<query>/` mit **fauler Auflösung** (Entscheidung 8): der Verzeichnisname ist die CQL, `space =` wird ergänzt; jeder Pfad darunter wird bei Zugriff aufgelöst, **ohne** vorheriges `mkdir`. `readdir` des Suchverzeichnisses selbst listet nur `README` und die letzten 20 benutzten Queries aus `<cacheDir>/recent-searches.json`; diese Liste darf verloren gehen, ohne dass etwas kaputtgeht. `mkdir` und `rmdir` pflegen nur diese Liste. `README` erklärt die Syntax und die Grenze, dass ein `/` im Namen nicht möglich ist und solche Queries über das `cql`-Kommando gehen. Tests: Auflösung ohne `mkdir`, Liste geht verloren und Auflösung funktioniert weiter, `/` in der Query wird mit klarer Meldung abgelehnt.
-- [ ] **AP4.9** Nicht-Seiten-Kinder (whiteboard, database, embed) als `name-<id>.<type>.json` read-only. Test.
+- [ ] **WP2.1** `src/path-mapper.ts`: `formatName(title, id, hasChildren)` produces `<slug>-<id>.md` or `<slug>-<id>/`; `parseName(name)` returns the slug and ID using the pattern `^(.*)-(\d+)(\.md)?$`, with a fallback for names without an ID, which new files in `rw` mode use. The slug comes from `slugifyTitle()` in `@atlcli/confluence`. Unit tests include titles ending in digits, where only the page ID known from the tree index may be split off.
+- [ ] **WP2.2** Resolution `resolvePath(path)` returning a `VfsNode`, segment by segment: a space key resolves to a space; a segment carrying an ID resolves by that ID and the slug is ignored; a segment without an ID yields `ENOENT` except for the reserved names `_index.md`, `_space.json`, `_attachments`, `.versions`, `.comments.md`, `.by-id`, `.labels`, `.recent`, `.search` and `.me.json`.
+- [ ] **WP2.3** `src/tree-index.ts` as a **demand-driven, partial** index per rule 1 of section 1b: a `Map<id, TreeNode>` whose `children` is either a list of IDs or the marker `unloaded`. `loadChildren(id)` fetches exactly one level through `getPageDirectChildren` in `childPosition` order, and the space root comes from `listSpacesV2` plus its root level. Folders appear as children of the same call, so `getSpaceFolders` is **not** called wholesale. Test: loading the space root and two subdirectories costs three requests regardless of space size.
+- [ ] **WP2.4** `loadSubtree(id, depth)` for explicitly recursive operations such as `find`, `tree`, `ls -R` and recursive `grep`: `getPageDescendants` scoped to **this** node, batched at 250, marking the visited nodes as loaded. Never triggered automatically by a plain `readdir`. Test: `find` inside one subdirectory does not load a sibling branch.
+- [ ] **WP2.5** Revalidation: TTL `treeTtlMs` applied **per node** rather than globally. After expiry a body-free bulk GET of `GET /pages?id=…&limit=250` covers the already loaded IDs of the affected directory and compares `version.number`; structural changes come from calling `loadChildren` again on the same node. Tests cover a version bump, a deleted page, a new page, a moved page, and the requirement that a branch never entered triggers no request during revalidation.
+- [ ] **WP2.5b** `readdir` and `stat` served from the index without a body fetch (rule 2). `stat` takes `mtime` from `version.createdAt` and `size` from the cache, estimating it otherwise. Invariant test: `ls -R` and `stat` across 5,000 pages in the fake write no body rows into the cache.
+- [ ] **WP2.6** Data Center path: the same tree index over v1, using `getChildren` and `getAllPages` with `deploymentType: "data-center"`, covered in the fake, plus a contract test modelled on `wiki-import-dc.contract.test.ts`.
+- [ ] **WP2.7** Visibility: a test that pages the fake client marks invisible appear neither in `readdir`, nor through `.by-id/`, nor by direct ID address, returning `ENOENT` rather than `EACCES` so that existence is not revealed, matching the API.
 
-### AP5 – Schreibpfad (5 Tage)
+### WP3 - Body cache and conversion (3 days)
 
-- [ ] **AP5.1** `src/write-back.ts`: `writeFile` auf bestehende Seite: Frontmatter parsen, `markdownToStorage()`, Version-Check gegen TreeIndex (`expected = cached.version`), `updatePage({ version: expected + 1 })`; Erfolg → TreeIndex und BodyCache aktualisieren. Titel-Änderung in der Frontmatter → zusätzlich `PUT /pages/{id}/title` (neue Client-Methode `updatePageTitle`) oder Titel im selben `PUT`.
-- [ ] **AP5.2** Konflikt: Versionsabweichung vor dem `PUT` oder 409 danach → Refetch, 3-Way-Merge über `merge.ts` (Basis = gecachte Version, Ours = geschriebener Inhalt, Theirs = Server); Merge sauber → erneuter `PUT`; Merge mit Konflikten → `EBUSY` plus **persistente** Konfliktdatei (Entscheidung 9) unter `<cacheDir>/conflicts/<pageId>-<ts>.md` mit Konfliktmarkern und Frontmatter (`pageId`, `baseVersion`, `serverVersion`, `createdAt`, `origin`), im Baum sichtbar als `<slug>-<id>.conflict.md`. Löschen der Konfliktdatei ist eine lokale Operation: erlaubt auch im `ro`-Modus und ohne `--allow-delete`. Regressionstests: stale write, 409 vom Server, sauberer Merge, Konflikt-Merge, Konflikt überlebt Prozess-Neustart, Löschen im `ro`-Modus erlaubt.
-- [ ] **AP5.3** Neue Seite: `writeFile` auf nicht existierenden Namen → Titel aus Frontmatter, sonst aus Dateiname (Slug → Titel mit Leerzeichen, erste Buchstaben groß); `parentId` aus Verzeichnis (Seite oder Folder, `movePageToFolder` bei Folder); `createPage`; Datei erscheint danach als `<slug>-<id>.md`, der ursprüngliche Name bleibt für die Session als Alias auflösbar. `EEXIST`, wenn im selben Verzeichnis bereits eine Seite mit diesem Titel existiert. Tests.
-- [ ] **AP5.4** `mkdir <name>/` → **immer** eine Seite mit leerem Body (Entscheidung 7), `_index.md` erscheint und ist beschreibbar. Kein `--folders`-Flag. Test, plus Test dass `_index.md` eines **bestehenden** Confluence-Folders `EROFS` liefert, weil Folder keinen Body haben.
-- [ ] **AP5.5** `rename` innerhalb desselben Verzeichnisses → Titeländerung; in anderes Verzeichnis desselben Space → `movePage`; in anderen Space oder mit Sortierposition → `movePageToPosition` (v1 `/content/{id}/move/…`, bestehend). `rename` auf Verzeichnisse verschiebt den Teilbaum (ein Call, Confluence nimmt Kinder mit). Tests je Fall, plus Test, dass das ID-Suffix beim Rename nicht verändert werden kann (`EINVAL`).
-- [ ] **AP5.6** `rm` (nur mit `allowDelete`): Datei → `deletePage` (Papierkorb); Verzeichnis nur mit `recursive`, sonst `ENOTEMPTY`; Verzeichnis mit `recursive` → `deletePage` auf die Elternseite (Confluence verschiebt Kinder mit). `purge` wird nie aufgerufen. Tests.
-- [ ] **AP5.7** `copy` → `copyPage` (bestehend), Ziel-Verzeichnis als Parent. Test.
-- [ ] **AP5.8** Attachments im `rw`-Modus: `writeFile` in `_attachments/` → `uploadAttachment`/`updateAttachment`; `rm` → `deleteAttachment` (nur mit `allowDelete`). Tests.
-- [ ] **AP5.9** Write-Coalescing: Schreibvorgänge auf dieselbe Datei innerhalb 500 ms zusammenfassen (WebDAV-Clients und Editoren schreiben chunked); `flush()` am Session-Ende, `--sync-writes` schaltet Coalescing ab. Tests mit Fake-Timer.
-- [ ] **AP5.10** Audit-Log: jede erfolgreiche und fehlgeschlagene Schreiboperation als JSONL (`ts, profile, accountId, op, path, pageId, fromVersion, toVersion, result, error`) nach `<cacheDir>/audit.jsonl`; Rotation bei 10 MB. Test.
-- [ ] **AP5.11** Roundtrip-E2E im Fake: Seite lesen → `sed`-artige Änderung → schreiben → erneut lesen → identischer Markdown (Normalisierung über `normalizeMarkdown`). Bekannte Verluste (Makros ohne Markdown-Äquivalent) werden als Warnung in stderr ausgegeben, nicht stumm verworfen.
+- [ ] **WP3.1** `src/body-cache.ts` on `bun:sqlite` with a `bodies` table keyed by page ID and version holding the Markdown, a storage hash and a fetch timestamp, and an `attachments` table holding ID, page ID, filename, media type, size, version and blob path. Migrations follow the pattern in `sync-db/migrations.ts`.
+- [ ] **WP3.2** Cache location: `resolveCacheDir(opts)` reads `--cache-dir` first, then config `vfs.cacheDir` with the profile winning over the global value, then defaults to `~/.atlcli/vfs/`; beneath it the path is always `<profile>/<accountId>/<siteHash>.db`. The account ID comes from `getCurrentUser()` at startup, one cached request. Tests cover the precedence of the sources and the isolation of two profiles inside the same `--cache-dir`.
+- [ ] **WP3.3** `readFile` for `_index.md` and `<slug>-<id>.md`: serve a cache hit when the version matches, otherwise call `getPage` with `body-format=storage`, convert through `storageToMarkdown()`, prepend the frontmatter fields for ID, title, version, parent ID, labels, last modified and URL, and write the result into the cache. Round-trip test from storage to Markdown and back using the existing fixtures.
+- [ ] **WP3.4** Prefetch `prefetchBodies(ids, { budget })` over `GET /pages?id=…&body-format=storage&limit=250`, which needs the new client method `getPagesBulk` in `@atlcli/confluence` with its own test, using `createInOrderLimiter` for concurrency and honouring `Retry-After`. **Hard ceiling** `vfs.prefetchMaxPages`, default 300, per rule 3: exceeding it aborts the call with a `VfsError` naming the page count, the limit and the flag that raises it, and nothing is downloaded partially. Tests: within the limit, over the limit, and raising it through the option.
+- [ ] **WP3.5** `--offline` reads only from the cache, and a cache miss returns `ENOENT` with a message saying the content is not cached and suggesting a retry without the flag. The tree index persists as JSON in the cache directory so that listings work offline. Tests included.
+- [ ] **WP3.6** Cache maintenance through `atlcli wiki vfs cache stats|clear [--space]`, reporting size, entries, age and hit rate; the size limit is `vfs.cacheMaxMb`, default **100** per rule 4, with LRU eviction by last access enforced **while** writing rather than afterwards, and attachment blobs counting against the same limit. Tests: eviction in the middle of a prefetch, a blob and a body competing for the same budget, and plausible statistics after eviction.
+- [ ] **WP3.7** `atlcli wiki vfs conflicts list|show|resolve|discard` for the persisted conflict files from WP5.2 (decision 9), so that open conflicts are discoverable outside a shell session. Tests included.
 
-### AP6 – just-bash-Adapter und `atlcli wiki sh` (5 Tage)
+### WP4 - Virtual directories and side objects (3 days)
 
-- [ ] **AP6.1** `apps/cli/src/vfs/just-bash-fs.ts`: Klasse `ConfluenceJustBashFs implements IFileSystem`, delegiert an `ConfluenceVfs`; `resolvePath` über `path.posix`, `getAllPaths()` liefert die bekannten Pfade aus dem TreeIndex (sync, aus Speicher); `readdirWithFileTypes` implementiert, damit `ls -l`/`find` keine `stat`-Stürme auslösen; `readFileBytes` für Attachments; `VfsError` → Node-artige Fehler mit `code`. Conformance-Tests von just-bash (falls exportiert) oder eigener Satz: `ls`, `ls -la`, `cat`, `find`, `grep -rn`, `sed`, `awk`, `jq`, `wc`, `head`, `tail`, `tree`, Globs, `>`/`>>`, `mkdir`, `mv`, `rm`, `cp`.
-- [ ] **AP6.2** Bash-Factory `createWikiShell(opts)`: `new Bash({ defenseInDepth: false, fs: MountableFs mit Mount pro Space unter "/<KEY>", cwd: "/<KEY>", commands: [zulässige Liste ohne curl/python3/js-exec/sqlite3], executionLimits: { maxExecutionTimeMs: 120_000, maxOutputSize: 8 MB }, customCommands: [...] })`. Kommentar im Code mit Link auf just-bash-Issue #386 und TODO „DiD reaktivieren“.
-- [ ] **AP6.3** `grep`-Override (`defineCommand("grep", …, { trusted: true })` mit `ctx.origCommand`): Flags parsen (`-r/-R`, `-l`, `-n`, `-i`, `-E`, `-F`, `--include`). **Konservativer Wächter** (Entscheidung 12): die CQL-Abkürzung wird nur genommen, wenn das Muster ein einfaches Literal an Wortgrenzen ist, also ohne Regex-Metazeichen, ohne Unterstrich- oder Bindestrich-Binnenteile und mindestens drei Zeichen lang. Dann CQL `space = KEY AND type = page AND text ~ "wort"`, Treffer-IDs durch `prefetchBodies`, danach Original-`grep` nur über diese Dateien für exakte Semantik und Zeilennummern. Jedes andere Muster geht über den gedeckelten Vorabruf des begangenen Teilbaums (AP3.4); reißt der das Budget, bricht `grep` mit Meldung ab statt still zu liefern. Der gewählte Pfad wird **immer** auf stderr genannt (`via CQL` oder `via full scan`), `--no-cql` und `ATLCLI_VFS_NO_CQL_GREP=1` schalten die Abkürzung ab. Nicht-rekursives `grep` über einzelne Dateien oder stdin geht unverändert an das Original. Tests: Flag-Parsing, Wächter nimmt einfache Literale an, Wächter lehnt Teilwort-, Regex- und Unterstrich-Muster ab, Budget-Abbruch, exakte Zeilennummern, stderr nennt den Pfad.
-- [ ] **AP6.4** `find`-Override: `-name`/`-iname`/`-path`/`-type` laufen nur über den TreeIndex; `-newer`/`-mtime`/`-newermt` über CQL `lastmodified`; alle anderen Prädikate → Original-`find`. Tests.
-- [ ] **AP6.5** Zusatzbefehle: `cql "<query>"` (führt CQL aus, gibt Pfade aus), `page-url <path>` (Confluence-URL), `page-id <path>`, `vfs-status` (Modus, Cache, Requests, Rate-Limit-Zähler). Tests.
-- [ ] **AP6.6** Kommando `apps/cli/src/commands/wiki-sh.ts`, Dispatch in `wiki.ts` (`case "sh"`), Help-Text: Flags `--space <KEY[,KEY]>` (Default aus Profil-Defaults), `-c <script>`, stdin-Skript bei nicht-TTY, interaktive REPL bei TTY (Prompt `<KEY>:<cwd> $`, History in `<cacheDir>/history`), `--mode ro|rw`, `--allow-delete`, `--cache-dir`, `--offline`, `--cwd <pfad>`, `--timeout <ms>`, `--json` (Ausgabe `{ stdout, stderr, exitCode, requests, cacheHits, prefetchedPages }`), `--prefetch-max <n>`, `--no-cql`. Bestätigung nach Entscheidung 10: mit Terminal Rückfrage bei `rm` und Cross-Space-`mv`, `--confirm` überspringt sie; ohne Terminal ist `--allow-delete` die Bestätigung und es gibt kein weiteres Flag. Exit-Code = Bash-Exit-Code. Tests analog `docs.test.ts` (Flag-Parsing, Help, JSON-Form, Löschen ohne Terminal ohne Zusatzflag möglich).
-- [ ] **AP6.7** Config-Erweiterung in `@atlcli/core`: `vfs: { cacheDir?, mode?, spaces?, cacheMaxMb?, prefetchMaxPages?, cqlGrep? }` global und pro Profil; `atlcli config` zeigt und setzt die Werte. Tests.
-- [ ] **AP6.8** Lazy-Import von just-bash im Kommando (dynamisches `import()`), damit Startzeit anderer Kommandos unverändert bleibt. Messung in `spikes/vfs-just-bash/README.md` nachtragen.
-- [ ] **AP6.9** E2E `apps/cli/src/e2e/wiki-sh-live.e2e.test.ts` (Env-Gate `ATLCLI_VFS_E2E=1`): `ls`, `cat`, `grep -rl`, `find -name` gegen `DOCSY`; im `rw`-Modus Seite `vfs-e2e-<ts>` anlegen, ändern, umbenennen, verschieben, löschen; Cleanup auch bei Fehlschlag (Muster aus `e2e/cleanup.ts`).
+- [ ] **WP4.1** `_space.json` and `.me.json`, read-only JSON from `getSpace` and `getCurrentUser`.
+- [ ] **WP4.2** `_attachments/`: `readdir` from `listAttachments`, cached per page version; `readFileBytes` downloads through `downloadAttachment` into a blob file under the cache directory and streams from there; size and modification time come from the metadata so that `ls -l` triggers no download. Blobs count against the cache limit from WP3.6 and are evicted like bodies. Tests against the fake include listing a directory with ten attachments and loading zero bytes.
+- [ ] **WP4.3** `.versions/<n>.md`: `readdir` from `getPageVersions`, at most 50 entries; `readFile` through `getPageAtVersion` plus conversion, cached immutably. Read-only, returning `EROFS` on write.
+- [ ] **WP4.4** `.comments.md`: footer and inline comments through `getAllComments`, rendered as a Markdown list with author, date and resolution state. Read-only.
+- [ ] **WP4.5** `.by-id/<id>.md` as a symlink to the canonical path, supporting `readlink` and transparent `readFile`. Tests include an unknown ID returning `ENOENT`.
+- [ ] **WP4.6** `.labels/<label>/`: `readdir` of the label names from the space labels endpoint, which needs a new client method, with the contents coming from `getPagesByLabel` as symlinks. TTL as for the tree index.
+- [ ] **WP4.7** `.recent/{24h,7d,30d}/`: CQL of the form `space = KEY AND type = page AND lastmodified >= now("-7d")` through `searchPages`, returning symlinks, with a 60 second TTL.
+- [ ] **WP4.8** `.search/<query>/` with **lazy resolution** (decision 8): the directory name is the CQL and `space =` is appended; every path beneath it resolves on access, **without** a prior `mkdir`. Listing the search directory itself shows only `README` and the last twenty queries used, read from a file in the cache directory; that list may be lost without breaking anything. `mkdir` and `rmdir` only maintain the list. `README` explains the syntax and the limitation that a slash cannot appear in a name, so such queries go through the `cql` command. Tests: resolution without `mkdir`, the list being lost while resolution keeps working, and a slash in the query rejected with a clear message.
+- [ ] **WP4.9** Non-page children (whiteboard, database, embed) as `name-<id>.<type>.json`, read-only. Test included.
 
-### AP7 – WebDAV-Adapter und `atlcli wiki mount` (6 Tage)
+### WP5 - Write path (5 days)
 
-- [ ] **AP7.1** `apps/cli/src/vfs/webdav-fs.ts`: `webdav-server` v2 `FileSystem`-Implementierung (Serializer, `_openReadStream`, `_openWriteStream`, `_readDir`, `_type`, `_size`, `_lastModifiedDate`, `_creationDate`, `_create`, `_delete`, `_move`, `_copy`, `_rename`, `_lockManager`, `_propertyManager`) über `ConfluenceVfs`. `VfsError` → passende HTTP-Codes (404, 403, 409, 423, 507). Symlinks (`.by-id`, `.labels`, `.recent`, `.search`) werden als reguläre Dateien mit dem Zielinhalt ausgeliefert (WebDAV kennt keine Symlinks).
-- [ ] **AP7.2** LOCK/UNLOCK mit In-Memory-Lock-Manager (Pflicht, sonst mountet Finder read-only); Locks laufen nach 10 min ab. ETag = `"<pageId>-<version>"`, `If-Match`-Handling beim `PUT` → Konfliktpfad aus AP5.2. Tests mit `webdav`-Client-Bibliothek gegen den Server im Prozess.
-- [ ] **AP7.3** Client-Eigenheiten: sofortiges 404 für `._*`, `.DS_Store`, `.hidden`, `desktop.ini`, `Thumbs.db` ohne Backend-Aufruf; `PROPFIND Depth: 1` aus dem Baum-Index ohne Body-Fetch; `Content-Length` für Markdown aus dem Cache oder als `getcontentlength` geschätzt und beim `GET` exakt gesetzt. Tests, dass ein `PROPFIND` auf ein Verzeichnis mit 250 Kindern null Body-Requests auslöst.
-- [ ] **AP7.3b** **Indexer-Abwehr** (Regel 1 und 3 aus Abschnitt 1b, sonst lädt ein Suchindex den Space komplett herunter): `.metadata_never_index` im Volume-Root wird als leere Datei **ausgeliefert**, nicht mit 404 abgewiesen, denn ihre Anwesenheit hält Spotlight vom Indexieren ab. Dazu `.metadata_never_index_unless_rootfs` und ein leeres `.fseventsd`-Verzeichnis. Verhalten im Spike verifizieren: Mount anlegen, `mdutil -s` und Request-Zähler prüfen, dass Spotlight den Mount nicht durchläuft. Windows-Gegenstück prüfen (WebClient und Suchindizierung), Ergebnis dokumentieren. Zusätzlich ein Wächter im Server: mehr als 50 `GET`-Anfragen auf verschiedene Dateien in 10 Sekunden ohne vorausgehendes `PROPFIND` aus demselben Verzeichnis werden protokolliert und mit `--warn-on-scan` als möglicher Indexer-Durchlauf gemeldet.
-- [ ] **AP7.4** Server-Lebenszyklus `apps/cli/src/vfs/webdav-server.ts`: Bind auf `127.0.0.1`, Port aus `--port` oder zufällig; optional `--token` für Bearer-Auth (Pflicht bei `--bind` ≠ loopback); sauberes Herunterfahren bei SIGINT/SIGTERM inkl. `flush()` der gepufferten Writes und Unmount.
-- [ ] **AP7.5** Kommando `apps/cli/src/commands/wiki-mount.ts`, Dispatch `case "mount"` und `case "unmount"`: `atlcli wiki mount <mountpoint> --space … --mode ro|rw --allow-delete --cache-dir … --port … --foreground|--daemon`. macOS: `mount_webdav -S -v atlcli-<KEY> http://127.0.0.1:<port>/ <mountpoint>` (`-S` unterdrückt Auth-Dialog); Windows: `net use <X:> http://127.0.0.1:<port>/`; Linux: Hinweis mit `mount -t davfs`-Zeile (Verzeichnis existiert, `davfs2` prüfen). `unmount` → `umount`/`net use /delete` + Server-Stop. PID/Port-Datei unter `<cacheDir>/mounts/<mountpoint-hash>.json`.
-- [ ] **AP7.6** `--daemon`: Server als detached Prozess (`Bun.spawn` mit `detached`), Logs nach `<cacheDir>/mounts/<hash>.log`; `atlcli wiki mount list|status` zeigt aktive Mounts.
-- [ ] **AP7.7** Performance-Messung auf macOS (Finder und Terminal): `ls -R` über 500 Seiten, `grep -r` über 100 Seiten, Öffnen/Speichern in einem Editor. Zahlen und Request-Anzahl in der Doku; Schwellwert: `ls` eines Verzeichnisses mit 100 Einträgen < 1 s nach Warmup.
-- [ ] **AP7.8** Windows-Smoke-Test (WebClient, 50-MB-Limit dokumentieren) und Linux-Smoke-Test mit `davfs2` in CI-Container (nur Server + `curl`-PROPFIND/GET/PUT, kein Kernel-Mount in CI).
-- [ ] **AP7.9** E2E `wiki-mount-live.e2e.test.ts` (Env-Gate, nur macOS-Runner lokal): mount, `ls`, `cat`, im `rw`-Modus Seite anlegen und ändern, unmount, Cleanup.
+- [ ] **WP5.1** `src/write-back.ts`: `writeFile` on an existing page parses the frontmatter, converts through `markdownToStorage()`, checks the version against the tree index, and calls `updatePage` with the cached version plus one; on success it updates the tree index and the body cache. A title change in the frontmatter additionally calls `PUT /pages/{id}/title` through a new client method, or carries the title in the same update.
+- [ ] **WP5.2** Conflict: a version mismatch before the update, or a 409 after it, triggers a refetch and a three-way merge through `merge.ts` with the cached version as base, the written content as ours and the server as theirs. A clean merge retries the update. A merge with conflicts returns `EBUSY` plus a **persisted** conflict file (decision 9) under `<cacheDir>/conflicts/<pageId>-<ts>.md` carrying conflict markers and frontmatter for page ID, base version, server version, creation time and origin, visible in the tree as `<slug>-<id>.conflict.md`. Deleting the conflict file is a local operation, allowed in `ro` mode and without `--allow-delete`. Regression tests: stale write, server 409, clean merge, conflicting merge, a conflict surviving a process restart, and deletion permitted in `ro` mode.
+- [ ] **WP5.3** New page: `writeFile` on a name that does not exist takes the title from frontmatter, or otherwise from the file name by turning the slug into a title with spaces and initial capitals; the parent ID comes from the directory, using `movePageToFolder` when that directory is a folder; then `createPage` runs. The file afterwards appears as `<slug>-<id>.md`, and the original name stays resolvable as an alias for the session. `EEXIST` applies when a page with that title already exists in the same directory. Tests included.
+- [ ] **WP5.4** `mkdir <name>/` **always** creates a page with an empty body (decision 7), and `_index.md` appears and is writable. No `--folders` flag. Test included, plus a test that the `_index.md` of an **existing** Confluence folder returns `EROFS`, because folders have no body.
+- [ ] **WP5.5** `rename` inside the same directory changes the title; into another directory of the same space it calls `movePage`; into another space or with a sort position it calls `movePageToPosition` against the existing v1 move endpoint. Renaming a directory moves the subtree in one call, since Confluence carries the children along. Tests per case, plus a test that the ID suffix cannot be altered by a rename, which returns `EINVAL`.
+- [ ] **WP5.6** `rm`, only with `allowDelete`: a file calls `deletePage`, which is trash; a directory requires the recursive flag and otherwise returns `ENOTEMPTY`; a recursive directory delete calls `deletePage` on the parent page, since Confluence moves the children along. Purge is never called. Tests included.
+- [ ] **WP5.7** `copy` calls the existing `copyPage` with the target directory as parent. Test included.
+- [ ] **WP5.8** Attachments in `rw` mode: writing into `_attachments/` calls `uploadAttachment` or `updateAttachment`, and `rm` calls `deleteAttachment`, only with `allowDelete`. Tests included.
+- [ ] **WP5.9** Write coalescing: writes to the same file within 500 ms are merged, because WebDAV clients and editors write in chunks; `flush()` runs at the end of a session, and `--sync-writes` disables coalescing. Tests use a fake timer.
+- [ ] **WP5.10** Audit log: every successful and failed write operation is appended as JSONL carrying timestamp, profile, account ID, operation, path, page ID, source and target version, result and error, written under the cache directory and rotated at 10 MB. Test included.
+- [ ] **WP5.11** Round-trip test in the fake: read a page, apply a `sed`-style change, write it, read it again, and compare the Markdown after normalization through `normalizeMarkdown`. Known losses, such as macros without a Markdown equivalent, are reported as a warning on stderr rather than discarded silently.
 
-### AP8 – Dokumentation und Agenten-Integration (2 Tage)
+### WP6 - just-bash adapter and `atlcli wiki sh` (5 days)
 
-- [ ] **AP8.1** `src/content/docs/confluence/virtual-filesystem.md` nach Docs-Template: Intro, Voraussetzungen (Profil, Token, Space), Schritte für `wiki sh` und `wiki mount` (getrennt nach macOS/Windows/Linux), Optionen-Referenz (Typ, Default, Pflicht), Beispiele minimal (`ls`, `cat`) und fortgeschritten (Agent-Workflow: CQL-`grep`, `sed -i`, `mv`, Konfliktdatei), Troubleshooting (Finder mountet read-only bei fehlendem LOCK, 429 und Concurrency, `EROFS` und `--mode rw`, Vorabruf-Budget erreicht, `grep` meldet `via full scan`, Bun- und DiD-Hinweis), Related topics (`sync.md`, `search.md`, `file-format.md`). Ein eigener Abschnitt **„Cache statt Kopie“** stellt den Unterschied zu `docs pull` klar: das VFS lädt nur Gelesenes, der Cache ist begrenzt und jederzeit löschbar, und für eine vollständige lokale Kopie bleibt `docs pull` das richtige Werkzeug.
-- [ ] **AP8.2** `src/content/docs/reference/cli-commands` um `wiki sh`, `wiki mount`, `wiki unmount`, `wiki vfs cache` ergänzen; Config-Referenz um `vfs.*`.
-- [ ] **AP8.3** Skill/AGENTS-Snippet `docs/agents/confluence-vfs.md` (und im Docs-Site-Abschnitt „Recipes“): Kurzanleitung für Claude Code/Codex/Cursor mit `atlcli wiki sh -c '…'`, Space-Default, `--json`, Hinweis „`grep -r` nutzt CQL, `limit`-Empfehlung“, Schreib-Freigabe nur mit `--mode rw`.
-- [ ] **AP8.4** `README.md`-Abschnitt „Confluence as a filesystem“ mit zwei Beispielen; `CHANGELOG.md`-Eintrag (unreleased).
-- [ ] **AP8.5** `specs/confluence-virtual-filesystem/PLAN.md` (dieses Dokument) nach Abschluss auf Ist-Stand bringen: Status-Zeile, Abweichungen, Messwerte, offene Punkte; Messergebnisse aus AP0.4, AP7.7 und AP9.3 als `EVIDENCE.md` daneben ablegen.
+- [ ] **WP6.1** `apps/cli/src/vfs/just-bash-fs.ts`: a class `ConfluenceJustBashFs implements IFileSystem` delegating to `ConfluenceVfs`, with `resolvePath` built on `path.posix`, `getAllPaths()` returning the known paths from the tree index synchronously from memory, `readdirWithFileTypes` implemented so that `ls -l` and `find` avoid stat storms, `readFileBytes` for attachments, and `VfsError` translated into Node-style errors carrying a `code`. Conformance tests come from just-bash where exported, otherwise from our own set covering `ls`, `ls -la`, `cat`, `find`, `grep -rn`, `sed`, `awk`, `jq`, `wc`, `head`, `tail`, `tree`, globs, output redirection, `mkdir`, `mv`, `rm` and `cp`.
+- [ ] **WP6.2** Bash factory `createWikiShell(opts)` constructing `new Bash({ … })` with `defenseInDepth: false`, a `MountableFs` holding one mount per space under its key, the working directory set to the primary space, a permitted command list excluding curl, python3, js-exec and sqlite3, execution limits of 120 seconds and an 8 MB output cap, and the custom commands. A code comment links just-bash issue #386 and carries a TODO to re-enable defense-in-depth.
+- [ ] **WP6.3** `grep` override through `defineCommand("grep", …, { trusted: true })` with `ctx.origCommand`, parsing the flags `-r`, `-R`, `-l`, `-n`, `-i`, `-E`, `-F` and `--include`. The **conservative guard** from decision 12 takes the CQL shortcut only when the pattern is a plain literal at word boundaries, meaning no regex metacharacters, no internal underscores or hyphens, and at least three characters. It then runs CQL `space = KEY AND type = page AND text ~ "word"`, passes the matching IDs through `prefetchBodies`, and finally runs the original `grep` over those files for exact semantics and line numbers. Every other pattern goes through the capped prefetch of the subtree being walked from WP3.4, and if that breaches the budget, `grep` aborts with a message rather than returning silently. The chosen path is **always** named on stderr as either a CQL path or a full scan, and `--no-cql` together with an environment variable disables the shortcut. Non-recursive `grep` over single files or stdin passes through unchanged. Tests: flag parsing, the guard accepting plain literals, the guard rejecting partial-word, regex and underscore patterns, the budget abort, exact line numbers, and stderr naming the path.
+- [ ] **WP6.4** `find` override: `-name`, `-iname`, `-path` and `-type` run against the tree index only; `-newer`, `-mtime` and `-newermt` go through CQL `lastmodified`; every other predicate falls through to the original `find`. Tests included.
+- [ ] **WP6.5** Extra commands: `cql "<query>"` runs a query and prints paths, `page-url <path>` prints the Confluence URL, `page-id <path>` prints the ID, and `vfs-status` reports mode, cache state, request count and rate-limit counters. Tests included.
+- [ ] **WP6.6** Command `apps/cli/src/commands/wiki-sh.ts` dispatched from `wiki.ts`, with a help text and the flags `--space <KEY[,KEY]>` defaulting from the profile, `-c <script>`, a stdin script when not attached to a terminal, an interactive prompt when attached, `--mode ro|rw`, `--allow-delete`, `--cache-dir`, `--offline`, `--cwd <path>`, `--timeout <ms>`, `--json` emitting stdout, stderr, exit code, request count, cache hits and prefetched pages, plus `--prefetch-max <n>` and `--no-cql`. Confirmation follows decision 10: with a terminal, `rm` and cross-space `mv` prompt and `--confirm` skips them; without a terminal, `--allow-delete` is the confirmation and no further flag exists. The exit code is the bash exit code. Tests follow `docs.test.ts`, covering flag parsing, help output, the JSON shape, and deletion succeeding without a terminal and without an extra flag.
+- [ ] **WP6.7** Config extension in `@atlcli/core`: a `vfs` section carrying optional `cacheDir`, `mode`, `spaces`, `cacheMaxMb`, `prefetchMaxPages` and `cqlGrep`, both globally and per profile, with `atlcli config` showing and setting the values. Tests included.
+- [ ] **WP6.8** Load just-bash through a dynamic import inside the command, so that the startup time of other commands stays unchanged. Add the measurement to the spike readme.
+- [ ] **WP6.9** End-to-end test `apps/cli/src/e2e/wiki-sh-live.e2e.test.ts` behind an environment gate: `ls`, `cat`, `grep -rl` and `find -name` against `DOCSY`; in `rw` mode create a page prefixed `vfs-e2e-`, change it, rename it, move it and delete it, with cleanup even on failure following the pattern in `e2e/cleanup.ts`.
 
-### AP9 – Qualität, Sicherheit, Release (3 Tage)
+### WP7 - WebDAV adapter and `atlcli wiki mount` (6 days)
 
-- [ ] **AP9.1** Security-Review des Schreibpfads: keine `purge`-Aufrufe, `ro` erzwingt `EROFS` auf allen Wegen (just-bash, WebDAV, Zusatzbefehle), Token nie im Audit-Log oder in `--json`-Ausgabe, WebDAV nur auf Loopback ohne `--token`. Checkliste im PR.
-- [ ] **AP9.2** Berechtigungs-E2E: zweites Profil mit eingeschränktem Nutzer (oder Seite mit Restriktion via `setContentRestrictions` anlegen): Seite ist für Profil A sichtbar, für Profil B `ENOENT`; Cache von A liefert B nichts (getrennte DBs). Cleanup.
-- [ ] **AP9.3** Lasttest im Fake mit 5.000 Seiten: `ls` einzelner Verzeichnisse, `ls -R`, `grep -r` mit 50 CQL-Treffern und ein Muster, das den Wächter ablehnt; Request-Zähler, geschriebene Cache-Bytes und Laufzeit als Snapshot-Test mit Toleranz. Prüfen, ob 300 Seiten Vorabruf und 100 MB Cache praxistauglich sind, sonst Defaults anpassen und begründen.
-- [ ] **AP9.3b** **Invarianten-Test zum Bedarfsprinzip** (Abschnitt 1b) als eigener, nicht überspringbarer Test: über einen Space mit 5.000 Seiten laufen `ls` auf zehn Verzeichnissen, `ls -R` auf einem Teilbaum, `stat` auf hundert Dateien und ein `PROPFIND` über den WebDAV-Adapter. Erwartung: null Body-Zeilen im Cache, null Attachment-Blobs auf der Platte, Requests wachsen mit der Zahl der **besuchten** Verzeichnisse und nicht mit der Space-Größe, und kein nie betretener Zweig ist im Index geladen.
-- [ ] **AP9.4** Rate-Limit-Verhalten: Fake liefert 429 mit `Retry-After`; Test, dass Concurrency gedrosselt wird und Befehle nach Wartezeit erfolgreich enden, ohne dass der Nutzer Fehler sieht (nur Hinweis in stderr bei > 5 s Wartezeit).
-- [ ] **AP9.5** `bun run typecheck`, `bun run test`, `bun run build`, Bundle-Größenvergleich zum Vorrelease; Homebrew-Formel und `--compile`-Binary auf macOS arm64 und Linux x64 manuell mit `wiki sh -c 'ls /DOCSY'` geprüft.
-- [ ] **AP9.6** Release-Notes-Entwurf, Dry-Run `bun scripts/release.ts minor --dry-run`. Kein automatischer Release.
+- [ ] **WP7.1** `apps/cli/src/vfs/webdav-fs.ts`: a `webdav-server` v2 `FileSystem` implementation covering the serializer, read and write streams, directory listing, type, size, modification and creation dates, create, delete, move, copy, rename, the lock manager and the property manager, all delegating to `ConfluenceVfs`. `VfsError` maps to the appropriate HTTP codes including 404, 403, 409, 423 and 507. Symlinked convenience directories are served as regular files carrying the target content, because WebDAV has no symlink concept.
+- [ ] **WP7.2** LOCK and UNLOCK through an in-memory lock manager, which is mandatory or the Finder mounts read-only, with locks expiring after ten minutes. The ETag combines page ID and version, and `If-Match` handling on update feeds the conflict path from WP5.2. Tests use a WebDAV client library against the in-process server.
+- [ ] **WP7.3** Client quirks: immediate 404 for AppleDouble files, `.DS_Store`, `.hidden`, `desktop.ini` and `Thumbs.db` without a backend call; `PROPFIND` at depth one served from the tree index without a body fetch; content length for Markdown taken from the cache or estimated for the property response and set exactly on the actual read. Tests assert that a `PROPFIND` on a directory with 250 children triggers no body requests.
+- [ ] **WP7.3b** **Indexer defence** per rules 1 and 3 of section 1b, without which a search index would download the whole space: `.metadata_never_index` at the volume root is **served** as an empty file rather than refused with a 404, because its presence stops Spotlight from indexing, together with its `unless_rootfs` variant and an empty `.fseventsd` directory. Verify the behaviour in the spike by creating a mount, checking `mdutil -s` and the request counter, and confirming that Spotlight does not walk the mount. Check the Windows counterpart, covering the WebClient and search indexing, and document the result. Additionally a guard in the server logs more than 50 read requests for distinct files within ten seconds that were not preceded by a directory listing from the same directory, and reports it under a flag as a possible indexer sweep.
+- [ ] **WP7.4** Server lifecycle in `apps/cli/src/vfs/webdav-server.ts`: bind to `127.0.0.1`, take the port from a flag or choose it randomly, offer an optional bearer token that becomes mandatory for any non-loopback binding, and shut down cleanly on SIGINT and SIGTERM including a flush of buffered writes and an unmount.
+- [ ] **WP7.5** Command `apps/cli/src/commands/wiki-mount.ts` dispatched for mount and unmount: `atlcli wiki mount <mountpoint>` with `--space`, `--mode ro|rw`, `--allow-delete`, `--cache-dir`, `--port` and a foreground or daemon choice. Platform commands:
 
-### AP10 – Nach v1 (nicht Teil dieses Plans)
+  ```bash
+  # macOS, -S suppresses the authentication dialog
+  mount_webdav -S -v atlcli-DOCSY http://127.0.0.1:<port>/ <mountpoint>
+  # Windows
+  net use <X:> http://127.0.0.1:<port>/
+  # Linux, printed as instructions after checking for davfs2
+  mount -t davfs http://127.0.0.1:<port>/ <mountpoint>
+  ```
 
-- [ ] `bash`-Tool im `chat`/`research`-Agenten über `ConfluenceJustBashFs` (Vercel `bash-tool` oder eigenes LangChain-Tool).
-- [ ] Defense-in-Depth wieder aktivieren, sobald just-bash #386 gefixt ist; dann Backend-Aufrufe in `runTrustedAsync()` kapseln.
-- [ ] NFSv3-Sidecar (`nfsserve`, Rust) als schnellerer Mount für macOS/Linux, falls WebDAV-Messwerte aus AP7.7 nicht reichen.
-- [ ] Jira-Namespace `/jira/<PROJECT>/<KEY>.md` über denselben Kern.
-- [ ] Watch-Modus: Webhooks (`webhook-server.ts`) invalidieren TreeIndex/BodyCache statt TTL.
+  Unmount calls `umount` or `net use /delete` and stops the server. A PID and port file lives under `<cacheDir>/mounts/<mountpoint-hash>.json`.
+- [ ] **WP7.6** Daemon mode: run the server as a detached process through `Bun.spawn`, with logs under the cache directory, and let `atlcli wiki mount list|status` show the active mounts.
+- [ ] **WP7.7** Performance measurement on macOS in both the Finder and the terminal: `ls -R` across 500 pages, `grep -r` across 100 pages, and opening and saving in an editor. Put the numbers and request counts into the documentation, with the threshold that listing a directory of 100 entries stays under one second after warmup.
+- [ ] **WP7.8** Windows smoke test through the WebClient, documenting the 50 MB limit, and a Linux smoke test with `davfs2` in a CI container that exercises only the server through HTTP, since CI cannot perform a kernel mount.
+- [ ] **WP7.9** End-to-end test `wiki-mount-live.e2e.test.ts` behind an environment gate and limited to a local macOS runner: mount, list, read, then in `rw` mode create and change a page, unmount and clean up.
 
-### Abhängigkeiten zwischen den Arbeitspaketen
+### WP8 - Documentation and agent integration (2 days)
+
+- [ ] **WP8.1** `src/content/docs/confluence/virtual-filesystem.md` following the docs template: intro, prerequisites covering profile, token and space, steps for `wiki sh` and `wiki mount` separated by platform, an options reference giving type, default and whether each is required, a minimal example and an advanced agent workflow covering search, in-place editing, moving and the conflict file, troubleshooting covering a read-only Finder mount from a missing lock, 429 responses and concurrency, `EROFS` and the write mode, a reached prefetch budget, a `grep` reporting a full scan, and the Bun and defense-in-depth note, plus related topics linking `sync.md`, `search.md` and `file-format.md`. A dedicated section, **"A cache, not a copy"**, states the difference from `docs pull`: the VFS loads only what is read, the cache is bounded and deletable at any time, and `docs pull` stays the right tool for a full local copy.
+- [ ] **WP8.2** Extend `src/content/docs/reference/cli-commands` with `wiki sh`, `wiki mount`, `wiki unmount` and `wiki vfs cache`, and the config reference with the `vfs` section.
+- [ ] **WP8.3** A skill and agent snippet at `docs/agents/confluence-vfs.md`, also surfaced in the docs recipes section: a short guide for Claude Code, Codex and Cursor covering the single-command form, the space default, JSON output, the note that recursive search uses CQL with a recommended result limit, and the fact that writing requires the explicit write mode.
+- [ ] **WP8.4** A `README.md` section titled "Confluence as a filesystem" with two examples, plus an unreleased entry in `CHANGELOG.md`.
+- [ ] **WP8.5** Bring `specs/confluence-virtual-filesystem/PLAN.md`, this document, up to the actual state once the work is done: the status line, deviations, measured values and remaining points; place the measurements from WP0.4, WP7.7 and WP9.3 alongside it as `EVIDENCE.md`.
+
+### WP9 - Quality, security, release (3 days)
+
+- [ ] **WP9.1** Security review of the write path: no purge calls anywhere, `ro` enforcing `EROFS` on every route including just-bash, WebDAV and the extra commands, tokens never appearing in the audit log or in JSON output, and the WebDAV server unauthenticated only on loopback. Checklist in the pull request.
+- [ ] **WP9.2** Permission end-to-end test: a second profile with a restricted user, or a page restricted through `setContentRestrictions`, proving that the page is visible to profile A and returns `ENOENT` for profile B, and that A's cache gives B nothing because the databases are separate. With cleanup.
+- [ ] **WP9.3** Load test in the fake with 5,000 pages: listing individual directories, `ls -R`, `grep -r` with 50 CQL matches, and one pattern the guard rejects; record request counts, cache bytes written and runtime as a snapshot test with tolerance. Check whether a 300 page prefetch and a 100 MB cache are practical, and otherwise adjust the defaults with a stated reason.
+- [ ] **WP9.3b** **Invariant test for the demand principle** from section 1b, as its own test that cannot be skipped: across a space of 5,000 pages, list ten directories, run `ls -R` on one subtree, `stat` a hundred files, and issue a `PROPFIND` through the WebDAV adapter. Expectation: no body rows in the cache, no attachment blobs on disk, request counts growing with the number of **visited** directories rather than with space size, and no branch never entered loaded in the index.
+- [ ] **WP9.4** Rate-limit behaviour: the fake returns 429 with `Retry-After`, and a test proves that concurrency is throttled and commands still succeed after the wait, without the user seeing an error, with only a note on stderr when the wait exceeds five seconds.
+- [ ] **WP9.5** Run `bun run typecheck`, `bun run test` and `bun run build`, compare bundle size against the previous release, and manually verify the Homebrew formula and the compiled binary on macOS arm64 and Linux x64 with a single listing command.
+- [ ] **WP9.6** Draft the release notes and run `bun scripts/release.ts minor --dry-run`. No automatic release.
+
+### WP10 - After v1 (not part of this plan)
+
+- [ ] A `bash` tool in the `chat` and `research` agent over `ConfluenceJustBashFs`, using either the Vercel `bash-tool` or a LangChain tool of our own.
+- [ ] Re-enable defense-in-depth once just-bash issue #386 is fixed, then wrap the backend calls in `runTrustedAsync()`.
+- [ ] An NFSv3 sidecar based on the Rust `nfsserve` crate as a faster mount for macOS and Linux, should the WebDAV measurements from WP7.7 fall short.
+- [ ] A Jira namespace such as `/jira/<PROJECT>/<KEY>.md` over the same core.
+- [ ] A watch mode where webhooks through `webhook-server.ts` invalidate the tree index and body cache instead of the TTL.
+
+### Dependencies between the work packages
 
 ```
-AP0 ──► AP1 ──► AP2 ──► AP3 ──► AP4 ──┐
-                 │                     ├──► AP6 (sh) ──┐
-                 └──► AP5 (write) ─────┤               ├──► AP8 ──► AP9
-                                       └──► AP7 (mount)┘
+WP0 ──► WP1 ──► WP2 ──► WP3 ──► WP4 ──┐
+                 │                     ├──► WP6 (sh) ──┐
+                 └──► WP5 (write) ─────┤               ├──► WP8 ──► WP9
+                                       └──► WP7 (mount)┘
 ```
 
-AP6 und AP7 können parallel starten, sobald AP2 und AP3 lesend stehen; AP5 wird in beide Adapter nachgezogen.
+WP6 and WP7 can start in parallel once WP2 and WP3 read correctly; WP5 is pulled into both adapters afterwards.
 
 ---
 
-## 12. Selbstkritik und Unsicherheiten
+## 12. Self-critique and uncertainties
 
-- **Bun-Kompatibilität von just-bash 3.x ist der größte Einzelrisikopunkt.** Der Subagent hat den Crash unter Bun 1.3.11 reproduziert, atlcli nutzt Bun 1.3.14. `defenseInDepth: false` ist eine Sicherheitsabschwächung, die aber laut THREAT_MODEL nur eine Zweitschicht betrifft; atlcli führt Agenten-Skripte lokal mit Nutzerrechten aus, der Interpreter selbst bleibt sandboxed (kein Netz, Limits). Trotzdem: Spike zuerst.
-- **Der 409-Konflikt** ist im v2-OpenAPI-Spec nicht formal gelistet (nur 200/400/401/404), aber durch Community-Berichte und `docs push`-Erfahrung belegt. Robust: eigenen Version-Check vor jedem `PUT`.
-- **Rate-Limit-Zahlen** gelten nur für OAuth-Apps; für API-Token gibt es keine veröffentlichten Werte. Die Concurrency-Grenze von ~8 ist eine konservative Annahme aus dem MCP-Server-Issue, nicht aus Atlassian-Doku.
-- **WebDAV-Leistung** wurde nicht gemessen, nur aus Quellen abgeleitet (Finder-Chattiness, `slack-fuse`-Zahlen). Phase 4 muss messen.
-- **ID-Suffix-Pfade** lösen Kollisionen und Umbenennungen, machen Pfade aber länger und für Menschen weniger lesbar; `docs pull`-Verzeichnisse und VFS-Pfade sind damit nicht 1:1 austauschbar. Bewusst in Kauf genommen (Entscheidung 4).
-- **Korrektur gegenüber der ersten Fassung dieses Plans:** AP2.3 lud den kompletten Space-Baum mit Tiefe 10 beim ersten `ls`. Das widerspricht dem Bedarfsprinzip und ist jetzt auf ebenenweises Laden umgestellt. Der Preis: ein `find` über einen tiefen Baum macht mehr einzelne Requests als ein einziger `descendants`-Lauf, und die Ebenen-Ladefunktion braucht eine Zustandsmarkierung pro Knoten. Das ist die richtige Abwägung, weil ein Agent typischerweise wenige Verzeichnisse betritt und nicht den ganzen Space.
-- **Die CQL-Abkürzung bleibt die riskanteste Stelle im Entwurf.** Der Wächter aus Entscheidung 12 ist absichtlich zu streng ausgelegt, was mehr Volltext-Durchläufe und damit mehr Budget-Abbrüche bedeutet. Ein sichtbarer Abbruch ist besser als ein stilles leeres Ergebnis, aber es wird Nutzer geben, die das Budget für legitime Suchen anheben müssen.
-- **Indexer sind ein unterschätztes Risiko im Mount.** Ein Suchindex oder ein Virenscanner, der das Volume durchläuft, würde genau das auslösen, was das Bedarfsprinzip verhindern soll. Ob die Spotlight-Ausnahmen auf einem WebDAV-Volume greifen, ist noch nicht verifiziert (AP7.3b).
-- Nichts im Bereich „Confluence als Dateisystem“ existiert als Open Source (Stand 2026-09-15). Das ist ein Marktvorteil, aber auch ein Hinweis, dass es keine erprobten Lösungen für Randfälle (Folders, Whiteboards, Inline-Kommentare) gibt.
-
----
-
-## 13. Offene Fragen
-
-Alle zwölf Entscheidungsfragen sind geklärt und in Abschnitt 1a festgehalten, das Bedarfsprinzip in Abschnitt 1b. Offen sind nur noch Punkte, die eine Messung beantworten muss, nicht eine Entscheidung:
-
-1. **Tatsächliche Semantik der CQL-Textsuche** gegen echte Inhalte: Wo genau liegt die Grenze zwischen Treffer und Nicht-Treffer bei Wortteilen, Unterstrichen, Bindestrichen und Umlauten? Ergebnis aus AP0.3 legt den Wächter aus Entscheidung 12 endgültig fest.
-2. **Greifen die Spotlight-Ausnahmen auf einem WebDAV-Volume?** Falls nicht, braucht der Mount eine andere Abwehr gegen Indexer-Durchläufe, etwa einen Verweigerungsmodus für Massenzugriffe. Ergebnis aus AP7.3b.
-3. **Reichen die Standardwerte** von 300 Seiten Vorabruf und 100 MB Cache für realistische Agenten-Sitzungen, oder frustrieren sie? Ergebnis aus AP9.3.
-4. **Halten die zwei Messtore** für Startzeit und Artefaktgröße, oder wird die eingebettete Shell zum optionalen Paket? Ergebnis aus AP0.4.
+- **Bun compatibility of just-bash 3.x is the single largest risk.** A subagent reproduced the crash under Bun 1.3.11 and atlcli runs Bun 1.3.14. Setting `defenseInDepth: false` weakens security, but per the upstream threat model it only removes a secondary layer: atlcli runs agent scripts locally with user rights anyway, and the interpreter itself stays sandboxed with no network access and enforced limits. Even so, the spike comes first.
+- **The 409 conflict** is not formally listed in the v2 OpenAPI spec, which names only 200, 400, 401 and 404, but it is documented by community reports and by our own `docs push` experience. The robust approach is our own version check before every update.
+- **The rate-limit numbers** apply only to OAuth apps; no figures are published for API tokens. The concurrency ceiling near 8 is a conservative assumption drawn from the MCP server issue, not from Atlassian documentation.
+- **WebDAV performance was not measured**, only inferred from sources such as Finder chattiness and the `slack-fuse` figures. WP7.7 must measure it.
+- **ID-suffix paths** solve collisions and renames but make paths longer and less readable for humans, and they mean `docs pull` directories and VFS paths are not interchangeable. Accepted deliberately as decision 4.
+- **Correction against the first draft of this plan:** WP2.3 used to load the complete space tree at depth ten on the first listing. That contradicts the demand principle and is now level-by-level loading. The price is that a `find` over a deep tree issues more individual requests than a single descendants pass would, and the level loader needs a per-node state marker. It is the right trade, because an agent typically enters few directories rather than the whole space.
+- **The CQL shortcut stays the riskiest part of the design.** The guard from decision 12 is deliberately too strict, which means more full-text passes and therefore more budget aborts. A visible abort beats a silently empty result, but some users will have to raise the budget for legitimate searches.
+- **Indexers are an underestimated risk in the mount.** A search index or an antivirus scanner walking the volume would trigger exactly what the demand principle prevents. Whether the Spotlight exclusions hold on a WebDAV volume is not yet verified (WP7.3b).
+- Nothing in the space of "Confluence as a filesystem" exists as open source as of 2026-09-15. That is a market advantage, but it also means there are no proven solutions for the edge cases such as folders, whiteboards and inline comments.
 
 ---
 
-## 14. Quellen
+## 13. Open questions
 
-Alle Quellen am 2026-09-15 abgerufen. **[alt]** = älter als 6 Monate.
+All twelve decision questions are settled and recorded in section 1a, with the demand principle in section 1b. What remains needs a measurement rather than a decision:
 
-### just-bash und Alternativen
-- npm-Registry `just-bash` 3.4.2: https://registry.npmjs.org/just-bash
-- Repo, Commits bis 2026-09-07: https://github.com/vercel-labs/just-bash/commits/main
-- README 3.4.2 (Befehle, `MountableFs`, Limits, Netzwerk): https://raw.githubusercontent.com/vercel-labs/just-bash/main/packages/just-bash/README.md
-- CHANGELOG (3.0.0 2026-05-10, 3.2.0 Hardening, 3.4.0 `ctx.origCommand`): https://raw.githubusercontent.com/vercel-labs/just-bash/main/packages/just-bash/CHANGELOG.md
-- Issue #386 Bun-Crash (2026-08-24, offen): https://github.com/vercel-labs/just-bash/issues/386
-- Issue #181 async `getAllPaths` (2026-04-06): https://github.com/vercel-labs/just-bash/issues/181
-- Issue #185 `searchFiles`-Hook für Remote-grep (2026-04-09): https://github.com/vercel-labs/just-bash/issues/185
-- `bash-tool` (Vercel Labs): https://github.com/vercel-labs/bash-tool
+1. **The actual semantics of the CQL text search** against live content: where exactly does the boundary between match and non-match fall for word parts, underscores, hyphens and umlauts? The result of WP0.3b fixes the guard from decision 12 for good.
+2. **Do the Spotlight exclusions hold on a WebDAV volume?** If not, the mount needs a different defence against indexer sweeps, such as a refusal mode for bulk access. The result comes from WP7.3b.
+3. **Are the defaults sufficient**, meaning a 300 page prefetch and a 100 MB cache, for realistic agent sessions, or do they frustrate? The result comes from WP9.3.
+4. **Do the two measurement gates hold** for startup time and artifact size, or does the embedded shell become an optional package? The result comes from WP0.4.
+
+---
+
+## 14. Sources
+
+All sources retrieved on 2026-09-15. **[dated]** marks anything older than six months.
+
+### just-bash and alternatives
+- npm registry `just-bash` 3.4.2: https://registry.npmjs.org/just-bash
+- Repository, commits through 2026-09-07: https://github.com/vercel-labs/just-bash/commits/main
+- Readme 3.4.2 covering commands, `MountableFs`, limits and networking: https://raw.githubusercontent.com/vercel-labs/just-bash/main/packages/just-bash/README.md
+- Changelog covering 3.0.0 on 2026-05-10, 3.2.0 hardening and 3.4.0 `ctx.origCommand`: https://raw.githubusercontent.com/vercel-labs/just-bash/main/packages/just-bash/CHANGELOG.md
+- Issue #386, the Bun crash (2026-08-24, open): https://github.com/vercel-labs/just-bash/issues/386
+- Issue #181, asynchronous `getAllPaths` (2026-04-06): https://github.com/vercel-labs/just-bash/issues/181
+- Issue #185, a `searchFiles` hook for remote grep (2026-04-09): https://github.com/vercel-labs/just-bash/issues/185
+- `bash-tool` by Vercel Labs: https://github.com/vercel-labs/bash-tool
 - `@ai-sdk/sandbox-just-bash` 1.0.111 (2026-09-15): https://github.com/vercel/ai/releases/tag/%40ai-sdk%2Fsandbox-just-bash%401.0.111
-- Vercel Blog „How to build agents with filesystems and bash“ (2026-01-09) **[alt]**: https://vercel.com/blog/how-to-build-agents-with-filesystems-and-bash
-- Vercel/Braintrust „Testing if bash is all you need“ (2026-01-22) **[alt]**: https://vercel.com/blog/testing-if-bash-is-all-you-need
-- Cloudflare-Fork-Kontroverse (2026-03): https://news.ycombinator.com/item?id=47392479
-- just-bash-openfs (2026-02) **[alt]**: https://github.com/jeffchuber/just-bash-openfs
-- Turso AgentFS + just-bash (2026-01-02) **[alt]**: https://turso.tech/blog/agentfs-just-bash
-- Upstash Redis VFS (2026-04-20): https://upstash.com/blog/redis-virtual-fs
+- Vercel blog, "How to build agents with filesystems and bash" (2026-01-09) **[dated]**: https://vercel.com/blog/how-to-build-agents-with-filesystems-and-bash
+- Vercel and Braintrust, "Testing if bash is all you need" (2026-01-22) **[dated]**: https://vercel.com/blog/testing-if-bash-is-all-you-need
+- The Cloudflare fork controversy (2026-03): https://news.ycombinator.com/item?id=47392479
+- just-bash-openfs (2026-02) **[dated]**: https://github.com/jeffchuber/just-bash-openfs
+- Turso AgentFS with just-bash (2026-01-02) **[dated]**: https://turso.tech/blog/agentfs-just-bash
+- Upstash Redis virtual filesystem (2026-04-20): https://upstash.com/blog/redis-virtual-fs
 - Mintlify ChromaFs (2026-03-24): https://www.mintlify.com/blog/how-we-built-a-virtual-filesystem-for-our-assistant
-- Knock „Files over tools“ (2026-07-09): https://news.ycombinator.com/item?id=48845364
-- ZenFS Interface (sync+async-Pflicht): https://raw.githubusercontent.com/zen-fs/core/main/src/internal/filesystem.ts
+- Knock, "Files over tools" (2026-07-09): https://news.ycombinator.com/item?id=48845364
+- ZenFS interface showing mandatory synchronous and asynchronous methods: https://raw.githubusercontent.com/zen-fs/core/main/src/internal/filesystem.ts
 - `@anthropic-ai/sandbox-runtime`: https://github.com/anthropic-experimental/sandbox-runtime
 
-### Mount-Technologien
+### Mount technologies
 - fuse-napi 2.3.1 (2026-08-05): https://github.com/mmdevries/fuse-napi
-- Bun Node-API: https://bun.com/docs/runtime/node-api · Bun FFI (experimental): https://bun.com/docs/runtime/ffi
-- macFUSE 5.3.3 / FSKit-Backend: https://macfuse.github.io/ · https://github.com/macfuse/macfuse/wiki/FUSE-Backends
-- macFUSE-Lizenz (kommerziell nur mit Erlaubnis) **[alt]**: https://github.com/macfuse/macfuse/issues/616
-- FUSE-T 1.2.7, Lizenz nicht-kommerziell: https://github.com/macos-fuse-t/fuse-t · https://raw.githubusercontent.com/macos-fuse-t/fuse-t/main/License.txt
-- FSKit-Bugs macOS 26.x **[alt, 2025-12]**: https://github.com/andrewgazelka/loaf/issues/1 · rclone-Forum 2026-03-31: https://forum.rclone.org/t/macos-rclone-mount-with-fuse-t-via-fskit/53608
-- WinFsp Releases/Lizenz (GPLv3 + FLOSS-Exception): https://github.com/winfsp/winfsp/releases
-- rclone `nfsmount`/`serve nfs`: https://rclone.org/commands/rclone_nfsmount/ · go-nfs: https://github.com/willscott/go-nfs
-- Rust `nfsserve` 0.11.0 (2026-04-01): https://crates.io/api/v1/crates/nfsserve · `fuser` 0.18.0: https://crates.io/api/v1/crates/fuser
+- Bun Node-API: https://bun.com/docs/runtime/node-api and Bun FFI, experimental: https://bun.com/docs/runtime/ffi
+- macFUSE 5.3.3 and the FSKit backend: https://macfuse.github.io/ and https://github.com/macfuse/macfuse/wiki/FUSE-Backends
+- The macFUSE license, commercial use only by permission **[dated]**: https://github.com/macfuse/macfuse/issues/616
+- FUSE-T 1.2.7 and its non-commercial license: https://github.com/macos-fuse-t/fuse-t and https://raw.githubusercontent.com/macos-fuse-t/fuse-t/main/License.txt
+- FSKit bugs on macOS 26.x **[dated, 2025-12]**: https://github.com/andrewgazelka/loaf/issues/1 and the rclone forum, 2026-03-31: https://forum.rclone.org/t/macos-rclone-mount-with-fuse-t-via-fskit/53608
+- WinFsp releases and its GPLv3 with FLOSS exception: https://github.com/winfsp/winfsp/releases
+- rclone `nfsmount` and `serve nfs`: https://rclone.org/commands/rclone_nfsmount/ and go-nfs: https://github.com/willscott/go-nfs
+- Rust `nfsserve` 0.11.0 (2026-04-01): https://crates.io/api/v1/crates/nfsserve and `fuser` 0.18.0: https://crates.io/api/v1/crates/fuser
 - `webdav-server` 2.6.3 (2026-08-04): https://registry.npmjs.org/webdav-server
-- macOS Finder WebDAV-Eigenheiten: https://sabre.io/dav/clients/finder/ · Windows WebClient 50-MB-Limit: https://www.myworkdrive.com/blog/webdav-file-size-limit
-- mirage NFS-Backend (2026-08-22): https://github.com/strukto-ai/mirage/issues/888
-- slack-fuse (2026): https://github.com/synap5e/slack-fuse · notionfs: https://github.com/can1357/notionfs
+- macOS Finder WebDAV quirks: https://sabre.io/dav/clients/finder/ and the Windows WebClient 50 MB limit: https://www.myworkdrive.com/blog/webdav-file-size-limit
+- The mirage NFS backend (2026-08-22): https://github.com/strukto-ai/mirage/issues/888
+- slack-fuse (2026): https://github.com/synap5e/slack-fuse and notionfs: https://github.com/can1357/notionfs
 
 ### Atlassian
-- API-Token-Verwaltung / Scoped Tokens: https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/ · https://support.atlassian.com/confluence/kb/scoped-api-tokens-in-confluence-cloud/
-- Basic Auth für REST: https://developer.atlassian.com/cloud/confluence/basic-auth-for-rest-apis/
-- Token-Migrationspflicht ab 2026-01-01 **[alt, 2025-11]**: https://community.developer.atlassian.com/t/reminder-migrate-from-using-api-tokens-to-officially-supported-authentication-for-atlassian-apps-integrations/97221
-- JPD classic-token Cutoff 2026-10-31 (2026-04-29): https://community.atlassian.com/forums/Jira-Product-Discovery-articles/Deprecation-of-classic-API-token-access-for-Jira-Product/ba-p/3228037
-- OAuth 2.0 (3LO): https://developer.atlassian.com/cloud/confluence/oauth-2-3lo-apps/ · Scopes: https://developer.atlassian.com/cloud/confluence/scopes-for-oauth-2-3LO-and-forge-apps/
-- Rate Limiting (Punktemodell seit 2026-03-02): https://developer.atlassian.com/cloud/confluence/rate-limiting/
-- 429 bei ~20–30 parallelen Calls mit API-Token (2026-05-29): https://github.com/atlassian/atlassian-mcp-server/issues/171
-- v1-Deprecation endpoint-weise (2026-04-01): https://community.atlassian.com/forums/Confluence-questions/Confluence-API-v1-Deperecation/qaq-p/3215038
-- Changelog (Versions-Limit 50 seit 2026-06-01): https://developer.atlassian.com/cloud/confluence/changelog/
-- Space-Export-API offen seit 2016: https://jira.atlassian.com/browse/CONFCLOUD-40457
-- DC Personal Access Tokens: https://confluence.atlassian.com/enterprise/using-personal-access-tokens-1026032365.html
-- Rovo MCP Server (v2 GA 2026-09-08): https://github.com/atlassian/atlassian-mcp-server · Tools: https://support.atlassian.com/atlassian-rovo-mcp-server/docs/supported-tools/ · Credits (ab 2026-08-31): https://support.atlassian.com/rovo/docs/rovo-usage-limits/
-- Teamwork Graph CLI GA (2026-06-30): https://community.atlassian.com/forums/Atlassian-AI-Rovo-articles/Teamwork-Graph-CLI-GA-connected-context-at-enterprise-scale/ba-p/3254146 · FAQ: https://developer.atlassian.com/cloud/twg-cli/faq/
+- API token management and scoped tokens: https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/ and https://support.atlassian.com/confluence/kb/scoped-api-tokens-in-confluence-cloud/
+- Basic auth for REST: https://developer.atlassian.com/cloud/confluence/basic-auth-for-rest-apis/
+- The token migration requirement from 2026-01-01 **[dated, 2025-11]**: https://community.developer.atlassian.com/t/reminder-migrate-from-using-api-tokens-to-officially-supported-authentication-for-atlassian-apps-integrations/97221
+- The Jira Product Discovery classic-token cutoff on 2026-10-31 (2026-04-29): https://community.atlassian.com/forums/Jira-Product-Discovery-articles/Deprecation-of-classic-API-token-access-for-Jira-Product/ba-p/3228037
+- OAuth 2.0 (3LO): https://developer.atlassian.com/cloud/confluence/oauth-2-3lo-apps/ and its scopes: https://developer.atlassian.com/cloud/confluence/scopes-for-oauth-2-3LO-and-forge-apps/
+- Rate limiting, the points model in force since 2026-03-02: https://developer.atlassian.com/cloud/confluence/rate-limiting/
+- 429 responses from roughly 20 to 30 parallel calls with an API token (2026-05-29): https://github.com/atlassian/atlassian-mcp-server/issues/171
+- v1 deprecation proceeding endpoint by endpoint (2026-04-01): https://community.atlassian.com/forums/Confluence-questions/Confluence-API-v1-Deperecation/qaq-p/3215038
+- Changelog, the 50 result version limit since 2026-06-01: https://developer.atlassian.com/cloud/confluence/changelog/
+- The space export API, open since 2016: https://jira.atlassian.com/browse/CONFCLOUD-40457
+- Data Center personal access tokens: https://confluence.atlassian.com/enterprise/using-personal-access-tokens-1026032365.html
+- Rovo MCP Server, v2 GA on 2026-09-08: https://github.com/atlassian/atlassian-mcp-server with its tools: https://support.atlassian.com/atlassian-rovo-mcp-server/docs/supported-tools/ and credits effective 2026-08-31: https://support.atlassian.com/rovo/docs/rovo-usage-limits/
+- Teamwork Graph CLI GA (2026-06-30): https://community.atlassian.com/forums/Atlassian-AI-Rovo-articles/Teamwork-Graph-CLI-GA-connected-context-at-enterprise-scale/ba-p/3254146 and its FAQ: https://developer.atlassian.com/cloud/twg-cli/faq/
 
-### Agent-Interface-Evidenz
-- Anthropic „Code execution with MCP“ (2025-11-04) **[alt]**: https://www.anthropic.com/engineering/code-execution-with-mcp
-- Anthropic „Advanced tool use“ (2025-11-24) **[alt]**: https://www.anthropic.com/engineering/advanced-tool-use
-- Agent Skills Spec: https://agentskills.io/
-- Cloudflare Code Mode MCP (2026-02-20) **[alt]**: https://blog.cloudflare.com/code-mode-mcp/
-- Arize „MCP vs CLI skills“ (2026-05): https://arize.com/blog/mcp-vs-cli-skills-for-agents-what-our-eval-found-and-which-you-should-use/
-- Arize „Agent interfaces in 2026“ (2026-01) **[alt]**: https://arize.com/blog/agent-interfaces-in-2026-filesystem-vs-api-vs-database-what-actually-works/
-- OpenViking (2026-01) **[alt]**: https://github.com/volcengine/OpenViking
+### Agent interface evidence
+- Anthropic, "Code execution with MCP" (2025-11-04) **[dated]**: https://www.anthropic.com/engineering/code-execution-with-mcp
+- Anthropic, "Advanced tool use" (2025-11-24) **[dated]**: https://www.anthropic.com/engineering/advanced-tool-use
+- The Agent Skills specification: https://agentskills.io/
+- Cloudflare Code Mode MCP (2026-02-20) **[dated]**: https://blog.cloudflare.com/code-mode-mcp/
+- Arize, "MCP vs CLI skills" (2026-05): https://arize.com/blog/mcp-vs-cli-skills-for-agents-what-our-eval-found-and-which-you-should-use/
+- Arize, "Agent interfaces in 2026" (2026-01) **[dated]**: https://arize.com/blog/agent-interfaces-in-2026-filesystem-vs-api-vs-database-what-actually-works/
+- OpenViking (2026-01) **[dated]**: https://github.com/volcengine/OpenViking
 
 ---
 
-## Verwandte Dokumente
-- `spec/mcp-over-code.md` – MCP-Server, der die CLI aufruft (Gegenstück zum VFS-Ansatz)
-- `spec/local-storage-plan.md` – Frontmatter/`.atlcli/`-Layout, das das VFS übernimmt
-- `spec/sqlite-sync-foundation.md` – SQLite-Adapter, Vorlage für den BodyCache
-- `spec/large-space-sync.md`, `spec/partial-sync.md` – Baum-Laden großer Spaces
-- `packages/confluence/src/hierarchy.ts` – Index-Pattern und Slug-Regeln
+## Related documents
+- `spec/mcp-over-code.md`, an MCP server that calls the CLI, the counterpart to the VFS approach
+- `spec/local-storage-plan.md`, the frontmatter and `.atlcli/` layout the VFS adopts
+- `spec/sqlite-sync-foundation.md`, the SQLite adapter that serves as the model for the body cache
+- `spec/large-space-sync.md` and `spec/partial-sync.md`, on loading the tree of a large space
+- `packages/confluence/src/hierarchy.ts`, the index pattern and the slug rules
