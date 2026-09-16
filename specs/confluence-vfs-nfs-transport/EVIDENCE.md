@@ -266,6 +266,32 @@ These per-record checks do not complete resource-budget acceptance: the upstream
 connection count, spawned request tasks, reply queues and slow-client deadlines
 still need bounds. No aggregate-memory or denial-of-service-proof claim is made.
 
+## Slice 11: bounded connection work and real slow-client deadline
+
+Removed upstream's per-request detached tasks and unbounded reply channel.
+Each admitted TCP connection now reads one bounded record, dispatches it, and
+writes its response before reading another. At most 32 connections are admitted;
+excess sockets close immediately. Read/idle, handler and reply-write deadlines
+are 60, 120 and 30 seconds. The shared transaction table rejects new entries at
+4,096 rather than evicting active-session replay history, and disconnect releases
+that session's entries. Across-connection replay reconciliation is still a write
+journal requirement, not supplied by this table.
+
+Actual wire tests fill all 32 connections, verify overflow rejection, then send
+4,097 unique pipelined NULL RPCs: exactly the first 4,096 replies arrive before
+capacity closes the socket, and a fresh client still works. A partial header
+stalls for the real 60-second deadline on each OS while another client succeeds.
+macOS: 60.019 seconds; Linux: 60.009 seconds for that test. Both hosts passed 16
+tests / 396 assertions including subsequent native single/combined RO mounts.
+Typecheck and Rust format/Clippy/tests passed.
+
+Sequential processing is a deliberate bounded implementation; comparative
+benchmarks must assess its impact before performance acceptance. The 30-second
+blocked-response and 120-second stalled-handler deadlines are implemented but
+not separately fault-injected by this slice. No RW timeout/outcome guarantee is
+claimed. Prior GitHub CI runs for 30a2d73b, bb4c5cf0 and c4998729 succeeded;
+no run for b70c6ad7 was visible at inspection time.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

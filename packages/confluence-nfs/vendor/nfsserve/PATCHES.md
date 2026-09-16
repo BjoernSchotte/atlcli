@@ -36,3 +36,11 @@ resizing and rejects more than 1,024 fragments per record (including empty ones)
 xdr.rs checks byte and u32-array lengths before allocating, with a 4 MiB decoded
 payload limit. This closes each malformed connection; the listener stays alive.
 This is not yet a bound on total connections, pending tasks or queued responses.
+
+Connection-budget follow-up: tcp.rs admits at most 32 connections and processes
+one RPC at a time on each connection. The unbounded task/reply-channel design is
+removed from rpcwire.rs. Read/idle, dispatch and reply-write deadlines are 60,
+120 and 30 seconds. The transaction tracker retains at most 4,096 entries and
+removes a TCP session's entries on disconnect. Capacity rejects new work rather
+than evicting another live session's replay history. This does not provide replay
+reconciliation across reconnects; write publication still requires its journal.

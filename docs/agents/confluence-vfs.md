@@ -231,3 +231,9 @@ helpers; rebuild an older companion binary before mounting.
 The experimental NFS listener rejects RPC records over 4 MiB, more than 1,024
 fragments per record, and XDR arrays exceeding 4 MiB before allocating their
 payload. Malformed connections are closed; reconnect with a valid request.
+
+NFS accepts at most 32 simultaneous TCP connections and handles requests in order
+within each connection. Idle or incomplete requests disconnect after 60 seconds;
+clients can reconnect. Dispatch and response-write deadlines are 120 and 30
+seconds. Replay tracking is capped at 4,096 entries; exceeding capacity closes
+the requesting connection. These limits do not change WebDAV or the VFS shell.

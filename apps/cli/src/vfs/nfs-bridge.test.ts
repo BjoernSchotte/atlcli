@@ -132,6 +132,67 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     });
   });
 
+  it("bounds persistent connections and pipelined transaction history", async () => {
+    const { server } = await fixture(["DOCSY"], false);
+    const sockets: ReturnType<typeof connect>[] = [];
+    const nullCall = (id: number) => Buffer.concat([ints(0x80000028), ints(id, 0, 2, 100003, 3, 0, 0, 0, 0, 0)]);
+    try {
+      for (let i = 0; i < 32; i++) {
+        await new Promise<void>((done, reject) => {
+          const socket = connect(server.port, "127.0.0.1");
+          sockets.push(socket);
+          socket.setTimeout(5000, () => socket.destroy(new Error("Connection admission timed out")));
+          socket.on("error", reject);
+          socket.on("connect", () => socket.write(nullCall(i)));
+          socket.once("data", () => { socket.setTimeout(0); done(); });
+        });
+      }
+      await new Promise<void>((done, reject) => {
+        const extra = connect(server.port, "127.0.0.1");
+        extra.setTimeout(3000, () => extra.destroy(new Error("Connection cap not enforced")));
+        extra.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
+        extra.on("close", () => done());
+      });
+    } finally {
+      await Promise.all(sockets.map((socket) => new Promise<void>((done) => { socket.once("close", done); socket.destroy(); })));
+    }
+    // Exercise backpressure and the finite replay table with unique pipelined RPCs.
+    const received = await new Promise<number[]>((done, reject) => {
+      const socket = connect(server.port, "127.0.0.1");
+      let remaining = Buffer.alloc(0);
+      const ids: number[] = [];
+      socket.setTimeout(10000, () => socket.destroy(new Error("Pipeline did not complete")));
+      socket.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
+      socket.on("connect", () => socket.write(Buffer.concat(Array.from({ length: 4097 }, (_, i) => nullCall(i)))));
+      socket.on("data", (data) => {
+        remaining = Buffer.concat([remaining, Buffer.from(data)]);
+        while (remaining.length >= 28) {
+          ids.push(remaining.readUInt32BE(4));
+          remaining = remaining.subarray(28);
+        }
+      });
+      socket.on("close", () => done(ids));
+    });
+    expect(received).toEqual(Array.from({ length: 4096 }, (_, i) => i));
+    expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+  }, 20000);
+
+  it("disconnects a stalled partial record without blocking other clients", async () => {
+    const { server } = await fixture(["DOCSY"], false);
+    const socket = connect(server.port, "127.0.0.1");
+    const closed = new Promise<void>((done, reject) => {
+      socket.setTimeout(65000, () => socket.destroy(new Error("Server read deadline was not enforced")));
+      socket.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
+      socket.on("close", done);
+      socket.on("connect", () => socket.write(Buffer.from([0x80])));
+    });
+    try {
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+      await closed;
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+    } finally { socket.destroy(); }
+  }, 70000);
+
   for (const procedure of [16, 17]) {
     it(`paginates NFS procedure ${procedure} without repeating or omitting entries`, async () => {
       const { server, vfs } = await fixture(["DOCSY"], false);

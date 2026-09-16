@@ -20,16 +20,24 @@ impl TransactionTracker {
     /// If it's a new transaction, it is marked as `InProgress`.
     ///
     /// Returns `true` if the transaction is a retransmission, `false` otherwise.
-    pub fn is_retransmission(&self, xid: u32, client_addr: &str) -> bool {
+    pub fn is_retransmission(&self, xid: u32, client_addr: &str) -> Result<bool, anyhow::Error> {
         let key = (xid, client_addr.to_string());
         let mut transactions = self.transactions.lock().expect("unable to unlock transactions mutex");
         housekeeping(&mut transactions, self.retention_period);
+        if !transactions.contains_key(&key) && transactions.len() >= 4096 {
+            return Err(anyhow::anyhow!("RPC transaction capacity exceeded"));
+        }
         if let hash_map::Entry::Vacant(e) = transactions.entry(key) {
             e.insert(TransactionState::InProgress);
-            false
+            Ok(false)
         } else {
-            true
+            Ok(true)
         }
+    }
+
+    /// Drop records for a terminated TCP session; other clients retain their history.
+    pub fn remove_client(&self, client_addr: &str) {
+        self.transactions.lock().expect("transactions mutex").retain(|(_, client), _| client != client_addr);
     }
 
     /// Marks the transaction as processed.

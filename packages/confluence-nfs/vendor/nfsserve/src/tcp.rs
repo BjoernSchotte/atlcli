@@ -5,10 +5,9 @@ use std::time::Duration;
 
 use anyhow;
 use async_trait::async_trait;
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tokio::sync::{mpsc, Semaphore};
+use tracing::{debug, info};
 
 use crate::context::RPCContext;
 use crate::rpcwire::*;
@@ -31,55 +30,18 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 
 /// processes an established socket
 async fn process_socket(mut socket: tokio::net::TcpStream, context: RPCContext) -> Result<(), anyhow::Error> {
-    let (mut message_handler, mut socksend, mut msgrecvchan) = SocketMessageHandler::new(&context);
     let _ = socket.set_nodelay(true);
-
-    tokio::spawn(async move {
-        loop {
-            if let Err(e) = message_handler.read().await {
-                debug!("Message loop broken due to {:?}", e);
-                break;
-            }
-        }
-    });
+    // ponytail: sequential per connection bounds request/reply memory without queues.
+    // Add bounded multiplexing only if native benchmarks demonstrate a bottleneck.
     loop {
-        tokio::select! {
-            _ = socket.readable() => {
-                let mut buf = [0; 128000];
-
-                match socket.try_read(&mut buf) {
-                    Ok(0) => {
-                        return Ok(());
-                    }
-                    Ok(n) => {
-                        let _ = socksend.write_all(&buf[..n]).await;
-                    }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        continue;
-                    }
-                    Err(e) => {
-                        debug!("Message handling closed : {:?}", e);
-                        return Err(e.into());
-                    }
-                }
-
-            },
-            reply = msgrecvchan.recv() => {
-                match reply {
-                    Some(Err(e)) => {
-                        debug!("Message handling closed : {:?}", e);
-                        return Err(e);
-                    }
-                    Some(Ok(msg)) => {
-                        if let Err(e) = write_fragment(&mut socket, &msg).await {
-                            error!("Write error {:?}", e);
-                        }
-                    }
-                    None => {
-                        return Err(anyhow::anyhow!("Unexpected socket context termination"));
-                    }
-                }
-            }
+        let record = tokio::time::timeout(Duration::from_secs(60), read_record(&mut socket)).await??;
+        let mut reply = Vec::new();
+        let should_reply = tokio::time::timeout(
+            Duration::from_secs(120),
+            handle_rpc(&mut std::io::Cursor::new(record), &mut reply, context.clone()),
+        ).await??;
+        if should_reply {
+            tokio::time::timeout(Duration::from_secs(30), write_fragment(&mut socket, &reply)).await??;
         }
     }
 }
@@ -194,8 +156,13 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
 
     /// Loops forever and never returns handling all incoming connections.
     async fn handle_forever(&self) -> io::Result<()> {
+        let connections = Arc::new(Semaphore::new(32));
         loop {
             let (socket, _) = self.listener.accept().await?;
+            let Ok(permit) = connections.clone().try_acquire_owned() else {
+                drop(socket);
+                continue;
+            };
             let context = RPCContext {
                 local_port: self.port,
                 client_addr: socket.peer_addr().unwrap().to_string(),
@@ -208,7 +175,11 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);
             tokio::spawn(async move {
+                let _permit = permit;
+                let tracker = context.transaction_tracker.clone();
+                let client = context.client_addr.clone();
                 let _ = process_socket(socket, context).await;
+                tracker.remove_client(&client);
             });
         }
     }
