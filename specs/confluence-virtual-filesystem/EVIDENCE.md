@@ -167,8 +167,24 @@ same way as section 1, against the same baseline.
   it near 15 ms on real hardware, which is the boundary, so **this is the
   measurement that must be repeated on release hardware before shipping.**
 
-Smoke-tested from the built bundle: `wiki sh --help`, `wiki mount --help` and
-`wiki vfs --help` all resolve, so the dynamic import path works in the artifact.
+Smoke-tested from the built bundle by
+`apps/cli/src/e2e/wiki-sh-built.e2e.test.ts`, which runs `dist/index.js` as a
+child process against a local Confluence stand-in: listing, reading, `grep`, the
+`ro` refusal, the `--json` shape, the exit code, the extra commands and the
+maintenance commands all work in the artifact. That is the only test that can
+catch the dynamic `import("just-bash")` failing to resolve inside the bundle.
+
+### Full-suite result
+
+`bun run test` over the whole repository: **8,883 pass, 45 skip, 26 fail.**
+
+**None of the 26 are in this feature.** They are `pdf-compiler-browser`,
+`import-pdf`, `plugin-git`, the action-registry benchmark, the extension and the
+release/consumer-smoke scripts. Checked rather than assumed: the same three
+representative files run at `origin/main` in a clean worktree give the
+**identical** 31 pass / 10 fail, and the failures are `ENOENT` on `poppler`,
+which is not installed in this container. They are an environment gap, not a
+regression.
 
 ## 6. Not yet measured
 
