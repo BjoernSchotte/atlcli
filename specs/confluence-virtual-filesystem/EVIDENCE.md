@@ -150,6 +150,26 @@ Asserted as tests rather than measured once, so they cannot quietly regress.
 
 ---
 
+## 5a. The shipped artifact (WP9.5)
+
+The whole feature — `just-bash`, `webdav-server` and the VFS core — measured the
+same way as section 1, against the same baseline.
+
+| Build | `dist/index.js` | Δ size | Startup | Δ startup |
+|-------|-----------------|--------|---------|-----------|
+| WP0.4 baseline | 32,282,850 B | — | 989.2 ms | — |
+| with the whole feature | 36,838,969 B | +4.35 MB, **+14.1 %** | 1135.1 ms | **+146 ms** |
+
+- **Size gate (25 % / 30 MB): met**, with room.
+- **Startup gate (15 ms): breached on this container**, by the same margin and
+  for the same reason as section 1 — it is parse cost, on hardware whose
+  baseline is roughly ten times a developer machine's. The linear scaling puts
+  it near 15 ms on real hardware, which is the boundary, so **this is the
+  measurement that must be repeated on release hardware before shipping.**
+
+Smoke-tested from the built bundle: `wiki sh --help`, `wiki mount --help` and
+`wiki vfs --help` all resolve, so the dynamic import path works in the artifact.
+
 ## 6. Not yet measured
 
 | What | Needs | Work package |

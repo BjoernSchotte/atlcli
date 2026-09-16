@@ -165,3 +165,90 @@ describe("request cost of a mounted volume", () => {
     expect(client.callsTo("getPage")).toBe(3);
   });
 });
+
+describe("WP9.3b — the demand principle through the WebDAV adapter", () => {
+  /**
+   * The plan's invariant test explicitly includes "a PROPFIND through the
+   * WebDAV adapter", because the mount is the frontend that can be walked
+   * without anyone asking it to.
+   */
+  it("a PROPFIND across a large space writes no body and no blob", async () => {
+    await start(bigSpace(50, 100));
+    client.resetCalls();
+
+    await propfind("/BIG");
+    for (let section = 0; section < 10; section++) {
+      await propfind(`/BIG/section-${section}-${10_000 + section}`);
+    }
+
+    expect(client.callsTo("getPage")).toBe(0);
+    expect(client.callsTo("getPagesBulk")).toBe(0);
+    expect(client.callsTo("downloadAttachment")).toBe(0);
+    expect(vfs.cache!.stats().bodies).toBe(0);
+    expect(vfs.cache!.stats().attachments).toBe(0);
+  });
+
+  it("leaves the forty unvisited sections unloaded", async () => {
+    await start(bigSpace(50, 100));
+    await propfind("/BIG");
+    await propfind("/BIG/section-0-10000");
+
+    expect(vfs.index.isUnloaded("10000")).toBe(false);
+    for (const section of [1, 25, 49]) {
+      expect(vfs.index.isUnloaded(String(10_000 + section))).toBe(true);
+    }
+  });
+
+  /**
+   * An indexer walk is the mount's worst case: nobody asked for it, and it
+   * reads everything. The exclusions are served so it should not start, and the
+   * detector reports it if one does anyway.
+   */
+  it("notices an unlisted read sweep of the kind an indexer makes", async () => {
+    const reports: unknown[] = [];
+    client = bigSpace(5, 60);
+    vfs = await ConfluenceVfsImpl.open({
+      profile: "mayflower",
+      client,
+      spaces: ["BIG"],
+      mode: "ro",
+      allowDelete: false,
+      cacheDir: root,
+      offline: false,
+    });
+    server = await startWebdavServer({
+      vfs,
+      spaces: ["BIG"],
+      onSweep: (report) => reports.push(report),
+    });
+
+    // Learn the names, then read them from a context that never listed them —
+    // which is what the detector keys on.
+    await propfind("/BIG");
+    const listing = await fetch(new URL("/BIG/section-0-10000", server.url), {
+      method: "PROPFIND",
+      headers: { Depth: "1" },
+    });
+    const body = await listing.text();
+    const names = [...body.matchAll(/<D:href>[^<]*\/BIG\/section-0-10000\/(page-[^<\/]*)\/<\/D:href>/g)]
+      .map((match) => match[1]!)
+      .slice(0, 55);
+    expect(names.length).toBeGreaterThan(50);
+
+    // A fresh server so the detector has no listing recorded for the directory.
+    await server.stop();
+    server = await startWebdavServer({
+      vfs,
+      spaces: ["BIG"],
+      onSweep: (report) => reports.push(report),
+    });
+    for (const name of names) {
+      const response = await fetch(
+        new URL(`/BIG/section-0-10000/${name}/_index.md`, server.url),
+      );
+      await response.text();
+    }
+
+    expect(reports.length).toBe(1);
+  });
+});
