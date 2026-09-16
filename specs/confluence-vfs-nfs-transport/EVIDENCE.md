@@ -176,6 +176,23 @@ of automatic or explicit publication and do not decide that policy implicitly.
 CI follow-up for slice 5: GitHub run 35147632981 completed the native NFS jobs
 successfully on ubuntu-latest and macos-14.
 
+## Slice 7: export identities and native multi-space reads
+
+Generated virtual files now include their export path in their NFS identity;
+`DOCSY/_space.json` and `mayflower/_space.json` cannot alias the same handle.
+Every existing handle rechecks the resolved space, including materialized alias
+targets. Deleted or identity-mismatched handles return ESTALE rather than ENOENT.
+Synthetic tests verify page/directory IDs survive a rename followed by lookup at
+the new path; this does not yet prove old handles survive an external move before
+that lookup, so full identity acceptance remains open.
+
+macOS synthetic native mounts and Linux live read-only mounts each passed 10
+tests (189 assertions): direct DOCSY root, combined DOCSY/mayflower roots, exact
+bytes, scope checks and generated-file separation. Linux initially reported a
+transient busy unmount immediately after closing a read; test cleanup now retries
+normal unmount for at most one second, without forced/lazy detachment. The repeat
+passed and the two leftover test mounts were normally detached. Typecheck passed.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

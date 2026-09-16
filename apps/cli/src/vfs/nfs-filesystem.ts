@@ -36,18 +36,44 @@ export class NfsFilesystem {
     }
   }
 
-  private identity(stat: VfsStat): string {
-    return `${stat.kind}:${stat.id}:${stat.isDirectory ? "directory" : "file"}`;
+  private identity(stat: VfsStat, path: string): string {
+    // Generated views may share core IDs (e.g. space-json, label-dir). Their
+    // export path distinguishes the view; real content keeps ID-based identity.
+    const view = stat.kind === "virtual-dir" || stat.kind === "virtual-file" ? `:${path}` : "";
+    return `${stat.kind}:${stat.id}:${stat.isDirectory ? "directory" : "file"}${view}`;
+  }
+
+  private stale(id: number): never {
+    const old = this.paths.get(id);
+    if (old && this.identities.get(old.identity) === id) this.identities.delete(old.identity);
+    this.paths.delete(id);
+    throw Object.assign(new Error("Stale NFS handle; look up the file again"), { code: "ESTALE" });
+  }
+
+  private async checkResolvedScope(path: string): Promise<void> {
+    const node = await this.vfs.resolve(path);
+    if (node.spaceKey && !this.spaces.has(node.spaceKey)) throw new VfsError("EACCES", "Outside NFS export");
+    if (node.kind === "symlink") {
+      const target = posix.resolve(posix.dirname(path), await this.vfs.readlink(path));
+      this.assertExport(target);
+      const resolved = await this.vfs.resolve(target);
+      if (resolved.spaceKey && !this.spaces.has(resolved.spaceKey)) throw new VfsError("EACCES", "Outside NFS export");
+      if (resolved.kind === "symlink") throw new VfsError("EINVAL", "Chained NFS aliases are unsupported");
+    }
   }
 
   private async pathFor(id: number): Promise<string> {
     if (!Number.isSafeInteger(id) || id < 1) throw new VfsError("EINVAL", "Invalid NFS handle");
     const entry = this.paths.get(id);
-    if (!entry) throw new VfsError("ENOENT", "Unknown NFS handle");
+    if (!entry) return this.stale(id);
     this.assertExport(entry.path);
-    const stat = await this.vfs.stat(entry.path);
-    if (id !== 1 && this.identity(stat) !== entry.identity) {
-      throw new VfsError("ENOENT", "Expired NFS handle");
+    try {
+      const stat = await this.vfs.stat(entry.path);
+      await this.checkResolvedScope(entry.path);
+      if (id !== 1 && this.identity(stat, entry.path) !== entry.identity) return this.stale(id);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return this.stale(id);
+      throw error;
     }
     return entry.path;
   }
@@ -56,12 +82,8 @@ export class NfsFilesystem {
     this.assertExport(path);
     if (path === this.root) return 1;
     const stat = await this.vfs.stat(path);
-    if (stat.isSymbolicLink) {
-      // Materialize aliases like WebDAV; never expose an absolute VFS symlink.
-      const target = posix.resolve(posix.dirname(path), await this.vfs.readlink(path));
-      this.assertExport(target);
-    }
-    const identity = this.identity(stat);
+    await this.checkResolvedScope(path);
+    const identity = this.identity(stat, path);
     const existing = this.identities.get(identity);
     if (existing !== undefined) {
       this.paths.set(existing, { path, identity });

@@ -213,3 +213,8 @@ command diagnostic states. `-newer FILE`, combined time predicates and
 and minute precision, then checked against exact page metadata. No bodies are
 fetched. Index lag can omit recent changes. Other find expressions retain the
 filesystem-metadata walk; `--no-cql` on `wiki sh` disables acceleration.
+
+Experimental NFS handles distinguish generated files in each selected space.
+Deleted or replaced identities report `ESTALE`; look up the path again, or remount
+after a helper restart. Single-space and combined-space native reads are covered
+by the [NFS evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md).

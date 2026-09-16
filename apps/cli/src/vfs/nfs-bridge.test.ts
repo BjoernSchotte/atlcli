@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { platform } from "node:os";
-import { open } from "node:fs/promises";
+import { open, opendir } from "node:fs/promises";
 import { getActiveProfile, loadConfig } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { runMountCommand } from "../commands/wiki-mount.js";
@@ -45,18 +45,20 @@ async function rpc(server: RunningNfsServer, program: number, procedure: number,
     socket.on("end", () => reject(new Error("RPC closed before reply")));
   });
 }
-async function fixture() {
+async function fixture(spaces = ["DOCSY"]) {
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-wire-"));
   const client = new FakeConfluenceClient()
     .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
-    .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Grüße 🐴</p>" });
+    .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Grüße 🐴</p>" })
+    .seedSpace({ id: "s2", key: "mayflower", name: "Other", homepageId: "300" })
+    .seedPage({ id: "300", title: "Other", spaceKey: "mayflower", storage: "<p>Other</p>" });
   const live = process.env.ATLCLI_NFS_LIVE === "1";
   const profile = live ? getActiveProfile(await loadConfig(), "mayflower") : undefined;
   if (live && !profile) throw new Error("Missing mayflower test profile");
   const vfs = await ConfluenceVfsImpl.open({ profile: profile?.name ?? "fixture",
-    client: profile ? new ConfluenceClient(profile) : client, spaces: ["DOCSY"], mode: "ro", allowDelete: false, offline: false, cacheDir });
+    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: "ro", allowDelete: false, offline: false, cacheDir });
   cleanups.push(async () => { await vfs.close(); rmSync(cacheDir, { recursive: true, force: true }); });
-  const server = await startNfsServer({ vfs, spaces: ["DOCSY"], helperPath: resolve(helperPath!) });
+  const server = await startNfsServer({ vfs, spaces, helperPath: resolve(helperPath!) });
   cleanups.push(() => server.stop());
   return { server, vfs };
 }
@@ -86,26 +88,40 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     await server.exited;
   });
 
-  it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("reads full content through the native kernel mount", async () => {
-    const { server, vfs } = await fixture();
-    const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-kernel-"));
-    let mounted = false;
-    cleanups.push(async () => {
-      if (mounted) {
-        const status = await runMountCommand(platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint]);
-        if (status !== 0) throw new Error(`Test mount remains attached: ${mountpoint}`);
+  for (const spaces of [["DOCSY"], ["DOCSY", "mayflower"]]) {
+    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")(`reads full content through native kernel mount (${spaces.join(",")})`, async () => {
+      const { server, vfs } = await fixture(spaces);
+      const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-kernel-"));
+      let mounted = false;
+      cleanups.push(async () => {
+        if (mounted) {
+          const command = platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint];
+          let status = await runMountCommand(command);
+          // Linux can retain a just-closed read briefly; never force or lazily detach.
+          for (let attempt = 0; status !== 0 && attempt < 10; attempt++) {
+            await Bun.sleep(100);
+            status = await runMountCommand(command);
+          }
+          if (status !== 0) throw new Error(`Test mount remains attached: ${mountpoint}`);
+        }
+        rmSync(mountpoint, { recursive: true, force: true });
+      });
+      const options = `vers=3,tcp,ro,soft,timeo=10,retrans=2,port=${server.port},mountport=${server.port}`;
+      const command = platform() === "linux"
+        ? ["sudo", "-n", "mount", "-t", "nfs", "-o", `${options},nolock`, "127.0.0.1:/", mountpoint]
+        : ["mount_nfs", "-o", `${options},nolocks`, "127.0.0.1:/", mountpoint];
+      expect(await runMountCommand(command)).toBe(0);
+      mounted = true;
+      if (spaces.length > 1) {
+        const directory = await opendir(mountpoint);
+        const names: string[] = [];
+        for await (const entry of directory) names.push(entry.name);
+        expect(names.sort()).toEqual(["DOCSY", "mayflower"]);
       }
-      rmSync(mountpoint, { recursive: true, force: true });
-    });
-    const options = `vers=3,tcp,ro,soft,timeo=10,retrans=2,port=${server.port},mountport=${server.port}`;
-    const command = platform() === "linux"
-      ? ["sudo", "-n", "mount", "-t", "nfs", "-o", `${options},nolock`, "127.0.0.1:/", mountpoint]
-      : ["mount_nfs", "-o", `${options},nolocks`, "127.0.0.1:/", mountpoint];
-    expect(await runMountCommand(command)).toBe(0);
-    mounted = true;
-    const file = await open(join(mountpoint, "_index.md"), "r");
-    try {
-      expect(await file.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md")));
-    } finally { await file.close(); }
-  }, 30000);
+      const file = await open(join(mountpoint, ...(spaces.length > 1 ? ["DOCSY"] : []), "_index.md"), "r");
+      try {
+        expect(await file.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md")));
+      } finally { await file.close(); }
+    }, 30000);
+  }
 });

@@ -8,7 +8,7 @@ import { NfsFilesystem, NFS_MAX_READ } from "./nfs-filesystem.js";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
-async function fixture(spaces = ["DOCSY"]) {
+async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro") {
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-core-"));
   const client = new FakeConfluenceClient()
     .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
@@ -18,7 +18,7 @@ async function fixture(spaces = ["DOCSY"]) {
   for (let i = 0; i < 4; i++) client.seedPage({ id: String(200 + i), title: `Child ${i}`,
     spaceKey: "DOCSY", parentId: "100", storage: `<p>Body ${i}</p>` });
   const vfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY", "mayflower"],
-    mode: "ro", allowDelete: false, cacheDir, offline: false });
+    mode, allowDelete: mode === "rw", coalesceMs: 0, cacheDir, offline: false });
   cleanup.push(async () => { await vfs.close(); rmSync(cacheDir, { recursive: true, force: true }); });
   return { fs: new NfsFilesystem(vfs, spaces), vfs };
 }
@@ -75,4 +75,35 @@ it("paginates without duplicates and rejects unknown cursors/handles", async () 
   expect(names).toEqual(all.entries.map((e) => e.name));
   await expect(fs.readdir(1, 999999, 2)).rejects.toThrow("cursor");
   await expect(fs.getattr(999999)).rejects.toThrow("handle");
+});
+
+it("does not alias generated files from different spaces", async () => {
+  const { fs } = await fixture(["DOCSY", "mayflower"]);
+  const first = await fs.lookup(await fs.lookup(1, "DOCSY"), "_space.json");
+  const second = await fs.lookup(await fs.lookup(1, "mayflower"), "_space.json");
+  expect(first).not.toBe(second);
+  expect(Buffer.from((await fs.read(first, 0, 65536)).data, "base64").toString()).toContain("DOCSY");
+  expect(Buffer.from((await fs.read(second, 0, 65536)).data, "base64").toString()).toContain("mayflower");
+});
+
+it("preserves real page handles across rename and expires deleted handles", async () => {
+  const { fs, vfs } = await fixture(["DOCSY"], "rw");
+  const directory = await fs.lookup(1, "child-0-200");
+  const file = await fs.lookup(directory, "_index.md");
+  expect(directory).not.toBe(file);
+  await vfs.rename("/DOCSY/child-0-200", "/DOCSY/renamed-200");
+  expect(await fs.lookup(1, "renamed-200")).toBe(directory);
+  expect(await fs.lookup(directory, "_index.md")).toBe(file);
+  await vfs.rm("/DOCSY/renamed-200");
+  await expect(fs.getattr(file)).rejects.toMatchObject({ code: "ESTALE" });
+  await expect(fs.getattr(directory)).rejects.toMatchObject({ code: "ESTALE" });
+});
+
+it("rechecks resolved space identity on existing handles", async () => {
+  const { fs, vfs } = await fixture();
+  const file = await fs.lookup(1, "_index.md");
+  const original = vfs.resolve.bind(vfs);
+  vfs.resolve = async (path) => ({ ...await original(path), spaceKey: "mayflower" });
+  await expect(fs.read(file, 0, 128)).rejects.toMatchObject({ code: "EACCES" });
+  await expect(fs.getattr(file)).rejects.toMatchObject({ code: "EACCES" });
 });
