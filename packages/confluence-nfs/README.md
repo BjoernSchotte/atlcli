@@ -103,3 +103,12 @@ its own mounts. Keep the companion and CLI on the same bridge protocol version.
 - [Protocol patches and upstream license provenance](vendor/nfsserve/PATCHES.md)
 - [Implementation and acceptance plan](../../specs/confluence-vfs-nfs-transport/PLAN.md)
 - [Recorded evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md)
+
+
+Filehandles contain a 128-bit per-process session token from the operating
+system's `/dev/urandom` and the numeric object ID. The helper overrides
+nfsserve's timestamp-based handle conversion; a foreign session returns STALE
+before invoking Bun. Legacy 16-byte handles also return STALE. Other malformed
+lengths return BADHANDLE. Failure to read the random source aborts startup before
+binding. This is restart isolation, not local-user authentication; remount after
+restarting the helper. No new dependency or persistent token is needed.

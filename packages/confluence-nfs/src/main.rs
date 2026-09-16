@@ -9,6 +9,7 @@ use nfsserve::{
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
+    io::Read,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
@@ -18,6 +19,7 @@ use tokio::sync::{oneshot, Semaphore};
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 struct Bridge {
+    session: [u8; 16],
     pending: Pending,
     sequence: AtomicU64,
     capacity: Semaphore,
@@ -107,6 +109,27 @@ impl NFSFileSystem for Bridge {
     }
     fn root_dir(&self) -> fileid3 {
         1
+    }
+    fn id_to_fh(&self, id: fileid3) -> nfs_fh3 {
+        let mut data = self.session.to_vec();
+        data.extend_from_slice(&id.to_le_bytes());
+        nfs_fh3 { data }
+    }
+    fn fh_to_id(&self, handle: &nfs_fh3) -> Result<fileid3, nfsstat3> {
+        // The previous helper used a 16-byte timestamp-based handle.
+        if handle.data.len() == 16 {
+            return Err(nfsstat3::NFS3ERR_STALE);
+        }
+        if handle.data.len() != 24 {
+            return Err(nfsstat3::NFS3ERR_BADHANDLE);
+        }
+        if handle.data[..16] != self.session {
+            return Err(nfsstat3::NFS3ERR_STALE);
+        }
+        Ok(u64::from_le_bytes(handle.data[16..24].try_into().unwrap()))
+    }
+    fn serverid(&self) -> cookieverf3 {
+        self.session[..8].try_into().unwrap()
     }
     async fn lookup(&self, parent: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
         self.call("lookup", json!({"parent":parent,"name":name(filename)?}))
@@ -267,7 +290,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "0".into())
         .parse()?;
     let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
+    let mut session = [0; 16];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut session)?;
     let bridge = Bridge {
+        session,
         pending: pending.clone(),
         sequence: AtomicU64::new(1),
         capacity: Semaphore::new(32),
@@ -302,4 +328,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     tokio::select! { result=server.handle_forever()=>{result?;}, _=closed_rx=>{} }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bridge(session: [u8; 16]) -> Bridge {
+        Bridge {
+            session,
+            pending: Arc::new(Mutex::new(HashMap::new())),
+            sequence: AtomicU64::new(1),
+            capacity: Semaphore::new(32),
+        }
+    }
+
+    #[test]
+    fn handles_expire_between_sessions_even_when_file_ids_are_reused() {
+        let first = bridge([1; 16]);
+        let second = bridge([2; 16]);
+        let old = first.id_to_fh(2);
+        assert!(matches!(first.fh_to_id(&old), Ok(2)));
+        assert!(matches!(
+            second.fh_to_id(&old),
+            Err(nfsstat3::NFS3ERR_STALE)
+        ));
+        assert!(matches!(
+            second.fh_to_id(&second.id_to_fh(u64::MAX)),
+            Ok(u64::MAX)
+        ));
+        assert!(matches!(
+            second.fh_to_id(&nfs_fh3 { data: vec![0; 16] }),
+            Err(nfsstat3::NFS3ERR_STALE)
+        ));
+        assert!(matches!(
+            second.fh_to_id(&nfs_fh3 { data: vec![0; 7] }),
+            Err(nfsstat3::NFS3ERR_BADHANDLE)
+        ));
+    }
 }

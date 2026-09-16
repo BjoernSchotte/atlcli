@@ -287,5 +287,6 @@ private pipe closes, but the OS volume can remain attached. `wiki mount list`
 keeps that record and reports `orphaned`; it must not be mistaken for a working
 server. Run `atlcli wiki mount unmount <mountpoint>` using the same `--cache-dir`
 if one was specified. Once detached, start a fresh mount: old filehandles do not
-survive a helper restart. The recovery command uses regular unmount, without
+survive a helper restart. Handles carry a fresh random session identity, so their
+validity does not depend on the wall clock. The recovery command uses regular unmount, without
 forced or lazy detachment. Close applications using the volume if it is busy.

@@ -689,3 +689,28 @@ This proves the pipe-loss mechanism on both systems; it does not substitute for
 a complete native macOS CLI parent-crash/remount acceptance test, which remains
 open while the local mayflower profile is unavailable. Pending-write crash
 recovery remains part of the uncompleted RW gate.
+
+
+## Slice 29 — clock-independent handle generations
+
+The pinned library's default filehandle generation is the startup wall-clock
+time in milliseconds. Equal timestamps (including clock reuse) can therefore
+reuse a generation. The helper now overrides the existing handle conversion
+hooks with a 128-bit per-process token read from /dev/urandom, followed by the
+object ID. It refuses foreign sessions before any Bun/VFS request, reports
+STALE for legacy timestamp handles, and BADHANDLE for malformed lengths. The
+server cookie identity also derives from the session token. Random-source
+failure aborts startup before the listener binds. No dependency was added.
+
+A deterministic Rust regression failed with the default conversion and passes
+with separate session identities even when numeric object IDs are reused. It
+also covers legacy and malformed handles. A real TCP test stops one helper,
+starts another, rejects the old root for GETATTR and READ with STALE, asserts
+zero VFS stat calls for those requests, and accepts the new root. This proves
+RPC-level remount behavior; it is not a native application-held-descriptor test.
+
+Four Rust tests passed on macOS and Linux. The complete bridge suite passed on
+both hosts (11 tests / 289 assertions), including three native mount cases,
+read pagination and stalled-client deadlines. Linux single/combined mounts
+were live RO; macOS and large attachments used synthetic fixtures. Clippy with
+warnings denied and repository typecheck passed. No live content was modified.

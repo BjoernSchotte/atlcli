@@ -140,6 +140,25 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(await lookupHandle(directory, "_index.md")).toEqual(file);
   });
 
+  it("rejects old handles after restarting a helper even when file IDs are reused", async () => {
+    const first = await fixture(["DOCSY"], false);
+    const mounted = await rpc(first.server, 100005, 1, opaque(Buffer.from("/")));
+    const oldRoot = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
+    await first.server.stop();
+    const second = await fixture(["DOCSY"], false);
+    const remounted = await rpc(second.server, 100005, 1, opaque(Buffer.from("/")));
+    const freshRoot = remounted.subarray(8, 8 + remounted.readUInt32BE(4));
+    expect(freshRoot).not.toEqual(oldRoot);
+    let stats = 0;
+    const stat = second.vfs.stat.bind(second.vfs);
+    second.vfs.stat = async path => { stats++; return stat(path); };
+    expect((await rpc(second.server, 100003, 1, opaque(oldRoot))).readUInt32BE()).toBe(70); // STALE
+    expect((await rpc(second.server, 100003, 6, Buffer.concat([opaque(oldRoot), ints(0, 0, 16)]))).readUInt32BE()).toBe(70);
+    expect(stats).toBe(0); // Foreign session handles never reach the authoritative VFS.
+    expect((await rpc(second.server, 100003, 1, opaque(freshRoot))).readUInt32BE()).toBe(0);
+    expect(stats).toBeGreaterThan(0);
+  });
+
   it("closes oversized or excessively fragmented RPCs and survives malformed XDR lengths", async () => {
     const { server } = await fixture(["DOCSY"], false);
     const maximum = 4 * 1024 * 1024;
