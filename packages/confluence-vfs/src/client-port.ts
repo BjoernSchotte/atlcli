@@ -80,6 +80,15 @@ export interface VfsClient {
     version: number,
     options?: { signal?: AbortSignal },
   ): Promise<ConfluencePage & { storage: string }>;
+  /**
+   * Bulk bodies, up to 250 per request: the capped prefetch's engine.
+   * Cloud only — it throws on Data Center, so callers there fall back to
+   * per-page `getPage`.
+   */
+  getPagesBulk(
+    ids: readonly string[],
+    options?: { signal?: AbortSignal },
+  ): Promise<(ConfluencePage & { storage: string })[]>;
   /** Body-free bulk metadata: the tree index's revalidation probe. */
   getPageVersions(
     ids: readonly string[],

@@ -2722,6 +2722,72 @@ export class ConfluenceClient {
   }
 
   /**
+   * Fetch up to 250 pages **with their storage bodies** in one request
+   * (`GET /api/v2/pages?id=a,b,c&body-format=storage&limit=250`).
+   *
+   * This is the only bulk body fetch in the client, and it exists for the
+   * virtual filesystem's capped prefetch: `grep -r` over a hundred pages is one
+   * request here against a hundred through {@link getPage}. Its body-free twin
+   * is {@link getPageVersions}, which the same caller uses to revalidate.
+   *
+   * Cloud only — REST v2 has no Data Center equivalent, and a caller there must
+   * fall back to per-page {@link getPage} calls.
+   *
+   * A page the caller may not see is simply **absent** from the result, exactly
+   * as it is from `getPageVersions`. Callers must not read a missing id as an
+   * error: that is how Confluence reports "not visible to you".
+   */
+  async getPagesBulk(
+    ids: readonly string[],
+    options: { signal?: AbortSignal } = {},
+  ): Promise<(ConfluencePage & { storage: string })[]> {
+    if (this.deploymentType !== "cloud") {
+      throw new TypeError("Bulk page body fetches require Confluence Cloud REST v2.");
+    }
+    const unique = [...new Set(ids)].filter((id) => /^\d+$/.test(id));
+    if (unique.length === 0) return [];
+
+    const CHUNK = 250;
+    const out: (ConfluencePage & { storage: string })[] = [];
+    for (let start = 0; start < unique.length; start += CHUNK) {
+      const chunk = unique.slice(start, start + CHUNK);
+      const rows = await drainPaginated<ConfluencePage & { storage: string }>(async (cursor) => {
+        const query: Record<string, string | number | undefined> = {
+          id: chunk.join(","),
+          "body-format": "storage",
+          limit: CHUNK,
+        };
+        if (cursor) query.cursor = cursor;
+        const data = (await this.requestV2(`/pages`, {
+          query,
+          signal: options.signal,
+          logBody: "meta-only",
+        })) as any;
+        const results = Array.isArray(data.results) ? data.results : [];
+        const items: (ConfluencePage & { storage: string })[] = [];
+        for (const row of results) {
+          const id = typeof row?.id === "string" ? row.id : undefined;
+          if (!id || typeof row?.title !== "string") continue;
+          items.push({
+            id,
+            title: row.title,
+            version: row.version?.number,
+            // v2 reports a numeric `spaceId`, not a key. Callers that need the
+            // key already know it (they asked for pages of a known space), so
+            // this deliberately stays unset rather than guessing.
+            parentId: typeof row.parentId === "string" ? row.parentId : null,
+            url: this.buildWebUrl(row._links?.webui),
+            storage: row.body?.storage?.value ?? "",
+          });
+        }
+        return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+      });
+      out.push(...rows);
+    }
+    return out;
+  }
+
+  /**
    * Get pages modified since a given date using CQL.
    * Used for efficient polling of spaces or page trees.
    *

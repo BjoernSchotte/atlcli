@@ -10,7 +10,33 @@
  * the VFS is a cache, not a mirror.
  */
 export type { VfsClient } from "./client-port.js";
-export { assertNotReserved, ConfluenceVfsImpl } from "./confluence-vfs.js";
+export {
+  BodyCache,
+  hashStorage,
+  identityPathFor,
+  recallIdentity,
+  rememberIdentity,
+  resolveCachePaths,
+  siteHashOf,
+  type BodyCacheOptions,
+  type CacheStats,
+  type CachedAttachment,
+  type CachedBody,
+} from "./body-cache.js";
+export {
+  assertNotReserved,
+  ConfluenceVfsImpl,
+  type VfsRuntime,
+} from "./confluence-vfs.js";
+export {
+  PageStore,
+  parseVfsFrontmatter,
+  renderFrontmatter,
+  renderPageMarkdown,
+  toStorage,
+  type PageStoreOptions,
+  type VfsFrontmatter,
+} from "./page-store.js";
 export {
   httpStatusOf,
   mapClientError,

@@ -11,6 +11,15 @@
  * reports an estimated size until a real read has measured one, and says so
  * through `VfsStat.sizeEstimated`.
  */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  BodyCache,
+  identityPathFor,
+  recallIdentity,
+  rememberIdentity,
+  resolveCachePaths,
+} from "./body-cache.js";
 import {
   INDEX_FILE,
   RESERVED_NAMES,
@@ -18,11 +27,26 @@ import {
   splitParent,
   normalizePath,
 } from "./path-mapper.js";
-import type { ResolvedVfsOptions } from "./options.js";
+import type { ResolvedVfsOptions, VfsOptions } from "./options.js";
+import { resolveVfsOptions } from "./options.js";
+import { PageStore } from "./page-store.js";
 import { PathResolver, isContainer, type Resolved } from "./resolver.js";
 import { TreeIndex, type TreeNode } from "./tree-index.js";
 import { VfsError, type VfsDirent, type VfsNode, type VfsStat } from "./types.js";
 import type { ConfluenceVfs, VfsWriteResult } from "./vfs.js";
+
+/** Everything the factory resolved that the core needs but cannot derive. */
+export interface VfsRuntime {
+  accountId: string;
+  displayName: string;
+  instanceUrl: string;
+  cacheDir: string;
+  dbPath: string;
+  blobDir: string;
+  conflictDir: string;
+  /** Where the tree snapshot lives, so `--offline` can still list. */
+  snapshotPath: string;
+}
 
 /**
  * What `stat` reports for a body it has never read.
@@ -40,9 +64,16 @@ const LINK_MODE = 0o120777;
 
 export class ConfluenceVfsImpl implements ConfluenceVfs {
   readonly index: TreeIndex;
+  readonly cache: BodyCache | undefined;
+  readonly runtime: VfsRuntime | undefined;
+  private readonly store: PageStore | undefined;
   private readonly resolver: PathResolver;
 
-  constructor(private readonly opts: ResolvedVfsOptions) {
+  constructor(
+    private readonly opts: ResolvedVfsOptions,
+    runtime?: VfsRuntime,
+    cache?: BodyCache,
+  ) {
     this.index = new TreeIndex({
       client: opts.client,
       ttlMs: opts.treeTtlMs,
@@ -54,6 +85,119 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       spaces: opts.spaces,
     });
     this.resolver = new PathResolver(this.index);
+    this.runtime = runtime;
+    this.cache = cache;
+    if (runtime && cache) {
+      this.store = new PageStore({
+        client: opts.client,
+        cache,
+        index: this.index,
+        instanceUrl: runtime.instanceUrl,
+        offline: opts.offline,
+        concurrency: opts.concurrency,
+        prefetchMaxPages: opts.prefetchMaxPages,
+        logger: opts.logger,
+        sleep: opts.sleep,
+      });
+      this.restoreSnapshot();
+    }
+  }
+
+  /**
+   * Open a filesystem: resolve the account, place the cache, hydrate the
+   * offline snapshot.
+   *
+   * Asynchronous because the cache path *must* carry the account ID — a shared
+   * cache would let one profile read what another profile's token returned —
+   * and that costs one `getCurrentUser` call.
+   */
+  static async open(options: VfsOptions): Promise<ConfluenceVfsImpl> {
+    const opts = resolveVfsOptions(options);
+    const instanceUrl = opts.client.getInstanceUrl();
+    const identity = opts.offline
+      ? recallIdentity(identityPathFor(opts.cacheDir, opts.profile, instanceUrl))
+      : await opts.client.getCurrentUser();
+    if (!identity) {
+      throw new VfsError(
+        "ENOENT",
+        `No cached session for profile '${opts.profile}' at ${instanceUrl}. ` +
+          `--offline cannot look the account up without a request; run the command once without it first`,
+      );
+    }
+    const paths = resolveCachePaths({
+      cacheDir: opts.cacheDir,
+      profile: opts.profile,
+      accountId: identity.accountId,
+      instanceUrl,
+    });
+    const runtime: VfsRuntime = {
+      accountId: identity.accountId,
+      displayName: identity.displayName,
+      instanceUrl,
+      cacheDir: opts.cacheDir,
+      dbPath: paths.dbPath,
+      blobDir: paths.blobDir,
+      conflictDir: paths.conflictDir,
+      snapshotPath: join(paths.dir, "tree-snapshot.json"),
+    };
+    if (!opts.offline) rememberIdentity(paths.identityPath, identity);
+    const cache = new BodyCache({
+      dbPath: paths.dbPath,
+      blobDir: paths.blobDir,
+      maxBytes: opts.cacheMaxMb * 1024 * 1024,
+      now: opts.now,
+    });
+    return new ConfluenceVfsImpl(opts, runtime, cache);
+  }
+
+  /** Persists the tree so `--offline` can list without any request (WP3.5). */
+  saveSnapshot(): void {
+    if (!this.runtime) return;
+    try {
+      mkdirSync(join(this.runtime.snapshotPath, ".."), { recursive: true });
+      writeFileSync(this.runtime.snapshotPath, JSON.stringify(this.index.snapshot()));
+    } catch (error) {
+      // A snapshot is an optimisation, never a correctness requirement.
+      this.opts.logger.debug("could not write the tree snapshot", { error: String(error) });
+    }
+  }
+
+  private restoreSnapshot(): void {
+    if (!this.runtime || !existsSync(this.runtime.snapshotPath)) return;
+    try {
+      const raw = JSON.parse(readFileSync(this.runtime.snapshotPath, "utf8")) as {
+        nodes?: unknown;
+        spaces?: unknown;
+      };
+      if (Array.isArray(raw.nodes) && Array.isArray(raw.spaces)) {
+        this.index.hydrate({ nodes: raw.nodes as never, spaces: raw.spaces as never });
+      }
+    } catch (error) {
+      this.opts.logger.debug("could not read the tree snapshot", { error: String(error) });
+    }
+  }
+
+  close(): void {
+    this.saveSnapshot();
+    this.cache?.close();
+  }
+
+  /** Fills the body cache for many pages at once, within the prefetch budget. */
+  async prefetch(
+    ids: string[],
+    options: { budget?: number; reason?: string } = {},
+  ): Promise<{ fetched: number; fromCache: number }> {
+    return this.requireStore().prefetchBodies(ids, options);
+  }
+
+  private requireStore(): PageStore {
+    if (!this.store) {
+      throw new VfsError(
+        "EINVAL",
+        "This filesystem was built without a cache; use ConfluenceVfsImpl.open()",
+      );
+    }
+    return this.store;
   }
 
   // ------------------------------------------------------------- resolution
@@ -272,15 +416,60 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     );
   }
 
-  // ------------------------------------------------------- not yet built
+  // -------------------------------------------------------------- readFile
 
   async readFile(path: string): Promise<string> {
-    throw new VfsError("EINVAL", `Reading is implemented in WP3 (${path})`, { path });
+    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    switch (resolved.kind) {
+      case "body":
+        return this.requireStore().readBody(resolved.node, path);
+      case "version-file":
+        return this.requireStore().readVersion(resolved.node, resolved.version, path);
+      case "non-page":
+        return this.renderNonPage(resolved.node);
+      default:
+        break;
+    }
+    if (resolved.kind === "container" || resolved.kind === "space" || resolved.kind === "root") {
+      throw new VfsError("EISDIR", `Is a directory: ${path}`, { path });
+    }
+    throw new VfsError("EINVAL", `Reading ${resolved.kind} is implemented in WP4 (${path})`, {
+      path,
+    });
   }
 
   async readFileBytes(path: string): Promise<Uint8Array> {
-    throw new VfsError("EINVAL", `Reading is implemented in WP3 (${path})`, { path });
+    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    if (resolved.kind === "attachment") {
+      throw new VfsError("EINVAL", `Attachments are implemented in WP4 (${path})`, { path });
+    }
+    return new TextEncoder().encode(await this.readFile(path));
   }
+
+  /**
+   * A whiteboard, database or embed: a link, not content.
+   *
+   * The VFS cannot render these and will not pretend to. The stub says what the
+   * object is and where to open it, which is the honest answer.
+   */
+  private renderNonPage(node: TreeNode): string {
+    return `${JSON.stringify(
+      {
+        id: node.id,
+        title: node.title,
+        type: node.type,
+        spaceKey: node.spaceKey,
+        url: this.runtime
+          ? `${this.runtime.instanceUrl}/spaces/${node.spaceKey}/${node.type}s/${node.id}`
+          : undefined,
+        note: `atlcli renders ${node.type}s as a link only; open the URL to view or edit it.`,
+      },
+      null,
+      2,
+    )}\n`;
+  }
+
+  // ------------------------------------------------------- not yet built
 
   async writeFile(path: string, _content: string | Uint8Array): Promise<VfsWriteResult> {
     throw new VfsError("EINVAL", `Writing is implemented in WP5 (${path})`, { path });

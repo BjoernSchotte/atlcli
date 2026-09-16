@@ -409,6 +409,23 @@ export class FakeConfluenceClient implements VfsClient {
     return { ...this.toPage(page), version, title: historic.title, storage: historic.storage };
   }
 
+  async getPagesBulk(
+    ids: readonly string[],
+  ): Promise<(ConfluencePage & { storage: string })[]> {
+    this.record("getPagesBulk", ids.join(","));
+    if (this.deploymentType !== "cloud") {
+      throw new TypeError("Bulk page body fetches require Confluence Cloud REST v2.");
+    }
+    const out: (ConfluencePage & { storage: string })[] = [];
+    for (const id of [...new Set(ids)]) {
+      const page = this.pages.get(id);
+      // A page the caller cannot see is absent, never an error.
+      if (!page || page.trashed || !this.visible(id)) continue;
+      out.push({ ...this.toPage(page), storage: page.storage });
+    }
+    return out;
+  }
+
   async getPageVersions(ids: readonly string[]): Promise<Map<string, PageChangeInfo>> {
     this.record("getPageVersions", ids.join(","));
     // Matches the real client, which refuses outside Cloud v2. Without this the

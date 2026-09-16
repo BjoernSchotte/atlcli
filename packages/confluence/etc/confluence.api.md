@@ -1028,6 +1028,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -4392,6 +4397,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -7756,6 +7766,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -10817,6 +10832,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -14580,6 +14600,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -17139,6 +17164,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;

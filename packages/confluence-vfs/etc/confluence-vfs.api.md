@@ -16,6 +16,81 @@ export declare function assertNotStructurallyReadOnly(path: string, reason: stri
 // export: assertWritable
 export declare function assertWritable(guard: ModeGuard, op: WriteOp, path?: string): void;
 
+// export: BodyCache
+export declare class BodyCache {
+    private readonly db;
+    private readonly opts;
+    private hits;
+    private misses;
+    constructor(options: BodyCacheOptions);
+    close(): void;
+    getBody(pageId: string, version: number): CachedBody | undefined;
+    putBody(body: {
+        pageId: string;
+        version: number;
+        markdown: string;
+        storageHash: string;
+    }): void;
+    forgetPage(pageId: string): void;
+    getAttachment(attachmentId: string, version: number): CachedAttachment | undefined;
+    readAttachmentBytes(cached: CachedAttachment): Uint8Array;
+    putAttachment(meta: {
+        attachmentId: string;
+        pageId: string;
+        filename: string;
+        mediaType: string;
+        version: number;
+        bytes: Uint8Array;
+    }): CachedAttachment | undefined;
+    usedBytes(): number;
+    private evictFor;
+    stats(): CacheStats;
+    clear(options?: {
+        spaceKeyPageIds?: string[];
+    }): void;
+    blobBytesOnDisk(): number;
+}
+
+// export: BodyCacheOptions
+export interface BodyCacheOptions {
+    dbPath: string;
+    blobDir: string;
+    maxBytes: number;
+    now: () => number;
+}
+
+// export: CachedAttachment
+export interface CachedAttachment {
+    attachmentId: string;
+    pageId: string;
+    filename: string;
+    mediaType: string;
+    size: number;
+    version: number;
+    blobPath: string;
+}
+
+// export: CachedBody
+export interface CachedBody {
+    pageId: string;
+    version: number;
+    markdown: string;
+    storageHash: string;
+    fetchedAt: number;
+}
+
+// export: CacheStats
+export interface CacheStats {
+    bodies: number;
+    attachments: number;
+    bytes: number;
+    maxBytes: number;
+    oldestFetchedAt: number | undefined;
+    newestFetchedAt: number | undefined;
+    hits: number;
+    misses: number;
+}
+
 // export: canonicalPathOf
 export declare function canonicalPathOf(index: TreeIndex, node: TreeNode, homepageId: string | null): string;
 
@@ -40,8 +115,23 @@ export interface ConfluenceVfs {
 export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     private readonly opts;
     readonly index: TreeIndex;
+    readonly cache: BodyCache | undefined;
+    readonly runtime: VfsRuntime | undefined;
+    private readonly store;
     private readonly resolver;
-    constructor(opts: ResolvedVfsOptions);
+    constructor(opts: ResolvedVfsOptions, runtime?: VfsRuntime, cache?: BodyCache);
+    static open(options: VfsOptions): Promise<ConfluenceVfsImpl>;
+    saveSnapshot(): void;
+    private restoreSnapshot;
+    close(): void;
+    prefetch(ids: string[], options?: {
+        budget?: number;
+        reason?: string;
+    }): Promise<{
+        fetched: number;
+        fromCache: number;
+    }>;
+    private requireStore;
     resolve(path: string): Promise<VfsNode>;
     resolveTagged(path: string, allowMissingLeaf?: boolean): Promise<Resolved | {
         kind: "missing";
@@ -58,6 +148,7 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     private readdirVirtual;
     readFile(path: string): Promise<string>;
     readFileBytes(path: string): Promise<Uint8Array>;
+    private renderNonPage;
     writeFile(path: string, _content: string | Uint8Array): Promise<VfsWriteResult>;
     mkdir(path: string): Promise<VfsWriteResult>;
     rename(from: string, _to: string): Promise<void>;
@@ -76,8 +167,14 @@ export declare function formatName(title: string, id: string, hasChildren: boole
 // export: hasBody
 export declare function hasBody(node: TreeNode): boolean;
 
+// export: hashStorage
+export declare function hashStorage(storage: string): string;
+
 // export: httpStatusOf
 export declare function httpStatusOf(error: unknown): number | undefined;
+
+// export: identityPathFor
+export declare function identityPathFor(cacheDir: string, profile: string, instanceUrl: string): string;
 
 // export: INDEX_FILE
 export declare const INDEX_FILE = "_index.md";
@@ -114,6 +211,36 @@ export interface ModeGuard {
 // export: normalizePath
 export declare function normalizePath(path: string): string;
 
+// export: PageStore
+export declare class PageStore {
+    private readonly opts;
+    constructor(opts: PageStoreOptions);
+    readBody(node: TreeNode, path: string): Promise<string>;
+    readVersion(node: TreeNode, version: number, path: string): Promise<string>;
+    prefetchBodies(ids: string[], options?: {
+        budget?: number;
+        reason?: string;
+    }): Promise<{
+        fetched: number;
+        fromCache: number;
+    }>;
+    private prefetchOneByOne;
+    private request;
+}
+
+// export: PageStoreOptions
+export interface PageStoreOptions {
+    client: VfsClient;
+    cache: BodyCache;
+    index: TreeIndex;
+    instanceUrl: string;
+    offline: boolean;
+    concurrency: number;
+    prefetchMaxPages: number;
+    logger: VfsLogger;
+    sleep?: (ms: number) => Promise<void>;
+}
+
 // export: ParsedName
 export interface ParsedName {
     stem: string;
@@ -125,6 +252,12 @@ export interface ParsedName {
 
 // export: parseName
 export declare function parseName(name: string): ParsedName;
+
+// export: parseVfsFrontmatter
+export declare function parseVfsFrontmatter(markdown: string): {
+    frontmatter: Partial<VfsFrontmatter>;
+    body: string;
+};
 
 // export: PathResolver
 export declare class PathResolver {
@@ -149,6 +282,12 @@ export interface RateLimitRetryOptions {
     onWait?: (waitMs: number, attempt: number) => void;
 }
 
+// export: recallIdentity
+export declare function recallIdentity(identityPath: string): {
+    accountId: string;
+    displayName: string;
+} | undefined;
+
 // export: RECENT_WINDOWS
 export declare const RECENT_WINDOWS: readonly [
     "24h",
@@ -159,8 +298,34 @@ export declare const RECENT_WINDOWS: readonly [
 // export: RecentWindow
 export type RecentWindow = (typeof RECENT_WINDOWS)[number];
 
+// export: rememberIdentity
+export declare function rememberIdentity(identityPath: string, identity: {
+    accountId: string;
+    displayName: string;
+}): void;
+
+// export: renderFrontmatter
+export declare function renderFrontmatter(frontmatter: VfsFrontmatter): string;
+
+// export: renderPageMarkdown
+export declare function renderPageMarkdown(node: TreeNode, storage: string, instanceUrl: string, labels?: string[]): string;
+
 // export: RESERVED_NAMES
 export declare const RESERVED_NAMES: Set<string>;
+
+// export: resolveCachePaths
+export declare function resolveCachePaths(params: {
+    cacheDir: string;
+    profile: string;
+    accountId: string;
+    instanceUrl: string;
+}): {
+    dir: string;
+    dbPath: string;
+    blobDir: string;
+    conflictDir: string;
+    identityPath: string;
+};
 
 // export: Resolved
 export type Resolved = {
@@ -270,6 +435,9 @@ export declare function resolveVfsOptions(options: VfsOptions): ResolvedVfsOptio
 // export: retryAfterMsOf
 export declare function retryAfterMsOf(error: unknown): number | undefined;
 
+// export: siteHashOf
+export declare function siteHashOf(instanceUrl: string): string;
+
 // export: splitParent
 export declare function splitParent(path: string): {
     parent: string;
@@ -288,6 +456,9 @@ export declare function stripVfsExtension(name: string): {
 
 // export: titleFromName
 export declare function titleFromName(name: string): string;
+
+// export: toStorage
+export declare function toStorage(markdown: string): string;
 
 // export: TreeIndex
 export declare class TreeIndex {
@@ -414,6 +585,11 @@ export interface VfsClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
@@ -509,6 +685,17 @@ export declare class VfsError extends Error {
 // export: VfsErrorCode
 export type VfsErrorCode = "ENOENT" | "EACCES" | "EROFS" | "EISDIR" | "ENOTDIR" | "EEXIST" | "EBUSY" | "ENOTEMPTY" | "EINVAL" | "ENOSPC" | "EAGAIN";
 
+// export: VfsFrontmatter
+export interface VfsFrontmatter {
+    id: string;
+    title: string;
+    version?: number;
+    parentId?: string;
+    labels?: string[];
+    lastModified?: string;
+    url?: string;
+}
+
 // export: VfsLogger
 export interface VfsLogger {
     debug(message: string, data?: Record<string, unknown>): void;
@@ -555,6 +742,18 @@ export interface VfsOptions {
     logger?: VfsLogger;
     now?: () => number;
     sleep?: (ms: number) => Promise<void>;
+}
+
+// export: VfsRuntime
+export interface VfsRuntime {
+    accountId: string;
+    displayName: string;
+    instanceUrl: string;
+    cacheDir: string;
+    dbPath: string;
+    blobDir: string;
+    conflictDir: string;
+    snapshotPath: string;
 }
 
 // export: vfsSlug
@@ -674,6 +873,9 @@ export declare class FakeConfluenceClient implements VfsClient {
     getPageAtVersion(pageId: string, version: number): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPagesBulk(ids: readonly string[]): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPageVersions(ids: readonly string[]): Promise<Map<string, PageChangeInfo>>;
     search(cql: string, options?: {
         limit?: number;
