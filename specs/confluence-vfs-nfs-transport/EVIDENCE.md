@@ -714,3 +714,26 @@ both hosts (11 tests / 289 assertions), including three native mount cases,
 read pagination and stalled-client deadlines. Linux single/combined mounts
 were live RO; macOS and large attachments used synthetic fixtures. Clippy with
 warnings denied and repository typecheck passed. No live content was modified.
+
+
+## Slice 30 — preserve journal uncertainty and bound empty-file admission
+
+A new regression reproduced that truncate/write cleared REMOTE_RESULT_UNKNOWN
+while its previous publication intent remained unresolved. Local edits now
+preserve that warning; completing the matching publication clears it while
+newer bytes remain pending. The test closes/reopens the database and verifies
+both byte images, the old intent revision and warning persistence.
+
+The byte quota alone allowed unlimited empty records and arbitrarily large
+metadata. Admission now also enforces a configurable file-count cap (default
+4,096), 256-byte IDs and 4,096-byte paths, rejecting NULs. Existing recovered
+records remain accessible and are never replaced by readmission, even when
+reopened with a smaller limit. Tests cover zero-byte files, UTF-8 metadata
+limits, rejected admission and preserved acknowledged bytes. This bounds logical
+records, not the database/WAL's physical storage; that RW acceptance item stays
+open. No schema migration or dependency was added.
+
+All seven journal tests passed on macOS and Linux (44 assertions each), including
+SIGKILL recovery. Typecheck passed. Linux's five live DOCSY RO CLI lifecycle
+cases also passed (61 assertions); those are regression evidence for the
+existing mount, not proof of journal-backed remote publication. NFS remains RO.

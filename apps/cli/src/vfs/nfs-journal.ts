@@ -22,9 +22,10 @@ export interface NfsPublishIntent {
 export class NfsJournal {
   private readonly db: Database;
   constructor(path: string, scope: string, private readonly maxBytes = 256 * 1024 * 1024,
-    private readonly maxFileBytes = 64 * 1024 * 1024) {
+    private readonly maxFileBytes = 64 * 1024 * 1024, private readonly maxFiles = 4096) {
     if (!scope || !Number.isSafeInteger(maxBytes) || maxBytes < 1 ||
-      !Number.isSafeInteger(maxFileBytes) || maxFileBytes < 1) throw new Error("Invalid NFS journal limits or scope");
+      !Number.isSafeInteger(maxFileBytes) || maxFileBytes < 1 ||
+      !Number.isSafeInteger(maxFiles) || maxFiles < 1) throw new Error("Invalid NFS journal limits or scope");
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     this.db = new Database(path, { create: true });
     try {
@@ -66,10 +67,14 @@ export class NfsJournal {
 
   /** Admission preserves an existing recovered byte image; it never overwrites it. */
   admit(id: string, path: string, bytes: Uint8Array, baseVersion: number): StagedNfsFile {
-    if (!id || !path.startsWith("/") || !Number.isSafeInteger(baseVersion) || baseVersion < 0) throw new Error("Invalid NFS journal file");
+    if (!id || id.includes("\0") || Buffer.byteLength(id) > 256 || !path.startsWith("/") ||
+      path.includes("\0") || Buffer.byteLength(path) > 4096 || !Number.isSafeInteger(baseVersion) || baseVersion < 0) throw new Error("Invalid NFS journal file");
     return this.db.transaction(() => {
       const existing = this.get(id);
       if (existing) return existing;
+      if (this.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM files").get()!.count >= this.maxFiles) {
+        throw new Error("NFS journal file-count quota exceeded");
+      }
       this.checkQuota(bytes.byteLength);
       this.db.run("INSERT INTO files VALUES (?, ?, ?, ?, 0, 0, NULL)", [id, path, bytes, baseVersion]);
       return this.get(id)!;
@@ -93,7 +98,7 @@ export class NfsJournal {
       const bytes = new Uint8Array(length);
       bytes.set(old.bytes.subarray(0, length));
       update(bytes);
-      this.db.run("UPDATE files SET bytes=?, revision=revision+1, error=NULL WHERE id=?", [bytes, id]);
+      this.db.run("UPDATE files SET bytes=?, revision=revision+1 WHERE id=?", [bytes, id]);
       return this.get(id)!;
     }).immediate();
   }

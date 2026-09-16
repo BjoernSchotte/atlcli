@@ -112,3 +112,11 @@ before invoking Bun. Legacy 16-byte handles also return STALE. Other malformed
 lengths return BADHANDLE. Failure to read the random source aborts startup before
 binding. This is restart isolation, not local-user authentication; remount after
 restarting the helper. No new dependency or persistent token is needed.
+
+
+The Bun-side NfsJournal is a tested foundation, not an enabled NFS write path.
+Its default logical limits are 256 MiB of staged/intent bytes, 64 MiB per file,
+and 4,096 files; IDs and paths are limited to 256 and 4,096 UTF-8 bytes. Existing
+recovered records remain readable when limits are reduced. Unresolved publication
+errors survive subsequent local edits until a publication is confirmed. These
+limits do not constitute a hard cap on SQLite/WAL physical disk usage.
