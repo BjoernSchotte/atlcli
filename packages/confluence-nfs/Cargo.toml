@@ -1,0 +1,9 @@
+[package]
+name = "atlcli-confluence-nfs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+
+[dependencies]
+serde_json = "=1.0.145"
