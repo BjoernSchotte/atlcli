@@ -172,8 +172,9 @@ describe("help", () => {
   it("says writing is off by default and explains bounded grep", () => {
     const help = wikiShHelp();
     expect(help).toContain("Writing is off by default");
-    expect(help).toContain("bounded bulk prefetch");
-    expect(help).toContain("CQL narrowing is disabled");
+    expect(help).toContain("fall back within the budget");
+    expect(help).toContain("CQL candidates by default");
+    expect(help).toContain("--no-cql searches exhaustively");
   });
 
   it("lists the extra commands", () => {

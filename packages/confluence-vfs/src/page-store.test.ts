@@ -296,6 +296,19 @@ describe("prefetch", () => {
     await vfs.close();
   });
 
+  it("fills the real parent when prefetching a search-seeded node", async () => {
+    const client = seeded(1);
+    const vfs = await openVfs(client);
+    try {
+      vfs.index.upsert({ id: "200", title: "Page 0", type: "page", spaceKey: "DOCSY", version: 1 });
+      expect(await vfs.prefetch(["200"])).toEqual({ fetched: 1, fromCache: 0 });
+      expect(await vfs.readFile("/DOCSY/.by-id/200.md")).toContain('parentId: "100"');
+      expect(vfs.index.node("200")?.parentId).toBe("100");
+      expect(client.callsTo("getPage")).toBe(0);
+      expect(client.callsTo("getPageDirectChildren")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
   it("fails explicitly if the bulk endpoint omits a requested body", async () => {
     const client = seeded(2);
     const vfs = await openVfs(client);

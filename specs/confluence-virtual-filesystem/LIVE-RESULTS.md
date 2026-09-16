@@ -232,3 +232,45 @@ missing bulk results, tiny caches, independent concurrent budgets and deep trees
 
 Final validation: 539 tests passed across 23 affected test files (1,475 assertions),
 workspace typecheck 4/4 and build 35/35 successful. No push performed.
+
+
+## Default indexed grep — 2026-09-16
+
+This supersedes the earlier default-exhaustive contract above. The user chose
+CQL candidate selection for ordinary recursive grep, with visible index-gap
+warnings. Bodies still determine actual matching lines. `--no-cql` explicitly
+requests exhaustive search; standard `-v` remains inverted matching.
+
+Final GET-only MAYFLOWER measurements, using ordinary shell commands:
+
+| Operation | ms | HTTP requests | New bodies | Storage bytes |
+|---|---:|---:|---:|---:|
+| `grep -r -i craftsmanship *`, cold | 1154 | 7 | 6 | 41412 |
+| Same command, warm | 547 | 1 | 0 | 0 |
+| `grep -r -i retrospektive *`, budget 10 | 1087 | 2 | 0 | 0 |
+| Same command, budget 100 | 1562 | 2 | 68 | 687557 |
+
+Craftsmanship returned eight lines from five indexed candidates plus the explicit
+root body selected by `*`. Retrospektive returned 148 lines after verifying 68
+indexed candidates, instead of downloading the previously reported 1,418-page
+subtree. Budget 10 returned exit 2 before body downloads. Only the first command
+needed one root hierarchy request; subsequent commands needed none. Results are
+individual runs, not latency guarantees or an MCP comparison. Index omissions
+and lag remain possible and are disclosed for every indexed search.
+
+The built CLI independently passed the cold craftsmanship command with the
+mayflower profile: 1,717 ms including process startup, six prefetched bodies,
+eight lines, exit 0. Temporary caches were removed; no MAYFLOWER writes occurred.
+
+The committed `scripts/vfs-search-live.ts` also passed DOCSY read/write tests,
+remote-edit refresh, exact search and download-budget checks. Its default indexed
+quiet subtree search took 461 ms, three HTTP requests and one 58-byte body.
+Synthetic indexing required six two-second waits using the actual generated
+query. All five synthetic pages were trashed in `finally`. MAYFLOWER excerpt
+backup checks still used one request and zero bodies each.
+
+Validation: 553 tests passed across 25 files (1,573 assertions), workspace
+typecheck 4/4 and build 35/35 successful. Tests cover indexed false positives,
+empty results, outages, truncation, quiet early exit, explicit files, aliases,
+version refresh, scope restrictions, unsupported-pattern fallback and exhaustive
+opt-out. No push performed.

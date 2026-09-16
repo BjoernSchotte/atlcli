@@ -310,6 +310,8 @@ export type ConfluenceSearchResult = {
 export type ConfluenceSearchDetail = {
   id: string;
   title: string;
+  /** Content version provided by the search expansion. */
+  version?: number;
   /** Content type as CQL names it: `page`, `blogpost`, `attachment`, … */
   type?: string;
   /** Absolute URL of the content. */
@@ -1731,6 +1733,7 @@ export class ConfluenceClient {
       // `item.title` may carry the search highlighter's markers; `content.title`
       // is the raw stored title, so prefer it and clean the fallback.
       title: typeof content.title === "string" ? content.title : cleanExcerpt(item.title ?? ""),
+      ...(Number.isSafeInteger(content.version?.number) && content.version.number > 0 ? { version: content.version.number } : {}),
       ...(content.type ? { type: String(content.type) } : {}),
       ...(relative ? { url: base && relative.startsWith("/") ? `${base}${relative}` : relative } : {}),
       ...(content.space?.key ? { spaceKey: String(content.space.key) } : {}),

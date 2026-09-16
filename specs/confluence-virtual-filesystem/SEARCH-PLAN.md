@@ -2,8 +2,11 @@
 
 ## Contract
 
-Default `grep` keeps the installed interpreter's Markdown matching semantics.
-CQL text search is not a proven superset and must never silently exclude files.
+Default recursive `grep` selects candidates using Confluence's CQL index and
+verifies those candidates against generated Markdown. This intentionally adopts
+index completeness: index gaps or delayed updates may omit pages. Diagnostics
+always disclose that limitation. `--no-cql` retains exhaustive Markdown search.
+The user explicitly selected this fast default; `cql` remains only a backup.
 An exhausted budget, failed request or incomplete walk is an error, not no-match.
 Search results refer to the VFS metadata snapshot (configured TTL), not an atomic
 snapshot of a concurrently changing Confluence site.
@@ -14,12 +17,17 @@ snapshot of a concurrently changing Confluence site.
    branches, page histories and attachments during implicit recursive search.
 2. Reuse versioned bodies, refresh expired metadata, and report selected files,
    fetched bodies and cache reuse. Keep the default download budget.
-3. For positive quiet searches only, optionally use CQL candidates as an early
-   success probe: verify full Markdown locally; no hit always falls back to the
-   complete exact search. Unsupported patterns/flags bypass this optimization.
+3. Translate supported literal patterns, phrases, fixed strings and simple regex
+   alternatives to bounded CQL expressions. Scope by root page IDs and ancestors
+   before querying; do not traverse all descendants. Load only candidate bodies.
+   Use stable `.by-id` paths in results. No indexed candidates returns exit 1;
+   truncated results return exit 2 unless quiet search verifies a positive match.
+   Complex regex, inversion, counts, pattern files and path filters visibly fall
+   back to exhaustive search. Explicit files and stdin remain direct searches.
 4. Add `cql --excerpt` and `cql --json` using the existing detailed REST search.
    Bound and paginate results, disclose truncation, and fetch no page bodies.
-5. Improve limit diagnostics with an explicit body-free search alternative.
+5. Keep download-limit diagnostics actionable through ordinary grep inputs and
+   document the nonstandard --no-cql exhaustive option.
 
 ## Validation
 

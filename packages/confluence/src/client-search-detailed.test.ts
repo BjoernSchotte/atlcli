@@ -24,6 +24,7 @@ function result(i: number, over: Record<string, unknown> = {}): unknown {
       id: `${1000 + i}`,
       type: "page",
       status: "current",
+      version: { number: 7 },
       title: `Page ${i}`,
       space: { key: "DOCSY", name: "Docs & Systems" },
       history: {
@@ -122,6 +123,7 @@ describe("ConfluenceClient.searchDetailed (spec SUPPORT-DATASOURCE-CONFLUENCE)",
     const first = page.results[0]!;
     expect(first).toMatchObject({
       id: "1001",
+      version: 7,
       title: "Page 1",
       type: "page",
       spaceKey: "DOCSY",

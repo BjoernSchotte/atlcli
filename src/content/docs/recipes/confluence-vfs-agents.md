@@ -57,7 +57,7 @@ atlcli wiki sh --space DOCSY -c 'cat .by-id/623869955.md'     # when you only ha
 
 ### Searching — read this part
 
-Recursive `grep` searches current page bodies in the requested subtree, with
+Recursive `grep` uses CQL-selected page bodies in the requested subtree, with
 bounded bulk prefetch. It does not implicitly search versions or attachments.
 
 ```bash
@@ -65,13 +65,28 @@ grep -rlw kubernetes .        # whole-word matches in current Markdown
 grep -rl  kubern .            # substring matches, including "kubernetes"
 ```
 
-CQL never excludes possible `grep` matches: indexing can miss dotted tokens,
-Markdown frontmatter and fresh writes. For `grep -q`, cached pages are checked
-first; a simple positive word search may then use CQL to prioritize up to ten
-candidates. Every success is verified against full Markdown. An empty or failed
-CQL response falls back to the exact search. `--no-cql` disables these hints.
+Normal recursive `grep` is **index-backed by default**. The shell translates
+supported literal patterns, phrases, fixed strings and simple alternatives to
+CQL. Confluence selects pages within the requested subtree; only those bodies
+are loaded and verified by grep. Candidate paths use `/SPACE/.by-id/ID.md` and
+can be passed directly to `cat`. A space-wide hierarchy walk is unnecessary.
 
-Use indexed previews to discover relevant pages without downloading bodies:
+```bash
+grep -r -i retrospektive *           # default: indexed candidates, verified lines
+grep --no-cql -r -i retrospektive *  # exhaustive Markdown search, bounded downloads
+```
+
+Diagnostics disclose that index gaps and indexing delay can omit matches. An
+empty index result means no indexed candidates, not proof that current Markdown
+contains no match. `grep -q` stops after the first verified candidate. Complex
+regexes, inversion (`-v`), per-file counts (`-c`), nonmatching filenames (`-L`),
+pattern files (`-f`) and path filters use a visible exhaustive fallback. Explicit
+files and stdin are searched directly. Index failures also fall back within the
+same download budget; truncated candidate lists return exit 2 (unless `-q` has
+already verified a positive match). `--no-cql` is a VFS extension, not a standard
+grep flag; standard `-v` continues to mean inverted matching.
+
+The optional `cql` backup command also supports previews without body downloads:
 
 ```bash
 cql --excerpt --limit 20 'text ~ "retrospektive"'
@@ -90,7 +105,7 @@ Exact recursive search applies include/exclude filters before downloading and
 skips excluded branches. Warm bodies are reused; expired metadata is refreshed
 using the configured tree TTL (60 seconds by default). A search is not an atomic
 snapshot of concurrent edits. Budget exhaustion returns exit 2, never a false
-no-match. Full cold-space exact searches still need all selected bodies.
+no-match. An exhaustive cold-space search still needs all selected bodies.
 Narrow the path or use previews when the budget is reached; piping to `head`
 limits output, not downloads.
 

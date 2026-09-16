@@ -326,7 +326,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
   /** Indexed previews: no page bodies or hierarchy traversal. `complete` refers to the index only. */
   async searchExcerpts(cql: string, options: { maxResults?: number; spaces?: string[] } = {}): Promise<{
-    results: { id: string; path: string; title: string; excerpt: string; spaceKey: string }[];
+    results: { id: string; path: string; title: string; excerpt: string; spaceKey: string; version?: number }[];
     totalSize?: number;
     truncated: boolean;
     complete: boolean;
@@ -342,7 +342,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       throw new VfsError("EACCES", "Search is restricted to mounted spaces");
     }
     const query = scopeSearchCql(cql, spaces);
-    const results: { id: string; path: string; title: string; excerpt: string; spaceKey: string }[] = [];
+    const results: { id: string; path: string; title: string; excerpt: string; spaceKey: string; version?: number }[] = [];
     const seenIds = new Set<string>();
     const cursors = new Set<string>();
     let cursor: string | undefined;
@@ -362,7 +362,8 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
         if (seenIds.has(row.id)) continue;
         seenIds.add(row.id);
         results.push({ id: row.id, path: `/${row.spaceKey}/.by-id/${row.id}.md`,
-          title: row.title, excerpt: row.excerpt ?? "", spaceKey: row.spaceKey });
+          title: row.title, excerpt: row.excerpt ?? "", spaceKey: row.spaceKey,
+          ...(row.version === undefined ? {} : { version: row.version }) });
       }
       cursor = page.nextLink;
       if (cursor && cursors.has(cursor)) throw new VfsError("EINVAL", "Search pagination repeated a cursor");

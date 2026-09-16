@@ -329,7 +329,8 @@ export class PageStore {
     for (const pages of results) {
       for (const page of pages) {
         const version = page.version ?? 1;
-        this.opts.index.upsert({ id: page.id, title: page.title, version });
+        this.opts.index.upsert({ id: page.id, title: page.title, version,
+          ...(page.parentId === undefined ? {} : { parentId: page.parentId }) });
         const node = this.opts.index.node(page.id);
         if (!node) continue;
         this.opts.cache.putBody({

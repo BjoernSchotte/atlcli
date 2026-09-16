@@ -26,7 +26,7 @@ function seeded(): FakeConfluenceClient {
       storage: "<p>Needle unique.</p><p>common line</p>" });
 }
 
-async function setup(client = seeded(), prefetchMax = 20, cqlGrep = true) {
+async function setup(client = seeded(), prefetchMax = 20, cqlGrep = false) {
   const root = mkdtempSync(join(tmpdir(), "vfs-search-"));
   roots.push(root);
   let clock = Date.parse("2026-09-16T09:00:00Z");
@@ -143,63 +143,19 @@ describe("exact grep search planning", () => {
   });
 });
 
-describe("quiet grep verified positive hints", () => {
-  it("verifies a CQL candidate with one body and retains full scope semantics", async () => {
-    const { shell, client } = await setup(seeded(), 1);
-    const result = await shell.exec("grep -rqi Needle .");
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("");
-    expect(bodies(client)).toEqual(["103"]);
-    expect(client.callsTo("searchDetailed")).toBe(1);
-  });
-
-  it("answers repeated quiet hits from cache without another search request", async () => {
-    const { shell, client } = await setup(seeded(), 1);
-    expect((await shell.exec("grep -rqi Needle .")).exitCode).toBe(0);
+describe("exhaustive quiet grep", () => {
+  it("answers repeated quiet hits from cache without another request", async () => {
+    const { shell, client } = await setup();
+    expect((await shell.exec("grep --no-cql -rqi Needle .")).exitCode).toBe(0);
     client.resetCalls();
-    expect((await shell.exec("grep -rqi Needle .")).exitCode).toBe(0);
+    expect((await shell.exec("grep --no-cql -rqi Needle .")).exitCode).toBe(0);
     expect(bodies(client)).toEqual([]);
     expect(client.callsTo("searchDetailed")).toBe(0);
   });
 
-  it("falls back when the search service is unavailable", async () => {
-    const client = seeded();
-    client.searchDetailed = async () => { throw new Error("search unavailable"); };
-    const { shell, diagnostics } = await setup(client);
-    expect((await shell.exec("grep -rqi Needle .")).exitCode).toBe(0);
-    expect(diagnostics.join("\n")).toContain("hint unavailable");
-    expect(bodies(client)).toHaveLength(4);
-  });
-
-  it("honors the opt-out and never issues text hints for inverted matches", async () => {
-    const { shell, client } = await setup();
-    expect((await shell.exec("grep --no-cql -rqi Needle .")).exitCode).toBe(0);
-    expect(client.callsTo("searchDetailed")).toBe(0);
-    expect((await shell.exec("grep -rqv Needle .")).exitCode).toBe(0);
-    expect(client.callsTo("searchDetailed")).toBe(0);
-  });
-
-  it("falls back after a CQL false negative", async () => {
-    const client = seeded();
-    client.searchDetailed = async () => ({ results: [], totalSize: 0 });
-    const { shell } = await setup(client);
-    expect((await shell.exec("grep -rqi Needle .")).exitCode).toBe(0);
-    expect(bodies(client).sort()).toEqual(["100", "101", "102", "103"]);
-  });
-
-  it("does not return a false CQL candidate without checking its body", async () => {
-    const client = seeded();
-    const search = client.searchDetailed.bind(client);
-    client.searchDetailed = async () => search('id = "101"');
-    const { shell } = await setup(client);
-    expect((await shell.exec("grep -rqi definitelyAbsent .")).exitCode).toBe(1);
-    expect(bodies(client)[0]).toBe("101");
-    expect(bodies(client).sort()).toEqual(["100", "101", "102", "103"]);
-  });
-
   it("reports incomplete quiet scans as errors rather than false no-match", async () => {
-    const { shell, client } = await setup(seeded(), 1, false);
-    const result = await shell.exec("grep -rqi definitelyAbsent .");
+    const { shell, client } = await setup(seeded(), 1);
+    const result = await shell.exec("grep --no-cql -rqi definitelyAbsent .");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("prefetch");
     expect(bodies(client)).toHaveLength(1);

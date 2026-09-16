@@ -8,6 +8,8 @@ import { ConfluenceClient } from "../packages/confluence/src/client.js";
 import { getActiveProfile, loadConfig } from "../packages/core/src/index.js";
 import { ConfluenceVfsImpl } from "../packages/confluence-vfs/src/confluence-vfs.js";
 import { createWikiShell } from "../apps/cli/src/vfs/wiki-shell.js";
+import { planGrepCql } from "../apps/cli/src/vfs/grep-cql.js";
+import { parseGrepArgs } from "../apps/cli/src/vfs/grep-flags.js";
 
 const profile = getActiveProfile(await loadConfig(), "mayflower");
 assert(profile, "mayflower profile required");
@@ -49,7 +51,7 @@ try {
   }
   const target = `/DOCSY/${prefix}-${parent.id}`;
   vfs = await ConfluenceVfsImpl.open({ profile: "mayflower", client, spaces: ["DOCSY"], mode: "ro", allowDelete: false, offline: false, cacheDir, now: () => clock });
-  const shell = await createWikiShell({ vfs, spaces: ["DOCSY"], prefetchMax: 10 });
+  const shell = await createWikiShell({ vfs, spaces: ["DOCSY"], prefetchMax: 10, cqlGrep: false });
   await measure("DOCSY cold exact", async () => {
     const b = bodies; const result = await shell.exec(`grep -rni craftsmanship ${target}`);
     assert.equal(result.exitCode, 0, result.stderr); assert.match(result.stdout, /Retrospektive craftsmanship/); assert.equal(bodies-b, 5);
@@ -88,13 +90,15 @@ try {
     const b = bodies; assert.equal((await freshShell.exec(`grep -r --include '*.txt' craftsmanship ${target}`)).exitCode, 1); assert.equal(bodies,b);
   });
   await measure("DOCSY budget before download", async () => {
-    const b = bodies; const result = await freshShell.exec(`grep -r craftsmanship ${target}`);
+    const b = bodies; const result = await freshShell.exec(`grep --no-cql -r craftsmanship ${target}`);
     assert.equal(result.exitCode, 2); assert.match(result.stderr, /prefetch limit/); assert.equal(bodies,b);
   });
   // Wait only for our synthetic fixture to become visible in the search index.
+  const plan = planGrepCql(parseGrepArgs(["-rqi", "retrospektive", target]));
+  assert("query" in plan);
   let indexed = false;
   for (let attempt = 0; attempt < 15; attempt++) {
-    const result = await freshShell.exec(`cql --json --limit 10 'ancestor = ${parent.id} AND text ~ "retrospektive"'`);
+    const result = await freshShell.exec(`cql --json --limit 1000 '(${plan.query}) AND ((id = ${parent.id} OR ancestor = ${parent.id}))'`);
     assert.equal(result.exitCode, 0, result.stderr);
     if (JSON.parse(result.stdout).results.some((row: { id: string }) => row.id === created[4])) { indexed = true; break; }
     console.log(JSON.stringify({ waitingForSyntheticIndex: attempt + 1 }));

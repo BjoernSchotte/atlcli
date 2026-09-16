@@ -254,9 +254,9 @@ rather than flattening it silently. Macros generally *do* round-trip.
 
 ## Search current page bodies
 
-Recursive `grep` searches current page Markdown within the requested subtree.
-It bulk-prefetches bodies up to the configured limit, then runs the shell's grep
-on those files. Versions, comments and attachments are not traversed implicitly;
+Recursive `grep` selects candidates through CQL within the requested subtree.
+It bulk-prefetches candidate bodies up to the configured limit, then runs grep
+on their Markdown. Versions, comments and attachments are not traversed implicitly;
 read or search their explicit file paths separately.
 
 ```bash
@@ -264,13 +264,28 @@ grep -rlw kubernetes architecture-623869955  # whole words
 grep -rl kubern architecture-623869955      # substrings
 ```
 
-CQL never excludes possible `grep` matches: indexing can miss dotted tokens,
-Markdown frontmatter and fresh writes. For `grep -q`, cached pages are checked
-first; a simple positive word search may then use CQL to prioritize up to ten
-candidates. Every success is verified against full Markdown. An empty or failed
-CQL response falls back to the exact search. `--no-cql` disables these hints.
+Normal recursive `grep` is **index-backed by default**. The shell translates
+supported literal patterns, phrases, fixed strings and simple alternatives to
+CQL. Confluence selects pages within the requested subtree; only those bodies
+are loaded and verified by grep. Candidate paths use `/SPACE/.by-id/ID.md` and
+can be passed directly to `cat`. A space-wide hierarchy walk is unnecessary.
 
-Use indexed previews to discover relevant pages without downloading bodies:
+```bash
+grep -r -i retrospektive *           # default: indexed candidates, verified lines
+grep --no-cql -r -i retrospektive *  # exhaustive Markdown search, bounded downloads
+```
+
+Diagnostics disclose that index gaps and indexing delay can omit matches. An
+empty index result means no indexed candidates, not proof that current Markdown
+contains no match. `grep -q` stops after the first verified candidate. Complex
+regexes, inversion (`-v`), per-file counts (`-c`), nonmatching filenames (`-L`),
+pattern files (`-f`) and path filters use a visible exhaustive fallback. Explicit
+files and stdin are searched directly. Index failures also fall back within the
+same download budget; truncated candidate lists return exit 2 (unless `-q` has
+already verified a positive match). `--no-cql` is a VFS extension, not a standard
+grep flag; standard `-v` continues to mean inverted matching.
+
+The optional `cql` backup command also supports previews without body downloads:
 
 ```bash
 cql --excerpt --limit 20 'text ~ "retrospektive"'
@@ -289,7 +304,7 @@ Exact recursive search applies include/exclude filters before downloading and
 skips excluded branches. Warm bodies are reused; expired metadata is refreshed
 using the configured tree TTL (60 seconds by default). A search is not an atomic
 snapshot of concurrent edits. Budget exhaustion returns exit 2, never a false
-no-match. Full cold-space exact searches still need all selected bodies.
+no-match. An exhaustive cold-space search still needs all selected bodies.
 Narrow the path or use previews when the budget is reached; piping to `head`
 limits output, not downloads.
 
@@ -309,7 +324,7 @@ limits output, not downloads.
 | `--timeout <ms>` | number | `120000` | no | Wall-clock limit for the script |
 | `--prefetch-max <n>` | number | `300` | no | Ceiling on one prefetch |
 | `--cache-max-mb <n>` | number | `100` | no | Disk cache ceiling |
-| `--no-cql` | flag | off | no | Disable CQL hints for positive `grep -q` searches |
+| `--no-cql` | flag | off | no | Use exhaustive Markdown search instead of index selection |
 | `--json` | flag | off | no | stdout, stderr, exit code and counters as JSON |
 
 ### `atlcli wiki mount`
@@ -378,9 +393,9 @@ cannot be written. Create a page instead.
 
 ### `grep` says "full scan"
 
-This is expected: automatic CQL narrowing is disabled after live tests found
-missing whole-word matches. Narrow the subtree or use `cql` for explicit indexed
-search.
+This indicates the exhaustive path: the pattern or options cannot use the indexed
+shortcut, or `--no-cql` was set. Narrow the subtree to stay within the body budget.
+Supported literal patterns use indexed selection by default.
 
 ### An externally created page is missing from a cached listing
 

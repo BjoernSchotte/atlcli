@@ -24,6 +24,7 @@ import { canonicalPathOf, type ConfluenceVfsImpl } from "@atlcli/confluence-vfs"
 import { posix } from "node:path";
 import { ConfluenceJustBashFs } from "./just-bash-fs.js";
 import { matchesGrepFile, skipsGrepDirectory, parseFindArgs, parseGrepArgs } from "./grep-flags.js";
+import { planGrepCql } from "./grep-cql.js";
 
 /**
  * Commands the shell registers.
@@ -53,7 +54,7 @@ export interface WikiShellOptions {
   cwd?: string;
   /** Wall-clock ceiling for one script. */
   timeoutMs?: number;
-  /** Allow CQL candidate hints for positive `grep -q`. */
+  /** Use CQL candidate selection for recursive `grep`. */
   cqlGrep?: boolean;
   /** Prefetch ceiling handed to the core; `undefined` uses its default. */
   prefetchMax?: number | undefined;
@@ -107,8 +108,8 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
     return first && spaces.includes(first) ? first : undefined;
   };
 
-  // CQL may prioritize positive existence checks, but never exclude candidates.
-  // Full results still come from grep on the exact generated Markdown.
+  // Default recursive search uses Confluence's index to select pages, then
+  // verifies matching Markdown locally. --no-cql requests exhaustive search.
   const runGrep = async (args: string[], ctx: CommandContext) => {
     const parsed = parseGrepArgs(args);
     const original = ctx.origCommand!;
@@ -121,8 +122,75 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
       // Compile patterns and validate pattern files before traversing or prefetching.
       const validation = await original([...forwarded, "/dev/null"]);
       if (validation.exitCode > 1) return validation;
+      const plan = planGrepCql(parsed);
+      const enabled = options.cqlGrep !== false && ctx.env.get("ATLCLI_VFS_NO_CQL") !== "1";
+      if (enabled && "query" in plan && !parsed.includes.length && !parsed.excludes.length && !parsed.excludeDirs.length) {
+        const scopes: string[] = [];
+        const explicit = new Map<string, string | undefined>();
+        let supported = true;
+        for (const path of parsed.paths.length ? parsed.paths : ["."]) {
+          const absolute = posix.resolve(ctx.cwd, path);
+          const space = spaceOf(ctx.cwd, absolute);
+          if (!space) { supported = false; break; }
+          const stat = await options.vfs.stat(absolute);
+          if (!stat.isDirectory) {
+            explicit.set(absolute, stat.kind === "page" || stat.kind === "symlink" ? stat.id : undefined);
+            continue;
+          }
+          if (!["space", "page", "folder"].includes(stat.kind)) { supported = false; break; }
+          const root = stat.kind === "space" ? await options.vfs.index.getHomepageId(space) : stat.id;
+          if (!root || !/^\d+$/.test(root)) { supported = false; break; }
+          scopes.push(`(id = ${root} OR ancestor = ${root})`);
+        }
+        // Explicit files are already a precise scope and need no search index.
+        if (supported && scopes.length && scopes.length <= 100) {
+          let found: Awaited<ReturnType<typeof options.vfs.searchExcerpts>> | undefined;
+          try {
+            found = await options.vfs.searchExcerpts(`(${plan.query}) AND (${scopes.join(" OR ")})`, { maxResults: 1000, spaces });
+          } catch {
+            diagnostic("grep: CQL unavailable; falling back to exhaustive Markdown search");
+          }
+          if (found) {
+            diagnostic(`grep: CQL-indexed search; ${found.results.length} candidate pages; index gaps and indexing delay may omit matches. Use --no-cql for exhaustive search.`);
+            if (found.truncated && !parsed.quiet) {
+              return { stdout: "", stderr: "grep: indexed candidates exceed the search limit; narrow the path or pattern (no bodies downloaded)\n", exitCode: 2 };
+            }
+            const selected = new Map(explicit);
+            for (const row of found.results) {
+              const known = options.vfs.index.node(row.id);
+              if (!known || (row.version !== undefined && row.version > (known.version ?? 0))) {
+                options.vfs.index.upsert({ id: row.id, title: row.title, type: "page", spaceKey: row.spaceKey,
+                  version: row.version ?? 0, metaCheckedAt: 0 });
+              }
+              if (![...explicit.values()].includes(row.id)) selected.set(row.path, row.id);
+            }
+            const ids = [...new Set([...selected.values()].filter((id): id is string => id !== undefined))];
+            await options.vfs.index.revalidatePages(ids);
+            const budget = options.prefetchMax ?? options.vfs.prefetchMaxPages;
+            if (!selected.size) return { stdout: "", stderr: "", exitCode: 1 };
+            if (parsed.quiet) {
+              let fetched = 0;
+              for (const [file, id] of selected) {
+                if (id) {
+                  const warmed = await options.vfs.prefetch([id], { budget: budget - fetched, reason: "indexed grep" });
+                  fetched += warmed.fetched;
+                  prefetched += warmed.fetched;
+                }
+                const result = await original([...forwarded, file]);
+                if (result.exitCode !== 1) return result;
+              }
+              return { stdout: "", stderr: found.truncated ? "grep: indexed candidates truncated; no-match is inconclusive\n" : "", exitCode: found.truncated ? 2 : 1 };
+            }
+            const warmed = await options.vfs.prefetch(ids, { budget, reason: "indexed grep" });
+            prefetched += warmed.fetched;
+            diagnostic(`grep: ${warmed.fetched} bodies fetched, ${warmed.fromCache} cached; verifying indexed candidates`);
+            return original([...forwarded, ...selected.keys()]);
+          }
+        }
+      } else if (enabled && !parsed.noCql) {
+        diagnostic(`grep: exhaustive fallback (${ "reason" in plan ? plan.reason : "path filters require the filesystem hierarchy" })`);
+      }
       const files = new Map<string, string | undefined>();
-      const scopeIds = new Set<string>();
       for (const path of parsed.paths.length ? parsed.paths : ["."]) {
         const absolute = posix.resolve(ctx.cwd, path);
         const spaceKey = spaceOf(ctx.cwd, absolute);
@@ -131,14 +199,11 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
         if (!stat.isDirectory) {
           const pageId = stat.kind === "page" || stat.kind === "symlink" ? stat.id : undefined;
           if (matchesGrepFile(parsed, absolute)) files.set(absolute, pageId);
-          if (pageId) scopeIds.add(pageId);
           continue;
         }
         // Implicit recursive search visits current page bodies only.
         if (!matchesGrepFile(parsed, "_index.md") || skipsGrepDirectory(parsed, posix.basename(absolute))) continue;
         const homepage = await options.vfs.index.getHomepageId(spaceKey);
-        const rootId = stat.kind === "space" ? homepage : stat.id;
-        if (rootId) scopeIds.add(rootId);
         const ids = await options.vfs.subtreePageIds(absolute, spaceKey, {
           shouldVisit: (node) => !skipsGrepDirectory(parsed, posix.basename(canonicalPathOf(options.vfs.index, node, homepage))),
         });
@@ -150,7 +215,7 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
       await options.vfs.index.revalidatePages([...files.values()].filter((id): id is string => id !== undefined));
       const budget = options.prefetchMax ?? options.vfs.prefetchMaxPages;
       if (parsed.quiet && !parsed.invertMatch && !parsed.patternFiles.length) {
-        // -q needs only one verified match. Cache hits first; CQL is just a hint.
+        // Exhaustive -q needs only one verified match. Check cache hits first.
         let entries = [...files];
         const cached = new Set(entries.filter(([, id]) => {
           const version = id ? options.vfs.index.node(id)?.version : undefined;
@@ -166,21 +231,6 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
           }
         }
         entries = entries.filter(([path]) => !cached.has(path));
-        const candidates = new Set<string>();
-        const term = parsed.patterns.length === 1 ? parsed.patterns[0] : undefined;
-        if (options.cqlGrep !== false && !parsed.noCql && ctx.env.get("ATLCLI_VFS_NO_CQL") !== "1" &&
-            term && /^[\p{L}\p{N}]{3,80}$/u.test(term) && entries.length > 1 && budget > 0) {
-          try {
-            const roots = [...scopeIds].filter((id) => /^\d+$/.test(id));
-            const scope = roots.length && roots.length <= 50 ? ` AND (id in (${roots.join(",")}) OR ancestor in (${roots.join(",")}))` : "";
-            const found = await options.vfs.searchExcerpts(`text ~ "${term}"${scope}`, { maxResults: 10, spaces });
-            for (const row of found.results) candidates.add(row.id);
-          } catch {
-            diagnostic("grep: CQL hint unavailable; continuing exact search");
-          }
-        }
-        const priority = ([, id]: [string, string | undefined]): number => id && candidates.has(id) ? 0 : 1;
-        entries.sort((a, b) => priority(a) - priority(b));
         let fetched = 0;
         for (const [file, id] of entries) {
           if (id) {
@@ -206,7 +256,7 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
       diagnostic(`grep: exact search; ${files.size} files, ${result.fetched} bodies fetched, ${result.fromCache} cached`);
       return original([...forwarded, ...files.keys()]);
     } catch (error) {
-      return { stdout: "", stderr: `grep: ${String(error)}\nFor indexed results without body downloads: cql --excerpt 'text ~ "term"'\n`, exitCode: 2 };
+      return { stdout: "", stderr: `grep: ${String(error)}\nNarrow the path or pattern, or raise --prefetch-max.\n`, exitCode: 2 };
     }
   };
   const boundedGrep = (args: string[], ctx: CommandContext) => options.vfs.withBodyBudget(

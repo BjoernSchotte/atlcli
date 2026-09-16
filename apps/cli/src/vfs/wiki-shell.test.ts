@@ -68,6 +68,7 @@ async function makeShell(
   const shell = await createWikiShell({
     vfs,
     spaces: ["DOCSY"],
+    cqlGrep: false, // This suite pins exhaustive filesystem semantics.
     onDiagnostic: (line) => diagnostics.push(line),
     ...(overrides.cqlGrep !== undefined ? { cqlGrep: overrides.cqlGrep as boolean } : {}),
     ...(overrides.prefetchMax !== undefined ? { prefetchMax: overrides.prefetchMax as number } : {}),

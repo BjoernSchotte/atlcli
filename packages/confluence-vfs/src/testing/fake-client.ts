@@ -521,6 +521,7 @@ export class FakeConfluenceClient implements VfsClient {
   private runCql(cql: string): ConfluenceSearchResult[] {
     const spaceMatch = /space\s*=\s*"?([A-Za-z0-9_-]+)"?/i.exec(cql);
     const typeMatch = /type\s*=\s*"?([a-z]+)"?/i.exec(cql);
+    const scopedRoots = [...cql.matchAll(/\(id = (\d+) OR ancestor = \1\)/g)].map((match) => match[1]!);
     const idMatch = /\bid\s*=\s*"?(\d+)"?/i.exec(cql);
     const textMatch = /text\s*~\s*"([^"]*)"/i.exec(cql);
     const labelMatch = /label\s*=\s*"?([^"\s)]+)"?/i.exec(cql);
@@ -543,7 +544,15 @@ export class FakeConfluenceClient implements VfsClient {
         if (page.trashed || !this.visible(page.id)) return false;
         if (spaceMatch && page.spaceKey !== spaceMatch[1]) return false;
         if (typeMatch && page.type !== typeMatch[1]) return false;
-        if (idMatch && page.id !== idMatch[1]) return false;
+        if (scopedRoots.length) {
+          let node: typeof page | undefined = page;
+          const visited = new Set<string>();
+          while (node && !scopedRoots.includes(node.id) && !visited.has(node.id)) {
+            visited.add(node.id);
+            node = node.parentId ? this.pages.get(node.parentId) : undefined;
+          }
+          if (!node || !scopedRoots.includes(node.id)) return false;
+        } else if (idMatch && page.id !== idMatch[1]) return false;
         if (labelMatch && !(page.labels ?? []).includes(labelMatch[1]!)) return false;
         if (since !== undefined && Date.parse(page.lastModified ?? "") < since) return false;
         if (bare !== undefined) {
