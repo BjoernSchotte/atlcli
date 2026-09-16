@@ -1,3 +1,4 @@
+import { mermaidMacroSource } from "./mermaid-macro.js";
 /**
  * Intermediate export model (spec 004 Task 2, also consumed by spec 005 Typst).
  *
@@ -1467,6 +1468,12 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
         content: body ? walkBlocks(body.children, ctx) : [],
       },
     ];
+  }
+
+  if (macroName === "mermaid" && !macroParam(el, "fileName")) {
+    const body = childByName(el, "ac:plain-text-body");
+    const source = body ? mermaidMacroSource(elementText(body)) : undefined;
+    if (source !== undefined) return [{ type: "codeBlock", language: "mermaid", code: source }];
   }
 
   // Code / noformat → code block (language preserved).
