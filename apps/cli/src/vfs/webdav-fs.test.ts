@@ -283,8 +283,10 @@ describe("client quirks", () => {
 
   it("lists the exclusions at the volume root, so a client can find them", async () => {
     await start(seeded());
-    const result = await dav("/", { method: "PROPFIND", depth: "1" });
-    expect(result.body).toContain(".metadata_never_index");
+    for (const path of ["/", "/DOCSY/"]) {
+      const result = await dav(path, { method: "PROPFIND", depth: "1" });
+      expect(result.body).toContain(".metadata_never_index");
+    }
   });
 
   it("accepts and discards a client writing its own droppings", async () => {

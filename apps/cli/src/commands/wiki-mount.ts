@@ -34,6 +34,11 @@ import { assertCliAuthSupported } from "./session-guard.js";
 
 type Flags = Record<string, string | boolean | string[]>;
 
+/** A single space is the volume root; multiple spaces retain their namespace. */
+export function mountUrlFor(serverUrl: string, spaces: readonly string[]): string {
+  return spaces.length === 1 ? new URL(`${encodeURIComponent(spaces[0]!)}/`, serverUrl).href : serverUrl;
+}
+
 /** The OS client calls our WebDAV server while attaching and detaching. */
 export function runMountCommand(command: string[], quiet = false): Promise<number | null> {
   return new Promise((resolve, reject) => {
@@ -187,9 +192,10 @@ async function handleMount(
     },
   });
 
+  const mountUrl = mountUrlFor(running.url, spaces);
   const record: MountRecord = {
     mountpoint,
-    url: running.url,
+    url: mountUrl,
     port: running.port,
     pid: process.pid,
     spaces,
@@ -199,7 +205,7 @@ async function handleMount(
   mkdirSync(mountStateDir(cacheDir), { recursive: true });
   writeFileSync(mountStatePath(cacheDir, mountpoint), JSON.stringify(record, null, 2));
 
-  const attach = mountCommandFor(platform(), running.url, mountpoint, `atlcli-${spaces[0]}`);
+  const attach = mountCommandFor(platform(), mountUrl, mountpoint, `atlcli-${spaces[0]}`);
   if ("instructions" in attach) {
     process.stderr.write(attach.instructions);
   } else {
@@ -208,7 +214,7 @@ async function handleMount(
     if (status !== 0) {
       process.stderr.write(
         `atlcli: ${attach.run[0]} exited with ${status ?? "a signal"}. ` +
-          `The server is still running at ${running.url}; attach it manually if you prefer.\n`,
+          `The server is still running at ${mountUrl}; attach it manually if you prefer.\n`,
       );
     }
   }
@@ -216,7 +222,7 @@ async function handleMount(
   output(
     {
       mounted: mountpoint,
-      url: running.url,
+      url: mountUrl,
       spaces,
       mode,
       allowDelete: hasFlag(flags, "allow-delete"),

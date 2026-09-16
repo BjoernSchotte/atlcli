@@ -349,7 +349,8 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
       .readdir(target)
       .then((entries) => callback(undefined, entries
         .filter((entry) => !this.pendingBackups.has(`${path.toString().replace(/\/$/, "")}/${entry.name}`))
-        .map((entry) => entry.name)))
+        .map((entry) => entry.name)
+        .concat(target.replace(/\/$/, "") === `/${this.options.spaceKey}` ? [...INDEXER_SHIELDS] : [])))
       .catch((error: unknown) => callback(httpErrorFor(error)));
   }
 
@@ -442,6 +443,10 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
       const draft = this.drafts.get(path.toString());
       if (!draft) callback(webdav.Errors.ResourceNotFound);
       else callback(undefined, `"draft-${draft.modified}-${draft.bytes.byteLength}"`);
+      return;
+    }
+    if (isIndexerShield(this.lastSegment(path))) {
+      callback(undefined, '"indexer-shield"');
       return;
     }
     this.options.vfs

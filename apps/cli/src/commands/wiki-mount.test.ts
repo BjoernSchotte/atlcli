@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { createServer } from "node:http";
 import {
   mountCommandFor,
+  mountUrlFor,
   mountStateDir,
   mountStatePath,
   readMounts,
@@ -29,6 +30,16 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
+});
+
+describe("mount root selection", () => {
+  it("mounts one space directly, including URL encoding and trailing slash", () => {
+    expect(mountUrlFor("http://127.0.0.1:8080/", ["DOCSY"])).toBe("http://127.0.0.1:8080/DOCSY/");
+    expect(mountUrlFor("http://127.0.0.1:8080/", ["A B#"])).toBe("http://127.0.0.1:8080/A%20B%23/");
+  });
+  it("retains the shared root for multiple spaces", () => {
+    expect(mountUrlFor("http://127.0.0.1:8080/", ["DOCSY", "OTHER"])).toBe("http://127.0.0.1:8080/");
+  });
 });
 
 describe("platform commands", () => {

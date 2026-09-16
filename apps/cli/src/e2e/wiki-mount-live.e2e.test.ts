@@ -24,7 +24,7 @@ import { getActiveProfile, loadConfig, type Profile } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { startWebdavServer, type RunningWebdavServer } from "../vfs/webdav-server.js";
-import { mountCommandFor, unmountCommandFor, runMountCommand } from "../commands/wiki-mount.js";
+import { mountUrlFor, mountCommandFor, unmountCommandFor, runMountCommand } from "../commands/wiki-mount.js";
 import { E2E_SPACE_KEY, makeE2eTitle } from "./resources.js";
 
 const RUN = process.env.ATLCLI_WIKI_MOUNT_E2E === "1";
@@ -60,7 +60,7 @@ beforeAll(async () => {
   server = await startWebdavServer({ vfs, spaces: [E2E_SPACE_KEY] });
 
   if (KERNEL) {
-    const attach = mountCommandFor("darwin", server.url, mountpoint, "atlcli-e2e");
+    const attach = mountCommandFor("darwin", mountUrlFor(server.url, [E2E_SPACE_KEY]), mountpoint, "atlcli-e2e");
     if ("run" in attach) expect(await runMountCommand(attach.run)).toBe(0);
   }
 });
@@ -138,13 +138,13 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
 describe.skipIf(!KERNEL).serial("wiki mount through the macOS kernel client", () => {
   it("creates and updates a page through native filesystem writes", async () => {
     const title = makeE2eTitle("vfs-kernel");
-    await writeFile(join(mountpoint, E2E_SPACE_KEY, `${title}.md`), "Kernel original\n");
+    await writeFile(join(mountpoint, `${title}.md`), "Kernel original\n");
     const entries = await vfs.readdir(`/${E2E_SPACE_KEY}`);
     const entry = entries.find((item) => item.name.startsWith(title.toLowerCase()));
     expect(entry).toBeDefined();
     const node = await vfs.resolve(`/${E2E_SPACE_KEY}/${entry!.name}`);
     created.push(node.id);
-    const file = join(mountpoint, E2E_SPACE_KEY, entry!.name, "_index.md");
+    const file = join(mountpoint, entry!.name, "_index.md");
     const body = await readFile(file, "utf8");
     expect(body).toContain("Kernel original");
     await writeFile(file, body.replace("Kernel original", "Kernel edited"));
@@ -153,11 +153,12 @@ describe.skipIf(!KERNEL).serial("wiki mount through the macOS kernel client", ()
 
   it("lists the volume through the real filesystem", async () => {
     const entries = await readdir(mountpoint);
-    expect(entries).toContain(E2E_SPACE_KEY);
+    expect(entries).toContain("_index.md");
+    expect(entries).not.toContain(E2E_SPACE_KEY);
   });
 
   it("reads a page through the real filesystem", async () => {
-    const spaceDir = join(mountpoint, E2E_SPACE_KEY);
+    const spaceDir = mountpoint;
     const first = (await readdir(spaceDir)).find((name) => /-\d+$/.test(name));
     expect(first).toBeDefined();
     const text = await readFile(join(spaceDir, first!, "_index.md"), "utf8");

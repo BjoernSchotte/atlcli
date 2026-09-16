@@ -123,6 +123,11 @@ atlcli wiki mount list
 atlcli wiki mount unmount ~/confluence
 ```
 
+With one selected space, its pages appear directly at the mountpoint. With
+multiple spaces (`--space DOCSY,OTHER`), each space has its own subdirectory.
+The WebDAV URLs remain `/DOCSY/` and `/OTHER/`; the CLI selects the matching
+mount URL. This does not change paths inside `wiki sh`.
+
 | Platform | How it attaches | Notes |
 |----------|-----------------|-------|
 | **macOS** | `mount_webdav`, run for you | No kernel extension, no admin rights. `LOCK` is implemented, so the volume mounts **read-write** rather than read-only |

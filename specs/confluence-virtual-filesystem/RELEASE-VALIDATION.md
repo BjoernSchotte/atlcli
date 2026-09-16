@@ -116,6 +116,15 @@ Homebrew install/test lifecycle remains unverified for this PR.
   cannot run without a second identity; fake-client cache-isolation tests are
   separate evidence, not a substitute. The user accepted this interim boundary.
 
+## Single-space and multi-space mount roots
+
+Native `ls` checks on macOS and Linux passed for both layouts: DOCSY alone
+mounts `/DOCSY/` and exposes `_index.md` and page directories directly;
+DOCSY plus mayflower mounts `/` and exposes both space directories. Both
+multi-space probes were read-only. The macOS DOCSY kernel E2E passed seven
+tests, including creation, update, readback and cleanup of synthetic pages.
+Space-root listings retain the Spotlight exclusion files.
+
 ## Final repository checks
 
 After the production fixes: `bun run test` reports **9,008 pass, 40 skip, zero
