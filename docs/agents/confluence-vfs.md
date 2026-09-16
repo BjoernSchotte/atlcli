@@ -191,3 +191,19 @@ also `--allow-delete`; do not add them unless asked.
 ```
 
 Full documentation: [Virtual Filesystem](https://atlcli.dev/confluence/virtual-filesystem/).
+
+
+### Find recently changed pages without body downloads
+
+```bash
+find . -type f -name '*.md' -mtime -7
+find . -type f -name '*.md' -newermt '2026-09-01T00:00:00Z'
+```
+
+This indexed fast path searches current page files only and returns stable
+`.by-id` paths; attachments and generated virtual files are excluded, as the
+command diagnostic states. `-newer FILE`, combined time predicates and
+`-print0` are also supported. CQL date bounds are widened for account timezone
+and minute precision, then checked against exact page metadata. No bodies are
+fetched. Index lag can omit recent changes. Other find expressions retain the
+filesystem-metadata walk; `--no-cql` on `wiki sh` disables acceleration.

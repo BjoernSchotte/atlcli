@@ -24,6 +24,7 @@ import { canonicalPathOf, type ConfluenceVfsImpl } from "@atlcli/confluence-vfs"
 import { posix } from "node:path";
 import { ConfluenceJustBashFs } from "./just-bash-fs.js";
 import { matchesGrepFile, skipsGrepDirectory, parseFindArgs, parseGrepArgs } from "./grep-flags.js";
+import { runIndexedFind } from "./find-cql.js";
 import { planGrepCql } from "./grep-cql.js";
 
 /**
@@ -283,6 +284,10 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
       const original = ctx.origCommand;
       if (!original) {
         return { stdout: "", stderr: "find: the bundled implementation is unavailable\n", exitCode: 2 };
+      }
+      if (options.cqlGrep !== false && ctx.env.get("ATLCLI_VFS_NO_CQL") !== "1") {
+        const indexed = await runIndexedFind(args, { vfs: options.vfs, cwd: ctx.cwd, spaces, diagnostic });
+        if (indexed) return indexed;
       }
       if (parsed.timePredicate) {
         diagnostic("find: filesystem metadata (time predicate)");

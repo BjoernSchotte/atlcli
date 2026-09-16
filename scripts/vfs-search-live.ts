@@ -106,8 +106,25 @@ try {
   }
   assert(indexed, "Synthetic fixture did not become indexed within 30 seconds");
   await measure("DOCSY CQL-prioritized quiet subtree", async () => {
-    const b = bodies; const result = await freshShell.exec(`grep -rqi retrospektive ${target}`);
+    const b = bodies;
+    // Search replicas can disagree briefly even after the first positive CQL response.
+    let result = await freshShell.exec(`grep -rqi retrospektive ${target}`);
+    for (let attempt = 0; result.exitCode === 1 && attempt < 15; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      result = await freshShell.exec(`grep -rqi retrospektive ${target}`);
+    }
     assert.equal(result.exitCode, 0, result.stderr); assert.equal(bodies-b,1);
+  });
+  await measure("DOCSY indexed find time filters", async () => {
+    const b = bodies;
+    const result = await freshShell.exec(`find ${target} -type f -name '*.md' -mtime -7`);
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert(result.stdout.includes(`/DOCSY/.by-id/${created[4]}.md`));
+    assert.equal(bodies, b);
+    const after = await freshShell.exec(`find ${target} -type f -name '*.md' -newermt '2000-01-01T00:00:00Z'`);
+    assert.equal(after.exitCode, 0, after.stderr);
+    assert(after.stdout.includes(`/DOCSY/.by-id/${created[4]}.md`));
+    assert.equal(bodies, b);
   });
   // Explicit body scope proves exact quiet matching even before CQL indexes writes.
   await measure("DOCSY cold quiet one file", async () => {

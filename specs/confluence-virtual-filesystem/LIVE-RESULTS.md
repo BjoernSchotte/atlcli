@@ -297,3 +297,23 @@ remained GET-only. API reports regenerated for the additive public methods.
 User accepted single-profile testing for this iteration: no second identity is
 available. Windows is unavailable; Linux native validation will run separately
 on the user's homelab. Neither is represented as a passing platform test.
+
+
+## Indexed find and complete shell load test
+
+WP6.4 now accelerates explicit current-page file searches with `-type f -name
+'*.md'` and `-mtime`, `-newer` or `-newermt`. Non-page queries still use the
+metadata walk. Index timestamp bounds are conservative and returned page
+metadata is checked before output. Truncation fails visibly; no bodies load.
+
+The DOCSY live harness passed both -mtime and -newermt in 695 ms combined,
+three HTTP requests and zero body downloads, with fixture cleanup. The search
+index briefly disagreed between successive requests; the harness now waits
+boundedly for the actual grep query, rather than treating one preview response
+as proof that every replica is caught up.
+
+WP9.3 now drives real just-bash grep across a 5,000-page fake: cold 31 ms,
+seven client calls and fifty bodies; warm 8 ms, one search and zero bodies;
+no hierarchy requests. These are synthetic transport-free timings. Twenty
+indexed-find/grep tests passed. Cache bytes were 10,630 after both cold and warm
+runs; a generous two-second CI ceiling guards against accidental space walks.
