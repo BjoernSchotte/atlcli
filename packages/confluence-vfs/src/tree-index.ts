@@ -355,7 +355,7 @@ export class TreeIndex {
    */
   async loadSubtree(
     rootId: string,
-    options: { maxDepth?: number; maxNodes?: number; shouldVisit?: (node: TreeNode) => boolean } = {},
+    options: { maxDepth?: number; maxNodes?: number; shouldVisit?: (node: TreeNode) => boolean; force?: boolean } = {},
   ): Promise<TreeNode[]> {
     const maxDepth = options.maxDepth ?? Infinity;
     const maxNodes = options.maxNodes ?? 5000;
@@ -367,7 +367,7 @@ export class TreeIndex {
 
     for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
       const levels = await Promise.all(
-        frontier.map((id) => this.limit(() => this.loadChildren(id))),
+        frontier.map((id) => this.limit(() => this.loadChildren(id, { force: options.force ?? false }))),
       );
       const next: string[] = [];
       for (const level of levels) {

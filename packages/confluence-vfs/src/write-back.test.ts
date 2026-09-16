@@ -497,8 +497,62 @@ describe("rm", () => {
     await vfs.rm("/DOCSY/architecture-102", { recursive: true });
     expect(client.isTrashed("102")).toBe(true);
     expect(client.isTrashed("103")).toBe(true);
-    // One call: Confluence carries the children.
-    expect(client.callsTo("deletePage")).toBe(1);
+    expect(client.calls.filter((call) => call.method === "deletePage").map((call) => call.arg)).toEqual(["103", "102"]);
+    await vfs.close();
+  });
+
+  it("models the REST endpoint faithfully: deleting a parent alone leaves its children current", async () => {
+    const client = seeded();
+    await client.deletePage("102");
+    expect(client.isTrashed("102")).toBe(true);
+    expect(client.isTrashed("103")).toBe(false);
+  });
+
+  it("refreshes cached descendants and deletes grandchildren before their parents", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    await vfs.readdir("/DOCSY/architecture-102");
+    await vfs.readFile("/DOCSY/architecture-102/deployment-103.md");
+    client.seedPage({ id: "105", title: "New Grandchild", spaceKey: "DOCSY", parentId: "103" });
+    client.seedPage({ id: "106", title: "New Child", spaceKey: "DOCSY", parentId: "102" });
+    await vfs.rm("/DOCSY/architecture-102", { recursive: true });
+    const deleted = client.calls.filter((call) => call.method === "deletePage").map((call) => call.arg);
+    expect([...deleted].sort()).toEqual(["102", "103", "105", "106"]);
+    expect(deleted.indexOf("105")).toBeLessThan(deleted.indexOf("103"));
+    expect(deleted.at(-1)).toBe("102");
+    for (const id of deleted) {
+      expect(client.isTrashed(id)).toBe(true);
+      expect(vfs.index.knowsId(id)).toBe(false);
+    }
+    expect(vfs.cache!.getBody("103", 1)).toBeUndefined();
+    await vfs.close();
+  });
+
+  it("rejects unsupported descendants and folders before any deletion", async () => {
+    const client = seeded().seedPage({ id: "105", title: "Child Folder", spaceKey: "DOCSY", parentId: "102", type: "folder" });
+    const vfs = await openVfs(client);
+    await expect(vfs.rm("/DOCSY/architecture-102", { recursive: true })).rejects.toMatchObject({ code: "EROFS" });
+    await expect(vfs.rm("/DOCSY/runbooks-104", { recursive: true })).rejects.toMatchObject({ code: "EROFS" });
+    expect(client.callsTo("deletePage")).toBe(0);
+    await vfs.close();
+  });
+
+  it("completes bounded enumeration before any deletion", async () => {
+    const client = seeded().seedPages(5001, (i) => ({ id: String(1000 + i), title: `Child ${i}`, spaceKey: "DOCSY", parentId: "102" }));
+    const vfs = await openVfs(client);
+    await expect(vfs.rm("/DOCSY/architecture-102", { recursive: true })).rejects.toMatchObject({ code: "EINVAL" });
+    expect(client.callsTo("deletePage")).toBe(0);
+    expect(client.isTrashed("102")).toBe(false);
+    await vfs.close();
+  });
+
+  it("stops on a child deletion failure without deleting its parent", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    client.failNext({ method: "deletePage", match: "103", status: 403, times: 1 });
+    await expect(vfs.rm("/DOCSY/architecture-102", { recursive: true })).rejects.toMatchObject({ code: "EACCES" });
+    expect(client.isTrashed("102")).toBe(false);
+    expect(client.isTrashed("103")).toBe(false);
     await vfs.close();
   });
 

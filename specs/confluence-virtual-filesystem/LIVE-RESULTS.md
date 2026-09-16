@@ -317,3 +317,18 @@ seven client calls and fifty bodies; warm 8 ms, one search and zero bodies;
 no hierarchy requests. These are synthetic transport-free timings. Twenty
 indexed-find/grep tests passed. Cache bytes were 10,630 after both cold and warm
 runs; a generous two-second CI ceiling guards against accidental space walks.
+
+
+## Recursive trash correction
+
+Native editor cleanup exposed a mistaken assumption: Confluence trashing a
+parent leaves its children current. `rm -r` now performs a fresh bounded
+metadata preflight and trashes leaves before parents; unsupported non-page
+children or more than 5,000 descendants abort before writes. The fake now
+models the actual non-cascading API and complete hierarchy pagination.
+
+`scripts/vfs-delete-live.ts` passed on DOCSY: parent, child and grandchild (the
+last created after a cached listing), 1,270 ms, all three subsequently returned
+404, zero cleanup failures. The VFS/shell suite passed 467 tests and 1,425
+assertions. Six known temporary editor pages from earlier failing runs were
+individually validated as synthetic DOCSY fixtures and trashed as well.

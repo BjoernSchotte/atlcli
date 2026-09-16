@@ -341,26 +341,25 @@ export class FakeConfluenceClient implements VfsClient {
 
   async getPageDirectChildren(
     pageId: string,
-    options: { limit?: number } = {},
+    _options: { limit?: number } = {},
   ): Promise<FolderChild[]> {
     this.record("getPageDirectChildren", pageId);
     if (this.mustPage(pageId).type !== "page") {
       throw new FakeHttpError(404, "Confluence API error (404): not a page");
     }
-    return this.childrenOf(pageId)
-      .slice(0, options.limit ?? this.pageSize)
-      .map((p) => this.toChild(p));
+    // The real client's array-returning hierarchy methods drain pagination;
+    // limit is a transport page size, never a cap on the returned children.
+    return this.childrenOf(pageId).map((p) => this.toChild(p));
   }
 
   async getChildren(
     pageId: string,
-    options: { limit?: number } = {},
+    _options: { limit?: number } = {},
   ): Promise<ConfluenceSearchResult[]> {
     // The Data Center v1 path. Same data, different shape.
     this.record("getChildren", pageId);
     this.mustPage(pageId);
     return this.childrenOf(pageId)
-      .slice(0, options.limit ?? this.pageSize)
       .map((p) => ({
         id: p.id,
         title: p.title,
@@ -396,14 +395,13 @@ export class FakeConfluenceClient implements VfsClient {
 
   async getFolderChildren(
     folderId: string,
-    options: { limit?: number } = {},
+    _options: { limit?: number } = {},
   ): Promise<FolderChild[]> {
     this.record("getFolderChildren", folderId);
     if (this.mustPage(folderId).type !== "folder") {
       throw new FakeHttpError(404, "Confluence API error (404): not a folder");
     }
     return this.childrenOf(folderId)
-      .slice(0, options.limit ?? this.pageSize)
       .map((p) => this.toChild(p));
   }
 
@@ -828,17 +826,9 @@ export class FakeConfluenceClient implements VfsClient {
   async deletePage(pageId: string): Promise<void> {
     this.record("deletePage", pageId);
     const page = this.mustPage(pageId);
-    // Trash, never purge: the page and its descendants stay in `pages` with
-    // `trashed: true`, so a test can prove nothing was actually destroyed.
-    const trash = (id: string): void => {
-      const target = this.pages.get(id);
-      if (!target) return;
-      target.trashed = true;
-      for (const child of [...this.pages.values()].filter((p) => p.parentId === id)) {
-        trash(child.id);
-      }
-    };
-    trash(page.id);
+    // The REST endpoint trashes this page only; descendants remain current.
+    // Keep the record so tests can distinguish reversible trash from purge.
+    page.trashed = true;
   }
 
   /** True when the page is in the trash rather than gone. Purge never happens. */

@@ -163,14 +163,15 @@ describe("CQL subset", () => {
 });
 
 describe("delete is the trash", () => {
-  it("marks the page and its descendants trashed rather than removing them", async () => {
+  it("trashes only the requested page and leaves descendants current, like REST", async () => {
     const client = seeded();
     await client.deletePage("102");
     expect(client.isTrashed("102")).toBe(true);
-    expect(client.isTrashed("103")).toBe(true);
+    expect(client.isTrashed("103")).toBe(false);
     // Still present in the store — nothing was purged.
     expect(client.peekPage("103")).toBeDefined();
-    await expect(client.getPage("103")).rejects.toMatchObject({ status: 404 });
+    expect((await client.getPage("103")).id).toBe("103");
+    await expect(client.getPage("102")).rejects.toMatchObject({ status: 404 });
   });
 });
 

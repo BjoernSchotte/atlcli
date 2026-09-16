@@ -614,6 +614,7 @@ export declare class TreeIndex {
         maxDepth?: number;
         maxNodes?: number;
         shouldVisit?: (node: TreeNode) => boolean;
+        force?: boolean;
     }): Promise<TreeNode[]>;
     revalidatePages(ids: readonly string[]): Promise<void>;
     revalidate(id: string): Promise<void>;
@@ -1096,10 +1097,10 @@ export declare class FakeConfluenceClient implements VfsClient {
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
     getSpaceHomepageId(spaceKey: string): Promise<string | null>;
-    getPageDirectChildren(pageId: string, options?: {
+    getPageDirectChildren(pageId: string, _options?: {
         limit?: number;
     }): Promise<FolderChild[]>;
-    getChildren(pageId: string, options?: {
+    getChildren(pageId: string, _options?: {
         limit?: number;
     }): Promise<ConfluenceSearchResult[]>;
     getAncestors(pageId: string): Promise<{
@@ -1107,7 +1108,7 @@ export declare class FakeConfluenceClient implements VfsClient {
         title: string;
     }[]>;
     getFolder(folderId: string): Promise<ConfluenceFolder>;
-    getFolderChildren(folderId: string, options?: {
+    getFolderChildren(folderId: string, _options?: {
         limit?: number;
     }): Promise<FolderChild[]>;
     getPageMetadata(id: string): Promise<ConfluencePage>;

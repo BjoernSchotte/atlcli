@@ -459,3 +459,13 @@ command diagnostic states. `-newer FILE`, combined time predicates and
 and minute precision, then checked against exact page metadata. No bodies are
 fetched. Index lag can omit recent changes. Other find expressions retain the
 filesystem-metadata walk; `--no-cql` on `wiki sh` disables acceleration.
+
+
+### Removing a page subtree
+
+`rm -r PAGE_DIRECTORY` refreshes the subtree metadata before writing, refuses
+more than 5,000 descendants or unsupported non-page children, then trashes
+children before parents. Confluence does not cascade a page trash operation.
+This requires `--mode rw --allow-delete`; no purge occurs. REST deletion is not
+atomic: an API failure can leave a partly trashed subtree, and concurrent remote
+changes after the preflight are outside that snapshot.

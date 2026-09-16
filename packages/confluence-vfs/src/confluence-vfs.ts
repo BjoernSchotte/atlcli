@@ -1125,9 +1125,8 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
   /**
    * Move a page to the trash. Never a purge — the VFS calls no purge endpoint.
    *
-   * A directory needs the recursive flag, because Confluence takes the children
-   * with it and a caller who asked to remove one page should not lose a subtree
-   * by accident.
+   * Confluence trashes only the requested page. Recursive removal first checks
+   * the complete bounded subtree, then explicitly trashes children before parents.
    */
   async rm(path: string, options: { recursive?: boolean } = {}): Promise<void> {
     const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
@@ -1159,39 +1158,39 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
     const node = resolved.node;
     assertWritable(this.guard, "delete", path);
+    if (node.type !== "page") {
+      throw new VfsError("EROFS", "Deleting folders or other non-page content is not supported", { path });
+    }
 
     if (resolved.kind === "container" && !options.recursive) {
-      const children = await this.index.loadChildren(node.id);
+      const children = await this.index.loadChildren(node.id, { force: true });
       if (children.length > 0) {
         throw new VfsError(
           "ENOTEMPTY",
-          `${path} has ${children.length} child page(s). Deleting it sends them to the trash too; pass -r to confirm`,
+          `${path} has ${children.length} child item(s); pass -r to delete the subtree`,
           { path },
         );
       }
     }
 
-    try {
-      await this.opts.client.deletePage(node.id);
-      this.cache?.forgetPage(node.id);
-      this.index.forget(node.id);
-      this.audit?.record({
-        op: "delete",
-        path,
-        pageId: node.id,
-        fromVersion: node.version,
-        result: "ok",
-      });
-    } catch (error) {
-      const mapped = mapClientError(error, path);
-      this.audit?.record({
-        op: "delete",
-        path,
-        pageId: node.id,
-        result: "error",
-        errorCode: mapped.code,
-      });
-      throw mapped;
+    const descendants = resolved.kind === "container" && options.recursive
+      ? await this.index.loadSubtree(node.id, { maxNodes: 5000, force: true }) : [];
+    if (descendants.some((child) => child.type !== "page")) {
+      throw new VfsError("EROFS", "Subtree contains folders or other unsupported content; no pages deleted", { path });
+    }
+    // Breadth-first enumeration reversed is leaf-first. Preflight above performs
+    // no writes, so a limit/listing/type failure cannot leave a half-deleted tree.
+    for (const target of [...descendants.reverse(), node]) {
+      try {
+        await this.opts.client.deletePage(target.id);
+        this.cache?.forgetPage(target.id);
+        this.index.forget(target.id);
+        this.audit?.record({ op: "delete", path, pageId: target.id, fromVersion: target.version, result: "ok" });
+      } catch (error) {
+        const mapped = mapClientError(error, path);
+        this.audit?.record({ op: "delete", path, pageId: target.id, result: "error", errorCode: mapped.code });
+        throw mapped;
+      }
     }
   }
 
