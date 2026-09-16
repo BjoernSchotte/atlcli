@@ -91,12 +91,13 @@ export class NfsFilesystem {
         }
         // NFS handles name objects, not their last observed parent. Reuse the
         // core's scoped ID lookup instead of walking the export after a move.
-        const page = /^page:([0-9]+):(directory|file)$/.exec(entry.identity);
+        const page = /^(page|folder):([0-9]+):(directory|file)$/.exec(entry.identity);
         if (page) {
           for (const space of this.spaces) {
             try {
-              const body = await this.vfs.readlink(`/${space}/.by-id/${page[1]}.md`);
-              const relocated = page[2] === "directory" ? posix.dirname(body) : body;
+              const relocated = page[1] === "folder"
+                ? await this.vfs.folderPath(page[2]!, space)
+                : await this.vfs.readlink(`/${space}/.by-id/${page[2]}.md`).then(body => page[3] === "directory" ? posix.dirname(body) : body);
               this.assertExport(relocated);
               await this.checkResolvedScope(relocated);
               if (this.identity(await this.vfs.stat(relocated), relocated) !== entry.identity) continue;

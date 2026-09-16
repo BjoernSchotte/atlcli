@@ -231,8 +231,10 @@ Existing page/body handles also survive a page move after the changed hierarchy
 is observed: the adapter resolves the same page ID within the selected spaces.
 Attachment files and their `_attachments` directory also retain their handles
 when the owning page moves, without requiring a lookup of its new location.
-Moving outside the export or deleting the page expires these handles. Recovery
-for moved folders or independently renamed attachments remains unimplemented.
+Moving outside the export or deleting the page expires these handles. Folder directory handles are recovered through space-checked folder and ancestor
+metadata, including when an ancestor page moves. Inconsistent ancestry returns a
+retryable error. Independently renamed attachments and generated folder files
+are not yet covered by that recovery.
 Deleted or replaced identities report `ESTALE`; look up the path again, or remount
 after a helper restart. Single-space and combined-space native reads are covered
 by the [NFS evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md).

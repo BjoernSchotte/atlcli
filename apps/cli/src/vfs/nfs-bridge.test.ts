@@ -106,10 +106,12 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       expect(reply.readUInt32BE()).toBe(0);
       return reply.subarray(8, 8 + reply.readUInt32BE(4));
     };
+    client.seedPage({ id: "900", type: "folder", title: "Folder", spaceKey: "DOCSY", parentId: "400" });
     const attachmentBytes = Buffer.from("Moved attachment Grüße 🐴");
     client.seedAttachment({ id: "moved-attachment", pageId: "400", filename: "proof.txt", bytes: attachmentBytes });
     const directory = await lookupHandle(root, "child-0-400");
     const file = await lookupHandle(directory, "_index.md");
+    const folder = await lookupHandle(directory, "folder-900");
     const attachments = await lookupHandle(directory, "_attachments");
     const attachment = await lookupHandle(attachments, "proof.txt");
     await client.movePage("400", "401");
@@ -124,6 +126,8 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(await lookupHandle(attachments, "..")).toEqual(directory);
     expect(await lookupHandle(directory, "_attachments")).toEqual(attachments);
     expect(await lookupHandle(attachments, "proof.txt")).toEqual(attachment);
+    expect(await lookupHandle(folder, "..")).toEqual(directory);
+    expect(await lookupHandle(directory, "folder-900")).toEqual(folder);
     const newParent = await lookupHandle(root, "child-1-401");
     expect(await lookupHandle(directory, "..")).toEqual(newParent);
     expect(await lookupHandle(newParent, "child-0-400")).toEqual(directory);

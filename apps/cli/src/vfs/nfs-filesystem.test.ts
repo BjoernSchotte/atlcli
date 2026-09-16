@@ -215,3 +215,49 @@ it("keeps attachment and attachment-directory handles when their owning page mov
   await expect(fs.read(file, 0, 65536)).rejects.toMatchObject({ code: "ESTALE" });
   await expect(fs.getattr(directory)).rejects.toMatchObject({ code: "ESTALE" });
 });
+
+
+it("recovers a folder handle by ID before looking up its new parent", async () => {
+  const { fs, vfs, client } = await fixture();
+  client.seedPage({ id: "500", title: "Folder", type: "folder", spaceKey: "DOCSY", parentId: "100" });
+  const folder = await fs.lookup(1, "folder-500");
+  await client.movePage("500", "200");
+  await vfs.index.loadChildren("100", { force: true });
+  const parent = await fs.lookup(folder, "..");
+  expect(parent).toBe(await fs.lookup(1, "child-0-200"));
+  expect(await fs.lookup(parent, "folder-500")).toBe(folder);
+  expect(client.callsTo("getFolder")).toBe(1);
+  expect(client.callsTo("getAncestors")).toBe(1);
+  expect(client.callsTo("getPage")).toBe(0);
+  await client.movePage("500", "300");
+  await vfs.index.loadChildren("200", { force: true });
+  await expect(fs.lookup(folder, "..")).rejects.toMatchObject({ code: "ESTALE" });
+});
+
+it("rejects inconsistent folder ancestry and preserves a handle for retry", async () => {
+  const { fs, vfs, client } = await fixture();
+  client.seedPage({ id: "500", title: "Folder", type: "folder", spaceKey: "DOCSY", parentId: "100" });
+  const folder = await fs.lookup(1, "folder-500");
+  await client.movePage("500", "200");
+  await vfs.index.loadChildren("100", { force: true });
+  const ancestors = client.getAncestors.bind(client);
+  client.getAncestors = async () => [{ id: "100", title: "Home" }];
+  await expect(fs.lookup(folder, "..")).rejects.toMatchObject({ code: "EAGAIN" });
+  client.getAncestors = async () => [{ id: "500", title: "Cycle" }];
+  await expect(fs.lookup(folder, "..")).rejects.toMatchObject({ code: "EINVAL" });
+  client.getAncestors = ancestors;
+  expect(await fs.lookup(folder, "..")).toBe(await fs.lookup(1, "child-0-200"));
+});
+
+
+it("compares v1 numeric space IDs with v2 string folder space IDs", async () => {
+  const { vfs, client } = await fixture();
+  client.seedPage({ id: "500", title: "Folder", type: "folder", spaceKey: "DOCSY", parentId: "100" });
+  const getSpace = client.getSpace.bind(client);
+  client.getSpace = async key => ({ ...await getSpace(key), id: 42 as unknown as string });
+  const getFolder = client.getFolder.bind(client);
+  client.getFolder = async id => ({ ...await getFolder(id), spaceId: "42" });
+  expect(await vfs.folderPath("500", "DOCSY")).toBe("/DOCSY/folder-500");
+  client.getFolder = async id => ({ ...await getFolder(id), spaceId: "43" });
+  await expect(vfs.folderPath("500", "DOCSY")).rejects.toMatchObject({ code: "ENOENT" });
+});

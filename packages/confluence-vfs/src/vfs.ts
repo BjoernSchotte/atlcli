@@ -48,6 +48,9 @@ export interface ConfluenceVfs {
   /** Symlink target for the convenience directories, absolute inside the VFS. */
   readlink(path: string): Promise<string>;
 
+  /** Resolve a folder identity within one selected space, without downloading bodies. */
+  folderPath(id: string, spaceKey: string): Promise<string>;
+
   /** Resolve a path to its node without the `stat` projection. */
   resolve(path: string): Promise<VfsNode>;
 }

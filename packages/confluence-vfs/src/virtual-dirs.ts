@@ -272,6 +272,29 @@ export class VirtualDirs {
     ].join("\n");
   }
 
+  /** Recover an existing folder handle without enumerating unrelated branches. */
+  async folderPath(id: string, spaceKey: string): Promise<string> {
+    if (!/^[0-9]+$/.test(id)) throw new VfsError("EINVAL", "Invalid folder ID");
+    if (this.opts.offline) throw new VfsError("ENOENT", "Folder relocation requires online metadata");
+    const space = await this.opts.index.getSpace(spaceKey);
+    const folder = await this.request(() => this.opts.client.getFolder(id));
+    // Confluence v1 space IDs may be numbers; v2 folder IDs are strings.
+    if (folder.id !== id || !folder.spaceId || !space.id || String(folder.spaceId) !== String(space.id)) {
+      throw new VfsError("ENOENT", "Folder is outside selected space");
+    }
+    const ancestors = await this.request(() => this.opts.client.getAncestors(id));
+    if (ancestors.length > 256 || new Set([id, ...ancestors.map(node => node.id)]).size !== ancestors.length + 1 ||
+        ancestors.some(node => !/^[0-9]+$/.test(node.id))) {
+      throw new VfsError("EINVAL", "Invalid folder ancestry");
+    }
+    if ((ancestors.at(-1)?.id ?? null) !== folder.parentId) {
+      throw new VfsError("EAGAIN", "Folder moved while resolving its path; retry");
+    }
+    const homepage = await this.opts.index.getHomepageId(spaceKey);
+    return `/${[spaceKey, ...ancestors.filter(node => node.id !== homepage)
+      .map(node => formatDirName(node.title, node.id)), formatDirName(folder.title, id)].join("/")}`;
+  }
+
   /** The canonical path of a page, for `readlink`. */
   async canonicalPath(id: string, spaceKey: string, path: string): Promise<string> {
     const node = await this.loadNode(id, spaceKey, path);

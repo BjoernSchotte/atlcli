@@ -618,3 +618,29 @@ index state, readable bytes and stable handles. It passed on Linux (1 test /
 Folder resolution by ID when the destination has not yet been observed remains
 open; this slice fixes a shared index prerequisite rather than claiming complete
 folder-handle recovery.
+
+
+## Slice 26 — recover moved folder directory handles by identity
+
+The NFS adapter can now recover a folder directory handle before any lookup of
+its destination. A narrow shared-core folderPath operation uses existing folder
+and ancestor metadata endpoints, checks the selected space, bounds/rejects
+cyclic ancestry, and rejects an inconsistent parent chain with EAGAIN. The
+adapter still checks the resolved node identity and export scope. No body or
+whole-space listing is requested by this recovery. Offline missing paths remain
+unrecoverable; generated folder-file handles are separate unfinished work.
+
+The live test initially exposed numeric v1 space IDs versus string v2 space IDs.
+The comparison now normalizes their representation, rejects missing IDs, and
+retains the space boundary. A regression covers matching and foreign IDs.
+The actual folder ancestor endpoint was verified using a temporary folder under
+a synthetic DOCSY page, then moving that page and resolving the old folder
+handle. All fixtures were deleted, including after the initial failed attempts.
+
+Validation: 347 core/NFS filesystem tests, 1,043 assertions; repository typecheck.
+The real Rust wire test also retains a nested folder handle after moving its
+ancestor. That test plus three native mount cases passed on macOS and Linux
+(4 tests / 56 assertions each). Linux's expanded DOCSY live move test passed
+(1 test / 13 assertions), including API metadata and exact canonical folder path.
+macOS used synthetic data; Linux single/combined native mounts used live RO
+spaces. All mounts detached normally. No MAYFLOWER content was modified.
