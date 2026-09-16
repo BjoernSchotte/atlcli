@@ -125,7 +125,8 @@ for `AGENTS.md`, `CLAUDE.md` or a skill file.
       overhead for now**, so optional-shell packaging is deferred, not silently
       treated as a passing measurement.
 - [x] Final repository checks: 9,008 passed, 40 skipped, zero failures; typecheck and build pass.
-- [ ] Native Linux x64 executable and davfs2 mount on the homelab.
+- [x] Native Linux x64 artifact tests and read-only davfs2 mount; davfs2 1.7.1 needs `buf_size 64` on kernel 6.17.
+- [ ] Native Linux writes/editor save behaviour.
 - [ ] Windows WebClient and indexing; no Windows environment is available.
 - [ ] Two-identity live permission isolation; only mayflower is configured.
 - [ ] Actual Homebrew installation/test lifecycle for the new artifact. Formula

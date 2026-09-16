@@ -378,6 +378,20 @@ atlcli wiki vfs conflicts list       # writes that could not be merged
 
 ## Troubleshooting
 
+### Linux mount lists fail with `Invalid argument`
+
+With Linux 6.16 or newer, davfs2 1.7.1 can mount successfully but fail to
+list directories because its FUSE read buffer is too small. Upgrade to a
+fixed davfs2 package (upstream 1.7.2), or set `buf_size 64` in the global
+section of `/etc/davfs2/davfs2.conf`, then unmount and mount again.
+Back up the configuration before editing it. See the
+[upstream fix](https://github.com/alisarctl/davfs2/commit/4c6a10d7854a34ecf0cda5ee750441602a2da945).
+
+Keep the atlcli server running while remounting. When finished on Linux,
+run `sudo umount <mountpoint>` **before** stopping atlcli with Ctrl-C;
+the current Linux implementation does not automatically detach the mount.
+
+
 ### The Finder mounts the volume read-only
 
 That happens when `LOCK` is unavailable. atlcli implements it, so if you see

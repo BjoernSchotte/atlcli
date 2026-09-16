@@ -18,7 +18,7 @@ container measurements below are historical, not the current acceptance status.
 | Compiled macOS artifact | 9 tests / 33 assertions passed; compiled live DOCSY listing: 876 ms, four requests, zero bodies |
 | Artifact growth / startup | +3.22% passes; +88–99 ms exceeds gate, accepted by user |
 | Full current suite/build/typecheck | 9,008 pass / 40 skip / zero failures; 44,544 assertions; typecheck 4/4; build 35/35 |
-| Linux / Windows | Native Linux homelab pending; Windows unavailable |
+| Linux / Windows | Native Linux artifact tests and read-only davfs2 mount pass after buffer fix; Linux writes and Windows unverified |
 | Live permission isolation | Second identity missing; interim boundary accepted |
 | Homebrew lifecycle | Formula/equivalent command checked; installed version outdated |
 

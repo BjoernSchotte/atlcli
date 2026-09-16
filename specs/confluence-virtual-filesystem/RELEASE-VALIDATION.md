@@ -24,11 +24,13 @@ aggregate evidence was retained. No release or installation was performed.
 Reproduce on native macOS arm64 or Linux x64, setting the matching target:
 
 ```bash
+bun install
+bun run fonts:ensure
 bun build apps/cli/src/index.ts --compile --conditions=development \
   --target bun-linux-x64 --define '__ATLCLI_VERSION__="0.17.2"' \
   --outfile /tmp/atlcli-vfs
 ATLCLI_VFS_TEST_BINARY=/tmp/atlcli-vfs \
-  bun run test apps/cli/src/e2e/wiki-sh-built.e2e.test.ts
+  bun run test ./apps/cli/src/e2e/wiki-sh-built.e2e.test.ts
 ```
 
 For a read-only tenant listing on the Linux host, with the mayflower profile
@@ -97,10 +99,18 @@ Homebrew install/test lifecycle remains unverified for this PR.
 
 ## Platform and identity boundaries
 
-- Linux x64 compilation succeeds. Execution under this machine's arm64 OrbStack
-  emulator fails in Bun 1.3.14 because AVX is unavailable, before CLI execution.
-  This is not a native Linux result. The user will run the native Linux checks
-  on the homelab; real davfs2 mount behaviour remains pending there.
+- Native Linux x64 is now verified on the user's homelab: the user confirmed
+  interactive source and compiled shells; compiled artifact tests passed with
+  **9 tests / 33 assertions** (6.85 s). Kernel 6.17.0-23-generic and davfs2 1.7.1
+  reproduced `EINVAL` on directory reads with the default 16 KiB FUSE buffer,
+  despite HTTP PROPFIND returning 207. Backing up the system davfs2 config,
+  setting `buf_size 64`, and remounting read-only fixed it. Native root listing:
+  4 ms; DOCSY listing: 38 entries in 143 ms, repeated in 1 ms. One 545-byte page
+  read matched direct WebDAV GET byte-for-byte (combined check 134 ms).
+  The existing read-only mount/server were left running for the user.
+  No wiki content or credentials were retained. Native Linux writes/editor
+  save behaviour remain unverified. Earlier arm64-emulated Linux failures
+  were environmental and are superseded by these native results.
 - Windows is unavailable; WebClient and Windows indexing remain untested.
 - Only the mayflower profile exists. The live two-identity permission test
   cannot run without a second identity; fake-client cache-isolation tests are

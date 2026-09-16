@@ -15,7 +15,7 @@ and release acceptance remains partial.** Current follow-up branch:
 | 5,000-page shell load test | Passed | Bounded candidate reads and warm cache reuse; LIVE-RESULTS |
 | macOS compiled executable | Passed | Nine artifact tests; [RELEASE-VALIDATION.md](./RELEASE-VALIDATION.md) |
 | Startup gate | Failed, accepted deviation | Measured +88–99 ms; user accepted embedded shell for now |
-| Linux / Windows | Pending / unavailable | Linux homelab follow-up; no Windows host |
+| Linux / Windows | Linux read-only passed / Windows unavailable | Native artifact tests and davfs2 listing/read passed; Linux writes unverified |
 | Two-identity permissions | Pending, accepted interim boundary | Only one configured identity |
 | Homebrew | Partial | Formula and equivalent executable command checked; installed version is outdated |
 | Repository-wide final checks | Passed | 9,008 passed / 40 skipped / zero failures; typecheck 4/4 and build 35/35 |
@@ -604,7 +604,7 @@ request bounded by the directory's size, and fetches no bodies.
   Unmount calls `umount` or `net use /delete` and stops the server. A PID and port file lives under `<cacheDir>/mounts/<mountpoint-hash>.json`.
 - [x] **WP7.6** Daemon mode: run the server as a detached process through `Bun.spawn`, with logs under the cache directory, and let `atlcli wiki mount list|status` show the active mounts.
 - [ ] **WP7.7** *(request-cost invariants and native macOS/Finder reads verified; TextEdit safe-save and native terminal 500-page walk/100-page grep verified; timed large-corpus Finder rendering remains unmeasured)* Performance measurement on macOS in both the Finder and the terminal: `ls -R` across 500 pages, `grep -r` across 100 pages, and opening and saving in an editor. Put the numbers and request counts into the documentation, with the threshold that listing a directory of 100 entries stays under one second after warmup.
-- [ ] **WP7.8** *(the Linux CI half is done — the server is exercised through HTTP; Windows unavailable; native Linux homelab mount remains pending)* Windows smoke test through the WebClient, documenting the 50 MB limit, and a Linux smoke test with `davfs2` in a CI container that exercises only the server through HTTP, since CI cannot perform a kernel mount.
+- [ ] **WP7.8** *(the Linux CI half is done — the server is exercised through HTTP; Windows unavailable; native Linux read-only mount passed after davfs2 buffer fix)* Windows smoke test through the WebClient, documenting the 50 MB limit, and a Linux smoke test with `davfs2` in a CI container that exercises only the server through HTTP, since CI cannot perform a kernel mount.
 - [x] **WP7.9** *(both `ATLCLI_WIKI_MOUNT_E2E=1` and `ATLCLI_WIKI_MOUNT_KERNEL=1` executed successfully against DOCSY; see LIVE-RESULTS.md)* End-to-end test `wiki-mount-live.e2e.test.ts` behind an environment gate and limited to a local macOS runner: mount, list, read, then in `rw` mode create and change a page, unmount and clean up.
 
 ### WP8 - Documentation and agent integration (2 days)
@@ -622,7 +622,7 @@ request bounded by the directory's size, and fetches no bodies.
 - [x] **WP9.3** Real just-bash over a 5,000-page fake now verifies bounded indexed candidate reads, warm cache reuse, request counts and no hierarchy traversal. The measured corpus has 50 indexed candidates; cold search loads 50 bodies in seven client calls and warm search loads none in one call, with 10,630 cached bytes. Unsupported-pattern budget refusal is covered separately; see LIVE-RESULTS.md for actual timings and test scope.
 - [x] **WP9.3b** **Invariant test for the demand principle** from section 1b, as its own test that cannot be skipped: across a space of 5,000 pages, list ten directories, run `ls -R` on one subtree, `stat` a hundred files, and issue a `PROPFIND` through the WebDAV adapter. Expectation: no body rows in the cache, no attachment blobs on disk, request counts growing with the number of **visited** directories rather than with space size, and no branch never entered loaded in the index.
 - [x] **WP9.4** Rate-limit behaviour: the fake returns 429 with `Retry-After`, and a test proves that concurrency is throttled and commands still succeed after the wait, without the user seeing an error, with only a note on stderr when the wait exceeds five seconds.
-- [ ] **WP9.5** macOS compiled-binary tests pass (9 tests/33 assertions), artifact growth passes, and startup fails with an explicitly accepted overhead. Homebrew formula inspection passes; actual install lifecycle and native Linux x64 execution remain pending. Final repository-wide tests (9,008 pass, 40 skip, zero failures), typecheck and build pass. See RELEASE-VALIDATION.md.
+- [ ] **WP9.5** macOS compiled-binary tests pass (9 tests/33 assertions), artifact growth passes, and startup fails with an explicitly accepted overhead. Homebrew formula inspection passes; actual install lifecycle remains pending; native Linux x64 artifact tests and read-only mount pass. Final repository-wide tests (9,008 pass, 40 skip, zero failures), typecheck and build pass. See RELEASE-VALIDATION.md.
 - [x] **WP9.6** *(draft in [`RELEASE-NOTES.md`](./RELEASE-NOTES.md); the dry run plans 0.17.2 → 0.18.0)* Draft the release notes and run `bun scripts/release.ts minor --dry-run`. No automatic release.
 
 ### WP10 - After v1 (not part of this plan)
@@ -683,7 +683,7 @@ Each is argued where it applies; this is the index.
 ## 13. Open questions
 
 All implementation decisions are settled. Outstanding acceptance work is
-tracked in the status matrix above: timed large-corpus Finder rendering, native Linux, Windows, live two-identity permissions,
+tracked in the status matrix above: timed large-corpus Finder rendering, Linux writes, Windows, live two-identity permissions,
 and Homebrew lifecycle. Startup overhead is
 an accepted deviation, not an unresolved packaging decision. WP10 remains
 outside the v1 scope.
