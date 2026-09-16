@@ -81,6 +81,17 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
   readonly conflicts: ConflictStore | undefined;
   readonly audit: AuditLog | undefined;
   private readonly resolver: PathResolver;
+  /**
+   * Names a create made resolvable for the rest of the session.
+   *
+   * `echo x > new-page.md` creates page 623869955, whose canonical name is
+   * `new-page-623869955.md`. The writer does not know that yet, and a shell
+   * redirect typically writes the same path twice (truncate, then content) —
+   * so without this the second write would try to create the page again and
+   * fail on the title clash. Session-scoped on purpose: it is a convenience for
+   * the process that did the create, never a persisted second naming scheme.
+   */
+  private readonly sessionAliases = new Map<string, string>();
 
   constructor(
     private readonly opts: ResolvedVfsOptions,
@@ -284,6 +295,58 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     return this.writeBack;
   }
 
+  /**
+   * Page ids matching a CQL query, for the `grep` shortcut and the `cql`
+   * command. Body-free: only the search itself runs.
+   */
+  async searchPageIds(cql: string): Promise<string[]> {
+    const results = await this.opts.client.searchPages(cql, 250);
+    for (const result of results) {
+      this.index.upsert({
+        id: result.id,
+        title: result.title,
+        version: result.version,
+        lastModified: result.lastModified,
+        ...(result.spaceKey ? { spaceKey: result.spaceKey } : {}),
+      });
+    }
+    return results.map((result) => result.id);
+  }
+
+  /** The same query, rendered as paths a shell can act on. */
+  async searchPaths(cql: string): Promise<string[]> {
+    const ids = await this.searchPageIds(cql);
+    const paths: string[] = [];
+    for (const id of ids) {
+      const node = this.index.node(id);
+      if (!node?.spaceKey) continue;
+      paths.push(`/${node.spaceKey}/.by-id/${id}.md`);
+    }
+    return paths;
+  }
+
+  /**
+   * Every page id beneath a path, for the capped prefetch.
+   *
+   * Walks the tree index level by level, which costs one listing per directory
+   * *visited* — never a body, and never a branch outside the path given.
+   */
+  async subtreePageIds(path: string, spaceKey: string): Promise<string[]> {
+    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    const rootId =
+      resolved.kind === "container"
+        ? resolved.node.id
+        : resolved.kind === "space"
+          ? resolved.homepageId
+          : resolved.kind === "body"
+            ? resolved.node.id
+            : undefined;
+    if (!rootId) return [];
+    void spaceKey;
+    const walked = await this.index.loadSubtree(rootId);
+    return [rootId, ...walked.filter((node) => node.type === "page").map((node) => node.id)];
+  }
+
   /** Fills the body cache for many pages at once, within the prefetch budget. */
   async prefetch(
     ids: string[],
@@ -304,8 +367,25 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
   // ------------------------------------------------------------- resolution
 
+  /** Rewrites a session alias to the page's canonical path. */
+  private canonicalize(path: string): string {
+    const normalized = normalizePath(path);
+    const pageId = this.sessionAliases.get(normalized);
+    if (!pageId) return normalized;
+    const node = this.index.node(pageId);
+    if (!node) return normalized;
+    const { parent, name: original } = splitParent(normalized);
+    // Preserve which form the caller used: `new.md` addresses the body, `new/`
+    // addresses the container, and canonicalising to the wrong one turns a
+    // second write into EISDIR.
+    const canonical = original.endsWith(".md")
+      ? `${formatDirName(node.title, node.id)}.md`
+      : formatDirName(node.title, node.id);
+    return parent === "/" ? `/${canonical}` : `${parent}/${canonical}`;
+  }
+
   async resolve(path: string): Promise<VfsNode> {
-    const resolved = await this.resolver.resolve(path);
+    const resolved = await this.resolver.resolve(this.canonicalize(path));
     return this.toNode(resolved as Resolved, path);
   }
 
@@ -317,7 +397,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
   // ------------------------------------------------------------------ stat
 
   async stat(path: string): Promise<VfsStat> {
-    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
     if (resolved.kind === "attachment" && this.virtual) {
       // Attachment size and mtime come from the listing metadata, so `ls -l`
       // over a directory of large files still downloads nothing.
@@ -368,7 +448,10 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       size: options.size ?? ESTIMATED_BODY_BYTES,
       sizeEstimated: options.size === undefined,
       mtime,
-      mode: options.readOnly ? RO_FILE_MODE : FILE_MODE,
+      // In `ro` mode every file reports read-only permissions, so a tool that
+      // checks the mode bits before writing says "permission denied" rather
+      // than discovering the refusal halfway through an edit.
+      mode: options.readOnly || this.opts.mode === "ro" ? RO_FILE_MODE : FILE_MODE,
       id,
       ...(options.version !== undefined ? { version: options.version } : {}),
     });
@@ -449,7 +532,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
   // --------------------------------------------------------------- readdir
 
   async readdir(path: string): Promise<VfsDirent[]> {
-    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
     switch (resolved.kind) {
       case "root":
         return this.readdirRoot();
@@ -566,7 +649,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
   // -------------------------------------------------------------- readFile
 
   async readFile(path: string): Promise<string> {
-    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
     switch (resolved.kind) {
       case "body":
         return this.requireStore().readBody(resolved.node, path);
@@ -609,7 +692,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
   }
 
   async readFileBytes(path: string): Promise<Uint8Array> {
-    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
     if (resolved.kind === "attachment") {
       return this.requireVirtual().attachmentBytes(resolved.node, resolved.filename, path);
     }
@@ -651,7 +734,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    */
   async writeFile(path: string, content: string | Uint8Array): Promise<VfsWriteResult> {
     const text = typeof content === "string" ? content : new TextDecoder().decode(content);
-    const resolved = await this.resolver.resolve(path, { allowMissingLeaf: true });
+    const resolved = await this.resolver.resolve(this.canonicalize(path), {
+      allowMissingLeaf: true,
+    });
 
     if (resolved.kind === "missing") {
       return this.createFromMissing(resolved, path, text);
@@ -714,6 +799,8 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
           "/",
         )
       : path;
+    // Keep the name the writer used working for the rest of the session.
+    this.sessionAliases.set(normalizePath(path), result.pageId);
     this.opts.logger.info("created page", { path: canonical, pageId: result.pageId });
     return { ...result, path: canonical };
   }
@@ -818,7 +905,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * different page.
    */
   async rename(from: string, to: string): Promise<void> {
-    const source = (await this.resolver.resolve(from)) as Resolved;
+    const source = (await this.resolver.resolve(this.canonicalize(from))) as Resolved;
     if (source.kind !== "container" && source.kind !== "body") {
       throw new VfsError("EROFS", `${from} is a generated view and cannot be renamed`, {
         path: from,
@@ -909,7 +996,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * by accident.
    */
   async rm(path: string, options: { recursive?: boolean } = {}): Promise<void> {
-    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
 
     if (resolved.kind === "conflict-file") {
       // Local only: touches no Confluence content, so it is allowed in ro mode
@@ -975,7 +1062,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
   }
 
   async copy(from: string, to: string): Promise<VfsWriteResult> {
-    const source = (await this.resolver.resolve(from)) as Resolved;
+    const source = (await this.resolver.resolve(this.canonicalize(from))) as Resolved;
     if (source.kind !== "container" && source.kind !== "body") {
       throw new VfsError("EROFS", `${from} is a generated view and cannot be copied`, {
         path: from,
@@ -1027,7 +1114,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * searches or recency windows list it.
    */
   async readlink(path: string): Promise<string> {
-    const resolved = (await this.resolver.resolve(path)) as Resolved;
+    const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
     switch (resolved.kind) {
       case "by-id-link": {
         const canonical = await this.requireVirtual().canonicalPath(

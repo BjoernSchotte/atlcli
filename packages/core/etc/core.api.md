@@ -279,6 +279,14 @@ export type Profile = {
     board?: number;
     tlsCaFile?: string;
     tlsSkipVerify?: boolean;
+    vfs?: {
+        cacheDir?: string;
+        mode?: "ro" | "rw";
+        spaces?: string[];
+        cacheMaxMb?: number;
+        prefetchMaxPages?: number;
+        cqlGrep?: boolean;
+    };
 };
 
 // export: redactSensitive
@@ -557,6 +565,7 @@ export type Config = {
     storage?: StorageConfig;
     sync?: SyncConfig;
     audit?: AuditConfig;
+    vfs?: VfsConfig;
     projects?: ProjectConfig[];
     defaults?: DefaultsConfig;
 };
@@ -960,6 +969,14 @@ export type Profile = {
     board?: number;
     tlsCaFile?: string;
     tlsSkipVerify?: boolean;
+    vfs?: {
+        cacheDir?: string;
+        mode?: "ro" | "rw";
+        spaces?: string[];
+        cacheMaxMb?: number;
+        prefetchMaxPages?: number;
+        cqlGrep?: boolean;
+    };
 };
 
 // export: ProfileTemplateStorage
@@ -1046,6 +1063,9 @@ export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: str
 
 // export: resolveToken
 export declare function resolveToken(profile: Profile): string | null;
+
+// export: resolveVfsConfig
+export declare function resolveVfsConfig(config: Config, profile?: Profile): VfsConfig;
 
 // export: ResultData
 export interface ResultData {
@@ -1376,6 +1396,16 @@ export interface VariableValidationResult {
 // export: verifyTemplateBytes
 export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
 
+// export: VfsConfig
+export type VfsConfig = {
+    cacheDir?: string;
+    mode?: "ro" | "rw";
+    spaces?: string[];
+    cacheMaxMb?: number;
+    prefetchMaxPages?: number;
+    cqlGrep?: boolean;
+};
+
 // export: writeTextFile
 export declare function writeTextFile(path: string, contents: string): Promise<void>;
 ```
@@ -1655,6 +1685,14 @@ export type Profile = {
     board?: number;
     tlsCaFile?: string;
     tlsSkipVerify?: boolean;
+    vfs?: {
+        cacheDir?: string;
+        mode?: "ro" | "rw";
+        spaces?: string[];
+        cacheMaxMb?: number;
+        prefetchMaxPages?: number;
+        cqlGrep?: boolean;
+    };
 };
 
 // export: redactSensitive
@@ -2005,6 +2043,7 @@ export type Config = {
     storage?: StorageConfig;
     sync?: SyncConfig;
     audit?: AuditConfig;
+    vfs?: VfsConfig;
     projects?: ProjectConfig[];
     defaults?: DefaultsConfig;
 };
@@ -2408,6 +2447,14 @@ export type Profile = {
     board?: number;
     tlsCaFile?: string;
     tlsSkipVerify?: boolean;
+    vfs?: {
+        cacheDir?: string;
+        mode?: "ro" | "rw";
+        spaces?: string[];
+        cacheMaxMb?: number;
+        prefetchMaxPages?: number;
+        cqlGrep?: boolean;
+    };
 };
 
 // export: ProfileTemplateStorage
@@ -2494,6 +2541,9 @@ export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: str
 
 // export: resolveToken
 export declare function resolveToken(profile: Profile): string | null;
+
+// export: resolveVfsConfig
+export declare function resolveVfsConfig(config: Config, profile?: Profile): VfsConfig;
 
 // export: ResultData
 export interface ResultData {
@@ -2823,6 +2873,16 @@ export interface VariableValidationResult {
 
 // export: verifyTemplateBytes
 export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
+
+// export: VfsConfig
+export type VfsConfig = {
+    cacheDir?: string;
+    mode?: "ro" | "rw";
+    spaces?: string[];
+    cacheMaxMb?: number;
+    prefetchMaxPages?: number;
+    cqlGrep?: boolean;
+};
 
 // export: writeTextFile
 export declare function writeTextFile(path: string, contents: string): Promise<void>;

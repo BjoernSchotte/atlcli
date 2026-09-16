@@ -113,6 +113,28 @@ export type ProjectConfig = {
   label?: string;
 };
 
+/**
+ * Virtual filesystem settings (`atlcli wiki sh`, `atlcli wiki mount`).
+ *
+ * Every value may be set globally or per profile, with the profile winning.
+ * All are optional: the VFS has working defaults for each, and the plan's
+ * section 8 documents what they are and why.
+ */
+export type VfsConfig = {
+  /** Root of the body cache. Default `~/.atlcli/vfs/`. */
+  cacheDir?: string;
+  /** Write posture. Default `ro` — writing is always an explicit choice. */
+  mode?: "ro" | "rw";
+  /** Spaces to mount when none is named on the command line. */
+  spaces?: string[];
+  /** Disk cache ceiling in megabytes, attachment blobs included. Default 100. */
+  cacheMaxMb?: number;
+  /** Hard ceiling on one prefetch. Default 300. */
+  prefetchMaxPages?: number;
+  /** Allow the CQL shortcut in `grep`. Default true. */
+  cqlGrep?: boolean;
+};
+
 export type Config = {
   currentProfile?: string;
   profiles: Record<string, Profile>;
@@ -128,6 +150,8 @@ export type Config = {
   sync?: SyncConfig;
   /** Audit feature configuration */
   audit?: AuditConfig;
+  /** Virtual filesystem configuration */
+  vfs?: VfsConfig;
   /** Registered projects for --global audit flag */
   projects?: ProjectConfig[];
   /** @deprecated Use 'global' instead. Kept for migration. */
@@ -216,6 +240,25 @@ export function getActiveProfile(config: Config, requested?: string): Profile | 
  * Resolve defaults with profile-level overrides.
  * Precedence: profile values > global values
  */
+/**
+ * VFS settings with the profile's values layered over the global ones.
+ *
+ * Per-key rather than whole-object, so setting `vfs.mode` on one profile does
+ * not silently drop a globally configured `vfs.cacheDir`.
+ */
+export function resolveVfsConfig(config: Config, profile?: Profile): VfsConfig {
+  const globalVfs = config.vfs ?? {};
+  const profileVfs = profile?.vfs ?? {};
+  return {
+    cacheDir: profileVfs.cacheDir ?? globalVfs.cacheDir,
+    mode: profileVfs.mode ?? globalVfs.mode,
+    spaces: profileVfs.spaces ?? globalVfs.spaces,
+    cacheMaxMb: profileVfs.cacheMaxMb ?? globalVfs.cacheMaxMb,
+    prefetchMaxPages: profileVfs.prefetchMaxPages ?? globalVfs.prefetchMaxPages,
+    cqlGrep: profileVfs.cqlGrep ?? globalVfs.cqlGrep,
+  };
+}
+
 export function resolveDefaults(config: Config, profile?: Profile): DefaultsConfig {
   const globalDefaults = config.global ?? {};
   if (!profile) return globalDefaults;

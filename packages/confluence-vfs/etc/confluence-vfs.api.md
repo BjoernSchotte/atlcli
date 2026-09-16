@@ -173,6 +173,7 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     readonly conflicts: ConflictStore | undefined;
     readonly audit: AuditLog | undefined;
     private readonly resolver;
+    private readonly sessionAliases;
     constructor(opts: ResolvedVfsOptions, runtime?: VfsRuntime, cache?: BodyCache);
     get guard(): ModeGuard;
     private readQueryHints;
@@ -184,6 +185,9 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     close(): Promise<void>;
     flush(): Promise<void>;
     private requireWriteBack;
+    searchPageIds(cql: string): Promise<string[]>;
+    searchPaths(cql: string): Promise<string[]>;
+    subtreePageIds(path: string, spaceKey: string): Promise<string[]>;
     prefetch(ids: string[], options?: {
         budget?: number;
         reason?: string;
@@ -192,6 +196,7 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
         fromCache: number;
     }>;
     private requireStore;
+    private canonicalize;
     resolve(path: string): Promise<VfsNode>;
     resolveTagged(path: string, allowMissingLeaf?: boolean): Promise<Resolved | {
         kind: "missing";
