@@ -21,16 +21,20 @@ crates/toolchains if they are not cached. End users will not need a compiler onc
 release archive integration is complete. The offline `--version` JSON reports
 helper package, protocol, OS and architecture and starts no listener.
 
-The output contains the executable, nfsserve's BSD license and a build manifest
-with binary/source-tree/Cargo-lock digests, Git revision/dirty status and toolchain.
+The output contains the executable, nfsserve's BSD license, `THIRD-PARTY-nfs.html`
+and a build manifest with binary/notices/source-tree/Cargo-lock digests, Git
+revision/dirty status and toolchain. The notices include the target-filtered locked
+Cargo graph (including build dependencies), its license/copyright files, and the
+pinned Rust standard-library notices. Missing texts or new license expressions
+fail the build pending review; Unicode's additional license is mandatory.
 The manifest identifies the actual local tree even for an uncommitted build.
 This is provenance, not a signature or a byte-reproducibility certification.
 
 Native target mapping covers macOS arm64/x64 and Linux arm64/x64 (GNU libc).
-Currently verified here: macOS arm64 and Linux x64. The Linux baseline libc,
-other architectures, complete third-party notices and CLI archive/installer/
-Homebrew integration remain WP5 acceptance work; do not label these artifacts a
-complete release bundle. Windows continues to use WebDAV.
+Native helper mounts passed on all four architectures in CI run 35153148522:
+Linux glibc 2.35, macOS arm64 14.8.9 and macOS x64 15.7.9. Installer/Homebrew
+integration and production workflow adoption remain WP5 acceptance work; do not
+label these artifacts a complete release bundle. Windows continues to use WebDAV.
 
 ## Native CI matrix
 
@@ -47,8 +51,8 @@ Runner architecture is asserted before building. Successful jobs retain the
 build manifest and measured OS/glibc version for seven days. These are native
 checks, not cross-compilation proxies; a configured lane is not evidence that
 it passed. See [GitHub runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
-Linux release support is being evaluated on Ubuntu 22.04's GNU libc baseline;
-musl is outside this initial matrix. Final support claims require runner results.
+The tested Linux baseline is Ubuntu 22.04 / GNU libc 2.35 for both architectures;
+musl and older libc versions are outside this initial matrix.
 
 ## Review bundle build
 
@@ -69,7 +73,7 @@ are admitted only for review (`--dry-run`); the publication verifier rejects the
 The builder validates exact companion filenames, checksum, bridge version and
 ELF/Mach-O architecture. It never executes a supplied foreign-target artifact.
 Legacy single-binary archives remain accepted; production workflow adoption and
-complete platform/license acceptance are still pending.
+installer acceptance are still pending.
 
 ## Compiled CLI acceptance
 

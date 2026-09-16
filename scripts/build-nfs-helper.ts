@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { NFS_BRIDGE_VERSION } from "../apps/cli/src/vfs/nfs-framing.js";
 import { readReleaseTree, releaseTreeDigest, type ReleaseTreeEntry } from "./release-archive.js";
 
@@ -41,7 +41,7 @@ export function verifyNfsCompanion(entries: ReleaseTreeEntry[], target: string, 
   if (target !== `${os}-${arch}`) throw new Error("Unsupported NFS target");
   const triple = nativeNfsTarget(os!, arch!);
   const names = entries.map((entry) => entry.path).sort();
-  if (JSON.stringify(names) !== JSON.stringify(["LICENSE-nfsserve", "atlcli-confluence-nfs", "nfs-helper-build.json"])) {
+  if (JSON.stringify(names) !== JSON.stringify(["LICENSE-nfsserve", "THIRD-PARTY-nfs.html", "atlcli-confluence-nfs", "nfs-helper-build.json"])) {
     throw new Error("Unexpected NFS companion files");
   }
   const file = (name: string) => entries.find((entry) => entry.path === name)!;
@@ -56,6 +56,11 @@ export function verifyNfsCompanion(entries: ReleaseTreeEntry[], target: string, 
       !/^[a-f0-9]{64}$/.test(receipt.cargoLockSha256 ?? "") || !/^[a-f0-9]{64}$/.test(receipt.sourceTreeSha256 ?? "")) {
     throw new Error("NFS companion provenance mismatch");
   }
+  const notices = file("THIRD-PARTY-nfs.html").bytes;
+  if (!notices.length || notices.length > 4 * 1024 * 1024 ||
+      createHash("sha256").update(notices).digest("hex") !== receipt.noticesSha256) {
+    throw new Error("NFS dependency notices checksum mismatch");
+  }
   verifyNfsHelperIdentity(receipt.identity, os, arch);
   if (createHash("sha256").update(binary.bytes).digest("hex") !== receipt.binarySha256) throw new Error("NFS helper checksum mismatch");
   const bytes = Buffer.from(binary.bytes);
@@ -64,6 +69,45 @@ export function verifyNfsCompanion(entries: ReleaseTreeEntry[], target: string, 
     : bytes.readUInt32LE(0) === 0xfeedfacf && bytes.readUInt32LE(4) === (arch === "arm64" ? 0x0100000c : 0x01000007);
   if (!architectureMatches) throw new Error("NFS helper executable architecture mismatch");
   if (!Buffer.from(file("LICENSE-nfsserve").bytes).toString().includes("Redistribution")) throw new Error("NFS license missing");
+}
+
+interface CargoLicenseMetadata {
+  packages: { id: string; name: string; version: string; license: string | null; manifest_path: string }[];
+  resolve: { root: string; nodes: { id: string }[] };
+}
+
+/** Include build dependencies too; no license text is fetched outside locked Cargo sources. */
+export function nfsDependencyNotices(metadata: CargoLicenseMetadata, rustDocs: string): string {
+  const resolved = new Set(metadata.resolve.nodes.map((node) => node.id));
+  const packages = metadata.packages.filter((pkg) => resolved.has(pkg.id) && pkg.id !== metadata.resolve.root)
+    .sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`, "en"));
+  if (!packages.length) throw new Error("Missing NFS dependency license metadata");
+  const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  // Audited expressions in the pinned lockfile; new license terms require review.
+  const reviewed = new Set(["MIT", "BSD-3-Clause", "MIT OR Apache-2.0", "Apache-2.0 OR MIT",
+    "MIT/Apache-2.0", "Unlicense OR MIT", "Apache-2.0 OR BSL-1.0", "(MIT OR Apache-2.0) AND Unicode-3.0"]);
+  const notices = packages.map((pkg) => {
+    if (!pkg.license || !reviewed.has(pkg.license)) throw new Error(`Unreviewed NFS license: ${pkg.name}: ${pkg.license}`);
+    const directory = dirname(pkg.manifest_path);
+    const files = readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /^(license|copying|unlicense|notice)([-.]|$)/i.test(entry.name))
+      .map((entry) => entry.name).sort();
+    if (!files.length) throw new Error(`Missing license texts for ${pkg.name}@${pkg.version}`);
+    if (pkg.license.includes("AND Unicode-3.0") && !files.includes("LICENSE-UNICODE")) {
+      throw new Error(`Missing Unicode license text for ${pkg.name}`);
+    }
+    const texts = files.map((name) => {
+      const text = readFileSync(join(directory, name), "utf8");
+      if (!text.trim()) throw new Error(`Empty license text for ${pkg.name}: ${name}`);
+      return `${name}\n${text}`;
+    });
+    return `<h2>${escape(`${pkg.name} ${pkg.version} (${pkg.license})`)}</h2><pre>${escape(texts.join("\n\n"))}</pre>`;
+  });
+  const rust = readFileSync(join(rustDocs, "COPYRIGHT-library.html"), "utf8");
+  if (!rust.includes("</body>")) throw new Error("Missing Rust standard library copyright notices");
+  const licenses = ["Apache-2.0.txt", "MIT.txt"].map((name) =>
+    `<h2>Rust ${name}</h2><pre>${escape(readFileSync(join(rustDocs, "licenses", name), "utf8"))}</pre>`);
+  return rust.replace("</body>", `<h1>atlcli NFS helper Cargo dependencies</h1>\n${notices.join("\n")}\n${licenses.join("\n")}\n</body>`);
 }
 
 export function buildNfsHelper(output: string): void {
@@ -78,7 +122,11 @@ export function buildNfsHelper(output: string): void {
   const sourceEntries = ["src", "vendor"].flatMap((directory) => readReleaseTree(join(crate, directory))
     .map((entry) => ({ ...entry, path: `${directory}/${entry.path}` })));
   for (const path of ["Cargo.toml", "Cargo.lock"]) sourceEntries.push({ path, bytes: readFileSync(join(crate, path)), mode: 0o644 });
+  const metadata = JSON.parse(run(["cargo", "+1.92.0", "metadata", "--locked", "--offline", "--format-version", "1",
+    "--filter-platform", target, "--manifest-path", join(crate, "Cargo.toml")]));
+  const notices = nfsDependencyNotices(metadata, join(run(["rustc", "+1.92.0", "--print", "sysroot"]), "share/doc/rust"));
   const receipt = {
+    noticesSha256: sha256(Buffer.from(notices)),
     schema: "atlcli.nfs-helper-build/v1", target, identity,
     sourceSha: run(["git", "rev-parse", "HEAD"]),
     dirty: run(["git", "status", "--porcelain", "--", "packages/confluence-nfs"]).length > 0,
@@ -91,6 +139,7 @@ export function buildNfsHelper(output: string): void {
   copyFileSync(binary, join(destination, "atlcli-confluence-nfs"));
   chmodSync(join(destination, "atlcli-confluence-nfs"), 0o755);
   copyFileSync(join(crate, "vendor/nfsserve/LICENSE"), join(destination, "LICENSE-nfsserve"));
+  writeFileSync(join(destination, "THIRD-PARTY-nfs.html"), notices);
   writeFileSync(join(destination, "nfs-helper-build.json"), `${JSON.stringify(receipt, null, 2)}\n`);
 }
 

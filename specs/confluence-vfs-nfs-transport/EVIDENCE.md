@@ -388,3 +388,28 @@ macOS arm64/Linux x64 evidence does not substitute for the two additional lanes.
 
 - [Implementation plan](PLAN.md)
 - [Existing mount live evidence](../confluence-virtual-filesystem/LIVE-RESULTS.md)
+
+
+## Slice 17 — native matrix results and dependency notices
+
+The four native jobs of [CI run 35153148522](https://github.com/BjoernSchotte/atlcli/actions/runs/35153148522)
+passed at `f8dbd9c6`. Downloaded runtime records prove Linux x64/arm64 with
+glibc 2.35, macOS arm64 14.8.9 and macOS x64 15.7.9. Each lane built and
+kernel-mounted the native release helper, with synthetic credentials and no
+live Confluence secrets. This proves helper coverage, not packaged CLI/installers
+on all four platforms.
+
+The native helper builder now emits `THIRD-PARTY-nfs.html`, containing license
+and copyright texts from the target-filtered locked Cargo graph, build
+dependencies included, plus Rust 1.92.0 standard-library notices and its MIT/Apache
+texts. Previously only nfsserve's BSD license was included. New license expressions,
+missing texts and missing additional Unicode terms fail the build for review.
+The companion manifest hashes these notices and release admission rejects missing
+or altered notices. Collection is offline after the locked native build.
+
+Validation: packaging/archive checks, typecheck, actual native helper builds on
+macOS arm64 and Linux x64. Both generated helpers passed the native single-space
+and multi-space read tests (2 tests / 5 assertions per host); Linux used the live
+mayflower profile, macOS used synthetic fixtures because its live profile is
+unavailable. All live operations were read-only. No release was published.
+The production distribution workflow and installers remain outstanding.

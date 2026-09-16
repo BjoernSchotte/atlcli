@@ -80,12 +80,13 @@ async function writeFixture(input: {
       const helper = Buffer.alloc(64);
       if (os === "linux") { helper.set([0x7f, 69, 76, 70, 2, 1]); helper.writeUInt16LE(arch === "arm64" ? 183 : 62, 18); }
       else { helper.writeUInt32LE(0xfeedfacf); helper.writeUInt32LE(arch === "arm64" ? 0x0100000c : 0x01000007, 4); }
-      const receipt = { schema: "atlcli.nfs-helper-build/v1", target: nativeNfsTarget(os!, arch!),
+      const receipt = { schema: "atlcli.nfs-helper-build/v1", noticesSha256: sha256(Buffer.from("notices")), target: nativeNfsTarget(os!, arch!),
         sourceSha: input.companion === "wrong-source" ? "a".repeat(40) : SOURCE_SHA, dirty: false,
         sourceTreeSha256: "b".repeat(64), cargoLockSha256: "c".repeat(64), binarySha256: sha256(helper),
         identity: { name: "atlcli-confluence-nfs", version: "0.1.0", bridgeVersion: NFS_BRIDGE_VERSION,
           os: os === "darwin" ? "macos" : os, arch: arch === "arm64" ? "aarch64" : "x86_64" } };
       entries.push(executableEntry("atlcli-confluence-nfs", helper),
+        { path: "THIRD-PARTY-nfs.html", bytes: Buffer.from("notices"), mode: 0o644 },
         { path: "LICENSE-nfsserve", bytes: Buffer.from("Redistribution"), mode: 0o644 },
         { path: "nfs-helper-build.json", bytes: Buffer.from(JSON.stringify(receipt)), mode: 0o644 });
     }
