@@ -644,3 +644,25 @@ ancestor. That test plus three native mount cases passed on macOS and Linux
 (1 test / 13 assertions), including API metadata and exact canonical folder path.
 macOS used synthetic data; Linux single/combined native mounts used live RO
 spaces. All mounts detached normally. No MAYFLOWER content was modified.
+
+
+## Slice 27 — generated folder metadata follows its owner
+
+The folder directory survived relocation, but an already opened `_index.md`
+metadata handle did not. The new regression failed with ESTALE before the fix.
+Numeric object metadata IDs now keep object identity and reuse the same parent
+handle recovery as attachments. Space-wide generated views retain their
+path-qualified identities. The test reads the old metadata handle before any
+lookup at the new location, checks unchanged identity and rejects access after
+the owning folder moves outside the selected export.
+
+Validation: 16 filesystem tests / 222 assertions on macOS and Linux. The wire
+relocation test checks full metadata-byte equality and unchanged opaque handles;
+it and three native kernel mount cases passed on both hosts (4 tests / 64
+assertions). macOS used fixtures; Linux single/combined mounts used live RO
+spaces. Typecheck passed. The expanded Linux DOCSY live move test reads the
+existing generated metadata handle after moving its ancestor, verifies its
+identity, and cleans up the temporary folder and both pages.
+
+This slice does not claim stable handles for every generated view, independent
+attachment renames, or the still-open read snapshot/publication contracts.

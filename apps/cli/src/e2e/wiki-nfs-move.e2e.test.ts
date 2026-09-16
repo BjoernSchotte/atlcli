@@ -34,6 +34,7 @@ test.skipIf(process.env.ATLCLI_NFS_MOVE_E2E !== "1")("live DOCSY page move prese
     const directory = await fs.lookup(1, formatDirName(child.title, child.id));
     const file = await fs.lookup(directory, "_index.md");
     const folderHandle = await fs.lookup(directory, formatDirName(folder.title, folder.id));
+    const folderMetadata = await fs.lookup(folderHandle, "_index.md");
     expect(Buffer.from((await fs.read(file, 0, 65536)).data, "base64").toString()).toContain(marker);
 
     await client.movePage(child.id, parent.id);
@@ -42,6 +43,8 @@ test.skipIf(process.env.ATLCLI_NFS_MOVE_E2E !== "1")("live DOCSY page move prese
     await vfs.index.loadChildren(homepage, { force: true });
     expect(Buffer.from((await fs.read(file, 0, 65536)).data, "base64").toString()).toContain(marker);
     expect(await vfs.folderPath(folder.id, "DOCSY")).toBe(`/DOCSY/${formatDirName(parent.title, parent.id)}/${formatDirName(child.title, child.id)}/${formatDirName(folder.title, folder.id)}`);
+    expect(Buffer.from((await fs.read(folderMetadata, 0, 65536)).data, "base64").toString()).toContain(folder.title);
+    expect(await fs.lookup(folderHandle, "_index.md")).toBe(folderMetadata);
     expect(await fs.lookup(folderHandle, "..")).toBe(directory);
     const newParent = await fs.lookup(1, formatDirName(parent.title, parent.id));
     expect(await fs.lookup(directory, "..")).toBe(newParent);

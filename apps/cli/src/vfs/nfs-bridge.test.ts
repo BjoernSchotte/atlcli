@@ -112,6 +112,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const directory = await lookupHandle(root, "child-0-400");
     const file = await lookupHandle(directory, "_index.md");
     const folder = await lookupHandle(directory, "folder-900");
+    const folderMetadata = await lookupHandle(folder, "_index.md");
     const attachments = await lookupHandle(directory, "_attachments");
     const attachment = await lookupHandle(attachments, "proof.txt");
     await client.movePage("400", "401");
@@ -126,6 +127,11 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(await lookupHandle(attachments, "..")).toEqual(directory);
     expect(await lookupHandle(directory, "_attachments")).toEqual(attachments);
     expect(await lookupHandle(attachments, "proof.txt")).toEqual(attachment);
+    const metadataRead = await rpc(server, 100003, 6, Buffer.concat([opaque(folderMetadata), ints(0, 0, 65536)]));
+    expect(metadataRead.readUInt32BE()).toBe(0);
+    expect(metadataRead.subarray(20, 20 + metadataRead.readUInt32BE(16)))
+      .toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/child-1-401/child-0-400/folder-900/_index.md")));
+    expect(await lookupHandle(folder, "_index.md")).toEqual(folderMetadata);
     expect(await lookupHandle(folder, "..")).toEqual(directory);
     expect(await lookupHandle(directory, "folder-900")).toEqual(folder);
     const newParent = await lookupHandle(root, "child-1-401");

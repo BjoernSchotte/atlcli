@@ -37,11 +37,15 @@ export class NfsFilesystem {
     }
   }
 
+  private isObjectView(stat: VfsStat): boolean {
+    return (stat.kind === "virtual-dir" && /^[0-9]+\/_attachments$/.test(stat.id)) ||
+      (stat.kind === "virtual-file" && /^[0-9]+$/.test(stat.id));
+  }
+
   private identity(stat: VfsStat, path: string): string {
     // Generated views may share core IDs (e.g. space-json, label-dir). Their
     // export path distinguishes the view; real content keeps ID-based identity.
-    const ownedAttachments = stat.kind === "virtual-dir" && /^[0-9]+\/_attachments$/.test(stat.id);
-    const view = !ownedAttachments && (stat.kind === "virtual-dir" || stat.kind === "virtual-file") ? `:${path}` : "";
+    const view = !this.isObjectView(stat) && (stat.kind === "virtual-dir" || stat.kind === "virtual-file") ? `:${path}` : "";
     return `${stat.kind}:${stat.id}:${stat.isDirectory ? "directory" : "file"}${view}`;
   }
 
@@ -123,9 +127,8 @@ export class NfsFilesystem {
     const stat = await this.vfs.stat(path);
     await this.checkResolvedScope(path);
     const identity = this.identity(stat, path);
-    const ownedAttachment = stat.kind === "attachment" ||
-      (stat.kind === "virtual-dir" && /^[0-9]+\/_attachments$/.test(stat.id));
-    const entry = { path, identity, ...(ownedAttachment
+    const followsParent = stat.kind === "attachment" || this.isObjectView(stat);
+    const entry = { path, identity, ...(followsParent
       ? { parent: await this.register(posix.dirname(path)), name: posix.basename(path) } : {}) };
     const existing = this.identities.get(identity);
     if (existing !== undefined) {

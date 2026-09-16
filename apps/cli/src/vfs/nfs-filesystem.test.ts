@@ -221,9 +221,12 @@ it("recovers a folder handle by ID before looking up its new parent", async () =
   const { fs, vfs, client } = await fixture();
   client.seedPage({ id: "500", title: "Folder", type: "folder", spaceKey: "DOCSY", parentId: "100" });
   const folder = await fs.lookup(1, "folder-500");
+  const metadata = await fs.lookup(folder, "_index.md");
   await client.movePage("500", "200");
   await vfs.index.loadChildren("100", { force: true });
+  expect(Buffer.from((await fs.read(metadata, 0, 65536)).data, "base64").toString()).toContain("Folder");
   const parent = await fs.lookup(folder, "..");
+  expect(await fs.lookup(folder, "_index.md")).toBe(metadata);
   expect(parent).toBe(await fs.lookup(1, "child-0-200"));
   expect(await fs.lookup(parent, "folder-500")).toBe(folder);
   expect(client.callsTo("getFolder")).toBe(1);
@@ -232,6 +235,7 @@ it("recovers a folder handle by ID before looking up its new parent", async () =
   await client.movePage("500", "300");
   await vfs.index.loadChildren("200", { force: true });
   await expect(fs.lookup(folder, "..")).rejects.toMatchObject({ code: "ESTALE" });
+  await expect(fs.read(metadata, 0, 65536)).rejects.toMatchObject({ code: "ESTALE" });
 });
 
 it("rejects inconsistent folder ancestry and preserves a handle for retry", async () => {
