@@ -18,6 +18,7 @@ import {
   mountStateDir,
   mountStatePath,
   readMounts,
+  processIdentity,
   runMountCommand,
   unmountCommandFor,
   wikiMountHelp,
@@ -115,6 +116,20 @@ describe("mount records", () => {
   it("lists a mount whose process is alive", () => {
     write({ mountpoint: "/mnt/live", pid: process.pid });
     expect(readMounts(root).map((m) => m.mountpoint)).toEqual(["/mnt/live"]);
+    expect(readMounts(root)[0].transport).toBe("webdav");
+    expect(readMounts(root)[0].serverAlive).toBe(true);
+  });
+
+  it("does not mistake a reused PID for the mount server", () => {
+    write({ mountpoint: "/mnt/reused", pid: process.pid, processIdentity: "not-this-process" });
+    expect(readMounts(root)).toEqual([]);
+    expect(processIdentity(0)).toBeUndefined();
+    expect(processIdentity(-1)).toBeUndefined();
+  });
+
+  it("reports a dead helper without claiming that the server is alive", () => {
+    write({ mountpoint: "/mnt/helper-dead", pid: process.pid, transport: "nfs", helperPid: 0x7ffffffe });
+    expect(readMounts(root)[0].serverAlive).toBe(false);
   });
 
   /**

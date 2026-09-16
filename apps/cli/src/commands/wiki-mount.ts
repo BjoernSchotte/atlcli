@@ -57,8 +57,10 @@ export interface MountRecord {
   url: string;
   transport?: MountTransport;
   helperPid?: number;
+  helperIdentity?: string;
   processIdentity?: string;
-  status?: "listening" | "mounted";
+  status?: "listening" | "mounted" | "orphaned";
+  serverAlive?: boolean;
   port: number;
   pid: number;
   spaces: string[];
@@ -256,7 +258,7 @@ async function handleMount(
   const record: MountRecord = {
     mountpoint,
     transport,
-    ...(helperPid ? { helperPid } : {}),
+    ...(helperPid ? { helperPid, helperIdentity: processIdentity(helperPid) } : {}),
     status: "listening",
     url: mountUrl,
     port: running.port,
@@ -317,6 +319,7 @@ async function handleMount(
   });
   void helperExited?.then(() => {
     if (stopping) return;
+    process.exitCode = 1;
     process.stderr.write("atlcli: NFS helper stopped unexpectedly; attempting normal unmount. Remount after recovery.\n");
     process.emit("SIGTERM");
   });
@@ -411,8 +414,11 @@ export function readMounts(cacheDir: string): MountRecord[] {
       const record = JSON.parse(readFileSync(file, "utf8")) as MountRecord;
       record.transport ??= "webdav";
       const mounted = isMounted(record.mountpoint);
-      record.status = mounted ? "mounted" : "listening";
-      if (isRunning(record.pid) || mounted) records.push(record);
+      const parentAlive = isRunning(record.pid) && (!record.processIdentity || record.processIdentity === processIdentity(record.pid));
+      record.serverAlive = parentAlive && (!record.helperPid ||
+        (isRunning(record.helperPid) && (!record.helperIdentity || record.helperIdentity === processIdentity(record.helperPid))));
+      record.status = mounted ? (record.serverAlive ? "mounted" : "orphaned") : "listening";
+      if (parentAlive || mounted) records.push(record);
       else rmSync(file, { force: true });
     } catch {
       rmSync(file, { force: true });
@@ -422,6 +428,7 @@ export function readMounts(cacheDir: string): MountRecord[] {
 }
 
 function isRunning(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
   try {
     // Signal 0 tests for existence without delivering anything.
     process.kill(pid, 0);

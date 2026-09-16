@@ -7,7 +7,8 @@ import { platform, tmpdir } from "node:os";
 import { isMounted, runMountCommand, type MountRecord } from "../commands/wiki-mount.js";
 
 const run = process.env.ATLCLI_NFS_CLI_E2E === "1";
-it.skipIf(!run)("source CLI mounts DOCSY with NFS, reports transport, reads and detaches on SIGTERM", async () => {
+for (const scenario of ["signal", "busy", "explicit", "helper-crash"] as const) {
+it.skipIf(!run)(`source CLI NFS DOCSY lifecycle: ${scenario}`, async () => {
   const root = mkdtempSync(join(tmpdir(), "atlcli-nfs-cli-"));
   const mountpoint = join(root, "wiki docs");
   const cache = join(root, "cache");
@@ -23,12 +24,13 @@ it.skipIf(!run)("source CLI mounts DOCSY with NFS, reports transport, reads and 
   let stderr = "";
   child.stdout.on("data", (data) => { stdout += data; });
   child.stderr.on("data", (data) => { stderr += data; });
+  let holder: ReturnType<typeof spawn> | undefined;
   const exited = new Promise<void>((resolveExit) => child.once("close", () => resolveExit()));
   try {
     let record: MountRecord | undefined;
     const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
-      if (child.exitCode !== null) throw new Error(`CLI exited before mount: ${stderr}`);
+      if (child.exitCode !== null) throw new Error(`CLI exited before mount (${child.exitCode}): ${stderr || stdout}`);
       try {
         const file = readdirSync(join(cache, "mounts")).find((name) => name.endsWith(".json"));
         if (file) record = JSON.parse(readFileSync(join(cache, "mounts", file), "utf8"));
@@ -49,15 +51,39 @@ it.skipIf(!run)("source CLI mounts DOCSY with NFS, reports transport, reads and 
     const file = await open(join(mountpoint, "_index.md"), "r");
     try { expect((await file.readFile()).byteLength).toBeGreaterThan(0); }
     finally { await file.close(); }
-    child.kill("SIGTERM");
+    if (scenario === "busy") {
+      holder = spawn("/bin/sleep", ["30"], { cwd: mountpoint, stdio: "ignore" });
+      await new Promise<void>((resolveSpawn, reject) => { holder!.once("spawn", resolveSpawn); holder!.once("error", reject); });
+      child.kill("SIGTERM");
+      await Bun.sleep(300);
+      expect(child.exitCode).toBeNull();
+      expect(isMounted(mountpoint)).toBe(true);
+      expect(readdirSync(join(cache, "mounts")).some((name) => name.endsWith(".json"))).toBe(true);
+      const holderExited = new Promise<void>((done) => holder!.once("close", () => done()));
+      holder.kill("SIGTERM");
+      await holderExited;
+      holder = undefined;
+    }
+    if (scenario === "explicit") {
+      expect(await runMountCommand([process.execPath, "--conditions=development", "run", "--cwd",
+        resolve(import.meta.dir, "../.."), "src/index.ts", "wiki", "mount", "unmount", mountpoint,
+        "--profile", "mayflower", "--cache-dir", cache, "--json"], true)).toBe(0);
+    } else if (scenario === "helper-crash") process.kill(record!.helperPid!, "SIGKILL");
+    else child.kill("SIGTERM");
     await Promise.race([exited, Bun.sleep(10000).then(() => { throw new Error("CLI did not detach and stop"); })]);
-    expect(child.exitCode).toBe(0);
+    expect(child.exitCode).toBe(scenario === "helper-crash" ? 1 : 0);
     expect(isMounted(mountpoint)).toBe(false);
     expect(readdirSync(join(cache, "mounts")).filter((name) => name.endsWith(".json"))).toEqual([]);
   } finally {
+    if (holder) {
+      const done = new Promise<void>((resolveHolder) => holder!.once("close", () => resolveHolder()));
+      holder.kill("SIGTERM"); await done;
+    }
     if (isMounted(mountpoint)) await runMountCommand(platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint]);
     child.kill("SIGTERM");
     await Promise.race([exited, Bun.sleep(3000)]);
     if (!isMounted(mountpoint)) rmSync(root, { recursive: true, force: true });
   }
 }, 40000);
+
+}

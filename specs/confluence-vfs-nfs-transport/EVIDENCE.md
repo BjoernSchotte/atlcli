@@ -107,6 +107,31 @@ live DOCSY access and cleans up its own mount/cache. Full busy/crash/legacy-stat
 fault coverage, compiled distribution, snapshots and RW remain outstanding;
 WP2 is not fully checked off by this happy-path proof.
 
+## Slice 4: lifecycle failure coverage
+
+Mount status now checks saved parent/helper process identities and reports an
+attached volume with a dead server as orphaned. A reused PID cannot make a stale
+record look healthy. Unexpected helper death yields a nonzero CLI exit after
+normal cleanup, rather than reporting a successful session.
+
+New real-process tests cover missing executables, incompatible handshake
+version/mode/port, early EOF, malformed frames and helper exit after readiness.
+All test helpers are terminated; failures occur before VFS access. Together with
+the mount-state regression suite: 23 tests passed, 49 assertions.
+
+Linux native DOCSY CLI tests passed for normal SIGTERM, a busy mount held by a
+separate process, explicit unmount and SIGKILL of the test's own NFS helper:
+4 passed, 44 assertions. Busy detach preserves the serving process and state;
+retry after releasing the holder succeeds. Helper crash detaches normally and
+removes the record, with exit status 1. No forced/lazy unmount was used.
+
+The corresponding new macOS live cases are not yet certified: the current local
+configuration no longer contains the previously available mayflower profile.
+No configuration was overwritten to bypass this. Earlier macOS evidence remains
+valid for the exact earlier slices; it does not cover these new fault cases.
+Typecheck passed. Parent-crash, alias-path unmount and remaining recovery gates
+are still open.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)
