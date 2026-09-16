@@ -25,7 +25,7 @@ test.skipIf(process.env.ATLCLI_NFS_MOVE_E2E !== "1")("live DOCSY page move prese
       title: marker, storage: `<p>${marker}</p>` });
     created.push(child.id);
     vfs = await ConfluenceVfsImpl.open({ profile: profile.name, client, spaces: ["DOCSY"],
-      mode: "ro", cacheDir, offline: false });
+      mode: "ro", allowDelete: false, cacheDir, offline: false });
     const fs = new NfsFilesystem(vfs, ["DOCSY"]);
     const directory = await fs.lookup(1, formatDirName(child.title, child.id));
     const file = await fs.lookup(directory, "_index.md");
