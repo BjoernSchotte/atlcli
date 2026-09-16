@@ -476,6 +476,38 @@ Confluence API latency dominates; the protocol does not. Check `vfs-status`
 for the cache hit rate — a cold cache pays one request per directory and one
 bulk request per group of bodies read.
 
+## Experimental NFS transport (development builds)
+
+WebDAV remains the default. macOS and Linux development builds can select an
+additional **read-only NFSv3** transport. NFS writes, distribution artifacts and
+full parity acceptance are still in progress; this is not a production write
+mount. Windows should continue using WebDAV.
+
+From the repository root, build the pinned helper and point the CLI at it:
+
+```bash
+cargo build --locked --manifest-path packages/confluence-nfs/Cargo.toml
+export ATLCLI_NFS_HELPER="$PWD/packages/confluence-nfs/target/debug/atlcli-confluence-nfs"
+bun --conditions=development run --cwd apps/cli src/index.ts \
+  wiki mount ~/mnt/docsy --profile mayflower --space DOCSY --mode ro --transport nfs
+```
+
+For a combined read-only export, use `--space DOCSY,mayflower`; the mount then
+contains one directory per space. A single-space export exposes its contents
+directly. `wiki mount list` reports the selected transport; `wiki mount unmount
+<path>` and Ctrl-C use the usual cleanup flow.
+
+macOS uses its native `mount_nfs` client. Linux requires the NFS client package
+(commonly `nfs-common`); atlcli prints the explicit privileged mount command.
+The server must remain running. Busy mounts keep the server alive: close files,
+leave the mounted directory and retry unmount. On helper failure, remount after
+recovery; old NFS filehandles are not reusable after a helper restart.
+
+The helper must be executable and compatible with the CLI. Missing helpers fail
+without falling back to WebDAV or downloading anything. Development uses the
+explicit environment variable; future packaged installs will place the matching
+helper beside the CLI. Loopback access is not isolation from other local users.
+
 ## Related topics
 
 - [Sync](/confluence/sync/) — a complete local copy, which this is not

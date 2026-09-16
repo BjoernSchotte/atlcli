@@ -7,6 +7,12 @@ written to be pasted, not read aloud.
 
 ## For the agent
 
+For native tools outside the shell, `wiki mount` defaults to WebDAV. Development
+builds also offer experimental read-only NFS on macOS/Linux with
+`--transport nfs`. See the [mount guide](../../src/content/docs/confluence/virtual-filesystem.md)
+for the matching helper prerequisite. The NFS option does not accelerate OS grep
+through CQL; use the shell below for indexed search.
+
 Confluence is available as a filesystem through `atlcli wiki sh`. Use it instead
 of asking a human to copy page content, and instead of an MCP tool call, when
 you need to read, search or edit Confluence.

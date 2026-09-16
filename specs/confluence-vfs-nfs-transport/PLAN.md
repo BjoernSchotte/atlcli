@@ -1,7 +1,7 @@
 # Optional NFS transport for Confluence mounts
 
-Status: implementation in progress; WP1 read-only prototype passes native macOS
-and Linux DOCSY reads. CLI integration and read/write acceptance remain open.
+Status: implementation in progress; read-only CLI mounts pass native macOS and
+Linux DOCSY reads and signal shutdown. Full lifecycle and read/write acceptance remain open.
 See [evidence](EVIDENCE.md).
 Baseline: PR #202, merged as `8b08ad65` on 2026-09-16.
 

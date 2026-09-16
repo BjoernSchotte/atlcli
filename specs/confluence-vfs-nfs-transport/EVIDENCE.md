@@ -77,6 +77,36 @@ proof, editor writes, packaging and comparisons remain open. WP1 also still
 requires the pending RW publication decision; these tests do not establish full
 filesystem parity or performance advantage.
 
+## Slice 3: CLI transport selection and shutdown
+
+Added `--transport webdav|nfs` (default WebDAV), explicit helper discovery,
+platform/client checks, current RO-only gating and platform mount commands.
+NFS state records carry transport, helper PID and parent process identity;
+records without a transport are treated as WebDAV. State writes use atomic
+replacement. Linux reports listening until the user attaches the volume; status
+checks consult the actual mount table. Dead-server records are retained while
+their volume is attached. Explicit unmount signals only an identity-verified PID.
+
+Unexpected helper exit attempts normal unmount; busy mounts preserve the parent
+and state for recovery. macOS detection resolves only the local parent path:
+synchronous realpath of the mounted directory can deadlock with the same Bun
+process that serves NFS. The native CLI regression caught this and the initial
+test mount was cleaned up through normal unmount.
+
+Validation:
+
+- 20 transport/platform/state tests passed (51 assertions).
+- Real source CLI DOCSY mount, read, SIGTERM, unmount and state cleanup passed on
+  macOS (8 assertions) and Linux (10 assertions, including explicit attachment).
+- Three consecutive macOS reruns passed after fixing the synchronous lookup.
+- Typecheck passed, 4 tasks. Updated CLI help and feature/agent documentation.
+
+The CLI lifecycle test lives at `apps/cli/src/e2e/wiki-nfs-cli.e2e.test.ts` and
+requires `ATLCLI_NFS_CLI_E2E=1` plus `ATLCLI_NFS_TEST_HELPER`. It performs RO-only
+live DOCSY access and cleans up its own mount/cache. Full busy/crash/legacy-state
+fault coverage, compiled distribution, snapshots and RW remain outstanding;
+WP2 is not fully checked off by this happy-path proof.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)
