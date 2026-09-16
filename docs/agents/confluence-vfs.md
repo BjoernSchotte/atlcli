@@ -111,6 +111,11 @@ atlcli wiki sh --space DOCSY --json -c 'ls'
 
 gives `{ stdout, stderr, exitCode, diagnostics, cacheHits, cacheMisses, prefetched }`.
 
+In interactive mode, **Tab** completes commands and paths (`gr<Tab>` → `grep`,
+`cat _i<Tab>` → `cat _index.md`). Directories end in `/`; completion reads only
+directory metadata, never page bodies. `cd` and environment variables persist
+between inputs. Completion supports unquoted and backslash-escaped paths.
+
 ### Useful extra commands inside the shell
 
 | Command | Use it for |

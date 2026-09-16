@@ -28,6 +28,7 @@ import {
 import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl, isVfsError, type VfsMode } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
+import type { WikiShell } from "../vfs/wiki-shell.js";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -218,15 +219,23 @@ async function readStdin(): Promise<string> {
 }
 
 async function runInteractive(
-  shell: { exec(script: string): Promise<{ stdout: string; stderr: string; exitCode: number }> },
+  shell: WikiShell,
   resolved: ResolvedShellOptions,
 ): Promise<void> {
   const prompt = `${resolved.spaces[0]} ${resolved.mode === "rw" ? "#" : "$"} `;
   process.stderr.write(
     `atlcli wiki sh — ${resolved.spaces.join(", ")} (${resolved.mode}${resolved.allowDelete ? ", delete allowed" : ""})\n` +
-      `Type 'vfs-status' for cache and mode, 'exit' to leave.\n`,
+      `Tab completes commands and paths. Type 'vfs-status' for cache and mode, 'exit' to leave.\n`,
   );
-  const rl = createInterface({ input: process.stdin, output: process.stdout, prompt });
+  const rl = createInterface({
+    input: process.stdin, output: process.stdout, prompt,
+    completer: (line: string, callback: (error: Error | null, result?: [string[], string]) => void) => {
+      void shell.complete(line).then(
+        (result) => callback(null, result),
+        () => callback(null, [[], line]),
+      );
+    },
+  });
   rl.prompt();
   for await (const line of rl) {
     const script = line.trim();

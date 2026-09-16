@@ -69,6 +69,8 @@ export interface WikiShellResult {
 
 export interface WikiShell {
   exec(script: string): Promise<WikiShellResult>;
+  /** readline candidates and the unquoted/escaped word being completed. */
+  complete(line: string): Promise<[string[], string]>;
   /** Requests made and cache hits, for `--json` and `vfs-status`. */
   stats(): { requests: number; cacheHits: number; cacheMisses: number; prefetched: number };
 }
@@ -281,12 +283,13 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
     { trusted: true },
   );
 
+  const customCommands = [grep, find, cql, pageId, pageUrl, vfsStatus, mv];
   const bash = new Bash({
     defenseInDepth: false,
     cwd: options.cwd ?? `/${spaces[0]}`,
     fs: new MountableFs({ mounts }),
     commands: [...ALLOWED_COMMANDS],
-    customCommands: [grep, find, cql, pageId, pageUrl, vfsStatus, mv],
+    customCommands,
     executionLimits: {
       // An agent that asks for a whole space should get a bounded answer, not
       // a stalled session and a gigabyte of stdout.
@@ -295,7 +298,40 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
     },
   });
 
+  let cwd = options.cwd ?? `/${spaces[0]}`;
+  let env = bash.getEnv();
+  // compgen's command discovery relies on /bin, absent in our mounted FS.
+  const builtins = await bash.exec("compgen -A builtin");
+  const commandNames = [...ALLOWED_COMMANDS, ...customCommands.map((command) => command.name), ...builtins.stdout.trim().split("\n"), "exit", "quit"];
+
   return {
+    async complete(line: string): Promise<[string[], string]> {
+      const word = /(?:^|[\s|;&<>])((?:\\.|[^\s\\|;&<>])*)$/.exec(line)?.[1] ?? "";
+      // Completion never evaluates the user's line, substitutions or quotes.
+      if (/["'`$()]/.test(word)) return [[], word];
+      const prefix = word.replace(/\\(.)/g, "$1");
+      const before = line.slice(0, line.length - word.length).trimEnd();
+      const candidates = new Set<string>();
+      if ((!before || /[|;&]$/.test(before)) && !prefix.includes("/")) {
+        for (const name of commandNames) {
+          if (name && name.startsWith(prefix)) candidates.add(name);
+        }
+      }
+      const slash = prefix.lastIndexOf("/");
+      const parent = prefix.slice(0, slash + 1);
+      const name = prefix.slice(slash + 1);
+      try {
+        const entries = await options.vfs.readdir(posix.resolve(cwd, parent || "."));
+        for (const entry of entries) {
+          if (!entry.name.startsWith(name) || (entry.name.startsWith(".") && !name.startsWith("."))) continue;
+          const path = `${parent}${entry.name}${entry.isDirectory ? "/" : ""}`;
+          candidates.add(path.replace(/[^A-Za-z0-9_./:-]/gu, "\\$&"));
+        }
+      } catch {
+        // A missing/inaccessible prefix has no completions; leave the line intact.
+      }
+      return [[...candidates].sort(), word];
+    },
     /**
      * Run a script.
      *
@@ -309,7 +345,9 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
      */
     async exec(script: string): Promise<WikiShellResult> {
       try {
-        const result = await bash.exec(script);
+        const result = await bash.exec(script, { cwd, env, replaceEnv: true });
+        env = result.env;
+        cwd = result.env.PWD ?? cwd;
         return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

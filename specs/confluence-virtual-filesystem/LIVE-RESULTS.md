@@ -160,3 +160,13 @@ The 386 focused VFS tests pass. The original failure was not caused by glob quot
 - [Earlier measurements](./EVIDENCE.md)
 - [Release checklist](./RELEASE-NOTES.md)
 - [User documentation](../../src/content/docs/confluence/virtual-filesystem.md)
+
+### Interactive completion follow-up
+
+Added readline Tab completion for registered commands and virtual paths, using
+directory metadata only. Session cwd and environment now persist across inputs.
+Validated command and body-path completion plus persistent `cd` in a real Bun
+PTY against DOCSY with profile `mayflower`, strictly read-only. The harness uses
+`TERM=xterm-256color`; Bun disables terminal editing under `TERM=dumb`. No pages
+were created or changed. Temporary cache removed. Focused shell/CLI tests: 60
+passed; workspace typecheck: 4/4 successful.

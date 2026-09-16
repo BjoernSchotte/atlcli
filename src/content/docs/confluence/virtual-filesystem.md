@@ -79,6 +79,11 @@ loops, globs and roughly fifty commands, over a filesystem that happens to be
 Confluence. What it does **not** have is network access: `curl`, `wget`,
 `python3` and `sqlite3` are not registered, on purpose.
 
+In interactive mode, **Tab** completes commands and paths (`gr<Tab>` → `grep`,
+`cat _i<Tab>` → `cat _index.md`). Directories end in `/`; completion reads only
+directory metadata, never page bodies. `cd` and environment variables persist
+between inputs. Completion supports unquoted and backslash-escaped paths.
+
 ### A minimal example
 
 ```bash

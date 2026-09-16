@@ -86,6 +86,46 @@ afterEach(() => {
 });
 
 describe("reading", () => {
+  it("completes commands and paths without fetching bodies, relative to persistent cd", async () => {
+    const client = seeded();
+    const { shell, vfs } = await makeShell(client, { mode: "ro" });
+    try {
+      expect((await shell.complete("gr"))[0]).toContain("grep");
+      expect((await shell.complete("cq"))[0]).toContain("cql");
+      expect((await shell.complete("cd"))[0]).toContain("cd");
+      expect((await shell.complete("curl"))[0]).not.toContain("curl");
+      expect(await shell.complete("cat /DOCSY/arch")).toEqual([["/DOCSY/architecture-102/"], "/DOCSY/arch"]);
+      expect(await shell.complete("cat arch")).toEqual([["architecture-102/"], "arch"]);
+      expect(await shell.complete("cat architecture-102/_i")).toEqual([["architecture-102/_index.md"], "architecture-102/_i"]);
+      expect((await shell.exec("cd architecture-102")).exitCode).toBe(0);
+      expect((await shell.exec("pwd")).stdout.trim()).toBe("/DOCSY/architecture-102");
+      expect(await shell.complete("cat _i")).toEqual([["_index.md"], "_i"]);
+      expect(await shell.complete("cat ../gett")).toEqual([["../getting-started-101/"], "../gett"]);
+      expect((await shell.complete("ls .v"))[0]).toContain(".versions/");
+      expect(await shell.complete("cat missing/xx")).toEqual([[], "missing/xx"]);
+      expect(client.callsTo("getPage")).toBe(0);
+      expect(client.callsTo("getPagesBulk")).toBe(0);
+      expect(vfs.cache!.stats().bodies).toBe(0);
+    } finally {
+      await vfs.close();
+    }
+  });
+
+  it("completion does not execute shell input or change session variables", async () => {
+    const client = seeded();
+    const { shell, vfs } = await makeShell(client);
+    try {
+      await shell.exec("export CHECK=unchanged");
+      expect((await shell.complete("echo unsafe > injected.md; gr"))[0]).toContain("grep");
+      expect(await shell.complete("cat $(touch injected.md)")).toEqual([[], "injected.md)"]);
+      expect((await shell.exec("echo $CHECK")).stdout.trim()).toBe("unchanged");
+      expect(client.callsTo("createPage")).toBe(0);
+      expect(client.callsTo("updatePage")).toBe(0);
+    } finally {
+      await vfs.close();
+    }
+  });
+
   it("lists a space", async () => {
     const { shell, vfs } = await makeShell(seeded());
     const result = await shell.exec("ls");
