@@ -292,6 +292,29 @@ not separately fault-injected by this slice. No RW timeout/outcome guarantee is
 claimed. Prior GitHub CI runs for 30a2d73b, bb4c5cf0 and c4998729 succeeded;
 no run for b70c6ad7 was visible at inspection time.
 
+## Slice 12: native release helper and provenance
+
+A native builder uses pinned Rust 1.92.0, locked Cargo dependencies and an explicit
+Rust target. It refuses non-empty output directories, verifies the compiled
+helper's offline version/protocol/architecture, and emits an executable copy,
+nfsserve license and a provenance manifest. Digests cover executable, Cargo.lock
+and actual Rust source/vendor tree; dirty builds are explicitly marked. This
+manifest is not signed and is not a full supply-chain attestation.
+
+Release-mode copies built on macOS arm64 and Linux x64 passed 9 targeted tests /
+220 assertions per host, including actual kernel mounts, wire pagination and
+malformed RPC rejection. Linux native mounts read live DOCSY and DOCSY/mayflower
+through profile mayflower. Unit checks cover all four native target mappings,
+unsupported platforms, mismatched helper identity and output preservation.
+Typecheck, Rust formatting/Clippy and CI routing/policy tests passed.
+
+Required native NFS CI now builds and tests the emitted release-mode copy instead
+of only the Cargo debug binary. Helper-builder and archive-library edits select
+this gate. CLI release archives still have their old single-binary contract;
+archive verification, installer/Homebrew integration, a declared Linux libc
+baseline, all architecture runners and complete dependency license notices remain
+open. No release or installer mutation was performed.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

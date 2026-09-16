@@ -175,7 +175,7 @@ function classifyProductCapability(path: string, routes: CiRoutes): void {
   if (affectsConsumers(path)) enablePackageContracts(routes);
   if (startsWithAny(path, ["packages/confluence-nfs/", "packages/confluence-vfs/", "packages/confluence/", "packages/core/",
     "apps/cli/src/vfs/nfs-", "apps/cli/src/vfs/mount-transport", "apps/cli/src/commands/wiki-mount",
-    "apps/cli/src/e2e/wiki-nfs", "apps/cli/build"]) || path === "apps/cli/package.json" || path === "apps/cli/src/index.ts") {
+    "apps/cli/src/e2e/wiki-nfs", "apps/cli/build", "scripts/build-nfs-helper", "scripts/release-archive"]) || path === "apps/cli/package.json" || path === "apps/cli/src/index.ts") {
     routes.nfs = true;
   }
 

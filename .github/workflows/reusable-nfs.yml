@@ -33,10 +33,12 @@ jobs:
           cargo +1.92.0 clippy --locked --manifest-path packages/confluence-nfs/Cargo.toml --all-targets -- -D warnings
           cargo +1.92.0 test --locked --manifest-path packages/confluence-nfs/Cargo.toml
           cargo +1.92.0 build --locked --manifest-path packages/confluence-nfs/Cargo.toml
+      - name: Build native companion with provenance
+        run: bun scripts/build-nfs-helper.ts "$RUNNER_TEMP/nfs-helper"
       - name: Test bridge and native read-only mounts with synthetic data
         env:
           ATLCLI_NFS_KERNEL: "1"
           ATLCLI_NFS_LIVE: "0"
         run: |
-          export ATLCLI_NFS_TEST_HELPER="$PWD/packages/confluence-nfs/target/debug/atlcli-confluence-nfs"
-          bun run test apps/cli/src/vfs/nfs-framing.test.ts apps/cli/src/vfs/nfs-filesystem.test.ts apps/cli/src/vfs/nfs-bridge.test.ts apps/cli/src/vfs/nfs-bridge-failures.test.ts apps/cli/src/vfs/nfs-journal.test.ts apps/cli/src/vfs/mount-transport.test.ts
+          export ATLCLI_NFS_TEST_HELPER="$RUNNER_TEMP/nfs-helper/atlcli-confluence-nfs"
+          bun run test scripts/build-nfs-helper.test.ts apps/cli/src/vfs/nfs-framing.test.ts apps/cli/src/vfs/nfs-filesystem.test.ts apps/cli/src/vfs/nfs-bridge.test.ts apps/cli/src/vfs/nfs-bridge-failures.test.ts apps/cli/src/vfs/nfs-journal.test.ts apps/cli/src/vfs/mount-transport.test.ts

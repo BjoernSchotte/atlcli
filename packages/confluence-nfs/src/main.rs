@@ -249,6 +249,19 @@ impl NFSFileSystem for Bridge {
 }
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!(
+            "{}",
+            json!({
+                "name": "atlcli-confluence-nfs",
+                "version": env!("CARGO_PKG_VERSION"),
+                "bridgeVersion": BRIDGE_VERSION,
+                "os": std::env::consts::OS,
+                "arch": std::env::consts::ARCH,
+            })
+        );
+        return Ok(());
+    }
     let port: u16 = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "0".into())

@@ -237,3 +237,8 @@ within each connection. Idle or incomplete requests disconnect after 60 seconds;
 clients can reconnect. Dispatch and response-write deadlines are 120 and 30
 seconds. Replay tracking is capped at 4,096 entries; exceeding capacity closes
 the requesting connection. These limits do not change WebDAV or the VFS shell.
+
+For a native release-mode development helper, run
+`bun scripts/build-nfs-helper.ts /tmp/atlcli-nfs-helper` with Rust 1.92.0 installed.
+Set `ATLCLI_NFS_HELPER` to the emitted executable. The adjacent build manifest
+records checksums and protocol identity; see the [helper build guide](../../packages/confluence-nfs/README.md).
