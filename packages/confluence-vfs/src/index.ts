@@ -10,9 +10,11 @@
  * the VFS is a cache, not a mirror.
  */
 export type { VfsClient } from "./client-port.js";
+export { AuditLog, type AuditEntry } from "./audit-log.js";
 export {
   BodyCache,
   hashStorage,
+  normalizeStorage,
   identityPathFor,
   recallIdentity,
   rememberIdentity,
@@ -24,10 +26,15 @@ export {
   type CachedBody,
 } from "./body-cache.js";
 export {
+  ConflictStore,
+  type ConflictRecord,
+} from "./conflict-store.js";
+export {
   assertNotReserved,
   ConfluenceVfsImpl,
   type VfsRuntime,
 } from "./confluence-vfs.js";
+export { WriteBack, type WriteBackOptions } from "./write-back.js";
 export {
   PageStore,
   parseVfsFrontmatter,

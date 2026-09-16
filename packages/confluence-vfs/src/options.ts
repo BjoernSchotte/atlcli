@@ -52,6 +52,16 @@ export interface VfsOptions {
   now?: () => number;
   /** Injectable sleep, so tests do not wait on rate-limit backoff. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Milliseconds of quiet before coalesced writes are sent. Default 500.
+   *
+   * WebDAV clients and editors write a file in chunks; treating each chunk as
+   * a page update would burn a version per flush. `--sync-writes` sets this
+   * to 0.
+   */
+  coalesceMs?: number;
+  /** Injectable timer for the coalescing window, so tests need no real one. */
+  schedule?: (fn: () => void, ms: number) => void;
 }
 
 /** Everything {@link VfsOptions} leaves optional, filled in. */
@@ -69,6 +79,7 @@ export const VFS_DEFAULTS = {
   prefetchMaxPages: 300,
   cacheMaxMb: 100,
   cqlGrep: true,
+  coalesceMs: 500,
 } as const;
 
 const silentLogger: VfsLogger = {
@@ -96,5 +107,13 @@ export function resolveVfsOptions(options: VfsOptions): ResolvedVfsOptions {
     now: options.now ?? (() => Date.now()),
     sleep:
       options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))),
+    coalesceMs: options.coalesceMs ?? VFS_DEFAULTS.coalesceMs,
+    schedule:
+      options.schedule ??
+      ((fn: () => void, ms: number) => {
+        // Unref'd so a pending coalesce window never holds the process open.
+        const timer = setTimeout(fn, ms);
+        (timer as { unref?: () => void }).unref?.();
+      }),
   };
 }

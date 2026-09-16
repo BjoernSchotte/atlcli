@@ -70,7 +70,7 @@ describe("readFile", () => {
     expect(text).toContain('  url: "https://example.atlassian.net/wiki/spaces/DOCSY/pages/200"');
     expect(text).toContain("# Page 0");
     expect(text).toContain("Kubernetes");
-    vfs.close();
+    await vfs.close();
   });
 
   it("writes frontmatter the rest of the repository can still read", async () => {
@@ -80,7 +80,7 @@ describe("readFile", () => {
     // not break them, or a file could not move between the two.
     expect(parseFrontmatter(text).frontmatter?.id).toBe("200");
     expect(parseVfsFrontmatter(text).frontmatter.version).toBe(1);
-    vfs.close();
+    await vfs.close();
   });
 
   it("survives a title carrying a colon, a quote and a hash", async () => {
@@ -100,13 +100,13 @@ describe("readFile", () => {
     const entry = names.find((n) => n.endsWith("-201"))!;
     const text = await vfs.readFile(`/DOCSY/${entry}.md`);
     expect(parseVfsFrontmatter(text).frontmatter.title).toBe('Release: "2026" #1');
-    vfs.close();
+    await vfs.close();
   });
 
   it("reads the space home page through _index.md", async () => {
     const vfs = await openVfs(seeded());
     expect(await vfs.readFile("/DOCSY/_index.md")).toContain("Home page.");
-    vfs.close();
+    await vfs.close();
   });
 
   it("serves a second read from the cache", async () => {
@@ -116,7 +116,7 @@ describe("readFile", () => {
     client.resetCalls();
     await vfs.readFile("/DOCSY/page-0-200.md");
     expect(client.callsTo("getPage")).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 
   it("refetches once the server version moves on", async () => {
@@ -132,13 +132,13 @@ describe("readFile", () => {
     const text = await vfs.readFile("/DOCSY/page-0-200.md");
     expect(text).toContain("Edited elsewhere.");
     expect(client.callsTo("getPage")).toBe(1);
-    vfs.close();
+    await vfs.close();
   });
 
   it("answers EISDIR for a directory", async () => {
     const vfs = await openVfs(seeded());
     await expect(vfs.readFile("/DOCSY/page-0-200")).rejects.toMatchObject({ code: "EISDIR" });
-    vfs.close();
+    await vfs.close();
   });
 
   it("renders a whiteboard as a read-only link stub", async () => {
@@ -156,7 +156,7 @@ describe("readFile", () => {
     expect(json.url).toContain("/whiteboards/300");
     // No body fetch: there is no body to fetch.
     expect(client.callsTo("getPage")).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 
   it("reads a historic version and caches it forever", async () => {
@@ -169,7 +169,7 @@ describe("readFile", () => {
     client.resetCalls();
     await vfs.readFile("/DOCSY/page-0-200/.versions/1.md");
     expect(client.callsTo("getPageAtVersion")).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -178,21 +178,21 @@ describe("the cache is per profile and account", () => {
     const client = seeded();
     const a = await openVfs(client, { profile: "alice" });
     await a.readFile("/DOCSY/page-0-200.md");
-    a.close();
+    await a.close();
 
     // Same cacheDir, same site, different profile: a cold cache.
     const b = await openVfs(client, { profile: "bob" });
     client.resetCalls();
     await b.readFile("/DOCSY/page-0-200.md");
     expect(client.callsTo("getPage")).toBe(1);
-    b.close();
+    await b.close();
   });
 
   it("gives a second account nothing from the first account's cache", async () => {
     const alice = seeded();
     const a = await openVfs(alice);
     await a.readFile("/DOCSY/page-0-200.md");
-    a.close();
+    await a.close();
 
     const bobClient = seeded();
     const bob = await ConfluenceVfsImpl.open({
@@ -209,7 +209,7 @@ describe("the cache is per profile and account", () => {
       now: () => clock,
     });
     expect(bob.runtime?.dbPath).not.toBe(a.runtime?.dbPath);
-    bob.close();
+    await bob.close();
     void bobClient;
   });
 });
@@ -227,7 +227,7 @@ describe("prefetch", () => {
     expect(result.fetched).toBe(10);
     expect(client.callsTo("getPagesBulk")).toBe(1);
     expect(client.callsTo("getPage")).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 
   it("serves the cached ones without asking for them again", async () => {
@@ -240,7 +240,7 @@ describe("prefetch", () => {
     const result = await vfs.prefetch(["200", "201", "202"]);
     expect(result.fromCache).toBe(1);
     expect(result.fetched).toBe(2);
-    vfs.close();
+    await vfs.close();
   });
 
   it("aborts over the budget without downloading anything", async () => {
@@ -255,7 +255,7 @@ describe("prefetch", () => {
     });
     // Nothing partial: the budget is checked before the first request.
     expect(client.callsTo("getPagesBulk")).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 
   it("names the count, the limit and the flag that raises it", async () => {
@@ -266,7 +266,7 @@ describe("prefetch", () => {
     await expect(vfs.prefetch(ids, { reason: "grep -r" })).rejects.toThrow(
       /10 page bodies.*4-page prefetch limit.*--prefetch-max/s,
     );
-    vfs.close();
+    await vfs.close();
   });
 
   it("accepts a raised budget for the same call", async () => {
@@ -276,7 +276,7 @@ describe("prefetch", () => {
     const ids = Array.from({ length: 10 }, (_, i) => String(200 + i));
     const result = await vfs.prefetch(ids, { budget: 50 });
     expect(result.fetched).toBe(10);
-    vfs.close();
+    await vfs.close();
   });
 
   it("falls back to per-page fetches on Data Center", async () => {
@@ -293,7 +293,7 @@ describe("prefetch", () => {
     expect(result.fetched).toBe(2);
     expect(client.callsTo("getPagesBulk")).toBe(0);
     expect(client.callsTo("getPage")).toBe(2);
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -303,7 +303,7 @@ describe("offline", () => {
     const warm = await openVfs(client);
     await warm.readdir("/DOCSY");
     await warm.readFile("/DOCSY/page-0-200.md");
-    warm.close();
+    await warm.close();
 
     const cold = await openVfs(client, { offline: true });
     client.resetCalls();
@@ -311,30 +311,30 @@ describe("offline", () => {
     expect(names).toContain("page-0-200");
     expect(await cold.readFile("/DOCSY/page-0-200.md")).toContain("Body of page 0");
     expect(client.requestCount).toBe(0);
-    cold.close();
+    await cold.close();
   });
 
   it("explains the flag on a body that was never cached", async () => {
     const client = seeded(3);
     const warm = await openVfs(client);
     await warm.readdir("/DOCSY");
-    warm.close();
+    await warm.close();
 
     const cold = await openVfs(client, { offline: true });
     await expect(cold.readFile("/DOCSY/page-1-201.md")).rejects.toThrow(/--offline/);
     await expect(cold.readFile("/DOCSY/page-1-201.md")).rejects.toMatchObject({ code: "ENOENT" });
-    cold.close();
+    await cold.close();
   });
 
   it("refuses a prefetch rather than silently returning an empty cache", async () => {
     const client = seeded(3);
     const warm = await openVfs(client);
     await warm.readdir("/DOCSY");
-    warm.close();
+    await warm.close();
 
     const cold = await openVfs(client, { offline: true });
     await expect(cold.prefetch(["201", "202"])).rejects.toMatchObject({ code: "ENOENT" });
-    cold.close();
+    await cold.close();
   });
 });
 
@@ -380,7 +380,7 @@ describe("round trip", () => {
       expect(normalizeMarkdown(storageToMarkdown(backToStorage))).toBe(
         normalizeMarkdown(storageToMarkdown(storage)),
       );
-      vfs.close();
+      await vfs.close();
     });
   }
 });

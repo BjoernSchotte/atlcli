@@ -190,8 +190,21 @@ function sanitize(segment: string): string {
   return cleaned === "" || cleaned === "." || cleaned === ".." ? "_" : cleaned;
 }
 
+/**
+ * Storage-format hash, insensitive to formatting.
+ *
+ * Whitespace *between* tags carries no meaning in Confluence storage, and the
+ * Markdown converter re-emits it differently (one element per line) than
+ * Confluence stores it (no separators). Hashing the raw text would therefore
+ * report every page as changed, which is useless for the one thing this hash is
+ * for: deciding whether a Markdown round trip lost anything real.
+ */
 export function hashStorage(storage: string): string {
-  return createHash("sha256").update(storage).digest("hex");
+  return createHash("sha256").update(normalizeStorage(storage)).digest("hex");
+}
+
+export function normalizeStorage(storage: string): string {
+  return storage.replace(/>\s+</g, "><").trim();
 }
 
 export class BodyCache {

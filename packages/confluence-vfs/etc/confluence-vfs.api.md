@@ -16,6 +16,32 @@ export declare function assertNotStructurallyReadOnly(path: string, reason: stri
 // export: assertWritable
 export declare function assertWritable(guard: ModeGuard, op: WriteOp, path?: string): void;
 
+// export: AuditEntry
+export interface AuditEntry {
+    ts: string;
+    profile: string;
+    accountId: string;
+    op: WriteOp | "conflict";
+    path: string;
+    pageId?: string;
+    fromVersion?: number;
+    toVersion?: number;
+    target?: string;
+    result: "ok" | "error";
+    errorCode?: string;
+}
+
+// export: AuditLog
+export declare class AuditLog {
+    private readonly file;
+    private readonly profile;
+    private readonly accountId;
+    private readonly now;
+    constructor(file: string, profile: string, accountId: string, now?: () => number);
+    record(entry: Omit<AuditEntry, "ts" | "profile" | "accountId">): void;
+    private rotateIfNeeded;
+}
+
 // export: BodyCache
 export declare class BodyCache {
     private readonly db;
@@ -94,6 +120,30 @@ export interface CacheStats {
 // export: canonicalPathOf
 export declare function canonicalPathOf(index: TreeIndex, node: TreeNode, homepageId: string | null): string;
 
+// export: ConflictRecord
+export interface ConflictRecord {
+    pageId: string;
+    path: string;
+    baseVersion: number;
+    serverVersion: number;
+    createdAt: string;
+    origin: string;
+    content: string;
+    file: string;
+}
+
+// export: ConflictStore
+export declare class ConflictStore {
+    private readonly dir;
+    constructor(dir: string);
+    record(conflict: Omit<ConflictRecord, "file">): ConflictRecord;
+    list(): ConflictRecord[];
+    forPage(pageId: string): ConflictRecord[];
+    read(file: string): ConflictRecord | undefined;
+    discard(file: string): boolean;
+    discardAllFor(pageId: string): number;
+}
+
 // export: ConfluenceVfs
 export interface ConfluenceVfs {
     stat(path: string): Promise<VfsStat>;
@@ -119,15 +169,21 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     readonly runtime: VfsRuntime | undefined;
     private readonly store;
     private readonly virtual;
+    private readonly writeBack;
+    readonly conflicts: ConflictStore | undefined;
+    readonly audit: AuditLog | undefined;
     private readonly resolver;
     constructor(opts: ResolvedVfsOptions, runtime?: VfsRuntime, cache?: BodyCache);
+    get guard(): ModeGuard;
     private readQueryHints;
     private writeQueryHints;
     private requireVirtual;
     static open(options: VfsOptions): Promise<ConfluenceVfsImpl>;
     saveSnapshot(): void;
     private restoreSnapshot;
-    close(): void;
+    close(): Promise<void>;
+    flush(): Promise<void>;
+    private requireWriteBack;
     prefetch(ids: string[], options?: {
         budget?: number;
         reason?: string;
@@ -153,11 +209,16 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     readFile(path: string): Promise<string>;
     readFileBytes(path: string): Promise<Uint8Array>;
     private renderNonPage;
-    writeFile(path: string, _content: string | Uint8Array): Promise<VfsWriteResult>;
+    writeFile(path: string, content: string | Uint8Array): Promise<VfsWriteResult>;
+    private createFromMissing;
+    private containerOf;
+    private writeAttachment;
     mkdir(path: string): Promise<VfsWriteResult>;
-    rename(from: string, _to: string): Promise<void>;
-    rm(path: string): Promise<void>;
-    copy(from: string, _to: string): Promise<VfsWriteResult>;
+    rename(from: string, to: string): Promise<void>;
+    rm(path: string, options?: {
+        recursive?: boolean;
+    }): Promise<void>;
+    copy(from: string, to: string): Promise<VfsWriteResult>;
     readlink(path: string): Promise<string>;
     private toNode;
 }
@@ -220,6 +281,9 @@ export interface ModeGuard {
 
 // export: normalizePath
 export declare function normalizePath(path: string): string;
+
+// export: normalizeStorage
+export declare function normalizeStorage(storage: string): string;
 
 // export: PageStore
 export declare class PageStore {
@@ -562,6 +626,7 @@ export declare const VFS_DEFAULTS: {
     readonly prefetchMaxPages: 300;
     readonly cacheMaxMb: 100;
     readonly cqlGrep: true;
+    readonly coalesceMs: 500;
 };
 
 // export: VfsClient
@@ -765,6 +830,8 @@ export interface VfsOptions {
     logger?: VfsLogger;
     now?: () => number;
     sleep?: (ms: number) => Promise<void>;
+    coalesceMs?: number;
+    schedule?: (fn: () => void, ms: number) => void;
 }
 
 // export: VfsRuntime
@@ -862,6 +929,50 @@ export interface VirtualDirsOptions {
 
 // export: withRateLimitRetry
 export declare function withRateLimitRetry<T>(task: () => Promise<T>, options?: RateLimitRetryOptions): Promise<T>;
+
+// export: WriteBack
+export declare class WriteBack {
+    private readonly opts;
+    private readonly pending;
+    private readonly warnedLossy;
+    constructor(opts: WriteBackOptions);
+    updatePage(node: TreeNode, path: string, content: string): Promise<VfsWriteResult>;
+    flush(): Promise<void>;
+    get pendingCount(): number;
+    private drain;
+    private performUpdate;
+    private warnIfLossy;
+    private attemptUpdate;
+    private mergeAndRetry;
+    private conflict;
+    private refetch;
+    private commit;
+    createPage(params: {
+        parent: TreeNode;
+        spaceKey: string;
+        name: string;
+        path: string;
+        content: string;
+        parentIsFolder: boolean;
+    }): Promise<VfsWriteResult>;
+    private request;
+}
+
+// export: WriteBackOptions
+export interface WriteBackOptions {
+    client: VfsClient;
+    index: TreeIndex;
+    cache: BodyCache;
+    conflicts: ConflictStore;
+    audit: AuditLog;
+    guard: ModeGuard;
+    instanceUrl: string;
+    logger: VfsLogger;
+    now: () => number;
+    sleep?: (ms: number) => Promise<void>;
+    coalesceMs: number;
+    schedule?: (fn: () => void, ms: number) => void;
+}
 
 // export: WriteOp
 export type WriteOp = "create" | "update" | "mkdir" | "rename" | "move" | "copy" | "delete" | "upload-attachment" | "delete-attachment";

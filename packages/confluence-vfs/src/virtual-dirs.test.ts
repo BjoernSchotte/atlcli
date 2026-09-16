@@ -74,7 +74,7 @@ describe("_space.json and .me.json", () => {
     const vfs = await openVfs(seeded());
     const json = JSON.parse(await vfs.readFile("/DOCSY/_space.json"));
     expect(json).toMatchObject({ key: "DOCSY", name: "Docs", homepageId: "100" });
-    vfs.close();
+    await vfs.close();
   });
 
   it("describes the caller, and names the visibility guarantee", async () => {
@@ -88,7 +88,7 @@ describe("_space.json and .me.json", () => {
     expect(json.note).toContain("Confluence filters server-side");
     // And no token anywhere near it.
     expect(JSON.stringify(json)).not.toMatch(/token|password|secret/i);
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -114,7 +114,7 @@ describe("_attachments", () => {
     const entries = await vfs.readdir("/DOCSY/architecture-102/_attachments");
     expect(entries).toHaveLength(10);
     expect(client.callsTo("downloadAttachment")).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 
   it("reports the exact size from metadata without a download", async () => {
@@ -124,7 +124,7 @@ describe("_attachments", () => {
     expect(stat.size).toBe(1003);
     expect(stat.sizeEstimated).toBe(false);
     expect(client.callsTo("downloadAttachment")).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 
   it("downloads on a real read, then serves from the blob cache", async () => {
@@ -135,7 +135,7 @@ describe("_attachments", () => {
     client.resetCalls();
     await vfs.readFileBytes("/DOCSY/architecture-102/_attachments/file-3.bin");
     expect(client.callsTo("downloadAttachment")).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 
   it("answers ENOENT for a filename that is not there", async () => {
@@ -143,7 +143,7 @@ describe("_attachments", () => {
     await expect(vfs.readFileBytes("/DOCSY/architecture-102/_attachments/ghost.bin")).rejects.toMatchObject(
       { code: "ENOENT" },
     );
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -159,7 +159,7 @@ describe(".versions", () => {
     expect(entries).toHaveLength(50);
     expect(entries[0]!.name).toBe("60.md");
     expect(entries.at(-1)!.name).toBe("11.md");
-    vfs.close();
+    await vfs.close();
   });
 
   it("reads one version and refuses to write it", async () => {
@@ -169,7 +169,7 @@ describe(".versions", () => {
     expect(await vfs.readFile("/DOCSY/getting-started-101/.versions/1.md")).toContain("Start here.");
     const stat = await vfs.stat("/DOCSY/getting-started-101/.versions/1.md");
     expect(stat.mode & 0o200).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -221,13 +221,13 @@ describe(".comments.md", () => {
     expect(markdown).toContain("> Runs on clusters");
     // Storage HTML must not leak into the rendered view.
     expect(markdown).not.toContain("<p>");
-    vfs.close();
+    await vfs.close();
   });
 
   it("says so when there are none", async () => {
     const vfs = await openVfs(seeded());
     expect(await vfs.readFile("/DOCSY/architecture-102/.comments.md")).toContain("_None._");
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -237,7 +237,7 @@ describe(".by-id", () => {
     // Nothing listed yet: 103 is two levels down.
     const stat = await vfs.stat("/DOCSY/.by-id/103.md");
     expect(stat.id).toBe("103");
-    vfs.close();
+    await vfs.close();
   });
 
   it("is a symlink to the canonical path", async () => {
@@ -245,19 +245,19 @@ describe(".by-id", () => {
     expect(await vfs.readlink("/DOCSY/.by-id/103.md")).toBe(
       "/DOCSY/architecture-102/deployment-103/_index.md",
     );
-    vfs.close();
+    await vfs.close();
   });
 
   it("reads transparently through the link", async () => {
     const vfs = await openVfs(seeded());
     expect(await vfs.readFile("/DOCSY/.by-id/103.md")).toContain("Deploy.");
-    vfs.close();
+    await vfs.close();
   });
 
   it("answers ENOENT for an unknown id", async () => {
     const vfs = await openVfs(seeded());
     await expect(vfs.stat("/DOCSY/.by-id/999999.md")).rejects.toMatchObject({ code: "ENOENT" });
-    vfs.close();
+    await vfs.close();
   });
 
   it("answers ENOENT for a restricted id, revealing nothing", async () => {
@@ -265,7 +265,7 @@ describe(".by-id", () => {
     client.hiddenIds.add("103");
     const vfs = await openVfs(client);
     await expect(vfs.stat("/DOCSY/.by-id/103.md")).rejects.toMatchObject({ code: "ENOENT" });
-    vfs.close();
+    await vfs.close();
   });
 
   it("lists only a README, never the whole space", async () => {
@@ -273,7 +273,7 @@ describe(".by-id", () => {
     const entries = await vfs.readdir("/DOCSY/.by-id");
     expect(entries.map((e) => e.name)).toEqual(["README"]);
     expect(await vfs.readFile("/DOCSY/.by-id/README")).toContain("whole-space copy");
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -287,7 +287,7 @@ describe(".labels", () => {
       "getting-started-101.md",
     ]);
     expect(entries.every((e) => e.isSymbolicLink)).toBe(true);
-    vfs.close();
+    await vfs.close();
   });
 
   it("points its entries back through .by-id so a page has one home", async () => {
@@ -296,13 +296,13 @@ describe(".labels", () => {
     expect(await vfs.readlink("/DOCSY/.labels/runbook/architecture-102.md")).toBe(
       "/DOCSY/.by-id/102.md",
     );
-    vfs.close();
+    await vfs.close();
   });
 
   it("reads a page through the label view", async () => {
     const vfs = await openVfs(seeded());
     expect(await vfs.readFile("/DOCSY/.labels/runbook/architecture-102.md")).toContain("Arch.");
-    vfs.close();
+    await vfs.close();
   });
 
   it("explains in its README why the listing is partial", async () => {
@@ -310,13 +310,13 @@ describe(".labels", () => {
     const readme = await vfs.readFile("/DOCSY/.labels/README");
     expect(readme).toContain("no endpoint that enumerates the labels");
     expect(readme).toContain("still works");
-    vfs.close();
+    await vfs.close();
   });
 
   it("returns an empty listing for a label nothing carries", async () => {
     const vfs = await openVfs(seeded());
     expect(await vfs.readdir("/DOCSY/.labels/nonexistent")).toEqual([]);
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -324,7 +324,7 @@ describe(".recent", () => {
   it("offers the three windows", async () => {
     const vfs = await openVfs(seeded());
     expect((await vfs.readdir("/DOCSY/.recent")).map((e) => e.name)).toEqual(["24h", "7d", "30d"]);
-    vfs.close();
+    await vfs.close();
   });
 
   it("lists only pages inside the window", async () => {
@@ -335,7 +335,7 @@ describe(".recent", () => {
     expect(names).toContain("architecture-102.md");
     // Deployment was last touched in January.
     expect(names).not.toContain("deployment-103.md");
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -344,7 +344,7 @@ describe(".search", () => {
     const vfs = await openVfs(seeded());
     const entries = await vfs.readdir('/DOCSY/.search/text ~ "arch"');
     expect(entries.map((e) => e.name)).toEqual(["architecture-102.md"]);
-    vfs.close();
+    await vfs.close();
   });
 
   it("keeps resolving after the hint list is lost", async () => {
@@ -357,7 +357,7 @@ describe(".search", () => {
     // Resolution never consulted the list, so it still works.
     const entries = await vfs.readdir('/DOCSY/.search/text ~ "arch"');
     expect(entries.map((e) => e.name)).toEqual(["architecture-102.md"]);
-    vfs.close();
+    await vfs.close();
   });
 
   it("scopes every query to its own space", async () => {
@@ -367,7 +367,7 @@ describe(".search", () => {
     const vfs = await openVfs(client);
     const entries = await vfs.readdir('/DOCSY/.search/text ~ "arch"');
     expect(entries.map((e) => e.name)).not.toContain("other-home-200.md");
-    vfs.close();
+    await vfs.close();
   });
 
   it("cannot express a query containing a slash, and says so", async () => {
@@ -381,7 +381,7 @@ describe(".search", () => {
     const readme = await vfs.readFile("/DOCSY/.search/README");
     expect(readme).toContain("cannot contain");
     expect(readme).toContain("cql");
-    vfs.close();
+    await vfs.close();
   });
 
   it("remembers at most twenty queries", async () => {
@@ -392,7 +392,7 @@ describe(".search", () => {
     const entries = (await vfs.readdir("/DOCSY/.search")).filter((e) => e.name !== "README");
     expect(entries).toHaveLength(20);
     expect(entries[0]!.name).toBe('text ~ "q24"');
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -424,7 +424,7 @@ describe("non-page children", () => {
     expect(json.type).toBe("database");
     expect(json.note).toContain("link only");
     expect((await vfs.stat("/DOCSY/metrics-300.database.json")).mode & 0o200).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 });
 
@@ -448,6 +448,6 @@ describe("the convenience directories obey the demand principle", () => {
     expect(client.callsTo("getPage")).toBe(0);
     expect(client.callsTo("getPagesBulk")).toBe(0);
     expect(client.callsTo("downloadAttachment")).toBe(0);
-    vfs.close();
+    await vfs.close();
   });
 });

@@ -27,12 +27,19 @@ import {
   parseName,
   splitParent,
   normalizePath,
+  titleFromName,
 } from "./path-mapper.js";
 import type { ResolvedVfsOptions, VfsOptions } from "./options.js";
 import { resolveVfsOptions } from "./options.js";
+import { mapClientError } from "./errors.js";
 import { PageStore } from "./page-store.js";
-import { PathResolver, isContainer, type Resolved } from "./resolver.js";
+import { AuditLog } from "./audit-log.js";
+import { ConflictStore } from "./conflict-store.js";
+import { assertWritable, type ModeGuard } from "./mode.js";
+import { parseVfsFrontmatter } from "./page-store.js";
+import { PathResolver, isContainer, type MissingLeaf, type Resolved } from "./resolver.js";
 import { VirtualDirs } from "./virtual-dirs.js";
+import { WriteBack } from "./write-back.js";
 import { TreeIndex, type TreeNode } from "./tree-index.js";
 import { VfsError, type VfsDirent, type VfsNode, type VfsStat } from "./types.js";
 import type { ConfluenceVfs, VfsWriteResult } from "./vfs.js";
@@ -70,6 +77,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
   readonly runtime: VfsRuntime | undefined;
   private readonly store: PageStore | undefined;
   private readonly virtual: VirtualDirs | undefined;
+  private readonly writeBack: WriteBack | undefined;
+  readonly conflicts: ConflictStore | undefined;
+  readonly audit: AuditLog | undefined;
   private readonly resolver: PathResolver;
 
   constructor(
@@ -115,8 +125,34 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
         readQueryHints: () => this.readQueryHints(),
         writeQueryHints: (queries) => this.writeQueryHints(queries),
       });
+      this.conflicts = new ConflictStore(runtime.conflictDir);
+      this.audit = new AuditLog(
+        join(runtime.cacheDir, "vfs-audit.jsonl"),
+        opts.profile,
+        runtime.accountId,
+        opts.now,
+      );
+      this.writeBack = new WriteBack({
+        client: opts.client,
+        index: this.index,
+        cache,
+        conflicts: this.conflicts,
+        audit: this.audit,
+        guard: this.guard,
+        instanceUrl: runtime.instanceUrl,
+        logger: opts.logger,
+        now: opts.now,
+        sleep: opts.sleep,
+        coalesceMs: opts.coalesceMs,
+        schedule: opts.schedule,
+      });
       this.restoreSnapshot();
     }
+  }
+
+  /** The single source of truth for what this filesystem may change. */
+  get guard(): ModeGuard {
+    return { mode: this.opts.mode, allowDelete: this.opts.allowDelete };
   }
 
   /** The `.search/` hint list. Disposable by design (decision 8). */
@@ -226,9 +262,26 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     }
   }
 
-  close(): void {
+  /** Sends pending coalesced writes, persists the tree, closes the cache. */
+  async close(): Promise<void> {
+    await this.writeBack?.flush();
     this.saveSnapshot();
     this.cache?.close();
+  }
+
+  /** Sends pending coalesced writes without closing. */
+  async flush(): Promise<void> {
+    await this.writeBack?.flush();
+  }
+
+  private requireWriteBack(): WriteBack {
+    if (!this.writeBack) {
+      throw new VfsError(
+        "EINVAL",
+        "This filesystem was built without a cache; use ConfluenceVfsImpl.open()",
+      );
+    }
+    return this.writeBack;
   }
 
   /** Fills the body cache for many pages at once, within the prefetch budget. */
@@ -586,26 +639,383 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     )}\n`;
   }
 
-  // ------------------------------------------------------- not yet built
+  // ------------------------------------------------------------- the writes
 
-  async writeFile(path: string, _content: string | Uint8Array): Promise<VfsWriteResult> {
-    throw new VfsError("EINVAL", `Writing is implemented in WP5 (${path})`, { path });
+  /**
+   * Create or update a page.
+   *
+   * A path that resolves to an existing body is an update; one that does not is
+   * a create, which is how `echo > new-page.md` works. Everything else — a
+   * version file, a comments file, a label link — is structurally read-only and
+   * says so with `EROFS`, whatever the mode.
+   */
+  async writeFile(path: string, content: string | Uint8Array): Promise<VfsWriteResult> {
+    const text = typeof content === "string" ? content : new TextDecoder().decode(content);
+    const resolved = await this.resolver.resolve(path, { allowMissingLeaf: true });
+
+    if (resolved.kind === "missing") {
+      return this.createFromMissing(resolved, path, text);
+    }
+    switch (resolved.kind) {
+      case "body": {
+        if (resolved.node.type === "folder") {
+          // A Confluence folder has no body, so there is nothing to write into.
+          throw new VfsError(
+            "EROFS",
+            `${path} belongs to a Confluence folder, which has no body. Folders carry a title only`,
+            { path },
+          );
+        }
+        return this.requireWriteBack().updatePage(resolved.node, path, text);
+      }
+      case "attachment": {
+        assertWritable(this.guard, "upload-attachment", path);
+        return this.writeAttachment(resolved.node, resolved.filename, path, content);
+      }
+      case "container":
+      case "space":
+      case "root":
+        throw new VfsError("EISDIR", `Is a directory: ${path}`, { path });
+      default:
+        throw new VfsError(
+          "EROFS",
+          `${path} is a generated view and cannot be written`,
+          { path },
+        );
+    }
   }
 
+  private async createFromMissing(
+    missing: MissingLeaf,
+    path: string,
+    text: string,
+  ): Promise<VfsWriteResult> {
+    const parent = missing.parent;
+    if (parent.kind !== "container" && parent.kind !== "space") {
+      throw new VfsError("EROFS", `Cannot create ${path} here`, { path });
+    }
+    assertNotReserved(missing.name, path);
+
+    const { spaceKey, parentNode, parentIsFolder } = await this.containerOf(parent, path);
+    const result = await this.requireWriteBack().createPage({
+      parent: parentNode,
+      spaceKey,
+      name: missing.name,
+      path,
+      content: text,
+      parentIsFolder,
+    });
+    // The canonical name carries the new id; report it so a caller does not go
+    // on addressing a name that only exists as a session alias.
+    const node = this.index.node(result.pageId);
+    const canonical = node
+      ? `${splitParent(normalizePath(path)).parent}/${formatDirName(node.title, node.id)}.md`.replace(
+          "//",
+          "/",
+        )
+      : path;
+    this.opts.logger.info("created page", { path: canonical, pageId: result.pageId });
+    return { ...result, path: canonical };
+  }
+
+  private async containerOf(
+    parent: Resolved,
+    path: string,
+  ): Promise<{ spaceKey: string; parentNode: TreeNode; parentIsFolder: boolean }> {
+    if (parent.kind === "space") {
+      const homepageId = parent.homepageId;
+      const node = homepageId ? this.index.node(homepageId) : undefined;
+      if (!node) throw new VfsError("ENOENT", `Space ${parent.spaceKey} has no home page`, { path });
+      return { spaceKey: parent.spaceKey, parentNode: node, parentIsFolder: false };
+    }
+    if (parent.kind === "container") {
+      return {
+        spaceKey: parent.node.spaceKey,
+        parentNode: parent.node,
+        parentIsFolder: parent.node.type === "folder",
+      };
+    }
+    throw new VfsError("EROFS", `Cannot create anything under ${path}`, { path });
+  }
+
+  private async writeAttachment(
+    node: TreeNode,
+    filename: string,
+    path: string,
+    content: string | Uint8Array,
+  ): Promise<VfsWriteResult> {
+    const bytes =
+      typeof content === "string" ? new TextEncoder().encode(content) : new Uint8Array(content);
+    const existing = (await this.opts.client.listAttachments(node.id)).find(
+      (attachment) => attachment.filename === filename,
+    );
+    try {
+      const saved = existing
+        ? await this.opts.client.updateAttachment({
+            attachmentId: existing.id,
+            pageId: node.id,
+            data: bytes,
+          })
+        : await this.opts.client.uploadAttachment({
+            pageId: node.id,
+            filename,
+            data: bytes,
+          });
+      this.audit?.record({
+        op: "upload-attachment",
+        path,
+        pageId: node.id,
+        toVersion: saved.version,
+        result: "ok",
+      });
+      return { path, pageId: node.id, version: saved.version, created: !existing };
+    } catch (error) {
+      const mapped = mapClientError(error, path);
+      this.audit?.record({
+        op: "upload-attachment",
+        path,
+        pageId: node.id,
+        result: "error",
+        errorCode: mapped.code,
+      });
+      throw mapped;
+    }
+  }
+
+  /**
+   * `mkdir` always creates a page with an empty body (decision 7).
+   *
+   * Never a Confluence folder: the folder API is Cloud-only, and a folder has
+   * no body — so `_index.md` inside one would have to be unwritable, which is
+   * a worse surprise than a directory that happens to be a page.
+   */
   async mkdir(path: string): Promise<VfsWriteResult> {
-    throw new VfsError("EINVAL", `mkdir is implemented in WP5 (${path})`, { path });
+    const resolved = await this.resolver.resolve(path, { allowMissingLeaf: true });
+    if (resolved.kind !== "missing") {
+      throw new VfsError("EEXIST", `Already exists: ${path}`, { path });
+    }
+    assertWritable(this.guard, "mkdir", path);
+    assertNotReserved(resolved.name, path);
+
+    const { spaceKey, parentNode, parentIsFolder } = await this.containerOf(resolved.parent, path);
+    const result = await this.requireWriteBack().createPage({
+      parent: parentNode,
+      spaceKey,
+      name: resolved.name,
+      path,
+      content: "",
+      parentIsFolder,
+    });
+    this.audit?.record({ op: "mkdir", path, pageId: result.pageId, result: "ok" });
+    return result;
   }
 
-  async rename(from: string, _to: string): Promise<void> {
-    throw new VfsError("EINVAL", `rename is implemented in WP5 (${from})`, { path: from });
+  /**
+   * Retitle, reparent, or move across spaces, depending on what changed.
+   *
+   * The id suffix is part of the page's identity, not of its name, so a rename
+   * that tries to change it is `EINVAL` rather than a silent no-op on a
+   * different page.
+   */
+  async rename(from: string, to: string): Promise<void> {
+    const source = (await this.resolver.resolve(from)) as Resolved;
+    if (source.kind !== "container" && source.kind !== "body") {
+      throw new VfsError("EROFS", `${from} is a generated view and cannot be renamed`, {
+        path: from,
+      });
+    }
+    const node = source.node;
+    const target = splitParent(normalizePath(to));
+    const parsedTarget = parseName(target.name);
+
+    if (parsedTarget.idCandidate !== undefined && parsedTarget.idCandidate !== node.id) {
+      throw new VfsError(
+        "EINVAL",
+        `A rename cannot change the id suffix: ${from} is page ${node.id}, but ${to} names ${parsedTarget.idCandidate}`,
+        { path: to },
+      );
+    }
+
+    const destination = await this.resolver.resolve(target.parent);
+    const { spaceKey, parentNode } = await this.containerOf(destination as Resolved, to);
+    const sameParent = parentNode.id === node.parentId;
+    const newTitle = parsedTarget.idCandidate
+      ? titleFromName(parsedTarget.slugCandidate)
+      : titleFromName(parsedTarget.stem);
+
+    try {
+      if (!sameParent) {
+        assertWritable(this.guard, "move", from);
+        if (spaceKey !== node.spaceKey) {
+          // Cross-space moves go through the v1 positional endpoint, which is
+          // the only one that accepts a target in another space.
+          await this.opts.client.movePageToPosition(node.id, "append", parentNode.id);
+        } else if (parentNode.type === "folder") {
+          await this.opts.client.movePageToFolder(node.id, parentNode.id);
+        } else {
+          await this.opts.client.movePage(node.id, parentNode.id);
+        }
+        this.index.forget(node.id);
+        this.index.attachChild(parentNode.id, {
+          id: node.id,
+          title: node.title,
+          type: node.type,
+          spaceKey,
+          version: node.version,
+        });
+        this.audit?.record({ op: "move", path: from, target: to, pageId: node.id, result: "ok" });
+      }
+
+      // Confluence has no separate rename: a title change is an update, so it
+      // costs a version like any other edit.
+      const current = this.index.node(node.id) ?? node;
+      if (newTitle && newTitle !== current.title) {
+        assertWritable(this.guard, "rename", from);
+        const page = await this.opts.client.getPage(node.id);
+        await this.opts.client.updatePage({
+          id: node.id,
+          title: newTitle,
+          storage: page.storage,
+          version: (page.version ?? current.version ?? 1) + 1,
+        });
+        this.index.upsert({ id: node.id, title: newTitle, version: (page.version ?? 1) + 1 });
+        this.audit?.record({
+          op: "rename",
+          path: from,
+          target: to,
+          pageId: node.id,
+          result: "ok",
+        });
+      }
+    } catch (error) {
+      const mapped = mapClientError(error, from);
+      this.audit?.record({
+        op: sameParent ? "rename" : "move",
+        path: from,
+        target: to,
+        pageId: node.id,
+        result: "error",
+        errorCode: mapped.code,
+      });
+      throw mapped;
+    }
   }
 
-  async rm(path: string): Promise<void> {
-    throw new VfsError("EINVAL", `rm is implemented in WP5 (${path})`, { path });
+  /**
+   * Move a page to the trash. Never a purge — the VFS calls no purge endpoint.
+   *
+   * A directory needs the recursive flag, because Confluence takes the children
+   * with it and a caller who asked to remove one page should not lose a subtree
+   * by accident.
+   */
+  async rm(path: string, options: { recursive?: boolean } = {}): Promise<void> {
+    const resolved = (await this.resolver.resolve(path)) as Resolved;
+
+    if (resolved.kind === "conflict-file") {
+      // Local only: touches no Confluence content, so it is allowed in ro mode
+      // and without --allow-delete (decision 9).
+      this.conflicts?.discardAllFor(resolved.node.id);
+      return;
+    }
+    if (resolved.kind === "attachment") {
+      assertWritable(this.guard, "delete-attachment", path);
+      const found = (await this.opts.client.listAttachments(resolved.node.id)).find(
+        (attachment) => attachment.filename === resolved.filename,
+      );
+      if (!found) throw new VfsError("ENOENT", `No such attachment: ${path}`, { path });
+      await this.opts.client.deleteAttachment(found.id);
+      this.audit?.record({
+        op: "delete-attachment",
+        path,
+        pageId: resolved.node.id,
+        result: "ok",
+      });
+      return;
+    }
+    if (resolved.kind !== "container" && resolved.kind !== "body") {
+      throw new VfsError("EROFS", `${path} is a generated view and cannot be deleted`, { path });
+    }
+
+    const node = resolved.node;
+    assertWritable(this.guard, "delete", path);
+
+    if (resolved.kind === "container" && !options.recursive) {
+      const children = await this.index.loadChildren(node.id);
+      if (children.length > 0) {
+        throw new VfsError(
+          "ENOTEMPTY",
+          `${path} has ${children.length} child page(s). Deleting it sends them to the trash too; pass -r to confirm`,
+          { path },
+        );
+      }
+    }
+
+    try {
+      await this.opts.client.deletePage(node.id);
+      this.cache?.forgetPage(node.id);
+      this.index.forget(node.id);
+      this.audit?.record({
+        op: "delete",
+        path,
+        pageId: node.id,
+        fromVersion: node.version,
+        result: "ok",
+      });
+    } catch (error) {
+      const mapped = mapClientError(error, path);
+      this.audit?.record({
+        op: "delete",
+        path,
+        pageId: node.id,
+        result: "error",
+        errorCode: mapped.code,
+      });
+      throw mapped;
+    }
   }
 
-  async copy(from: string, _to: string): Promise<VfsWriteResult> {
-    throw new VfsError("EINVAL", `copy is implemented in WP5 (${from})`, { path: from });
+  async copy(from: string, to: string): Promise<VfsWriteResult> {
+    const source = (await this.resolver.resolve(from)) as Resolved;
+    if (source.kind !== "container" && source.kind !== "body") {
+      throw new VfsError("EROFS", `${from} is a generated view and cannot be copied`, {
+        path: from,
+      });
+    }
+    assertWritable(this.guard, "copy", to);
+
+    const target = splitParent(normalizePath(to));
+    const destination = await this.resolver.resolve(target.parent);
+    const { spaceKey, parentNode } = await this.containerOf(destination as Resolved, to);
+    const parsed = parseName(target.name);
+    const newTitle = titleFromName(parsed.idCandidate ? parsed.slugCandidate : parsed.stem);
+
+    try {
+      const copied = await this.opts.client.copyPage({
+        sourceId: source.node.id,
+        targetSpaceKey: spaceKey,
+        newTitle,
+        parentId: parentNode.id,
+      });
+      this.index.attachChild(parentNode.id, {
+        id: copied.id,
+        title: copied.title,
+        type: "page",
+        spaceKey,
+        version: copied.version ?? 1,
+      });
+      this.audit?.record({ op: "copy", path: from, target: to, pageId: copied.id, result: "ok" });
+      return { path: to, pageId: copied.id, version: copied.version ?? 1, created: true };
+    } catch (error) {
+      const mapped = mapClientError(error, from);
+      this.audit?.record({
+        op: "copy",
+        path: from,
+        target: to,
+        result: "error",
+        errorCode: mapped.code,
+      });
+      throw mapped;
+    }
   }
 
   /**
