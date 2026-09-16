@@ -359,13 +359,15 @@ Conventions for every work package:
 
 ### WP0 - Spike and de-risking (2 days)
 
-- [ ] **WP0.1** Add `just-bash@3.4.2` as a dependency of `apps/cli`, pin the exact version, and confirm `bun install` completes without postinstall errors.
-- [ ] **WP0.2** Spike script `spikes/vfs-just-bash/spike.ts` constructing `new Bash({ defenseInDepth: false, fs: new MountableFs({ mounts: [{ mountPoint: "/DOCSY", filesystem: fakeFs }] }) })` and running `ls -R`, `cat`, `grep -rn`, `find -name`, `sed`, `jq` and `echo > file` against a fake `IFileSystem` under Bun 1.3.14. Expectation: all succeed with no `DefenseInDepthBox` error.
-- [ ] **WP0.3** Spike against the real `ConfluenceClient` (profile `mayflower`, space `DOCSY`, read-only): `ls /DOCSY`, `cat` of one page, `grep -rl` across 20 pages. Log latency and request counts.
-- [ ] **WP0.3b** **Measure the semantics of the CQL text search**, the basis for decision 12: create a test page with known character sequences, then probe `text ~` against a whole word, a word prefix, a word interior, underscore and hyphen compounds, an umlaut and a digit sequence. Record the result as a table in `spikes/vfs-just-bash/README.md` and derive the final guard rule from it. Delete the test page afterwards.
-- [ ] **WP0.4** Bundle measurement: run `bun run build:cli` with and without just-bash, noting the size of `dist/index.js` and of the compiled binary; then apply the `commands: [...]` restriction, excluding python3, js-exec, sqlite3 and curl, and measure again. Record the result in `spikes/vfs-just-bash/README.md`.
-- [ ] **WP0.5** Smoke-test `webdav-server@2.6.3` under Bun: start it with an in-memory filesystem on `127.0.0.1:0`, exercise it with `curl -X PROPFIND`, and on macOS mount it with `mount_webdav` and list it in the Finder. Record whether it works, and any workarounds, in the spike readme.
-- [ ] **WP0.6** Document the decision: is the bundle size acceptable? If not, load just-bash through a dynamic import on the `wiki sh` path only, so that other commands carry no cost.
+Results: [`spikes/vfs-just-bash/README.md`](../../spikes/vfs-just-bash/README.md).
+
+- [x] **WP0.1** Add `just-bash@3.4.2` as a dependency of `apps/cli`, pin the exact version, and confirm `bun install` completes without postinstall errors.
+- [x] **WP0.2** Spike script `spikes/vfs-just-bash/spike.ts` constructing `new Bash({ defenseInDepth: false, fs: new MountableFs({ mounts: [{ mountPoint: "/DOCSY", filesystem: fakeFs }] }) })` and running `ls -R`, `cat`, `grep -rn`, `find -name`, `sed`, `jq` and `echo > file` against a fake `IFileSystem` under Bun 1.3.14. Expectation: all succeed with no `DefenseInDepthBox` error.
+- [ ] **WP0.3** *(blocked: no live tenant in CI; script written, run it with the `mayflower` profile)* Spike against the real `ConfluenceClient` (profile `mayflower`, space `DOCSY`, read-only): `ls /DOCSY`, `cat` of one page, `grep -rl` across 20 pages. Log latency and request counts.
+- [ ] **WP0.3b** *(blocked: no live tenant in CI; script written, run it with the `mayflower` profile)* **Measure the semantics of the CQL text search**, the basis for decision 12: create a test page with known character sequences, then probe `text ~` against a whole word, a word prefix, a word interior, underscore and hyphen compounds, an umlaut and a digit sequence. Record the result as a table in `spikes/vfs-just-bash/README.md` and derive the final guard rule from it. Delete the test page afterwards.
+- [x] **WP0.4** Bundle measurement: run `bun run build:cli` with and without just-bash, noting the size of `dist/index.js` and of the compiled binary; then apply the `commands: [...]` restriction, excluding python3, js-exec, sqlite3 and curl, and measure again. Record the result in `spikes/vfs-just-bash/README.md`.
+- [x] **WP0.5** *(server side verified under Bun; the macOS `mount_webdav`/Finder half stays open against WP7.9)* Smoke-test `webdav-server@2.6.3` under Bun: start it with an in-memory filesystem on `127.0.0.1:0`, exercise it with `curl -X PROPFIND`, and on macOS mount it with `mount_webdav` and list it in the Finder. Record whether it works, and any workarounds, in the spike readme.
+- [x] **WP0.6** Document the decision: is the bundle size acceptable? If not, load just-bash through a dynamic import on the `wiki sh` path only, so that other commands carry no cost.
 
 ### WP1 - Package scaffold and core API (3 days)
 
