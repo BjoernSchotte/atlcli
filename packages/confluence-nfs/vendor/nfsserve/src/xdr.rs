@@ -2,6 +2,8 @@ use std::io::{Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 pub type XDREndian = BigEndian;
+// atlcli: bounds are checked before allocating from an untrusted XDR length.
+pub(crate) const MAX_RPC_RECORD: usize = 4 * 1024 * 1024;
 use crate::nfs::nfsstring;
 
 /// See https://datatracker.ietf.org/doc/html/rfc1014
@@ -120,6 +122,9 @@ impl XDR for Vec<u8> {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut length: u32 = 0;
         length.deserialize(src)?;
+        if length as usize > MAX_RPC_RECORD {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "XDR byte limit exceeded"));
+        }
         self.resize(length as usize, 0);
         src.read_exact(self)?;
         // read padding
@@ -152,6 +157,9 @@ impl XDR for Vec<u32> {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut length: u32 = 0;
         length.deserialize(src)?;
+        if length as usize > MAX_RPC_RECORD / std::mem::size_of::<u32>() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "XDR array limit exceeded"));
+        }
         self.resize(length as usize, 0);
         for i in self {
             i.deserialize(src)?;

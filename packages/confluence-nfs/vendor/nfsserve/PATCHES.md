@@ -30,3 +30,9 @@ Both handlers pass the client's cookie verifier (or the observed directory
 version for the initial request). The Bun adapter checks it against the exact
 metadata listing used for pagination, returning BAD_COOKIE on change. This avoids
 a check-then-list race and lets clients restart instead of silently skipping rows.
+
+Wire allocation follow-up: rpcwire.rs rejects records larger than 4 MiB before
+resizing and rejects more than 1,024 fragments per record (including empty ones).
+xdr.rs checks byte and u32-array lengths before allocating, with a 4 MiB decoded
+payload limit. This closes each malformed connection; the listener stays alive.
+This is not yet a bound on total connections, pending tasks or queued responses.

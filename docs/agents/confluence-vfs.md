@@ -227,3 +227,7 @@ If a directory changes during NFS pagination, the server returns `BAD_COOKIE`;
 restart the listing if the OS does not retry automatically. Directory timestamps
 track changes observed by this mount. Source builds require bridge-version-2
 helpers; rebuild an older companion binary before mounting.
+
+The experimental NFS listener rejects RPC records over 4 MiB, more than 1,024
+fragments per record, and XDR arrays exceeding 4 MiB before allocating their
+payload. Malformed connections are closed; reconnect with a valid request.

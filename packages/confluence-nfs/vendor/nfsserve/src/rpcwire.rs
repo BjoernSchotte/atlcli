@@ -99,7 +99,10 @@ async fn read_fragment(socket: &mut DuplexStream, append_to: &mut Vec<u8>) -> Re
     let length = (fragment_header & ((1 << 31) - 1)) as usize;
     trace!("Reading fragment length:{}, last:{}", length, is_last);
     let start_offset = append_to.len();
-    append_to.resize(append_to.len() + length, 0);
+    if length > MAX_RPC_RECORD.saturating_sub(start_offset) {
+        return Err(anyhow!("RPC record limit exceeded"));
+    }
+    append_to.resize(start_offset + length, 0);
     socket.read_exact(&mut append_to[start_offset..]).await?;
     trace!("Finishing Reading fragment length:{}, last:{}", length, is_last);
     Ok(is_last)
@@ -125,6 +128,7 @@ pub type SocketMessageType = Result<Vec<u8>, anyhow::Error>;
 #[derive(Debug)]
 pub struct SocketMessageHandler {
     cur_fragment: Vec<u8>,
+    fragment_count: usize,
     socket_receive_channel: DuplexStream,
     reply_send_channel: mpsc::UnboundedSender<SocketMessageType>,
     context: RPCContext,
@@ -138,6 +142,7 @@ impl SocketMessageHandler {
         (
             Self {
                 cur_fragment: Vec::new(),
+                fragment_count: 0,
                 socket_receive_channel: sockrecv,
                 reply_send_channel: msgsend,
                 context: context.clone(),
@@ -149,8 +154,13 @@ impl SocketMessageHandler {
 
     /// Reads a fragment from the socket. This should be looped.
     pub async fn read(&mut self) -> Result<(), anyhow::Error> {
+        self.fragment_count += 1;
+        if self.fragment_count > 1024 {
+            return Err(anyhow!("RPC fragment limit exceeded"));
+        }
         let is_last = read_fragment(&mut self.socket_receive_channel, &mut self.cur_fragment).await?;
         if is_last {
+            self.fragment_count = 0;
             let fragment = std::mem::take(&mut self.cur_fragment);
             let context = self.context.clone();
             let send = self.reply_send_channel.clone();

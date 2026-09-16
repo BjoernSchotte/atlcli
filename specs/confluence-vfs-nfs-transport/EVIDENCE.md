@@ -246,6 +246,26 @@ Rust format/build/Clippy and typecheck passed. Actual kernel behavior during a
 concurrent remote mutation, complete read snapshots, and freshness/performance
 acceptance remain separate outstanding gates.
 
+## Slice 10: bounded RPC records and XDR allocations
+
+The pinned server previously resized vectors directly from untrusted fragment
+and XDR lengths. RPC records now have a 4 MiB cumulative cap, checked before
+allocation, plus a 1,024-fragment cap including empty fragments. XDR byte vectors
+and u32 arrays independently reject more than 4 MiB of decoded payload before
+allocation. Existing 1 MiB NFS reads fit within these limits.
+
+Actual TCP tests send an oversized fragment header, a record crossing the limit
+across fragments, 1,025 empty fragments, an excessive auth-body length and an
+excessive AUTH_UNIX group count. Each connection closes within the test deadline;
+a fresh NULL RPC succeeds after each case. A valid fragmented RPC with a split
+header still succeeds. macOS synthetic and Linux live-RO runs each passed 14
+tests with 389 assertions, including single and combined native mounts.
+Typecheck and Rust format/Clippy/tests passed.
+
+These per-record checks do not complete resource-budget acceptance: the upstream
+connection count, spawned request tasks, reply queues and slow-client deadlines
+still need bounds. No aggregate-memory or denial-of-service-proof claim is made.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

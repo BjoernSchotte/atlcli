@@ -89,6 +89,49 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     await server.exited;
   });
 
+  it("closes oversized or excessively fragmented RPCs and survives malformed XDR lengths", async () => {
+    const { server } = await fixture(["DOCSY"], false);
+    const maximum = 4 * 1024 * 1024;
+    const call = ints(9, 0, 2, 100003, 3, 0, 0, 0, 0, 0);
+    const invalidAuth = ints(9, 0, 2, 100003, 3, 0, 0, 0xffffffff);
+    const authUnix = ints(0, 0, 0, 0, 0xffffffff); // stamp, hostname, uid, gid, group count
+    const invalidGroups = Buffer.concat([ints(9, 0, 2, 100003, 3, 0, 1), opaque(authUnix), ints(0, 0)]);
+    for (const attack of [
+      ints(0x80000000 + maximum + 1),
+      Buffer.concat([ints(maximum), Buffer.alloc(maximum), ints(0x80000001)]),
+      Buffer.alloc(4 * 1025), // empty non-final fragments still consume the fragment budget
+      Buffer.concat([ints(0x80000000 + invalidAuth.length), invalidAuth]),
+      Buffer.concat([ints(0x80000000 + invalidGroups.length), invalidGroups]),
+    ]) {
+      await new Promise<void>((done, reject) => {
+        const socket = connect(server.port, "127.0.0.1");
+        const timeout = setTimeout(() => { socket.destroy(); reject(new Error("Malformed RPC was not disconnected")); }, 3000);
+        socket.on("connect", () => socket.write(attack));
+        socket.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET" && error.code !== "EPIPE") reject(error); });
+        socket.on("close", () => { clearTimeout(timeout); done(); });
+      });
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+    }
+    // A valid fragmented record is accepted, including a header split across writes.
+    await new Promise<void>((done, reject) => {
+      const socket = connect(server.port, "127.0.0.1");
+      socket.setTimeout(3000, () => socket.destroy(new Error("Fragmented RPC timed out")));
+      socket.on("error", reject);
+      socket.on("connect", () => {
+        socket.write(ints(12).subarray(0, 2));
+        socket.write(Buffer.concat([ints(12).subarray(2), call.subarray(0, 12), ints(0x80000000 + call.length - 12), call.subarray(12)]));
+      });
+      let reply = Buffer.alloc(0);
+      socket.on("data", (data) => {
+        reply = Buffer.concat([reply, Buffer.from(data)]);
+        if (reply.length >= 28) {
+          try { expect(reply.readUInt32BE(4)).toBe(9); socket.destroy(); done(); }
+          catch (error) { socket.destroy(); reject(error); }
+        }
+      });
+    });
+  });
+
   for (const procedure of [16, 17]) {
     it(`paginates NFS procedure ${procedure} without repeating or omitting entries`, async () => {
       const { server, vfs } = await fixture(["DOCSY"], false);
