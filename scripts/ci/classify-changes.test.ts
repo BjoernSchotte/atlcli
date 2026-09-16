@@ -175,7 +175,7 @@ describe("classifyChanges", () => {
   it("selects NFS proof for helper and VFS inputs but not unrelated CLI code", () => {
     for (const path of ["packages/confluence-nfs/src/main.rs", "packages/confluence-vfs/src/vfs.ts",
       "apps/cli/src/vfs/nfs-framing.ts", "apps/cli/src/commands/wiki-mount.ts", "packages/core/src/config.ts",
-      "scripts/build-nfs-helper.ts", "scripts/release-archive.ts"]) {
+      "scripts/build-nfs-helper.ts", "scripts/release-archive.ts", "scripts/verify-release-artifacts.ts"]) {
       expect(classifyChanges([path]).nfs).toBe(true);
     }
     expect(classifyChanges(["apps/cli/src/commands/jira.ts"]).nfs).toBe(false);

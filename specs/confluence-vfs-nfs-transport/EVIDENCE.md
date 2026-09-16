@@ -315,6 +315,31 @@ archive verification, installer/Homebrew integration, a declared Linux libc
 baseline, all architecture runners and complete dependency license notices remain
 open. No release or installer mutation was performed.
 
+## Slice 13: deterministic companion archives and compiled discovery proof
+
+The existing TAR writer now accepts one or multiple regular files, sorts their
+normalized names and rejects duplicate/unsafe paths. A bounded multi-entry
+inspector verifies checksums, body bounds, padding, duplicate names and exact end
+blocks, rejecting links and prefixes. The existing single-binary wrapper retains
+its exact-one-entry contract for release callers; this slice does not silently
+relax the current release allowlist. Archive tests include empty and 513-byte
+files and executable modes as well as malformed archive rejection.
+
+Native Bun CLI binaries were built on macOS arm64 and Linux x64 and packed with
+the native helper, its manifest and nfsserve license. Both platform system `tar`
+implementations extracted byte-identical files; CLI --version and helper --version
+ran from the extracted directories. The CLI lifecycle test now accepts
+ATLCLI_NFS_TEST_CLI and can deliberately omit the helper override, proving adjacent
+companion discovery. Linux passed all four compiled live-DOCSY lifecycle cases:
+signal, busy directory, explicit unmount and helper crash. With archive regressions,
+22 tests / 113 assertions passed. macOS passed 18 archive regressions plus two
+native synthetic mounts using the extracted helper. Typecheck passed.
+
+macOS compiled live CLI proof remains blocked by the missing local mayflower
+profile (checked without exposing config contents); credentials were not changed.
+Release build assembly/allowlist, installers, Homebrew and remaining architecture/
+libc/license acceptance still need integration. No published release was changed.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

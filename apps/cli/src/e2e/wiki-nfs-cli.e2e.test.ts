@@ -7,17 +7,23 @@ import { platform, tmpdir } from "node:os";
 import { isMounted, runMountCommand, type MountRecord } from "../commands/wiki-mount.js";
 
 const run = process.env.ATLCLI_NFS_CLI_E2E === "1";
+const binary = process.env.ATLCLI_NFS_TEST_CLI;
+const command = binary ? [resolve(binary)] : [process.execPath, "--conditions=development", "run", "--cwd",
+  resolve(import.meta.dir, "../.."), "src/index.ts"];
 for (const scenario of ["signal", "busy", "explicit", "helper-crash"] as const) {
-it.skipIf(!run)(`source CLI NFS DOCSY lifecycle: ${scenario}`, async () => {
+it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${scenario}`, async () => {
   const root = mkdtempSync(join(tmpdir(), "atlcli-nfs-cli-"));
   const mountpoint = join(root, "wiki docs");
   const cache = join(root, "cache");
   const helper = process.env.ATLCLI_NFS_TEST_HELPER;
-  if (!helper) throw new Error("Set ATLCLI_NFS_TEST_HELPER");
-  const child = spawn(process.execPath, ["--conditions=development", "run", "--cwd", "apps/cli", "src/index.ts",
+  if (!helper && !binary) throw new Error("Set ATLCLI_NFS_TEST_HELPER for source tests");
+  const env = { ...process.env };
+  if (helper) env.ATLCLI_NFS_HELPER = helper;
+  else delete env.ATLCLI_NFS_HELPER; // Compiled tests prove adjacent companion discovery.
+  const child = spawn(command[0]!, [...command.slice(1),
     "wiki", "mount", mountpoint, "--profile", "mayflower", "--space", "DOCSY", "--mode", "ro",
     "--transport", "nfs", "--cache-dir", cache, "--json"], {
-    cwd: resolve(import.meta.dir, "../../../.."), env: { ...process.env, ATLCLI_NFS_HELPER: helper },
+    cwd: resolve(import.meta.dir, "../../../.."), env,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "";
@@ -65,8 +71,7 @@ it.skipIf(!run)(`source CLI NFS DOCSY lifecycle: ${scenario}`, async () => {
       holder = undefined;
     }
     if (scenario === "explicit") {
-      expect(await runMountCommand([process.execPath, "--conditions=development", "run", "--cwd",
-        resolve(import.meta.dir, "../.."), "src/index.ts", "wiki", "mount", "unmount", mountpoint,
+      expect(await runMountCommand([...command, "wiki", "mount", "unmount", mountpoint,
         "--profile", "mayflower", "--cache-dir", cache, "--json"], true)).toBe(0);
     } else if (scenario === "helper-crash") process.kill(record!.helperPid!, "SIGKILL");
     else child.kill("SIGTERM");

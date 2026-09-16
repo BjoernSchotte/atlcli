@@ -32,6 +32,22 @@ other architectures, complete third-party notices and CLI archive/installer/
 Homebrew integration remain WP5 acceptance work; do not label these artifacts a
 complete release bundle. Windows continues to use WebDAV.
 
+## Compiled CLI acceptance
+
+Place `atlcli-confluence-nfs` next to a compiled `atlcli`. Without
+`ATLCLI_NFS_HELPER`, the mount command discovers this companion automatically.
+For the live DOCSY lifecycle test of an extracted local bundle:
+
+```sh
+env -u ATLCLI_NFS_TEST_HELPER -u ATLCLI_NFS_HELPER \
+  ATLCLI_NFS_TEST_CLI=/path/to/extracted/atlcli ATLCLI_NFS_CLI_E2E=1 \
+  bun run test apps/cli/src/e2e/wiki-nfs-cli.e2e.test.ts
+```
+
+This requires the local mayflower profile and native NFS mount privileges.
+The test covers normal, busy, explicit and helper-crash shutdown and cleans up
+its own mounts. Keep the companion and CLI on the same bridge protocol version.
+
 ## Related documents
 
 - [Protocol patches and upstream license provenance](vendor/nfsserve/PATCHES.md)
