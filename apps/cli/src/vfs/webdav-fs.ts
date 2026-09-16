@@ -197,6 +197,14 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
   readonly sweepDetector: SweepDetector;
   private readonly locks = new Map<string, webdav.LocalLockManager>();
   private readonly properties = new Map<string, webdav.LocalPropertyManager>();
+  // macOS editors save to a sibling first, then MOVE it over the original.
+  // These are local drafts, never Confluence pages. Retain drafts on failure.
+  private readonly drafts = new Map<string, { bytes: Buffer; modified: number; directory?: boolean }>();
+  private readonly pendingBackups = new Map<string, string>();
+
+  private isDraft(path: webdav.Path): boolean {
+    return path.toString().split("/").some((part) => /\.sb-[a-zA-Z0-9_-]+$/.test(part));
+  }
 
   constructor(private readonly options: ConfluenceWebdavOptions) {
     super(new ConfluenceWebdavSerializer());
@@ -260,7 +268,12 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     path: webdav.Path,
     callback: (exists: boolean) => void,
   ): void {
+    if (this.pendingBackups.has(path.toString())) { callback(false); return; }
     const name = this.lastSegment(path);
+    if (this.isDraft(path)) {
+      callback(this.drafts.has(path.toString()));
+      return;
+    }
     if (isClientDropping(name)) {
       callback(false);
       return;
@@ -280,7 +293,14 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     _ctx: webdav.TypeInfo,
     callback: webdav.ReturnCallback<webdav.ResourceType>,
   ): void {
+    if (this.pendingBackups.has(path.toString())) { callback(webdav.Errors.ResourceNotFound); return; }
     const name = this.lastSegment(path);
+    if (this.isDraft(path)) {
+      const draft = this.drafts.get(path.toString());
+      callback(draft ? undefined : webdav.Errors.ResourceNotFound,
+        draft?.directory ? webdav.ResourceType.Directory : webdav.ResourceType.File);
+      return;
+    }
     if (isClientDropping(name)) {
       callback(webdav.Errors.ResourceNotFound);
       return;
@@ -309,6 +329,16 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     _ctx: webdav.ReadDirInfo,
     callback: webdav.ReturnCallback<string[]>,
   ): void {
+    if (this.isDraft(path)) {
+      const draft = this.drafts.get(path.toString());
+      if (!draft) { callback(webdav.Errors.ResourceNotFound); return; }
+      if (!draft.directory) { callback(webdav.Errors.WrongParentTypeForCreation); return; }
+      const prefix = `${path.toString()}/`;
+      callback(undefined, [...this.drafts.keys()].filter((key) =>
+        key.startsWith(prefix) && !key.slice(prefix.length).includes("/"))
+        .map((key) => key.slice(prefix.length)));
+      return;
+    }
     const target = this.vfsPath(path);
     if (isShieldDirectory(this.lastSegment(path))) {
       callback(undefined, []);
@@ -317,7 +347,9 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     this.sweepDetector.noteListing(target);
     this.options.vfs
       .readdir(target)
-      .then((entries) => callback(undefined, entries.map((entry) => entry.name)))
+      .then((entries) => callback(undefined, entries
+        .filter((entry) => !this.pendingBackups.has(`${path.toString().replace(/\/$/, "")}/${entry.name}`))
+        .map((entry) => entry.name)))
       .catch((error: unknown) => callback(httpErrorFor(error)));
   }
 
@@ -337,6 +369,12 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     ctx: webdav.SizeInfo,
     callback: webdav.ReturnCallback<number>,
   ): void {
+    if (this.isDraft(path)) {
+      const draft = this.drafts.get(path.toString());
+      if (!draft) callback(webdav.Errors.ResourceNotFound);
+      else callback(undefined, draft.bytes.byteLength);
+      return;
+    }
     if (isIndexerShield(this.lastSegment(path))) {
       callback(undefined, 0);
       return;
@@ -364,6 +402,12 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     _ctx: webdav.LastModifiedDateInfo,
     callback: webdav.ReturnCallback<number>,
   ): void {
+    if (this.isDraft(path)) {
+      const draft = this.drafts.get(path.toString());
+      if (!draft) callback(webdav.Errors.ResourceNotFound);
+      else callback(undefined, draft.modified);
+      return;
+    }
     if (isIndexerShield(this.lastSegment(path))) {
       callback(undefined, 0);
       return;
@@ -394,6 +438,12 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     _ctx: webdav.ETagInfo,
     callback: webdav.ReturnCallback<string>,
   ): void {
+    if (this.isDraft(path)) {
+      const draft = this.drafts.get(path.toString());
+      if (!draft) callback(webdav.Errors.ResourceNotFound);
+      else callback(undefined, `"draft-${draft.modified}-${draft.bytes.byteLength}"`);
+      return;
+    }
     this.options.vfs
       .stat(this.vfsPath(path))
       .then((stat) => callback(undefined, `"${stat.id}-${stat.version ?? 0}"`))
@@ -416,6 +466,13 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     _ctx: webdav.OpenReadStreamInfo,
     callback: webdav.ReturnCallback<Readable>,
   ): void {
+    if (this.isDraft(path)) {
+      const draft = this.drafts.get(path.toString());
+      if (!draft) callback(webdav.Errors.ResourceNotFound);
+      else if (draft.directory) callback(webdav.Errors.WrongParentTypeForCreation);
+      else callback(undefined, Readable.from([draft.bytes]));
+      return;
+    }
     const name = this.lastSegment(path);
     if (isIndexerShield(name)) {
       callback(undefined, Readable.from([Buffer.alloc(0)]));
@@ -471,12 +528,27 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     }
 
     const chunks: Buffer[] = [];
+    const staging = this.isDraft(path);
+    let length = 0;
     const stream = new Writable({
       write(chunk, _encoding, done) {
+        length += chunk.length;
+        if (staging && length > 64 * 1024 * 1024) {
+          done(webdav.Errors.InsufficientStorage);
+          return;
+        }
         chunks.push(Buffer.from(chunk));
         done();
       },
       final: (done) => {
+        if (this.isDraft(path)) {
+          const otherBytes = [...this.drafts.entries()].reduce((sum, [key, draft]) =>
+            sum + (key === path.toString() ? 0 : draft.bytes.byteLength), 0);
+          if (otherBytes + length > 64 * 1024 * 1024) return done(webdav.Errors.InsufficientStorage);
+          this.drafts.set(path.toString(), { bytes: Buffer.concat(chunks), modified: Date.now() });
+          done();
+          return;
+        }
         this.options.vfs
           .writeFile(target, new Uint8Array(Buffer.concat(chunks)))
           .then(() => done())
@@ -505,6 +577,11 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
       );
       return;
     }
+    if (this.isDraft(path)) {
+      this.drafts.set(path.toString(), { bytes: Buffer.alloc(0), modified: Date.now(), directory: ctx.type.isDirectory });
+      callback();
+      return;
+    }
     const created =
       ctx.type.isDirectory
         ? this.options.vfs.mkdir(target)
@@ -518,6 +595,16 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     callback: webdav.SimpleCallback,
   ): void {
     const name = this.lastSegment(path);
+    if (this.isDraft(path)) {
+      for (const key of this.drafts.keys()) {
+        if (key === path.toString() || key.startsWith(`${path.toString()}/`)) this.drafts.delete(key);
+      }
+      for (const [original, backup] of this.pendingBackups) {
+        if (backup === path.toString() || backup.startsWith(`${path.toString()}/`)) this.pendingBackups.delete(original);
+      }
+      callback();
+      return;
+    }
     if (isClientDropping(name) || isIndexerShield(name)) {
       callback();
       return;
@@ -534,6 +621,48 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     _ctx: webdav.MoveInfo,
     callback: webdav.ReturnCallback<boolean>,
   ): void {
+    if (this.isDraft(pathFrom)) {
+      const draft = this.drafts.get(pathFrom.toString());
+      if (!draft) { callback(webdav.Errors.ResourceNotFound); return; }
+      if (draft.directory) { callback(webdav.Errors.WrongParentTypeForCreation); return; }
+      if (this.isDraft(pathTo)) {
+        this.drafts.set(pathTo.toString(), draft);
+        this.drafts.delete(pathFrom.toString());
+        callback(undefined, true);
+        return;
+      }
+      this.options.vfs.writeFile(this.vfsPath(pathTo), draft.bytes)
+        .then(() => this.options.vfs.flush())
+        .then(() => {
+          this.drafts.delete(pathFrom.toString());
+          this.pendingBackups.delete(pathTo.toString());
+          callback(undefined, true);
+        })
+        .catch((error: unknown) => {
+          this.pendingBackups.delete(pathTo.toString());
+          callback(httpErrorFor(error));
+        });
+      return;
+    }
+    if (this.isDraft(pathTo)) {
+      if (!isWritable(this.options.vfs.guard, "update")) { callback(webdav.Errors.Forbidden); return; }
+      // TextEdit first MOVEs the original into its backup area. Snapshot it
+      // locally; the remote page must keep its ID until the replacement commits.
+      this.options.vfs.readFileBytes(this.vfsPath(pathFrom)).then((bytes) => {
+        const otherBytes = [...this.drafts.entries()].reduce((sum, [key, draft]) =>
+          sum + (key === pathTo.toString() ? 0 : draft.bytes.byteLength), 0);
+        if (otherBytes + bytes.byteLength > 64 * 1024 * 1024) {
+          callback(webdav.Errors.InsufficientStorage);
+          return;
+        }
+        this.drafts.set(pathTo.toString(), { bytes: Buffer.from(bytes), modified: Date.now() });
+        // Present a real move to the desktop client while preserving remote ID.
+        // Its subsequent Overwrite:F replacement can now create this path.
+        this.pendingBackups.set(pathFrom.toString(), pathTo.toString());
+        callback(undefined, true);
+      }).catch((error: unknown) => callback(httpErrorFor(error)));
+      return;
+    }
     this.options.vfs
       .rename(this.vfsPath(pathFrom), this.vfsPath(pathTo))
       .then(() => callback(undefined, true))
@@ -548,10 +677,7 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
   ): void {
     const parent = this.parentOf(pathFrom);
     const target = parent === "/" ? `/${newName}` : `${parent}/${newName}`;
-    this.options.vfs
-      .rename(this.vfsPath(pathFrom), target)
-      .then(() => callback(undefined, true))
-      .catch((error: unknown) => callback(httpErrorFor(error)));
+    this._move(pathFrom, new webdav.Path(target), { ..._ctx, overwrite: true }, callback);
   }
 
   protected _copy(

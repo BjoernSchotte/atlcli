@@ -332,3 +332,26 @@ last created after a cached listing), 1,270 ms, all three subsequently returned
 404, zero cleanup failures. The VFS/shell suite passed 467 tests and 1,425
 assertions. Six known temporary editor pages from earlier failing runs were
 individually validated as synthetic DOCSY fixtures and trashed as well.
+
+
+## Finder, TextEdit and Spotlight acceptance
+
+Finder displayed the mounted synthetic DOCSY page and its `_index.md` through
+the real macOS client. `mdutil -s` reported "Indexing and searching disabled" on
+the original and final test mounts. During the observed idle interval no
+space-wide body sweep occurred; this is evidence for this macOS installation,
+not every third-party indexer.
+
+TextEdit exposed a safe-save sequence absent from the earlier simple-write
+checks: MKCOL a sibling `*.sb-*` staging directory, PUT the edited file, MOVE
+the original to a backup, then MOVE the draft with Overwrite:F. These temporary
+objects now remain local; the original is hidden only in the mount during the
+replacement and retains its remote ID. Failed commits restore visibility and
+retain the draft. Thirty-two HTTP tests cover the sequence, failure restoration,
+read-only refusal and updating without delete permission.
+
+The final native TextEdit Cmd-S succeeded; independent Confluence API readback
+confirmed the edited body on the same page ID. Closing the saved document showed
+only the expected unsupported-local-version-history notice. The test page was
+trashed, the volume unmounted and cache removed. Earlier stray synthetic
+subpages were separately cleaned as recorded above.

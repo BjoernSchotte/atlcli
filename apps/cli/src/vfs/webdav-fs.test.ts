@@ -391,3 +391,98 @@ describe("the binding rule", () => {
     expect(generateBearerToken()).not.toBe(token);
   });
 });
+
+
+describe("macOS editor atomic saves", () => {
+  it("stages sibling drafts locally and replaces the body without creating or deleting pages", async () => {
+    await start(seeded(), { allowDelete: false });
+    const target = "/DOCSY/page-0-200/_index.md";
+    const draft = `${target}.sb-b07a6f65-F1i1ro`;
+    const original = await dav(target);
+    client.resetCalls();
+    expect((await dav(draft, { method: "PUT", body: "Edited by TextEdit.\n" })).status).toBe(201);
+    expect((await dav(draft)).body).toBe("Edited by TextEdit.\n");
+    expect((await dav(target)).body).toBe(original.body);
+    expect(client.callsTo("createPage")).toBe(0);
+    expect(client.callsTo("updatePage")).toBe(0);
+    const moved = await dav(draft, { method: "MOVE", headers: {
+      Destination: new URL(target, server.url).href, Overwrite: "T",
+    } });
+    expect(moved.status).toBe(204);
+    expect((await dav(target)).body).toContain("Edited by TextEdit.");
+    expect((await dav(draft)).status).toBe(404);
+    expect(client.callsTo("createPage")).toBe(0);
+    expect(client.callsTo("deletePage")).toBe(0);
+    expect(client.callsTo("updatePage")).toBe(1);
+  });
+
+  it("handles TextEdit staging directory, PUT child, MOVE child and DELETE directory", async () => {
+    await start(seeded(), { allowDelete: false });
+    const target = "/DOCSY/page-0-200/_index.md";
+    const directory = `${target}.sb-b07a6f65-vD5adZ`;
+    const draft = `${directory}/_index.md`;
+    await dav(target);
+    client.resetCalls();
+    expect((await dav(directory, { method: "MKCOL" })).status).toBe(201);
+    expect((await dav(draft, { method: "PUT", body: "Actual TextEdit sequence" })).status).toBe(201);
+    expect((await dav(`${directory}/`, { method: "PROPFIND", depth: "1" })).body).toContain("_index.md");
+    const backup = `${target}.sb-b07a6f65-5pI2JE`;
+    expect((await dav(target, { method: "MOVE", headers: {
+      Destination: new URL(backup, server.url).href, Overwrite: "T",
+    } })).status).toBe(204);
+    expect((await dav(backup)).body).toContain("Body 0.");
+    expect((await dav(target, { method: "PROPFIND", depth: "0" })).status).toBe(404);
+    expect(client.callsTo("updatePage")).toBe(0);
+    expect(client.callsTo("deletePage")).toBe(0);
+    expect((await dav(draft, { method: "MOVE", headers: {
+      Destination: new URL(target, server.url).href, Overwrite: "F",
+    } })).status).toBe(204);
+    expect((await dav(directory, { method: "DELETE" })).status).toBe(200);
+    expect((await dav(backup, { method: "DELETE" })).status).toBe(200);
+    expect((await dav(target)).body).toContain("Actual TextEdit sequence");
+    expect(client.callsTo("createPage")).toBe(0);
+    expect(client.callsTo("deletePage")).toBe(0);
+    expect(client.callsTo("updatePage")).toBe(1);
+  });
+
+  it("keeps a staged draft when its commit fails", async () => {
+    await start(seeded());
+    const target = "/DOCSY/page-0-200/_index.md";
+    const draft = `${target}.sb-test`;
+    await dav(target);
+    expect((await dav(draft, { method: "PUT", body: "Keep my edit" })).status).toBe(201);
+    expect((await dav(target, { method: "MOVE", headers: {
+      Destination: new URL(`${target}.sb-backup`, server.url).href, Overwrite: "F",
+    } })).status).toBe(204);
+    const write = vfs.writeFile.bind(vfs);
+    vfs.writeFile = async () => { throw new Error("commit failed"); };
+    try {
+      expect((await dav(draft, { method: "MOVE", headers: {
+        Destination: new URL(target, server.url).href, Overwrite: "T",
+      } })).status).toBe(500);
+      expect((await dav(draft)).body).toBe("Keep my edit");
+      expect((await dav(target)).body).toContain("Body 0.");
+    } finally { vfs.writeFile = write; }
+    expect(client.callsTo("deletePage")).toBe(0);
+  });
+
+  it("restores the original view when a safe-save backup is discarded", async () => {
+    await start(seeded(), { allowDelete: false });
+    const target = "/DOCSY/page-0-200/_index.md";
+    const backup = `${target}.sb-aborted`;
+    expect((await dav(target, { method: "MOVE", headers: {
+      Destination: new URL(backup, server.url).href, Overwrite: "F",
+    } })).status).toBe(204);
+    expect((await dav(target)).status).toBe(404);
+    expect((await dav(backup, { method: "DELETE" })).status).toBe(200);
+    expect((await dav(target)).body).toContain("Body 0.");
+    expect(client.callsTo("deletePage")).toBe(0);
+    expect(client.callsTo("updatePage")).toBe(0);
+  });
+
+  it("refuses editor drafts on readonly mounts", async () => {
+    await start(seeded(), { mode: "ro" });
+    expect((await dav("/DOCSY/page-0-200/_index.md.sb-test", { method: "PUT", body: "no" })).status).toBe(403);
+    expect(client.callsTo("createPage")).toBe(0);
+  });
+});

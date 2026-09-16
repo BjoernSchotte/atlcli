@@ -469,3 +469,14 @@ children before parents. Confluence does not cascade a page trash operation.
 This requires `--mode rw --allow-delete`; no purge occurs. REST deletion is not
 atomic: an API failure can leave a partly trashed subtree, and concurrent remote
 changes after the preflight are outside that snapshot.
+
+
+### macOS editor saves
+
+TextEdit's temporary `*.sb-*` directories and backups stay in mount-local memory
+instead of becoming wiki pages. The final replacement updates the existing page
+ID with normal version/conflict checks. Staged files have a 64 MiB retained-byte
+ceiling; failed replacements retain the draft until the client removes it or
+the mount closes. The original remote page remains intact during staging.
+TextEdit may warn that local document-version history is unavailable on this
+volume; Confluence page versions remain available.
