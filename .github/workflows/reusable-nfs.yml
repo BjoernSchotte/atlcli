@@ -45,6 +45,19 @@ jobs:
           cargo +1.92.0 build --locked --manifest-path packages/confluence-nfs/Cargo.toml
       - name: Build native companion with provenance
         run: bun scripts/build-nfs-helper.ts "$RUNNER_TEMP/nfs-helper"
+      - name: Build and consume native CLI review bundle
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/nfs-helpers"
+          mv "$RUNNER_TEMP/nfs-helper" "$RUNNER_TEMP/nfs-helpers/${{ matrix.target }}"
+          bun scripts/release-artifacts.ts build --channel dev --dry-run \
+            --target "${{ matrix.target }}" --skip-extension \
+            --nfs-helpers "$RUNNER_TEMP/nfs-helpers" --output "$RUNNER_TEMP/nfs-release"
+          mkdir "$RUNNER_TEMP/nfs-helper"
+          tar -xzf "$RUNNER_TEMP/nfs-release/atlcli-${{ matrix.target }}.tar.gz" -C "$RUNNER_TEMP/nfs-helper"
+          "$RUNNER_TEMP/nfs-helper/atlcli" --version
+          "$RUNNER_TEMP/nfs-helper/atlcli-confluence-nfs" --version
+          test -s "$RUNNER_TEMP/nfs-helper/THIRD-PARTY-nfs.html"
       - name: Test bridge and native read-only mounts with synthetic data
         env:
           ATLCLI_NFS_KERNEL: "1"

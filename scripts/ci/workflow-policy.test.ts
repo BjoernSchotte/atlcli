@@ -95,6 +95,9 @@ describe("CI workflow policy", () => {
     expect(nfs).toContain('ATLCLI_NFS_KERNEL: "1"');
     expect(nfs).toContain('ATLCLI_NFS_LIVE: "0"');
     expect(nfs).toContain("getconf GNU_LIBC_VERSION");
+    expect(nfs).toContain('bun scripts/release-artifacts.ts build --channel dev --dry-run');
+    expect(nfs).toContain('tar -xzf "$RUNNER_TEMP/nfs-release/atlcli-${{ matrix.target }}.tar.gz"');
+    expect(nfs).toContain('"$RUNNER_TEMP/nfs-helper/atlcli" --version');
     expect(nfs).toContain("nfs-helper-build.json");
   });
 
@@ -115,7 +118,14 @@ describe("CI workflow policy", () => {
     expect(release).not.toContain("softprops/action-gh-release");
     expect(release).not.toContain("source_eligibility_artifact:");
 
-    expect(reusable).toContain("target: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64]");
+    for (const [target, os] of [["linux-x64", "ubuntu-22.04"], ["linux-arm64", "ubuntu-22.04-arm"],
+      ["darwin-x64", "macos-15-intel"], ["darwin-arm64", "macos-14"], ["windows-x64", "ubuntu-latest"]]) {
+      expect(reusable).toContain(`- target: ${target}\n            os: ${os}`);
+    }
+    expect(reusable).toContain('runs-on: ${{ matrix.os }}');
+    expect(reusable).toContain('bun scripts/build-nfs-helper.ts "$RUNNER_TEMP/nfs-helpers/${{ matrix.target }}"');
+    expect(reusable).toContain('--nfs-helpers "$RUNNER_TEMP/nfs-helpers"');
+    expect(reusable).toContain('"$RUNNER_TEMP/nfs-installed/atlcli-confluence-nfs" --version');
     expect(reusable.match(/bash scripts\/ci\/install-frozen-dependencies\.sh/g)).toHaveLength(3);
     expect(reusable).toContain("bun scripts/release-artifacts.ts build");
     expect(reusable).toContain('--target "${{ matrix.target }}"');
@@ -139,7 +149,8 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain(cleanup);
     expect(reusable.indexOf(cleanup)).toBeLessThan(reusable.indexOf("- name: Upload exact release bundle"));
     expect(reusable).not.toContain("bun build apps/cli/src/index.ts");
-    expect(reusable).not.toMatch(/^\s+(?:tar|zip)\s+/m);
+    // Extraction for consumer smoke is allowed; archive creation stays in the deterministic builder.
+    expect(reusable).not.toMatch(/^\s+(?:zip\s+|tar\s+(?!-xzf ))/m);
   });
 
   it("prevents cross-run artifact collection and keeps build jobs read-only", async () => {

@@ -413,3 +413,28 @@ and multi-space read tests (2 tests / 5 assertions per host); Linux used the liv
 mayflower profile, macOS used synthetic fixtures because its live profile is
 unavailable. All live operations were read-only. No release was published.
 The production distribution workflow and installers remain outstanding.
+
+
+## Slice 18 — native companions in the release workflow
+
+The shared release-artifact workflow now builds each Unix CLI archive on its
+native runner, builds the pinned NFS helper from the same exact source SHA, and
+passes the verified companion directory to the existing deterministic archive
+builder. Windows remains a cross-built CLI-only ZIP on Ubuntu. Each Unix build
+extracts its own archive and runs both offline version commands. Existing
+SHA-bound security, bundle assembly and publication gates are retained.
+
+Draft NFS CI exercises the same archive builder in dry-run mode on all four
+native runners and mounts the helper extracted from the archive, rather than a
+separate build output. This does not trigger a release. Policy tests protect the
+native target mapping, companion inclusion and archive consumption.
+
+Local validation: 55 CI policy/classification tests, typecheck, actual review
+archives built and extracted on macOS arm64 and Linux x64; both offline version
+commands pass. The extracted macOS helper passes two native synthetic mount
+checks. The extracted Linux CLI exercises its adjacent helper automatically
+against live DOCSY through the four lifecycle E2E scenarios. The Linux checkout
+is the pre-existing test tree with copied implementation files, so its dry-run
+receipt is not a claim of a clean PR-head release. The new four-platform archive
+CI results remain to be inspected after this push; no installer or release was
+published.

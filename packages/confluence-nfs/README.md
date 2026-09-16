@@ -17,8 +17,8 @@ bun --conditions=development run --cwd apps/cli src/index.ts \
 
 The destination must be empty. The builder uses locked Cargo dependencies and a
 native target; it never downloads a helper executable. Compiling may fetch Rust
-crates/toolchains if they are not cached. End users will not need a compiler once
-release archive integration is complete. The offline `--version` JSON reports
+crates/toolchains if they are not cached. The release workflow packages the native
+helper with the CLI; end users do not compile it. The offline `--version` JSON reports
 helper package, protocol, OS and architecture and starts no listener.
 
 The output contains the executable, nfsserve's BSD license, `THIRD-PARTY-nfs.html`
@@ -33,7 +33,7 @@ This is provenance, not a signature or a byte-reproducibility certification.
 Native target mapping covers macOS arm64/x64 and Linux arm64/x64 (GNU libc).
 Native helper mounts passed on all four architectures in CI run 35153148522:
 Linux glibc 2.35, macOS arm64 14.8.9 and macOS x64 15.7.9. Installer/Homebrew
-integration and production workflow adoption remain WP5 acceptance work; do not
+integration and complete packaged CLI acceptance remain WP5 work; do not
 label these artifacts a complete release bundle. Windows continues to use WebDAV.
 
 ## Native CI matrix
@@ -72,8 +72,11 @@ Each helper must declare the same source commit as the CLI. Dirty helper builds
 are admitted only for review (`--dry-run`); the publication verifier rejects them.
 The builder validates exact companion filenames, checksum, bridge version and
 ELF/Mach-O architecture. It never executes a supplied foreign-target artifact.
-Legacy single-binary archives remain accepted; production workflow adoption and
-installer acceptance are still pending.
+Legacy single-binary archives remain accepted for older releases. The shared
+release workflow now builds native companions on the four declared Unix runners
+and passes them into this builder; Windows retains its CLI-only archive. Draft
+NFS CI also builds/extracts review archives, runs both offline version commands,
+and uses the extracted helper for kernel tests. Installer acceptance remains open.
 
 ## Compiled CLI acceptance
 
