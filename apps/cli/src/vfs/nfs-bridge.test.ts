@@ -61,7 +61,7 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
   cleanups.push(async () => { await vfs.close(); rmSync(cacheDir, { recursive: true, force: true }); });
   const server = await startNfsServer({ vfs, spaces, helperPath: resolve(helperPath!) });
   cleanups.push(() => server.stop());
-  return { server, vfs };
+  return { server, vfs, client };
 }
 
 describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
@@ -87,6 +87,29 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(write.readUInt32BE()).toBe(30); // NFS3ERR_ROFS
     await server.stop();
     await server.exited;
+  });
+
+  it("keeps a wire filehandle usable after an externally observed page move", async () => {
+    const { server, vfs, client } = await fixture(["DOCSY"], false);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookupHandle = async (parent: Buffer, name: string) => {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(parent), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(0);
+      return reply.subarray(8, 8 + reply.readUInt32BE(4));
+    };
+    const directory = await lookupHandle(root, "child-0-400");
+    const file = await lookupHandle(directory, "_index.md");
+    await client.movePage("400", "401");
+    await vfs.index.loadChildren("100", { force: true });
+    const read = await rpc(server, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 65536)]));
+    expect(read.readUInt32BE()).toBe(0);
+    const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/child-1-401/child-0-400/_index.md"));
+    expect(read.subarray(104, 104 + read.readUInt32BE(100))).toEqual(expected);
+    const newParent = await lookupHandle(root, "child-1-401");
+    expect(await lookupHandle(directory, "..")).toEqual(newParent);
+    expect(await lookupHandle(newParent, "child-0-400")).toEqual(directory);
+    expect(await lookupHandle(directory, "_index.md")).toEqual(file);
   });
 
   it("closes oversized or excessively fragmented RPCs and survives malformed XDR lengths", async () => {

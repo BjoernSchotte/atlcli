@@ -73,7 +73,29 @@ export class NfsFilesystem {
       await this.checkResolvedScope(entry.path);
       if (id !== 1 && this.identity(stat, entry.path) !== entry.identity) return this.stale(id);
     } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return this.stale(id);
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        // NFS handles name objects, not their last observed parent. Reuse the
+        // core's scoped ID lookup instead of walking the export after a move.
+        const page = /^page:([0-9]+):(directory|file)$/.exec(entry.identity);
+        if (page) {
+          for (const space of this.spaces) {
+            try {
+              const body = await this.vfs.readlink(`/${space}/.by-id/${page[1]}.md`);
+              const relocated = page[2] === "directory" ? posix.dirname(body) : body;
+              this.assertExport(relocated);
+              await this.checkResolvedScope(relocated);
+              if (this.identity(await this.vfs.stat(relocated), relocated) !== entry.identity) continue;
+              entry.path = relocated;
+              return relocated;
+            } catch (relocationError) {
+              if (relocationError && typeof relocationError === "object" && "code" in relocationError &&
+                  relocationError.code === "ENOENT") continue;
+              throw relocationError;
+            }
+          }
+        }
+        return this.stale(id);
+      }
       throw error;
     }
     return entry.path;

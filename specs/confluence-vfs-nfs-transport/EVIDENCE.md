@@ -497,3 +497,34 @@ Operational note: the first Linux brew install triggered Homebrew's default
 cleanup of old package versions and download caches. This was unintended; later
 commands disabled automatic cleanup. The test-enabled Linux Homebrew developer
 mode was switched off during cleanup. No user CLI was unlinked or replaced.
+
+
+## Slice 21 — preserve existing page handles after reparenting
+
+A failing regression showed that an open page/body NFS handle became ESTALE after
+reparenting unless a caller first looked up the new name. The adapter now reuses
+the core's scoped `.by-id` resolution when an old page path disappears. It validates
+the relocated identity and export membership before updating the stored path.
+It probes only selected spaces, never recursively walks the export. Page directory
+and body handles remain distinct and stable; `..` resolves the current parent.
+Missing/out-of-export pages expire normally. Temporary errors retain the handle
+for retry and a redirected foreign-space target is rejected.
+
+Validation: 47 filesystem/core-view tests (286 assertions), including a regression
+observed failing before the fix. A real Rust/TCP test moves a synthetic page in the
+backend, refreshes the old parent, then READs the original opaque handle before
+any lookup at the destination; it also compares directory/body handle bytes after
+relocation. This and both native mount cases passed on Mac (3 tests / 24 assertions)
+and Linux (with the relocation unit cases, 6 tests / 35 assertions). Linux native
+mounts used live DOCSY and combined read-only spaces; the wire move used fixtures.
+
+The new opt-in live test `ATLCLI_NFS_MOVE_E2E=1 bun run test
+apps/cli/src/e2e/wiki-nfs-move.e2e.test.ts` passed on Linux (1 test / 6 assertions).
+It creates two synthetic DOCSY pages, opens handles, moves one via the real API,
+checks the API parent, then reads through the old handle and verifies identity.
+Both created pages are deleted in finally; the test completed cleanup successfully.
+No MAYFLOWER content was changed. Typecheck passed.
+
+This slice covers page/body relocation. Folder and attachment-view relocation,
+consistent version snapshots and measured external-change visibility remain WP3
+work; the full WP3 checkbox stays open.

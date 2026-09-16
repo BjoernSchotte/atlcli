@@ -129,3 +129,44 @@ it("rejects old directory cookies after rename, insert and delete even when anot
     await expect(fs.readdir(1, cursor, 2, verifier.toString("hex"))).rejects.toMatchObject({ code: "EBADCOOKIE" });
   }
 });
+
+
+it("keeps existing page handles after reparenting before any lookup of the new name", async () => {
+  const { fs, vfs } = await fixture(["DOCSY", "mayflower"], "rw");
+  const docsy = await fs.lookup(1, "DOCSY");
+  const directory = await fs.lookup(docsy, "child-0-200");
+  const file = await fs.lookup(directory, "_index.md");
+  await vfs.rename("/DOCSY/child-0-200", "/DOCSY/child-1-201/moved-200");
+  expect(Buffer.from((await fs.read(file, 0, 65536)).data, "base64").toString()).toContain("Body 0");
+  const parent = await fs.lookup(docsy, "child-1-201");
+  expect(await fs.lookup(directory, "..")).toBe(parent);
+  expect(await fs.lookup(parent, "moved-200")).toBe(directory);
+  expect(await fs.lookup(directory, "_index.md")).toBe(file);
+  await vfs.rename("/DOCSY/child-1-201/moved-200", "/mayflower/moved-again-200");
+  expect(Buffer.from((await fs.read(file, 0, 65536)).data, "base64").toString()).toContain("Body 0");
+  expect(await fs.lookup(directory, "..")).toBe(await fs.lookup(1, "mayflower"));
+});
+
+it("does not recover moved page handles outside the selected export", async () => {
+  const { fs, vfs } = await fixture(["DOCSY"], "rw");
+  const directory = await fs.lookup(1, "child-0-200");
+  const file = await fs.lookup(directory, "_index.md");
+  await vfs.rename("/DOCSY/child-0-200", "/mayflower/moved-200");
+  await expect(fs.read(file, 0, 65536)).rejects.toMatchObject({ code: "ESTALE" });
+  await expect(fs.getattr(directory)).rejects.toMatchObject({ code: "ESTALE" });
+});
+
+
+it("retains moved handles on temporary resolution errors and rejects foreign relocation targets", async () => {
+  const { fs, vfs } = await fixture(["DOCSY"], "rw");
+  const directory = await fs.lookup(1, "child-0-200");
+  const file = await fs.lookup(directory, "_index.md");
+  await vfs.rename("/DOCSY/child-0-200", "/DOCSY/child-1-201/moved-200");
+  const readlink = vfs.readlink.bind(vfs);
+  vfs.readlink = async () => { throw Object.assign(new Error("retry"), { code: "EAGAIN" }); };
+  await expect(fs.read(file, 0, 65536)).rejects.toMatchObject({ code: "EAGAIN" });
+  vfs.readlink = async () => "/mayflower/_index.md";
+  await expect(fs.read(file, 0, 65536)).rejects.toMatchObject({ code: "EACCES" });
+  vfs.readlink = readlink;
+  expect(Buffer.from((await fs.read(file, 0, 65536)).data, "base64").toString()).toContain("Body 0");
+});

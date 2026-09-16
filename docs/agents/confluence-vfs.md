@@ -215,6 +215,10 @@ fetched. Index lag can omit recent changes. Other find expressions retain the
 filesystem-metadata walk; `--no-cql` on `wiki sh` disables acceleration.
 
 Experimental NFS handles distinguish generated files in each selected space.
+Existing page/body handles also survive a page move after the changed hierarchy
+is observed: the adapter resolves the same page ID within the selected spaces.
+Moving outside the export or deleting the page expires the handle. This does not
+yet promise handle recovery for moved folders or attachment views.
 Deleted or replaced identities report `ESTALE`; look up the path again, or remount
 after a helper restart. Single-space and combined-space native reads are covered
 by the [NFS evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md).
