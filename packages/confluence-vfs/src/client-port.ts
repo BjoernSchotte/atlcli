@@ -55,10 +55,11 @@ export interface VfsClient {
     pageId: string,
     options?: { limit?: number; signal?: AbortSignal },
   ): Promise<FolderChild[]>;
-  getPageDescendants(
-    pageId: string,
-    options?: { depth?: number; limit?: number; signal?: AbortSignal },
-  ): Promise<FolderChild[]>;
+  // `getPageDescendants` is deliberately absent. The real client fixes its
+  // depth at exactly 1 (it throws a RangeError otherwise), so it returns the
+  // same thing as `direct-children` and buys the VFS nothing. Recursive walks
+  // go level by level through `getPageDirectChildren`, which is what rule 1 of
+  // the demand principle wants anyway.
   getChildren(
     pageId: string,
     options?: { limit?: number },

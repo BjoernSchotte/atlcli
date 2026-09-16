@@ -10,7 +10,7 @@
 
 ### Entry point `.` — experimental
 
-- exported symbols (26): ConfluenceVfs, ModeGuard, RateLimitRetryOptions, ResolvedVfsOptions, VFS_DEFAULTS, VfsClient, VfsDirent, VfsError, VfsErrorCode, VfsLogger, VfsMode, VfsNode, VfsNodeKind, VfsOptions, VfsStat, VfsWriteResult, WriteOp, assertNotStructurallyReadOnly, assertWritable, httpStatusOf, isVfsError, isWritable, mapClientError, resolveVfsOptions, retryAfterMsOf, withRateLimitRetry
+- exported symbols (54): ConfluenceVfs, ConfluenceVfsImpl, INDEX_FILE, MissingLeaf, ModeGuard, ParsedName, PathResolver, RECENT_WINDOWS, RESERVED_NAMES, RateLimitRetryOptions, RecentWindow, ResolveResult, Resolved, ResolvedVfsOptions, TreeIndex, TreeIndexOptions, TreeNode, VFS_DEFAULTS, VfsClient, VfsDirent, VfsError, VfsErrorCode, VfsLogger, VfsMode, VfsNode, VfsNodeKind, VfsOptions, VfsStat, VfsWriteResult, WriteOp, assertNotReserved, assertNotStructurallyReadOnly, assertWritable, canonicalPathOf, formatDirName, formatName, hasBody, httpStatusOf, isContainer, isVfsError, isWritable, joinPath, mapClientError, normalizePath, parseName, resolveNameToId, resolveVfsOptions, retryAfterMsOf, splitParent, splitPath, stripVfsExtension, titleFromName, vfsSlug, withRateLimitRetry
 
 ### Entry point `./testing` — experimental
 

@@ -61,16 +61,6 @@ describe("hierarchy", () => {
     expect(children.map((c) => c.id)).not.toContain("103");
   });
 
-  it("descends for descendants", async () => {
-    const all = await client.getPageDescendants("100");
-    expect(all.map((c) => c.id).sort()).toEqual(["101", "102", "103", "104"]);
-  });
-
-  it("respects the depth limit", async () => {
-    const shallow = await client.getPageDescendants("100", { depth: 1 });
-    expect(shallow.map((c) => c.id)).not.toContain("103");
-  });
-
   it("counts every call", async () => {
     client.resetCalls();
     await client.getPageDirectChildren("100");

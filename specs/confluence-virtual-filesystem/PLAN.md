@@ -386,14 +386,42 @@ possible and so the VFS's whole Confluence surface is readable in one file
 
 ### WP2 - Path mapping and tree index (4 days)
 
-- [ ] **WP2.1** `src/path-mapper.ts`: `formatName(title, id, hasChildren)` produces `<slug>-<id>.md` or `<slug>-<id>/`; `parseName(name)` returns the slug and ID using the pattern `^(.*)-(\d+)(\.md)?$`, with a fallback for names without an ID, which new files in `rw` mode use. The slug comes from `slugifyTitle()` in `@atlcli/confluence`. Unit tests include titles ending in digits, where only the page ID known from the tree index may be split off.
-- [ ] **WP2.2** Resolution `resolvePath(path)` returning a `VfsNode`, segment by segment: a space key resolves to a space; a segment carrying an ID resolves by that ID and the slug is ignored; a segment without an ID yields `ENOENT` except for the reserved names `_index.md`, `_space.json`, `_attachments`, `.versions`, `.comments.md`, `.by-id`, `.labels`, `.recent`, `.search` and `.me.json`.
-- [ ] **WP2.3** `src/tree-index.ts` as a **demand-driven, partial** index per rule 1 of section 1b: a `Map<id, TreeNode>` whose `children` is either a list of IDs or the marker `unloaded`. `loadChildren(id)` fetches exactly one level through `getPageDirectChildren` in `childPosition` order, and the space root comes from `listSpacesV2` plus its root level. Folders appear as children of the same call, so `getSpaceFolders` is **not** called wholesale. Test: loading the space root and two subdirectories costs three requests regardless of space size.
-- [ ] **WP2.4** `loadSubtree(id, depth)` for explicitly recursive operations such as `find`, `tree`, `ls -R` and recursive `grep`: `getPageDescendants` scoped to **this** node, batched at 250, marking the visited nodes as loaded. Never triggered automatically by a plain `readdir`. Test: `find` inside one subdirectory does not load a sibling branch.
-- [ ] **WP2.5** Revalidation: TTL `treeTtlMs` applied **per node** rather than globally. After expiry a body-free bulk GET of `GET /pages?id=…&limit=250` covers the already loaded IDs of the affected directory and compares `version.number`; structural changes come from calling `loadChildren` again on the same node. Tests cover a version bump, a deleted page, a new page, a moved page, and the requirement that a branch never entered triggers no request during revalidation.
-- [ ] **WP2.5b** `readdir` and `stat` served from the index without a body fetch (rule 2). `stat` takes `mtime` from `version.createdAt` and `size` from the cache, estimating it otherwise. Invariant test: `ls -R` and `stat` across 5,000 pages in the fake write no body rows into the cache.
-- [ ] **WP2.6** Data Center path: the same tree index over v1, using `getChildren` and `getAllPages` with `deploymentType: "data-center"`, covered in the fake, plus a contract test modelled on `wiki-import-dc.contract.test.ts`.
-- [ ] **WP2.7** Visibility: a test that pages the fake client marks invisible appear neither in `readdir`, nor through `.by-id/`, nor by direct ID address, returning `ENOENT` rather than `EACCES` so that existence is not revealed, matching the API.
+**Deviation D1: every page is a directory.** Section 7 shows a leaf page as
+`getting-started-623869001.md` and a page with children as
+`architecture-623869955/`. That split is unreachable under the demand
+principle: choosing the form of a listed child means knowing whether *that
+child* has children, and Confluence answers that only with one
+`direct-children` request per child — the N+1 rule 1 forbids. Guessing "leaf"
+for anything not yet entered was the other option, and it makes `ls -R`, `find`
+and recursive `grep` skip whole subtrees, which is the same class of
+correctness bug decision 12 rejects for `grep`. So `readdir` presents every
+page and folder as a directory whose body is `_index.md`, and
+`<slug>-<id>.md` stays resolvable as an alias for `<slug>-<id>/_index.md` so
+the short paths in section 7's examples keep working.
+
+**Deviation D2: no `descendants` call.** WP2.4 planned
+`getPageDescendants(id, { depth: 10 })`. The existing client fixes that
+endpoint's depth at exactly 1 and throws a `RangeError` for anything else, so
+it returns the same data as `direct-children` and buys nothing. `loadSubtree`
+walks level by level instead, one request per *visited* directory, and the
+method is not part of the VFS client port at all.
+
+**Deviation D3: Data Center revalidates by re-listing.** WP2.5 planned a
+body-free bulk `GET /pages?id=…`. That is `getPageVersions`, which is Cloud v2
+only and throws a `TypeError` on Data Center. The v1 children listing already
+carries `version` and `lastModified`, so Data Center revalidates with one
+forced re-listing — one request rather than two. Covered by a regression test
+and by `tree-index-dc.contract.test.ts`, which drives the real client against a
+local v1 server and fails if any v2 route is touched.
+
+- [x] **WP2.1** `src/path-mapper.ts`: `formatName(title, id, hasChildren)` produces `<slug>-<id>.md` or `<slug>-<id>/`; `parseName(name)` returns the slug and ID using the pattern `^(.*)-(\d+)(\.md)?$`, with a fallback for names without an ID, which new files in `rw` mode use. The slug comes from `slugifyTitle()` in `@atlcli/confluence`. Unit tests include titles ending in digits, where only the page ID known from the tree index may be split off.
+- [x] **WP2.2** Resolution `resolvePath(path)` returning a `VfsNode`, segment by segment: a space key resolves to a space; a segment carrying an ID resolves by that ID and the slug is ignored; a segment without an ID yields `ENOENT` except for the reserved names `_index.md`, `_space.json`, `_attachments`, `.versions`, `.comments.md`, `.by-id`, `.labels`, `.recent`, `.search` and `.me.json`.
+- [x] **WP2.3** `src/tree-index.ts` as a **demand-driven, partial** index per rule 1 of section 1b: a `Map<id, TreeNode>` whose `children` is either a list of IDs or the marker `unloaded`. `loadChildren(id)` fetches exactly one level through `getPageDirectChildren` in `childPosition` order, and the space root comes from `listSpacesV2` plus its root level. Folders appear as children of the same call, so `getSpaceFolders` is **not** called wholesale. Test: loading the space root and two subdirectories costs three requests regardless of space size.
+- [x] **WP2.4** `loadSubtree(id, depth)` for explicitly recursive operations such as `find`, `tree`, `ls -R` and recursive `grep`: `getPageDescendants` scoped to **this** node, batched at 250, marking the visited nodes as loaded. Never triggered automatically by a plain `readdir`. Test: `find` inside one subdirectory does not load a sibling branch.
+- [x] **WP2.5** Revalidation: TTL `treeTtlMs` applied **per node** rather than globally. After expiry a body-free bulk GET of `GET /pages?id=…&limit=250` covers the already loaded IDs of the affected directory and compares `version.number`; structural changes come from calling `loadChildren` again on the same node. Tests cover a version bump, a deleted page, a new page, a moved page, and the requirement that a branch never entered triggers no request during revalidation.
+- [x] **WP2.5b** `readdir` and `stat` served from the index without a body fetch (rule 2). `stat` takes `mtime` from `version.createdAt` and `size` from the cache, estimating it otherwise. Invariant test: `ls -R` and `stat` across 5,000 pages in the fake write no body rows into the cache.
+- [x] **WP2.6** Data Center path: the same tree index over v1, using `getChildren` and `getAllPages` with `deploymentType: "data-center"`, covered in the fake, plus a contract test modelled on `wiki-import-dc.contract.test.ts`.
+- [x] **WP2.7** Visibility: a test that pages the fake client marks invisible appear neither in `readdir`, nor through `.by-id/`, nor by direct ID address, returning `ENOENT` rather than `EACCES` so that existence is not revealed, matching the API.
 
 ### WP3 - Body cache and conversion (3 days)
 

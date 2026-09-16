@@ -10,6 +10,7 @@
  * the VFS is a cache, not a mirror.
  */
 export type { VfsClient } from "./client-port.js";
+export { assertNotReserved, ConfluenceVfsImpl } from "./confluence-vfs.js";
 export {
   httpStatusOf,
   mapClientError,
@@ -24,6 +25,38 @@ export {
   type ModeGuard,
   type WriteOp,
 } from "./mode.js";
+export {
+  formatDirName,
+  formatName,
+  INDEX_FILE,
+  joinPath,
+  normalizePath,
+  parseName,
+  RESERVED_NAMES,
+  resolveNameToId,
+  splitParent,
+  splitPath,
+  stripVfsExtension,
+  titleFromName,
+  vfsSlug,
+  type ParsedName,
+} from "./path-mapper.js";
+export {
+  canonicalPathOf,
+  hasBody,
+  isContainer,
+  PathResolver,
+  RECENT_WINDOWS,
+  type MissingLeaf,
+  type RecentWindow,
+  type Resolved,
+  type ResolveResult,
+} from "./resolver.js";
+export {
+  TreeIndex,
+  type TreeIndexOptions,
+  type TreeNode,
+} from "./tree-index.js";
 export {
   resolveVfsOptions,
   VFS_DEFAULTS,

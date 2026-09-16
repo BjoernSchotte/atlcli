@@ -349,25 +349,6 @@ export class FakeConfluenceClient implements VfsClient {
       .map((p) => this.toChild(p));
   }
 
-  async getPageDescendants(
-    pageId: string,
-    options: { depth?: number; limit?: number } = {},
-  ): Promise<FolderChild[]> {
-    this.record("getPageDescendants", pageId);
-    this.mustPage(pageId);
-    const depth = options.depth ?? 10;
-    const out: FolderChild[] = [];
-    const walk = (id: string, level: number): void => {
-      if (level > depth) return;
-      for (const child of this.childrenOf(id)) {
-        out.push(this.toChild(child));
-        walk(child.id, level + 1);
-      }
-    };
-    walk(pageId, 1);
-    return out.slice(0, options.limit ?? this.pageSize);
-  }
-
   async getChildren(
     pageId: string,
     options: { limit?: number } = {},
@@ -430,6 +411,11 @@ export class FakeConfluenceClient implements VfsClient {
 
   async getPageVersions(ids: readonly string[]): Promise<Map<string, PageChangeInfo>> {
     this.record("getPageVersions", ids.join(","));
+    // Matches the real client, which refuses outside Cloud v2. Without this the
+    // fake would let a Data Center regression pass unnoticed.
+    if (this.deploymentType !== "cloud") {
+      throw new TypeError("Bulk page-version snapshots require Confluence Cloud REST v2.");
+    }
     const out = new Map<string, PageChangeInfo>();
     for (const id of ids) {
       const page = this.pages.get(id);

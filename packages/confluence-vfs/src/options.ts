@@ -50,6 +50,8 @@ export interface VfsOptions {
   logger?: VfsLogger;
   /** Injectable clock, so tests do not wait on TTLs. */
   now?: () => number;
+  /** Injectable sleep, so tests do not wait on rate-limit backoff. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /** Everything {@link VfsOptions} leaves optional, filled in. */
@@ -92,5 +94,7 @@ export function resolveVfsOptions(options: VfsOptions): ResolvedVfsOptions {
     cqlGrep: options.cqlGrep ?? VFS_DEFAULTS.cqlGrep,
     logger: options.logger ?? silentLogger,
     now: options.now ?? (() => Date.now()),
+    sleep:
+      options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))),
   };
 }

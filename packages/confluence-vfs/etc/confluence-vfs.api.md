@@ -7,11 +7,17 @@
 ### Entry point `.`
 
 ```ts
+// export: assertNotReserved
+export declare function assertNotReserved(name: string, path: string): void;
+
 // export: assertNotStructurallyReadOnly
 export declare function assertNotStructurallyReadOnly(path: string, reason: string): never;
 
 // export: assertWritable
 export declare function assertWritable(guard: ModeGuard, op: WriteOp, path?: string): void;
+
+// export: canonicalPathOf
+export declare function canonicalPathOf(index: TreeIndex, node: TreeNode, homepageId: string | null): string;
 
 // export: ConfluenceVfs
 export interface ConfluenceVfs {
@@ -30,8 +36,54 @@ export interface ConfluenceVfs {
     resolve(path: string): Promise<VfsNode>;
 }
 
+// export: ConfluenceVfsImpl
+export declare class ConfluenceVfsImpl implements ConfluenceVfs {
+    private readonly opts;
+    readonly index: TreeIndex;
+    private readonly resolver;
+    constructor(opts: ResolvedVfsOptions);
+    resolve(path: string): Promise<VfsNode>;
+    resolveTagged(path: string, allowMissingLeaf?: boolean): Promise<Resolved | {
+        kind: "missing";
+        parent: Resolved;
+        name: string;
+        path: string;
+    }>;
+    stat(path: string): Promise<VfsStat>;
+    private statOf;
+    readdir(path: string): Promise<VfsDirent[]>;
+    private readdirRoot;
+    private readdirSpace;
+    private readdirContainer;
+    private readdirVirtual;
+    readFile(path: string): Promise<string>;
+    readFileBytes(path: string): Promise<Uint8Array>;
+    writeFile(path: string, _content: string | Uint8Array): Promise<VfsWriteResult>;
+    mkdir(path: string): Promise<VfsWriteResult>;
+    rename(from: string, _to: string): Promise<void>;
+    rm(path: string): Promise<void>;
+    copy(from: string, _to: string): Promise<VfsWriteResult>;
+    readlink(path: string): Promise<string>;
+    private toNode;
+}
+
+// export: formatDirName
+export declare function formatDirName(title: string, id: string): string;
+
+// export: formatName
+export declare function formatName(title: string, id: string, hasChildren: boolean): string;
+
+// export: hasBody
+export declare function hasBody(node: TreeNode): boolean;
+
 // export: httpStatusOf
 export declare function httpStatusOf(error: unknown): number | undefined;
+
+// export: INDEX_FILE
+export declare const INDEX_FILE = "_index.md";
+
+// export: isContainer
+export declare function isContainer(node: TreeNode): boolean;
 
 // export: isVfsError
 export declare function isVfsError(value: unknown): value is VfsError;
@@ -39,13 +91,54 @@ export declare function isVfsError(value: unknown): value is VfsError;
 // export: isWritable
 export declare function isWritable(guard: ModeGuard, op: WriteOp): boolean;
 
+// export: joinPath
+export declare function joinPath(...parts: string[]): string;
+
 // export: mapClientError
 export declare function mapClientError(error: unknown, path?: string): VfsError;
+
+// export: MissingLeaf
+export interface MissingLeaf {
+    kind: "missing";
+    parent: Resolved;
+    name: string;
+    path: string;
+}
 
 // export: ModeGuard
 export interface ModeGuard {
     mode: VfsMode;
     allowDelete: boolean;
+}
+
+// export: normalizePath
+export declare function normalizePath(path: string): string;
+
+// export: ParsedName
+export interface ParsedName {
+    stem: string;
+    idCandidate: string | undefined;
+    slugCandidate: string;
+    isMarkdown: boolean;
+    nonPageType: string | undefined;
+}
+
+// export: parseName
+export declare function parseName(name: string): ParsedName;
+
+// export: PathResolver
+export declare class PathResolver {
+    private readonly index;
+    constructor(index: TreeIndex);
+    resolve(path: string, options?: ResolveOptions): Promise<ResolveResult>;
+    private resolveInSpace;
+    private resolveUnderContainer;
+    private matchChild;
+    private resolveSideObject;
+    private resolveById;
+    private resolveLabels;
+    private resolveRecent;
+    private resolveSearch;
 }
 
 // export: RateLimitRetryOptions
@@ -56,6 +149,108 @@ export interface RateLimitRetryOptions {
     onWait?: (waitMs: number, attempt: number) => void;
 }
 
+// export: RECENT_WINDOWS
+export declare const RECENT_WINDOWS: readonly [
+    "24h",
+    "7d",
+    "30d"
+];
+
+// export: RecentWindow
+export type RecentWindow = (typeof RECENT_WINDOWS)[number];
+
+// export: RESERVED_NAMES
+export declare const RESERVED_NAMES: Set<string>;
+
+// export: Resolved
+export type Resolved = {
+    kind: "root";
+} | {
+    kind: "me-json";
+} | {
+    kind: "space";
+    spaceKey: string;
+    homepageId: string | null;
+} | {
+    kind: "space-json";
+    spaceKey: string;
+} | {
+    kind: "container";
+    node: TreeNode;
+} | {
+    kind: "body";
+    node: TreeNode;
+} | {
+    kind: "non-page";
+    node: TreeNode;
+} | {
+    kind: "attachments-dir";
+    node: TreeNode;
+} | {
+    kind: "attachment";
+    node: TreeNode;
+    filename: string;
+} | {
+    kind: "versions-dir";
+    node: TreeNode;
+} | {
+    kind: "version-file";
+    node: TreeNode;
+    version: number;
+} | {
+    kind: "comments-file";
+    node: TreeNode;
+} | {
+    kind: "conflict-file";
+    node: TreeNode;
+} | {
+    kind: "by-id-dir";
+    spaceKey: string;
+} | {
+    kind: "by-id-link";
+    spaceKey: string;
+    id: string;
+} | {
+    kind: "labels-dir";
+    spaceKey: string;
+} | {
+    kind: "label-dir";
+    spaceKey: string;
+    label: string;
+} | {
+    kind: "label-link";
+    spaceKey: string;
+    label: string;
+    name: string;
+} | {
+    kind: "recent-dir";
+    spaceKey: string;
+} | {
+    kind: "recent-window";
+    spaceKey: string;
+    window: RecentWindow;
+} | {
+    kind: "recent-link";
+    spaceKey: string;
+    window: RecentWindow;
+    name: string;
+} | {
+    kind: "search-dir";
+    spaceKey: string;
+} | {
+    kind: "search-readme";
+    spaceKey: string;
+} | {
+    kind: "search-query";
+    spaceKey: string;
+    query: string;
+} | {
+    kind: "search-link";
+    spaceKey: string;
+    query: string;
+    name: string;
+};
+
 // export: ResolvedVfsOptions
 export type ResolvedVfsOptions = Required<Omit<VfsOptions, "spaces" | "logger" | "client">> & {
     spaces: string[] | undefined;
@@ -63,11 +258,112 @@ export type ResolvedVfsOptions = Required<Omit<VfsOptions, "spaces" | "logger" |
     client: VfsOptions["client"];
 };
 
+// export: resolveNameToId
+export declare function resolveNameToId(name: string, knowsId: (id: string) => boolean): string | undefined;
+
+// export: ResolveResult
+export type ResolveResult = Resolved | MissingLeaf;
+
 // export: resolveVfsOptions
 export declare function resolveVfsOptions(options: VfsOptions): ResolvedVfsOptions;
 
 // export: retryAfterMsOf
 export declare function retryAfterMsOf(error: unknown): number | undefined;
+
+// export: splitParent
+export declare function splitParent(path: string): {
+    parent: string;
+    name: string;
+};
+
+// export: splitPath
+export declare function splitPath(path: string): string[];
+
+// export: stripVfsExtension
+export declare function stripVfsExtension(name: string): {
+    stem: string;
+    isMarkdown: boolean;
+    nonPageType: string | undefined;
+};
+
+// export: titleFromName
+export declare function titleFromName(name: string): string;
+
+// export: TreeIndex
+export declare class TreeIndex {
+    private readonly opts;
+    private readonly nodes;
+    private readonly spaces;
+    private spaceListLoadedAt;
+    private readonly limit;
+    private readonly inFlight;
+    constructor(options: TreeIndexOptions);
+    knowsId(id: string): boolean;
+    node(id: string): TreeNode | undefined;
+    loadedNodes(): TreeNode[];
+    isUnloaded(id: string): boolean;
+    clear(): void;
+    hydrate(snapshot: {
+        nodes: TreeNode[];
+        spaces: SpaceEntry[];
+    }): void;
+    snapshot(): {
+        nodes: TreeNode[];
+        spaces: SpaceEntry[];
+    };
+    listSpaces(): Promise<ConfluenceSpace[]>;
+    getSpace(key: string): Promise<ConfluenceSpace>;
+    getHomepageId(key: string): Promise<string | null>;
+    loadChildren(id: string, options?: {
+        force?: boolean;
+    }): Promise<TreeNode[]>;
+    private fetchChildren;
+    private fetchChildrenCloud;
+    private fetchChildrenDataCenter;
+    private fromFolderChild;
+    private childNodes;
+    loadSubtree(rootId: string, options?: {
+        maxDepth?: number;
+        maxNodes?: number;
+    }): Promise<TreeNode[]>;
+    revalidate(id: string): Promise<void>;
+    isStale(id: string): boolean;
+    upsert(partial: Partial<TreeNode> & {
+        id: string;
+    }): TreeNode;
+    forget(id: string): void;
+    attachChild(parentId: string, child: Partial<TreeNode> & {
+        id: string;
+    }): TreeNode;
+    private request;
+}
+
+// export: TreeIndexOptions
+export interface TreeIndexOptions {
+    client: VfsClient;
+    ttlMs: number;
+    concurrency: number;
+    offline: boolean;
+    logger: VfsLogger;
+    now: () => number;
+    sleep?: (ms: number) => Promise<void>;
+    spaces?: string[] | undefined;
+}
+
+// export: TreeNode
+export interface TreeNode {
+    id: string;
+    title: string;
+    type: string;
+    parentId: string | null;
+    spaceKey: string;
+    version: number | undefined;
+    lastModified: string | undefined;
+    position: number | null;
+    children: string[] | "unloaded";
+    childrenLoadedAt: number | undefined;
+    metaCheckedAt: number | undefined;
+}
 
 // export: VFS_DEFAULTS
 export declare const VFS_DEFAULTS: {
@@ -97,11 +393,6 @@ export interface VfsClient {
         signal?: AbortSignal;
     }): Promise<string | null>;
     getPageDirectChildren(pageId: string, options?: {
-        limit?: number;
-        signal?: AbortSignal;
-    }): Promise<FolderChild[]>;
-    getPageDescendants(pageId: string, options?: {
-        depth?: number;
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
@@ -263,7 +554,11 @@ export interface VfsOptions {
     cqlGrep?: boolean;
     logger?: VfsLogger;
     now?: () => number;
+    sleep?: (ms: number) => Promise<void>;
 }
+
+// export: vfsSlug
+export declare function vfsSlug(title: string | undefined | null): string;
 
 // export: VfsStat
 export interface VfsStat {
@@ -364,10 +659,6 @@ export declare class FakeConfluenceClient implements VfsClient {
     getSpace(key: string): Promise<ConfluenceSpace>;
     getSpaceHomepageId(spaceKey: string): Promise<string | null>;
     getPageDirectChildren(pageId: string, options?: {
-        limit?: number;
-    }): Promise<FolderChild[]>;
-    getPageDescendants(pageId: string, options?: {
-        depth?: number;
         limit?: number;
     }): Promise<FolderChild[]>;
     getChildren(pageId: string, options?: {
