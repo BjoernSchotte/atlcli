@@ -20,7 +20,7 @@ async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro") {
   const vfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY", "mayflower"],
     mode, allowDelete: mode === "rw", coalesceMs: 0, cacheDir, offline: false });
   cleanup.push(async () => { await vfs.close(); rmSync(cacheDir, { recursive: true, force: true }); });
-  return { fs: new NfsFilesystem(vfs, spaces), vfs };
+  return { fs: new NfsFilesystem(vfs, spaces), vfs, client };
 }
 
 it("exports a single space directly and confines parent lookups", async () => {
@@ -169,4 +169,29 @@ it("retains moved handles on temporary resolution errors and rejects foreign rel
   await expect(fs.read(file, 0, 65536)).rejects.toMatchObject({ code: "EACCES" });
   vfs.readlink = readlink;
   expect(Buffer.from((await fs.read(file, 0, 65536)).data, "base64").toString()).toContain("Body 0");
+});
+
+
+it("lists exact attachment sizes without downloads and caches complete ranged reads", async () => {
+  const { fs, client } = await fixture();
+  const expected = Buffer.alloc(NFS_MAX_READ + 29, 0xab);
+  Buffer.from("Grüße 🐴").copy(expected, NFS_MAX_READ - 5);
+  client.seedAttachment({ id: "a1", pageId: "100", filename: "large.bin", bytes: expected,
+    mediaType: "application/octet-stream", modified: "2026-09-10T00:00:00.000Z" });
+  const directory = await fs.lookup(1, "_attachments");
+  const listing = await fs.readdir(directory, 0, 256);
+  expect(listing.entries).toHaveLength(1);
+  const attr = listing.entries[0]!.attr;
+  expect(attr.size).toBe(expected.byteLength);
+  expect((await fs.getattr(attr.id)).size).toBe(expected.byteLength);
+  expect(client.callsTo("downloadAttachment")).toBe(0);
+  expect(client.callsTo("getPage")).toBe(0);
+  for (let pass = 0; pass < 2; pass++) {
+    const first = await fs.read(attr.id, 0, NFS_MAX_READ);
+    const second = await fs.read(attr.id, NFS_MAX_READ, NFS_MAX_READ);
+    expect(first.eof).toBe(false);
+    expect(second.eof).toBe(true);
+    expect(Buffer.concat([Buffer.from(first.data, "base64"), Buffer.from(second.data, "base64")])).toEqual(expected);
+  }
+  expect(client.callsTo("downloadAttachment")).toBe(1);
 });

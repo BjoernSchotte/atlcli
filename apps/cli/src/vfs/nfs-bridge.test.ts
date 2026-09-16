@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { platform } from "node:os";
-import { open, opendir } from "node:fs/promises";
+import { open, opendir, stat } from "node:fs/promises";
 import { getActiveProfile, loadConfig } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { runMountCommand } from "../commands/wiki-mount.js";
@@ -12,6 +12,8 @@ import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { startNfsServer, type RunningNfsServer } from "./nfs-bridge.js";
 
+const attachmentBytes = Buffer.alloc(1024 * 1024 + 29, 0xab);
+Buffer.from("Grüße 🐴").copy(attachmentBytes, 1024 * 1024 - 5);
 const helperPath = process.env.ATLCLI_NFS_TEST_HELPER;
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -54,6 +56,8 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
     .seedPage({ id: "300", title: "Other", spaceKey: "mayflower", storage: "<p>Other</p>" });
   for (let i = 0; i < 32; i++) client.seedPage({ id: String(400 + i), title: `Child ${i}`,
     spaceKey: "DOCSY", parentId: "100", storage: "<p>Test</p>" });
+  client.seedAttachment({ id: "a1", pageId: "100", filename: "large.bin", bytes: attachmentBytes,
+    mediaType: "application/octet-stream", modified: "2026-09-10T00:00:00.000Z" });
   const profile = live ? getActiveProfile(await loadConfig(), "mayflower") : undefined;
   if (live && !profile) throw new Error("Missing mayflower test profile");
   const vfs = await ConfluenceVfsImpl.open({ profile: profile?.name ?? "fixture",
@@ -287,9 +291,13 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     });
   }
 
-  for (const spaces of [["DOCSY"], ["DOCSY", "mayflower"]]) {
-    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")(`reads full content through native kernel mount (${spaces.join(",")})`, async () => {
-      const { server, vfs } = await fixture(spaces);
+  for (const { spaces, attachments } of [
+    { spaces: ["DOCSY"], attachments: false },
+    { spaces: ["DOCSY", "mayflower"], attachments: false },
+    { spaces: ["DOCSY"], attachments: true },
+  ]) {
+    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""})`, async () => {
+      const { server, vfs, client } = await fixture(spaces, attachments ? false : undefined);
       const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-kernel-"));
       let mounted = false;
       cleanups.push(async () => {
@@ -321,6 +329,21 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       try {
         expect(await file.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md")));
       } finally { await file.close(); }
+      if (attachments) {
+        const attachment = join(mountpoint, "_attachments", "large.bin");
+        const directory = await opendir(join(mountpoint, "_attachments"));
+        const names: string[] = [];
+        for await (const entry of directory) names.push(entry.name);
+        expect(names).toEqual(["large.bin"]);
+        expect((await stat(attachment)).size).toBe(attachmentBytes.length);
+        expect(client.callsTo("downloadAttachment")).toBe(0);
+        for (let pass = 0; pass < 2; pass++) {
+          const opened = await open(attachment, "r");
+          try { expect(await opened.readFile()).toEqual(attachmentBytes); }
+          finally { await opened.close(); }
+        }
+        expect(client.callsTo("downloadAttachment")).toBe(1);
+      }
     }, 30000);
   }
 });

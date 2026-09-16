@@ -528,3 +528,22 @@ No MAYFLOWER content was changed. Typecheck passed.
 This slice covers page/body relocation. Folder and attachment-view relocation,
 consistent version snapshots and measured external-change visibility remain WP3
 work; the full WP3 checkbox stays open.
+
+
+## Slice 22 — attachment metadata without content downloads
+
+A new regression failed before the fix: NFS READDIRPLUS/getattr downloaded a full
+attachment despite the core already reporting an exact size from metadata. The
+adapter now uses that exact attachment size and retains body materialization for
+Markdown/generated content whose size is unknown. No new cache was introduced.
+
+The fixture is 1 MiB + 29 bytes, including UTF-8 bytes crossing the 1 MiB boundary.
+Tests assert zero attachment downloads for listing/stat, correct byte size and EOF,
+full byte equality across ranges, and exactly one backend download after two full
+reads. Native kernel tests perform opendir/stat/readFile twice on the same fixture.
+These passed on macOS (3 native tests / 13 assertions) and Linux (attachment unit
+plus native tests: 4 tests / 25 assertions). Linux's other two mounts used the live
+DOCSY and combined RO spaces; the large attachment case is explicitly synthetic.
+All 12 filesystem tests / 201 assertions and typecheck pass. No live attachments
+were created or changed by this slice. External-version snapshot consistency
+remains open and is not inferred from cached repeated-read success.

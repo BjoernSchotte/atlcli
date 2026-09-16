@@ -215,6 +215,10 @@ fetched. Index lag can omit recent changes. Other find expressions retain the
 filesystem-metadata walk; `--no-cql` on `wiki sh` disables acceleration.
 
 Experimental NFS handles distinguish generated files in each selected space.
+Attachment directory listings and stat use exact Confluence size metadata without
+downloading attachment contents. A read downloads the attachment through the
+shared body cache; subsequent ranges reuse it.
+
 Existing page/body handles also survive a page move after the changed hierarchy
 is observed: the adapter resolves the same page ID within the selected spaces.
 Moving outside the export or deleting the page expires the handle. This does not

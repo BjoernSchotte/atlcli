@@ -148,7 +148,8 @@ export class NfsFilesystem {
     const path = await this.pathFor(id);
     const stat = await this.vfs.stat(path);
     // Never publish estimated sizes to a kernel client.
-    const size = stat.isDirectory ? 0 : (await this.vfs.readFileBytes(path)).byteLength;
+    const size = stat.isDirectory ? 0 : stat.kind === "attachment" && !stat.sizeEstimated
+      ? stat.size : (await this.vfs.readFileBytes(path)).byteLength;
     const mtime = stat.isDirectory ? (await this.directoryView(id, path)).mtime : stat.mtime.getTime();
     return { id, directory: stat.isDirectory, size, mtime };
   }
