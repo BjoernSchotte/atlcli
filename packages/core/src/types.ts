@@ -38,4 +38,17 @@ export type Profile = {
   tlsCaFile?: string;
   /** Skip TLS certificate verification. Not recommended for production use. */
   tlsSkipVerify?: boolean;
+  /**
+   * Virtual filesystem settings for this profile, overriding the global ones.
+   * Typed as a record rather than importing `VfsConfig` because `config.ts`
+   * already imports this module, and the other direction would be a cycle.
+   */
+  vfs?: {
+    cacheDir?: string;
+    mode?: "ro" | "rw";
+    spaces?: string[];
+    cacheMaxMb?: number;
+    prefetchMaxPages?: number;
+    cqlGrep?: boolean;
+  };
 };

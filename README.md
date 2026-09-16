@@ -270,6 +270,8 @@ atlcli jira search --assignee me --status "In Progress"
 | Workflow | Start here |
 | --- | --- |
 | Sync Confluence and Markdown | `atlcli wiki docs --help` |
+| Work on Confluence with a shell | `atlcli wiki sh --help` |
+| Mount Confluence as a volume | `atlcli wiki mount --help` |
 | Manage pages and spaces | `atlcli wiki --help` |
 | Export DOCX or PDF | `atlcli wiki export --help` |
 | Export visually in Chrome | Open the atlcli side panel on a Confluence page |
@@ -277,6 +279,35 @@ atlcli jira search --assignee me --status "In Progress"
 | Diagnose configuration | `atlcli doctor` |
 | Automate in CI | `--json`, `--strict`, and documented exit codes |
 | Extend atlcli | `atlcli plugin --help` |
+
+## Confluence as a filesystem
+
+Spaces are directories, pages are directories with an `_index.md` body, and
+`ls`, `cat`, `grep` and `sed` work on them. No MCP server, no tool calls — just
+a shell, or a mounted volume.
+
+```bash
+# Find every page mentioning a term, in one request, and read the first one
+atlcli wiki sh --space DOCSY -c '
+  grep -rlw kubernetes . | head -5
+  cat "$(grep -rlw kubernetes . | head -1)"
+'
+
+# Mount it as a real volume and open it in any editor
+atlcli wiki mount ~/confluence --space DOCSY
+```
+
+It is a **cache, not a copy**: only what you actually read reaches the disk, the
+cache is bounded and safe to delete, and a branch you never open is never
+fetched. For a complete local copy — files you can commit — use
+`atlcli wiki docs pull` instead.
+
+Writing is off by default: `--mode rw` enables edits, deletion needs
+`--allow-delete` on top, and deletion is always the trash, never a purge.
+
+See [Virtual Filesystem](https://atlcli.sh/confluence/virtual-filesystem/), and
+[Confluence for Coding Agents](https://atlcli.sh/recipes/confluence-vfs-agents/)
+for a snippet to paste into `AGENTS.md`.
 
 ## CLI or browser extension?
 

@@ -310,6 +310,8 @@ export type ConfluenceSearchResult = {
 export type ConfluenceSearchDetail = {
   id: string;
   title: string;
+  /** Content version provided by the search expansion. */
+  version?: number;
   /** Content type as CQL names it: `page`, `blogpost`, `attachment`, … */
   type?: string;
   /** Absolute URL of the content. */
@@ -330,6 +332,8 @@ export type ConfluenceSearchDetail = {
 
 /** A page of {@link ConfluenceClient.searchDetailed} results. */
 export type ConfluenceDetailedSearchResults = {
+  /** Provider-issued cursor; never synthesize offsets on Cloud. */
+  nextLink?: string;
   results: ConfluenceSearchDetail[];
   /**
    * The server's own count of ALL matches, not just this page. Load-bearing for
@@ -553,6 +557,20 @@ export interface ConfluenceClientOptions {
 const retrySchedulerHook = Symbol.for("atlcli.confluence.retry-scheduler.test-hook");
 
 export class ConfluenceClient {
+  private requestStats = { requests: 0, rateLimits: 0 };
+
+  /** Content-free counters for actual HTTP attempts, including retries and v2. */
+  getRequestStats(): { requests: number; rateLimits: number } {
+    return { ...this.requestStats };
+  }
+
+  private async countedFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+    this.requestStats.requests++;
+    const response = await fetch(input, init);
+    if (response.status === 429) this.requestStats.rateLimits++;
+    return response;
+  }
+
   private confluenceBaseUrl: string;
   /** Hosting model exposed to capability adapters such as tree traversal. */
   public readonly deploymentType: DeploymentType;
@@ -825,7 +843,7 @@ export class ConfluenceClient {
       const attemptStartedAt = Date.now();
       let res: Response;
       try {
-        res = await fetch(
+        res = await this.countedFetch(
           url.toString(),
           this.applyFetchOptions({
             method,
@@ -1017,7 +1035,7 @@ export class ConfluenceClient {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       options.signal?.throwIfAborted();
-      const res = await fetch(url.toString(), this.applyFetchOptions({
+      const res = await this.countedFetch(url.toString(), this.applyFetchOptions({
         method,
         headers: {
           Authorization: this.authHeader,
@@ -1141,6 +1159,23 @@ export class ConfluenceClient {
       signal: options.signal,
     })) as any;
 
+    return { ...this.parsePageMetadata(data), storage: data.body?.storage?.value ?? "" };
+  }
+
+  /** Body-free identity/version lookup for stat and direct-id filesystem paths. */
+  async getPageMetadata(
+    id: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluencePage> {
+    const data = await this.request(`/content/${id}`, {
+      query: { expand: "version,space,ancestors" },
+      logBody: "meta-only",
+      signal: options.signal,
+    });
+    return this.parsePageMetadata(data);
+  }
+
+  private parsePageMetadata(data: any): ConfluencePage {
     // Extract ancestors (array of {id, title} from root to parent)
     const ancestors = Array.isArray(data.ancestors)
       ? data.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
@@ -1157,7 +1192,6 @@ export class ConfluenceClient {
       spaceKey: data.space?.key,
       parentId,
       ancestors,
-      storage: data.body?.storage?.value ?? "",
     };
   }
 
@@ -1651,14 +1685,29 @@ export class ConfluenceClient {
     cql: string,
     options: {
       limit?: number;
+      /** Follow a nextLink returned by this method. */
+      cursor?: string;
       /** `current` / `archived` / `draft`; sent via `cqlcontext`. */
       contentStatuses?: string[];
       signal?: AbortSignal;
     } = {}
   ): Promise<ConfluenceDetailedSearchResults> {
     const { limit = 25, contentStatuses, signal } = options;
-    const data = (await this.request("/search", {
-      query: {
+    let path = "/search";
+    if (options.cursor) {
+      const apiBase = new URL(`${this.confluenceBaseUrl}/rest/api/`);
+      const cursor = options.cursor;
+      const resolved = cursor.startsWith("/rest/api/")
+        ? new URL(cursor.slice("/rest/api/".length), apiBase)
+        : new URL(cursor, apiBase);
+      if (resolved.origin.toLowerCase() !== this.capabilityOrigin ||
+          resolved.pathname !== `${apiBase.pathname}search` || resolved.username || resolved.password) {
+        throw new Error("Confluence detailed search cursor is outside the configured search endpoint.");
+      }
+      path = `/search${resolved.search}`;
+    }
+    const data = (await this.request(path, {
+      query: options.cursor ? undefined : {
         cql,
         limit,
         expand: [
@@ -1673,11 +1722,13 @@ export class ConfluenceClient {
           : {}),
       },
       signal,
+      logBody: "meta-only",
     })) as any;
 
     const base: string = data._links?.base ?? "";
     const results = Array.isArray(data.results) ? data.results : [];
     return {
+      ...(typeof data._links?.next === "string" && data._links.next ? { nextLink: data._links.next } : {}),
       results: results.map((item: any) => this.parseSearchDetail(item, base)),
       ...(typeof data.totalSize === "number" ? { totalSize: data.totalSize } : {}),
     };
@@ -1696,6 +1747,7 @@ export class ConfluenceClient {
       // `item.title` may carry the search highlighter's markers; `content.title`
       // is the raw stored title, so prefer it and clean the fallback.
       title: typeof content.title === "string" ? content.title : cleanExcerpt(item.title ?? ""),
+      ...(Number.isSafeInteger(content.version?.number) && content.version.number > 0 ? { version: content.version.number } : {}),
       ...(content.type ? { type: String(content.type) } : {}),
       ...(relative ? { url: base && relative.startsWith("/") ? `${base}${relative}` : relative } : {}),
       ...(content.space?.key ? { spaceKey: String(content.space.key) } : {}),
@@ -2722,6 +2774,72 @@ export class ConfluenceClient {
   }
 
   /**
+   * Fetch up to 250 pages **with their storage bodies** in one request
+   * (`GET /api/v2/pages?id=a,b,c&body-format=storage&limit=250`).
+   *
+   * This is the only bulk body fetch in the client, and it exists for the
+   * virtual filesystem's capped prefetch: `grep -r` over a hundred pages is one
+   * request here against a hundred through {@link getPage}. Its body-free twin
+   * is {@link getPageVersions}, which the same caller uses to revalidate.
+   *
+   * Cloud only — REST v2 has no Data Center equivalent, and a caller there must
+   * fall back to per-page {@link getPage} calls.
+   *
+   * A page the caller may not see is simply **absent** from the result, exactly
+   * as it is from `getPageVersions`. Callers must not read a missing id as an
+   * error: that is how Confluence reports "not visible to you".
+   */
+  async getPagesBulk(
+    ids: readonly string[],
+    options: { signal?: AbortSignal } = {},
+  ): Promise<(ConfluencePage & { storage: string })[]> {
+    if (this.deploymentType !== "cloud") {
+      throw new TypeError("Bulk page body fetches require Confluence Cloud REST v2.");
+    }
+    const unique = [...new Set(ids)].filter((id) => /^\d+$/.test(id));
+    if (unique.length === 0) return [];
+
+    const CHUNK = 250;
+    const out: (ConfluencePage & { storage: string })[] = [];
+    for (let start = 0; start < unique.length; start += CHUNK) {
+      const chunk = unique.slice(start, start + CHUNK);
+      const rows = await drainPaginated<ConfluencePage & { storage: string }>(async (cursor) => {
+        const query: Record<string, string | number | undefined> = {
+          id: chunk.join(","),
+          "body-format": "storage",
+          limit: CHUNK,
+        };
+        if (cursor) query.cursor = cursor;
+        const data = (await this.requestV2(`/pages`, {
+          query,
+          signal: options.signal,
+          logBody: "meta-only",
+        })) as any;
+        const results = Array.isArray(data.results) ? data.results : [];
+        const items: (ConfluencePage & { storage: string })[] = [];
+        for (const row of results) {
+          const id = typeof row?.id === "string" ? row.id : undefined;
+          if (!id || typeof row?.title !== "string") continue;
+          items.push({
+            id,
+            title: row.title,
+            version: row.version?.number,
+            // v2 reports a numeric `spaceId`, not a key. Callers that need the
+            // key already know it (they asked for pages of a known space), so
+            // this deliberately stays unset rather than guessing.
+            parentId: typeof row.parentId === "string" ? row.parentId : null,
+            url: this.buildWebUrl(row._links?.webui),
+            storage: row.body?.storage?.value ?? "",
+          });
+        }
+        return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+      });
+      out.push(...rows);
+    }
+    return out;
+  }
+
+  /**
    * Get pages modified since a given date using CQL.
    * Used for efficient polling of spaces or page trees.
    *
@@ -3193,7 +3311,7 @@ export class ConfluenceClient {
 
     // Do not retry multipart POSTs: after an ambiguous 429/5xx/transport
     // failure, Confluence may already have created the attachment/version.
-    const res = await fetch(url.toString(), this.applyFetchOptions({
+    const res = await this.countedFetch(url.toString(), this.applyFetchOptions({
       method: "POST",
       headers: {
         Authorization: this.authHeader,
@@ -3272,7 +3390,7 @@ export class ConfluenceClient {
 
       let response: Response;
       try {
-        response = await fetch(url, this.applyFetchOptions({
+        response = await this.countedFetch(url, this.applyFetchOptions({
           ...init,
           headers,
         }));
@@ -3379,12 +3497,13 @@ export class ConfluenceClient {
             init,
             this.sessionRedirectPolicy,
             {
+              fetchFn: (input, init) => this.countedFetch(input, init),
               loginRedirectError: (status) => this.authRedirectError(status),
               blockedRedirectError: (target, reason) =>
                 new SessionRedirectBlockedError("Confluence attachment download", target, reason),
             }
           )
-        : await fetch(url.toString(), init);
+        : await this.countedFetch(url.toString(), init);
 
       if (res.status === 429) {
         const delayMs =
@@ -3571,7 +3690,7 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), this.applyFetchOptions({
+      const res = await this.countedFetch(url.toString(), this.applyFetchOptions({
         method: options.method ?? "GET",
         headers: {
           Authorization: this.authHeader,

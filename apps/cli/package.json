@@ -11,6 +11,7 @@
     "@atlcli/change-set": "workspace:*",
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/confluence": "workspace:*",
+    "@atlcli/confluence-vfs": "workspace:*",
     "@atlcli/core": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/docx-template-intake": "workspace:*",
@@ -19,8 +20,8 @@
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/export-node": "workspace:*",
     "@atlcli/export-wiring": "workspace:*",
-    "@atlcli/import-core": "workspace:*",
     "@atlcli/import-confluence": "workspace:*",
+    "@atlcli/import-core": "workspace:*",
     "@atlcli/import-docx": "workspace:*",
     "@atlcli/import-pdf": "workspace:*",
     "@atlcli/jira": "workspace:*",
@@ -35,6 +36,8 @@
     "@atlcli/web-publish-starlight": "workspace:*",
     "@jitl/quickjs-ng-wasmfile-release-asyncify": "0.32.0",
     "@resvg/resvg-wasm": "2.6.2",
+    "just-bash": "3.4.2",
+    "webdav-server": "2.6.3",
     "yaml": "^2.9.0"
   },
   "scripts": {

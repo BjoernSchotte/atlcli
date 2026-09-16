@@ -54,6 +54,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "contract for the first palette MVP. Keep it experimental until additional build-time " +
       "contributors and hosts prove versioning, validation, capability, and execution seams.",
   },
+  "@atlcli/confluence-vfs": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: the functional core behind `atlcli wiki sh` and `atlcli wiki mount`. Keep it " +
+      "experimental while the just-bash and WebDAV frontends, the write path, and live " +
+      "measurements against Cloud and Data Center prove the node/stat/readdir contract.",
+  },
   "@atlcli/change-set": {
     version: "0.x",
     frozen: false,

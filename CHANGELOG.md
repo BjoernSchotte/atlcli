@@ -4,6 +4,47 @@ All notable changes to atlcli will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **vfs:** Confluence as a filesystem, through two frontends over one core.
+  `atlcli wiki sh` is an embedded bash — spaces and pages are directories, a
+  page's body is `_index.md`, and `ls`, `cat`, `grep`, `find` and `sed` work on
+  them, with a real exit code so `-c` composes from the outside.
+  `atlcli wiki mount` attaches the same tree as an OS volume through a loopback
+  WebDAV server: no kernel extension and no administrator rights on macOS or
+  Windows, printed `davfs2` instructions on Linux.
+
+  It is a **cache, not a copy**. Listing a directory costs one request for that
+  directory; `ls`, `stat` and a Finder window never fetch a page body; a branch
+  nobody opens is never fetched. The disk cache is a bounded LRU (100 MB by
+  default, attachment blobs included) that is safe to delete at any time, and a
+  recursive operation needing more than 300 page bodies stops and says so
+  rather than quietly downloading a space. `atlcli wiki docs pull` remains the
+  right tool for a complete local copy.
+
+  Writing is off by default. `--mode rw` enables create, update, rename and
+  move; `rm` additionally needs `--allow-delete` and only ever moves a page to
+  the trash — no purge endpoint is called anywhere. Every write is a versioned
+  compare-and-swap with a three-way merge, and a merge that conflicts fails
+  loudly with the losing content preserved under the cache directory, listable
+  with `atlcli wiki vfs conflicts`.
+
+  `grep` can use Confluence's search index, but only when the pattern is marked
+  as a whole word (`grep -rw`): the index matches words while `grep` matches
+  substrings, so an unmarked pattern takes the full scan instead of risking a
+  silently empty result. The path taken is always printed on stderr.
+
+  Convenience directories: `.by-id/`, `.labels/`, `.recent/{24h,7d,30d}/` and
+  `.search/<cql>/`, all resolved on access with no registration step, plus
+  `_attachments/`, `.versions/` and `.comments.md` per page.
+
+  New: `@atlcli/confluence-vfs` (experimental, 0.x), `atlcli wiki sh`,
+  `atlcli wiki mount`, `atlcli wiki unmount`, `atlcli wiki vfs cache`,
+  `atlcli wiki vfs conflicts`, a `vfs` config section (global and per profile),
+  and `ConfluenceClient.getPagesBulk` for bulk body fetches.
+  See [Virtual Filesystem](https://atlcli.sh/confluence/virtual-filesystem/).
+
+
 ### BREAKING CHANGES
 
 - **export:** Remove the Python DOCX exporter (`packages/export`). `--engine

@@ -76,7 +76,20 @@ const SUBCOMMANDS: Record<string, string[]> = {
     "undo",
     "validate",
   ],
-  wiki: ["docs", "my", "page", "publish", "recent", "search", "space", "template"],
+  wiki: [
+    "docs",
+    "mount",
+    "my",
+    "page",
+    "publish",
+    "recent",
+    "search",
+    "sh",
+    "space",
+    "template",
+    "unmount",
+    "vfs",
+  ],
 };
 
 // Nested subcommands (command -> subcommand -> sub-subcommands)
@@ -84,6 +97,8 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
   wiki: {
     docs: ["add", "check", "diff", "init", "pull", "push", "resolve", "status", "sync", "watch"],
     publish: ["plan", "refresh", "build", "verify", "run", "status", "prune"],
+    mount: ["list", "status", "unmount"],
+    vfs: ["cache", "conflicts"],
     page: [
       "archive",
       "children",
@@ -246,6 +261,34 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "wiki publish run": ["--allow-partial", "--confirm-public", "--dry-run", "--json", "--profile", "--project", "--workspace"],
   "wiki publish status": ["--json", "--project", "--workspace"],
   "wiki publish prune": ["--confirm", "--json", "--project", "--workspace"],
+
+  // wiki sh / wiki vfs
+  "wiki sh": [
+    "--allow-delete",
+    "--cache-dir",
+    "--cache-max-mb",
+    "--cwd",
+    "--json",
+    "--mode",
+    "--no-cql",
+    "--offline",
+    "--prefetch-max",
+    "--profile",
+    "--space",
+    "--timeout",
+  ],
+  "wiki mount": [
+    "--allow-delete",
+    "--cache-dir",
+    "--json",
+    "--mode",
+    "--port",
+    "--profile",
+    "--space",
+  ],
+  "wiki unmount": ["--cache-dir", "--json", "--profile"],
+  "wiki vfs cache": ["--cache-dir", "--json", "--profile"],
+  "wiki vfs conflicts": ["--cache-dir", "--json", "--profile"],
 
   // wiki page flags
   "wiki page list": ["--ancestor", "--limit", "--space"],

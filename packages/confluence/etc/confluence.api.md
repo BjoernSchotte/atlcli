@@ -814,6 +814,12 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
+    private requestStats;
+    getRequestStats(): {
+        requests: number;
+        rateLimits: number;
+    };
+    private countedFetch;
     private confluenceBaseUrl;
     readonly deploymentType: DeploymentType;
     private capabilityOrigin;
@@ -849,6 +855,10 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageMetadata(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage>;
+    private parsePageMetadata;
     getPageAdf(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
@@ -888,6 +898,7 @@ export declare class ConfluenceClient {
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
         limit?: number;
+        cursor?: string;
         contentStatuses?: string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceDetailedSearchResults>;
@@ -1028,6 +1039,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -1201,6 +1217,7 @@ export interface ConfluenceClientOptions {
 
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
+    nextLink?: string;
     results: ConfluenceSearchDetail[];
     totalSize?: number;
 };
@@ -1266,6 +1283,7 @@ export type ConfluenceProductRequestV1 = (path: string, init?: RequestInit) => P
 export type ConfluenceSearchDetail = {
     id: string;
     title: string;
+    version?: number;
     type?: string;
     url?: string;
     spaceKey?: string;
@@ -4178,6 +4196,12 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
+    private requestStats;
+    getRequestStats(): {
+        requests: number;
+        rateLimits: number;
+    };
+    private countedFetch;
     private confluenceBaseUrl;
     readonly deploymentType: DeploymentType;
     private capabilityOrigin;
@@ -4213,6 +4237,10 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageMetadata(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage>;
+    private parsePageMetadata;
     getPageAdf(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
@@ -4252,6 +4280,7 @@ export declare class ConfluenceClient {
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
         limit?: number;
+        cursor?: string;
         contentStatuses?: string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceDetailedSearchResults>;
@@ -4392,6 +4421,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -4565,6 +4599,7 @@ export interface ConfluenceClientOptions {
 
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
+    nextLink?: string;
     results: ConfluenceSearchDetail[];
     totalSize?: number;
 };
@@ -4630,6 +4665,7 @@ export type ConfluenceProductRequestV1 = (path: string, init?: RequestInit) => P
 export type ConfluenceSearchDetail = {
     id: string;
     title: string;
+    version?: number;
     type?: string;
     url?: string;
     spaceKey?: string;
@@ -7542,6 +7578,12 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
+    private requestStats;
+    getRequestStats(): {
+        requests: number;
+        rateLimits: number;
+    };
+    private countedFetch;
     private confluenceBaseUrl;
     readonly deploymentType: DeploymentType;
     private capabilityOrigin;
@@ -7577,6 +7619,10 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageMetadata(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage>;
+    private parsePageMetadata;
     getPageAdf(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
@@ -7616,6 +7662,7 @@ export declare class ConfluenceClient {
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
         limit?: number;
+        cursor?: string;
         contentStatuses?: string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceDetailedSearchResults>;
@@ -7756,6 +7803,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -7929,6 +7981,7 @@ export interface ConfluenceClientOptions {
 
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
+    nextLink?: string;
     results: ConfluenceSearchDetail[];
     totalSize?: number;
 };
@@ -7994,6 +8047,7 @@ export type ConfluenceProductRequestV1 = (path: string, init?: RequestInit) => P
 export type ConfluenceSearchDetail = {
     id: string;
     title: string;
+    version?: number;
     type?: string;
     url?: string;
     spaceKey?: string;
@@ -10603,6 +10657,12 @@ export interface ConflictRegion {
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
+    private requestStats;
+    getRequestStats(): {
+        requests: number;
+        rateLimits: number;
+    };
+    private countedFetch;
     private confluenceBaseUrl;
     readonly deploymentType: DeploymentType;
     private capabilityOrigin;
@@ -10638,6 +10698,10 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageMetadata(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage>;
+    private parsePageMetadata;
     getPageAdf(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
@@ -10677,6 +10741,7 @@ export declare class ConfluenceClient {
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
         limit?: number;
+        cursor?: string;
         contentStatuses?: string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceDetailedSearchResults>;
@@ -10817,6 +10882,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -10990,6 +11060,7 @@ export interface ConfluenceClientOptions {
 
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
+    nextLink?: string;
     results: ConfluenceSearchDetail[];
     totalSize?: number;
 };
@@ -11060,6 +11131,7 @@ export declare class ConfluencePoller {
 export type ConfluenceSearchDetail = {
     id: string;
     title: string;
+    version?: number;
     type?: string;
     url?: string;
     spaceKey?: string;
@@ -14366,6 +14438,12 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
+    private requestStats;
+    getRequestStats(): {
+        requests: number;
+        rateLimits: number;
+    };
+    private countedFetch;
     private confluenceBaseUrl;
     readonly deploymentType: DeploymentType;
     private capabilityOrigin;
@@ -14401,6 +14479,10 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageMetadata(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage>;
+    private parsePageMetadata;
     getPageAdf(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
@@ -14440,6 +14522,7 @@ export declare class ConfluenceClient {
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
         limit?: number;
+        cursor?: string;
         contentStatuses?: string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceDetailedSearchResults>;
@@ -14580,6 +14663,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -14753,6 +14841,7 @@ export interface ConfluenceClientOptions {
 
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
+    nextLink?: string;
     results: ConfluenceSearchDetail[];
     totalSize?: number;
 };
@@ -14818,6 +14907,7 @@ export type ConfluenceProductRequestV1 = (path: string, init?: RequestInit) => P
 export type ConfluenceSearchDetail = {
     id: string;
     title: string;
+    version?: number;
     type?: string;
     url?: string;
     spaceKey?: string;
@@ -16925,6 +17015,12 @@ export interface XmlText {
 ```ts
 // export: ConfluenceClient
 export declare class ConfluenceClient {
+    private requestStats;
+    getRequestStats(): {
+        requests: number;
+        rateLimits: number;
+    };
+    private countedFetch;
     private confluenceBaseUrl;
     readonly deploymentType: DeploymentType;
     private capabilityOrigin;
@@ -16960,6 +17056,10 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageMetadata(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage>;
+    private parsePageMetadata;
     getPageAdf(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageAdf>;
@@ -16999,6 +17099,7 @@ export declare class ConfluenceClient {
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
         limit?: number;
+        cursor?: string;
         contentStatuses?: string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceDetailedSearchResults>;
@@ -17139,6 +17240,11 @@ export declare class ConfluenceClient {
     getPageVersions(ids: readonly string[], options?: {
         signal?: AbortSignal;
     }): Promise<Map<string, PageChangeInfo>>;
+    getPagesBulk(ids: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;

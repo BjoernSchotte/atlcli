@@ -114,6 +114,51 @@ Configure sync behavior:
 | `skipUserStatusCheck` | Skip user status updates during pull | `false` |
 | `postPullAuditSummary` | Show audit summary after pull | `false` |
 
+### Virtual Filesystem
+
+Defaults for `atlcli wiki sh` and `atlcli wiki mount`:
+
+```json
+{
+  "vfs": {
+    "cacheDir": "~/.atlcli/vfs",
+    "mode": "ro",
+    "spaces": ["DOCSY"],
+    "cacheMaxMb": 100,
+    "prefetchMaxPages": 300,
+    "cqlGrep": true
+  }
+}
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `cacheDir` | Cache root. Inside it, always partitioned by profile and account | `~/.atlcli/vfs` |
+| `mode` | Write posture, `ro` or `rw`. A command-line flag still overrides it | `ro` |
+| `spaces` | Spaces to open when `--space` is absent | - |
+| `cacheMaxMb` | Disk cache ceiling; bodies and attachment blobs share it | `100` |
+| `prefetchMaxPages` | Hard ceiling on one prefetch | `300` |
+| `cqlGrep` | Allow the CQL shortcut in `grep` | `true` |
+
+Every key may also be set **per profile**, and a profile's value wins key by
+key — so a profile can enable write mode without losing a globally configured
+cache directory:
+
+```json
+{
+  "profiles": {
+    "mayflower": {
+      "baseUrl": "https://mayflower.atlassian.net",
+      "auth": { "type": "apiToken", "email": "me@example.com" },
+      "vfs": { "mode": "rw", "spaces": ["DOCSY", "OPS"] }
+    }
+  }
+}
+```
+
+The cache is never a source of truth: deleting `cacheDir` costs nothing but the
+next read. See [Virtual Filesystem](confluence/virtual-filesystem.md).
+
 ### Audit
 
 Configure content audit defaults:
