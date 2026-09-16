@@ -243,13 +243,13 @@ export class VirtualDirs {
 
   /** The canonical path of a page, for `readlink`. */
   async canonicalPath(id: string, spaceKey: string, path: string): Promise<string> {
-    const node = this.opts.index.node(id);
-    const segments = node ? this.segmentsFromIndex(node, spaceKey) : undefined;
+    const node = await this.loadNode(id, spaceKey, path);
+    const segments = this.segmentsFromIndex(node, spaceKey);
     if (segments) return `/${[spaceKey, ...segments].join("/")}`;
 
     // The index has not walked down to this page, so ask Confluence directly.
     // One request, and only for an explicit `.by-id` address.
-    const target = node ?? (await this.loadNode(id, spaceKey, path));
+    const target = node;
     const ancestors = await this.request(() => this.opts.client.getAncestors(id), path);
     const homepageId = await this.opts.index.getHomepageId(spaceKey);
     const chain = ancestors
@@ -261,21 +261,32 @@ export class VirtualDirs {
   /** Records a page the index has not walked to, so `stat` can answer. */
   async loadNode(id: string, spaceKey: string, path: string): Promise<TreeNode> {
     const known = this.opts.index.node(id);
-    if (known) return known;
+    if (known) {
+      if (known.spaceKey !== spaceKey || known.type !== "page") {
+        throw new VfsError("ENOENT", `No such page: ${path}`, { path });
+      }
+      await this.opts.index.revalidatePages([id]);
+      return known;
+    }
     if (this.opts.offline) {
       throw new VfsError("ENOENT", `${path} is not in the cache and --offline forbids a request`, {
         path,
       });
     }
-    const page = await this.request(() => this.opts.client.getPage(id), path);
-    return this.opts.index.upsert({
+    const page = await this.request(() => this.opts.client.getPageMetadata(id), path);
+    if (page.spaceKey !== spaceKey) {
+      throw new VfsError("ENOENT", `No such page: ${path}`, { path });
+    }
+    const node = this.opts.index.upsert({
       id: page.id,
       title: page.title,
       type: "page",
       spaceKey: page.spaceKey ?? spaceKey,
-      version: page.version,
+      version: page.version ?? 1,
+      metaCheckedAt: this.opts.now(),
       parentId: page.parentId ?? null,
     });
+    return node;
   }
 
   private segmentsFromIndex(node: TreeNode, spaceKey: string): string[] | undefined {

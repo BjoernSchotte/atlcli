@@ -64,7 +64,7 @@ describe("ConfluenceClient.searchDetailed (spec SUPPORT-DATASOURCE-CONFLUENCE)",
           limit: 25,
           size: 2,
           totalSize: 3309,
-          _links: { base: `${base}/wiki`, context: "/wiki" },
+          _links: { base: `${base}/wiki`, context: "/wiki", next: "/wiki/rest/api/search?cursor=next-token&limit=25" },
         });
       },
     });
@@ -87,6 +87,22 @@ describe("ConfluenceClient.searchDetailed (spec SUPPORT-DATASOURCE-CONFLUENCE)",
     expect(requests[0]!.pathname).toBe("/wiki/rest/api/search");
     expect(requests[0]!.searchParams.get("cql")).toBe('space in ("DOCSY")');
     expect(requests[0]!.searchParams.get("limit")).toBe("5");
+  });
+
+  test("follows provider cursor verbatim and rejects foreign origins and endpoints before fetching", async () => {
+    requests.length = 0;
+    const client = new ConfluenceClient(profile());
+    const first = await client.searchDetailed("type = page");
+    expect(first.nextLink).toBe("/wiki/rest/api/search?cursor=next-token&limit=25");
+    await client.searchDetailed("ignored", { cursor: first.nextLink });
+    expect(requests[1]!.searchParams.get("cursor")).toBe("next-token");
+    expect(requests[1]!.searchParams.has("cql")).toBe(false);
+    await client.searchDetailed("ignored", { cursor: "/rest/api/search?cursor=relative" });
+    expect(requests[2]!.searchParams.get("cursor")).toBe("relative");
+    for (const cursor of ["https://evil.example/wiki/rest/api/search", "/wiki/rest/api/content", "//evil.example/wiki/rest/api/search"]) {
+      await expect(client.searchDetailed("type = page", { cursor })).rejects.toThrow("outside");
+    }
+    expect(requests).toHaveLength(3);
   });
 
   test("expands exactly the fields the four uncertain columns need", async () => {

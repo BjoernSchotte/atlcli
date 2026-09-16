@@ -19,6 +19,7 @@
 import type {
   AttachmentInfo,
   ConfluenceFolder,
+  ConfluenceDetailedSearchResults,
   ConfluencePage,
   ConfluenceSearchResult,
   ConfluenceSpace,
@@ -406,6 +407,11 @@ export class FakeConfluenceClient implements VfsClient {
       .map((p) => this.toChild(p));
   }
 
+  async getPageMetadata(id: string): Promise<ConfluencePage> {
+    this.record("getPageMetadata", id);
+    return this.toPage(this.mustPage(id));
+  }
+
   async getPage(id: string): Promise<ConfluencePage & { storage: string }> {
     this.record("getPage", id);
     const page = this.mustPage(id);
@@ -481,6 +487,24 @@ export class FakeConfluenceClient implements VfsClient {
       size: window.length,
       totalSize: results.length,
       hasMore: start + window.length < results.length,
+    };
+  }
+
+  async searchDetailed(cql: string, options: { limit?: number; cursor?: string } = {}): Promise<ConfluenceDetailedSearchResults> {
+    this.record("searchDetailed", cql);
+    const scope = /^type = page AND \((.*?)\) AND \(/.exec(cql);
+    const spaces = scope ? [...scope[1]!.matchAll(/space = "([^"\\]*)"/g)].map((match) => match[1]!) : undefined;
+    const results = this.runCql(scope ? cql.slice(scope[0].length) : cql)
+      .filter((row) => !spaces || (row.type === "page" && spaces.includes(row.spaceKey ?? "")));
+    const start = Number(options.cursor ?? 0);
+    const limit = options.limit ?? 25;
+    return {
+      results: results.slice(start, start + limit).map((row) => ({
+        ...row,
+        excerpt: (this.pages.get(row.id)?.storage ?? "").replace(/<[^>]*>/g, "").slice(0, 240),
+      })),
+      totalSize: results.length,
+      ...(start + limit < results.length ? { nextLink: String(start + limit) } : {}),
     };
   }
 

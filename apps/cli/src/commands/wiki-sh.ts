@@ -281,7 +281,7 @@ Options:
   --timeout <ms>       Wall-clock limit for the script (default: 120000)
   --prefetch-max <n>   Ceiling on one prefetch (default: 300)
   --cache-max-mb <n>   Disk cache ceiling (default: 100)
-  --no-cql             Compatibility flag; CQL narrowing is disabled
+  --no-cql             Disable CQL hints for positive grep -q searches
   --json               Emit stdout, stderr, exit code and counters as JSON
   --profile <name>     Use a specific auth profile
 
@@ -291,7 +291,8 @@ Notes:
 
   Recursive grep searches current page bodies with bounded bulk prefetch.
   CQL narrowing is disabled because the index can omit whole-word matches.
-  Use cql explicitly for indexed search; --no-cql remains accepted.
+  grep -q can prioritize CQL candidates, always verifying Markdown locally.
+  cql --excerpt/--json [--limit 100] provides body-free indexed previews.
 
 Extra commands inside the shell:
   cql '<query>'    Run a CQL query and print paths

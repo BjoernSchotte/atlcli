@@ -8,7 +8,7 @@ import {
   storageToMarkdown,
 } from "@atlcli/confluence/internal";
 import { ConfluenceVfsImpl } from "./confluence-vfs.js";
-import { parseVfsFrontmatter, toStorage } from "./page-store.js";
+import { PageStore, parseVfsFrontmatter, toStorage } from "./page-store.js";
 import { FakeConfluenceClient } from "./testing/fake-client.js";
 
 let root: string;
@@ -215,6 +215,119 @@ describe("the cache is per profile and account", () => {
 });
 
 describe("prefetch", () => {
+  function storeFor(vfs: ConfluenceVfsImpl, client: FakeConfluenceClient): PageStore {
+    return new PageStore({ client, cache: vfs.cache!, index: vfs.index,
+      instanceUrl: "https://example.atlassian.net/wiki", offline: false,
+      concurrency: 8, prefetchMaxPages: 300,
+      logger: { debug() {}, info() {}, warn() {}, error() {} } });
+  }
+
+  it("bounds cold downloads even when prefetched bodies do not fit in the cache", async () => {
+    const client = seeded(2);
+    const vfs = await openVfs(client, { cacheMaxMb: 0.0001 });
+    await vfs.readdir("/DOCSY");
+    const store = storeFor(vfs, client);
+    await store.withBodyBudget(2, async () => {
+      expect(await store.prefetchBodies(["200", "201"])).toEqual({ fetched: 2, fromCache: 0 });
+      await expect(store.readBody(vfs.index.node("200")!, "/DOCSY/page-0-200.md")).rejects.toThrow(/cold page bodies.*cacheMaxMb/);
+    });
+    expect(client.callsTo("getPagesBulk")).toBe(1);
+    expect(client.callsTo("getPage")).toBe(0);
+    await vfs.close();
+  });
+
+  it("keeps concurrent operations' download budgets independent", async () => {
+    const client = seeded(2);
+    const vfs = await openVfs(client);
+    await vfs.readdir("/DOCSY");
+    const store = storeFor(vfs, client);
+    await Promise.all([
+      store.withBodyBudget(0, async () => {
+        await Promise.resolve();
+        await expect(store.readBody(vfs.index.node("200")!, "/DOCSY/page-0-200.md")).rejects.toThrow(/prefetch limit/);
+      }),
+      store.withBodyBudget(1, async () => {
+        await Promise.resolve();
+        expect(await store.readBody(vfs.index.node("201")!, "/DOCSY/page-1-201.md")).toContain("Body of page 1");
+      }),
+    ]);
+    expect(client.calls.filter((call) => call.method === "getPage").map((call) => call.arg)).toEqual(["201"]);
+    // The context ends with the operation; ordinary reads remain available.
+    expect(await store.readBody(vfs.index.node("200")!, "/DOCSY/page-0-200.md")).toContain("Body of page 0");
+    await vfs.close();
+  });
+
+  it("counts historic reads and Data Center downloads once", async () => {
+    const client = new FakeConfluenceClient({ deploymentType: "data-center" })
+      .seedSpace({ id: "sp-1", key: "DOCSY", name: "Docs", homepageId: "100" })
+      .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>old</p>" });
+    const vfs = await openVfs(client);
+    await vfs.index.getHomepageId("DOCSY");
+    client.bumpVersion("100", "<p>new</p>");
+    const store = storeFor(vfs, client);
+    await store.withBodyBudget(1, async () => {
+      expect(await store.prefetchBodies(["100"])).toEqual({ fetched: 1, fromCache: 0 });
+      await expect(store.readVersion(vfs.index.node("100")!, 1, "/DOCSY/.versions/1.md")).rejects.toThrow(/prefetch limit/);
+    });
+    expect(client.callsTo("getPage")).toBe(1);
+    expect(client.callsTo("getPageAtVersion")).toBe(0);
+    await vfs.close();
+  });
+
+  it("does not redownload unchanged bodies, and refreshes only changed versions after TTL", async () => {
+    const client = seeded(2);
+    const vfs = await openVfs(client);
+    await vfs.index.getHomepageId("DOCSY");
+    const ids = ["100", ...(await vfs.index.loadSubtree("100")).map((node) => node.id)];
+    expect(await vfs.prefetch(ids)).toEqual({ fetched: 3, fromCache: 0 });
+    client.resetCalls();
+    await vfs.index.loadSubtree("100");
+    expect(await vfs.prefetch(ids)).toEqual({ fetched: 0, fromCache: 3 });
+    expect(client.callsTo("getPagesBulk")).toBe(0);
+    client.bumpVersion("100", "<p>Changed home.</p>");
+    client.bumpVersion("200", "<p>Changed child.</p>");
+    clock += 60_001;
+    await vfs.index.loadSubtree("100");
+    expect(await vfs.prefetch(ids)).toEqual({ fetched: 2, fromCache: 1 });
+    expect(await vfs.readFile("/DOCSY/_index.md")).toContain("Changed home.");
+    expect(await vfs.readFile("/DOCSY/page-0-200.md")).toContain("Changed child.");
+    expect(client.callsTo("getPagesBulk")).toBe(1);
+    expect(client.callsTo("getPage")).toBe(0);
+    await vfs.close();
+  });
+
+  it("fails explicitly if the bulk endpoint omits a requested body", async () => {
+    const client = seeded(2);
+    const vfs = await openVfs(client);
+    await vfs.readdir("/DOCSY");
+    client.hiddenIds.add("201");
+    await expect(vfs.prefetch(["200", "201"])).rejects.toThrow(/Bulk fetch omitted 1 requested page bodies/);
+    client.hiddenIds.delete("201");
+    // An incomplete response was not accepted as a successful cache fill.
+    expect(await vfs.prefetch(["200", "201"])).toEqual({ fetched: 2, fromCache: 0 });
+    await vfs.close();
+  });
+
+  it("refreshes a stale Data Center root without Cloud endpoints or repeated warm downloads", async () => {
+    const client = new FakeConfluenceClient({ deploymentType: "data-center" })
+      .seedSpace({ id: "sp-1", key: "DOCSY", name: "Docs", homepageId: "100" })
+      .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>old</p>" });
+    const vfs = await openVfs(client);
+    await vfs.index.getHomepageId("DOCSY");
+    await vfs.index.loadSubtree("100");
+    await vfs.prefetch(["100"]);
+    client.bumpVersion("100", "<p>new</p>");
+    clock += 60_001;
+    await vfs.index.loadSubtree("100");
+    expect(await vfs.prefetch(["100"])).toEqual({ fetched: 1, fromCache: 0 });
+    expect(await vfs.readFile("/DOCSY/_index.md")).toContain("new");
+    client.resetCalls();
+    await vfs.index.loadSubtree("100");
+    expect(await vfs.prefetch(["100"])).toEqual({ fetched: 0, fromCache: 1 });
+    expect(client.requestCount).toBe(0);
+    await vfs.close();
+  });
+
   it("fills many bodies in one bulk request", async () => {
     const client = seeded(10);
     const vfs = await openVfs(client);

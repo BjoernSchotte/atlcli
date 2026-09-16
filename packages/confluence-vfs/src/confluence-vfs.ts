@@ -1,3 +1,4 @@
+import { scopeSearchCql } from "./search.js";
 /**
  * The `ConfluenceVfs` implementation.
  *
@@ -323,6 +324,56 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     return results.map((result) => result.id);
   }
 
+  /** Indexed previews: no page bodies or hierarchy traversal. `complete` refers to the index only. */
+  async searchExcerpts(cql: string, options: { maxResults?: number; spaces?: string[] } = {}): Promise<{
+    results: { id: string; path: string; title: string; excerpt: string; spaceKey: string }[];
+    totalSize?: number;
+    truncated: boolean;
+    complete: boolean;
+  }> {
+    const maxResults = options.maxResults ?? 100;
+    if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 1000) {
+      throw new VfsError("EINVAL", "Search maxResults must be an integer between 1 and 1000");
+    }
+    if (this.opts.offline) throw new VfsError("EINVAL", "Indexed search is unavailable offline");
+    const mounted = this.opts.spaces ?? (await this.index.listSpaces()).map((space) => space.key);
+    const spaces = options.spaces ?? mounted;
+    if (!spaces.length || spaces.some((space) => !mounted.includes(space))) {
+      throw new VfsError("EACCES", "Search is restricted to mounted spaces");
+    }
+    const query = scopeSearchCql(cql, spaces);
+    const results: { id: string; path: string; title: string; excerpt: string; spaceKey: string }[] = [];
+    const seenIds = new Set<string>();
+    const cursors = new Set<string>();
+    let cursor: string | undefined;
+    let totalSize: number | undefined;
+    let scanned = 0;
+    let truncated = false;
+    do {
+      const page = await this.opts.client.searchDetailed(query, {
+        limit: Math.min(100, maxResults - scanned), cursor, contentStatuses: ["current"],
+      });
+      totalSize = page.totalSize ?? totalSize;
+      for (const row of page.results) {
+        if (scanned++ >= maxResults) { truncated = true; break; }
+        if (row.type !== "page" || !row.spaceKey || !spaces.includes(row.spaceKey) || !/^\d+$/.test(row.id)) {
+          throw new VfsError("EINVAL", "Search returned content outside the requested page scope");
+        }
+        if (seenIds.has(row.id)) continue;
+        seenIds.add(row.id);
+        results.push({ id: row.id, path: `/${row.spaceKey}/.by-id/${row.id}.md`,
+          title: row.title, excerpt: row.excerpt ?? "", spaceKey: row.spaceKey });
+      }
+      cursor = page.nextLink;
+      if (cursor && cursors.has(cursor)) throw new VfsError("EINVAL", "Search pagination repeated a cursor");
+      if (cursor) cursors.add(cursor);
+      if (cursor && (scanned >= maxResults || cursors.size >= 100)) truncated = true;
+    } while (cursor && !truncated);
+    // A missing cursor must never turn a known partial result into a complete one.
+    truncated ||= totalSize !== undefined && totalSize > results.length;
+    return { results, ...(totalSize === undefined ? {} : { totalSize }), truncated, complete: !truncated };
+  }
+
   /** The same query, rendered as paths a shell can act on. */
   async searchPaths(cql: string): Promise<string[]> {
     const ids = await this.searchPageIds(cql);
@@ -341,7 +392,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * Walks the tree index level by level, which costs one listing per directory
    * *visited* — never a body, and never a branch outside the path given.
    */
-  async subtreePageIds(path: string, spaceKey: string): Promise<string[]> {
+  async subtreePageIds(path: string, spaceKey: string, options: { shouldVisit?: (node: TreeNode) => boolean } = {}): Promise<string[]> {
     const resolved = (await this.resolver.resolve(path)) as Resolved;
     if (resolved.kind === "body") return resolved.node.type === "page" ? [resolved.node.id] : [];
     const rootId =
@@ -352,8 +403,14 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
           : undefined;
     if (!rootId) return [];
     void spaceKey;
-    const walked = await this.index.loadSubtree(rootId);
-    return [this.index.node(rootId)!, ...walked].filter((node) => node.type === "page").map((node) => node.id);
+    const walked = await this.index.loadSubtree(rootId, options);
+    return [this.index.node(rootId)!, ...walked].filter((node) => node.type === "page" && (options.shouldVisit?.(node) ?? true)).map((node) => node.id);
+  }
+
+  get prefetchMaxPages(): number { return this.opts.prefetchMaxPages; }
+
+  withBodyBudget<T>(budget: number, task: () => Promise<T>): Promise<T> {
+    return this.requireStore().withBodyBudget(budget, task);
   }
 
   /** Fills the body cache for many pages at once, within the prefetch budget. */
@@ -743,6 +800,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       case "attachment":
         return new TextDecoder().decode(await this.readFileBytes(path));
       case "by-id-link":
+        return this.requireStore().readBody(
+          await this.requireVirtual().loadNode(resolved.id, resolved.spaceKey, path), path,
+        );
       case "label-link":
       case "recent-link":
       case "search-link":

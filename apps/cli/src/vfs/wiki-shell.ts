@@ -19,11 +19,11 @@
  * TODO: re-enable once https://github.com/vercel-labs/just-bash/issues/386 is
  * fixed, wrapping the backend calls in `runTrustedAsync()` (plan WP10).
  */
-import type { CommandName } from "just-bash";
+import type { CommandContext, CommandName } from "just-bash";
 import { canonicalPathOf, type ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { posix } from "node:path";
 import { ConfluenceJustBashFs } from "./just-bash-fs.js";
-import { parseFindArgs, parseGrepArgs } from "./grep-flags.js";
+import { matchesGrepFile, skipsGrepDirectory, parseFindArgs, parseGrepArgs } from "./grep-flags.js";
 
 /**
  * Commands the shell registers.
@@ -53,7 +53,7 @@ export interface WikiShellOptions {
   cwd?: string;
   /** Wall-clock ceiling for one script. */
   timeoutMs?: number;
-  /** Allow the CQL shortcut in `grep`. */
+  /** Allow CQL candidate hints for positive `grep -q`. */
   cqlGrep?: boolean;
   /** Prefetch ceiling handed to the core; `undefined` uses its default. */
   prefetchMax?: number | undefined;
@@ -107,46 +107,114 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
     return first && spaces.includes(first) ? first : undefined;
   };
 
-  // Live CQL misses grep whole-word matches inside dotted tokens. Search
-  // current page bodies instead; the bulk-fetch budget still bounds downloads.
-  const grep = defineCommand("grep", async (args, ctx) => {
+  // CQL may prioritize positive existence checks, but never exclude candidates.
+  // Full results still come from grep on the exact generated Markdown.
+  const runGrep = async (args: string[], ctx: CommandContext) => {
     const parsed = parseGrepArgs(args);
     const original = ctx.origCommand!;
-    if (!parsed.recursive) return original(args.filter((a) => a !== "--no-cql"));
-    diagnostic("grep: full scan (CQL text indexing can omit whole-word matches)");
+    if (parsed.hasUnsupportedOptions) {
+      return { stdout: "", stderr: "grep: unsupported option, missing pattern, or invalid option value; no pages downloaded\n", exitCode: 2 };
+    }
+    if (!parsed.recursive) return original(parsed.normalizedArgs);
+    const forwarded = parsed.normalizedArgs.filter((_, i) => !parsed.normalizedPathIndices.includes(i));
     try {
-      const files = new Set<string>();
-      const ids = new Set<string>();
+      // Compile patterns and validate pattern files before traversing or prefetching.
+      const validation = await original([...forwarded, "/dev/null"]);
+      if (validation.exitCode > 1) return validation;
+      const files = new Map<string, string | undefined>();
+      const scopeIds = new Set<string>();
       for (const path of parsed.paths.length ? parsed.paths : ["."]) {
         const absolute = posix.resolve(ctx.cwd, path);
         const spaceKey = spaceOf(ctx.cwd, absolute);
         if (!spaceKey) throw new Error(`Recursive grep needs a path inside a mounted space: ${path}`);
         const stat = await options.vfs.stat(absolute);
         if (!stat.isDirectory) {
-          files.add(absolute);
-          if (stat.kind === "page") ids.add(stat.id);
+          const pageId = stat.kind === "page" || stat.kind === "symlink" ? stat.id : undefined;
+          if (matchesGrepFile(parsed, absolute)) files.set(absolute, pageId);
+          if (pageId) scopeIds.add(pageId);
           continue;
         }
+        // Implicit recursive search visits current page bodies only.
+        if (!matchesGrepFile(parsed, "_index.md") || skipsGrepDirectory(parsed, posix.basename(absolute))) continue;
         const homepage = await options.vfs.index.getHomepageId(spaceKey);
-        for (const id of await options.vfs.subtreePageIds(absolute, spaceKey)) {
-          ids.add(id);
-          files.add(`${canonicalPathOf(options.vfs.index, options.vfs.index.node(id)!, homepage)}/_index.md`);
+        const rootId = stat.kind === "space" ? homepage : stat.id;
+        if (rootId) scopeIds.add(rootId);
+        const ids = await options.vfs.subtreePageIds(absolute, spaceKey, {
+          shouldVisit: (node) => !skipsGrepDirectory(parsed, posix.basename(canonicalPathOf(options.vfs.index, node, homepage))),
+        });
+        for (const id of ids) {
+          files.set(`${canonicalPathOf(options.vfs.index, options.vfs.index.node(id)!, homepage)}/_index.md`, id);
         }
       }
       if (!files.size) return { stdout: "", stderr: "", exitCode: 1 };
-      const result = await options.vfs.prefetch([...ids], {
-        reason: "recursive grep",
-        ...(options.prefetchMax !== undefined ? { budget: options.prefetchMax } : {}),
+      await options.vfs.index.revalidatePages([...files.values()].filter((id): id is string => id !== undefined));
+      const budget = options.prefetchMax ?? options.vfs.prefetchMaxPages;
+      if (parsed.quiet && !parsed.invertMatch && !parsed.patternFiles.length) {
+        // -q needs only one verified match. Cache hits first; CQL is just a hint.
+        let entries = [...files];
+        const cached = new Set(entries.filter(([, id]) => {
+          const version = id ? options.vfs.index.node(id)?.version : undefined;
+          return id && version !== undefined && options.vfs.cache?.getBody(id, version);
+        }).map(([path]) => path));
+        let fromCache = 0;
+        for (const [file] of entries.filter(([path]) => cached.has(path))) {
+          fromCache++;
+          const result = await original([...forwarded, file]);
+          if (result.exitCode !== 1) {
+            diagnostic(`grep: exact quiet search; 0 bodies fetched, ${fromCache} cached; ${result.exitCode === 0 ? "verified match" : "error"}`);
+            return result;
+          }
+        }
+        entries = entries.filter(([path]) => !cached.has(path));
+        const candidates = new Set<string>();
+        const term = parsed.patterns.length === 1 ? parsed.patterns[0] : undefined;
+        if (options.cqlGrep !== false && !parsed.noCql && ctx.env.get("ATLCLI_VFS_NO_CQL") !== "1" &&
+            term && /^[\p{L}\p{N}]{3,80}$/u.test(term) && entries.length > 1 && budget > 0) {
+          try {
+            const roots = [...scopeIds].filter((id) => /^\d+$/.test(id));
+            const scope = roots.length && roots.length <= 50 ? ` AND (id in (${roots.join(",")}) OR ancestor in (${roots.join(",")}))` : "";
+            const found = await options.vfs.searchExcerpts(`text ~ "${term}"${scope}`, { maxResults: 10, spaces });
+            for (const row of found.results) candidates.add(row.id);
+          } catch {
+            diagnostic("grep: CQL hint unavailable; continuing exact search");
+          }
+        }
+        const priority = ([, id]: [string, string | undefined]): number => id && candidates.has(id) ? 0 : 1;
+        entries.sort((a, b) => priority(a) - priority(b));
+        let fetched = 0;
+        for (const [file, id] of entries) {
+          if (id) {
+            const warmed = await options.vfs.prefetch([id], { budget: budget - fetched, reason: "recursive grep" });
+            fetched += warmed.fetched;
+            fromCache += warmed.fromCache;
+            prefetched += warmed.fetched;
+          }
+          const result = await original([...forwarded, file]);
+          if (result.exitCode !== 1) {
+            diagnostic(`grep: exact quiet search; ${fetched} bodies fetched, ${fromCache} cached; ${result.exitCode === 0 ? "verified match" : "error"}`);
+            return result;
+          }
+        }
+        diagnostic(`grep: exact quiet search; ${fetched} bodies fetched, ${fromCache} cached; complete, no match`);
+        return { stdout: "", stderr: "", exitCode: 1 };
+      }
+      diagnostic("grep: full scan (CQL text indexing can omit whole-word matches)");
+      const result = await options.vfs.prefetch([...new Set([...files.values()].filter((id): id is string => id !== undefined))], {
+        reason: "recursive grep", budget,
       });
       prefetched += result.fetched;
-      // Keep grep's own option/pattern semantics, replacing only file operands.
-      // Explicit files prevent a second walk through versions and attachments.
-      const forwarded = args.filter((arg, i) => arg !== "--no-cql" && !parsed.pathIndices.includes(i));
-      return original([...forwarded, ...files]);
+      diagnostic(`grep: exact search; ${files.size} files, ${result.fetched} bodies fetched, ${result.fromCache} cached`);
+      return original([...forwarded, ...files.keys()]);
     } catch (error) {
-      return { stdout: "", stderr: `grep: ${String(error)}\n`, exitCode: 2 };
+      return { stdout: "", stderr: `grep: ${String(error)}\nFor indexed results without body downloads: cql --excerpt 'text ~ "term"'\n`, exitCode: 2 };
     }
-  }, { trusted: true });
+  };
+  const boundedGrep = (args: string[], ctx: CommandContext) => options.vfs.withBodyBudget(
+    options.prefetchMax ?? options.vfs.prefetchMaxPages, () => runGrep(args, ctx),
+  );
+  const grep = defineCommand("grep", boundedGrep, { trusted: true });
+  const fgrep = defineCommand("fgrep", (args, ctx) => boundedGrep(["-F", ...args], ctx), { trusted: true });
+  const egrep = defineCommand("egrep", (args, ctx) => boundedGrep(["-E", ...args], ctx), { trusted: true });
 
   /**
    * `find` (WP6.4).
@@ -182,13 +250,34 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
   const cql = defineCommand(
     "cql",
     async (args, ctx) => {
-      const query = args.join(" ").trim();
+      let excerpt = false;
+      let json = false;
+      let maxResults = 100;
+      let index = 0;
+      for (; index < args.length && args[index]!.startsWith("--"); index++) {
+        const arg = args[index]!;
+        if (arg === "--") { index++; break; }
+        if (arg === "--excerpt") excerpt = true;
+        else if (arg === "--json") json = true;
+        else if (arg === "--limit") maxResults = Number(args[++index]);
+        else return { stdout: "", stderr: `cql: unknown option ${arg}\n`, exitCode: 2 };
+      }
+      const query = args.slice(index).join(" ").trim();
       if (!query) {
-        return { stdout: "", stderr: "usage: cql '<query>'\n", exitCode: 2 };
+        return { stdout: "", stderr: "usage: cql [--excerpt|--json] [--limit 1..1000] '<query>'\n", exitCode: 2 };
       }
       const spaceKey = spaceOf(ctx.cwd, ".") ?? spaces[0]!;
       const scoped = /\bspace\s*=/.test(query) ? query : `space = "${spaceKey}" AND (${query})`;
       try {
+        if (excerpt || json) {
+          const result = await options.vfs.searchExcerpts(query, { maxResults, spaces: [spaceKey] });
+          diagnostic(`cql: indexed search; ${result.results.length} results; ${result.truncated ? "TRUNCATED — raise --limit or narrow the query" : "complete index response"}; 0 page bodies`);
+          return {
+            stdout: json ? `${JSON.stringify({ source: "confluence-index", ...result })}\n`
+              : result.results.map((row) => `${row.path}\t${row.title.replace(/[\r\n\t]/g, " ")}\n  ${row.excerpt.replace(/[\r\n]/g, " ")}\n`).join(""),
+            stderr: "", exitCode: 0,
+          };
+        }
         const paths = await options.vfs.searchPaths(scoped);
         return { stdout: paths.map((p) => `${p}\n`).join(""), stderr: "", exitCode: 0 };
       } catch (error) {
@@ -283,7 +372,7 @@ export async function createWikiShell(options: WikiShellOptions): Promise<WikiSh
     { trusted: true },
   );
 
-  const customCommands = [grep, find, cql, pageId, pageUrl, vfsStatus, mv];
+  const customCommands = [grep, fgrep, egrep, find, cql, pageId, pageUrl, vfsStatus, mv];
   const bash = new Bash({
     defenseInDepth: false,
     cwd: options.cwd ?? `/${spaces[0]}`,

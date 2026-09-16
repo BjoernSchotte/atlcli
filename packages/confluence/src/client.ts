@@ -330,6 +330,8 @@ export type ConfluenceSearchDetail = {
 
 /** A page of {@link ConfluenceClient.searchDetailed} results. */
 export type ConfluenceDetailedSearchResults = {
+  /** Provider-issued cursor; never synthesize offsets on Cloud. */
+  nextLink?: string;
   results: ConfluenceSearchDetail[];
   /**
    * The server's own count of ALL matches, not just this page. Load-bearing for
@@ -1141,6 +1143,23 @@ export class ConfluenceClient {
       signal: options.signal,
     })) as any;
 
+    return { ...this.parsePageMetadata(data), storage: data.body?.storage?.value ?? "" };
+  }
+
+  /** Body-free identity/version lookup for stat and direct-id filesystem paths. */
+  async getPageMetadata(
+    id: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluencePage> {
+    const data = await this.request(`/content/${id}`, {
+      query: { expand: "version,space,ancestors" },
+      logBody: "meta-only",
+      signal: options.signal,
+    });
+    return this.parsePageMetadata(data);
+  }
+
+  private parsePageMetadata(data: any): ConfluencePage {
     // Extract ancestors (array of {id, title} from root to parent)
     const ancestors = Array.isArray(data.ancestors)
       ? data.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
@@ -1157,7 +1176,6 @@ export class ConfluenceClient {
       spaceKey: data.space?.key,
       parentId,
       ancestors,
-      storage: data.body?.storage?.value ?? "",
     };
   }
 
@@ -1651,14 +1669,29 @@ export class ConfluenceClient {
     cql: string,
     options: {
       limit?: number;
+      /** Follow a nextLink returned by this method. */
+      cursor?: string;
       /** `current` / `archived` / `draft`; sent via `cqlcontext`. */
       contentStatuses?: string[];
       signal?: AbortSignal;
     } = {}
   ): Promise<ConfluenceDetailedSearchResults> {
     const { limit = 25, contentStatuses, signal } = options;
-    const data = (await this.request("/search", {
-      query: {
+    let path = "/search";
+    if (options.cursor) {
+      const apiBase = new URL(`${this.confluenceBaseUrl}/rest/api/`);
+      const cursor = options.cursor;
+      const resolved = cursor.startsWith("/rest/api/")
+        ? new URL(cursor.slice("/rest/api/".length), apiBase)
+        : new URL(cursor, apiBase);
+      if (resolved.origin.toLowerCase() !== this.capabilityOrigin ||
+          resolved.pathname !== `${apiBase.pathname}search` || resolved.username || resolved.password) {
+        throw new Error("Confluence detailed search cursor is outside the configured search endpoint.");
+      }
+      path = `/search${resolved.search}`;
+    }
+    const data = (await this.request(path, {
+      query: options.cursor ? undefined : {
         cql,
         limit,
         expand: [
@@ -1673,11 +1706,13 @@ export class ConfluenceClient {
           : {}),
       },
       signal,
+      logBody: "meta-only",
     })) as any;
 
     const base: string = data._links?.base ?? "";
     const results = Array.isArray(data.results) ? data.results : [];
     return {
+      ...(typeof data._links?.next === "string" && data._links.next ? { nextLink: data._links.next } : {}),
       results: results.map((item: any) => this.parseSearchDetail(item, base)),
       ...(typeof data.totalSize === "number" ? { totalSize: data.totalSize } : {}),
     };

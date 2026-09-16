@@ -233,10 +233,14 @@ describe(".comments.md", () => {
 
 describe(".by-id", () => {
   it("resolves a page the index has never walked to", async () => {
-    const vfs = await openVfs(seeded());
+    const client = seeded();
+    const vfs = await openVfs(client);
     // Nothing listed yet: 103 is two levels down.
     const stat = await vfs.stat("/DOCSY/.by-id/103.md");
     expect(stat.id).toBe("103");
+    expect(client.callsTo("getPage")).toBe(0);
+    expect(client.callsTo("getPagesBulk")).toBe(0);
+    expect(client.callsTo("getPageMetadata")).toBe(1);
     await vfs.close();
   });
 
@@ -252,6 +256,52 @@ describe(".by-id", () => {
     const vfs = await openVfs(seeded());
     expect(await vfs.readFile("/DOCSY/.by-id/103.md")).toContain("Deploy.");
     await vfs.close();
+  });
+
+  it("reads an unvisited result with one body download and no hierarchy requests", async () => {
+    for (const deploymentType of ["cloud", "datacenter"] as const) {
+      const client = seeded();
+      Object.defineProperty(client, "deploymentType", { value: deploymentType });
+      const vfs = await openVfs(client, { cacheDir: join(root, deploymentType) });
+      try {
+        const markdown = await vfs.readFile("/DOCSY/.by-id/103.md");
+        expect(markdown).toContain("Deploy.");
+        expect(markdown).toContain('parentId: "102"');
+        expect(await vfs.readFile("/DOCSY/.by-id/103.md")).toBe(markdown);
+        expect(client.callsTo("getPage")).toBe(1);
+        expect(client.callsTo("getPageMetadata")).toBe(1);
+        expect(client.callsTo("getAncestors")).toBe(0);
+        expect(client.callsTo("getPageDirectChildren")).toBe(0);
+        expect(client.callsTo("getChildren")).toBe(0);
+      } finally { await vfs.close(); }
+    }
+  });
+
+  it("revalidates a known by-id body after TTL without walking any hierarchy", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      expect(await vfs.readFile("/DOCSY/.by-id/103.md")).toContain("Deploy.");
+      client.bumpVersion("103", "<p>Updated deployment.</p>");
+      clock += 60_001;
+      expect(await vfs.readFile("/DOCSY/.by-id/103.md")).toContain("Updated deployment.");
+      expect(await vfs.readFile("/DOCSY/.by-id/103.md")).toContain("Updated deployment.");
+      expect(client.callsTo("getPage")).toBe(2);
+      expect(client.callsTo("getPageMetadata")).toBe(1);
+      expect(client.callsTo("getPageVersions")).toBe(1);
+      expect(client.callsTo("getPageDirectChildren")).toBe(0);
+      expect(client.callsTo("getAncestors")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
+  it("does not expose a foreign-space page through a mounted by-id alias", async () => {
+    const client = seeded().seedSpace({ id: "sp-2", key: "OTHER", name: "Other", homepageId: "900" })
+      .seedPage({ id: "900", title: "Other home", spaceKey: "OTHER", storage: "<p>Foreign content</p>" });
+    const vfs = await openVfs(client, { spaces: ["DOCSY"] });
+    try {
+      await expect(vfs.readFile("/DOCSY/.by-id/900.md")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(vfs.readlink("/DOCSY/.by-id/900.md")).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await vfs.close(); }
   });
 
   it("answers ENOENT for an unknown id", async () => {

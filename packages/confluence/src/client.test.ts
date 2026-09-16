@@ -21,6 +21,27 @@ describe("escapeCqlValue", () => {
   });
 });
 
+describe("Confluence page metadata", () => {
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  test("gets identity, version and parent with no body expansion", async () => {
+    let requested: URL | undefined;
+    globalThis.fetch = mock((url: string) => {
+      requested = new URL(url);
+      return Promise.resolve(Response.json({
+        id: "123", title: "Page", version: { number: 7 }, space: { key: "DOCSY" },
+        ancestors: [{ id: "100", title: "Home" }, { id: "102", title: "Parent" }],
+        body: { storage: { value: "should never escape metadata" } },
+      }));
+    }) as unknown as typeof fetch;
+    const result = await new ConfluenceClient(mockProfile).getPageMetadata("123");
+    expect(requested!.pathname).toBe("/wiki/rest/api/content/123");
+    expect(requested!.searchParams.get("expand")).toBe("version,space,ancestors");
+    expect(result).toMatchObject({ id: "123", spaceKey: "DOCSY", version: 7, parentId: "102" });
+    expect(result).not.toHaveProperty("storage");
+  });
+});
+
 describe("Confluence v2 space pagination", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;

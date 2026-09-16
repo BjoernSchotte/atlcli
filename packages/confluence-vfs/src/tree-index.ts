@@ -331,7 +331,8 @@ export class TreeIndex {
       position: child.position ?? null,
       children: existing?.children ?? "unloaded",
       childrenLoadedAt: existing?.childrenLoadedAt,
-      metaCheckedAt: this.opts.now(),
+      // Cloud hierarchy listings carry no version, so cannot refresh its TTL.
+      metaCheckedAt: existing?.metaCheckedAt,
     };
   }
 
@@ -354,11 +355,14 @@ export class TreeIndex {
    */
   async loadSubtree(
     rootId: string,
-    options: { maxDepth?: number; maxNodes?: number } = {},
+    options: { maxDepth?: number; maxNodes?: number; shouldVisit?: (node: TreeNode) => boolean } = {},
   ): Promise<TreeNode[]> {
-    const maxDepth = options.maxDepth ?? 10;
+    const maxDepth = options.maxDepth ?? Infinity;
     const maxNodes = options.maxNodes ?? 5000;
     const collected: TreeNode[] = [];
+    const root = this.nodes.get(rootId);
+    if (root && options.shouldVisit?.(root) === false) return [];
+    const visited = new Set([rootId]);
     let frontier = [rootId];
 
     for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
@@ -368,6 +372,8 @@ export class TreeIndex {
       const next: string[] = [];
       for (const level of levels) {
         for (const child of level) {
+          if (visited.has(child.id) || options.shouldVisit?.(child) === false) continue;
+          visited.add(child.id);
           collected.push(child);
           if (collected.length > maxNodes) {
             throw new VfsError(
@@ -381,7 +387,32 @@ export class TreeIndex {
       }
       frontier = next;
     }
-    return collected;
+    await this.revalidatePages([rootId, ...collected.map((node) => node.id)]);
+    return collected.map((node) => this.nodes.get(node.id)!);
+  }
+
+  /** Refresh only requested stale page versions; hierarchy listings carry no Cloud versions. */
+  async revalidatePages(ids: readonly string[]): Promise<void> {
+    const stale = [...new Set(ids)].map((id) => this.nodes.get(id)).filter((node): node is TreeNode =>
+      node !== undefined && node.type === "page" && node.version !== undefined &&
+      (node.metaCheckedAt === undefined || this.opts.now() - node.metaCheckedAt >= this.opts.ttlMs),
+    );
+    if (!this.opts.offline && stale.length > 0) {
+      if (this.opts.client.deploymentType === "cloud") {
+        const versions = await this.request(() => this.opts.client.getPageVersions(stale.map((node) => node.id)));
+        for (const node of stale) {
+          const info = versions.get(node.id);
+          if (!info) throw new VfsError("ENOENT", `Page ${node.id} disappeared while refreshing search metadata; retry the search`);
+          Object.assign(node, { version: info.version, title: info.title, lastModified: info.lastModified, metaCheckedAt: this.opts.now() });
+        }
+      } else {
+        // DC has no body-free version endpoint. Fetch stale requested bodies.
+        for (const node of stale) {
+          node.version = undefined;
+          node.metaCheckedAt = this.opts.now();
+        }
+      }
+    }
   }
 
   // -------------------------------------------------------- revalidation

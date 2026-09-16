@@ -21,6 +21,7 @@
 import type {
   AttachmentInfo,
   ConfluenceFolder,
+  ConfluenceDetailedSearchResults,
   ConfluencePage,
   ConfluenceSearchResult,
   ConfluenceSpace,
@@ -73,6 +74,7 @@ export interface VfsClient {
   ): Promise<FolderChild[]>;
 
   // --- bodies and versions ------------------------------------------------
+  getPageMetadata(id: string, options?: { signal?: AbortSignal }): Promise<ConfluencePage>;
   getPage(
     id: string,
     options?: { signal?: AbortSignal },
@@ -98,6 +100,12 @@ export interface VfsClient {
   ): Promise<Map<string, PageChangeInfo>>;
 
   // --- search -------------------------------------------------------------
+  searchDetailed(cql: string, options?: {
+    limit?: number;
+    cursor?: string;
+    contentStatuses?: string[];
+    signal?: AbortSignal;
+  }): Promise<ConfluenceDetailedSearchResults>;
   search(
     cql: string,
     options?: {

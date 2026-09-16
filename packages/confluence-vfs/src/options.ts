@@ -45,7 +45,7 @@ export interface VfsOptions {
   prefetchMaxPages?: number;
   /** Disk cache ceiling in megabytes, blobs included. Default 100. */
   cacheMaxMb?: number;
-  /** Allow the CQL shortcut in `grep`. Default true. */
+  /** Allow CQL candidate hints for positive `grep -q`. Default true. */
   cqlGrep?: boolean;
   logger?: VfsLogger;
   /** Injectable clock, so tests do not wait on TTLs. */

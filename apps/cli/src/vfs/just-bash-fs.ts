@@ -156,12 +156,21 @@ export class ConfluenceJustBashFs {
     }
   }
 
-  async stat(path: string): Promise<FsStat> {
-    const stat = await translate(() => this.vfs.stat(this.toVfsPath(path)));
+  async stat(path: string, followLinks = true): Promise<FsStat> {
+    const target = this.toVfsPath(path);
+    let stat = await translate(() => this.vfs.stat(target));
+    if (followLinks && stat.isSymbolicLink) {
+      // Every VFS symlink points to a page. Validate its by-id target without
+      // traversing the canonical hierarchy; stat follows links, lstat does not.
+      const resolved = await translate(() => this.vfs.resolveTagged(target));
+      if (resolved.kind !== "by-id-link") {
+        stat = await translate(async () => this.vfs.stat(await this.vfs.readlink(target)));
+      }
+    }
     return {
-      isFile: stat.isFile,
+      isFile: stat.isFile || (followLinks && stat.isSymbolicLink),
       isDirectory: stat.isDirectory,
-      isSymbolicLink: stat.isSymbolicLink,
+      isSymbolicLink: !followLinks && stat.isSymbolicLink,
       mode: stat.mode,
       size: stat.size,
       mtime: stat.mtime,
@@ -171,9 +180,9 @@ export class ConfluenceJustBashFs {
     };
   }
 
-  /** No symlink following here; `stat` already reports links as links. */
+  /** Unlike stat, retain the link itself. */
   async lstat(path: string): Promise<FsStat> {
-    return this.stat(path);
+    return this.stat(path, false);
   }
 
   async mkdir(path: string): Promise<void> {

@@ -17,6 +17,7 @@
  * directions, which `page-store.test.ts` pins.
  */
 import { markdownToStorage, storageToMarkdown } from "@atlcli/confluence/internal";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createInOrderLimiter } from "@atlcli/confluence";
 import type { VfsClient } from "./client-port.js";
 import { BodyCache, hashStorage } from "./body-cache.js";
@@ -167,7 +168,27 @@ export function toStorage(markdown: string): string {
 }
 
 export class PageStore {
+  private readonly bodyBudget = new AsyncLocalStorage<{ remaining: number }>();
+
   constructor(private readonly opts: PageStoreOptions) {}
+
+  /** Bound all cold-body reads in one search, including refetches after eviction. */
+  withBodyBudget<T>(budget: number, task: () => Promise<T>): Promise<T> {
+    if (!Number.isSafeInteger(budget) || budget < 0) {
+      return Promise.reject(new VfsError("EINVAL", "The page-body budget must be a non-negative integer"));
+    }
+    return this.bodyBudget.run({ remaining: budget }, task);
+  }
+
+  private reserveBodyDownloads(count: number, reserve = true): void {
+    const budget = this.bodyBudget.getStore();
+    if (!budget) return;
+    if (count > budget.remaining) {
+      throw new VfsError("EINVAL", `${count} cold page bodies required, but only ${budget.remaining} remain in this operation's prefetch limit. ` +
+        "Narrow the path or raise --prefetch-max; increase vfs.cacheMaxMb if prefetched bodies were evicted");
+    }
+    if (reserve) budget.remaining -= count;
+  }
 
   /**
    * Read one page's Markdown.
@@ -190,6 +211,7 @@ export class PageStore {
       );
     }
 
+    this.reserveBodyDownloads(1);
     const page = await this.request(() => this.opts.client.getPage(node.id), path);
     const version = page.version ?? node.version ?? 1;
     // The read is also the cheapest revalidation we get: trust what came back.
@@ -221,6 +243,7 @@ export class PageStore {
         { path },
       );
     }
+    this.reserveBodyDownloads(1);
     const page = await this.request(
       () => this.opts.client.getPageAtVersion(node.id, version),
       path,
@@ -283,9 +306,11 @@ export class PageStore {
 
     // Data Center has no bulk body endpoint, so it pays per page there.
     if (this.opts.client.deploymentType !== "cloud") {
+      this.reserveBodyDownloads(wanted.length, false);
       return { fetched: await this.prefetchOneByOne(wanted), fromCache };
     }
 
+    this.reserveBodyDownloads(wanted.length);
     const CHUNK = 250;
     const chunks: string[][] = [];
     for (let start = 0; start < wanted.length; start += CHUNK) {
@@ -296,6 +321,11 @@ export class PageStore {
     const results = await Promise.all(
       chunks.map((chunk) => limit(() => this.request(() => this.opts.client.getPagesBulk(chunk)))),
     );
+    const received = new Set(results.flat().map((page) => page.id));
+    const missing = wanted.filter((id) => !received.has(id));
+    if (missing.length > 0) {
+      throw new VfsError("ENOENT", `Bulk fetch omitted ${missing.length} requested page bodies; retry the search`);
+    }
     for (const pages of results) {
       for (const page of pages) {
         const version = page.version ?? 1;

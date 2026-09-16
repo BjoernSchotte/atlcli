@@ -170,3 +170,65 @@ PTY against DOCSY with profile `mayflower`, strictly read-only. The harness uses
 `TERM=xterm-256color`; Bun disables terminal editing under `TERM=dumb`. No pages
 were created or changed. Temporary cache removed. Focused shell/CLI tests: 60
 passed; workspace typecheck: 4/4 successful.
+
+### Agent search planning and bounded downloads (2026-09-16)
+
+Implemented exact recursive grep planning, filter pruning before prefetch,
+normalized option parsing (including bundled flags and multiple expressions),
+version-aware cache refresh, and scoped positive `grep -q` CQL hints. CQL never
+excludes potential exact matches. `grep`, `fgrep` and `egrep` share the budget.
+A per-operation budget also bounds direct reads, pattern files and refetches
+following cache eviction. Budget failures return an error, not no-match.
+
+Added `cql --excerpt` / `cql --json` with bounded cursor pagination, mounted-space
+checks, explicit truncation and no page-body reads. Direct `.by-id` stat is now
+metadata-only; reading a result fetches one body without walking ancestors.
+Fixed explicit-file TTL refresh, symlink stat semantics and the recursive walk's
+previous silent default depth-ten truncation.
+
+Reproduce the live proof with:
+
+```bash
+bun --conditions=development scripts/vfs-search-live.ts
+```
+
+The script creates five synthetic DOCSY pages, changes one remotely, and trashes
+all fixtures in `finally`. MAYFLOWER has both transport and global GET-only guards;
+its preview checks reject any body-fetch API call. Logs contain aggregate metrics
+only. A fresh temporary cache is removed after each run. The final run produced:
+
+| Operation | ms | HTTP requests | Body downloads | Storage bytes |
+|---|---:|---:|---:|---:|
+| DOCSY exact, five cold fixture pages | 766 | 10 | 5 | 194 |
+| DOCSY exact, warm cache | 3 | 0 | 0 | 0 |
+| DOCSY quiet, warm cache | 3 | 0 | 0 | 0 |
+| DOCSY exact after one remote edit and TTL expiry | 517 | 8 | 1 | 39 |
+| DOCSY by-id with zero budget | 204 | 3 | 0 | 0 |
+| DOCSY by-id exact, metadata already cached | 70 | 1 | 1 | 33 |
+| DOCSY excluded files | 186 | 2 | 0 | 0 |
+| DOCSY over-budget exact search | 165 | 5 | 0 | 0 |
+| DOCSY CQL-prioritized quiet subtree, warm hierarchy/cold target | 368 | 2 | 1 | 58 |
+| DOCSY quiet explicit cold file | 175 | 2 | 1 | 39 |
+| MAYFLOWER indexed retrospektive, first five results | 337 | 1 | 0 | 0 |
+| MAYFLOWER indexed craftsmanship, five results | 272 | 1 | 0 | 0 |
+
+These are individual measured runs, not latency guarantees or a benchmark against
+an MCP server. HTTP counts include all fetch calls, not only the client's v1
+transport observer. Storage bytes measure returned body strings, not total wire
+bytes. The quiet-subtree measurement follows a metadata-only budget check, so its
+hierarchy is warm. Retrospektive was explicitly truncated; craftsmanship's index
+response was complete. All five results in each preview included excerpts.
+
+Synthetic indexing needed nine two-second waits on the final run. The exact
+search found current content independently of that index lag. This reinforces
+why a missing CQL hit cannot justify an exact no-match result.
+
+The built CLI also passed a MAYFLOWER JSON preview test: three results, explicit
+truncation, zero prefetched bodies, 857 ms including process startup and setup.
+Unit/integration comparisons cover real just-bash over the same Markdown,
+Unicode, punctuation, regexes, counts, context, inversion, multiple patterns,
+pattern files, filters, CQL false positives/negatives/outages, stale versions,
+missing bulk results, tiny caches, independent concurrent budgets and deep trees.
+
+Final validation: 539 tests passed across 23 affected test files (1,475 assertions),
+workspace typecheck 4/4 and build 35/35 successful. No push performed.

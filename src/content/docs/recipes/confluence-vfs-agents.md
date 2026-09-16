@@ -65,10 +65,34 @@ grep -rlw kubernetes .        # whole-word matches in current Markdown
 grep -rl  kubern .            # substring matches, including "kubernetes"
 ```
 
-CQL narrowing is disabled: live Confluence indexing misses some matches even
-with `-w` (for example a word inside a dotted token). Use `cql` explicitly when
-you want index semantics. Narrow the path when the prefetch limit is reached;
-`head` limits output, not the amount of content searched.
+CQL never excludes possible `grep` matches: indexing can miss dotted tokens,
+Markdown frontmatter and fresh writes. For `grep -q`, cached pages are checked
+first; a simple positive word search may then use CQL to prioritize up to ten
+candidates. Every success is verified against full Markdown. An empty or failed
+CQL response falls back to the exact search. `--no-cql` disables these hints.
+
+Use indexed previews to discover relevant pages without downloading bodies:
+
+```bash
+cql --excerpt --limit 20 'text ~ "retrospektive"'
+cql --json --limit 20 'text ~ "retrospektive"' | jq '.results[].path'
+# Fetch only the selected result, then run an exact search on it:
+cat /DOCSY/.by-id/623869955.md | grep -ni retrospektive
+```
+
+`--limit` defaults to 100 (range 1–1000). JSON includes `source`, `results`,
+`complete`, `truncated` and, when available, `totalSize`. Completeness refers to
+Confluence's index, not all current Markdown; missing excerpts remain empty.
+Text output reports truncation in diagnostics. Search remains restricted to the
+current mounted space. Legacy `cql '<query>'` continues to print paths only.
+
+Exact recursive search applies include/exclude filters before downloading and
+skips excluded branches. Warm bodies are reused; expired metadata is refreshed
+using the configured tree TTL (60 seconds by default). A search is not an atomic
+snapshot of concurrent edits. Budget exhaustion returns exit 2, never a false
+no-match. Full cold-space exact searches still need all selected bodies.
+Narrow the path or use previews when the budget is reached; piping to `head`
+limits output, not downloads.
 
 For queries a path cannot express — dates, anything with a `/` — use `cql`:
 

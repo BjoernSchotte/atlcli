@@ -211,6 +211,51 @@ describe("loadChildren", () => {
 });
 
 describe("loadSubtree", () => {
+  it("walks deeper than ten levels unless explicitly limited", async () => {
+    const { index } = makeIndex(bigSpace(1, 12));
+    await index.getHomepageId("DOCSY");
+    expect(await index.loadSubtree("100")).toHaveLength(13);
+    expect(await index.loadSubtree("100", { maxDepth: 2 })).toHaveLength(2);
+  });
+
+  it("does not enter or return excluded branches", async () => {
+    const client = bigSpace(2, 2);
+    const { index } = makeIndex(client);
+    await index.getHomepageId("DOCSY");
+    const walked = await index.loadSubtree("100", { shouldVisit: (node) => node.id !== "1001" });
+    expect(walked.map((node) => node.id)).toEqual(["1000", "10000", "10001"]);
+    expect(index.isUnloaded("1001")).toBe(true);
+    expect(client.calls.some((call) => call.arg === "1001")).toBe(false);
+  });
+
+  it("visits a malformed hierarchy cycle only once", async () => {
+    const { index } = makeIndex(bigSpace(1, 0), { offline: true });
+    index.upsert({ id: "100", children: ["101"], childrenLoadedAt: 1_000_000 });
+    index.upsert({ id: "101", children: ["100"], childrenLoadedAt: 1_000_000 });
+    expect((await index.loadSubtree("100")).map((node) => node.id)).toEqual(["101"]);
+  });
+
+  it("refreshes stale page versions even after a hierarchy relisting", async () => {
+    const client = bigSpace(1, 1);
+    const { index, advance } = makeIndex(client);
+    await index.getHomepageId("DOCSY");
+    await index.loadSubtree("100");
+    for (const id of ["100", "1000", "10000"]) index.upsert({ id, version: 1 });
+    client.bumpVersion("100", "<p>changed root</p>");
+    client.bumpVersion("10000", "<p>changed leaf</p>");
+    advance(60_001);
+    await index.loadChildren("100");
+    client.resetCalls();
+    const walked = await index.loadSubtree("100");
+    expect(index.node("100")?.version).toBe(2);
+    expect(walked.find((node) => node.id === "10000")?.version).toBe(2);
+    expect(client.callsTo("getPageVersions")).toBe(1);
+    expect(client.callsTo("getPage")).toBe(0);
+    client.resetCalls();
+    await index.loadSubtree("100");
+    expect(client.requestCount).toBe(0);
+  });
+
   it("walks only the requested branch, leaving siblings unloaded", async () => {
     const client = bigSpace(20, 2);
     const { index } = makeIndex(client);

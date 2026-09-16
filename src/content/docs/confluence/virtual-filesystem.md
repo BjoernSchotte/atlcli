@@ -264,14 +264,34 @@ grep -rlw kubernetes architecture-623869955  # whole words
 grep -rl kubern architecture-623869955      # substrings
 ```
 
-Automatic CQL narrowing is disabled. A live probe found that Confluence's index
-misses `zqxdotted` inside `prefix.zqxdotted.suffix`, although `grep -w` matches it.
-The index also does not represent generated Markdown frontmatter or necessarily
-recent writes. Use the explicit `cql` command when you want indexed search.
-`--no-cql` and `cqlGrep` remain accepted for configuration compatibility.
+CQL never excludes possible `grep` matches: indexing can miss dotted tokens,
+Markdown frontmatter and fresh writes. For `grep -q`, cached pages are checked
+first; a simple positive word search may then use CQL to prioritize up to ten
+candidates. Every success is verified against full Markdown. An empty or failed
+CQL response falls back to the exact search. `--no-cql` disables these hints.
 
-Narrow the subtree if the prefetch ceiling is exceeded. Piping to `head` bounds
-output only; it does not cancel the preceding search.
+Use indexed previews to discover relevant pages without downloading bodies:
+
+```bash
+cql --excerpt --limit 20 'text ~ "retrospektive"'
+cql --json --limit 20 'text ~ "retrospektive"' | jq '.results[].path'
+# Fetch only the selected result, then run an exact search on it:
+cat /DOCSY/.by-id/623869955.md | grep -ni retrospektive
+```
+
+`--limit` defaults to 100 (range 1–1000). JSON includes `source`, `results`,
+`complete`, `truncated` and, when available, `totalSize`. Completeness refers to
+Confluence's index, not all current Markdown; missing excerpts remain empty.
+Text output reports truncation in diagnostics. Search remains restricted to the
+current mounted space. Legacy `cql '<query>'` continues to print paths only.
+
+Exact recursive search applies include/exclude filters before downloading and
+skips excluded branches. Warm bodies are reused; expired metadata is refreshed
+using the configured tree TTL (60 seconds by default). A search is not an atomic
+snapshot of concurrent edits. Budget exhaustion returns exit 2, never a false
+no-match. Full cold-space exact searches still need all selected bodies.
+Narrow the path or use previews when the budget is reached; piping to `head`
+limits output, not downloads.
 
 ## Options reference
 
@@ -289,7 +309,7 @@ output only; it does not cancel the preceding search.
 | `--timeout <ms>` | number | `120000` | no | Wall-clock limit for the script |
 | `--prefetch-max <n>` | number | `300` | no | Ceiling on one prefetch |
 | `--cache-max-mb <n>` | number | `100` | no | Disk cache ceiling |
-| `--no-cql` | flag | off | no | Accepted for compatibility; CQL narrowing is disabled |
+| `--no-cql` | flag | off | no | Disable CQL hints for positive `grep -q` searches |
 | `--json` | flag | off | no | stdout, stderr, exit code and counters as JSON |
 
 ### `atlcli wiki mount`
