@@ -109,7 +109,7 @@ Homebrew install/test lifecycle remains unverified for this PR.
   4 ms; DOCSY listing: 38 entries in 143 ms, repeated in 1 ms. One 545-byte page
   read matched direct WebDAV GET byte-for-byte (combined check 134 ms).
   The existing read-only mount/server were left running for the user.
-  No wiki content or credentials were retained. Native Linux GUI editor-specific safe-save remains unverified. Earlier arm64-emulated Linux failures
+  No wiki content or credentials were retained. Native Linux Vim save is verified; GUI editor-specific safe-save remains unverified. Earlier arm64-emulated Linux failures
   were environmental and are superseded by these native results.
 - Windows is unavailable; WebClient and Windows indexing remain untested.
 - Only the mayflower profile exists. The live two-identity permission test
@@ -137,6 +137,17 @@ after unmount drains davfs2 uploads. It passed with **39,855 bytes** and preserv
 all **1,200** synthetic Unicode text repetitions plus the edited end marker.
 The page, temporary server, mount and VFS cache were cleaned up. macOS native
 read/write E2E also passed again (7 tests / 17 assertions).
+
+## Linux Vim save
+
+The native read/write harness now also invokes installed Vim with its default
+save/backup behaviour (`vim -Nu NONE -n -es`, substitute, write and quit).
+The edited 39,855-byte fixture retained all 1,200 repeated text segments and
+the updated end marker; independent Confluence API readback passed after
+unmount flushed uploads. Immediately after the save, davfs2 briefly exposed
+stale zero-length inode metadata; full native readback was correct after
+**1,014 ms**, within the harness's explicit three-second refresh bound.
+No data was lost. The synthetic page and temporary mount/cache were removed.
 
 ## Linux shutdown
 

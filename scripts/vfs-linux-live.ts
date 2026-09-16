@@ -49,13 +49,25 @@ try {
   const edited = original.toString().replace("END-OF-LARGE-PAGE", "END-OF-LARGE-PAGE-EDITED");
   await writeFile(path, edited);
   assert.equal(await readFile(path, "utf8"), edited);
+  // Real Vim save, including its default backup strategy; no custom save workaround.
+  await command(["vim", "-Nu", "NONE", "-n", "-es", "-c", "%s/END-OF-LARGE-PAGE-EDITED/END-OF-LARGE-PAGE-VIM-SAVED/", "-c", "wq", path]);
+  // davfs2's FUSE inode attributes can lag an atomic editor save by one second.
+  let afterVim = "";
+  const refreshStarted = performance.now();
+  for (let attempt = 0; attempt < 30; attempt++) {
+    afterVim = await readFile(path, "utf8");
+    if (afterVim.includes("END-OF-LARGE-PAGE-VIM-SAVED")) break;
+    await Bun.sleep(100);
+  }
+  assert.equal(afterVim, edited.replace("END-OF-LARGE-PAGE-EDITED", "END-OF-LARGE-PAGE-VIM-SAVED"));
+  const vimReadRefreshMs = Math.round(performance.now() - refreshStarted);
   // davfs2 buffers uploads; unmount waits for the write queue before API verification.
   await command(["sudo", "-n", "umount", mountpoint]);
   mounted = false;
   const saved = await client.getPage(page.id);
-  assert(saved.storage.includes("END-OF-LARGE-PAGE-EDITED"));
+  assert(saved.storage.includes("END-OF-LARGE-PAGE-VIM-SAVED"));
   assert.equal((saved.storage.match(/Synthetic Unicode/g) ?? []).length, 1200);
-  console.log(JSON.stringify({ coldNativeReadBytes: original.byteLength, statExact: true, httpEqual: true, nativeWriteApiVerified: true, preservedParagraphRepeats: 1200 }));
+  console.log(JSON.stringify({ coldNativeReadBytes: original.byteLength, statExact: true, httpEqual: true, nativeWriteApiVerified: true, vimSaveApiVerified: true, vimReadRefreshMs, preservedParagraphRepeats: 1200 }));
 } finally {
   if (mounted) await command(["sudo", "-n", "umount", mountpoint]);
   await server?.stop();

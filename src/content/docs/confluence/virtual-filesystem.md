@@ -384,6 +384,14 @@ atlcli wiki vfs conflicts list       # writes that could not be merged
 
 ## Troubleshooting
 
+### Linux editor save briefly appears empty
+
+With davfs2, inode attributes may lag an editor save for about one second.
+If an immediate reopen appears empty, wait briefly and reopen it. A native
+Vim save test verified complete content after metadata refresh and independent
+Confluence API readback. davfs2 also queues uploads: allow a clean unmount to
+flush them before stopping the server.
+
 ### Linux mount lists fail with `Invalid argument`
 
 With Linux 6.16 or newer, davfs2 1.7.1 can mount successfully but fail to
