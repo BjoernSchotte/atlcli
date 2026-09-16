@@ -1,3 +1,4 @@
+import { mermaidMacroSource } from "./mermaid-macro.js";
 import type {
   AdfDocument,
   AdfJsonValue,
@@ -1134,6 +1135,10 @@ function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): Expor
   const bodyNotes = bodyCollector.finish(sourceFor(bodyCtx, `${path}.content`));
   const extensionType = stringAttr(node, "extensionType") ?? "unknown";
   const extensionKey = stringAttr(node, "extensionKey") ?? "adf-extension";
+  if (extensionKey === "mermaid" && !params.some((param) => param.name === "filename")) {
+    const source = mermaidMacroSource(params.find((param) => param.name === "__bodycontent")?.text ?? "");
+    if (source !== undefined) return { type: "codeBlock", language: "mermaid", code: source };
+  }
   if (isChartMacroName(extensionKey)) {
     const result = normalizeChartMacro(params, body, "cloud-adf");
     for (const diagnostic of result.diagnostics) {

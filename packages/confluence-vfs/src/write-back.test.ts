@@ -846,3 +846,24 @@ describe("lossy conversion", () => {
     await vfs.close();
   });
 });
+
+
+describe("Mermaid roundtrip through the shared converter", () => {
+  it("creates and updates native macros, reads source back from a cold cache", async () => {
+    const client = seeded();
+    const source = "```mermaid\ngraph LR; A-->B\n```\n";
+    let vfs = await openVfs(client);
+    const created = await vfs.writeFile("/DOCSY/diagram.md", source);
+    expect(client.peekPage(created.pageId)!.storage).toContain('ac:name="mermaid"');
+    await vfs.close();
+    vfs = await openVfs(client, { cacheDir: join(root, "cold") });
+    const path = `/DOCSY/diagram-${created.pageId}/_index.md`;
+    const read = await vfs.readFile(path);
+    expect(read).toContain("graph LR; A-->B");
+    await vfs.writeFile(path, read.replace("A-->B", "A-->C"));
+    expect(client.peekPage(created.pageId)!.storage).toContain("A-->C");
+    expect(await vfs.readFile(path)).toContain("A-->C");
+    expect(client.callsTo("uploadAttachment")).toBe(0);
+    await vfs.close();
+  });
+});

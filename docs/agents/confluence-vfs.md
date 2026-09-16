@@ -207,3 +207,11 @@ command diagnostic states. `-newer FILE`, combined time predicates and
 and minute precision, then checked against exact page metadata. No bodies are
 fetched. Index lag can omit recent changes. Other find expressions retain the
 filesystem-metadata walk; `--no-cql` on `wiki sh` disables acceleration.
+
+
+## Mermaid
+
+A fenced `mermaid` block writes a native `mermaid` macro for **Mermaid Integration
+for Confluence**. That app must be installed. Inline sources round-trip through
+Markdown; attachment-backed variants remain preserved raw macros. See
+[macro syntax and examples](../../src/content/docs/confluence/macros.md#mermaid-diagrams).
