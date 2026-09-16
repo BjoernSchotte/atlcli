@@ -1,7 +1,26 @@
 # Confluence Virtual Filesystem (VFS) für Coding Agents
 
-**Status:** Konzept mit getroffenen Entscheidungen, Implementierungsplan in Abschnitt 11
-**Datum:** 2026-09-15 (Recherche), 2026-09-16 (Entscheidungen, Plan)
+Status: Konzept mit getroffenen Entscheidungen, noch nicht implementiert
+
+Plan date: 2026-09-15 (Recherche), 2026-09-16 (Entscheidungen, Aufgabenplan)
+
+Planned against: `2617984`
+
+Priority: P2
+
+Estimated effort: L, etwa 6–7 fokussierte Wochen für eine Person über zehn
+unabhängig reviewbare Arbeitspakete (Abschnitt 11), inklusive Spike,
+Schreibpfad, WebDAV-Mount, Doku und Live-Proof gegen Cloud
+
+Risk: MED für den Lesepfad; HIGH für den Schreibpfad, solange Konflikt- und
+Merge-Verhalten nicht gegen echte gleichzeitige Confluence-Bearbeitung
+nachgewiesen ist
+
+Supersedes: none
+
+Builds on: `spec/mcp-over-code.md`, `spec/local-storage-plan.md`,
+`spec/sqlite-sync-foundation.md`
+
 **Ziel:** Coding Agents (Claude Code, Codex, Cursor, …) arbeiten mit `ls`, `cd`, `cat`, `grep`, `find`, `sed` direkt auf Confluence-Inhalten. Sichtbarkeit exakt wie der authentifizierte Nutzer. Keine MCP-Tool-Aufrufe nötig.
 
 Quellen: drei parallele Recherchen (just-bash, Mount-Technologien, Atlassian-Auth/Prior Art), alle Quellen live geprüft am 2026-09-15. Befunde älter als 6 Monate sind mit **[alt]** markiert.
@@ -394,7 +413,7 @@ Konventionen für alle APs:
 - [ ] **AP8.2** `src/content/docs/reference/cli-commands` um `wiki sh`, `wiki mount`, `wiki unmount`, `wiki vfs cache` ergänzen; Config-Referenz um `vfs.*`.
 - [ ] **AP8.3** Skill/AGENTS-Snippet `docs/agents/confluence-vfs.md` (und im Docs-Site-Abschnitt „Recipes“): Kurzanleitung für Claude Code/Codex/Cursor mit `atlcli wiki sh -c '…'`, Space-Default, `--json`, Hinweis „`grep -r` nutzt CQL, `limit`-Empfehlung“, Schreib-Freigabe nur mit `--mode rw`.
 - [ ] **AP8.4** `README.md`-Abschnitt „Confluence as a filesystem“ mit zwei Beispielen; `CHANGELOG.md`-Eintrag (unreleased).
-- [ ] **AP8.5** `spec/confluence-virtual-filesystem.md` (dieses Dokument) nach Abschluss auf Ist-Stand bringen: Abweichungen, Messwerte, offene Punkte.
+- [ ] **AP8.5** `specs/confluence-virtual-filesystem/PLAN.md` (dieses Dokument) nach Abschluss auf Ist-Stand bringen: Status-Zeile, Abweichungen, Messwerte, offene Punkte; Messergebnisse aus AP0.4, AP7.7 und AP9.3 als `EVIDENCE.md` daneben ablegen.
 
 ### AP9 – Qualität, Sicherheit, Release (3 Tage)
 
