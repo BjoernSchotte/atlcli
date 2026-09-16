@@ -547,3 +547,26 @@ DOCSY and combined RO spaces; the large attachment case is explicitly synthetic.
 All 12 filesystem tests / 201 assertions and typecheck pass. No live attachments
 were created or changed by this slice. External-version snapshot consistency
 remains open and is not inferred from cached repeated-read success.
+
+
+## Slice 23 — do not mix separately obtained attributes into READ
+
+The wire regression observed two body materializations per READ before the fix.
+The vendored handler called GETATTR before its independent READ, so an intervening
+refresh could pair attributes and bytes from different versions. It now omits the
+optional post-operation attributes. A regression asserts one body read and decodes
+the resulting wire layout; GETATTR still reports exact attributes independently.
+
+Validation: all ten bridge tests (246 assertions) passed on both macOS and Linux,
+including malformed RPCs, connection limits, the real 60-second stalled-client
+timeout, directory pagination and three native kernel mounts. macOS used synthetic
+fixtures; Linux used live DOCSY and DOCSY + mayflower read-only mounts, with the
+large attachment case synthetic on both hosts. Every test mount detached normally.
+Filesystem tests: 12 pass / 201 assertions. Rust: 3 tests pass; clippy with warnings
+denied and repository typecheck pass. No live data was modified.
+
+This is a bounded correction to READ response coherence, not multi-request
+snapshot acceptance. Clients may issue additional GETATTR requests when READ
+omits attributes; no performance improvement is claimed without comparative
+measurements. Returning matching attributes atomically with bytes remains the
+upgrade path. The snapshot and document-publication decisions remain open.

@@ -81,12 +81,16 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(attributes.readUInt32BE()).toBe(0);
     const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md"));
     expect(Number(attributes.readBigUInt64BE(24))).toBe(expected.length);
+    let bodyReads = 0;
+    const readBytes = vfs.readFileBytes.bind(vfs);
+    vfs.readFileBytes = async (path) => { bodyReads++; return readBytes(path); };
     const read = await rpc(server, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 1024 * 1024)]));
+    expect(bodyReads).toBe(1); // READ must not materialize a separate GETATTR body.
     expect(read.readUInt32BE()).toBe(0);
-    expect(read.readUInt32BE(4)).toBe(1); // post-op attributes present (84 bytes)
-    expect(read.readUInt32BE(92)).toBe(expected.length);
-    expect(read.readUInt32BE(96)).toBe(1); // EOF
-    expect(read.subarray(104, 104 + read.readUInt32BE(100))).toEqual(expected);
+    expect(read.readUInt32BE(4)).toBe(0); // no separate pre-read attributes
+    expect(read.readUInt32BE(8)).toBe(expected.length);
+    expect(read.readUInt32BE(12)).toBe(1); // EOF
+    expect(read.subarray(20, 20 + read.readUInt32BE(16))).toEqual(expected);
     const write = await rpc(server, 100003, 7, Buffer.concat([opaque(file), ints(0, 0, 1, 2), opaque(Buffer.from("x"))]));
     expect(write.readUInt32BE()).toBe(30); // NFS3ERR_ROFS
     await server.stop();
@@ -109,7 +113,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const read = await rpc(server, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 65536)]));
     expect(read.readUInt32BE()).toBe(0);
     const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/child-1-401/child-0-400/_index.md"));
-    expect(read.subarray(104, 104 + read.readUInt32BE(100))).toEqual(expected);
+    expect(read.subarray(20, 20 + read.readUInt32BE(16))).toEqual(expected);
     const newParent = await lookupHandle(root, "child-1-401");
     expect(await lookupHandle(directory, "..")).toEqual(newParent);
     expect(await lookupHandle(newParent, "child-0-400")).toEqual(directory);

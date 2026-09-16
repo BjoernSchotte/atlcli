@@ -44,3 +44,10 @@ removed from rpcwire.rs. Read/idle, dispatch and reply-write deadlines are 60,
 removes a TCP session's entries on disconnect. Capacity rejects new work rather
 than evicting another live session's replay history. This does not provide replay
 reconciliation across reconnects; write publication still requires its journal.
+
+READ coherence follow-up: omit optional post-operation attributes instead of
+fetching them separately before reading. The current hook cannot return
+attributes and bytes from the same snapshot. This also avoids a second Markdown
+materialization per READ. GETATTR remains available; clients may request it
+separately. An atomic read-and-attributes hook remains the upgrade path, and this
+does not establish a snapshot across multiple READ requests.

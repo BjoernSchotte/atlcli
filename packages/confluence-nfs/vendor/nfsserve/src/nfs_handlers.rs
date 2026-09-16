@@ -356,10 +356,9 @@ pub async fn nfsproc3_read(
     }
     let id = id.unwrap();
 
-    let obj_attr = match context.vfs.getattr(id).await {
-        Ok(v) => nfs::post_op_attr::attributes(v),
-        Err(_) => nfs::post_op_attr::Void,
-    };
+    // ponytail: the read hook cannot return attributes from the same snapshot.
+    // Omit optional attributes until an atomic read-and-attributes hook exists.
+    let obj_attr = nfs::post_op_attr::Void;
     match context.vfs.read(id, args.offset, args.count).await {
         Ok((bytes, eof)) => {
             let res = READ3resok {

@@ -218,6 +218,10 @@ Experimental NFS handles distinguish generated files in each selected space.
 Attachment directory listings and stat use exact Confluence size metadata without
 downloading attachment contents. A read downloads the attachment through the
 shared body cache; subsequent ranges reuse it.
+READ currently omits optional NFS attributes rather than combining bytes with
+separately fetched attributes from another version. Clients can use GETATTR;
+concurrent external changes across multiple READ requests are not yet covered
+by a stable version-snapshot guarantee.
 
 Existing page/body handles also survive a page move after the changed hierarchy
 is observed: the adapter resolves the same page ID within the selected spaces.
