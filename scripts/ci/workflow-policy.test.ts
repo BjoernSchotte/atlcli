@@ -63,6 +63,8 @@ const requiredGateEnv = {
   WINDOWS: "success",
   BROWSER: "success",
   RASTER_BROWSER: "success",
+  NFS_REQUIRED: "true",
+  NFS: "success",
 };
 
 function runRequiredGate(
@@ -494,6 +496,8 @@ describe("CI workflow policy", () => {
         PDF_REQUIRED: "false",
         BROWSER_REQUIRED: "false",
         DOCS_REQUIRED: "true",
+        NFS_REQUIRED: "false",
+        NFS: "skipped",
         README_MEDIA_REQUIRED: "false",
         TEST: "skipped",
         CONSUMER: "skipped",
@@ -524,6 +528,7 @@ describe("CI workflow policy", () => {
     expect(
       runRequiredGate(script!, {
         PROOF_MODE: "superseded",
+        NFS: "skipped",
         PRIVACY: "skipped",
         DOCS: "skipped",
         README_MEDIA: "skipped",
@@ -538,6 +543,9 @@ describe("CI workflow policy", () => {
     ).toBe(0);
 
     for (const overrides of [
+      { NFS: "failure" },
+      { NFS: "skipped" },
+      { NFS_REQUIRED: "false", NFS: "success" },
       { PRIVACY: "skipped" },
       { TEST: "skipped" },
       { CONSUMER: "skipped" },

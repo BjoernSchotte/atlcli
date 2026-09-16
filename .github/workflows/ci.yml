@@ -46,6 +46,7 @@ jobs:
       astroPlatform: ${{ steps.routes.outputs.astroPlatform }}
       pdfPlatform: ${{ steps.routes.outputs.pdfPlatform }}
       browserHarness: ${{ steps.routes.outputs.browserHarness }}
+      nfs: ${{ steps.routes.outputs.nfs }}
       docs: ${{ steps.routes.outputs.docs }}
       readmeMedia: ${{ steps.routes.outputs.readmeMedia }}
       researchPrivacy: ${{ steps.routes.outputs.researchPrivacy }}
@@ -666,6 +667,12 @@ jobs:
           ATLCLI_PLAYWRIGHT_CHANNEL: chrome
         run: bun run test:browser-export-harness
 
+  nfs-helper:
+    name: NFS helper
+    needs: changes
+    if: needs.changes.outputs.proofMode != 'superseded' && needs.changes.outputs.nfs == 'true'
+    uses: ./.github/workflows/reusable-nfs.yml
+
   required:
     name: ${{ needs.changes.outputs.aggregateStatusName }}
     if: always()
@@ -681,6 +688,7 @@ jobs:
       - pdf-sink-windows
       - browser-export-harness
       - raster-normalizer-browser-ratchet
+      - nfs-helper
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -729,6 +737,8 @@ jobs:
           WINDOWS: ${{ needs.pdf-sink-windows.result }}
           BROWSER: ${{ needs.browser-export-harness.result }}
           RASTER_BROWSER: ${{ needs.raster-normalizer-browser-ratchet.result }}
+          NFS_REQUIRED: ${{ needs.changes.outputs.nfs }}
+          NFS: ${{ needs.nfs-helper.result }}
         run: |
           require_result() {
             local gate="$1"
@@ -750,7 +760,7 @@ jobs:
           fi
 
           if [[ "$PROOF_MODE" == "superseded" ]]; then
-            for result in "$PRIVACY" "$DOCS" "$README_MEDIA" "$DRAFT_QUALITY" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$BROWSER" "$RASTER_BROWSER"; do
+            for result in "$PRIVACY" "$DOCS" "$README_MEDIA" "$DRAFT_QUALITY" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$BROWSER" "$RASTER_BROWSER" "$NFS"; do
               if [[ "$result" != "skipped" ]]; then
                 echo "::error::Superseded proof unexpectedly executed a product gate with result=$result"
                 exit 1
@@ -760,6 +770,7 @@ jobs:
           fi
 
           require_result "Tracked research privacy" "true" "$PRIVACY"
+          require_result "NFS helper" "$NFS_REQUIRED" "$NFS"
 
           DOCS_SELECTED="$DOCS_REQUIRED"
           if [[ "$EVENT_NAME" == "push" ]]; then

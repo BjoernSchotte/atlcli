@@ -132,6 +132,23 @@ valid for the exact earlier slices; it does not cover these new fault cases.
 Typecheck passed. Parent-crash, alias-path unmount and remaining recovery gates
 are still open.
 
+## Slice 5: required native helper CI
+
+CI now routes NFS dependencies to a reusable Linux/macOS proof job, including
+draft PRs. The aggregate requires success whenever NFS is selected and rejects
+failure or an unexpected skip. Documentation-only and unrelated CLI edits avoid
+this job; global/CI changes select it conservatively.
+
+The job installs Rust 1.92.0, uses the locked dependency graph, runs rustfmt,
+Clippy with warnings denied, Rust tests and an actual helper build. Bun tests
+then exercise IPC, failure paths and a native read-only kernel mount against
+synthetic VFS data. No Atlassian credentials or live tenant data enter CI.
+
+Local validation: 54 CI routing/policy tests passed (620 assertions), Clippy and
+rustfmt passed, and all 19 tests in the planned native job passed on macOS
+(274 assertions). Typecheck passed. GitHub runner execution is checked after
+pushing this workflow; local success alone is not remote CI certification.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)
