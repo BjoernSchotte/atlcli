@@ -107,3 +107,25 @@ it("rechecks resolved space identity on existing handles", async () => {
   await expect(fs.read(file, 0, 128)).rejects.toMatchObject({ code: "EACCES" });
   await expect(fs.getattr(file)).rejects.toMatchObject({ code: "EACCES" });
 });
+
+it("rejects old directory cookies after rename, insert and delete even when another listing starts", async () => {
+  const { fs, vfs } = await fixture(["DOCSY"], "rw");
+  const mutations = [
+    () => vfs.rename("/DOCSY/child-0-200", "/DOCSY/z-renamed-200"),
+    () => vfs.mkdir("/DOCSY/a-new-child"),
+    () => vfs.rm("/DOCSY/child-1-201"),
+  ];
+  for (const mutate of mutations) {
+    const { mtime } = await fs.getattr(1);
+    const verifier = Buffer.alloc(8);
+    verifier.writeUInt32BE(Math.floor(mtime / 1000));
+    verifier.writeUInt32BE((mtime % 1000) * 1_000_000, 4);
+    const first = await fs.readdir(1, 0, 2, verifier.toString("hex"));
+    expect(first.end).toBe(false);
+    const cursor = first.entries.at(-1)!.attr.id;
+    await mutate();
+    const fresh = await fs.readdir(1, 0, 256);
+    expect(fresh.end).toBe(true);
+    await expect(fs.readdir(1, cursor, 2, verifier.toString("hex"))).rejects.toMatchObject({ code: "EBADCOOKIE" });
+  }
+});

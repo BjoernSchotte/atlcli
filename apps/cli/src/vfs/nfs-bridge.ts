@@ -59,7 +59,9 @@ export async function startNfsServer(options: {
           result = await fs.lookup(number(args.parent), args.name); break;
         case "getattr": result = await fs.getattr(number(args.file)); break;
         case "read": result = await fs.read(number(args.file), number(args.offset), number(args.count)); break;
-        case "readdir": result = await fs.readdir(number(args.file), number(args.after), number(args.count)); break;
+        case "readdir":
+          if (typeof args.verifier !== "string" || !/^[0-9a-f]{16}$/.test(args.verifier)) throw new Error("Invalid NFS directory verifier");
+          result = await fs.readdir(number(args.file), number(args.after), number(args.count), args.verifier); break;
         default: throw new Error("Unsupported NFS bridge operation");
       }
     } catch (error) {

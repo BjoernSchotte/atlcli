@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ConfluenceVfs } from "@atlcli/confluence-vfs";
-import { encodeNfsFrame } from "./nfs-framing.js";
+import { encodeNfsFrame, NFS_BRIDGE_VERSION } from "./nfs-framing.js";
 import { startNfsServer } from "./nfs-bridge.js";
 
 const directories: string[] = [];
@@ -28,9 +28,9 @@ it("fails promptly when the helper executable is missing", async () => {
 it("rejects incompatible version, capability and bound-port handshakes", async () => {
   for (const message of [
     { hello: 999, mode: "ro", port: 12345 },
-    { hello: 1, mode: "rw", port: 12345 },
-    { hello: 1, mode: "ro", port: 0 },
-    { hello: 1, mode: "ro", port: 12346 },
+    { hello: NFS_BRIDGE_VERSION, mode: "rw", port: 12345 },
+    { hello: NFS_BRIDGE_VERSION, mode: "ro", port: 0 },
+    { hello: NFS_BRIDGE_VERSION, mode: "ro", port: 12346 },
   ]) {
     await expect(startNfsServer({ vfs, spaces: ["DOCSY"], port: 12345,
       helperPath: helper(`${send(message)}setInterval(()=>{},1000);`) })).rejects.toThrow("handshake");
@@ -45,7 +45,7 @@ it("detects early EOF and malformed frames without leaving a helper alive", asyn
 
 it("exposes helper death after readiness and allows repeated stop", async () => {
   const server = await startNfsServer({ vfs, spaces: ["DOCSY"],
-    helperPath: helper(`${send({ hello: 1, mode: "ro", port: 12345 })}setTimeout(()=>process.exit(0),50);`) });
+    helperPath: helper(`${send({ hello: NFS_BRIDGE_VERSION, mode: "ro", port: 12345 })}setTimeout(()=>process.exit(0),50);`) });
   await server.exited;
   await server.stop();
   await server.stop();

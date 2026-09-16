@@ -49,6 +49,7 @@ impl Bridge {
             return Err(match error {
                 "ENOENT" => nfsstat3::NFS3ERR_NOENT,
                 "ESTALE" => nfsstat3::NFS3ERR_STALE,
+                "EBADCOOKIE" => nfsstat3::NFS3ERR_BAD_COOKIE,
                 "EACCES" => nfsstat3::NFS3ERR_ACCES,
                 "EROFS" => nfsstat3::NFS3ERR_ROFS,
                 "EISDIR" => nfsstat3::NFS3ERR_ISDIR,
@@ -142,6 +143,17 @@ impl NFSFileSystem for Bridge {
         after: fileid3,
         count: usize,
     ) -> Result<ReadDirResult, nfsstat3> {
+        let time = self.getattr(id).await?.mtime;
+        let verifier = ((u64::from(time.seconds) << 32) | u64::from(time.nseconds)).to_be_bytes();
+        self.readdir_with_verifier(id, after, count, verifier).await
+    }
+    async fn readdir_with_verifier(
+        &self,
+        id: fileid3,
+        after: fileid3,
+        count: usize,
+        verifier: cookieverf3,
+    ) -> Result<ReadDirResult, nfsstat3> {
         if count == 0 {
             return Ok(ReadDirResult {
                 entries: vec![],
@@ -151,7 +163,7 @@ impl NFSFileSystem for Bridge {
         let result = self
             .call(
                 "readdir",
-                json!({"file":id,"after":after,"count":count.min(256)}),
+                json!({"file":id,"after":after,"count":count.min(256),"verifier":format!("{:016x}", u64::from_be_bytes(verifier))}),
             )
             .await?;
         let mut entries = Vec::new();

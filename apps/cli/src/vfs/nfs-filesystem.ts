@@ -14,6 +14,7 @@ export class NfsFilesystem {
   private readonly paths = new Map<number, { path: string; identity: string }>();
   private readonly identities = new Map<string, number>();
   private nextId = 2;
+  private readonly directories = new Map<number, { signature: string; mtime: number }>();
   readonly root: string;
 
   constructor(private readonly vfs: ConfluenceVfs, spaces: readonly string[]) {
@@ -107,12 +108,27 @@ export class NfsFilesystem {
     return this.register(posix.join(directory, name));
   }
 
+  private async directoryView(id: number, path: string) {
+    const names = (await this.vfs.readdir(path))
+      .filter((entry) => path !== "/" || this.spaces.has(entry.name))
+      .map((entry) => entry.name).sort();
+    const ids = await Promise.all(names.map((name) => this.lookup(id, name)));
+    const signature = JSON.stringify(names.map((name, i) => [name, ids[i]]));
+    let revision = this.directories.get(id);
+    if (!revision || revision.signature !== signature) {
+      revision = { signature, mtime: Math.max(Date.now(), (revision?.mtime ?? 0) + 1) };
+      this.directories.set(id, revision);
+    }
+    return { names, ids, mtime: revision.mtime };
+  }
+
   async getattr(id: number): Promise<NfsAttributes> {
     const path = await this.pathFor(id);
     const stat = await this.vfs.stat(path);
     // Never publish estimated sizes to a kernel client.
     const size = stat.isDirectory ? 0 : (await this.vfs.readFileBytes(path)).byteLength;
-    return { id, directory: stat.isDirectory, size, mtime: stat.mtime.getTime() };
+    const mtime = stat.isDirectory ? (await this.directoryView(id, path)).mtime : stat.mtime.getTime();
+    return { id, directory: stat.isDirectory, size, mtime };
   }
 
   async read(id: number, offset: number, count: number): Promise<{ data: string; eof: boolean }> {
@@ -127,19 +143,22 @@ export class NfsFilesystem {
     return { data: Buffer.from(bytes.subarray(start, end)).toString("base64"), eof: end === bytes.byteLength };
   }
 
-  async readdir(id: number, after: number, count: number): Promise<{
+  async readdir(id: number, after: number, count: number, verifier?: string): Promise<{
     entries: { name: string; attr: NfsAttributes }[]; end: boolean;
   }> {
     if (!Number.isSafeInteger(after) || after < 0 || !Number.isInteger(count) || count < 1 || count > 256) {
       throw new VfsError("EINVAL", "Invalid NFS directory range");
     }
     const path = await this.pathFor(id);
-    const names = (await this.vfs.readdir(path))
-      .filter((entry) => path !== "/" || this.spaces.has(entry.name))
-      .map((entry) => entry.name).sort();
-    const ids = await Promise.all(names.map((name) => this.lookup(id, name)));
+    const { names, ids, mtime } = await this.directoryView(id, path);
+    const current = Buffer.alloc(8);
+    current.writeUInt32BE(Math.floor(mtime / 1000), 0);
+    current.writeUInt32BE((mtime % 1000) * 1_000_000, 4);
+    if (verifier !== undefined && verifier !== current.toString("hex")) {
+      throw Object.assign(new Error("Directory changed; restart listing"), { code: "EBADCOOKIE" });
+    }
     const start = after === 0 ? 0 : ids.indexOf(after) + 1;
-    if (after !== 0 && start === 0) throw new VfsError("EINVAL", "Expired NFS directory cursor");
+    if (after !== 0 && start === 0) throw Object.assign(new Error("Expired NFS directory cursor"), { code: "EBADCOOKIE" });
     const end = Math.min(start + count, names.length);
     const entries = [];
     for (let i = start; i < end; i++) entries.push({ name: names[i], attr: await this.getattr(ids[i]) });

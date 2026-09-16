@@ -143,6 +143,18 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
         expect(received).toBeGreaterThan(0);
         expect(pages).toBeLessThan(100);
       }
+      const expired = await rpc(server, 100003, procedure, Buffer.concat([
+        opaque(root), cookie, Buffer.alloc(8, 255), procedure === 16 ? ints(512) : ints(512, 768),
+      ]));
+      expect(expired.readUInt32BE()).toBe(10003); // NFS3ERR_BAD_COOKIE
+      const originalReaddir = vfs.readdir.bind(vfs);
+      vfs.readdir = async (path) => (await originalReaddir(path)).filter((entry) => entry.name !== "child-0-400");
+      try {
+        const changed = await rpc(server, 100003, procedure, Buffer.concat([
+          opaque(root), cookie, verifier, procedure === 16 ? ints(512) : ints(512, 768),
+        ]));
+        expect(changed.readUInt32BE()).toBe(10003);
+      } finally { vfs.readdir = originalReaddir; }
       expect(pages).toBeGreaterThan(1);
       expect(names.sort()).toEqual((await vfs.readdir("/DOCSY")).map((e) => e.name).sort());
     });

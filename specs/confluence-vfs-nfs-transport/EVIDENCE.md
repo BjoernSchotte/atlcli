@@ -221,6 +221,31 @@ DOCSY/mayflower RO kernel mounts. Rust format/Clippy/tests and typecheck passed.
 Concurrent directory mutation/cookie invalidation still needs separate proof;
 this slice establishes pagination of an unchanged directory only.
 
+## Slice 9: directory mutation and cookie validation
+
+Directory metadata records a monotonic, mount-local observed-change timestamp
+for the sorted name/identity list. Unchanged listings retain the same timestamp.
+Both native NFS directory procedures carry the cookie verifier through the Rust
+adapter into Bun, where it is compared against the exact metadata list being
+paginated. Changed names/identities fail with NFS3ERR_BAD_COOKIE; clients must
+restart enumeration. Another client's fresh listing cannot make an old verifier
+valid again. This defines explicit invalidation, not a historical snapshot of a
+mutating directory. Directory timestamps describe locally observed changes, not
+the remote Confluence modification time. No page bodies are needed for them.
+
+The internal bridge version is now 2 so older helpers fail the handshake instead
+of silently omitting verifier checks. The pinned crate has one default trait hook
+and both handlers call it; all Confluence-specific checking remains in Bun.
+
+Regression coverage includes rename, insertion and deletion between pages plus
+a second enumeration; real TCP tests reject both a bad verifier and a previously
+valid verifier after a simulated metadata-list change, for READDIR and READDIRPLUS.
+macOS: 31 NFS tests, 503 assertions, including native mounts. Linux live RO tests:
+13 tests, 378 assertions with single DOCSY and combined DOCSY/mayflower mounts.
+Rust format/build/Clippy and typecheck passed. Actual kernel behavior during a
+concurrent remote mutation, complete read snapshots, and freshness/performance
+acceptance remain separate outstanding gates.
+
 ## Related documents
 
 - [Implementation plan](PLAN.md)

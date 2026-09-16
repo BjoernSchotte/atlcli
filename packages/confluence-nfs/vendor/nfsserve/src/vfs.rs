@@ -172,6 +172,17 @@ pub trait NFSFileSystem: Sync {
         max_entries: usize,
     ) -> Result<ReadDirResult, nfsstat3>;
 
+    /// atlcli: allow the adapter to validate cookies against the same listing it returns.
+    async fn readdir_with_verifier(
+        &self,
+        dirid: fileid3,
+        start_after: fileid3,
+        max_entries: usize,
+        _verifier: cookieverf3,
+    ) -> Result<ReadDirResult, nfsstat3> {
+        self.readdir(dirid, start_after, max_entries).await
+    }
+
     /// Simple version of readdir.
     /// Only need to return filename and id
     async fn readdir_simple(&self, dirid: fileid3, count: usize) -> Result<ReadDirSimpleResult, nfsstat3> {

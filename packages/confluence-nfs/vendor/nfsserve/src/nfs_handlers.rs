@@ -879,7 +879,8 @@ pub async fn nfsproc3_readdirplus(
     let estimated_max_results = (args.dircount / 16).max(1);
     let max_dircount_bytes = args.dircount as usize;
     let mut ctr = 0;
-    match context.vfs.readdir(dirid, args.cookie, estimated_max_results as usize).await {
+    let verifier = if args.cookie == 0 { dirversion } else { args.cookieverf };
+    match context.vfs.readdir_with_verifier(dirid, args.cookie, estimated_max_results as usize, verifier).await {
         Ok(result) => {
             // we count dir_count seperately as it is just a subset of fields
             let mut accumulated_dircount: usize = 0;
@@ -1018,7 +1019,8 @@ pub async fn nfsproc3_readdir(
     // This is hard to ballpark, so we just divide it by 16
     let estimated_max_results = (args.dircount / 16).max(1);
     let mut ctr = 0;
-    match context.vfs.readdir(dirid, args.cookie, estimated_max_results as usize).await {
+    let verifier = if args.cookie == 0 { dirversion } else { args.cookieverf };
+    match context.vfs.readdir_with_verifier(dirid, args.cookie, estimated_max_results as usize, verifier).await {
         Ok(result) => {
             // we count dir_count seperately as it is just a subset of fields
             let mut accumulated_dircount: usize = 0;

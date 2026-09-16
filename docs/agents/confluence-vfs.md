@@ -222,3 +222,8 @@ by the [NFS evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md).
 The NFS helper uses the pinned local nfsserve patch for correct multi-page
 READDIR results. Rebuild the helper alongside source updates; an older helper
 can repeat the first directory page. See its [patch notes](../../packages/confluence-nfs/vendor/nfsserve/PATCHES.md).
+
+If a directory changes during NFS pagination, the server returns `BAD_COOKIE`;
+restart the listing if the OS does not retry automatically. Directory timestamps
+track changes observed by this mount. Source builds require bridge-version-2
+helpers; rebuild an older companion binary before mounting.

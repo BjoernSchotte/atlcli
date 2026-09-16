@@ -24,3 +24,9 @@ Local functional changes in src/nfs_handlers.rs:
 Regression proof: apps/cli/src/vfs/nfs-bridge.test.ts exercises both procedures
 with small multi-page replies through the actual Rust TCP listener and Bun VFS.
 Keep patches minimal; compare this file and upstream before version upgrades.
+
+Directory mutation follow-up: vfs.rs adds a default `readdir_with_verifier` hook.
+Both handlers pass the client's cookie verifier (or the observed directory
+version for the initial request). The Bun adapter checks it against the exact
+metadata listing used for pagination, returning BAD_COOKIE on change. This avoids
+a check-then-list race and lets clients restart instead of silently skipping rows.
