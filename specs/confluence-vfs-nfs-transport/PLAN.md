@@ -1,7 +1,8 @@
 # Optional NFS transport for Confluence mounts
 
-Status: implementation in progress; WP1 pipe framing implemented. No mountable
-NFS transport or read/write acceptance yet. See [evidence](EVIDENCE.md).
+Status: implementation in progress; WP1 read-only prototype passes native macOS
+and Linux DOCSY reads. CLI integration and read/write acceptance remain open.
+See [evidence](EVIDENCE.md).
 Baseline: PR #202, merged as `8b08ad65` on 2026-09-16.
 
 ## Contents
