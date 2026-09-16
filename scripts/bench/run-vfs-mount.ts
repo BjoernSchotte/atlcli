@@ -133,6 +133,7 @@ for (let run = 0; run < 5; run++) {
           if (phase === "cold") expected.set(path, Buffer.from(await vfs.readFileBytes(`/DOCSY/${path}`)));
           assert(bytes.equals(expected.get(path)!), `${transport} ${phase} ${path}: ${bytes.length} bytes vs expected ${expected.get(path)!.length}`);
         }
+        if (phase === "warm") assert.equal(row.apiRequests, 0, "Warm reads within the metadata TTL must not call the backend");
         records.push(row);
         writeFileSync(output!, JSON.stringify(results, null, 2) + "\n");
         console.error(`${transport} ${run + 1}/5 ${phase}: ${Number(row.wallMs).toFixed(1)}ms, ${row.apiRequests} API calls`);

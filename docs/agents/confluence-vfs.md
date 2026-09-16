@@ -50,6 +50,11 @@ things over several calls.
 `<slug>-<id>`: **the id resolves, the slug is decoration.** A path keeps working
 after a page is renamed. `<slug>-<id>.md` is a short form for the body.
 
+Comment and attachment listings share concurrent requests and remain cached in
+the current VFS session for the metadata TTL (60 seconds by default). External
+comment changes appear on the next read after expiry. Each listing cache retains
+at most 256 pages; failed requests are retried on the next access.
+
 ### Reading
 
 ```bash

@@ -276,9 +276,7 @@ it("does not enumerate child directories while returning parent directory attrib
   for (let id = 200; id < 204; id++) expect(vfs.index.isUnloaded(String(id))).toBe(true);
   const requests = client.requestCount;
   await fs.readdir(1, 0, 256);
-  // The exposed homepage comments view refreshes its exact size. Page and
-  // hierarchy caches must still avoid fetching any unopened child.
-  expect(client.calls.slice(requests).map(call => call.method)).toEqual(["getAllComments"]);
+  expect(client.requestCount).toBe(requests);
   const child = listing.entries.find(entry => entry.name === "child-0-200")!.attr.id;
   await fs.readdir(child, 0, 256);
   expect(client.callsTo("getPageDirectChildren")).toBe(2);

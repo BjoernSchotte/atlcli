@@ -61,11 +61,11 @@ function linkEntry(name: string): VfsDirent {
   return { name, kind: "symlink", isDirectory: false, isFile: false, isSymbolicLink: true };
 }
 
+type CachedListing<T> = { expires: number; result: Promise<T> };
+
 export class VirtualDirs {
-  private readonly attachmentListings = new Map<string, {
-    expires: number;
-    result: Promise<Awaited<ReturnType<VfsClient["listAttachments"]>>>;
-  }>();
+  private readonly attachmentListings = new Map<string, CachedListing<Awaited<ReturnType<VfsClient["listAttachments"]>>>>();
+  private readonly commentListings = new Map<string, CachedListing<PageComments>>();
 
   constructor(private readonly opts: VirtualDirsOptions) {}
 
@@ -74,22 +74,27 @@ export class VirtualDirs {
   }
 
   private listAttachments(pageId: string, path?: string) {
-    const cached = this.attachmentListings.get(pageId);
+    return this.cachedListing(this.attachmentListings, pageId,
+      () => this.request(() => this.opts.client.listAttachments(pageId), path));
+  }
+
+  private cachedListing<T>(listings: Map<string, CachedListing<T>>, pageId: string, load: () => Promise<T>): Promise<T> {
+    const cached = listings.get(pageId);
     if (cached && this.opts.now() < cached.expires) return cached.result;
-    this.attachmentListings.delete(pageId);
-    // Bound session metadata; attachment bytes still use the existing blob cache.
-    if (this.attachmentListings.size >= 256) {
-      this.attachmentListings.delete(this.attachmentListings.keys().next().value!);
+    listings.delete(pageId);
+    // Bound session listings; attachment bytes still use the existing blob cache.
+    if (listings.size >= 256) {
+      listings.delete(listings.keys().next().value!);
     }
     const entry = {
       expires: Infinity,
-      result: this.request(() => this.opts.client.listAttachments(pageId), path),
+      result: load(),
     };
-    this.attachmentListings.set(pageId, entry);
+    listings.set(pageId, entry);
     void entry.result.then(() => {
       entry.expires = this.opts.now() + (this.opts.metadataTtlMs ?? VFS_DEFAULTS.treeTtlMs);
     }, () => {
-      if (this.attachmentListings.get(pageId) === entry) this.attachmentListings.delete(pageId);
+      if (listings.get(pageId) === entry) listings.delete(pageId);
     });
     return entry.result;
   }
@@ -237,7 +242,8 @@ export class VirtualDirs {
 
   /** Footer and inline comments as one Markdown document. Read-only. */
   async commentsMarkdown(node: TreeNode, path: string): Promise<string> {
-    const comments = await this.request(() => this.opts.client.getAllComments(node.id), path);
+    const comments = await this.cachedListing(this.commentListings, node.id,
+      () => this.request(() => this.opts.client.getAllComments(node.id), path));
     return renderComments(node, comments);
   }
 

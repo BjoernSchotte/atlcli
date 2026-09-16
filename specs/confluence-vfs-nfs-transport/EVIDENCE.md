@@ -818,3 +818,37 @@ Validation: 381 core/adapter/HTTP tests, 1,182 assertions; typecheck passed.
 Linux live DOCSY read-only CLI lifecycle passed all five cases / 61 assertions
 (signal, busy, explicit detach, helper crash, parent crash). Native benchmark
 fixtures were synthetic on both hosts; no live content was changed.
+
+
+## Slice 33 — reuse comment listings within the metadata freshness window
+
+Slice 32's macOS WebDAV warm workload repeatedly fetched six comment documents
+solely to determine their exact file sizes. Comment reads now reuse the existing
+attachment-listing cache mechanism: concurrent request sharing, expiry after
+successful completion using the configured metadata TTL (default 60 seconds),
+256 retained page listings per kind, and immediate eviction of failed requests.
+The cache belongs to the current VFS instance and is not persisted. Rendering
+still uses the current page node. This bounds retained listing count, not total
+comment payload bytes; it does not complete the overall memory-bound acceptance.
+
+Three regressions cover concurrent and sequential reads, external comment
+changes at the exact TTL boundary, transient failure recovery, and eviction
+after 256 pages. Existing attachment expiry/write-invalidation coverage passes
+through the shared implementation. The NFS directory regression again proves
+zero additional backend requests for an immediate repeated listing.
+
+Validation: 384 relevant core/adapter/HTTP tests / 1,192 assertions on macOS;
+56 targeted tests / 340 assertions on Linux; typecheck passed. Both hosts ran
+five cold and warm native mounts per transport with exact full-file comparison.
+All twenty warm phases across the two hosts made zero backend requests; this
+is now an executable assertion in the benchmark. Mac WebDAV cold requests were
+46, NFS 64; Linux WebDAV 82, NFS 64. No wall-time improvement is claimed from
+these runs, which overlapped other validation. The checked-in Slice 32 raw
+measurements remain the earlier baseline, not measurements of this cache fix.
+Linux live DOCSY RO lifecycle also passed all five cases / 61 assertions.
+
+The preceding Slice 32 CI run [35161723588](https://github.com/BjoernSchotte/atlcli/actions/runs/35161723588)
+completed successfully, including all four native Unix platform lanes. This is
+CI evidence for ab059b16, not a claim about the subsequent Slice 33 commit.
+Cold hierarchy GETATTR costs, full performance gates and RW acceptance remain
+open. All native test mounts detached normally; no live content was changed.
