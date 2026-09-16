@@ -73,7 +73,7 @@ for (let run = 0; run < 5; run++) {
       if (transport === "nfs") {
         const opts = `vers=3,tcp,ro,soft,timeo=10,retrans=2,port=${server.port},mountport=${server.port}`;
         command = platform() === "linux" ? ["sudo", "-n", "mount", "-t", "nfs", "-o", `${opts},nolock`, "127.0.0.1:/", mountpoint]
-          : ["mount_nfs", "-o", `${opts},nolocks`, "127.0.0.1:/", mountpoint];
+          : ["mount_nfs", "-o", `${opts},locallocks`, "127.0.0.1:/", mountpoint];
       } else {
         const url = mountUrlFor((server as Awaited<ReturnType<typeof startWebdavServer>>).url, ["DOCSY"]);
         if (platform() === "linux") {

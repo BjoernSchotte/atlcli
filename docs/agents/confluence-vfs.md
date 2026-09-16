@@ -226,6 +226,11 @@ Experimental NFS handles distinguish generated files in each selected space.
 Expired object handles also fail metadata/access probes with `ESTALE`.
 NFS advertises a 255-byte filename-component limit and rejects longer UTF-8
 names with `ENAMETOOLONG`; names are never silently truncated.
+macOS mounts use `locallocks`; Linux uses `nolock`. Advisory locks are local
+to the client: they coordinate processes on that client, not other clients or
+Confluence edits. No NLM/NSM lock service runs. Native tests verify nonblocking
+`flock` contention/release and shared POSIX read locks on the current RO mounts;
+write-lock/editor-save acceptance still requires the pending RW implementation.
 NFS READDIR/READDIRPLUS entry attributes do not enumerate each child directory.
 Listing a child directory fetches its children on demand. An explicit directory
 GETATTR still refreshes its listing to validate pagination state.

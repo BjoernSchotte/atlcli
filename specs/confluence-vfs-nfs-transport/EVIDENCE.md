@@ -913,3 +913,34 @@ Linux live DOCSY RO lifecycle passed all five cases / 61 assertions without
 changing live content.
 No RW capability was enabled. Full RW publication, read snapshots and remaining
 performance/metadata acceptance are still open.
+
+
+## Slice 36 — native local advisory lock probes
+
+The previous macOS option nolocks caused flock to fail immediately with ENOTSUP
+(errno 45), reproduced in all three native mount cases. The installed
+mount_nfs(8) manual distinguishes this from locallocks: the former disables
+locking, while the latter handles it in the client's VFS without contacting an
+NLM server. The production macOS command, command assertion, kernel fixtures
+and benchmark now consistently use locallocks. Linux retains nolock, verified
+against its installed nfs(5) documentation and native behavior.
+
+Each kernel fixture now runs a bounded Python stdlib probe in a separate process
+while Bun continues serving the mount. It acquires an exclusive nonblocking
+flock on the readable Markdown file, proves a second process cannot acquire it,
+releases it and proves a new process can acquire it. It also acquires/releases a
+shared POSIX record lock. Child operations have two-second deadlines; the whole
+probe has a five-second deadline. Python 3 is a native-test prerequisite only,
+not a CLI runtime dependency. No writable file descriptor or remote edit is used.
+
+Validation: all three native fixtures passed on macOS and Linux, 16 Bun assertions
+per host plus Python assertions. Linux repeated the fixtures with live RO DOCSY
+and DOCSY+mayflower exports (the attachment fixture remains synthetic), again
+three passes / 16 assertions. All mounts detached normally. Transport command
+tests passed three cases / 16 assertions; typecheck passed. No live content was
+changed. The new probe also runs in the existing native-platform CI lanes.
+
+These results cover local advisory locks on current read-only mounts. They do
+not establish cross-client locking, exclusive POSIX write-lock behavior on an RW
+mount, successful editor saving, or safe Confluence publication. The remaining
+RW and snapshot gates are unchanged.

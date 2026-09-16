@@ -29,7 +29,7 @@ export function nfsMountCommandFor(os: NodeJS.Platform, port: number, mountpoint
   // RO prototype: bounded retry avoids a hung reader after helper death. RW must
   // revisit soft mounts before enabling writes; they can lose application data.
   const options = `vers=3,tcp,ro,soft,timeo=10,retrans=2,port=${port},mountport=${port}`;
-  if (os === "darwin") return { run: ["mount_nfs", "-o", `${options},nolocks`, "127.0.0.1:/", mountpoint] };
+  if (os === "darwin") return { run: ["mount_nfs", "-o", `${options},locallocks`, "127.0.0.1:/", mountpoint] };
   return { instructions: "The experimental NFS server is listening. Attach it with the Linux NFS client:\n\n" +
     `    sudo mount -t nfs -o ${quote(`${options},nolock`)} 127.0.0.1:/ ${quote(mountpoint)}\n\n` +
     "The volume is read-only. Ctrl-C attempts a normal unmount before stopping the server.\n" };

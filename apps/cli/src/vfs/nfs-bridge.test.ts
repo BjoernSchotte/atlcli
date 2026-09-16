@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { connect } from "node:net";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -399,7 +401,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       const options = `vers=3,tcp,ro,soft,timeo=10,retrans=2,port=${server.port},mountport=${server.port}`;
       const command = platform() === "linux"
         ? ["sudo", "-n", "mount", "-t", "nfs", "-o", `${options},nolock`, "127.0.0.1:/", mountpoint]
-        : ["mount_nfs", "-o", `${options},nolocks`, "127.0.0.1:/", mountpoint];
+        : ["mount_nfs", "-o", `${options},locallocks`, "127.0.0.1:/", mountpoint];
       expect(await runMountCommand(command)).toBe(0);
       mounted = true;
       if (spaces.length > 1) {
@@ -408,10 +410,33 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
         for await (const entry of directory) names.push(entry.name);
         expect(names.sort()).toEqual(["DOCSY", "mayflower"]);
       }
-      const file = await open(join(mountpoint, ...(spaces.length > 1 ? ["DOCSY"] : []), "_index.md"), "r");
+      const bodyPath = join(mountpoint, ...(spaces.length > 1 ? ["DOCSY"] : []), "_index.md");
+      const file = await open(bodyPath, "r");
       try {
         expect(await file.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md")));
       } finally { await file.close(); }
+      const probe = await promisify(execFile)("python3", ["-c", `
+import errno, fcntl, subprocess, sys
+child = """
+import errno, fcntl, sys
+with open(sys.argv[1], 'rb') as file:
+    try:
+        fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        if error.errno not in (errno.EACCES, errno.EAGAIN):
+            raise
+        sys.exit(10)
+"""
+with open(sys.argv[1], 'rb') as file:
+    fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    assert subprocess.run([sys.executable, '-c', child, sys.argv[1]], timeout=2).returncode == 10
+    fcntl.flock(file, fcntl.LOCK_UN)
+    assert subprocess.run([sys.executable, '-c', child, sys.argv[1]], timeout=2).returncode == 0
+    fcntl.lockf(file, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    fcntl.lockf(file, fcntl.LOCK_UN)
+print('local locks verified')
+`, bodyPath], { timeout: 5000 });
+      expect(probe.stdout.trim()).toBe("local locks verified");
       if (attachments) {
         const attachment = join(mountpoint, "_attachments", "large.bin");
         const directory = await opendir(join(mountpoint, "_attachments"));
