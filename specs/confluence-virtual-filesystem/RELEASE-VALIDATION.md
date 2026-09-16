@@ -138,6 +138,14 @@ all **1,200** synthetic Unicode text repetitions plus the edited end marker.
 The page, temporary server, mount and VFS cache were cleaned up. macOS native
 read/write E2E also passed again (7 tests / 17 assertions).
 
+## Linux shutdown
+
+Native davfs2 verification passed: a separate process held its working directory
+inside a read-only DOCSY mount; Ctrl-C preserved the busy mount and server.
+After releasing that process, a second Ctrl-C unmounted and exited with code 0.
+Shutdown tries ordinary umount then noninteractive sudo; failure keeps the
+server and mount state available rather than stranding a dead filesystem.
+
 ## Final repository checks
 
 After the production fixes: `bun run test` reports **9,008 pass, 40 skip, zero

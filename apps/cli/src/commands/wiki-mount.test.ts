@@ -13,6 +13,8 @@ import { createServer } from "node:http";
 import {
   mountCommandFor,
   mountUrlFor,
+  isLinuxMounted,
+  waitForShutdown,
   mountStateDir,
   mountStatePath,
   readMounts,
@@ -154,5 +156,29 @@ describe("help", () => {
   it("says writing is off by default", () => {
     expect(wikiMountHelp()).toContain("default: ro");
     expect(wikiMountHelp()).toContain("--sync-writes");
+  });
+});
+
+
+describe("safe shutdown", () => {
+  it("recognises only the exact Linux mountpoint and decodes escaped paths", () => {
+    const info = "1 0 0:1 / / rw - ext4 /dev/root rw\n2 1 0:2 / /tmp/wiki\\040docs rw - fuse http://localhost/ rw";
+    expect(isLinuxMounted("/tmp/wiki docs", info)).toBe(true);
+    expect(isLinuxMounted("/tmp/wiki docs/child", info)).toBe(false);
+    expect(isLinuxMounted("/tmp/other", info)).toBe(false);
+  });
+  it("keeps signal handling alive after a busy mount and prevents concurrent cleanup", async () => {
+    let attempts = 0;
+    const before = process.listenerCount("SIGTERM");
+    const done = waitForShutdown(async () => { attempts++; await Bun.sleep(10); return attempts === 2; });
+    process.emit("SIGTERM");
+    process.emit("SIGTERM");
+    await Bun.sleep(25);
+    expect(attempts).toBe(1);
+    expect(process.listenerCount("SIGTERM")).toBe(before + 1);
+    process.emit("SIGTERM");
+    await done;
+    expect(attempts).toBe(2);
+    expect(process.listenerCount("SIGTERM")).toBe(before);
   });
 });

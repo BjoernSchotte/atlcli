@@ -15,7 +15,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   ERROR_CODES,
   fail,
@@ -107,6 +107,29 @@ export function unmountCommandFor(
     default:
       return { instructions: `    sudo umount ${mountpoint}\n` };
   }
+}
+
+/** Match the mountpoint itself, not merely its containing filesystem. */
+export function isLinuxMounted(mountpoint: string, mountInfo = readFileSync("/proc/self/mountinfo", "utf8")): boolean {
+  return mountInfo.split("\n").some((line) => {
+    const field = line.split(" ")[4];
+    return field?.replace(/\\([0-7]{3})/g, (_, octal: string) => String.fromCharCode(parseInt(octal, 8))) === resolve(mountpoint);
+  });
+}
+
+async function detachVolume(os: NodeJS.Platform, mountpoint: string): Promise<boolean> {
+  if (os === "linux") {
+    if (!isLinuxMounted(mountpoint)) return true;
+    // fstab/user mounts need no privilege; sudo -n never prompts during shutdown.
+    for (const command of [["umount", mountpoint], ["sudo", "-n", "umount", mountpoint]]) {
+      try { await runMountCommand(command, true); } catch { /* Try the next permitted method. */ }
+      if (!isLinuxMounted(mountpoint)) return true;
+    }
+    process.stderr.write(`atlcli: could not unmount ${mountpoint}; server stays running. Close files and leave the mount directory, then retry Ctrl-C, or run sudo umount manually.\n`);
+    return false;
+  }
+  const command = unmountCommandFor(os, mountpoint);
+  return "run" in command && await runMountCommand(command.run, true) === 0;
 }
 
 export async function handleWikiMount(
@@ -232,11 +255,11 @@ async function handleMount(
   );
 
   await waitForShutdown(async () => {
-    const detach = unmountCommandFor(platform(), mountpoint);
-    if ("run" in detach) await runMountCommand(detach.run, true);
+    if (!await detachVolume(platform(), mountpoint)) return false;
     await running.stop();
     await vfs.close();
     rmSync(mountStatePath(cacheDir, mountpoint), { force: true });
+    return true;
   });
 }
 
@@ -247,16 +270,24 @@ async function handleMount(
  * the unmount has to happen on the signal path rather than being left to the
  * user.
  */
-async function waitForShutdown(cleanup: () => Promise<void>): Promise<void> {
+export async function waitForShutdown(cleanup: () => Promise<boolean>): Promise<void> {
   await new Promise<void>((resolve) => {
-    let done = false;
-    const finish = (): void => {
-      if (done) return;
-      done = true;
-      void cleanup().finally(() => resolve());
+    let running = false;
+    const finish = async (): Promise<void> => {
+      if (running) return;
+      running = true;
+      try {
+        if (await cleanup()) {
+          process.removeListener("SIGINT", finish);
+          process.removeListener("SIGTERM", finish);
+          resolve();
+        }
+      } catch (error) {
+        process.stderr.write(`atlcli: shutdown failed; retry after resolving the error: ${String(error)}\n`);
+      } finally { running = false; }
     };
-    process.once("SIGINT", finish);
-    process.once("SIGTERM", finish);
+    process.on("SIGINT", finish);
+    process.on("SIGTERM", finish);
   });
 }
 
@@ -311,11 +342,9 @@ async function handleUnmount(
   const vfsConfig = resolveVfsConfig(config, profile);
   const cacheDir = getFlag(flags, "cache-dir") ?? vfsConfig.cacheDir ?? DEFAULT_CACHE_DIR;
 
-  const detach = unmountCommandFor(platform(), mountpoint);
-  if ("instructions" in detach) {
-    process.stderr.write(detach.instructions);
-  } else {
-    await runMountCommand(detach.run);
+  if (!await detachVolume(platform(), mountpoint)) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Unmount failed; the server and mount record were preserved.", {});
+    return;
   }
 
   const file = mountStatePath(cacheDir, mountpoint);

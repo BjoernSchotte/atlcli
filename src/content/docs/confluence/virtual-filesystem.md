@@ -393,9 +393,12 @@ section of `/etc/davfs2/davfs2.conf`, then unmount and mount again.
 Back up the configuration before editing it. See the
 [upstream fix](https://github.com/alisarctl/davfs2/commit/4c6a10d7854a34ecf0cda5ee750441602a2da945).
 
-Keep the atlcli server running while remounting. When finished on Linux,
-run `sudo umount <mountpoint>` **before** stopping atlcli with Ctrl-C;
-the current Linux implementation does not automatically detach the mount.
+Keep the atlcli server running while remounting. On Linux, Ctrl-C/SIGTERM
+now tries `umount`, then `sudo -n umount` without a password prompt. If the
+mount is busy or permissions prevent detaching, the server stays running:
+close files and leave the mount directory, then retry Ctrl-C. Alternatively
+run `sudo umount <mountpoint>` manually and retry. `wiki mount unmount` also
+keeps the server and state intact when detaching fails.
 
 
 ### The Finder mounts the volume read-only
