@@ -713,6 +713,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       for (const child of await this.index.loadChildren(homepageId)) {
         entries.push(direntFor(child));
       }
+      entries.push(virtualDirEntry("_attachments"));
+      entries.push(virtualDirEntry(".versions"));
+      entries.push(virtualFileEntry(".comments.md"));
     }
     for (const name of [".by-id", ".labels", ".recent", ".search"]) {
       entries.push(virtualDirEntry(name));

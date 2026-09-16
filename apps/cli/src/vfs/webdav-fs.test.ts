@@ -120,6 +120,21 @@ describe("listing", () => {
 });
 
 describe("reading", () => {
+  it("keeps homepage attachments discoverable after repeated root listings", async () => {
+    await start(seeded().seedAttachment({ id: "900", pageId: "100", filename: "proof.txt", bytes: Buffer.from("Grüße 🐴") }));
+    for (let pass = 0; pass < 2; pass++) {
+      const root = await dav("/DOCSY/", { method: "PROPFIND", depth: "1" });
+      expect(root.body).toContain("/DOCSY/_attachments");
+      expect(root.body).toContain("/DOCSY/.versions");
+      expect(root.body).toContain("/DOCSY/.comments.md");
+      const directory = await dav("/DOCSY/_attachments/", { method: "PROPFIND", depth: "1" });
+      expect(directory.body).toContain("proof.txt");
+      const file = await dav("/DOCSY/_attachments/proof.txt", { method: "GET" });
+      expect(file.status).toBe(200);
+      expect(file.body).toBe("Grüße 🐴");
+    }
+  });
+
   it("GETs a page as Markdown", async () => {
     await start(seeded());
     const result = await dav("/DOCSY/page-0-200.md", { method: "GET" });

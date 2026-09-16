@@ -32,6 +32,9 @@ things over several calls.
 ```
 /<SPACE>/                          the space
   _index.md                        the home page's body
+  _attachments/                   home page attachments
+  .versions/                      home page versions, read-only
+  .comments.md                    home page comments, read-only
   <slug>-<id>/                     every page is a directory
     _index.md                      its body
     <child-slug>-<child-id>/       child pages nest

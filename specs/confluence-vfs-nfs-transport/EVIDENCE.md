@@ -762,3 +762,59 @@ Linux single/combined mounts used live RO spaces; macOS and attachment fixtures
 were synthetic. Typecheck passed and mounts detached normally. No live content
 was changed. Comparative WebDAV/NFS wall-time, byte and RSS measurements remain
 open; request-count reduction alone is not a speed claim.
+
+
+## Slice 32 — homepage side objects and native read comparison
+
+A native benchmark exposed a shared VFS listing bug: homepage attachments,
+versions and comments resolved directly but were absent from the space listing.
+After refreshing that listing, macOS WebDAV reported ENOENT for an attachment
+that it had just read; Linux davfs2 refused its initial open. The space listing
+now includes those homepage side objects. HTTP regression coverage checks two
+root listings, attachment discovery and exact Unicode content. The shell also
+benefits from the corrected listing.
+
+Both hosts completed five fresh mounts per transport, with cold and immediate
+warm workloads: six directory listings, all 26 page bodies and a 1,300,000-byte
+Unicode attachment. Every file was byte-compared against the core VFS outside
+the timed region. Mounts were detached normally. Reproduce with:
+
+```sh
+ATLCLI_NFS_TEST_HELPER="$PWD/packages/confluence-nfs/target/debug/atlcli-confluence-nfs" \
+bun --conditions=development scripts/bench/run-vfs-mount.ts /tmp/mount-benchmark.json
+```
+
+The Linux host requires passwordless sudo for mount/umount and installed davfs2
+and NFS client tools. The davfs cache is private to the synthetic test run; its
+permissions accommodate the system davfs daemon. Do not reuse that fixture
+cache setup for tenant data.
+
+| Host | Transport | Cold median ms | Warm median ms | Cold API calls | Warm API calls |
+| --- | --- | ---: | ---: | ---: | ---: |
+| macOS arm64 | WebDAV | 49.6 | 10.2 | 46–47 | 6 |
+| macOS arm64 | NFS | 82.7 | 3.1 | 64 | 0 |
+| Linux x64 | WebDAV | 75.6 | 9.4 | 82 | 0 |
+| Linux x64 | NFS | 106.7 | 23.0 | 64 | 0 |
+
+Raw synthetic measurements: [macOS](benchmark-mac.json),
+[Linux](benchmark-linux.json). Startup is measured separately and includes VFS
+initialization. Backend is in-process without network latency; these are not
+live Confluence latency estimates. Payload bytes count page storage and
+attachment downloads, excluding comments, metadata and HTTP overhead. RSS is a
+final sample, not peak; VFS calls are not wire-request counts. Workload uses
+128 KiB positional reads. These results do not cover Glow, editor saves or
+publication, and do not fulfill the complete performance acceptance gate.
+
+The greater-than-10% review threshold is triggered: NFS is slower cold on both
+hosts and warm on Linux. Mac NFS cold enumeration makes 25 hierarchy calls vs
+WebDAV's six; NFS directory GETATTR refreshes listings for cookie coherence.
+Mac WebDAV warm requests are six getAllComments calls for exact file sizes.
+Exposing the homepage comments view also adds one comment refresh to repeated
+core NFS listings; the hierarchy regression now checks that distinction rather
+than asserting zero requests across all virtual views. These costs remain
+follow-up work, not a claim of a performance win.
+
+Validation: 381 core/adapter/HTTP tests, 1,182 assertions; typecheck passed.
+Linux live DOCSY read-only CLI lifecycle passed all five cases / 61 assertions
+(signal, busy, explicit detach, helper crash, parent crash). Native benchmark
+fixtures were synthetic on both hosts; no live content was changed.
