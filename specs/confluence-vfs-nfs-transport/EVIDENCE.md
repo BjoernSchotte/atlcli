@@ -3360,3 +3360,30 @@ This lifecycle wiring still needs end-to-end RW CLI activation/fault acceptance.
 
 Public RW lifecycle, interrupted namespace changes, complete editor matrix and
 remaining final acceptance gates remain open.
+
+
+## Slice 127 — server-owned journal lifecycle under the unchanged CLI gate
+
+The NFS server accepts an owned journal location as an alternative to a borrowed
+journal. Its existing startup path and publisher operate on the opened journal;
+startup failure closes it, and idempotent stop waits for helper/publisher cleanup
+before recording final counts and closing it. Status remains readable afterward.
+The CLI prepared RW branch delegates ownership to this shared, directly testable
+path. SQLite/journal loading remains lazy for callers that do not own a journal.
+
+The PLAN explicitly requires write-durability acceptance before public RW
+activation; that gate was preserved. This slice does not claim an enabled CLI
+RW command or full native hard-mount crash recovery.
+
+- macOS/Linux failure + CLI suites: 27 passed / 174 assertions each, including
+  real Rust helper pipe-close behavior. New regression seeds durable local bytes,
+  simulates missing-helper startup, helper death, concurrent/repeated stop, and
+  reopens the database with retained bytes and final recovery counts.
+- Linux DOCSY with real Rust helper: one pass / five assertions. Server startup
+  resumes an owned journal, publishes one pending image, verifies remote version
+  and body, stops, then reopens the journal without pending publications. Page
+  cleaned up. This recovery test does not attach an OS volume.
+- Typecheck: four tasks passed.
+
+Full public RW activation, hard-mount crash/unmount behavior, namespace mutation
+recovery and remaining editor/performance acceptance are still open.

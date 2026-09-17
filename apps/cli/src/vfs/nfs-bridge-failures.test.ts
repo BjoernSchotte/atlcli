@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ConfluenceVfs } from "@atlcli/confluence-vfs";
 import { encodeNfsFrame, readNfsFrames, NFS_BRIDGE_VERSION } from "./nfs-framing.js";
+import { NfsJournal } from "./nfs-journal.js";
 import { startNfsServer } from "./nfs-bridge.js";
 
 const directories: string[] = [];
@@ -90,3 +91,25 @@ it.skipIf(!process.env.ATLCLI_NFS_TEST_HELPER)("real helper exits when its paren
     }
   }
 }, 12000);
+
+
+it("releases owned journal locks after failed startup, helper death and repeated stop", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "nfs-owned-journal-")); directories.push(directory);
+  const location = { path: join(directory, "journal.sqlite"), scope: "fixture:DOCSY" };
+  let seed = new NfsJournal(location.path, location.scope);
+  const local = seed.createLocal("/DOCSY/.editor.tmp");
+  seed.write(local.id, 0, Buffer.from("Durable editor bytes"));
+  seed.close();
+  await expect(startNfsServer({ vfs, spaces: ["DOCSY"], journalLocation: location,
+    helperPath: "/no-such-nfs-helper" })).rejects.toThrow();
+  seed = new NfsJournal(location.path, location.scope); seed.close();
+  const server = await startNfsServer({ vfs, spaces: ["DOCSY"], journalLocation: location,
+    helperPath: helper(`${send({ hello: NFS_BRIDGE_VERSION, mode: "staged-rw", port: 12345 })}setTimeout(()=>process.exit(0),50);`) });
+  expect(server.writeStatus()?.localEntries).toBe(1);
+  await server.exited;
+  await Promise.all([server.stop(), server.stop()]);
+  expect(server.writeStatus()?.localEntries).toBe(1);
+  const reopened = new NfsJournal(location.path, location.scope);
+  try { expect(Buffer.from(reopened.local("/DOCSY/.editor.tmp")!.bytes).toString()).toBe("Durable editor bytes"); }
+  finally { reopened.close(); }
+});

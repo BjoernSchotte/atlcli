@@ -561,3 +561,8 @@ order does not change the journal. A changed identity or export gets a separate
 journal. These files contain durable edits, not disposable body-cache entries;
 keep them until publication/recovery is verified. The CLI RW startup wiring is
 prepared but remains behind the existing acceptance gate.
+
+The managed NFS server owns the journal lock until its publisher and helper have
+stopped. Failed startup releases the lock; normal stop retains the database and
+its last recovery counts for inspection. Caller-supplied test journals remain
+caller-owned. This does not enable the gated public RW mode.

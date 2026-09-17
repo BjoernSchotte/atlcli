@@ -92,6 +92,35 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
+  it.skipIf(!process.env.ATLCLI_NFS_TEST_HELPER)("resumes an owned NFS journal and releases it after publication", async () => {
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("owned-journal"), storage: "<p>Owned original</p>" });
+    created.push(page.id);
+    const location = nfsJournalLocation({ ...vfs.runtime!, cacheDir: join(cacheDir, "owned"),
+      profile: profile!.name, spaces: [E2E_SPACE_KEY] });
+    const path = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`);
+    const original = await vfs.readFile(path);
+    const seed = new NfsJournal(location.path, location.scope);
+    try {
+      seed.admit(page.id, path, Buffer.from(original), page.version ?? 1);
+      const bytes = Buffer.from(original.replace("Owned original", "Owned recovered"));
+      seed.truncate(page.id, bytes.length); seed.write(page.id, 0, bytes);
+    } finally { seed.close(); }
+    const server = await startNfsServer({ vfs, spaces: [E2E_SPACE_KEY], journalLocation: location,
+      helperPath: process.env.ATLCLI_NFS_TEST_HELPER! });
+    try {
+      const deadline = Date.now() + 15000;
+      while (server.writeStatus()!.pendingPages && Date.now() < deadline) await Bun.sleep(50);
+      expect(server.writeStatus()!.pendingPages).toBe(0);
+      const actual = await client.getPage(page.id);
+      expect(actual.storage).toContain("Owned recovered");
+      expect(actual.version).toBe((page.version ?? 1) + 1);
+    } finally { await server.stop(); }
+    expect(server.writeStatus()!.pendingPages).toBe(0);
+    const reopened = new NfsJournal(location.path, location.scope);
+    try { expect(reopened.pendingIds()).toEqual([]); }
+    finally { reopened.close(); }
+  }, 30_000);
+
   it("preserves the exact page title when moving a canonical directory name", async () => {
     const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("move-parent"), storage: "<p>Parent</p>" });
     created.push(parent.id);

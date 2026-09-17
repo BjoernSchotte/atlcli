@@ -29,11 +29,33 @@ function number(value: unknown): number {
 }
 
 export async function startNfsServer(options: {
-  vfs: ConfluenceVfs; spaces: readonly string[]; journal?: NfsJournal; helperPath: string; port?: number; onSweep?: (report: SweepReport) => void;
+  vfs: ConfluenceVfs; spaces: readonly string[]; journal?: NfsJournal;
+  journalLocation?: { path: string; scope: string };
+  helperPath: string; port?: number; onSweep?: (report: SweepReport) => void;
 }): Promise<RunningNfsServer> {
   const port = options.port ?? 0;
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Invalid NFS port");
   if (!isAbsolute(options.helperPath)) throw new Error("NFS helper path must be absolute");
+  if (options.journalLocation) {
+    if (options.journal) throw new Error("Use either an owned journal location or a borrowed journal");
+    const { NfsJournal } = await import("./nfs-journal.js");
+    const journal = new NfsJournal(options.journalLocation.path, options.journalLocation.scope);
+    try {
+      const server = await startNfsServer({ ...options, journalLocation: undefined, journal });
+      let stopping: Promise<void> | undefined;
+      let closed = false;
+      let finalStatus: NfsWriteStatus | null = null;
+      return { ...server,
+        writeStatus: () => closed ? finalStatus : server.writeStatus(),
+        stop: () => stopping ??= (async () => {
+          await server.stop();
+          try { finalStatus = journal.writeStatus(); }
+          finally { journal.close(); closed = true; }
+        })(),
+      };
+    } catch (error) { journal.close(); throw error; }
+  }
+
   const fs = new NfsFilesystem(options.vfs, options.spaces, new SweepDetector(50, 10_000, options.onSweep), options.journal);
   const publisher = options.journal ? new NfsPublisher(options.journal, options.vfs, options.spaces) : undefined;
   const child = spawn(options.helperPath, [String(port), ...(options.journal ? ["--staged-rw"] : [])], { stdio: ["pipe", "pipe", "pipe"], env: {} });

@@ -32,7 +32,6 @@ import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl, type VfsMode } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
 
-import type { NfsJournal } from "../vfs/nfs-journal.js";
 import { findNfsHelper, nfsMountCommandFor, parseMountTransport, type MountTransport } from "../vfs/mount-transport.js";
 
 type Flags = Record<string, string | boolean | string[]>;
@@ -260,7 +259,7 @@ async function handleMount(
         `Check that .metadata_never_index is honoured, or unmount while indexing.\n`,
     );
   };
-  let journal: NfsJournal | undefined;
+  let journalLocation: { path: string; scope: string } | undefined;
   let journalPath: string | undefined;
   let helperPid: number | undefined;
   let helperExited: Promise<void> | undefined;
@@ -269,20 +268,17 @@ async function handleMount(
     if (transport === "nfs") {
       const { startNfsServer } = await import("../vfs/nfs-bridge.js");
       if (vfs.guard.mode === "rw") {
-        const { NfsJournal, nfsJournalLocation } = await import("../vfs/nfs-journal.js");
+        const { nfsJournalLocation } = await import("../vfs/nfs-journal.js");
         if (!vfs.runtime) throw new Error("NFS writes require a verified profile identity");
         const location = nfsJournalLocation({ ...vfs.runtime, profile: profile.name, spaces });
         journalPath = location.path;
-        journal = new NfsJournal(location.path, location.scope);
+        journalLocation = location;
       }
       const nfs = await startNfsServer({ vfs, spaces, onSweep, helperPath: helperPath!,
-        port: portFlag, journal });
+        port: portFlag, journalLocation });
       helperPid = nfs.pid;
       helperExited = nfs.exited;
-      running = { port: nfs.port, url: `nfs://127.0.0.1:${nfs.port}/`, stop: async () => {
-        await nfs.stop();
-        journal?.close(); journal = undefined;
-      } };
+      running = { port: nfs.port, url: `nfs://127.0.0.1:${nfs.port}/`, stop: () => nfs.stop() };
     } else {
       const { startWebdavServer } = await import("../vfs/webdav-server.js");
       running = await startWebdavServer({ vfs, spaces,
@@ -290,7 +286,7 @@ async function handleMount(
         onSweep,
       });
     }
-  } catch (error) { journal?.close(); await vfs.close(); throw error; }
+  } catch (error) { await vfs.close(); throw error; }
 
   const mountUrl = transport === "nfs" ? running.url : mountUrlFor(running.url, spaces);
   const record: MountRecord = {
