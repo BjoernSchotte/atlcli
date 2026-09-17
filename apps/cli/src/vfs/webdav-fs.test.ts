@@ -321,7 +321,7 @@ describe("the sweep detector", () => {
     const detector = new SweepDetector(5, 1000, (report) => seen.push(report), () => now);
     for (let i = 0; i < 5; i++) {
       now += 10;
-      detector.noteRead("/DOCSY");
+      detector.noteRead("/DOCSY", i);
     }
     expect(seen).toHaveLength(1);
     expect(detector.suspected).toBe(true);
@@ -334,7 +334,7 @@ describe("the sweep detector", () => {
     detector.noteListing("/DOCSY");
     for (let i = 0; i < 10; i++) {
       now += 10;
-      detector.noteRead("/DOCSY");
+      detector.noteRead("/DOCSY", i);
     }
     expect(seen).toHaveLength(0);
   });
@@ -345,7 +345,7 @@ describe("the sweep detector", () => {
     const detector = new SweepDetector(3, 1000, (report) => seen.push(report), () => now);
     for (let i = 0; i < 10; i++) {
       now += 5000;
-      detector.noteRead("/DOCSY");
+      detector.noteRead("/DOCSY", i);
     }
     expect(seen).toHaveLength(0);
   });
@@ -356,10 +356,25 @@ describe("the sweep detector", () => {
     const detector = new SweepDetector(3, 10_000, (report) => seen.push(report), () => now);
     for (let i = 0; i < 50; i++) {
       now += 10;
-      detector.noteRead("/DOCSY");
+      detector.noteRead("/DOCSY", i);
     }
     expect(seen).toHaveLength(1);
   });
+});
+
+it("expires old listings and deduplicates repeated reads within the sweep window", () => {
+  let now = 0;
+  const reports: unknown[] = [];
+  const detector = new SweepDetector(2, 1000, report => reports.push(report), () => now);
+  detector.noteListing("/DOCSY");
+  detector.noteRead("/DOCSY", "a");
+  detector.noteRead("/DOCSY", "b");
+  expect(reports).toHaveLength(0);
+  now = 1001;
+  for (let i = 0; i < 60; i++) detector.noteRead("/DOCSY", "a");
+  expect(reports).toHaveLength(0);
+  detector.noteRead("/DOCSY", "b");
+  expect(reports).toEqual([{ reads: 2, windowMs: 1000 }]);
 });
 
 describe("the name guards", () => {

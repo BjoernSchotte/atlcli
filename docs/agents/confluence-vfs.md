@@ -227,6 +227,12 @@ NFS exposes the same empty indexer marker files as WebDAV at the volume root,
 plus an empty `.fseventsd` directory. These synthetic entries and common desktop
 metadata probes at the root require no Confluence requests. They are local mount
 entries, not wiki pages. This does not guarantee that every indexer honors them.
+Both mount transports emit one warning per session after 50 distinct successful
+file reads within 10 seconds without a recent listing of their parent directories.
+Repeated NFS byte ranges count as one file; failed reads and marker files do not
+count. Listings suppress the hint for 10 seconds (up to 4096 recent directories).
+This heuristic reports possible indexing; it neither blocks reads nor detects
+every crawler. The warning contains counts, not page names or contents.
 Expired object handles also fail metadata/access probes with `ESTALE`.
 NFS advertises a 255-byte filename-component limit and rejects longer UTF-8
 names with `ENAMETOOLONG`; names are never silently truncated.

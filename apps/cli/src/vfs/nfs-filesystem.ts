@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 import { VfsError, parseVfsFrontmatter, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
-import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping } from "./mount-client-probes.js";
+import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping, SweepDetector } from "./mount-client-probes.js";
 
 export const NFS_MAX_READ = 1024 * 1024;
 export interface NfsAttributes {
@@ -19,7 +19,8 @@ export class NfsFilesystem {
   private readonly directories = new Map<number, { signature: string; mtime: number }>();
   readonly root: string;
 
-  constructor(private readonly vfs: ConfluenceVfs, spaces: readonly string[]) {
+  constructor(private readonly vfs: ConfluenceVfs, spaces: readonly string[],
+    private readonly sweepDetector = new SweepDetector()) {
     if (spaces.length === 0 || spaces.some((s) => !s || /[\/\0]/.test(s) || s === "." || s === "..")) {
       throw new VfsError("EINVAL", "Invalid NFS export spaces");
     }
@@ -233,6 +234,7 @@ export class NfsFilesystem {
     if (shield === "file") return { data: "", eof: true };
     if ((await this.vfs.stat(path)).isDirectory) throw new VfsError("EISDIR", "Cannot read directory");
     const bytes = await this.vfs.readFileBytes(path);
+    if (count > 0) this.sweepDetector.noteRead(posix.dirname(path), id);
     const start = Math.min(offset, bytes.byteLength);
     const end = Math.min(start + count, bytes.byteLength);
     return { data: Buffer.from(bytes.subarray(start, end)).toString("base64"), eof: end === bytes.byteLength };
@@ -257,6 +259,7 @@ export class NfsFilesystem {
     const end = Math.min(start + count, names.length);
     const entries = [];
     for (let i = start; i < end; i++) entries.push({ name: names[i], attr: await this.attributes(ids[i], false) });
+    if (!this.paths.get(id)?.shield) this.sweepDetector.noteListing(path);
     return { entries, end: end === names.length };
   }
 }

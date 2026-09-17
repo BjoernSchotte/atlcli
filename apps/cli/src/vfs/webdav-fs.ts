@@ -93,47 +93,8 @@ export function httpErrorFor(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export interface SweepReport {
-  reads: number;
-  windowMs: number;
-}
-
-/**
- * Notices a client reading many distinct files without having listed their
- * directories first — the signature of an indexer, not of a person.
- */
-export class SweepDetector {
-  private readonly reads: number[] = [];
-  private readonly listedDirs = new Set<string>();
-  private reported = false;
-
-  constructor(
-    private readonly threshold = 50,
-    private readonly windowMs = 10_000,
-    private readonly onSweep: (report: SweepReport) => void = () => {},
-    private readonly now: () => number = () => Date.now(),
-  ) {}
-
-  noteListing(directory: string): void {
-    this.listedDirs.add(directory);
-  }
-
-  noteRead(directory: string): void {
-    // A read from a directory the client listed first is ordinary browsing.
-    if (this.listedDirs.has(directory)) return;
-    const at = this.now();
-    this.reads.push(at);
-    while (this.reads.length > 0 && at - this.reads[0]! > this.windowMs) this.reads.shift();
-    if (this.reads.length >= this.threshold && !this.reported) {
-      this.reported = true;
-      this.onSweep({ reads: this.reads.length, windowMs: this.windowMs });
-    }
-  }
-
-  get suspected(): boolean {
-    return this.reported;
-  }
-}
+export { SweepDetector, type SweepReport } from "./mount-client-probes.js";
+import { SweepDetector, type SweepReport } from "./mount-client-probes.js";
 
 export interface ConfluenceWebdavOptions {
   vfs: ConfluenceVfsImpl;
@@ -442,10 +403,12 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
       callback(webdav.Errors.ResourceNotFound);
       return;
     }
-    this.sweepDetector.noteRead(this.parentOf(path));
     this.options.vfs
       .readFileBytes(this.vfsPath(path))
-      .then((bytes) => callback(undefined, Readable.from([Buffer.from(bytes)])))
+      .then((bytes) => {
+        this.sweepDetector.noteRead(this.parentOf(path), this.vfsPath(path));
+        callback(undefined, Readable.from([Buffer.from(bytes)]));
+      })
       .catch((error: unknown) => callback(httpErrorFor(error)));
   }
 

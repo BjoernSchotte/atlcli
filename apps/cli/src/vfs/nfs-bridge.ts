@@ -1,3 +1,4 @@
+import { SweepDetector, type SweepReport } from "./mount-client-probes.js";
 import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
 import type { ConfluenceVfs } from "@atlcli/confluence-vfs";
@@ -22,12 +23,12 @@ function number(value: unknown): number {
 }
 
 export async function startNfsServer(options: {
-  vfs: ConfluenceVfs; spaces: readonly string[]; helperPath: string; port?: number;
+  vfs: ConfluenceVfs; spaces: readonly string[]; helperPath: string; port?: number; onSweep?: (report: SweepReport) => void;
 }): Promise<RunningNfsServer> {
   const port = options.port ?? 0;
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Invalid NFS port");
   if (!isAbsolute(options.helperPath)) throw new Error("NFS helper path must be absolute");
-  const fs = new NfsFilesystem(options.vfs, options.spaces);
+  const fs = new NfsFilesystem(options.vfs, options.spaces, new SweepDetector(50, 10_000, options.onSweep));
   const child = spawn(options.helperPath, [String(port)], { stdio: ["pipe", "pipe", "pipe"], env: {} });
   // Drain diagnostic output without collecting unbounded or tenant-derived text.
   child.stderr.resume();

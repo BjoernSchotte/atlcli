@@ -43,3 +43,47 @@ export function isIndexerShield(name: string): boolean {
 export function isShieldDirectory(name: string): boolean {
   return SHIELD_DIRECTORIES.has(name);
 }
+
+export interface SweepReport {
+  reads: number;
+  windowMs: number;
+}
+
+/** Best-effort hint: distinct successful file reads without a recent parent listing. */
+export class SweepDetector {
+  private readonly reads = new Map<string | number, number>();
+  private readonly listedDirs = new Map<string, number>();
+  private reported = false;
+
+  constructor(
+    private readonly threshold = 50,
+    private readonly windowMs = 10_000,
+    private readonly onSweep: (report: SweepReport) => void = () => {},
+    private readonly now: () => number = () => Date.now(),
+  ) {}
+
+  noteListing(directory: string): void {
+    if (this.reported) return;
+    this.listedDirs.delete(directory);
+    this.listedDirs.set(directory, this.now());
+    // ponytail: retain at most 4096 recent directories; this is a diagnostic, not an audit log.
+    if (this.listedDirs.size > 4096) this.listedDirs.delete(this.listedDirs.keys().next().value!);
+  }
+
+  noteRead(directory: string, file: string | number): void {
+    if (this.reported) return;
+    const at = this.now();
+    const listed = this.listedDirs.get(directory);
+    if (listed !== undefined && at - listed <= this.windowMs) return;
+    for (const [id, time] of this.reads) if (at - time > this.windowMs) this.reads.delete(id);
+    this.reads.set(file, at);
+    if (this.reads.size >= this.threshold) {
+      this.reported = true;
+      this.onSweep({ reads: this.reads.size, windowMs: this.windowMs });
+      this.reads.clear();
+      this.listedDirs.clear();
+    }
+  }
+
+  get suspected(): boolean { return this.reported; }
+}

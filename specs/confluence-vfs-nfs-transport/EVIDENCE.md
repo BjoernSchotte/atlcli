@@ -973,3 +973,32 @@ live content changed.
 These are filesystem marker/probe guarantees, not proof that all OS indexers
 honor exclusions. NFS sweep diagnostics/request-accounting parity and the full
 performance, snapshot and RW gates remain open.
+
+## Slice 38 — shared distinct-file sweep diagnostics
+
+NFS now passes successful file READs and successful client READDIRs to the same
+small detector used by WebDAV. The CLI installs the same stderr callback for
+both transports. Internal directory hydration/GETATTR is not a client listing.
+Shield reads, invalid ranges and failed reads do not count. Repeated NFS ranges
+use object identity and count once within the window.
+
+The existing WebDAV implementation counted calls despite promising distinct
+files, retained directory exemptions indefinitely and accumulated reads after
+reporting. The shared implementation deduplicates files, expires listing
+exemptions after 10 seconds, caps remembered directories at 4096 and clears its
+state after its one warning. This remains a heuristic, not crawler prevention
+or complete protocol request accounting.
+
+Validation:
+- macOS and Linux: each 65 adapter/performance tests, 494 assertions, passed.
+  New regressions cover repeated ranges, metadata hydration, marker/failed reads,
+  successful versus failed listings, and listing expiry.
+- macOS: five real-helper wire/native tests, 232 assertions, passed, including
+  single/combined exports and synthetic attachments.
+- Linux: three native tests, 22 assertions, passed; DOCSY and DOCSY+mayflower used
+  live read-only access; the attachment case used synthetic data.
+- Typecheck: all four tasks passed. All test mounts detached normally; no live
+  content was modified. The initial sandboxed HTTP run could not bind listeners;
+  the authorized outside-sandbox run passed.
+
+RW publication, snapshot decisions and remaining acceptance gates stay open.

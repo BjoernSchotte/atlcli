@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { NfsFilesystem, NFS_MAX_READ } from "./nfs-filesystem.js";
-import { INDEXER_SHIELDS, SHIELD_DIRECTORIES } from "./mount-client-probes.js";
+import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, SweepDetector } from "./mount-client-probes.js";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
@@ -338,4 +338,35 @@ it("does not enumerate child directories while returning parent directory attrib
   expect(client.callsTo("getPageDirectChildren")).toBe(2);
   expect(vfs.index.isUnloaded("200")).toBe(false);
   expect(vfs.index.isUnloaded("201")).toBe(true);
+});
+
+it("counts distinct successful NFS file reads, excluding metadata, ranges and shields", async () => {
+  const { vfs } = await fixture();
+  const reports: unknown[] = [];
+  const fs = new NfsFilesystem(vfs, ["DOCSY"], new SweepDetector(2, 1000, report => reports.push(report)));
+  await fs.getattr(1); // Internal directory hydration is not a client listing.
+  const home = await fs.lookup(1, "_index.md");
+  await fs.getattr(home);
+  const marker = await fs.lookup(1, ".metadata_never_index");
+  await fs.read(marker, 0, 1);
+  await expect(fs.read(1, 0, 1)).rejects.toThrow();
+  await expect(fs.read(home, -1, 1)).rejects.toThrow();
+  for (let i = 0; i < 60; i++) await fs.read(home, i, 1);
+  expect(reports).toHaveLength(0);
+  const child = await fs.lookup(1, "child-0-200");
+  await fs.read(await fs.lookup(child, "_index.md"), 0, 1);
+  expect(reports).toEqual([{ reads: 2, windowMs: 1000 }]);
+});
+
+it("only successful client listings suppress NFS sweep warnings", async () => {
+  const { vfs } = await fixture();
+  const reports: unknown[] = [];
+  const fs = new NfsFilesystem(vfs, ["DOCSY"], new SweepDetector(1, 1000, report => reports.push(report)));
+  await fs.readdir(1, 0, 256);
+  await fs.read(await fs.lookup(1, "_index.md"), 0, 1);
+  expect(reports).toHaveLength(0);
+  const child = await fs.lookup(1, "child-0-200");
+  await expect(fs.readdir(child, 0, 256, "bad")).rejects.toThrow();
+  await fs.read(await fs.lookup(child, "_index.md"), 0, 1);
+  expect(reports).toHaveLength(1);
 });

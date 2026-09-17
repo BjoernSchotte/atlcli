@@ -226,13 +226,20 @@ async function handleMount(
     offline: false,
   });
 
+  const onSweep = (report: { reads: number; windowMs: number }) => {
+    process.stderr.write(
+      `atlcli: ${report.reads} distinct file reads in ${report.windowMs / 1000}s without a recent directory listing — ` +
+        `this may be a search indexer walking the volume. ` +
+        `Check that .metadata_never_index is honoured, or unmount while indexing.\n`,
+    );
+  };
   let helperPid: number | undefined;
   let helperExited: Promise<void> | undefined;
   let running: { port: number; url: string; stop(): Promise<void> };
   try {
     if (transport === "nfs") {
       const { startNfsServer } = await import("../vfs/nfs-bridge.js");
-      const nfs = await startNfsServer({ vfs, spaces, helperPath: helperPath!,
+      const nfs = await startNfsServer({ vfs, spaces, onSweep, helperPath: helperPath!,
         port: Number.isFinite(portFlag) && portFlag > 0 ? portFlag : 0 });
       helperPid = nfs.pid;
       helperExited = nfs.exited;
@@ -241,15 +248,7 @@ async function handleMount(
       const { startWebdavServer } = await import("../vfs/webdav-server.js");
       running = await startWebdavServer({ vfs, spaces,
         port: Number.isFinite(portFlag) && portFlag > 0 ? portFlag : 0,
-        onSweep: (report) => {
-          // Rule 3: a sweep is exactly what the demand principle is defending
-          // against, so it is reported rather than absorbed.
-          process.stderr.write(
-            `atlcli: ${report.reads} file reads in ${report.windowMs / 1000}s without a directory listing — ` +
-              `this looks like a search indexer walking the volume. ` +
-              `Check that .metadata_never_index is honoured, or unmount while indexing.\n`,
-          );
-        },
+        onSweep,
       });
     }
   } catch (error) { await vfs.close(); throw error; }
