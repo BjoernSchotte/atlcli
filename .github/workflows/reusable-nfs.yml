@@ -34,7 +34,7 @@ jobs:
         run: rustup toolchain install 1.92.0 --profile minimal --component rustfmt --component clippy
       - name: Install Linux mount client
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y nfs-common
+        run: sudo apt-get update && sudo apt-get install -y nfs-common e2fsprogs
       - name: Install workspace dependencies
         run: bash scripts/ci/install-frozen-dependencies.sh
       - name: Build and test locked helper
@@ -69,6 +69,10 @@ jobs:
         run: |
           export ATLCLI_NFS_TEST_HELPER="$RUNNER_TEMP/nfs-helper/atlcli-confluence-nfs"
           bun run test scripts/build-nfs-helper.test.ts apps/cli/src/vfs/nfs-framing.test.ts apps/cli/src/vfs/nfs-filesystem.test.ts apps/cli/src/vfs/nfs-bridge.test.ts apps/cli/src/vfs/nfs-bridge-failures.test.ts apps/cli/src/vfs/nfs-journal.test.ts apps/cli/src/vfs/mount-transport.test.ts
+      - name: Test journal recovery on full disposable filesystems
+        env:
+          ATLCLI_NFS_STORAGE_FAULTS: "1"
+        run: bun run test apps/cli/src/vfs/nfs-storage-faults.test.ts
       - name: Test compiled CLI shell and native mount with adjacent companion
         env:
           ATLCLI_NFS_KERNEL: "1"

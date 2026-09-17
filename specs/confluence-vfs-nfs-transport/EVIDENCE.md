@@ -3987,3 +3987,27 @@ and filesystem tests / 1677 assertions. Linux DOCSY owned-journal publication
 passed one test / five assertions with disposable cleanup; typecheck passed
 all four tasks. This is ordering/error-path evidence, not an actual power-cut
 test. Real filesystem exhaustion after remote success remains a separate gate.
+
+## Slice 148 — real filesystem exhaustion after remote success (2026-09-17)
+
+Added an opt-in publication fault suite that creates its own 64 MiB image:
+APFS on macOS, ext4 loop mount on Linux. It verifies the mount has a distinct
+device and bounded capacity before filling it. After the synthetic server
+accepts CREATE or UPDATE, the test writes until the OS reports ENOSPC; persisting
+the publication receipt then fails with SQLITE_FULL. This exercises actual
+filesystem exhaustion rather than SQLite max_page_count.
+
+After closing the publisher/core/database and freeing the filler, a fresh
+journal/core instance must retain the exact acknowledged Unicode bytes and
+frozen intent, reconcile the remote result, clear pending state, and issue no
+additional CREATE or UPDATE. Both cases passed on both hosts (two tests /
+26 assertions each). Images were normally detached and removed; no owned mount
+remained. There is no product change in this slice and no claim of power-cut
+or physical-device failure testing.
+
+Run with `ATLCLI_NFS_STORAGE_FAULTS=1 bun run test apps/cli/src/vfs/nfs-storage-faults.test.ts`.
+Linux needs passwordless sudo mount/umount and e2fsprogs. The four-platform NFS
+workflow now invokes this suite; results for this new matrix step are pending.
+Workflow-policy tests: 35 passed / 614 assertions. Typecheck: four tasks passed.
+Linux DOCSY owned-journal publication: one passed / five assertions, disposable
+resources cleaned up. Public RW remains gated by the remaining requirements.
