@@ -66,10 +66,12 @@ export class NfsPublisher {
   private async publishImage(id: string): Promise<VfsWriteResult | null> {
     const file = this.journal.get(id);
     if (!file || file.revision === file.publishedRevision) return null;
+    if (this.journal.local(file.path)?.id === id || this.journal.displaced(file.path)?.id === id) return null;
     try {
       // Reject incomplete local bytes before freezing a publication intent.
       this.validate(id, file.bytes, file.baseVersion);
-      const intent = this.journal.beginPublish(id)!;
+      const intent = this.journal.beginPublish(id);
+      if (!intent) return null;
       let content = this.validate(id, intent.bytes, intent.baseVersion);
 
       // Resolve by immutable page identity, never create a replacement at an old path.
@@ -108,6 +110,8 @@ export class NfsPublisher {
         }
         content = `${renderFrontmatter({ ...ours.frontmatter, id, version: intent.baseVersion, title })}\n${merged.content}`;
       }
+      // A backup rename can arrive while resolving/rebasing the frozen image.
+      if (this.journal.displaced(this.journal.get(id)!.path)?.id === id) return null;
       const result = await this.vfs.writeFile(target.path, content, { id, spaceKey: target.spaceKey });
       if (result.created || result.pageId !== id) throw new Error("Unexpected NFS publication identity");
       this.journal.completePublish(id, intent.revision, result.version);

@@ -2341,3 +2341,23 @@ can still outlive a quiet window. Broader unlink/overwrite handle lifetime,
 external-change refresh and recovery/status acceptance remain open. Public NFS
 RW stays gated. macOS editor results use a fake backend; Linux DOCSY results are
 real API checks, not a claim of real-tenant macOS editor coverage.
+
+
+## Slice 88 — pause publication across backup rename
+
+A queued publisher previously dereferenced a null publication intent when the
+journal deliberately excluded a displaced page. It incorrectly recorded
+REMOTE_RESULT_UNKNOWN even though no remote write happened. The publisher now
+skips displaced/local entries before content validation and handles a null intent.
+It rechecks displacement after asynchronous target resolution/rebasing, before
+calling the core write operation. Frozen intents stay durable for later replay.
+
+Three regressions cover a timer firing during displacement, invalid displaced
+and local bytes, and backup rename during asynchronous path resolution followed
+by restored publication. This does not cancel a core write already in flight.
+
+- Linux publisher suite: 15 tests / 80 assertions; real DOCSY save regression:
+  18 assertions with cleanup.
+- macOS focused publisher/RPC/native save tests: 16 tests / 154 assertions.
+- Typecheck: all four tasks passed. Public NFS RW remains gated by the other
+  acceptance requirements.

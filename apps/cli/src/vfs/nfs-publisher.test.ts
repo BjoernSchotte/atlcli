@@ -214,3 +214,52 @@ it("keeps sparse or binary NUL images local and publishes after the holes are re
   await until(() => journal.pending().length === 0);
   expect(client.peekPage("100")?.storage).toContain("Repaired");
 });
+
+
+it("pauses a queued publication during backup rename and resumes its replacement", async () => {
+  const { client, journal, original, stage, publisher } = await fixture();
+  stage(original.replace("Original", "Before backup"));
+  publisher.schedule("100");
+  journal.backupPage("100", "/DOCSY/backup.md");
+  await Bun.sleep(600);
+  expect(journal.get("100")!.error).toBeNull();
+  expect(await publisher.publish("100")).toBeNull();
+  expect(client.callsTo("updatePage")).toBe(0);
+  const replacement = journal.createLocal("/DOCSY/replacement.tmp");
+  journal.write(replacement.id, 0, Buffer.from(original.replace("Original", "Replacement")));
+  journal.replaceLocal(replacement.path, "100");
+  publisher.schedule("100");
+  await until(() => journal.pending().length === 0);
+  expect(client.callsTo("updatePage")).toBe(1);
+  expect(client.peekPage("100")?.storage).toContain("Replacement");
+});
+
+it("leaves invalid displaced bytes and editor-local files outside publication validation", async () => {
+  const { client, journal, stage, publisher } = await fixture();
+  stage("unfinished editor save");
+  const backup = journal.backupPage("100", "/DOCSY/backup.md");
+  expect(await publisher.publish("100")).toBeNull();
+  expect(await publisher.publish(backup.id)).toBeNull();
+  expect(journal.get("100")!.error).toBeNull();
+  expect(journal.get(backup.id)!.error).toBeNull();
+  expect(client.callsTo("updatePage")).toBe(0);
+});
+
+
+it("pauses before the remote write when backup rename races with path resolution", async () => {
+  const { client, vfs, journal, original, stage, publisher } = await fixture();
+  stage(original.replace("Original", "Frozen"));
+  const readlink = vfs.readlink.bind(vfs);
+  vfs.readlink = async path => {
+    journal.backupPage("100", "/DOCSY/backup.md");
+    return readlink(path);
+  };
+  expect(await publisher.publish("100")).toBeNull();
+  expect(client.callsTo("updatePage")).toBe(0);
+  expect(journal.get("100")!.error).toBeNull();
+  vfs.readlink = readlink;
+  journal.replaceLocal("/DOCSY/backup.md", "100");
+  expect((await publisher.publish("100"))?.version).toBe(2);
+  expect(client.peekPage("100")?.storage).toContain("Frozen");
+  expect(journal.pending()).toHaveLength(0);
+});
