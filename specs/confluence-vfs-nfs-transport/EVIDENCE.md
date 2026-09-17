@@ -2961,3 +2961,34 @@ VS Code new-page/autosave coverage remains open. Linux has Xvfb and Chromium but
 no `code` executable in the inspected PATH; no Linux VS Code run is claimed.
 Generic namespace/COPY overwrite parity, NFS recovery and final acceptance also
 remain open.
+
+## Slice 113 — native macOS VS Code new-page autosaves
+
+Real VS Code 1.127.0 UI created plain Markdown without frontmatter on separate
+native NFS and WebDAV mounts. Disposable synthetic DOCSY backends recorded page
+identity, body, versions and API call counts. Workspace-local settings selected
+`files.autoSave: afterDelay` and `files.autoSaveDelay: 100`; no global settings
+were changed. The workspaces stayed in Restricted Mode.
+
+- NFS: first manual Save As created `code-new.md`, page 700000001, version 1.
+  Two subsequent replacements without Cmd-S reached versions 2 and 3, each with
+  the expected Unicode body. One CREATE, two UPDATEs, no pending journal images.
+  The editor retained the original alias while Explorer showed the ID directory.
+- WebDAV: initial Save As created one page but produced version 4 (three UPDATEs).
+  The first attempted autosave did not reach the backend; a manual save did.
+  The save dialog had opened `/tmp/...` while the workspace folder used
+  `/private/tmp/...`. After aligning the workspace folder with `/tmp/...`, two
+  more edits without Cmd-S reached versions 6 and 7 with the expected bodies.
+  This proves alias continuity and successful autosave, not minimal version churn.
+- Both test windows closed and both owned mounts detached normally. The NFS
+  harness PID was gone; the WebDAV harness exited 0. No real tenant content was
+  used or modified. The separate unused VS Code test-profile process was stopped.
+
+Linux VS Code, macOS real-tenant proof, burst coalescing/version-churn analysis,
+COPY overwrite parity, NFS recovery and final acceptance remain open. The COPY
+handler was inspected and shares the dependency's MOVE header parser, but its
+adapter also delegates to page-copy semantics; no partial header-only fix was
+applied or claimed. Typecheck passed all four tasks before this evidence push.
+
+Linux DOCSY HTTP identity/backup/LOCK regression rerun: one pass, 13 assertions,
+fixture cleanup completed; four macOS-only native cases skipped on Linux.
