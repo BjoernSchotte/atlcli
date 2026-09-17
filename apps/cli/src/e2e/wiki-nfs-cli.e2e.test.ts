@@ -2,7 +2,13 @@ import { nfsMountOptionsFor } from "../vfs/mount-transport.js";
 import { expect, it } from "bun:test";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { open } from "node:fs/promises";
+import { open, readFile, writeFile } from "node:fs/promises";
+import { getActiveProfile, loadConfig } from "@atlcli/core";
+import { ConfluenceClient } from "@atlcli/confluence";
+import { storageToMarkdown } from "@atlcli/confluence/internal";
+import { formatDirName } from "@atlcli/confluence-vfs";
+import { E2eResourceTracker } from "./resources.js";
+import { createConfluencePort } from "./rest-ports.js";
 import { join, resolve } from "node:path";
 import { platform, tmpdir } from "node:os";
 import { isMounted, readMounts, processIdentity, runMountCommand, type MountRecord } from "../commands/wiki-mount.js";
@@ -11,18 +17,33 @@ const run = process.env.ATLCLI_NFS_CLI_E2E === "1";
 const binary = process.env.ATLCLI_NFS_TEST_CLI;
 const command = binary ? [resolve(binary)] : [process.execPath, "--conditions=development", "run", "--cwd",
   resolve(import.meta.dir, "../.."), "src/index.ts"];
-for (const scenario of ["signal", "busy", "explicit", "helper-crash", "helper-crash-busy", "parent-crash"] as const) {
+for (const scenario of ["signal", "busy", "explicit", "helper-crash", "helper-crash-busy", "parent-crash", "rw-save"] as const) {
 it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${scenario}`, async () => {
   const root = mkdtempSync(join(tmpdir(), "atlcli-nfs-cli-"));
   const mountpoint = join(root, "wiki docs");
   const cache = join(root, "cache");
   const helper = process.env.ATLCLI_NFS_TEST_HELPER;
   if (!helper && !binary) throw new Error("Set ATLCLI_NFS_TEST_HELPER for source tests");
+  const mode = scenario === "rw-save" ? "rw" : "ro";
+  let tracker: E2eResourceTracker | undefined;
+  let client: ConfluenceClient | undefined;
+  let fixture: { id: string; title: string } | undefined;
+  if (mode === "rw") {
+    const profile = getActiveProfile(await loadConfig(), "mayflower");
+    if (!profile) throw new Error("Mayflower profile missing");
+    client = new ConfluenceClient(profile);
+    tracker = new E2eResourceTracker({ confluence: createConfluencePort(profile) });
+    try {
+      const parentId = await client.getSpaceHomepageId("DOCSY");
+      if (!parentId) throw new Error("DOCSY homepage missing");
+      fixture = await tracker.createPage("nfs-cli-rw", { parentId });
+    } catch (error) { await tracker.cleanup(); throw error; }
+  }
   const env = { ...process.env };
   if (helper) env.ATLCLI_NFS_HELPER = helper;
   else delete env.ATLCLI_NFS_HELPER; // Compiled tests prove adjacent companion discovery.
   const child = spawn(command[0]!, [...command.slice(1),
-    "wiki", "mount", mountpoint, "--profile", "mayflower", "--space", "DOCSY", "--mode", "ro",
+    "wiki", "mount", mountpoint, "--profile", "mayflower", "--space", "DOCSY", "--mode", mode,
     "--transport", "nfs", "--cache-dir", cache, "--json"], {
     cwd: resolve(import.meta.dir, "../../../.."), env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -47,18 +68,33 @@ it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${sc
       await Bun.sleep(25);
     }
     expect(record?.transport).toBe("nfs");
+    expect(record?.mode).toBe(mode);
     expect(record?.helperPid).toBeGreaterThan(0);
     expect(record?.processIdentity).toBeTruthy();
     if (platform() === "linux") {
       expect(record!.status).toBe("listening");
       expect(await runMountCommand(["sudo", "-n", "mount", "-t", "nfs", "-o",
-        nfsMountOptionsFor("linux", record!.port),
+        nfsMountOptionsFor("linux", record!.port, mode),
         "127.0.0.1:/", mountpoint])).toBe(0);
     }
     expect(isMounted(mountpoint)).toBe(true);
     const file = await open(join(mountpoint, "_index.md"), "r");
     try { expect((await file.readFile()).byteLength).toBeGreaterThan(0); }
     finally { await file.close(); }
+    if (fixture) {
+      const path = join(mountpoint, formatDirName(fixture.title, fixture.id), "_index.md");
+      const original = await readFile(path, "utf8");
+      const before = (await client!.getPageMetadata(fixture.id)).version!;
+      await writeFile(path, `${original}\nCompiled native RW proof Grüße 🐴\n`);
+      expect(await readFile(path, "utf8")).toContain("Compiled native RW proof");
+      const deadline = Date.now() + 15000;
+      let page = await client!.getPage(fixture.id);
+      while (!page.storage.includes("Compiled native RW proof") && Date.now() < deadline) {
+        await Bun.sleep(250); page = await client!.getPage(fixture.id);
+      }
+      expect(storageToMarkdown(page.storage)).toContain("Compiled native RW proof Grüße 🐴");
+      expect(page.version).toBe(before + 1);
+    }
     if (scenario === "parent-crash") {
       expect(record!.helperIdentity).toBeTruthy();
       process.kill(record!.pid, "SIGKILL");
@@ -127,6 +163,7 @@ it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${sc
     child.kill("SIGTERM");
     await Promise.race([exited, Bun.sleep(3000)]);
     if (!isMounted(mountpoint)) rmSync(root, { recursive: true, force: true });
+    if (tracker) expect((await tracker.cleanup()).failures).toEqual([]);
   }
 }, 40000);
 

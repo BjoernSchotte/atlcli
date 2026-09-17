@@ -8,7 +8,7 @@ written to be pasted, not read aloud.
 ## For the agent
 
 For native tools outside the shell, `wiki mount` defaults to WebDAV. Development
-builds also offer experimental read-only NFS on macOS/Linux with
+builds also offer experimental NFS on macOS/Linux with
 `--transport nfs`. See the [mount guide](../../src/content/docs/confluence/virtual-filesystem.md)
 for the matching helper prerequisite. The NFS option does not accelerate OS grep
 through CQL; use the shell below for indexed search.
@@ -326,24 +326,25 @@ macOS mounts use `locallocks`; Linux uses `nolock`. Advisory locks are local
 to the client: they coordinate processes on that client, not other clients or
 Confluence edits. No NLM/NSM lock service runs. Native tests verify nonblocking
 `flock` contention/release and shared POSIX read locks on the current RO mounts;
-write-lock/editor-save acceptance still requires the pending RW implementation.
+RW contention/release and editor saves are covered by native tests too.
 Mount options reject malformed values before opening a cache or starting a
 server: `--mode` accepts only `ro` or `rw`, and `--port` accepts decimal integers
 from 0 to 65535 (0 chooses an available port). Missing option values are errors.
-Experimental NFS additionally rejects `rw`, `--sync-writes` and `--allow-delete`
-until write acceptance passes. WebDAV remains the default transport.
+Experimental NFS accepts `--mode rw` and opt-in `--allow-delete`. It rejects
+`--sync-writes`: stable local writes cannot promise immediate Confluence
+publication. WebDAV remains the default transport.
 
 Development tests now cover TextEdit safe-save and VS Code autosave on a native
 macOS NFS mount, plus Vim/native saves and real DOCSY publication on Linux.
-These are individual write gates, not general RW acceptance; see the
-[write evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md). Development
+See the
+[write evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md). NFS
 RW shutdown reports counts of retained pending pages, interrupted replacements,
 local editor entries and unresolved publications. Pending/failed page counts include
 eligible new Markdown drafts before Confluence assigns their IDs; recorded backups
 and hidden editor files are excluded. Local-entry counts overlap with those drafts
 until creation is confirmed. Keep the staging journal when
 this notice appears: locally durable bytes do not prove Confluence publication.
-Development NFS removal of a page body requires deletion opt-in and a clean
+NFS removal of a page body requires deletion opt-in and a clean
 published image. It records the page ID before sending the trash request and
 blocks subsequent mutations to that page. Dirty pages and local child drafts
 must be resolved first. An uncertain DELETE is never blindly retried: retain the
@@ -351,24 +352,26 @@ journal and inspect its trash metadata. Recovery exports retain the saved bytes
 even after confirmed trash. On restart, an explicit trashed status for the same
 page ID and space completes the retained intent without another DELETE. Missing,
 inaccessible or still-current pages remain unresolved; a 404 is not confirmation.
-Remote directory removal and resolution of those remaining uncertain outcomes
-are still pending; public NFS RW remains gated.
-Development NFS publication waits for 500 ms without newer writes to a page.
+Recursive OS removal can fail on generated read-only views before or after the
+page body is trashed; it is not atomic. Prefer targeted removal of `_index.md`
+when you intend to trash that page. Unprovable remote outcomes remain unresolved.
+NFS publication waits for 500 ms without newer writes to a page.
 If an editor sends a valid partial document and pauses longer, Confluence can
 receive an intermediate version before later blocks arrive. Automatic publication
 does not detect the end of an editor save; fsync confirms local durability only.
 After restart, successful reconciliation of an interrupted publication also
 schedules any newer durable edits, without requiring another editor save.
-Development publication processes one page at a time to bound retained page
-images; a slow upload can delay other pages. Offline journal inspection and byte export are available; publication retry and
-conflict resolution remain part of the pending RW acceptance work. Clean staged pages refresh from newer
+NFS publication processes one page at a time to bound retained page
+images; a slow upload can delay other pages. Transient failures use bounded
+exponential backoff with jitter and honor Retry-After. Offline journal inspection
+and byte export preserve access to failed drafts. Clean staged pages refresh from newer
 core-cache versions during access; dirty pages retain local bytes. This follows
 the existing cache freshness window and does not provide immediate remote-edit
 visibility. Conflicts detected during local publication preparation can be
 corrected by another editor save. Persisted uncertain publication results remain
 protected for reconciliation; this is not a general conflict-resolution UI.
 
-Native RO and development RW mounts use local advisory locks. Tests verify
+Native RO and RW mounts use local advisory locks. Tests verify
 that another process on the same host cannot acquire an exclusive lock until
 it is released; this is not a cross-client lock service. Confluence version
 checks remain responsible for remote edit conflicts.

@@ -205,8 +205,8 @@ async function handleMount(
     if (!Number.isInteger(portFlag) || portFlag > 65535) {
       throw new Error("Use --port with an integer from 0 to 65535");
     }
-    if (transport === "nfs" && (flags.mode === "rw" || hasFlag(flags, "sync-writes") || hasFlag(flags, "allow-delete"))) {
-      throw new Error("Experimental NFS currently supports --mode ro only; write durability acceptance is still pending.");
+    if (transport === "nfs" && hasFlag(flags, "sync-writes")) {
+      throw new Error("NFS does not support --sync-writes: WRITE/COMMIT persist locally; Confluence publication follows the quiet window.");
     }
   }
   catch (error) { fail(opts, 2, ERROR_CODES.VALIDATION, (error as Error).message, {}); return; }
@@ -237,10 +237,6 @@ async function handleMount(
 
   let helperPath: string | undefined;
   if (transport === "nfs") {
-    if (mode !== "ro") {
-      fail(opts, 2, ERROR_CODES.VALIDATION, "Experimental NFS currently supports --mode ro only; write durability acceptance is still pending.", {});
-      return;
-    }
     try { helperPath = findNfsHelper(); }
     catch (error) { fail(opts, 2, ERROR_CODES.VALIDATION, (error as Error).message, {}); return; }
     if (!Bun.which(platform() === "darwin" ? "mount_nfs" : "mount.nfs")) {
@@ -255,7 +251,8 @@ async function handleMount(
     spaces,
     mode,
     allowDelete: hasFlag(flags, "allow-delete"),
-    ...(hasFlag(flags, "sync-writes") ? { coalesceMs: 0 } : {}),
+    // NFS already debounces durable snapshots; do not add a second quiet window.
+    ...(transport === "nfs" || hasFlag(flags, "sync-writes") ? { coalesceMs: 0 } : {}),
     cacheDir,
     offline: false,
   });
@@ -556,7 +553,7 @@ export function spawnDetached(argv: string[], logFile: string): number {
 export function wikiMountHelp(): string {
   return `atlcli wiki mount <mountpoint>
 
-Mount Confluence through WebDAV (default) or experimental read-only NFS on loopback.
+Mount Confluence through WebDAV (default) or experimental NFS on loopback.
 No kernel extension, no driver, no administrator rights on macOS or Windows.
 
 Usage:
@@ -568,9 +565,9 @@ Usage:
 Options:
   --space <KEY[,KEY]>  Spaces to expose (default: the profile's space)
   --mode ro|rw         Write posture (default: ro)
-  --transport <name>  webdav (default) or nfs (experimental, macOS/Linux, ro only)
+  --transport <name>  webdav (default) or nfs (experimental, macOS/Linux)
   --allow-delete       Additionally allow deletion, which moves pages to the trash
-  --sync-writes        Persist each write immediately (disable 500 ms coalescing)
+  --sync-writes        WebDAV only: disable its 500 ms write coalescing
   --cache-dir <path>   Cache root (default: ~/.atlcli/vfs)
   --port <n>           Bind to a fixed port (default: a free one)
   --profile <name>     Use a specific auth profile
@@ -583,6 +580,11 @@ Platform notes:
            which affects large attachments only.
   Linux    davfs2 and root are needed, so atlcli prints the mount command
            instead of running it.
+
+NFS writes:
+  --mode rw stages writes durably before acknowledgement and publishes valid
+  snapshots after 500 ms quiet. WRITE/COMMIT confirm local durability, not remote
+  publication. Intermediate versions are possible. --allow-delete opts into trash.
 
 NFS development:
   Build packages/confluence-nfs with cargo build --locked and set ATLCLI_NFS_HELPER

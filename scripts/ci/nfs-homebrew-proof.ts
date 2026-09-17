@@ -12,13 +12,15 @@ assert(archiveArg && formulaArg, "Pass the native archive and pinned tap Formula
 const archive = resolve(archiveArg);
 const source = readFileSync(formulaArg, "utf8");
 const env = { ...process.env, HOMEBREW_NO_AUTO_UPDATE: "1", HOMEBREW_NO_INSTALL_CLEANUP: "1",
-  HOMEBREW_NO_ANALYTICS: "1", HOMEBREW_DEVELOPER: "1" };
+  HOMEBREW_NO_ANALYTICS: "1", HOMEBREW_DEVELOPER: "1",
+  HOMEBREW_GIT_NAME: "atlcli acceptance", HOMEBREW_GIT_EMAIL: "acceptance@example.invalid" };
 const run = (command: string, args: string[]) => execFileSync(command, args, { env, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
 assert(!existsSync(join(run("brew", ["--cellar"]), "atlcli-nfs-proof")), "Do not replace an existing proof installation");
 const scratch = mkdtempSync(join(tmpdir(), "atlcli-brew-proof-"));
 const tap = `atlcli/nfs-proof-${process.pid}`;
 const name = `${tap}/atlcli-nfs-proof`;
-let tapped = false;
+const tapPath = join(run("brew", ["--repository"]), "Library/Taps/atlcli", `homebrew-nfs-proof-${process.pid}`);
+assert(!existsSync(tapPath), "Do not replace an existing test tap");
 let installing = false;
 try {
   // This archive is produced and verified by the release builder in the same job.
@@ -34,7 +36,7 @@ try {
   assert(formula !== source && formula.includes("class AtlcliNfsProof < Formula"));
   assert.equal(formula.slice(formula.indexOf("  def install")), source.slice(source.indexOf("  def install")),
     "The real install and test methods must remain unchanged");
-  run("brew", ["tap-new", tap]); tapped = true;
+  run("brew", ["tap-new", tap]);
   writeFileSync(join(run("brew", ["--repository", tap]), "Formula/atlcli-nfs-proof.rb"), formula);
   installing = true;
   run("brew", ["install", "--build-from-source", name]);
@@ -49,7 +51,7 @@ try {
 } finally {
   try { if (installing) run("brew", ["uninstall", "--force", name]); }
   finally {
-    try { if (tapped) run("brew", ["untap", tap]); }
+    try { if (existsSync(tapPath)) run("brew", ["untap", tap]); }
     finally { rmSync(scratch, { recursive: true, force: true }); }
   }
 }

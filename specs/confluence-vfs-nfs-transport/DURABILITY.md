@@ -76,9 +76,10 @@ has the separate real-filesystem proof above.
 
 ## Remaining release gates
 
-This matrix does not itself enable public RW. Final packaged CLI lifecycle
-repetition against the final public RW artifact (Slice 160 covers compiled
-RO busy shutdown/helper loss on both hosts), the final artifact
-platform matrix, full regression/build/CI and the explicit experimental
+Slice 163 enables public RW after the documented boundary tests and four-native-
+platform correctness run at c4ee457f. It repeats compiled RO/RW lifecycle on
+macOS/Linux, including exact recovery export of writes acknowledged immediately
+before helper loss. The final four-platform artifact matrix, full required CI
+and the explicit experimental
 go/no-go remain in [ACCEPTANCE.md](ACCEPTANCE.md). The [plan](PLAN.md) remains
 authoritative. Editor and performance evidence is tracked separately.

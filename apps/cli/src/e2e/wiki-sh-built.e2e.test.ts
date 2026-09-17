@@ -38,6 +38,7 @@ interface StandInPage {
   title: string;
   parentId: string | null;
   storage: string;
+  version?: number;
 }
 
 const PAGES = new Map<string, StandInPage>([
@@ -70,7 +71,7 @@ beforeAll(() => {
   if (!RUN) return;
   server = Bun.serve({
     port: 0,
-    fetch(request) {
+    async fetch(request) {
       const url = new URL(request.url);
       const path = url.pathname;
 
@@ -140,7 +141,7 @@ beforeAll(() => {
                 id,
                 title: page.title,
                 parentId: page.parentId,
-                version: { number: 1, createdAt: "2026-09-16T09:00:00.000Z" },
+                version: { number: page.version ?? 1, createdAt: "2026-09-16T09:00:00.000Z" },
                 ...(withBody ? { body: { storage: { value: page.storage } } } : {}),
                 _links: {},
               };
@@ -148,14 +149,27 @@ beforeAll(() => {
           _links: {},
         });
       }
+      if (path.endsWith("/rest/api/content") && request.method === "POST") {
+        const input = await request.json() as { title: string; ancestors: { id: string }[]; body: { storage: { value: string } } };
+        const id = String(Math.max(...[...PAGES.keys()].map(Number)) + 1);
+        const page = { id, title: input.title, parentId: input.ancestors[0]!.id, storage: input.body.storage.value, version: 1 };
+        PAGES.set(id, page);
+        return Response.json({ ...page, version: { number: 1 }, space: { key: "DOCSY" }, ancestors: input.ancestors,
+          _links: { base: url.origin, webui: `/spaces/DOCSY/pages/${id}` } });
+      }
       const content = /\/rest\/api\/content\/(\d+)$/.exec(path);
       if (content) {
         const page = PAGES.get(content[1]!);
         if (!page) return new Response("{}", { status: 404 });
+        if (request.method === "PUT") {
+          const update = await request.json() as { title: string; version: { number: number }; body: { storage: { value: string } } };
+          if (update.version.number !== (page.version ?? 1) + 1) return new Response("conflict", { status: 409 });
+          page.title = update.title; page.storage = update.body.storage.value; page.version = update.version.number;
+        }
         return Response.json({
           id: page.id,
           title: page.title,
-          version: { number: 1 },
+          version: { number: page.version ?? 1 },
           space: { key: "DOCSY" },
           ancestors: page.parentId ? [{ id: page.parentId, title: "Docs Home" }] : [],
           body: { storage: { value: page.storage } },
@@ -221,18 +235,21 @@ async function cli(...args: string[]) { return finishCli(startCli(args)); }
 
 describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
   for (const transport of ["nfs", "webdav"] as const) {
+  for (const mode of transport === "nfs" ? ["ro", "rw"] as const : ["ro"] as const) {
   for (const shutdownCase of transport === "nfs" ? ["signal", "busy", "helper", "busy-helper", "explicit"] : ["signal"]) {
-  it.skipIf(!BINARY || process.env.ATLCLI_NFS_KERNEL !== "1")(`runs compiled ${transport} ${transport === "nfs" ? "with adjacent companion" : "without an NFS companion"} (${shutdownCase})`, async () => {
-    const mountpoint = join(home, `${transport}-mount-${shutdownCase}`);
-    const cache = join(home, `${transport}-${shutdownCase}-mount-cache`);
+  it.skipIf(!BINARY || process.env.ATLCLI_NFS_KERNEL !== "1")(`runs compiled ${transport} ${transport === "nfs" ? "with adjacent companion" : "without an NFS companion"} (${mode}; ${shutdownCase})`, async () => {
+    const mountpoint = join(home, `${transport}-${mode}-mount-${shutdownCase}`);
+    const cache = join(home, `${transport}-${mode}-${shutdownCase}-mount-cache`);
     let binary = BINARY;
     if (transport === "webdav") {
       const directory = join(home, "webdav-binary"); mkdirSync(directory);
       binary = join(directory, "atlcli"); copyFileSync(BINARY!, binary);
     }
     const proc = startCli(["wiki", "mount", mountpoint, "--transport", transport, "--space", "DOCSY",
-      "--mode", "ro", "--cache-dir", cache, "--json"], binary);
+      "--mode", mode, "--cache-dir", cache, "--json"], binary);
     let holder: ReturnType<typeof Bun.spawn> | undefined;
+    let createdPage: string | undefined;
+    let pendingImage: string | undefined;
     let stdout = "", stderr = "";
     const drain = async (stream: ReadableStream<Uint8Array>, append: (s: string) => void) => {
       const decoder = new TextDecoder();
@@ -253,11 +270,12 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
         await Bun.sleep(25);
       }
       expect(record?.transport).toBe(transport);
+      expect(record?.mode).toBe(mode);
       if (transport === "nfs") expect(record?.helperPid).toBeGreaterThan(0);
       else expect(record?.helperPid).toBeUndefined();
       if (platform() === "linux" && transport === "nfs") {
         expect(await runMountCommand(["sudo", "-n", "mount", "-t", "nfs", "-o",
-          nfsMountOptionsFor("linux", record!.port), "127.0.0.1:/", mountpoint])).toBe(0);
+          nfsMountOptionsFor("linux", record!.port, mode), "127.0.0.1:/", mountpoint])).toBe(0);
       }
       if (platform() === "linux" && transport === "webdav") {
         const config = readdirSync(join(cache, "mounts")).find(name => name.endsWith(".davfs.conf"));
@@ -274,7 +292,43 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
         expect(isMounted(mountpoint)).toBe(true);
         expect(await readdir(mountpoint)).toContain("architecture-201");
         expect(await readFile(join(mountpoint, "architecture-201", "_index.md"), "utf8")).toContain("Grüße 🐴");
-        await expect(writeFile(join(mountpoint, "architecture-201", "_index.md"), "denied")).rejects.toMatchObject({ code: "EROFS" });
+        const pagePath = join(mountpoint, "architecture-201", "_index.md");
+        if (mode === "ro") await expect(writeFile(pagePath, "denied")).rejects.toMatchObject({ code: "EROFS" });
+        else {
+          const marker = `Compiled RW ${shutdownCase} Grüße 🐴`;
+          const before = PAGES.get("201")!.version ?? 1;
+          const content = await readFile(pagePath, "utf8");
+          const started = performance.now();
+          await writeFile(pagePath, `${content}\n${marker}\n`);
+          expect(await readFile(pagePath, "utf8")).toContain(marker);
+          const deadline = Date.now() + 10000;
+          while (!PAGES.get("201")!.storage.includes(marker) && Date.now() < deadline) await Bun.sleep(20);
+          expect(PAGES.get("201")!.storage).toContain(marker);
+          expect(PAGES.get("201")!.version).toBe(before + 1);
+          console.error(`Compiled NFS ${shutdownCase} save to API: ${(performance.now() - started).toFixed(1)}ms`);
+          if (shutdownCase === "signal") {
+            const countBefore = PAGES.size;
+            const newPath = join(mountpoint, "compiled-new-page.md");
+            const editor = Bun.spawn(["vim", "-u", "NONE", "-U", "NONE", "-i", "NONE", "-n", "-es", newPath,
+              "-c", "call setline(1, 'Plain new page Grüße 🐴')", "-c", "wq"], { stdout: "ignore", stderr: "pipe" });
+            const error = await new Response(editor.stderr).text();
+            expect(await editor.exited, error).toBe(0);
+            const deadline = Date.now() + 10000;
+            while (!createdPage && Date.now() < deadline) {
+              createdPage = [...PAGES.values()].find(page => page.storage.includes("Plain new page Grüße"))?.id;
+              if (!createdPage) await Bun.sleep(20);
+            }
+            expect(createdPage).toBeDefined();
+            expect(PAGES.size).toBe(countBefore + 1);
+            expect(PAGES.get(createdPage!)!.parentId).toBe("100");
+            await writeFile(newPath, "Second plain save Grüße 🐴\n");
+            const updated = Date.now() + 10000;
+            while (!PAGES.get(createdPage!)!.storage.includes("Second plain save") && Date.now() < updated) await Bun.sleep(20);
+            expect(PAGES.get(createdPage!)!.version).toBe(2);
+            expect(PAGES.size).toBe(countBefore + 1);
+            expect(await readFile(newPath, "utf8")).toContain("Second plain save");
+          }
+        }
       }
       const busy = shutdownCase.startsWith("busy");
       const helperCrash = shutdownCase.includes("helper");
@@ -284,6 +338,11 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
         const reader = (holder.stdout as ReadableStream<Uint8Array>).getReader();
         try { expect(new TextDecoder().decode((await reader.read()).value)).toContain("ready"); }
         finally { reader.releaseLock(); }
+      }
+      if (helperCrash && mode === "rw") {
+        const pagePath = join(mountpoint, "architecture-201", "_index.md");
+        pendingImage = `${await readFile(pagePath, "utf8")}\nAcknowledged immediately before helper loss 🐴\n`;
+        await writeFile(pagePath, pendingImage);
       }
       if (helperCrash) process.kill(record!.helperPid!, "SIGKILL");
       else if (shutdownCase === "explicit") {
@@ -308,6 +367,13 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
       expect(await Promise.race([proc.exited, Bun.sleep(10000).then(() => { throw new Error("Compiled CLI did not detach"); })])).toBe(helperCrash ? 1 : 0);
       expect(isMounted(mountpoint)).toBe(false);
       expect(readdirSync(join(cache, "mounts")).filter(name => name.endsWith(".json"))).toEqual([]);
+      if (pendingImage) {
+        const exported = join(cache, "recovered.md");
+        const recovery = await cli("wiki", "mount", "recovery", JSON.parse(stdout).journalPath,
+          "--id", "201", "--output", exported, "--json");
+        expect(recovery.code, recovery.err).toBe(0);
+        expect(await readFile(exported, "utf8")).toBe(pendingImage);
+      }
     } finally {
       if (holder) { holder.kill("SIGTERM"); await holder.exited; }
       if (isMounted(mountpoint)) await runMountCommand(platform() === "linux"
@@ -315,8 +381,10 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
       proc.kill("SIGTERM");
       await proc.exited;
       await drained;
+      if (createdPage) PAGES.delete(createdPage);
     }
   }, 40000);
+  }
   }
   }
 

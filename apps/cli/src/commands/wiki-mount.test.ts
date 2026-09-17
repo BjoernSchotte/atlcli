@@ -228,13 +228,12 @@ describe("mount startup validation", () => {
         ["--transport", transport, "--mode", "readwrite"],
         ["--transport", transport, "--mode"],
       ]),
-      ["--transport", "nfs", "--mode", "rw"],
       ["--transport", "nfs", "--sync-writes"],
-      ["--transport", "nfs", "--allow-delete"],
       ["--transport", "unknown"],
     ];
     const cases = [
       ...invalid.map(flags => ({ flags, code: 2, error: "VALIDATION" })),
+      { flags: ["--transport", "nfs", "--mode", "rw", "--allow-delete"], code: 1, error: "AUTH" },
       ...["webdav", "nfs"].flatMap(transport => ["0", "1", "65535"].map(port => ({
         flags: ["--transport", transport, "--port", port, "--mode", "ro"], code: 1, error: "AUTH",
       }))),

@@ -4410,3 +4410,47 @@ completed successfully at c4ee457f on all four native architectures, including
 the corrected Linux recursive-removal test, native reads/writes, real disk-full
 recovery and compiled RO lifecycle. The Homebrew CI additions in this slice
 were not part of that run; their results are still pending.
+
+## Slice 163: public experimental RW and compiled native publication
+
+After the finite durability gates (Slice 159), native editor evidence, full
+four-platform correctness CI at c4ee457f and local broad regression, the CLI
+now accepts experimental NFS `--mode rw` and opt-in trash. `--sync-writes`
+remains an early validation error: local stable acknowledgements cannot promise
+immediate Confluence commits. The NFS publisher owns the 500 ms quiet window;
+the underlying VFS coalescer is disabled for this transport to avoid a second
+500 ms delay. WebDAV behavior and the RO default remain unchanged.
+
+The compiled CLI fixture now runs signal, busy mount, helper loss, busy helper
+loss and explicit unmount in both RO and RW modes. Each RW case changes a page,
+verifies staged read-your-writes and exactly one API version. Vim creates a
+plain Markdown page without frontmatter, then a second save through the same
+alias updates that same ID. Helper-loss cases also acknowledge another write
+immediately before SIGKILL and compare exact recovered bytes using the public
+`wiki mount recovery` command after shutdown. Tests use synthetic content only.
+
+Actual native review archives installed via Homebrew passed the expanded suite:
+macOS arm64 22 tests / 198 assertions; Linux x64 22 / 210. Both runs used
+`GIT_CONFIG_GLOBAL=/dev/null`: the Slice 162 Linux CI failure was a missing Git
+author during `brew tap-new`, now supplied through process-local Homebrew
+identity variables. Partially created owned taps are cleaned too; no global Git
+configuration is changed. The previous CI run 35260093556 passed both Mac lanes
+and failed both Linux lanes only at that tap-creation step; the corrected
+four-platform result remains pending.
+
+The compiled Linux CLI also mounted RW against the real mayflower profile,
+read/wrote one ownership-marked DOCSY fixture, verified Unicode Markdown and
+exactly one new remote version, detached and deleted the fixture (one test /
+15 assertions). The first assertion compared encoded storage HTML directly;
+using the existing storage-to-Markdown converter fixed the test comparison.
+No existing tenant page or MAYFLOWER page was written. Mac real-tenant
+credentials remain unavailable; its compiled editor tests use the HTTP fixture.
+
+CLI/mount-option tests passed 26 / 189. The broader VFS/WebDAV/NFS plus mount
+validation run passed 771 tests / 4005 assertions (37 opt-in skips, not counted
+as passes). Typecheck passed four tasks and the full
+repository build passed 35 tasks. Public RW remains experimental; final
+four-platform packaged proof, full required CI and the final go/no-go audit
+are still required. The help and both VFS guides describe local-vs-remote
+acknowledgement, quiet-window publication, plain-file creation/aliases, pending
+recovery, opt-in trash and the rejected synchronous-write promise.
