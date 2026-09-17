@@ -92,3 +92,10 @@ a different verifier returns EXIST without truncating acknowledged bytes.
 MKDIR forwards the caller's `sattr3` to the filesystem hook instead of silently
 ignoring requested attributes. REMOVE and RMDIR pass an explicit directory flag
 so implementations can enforce EISDIR/ENOTDIR and nonempty-directory semantics.
+
+
+## Guarded CREATE
+
+Pass the GUARDED flag into the filesystem create hook. Remove the separate
+lookup-before-create check: the backend must enforce existence and creation
+atomically rather than racing another request between those operations.

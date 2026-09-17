@@ -796,3 +796,20 @@ it("keeps recovered local directories read-only and out of generated views", asy
   await expect(writable.fs.mkdir(1, "../escape")).rejects.toThrow();
   await expect(writable.fs.mkdir(1, ".Spotlight-V100")).rejects.toThrow();
 });
+
+
+it("keeps regular CREATE scoped and truncates an existing page under its original identity", async () => {
+  const { fs, journal } = await fixture(["DOCSY"], "rw", undefined, true);
+  const original = await fs.lookup(1, "_index.md");
+  await expect(fs.createRegular(1, "_index.md", true, { size: 0 })).rejects.toMatchObject({ code: "EEXIST" });
+  expect(await fs.createRegular(1, "_index.md", false, { size: 0 })).toEqual({ file: original, pageId: "100" });
+  expect(journal!.get("100")!.bytes.byteLength).toBe(0);
+  const local = await fs.createRegular(1, "local", true, { mode: 0o400 });
+  await expect(fs.createRegular(1, "local", false, { size: 0 })).rejects.toMatchObject({ code: "EROFS" });
+  expect((await fs.getattr(local.file)).mode).toBe(0o400);
+  await expect(fs.createRegular(1, "_space.json", false, {})).rejects.toThrow();
+  await expect(fs.createRegular(await fs.lookup(1, ".by-id"), "new", false, {})).rejects.toThrow();
+  await expect(fs.createRegular(1, "../escape", false, {})).rejects.toThrow();
+  const readonly = await fixture(["DOCSY"], "ro", undefined, true);
+  await expect(readonly.fs.createRegular(1, "new", false, {})).rejects.toThrow();
+});

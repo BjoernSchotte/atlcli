@@ -1433,24 +1433,6 @@ pub async fn nfsproc3_create(
         createmode3::GUARDED => {
             target_attributes.deserialize(input)?;
             debug!("create guarded {:?}", target_attributes);
-            if context.vfs.lookup(dirid, &dirops.name).await.is_ok() {
-                // file exists. Fail with NFS3ERR_EXIST.
-                // Re-read dir attributes
-                // for post op attr
-                let post_dir_attr = match context.vfs.getattr(dirid).await {
-                    Ok(v) => nfs::post_op_attr::attributes(v),
-                    Err(_) => nfs::post_op_attr::Void,
-                };
-
-                make_success_reply(xid).serialize(output)?;
-                nfs::nfsstat3::NFS3ERR_EXIST.serialize(output)?;
-                nfs::wcc_data {
-                    before: pre_dir_attr,
-                    after: post_dir_attr,
-                }
-                .serialize(output)?;
-                return Ok(());
-            }
         },
         createmode3::EXCLUSIVE => {
             create_verifier.deserialize(input)?;
@@ -1468,7 +1450,7 @@ pub async fn nfsproc3_create(
         postopattr = nfs::post_op_attr::Void;
     } else {
         // create!
-        let res = context.vfs.create(dirid, &dirops.name, target_attributes).await;
+        let res = context.vfs.create(dirid, &dirops.name, target_attributes, matches!(createhow, createmode3::GUARDED)).await;
         fid = res.map(|x| x.0);
         postopattr = if let Ok((_, fattr)) = res {
             nfs::post_op_attr::attributes(fattr)

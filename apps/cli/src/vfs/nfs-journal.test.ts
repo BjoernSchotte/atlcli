@@ -485,3 +485,18 @@ it("migrates schema-five temporary files without changing identity or exclusive-
   expect(Buffer.from(recovered.createLocal(file.path, "0123456789abcdef").bytes).toString()).toBe("keep");
   expect(recovered.createLocalDirectory("/DOCSY/new-dir").kind).toBe("directory");
 });
+
+
+it("rolls back failed regular CREATE attributes and initial sizes", () => {
+  const { journal } = fixture(8, 8);
+  expect(() => journal.createRegularLocal("/DOCSY/invalid-mode", true, { mode: 0o7777 })).toThrow();
+  expect(journal.local("/DOCSY/invalid-mode")).toBeNull();
+  expect(() => journal.createRegularLocal("/DOCSY/invalid-size", false, { size: 9 })).toThrow();
+  expect(journal.local("/DOCSY/invalid-size")).toBeNull();
+  const file = journal.createRegularLocal("/DOCSY/ok", false, { size: 4, mode: 0o600 });
+  expect([...file.bytes]).toEqual([0, 0, 0, 0]);
+  journal.write(file.id, 0, bytes("keep"));
+  expect(() => journal.createRegularLocal(file.path, true, { size: 0 })).toThrow("exists");
+  expect(Buffer.from(journal.local(file.path)!.bytes).toString()).toBe("keep");
+  expect(journal.pending()).toEqual([]);
+});

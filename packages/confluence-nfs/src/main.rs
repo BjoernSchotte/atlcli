@@ -367,11 +367,37 @@ impl NFSFileSystem for Bridge {
     }
     async fn create(
         &self,
-        _: fileid3,
-        _: &filename3,
-        _: sattr3,
+        parent: fileid3,
+        filename: &filename3,
+        value: sattr3,
+        guarded: bool,
     ) -> Result<(fileid3, fattr3), nfsstat3> {
-        Err(nfsstat3::NFS3ERR_ROFS)
+        if !self.writable {
+            return Err(nfsstat3::NFS3ERR_ROFS);
+        }
+        if !matches!(value.uid, set_uid3::Void)
+            || !matches!(value.gid, set_gid3::Void)
+            || !matches!(value.atime, set_atime::DONT_CHANGE)
+            || !matches!(value.mtime, set_mtime::DONT_CHANGE)
+        {
+            return Err(nfsstat3::NFS3ERR_NOTSUPP);
+        }
+        let mut args = json!({"parent":parent,"name":name(filename)?,"guarded":guarded});
+        if let set_mode3::mode(mode) = value.mode {
+            if mode > 0o777 {
+                return Err(nfsstat3::NFS3ERR_NOTSUPP);
+            }
+            args["mode"] = json!(mode);
+        }
+        if let set_size3::size(size) = value.size {
+            args["size"] = json!(size);
+        }
+        let id = self
+            .call("create", args)
+            .await?
+            .as_u64()
+            .ok_or(nfsstat3::NFS3ERR_IO)?;
+        Ok((id, self.getattr(id).await?))
     }
     async fn create_exclusive(
         &self,

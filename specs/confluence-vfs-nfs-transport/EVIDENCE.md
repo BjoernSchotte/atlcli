@@ -2220,3 +2220,32 @@ and the owned mount unmounted normally. TextEdit acceptance remains open.
 
 Full macOS RPC regression also passed: 19 tests / 592 assertions, including
 60-second read, blocked-reader and 120-second dispatch deadline checks.
+
+
+## Slice 84 — normal and guarded CREATE
+
+A synthetic TextEdit operation trace identified normal CREATE with mode 0644,
+no size, ownership or timestamp attributes as the next refused operation.
+Bridge protocol 10 now supports UNCHECKED/GUARDED creation with initial mode and
+optional size. The guarded flag reaches the transactional journal instead of
+using the vendored server's racy separate existence lookup. New files and initial
+attributes/size commit atomically; failures roll back the entire creation.
+Existing regular files retain identity and bytes when size is omitted. Explicit
+size applies truncation without changing the page ID. Existing permissions,
+generated views, RO mode and export confinement remain enforced.
+
+- Native macOS/Linux plus focused RPC CREATE tests: two / 42 assertions per host.
+  The native test now uses ordinary open-for-write creation inside its temporary
+  directory, instead of exclusive creation only.
+- Journal/projection suites: 67 / 1,026 assertions on both hosts, including failed
+  creation rollback. Additional projection coverage checks original-page identity,
+  read-only local modes, generated views and confinement (nine assertions).
+- Linux real DOCSY save: 18 assertions, with fixture cleanup. Typecheck and clippy
+  with warnings as errors passed.
+
+TextEdit no longer reports the same read-only CREATE error, but still reports a
+generic save failure. Its synthetic backend stayed unchanged. Further unsupported
+save operations remain to diagnose; native TextEdit acceptance is still open.
+Temporary diagnostics were removed, the test document closed, and owned mounts
+unmounted normally. CREATE semantics were checked against
+[RFC 1813 section 3.3.8](https://www.rfc-editor.org/rfc/rfc1813.html#section-3.3.8).

@@ -108,6 +108,18 @@ export class NfsJournal {
     return this.createLocalEntry(path, "file", verifier);
   }
 
+  createRegularLocal(path: string, guarded: boolean, values: { mode?: number; size?: number }): LocalNfsEntry {
+    return this.db.transaction(() => {
+      const existing = this.local(path);
+      if (existing && guarded) throw new VfsError("EEXIST", "Local NFS file exists");
+      if (existing?.kind === "directory") throw new VfsError("EISDIR", "Cannot create over directory");
+      const file = existing ?? this.createLocal(path);
+      if (!existing) this.setAttributes(file.id, { mode: values.mode ?? 0o644 });
+      if (values.size !== undefined) this.truncate(file.id, values.size);
+      return this.local(path)!;
+    }).immediate();
+  }
+
   createLocalDirectory(path: string, mode = 0o755): LocalNfsEntry {
     return this.db.transaction(() => {
       const entry = this.createLocalEntry(path, "directory");

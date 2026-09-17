@@ -315,6 +315,27 @@ export class NfsFilesystem {
     return posix.join(directory, name);
   }
 
+  async createRegular(parent: number, name: string, guarded: boolean, values: { mode?: number; size?: number }): Promise<{ file: number; pageId: string | null }> {
+    if (values.mode !== undefined && (!Number.isInteger(values.mode) || values.mode < 0 || values.mode > 0o777)) throw new VfsError("EINVAL", "Invalid CREATE mode");
+    if (values.size !== undefined && (!Number.isSafeInteger(values.size) || values.size < 0)) throw new VfsError("EINVAL", "Invalid CREATE size");
+    const path = await this.mutationPath(parent, name);
+    let stat: VfsStat | undefined;
+    try { stat = await this.stat(path); }
+    catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
+    if (stat && guarded) throw new VfsError("EEXIST", "NFS file exists");
+    if (stat?.isDirectory) throw new VfsError("EISDIR", "Cannot create over directory");
+    if (stat && !(stat.mode & 0o222)) throw new VfsError("EROFS", "File is not writable");
+    if (!stat || this.journal!.local(path)) {
+      if (!stat && (this.paths.size >= NFS_MAX_HANDLES || this.nextId > Number.MAX_SAFE_INTEGER)) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
+      this.journal!.createRegularLocal(path, guarded, values);
+      return { file: await this.register(path), pageId: null };
+    }
+    const file = await this.register(path);
+    await this.stagedFile(file);
+    const pageId = values.size === undefined ? null : await this.truncate(file, values.size);
+    return { file, pageId };
+  }
+
   async mkdir(parent: number, name: string, mode = 0o755): Promise<number> {
     return this.createEntry(parent, name, true, undefined, mode);
   }

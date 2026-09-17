@@ -220,6 +220,26 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(await read(historic, 0, 65536)).toEqual(expected);
     expect(client.callsTo("getPageAtVersion")).toBe(2);
   });
+  it("implements guarded and unchecked CREATE without losing existing file identity", async () => {
+    const { server, journal } = await fixture(["DOCSY"], false, undefined, true);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const create = (mode: number, attributes: Buffer) => rpc(server, 100003, 8,
+      Buffer.concat([opaque(root), opaque(Buffer.from("ordinary.tmp")), ints(mode), attributes]));
+    const first = await create(1, ints(1, 0o600, 0, 0, 0, 0, 0));
+    expect(first.readUInt32BE()).toBe(0);
+    const id = journal!.local("/DOCSY/ordinary.tmp")!.id;
+    journal!.write(id, 0, Buffer.from("keep bytes"));
+    expect((await create(1, ints(1, 0o644, 0, 0, 0, 0, 0))).readUInt32BE()).toBe(17);
+    const replay = await create(0, ints(1, 0o644, 0, 0, 0, 0, 0));
+    expect(replay.readUInt32BE()).toBe(0);
+    expect(replay.subarray(12, 12 + replay.readUInt32BE(8))).toEqual(first.subarray(12, 12 + first.readUInt32BE(8)));
+    expect(Buffer.from(journal!.get(id)!.bytes).toString()).toBe("keep bytes");
+    expect(journal!.attributes(id)?.mode).toBe(0o600);
+    expect((await create(0, ints(0, 0, 0, 1, 0, 0, 0, 0))).readUInt32BE()).toBe(0);
+    expect(journal!.get(id)!.bytes.byteLength).toBe(0);
+    expect(journal!.pending()).toEqual([]);
+  });
   it("distinguishes directory RPCs and validates MKDIR attributes before mutation", async () => {
     const { server, journal } = await fixture(["DOCSY"], false, undefined, true);
     const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
@@ -804,7 +824,7 @@ with socket.socket() as client:
     await mkdir(saveDirectory, { mode: 0o700 });
     expect((await stat(saveDirectory)).mode & 0o777).toBe(0o700);
     const childPath = join(saveDirectory, "child.tmp");
-    const child = await open(childPath, "wx", 0o600);
+    const child = await open(childPath, "w", 0o600);
     await child.writeFile("directory child"); await child.sync(); await child.close();
     expect((await readFile(childPath)).toString()).toBe("directory child");
     await expect(rmdir(saveDirectory)).rejects.toMatchObject({ code: "ENOTEMPTY" });

@@ -130,7 +130,7 @@ pub trait NFSFileSystem: Sync {
     /// Creates a file with the following attributes.
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
-    async fn create(&self, dirid: fileid3, filename: &filename3, attr: sattr3) -> Result<(fileid3, fattr3), nfsstat3>;
+    async fn create(&self, dirid: fileid3, filename: &filename3, attr: sattr3, guarded: bool) -> Result<(fileid3, fattr3), nfsstat3>;
 
     /// Creates a file if it does not already exist
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)

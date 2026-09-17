@@ -1,5 +1,5 @@
 /** Private Bun ↔ Rust pipe framing. No tenant data belongs in framing errors. */
-export const NFS_BRIDGE_VERSION = 9;
+export const NFS_BRIDGE_VERSION = 10;
 export const NFS_MAX_FRAME_BYTES = 8 * 1024 * 1024;
 
 export function encodeNfsFrame(value: unknown): Buffer {
