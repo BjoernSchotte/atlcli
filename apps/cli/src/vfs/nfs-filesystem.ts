@@ -425,7 +425,26 @@ export class NfsFilesystem {
   async remove(parent: number, name: string, directory = false): Promise<void> {
     const path = await this.mutationPath(parent, name);
     const local = this.journal!.local(path);
-    if (!local) throw new VfsError("EROFS", "Remote removal is not enabled for NFS yet");
+    if (!local) {
+      if (path === `${this.root}/_index.md`) throw new VfsError("EROFS", "Cannot trash the export homepage");
+      assertWritable(this.vfs.guard, "delete", path);
+      const handle = await this.register(path);
+      const stat = await this.stat(path);
+      if (stat.isDirectory) throw new VfsError("ENOTEMPTY", "Remove the page body before its directory");
+      if (directory) throw new VfsError("ENOTDIR", "Not a directory");
+      const page = await this.stagedFile(handle, true);
+      if (this.journal!.trashIntent(page.id)) throw new VfsError("EBUSY", "Previous trash result requires reconciliation");
+      const spaceKey = path.split("/")[1]!;
+      const canonical = await this.vfs.readlink(`/${spaceKey}/.by-id/${page.id}.md`);
+      if (canonical === `/${spaceKey}/_index.md`) throw new VfsError("EROFS", "Cannot trash the export homepage");
+      this.journal!.beginTrash(page.id, canonical, spaceKey);
+      await this.vfs.rm(canonical, { expected: { id: page.id, spaceKey } });
+      this.journal!.completeTrash(page.id);
+      for (const [id, entry] of this.paths) {
+        if (entry.identity === `page:${page.id}:file` || entry.identity === `page:${page.id}:directory`) this.forgetHandle(id);
+      }
+      return;
+    }
     this.journal!.removeLocal(path, directory);
     const handle = this.identities.get(local.id);
     if (handle !== undefined) this.forgetHandle(handle);

@@ -62,7 +62,7 @@ export class NfsJournal {
       this.db.exec("COMMIT");
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11 && version !== 12) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers. Exclusive mode retains the rollback
@@ -100,7 +100,7 @@ export class NfsJournal {
           id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL,
           spaceKey TEXT NOT NULL, parentId TEXT NOT NULL, pageId TEXT UNIQUE, version INTEGER,
           CHECK ((pageId IS NULL AND version IS NULL) OR (pageId IS NOT NULL AND version > 0))
-        ); CREATE TABLE IF NOT EXISTS promotions (localId TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, pageId TEXT NOT NULL UNIQUE REFERENCES files(id)); PRAGMA user_version=11;`);
+        ); CREATE TABLE IF NOT EXISTS promotions (localId TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, pageId TEXT NOT NULL UNIQUE REFERENCES files(id)); CREATE TABLE IF NOT EXISTS trash (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL, spaceKey TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1))); PRAGMA user_version=12;`);
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.db.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -112,12 +112,14 @@ export class NfsJournal {
 
   /** Counts only; never materializes page bodies or exposes tenant paths. */
   writeStatus(): NfsWriteStatus {
-    const status = this.db.query<NfsWriteStatus, []>(`SELECT
+    const counts = this.db.prepare<NfsWriteStatus, []>(`SELECT
       (SELECT count(*) FROM files WHERE revision>publishedRevision AND id NOT IN (SELECT id FROM locals) AND id NOT IN (SELECT id FROM displaced)) AS pendingPages,
       (SELECT count(*) FROM files WHERE error IS NOT NULL AND revision>publishedRevision AND id NOT IN (SELECT id FROM locals)) AS failedPages,
       (SELECT count(*) FROM displaced) AS displacedPages,
       (SELECT count(*) FROM locals) AS localEntries,
-      (SELECT count(*) FROM intents) AS unresolvedPublications`).get()!;
+      (SELECT count(*) FROM intents)+(SELECT count(*) FROM trash WHERE completed=0) AS unresolvedPublications`);
+    let status: NfsWriteStatus;
+    try { status = counts.get()!; } finally { counts.finalize(); }
     const statement = this.db.prepare<{ path: string; error: string | null }, []>(`SELECT locals.path,files.error
       FROM locals JOIN files USING(id) WHERE kind='file' AND originId IS NULL`);
     try {
@@ -190,6 +192,10 @@ export class NfsJournal {
 
   private checkLocalParents(path: string): void {
     for (let parent = posix.dirname(path); parent !== "/"; parent = posix.dirname(parent)) {
+      const reserved = this.db.prepare("SELECT id FROM trash WHERE path=?");
+      try {
+        if (reserved.get(`${parent}/_index.md`)) throw new VfsError("EBUSY", "Parent is reserved for trash");
+      } finally { reserved.finalize(); }
       if (this.local(parent)?.kind === "file") throw new VfsError("ENOTDIR", "Local parent is a file");
     }
   }
@@ -294,6 +300,7 @@ export class NfsJournal {
   backupPage(pageId: string, target: string, source?: string): LocalNfsEntry {
     this.localPath(target);
     return this.db.transaction(() => {
+      this.assertNotTrashing(pageId);
       const page = this.get(pageId);
       if (!page || this.local(page.path)?.id === pageId) throw new VfsError("EINVAL", "Backup source must be an admitted page");
       const original = source ?? page.path;
@@ -349,6 +356,7 @@ export class NfsJournal {
       }
     }
     this.db.transaction(() => {
+      this.assertNotTrashing(id);
       if (!this.get(id)) throw new VfsError("ENOENT", "Unknown NFS file");
       const old = this.attributes(id) ?? { mode: 0o644, atime: null, mtime: null };
       const next = { ...old, ...values };
@@ -386,7 +394,7 @@ export class NfsJournal {
     return this.db.transaction(() => {
       const old = this.get(id);
       if (!old) throw new VfsError("ENOENT", "Unknown staged page");
-      if (old.revision !== revision || old.revision !== old.publishedRevision || version <= old.baseVersion ||
+      if (this.trashIntent(id) || old.revision !== revision || old.revision !== old.publishedRevision || version <= old.baseVersion ||
           this.db.query("SELECT id FROM intents WHERE id=? UNION ALL SELECT id FROM locals WHERE id=? UNION ALL SELECT id FROM displaced WHERE id=?").get(id, id, id)) return old;
       const source = this.publishedSource(id);
       this.checkQuota(bytes.byteLength - old.bytes.byteLength + (source ? 0 : old.bytes.byteLength));
@@ -398,6 +406,7 @@ export class NfsJournal {
   }
 
   private assertFile(id: string): void {
+    this.assertNotTrashing(id);
     if (this.db.query("SELECT id FROM locals WHERE id=? AND kind='directory'").get(id)) {
       throw new VfsError("EISDIR", "Cannot write a directory");
     }
@@ -509,6 +518,44 @@ export class NfsJournal {
     }).immediate();
   }
 
+  trashIntent(id: string): { id: string; path: string; spaceKey: string; completed: number } | null {
+    const statement = this.db.prepare<{ id: string; path: string; spaceKey: string; completed: number }, [string]>(
+      "SELECT * FROM trash WHERE id=?");
+    try { return statement.get(id); } finally { statement.finalize(); }
+  }
+
+  /** Freeze a clean page before DELETE; even no-op writes must then fail. */
+  beginTrash(id: string, path: string, spaceKey: string): void {
+    this.localPath(path);
+    if (!/^[0-9]+$/.test(id) || !spaceKey || path.split("/")[1] !== spaceKey) throw new VfsError("EINVAL", "Invalid trash identity");
+    this.db.transaction(() => {
+      const previous = this.trashIntent(id);
+      if (previous) {
+        if (previous.path !== path || previous.spaceKey !== spaceKey) throw new VfsError("EBUSY", "Trash target already frozen");
+        return;
+      }
+      const file = this.get(id);
+      if (!file) throw new VfsError("ENOENT", "Trash requires an admitted page");
+      if (posix.basename(path) === "_index.md" && this.hasLocalDescendants(posix.dirname(path))) {
+        throw new VfsError("EBUSY", "Page contains local editor data");
+      }
+      if (file.path.split("/")[1] !== spaceKey || file.revision !== file.publishedRevision ||
+          this.db.query("SELECT id FROM intents WHERE id=?1 UNION ALL SELECT id FROM displaced WHERE id=?1 UNION ALL SELECT id FROM locals WHERE id=?1").get(id)) {
+        throw new VfsError("EBUSY", "Page has unpublished data or a different export");
+      }
+      this.db.run("INSERT INTO trash(id,path,spaceKey) VALUES (?,?,?)", [id, path, spaceKey]);
+    }).immediate();
+  }
+
+  completeTrash(id: string): void {
+    if (!this.trashIntent(id)) throw new VfsError("ENOENT", "Unknown trash intent");
+    this.db.run("UPDATE trash SET completed=1 WHERE id=?", [id]);
+  }
+
+  private assertNotTrashing(id: string): void {
+    if (this.trashIntent(id)) throw new VfsError("EBUSY", "Page is reserved for trash; reconcile before modifying it");
+  }
+
   publishIntent(id: string): NfsPublishIntent | null {
     return this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);
   }
@@ -516,6 +563,7 @@ export class NfsJournal {
   /** Persist the exact snapshot before sending a remote mutation. Replay this intent after a lost reply. */
   beginPublish(id: string, revision?: number): NfsPublishIntent | null {
     return this.db.transaction(() => {
+      this.assertNotTrashing(id);
       if (this.db.query("SELECT id FROM locals WHERE id=? UNION ALL SELECT id FROM displaced WHERE id=?").get(id, id)) return null;
       const intent = this.publishIntent(id);
       if (intent) return intent;

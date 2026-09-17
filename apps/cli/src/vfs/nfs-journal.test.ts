@@ -745,3 +745,46 @@ it("promotes confirmed creations atomically and retains aliases, metadata and ne
   expect(reopened.attributes("123")?.mode).toBe(0o600);
   expect(reopened.exclusivePageReplay("/DOCSY/new-123.md", "0123456789abcdef")?.id).toBe("123");
 });
+
+
+it("durably reserves clean pages for trash and preserves bytes against later mutations", () => {
+  const { path, journal } = fixture();
+  journal.admit("100", "/DOCSY/page/_index.md", bytes("published"), 1);
+  journal.beginTrash("100", "/DOCSY/page/_index.md", "DOCSY");
+  journal.beginTrash("100", "/DOCSY/page/_index.md", "DOCSY");
+  expect(journal.writeStatus().unresolvedPublications).toBe(1);
+  expect(() => journal.beginTrash("100", "/DOCSY/other.md", "DOCSY")).toThrow("frozen");
+  for (const mutate of [
+    () => journal.write("100", 0, new Uint8Array()),
+    () => journal.truncate("100", 0),
+    () => journal.setAttributes("100", { mode: 0o600 }),
+    () => journal.backupPage("100", "/DOCSY/backup.md"),
+    () => journal.beginPublish("100"),
+  ]) expect(mutate).toThrow("reserved for trash");
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.trashIntent("100")).toMatchObject({ spaceKey: "DOCSY", completed: 0 });
+  expect(() => recovered.write("100", 0, bytes("later"))).toThrow("reserved for trash");
+  recovered.completeTrash("100");
+  expect(recovered.writeStatus().unresolvedPublications).toBe(0);
+  expect(recovered.trashIntent("100")?.completed).toBe(1);
+  expect(() => recovered.truncate("100", 0)).toThrow("reserved for trash");
+  expect(Buffer.from(recovered.get("100")!.bytes).toString()).toBe("published");
+});
+
+it("refuses trash of dirty, displaced, foreign and unresolved pages", () => {
+  const { journal } = fixture();
+  journal.admit("100", "/DOCSY/page/_index.md", bytes("published"), 1);
+  journal.write("100", 0, bytes("edited"));
+  expect(() => journal.beginTrash("100", "/DOCSY/page/_index.md", "DOCSY")).toThrow("unpublished");
+  const intent = journal.beginPublish("100")!;
+  expect(() => journal.beginTrash("100", "/DOCSY/page/_index.md", "DOCSY")).toThrow("unpublished");
+  journal.completePublish("100", intent.revision, 2);
+  journal.createLocal("/DOCSY/page/draft.md");
+  expect(() => journal.beginTrash("100", "/DOCSY/page/_index.md", "DOCSY")).toThrow("local editor data");
+  journal.removeLocal("/DOCSY/page/draft.md");
+  expect(() => journal.beginTrash("100", "/OTHER/page.md", "OTHER")).toThrow("different export");
+  journal.backupPage("100", "/DOCSY/backup.md");
+  expect(() => journal.beginTrash("100", "/DOCSY/page/_index.md", "DOCSY")).toThrow("unpublished");
+  expect(journal.trashIntent("100")).toBeNull();
+});

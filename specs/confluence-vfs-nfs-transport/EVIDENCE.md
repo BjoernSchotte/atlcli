@@ -2810,3 +2810,36 @@ the authoritative resolution boundary, rather than trusting an earlier stat.
 Native NFS remote removal is not enabled by this prerequisite. It still needs
 coordination with durable writes and interrupted/ambiguous deletion recovery;
 these are mandatory before the public RW gate can open.
+
+
+## Slice 108 — durable NFS page-body trash and mutation exclusion
+
+Schema 12 persists page-ID/space-bound trash attempts before the API request and
+marks confirmed outcomes without discarding the recoverable bytes. Dirty pages,
+frozen publication intents, displaced pages and local child drafts block trash.
+Later writes (including no-op writes), truncation, metadata changes, backup
+renames and local child creation are rejected while reserved. Retrying an unknown
+DELETE does not issue another request. Confirmed file/directory handles become
+stale; the journal retains a tombstone and the saved bytes.
+
+NFS REMOVE now uses the guarded core trash operation after deletion opt-in.
+Export-homepage removal remains protected. Remote RMDIR remains unsupported
+(ENOTEMPTY); this is page-body removal, not full recursive directory parity.
+Recovery inspection supports schemas 8–12, lists trash identity/completion, and
+exports bytes without modifying the journal. New SQLite status/lookup statements
+are explicitly finalized so close/reopen releases ownership under Bun 1.3.14.
+
+- macOS/Linux journal, recovery and filesystem suites: 98 tests / 1260 assertions
+  each before the final opt-in/local-child additions. The final focused protection
+  suite passes five tests / 36 assertions on each host. Combined-export homepage
+  protection adds one synthetic test / four assertions on each host.
+- Native macOS/Linux NFS write suite: 50 assertions each, including empty CREATE
+  followed by unlink and confirmed backend trash (synthetic backend).
+- Linux live DOCSY native suite: 33 assertions, covering real Vim create/follow-up
+  save and native unlink of the created page. API readback returns 404 after
+  trash, parent fixture is cleaned up and the owned mount normally detached.
+  External refresh became visible after 55,369 ms at the default core TTL.
+- All four typecheck tasks passed.
+
+Automatic uncertain-trash reconciliation, page-tree rename/directory parity,
+full overwritten/unlinked handle semantics and the public RW gate remain open.

@@ -267,6 +267,13 @@ eligible new Markdown drafts before Confluence assigns their IDs; recorded backu
 and hidden editor files are excluded. Local-entry counts overlap with those drafts
 until creation is confirmed. Keep the staging journal when
 this notice appears: locally durable bytes do not prove Confluence publication.
+Development NFS removal of a page body requires deletion opt-in and a clean
+published image. It records the page ID before sending the trash request and
+blocks subsequent mutations to that page. Dirty pages and local child drafts
+must be resolved first. An uncertain DELETE is never blindly retried: retain the
+journal and inspect its trash metadata. Recovery exports retain the saved bytes
+even after confirmed trash. Remote directory removal and automatic reconciliation
+of uncertain trash results are still pending; public NFS RW remains gated.
 Development NFS publication waits for 500 ms without newer writes to a page.
 If an editor sends a valid partial document and pauses longer, Confluence can
 receive an intermediate version before later blocks arrive. Automatic publication
@@ -454,8 +461,9 @@ atlcli wiki mount recovery /path/to/journal.sqlite --id 12345 --output ./recover
 ```
 
 The listing includes frozen creation targets and confirmed creation receipts
-when present (journal schemas 9–11), local editor entries, interrupted replacements, revision
+when present (journal schemas 9–12), local editor entries, interrupted replacements, revision
 numbers, safe error codes and available publication images, without page bodies.
+Schema 12 also lists the trash target and whether remote trash was confirmed.
 To compare an unresolved publication with the bytes currently saved by an editor:
 
 ```bash

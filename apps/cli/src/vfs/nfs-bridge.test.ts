@@ -53,7 +53,7 @@ async function rpc(server: Pick<RunningNfsServer, "port">, program: number, proc
     socket.on("end", () => reject(new Error("RPC closed before reply")));
   });
 }
-async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now(), writable = false, journalBytes = 512) {
+async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now(), writable = false, journalBytes = 512, allowDelete = false) {
   if (live && writable) throw new Error("RW wire fixtures must be synthetic");
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-wire-"));
   const client = new FakeConfluenceClient()
@@ -68,7 +68,7 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
   const profile = live ? getActiveProfile(await loadConfig(), "mayflower") : undefined;
   if (live && !profile) throw new Error("Missing mayflower test profile");
   const vfs = await ConfluenceVfsImpl.open({ profile: profile?.name ?? "fixture",
-    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: writable ? "rw" : "ro", allowDelete: false, offline: false, cacheDir, now, coalesceMs: writable ? 0 : undefined });
+    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: writable ? "rw" : "ro", allowDelete, offline: false, cacheDir, now, coalesceMs: writable ? 0 : undefined });
   const journal = writable ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY", journalBytes, 2048) : undefined;
   cleanups.push(async () => { await vfs.close(); journal?.close(); rmSync(cacheDir, { recursive: true, force: true }); });
   const server = await startNfsServer({ vfs, spaces, journal, helperPath: resolve(helperPath!) });
@@ -801,7 +801,7 @@ with socket.socket() as client:
 
   it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("writes and fsyncs existing pages through a native RW kernel mount", async () => {
     let clockOffset = 0;
-    const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now() + clockOffset, true, 4096);
+    const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now() + clockOffset, true, 4096, true);
     const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-rw-"));
     let mounted = false;
     cleanups.push(async () => {
@@ -941,6 +941,10 @@ with socket.socket() as client:
     expect(emptyId).toBeDefined();
     expect(client.peekPage(emptyId!)?.title).toBe("Empty");
     expect(client.callsTo("createPage")).toBe(2);
+    await unlink(join(mountpoint, "empty.md"));
+    expect(client.isTrashed(emptyId!)).toBe(true);
+    expect(journal!.trashIntent(emptyId!)?.completed).toBe(1);
+    expect(client.callsTo("deletePage")).toBe(1);
 
     }, 30000);
 

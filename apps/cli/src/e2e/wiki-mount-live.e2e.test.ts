@@ -200,6 +200,12 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(nextNew.version).toBe((firstNew.version ?? 1) + 1);
       expect(nextNew.storage).toContain("Live plain follow-up");
       await rm(`${newPath}~`, { force: true });
+      await unlink(newPath);
+      expect(journal.trashIntent(newPageId!)?.completed).toBe(1);
+      created.splice(created.indexOf(newPageId!), 1);
+      const trashedId = newPageId!;
+      newPageId = undefined;
+      await expect(client.getPage(trashedId)).rejects.toMatchObject({ status: 404 });
 
     } finally {
       if (mounted) {

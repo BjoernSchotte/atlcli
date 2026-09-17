@@ -96,3 +96,19 @@ it("still inspects schema-eight journals without upgrading them", () => {
   expect((recoverNfsJournal(path) as unknown[]).length).toBe(3);
   expect(readFileSync(path)).toEqual(before);
 });
+
+
+it("lists interrupted trash without discarding its recoverable page bytes", () => {
+  const { root, path } = fixture();
+  const journal = new NfsJournal(path, "synthetic:DOCSY");
+  journal.admit("200", "/DOCSY/clean.md", Buffer.from("preserved"), 1);
+  journal.beginTrash("200", "/DOCSY/clean.md", "DOCSY");
+  journal.close();
+  const original = readFileSync(path);
+  expect((recoverNfsJournal(path) as Record<string, unknown>[]).find(row => row.id === "200"))
+    .toMatchObject({ trashPath: "/DOCSY/clean.md", trashSpace: "DOCSY", trashCompleted: 0 });
+  const output = join(root, "trash-recovery.md");
+  recoverNfsJournal(path, { id: "200", output });
+  expect(readFileSync(output).toString()).toBe("preserved");
+  expect(readFileSync(path)).toEqual(original);
+});

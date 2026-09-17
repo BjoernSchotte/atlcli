@@ -11,7 +11,7 @@ import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, SweepDetector } from "./mount-clie
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
-async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro", treeTtlMs?: number, staging = false) {
+async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro", treeTtlMs?: number, staging = false, allowDelete = mode === "rw") {
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-core-"));
   const client = new FakeConfluenceClient()
     .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
@@ -21,7 +21,7 @@ async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro", treeTtlMs?:
   for (let i = 0; i < 4; i++) client.seedPage({ id: String(200 + i), title: `Child ${i}`,
     spaceKey: "DOCSY", parentId: "100", storage: `<p>Body ${i}</p>` });
   const vfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY", "mayflower"],
-    mode, allowDelete: mode === "rw", coalesceMs: 0, cacheDir, offline: false, treeTtlMs });
+    mode, allowDelete, coalesceMs: 0, cacheDir, offline: false, treeTtlMs });
   const journal = staging ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY") : undefined;
   cleanup.push(async () => { await vfs.close(); journal?.close(); rmSync(cacheDir, { recursive: true, force: true }); });
   return { fs: new NfsFilesystem(vfs, spaces, undefined, journal), vfs, client, journal, cacheDir };
@@ -985,4 +985,66 @@ it("queues empty regular and exclusive Markdown creates but not editor temporary
   expect(await fs.create(1, "exclusive.md", "0123456789abcdef")).toBe(exclusive);
   expect(fs.publicationId(await fs.create(1, ".empty.md"))).toBeNull();
   expect(fs.publicationId(await fs.lookup(1, "_index.md"))).toBeNull();
+});
+
+
+it("trashes a clean page by ID and blocks writes while DELETE is in flight", async () => {
+  const { fs, client, journal } = await fixture(["DOCSY"], "rw", undefined, true);
+  const parent = await fs.lookup(1, "child-0-200");
+  const handle = await fs.lookup(parent, "_index.md");
+  await fs.read(handle, 0, 100);
+  const remove = client.deletePage.bind(client);
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  client.deletePage = async id => { entered(); await gate; return remove(id); };
+  const deletion = fs.remove(parent, "_index.md");
+  try {
+    await started;
+    await expect(fs.write(handle, 0, Buffer.from("late"))).rejects.toMatchObject({ code: "EBUSY" });
+    await expect(fs.create(parent, "late.md")).rejects.toMatchObject({ code: "EBUSY" });
+  } finally { release(); }
+  await deletion;
+  expect(client.isTrashed("200")).toBe(true);
+  expect(journal!.trashIntent("200")?.completed).toBe(1);
+  await expect(fs.getattr(handle)).rejects.toMatchObject({ code: "ESTALE" });
+  expect(client.callsTo("deletePage")).toBe(1);
+});
+
+it("retains dirty bytes and uncertain trash receipts without retrying DELETE", async () => {
+  const { fs, client, journal } = await fixture(["DOCSY"], "rw", undefined, true);
+  const parent = await fs.lookup(1, "child-0-200");
+  const handle = await fs.lookup(parent, "_index.md");
+  await fs.write(handle, 0, Buffer.from("dirty"));
+  await expect(fs.remove(parent, "_index.md")).rejects.toMatchObject({ code: "EBUSY" });
+  expect(client.callsTo("deletePage")).toBe(0);
+  expect(Buffer.from(journal!.get("200")!.bytes).toString()).toStartWith("dirty");
+  const other = await fs.lookup(1, "child-1-201");
+  let attempts = 0;
+  client.deletePage = async () => { attempts++; throw new Error("Uncertain response"); };
+  await expect(fs.remove(other, "_index.md")).rejects.toThrow();
+  await expect(fs.remove(other, "_index.md")).rejects.toMatchObject({ code: "EBUSY" });
+  expect(attempts).toBe(1);
+  expect(journal!.trashIntent("201")?.completed).toBe(0);
+  expect(journal!.writeStatus().unresolvedPublications).toBe(1);
+});
+
+
+it("requires deletion opt-in before recording an NFS trash intent", async () => {
+  const { fs, client, journal } = await fixture(["DOCSY"], "rw", undefined, true, false);
+  const parent = await fs.lookup(1, "child-0-200");
+  await expect(fs.remove(parent, "_index.md")).rejects.toMatchObject({ code: "EACCES" });
+  expect(journal!.trashIntent("200")).toBeNull();
+  expect(client.callsTo("deletePage")).toBe(0);
+});
+
+
+it("protects each space homepage from trash in a combined export", async () => {
+  const { fs, client, journal } = await fixture(["DOCSY", "mayflower"], "rw", undefined, true);
+  for (const space of ["DOCSY", "mayflower"]) {
+    const parent = await fs.lookup(1, space);
+    await expect(fs.remove(parent, "_index.md")).rejects.toMatchObject({ code: "EROFS" });
+  }
+  expect(client.callsTo("deletePage")).toBe(0);
+  expect(journal!.writeStatus().unresolvedPublications).toBe(0);
 });
