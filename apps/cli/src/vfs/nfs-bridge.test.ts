@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { platform } from "node:os";
-import { open, opendir, stat } from "node:fs/promises";
+import { open, opendir, stat, unlink } from "node:fs/promises";
 import { getActiveProfile, loadConfig } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { runMountCommand } from "../commands/wiki-mount.js";
@@ -776,6 +776,14 @@ with socket.socket() as client:
     expect(journal!.pending()).toHaveLength(0);
     expect(client.callsTo("updatePage")).toBe(1);
     expect(client.peekPage("100")?.storage).toContain("Native Grüße 🐴");
+    const temporary = await open(join(mountpoint, ".native.tmp"), "wx", 0o600);
+    try { await temporary.write(Buffer.from("draft")); await temporary.sync(); }
+    finally { await temporary.close(); }
+    const localStat = await stat(join(mountpoint, ".native.tmp"));
+    expect(localStat.size).toBe(5);
+    expect(localStat.mode & 0o777).toBe(0o600);
+    expect(localStat.mtimeMs).toBeGreaterThan(Date.now() - 30_000);
+    await unlink(join(mountpoint, ".native.tmp"));
   }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [

@@ -114,8 +114,18 @@ fn attr(v: &Value) -> Result<fattr3, nfsstat3> {
         } else {
             ftype3::NF3REG
         },
-        mode: if directory {
-            0o555
+        mode: if let Some(mode) = v.get("mode") {
+            let mode = mode
+                .as_u64()
+                .filter(|m| *m <= 0o777)
+                .ok_or(nfsstat3::NFS3ERR_IO)?;
+            mode as u32
+        } else if directory {
+            if v["writable"].as_bool() == Some(true) {
+                0o755
+            } else {
+                0o555
+            }
         } else if v["writable"].as_bool() == Some(true) {
             0o644
         } else {
@@ -138,7 +148,14 @@ fn attr(v: &Value) -> Result<fattr3, nfsstat3> {
         used: size,
         fsid: 1,
         fileid: uint(v, "id")?,
-        atime: time,
+        atime: if let Some(millis) = v.get("atime").and_then(Value::as_u64) {
+            nfstime3 {
+                seconds: (millis / 1000).min(u32::MAX as u64) as u32,
+                nseconds: ((millis % 1000) * 1_000_000) as u32,
+            }
+        } else {
+            time
+        },
         mtime: time,
         ctime: time,
         ..Default::default()
@@ -281,6 +298,36 @@ impl NFSFileSystem for Bridge {
     async fn setattr(&self, id: fileid3, value: sattr3) -> Result<fattr3, nfsstat3> {
         if !self.writable {
             return Err(nfsstat3::NFS3ERR_ROFS);
+        }
+        if matches!(value.size, set_size3::Void) {
+            if !matches!(value.uid, set_uid3::Void) || !matches!(value.gid, set_gid3::Void) {
+                return Err(nfsstat3::NFS3ERR_NOTSUPP);
+            }
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| nfsstat3::NFS3ERR_IO)?
+                .as_millis() as u64;
+            let mut args = json!({"file": id});
+            if let set_mode3::mode(mode) = value.mode {
+                if mode > 0o777 {
+                    return Err(nfsstat3::NFS3ERR_NOTSUPP);
+                }
+                args["mode"] = json!(mode);
+            }
+            match value.atime {
+                set_atime::DONT_CHANGE => (),
+                set_atime::SET_TO_SERVER_TIME => args["atime"] = json!(now),
+                _ => return Err(nfsstat3::NFS3ERR_NOTSUPP),
+            }
+            match value.mtime {
+                set_mtime::DONT_CHANGE => (),
+                set_mtime::SET_TO_SERVER_TIME => args["mtime"] = json!(now),
+                _ => return Err(nfsstat3::NFS3ERR_NOTSUPP),
+            }
+            if args.as_object().unwrap().len() == 1 {
+                return self.getattr(id).await;
+            }
+            return attr(&self.call("set-attributes", args).await?);
         }
         if !matches!(value.mode, set_mode3::Void)
             || !matches!(value.uid, set_uid3::Void)

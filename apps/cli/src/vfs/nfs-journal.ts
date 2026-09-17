@@ -37,7 +37,7 @@ export class NfsJournal {
     try {
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers; EXTRA syncs the journal's unlink.
@@ -68,7 +68,7 @@ export class NfsJournal {
       this.db.transaction(() => {
         const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(locals)").all();
         if (!columns.some(column => column.name === "verifier")) this.db.exec("ALTER TABLE locals ADD COLUMN verifier TEXT");
-        this.db.exec("PRAGMA user_version=4");
+        this.db.exec("CREATE TABLE IF NOT EXISTS attributes (id TEXT PRIMARY KEY REFERENCES files(id), mode INTEGER NOT NULL, atime INTEGER, mtime INTEGER); PRAGMA user_version=5;");
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.db.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -128,6 +128,7 @@ export class NfsJournal {
       const file = this.local(path);
       if (!file) throw new VfsError("ENOENT", "Local NFS file not found");
       this.db.run("DELETE FROM locals WHERE id=?", [file.id]);
+      this.db.run("DELETE FROM attributes WHERE id=?", [file.id]);
       this.db.run("DELETE FROM files WHERE id=?", [file.id]);
     }).immediate();
   }
@@ -157,6 +158,26 @@ export class NfsJournal {
       // copy of the source in the logical quota. Rollback retains both images.
       this.removeLocal(source);
       return this.change(pageId, () => local.bytes.byteLength, (bytes) => bytes.set(local.bytes));
+    }).immediate();
+  }
+
+  attributes(id: string): { mode: number; atime: number | null; mtime: number | null } | null {
+    return this.db.query<{ mode: number; atime: number | null; mtime: number | null }, [string]>(
+      "SELECT mode,atime,mtime FROM attributes WHERE id=?",
+    ).get(id);
+  }
+
+  setAttributes(id: string, values: { mode?: number; atime?: number; mtime?: number }): void {
+    for (const [key, value] of Object.entries(values)) {
+      if (!Number.isSafeInteger(value) || value! < 0 || value! > (key === "mode" ? 0o777 : 0xffffffff * 1000 + 999)) {
+        throw new VfsError("EINVAL", "Invalid NFS attributes");
+      }
+    }
+    this.db.transaction(() => {
+      if (!this.get(id)) throw new VfsError("ENOENT", "Unknown NFS file");
+      const old = this.attributes(id) ?? { mode: 0o644, atime: null, mtime: null };
+      const next = { ...old, ...values };
+      this.db.run("INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?)", [id, next.mode, next.atime, next.mtime]);
     }).immediate();
   }
 
@@ -196,6 +217,7 @@ export class NfsJournal {
       // Replayed stable writes must not schedule another remote publication.
       if (Buffer.compare(bytes, old.bytes) === 0) return old;
       this.db.run("UPDATE files SET bytes=?, revision=revision+1 WHERE id=?", [bytes, id]);
+      this.db.run("UPDATE attributes SET mtime=MAX(COALESCE(mtime,0)+1,?) WHERE id=?", [Date.now(), id]);
       return this.get(id)!;
     }).immediate();
   }

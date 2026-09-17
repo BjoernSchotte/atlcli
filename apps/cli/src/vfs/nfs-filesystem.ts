@@ -12,6 +12,8 @@ export interface NfsAttributes {
   size: number;
   mtime: number;
   writable?: boolean;
+  mode?: number;
+  atime?: number;
   uid?: number;
   gid?: number;
 }
@@ -282,11 +284,15 @@ export class NfsFilesystem {
 
   private async stat(path: string): Promise<VfsStat> {
     const file = this.journal?.local(path);
-    if (!file) return this.vfs.stat(path);
+    if (!file) {
+      const stat = await this.vfs.stat(path);
+      const metadata = stat.kind === "page" && !stat.isDirectory ? this.journal?.attributes(stat.id) : undefined;
+      return metadata ? { ...stat, mode: metadata.mode & (this.vfs.guard.mode === "rw" ? 0o777 : 0o555) } : stat;
+    }
     await this.localParent(posix.dirname(path));
     return { id: file.id, kind: "page", isFile: true, isDirectory: false, isSymbolicLink: false,
       size: file.bytes.byteLength, sizeEstimated: false, mtime: new Date(0),
-      mode: this.vfs.guard.mode === "rw" ? 0o644 : 0o444 };
+      mode: this.vfs.guard.mode === "rw" ? this.journal?.attributes(file.id)?.mode ?? 0o644 : 0o444 };
   }
 
   private async mutationPath(parent: number, name: string): Promise<string> {
@@ -355,12 +361,12 @@ export class NfsFilesystem {
     return page.id;
   }
 
-  private async stagedFile(id: number): Promise<StagedNfsFile> {
+  private async stagedFile(id: number, metadataOnly = false): Promise<StagedNfsFile> {
     if (!this.journal) throw new VfsError("EROFS", "NFS staging is disabled");
     const path = await this.pathFor(id);
     const stat = await this.stat(path);
     if (stat.isDirectory) throw new VfsError("EISDIR", "Cannot write a directory");
-    if (stat.kind !== "page" || !(stat.mode & 0o222)) throw new VfsError("EROFS", "Not a writable page body");
+    if (stat.kind !== "page" || this.vfs.guard.mode !== "rw" || (!metadataOnly && !(stat.mode & 0o222))) throw new VfsError("EROFS", "Not a writable page body");
     const existing = this.journal.get(stat.id);
     if (existing) return existing;
     const bytes = await this.vfs.readFileBytes(path);
@@ -392,6 +398,11 @@ export class NfsFilesystem {
     return file.id.startsWith("local:") ? null : file.id;
   }
 
+  async setAttributes(id: number, values: { mode?: number; atime?: number; mtime?: number }): Promise<void> {
+    const file = await this.stagedFile(id, true);
+    this.journal!.setAttributes(file.id, values);
+  }
+
   async getattr(id: number): Promise<NfsAttributes> {
     return this.attributes(id, true);
   }
@@ -409,7 +420,10 @@ export class NfsFilesystem {
       if (!entry.rendered || entry.rendered.hash !== hash) {
         entry.rendered = { hash, mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1, stat.mtime.getTime() + 1) };
       }
-      return { id, directory: false, size: staged.bytes.byteLength, mtime: entry.rendered.mtime, uid: process.getuid?.() ?? 0, gid: process.getgid?.() ?? 0, writable: !!(stat.mode & 0o222) };
+      const metadata = this.journal!.attributes(staged.id);
+      return { id, directory: false, size: staged.bytes.byteLength, mtime: metadata?.mtime ?? entry.rendered.mtime,
+        mode: metadata ? metadata.mode & (this.vfs.guard.mode === "rw" ? 0o777 : 0o555) : undefined,
+        atime: metadata?.atime ?? undefined, uid: process.getuid?.() ?? 0, gid: process.getgid?.() ?? 0, writable: !!(stat.mode & 0o222) };
     }
     // Never publish estimated sizes to a kernel client.
     const bytes = stat.isDirectory || (stat.kind === "attachment" && !stat.sizeEstimated)
@@ -440,7 +454,9 @@ export class NfsFilesystem {
     }
     return { id, directory: stat.isDirectory, size, mtime,
       ...(this.journal ? { uid: process.getuid?.() ?? 0, gid: process.getgid?.() ?? 0 } : {}),
-      writable: !!this.journal && stat.kind === "page" && !stat.isDirectory && !!(stat.mode & 0o222) };
+      writable: !!this.journal && (stat.isDirectory
+        ? this.vfs.guard.mode === "rw" && ["space", "page", "folder"].includes(stat.kind)
+        : stat.kind === "page" && !!(stat.mode & 0o222)) };
   }
 
   async read(id: number, offset: number, count: number): Promise<{ data: string; eof: boolean }> {

@@ -80,6 +80,12 @@ export async function startNfsServer(options: {
           if (pageId !== null) publisher?.schedule(pageId);
           result = null; break;
         }
+        case "set-attributes": {
+          const values: { mode?: number; atime?: number; mtime?: number } = {};
+          for (const key of ["mode", "atime", "mtime"] as const) if (args[key] !== undefined) values[key] = number(args[key]);
+          await fs.setAttributes(number(args.file), values);
+          result = await fs.getattr(number(args.file)); break;
+        }
         case "getattr": result = await fs.getattr(number(args.file)); break;
         case "read": result = await fs.read(number(args.file), number(args.offset), number(args.count)); break;
         case "write": {

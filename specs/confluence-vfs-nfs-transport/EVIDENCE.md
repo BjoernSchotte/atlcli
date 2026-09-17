@@ -2032,3 +2032,32 @@ successful exclusive create. Verifiers and acknowledged bytes survive SIGKILL.
 UNCHECKED/GUARDED CREATE, native post-create SETATTR/permissions, backup and
 open-handle semantics, native atomic-editor testing and the complete-document
 publication boundary remain open. CLI RW is still gated.
+
+## Slice 77 — native exclusive creation and durable file attributes
+
+The native macOS probe exposed a real failure after successful EXCLUSIVE CREATE:
+it issues SETATTR with mode and server atime/mtime; the old helper rejected that
+request and `open(..., "wx")` failed with EIO. Protocol 8 now carries supported
+metadata-only SETATTR values. Schema 5 persists mode/atime/mtime independently of
+publication revisions. Byte changes advance a stored mtime. Local removal also
+removes its metadata. The projection enforces file write bits while allowing a
+writable mount to restore permissions; RO core guards remain authoritative.
+Content directories advertise writable permissions only in staged RW mode.
+
+- Native macOS and Linux hard mounts now create a private 0600 temporary file,
+  write/fsync it, verify its size/mode/recent mtime, and remove it normally.
+  Combined native, replacement-RPC and RO protection regressions: three tests /
+  95 assertions on each host.
+- Journal/projection suites: 60 passed / 952 assertions on each host. Coverage
+  includes restart preservation, epoch-zero atime, invalid mode rejection,
+  mode-only changes excluded from publication and restoring file permissions.
+  Expanded macOS SIGKILL check: seven assertions, including recovered mode/atime.
+- Linux live native DOCSY automatic publication passed (one / four assertions),
+  with normal unmount and disposable page cleanup. Builds, Rust tests, strict
+  clippy, TypeScript typecheck and whitespace validation passed.
+
+Only supported metadata-only mode/server-time SETATTR and existing truncate
+forms are accepted. Arbitrary ownership, client-supplied timestamps and combined
+size/metadata changes are still refused before mutation. UNCHECKED/GUARDED CREATE,
+full native editor replacement/backup sequences and publication completion
+boundaries remain open; CLI RW is not enabled by this evidence.

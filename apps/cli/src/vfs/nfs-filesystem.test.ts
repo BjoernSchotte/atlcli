@@ -716,3 +716,17 @@ it("guards local namespace operations by core mode, content directories and rese
   expect(journal!.local("/DOCSY/draft.tmp")).not.toBeNull();
   await expect(fs.remove(1, "_index.md")).rejects.toMatchObject({ code: "EROFS" });
 });
+
+
+it("enforces staged file modes and allows restoring write permissions", async () => {
+  const { fs, journal } = await fixture(["DOCSY"], "rw", undefined, true);
+  for (const id of [await fs.create(1, "private.tmp"), await fs.lookup(1, "_index.md")]) {
+    await fs.setAttributes(id, { mode: 0o400, atime: 0, mtime: 1234 });
+    expect(await fs.getattr(id)).toMatchObject({ mode: 0o400, atime: 0, mtime: 1234 });
+    await expect(fs.write(id, 0, Buffer.from("x"))).rejects.toMatchObject({ code: "EROFS" });
+    await fs.setAttributes(id, { mode: 0o600 });
+    await fs.write(id, 0, Buffer.from("x"));
+    expect((await fs.getattr(id)).mode).toBe(0o600);
+  }
+  expect(journal!.pending().map(file => file.id)).toEqual(["100"]);
+});

@@ -119,6 +119,7 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     j.renameLocal(local.path,"/DOCSY/.renamed.tmp");
     j.replaceLocal("/DOCSY/.renamed.tmp","1");
     const replay=j.createLocal("/DOCSY/replay.tmp","0123456789abcdef");
+    j.setAttributes(replay.id,{mode:384,atime:0});
     j.write(replay.id,0,Buffer.from("exclusive survives crash"));
     console.log("ACK");setInterval(()=>{},1000);`;
   const child = Bun.spawn([process.execPath, "--conditions=development", "-e", source], { stdout: "pipe", stderr: "pipe" });
@@ -134,6 +135,7 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     expect(Buffer.from(recovered.createLocal("/DOCSY/replay.tmp", "0123456789abcdef").bytes).toString()).toBe("exclusive survives crash");
     expect(Buffer.from(recovered.beginPublish("1")!.bytes).toString()).toBe("durable 🐴");
     expect(recovered.pending()).toHaveLength(1);
+    expect(recovered.attributes(recovered.local("/DOCSY/replay.tmp")!.id)).toMatchObject({ mode: 0o600, atime: 0 });
   } finally { child.kill(); await child.exited; }
 });
 
@@ -392,4 +394,21 @@ it("upgrades schema-three local files without inventing an exclusive verifier", 
   const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
   expect(() => reopened.createLocal(local.path, "0000000000000000")).toThrow("exists");
   expect(Buffer.from(reopened.local(local.path)!.bytes).toString()).toBe("keep");
+});
+
+
+it("persists local file attributes without publishing metadata-only changes", () => {
+  const { path, journal } = fixture();
+  const file = journal.createLocal("/DOCSY/private.tmp");
+  journal.setAttributes(file.id, { mode: 0o600, atime: 0, mtime: 1234 });
+  expect(journal.pending()).toEqual([]);
+  expect(() => journal.setAttributes(file.id, { mode: 0o7777 })).toThrow("Invalid");
+  expect(journal.attributes(file.id)).toEqual({ mode: 0o600, atime: 0, mtime: 1234 });
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.attributes(file.id)).toEqual({ mode: 0o600, atime: 0, mtime: 1234 });
+  recovered.write(file.id, 0, bytes("changed"));
+  expect(recovered.attributes(file.id)!.mtime).toBeGreaterThan(1234);
+  recovered.removeLocal(file.path);
+  expect(recovered.attributes(file.id)).toBeNull();
 });
