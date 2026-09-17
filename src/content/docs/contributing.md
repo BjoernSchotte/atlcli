@@ -83,6 +83,45 @@ Use **Re-run failed jobs** only after a failure has been classified as
 infrastructure-related. Product failures and a second failure after the narrow
 Bun file-link retry require diagnosis.
 
+### Dependency updates
+
+The root `renovate.json` configures the hosted
+[Renovate GitHub App](https://github.com/apps/renovate). A repository admin must
+install or grant the app access to this repository, then merge the configuration
+into the default branch and complete onboarding if prompted. No self-hosted
+runner or repository token is needed.
+
+Regular updates run on Mondays between 00:00 and 07:00 Europe/Berlin, with at
+most three open update PRs. Renovate may refresh existing branches outside that
+window; security-alert updates can bypass the schedule and PR limit.
+Automerge is disabled. Keep the existing **required** CI check enforced by
+branch protection and review each PR before merging.
+
+Bun/npm packages and GitHub Actions are covered. Related Astro, React,
+LangChain/deepagents and Action updates are grouped; major updates get separate
+PRs and require approval in the **Dependency Dashboard** first. Fixture,
+specification, spike and generated dependency directories are excluded.
+
+For example, an ordinary Astro patch update can open a grouped PR during the
+weekly window. Every LangChain/deepagents update needs dashboard approval,
+including patches. The patched `webdav-server` dependency also requires approval.
+First inspect `patchedDependencies`, `patches/` and the
+`deepagents` override in `package.json`. After approval, refresh or remove
+obsolete patches as needed and verify the resulting PR with
+`bun install --frozen-lockfile` and the existing CI gates. Dashboard approval
+only permits PR creation; it does not approve or merge the PR.
+
+Validate configuration edits with Renovate's
+[official validator](https://docs.renovatebot.com/config-validation/):
+
+```bash
+npx --yes --package renovate -- renovate-config-validator --strict --no-global renovate.json
+```
+
+If no PR appears, check app access, onboarding, the weekly window, open-PR limit
+and pending dashboard approvals. Do not enable Dependabot version updates for
+the same dependencies alongside Renovate.
+
 ### README media
 
 Store repository-owned screenshots and downloadable PDF references used by the
