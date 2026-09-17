@@ -1624,3 +1624,30 @@ An old cached current body no longer counts as a cached historical rendering;
 visit the historical path online once before offline use. Normal paths remain
 live as agreed. This establishes the read-only snapshot contract; RW publication
 and repeating these checks against its final implementation remain outstanding.
+
+## Slice 63 — true save debounce and serialized shared publication
+
+Inspection of the existing write-back path found two gaps in the requested save
+buffering: its timer ran from the first write rather than the last, and removing
+a pending batch before its API request completed allowed a second overlapping
+update. Aliases also created separate batches for one page. The shared writer
+now keys queues by page ID, waits for the full quiet window after the latest
+write, and runs at most one update per page. Explicit flush waits for both queued
+and in-flight batches, including writes queued while an earlier request runs.
+With coalescing disabled, each write still publishes separately and in order.
+Queued updates consult the current index after their predecessor completes,
+avoiding a predictably stale version attempt. Existing merge/conflict behavior
+is preserved; queue serialization does not silently override stale edits.
+
+Both new timing/concurrency regressions failed against the old implementation.
+Tests now cover aliases, a save at 400 ms postponing publication until 900 ms,
+blocked API updates, flush lifetime, enabled/disabled bundling, and recovery of
+the queue after a rejected update without hiding that rejection.
+
+macOS core/WebDAV/shell regression passed 418 tests/1158 assertions; Linux passed
+64 write-back tests/139 assertions. A new real HTTP test on Linux sent two rapid
+editor PUTs to a synthetic DOCSY page through the actual Confluence client.
+The API confirmed exactly one new version containing only the latest content;
+the test deleted its fixture successfully (one test/five assertions). All four
+typecheck tasks passed. This validates the shared publication path, not NFS RW:
+the durable journal and NFS mutations still need to be connected to it.

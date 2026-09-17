@@ -64,10 +64,12 @@ interface PendingWrite {
   reject: (error: unknown) => void;
   waiters: { resolve: (result: VfsWriteResult) => void; reject: (error: unknown) => void }[];
   scheduled: boolean;
+  dueAt: number;
 }
 
 export class WriteBack {
   private readonly pending = new Map<string, PendingWrite>();
+  private readonly running = new Map<string, Promise<void>>();
   /** Pages already warned about, so one session does not repeat itself. */
   private readonly warnedLossy = new Set<string>();
 
@@ -82,13 +84,22 @@ export class WriteBack {
    */
   async updatePage(node: TreeNode, path: string, content: string): Promise<VfsWriteResult> {
     assertWritable(this.opts.guard, "update", path);
-    if (this.opts.coalesceMs <= 0) return this.performUpdate(node, path, content);
-
+    if (this.opts.coalesceMs <= 0) {
+      const previous = this.running.get(node.id) ?? Promise.resolve();
+      const result = previous.then(() => this.performUpdate(this.opts.index.node(node.id) ?? node, path, content));
+      const finished = result.then(() => {}, () => {}).finally(() => {
+        if (this.running.get(node.id) === finished) this.running.delete(node.id);
+      });
+      this.running.set(node.id, finished);
+      return result;
+    }
     return new Promise<VfsWriteResult>((resolve, reject) => {
-      const existing = this.pending.get(path);
+      // Aliases of one page share the same publication queue.
+      const existing = this.pending.get(node.id);
       if (existing) {
         // Later content wins; earlier waiters still get the result.
         existing.content = content;
+        existing.dueAt = this.opts.now() + this.opts.coalesceMs;
         existing.waiters.push({ resolve, reject });
         return;
       }
@@ -99,35 +110,56 @@ export class WriteBack {
         resolve,
         reject,
         waiters: [],
-        scheduled: true,
+        scheduled: false,
+        dueAt: this.opts.now() + this.opts.coalesceMs,
       };
-      this.pending.set(path, entry);
-      const schedule = this.opts.schedule ?? ((fn, ms) => void setTimeout(fn, ms).unref?.());
-      schedule(() => void this.drain(path), this.opts.coalesceMs);
+      this.pending.set(node.id, entry);
+      this.schedule(entry);
     });
+  }
+
+  private schedule(entry: PendingWrite): void {
+    if (entry.scheduled) return;
+    entry.scheduled = true;
+    const schedule = this.opts.schedule ?? ((fn, ms) => void setTimeout(fn, ms).unref?.());
+    schedule(() => {
+      entry.scheduled = false;
+      if (this.pending.get(entry.node.id) === entry) void this.drain(entry.node.id);
+    }, Math.max(0, entry.dueAt - this.opts.now()));
   }
 
   /** Sends every pending coalesced write. Called at the end of a session. */
   async flush(): Promise<void> {
-    await Promise.all([...this.pending.keys()].map((path) => this.drain(path)));
+    while (this.pending.size || this.running.size) {
+      await Promise.all([...new Set([...this.pending.keys(), ...this.running.keys()])]
+        .map(id => this.drain(id, true)));
+    }
   }
 
   get pendingCount(): number {
-    return this.pending.size;
+    return new Set([...this.pending.keys(), ...this.running.keys()]).size;
   }
 
-  private async drain(path: string): Promise<void> {
-    const entry = this.pending.get(path);
-    if (!entry) return;
-    this.pending.delete(path);
-    try {
-      const result = await this.performUpdate(entry.node, entry.path, entry.content);
+  private drain(id: string, force = false): Promise<void> {
+    const running = this.running.get(id);
+    if (running) return running.then(() => this.drain(id, force));
+    const entry = this.pending.get(id);
+    if (!entry) return Promise.resolve();
+    if (!force && entry.dueAt > this.opts.now()) {
+      this.schedule(entry);
+      return Promise.resolve();
+    }
+    this.pending.delete(id);
+    const node = this.opts.index.node(id) ?? entry.node;
+    const task = this.performUpdate(node, entry.path, entry.content).then(result => {
       entry.resolve(result);
       for (const waiter of entry.waiters) waiter.resolve(result);
-    } catch (error) {
+    }, error => {
       entry.reject(error);
       for (const waiter of entry.waiters) waiter.reject(error);
-    }
+    }).finally(() => { this.running.delete(id); });
+    this.running.set(id, task);
+    return task;
   }
 
   // ------------------------------------------------------------- the update

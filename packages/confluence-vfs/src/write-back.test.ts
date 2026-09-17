@@ -75,7 +75,8 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function runScheduled(): void {
+function runScheduled(advanceMs = 500): void {
+  clock += advanceMs;
   const due = scheduled;
   scheduled = [];
   for (const fn of due) fn();
@@ -631,6 +632,61 @@ describe("attachments in rw mode", () => {
 });
 
 describe("write coalescing", () => {
+  it("waits for a full quiet window after the latest save, including aliases", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { coalesceMs: 500 });
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const first = vfs.writeFile("/DOCSY/getting-started-101.md", `${original}first\n`);
+    await settle();
+    clock += 400;
+    const second = vfs.writeFile("/DOCSY/getting-started-101/_index.md", `${original}latest\n`);
+    await settle();
+    runScheduled(100);
+    await settle();
+    expect(client.callsTo("updatePage")).toBe(0);
+    runScheduled(399);
+    await settle();
+    expect(client.callsTo("updatePage")).toBe(0);
+    runScheduled(1);
+    await Promise.all([first, second]);
+    expect(client.callsTo("updatePage")).toBe(1);
+    expect(client.peekPage("101")?.storage).toContain("latest");
+    await vfs.close();
+  });
+
+  for (const coalesceMs of [0, 500]) it(`serializes saves behind an in-flight update and flush waits for all (${coalesceMs}ms)`, async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { coalesceMs });
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const update = client.updatePage.bind(client);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let active = 0, peak = 0, calls = 0;
+    client.updatePage = async params => {
+      calls++; active++; peak = Math.max(peak, active);
+      try { if (calls === 1) await gate; return await update(params); }
+      finally { active--; }
+    };
+    const first = vfs.writeFile("/DOCSY/getting-started-101.md", `${original}saved\n`);
+    await settle(); runScheduled(); await settle();
+    expect(calls).toBe(1);
+    const second = vfs.writeFile("/DOCSY/getting-started-101/_index.md", `${original}saved\n`);
+    const third = vfs.writeFile("/DOCSY/getting-started-101.md", `${original}saved\n`);
+    await settle(); runScheduled(); await settle();
+    let flushed = false;
+    const flushing = vfs.flush().then(() => { flushed = true; });
+    try {
+      await settle();
+      expect(calls).toBe(1);
+      expect(flushed).toBe(false);
+    } finally { release(); }
+    await Promise.all([first, second, third, flushing]);
+    expect(peak).toBe(1);
+    expect(calls).toBe(coalesceMs === 0 ? 3 : 2);
+    expect(flushed).toBe(true);
+    await vfs.close();
+  });
+
   it("merges several writes to the same file into one update", async () => {
     const client = seeded();
     const vfs = await openVfs(client, { coalesceMs: 500 });
@@ -648,6 +704,26 @@ describe("write coalescing", () => {
     expect(client.callsTo("updatePage")).toBe(1);
     expect(client.peekPage("101")?.version).toBe(2);
     expect(client.peekPage("101")?.storage).toContain("chunk two");
+    await vfs.close();
+  });
+
+  it("continues the serialized queue after a rejected update without hiding its error", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const update = client.updatePage.bind(client);
+    let calls = 0;
+    client.updatePage = async params => {
+      if (++calls === 1) throw Object.assign(new Error("denied"), { status: 403 });
+      return update(params);
+    };
+    const failed = vfs.writeFile("/DOCSY/getting-started-101.md", `${original}denied\n`).catch(error => error);
+    const next = vfs.writeFile("/DOCSY/getting-started-101/_index.md", `${original}retry\n`);
+    await settle();
+    await vfs.flush();
+    expect((await failed).code).toBe("EACCES");
+    expect((await next).version).toBe(2);
+    expect(client.peekPage("101")?.storage).toContain("retry");
     await vfs.close();
   });
 

@@ -85,6 +85,36 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
+  it("coalesces rapid editor PUTs into one verified Confluence version", async () => {
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
+      title: makeE2eTitle("vfs-debounce"), storage: "<p>Debounce original</p>" });
+    created.push(page.id);
+    const delayed = await ConfluenceVfsImpl.open({ profile: profile!.name, client,
+      spaces: [E2E_SPACE_KEY], mode: "rw", allowDelete: false, offline: false,
+      cacheDir: join(cacheDir, "debounce"), coalesceMs: 500 });
+    let endpoint: RunningWebdavServer | undefined;
+    try {
+      endpoint = await startWebdavServer({ vfs: delayed, spaces: [E2E_SPACE_KEY] });
+      const path = await delayed.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`);
+      const original = await delayed.readFile(path);
+      const target = new URL(path, endpoint.url);
+      const first = fetch(target, { method: "PUT", body: original.replace("Debounce original", "Debounce intermediate") });
+      await Bun.sleep(100);
+      const second = fetch(target, { method: "PUT", body: original.replace("Debounce original", "Debounce latest") });
+      const replies = await Promise.all([first, second]);
+      for (const reply of replies) { expect([200, 204]).toContain(reply.status); await reply.text(); }
+      const actual = await client.getPage(page.id);
+      expect(actual.version).toBe((page.version ?? 1) + 1);
+      expect(actual.storage).toContain("Debounce latest");
+      expect(actual.storage).not.toContain("Debounce intermediate");
+    } finally {
+      await endpoint?.stop();
+      await delayed.close();
+      await client.deletePage(page.id);
+      created.splice(created.indexOf(page.id), 1);
+    }
+  }, 30000);
+
   it("lists the space over PROPFIND", async () => {
     const response = await fetch(new URL(`/${E2E_SPACE_KEY}`, server.url), {
       method: "PROPFIND",

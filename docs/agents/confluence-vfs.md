@@ -156,6 +156,13 @@ Every write is versioned. If the page changed since you read it, the VFS merges;
 if the merge conflicts, the write fails with `EBUSY` and your content is kept —
 check `atlcli wiki vfs conflicts list` and tell the user rather than retrying.
 
+Rapid updates to the same page are bundled until 500 ms after the latest write,
+including writes through different aliases. Only one update per page runs at a
+time; writes arriving during it wait for the next batch and retain normal
+version/conflict checks. Flushing waits for queued and running updates.
+`--sync-writes` disables the delay and bundling, while retaining serialization.
+This is save coalescing; retry backoff for API errors is a separate mechanism.
+
 ### Machine-readable output
 
 ```bash
