@@ -272,6 +272,10 @@ For current Markdown pages and page aliases, GETATTR derives the modification
 time from the same materialized Markdown used for its exact byte size when
 Confluence supplies the version timestamp. A cold fetch therefore cannot pair
 the newer body's size with the preceding metadata lookup's older timestamp.
+Rendered Markdown cache entries carry a format revision as well as the
+Confluence version. After this upgrade, older Markdown entries are refreshed
+only when requested; cached attachments are retained. Offline reads of an old
+Markdown format require one online read before becoming available again.
 Historic `.versions/<n>.md` uses that version's own timestamp in its Markdown
 and NFS attributes, not the current page timestamp. If the historic response
 omits it, the Markdown omits it and NFS reports an unknown time (Unix epoch).

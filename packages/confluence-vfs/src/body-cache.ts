@@ -5,7 +5,8 @@
  *
  * Confluence page versions are monotonic and a published version is immutable.
  * So `(pageId, version)` is a content-addressed key: an entry is either correct
- * or absent, never stale. Invalidation therefore belongs entirely to the tree
+ * or absent for a given rendering format. Old rendering formats are cache misses.
+ * Remote-version invalidation belongs to the tree
  * index — when it learns a page moved from version 12 to 13, version 12's row
  * simply stops being asked for. Nothing in this file has to reason about
  * freshness.
@@ -82,6 +83,7 @@ const SCHEMA = `
     version INTEGER NOT NULL,
     markdown TEXT NOT NULL,
     storage_hash TEXT NOT NULL,
+    render_version INTEGER NOT NULL DEFAULT 0,
     bytes INTEGER NOT NULL,
     fetched_at INTEGER NOT NULL,
     accessed_at INTEGER NOT NULL,
@@ -104,7 +106,9 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS attachments_page ON attachments (page_id);
 `;
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+// Increment when generated Markdown semantics change, including frontmatter.
+const RENDER_VERSION = 1;
 
 /**
  * Where the cache lives for one profile against one site.
@@ -219,8 +223,16 @@ export class BodyCache {
     mkdirSync(options.blobDir, { recursive: true });
     this.db = new Database(options.dbPath, { create: true });
     this.db.exec("PRAGMA journal_mode = WAL");
-    this.db.exec(SCHEMA);
-    this.db.run("INSERT OR IGNORE INTO schema_info (version) VALUES (?)", [SCHEMA_VERSION]);
+    try {
+      this.db.transaction(() => {
+        this.db.exec(SCHEMA);
+        const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(bodies)").all();
+        if (!columns.some(column => column.name === "render_version")) {
+          this.db.exec("ALTER TABLE bodies ADD COLUMN render_version INTEGER NOT NULL DEFAULT 0");
+        }
+        this.db.run("INSERT OR IGNORE INTO schema_info (version) VALUES (?)", [SCHEMA_VERSION]);
+      }).immediate();
+    } catch (error) { this.db.close(); throw error; }
   }
 
   close(): void {
@@ -241,7 +253,7 @@ export class BodyCache {
           fetched_at: number;
         },
         [string, number]
-      >("SELECT page_id, version, markdown, storage_hash, fetched_at FROM bodies WHERE page_id = ? AND version = ?")
+      >(`SELECT page_id, version, markdown, storage_hash, fetched_at FROM bodies WHERE page_id = ? AND version = ? AND render_version = ${RENDER_VERSION}`)
       .get(pageId, version);
     if (!row) {
       this.misses += 1;
@@ -272,13 +284,23 @@ export class BodyCache {
   putBody(body: { pageId: string; version: number; markdown: string; storageHash: string }): void {
     const bytes = Buffer.byteLength(body.markdown, "utf8");
     if (bytes > this.opts.maxBytes) return;
-    this.evictFor(bytes, { keepPageId: body.pageId, keepVersion: body.version });
+    const existing = this.db.query<{ bytes: number; render_version: number }, [string, number]>(
+      "SELECT bytes, render_version FROM bodies WHERE page_id=? AND version=?",
+    ).get(body.pageId, body.version);
     const now = this.opts.now();
+    if (existing?.render_version === RENDER_VERSION) {
+      this.db.run("UPDATE bodies SET accessed_at=? WHERE page_id=? AND version=?", [now, body.pageId, body.version]);
+      return;
+    }
+    this.evictFor(Math.max(0, bytes - (existing?.bytes ?? 0)), { keepPageId: body.pageId, keepVersion: body.version });
     this.db.run(
-      `INSERT INTO bodies (page_id, version, markdown, storage_hash, bytes, fetched_at, accessed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (page_id, version) DO UPDATE SET accessed_at = excluded.accessed_at`,
-      [body.pageId, body.version, body.markdown, body.storageHash, bytes, now, now],
+      `INSERT INTO bodies (page_id, version, markdown, storage_hash, bytes, fetched_at, accessed_at, render_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (page_id, version) DO UPDATE SET
+         markdown=excluded.markdown, storage_hash=excluded.storage_hash, bytes=excluded.bytes,
+         fetched_at=excluded.fetched_at, accessed_at=excluded.accessed_at, render_version=excluded.render_version
+       WHERE bodies.render_version <> excluded.render_version`,
+      [body.pageId, body.version, body.markdown, body.storageHash, bytes, now, now, RENDER_VERSION],
     );
   }
 

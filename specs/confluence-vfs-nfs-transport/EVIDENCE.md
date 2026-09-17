@@ -1184,3 +1184,33 @@ The regressions check renamed/reparented views, cross-page identity separation,
 foreign-owner rejection, historic bytes with a newer current page, and missing
 historic timestamps. This does not resolve multi-READ snapshot publication or
 the remaining RW/editor acceptance gates.
+
+## Slice 44 — persisted Markdown rendering-format migration
+
+The prior historical timestamp fix could be hidden indefinitely by an existing
+(page ID, version) cache row. BodyCache now tags rendered Markdown with a format
+revision. Schema migration adds the column transactionally; old rows default to
+format zero and cannot satisfy a current read. Requested bodies are refreshed
+lazily and replace the old-format row. Attachments, identity and conflict data
+are not cleared. An old offline body is a cache miss until read online once.
+
+Within the current rendering format, a page version remains immutable. A
+regression also found that reinserting an existing body could evict unrelated
+entries unnecessarily: admission now checks the existing row and charges only
+additional bytes when replacing an older format. Same-format reinsertion only
+updates access time.
+
+Validation:
+- macOS: 411 core/NFS/WebDAV/performance tests, 1392 assertions, passed.
+- Linux: 55 cache/PageStore tests, 176 assertions, passed.
+- Both hosts: four native mount cases, 31 assertions, passed. Linux basic cases
+  used live DOCSY and combined-space read-only access; attachments/change cases
+  and all macOS cases were synthetic.
+- Migration test opens a legacy schema containing Markdown and an attachment,
+  verifies the Markdown miss and intact attachment, replaces the old format,
+  checks immutability and reopens the database.
+- Typecheck passed all four tasks. Native mounts detached normally; no live
+  content was modified.
+
+This closes persisted-cache compatibility for the timestamp correction.
+RW/publication/snapshot decisions and remaining acceptance work stay open.
