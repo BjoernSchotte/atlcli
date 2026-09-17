@@ -867,3 +867,33 @@ it("recreates a backed-up page through ordinary and exclusive CREATE under the s
   await expect(fs.create(1, "_index.md", "fedcba9876543210")).rejects.toMatchObject({ code: "EEXIST" });
   expect(Buffer.from(journal!.get("100")!.bytes).toString()).toBe("new draft");
 });
+
+
+it("checks exclusive recreation replay against the current page identity and scope", async () => {
+  const { fs, journal, vfs, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  await fs.rename(1, "_index.md", 1, "backup");
+  const verifier = "0123456789abcdef";
+  const handle = await fs.create(1, "_index.md", verifier);
+  await fs.write(handle, 0, Buffer.from("acknowledged bytes"));
+  const before = journal!.get("100");
+  const recovered = new NfsFilesystem(vfs, ["DOCSY"], undefined, journal);
+  const stat = vfs.stat.bind(vfs);
+  vfs.stat = async path => {
+    const result = await stat(path);
+    return path === "/DOCSY/_index.md" ? { ...result, id: "999" } : result;
+  };
+  await expect(recovered.create(1, "_index.md", verifier)).rejects.toMatchObject({ code: "ESTALE" });
+  expect(journal!.get("100")).toEqual(before);
+  vfs.stat = stat;
+  const resolve = vfs.resolve.bind(vfs);
+  vfs.resolve = async path => {
+    const result = await resolve(path);
+    return path === "/DOCSY/_index.md" ? { ...result, spaceKey: "mayflower" } : result;
+  };
+  await expect(recovered.create(1, "_index.md", verifier)).rejects.toMatchObject({ code: "EACCES" });
+  expect(journal!.get("100")).toEqual(before);
+  vfs.resolve = resolve;
+  const replay = await recovered.create(1, "_index.md", verifier);
+  expect(Buffer.from((await recovered.read(replay, 0, 65536)).data, "base64").toString()).toBe("acknowledged bytes");
+  expect(client.callsTo("updatePage")).toBe(0);
+});

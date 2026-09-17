@@ -359,7 +359,11 @@ export class NfsFilesystem {
       this.journal!.restoreCreated(path, {}, verifier);
       return this.register(path);
     }
-    if (verifier !== undefined && this.journal!.exclusivePageReplay(path, verifier)) return this.register(path);
+    const replay = verifier === undefined ? null : this.journal!.exclusivePageReplay(path, verifier);
+    if (replay) {
+      await this.checkPageIdentity(path, replay.id);
+      return this.register(path);
+    }
     if (verifier !== undefined && this.journal!.local(path)) {
       this.journal!.createLocal(path, verifier);
       return this.register(path);
@@ -386,10 +390,15 @@ export class NfsFilesystem {
 
   private async checkReservation(path: string): Promise<VfsStat> {
     const reserved = this.journal!.displaced(path)!;
+    const stat = await this.checkPageIdentity(path, reserved.id);
+    if (this.paths.size >= NFS_MAX_HANDLES || this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
+    return stat;
+  }
+
+  private async checkPageIdentity(path: string, id: string): Promise<VfsStat> {
     const stat = await this.vfs.stat(path);
     await this.checkResolvedScope(path);
-    if (stat.isDirectory || stat.kind !== "page" || stat.id !== reserved.id) throw Object.assign(new Error("Reserved page identity changed"), { code: "ESTALE" });
-    if (this.paths.size >= NFS_MAX_HANDLES || this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
+    if (stat.isDirectory || stat.kind !== "page" || stat.id !== id) throw Object.assign(new Error("Reserved page identity changed"), { code: "ESTALE" });
     return stat;
   }
 

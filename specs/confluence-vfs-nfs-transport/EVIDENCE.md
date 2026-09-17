@@ -2361,3 +2361,22 @@ by restored publication. This does not cancel a core write already in flight.
 - macOS focused publisher/RPC/native save tests: 16 tests / 154 assertions.
 - Typecheck: all four tasks passed. Public NFS RW remains gated by the other
   acceptance requirements.
+
+
+## Slice 89 — exclusive replay identity confinement
+
+A persisted exclusive-CREATE verifier previously accepted the current object at
+its saved path without comparing page identities. Replay now shares the page-ID
+and resolved-export checks used for backup restoration. A replacement identity
+returns ESTALE; a foreign-space resolution returns EACCES. Neither changes the
+acknowledged local bytes or sends a remote mutation. A valid retry still returns
+the original staged bytes after a projection restart.
+
+The new regression injects changed ID and foreign scope at the core boundary,
+then restores the original resolution and proves successful replay. It does not
+claim to bypass the core's metadata refresh policy.
+
+- Projection suites: 48 tests / 648 assertions on macOS and Linux.
+- Native macOS save: 34 assertions. Linux real DOCSY save: 18 assertions;
+  owned mounts and disposable fixture cleaned up.
+- All four typecheck tasks passed. Public NFS RW remains gated.
