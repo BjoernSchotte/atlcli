@@ -4374,3 +4374,39 @@ four / 31 on each host. Typecheck passed four tasks. Linux DOCSY live journal
 resume passed one / five assertions with owned resource cleanup (the separate
 four macOS-host-only live cases remain skipped). Every owned benchmark/test
 mount detached normally. Final RW-enabled artifacts and required CI remain open.
+
+## Slice 162: native Homebrew artifact consumption in CI
+
+The four-platform NFS workflow now sets up Homebrew with the pinned official
+setup action, downloads the companion-aware formula at tap PR #1 commit
+`94b7a0c121843a4c3d535ea5d82ee8e773d21ab1`, and consumes the native review archive
+built in that job. `scripts/ci/nfs-homebrew-proof.ts` changes only release inputs,
+class/name and keg-only isolation; it asserts that the real formula's install
+and test methods remain byte-for-byte unchanged. It runs `brew test`, verifies
+the helper/license, and runs the existing compiled shell/native lifecycle suite
+through the installed Homebrew prefix. No public tap or release is changed.
+The proof refuses to replace an existing proof keg, disables automatic updates
+and cleanup, and removes its own installation and tap in finally blocks.
+
+Local actual review-archive installs passed on macOS arm64 (17 compiled/native
+cases / 110 assertions) and Linux x64 (17 / 117). Both uninstalled/untapped their
+owned fixtures. These are non-publishable working-tree review archives, not a
+release provenance claim: macOS identifies base c4ee457f, while the synced Linux
+test checkout identifies its older base bb0d5363. The CI uses its own checked-out
+commit and native artifact. Workflow policy passed 35 tests / 614 assertions;
+typecheck passed four tasks. Linux DOCSY live journal resume passed with owned
+page cleanup. CI proof for the other two architectures remains pending until the
+new workflow actually completes; adding a job is not passing that gate.
+
+The first final LIVE attempt timed out in setup at Bun's default 5 seconds,
+before the selected test ran. Repeating with `--timeout 30000` passed one test /
+five assertions in 6.21 seconds, including cleanup; this does not claim a
+five-second network-setup guarantee. The macOS pre-RW source regression passed
+749 tests / 3847 assertions, with 37 opt-in cases skipped and separately covered
+by their documented native/fault lanes.
+
+CI [35258939951](https://github.com/BjoernSchotte/atlcli/actions/runs/35258939951)
+completed successfully at c4ee457f on all four native architectures, including
+the corrected Linux recursive-removal test, native reads/writes, real disk-full
+recovery and compiled RO lifecycle. The Homebrew CI additions in this slice
+were not part of that run; their results are still pending.

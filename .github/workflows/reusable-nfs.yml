@@ -79,6 +79,16 @@ jobs:
         run: |
           ATLCLI_VFS_TEST_BINARY="$RUNNER_TEMP/nfs-helper/atlcli" \
             bun run test apps/cli/src/e2e/wiki-sh-built.e2e.test.ts
+      - name: Set up Homebrew for native installer proof
+        uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c # 2026.07.10.1
+      - name: Test companion-aware Homebrew installation
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location \
+            https://raw.githubusercontent.com/BjoernSchotte/homebrew-tap/94b7a0c121843a4c3d535ea5d82ee8e773d21ab1/Formula/atlcli.rb \
+            --output "$RUNNER_TEMP/atlcli.rb"
+          bun scripts/ci/nfs-homebrew-proof.ts \
+            "$RUNNER_TEMP/nfs-release/atlcli-${{ matrix.target }}.tar.gz" "$RUNNER_TEMP/atlcli.rb"
       - name: Record native runtime
         shell: bash
         run: |
