@@ -562,3 +562,23 @@ it("retains exclusive recreation replay after restart without truncating acknowl
   recovered.replaceLocal(replacement.path, "100");
   expect(recovered.exclusivePageReplay("/DOCSY/_index.md", "0123456789abcdef")).toBeNull();
 });
+
+
+it("reports durable recovery counts without treating local editor entries as publishable pages", () => {
+  const { path, journal } = fixture();
+  expect(journal.writeStatus()).toEqual({ pendingPages: 0, failedPages: 0, displacedPages: 0, localEntries: 0, unresolvedPublications: 0 });
+  journal.admit("100", "/DOCSY/_index.md", bytes("original"), 1);
+  journal.write("100", 0, bytes("changed"));
+  journal.beginPublish("100");
+  journal.failPublish("100", "REMOTE_RESULT_UNKNOWN");
+  expect(journal.writeStatus()).toEqual({ pendingPages: 1, failedPages: 1, displacedPages: 0, localEntries: 0, unresolvedPublications: 1 });
+  journal.backupPage("100", "/DOCSY/backup");
+  const expected = { pendingPages: 0, failedPages: 1, displacedPages: 1, localEntries: 1, unresolvedPublications: 1 };
+  expect(journal.writeStatus()).toEqual(expected);
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.writeStatus()).toEqual(expected);
+  recovered.replaceLocal("/DOCSY/backup", "100");
+  recovered.completePublish("100", recovered.beginPublish("100")!.revision, 2);
+  expect(recovered.writeStatus()).toEqual({ pendingPages: 0, failedPages: 0, displacedPages: 0, localEntries: 0, unresolvedPublications: 0 });
+});

@@ -23,6 +23,14 @@ export interface NfsPublishIntent {
   revision: number;
 }
 
+export interface NfsWriteStatus {
+  pendingPages: number;
+  failedPages: number;
+  displacedPages: number;
+  localEntries: number;
+  unresolvedPublications: number;
+}
+
 /** Non-evictable local stable storage. Separate from the disposable VFS cache. */
 export class NfsJournal {
   private readonly db: Database;
@@ -81,6 +89,16 @@ export class NfsJournal {
   }
 
   close(): void { this.db.close(); }
+
+  /** Counts only; never materializes page bodies or exposes tenant paths. */
+  writeStatus(): NfsWriteStatus {
+    return this.db.query<NfsWriteStatus, []>(`SELECT
+      (SELECT count(*) FROM files WHERE revision>publishedRevision AND id NOT IN (SELECT id FROM locals) AND id NOT IN (SELECT id FROM displaced)) AS pendingPages,
+      (SELECT count(*) FROM files WHERE error IS NOT NULL AND revision>publishedRevision AND id NOT IN (SELECT id FROM locals)) AS failedPages,
+      (SELECT count(*) FROM displaced) AS displacedPages,
+      (SELECT count(*) FROM locals) AS localEntries,
+      (SELECT count(*) FROM intents) AS unresolvedPublications`).get()!;
+  }
 
   get(id: string): StagedNfsFile | null {
     return this.db.query<StagedNfsFile, [string]>("SELECT * FROM files WHERE id=?").get(id);

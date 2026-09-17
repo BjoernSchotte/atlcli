@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { connect } from "node:net";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -77,6 +77,26 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
 }
 
 describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
+  it("reports preserved recovery data once on shutdown without exposing content", async () => {
+    const { server, journal } = await fixture(["DOCSY"], false, undefined, true, 4096);
+    const file = journal!.createLocal("/DOCSY/private-editor-name");
+    journal!.write(file.id, 0, Buffer.from("private editor body"));
+    expect(server.writeStatus()).toEqual({ pendingPages: 0, failedPages: 0, displacedPages: 0, localEntries: 1, unresolvedPublications: 0 });
+    const messages: string[] = [];
+    const stderr = spyOn(process.stderr, "write").mockImplementation(((message: unknown) => { messages.push(String(message)); return true; }) as typeof process.stderr.write);
+    try {
+      const stopped = server.stop();
+      expect(server.stop()).toBe(stopped);
+      await stopped;
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toContain("1 local editor entries");
+      expect(messages[0]).toContain("local durability does not confirm Confluence publication");
+      expect(messages[0]).not.toContain("private-editor-name");
+      expect(messages[0]).not.toContain("private editor body");
+      expect(Buffer.from(journal!.get(file.id)!.bytes).toString()).toBe("private editor body");
+    } finally { stderr.mockRestore(); }
+  });
+
   it("renames durable local files over a page and removes only local files through real RPCs", async () => {
     const { server, journal, vfs, client } = await fixture(["DOCSY"], false, () => Date.now(), true);
     const content = (await vfs.readFile("/DOCSY/_index.md")).replace("Grüße 🐴", "RPC replacement");

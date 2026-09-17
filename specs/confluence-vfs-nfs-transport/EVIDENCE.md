@@ -2380,3 +2380,27 @@ claim to bypass the core's metadata refresh policy.
 - Native macOS save: 34 assertions. Linux real DOCSY save: 18 assertions;
   owned mounts and disposable fixture cleaned up.
 - All four typecheck tasks passed. Public NFS RW remains gated.
+
+
+## Slice 90 — durable write status and shutdown recovery notice
+
+The journal exposes bounded counts for pending/failed pages, displaced pages,
+local editor entries and unresolved publication intents. A single SQL query
+avoids loading staged bodies and includes interrupted replacements excluded from
+the publish queue. Counts survive reopening the journal. Categories may overlap:
+a displaced page can also have an unresolved intent or failure.
+
+The running bridge exposes this status (null without a journal). Shutdown waits
+for serving and in-flight publication, then reports retained recovery data on
+stderr using counts only. It does not claim a remote commit or delete the data.
+Repeated stop calls share one promise and emit the notice only once.
+
+- Journal suites: 28 tests / 448 assertions on macOS and Linux.
+- Real-helper shutdown test verifies preserved bytes, single reporting and no
+  content/path disclosure. Together with the native save: 42 assertions per OS.
+- Linux DOCSY live automatic save: 18 assertions with cleanup.
+- All four typecheck tasks passed.
+
+This provides bridge shutdown reporting, not a completed public recovery CLI.
+NFS RW remains gated; listing/recovery command integration and unexpected-death
+reporting remain open alongside the broader write acceptance requirements.

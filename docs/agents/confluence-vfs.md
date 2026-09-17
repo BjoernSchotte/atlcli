@@ -260,7 +260,11 @@ until write acceptance passes. WebDAV remains the default transport.
 Development tests now cover TextEdit safe-save and VS Code autosave on a native
 macOS NFS mount, plus Vim/native saves and real DOCSY publication on Linux.
 These are individual write gates, not general RW acceptance; see the
-[write evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md).
+[write evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md). Development
+RW shutdown reports counts of retained pending pages, interrupted replacements,
+local editor entries and unresolved publications. Keep the staging journal when
+this notice appears: locally durable bytes do not prove Confluence publication.
+The public recovery CLI remains part of the pending RW acceptance work.
 
 NFS is not generally faster than WebDAV. The current synthetic native comparison
 shows different results by OS and cache state; see the [measured results and

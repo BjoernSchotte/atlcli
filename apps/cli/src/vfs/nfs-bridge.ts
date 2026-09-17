@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
 import { VfsError, type ConfluenceVfs } from "@atlcli/confluence-vfs";
 import { NfsPublisher } from "./nfs-publisher.js";
-import type { NfsJournal } from "./nfs-journal.js";
+import type { NfsJournal, NfsWriteStatus } from "./nfs-journal.js";
 import { NfsFilesystem, NFS_MAX_READ } from "./nfs-filesystem.js";
 import { encodeNfsFrame, NFS_BRIDGE_VERSION, readNfsFrames } from "./nfs-framing.js";
 
@@ -14,6 +14,8 @@ export interface RunningNfsServer {
   exited: Promise<void>;
   /** Complete received RPC records, including mount calls and retries. */
   requestCount(): Promise<number>;
+  /** Local journal state; a stable NFS write is not a Confluence publication. */
+  writeStatus(): NfsWriteStatus | null;
   stop(): Promise<void>;
 }
 
@@ -161,7 +163,10 @@ export async function startNfsServer(options: {
   try {
     const bound = await ready;
     publisher?.resume();
-    return { port: bound, pid: child.pid!, exited, requestCount: async () => {
+    let stopping: Promise<void> | undefined;
+    return { port: bound, pid: child.pid!, exited,
+      writeStatus: () => options.journal?.writeStatus() ?? null,
+      requestCount: async () => {
       if (stats) throw new Error("NFS statistics request already pending");
       if (child.exitCode !== null || child.signalCode !== null) throw new Error("NFS helper stopped");
       const id = ++statsSequence;
@@ -173,12 +178,16 @@ export async function startNfsServer(options: {
           void reply({ stats: id }).catch(reject);
         });
       } finally { clearTimeout(timeout); stats = undefined; }
-    }, stop: async () => {
+    }, stop: () => stopping ??= (async () => {
       const publishing = publisher?.stop();
       child.stdin.end();
       const kill = setTimeout(() => child.kill("SIGKILL"), 3000);
       try { await exited; await serving; await publishing; } finally { clearTimeout(kill); }
-    } };
+      const status = options.journal?.writeStatus();
+      if (status && Object.values(status).some(count => count > 0)) {
+        process.stderr.write(`atlcli: NFS stopped with durable local recovery data: ${status.pendingPages} pending pages, ${status.failedPages} failed pages, ${status.displacedPages} interrupted replacements, ${status.localEntries} local editor entries, ${status.unresolvedPublications} unresolved publications. Keep the journal; local durability does not confirm Confluence publication.\n`);
+      }
+    })() };
   } catch (error) {
     child.kill();
     await exited;
