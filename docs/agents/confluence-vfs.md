@@ -171,6 +171,8 @@ visible name makes its directories eligible for publication. Public NFS RW
 remains gated until the complete acceptance suite passes.
 
 Deletion moves a page to the **trash**; there is no purge.
+The space homepage cannot be moved, renamed or deleted through filesystem
+operations. Its `_index.md` body remains editable in write mode.
 
 Before trashing a page, the shared VFS checks fresh page metadata against the
 resolved page ID and space. A stale path after an external space move fails

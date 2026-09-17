@@ -4110,3 +4110,22 @@ two shared device/capacity assertions now run once. No owned test mounts remaine
 Linux native DOCSY mkdir/Vim LIVE passed one test / 11 assertions with cleanup.
 Typecheck passed four tasks. Intel runner confirmation is still pending on the
 new CI run; no all-platform success is claimed from local arm64 evidence.
+
+## Slice 153 — protect the homepage in the shared VFS (2026-09-17)
+
+The parentless-item audit found that the shared rename operation accepted the
+homepage's `_index.md` as a move source. The new regression failed on the old
+implementation: moving the homepage resolved successfully. Shared rename and
+delete now reject that identity before any remote mutation, protecting shell
+and mount callers alike. Reading and editing the homepage body remain allowed.
+
+macOS and Linux each passed 159 tests / 1105 assertions across shared write-back
+and NFS filesystem tests. Linux DOCSY owned-journal LIVE passed one test / five
+assertions and cleaned up its disposable page. Typecheck passed all four tasks.
+No destructive homepage operation was attempted against the live tenant.
+
+Parentless items remain open: shared space listing and path resolution currently
+start at the homepage and enumerate its children. Removing only the NFS
+source-parent check would not make genuine parentless items accessible. Their
+listing/resolution and durable move representation require a coordinated change.
+This slice does not claim that coverage or remove the public NFS RW gate.

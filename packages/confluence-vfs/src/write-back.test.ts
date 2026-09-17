@@ -470,6 +470,23 @@ describe("mkdir", () => {
 });
 
 describe("rename and move", () => {
+  it("protects the space homepage from namespace mutations while allowing body edits", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      await expect(vfs.rename("/DOCSY/_index.md", "/DOCSY/architecture-102/home-100"))
+        .rejects.toMatchObject({ code: "EROFS" });
+      await expect(vfs.rm("/DOCSY/_index.md", { recursive: true }))
+        .rejects.toMatchObject({ code: "EROFS" });
+      expect(client.callsTo("movePage")).toBe(0);
+      expect(client.callsTo("updatePage")).toBe(0);
+      expect(client.callsTo("deletePage")).toBe(0);
+      const homepage = await vfs.readFile("/DOCSY/_index.md");
+      await vfs.writeFile("/DOCSY/_index.md", `${homepage}\nUpdated homepage\n`);
+      expect(client.peekPage("100")?.storage).toContain("Updated homepage");
+    } finally { await vfs.close(); }
+  });
+
   it.each(["API Design", "Über Grüße: 日本語!", "release_v2.0"])("preserves exact title %s when moving the canonical directory name", async title => {
     const client = seeded().seedPage({ id: "101", title, spaceKey: "DOCSY", parentId: "100", storage: "<p>Body</p>" });
     const vfs = await openVfs(client);

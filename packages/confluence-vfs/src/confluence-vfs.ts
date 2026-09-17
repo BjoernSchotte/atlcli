@@ -1102,6 +1102,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       });
     }
     const node = source.node;
+    if (node.id === await this.index.getHomepageId(node.spaceKey)) {
+      throw new VfsError("EROFS", "The space homepage cannot be moved or renamed", { path: from });
+    }
     const target = splitParent(normalizePath(to));
     const parsedTarget = parseName(target.name);
 
@@ -1245,6 +1248,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
     const node = resolved.node;
     assertWritable(this.guard, "delete", path);
+    if (node.id === await this.index.getHomepageId(node.spaceKey)) {
+      throw new VfsError("EROFS", "The space homepage cannot be deleted", { path });
+    }
     if (node.type !== "page") {
       throw new VfsError("EROFS", "Deleting folders or other non-page content is not supported", { path });
     }
