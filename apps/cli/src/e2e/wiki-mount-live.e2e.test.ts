@@ -193,6 +193,31 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     }
   }, 120000);
 
+  it("creates only under the reserved parent and refuses to overwrite its new-page alias", async () => {
+    const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY,
+      title: makeE2eTitle("nfs-create-parent"), storage: "<p>Creation parent</p>" });
+    created.push(parent.id);
+    let childId: string | undefined;
+    try {
+      const parentPath = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${parent.id}.md`);
+      const path = `${dirname(parentPath)}/${makeE2eTitle("nfs-create-child")}.md`;
+      const condition = { createOnly: true as const, spaceKey: E2E_SPACE_KEY, parentId: parent.id };
+      await expect(vfs.writeFile(path, "Wrong parent", { ...condition, parentId: "0" })).rejects.toMatchObject({ code: "EBUSY" });
+      const result = await vfs.writeFile(path, "Created through guarded publication 🐴", condition);
+      childId = result.pageId; created.push(childId);
+      expect(result.created).toBe(true);
+      const actual = await client.getPage(childId);
+      expect(actual.storage).toContain("Created through guarded publication");
+      await expect(vfs.writeFile(path, "Must not overwrite", condition)).rejects.toMatchObject({ code: "EEXIST" });
+      const after = await client.getPage(childId);
+      expect(after.version).toBe(actual.version);
+      expect(after.storage).toBe(actual.storage);
+    } finally {
+      if (childId) { await client.deletePage(childId); created.splice(created.indexOf(childId), 1); }
+      await client.deletePage(parent.id); created.splice(created.indexOf(parent.id), 1);
+    }
+  }, 30000);
+
   it("publishes a durable NFS journal image through the core", async () => {
     const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
       title: makeE2eTitle("nfs-journal"), storage: "<p>Journal original</p>" });

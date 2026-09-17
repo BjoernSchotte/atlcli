@@ -114,4 +114,4 @@ export {
   VirtualDirs,
   type VirtualDirsOptions,
 } from "./virtual-dirs.js";
-export type { ConfluenceVfs, VfsWriteResult } from "./vfs.js";
+export type { ConfluenceVfs, VfsWriteResult, VfsWriteCondition } from "./vfs.js";

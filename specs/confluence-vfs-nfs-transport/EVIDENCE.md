@@ -2620,3 +2620,23 @@ bypass the writer's exclusive lock.
   followed by successful reopen with preserved bytes.
 - Native macOS save/refresh: 37 assertions; Linux live DOCSY publication: 13
   assertions with disposable-page cleanup. All four typecheck tasks passed.
+
+
+## Slice 100 — create-only core publication boundary
+
+New NFS pages require a creation intent that cannot silently turn into an update
+when a path becomes occupied. The shared writeFile API now accepts a create-only
+condition with the reserved space and parent identity. It rejects occupied paths
+(including a successfully created session alias), mismatched parents/exports and
+content carrying an existing VFS page ID/version before sending a mutation.
+Existing ID-bound updates retain their previous behavior.
+
+- macOS/Linux write-back and NFS publisher suites: 90 tests / 288 assertions each.
+- Linux real DOCSY test: 6 assertions; creates an isolated parent/child, refuses
+  the wrong parent and repeated creation, verifies unchanged remote content and
+  version, then deletes both test pages. All four typecheck tasks passed.
+
+This is a prerequisite, not native NFS new-page acceptance. Durable creation
+intents, ambiguous POST recovery, local-to-remote handle promotion and editor
+file eligibility remain to be connected. A create-only condition prevents
+accidental updates but does not by itself reconcile an unknown create result.

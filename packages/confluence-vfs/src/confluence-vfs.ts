@@ -43,7 +43,7 @@ import { VirtualDirs } from "./virtual-dirs.js";
 import { WriteBack } from "./write-back.js";
 import { TreeIndex, type TreeNode } from "./tree-index.js";
 import { VfsError, type VfsDirent, type VfsNode, type VfsStat } from "./types.js";
-import type { ConfluenceVfs, VfsWriteResult } from "./vfs.js";
+import type { ConfluenceVfs, VfsWriteResult, VfsWriteCondition } from "./vfs.js";
 
 /** Everything the factory resolved that the core needs but cannot derive. */
 export interface VfsRuntime {
@@ -870,18 +870,21 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * version file, a comments file, a label link — is structurally read-only and
    * says so with `EROFS`, whatever the mode.
    */
-  async writeFile(path: string, content: string | Uint8Array, existingPage?: { id: string; spaceKey: string }): Promise<VfsWriteResult> {
+  async writeFile(path: string, content: string | Uint8Array, condition?: VfsWriteCondition): Promise<VfsWriteResult> {
     const text = typeof content === "string" ? content : new TextDecoder().decode(content);
     const resolved = await this.resolver.resolve(this.canonicalize(path), {
       allowMissingLeaf: true,
     });
 
-    if (existingPage && (resolved.kind !== "body" || resolved.node.id !== existingPage.id ||
-        resolved.node.spaceKey !== existingPage.spaceKey)) {
+    if (condition && "createOnly" in condition && resolved.kind !== "missing") {
+      throw new VfsError("EEXIST", "Creation target is already occupied", { path });
+    }
+    if (condition && "id" in condition && (resolved.kind !== "body" || resolved.node.id !== condition.id ||
+        resolved.node.spaceKey !== condition.spaceKey)) {
       throw new VfsError("EBUSY", "Page identity or export changed before publication", { path });
     }
     if (resolved.kind === "missing") {
-      return this.createFromMissing(resolved, path, text);
+      return this.createFromMissing(resolved, path, text, condition && "createOnly" in condition ? condition : undefined);
     }
     switch (resolved.kind) {
       case "body": {
@@ -916,6 +919,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     missing: MissingLeaf,
     path: string,
     text: string,
+    condition?: { spaceKey: string; parentId: string },
   ): Promise<VfsWriteResult> {
     const parent = missing.parent;
     if (parent.kind !== "container" && parent.kind !== "space") {
@@ -924,6 +928,15 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     assertNotReserved(missing.name, path);
 
     const { spaceKey, parentNode, parentIsFolder } = await this.containerOf(parent, path);
+    if (condition) {
+      if (condition.spaceKey !== spaceKey || condition.parentId !== parentNode.id) {
+        throw new VfsError("EBUSY", "Creation parent or export changed before publication", { path });
+      }
+      const { frontmatter } = parseVfsFrontmatter(text);
+      if (frontmatter.id !== undefined || frontmatter.version !== undefined) {
+        throw new VfsError("EINVAL", "New page content must not claim an existing page identity", { path });
+      }
+    }
     const result = await this.requireWriteBack().createPage({
       parent: parentNode,
       spaceKey,

@@ -979,3 +979,24 @@ describe("Mermaid roundtrip through the shared converter", () => {
     await vfs.close();
   });
 });
+
+
+it("guards create-only publication against occupied paths and changed parent/export identities", async () => {
+  const client = seeded();
+  const vfs = await openVfs(client);
+  const condition = { createOnly: true as const, spaceKey: "DOCSY", parentId: "100" };
+  try {
+    await expect(vfs.writeFile("/DOCSY/_index.md", "Replacement", condition)).rejects.toMatchObject({ code: "EEXIST" });
+    await expect(vfs.writeFile("/DOCSY/new.md", "New", { ...condition, parentId: "102" })).rejects.toMatchObject({ code: "EBUSY" });
+    await expect(vfs.writeFile("/DOCSY/new.md", "New", { ...condition, spaceKey: "OTHER" })).rejects.toMatchObject({ code: "EBUSY" });
+    await expect(vfs.writeFile("/DOCSY/new.md", await vfs.readFile("/DOCSY/_index.md"), condition)).rejects.toMatchObject({ code: "EINVAL" });
+    expect(client.callsTo("createPage")).toBe(0);
+    expect(client.callsTo("updatePage")).toBe(0);
+    const created = await vfs.writeFile("/DOCSY/new.md", "New page", condition);
+    expect(created.created).toBe(true);
+    expect(client.peekPage(created.pageId)?.parentId).toBe("100");
+    await expect(vfs.writeFile("/DOCSY/new.md", "Replay must not update", condition)).rejects.toMatchObject({ code: "EEXIST" });
+    expect(client.callsTo("createPage")).toBe(1);
+    expect(client.callsTo("updatePage")).toBe(0);
+  } finally { await vfs.close(); }
+});

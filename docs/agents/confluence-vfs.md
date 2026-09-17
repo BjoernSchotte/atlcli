@@ -429,7 +429,9 @@ forced or lazy detachment. Close applications using the volume if it is busy.
 ### Recovering local NFS edits
 
 Use the journal path from your development mount setup. These commands need no
-profile, authentication, or running server. Public NFS RW mounting is still gated.
+profile, authentication, or running server. Public NFS RW mounting is still gated. New-page publication is not yet connected
+to native NFS CREATE; the core now has a create-only space/parent guard for that
+work, preventing a delayed creation from silently updating an occupied path.
 
 ```bash
 atlcli wiki mount recovery /path/to/journal.sqlite --json
