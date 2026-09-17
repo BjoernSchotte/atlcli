@@ -754,7 +754,8 @@ it("keeps a replacement source handle writable after rename without changing the
 });
 
 
-it.each([false, true])("retitles a parentless page without implicitly moving it under the homepage (lost reply=%s)", async lostReply => {
+for (const lostReply of [false, true]) {
+it(`retitles a parentless page without implicitly moving it under the homepage (lost reply=${lostReply})`, async () => {
   const { fs, client, journal, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   client.seedPage({ id: "900", title: "Detached", spaceKey: "DOCSY", storage: "<p>Root</p>" });
   const directory = await fs.lookup(1, "detached-900");
@@ -773,8 +774,10 @@ it.each([false, true])("retitles a parentless page without implicitly moving it 
   expect(await fs.lookup(1, "renamed-900")).toBe(directory);
   expect(journal!.pendingMoves()).toEqual([]);
 });
+}
 
-it.each([false, true])("lists and reparents an actual parentless page (lost reply=%s)", async lostReply => {
+for (const lostReply of [false, true]) {
+it(`lists and reparents an actual parentless page (lost reply=${lostReply})`, async () => {
   const { fs, journal, client, vfs, cacheDir } = await fixture(["DOCSY"], "rw", undefined, true);
   client.seedPage({ id: "900", title: "Detached", spaceKey: "DOCSY", storage: "<p>Root Grüße 🐴</p>" });
   client.seedPage({ id: "901", title: "Nested", spaceKey: "DOCSY", parentId: "900", storage: "<p>Child</p>" });
@@ -807,8 +810,10 @@ it.each([false, true])("lists and reparents an actual parentless page (lost repl
   expect(client.peekPage("900")?.parentId).toBe("200");
   expect(client.callsTo("movePage")).toBe(1);
 });
+}
 
-it.each([false, true])("reparents remote page directories with stable handles and reconciles lost replies (%s)", async lostReply => {
+for (const lostReply of [false, true]) {
+it(`reparents remote page directories with stable handles and reconciles lost replies (${lostReply})`, async () => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   const directory = await fs.lookup(1, "child-0-200");
   const body = await fs.lookup(directory, "_index.md");
@@ -840,6 +845,7 @@ it.each([false, true])("reparents remote page directories with stable handles an
   await fs.rename(1, "child-0-200", destination, "child-0-200");
   expect(client.callsTo("movePage")).toBe(1);
 });
+}
 
 it.each(["page", "folder"] as const)("preserves %s and descendant handles across spaces", async kind => {
   const { fs, client, journal } = await fixture(["DOCSY", "mayflower"], "rw", undefined, true);
@@ -889,7 +895,8 @@ it.each(["page", "folder"] as const)("moves a %s across selected spaces and reco
   } finally { await publisher.stop(); reopened.close(); }
 });
 
-it.each([false, true])("moves real folder identities and preserves descendant handles (lost reply=%s)", async lostReply => {
+for (const lostReply of [false, true]) {
+it(`moves real folder identities and preserves descendant handles (lost reply=${lostReply})`, async () => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   client.seedPage({ id: "900", title: "Archive", type: "folder", parentId: "100", spaceKey: "DOCSY" });
   client.seedPage({ id: "901", title: "Nested", parentId: "900", spaceKey: "DOCSY", storage: "<p>Preserved descendant</p>" });
@@ -914,8 +921,10 @@ it.each([false, true])("moves real folder identities and preserves descendant ha
   expect(client.callsTo("movePageToPosition")).toBe(1);
   expect(client.callsTo("movePage")).toBe(0);
 });
+}
 
-it.each([false, true])("retitles a page directory without changing its ID (lost reply=%s)", async lostReply => {
+for (const lostReply of [false, true]) {
+it(`retitles a page directory without changing its ID (lost reply=${lostReply})`, async () => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   const directory = await fs.lookup(1, "child-0-200");
   const body = await fs.lookup(directory, "_index.md");
@@ -940,6 +949,7 @@ it.each([false, true])("retitles a page directory without changing its ID (lost 
   expect(client.callsTo("updatePage")).toBe(1);
   expect(journal!.pendingMoves()).toEqual([]);
 });
+}
 
 it("rejects changed IDs and unsupported folder retitles before freezing an intent", async () => {
   const { fs, journal, client } = await fixture(["DOCSY"], "rw", undefined, true);
@@ -1147,7 +1157,8 @@ it("projects durable local editor directories and keeps handles across tree rena
   expect(client.callsTo("updatePage")).toBe(0);
 });
 
-it.each([false, true])("never publishes a renamed hidden Markdown-named directory (replacement=%s)", async replace => {
+for (const replace of [false, true]) {
+it(`never publishes a renamed hidden Markdown-named directory (replacement=${replace})`, async () => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
   try {
@@ -1168,6 +1179,7 @@ it.each([false, true])("never publishes a renamed hidden Markdown-named director
     expect(Buffer.from((await fs.read(child, 0, 100)).data, "base64").toString()).toBe("Retained local notes");
   } finally { await publisher.stop(); }
 });
+}
 
 it("keeps recovered local directories read-only and out of generated views", async () => {
   const { fs, journal } = await fixture(["DOCSY"], "ro", undefined, true);

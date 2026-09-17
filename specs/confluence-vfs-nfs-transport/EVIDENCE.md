@@ -4579,3 +4579,18 @@ No runtime changes. Full required CI (including Intel storage recovery) and
 explicit final go/no-go remain the only acceptance gate; they are not checked
 off by this document. Root typecheck and the Linux compiled combined-space
 RO LIVE test are run before committing this audit.
+
+## Slice 170: unambiguous JUnit parameter names
+
+Full run 35263874754 passed `required`, system Chrome and all four native NFS
+jobs. Only the non-required timing telemetry failed. Its actual JUnit artifacts
+contained eight duplicate testcase identities: Bun left `%s` unexpanded for
+boolean/numeric `it.each` arguments in three NFS/VFS test files. String argument
+variants were already distinct. Replaced only those eight registrations with
+explicit loops and template-literal names; callbacks and assertions are unchanged.
+The timing parser remains strict about duplicate identities.
+
+Validation: all 185 affected tests passed / 1273 assertions and their real JUnit
+output passed the unchanged `parseBunJUnit` parser. All nine parser regression
+tests passed / 25 assertions. Root typecheck and Linux compiled DOCSY RW LIVE
+passed, with owned fixture cleanup. No runtime behavior changes.

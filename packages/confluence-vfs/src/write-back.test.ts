@@ -690,7 +690,8 @@ describe("rm", () => {
     } finally { await vfs.close(); }
   });
 
-  it.each([false, true])("rejects a stale trash target after an external space move (guarded: %s)", async guarded => {
+  for (const guarded of [false, true]) {
+it(`rejects a stale trash target after an external space move (guarded: ${guarded})`, async () => {
     const client = seeded();
     const vfs = await openVfs(client, { spaces: ["DOCSY"] });
     try {
@@ -703,6 +704,7 @@ describe("rm", () => {
       expect(client.isTrashed("101")).toBe(false);
     } finally { await vfs.close(); }
   });
+}
 
   it("does not delete when fresh trash metadata is unavailable", async () => {
     const client = seeded();

@@ -120,7 +120,8 @@ it("lists interrupted trash without discarding its recoverable page bytes", () =
   expect(readFileSync(path)).toEqual(original);
 });
 
-it.each([13, 14, 15, 16, 17, 18])("inspects schema %s namespace-only moves without changing the journal", schema => {
+for (const schema of [13, 14, 15, 16, 17, 18]) {
+it(`inspects schema ${schema} namespace-only moves without changing the journal`, () => {
   const { root, path } = fixture();
   const journal = new NfsJournal(path, "synthetic:DOCSY");
   journal.beginMove({ id: "200", kind: "page", source: "/DOCSY/source-200", target: "/DOCSY/target-201/renamed-200",
@@ -142,6 +143,7 @@ it.each([13, 14, 15, 16, 17, 18])("inspects schema %s namespace-only moves witho
   expect(existsSync(output)).toBe(false);
   expect(readFileSync(path)).toEqual(original);
 });
+}
 
 it("merges move receipts with file images and lists completed folder moves", () => {
   const { root, path } = fixture();
