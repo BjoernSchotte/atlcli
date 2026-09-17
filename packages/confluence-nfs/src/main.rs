@@ -15,7 +15,7 @@ use std::{
         Arc, Mutex,
     },
 };
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::{oneshot, OwnedSemaphorePermit, Semaphore};
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 // The dispatch deadline can drop call() at any await, before its own timeout.
@@ -28,17 +28,31 @@ impl Drop for PendingCall<'_> {
         self.pending.lock().unwrap().remove(&self.id);
     }
 }
+// spawn_blocking cannot be aborted once started. Keep capacity owned by the
+// blocking write even if its caller is cancelled, then return it for the reply wait.
+async fn send_request(
+    permit: OwnedSemaphorePermit,
+    write: impl FnOnce() -> std::io::Result<()> + Send + 'static,
+) -> Result<OwnedSemaphorePermit, nfsstat3> {
+    tokio::task::spawn_blocking(move || {
+        write().map_err(|_| nfsstat3::NFS3ERR_IO)?;
+        Ok(permit)
+    })
+    .await
+    .map_err(|_| nfsstat3::NFS3ERR_IO)?
+}
 struct Bridge {
     session: [u8; 16],
     pending: Pending,
     sequence: AtomicU64,
-    capacity: Semaphore,
+    capacity: Arc<Semaphore>,
 }
 impl Bridge {
     async fn call(&self, op: &str, args: Value) -> Result<Value, nfsstat3> {
-        let _permit = self
+        let permit = self
             .capacity
-            .acquire()
+            .clone()
+            .acquire_owned()
             .await
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;
         let id = self.sequence.fetch_add(1, Ordering::Relaxed);
@@ -49,12 +63,10 @@ impl Bridge {
             id,
         };
         let frame = json!({"id":id,"op":op,"args":args});
-        let sent =
-            tokio::task::spawn_blocking(move || write_frame(&mut std::io::stdout().lock(), &frame))
-                .await;
-        if !matches!(sent, Ok(Ok(()))) {
-            return Err(nfsstat3::NFS3ERR_IO);
-        }
+        let _permit = send_request(permit, move || {
+            write_frame(&mut std::io::stdout().lock(), &frame)
+        })
+        .await?;
         let response = tokio::time::timeout(std::time::Duration::from_secs(60), rx).await;
         let value = response
             .map_err(|_| nfsstat3::NFS3ERR_JUKEBOX)?
@@ -309,7 +321,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         session,
         pending: pending.clone(),
         sequence: AtomicU64::new(1),
-        capacity: Semaphore::new(32),
+        capacity: Arc::new(Semaphore::new(32)),
     };
     let server = NFSTcpListener::bind(&format!("127.0.0.1:{port}"), bridge).await?;
     write_frame(
@@ -352,7 +364,7 @@ mod tests {
             session,
             pending: Arc::new(Mutex::new(HashMap::new())),
             sequence: AtomicU64::new(1),
-            capacity: Semaphore::new(32),
+            capacity: Arc::new(Semaphore::new(32)),
         }
     }
 
@@ -371,7 +383,40 @@ mod tests {
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
         assert!(bridge.pending.lock().unwrap().is_empty());
-        assert_eq!(bridge.capacity.available_permits(), 32);
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while bridge.capacity.available_permits() != 32 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancelled_blocking_write_keeps_capacity_until_it_finishes() {
+        let capacity = Arc::new(Semaphore::new(1));
+        let permit = capacity.clone().acquire_owned().await.unwrap();
+        let (started, ready) = oneshot::channel();
+        let (release, blocked) = std::sync::mpsc::channel();
+        let task = tokio::spawn(send_request(permit, move || {
+            let _ = started.send(());
+            blocked
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .map_err(std::io::Error::other)?;
+            Ok(())
+        }));
+        ready.await.unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_eq!(capacity.available_permits(), 0);
+        release.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while capacity.available_permits() != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
     }
 
     #[test]

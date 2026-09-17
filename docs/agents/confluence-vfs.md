@@ -328,7 +328,8 @@ NFS accepts at most 32 simultaneous TCP connections and handles requests in orde
 within each connection. Idle or incomplete requests disconnect after 60 seconds;
 clients can reconnect. Dispatch and response-write deadlines are 120 and 30
 seconds. Cancelled bridge calls release their pending-response records and
-concurrency permits. Replay tracking is capped at 4,096 entries; exceeding capacity closes
+concurrency permits; a still-running blocking pipe write retains its permit
+until the write finishes, so cancellation cannot bypass the 32-call bound. Replay tracking is capped at 4,096 entries; exceeding capacity closes
 the requesting connection. These limits do not change WebDAV or the VFS shell.
 
 For a native release-mode development helper, run

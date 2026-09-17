@@ -1335,3 +1335,22 @@ passed on b8267310: all four native NFS platforms, draft type/policy,
 documentation, privacy and draft-fast gates. Product-quality gates skipped by
 draft policy are not claimed as passing. These native lanes include the recent
 comment visibility, handle capacity and cancellation regressions.
+
+## Slice 51 — retain capacity during cancelled blocking pipe writes
+
+Rust's blocking stdout writer can outlive the async request that spawned it.
+Previously, cancelling that request released its capacity permit immediately,
+allowing subsequent requests to enqueue further blocking writers. The permit
+now moves into the blocking writer and returns to the response wait only after
+the write completes. Dropping the caller cannot bypass the 32-call bound.
+Pending-response registration still cleans up immediately on cancellation.
+
+A deterministic fault test holds the writer on a channel, aborts its async
+caller, verifies that capacity remains occupied, then releases the writer and
+verifies capacity recovery. The existing actual bridge-cancellation test also
+checks eventual recovery after its independent stdout write completes.
+Both hosts passed all six Rust tests, Clippy with warnings denied and locked
+helper builds; freshly built helpers passed four native cases (36 assertions)
+per host. Linux basic cases were live DOCSY/combined spaces RO; other cases
+were synthetic. All mounts detached normally. The outer TCP dispatch and
+response-write deadline probes remain separate open tests.
