@@ -1354,3 +1354,19 @@ helper builds; freshly built helpers passed four native cases (36 assertions)
 per host. Linux basic cases were live DOCSY/combined spaces RO; other cases
 were synthetic. All mounts detached normally. The outer TCP dispatch and
 response-write deadline probes remain separate open tests.
+
+## Slice 52 — real TCP dispatch deadline fault injection
+
+The protocol test launches the actual helper with a controlled pipe responder.
+LOOKUP requires three bridge calls; the responder schedules each response after
+45 seconds, below the individual 60-second bridge limit. The cumulative request
+therefore reaches the production 120-second dispatch deadline while waiting for
+the third response. The TCP connection must close without a reply, and independent
+NULL RPCs succeed before and after the timeout. No test-only deadline override is
+introduced. Response timers and child processes are cleaned up in all exits.
+
+The test passed on macOS in 120.012 seconds and Linux in 120.017 seconds
+(seven assertions each). Typecheck passed all four tasks. This covers the outer
+dispatch deadline with real TCP, helper and pipe framing; the separate 30-second
+response-write timeout still requires a blocked-reader fault test. No remote wiki
+content is involved in this synthetic fault injection.

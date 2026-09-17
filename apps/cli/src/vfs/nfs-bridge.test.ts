@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { connect } from "node:net";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -14,6 +14,7 @@ import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { nfsMountOptionsFor } from "./mount-transport.js";
 import { startNfsServer, type RunningNfsServer } from "./nfs-bridge.js";
+import { encodeNfsFrame, readNfsFrames } from "./nfs-framing.js";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES } from "./mount-client-probes.js";
 
 const attachmentBytes = Buffer.alloc(1024 * 1024 + 29, 0xab);
@@ -29,7 +30,7 @@ function ints(...values: number[]): Buffer {
 function opaque(value: Buffer): Buffer {
   return Buffer.concat([ints(value.length), value, Buffer.alloc((4 - value.length % 4) % 4)]);
 }
-async function rpc(server: RunningNfsServer, program: number, procedure: number, body: Buffer): Promise<Buffer> {
+async function rpc(server: Pick<RunningNfsServer, "port">, program: number, procedure: number, body: Buffer): Promise<Buffer> {
   const payload = Buffer.concat([ints(7, 0, 2, program, 3, procedure, 0, 0, 0, 0), body]);
   return new Promise((resolveReply, reject) => {
     const socket = connect(server.port, "127.0.0.1");
@@ -354,6 +355,66 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
     } finally { socket.destroy(); }
   }, 70000);
+
+  it("enforces the dispatch deadline across individually responsive bridge calls", async () => {
+    const child = spawn(resolve(helperPath!), ["0"], { env: {}, stdio: ["pipe", "pipe", "pipe"] });
+    child.stderr.resume();
+    child.stdin.on("error", () => {});
+    const exited = new Promise<void>((done, reject) => {
+      child.once("close", () => done());
+      child.once("error", reject);
+    });
+    const frames = readNfsFrames(child.stdout);
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    let calls = 0;
+    let socket: ReturnType<typeof connect> | undefined;
+    let pump: Promise<void> | undefined;
+    try {
+      const hello = (await frames.next()).value as { port: number };
+      const server = { port: hello.port };
+      pump = (async () => {
+        for await (const raw of frames) {
+          const request = raw as { id: number; op: string; args: { file: number } };
+          calls++;
+          // LOOKUP performs directory attributes, lookup, then object attributes.
+          // Each responds before the bridge's 60s limit; together they exceed 120s.
+          const timer = setTimeout(() => {
+            timers.delete(timer);
+            const result = request.op === "lookup" ? 2 : {
+              id: request.args.file, directory: request.args.file === 1, size: 0, mtime: 0,
+            };
+            child.stdin.write(encodeNfsFrame({ id: request.id, result }));
+          }, 45_000);
+          timers.add(timer);
+        }
+      })();
+      const mounted = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+      const root = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
+      const payload = Buffer.concat([ints(19, 0, 2, 100003, 3, 3, 0, 0, 0, 0),
+        opaque(root), opaque(Buffer.from("slow.md"))]);
+      const started = performance.now();
+      socket = connect(server.port, "127.0.0.1");
+      const closed = new Promise<void>((done, reject) => {
+        socket!.setTimeout(130_000, () => socket!.destroy(new Error("Dispatch deadline not enforced")));
+        socket!.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
+        socket!.on("data", () => reject(new Error("Slow RPC replied instead of hitting dispatch deadline")));
+        socket!.on("close", done);
+        socket!.on("connect", () => socket!.write(Buffer.concat([ints(0x80000000 + payload.length), payload])));
+      });
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+      await closed;
+      expect(performance.now() - started).toBeGreaterThanOrEqual(118_000);
+      expect(calls).toBe(3);
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+    } finally {
+      for (const timer of timers) clearTimeout(timer);
+      socket?.destroy();
+      child.stdin.end();
+      const kill = setTimeout(() => child.kill("SIGKILL"), 3000);
+      try { await exited; await pump; }
+      finally { clearTimeout(kill); }
+    }
+  }, 140_000);
 
   for (const procedure of [16, 17]) {
     it(`paginates NFS procedure ${procedure} without repeating or omitting entries`, async () => {
