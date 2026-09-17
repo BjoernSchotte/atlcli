@@ -18,6 +18,16 @@ use std::{
 use tokio::sync::{oneshot, Semaphore};
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
+// The dispatch deadline can drop call() at any await, before its own timeout.
+struct PendingCall<'a> {
+    pending: &'a Mutex<HashMap<u64, oneshot::Sender<Value>>>,
+    id: u64,
+}
+impl Drop for PendingCall<'_> {
+    fn drop(&mut self) {
+        self.pending.lock().unwrap().remove(&self.id);
+    }
+}
 struct Bridge {
     session: [u8; 16],
     pending: Pending,
@@ -34,16 +44,18 @@ impl Bridge {
         let id = self.sequence.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().unwrap().insert(id, tx);
+        let _pending = PendingCall {
+            pending: &self.pending,
+            id,
+        };
         let frame = json!({"id":id,"op":op,"args":args});
         let sent =
             tokio::task::spawn_blocking(move || write_frame(&mut std::io::stdout().lock(), &frame))
                 .await;
         if !matches!(sent, Ok(Ok(()))) {
-            self.pending.lock().unwrap().remove(&id);
             return Err(nfsstat3::NFS3ERR_IO);
         }
         let response = tokio::time::timeout(std::time::Duration::from_secs(60), rx).await;
-        self.pending.lock().unwrap().remove(&id);
         let value = response
             .map_err(|_| nfsstat3::NFS3ERR_JUKEBOX)?
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;
@@ -342,6 +354,24 @@ mod tests {
             sequence: AtomicU64::new(1),
             capacity: Semaphore::new(32),
         }
+    }
+
+    #[tokio::test]
+    async fn cancelled_calls_release_pending_responses_and_capacity() {
+        let bridge = Arc::new(bridge([1; 16]));
+        let caller = bridge.clone();
+        let task = tokio::spawn(async move { caller.call("getattr", json!({"id": 1})).await });
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while bridge.pending.lock().unwrap().is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert!(bridge.pending.lock().unwrap().is_empty());
+        assert_eq!(bridge.capacity.available_permits(), 32);
     }
 
     #[test]

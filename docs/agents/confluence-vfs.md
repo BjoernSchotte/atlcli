@@ -327,7 +327,8 @@ payload. Malformed connections are closed; reconnect with a valid request.
 NFS accepts at most 32 simultaneous TCP connections and handles requests in order
 within each connection. Idle or incomplete requests disconnect after 60 seconds;
 clients can reconnect. Dispatch and response-write deadlines are 120 and 30
-seconds. Replay tracking is capped at 4,096 entries; exceeding capacity closes
+seconds. Cancelled bridge calls release their pending-response records and
+concurrency permits. Replay tracking is capped at 4,096 entries; exceeding capacity closes
 the requesting connection. These limits do not change WebDAV or the VFS shell.
 
 For a native release-mode development helper, run

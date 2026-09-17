@@ -1285,3 +1285,19 @@ READDIR/READDIRPLUS cases with 210 assertions. Typecheck passed all four tasks.
 Linux basic native cases used live DOCSY/combined spaces RO; mutations and Mac
 cases were synthetic. Mounts detached normally. User docs describe capacity
 errors and now also reflect the already-tested attachment rename recovery.
+
+## Slice 49 — cancellation-safe bridge response tracking
+
+The deadline audit found that dropping a Rust bridge call at an await could
+leave its oneshot sender in the pending-response map. Normal responses and the
+call's own timeout removed it, but outer dispatch cancellation bypassed those
+statements. A scoped Drop guard now removes the record on every exit path.
+The existing semaphore permit already follows the same lifetime.
+
+A Rust regression starts an actual bridge call, waits for registration, aborts
+its task and checks both an empty pending map and all 32 permits returned.
+Both macOS and Linux passed all five Rust tests, Clippy with warnings denied,
+and locked helper builds. The freshly built helpers passed four native mount
+cases (36 assertions) on each host. Linux basic cases were live RO; other cases
+were synthetic. Native mounts detached normally. This directly tests call
+cancellation; end-to-end dispatch/write-deadline fault injection remains open.
