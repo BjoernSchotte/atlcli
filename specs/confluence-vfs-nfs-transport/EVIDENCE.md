@@ -2273,3 +2273,28 @@ AppleDouble `.__index.md` metadata file, currently rejected by mount protection;
 its necessity for successful save has not yet been established. TextEdit save
 acceptance therefore remains open. Synthetic edits were discarded, mounts
 unmounted normally and temporary diagnostics removed.
+
+
+## Slice 86 — durable backup-rename reservation
+
+Journal schema 7 adds the storage transaction needed for existing-page backup
+renames. It snapshots bytes and attributes into a quota-accounted local file and
+reserves the original path under the same page ID. Both happen atomically.
+Displaced pages are excluded from new publication selection until replacement
+clears the reservation. Already persisted intents remain intact; this does not
+cancel a network request that was already in flight.
+
+Tests cover restart, SIGKILL, retained backup bytes/attributes, unchanged page ID
+and base version, replacement after an existing intent, duplicate displacement,
+and complete rollback when the snapshot exceeds quota (including restoration of
+an overwritten local backup entry). The reservation is bounded by admitted page
+entries and the existing database cap.
+
+- Journal/projection suites: 70 tests / 1,056 assertions on macOS and Linux.
+- Native macOS save regression: 28 assertions. Linux real DOCSY: 18 assertions;
+  both completed cleanup. All four typecheck tasks passed.
+
+This is the durable-storage slice. The NFS namespace still needs to hide the
+vacated path, move existing handles with the backup, bind replacement to the
+reserved page, and coordinate publication. Native backup-rename/TextEdit
+acceptance remains open until that integration is tested.

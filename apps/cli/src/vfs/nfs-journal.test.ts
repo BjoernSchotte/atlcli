@@ -124,6 +124,8 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     j.createLocalDirectory("/DOCSY/editor-dir");
     const draft=j.createLocal("/DOCSY/editor-dir/draft");
     j.write(draft.id,0,Buffer.from("directory crash recovery"));
+    j.admit("2","/DOCSY/second/_index.md",Buffer.from("safe backup"),1);
+    j.backupPage("2","/DOCSY/second-backup");
     console.log("ACK");setInterval(()=>{},1000);`;
   const child = Bun.spawn([process.execPath, "--conditions=development", "-e", source], { stdout: "pipe", stderr: "pipe" });
   try {
@@ -134,7 +136,9 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     child.kill("SIGKILL"); await child.exited;
     const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
     expect(Buffer.from(recovered.get("1")!.bytes).toString()).toBe("replaced after intent");
-    expect(recovered.localEntries("/DOCSY")).toHaveLength(2);
+    expect(recovered.localEntries("/DOCSY")).toHaveLength(3);
+    expect(recovered.displaced("/DOCSY/second/_index.md")?.id).toBe("2");
+    expect(Buffer.from(recovered.local("/DOCSY/second-backup")!.bytes).toString()).toBe("safe backup");
     expect(recovered.local("/DOCSY/editor-dir")?.kind).toBe("directory");
     expect(Buffer.from(recovered.local("/DOCSY/editor-dir/draft")!.bytes).toString()).toBe("directory crash recovery");
     expect(Buffer.from(recovered.createLocal("/DOCSY/replay.tmp", "0123456789abcdef").bytes).toString()).toBe("exclusive survives crash");
@@ -499,4 +503,46 @@ it("rolls back failed regular CREATE attributes and initial sizes", () => {
   expect(() => journal.createRegularLocal(file.path, true, { size: 0 })).toThrow("exists");
   expect(Buffer.from(journal.local(file.path)!.bytes).toString()).toBe("keep");
   expect(journal.pending()).toEqual([]);
+});
+
+
+it("recovers page backup renames and restores publication only after replacement", () => {
+  const { path, journal } = fixture();
+  journal.admit("100", "/DOCSY/_index.md", bytes("original"), 3);
+  journal.setAttributes("100", { mode: 0o600, mtime: 123 });
+  journal.write("100", 0, bytes("modified"));
+  const intent = journal.beginPublish("100")!;
+  const backup = journal.backupPage("100", "/DOCSY/_index.md.backup");
+  expect(Buffer.from(backup.bytes).toString()).toBe("modified");
+  expect(journal.attributes(backup.id)).toEqual({ mode: 0o600, atime: null, mtime: journal.attributes("100")!.mtime });
+  expect(journal.displaced("/DOCSY/_index.md")?.id).toBe("100");
+  expect(journal.pending()).toEqual([]);
+  expect(journal.beginPublish("100")).toBeNull();
+  expect(() => journal.backupPage("100", "/DOCSY/duplicate")).toThrow("already moved");
+  expect(journal.local("/DOCSY/duplicate")).toBeNull();
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.displaced("/DOCSY/_index.md")?.baseVersion).toBe(3);
+  expect(recovered.beginPublish("100")).toBeNull();
+  const replacement = recovered.createLocal("/DOCSY/new.tmp");
+  recovered.write(replacement.id, 0, bytes("replacement"));
+  recovered.replaceLocal(replacement.path, "100");
+  expect(recovered.displaced("/DOCSY/_index.md")).toBeNull();
+  expect(recovered.pending().map(file => file.id)).toEqual(["100"]);
+  expect(recovered.beginPublish("100")).toEqual(intent);
+  expect(Buffer.from(recovered.local(backup.path)!.bytes).toString()).toBe("modified");
+  recovered.completePublish("100", intent.revision, 4);
+  expect(Buffer.from(recovered.beginPublish("100")!.bytes).toString()).toBe("replacement");
+});
+
+it("rolls back backup quota failures and preserves original and overwritten local bytes", () => {
+  const { journal } = fixture(8, 8, 3);
+  journal.admit("100", "/DOCSY/_index.md", bytes("original"), 1);
+  const oldBackup = journal.createLocal("/DOCSY/backup");
+  // Replacing an empty backup still requires space for the new snapshot.
+  expect(() => journal.backupPage("100", oldBackup.path)).toThrow("quota");
+  expect(journal.local(oldBackup.path)?.id).toBe(oldBackup.id);
+  expect(journal.displaced("/DOCSY/_index.md")).toBeNull();
+  expect(Buffer.from(journal.get("100")!.bytes).toString()).toBe("original");
+  expect(() => journal.backupPage(oldBackup.id, "/DOCSY/not-page")).toThrow("admitted page");
 });

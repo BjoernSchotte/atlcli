@@ -40,7 +40,7 @@ export class NfsJournal {
     try {
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers; EXTRA syncs the journal's unlink.
@@ -72,7 +72,7 @@ export class NfsJournal {
         const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(locals)").all();
         if (!columns.some(column => column.name === "verifier")) this.db.exec("ALTER TABLE locals ADD COLUMN verifier TEXT");
         if (!columns.some(column => column.name === "kind")) this.db.exec("ALTER TABLE locals ADD COLUMN kind TEXT NOT NULL DEFAULT 'file' CHECK(kind IN ('file','directory'))");
-        this.db.exec("CREATE TABLE IF NOT EXISTS attributes (id TEXT PRIMARY KEY REFERENCES files(id), mode INTEGER NOT NULL, atime INTEGER, mtime INTEGER); PRAGMA user_version=6;");
+        this.db.exec("CREATE TABLE IF NOT EXISTS attributes (id TEXT PRIMARY KEY REFERENCES files(id), mode INTEGER NOT NULL, atime INTEGER, mtime INTEGER); CREATE TABLE IF NOT EXISTS displaced (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL UNIQUE); PRAGMA user_version=7;");
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.db.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -87,7 +87,7 @@ export class NfsJournal {
   }
 
   pending(): StagedNfsFile[] {
-    return this.db.query<StagedNfsFile, []>("SELECT * FROM files WHERE revision>publishedRevision AND id NOT IN (SELECT id FROM locals) ORDER BY id").all();
+    return this.db.query<StagedNfsFile, []>("SELECT * FROM files WHERE revision>publishedRevision AND id NOT IN (SELECT id FROM locals) AND id NOT IN (SELECT id FROM displaced) ORDER BY id").all();
   }
 
   private localPath(path: string): void {
@@ -197,6 +197,32 @@ export class NfsJournal {
     }).immediate();
   }
 
+  /** Reserved original path of a page moved aside during an editor save. */
+  displaced(path: string): StagedNfsFile | null {
+    return this.db.query<StagedNfsFile, [string]>(
+      "SELECT files.* FROM files JOIN displaced USING(id) WHERE displaced.path=?",
+    ).get(path);
+  }
+
+  /** Preserve a local backup and reserve the page identity without publishing a rename. */
+  backupPage(pageId: string, target: string): LocalNfsEntry {
+    this.localPath(target);
+    return this.db.transaction(() => {
+      const page = this.get(pageId);
+      if (!page || this.local(page.path)?.id === pageId) throw new VfsError("EINVAL", "Backup source must be an admitted page");
+      if (target === page.path || target.startsWith(`${page.path}/`)) throw new VfsError("EINVAL", "Invalid backup destination");
+      if (this.db.query("SELECT id FROM displaced WHERE id=?").get(pageId)) throw new VfsError("EBUSY", "Page already moved aside");
+      if (this.displaced(target)) throw new VfsError("EBUSY", "Backup destination is a reserved page path");
+      if (this.local(target)) this.removeLocal(target);
+      const backup = this.createLocal(target);
+      this.write(backup.id, 0, page.bytes);
+      const attributes = this.attributes(pageId);
+      if (attributes) this.db.run("INSERT INTO attributes VALUES (?, ?, ?, ?)", [backup.id, attributes.mode, attributes.atime, attributes.mtime]);
+      this.db.run("INSERT INTO displaced VALUES (?, ?)", [pageId, page.path]);
+      return this.local(target)!;
+    }).immediate();
+  }
+
   /** Atomic byte replacement; retain page identity, base and any in-flight intent. */
   replaceLocal(source: string, pageId: string): StagedNfsFile {
     return this.db.transaction(() => {
@@ -212,7 +238,9 @@ export class NfsJournal {
       const attributes = this.attributes(local.id) ?? { mode: 0o644, atime: null, mtime: null };
       this.removeLocal(source);
       this.db.run("INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?)", [pageId, attributes.mode, attributes.atime, attributes.mtime]);
-      return this.change(pageId, () => local.bytes.byteLength, (bytes) => bytes.set(local.bytes));
+      const replaced = this.change(pageId, () => local.bytes.byteLength, (bytes) => bytes.set(local.bytes));
+      this.db.run("DELETE FROM displaced WHERE id=?", [pageId]);
+      return replaced;
     }).immediate();
   }
 
@@ -302,7 +330,7 @@ export class NfsJournal {
   /** Persist the exact snapshot before sending a remote mutation. Replay this intent after a lost reply. */
   beginPublish(id: string): NfsPublishIntent | null {
     return this.db.transaction(() => {
-      if (this.db.query("SELECT id FROM locals WHERE id=?").get(id)) return null;
+      if (this.db.query("SELECT id FROM locals WHERE id=? UNION ALL SELECT id FROM displaced WHERE id=?").get(id, id)) return null;
       const intent = this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);
       if (intent) return intent;
       const file = this.get(id);
