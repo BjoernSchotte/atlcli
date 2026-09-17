@@ -534,3 +534,9 @@ A journal permits only one writer process. SQLite releases its ownership lock
 on close or process death; no stale PID lock file needs removal. Stop the owning
 mount normally before offline recovery inspection/export. Unsupported
 schemas require the CLI matching that journal; do not edit its schema version.
+
+
+Confluence Cloud folders cannot currently be retitled through the supported REST
+API. The VFS rejects folder retitles with `EROFS` before any accompanying move,
+so a combined move/rename cannot leave a partially moved folder. This restriction
+concerns actual Confluence folders, not pages represented as directories.

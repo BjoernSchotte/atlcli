@@ -92,6 +92,20 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
+  it("rejects unsupported folder renaming without changing the real folder", async () => {
+    const space = await client.getSpace(E2E_SPACE_KEY);
+    const folder = await client.createFolder({ spaceId: space.id, title: makeE2eTitle("folder-rename") });
+    try {
+      const path = await vfs.folderPath(folder.id, E2E_SPACE_KEY);
+      const target = `${dirname(path)}/renamed-${folder.id}`;
+      await expect(vfs.rename(path, target)).rejects.toMatchObject({ code: "EROFS" });
+      const unchanged = await client.getFolder(folder.id);
+      expect(unchanged.title).toBe(folder.title);
+      expect(unchanged.parentId).toBe(folder.parentId);
+      expect((await vfs.stat(path)).id).toBe(folder.id);
+    } finally { await client.deleteFolder(folder.id); }
+  }, 30_000);
+
   it.skipIf(!process.env.ATLCLI_NFS_TEST_HELPER || process.env.ATLCLI_NFS_KERNEL !== "1")("automatically publishes native NFS saves to Confluence", async () => {
     const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
       title: makeE2eTitle("nfs-auto"), storage: "<p>Native original</p>" });

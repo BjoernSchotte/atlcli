@@ -470,6 +470,21 @@ describe("mkdir", () => {
 });
 
 describe("rename and move", () => {
+  it("rejects unsupported folder retitles before moving or updating remote content", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      for (const target of ["/DOCSY/new-runbooks-104", "/DOCSY/architecture-102/new-runbooks-104"]) {
+        await expect(vfs.rename("/DOCSY/runbooks-104", target)).rejects.toMatchObject({ code: "EROFS" });
+      }
+      expect(client.callsTo("updatePage")).toBe(0);
+      expect(client.callsTo("getPage")).toBe(0);
+      expect(client.callsTo("movePage")).toBe(0);
+      expect(client.peekPage("104")?.title).toBe("Runbooks");
+      expect(client.peekPage("104")?.parentId).toBe("100");
+    } finally { await vfs.close(); }
+  });
+
   it("retitles inside the same directory", async () => {
     const client = seeded();
     const vfs = await openVfs(client);

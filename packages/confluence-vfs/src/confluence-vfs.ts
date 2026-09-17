@@ -1119,6 +1119,12 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       ? titleFromName(parsedTarget.slugCandidate)
       : titleFromName(parsedTarget.stem);
 
+    // Cloud exposes no supported folder title update. Reject before a move can
+    // partially apply a combined reparent/retitle request.
+    if (node.type === "folder" && newTitle && newTitle !== node.title) {
+      throw new VfsError("EROFS", "Confluence does not support folder renaming through its REST API", { path: from });
+    }
+
     try {
       if (!sameParent) {
         assertWritable(this.guard, "move", from);

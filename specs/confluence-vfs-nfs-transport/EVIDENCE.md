@@ -3187,3 +3187,28 @@ bounded backoff; uncertain CREATE is not blindly repeated.
 The live network fault is injected before the request, not an OS network outage.
 Remote directory mutations, wider fault/editor matrix and final acceptance remain
 open. No new native-kernel or Data Center live coverage is claimed.
+
+
+## Slice 121 — reject unsupported folder retitles before partial moves
+
+The shared rename path treated real Confluence folders as pages. A live probe
+using the client's existing updateFolder method also failed: v1 content PUT
+returned 501 (folder update validation not implemented). The current official
+[folder reference](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-folder/)
+only documents create/get/delete. The attempted adapter wiring was removed.
+
+The core now rejects a folder retitle with EROFS before invoking any remote move
+or update. In particular, reparent+retitle cannot first move a folder and then
+fail at title update. Page-directory rename behavior is unchanged.
+
+- macOS/Linux write-back and client-port tests: 74 passed / 190 assertions each.
+  Regression covers same-parent and combined reparent/retitle requests, unchanged
+  title/parent and zero page read/update/move calls.
+- Linux DOCSY: one test / four assertions proves rejection and unchanged remote
+  folder title, parent and identity. Temporary folders from both the initial
+  failed probe and final test were deleted in finally blocks.
+- Typecheck: all four tasks passed.
+
+This is an honest capability boundary, not implemented folder retitling. Native
+NFS page-directory mutation wiring and durable recovery remain open. No new
+native-kernel acceptance is claimed.
