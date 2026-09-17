@@ -974,3 +974,15 @@ it("queues atomic editor replacement of an unpublished Markdown draft", async ()
   expect(id).toBe(journal!.local("/DOCSY/newpage.md")!.id);
   expect(id).not.toBeNull();
 });
+
+
+it("queues empty regular and exclusive Markdown creates but not editor temporary files", async () => {
+  const { fs, journal } = await fixture(["DOCSY"], "rw", undefined, true);
+  const regular = await fs.createRegular(1, "regular.md", true, { size: 0 });
+  expect(fs.publicationId(regular.file)).toBe(journal!.local("/DOCSY/regular.md")!.id);
+  const exclusive = await fs.create(1, "exclusive.md", "0123456789abcdef");
+  expect(fs.publicationId(exclusive)).toBe(journal!.local("/DOCSY/exclusive.md")!.id);
+  expect(await fs.create(1, "exclusive.md", "0123456789abcdef")).toBe(exclusive);
+  expect(fs.publicationId(await fs.create(1, ".empty.md"))).toBeNull();
+  expect(fs.publicationId(await fs.lookup(1, "_index.md"))).toBeNull();
+});

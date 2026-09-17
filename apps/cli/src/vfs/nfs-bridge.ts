@@ -74,12 +74,17 @@ export async function startNfsServer(options: {
           const values: { mode?: number; size?: number } = {};
           for (const key of ["mode", "size"] as const) if (args[key] !== undefined) values[key] = number(args[key]);
           const created = await fs.createRegular(number(args.parent), args.name, args.guarded, values);
-          if (created.pageId !== null) publisher?.schedule(created.pageId);
+          const pending = created.pageId ?? fs.publicationId(created.file);
+          if (pending !== null) publisher?.schedule(pending);
           result = created.file; break;
         }
-        case "create-exclusive":
+        case "create-exclusive": {
           if (typeof args.name !== "string" || typeof args.verifier !== "string" || !/^[0-9a-f]{16}$/.test(args.verifier)) throw new VfsError("EINVAL", "Invalid exclusive CREATE");
-          result = await fs.create(number(args.parent), args.name, args.verifier); break;
+          const file = await fs.create(number(args.parent), args.name, args.verifier);
+          const pending = fs.publicationId(file);
+          if (pending !== null) publisher?.schedule(pending);
+          result = file; break;
+        }
         case "mkdir":
           if (typeof args.name !== "string") throw new VfsError("EINVAL", "Invalid NFS name");
           result = await fs.mkdir(number(args.parent), args.name, number(args.mode)); break;

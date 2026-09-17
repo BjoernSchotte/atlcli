@@ -119,8 +119,7 @@ export class NfsJournal {
       (SELECT count(*) FROM locals) AS localEntries,
       (SELECT count(*) FROM intents) AS unresolvedPublications`).get()!;
     const statement = this.db.prepare<{ path: string; error: string | null }, []>(`SELECT locals.path,files.error
-      FROM locals JOIN files USING(id) WHERE kind='file' AND originId IS NULL
-      AND revision>publishedRevision`);
+      FROM locals JOIN files USING(id) WHERE kind='file' AND originId IS NULL`);
     try {
       for (const draft of statement.all()) {
         if (!isNfsPageDraft(draft.path)) continue;
@@ -164,7 +163,7 @@ export class NfsJournal {
     ).get(path);
   }
 
-  /** Local editor files survive restart but never enter the remote publish queue. */
+  /** Local entries survive restart; the publisher selects eligible Markdown drafts. */
   createLocal(path: string, verifier?: string): LocalNfsEntry {
     return this.createLocalEntry(path, "file", verifier);
   }

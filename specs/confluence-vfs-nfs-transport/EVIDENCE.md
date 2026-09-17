@@ -2767,3 +2767,26 @@ blind retry. These are controlled reopen tests, not new process-kill evidence.
 
 Automatic resolution of unknown create results, public NFS RW lifecycle, the
 full editor matrix and the other acceptance gates remain open.
+
+
+## Slice 106 — publish CREATE-only empty Markdown documents
+
+Regular and exclusive CREATE now schedule eligible new Markdown files even when
+no WRITE follows. The publisher distinguishes unpublished local entries from
+clean remote images, so revision zero does not suppress empty-page creation.
+Status includes these drafts; restart resume publishes them once. Hidden editor
+files and recorded backups retain their exclusions. A pause longer than the quiet
+window can produce an empty initial version, explicitly documented under the
+accepted intermediate-snapshot contract.
+
+- macOS/Linux journal, filesystem and publisher suites: 118 tests / 1359 assertions
+  each, including regular/exclusive empty drafts, verifier replay and resume.
+- Actual kernel mounts on each host: 47 assertions each; an exclusive open/close
+  without WRITE creates the empty page alongside the existing Vim save probes.
+  These native tests use the synthetic backend.
+- Linux live DOCSY confirmed-creation restart regression: five assertions; child
+  and parent deleted. This live test covers restart, not a live empty CREATE.
+- All four typecheck tasks passed.
+
+Remaining public RW, unknown-create reconciliation, broader editor and final
+acceptance gates are unchanged.

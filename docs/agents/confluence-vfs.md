@@ -436,6 +436,10 @@ profile, authentication, or running server. Public NFS RW mounting is still gate
 Development NFS mounts automatically publish visible Markdown drafts after the
 quiet window. For example, `vim newpage.md` needs no frontmatter: the filename
 supplies the title and the containing directory supplies the space and parent.
+An empty `.md` file is also a new page: CREATE alone starts the quiet window,
+and later writes postpone publication. A long pause before the first content can
+therefore produce an empty initial version, consistent with the accepted snapshot
+publication contract.
 The create-only guard prevents overwriting an occupied page. Confirmed creations
 retain their original filehandle and a durable virtual filename alias, so later
 saves to `newpage.md` update the same page as its canonical name containing the

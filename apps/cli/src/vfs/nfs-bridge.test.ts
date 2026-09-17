@@ -933,6 +933,15 @@ with socket.socket() as client:
     expect(client.peekPage(createdId!)?.storage).toContain("Plain second");
     expect(client.callsTo("createPage")).toBe(1);
 
+    const empty = await open(join(mountpoint, "empty.md"), "wx");
+    await empty.close();
+    const emptyDeadline = Date.now() + 5000;
+    while (!journal!.promotion("/DOCSY/empty.md") && Date.now() < emptyDeadline) await Bun.sleep(50);
+    const emptyId = journal!.promotion("/DOCSY/empty.md")?.pageId;
+    expect(emptyId).toBeDefined();
+    expect(client.peekPage(emptyId!)?.title).toBe("Empty");
+    expect(client.callsTo("createPage")).toBe(2);
+
     }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [

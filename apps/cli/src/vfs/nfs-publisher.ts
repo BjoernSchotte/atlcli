@@ -110,10 +110,11 @@ export class NfsPublisher {
 
   private async publishImage(id: string): Promise<VfsWriteResult | null> {
     const file = this.journal.get(id);
-    if (!file || file.revision === file.publishedRevision) return null;
+    if (!file) return null;
     if (this.journal.displaced(file.path)?.id === id) return null;
     try {
       if (this.journal.local(file.path)?.id === id) return await this.publishNew(file);
+      if (file.revision === file.publishedRevision) return null;
       // Reject incomplete local bytes before freezing a publication intent.
       this.validate(id, file.bytes, file.baseVersion);
       // Existing uncertain outcomes keep their frozen image. New images are

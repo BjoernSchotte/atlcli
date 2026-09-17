@@ -503,3 +503,19 @@ for (const boundary of ["before-post", "unknown-result", "confirmed-result"] as 
     } finally { await recovered.stop(); await freshVfs.close(); reopened.close(); }
   });
 }
+
+
+it("publishes an empty new Markdown document on resume without a WRITE", async () => {
+  const { client, journal, publisher } = await fixture();
+  const local = journal.createLocal("/DOCSY/empty.md");
+  expect(journal.writeStatus().pendingPages).toBe(1);
+  publisher.resume();
+  await until(() => journal.promotion(local.id) !== null);
+  const id = journal.promotion(local.id)!.pageId;
+  expect(client.peekPage(id)?.title).toBe("Empty");
+  expect(client.callsTo("createPage")).toBe(1);
+  expect(journal.writeStatus().pendingPages).toBe(0);
+  publisher.resume();
+  await Bun.sleep(600);
+  expect(client.callsTo("createPage")).toBe(1);
+});

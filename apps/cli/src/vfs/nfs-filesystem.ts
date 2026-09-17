@@ -383,6 +383,17 @@ export class NfsFilesystem {
     return this.createEntry(parent, name, false, verifier);
   }
 
+  /** CREATE can be the only mutation for an empty document. */
+  publicationId(handle: number): string | null {
+    const identity = this.paths.get(handle)?.identity;
+    if (!identity || !this.journal) return null;
+    const id = this.journal.promotion(identity)?.pageId ?? /^page:([0-9]+):file$/.exec(identity)?.[1] ?? identity;
+    const file = this.journal.get(id);
+    if (!file) return null;
+    if (!file.id.startsWith("local:")) return file.revision > file.publishedRevision ? file.id : null;
+    return isNfsPageDraft(file.path) && !this.journal.isBackup(file.id) ? file.id : null;
+  }
+
   private async createEntry(parent: number, name: string, directory: boolean, verifier?: string, mode = 0o755): Promise<number> {
     const path = await this.mutationPath(parent, name);
     if (this.journal!.displaced(path)) {
