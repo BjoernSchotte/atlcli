@@ -505,6 +505,37 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
         const refreshed = await open(bodyPath, "r");
         try { expect(await refreshed.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md"))); }
         finally { await refreshed.close(); }
+
+        const commentsPath = join(mountpoint, ".comments.md");
+        const seedComment = (body: string) => client.seedComments("100", {
+          pageId: "100", lastSynced: "2026-09-17T00:00:00Z", inlineComments: [],
+          footerComments: [{ id: "c1", author: { displayName: "Ada" },
+            created: "2026-09-17T00:00:00Z", body, status: "open", replies: [] }],
+        });
+        seedComment("<p>Comment A</p>");
+        const readComments = async () => {
+          const file = await open(commentsPath, "r");
+          try { return await file.readFile(); }
+          finally { await file.close(); }
+        };
+        const originalComments = await readComments();
+        expect(originalComments.toString()).toContain("Comment A");
+        const beforeComments = await stat(commentsPath);
+        const pageVersion = (await client.getPageVersions(["100"])).get("100")!.version;
+        seedComment("<p>Comment B</p>");
+        clock += 60_001;
+        const expectedComments = Buffer.from(originalComments.toString().replace("Comment A", "Comment B"));
+        expect(expectedComments.length).toBe(originalComments.length);
+        const commentStarted = performance.now();
+        let actualComments = originalComments;
+        while (performance.now() - commentStarted < 5000) {
+          actualComments = await readComments();
+          if (actualComments.equals(expectedComments)) break;
+          await Bun.sleep(100);
+        }
+        expect(actualComments).toEqual(expectedComments);
+        expect((await stat(commentsPath)).mtimeMs).toBeGreaterThan(beforeComments.mtimeMs);
+        expect((await client.getPageVersions(["100"])).get("100")!.version).toBe(pageVersion);
       }
       const probe = await promisify(execFile)("python3", ["-c", `
 import errno, fcntl, subprocess, sys
