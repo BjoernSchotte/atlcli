@@ -573,16 +573,22 @@ with socket.socket() as client:
     });
   }
 
-  for (const { spaces, attachments, visibility = false } of [
+  for (const { spaces, attachments, visibility = false, mutation = false } of [
     { spaces: ["DOCSY"], attachments: false },
     { spaces: ["DOCSY", "mayflower"], attachments: false },
     { spaces: ["DOCSY"], attachments: true },
     { spaces: ["DOCSY"], attachments: false, visibility: true },
+    { spaces: ["DOCSY"], attachments: false, mutation: true },
   ]) {
-    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""}${visibility ? "; external changes" : ""})`, async () => {
+    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""}${visibility ? "; external changes" : ""}${mutation ? "; directory mutation" : ""})`, async () => {
       let clock = Date.now();
-      const { server, vfs, client } = await fixture(spaces, attachments || visibility ? false : undefined,
-        visibility ? () => clock : undefined);
+      const { server, vfs, client } = await fixture(spaces, attachments || visibility || mutation ? false : undefined,
+        visibility || mutation ? () => clock : undefined);
+      if (mutation) {
+        client.seedPage({ id: "9000", title: "Mutation", spaceKey: "DOCSY", parentId: "100", storage: "<p>Directory</p>" });
+        for (let i = 1; i <= 600; i++) client.seedPage({ id: String(9000 + i), title: `Item ${i}`,
+          spaceKey: "DOCSY", parentId: "9000", storage: "<p>Child</p>" });
+      }
       const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-kernel-"));
       let mounted = false;
       cleanups.push(async () => {
@@ -622,6 +628,51 @@ with socket.socket() as client:
       try {
         expect(await file.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md")));
       } finally { await file.close(); }
+      if (mutation) {
+        const path = join(mountpoint, "mutation-9000");
+        const before = (await vfs.readdir("/DOCSY/mutation-9000")).map(entry => entry.name).sort();
+        const cursor = await opendir(path, { bufferSize: 1 });
+        const seen: string[] = [];
+        let restart = false;
+        try {
+          const first = await cursor.read();
+          expect(first).not.toBeNull();
+          seen.push(first!.name);
+          await client.deletePage("9500");
+          await client.updatePage({ id: "9501", title: "Renamed", storage: "<p>Child</p>", version: 2 });
+          client.seedPage({ id: "9999", title: "Inserted", spaceKey: "DOCSY", parentId: "9000", storage: "<p>New</p>" });
+          clock += 60_001;
+          try {
+            for (;;) {
+              const entry = await cursor.read();
+              if (!entry) break;
+              seen.push(entry.name);
+              expect(seen.length).toBeLessThan(1300);
+            }
+          } catch (error) {
+            if (!["EIO", "EINVAL", "ESTALE"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+            restart = true; // A changed cookie may require a caller to restart.
+          }
+        } finally { await cursor.close(); }
+        if (!restart) {
+          expect(new Set(seen).size).toBe(seen.length);
+          const stable = (names: string[]) => names.filter(name =>
+            !["item-500-9500", "item-501-9501", "renamed-9501", "inserted-9999"].includes(name)).sort();
+          expect(stable(seen)).toEqual(stable(before));
+        }
+        const expected = before.filter(name => !["item-500-9500", "item-501-9501"].includes(name))
+          .concat("renamed-9501", "inserted-9999").sort();
+        let after: string[] = [];
+        const deadline = performance.now() + 5000;
+        do {
+          after = [];
+          for await (const entry of await opendir(path)) after.push(entry.name);
+          after.sort();
+          if (JSON.stringify(after) === JSON.stringify(expected)) break;
+          await Bun.sleep(100);
+        } while (performance.now() < deadline);
+        expect(after).toEqual(expected);
+      }
       if (visibility) {
         const missing = join(mountpoint, "new-page-999", "_index.md");
         await expect(stat(missing)).rejects.toMatchObject({ code: "ENOENT" });

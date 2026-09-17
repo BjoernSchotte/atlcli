@@ -1461,3 +1461,24 @@ Locked builds and Clippy passed on both hosts; typecheck passed all four tasks.
 Linux basic native cases used DOCSY/combined spaces live RO; mutations were
 synthetic. All mounts detached normally. RW capabilities remain gated and need
 fresh acceptance when the write implementation is enabled.
+
+## Slice 57 — native directory mutation with an open cursor
+
+A synthetic 600-child directory is enumerated through the actual kernel mount.
+After reading its first entry, the backend deletes one child, renames another
+and inserts a third while the cursor remains open. Only the core clock advances
+past its metadata TTL; OS caches are not flushed. A completed cursor must contain
+every unaffected entry exactly once. An explicit stale/invalid-cookie-related
+I/O error may instead require restart. A subsequent fresh listing must match the
+complete updated directory within a five-second visibility retry window.
+
+Both macOS and Linux passed (612 assertions each, including bounded enumeration
+checks). Both observed completed cursors without duplicate/unaffected omissions,
+and exact fresh listings. The kernel may already have buffered entries before
+the mutation; this is native cursor behavior coverage, not a claim that every
+RPC occurs after the mutation. Deterministic server BAD_COOKIE rejection remains
+covered separately by the READDIR/READDIRPLUS wire tests.
+
+All mutations and mounts in this case were synthetic. Both hosts detached
+normally; typecheck passed all four tasks. This adds native directory-change
+acceptance without changing the pending RW or multi-READ snapshot contracts.
