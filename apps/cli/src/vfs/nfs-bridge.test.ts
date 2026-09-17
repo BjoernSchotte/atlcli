@@ -87,9 +87,9 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const info = await rpc(server, 100003, 19, opaque(file));
     expect(info.readUInt32BE(104)).toBe(1024 * 1024);
     expect(info.readBigUInt64BE(info.length - 20)).toBe(BigInt(64 * 1024 * 1024));
-    const truncate = async (size: number) => rpc(server, 100003, 2,
-      Buffer.concat([opaque(file), ints(0, 0, 0, 1, 0, size, 0, 0, 0)]));
-    expect((await truncate(0)).readUInt32BE()).toBe(0);
+    const truncate = async (size: number, mtime = 0) => rpc(server, 100003, 2,
+      Buffer.concat([opaque(file), ints(0, 0, 0, 1, 0, size, 0, mtime, 0)]));
+    expect((await truncate(0, 1)).readUInt32BE()).toBe(0);
     const bytes = Buffer.from("Grüße 🐴");
     const cut = bytes.length - 2;
     for (const [offset, data] of [[cut, bytes.subarray(cut)], [0, bytes.subarray(0, cut)]] as const) {
@@ -678,6 +678,49 @@ with socket.socket() as client:
         ...(await vfs.readdir("/DOCSY")).map((e) => e.name)].sort());
     });
   }
+
+  it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("writes and fsyncs existing pages through a native RW kernel mount", async () => {
+    const { server, journal, client } = await fixture(["DOCSY"], false, () => Date.now(), true);
+    const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-rw-"));
+    let mounted = false;
+    cleanups.push(async () => {
+      if (mounted) {
+        const command = platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint];
+        let status = await runMountCommand(command);
+        for (let attempt = 0; status !== 0 && attempt < 10; attempt++) {
+          await Bun.sleep(100); status = await runMountCommand(command);
+        }
+        if (status !== 0) throw new Error(`Test mount remains attached: ${mountpoint}`);
+      }
+      rmSync(mountpoint, { recursive: true, force: true });
+    });
+    // RW requires hard retries. This private test does not enable the CLI RW option.
+    const options = nfsMountOptionsFor(platform(), server.port).replace(",ro,soft,", ",rw,hard,");
+    const command = platform() === "linux"
+      ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", mountpoint]
+      : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint];
+    expect(await runMountCommand(command)).toBe(0);
+    mounted = true;
+    const path = join(mountpoint, "_index.md");
+    const metadata = await stat(path);
+    expect(metadata.uid).toBe(process.getuid!());
+    expect(metadata.mode & 0o777).toBe(0o644);
+    const bytes = Buffer.from("Native Grüße 🐴");
+    const file = await open(path, "r+");
+    try {
+      await file.truncate(0);
+      const cut = bytes.length - 2;
+      expect((await file.write(bytes.subarray(cut), 0, bytes.length - cut, cut)).bytesWritten).toBe(bytes.length - cut);
+      expect((await file.write(bytes.subarray(0, cut), 0, cut, 0)).bytesWritten).toBe(cut);
+      await file.sync();
+      expect(Buffer.from(journal!.get("100")!.bytes)).toEqual(bytes);
+      const read = Buffer.alloc(bytes.length);
+      expect((await file.read(read, 0, read.length, 0)).bytesRead).toBe(bytes.length);
+      expect(read).toEqual(bytes);
+      expect((await file.stat()).size).toBe(bytes.length);
+    } finally { await file.close(); }
+    expect(client.callsTo("updatePage")).toBe(0);
+  }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [
     { spaces: ["DOCSY"], attachments: false },

@@ -12,6 +12,8 @@ export interface NfsAttributes {
   size: number;
   mtime: number;
   writable?: boolean;
+  uid?: number;
+  gid?: number;
 }
 
 /** Protocol projection. All paths are resolved inside the selected export. */
@@ -278,7 +280,11 @@ export class NfsFilesystem {
   async truncate(id: number, size: number): Promise<void> {
     if (!Number.isSafeInteger(size) || size < 0) throw new VfsError("EINVAL", "Invalid NFS file size");
     const file = await this.stagedFile(id);
-    this.journal!.truncate(file.id, size);
+    const updated = this.journal!.truncate(file.id, size);
+    // Linux requests server mtime with truncate, including unchanged sizes.
+    const entry = this.paths.get(id)!;
+    entry.rendered = { hash: createHash("sha256").update(updated.bytes).digest("hex"),
+      mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1) };
   }
 
   async getattr(id: number): Promise<NfsAttributes> {
@@ -298,7 +304,7 @@ export class NfsFilesystem {
       if (!entry.rendered || entry.rendered.hash !== hash) {
         entry.rendered = { hash, mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1, stat.mtime.getTime() + 1) };
       }
-      return { id, directory: false, size: staged.bytes.byteLength, mtime: entry.rendered.mtime, writable: !!(stat.mode & 0o222) };
+      return { id, directory: false, size: staged.bytes.byteLength, mtime: entry.rendered.mtime, uid: process.getuid?.() ?? 0, gid: process.getgid?.() ?? 0, writable: !!(stat.mode & 0o222) };
     }
     // Never publish estimated sizes to a kernel client.
     const bytes = stat.isDirectory || (stat.kind === "attachment" && !stat.sizeEstimated)
@@ -328,6 +334,7 @@ export class NfsFilesystem {
       mtime = refreshDirectory ? (await this.directoryView(id, path)).mtime : this.directories.get(id)?.mtime ?? mtime;
     }
     return { id, directory: stat.isDirectory, size, mtime,
+      ...(this.journal ? { uid: process.getuid?.() ?? 0, gid: process.getgid?.() ?? 0 } : {}),
       writable: !!this.journal && stat.kind === "page" && !stat.isDirectory && !!(stat.mode & 0o222) };
   }
 

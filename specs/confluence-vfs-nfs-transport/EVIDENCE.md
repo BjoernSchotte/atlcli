@@ -1803,3 +1803,33 @@ Automatic save scheduling, native writable permissions, clean-record lifecycle,
 newer-edit rebasing, namespace operations and final native editor acceptance are
 still required. Production CLI remains RO; internal staged writes are not yet a
 complete RW feature.
+
+
+## Slice 69 — native writable ownership and Linux truncate semantics
+
+Private bridge version 5 carries the local process UID/GID for staged exports.
+Writable regular files therefore belong to the invoking user rather than root;
+Rust checks numeric conversion to its u32 ownership fields. Generated files and
+read-only core files retain their existing write protection.
+
+A real Linux kernel test exposed SETATTR with `size(0)` plus
+`mtime=SET_TO_SERVER_TIME`. The helper now accepts that combination and the
+adapter advances mtime after a successful truncate, including unchanged sizes.
+Other metadata mutations remain NOTSUPP and are rejected before size changes.
+Temporary attribute diagnostics used to find the Linux issue were removed.
+
+- macOS and Linux: native RW mount, WRITE/SETATTR/COMMIT wire regression and RO
+  mutation rejection passed together: three tests, 90 assertions per host.
+- The new native case mounts a synthetic export with **hard** retry semantics,
+  checks local owner/mode, opens an existing page r+, truncates to zero, writes
+  reordered Unicode chunks, fsyncs, compares durable journal bytes and native
+  reads/size, closes and normally unmounts. It verifies zero remote updates;
+  this is local stable-storage proof, not automatic publication acceptance.
+- macOS adapter suite: 36 passed, 530 assertions. Both helper builds and clippy
+  with warnings denied passed. Typecheck passed all four tasks.
+- Linux mayflower/DOCSY adapter-to-publication live regression: one passed,
+  seven assertions; synthetic page deleted. No real mayflower-space writes.
+
+The CLI still uses RO mounts. Automatic publication, clean-record refresh,
+newer-edit rebasing, editor replacement/namespace operations, recovery and final
+native Vim/TextEdit acceptance remain open.

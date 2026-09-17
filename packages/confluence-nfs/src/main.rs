@@ -120,6 +120,18 @@ fn attr(v: &Value) -> Result<fattr3, nfsstat3> {
         } else {
             0o444
         },
+        uid: v
+            .get("uid")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            .try_into()
+            .map_err(|_| nfsstat3::NFS3ERR_IO)?,
+        gid: v
+            .get("gid")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            .try_into()
+            .map_err(|_| nfsstat3::NFS3ERR_IO)?,
         nlink: 1,
         size,
         used: size,
@@ -273,7 +285,9 @@ impl NFSFileSystem for Bridge {
             || !matches!(value.uid, set_uid3::Void)
             || !matches!(value.gid, set_gid3::Void)
             || !matches!(value.atime, set_atime::DONT_CHANGE)
-            || !matches!(value.mtime, set_mtime::DONT_CHANGE)
+            || !(matches!(value.mtime, set_mtime::DONT_CHANGE)
+                || (matches!(value.mtime, set_mtime::SET_TO_SERVER_TIME)
+                    && matches!(value.size, set_size3::size(_))))
         {
             return Err(nfsstat3::NFS3ERR_NOTSUPP);
         }
