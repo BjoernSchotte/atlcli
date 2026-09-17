@@ -2082,3 +2082,30 @@ This proves the closed-temp-file native save sequence, not arbitrary editor
 behavior. Renaming while a descriptor remains open, backup renames, actual
 Vim/TextEdit workflows, additional CREATE variants and the document-completion
 boundary for in-place writes still require implementation/acceptance.
+
+## Slice 79 — open source descriptors survive replacement
+
+A new regression reproduced ESTALE when writing through a temporary-file handle
+immediately after renaming it over the wiki body. The projection had retired the
+source handle. It now retains that handle as an alias of the existing page entry,
+while preserving the canonical page handle and ID. Both handles read/write the
+same staged bytes and retain the existing export/mode checks. Replacement copies
+the source file attributes to the page in the same SQLite transaction as its
+bytes. Alias handles remain bounded by the existing session handle limit; NFSv3
+has no general close notification with which to safely reclaim them early.
+
+- Projection/journal suites: 61 tests passed on macOS and Linux. Additional
+  assertions verify private source mode/atime transfer and the unchanged canonical
+  page handle. The initial new regression failed with ESTALE before the fix.
+- Both native kernels: rename while the temporary descriptor is still open,
+  append through that descriptor, fsync, close, and read through the destination.
+  Native plus RPC regressions: two tests / 65 assertions on each host.
+- Linux real DOCSY: eleven assertions passed. The post-rename append reaches the
+  same page in the single automatic replacement publication, pending work clears,
+  normal unmount succeeds and the disposable page is deleted.
+- Linux also reran the expanded attribute SIGKILL proof (seven assertions).
+  Typecheck and diff whitespace checks passed.
+
+This fixes an open-source-descriptor save pattern. Full POSIX unlink semantics
+for overwritten destination descriptors, backup sequences, native editor matrix,
+additional CREATE variants and complete-document publication remain open.

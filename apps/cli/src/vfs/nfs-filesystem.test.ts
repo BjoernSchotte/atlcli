@@ -688,7 +688,7 @@ it("stages editor replacement under the original page ID without exposing a temp
   expect(await fs.lookup(1, "_index.md")).toBe(page);
   expect(Buffer.from((await fs.read(page, 0, 65536)).data, "base64").toString()).toBe(content);
   expect(journal!.pending().map(f => f.id)).toEqual(["100"]);
-  await expect(fs.getattr(local)).rejects.toMatchObject({ code: "ESTALE" });
+  expect((await fs.getattr(local)).size).toBe(Buffer.byteLength(content));
   expect(client.callsTo("updatePage")).toBe(0);
 });
 
@@ -729,4 +729,22 @@ it("enforces staged file modes and allows restoring write permissions", async ()
     expect((await fs.getattr(id)).mode).toBe(0o600);
   }
   expect(journal!.pending().map(file => file.id)).toEqual(["100"]);
+});
+
+
+it("keeps a replacement source handle writable after rename without changing the page handle", async () => {
+  const { fs, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  const page = await fs.lookup(1, "_index.md");
+  const temporary = await fs.create(1, ".open.tmp");
+  const bytes = Buffer.from(await vfs.readFile("/DOCSY/_index.md"));
+  await fs.setAttributes(temporary, { mode: 0o600, atime: 1234 });
+  await fs.write(temporary, 0, bytes);
+  await fs.rename(1, ".open.tmp", 1, "_index.md");
+  expect(await fs.getattr(page)).toMatchObject({ mode: 0o600, atime: 1234 });
+  const tail = Buffer.from("\nSaved through the still-open descriptor\n");
+  expect(await fs.write(temporary, bytes.length, tail)).toBe("100");
+  expect(await fs.lookup(1, "_index.md")).toBe(page);
+  const expected = Buffer.concat([bytes, tail]);
+  expect(Buffer.from((await fs.read(page, 0, 65536)).data, "base64")).toEqual(expected);
+  expect(Buffer.from((await fs.read(temporary, 0, 65536)).data, "base64")).toEqual(expected);
 });

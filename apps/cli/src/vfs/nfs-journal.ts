@@ -156,7 +156,9 @@ export class NfsJournal {
       }
       // Delete inside the same transaction first, so a rename needs no second
       // copy of the source in the logical quota. Rollback retains both images.
+      const attributes = this.attributes(local.id) ?? { mode: 0o644, atime: null, mtime: null };
       this.removeLocal(source);
+      this.db.run("INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?)", [pageId, attributes.mode, attributes.atime, attributes.mtime]);
       return this.change(pageId, () => local.bytes.byteLength, (bytes) => bytes.set(local.bytes));
     }).immediate();
   }

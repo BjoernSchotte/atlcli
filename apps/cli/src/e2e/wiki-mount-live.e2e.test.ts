@@ -124,11 +124,14 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       const temporaryPath = join(dirname(destination), ".editor-replacement.tmp");
       const replacementBytes = Buffer.from(original.replace("Native original", "Native atomic replacement 🐴"));
       const temporary = await open(temporaryPath, "wx", 0o600);
-      try { await temporary.write(replacementBytes); await temporary.sync(); }
-      finally { await temporary.close(); }
-      expect((await client.getPage(page.id)).version).toBe(actual.version);
-      await rename(temporaryPath, destination);
-      expect(await readFile(destination)).toEqual(replacementBytes);
+      const continued = Buffer.from("\nNative open-descriptor continuation\n");
+      try {
+        await temporary.write(replacementBytes); await temporary.sync();
+        expect((await client.getPage(page.id)).version).toBe(actual.version);
+        await rename(temporaryPath, destination);
+        await temporary.write(continued); await temporary.sync();
+      } finally { await temporary.close(); }
+      expect(await readFile(destination)).toEqual(Buffer.concat([replacementBytes, continued]));
       const replacedDeadline = Date.now() + 15000;
       while (journal.pending().length && Date.now() < replacedDeadline) await Bun.sleep(50);
       expect(journal.pending()).toHaveLength(0);
@@ -136,6 +139,7 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(replaced.id).toBe(page.id);
       expect(replaced.version).toBe((actual.version ?? 1) + 1);
       expect(replaced.storage).toContain("Native atomic replacement 🐴");
+      expect(replaced.storage).toContain("Native open-descriptor continuation");
     } finally {
       if (mounted) {
         const detach = platform() === "linux" ? ["sudo", "-n", "umount", local] : ["umount", local];

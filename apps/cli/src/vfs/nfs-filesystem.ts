@@ -357,7 +357,12 @@ export class NfsFilesystem {
     const local = this.journal!.local(source)!;
     this.journal!.replaceLocal(source, page.id);
     const handle = this.identities.get(local.id);
-    if (handle !== undefined) this.forgetHandle(handle);
+    if (handle !== undefined) {
+      // NFS has no close notification: the source descriptor may still receive
+      // writes after rename. Keep it as another handle for the same page.
+      this.identities.delete(local.id);
+      this.paths.set(handle, { ...this.paths.get(targetId)! });
+    }
     return page.id;
   }
 

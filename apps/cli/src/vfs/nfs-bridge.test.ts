@@ -114,7 +114,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect((await rename(".renamed.tmp", "_space.json")).readUInt32BE()).toBe(30);
     expect((await rename(".renamed.tmp", "_index.md")).readUInt32BE()).toBe(0);
     expect(await lookup("_index.md")).toEqual(pageHandle);
-    expect((await rpc(server, 100003, 1, opaque(localHandle))).readUInt32BE()).toBe(70);
+    expect((await rpc(server, 100003, 1, opaque(localHandle))).readUInt32BE()).toBe(0);
     const deadline = Date.now() + 5000;
     while (journal!.pending().length && Date.now() < deadline) await Bun.sleep(20);
     expect(journal!.pending()).toEqual([]);
@@ -787,15 +787,19 @@ with socket.socket() as client:
     const replacementBytes = Buffer.from(bytes.toString().replace("Native Grüße 🐴", "Atomic replacement 🐴"));
     const replacementPath = join(mountpoint, ".replacement.tmp");
     const replacement = await open(replacementPath, "wx", 0o644);
-    try { await replacement.write(replacementBytes); await replacement.sync(); }
-    finally { await replacement.close(); }
-    await rename(replacementPath, path);
-    expect(await readFile(path)).toEqual(replacementBytes);
+    const continued = Buffer.from("\nOpen descriptor continuation\n");
+    try {
+      await replacement.write(replacementBytes); await replacement.sync();
+      await rename(replacementPath, path);
+      await replacement.write(continued); await replacement.sync();
+    } finally { await replacement.close(); }
+    expect(await readFile(path)).toEqual(Buffer.concat([replacementBytes, continued]));
     const replacementDeadline = Date.now() + 5000;
     while (journal!.pending().length && Date.now() < replacementDeadline) await Bun.sleep(20);
     expect(journal!.pending()).toHaveLength(0);
     expect(client.callsTo("updatePage")).toBe(2);
     expect(client.peekPage("100")?.storage).toContain("Atomic replacement 🐴");
+    expect(client.peekPage("100")?.storage).toContain("Open descriptor continuation");
   }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [
