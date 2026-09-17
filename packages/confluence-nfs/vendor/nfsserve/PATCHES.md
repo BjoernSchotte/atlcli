@@ -85,3 +85,10 @@ EXCLUSIVE CREATE: deserialize its eight-byte verifier and forward it through the
 VFS hook. The upstream handler omitted that field entirely. The adapter persists
 the verifier with its local file and accepts only a matching existing-file replay;
 a different verifier returns EXIST without truncating acknowledged bytes.
+
+
+## Directory mutations
+
+MKDIR forwards the caller's `sattr3` to the filesystem hook instead of silently
+ignoring requested attributes. REMOVE and RMDIR pass an explicit directory flag
+so implementations can enforce EISDIR/ENOTDIR and nonempty-directory semantics.

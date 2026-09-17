@@ -108,8 +108,12 @@ export class NfsJournal {
     return this.createLocalEntry(path, "file", verifier);
   }
 
-  createLocalDirectory(path: string): LocalNfsEntry {
-    return this.createLocalEntry(path, "directory");
+  createLocalDirectory(path: string, mode = 0o755): LocalNfsEntry {
+    return this.db.transaction(() => {
+      const entry = this.createLocalEntry(path, "directory");
+      this.setAttributes(entry.id, { mode });
+      return entry;
+    }).immediate();
   }
 
   private checkLocalParents(path: string): void {

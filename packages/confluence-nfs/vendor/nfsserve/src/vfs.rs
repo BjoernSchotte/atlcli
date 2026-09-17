@@ -139,12 +139,12 @@ pub trait NFSFileSystem: Sync {
     /// Makes a directory with the following attributes.
     /// If not supported dur to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
-    async fn mkdir(&self, dirid: fileid3, dirname: &filename3) -> Result<(fileid3, fattr3), nfsstat3>;
+    async fn mkdir(&self, dirid: fileid3, dirname: &filename3, attr: sattr3) -> Result<(fileid3, fattr3), nfsstat3>;
 
     /// Removes a file.
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
-    async fn remove(&self, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3>;
+    async fn remove(&self, dirid: fileid3, filename: &filename3, directory: bool) -> Result<(), nfsstat3>;
 
     /// Removes a file.
     /// If not supported due to readonly file system

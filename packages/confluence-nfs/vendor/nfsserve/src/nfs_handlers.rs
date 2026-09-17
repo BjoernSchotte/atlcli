@@ -144,8 +144,8 @@ pub async fn handle_nfs(
         NFSProgram::NFSPROC3_WRITE => nfsproc3_write(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_CREATE => nfsproc3_create(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_SETATTR => nfsproc3_setattr(xid, input, output, context).await?,
-        NFSProgram::NFSPROC3_REMOVE => nfsproc3_remove(xid, input, output, context).await?,
-        NFSProgram::NFSPROC3_RMDIR => nfsproc3_remove(xid, input, output, context).await?,
+        NFSProgram::NFSPROC3_REMOVE => nfsproc3_remove(xid, input, output, context, false).await?,
+        NFSProgram::NFSPROC3_RMDIR => nfsproc3_remove(xid, input, output, context, true).await?,
         NFSProgram::NFSPROC3_RENAME => nfsproc3_rename(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_MKDIR => nfsproc3_mkdir(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_SYMLINK => nfsproc3_symlink(xid, input, output, context).await?,
@@ -1668,6 +1668,7 @@ pub async fn nfsproc3_remove(
     input: &mut impl Read,
     output: &mut impl Write,
     context: &RPCContext,
+    directory: bool,
 ) -> Result<(), anyhow::Error> {
     // if we do not have write capabilities
     if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
@@ -1715,7 +1716,7 @@ pub async fn nfsproc3_remove(
     };
 
     // delete!
-    let res = context.vfs.remove(dirid, &dirops.name).await;
+    let res = context.vfs.remove(dirid, &dirops.name, directory).await;
 
     // Re-read dir attributes for post op attr
     let post_dir_attr = match context.vfs.getattr(dirid).await {
@@ -1988,7 +1989,7 @@ pub async fn nfsproc3_mkdir(
         },
     };
 
-    let res = context.vfs.mkdir(dirid, &args.dirops.name).await;
+    let res = context.vfs.mkdir(dirid, &args.dirops.name, args.attributes).await;
 
     // Re-read dir attributes for post op attr
     let post_dir_attr = match context.vfs.getattr(dirid).await {

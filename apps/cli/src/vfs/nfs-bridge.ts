@@ -70,9 +70,13 @@ export async function startNfsServer(options: {
         case "create-exclusive":
           if (typeof args.name !== "string" || typeof args.verifier !== "string" || !/^[0-9a-f]{16}$/.test(args.verifier)) throw new VfsError("EINVAL", "Invalid exclusive CREATE");
           result = await fs.create(number(args.parent), args.name, args.verifier); break;
+        case "mkdir":
+          if (typeof args.name !== "string") throw new VfsError("EINVAL", "Invalid NFS name");
+          result = await fs.mkdir(number(args.parent), args.name, number(args.mode)); break;
+        case "rmdir":
         case "remove":
           if (typeof args.name !== "string") throw new VfsError("EINVAL", "Invalid NFS name");
-          await fs.remove(number(args.parent), args.name);
+          await fs.remove(number(args.parent), args.name, message.op === "rmdir");
           result = null; break;
         case "rename": {
           if (typeof args.name !== "string" || typeof args.targetName !== "string") throw new VfsError("EINVAL", "Invalid NFS name");

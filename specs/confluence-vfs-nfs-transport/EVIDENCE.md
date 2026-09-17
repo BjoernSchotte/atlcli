@@ -2193,3 +2193,30 @@ namespace changes. No extra Confluence pages are created for local staging.
 
 MKDIR/RMDIR wire hooks are still pending; TextEdit acceptance remains open.
 This slice supplies the durable storage/projection that those hooks require.
+
+
+## Slice 83 — native MKDIR and distinct RMDIR semantics
+
+Bridge protocol 9 connects MKDIR and RMDIR to the durable local namespace.
+The vendored server now forwards MKDIR attributes and distinguishes RMDIR from
+REMOVE. Requested mode is committed atomically with directory creation;
+unsupported attribute combinations fail before mutation. RO exports stay RO.
+
+Native macOS and Linux both create a private 0700 directory, create/write/fsync
+and read a child, reject removal while nonempty, then unlink the child and
+remove the directory. RPC regression tests cover type errors, duplicate MKDIR,
+unsupported modes, stale removed handles, and RO rejection. Each host passed
+both focused tests (50 assertions total). Linux real-DOCSY save E2E passed all
+18 assertions and cleaned up its page/mount. The journal/projection/framing
+suites passed 72 tests / 1,092 assertions; Rust tests (six), clippy with warnings
+as errors and all four typecheck tasks passed.
+
+A fresh TextEdit UI attempt still failed to save, including on close; its
+synthetic backend remained at version 1 with zero updates/pending records.
+The local staging namespace was empty afterwards. This establishes another
+unsupported save operation remains, but does not identify which one; the next
+UI diagnostic must capture that operation. The test document was discarded
+and the owned mount unmounted normally. TextEdit acceptance remains open.
+
+Full macOS RPC regression also passed: 19 tests / 592 assertions, including
+60-second read, blocked-reader and 120-second dispatch deadline checks.

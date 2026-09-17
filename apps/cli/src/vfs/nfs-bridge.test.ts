@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { platform } from "node:os";
-import { open, opendir, stat, unlink, rename, readFile } from "node:fs/promises";
+import { open, opendir, stat, unlink, rename, readFile, mkdir, rmdir } from "node:fs/promises";
 import { getActiveProfile, loadConfig } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { runMountCommand } from "../commands/wiki-mount.js";
@@ -219,6 +219,30 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect((await read(live, 0, 65536)).toString()).toContain("New current document");
     expect(await read(historic, 0, 65536)).toEqual(expected);
     expect(client.callsTo("getPageAtVersion")).toBe(2);
+  });
+  it("distinguishes directory RPCs and validates MKDIR attributes before mutation", async () => {
+    const { server, journal } = await fixture(["DOCSY"], false, undefined, true);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const name = opaque(Buffer.from("editor-dir"));
+    const created = await rpc(server, 100003, 9, Buffer.concat([opaque(root), name, ints(1, 0o700, 0, 0, 0, 0, 0)]));
+    expect(created.readUInt32BE()).toBe(0);
+    const directory = created.subarray(12, 12 + created.readUInt32BE(8));
+    expect(journal!.attributes(journal!.local("/DOCSY/editor-dir")!.id)?.mode).toBe(0o700);
+    expect((await rpc(server, 100003, 12, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(21);
+    expect((await rpc(server, 100003, 9, Buffer.concat([opaque(root), name, ints(0, 0, 0, 0, 0, 0)]))).readUInt32BE()).toBe(17);
+    const unsupported = await rpc(server, 100003, 9, Buffer.concat([opaque(root), opaque(Buffer.from("unsupported")), ints(1, 0o7777, 0, 0, 0, 0, 0)]));
+    expect(unsupported.readUInt32BE()).toBe(10004);
+    expect(journal!.local("/DOCSY/unsupported")).toBeNull();
+    const local = journal!.createLocal("/DOCSY/editor-dir/child");
+    expect((await rpc(server, 100003, 13, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(66);
+    expect((await rpc(server, 100003, 13, Buffer.concat([opaque(directory), opaque(Buffer.from("child"))]))).readUInt32BE()).toBe(20);
+    journal!.removeLocal(local.path);
+    expect((await rpc(server, 100003, 13, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(0);
+    expect((await rpc(server, 100003, 1, opaque(directory))).readUInt32BE()).toBe(70);
+    expect(journal!.pending()).toEqual([]);
+    const readonly = await fixture(["DOCSY"], false);
+    expect((await rpc(readonly.server, 100003, 9, Buffer.alloc(0))).readUInt32BE()).toBe(30);
   });
   it("counts protocol requests including backend-free NFS and mount calls", async () => {
     const { server, client } = await fixture(["DOCSY"], false);
@@ -776,6 +800,16 @@ with socket.socket() as client:
     expect(journal!.pending()).toHaveLength(0);
     expect(client.callsTo("updatePage")).toBe(1);
     expect(client.peekPage("100")?.storage).toContain("Native Grüße 🐴");
+    const saveDirectory = join(mountpoint, "_index.md.sb-test");
+    await mkdir(saveDirectory, { mode: 0o700 });
+    expect((await stat(saveDirectory)).mode & 0o777).toBe(0o700);
+    const childPath = join(saveDirectory, "child.tmp");
+    const child = await open(childPath, "wx", 0o600);
+    await child.writeFile("directory child"); await child.sync(); await child.close();
+    expect((await readFile(childPath)).toString()).toBe("directory child");
+    await expect(rmdir(saveDirectory)).rejects.toMatchObject({ code: "ENOTEMPTY" });
+    await unlink(childPath);
+    await rmdir(saveDirectory);
     const temporary = await open(join(mountpoint, ".native.tmp"), "wx", 0o600);
     try { await temporary.write(Buffer.from("draft")); await temporary.sync(); }
     finally { await temporary.close(); }

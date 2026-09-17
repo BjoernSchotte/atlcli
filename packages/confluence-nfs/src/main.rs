@@ -82,6 +82,7 @@ impl Bridge {
                 "EROFS" => nfsstat3::NFS3ERR_ROFS,
                 "EISDIR" => nfsstat3::NFS3ERR_ISDIR,
                 "ENOTDIR" => nfsstat3::NFS3ERR_NOTDIR,
+                "ENOTEMPTY" => nfsstat3::NFS3ERR_NOTEMPTY,
                 "ENAMETOOLONG" => nfsstat3::NFS3ERR_NAMETOOLONG,
                 "EINVAL" => nfsstat3::NFS3ERR_INVAL,
                 "ENOSPC" => nfsstat3::NFS3ERR_NOSPC,
@@ -385,16 +386,53 @@ impl NFSFileSystem for Bridge {
         self.call("create-exclusive", json!({"parent":parent,"name":name,"verifier":format!("{:016x}",u64::from_be_bytes(verifier))}))
             .await?.as_u64().ok_or(nfsstat3::NFS3ERR_IO)
     }
-    async fn mkdir(&self, _: fileid3, _: &filename3) -> Result<(fileid3, fattr3), nfsstat3> {
-        Err(nfsstat3::NFS3ERR_ROFS)
+    async fn mkdir(
+        &self,
+        parent: fileid3,
+        filename: &filename3,
+        value: sattr3,
+    ) -> Result<(fileid3, fattr3), nfsstat3> {
+        if !self.writable {
+            return Err(nfsstat3::NFS3ERR_ROFS);
+        }
+        if !matches!(value.uid, set_uid3::Void)
+            || !matches!(value.gid, set_gid3::Void)
+            || !matches!(value.size, set_size3::Void)
+            || !matches!(value.atime, set_atime::DONT_CHANGE)
+            || !matches!(value.mtime, set_mtime::DONT_CHANGE)
+        {
+            return Err(nfsstat3::NFS3ERR_NOTSUPP);
+        }
+        let mode = match value.mode {
+            set_mode3::mode(mode) if mode <= 0o777 => mode,
+            set_mode3::Void => 0o755,
+            _ => return Err(nfsstat3::NFS3ERR_NOTSUPP),
+        };
+        let id = self
+            .call(
+                "mkdir",
+                json!({"parent":parent,"name":name(filename)?,"mode":mode}),
+            )
+            .await?
+            .as_u64()
+            .ok_or(nfsstat3::NFS3ERR_IO)?;
+        Ok((id, self.getattr(id).await?))
     }
-    async fn remove(&self, parent: fileid3, name: &filename3) -> Result<(), nfsstat3> {
+    async fn remove(
+        &self,
+        parent: fileid3,
+        name: &filename3,
+        directory: bool,
+    ) -> Result<(), nfsstat3> {
         if !self.writable {
             return Err(nfsstat3::NFS3ERR_ROFS);
         }
         let name = std::str::from_utf8(name).map_err(|_| nfsstat3::NFS3ERR_INVAL)?;
-        self.call("remove", json!({"parent":parent,"name":name}))
-            .await?;
+        self.call(
+            if directory { "rmdir" } else { "remove" },
+            json!({"parent":parent,"name":name}),
+        )
+        .await?;
         Ok(())
     }
     async fn rename(

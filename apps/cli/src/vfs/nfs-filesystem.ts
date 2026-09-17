@@ -315,15 +315,15 @@ export class NfsFilesystem {
     return posix.join(directory, name);
   }
 
-  async mkdir(parent: number, name: string): Promise<number> {
-    return this.createEntry(parent, name, true);
+  async mkdir(parent: number, name: string, mode = 0o755): Promise<number> {
+    return this.createEntry(parent, name, true, undefined, mode);
   }
 
   async create(parent: number, name: string, verifier?: string): Promise<number> {
     return this.createEntry(parent, name, false, verifier);
   }
 
-  private async createEntry(parent: number, name: string, directory: boolean, verifier?: string): Promise<number> {
+  private async createEntry(parent: number, name: string, directory: boolean, verifier?: string, mode = 0o755): Promise<number> {
     const path = await this.mutationPath(parent, name);
     if (verifier !== undefined && this.journal!.local(path)) {
       this.journal!.createLocal(path, verifier);
@@ -333,7 +333,7 @@ export class NfsFilesystem {
     catch (error) {
       if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error;
       if (this.paths.size >= NFS_MAX_HANDLES || this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
-      if (directory) this.journal!.createLocalDirectory(path);
+      if (directory) this.journal!.createLocalDirectory(path, mode);
       else this.journal!.createLocal(path, verifier);
       return this.register(path);
     }
