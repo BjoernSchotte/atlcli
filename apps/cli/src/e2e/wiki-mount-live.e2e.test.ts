@@ -17,7 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { open, readdir, readFile, writeFile, rename, unlink, stat, rm } from "node:fs/promises";
+import { open, readdir, readFile, writeFile, rename, unlink, stat, rm, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { platform, tmpdir } from "node:os";
@@ -301,6 +301,67 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect((await vfs.stat(path)).id).toBe(folder.id);
     } finally { await client.deleteFolder(folder.id); }
   }, 30_000);
+
+  it.skipIf(!process.env.ATLCLI_NFS_TEST_HELPER || process.env.ATLCLI_NFS_KERNEL !== "1")("creates a DOCSY page with native NFS mkdir and edits its body with Vim", async () => {
+    const journal = new NfsJournal(join(cacheDir, "native-directory.sqlite"), "live:DOCSY");
+    const endpoint = await startNfsServer({ vfs, spaces: [E2E_SPACE_KEY], journal,
+      helperPath: process.env.ATLCLI_NFS_TEST_HELPER! });
+    const local = mkdtempSync(join(tmpdir(), "atlcli-live-mkdir-"));
+    let mounted = false;
+    const createPage = client.createPage.bind(client);
+    const made: string[] = [];
+    client.createPage = async params => {
+      const result = await createPage(params); made.push(result.id); created.unshift(result.id); return result;
+    };
+    try {
+      const options = nfsMountOptionsFor(platform(), endpoint.port, "rw");
+      const attach = platform() === "linux"
+        ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", local]
+        : ["mount_nfs", "-o", options, "127.0.0.1:/", local];
+      expect(await runMountCommand(attach)).toBe(0); mounted = true;
+      const name = makeE2eTitle("native-mkdir");
+      const directory = join(local, name);
+      await mkdir(directory);
+      const bodyPath = join(directory, "_index.md");
+      const descriptor = await open(bodyPath, "r+");
+      try {
+        const inode = (await descriptor.stat()).ino;
+        await descriptor.truncate(0); await descriptor.writeFile("Native directory Grüße 🐴"); await descriptor.sync();
+        await writeFile(join(directory, makeE2eTitle("native-mkdir-child") + ".md"), "Native child retained");
+        const deadline = Date.now() + 15000;
+        const alias = "/" + E2E_SPACE_KEY + "/" + name;
+        while ((!journal.promotion(alias) || journal.writeStatus().pendingPages) && Date.now() < deadline) await Bun.sleep(50);
+        expect(journal.writeStatus().pendingPages).toBe(0);
+        const parentId = journal.promotion(alias)!.pageId;
+        expect(made).toHaveLength(2);
+        const before = await client.getPage(parentId);
+        expect(storageToMarkdown(before.storage)).toContain("Native directory Grüße 🐴");
+        const child = await client.getPage(made.find(id => id !== parentId)!);
+        expect(child.parentId).toBe(parentId);
+        expect(child.storage).toContain("Native child retained");
+        const canonical = join(local, ...(await vfs.readlink("/" + E2E_SPACE_KEY + "/.by-id/" + parentId + ".md")).split("/").slice(2));
+        expect((await stat(canonical)).ino).toBe(inode);
+        expect((await descriptor.stat()).ino).toBe(inode);
+        await promisify(execFile)("vim", ["-Nu", "NONE", "-i", "NONE", "-n", "-es", "-c",
+          "set nomodeline", "-c", "normal! GoNative mkdir Vim saved", "-c", "wq", bodyPath], { timeout: 10000 });
+        const savedDeadline = Date.now() + 15000;
+        while (journal.writeStatus().pendingPages && Date.now() < savedDeadline) await Bun.sleep(50);
+        const saved = await client.getPage(parentId);
+        expect(saved.storage).toContain("Native mkdir Vim saved");
+        expect(storageToMarkdown(saved.storage)).toContain("Native directory Grüße 🐴");
+        expect(saved.version!).toBeGreaterThan(before.version!);
+      } finally { await descriptor.close(); }
+    } finally {
+      if (mounted) {
+        const detach = platform() === "linux" ? ["sudo", "-n", "umount", local] : ["umount", local];
+        let status = await runMountCommand(detach);
+        for (let attempt = 0; status !== 0 && attempt < 10; attempt++) { await Bun.sleep(100); status = await runMountCommand(detach); }
+        if (status !== 0) throw new Error("Test mount remains attached: " + local);
+      }
+      await endpoint.stop(); journal.close(); client.createPage = createPage;
+      rmSync(local, { recursive: true, force: true });
+    }
+  }, 45_000);
 
   it.skipIf(!process.env.ATLCLI_NFS_TEST_HELPER || process.env.ATLCLI_NFS_KERNEL !== "1")("automatically publishes native NFS saves to Confluence", async () => {
     const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,

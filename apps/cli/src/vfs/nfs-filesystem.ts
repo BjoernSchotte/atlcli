@@ -3,7 +3,7 @@ import { reconcileNfsMove } from "./nfs-move.js";
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { VfsError, assertWritable, parseVfsFrontmatter, formatDirName, parseName, titleFromName, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
-import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping, isNfsPageDraft, SweepDetector } from "./mount-client-probes.js";
+import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping, isNfsPageDirectory, SweepDetector } from "./mount-client-probes.js";
 
 export const NFS_MAX_READ = 1024 * 1024;
 export const NFS_MAX_HANDLES = 65_536;
@@ -121,8 +121,8 @@ export class NfsFilesystem {
     if (entry.shield) return entry.path; // Fixed empty volume markers, never backend paths.
     this.assertExport(entry.path);
     if (entry.identity.startsWith("local:") && this.journal?.promotion(entry.identity)) {
-      const pageId = this.journal.promotion(entry.identity)!.pageId;
-      const path = await this.promotedPath(pageId);
+      const promotion = this.journal.promotion(entry.identity)!;
+      const path = await this.promotedPath(promotion.pageId, promotion.directory);
       const stat = await this.vfs.stat(path);
       this.moveHandles(entry.identity, this.identity(stat, path), path, id);
       return path;
@@ -132,6 +132,8 @@ export class NfsFilesystem {
       if (!file || this.journal?.local(file.path)?.id !== file.id) return this.stale(id);
       this.assertExport(file.path);
       await this.localParent(posix.dirname(file.path));
+      // Publication/rename may relocate this identity while validating a parent.
+      if (this.journal?.promotion(entry.identity) || this.journal?.get(entry.identity)?.path !== file.path) return this.pathFor(id);
       entry.path = file.path;
       return file.path;
     }
@@ -200,13 +202,13 @@ export class NfsFilesystem {
     return entry.path;
   }
 
-  private async promotedPath(pageId: string): Promise<string> {
+  private async promotedPath(pageId: string, directory = false): Promise<string> {
     for (const space of this.spaces) {
       try {
         const path = await this.vfs.readlink(`/${space}/.by-id/${pageId}.md`);
         this.assertExport(path);
         await this.checkPageIdentity(path, pageId);
-        return path;
+        return directory ? posix.dirname(path) : path;
       } catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
     }
     throw new VfsError("ENOENT", "Created page left the export or was deleted");
@@ -219,13 +221,13 @@ export class NfsFilesystem {
     if (promoted) {
       const handle = this.identities.get(promoted.localId);
       if (handle !== undefined) await this.pathFor(handle);
-      path = await this.promotedPath(promoted.pageId);
+      path = await this.promotedPath(promoted.pageId, promoted.directory);
     }
     if (path === this.root) return 1;
     const local = this.journal?.local(path);
     const stat = await this.stat(path);
     if (!local) await this.checkResolvedScope(path);
-    const promotion = !local && this.journal?.promotion(stat.id);
+    const promotion = !local && this.journal?.promotion(stat.id, stat.isDirectory);
     const localHandle = promotion ? this.identities.get(promotion.localId) : undefined;
     if (localHandle !== undefined) await this.pathFor(localHandle);
     const identity = local?.id ?? this.identity(stat, path);
@@ -328,7 +330,7 @@ export class NfsFilesystem {
   private async stat(path: string): Promise<VfsStat> {
     if (this.journal?.displaced(path)) throw new VfsError("ENOENT", "Page moved aside for replacement");
     const promotion = this.journal?.promotion(path);
-    if (promotion) path = await this.promotedPath(promotion.pageId);
+    if (promotion) path = await this.promotedPath(promotion.pageId, promotion.directory);
     const file = this.journal?.local(path);
     if (!file) {
       if (this.journal?.displaced(path)) throw new VfsError("ENOENT", "Page moved aside for replacement");
@@ -337,7 +339,8 @@ export class NfsFilesystem {
         const name = stat.canonicalName ?? formatDirName((await this.vfs.resolve(path)).title, stat.id);
         if (posix.basename(path) !== name) throw new VfsError("ENOENT", "Noncanonical NFS directory name");
       }
-      const metadata = stat.kind === "page" && !stat.isDirectory ? this.journal?.attributes(stat.id) : undefined;
+      const metadataId = stat.isDirectory ? this.journal?.promotion(stat.id, true)?.localId : stat.id;
+      const metadata = stat.kind === "page" && metadataId ? this.journal?.attributes(metadataId) : undefined;
       return metadata ? { ...stat, mode: metadata.mode & (this.vfs.guard.mode === "rw" ? 0o777 : 0o555) } : stat;
     }
     await this.localParent(posix.dirname(path));
@@ -357,7 +360,9 @@ export class NfsFilesystem {
     const directory = await this.pathFor(parent);
     await this.localParent(directory);
     if (!((await this.stat(directory)).mode & 0o222)) throw new VfsError("EACCES", "Directory is not writable");
-    return posix.join(directory, name);
+    const path = posix.join(directory, name);
+    const promotion = this.journal.promotion(path);
+    return promotion?.directory ? this.promotedPath(promotion.pageId, true) : path;
   }
 
   async createRegular(parent: number, name: string, guarded: boolean, values: { mode?: number; size?: number }): Promise<{ file: number; pageId: string | null }> {
@@ -400,10 +405,12 @@ export class NfsFilesystem {
     const identity = this.paths.get(handle)?.identity;
     if (!identity || !this.journal) return null;
     const id = this.journal.promotion(identity)?.pageId ?? /^page:([0-9]+):file$/.exec(identity)?.[1] ?? identity;
-    const file = this.journal.get(id);
+    let file = this.journal.get(id);
+    if (!file) return null;
+    if (this.journal.local(file.path)?.kind === "directory") file = this.journal.local(`${file.path}/_index.md`);
     if (!file) return null;
     if (!file.id.startsWith("local:")) return file.revision > file.publishedRevision ? file.id : null;
-    return isNfsPageDraft(file.path) && !this.journal.isBackup(file.id) ? file.id : null;
+    return this.journal.isPageDraft(file.path) && !this.journal.isBackup(file.id) ? file.id : null;
   }
 
   private async createEntry(parent: number, name: string, directory: boolean, verifier?: string, mode = 0o755): Promise<number> {
@@ -428,7 +435,8 @@ export class NfsFilesystem {
     catch (error) {
       if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error;
       if (this.paths.size >= NFS_MAX_HANDLES || this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
-      if (directory) this.journal!.createLocalDirectory(path, mode);
+      if (directory && isNfsPageDirectory(path)) this.journal!.createPageDirectory(path, mode);
+      else if (directory) this.journal!.createLocalDirectory(path, mode);
       else this.journal!.createLocal(path, verifier);
       return this.register(path);
     }
@@ -572,15 +580,14 @@ export class NfsFilesystem {
       this.journal!.renameLocal(source, target);
       const handle = this.identities.get(replaced.id);
       if (handle !== undefined) this.forgetHandle(handle);
-      const renamed = this.journal!.local(target)!;
-      return isNfsPageDraft(target) && !this.journal!.isBackup(renamed.id) ? renamed.id : null;
+      return this.publicationId(await this.register(target));
     }
     let targetId: number;
     try { targetId = await this.register(target); }
     catch (error) {
       if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error;
       this.journal!.renameLocal(source, target);
-      return isNfsPageDraft(target) ? this.journal!.local(target)!.id : null;
+      return this.publicationId(await this.register(target));
     }
     const page = await this.stagedFile(targetId);
     const local = this.journal!.local(source)!;
@@ -632,7 +639,7 @@ export class NfsFilesystem {
     }
     const file = await this.stagedFile(id);
     const updated = this.journal!.write(file.id, offset, bytes);
-    return updated.id.startsWith("local:") && (!isNfsPageDraft(updated.path) || this.journal!.isBackup(updated.id)) ? null : updated.id;
+    return updated.id.startsWith("local:") && (!this.journal!.isPageDraft(updated.path) || this.journal!.isBackup(updated.id)) ? null : updated.id;
   }
 
   async truncate(id: number, size: number): Promise<string | null> {
@@ -643,7 +650,7 @@ export class NfsFilesystem {
     const entry = this.paths.get(id)!;
     entry.rendered = { hash: createHash("sha256").update(updated.bytes).digest("hex"),
       mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1) };
-    return updated.id.startsWith("local:") && (!isNfsPageDraft(updated.path) || this.journal!.isBackup(updated.id)) ? null : updated.id;
+    return updated.id.startsWith("local:") && (!this.journal!.isPageDraft(updated.path) || this.journal!.isBackup(updated.id)) ? null : updated.id;
   }
 
   async setAttributes(id: number, values: { mode?: number; atime?: number; mtime?: number }): Promise<void> {
@@ -652,6 +659,13 @@ export class NfsFilesystem {
     if (local?.kind === "directory") {
       assertWritable(this.vfs.guard, "update");
       this.journal!.setAttributes(local.id, values);
+      return;
+    }
+    const stat = await this.stat(path);
+    const directory = stat.isDirectory && this.journal?.promotion(stat.id, true);
+    if (directory) {
+      assertWritable(this.vfs.guard, "update");
+      this.journal!.setAttributes(directory.localId, values);
       return;
     }
     const file = await this.stagedFile(id, true);
@@ -669,8 +683,9 @@ export class NfsFilesystem {
       mtime: shield === "directory" ? (await this.directoryView(id, path)).mtime : 0 };
     const stat = await this.stat(path);
     const local = this.journal?.local(path);
-    if (local?.kind === "directory") {
-      const metadata = this.journal!.attributes(local.id);
+    const directoryId = local?.kind === "directory" ? local.id : stat.isDirectory ? this.journal?.promotion(stat.id, true)?.localId : undefined;
+    if (directoryId) {
+      const metadata = this.journal!.attributes(directoryId);
       return { id, directory: true, size: 0, mode: stat.mode,
         mtime: metadata?.mtime ?? (refreshDirectory ? (await this.directoryView(id, path)).mtime : this.directories.get(id)?.mtime ?? 0),
         atime: metadata?.atime ?? undefined, uid: process.getuid?.() ?? 0, gid: process.getgid?.() ?? 0,

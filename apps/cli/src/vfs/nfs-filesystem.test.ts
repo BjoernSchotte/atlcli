@@ -927,6 +927,92 @@ it("refuses page-tree moves with pending local data without sending a move", asy
   expect(await fs.lookup(1, "child-0-200")).toBe(directory);
 });
 
+it("keeps directory and body handles distinct through MKDIR publication and journal reopen", async () => {
+  const { fs, journal, client, vfs, cacheDir } = await fixture(["DOCSY"], "rw", undefined, true);
+  const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+  try {
+    const directory = await fs.mkdir(1, "new-page", 0o700);
+    const body = await fs.lookup(directory, "_index.md");
+    expect(body).not.toBe(directory);
+    expect((await fs.readdir(directory, 0, 10)).entries.map(entry => entry.name)).toEqual(["_index.md"]);
+    const pending = await fs.write(body, 0, Buffer.from("Saved Grüße 🐴"));
+    expect(fs.publicationId(directory)).toBe(pending);
+    const child = await fs.create(directory, "child.txt");
+    await fs.write(child, 0, Buffer.from("Local child"));
+    const result = (await publisher.publish(pending!))!;
+    const canonical = "new-page-" + result.pageId;
+    expect(await fs.lookup(1, canonical)).toBe(directory);
+    expect(await fs.lookup(1, "new-page")).toBe(directory);
+    expect(await fs.lookup(directory, "_index.md")).toBe(body);
+    expect(await fs.lookup(directory, "child.txt")).toBe(child);
+    expect(await fs.getattr(directory)).toMatchObject({ directory: true, mode: 0o700 });
+    expect(await fs.getattr(body)).toMatchObject({ directory: false, mode: 0o644 });
+    expect(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString()).toContain("Saved Grüße 🐴");
+    expect(Buffer.from((await fs.read(child, 0, 100)).data, "base64").toString()).toBe("Local child");
+    await fs.setAttributes(directory, { mode: 0o500 });
+    await expect(fs.create(directory, "denied.md")).rejects.toMatchObject({ code: "EACCES" });
+    expect(client.callsTo("createPage")).toBe(1);
+    await publisher.stop(); journal!.close();
+    const reopened = new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY");
+    try {
+      const fresh = new NfsFilesystem(vfs, ["DOCSY"], undefined, reopened);
+      const restored = await fresh.lookup(1, "new-page");
+      expect(await fresh.lookup(1, canonical)).toBe(restored);
+      expect(await fresh.getattr(restored)).toMatchObject({ directory: true, mode: 0o500 });
+      expect((await fresh.getattr(await fresh.lookup(restored, "_index.md"))).directory).toBe(false);
+      expect(Buffer.from((await fresh.read(await fresh.lookup(restored, "child.txt"), 0, 100)).data, "base64").toString()).toBe("Local child");
+    } finally { reopened.close(); }
+  } finally { await publisher.stop(); }
+});
+
+it("keeps a local child read valid when its directory publishes during parent validation", async () => {
+  const { fs, journal, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+  const directory = await fs.mkdir(1, "new-page");
+  const child = await fs.create(directory, "notes.txt");
+  await fs.write(child, 0, Buffer.from("Preserved"));
+  const original = vfs.stat.bind(vfs);
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let pause = true;
+  vfs.stat = async path => {
+    if (path === "/DOCSY" && pause) { pause = false; entered(); await gate; }
+    return original(path);
+  };
+  try {
+    const reading = fs.read(child, 0, 100);
+    await started;
+    await publisher.publish(fs.publicationId(directory)!);
+    release();
+    expect(Buffer.from((await reading).data, "base64").toString()).toBe("Preserved");
+  } finally { release(); vfs.stat = original; await publisher.stop(); }
+});
+
+it("turns a hidden directory tree into pages only after a visible rename", async () => {
+  const { fs, journal, vfs, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+  try {
+    const directory = await fs.mkdir(1, ".draft");
+    const nested = await fs.mkdir(directory, "nested");
+    await expect(fs.lookup(directory, "_index.md")).rejects.toMatchObject({ code: "ENOENT" });
+    expect(fs.publicationId(directory)).toBeNull();
+    const pending = await fs.rename(1, ".draft", 1, "published");
+    expect(pending).not.toBeNull();
+    expect(await fs.lookup(1, "published")).toBe(directory);
+    const body = await fs.lookup(directory, "_index.md");
+    await fs.write(body, 0, Buffer.from("Visible now"));
+    await publisher.publish(pending!);
+    const deadline = Date.now() + 3000;
+    while (journal!.writeStatus().pendingPages && Date.now() < deadline) await Bun.sleep(25);
+    expect(journal!.writeStatus().pendingPages).toBe(0);
+    expect(client.callsTo("createPage")).toBe(2);
+    expect((await fs.getattr(directory)).directory).toBe(true);
+    expect((await fs.getattr(nested)).directory).toBe(true);
+    expect((await fs.getattr(body)).directory).toBe(false);
+  } finally { await publisher.stop(); }
+});
+
 it("projects durable local editor directories and keeps handles across tree rename", async () => {
   const { fs, journal, client } = await fixture(["DOCSY"], "rw", undefined, true);
   const dir = await fs.mkdir(1, "_index.md.sb-test");
@@ -944,8 +1030,8 @@ it("projects durable local editor directories and keeps handles across tree rena
   await fs.setAttributes(dir, { mode: 0o500 });
   await expect(fs.create(dir, "denied")).rejects.toMatchObject({ code: "EACCES" });
   await fs.setAttributes(dir, { mode: 0o700 });
-  await fs.rename(1, "_index.md.sb-test", 1, "renamed");
-  expect(await fs.lookup(1, "renamed")).toBe(dir);
+  await fs.rename(1, "_index.md.sb-test", 1, ".renamed");
+  expect(await fs.lookup(1, ".renamed")).toBe(dir);
   expect(await fs.lookup(dir, "nested")).toBe(nested);
   expect(await fs.lookup(nested, "draft")).toBe(file);
   expect(Buffer.from((await fs.read(file, 0, 100)).data, "base64").toString()).toBe("local draft");
@@ -953,28 +1039,28 @@ it("projects durable local editor directories and keeps handles across tree rena
   expect(await fs.rename(nested, "draft", 1, "_index.md")).toBe("100");
   expect(Buffer.from((await fs.read(file, 0, 100)).data, "base64").toString()).toBe("local draft");
   await fs.remove(dir, "nested", true);
-  await fs.remove(1, "renamed", true);
+  await fs.remove(1, ".renamed", true);
   await expect(fs.getattr(dir)).rejects.toMatchObject({ code: "ESTALE" });
   expect(journal!.pending().map(entry => entry.id)).toEqual(["100"]);
   expect(client.callsTo("updatePage")).toBe(0);
 });
 
-it.each([false, true])("never publishes a renamed Markdown-named directory (replacement=%s)", async replace => {
+it.each([false, true])("never publishes a renamed hidden Markdown-named directory (replacement=%s)", async replace => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
   try {
-    const directory = await fs.mkdir(1, "drafts");
+    const directory = await fs.mkdir(1, ".drafts");
     const child = await fs.create(directory, "notes.txt");
     await fs.write(child, 0, Buffer.from("Retained local notes"));
-    if (replace) await fs.mkdir(1, "drafts.md");
-    const scheduled = await fs.rename(1, "drafts", 1, "drafts.md");
+    if (replace) await fs.mkdir(1, ".drafts.md");
+    const scheduled = await fs.rename(1, ".drafts", 1, ".drafts.md");
     // Exercise the bridge's publication request, including directory names
     // that look like Markdown; the publisher must check the durable type.
     if (scheduled) expect(await publisher.publish(scheduled)).toBeNull();
     expect(client.callsTo("createPage")).toBe(0);
-    expect(journal!.createIntent(journal!.local("/DOCSY/drafts.md")!.id)).toBeNull();
-    expect(journal!.local("/DOCSY/drafts.md")!.error).toBeNull();
-    expect(await fs.lookup(1, "drafts.md")).toBe(directory);
+    expect(journal!.createIntent(journal!.local("/DOCSY/.drafts.md")!.id)).toBeNull();
+    expect(journal!.local("/DOCSY/.drafts.md")!.error).toBeNull();
+    expect(await fs.lookup(1, ".drafts.md")).toBe(directory);
     expect(await fs.getattr(directory)).toMatchObject({ directory: true });
     expect(await fs.lookup(directory, "notes.txt")).toBe(child);
     expect(Buffer.from((await fs.read(child, 0, 100)).data, "base64").toString()).toBe("Retained local notes");

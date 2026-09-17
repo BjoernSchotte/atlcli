@@ -4063,3 +4063,34 @@ Native MKDIR allocation/scheduling and role-aware directory/body handles remain
 the next integration slice; no native mkdir completion is claimed here. The
 Slice-148 CI run 35242504420 completed Linux arm64 successfully, but the next
 push cancelled its other native jobs; this is not an all-platform green run.
+
+## Slice 151 — native MKDIR publication and stable handles (2026-09-17)
+
+NFS MKDIR now atomically allocates an ordinary directory and _index.md, then
+schedules the existing publisher. Directory and body promotions resolve to
+distinct stable handles; original directory aliases and children survive
+promotion and journal reopen. Directory mode/atime/mtime stay separate from the
+body. Hidden-to-visible tree rename allocates missing bodies atomically and
+schedules publication; quota failure rolls the rename back. Editor staging
+containers retain their local-only behavior.
+
+A concurrent parent-publication regression initially failed with ENOENT for a
+local child read. pathFor now rechecks the identity after asynchronous parent
+validation and resolves its relocated path before proceeding. The test passes.
+Native macOS and Linux mounts both prove MKDIR, body/child saves, unchanged open
+descriptor inode identities and canonical/original paths (83 assertions in the
+RW kernel case on each host). Linux DOCSY native mkdir plus Vim body save passed
+one test / 11 assertions, verifying API content, correct parent ID, subsequent
+version increase and cleanup of both disposable pages.
+
+The broad six-file runs on each host produced 234 passes, one intentional Glow
+skip and one obsolete RMDIR test failure (3284 assertions). Ordinary directories
+now contain _index.md, so that wire test was updated to require ENOTEMPTY until
+removing the body; its targeted rerun passed on each host (26 assertions). No
+remaining failure was observed in these runs. Typecheck passed four tasks.
+
+CI of the preceding publisher slice (run 35244388570) passed Linux x64/arm64 and
+macOS arm64. Intel macOS passed CREATE exhaustion but hdiutil reported Resource
+busy while creating the second APFS test image; compiled smoke was not reached.
+This test-environment failure remains to fix/revalidate. Public RW remains gated
+pending remaining namespace, fault, resource and final artifact requirements.

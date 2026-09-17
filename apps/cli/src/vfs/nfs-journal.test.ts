@@ -593,17 +593,17 @@ it("durably stages editor directories, renames their children and replaces only 
   expect(() => journal.renameLocal(directory.path, `${directory.path}/child`)).toThrow("into itself");
   expect(journal.pending()).toEqual([]);
   expect(journal.beginPublish(directory.id)).toBeNull();
-  journal.renameLocal(directory.path, "/DOCSY/renamed");
+  journal.renameLocal(directory.path, "/DOCSY/.renamed");
   journal.close();
   const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
   expect(recovered.local(directory.path)).toBeNull();
-  expect(recovered.local("/DOCSY/renamed")).toMatchObject({ id: directory.id, kind: "directory" });
+  expect(recovered.local("/DOCSY/.renamed")).toMatchObject({ id: directory.id, kind: "directory" });
   expect(recovered.attributes(directory.id)?.mode).toBe(0o700);
-  expect(recovered.local("/DOCSY/renamed/nested/draft")).toMatchObject({ id: file.id, kind: "file" });
-  expect(recovered.createLocal("/DOCSY/renamed/nested/draft", "0123456789abcdef").id).toBe(file.id);
-  expect(Buffer.from(recovered.replaceLocal("/DOCSY/renamed/nested/draft", "100").bytes).toString()).toBe("replacement 🐴");
-  recovered.removeLocal("/DOCSY/renamed/nested", true);
-  recovered.removeLocal("/DOCSY/renamed", true);
+  expect(recovered.local("/DOCSY/.renamed/nested/draft")).toMatchObject({ id: file.id, kind: "file" });
+  expect(recovered.createLocal("/DOCSY/.renamed/nested/draft", "0123456789abcdef").id).toBe(file.id);
+  expect(Buffer.from(recovered.replaceLocal("/DOCSY/.renamed/nested/draft", "100").bytes).toString()).toBe("replacement 🐴");
+  recovered.removeLocal("/DOCSY/.renamed/nested", true);
+  recovered.removeLocal("/DOCSY/.renamed", true);
   expect(recovered.localEntries("/DOCSY")).toEqual([]);
   expect(recovered.pending().map(entry => entry.id)).toEqual(["100"]);
 });
@@ -625,6 +625,16 @@ it("counts directories against the journal quota and rolls back invalid tree rep
   expect(journal.get(target.id)).toBeNull();
   expect(journal.local(target.path)?.id).toBe(source.id);
   expect(journal.local(`${target.path}/child`)?.id).toBe(child.id);
+});
+
+it("rolls back a hidden-to-visible directory rename when its new body exceeds the entry quota", () => {
+  const { journal } = fixture(64, 64, 2);
+  const directory = journal.createLocalDirectory("/DOCSY/.draft");
+  const child = journal.createLocal("/DOCSY/.draft/notes.txt");
+  expect(() => journal.renameLocal(directory.path, "/DOCSY/visible")).toThrow("quota");
+  expect(journal.local(directory.path)?.id).toBe(directory.id);
+  expect(journal.local(child.path)?.id).toBe(child.id);
+  expect(journal.local("/DOCSY/visible")).toBeNull();
 });
 
 it("migrates schema-five temporary files without changing identity or exclusive-create replay", () => {

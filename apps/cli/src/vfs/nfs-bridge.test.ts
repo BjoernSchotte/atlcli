@@ -385,6 +385,8 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect((await rpc(server, 100003, 13, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(66);
     expect((await rpc(server, 100003, 13, Buffer.concat([opaque(directory), opaque(Buffer.from("child"))]))).readUInt32BE()).toBe(20);
     journal!.removeLocal(local.path);
+    expect((await rpc(server, 100003, 13, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(66);
+    expect((await rpc(server, 100003, 12, Buffer.concat([opaque(directory), opaque(Buffer.from("_index.md"))]))).readUInt32BE()).toBe(0);
     expect((await rpc(server, 100003, 13, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(0);
     expect((await rpc(server, 100003, 1, opaque(directory))).readUInt32BE()).toBe(70);
     expect(journal!.pending()).toEqual([]);
@@ -1184,6 +1186,38 @@ with socket.socket() as client:
     expect((await readFile(join(combinedDirectory, "_index.md"))).toString()).toContain("Test");
     await expect(stat(retitledDirectory)).rejects.toMatchObject({ code: "ENOENT" });
 
+    const pageDirectory = join(mountpoint, "native-directory");
+    await mkdir(pageDirectory, { mode: 0o700 });
+    const directoryDescriptor = await open(pageDirectory, "r");
+    const bodyDescriptor = await open(join(pageDirectory, "_index.md"), "r+");
+    try {
+      const directoryInode = (await directoryDescriptor.stat()).ino;
+      const bodyInode = (await bodyDescriptor.stat()).ino;
+      expect(directoryInode).not.toBe(bodyInode);
+      await bodyDescriptor.truncate(0);
+      await bodyDescriptor.writeFile("Native directory Grüße 🐴");
+      await bodyDescriptor.sync();
+      const child = await open(join(pageDirectory, "native-child.md"), "wx");
+      try { await child.writeFile("Native child preserved"); await child.sync(); }
+      finally { await child.close(); }
+      const deadline = Date.now() + 5000;
+      while ((journal!.writeStatus().pendingPages || !journal!.promotion("/DOCSY/native-directory")) && Date.now() < deadline) await Bun.sleep(50);
+      expect(journal!.writeStatus().pendingPages).toBe(0);
+      const pageId = journal!.promotion("/DOCSY/native-directory")!.pageId;
+      const canonicalDirectory = join(mountpoint, "native-directory-" + pageId);
+      expect((await directoryDescriptor.stat()).isDirectory()).toBe(true);
+      expect((await directoryDescriptor.stat()).ino).toBe(directoryInode);
+      expect((await stat(canonicalDirectory)).ino).toBe(directoryInode);
+      expect((await bodyDescriptor.stat()).ino).toBe(bodyInode);
+      expect((await stat(join(canonicalDirectory, "_index.md"))).ino).toBe(bodyInode);
+      expect((await readFile(join(pageDirectory, "_index.md"))).toString()).toContain("Native directory Grüße 🐴");
+      expect(client.peekPage(pageId)?.storage).toContain("Native directory Grüße 🐴");
+      const children = await client.findPagesByTitle("Native Child", { spaceKey: "DOCSY" });
+      expect(children).toHaveLength(1);
+      expect(client.peekPage(children[0]!.id)?.parentId).toBe(pageId);
+      expect(client.peekPage(children[0]!.id)?.storage).toContain("Native child preserved");
+      expect(client.callsTo("createPage")).toBe(5);
+    } finally { await bodyDescriptor.close(); await directoryDescriptor.close(); }
 
     }, 30000);
 

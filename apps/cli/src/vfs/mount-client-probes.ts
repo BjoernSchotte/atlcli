@@ -100,5 +100,5 @@ export function isNfsPageDraft(path: string): boolean {
 export function isNfsPageDirectory(path: string): boolean {
   return path.split("/").filter(Boolean).every(part => !/^[.#~]/.test(part) &&
     !/(?:~|\.(?:tmp|swp|swo|bak))$/i.test(part) && !/\.sb-/.test(part) &&
-    part !== "_attachments" && !isClientDropping(part));
+    part !== "_attachments" && part !== "_index.md" && !isClientDropping(part));
 }

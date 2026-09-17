@@ -353,6 +353,13 @@ export class NfsJournal {
         this.db.run("UPDATE locals SET path=? WHERE id=?", [entry.path, entry.id]);
         this.db.run("UPDATE files SET path=? WHERE id=?", [entry.path, entry.id]);
       }
+      for (const entry of moved) {
+        const bodyPath = `${entry.path}/_index.md`;
+        if (this.local(entry.path)?.kind === "directory" && isNfsPageDirectory(entry.path) && !this.local(bodyPath)) {
+          const body = this.createLocal(bodyPath);
+          this.setAttributes(body.id, { mode: 0o644 });
+        }
+      }
     }).immediate();
   }
 

@@ -155,6 +155,21 @@ version. Separate empty writes from an OS mount can still create an initial
 empty version before the editor sends content; this is distinct from buffering
 multiple saves of an existing page.
 
+In a development NFS RW mount, ordinary directories become pages. For example:
+
+```bash
+mkdir release-notes
+printf '# Release notes\n\nReady for review.\n' > release-notes/_index.md
+```
+
+The directory and its body are saved locally together, then published after the
+quiet window. Children wait for their parent page. Listings use the canonical
+directory name with its page ID after publication; the original name remains a
+durable alias, and open directory/body handles retain their identities. Editor
+staging directories stay local. Renaming a hidden draft tree to an ordinary
+visible name makes its directories eligible for publication. Public NFS RW
+remains gated until the complete acceptance suite passes.
+
 Deletion moves a page to the **trash**; there is no purge.
 
 Before trashing a page, the shared VFS checks fresh page metadata against the

@@ -107,9 +107,13 @@ export async function startNfsServer(options: {
           if (pending !== null) publisher?.schedule(pending);
           result = file; break;
         }
-        case "mkdir":
+        case "mkdir": {
           if (typeof args.name !== "string") throw new VfsError("EINVAL", "Invalid NFS name");
-          result = await fs.mkdir(number(args.parent), args.name, number(args.mode)); break;
+          const directory = await fs.mkdir(number(args.parent), args.name, number(args.mode));
+          const pending = fs.publicationId(directory);
+          if (pending !== null) publisher?.schedule(pending);
+          result = directory; break;
+        }
         case "rmdir":
         case "remove":
           if (typeof args.name !== "string") throw new VfsError("EINVAL", "Invalid NFS name");
