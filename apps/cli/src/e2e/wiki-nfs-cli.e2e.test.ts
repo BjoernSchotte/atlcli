@@ -1,3 +1,4 @@
+import { nfsMountOptionsFor } from "../vfs/mount-transport.js";
 import { expect, it } from "bun:test";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
@@ -50,7 +51,7 @@ it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${sc
     if (platform() === "linux") {
       expect(record!.status).toBe("listening");
       expect(await runMountCommand(["sudo", "-n", "mount", "-t", "nfs", "-o",
-        `vers=3,tcp,ro,nolock,soft,timeo=10,retrans=2,port=${record!.port},mountport=${record!.port}`,
+        nfsMountOptionsFor("linux", record!.port),
         "127.0.0.1:/", mountpoint])).toBe(0);
     }
     expect(isMounted(mountpoint)).toBe(true);

@@ -12,6 +12,7 @@ import { ConfluenceClient } from "@atlcli/confluence";
 import { runMountCommand } from "../commands/wiki-mount.js";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
+import { nfsMountOptionsFor } from "./mount-transport.js";
 import { startNfsServer, type RunningNfsServer } from "./nfs-bridge.js";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES } from "./mount-client-probes.js";
 
@@ -50,7 +51,7 @@ async function rpc(server: RunningNfsServer, program: number, procedure: number,
     socket.on("end", () => reject(new Error("RPC closed before reply")));
   });
 }
-async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1") {
+async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now()) {
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-wire-"));
   const client = new FakeConfluenceClient()
     .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
@@ -64,7 +65,7 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
   const profile = live ? getActiveProfile(await loadConfig(), "mayflower") : undefined;
   if (live && !profile) throw new Error("Missing mayflower test profile");
   const vfs = await ConfluenceVfsImpl.open({ profile: profile?.name ?? "fixture",
-    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: "ro", allowDelete: false, offline: false, cacheDir });
+    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: "ro", allowDelete: false, offline: false, cacheDir, now });
   cleanups.push(async () => { await vfs.close(); rmSync(cacheDir, { recursive: true, force: true }); });
   const server = await startNfsServer({ vfs, spaces, helperPath: resolve(helperPath!) });
   cleanups.push(() => server.stop());
@@ -378,13 +379,16 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     });
   }
 
-  for (const { spaces, attachments } of [
+  for (const { spaces, attachments, visibility = false } of [
     { spaces: ["DOCSY"], attachments: false },
     { spaces: ["DOCSY", "mayflower"], attachments: false },
     { spaces: ["DOCSY"], attachments: true },
+    { spaces: ["DOCSY"], attachments: false, visibility: true },
   ]) {
-    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""})`, async () => {
-      const { server, vfs, client } = await fixture(spaces, attachments ? false : undefined);
+    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""}${visibility ? "; external changes" : ""})`, async () => {
+      let clock = Date.now();
+      const { server, vfs, client } = await fixture(spaces, attachments || visibility ? false : undefined,
+        visibility ? () => clock : undefined);
       const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-kernel-"));
       let mounted = false;
       cleanups.push(async () => {
@@ -400,10 +404,10 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
         }
         rmSync(mountpoint, { recursive: true, force: true });
       });
-      const options = `vers=3,tcp,ro,soft,timeo=10,retrans=2,port=${server.port},mountport=${server.port}`;
+      const options = nfsMountOptionsFor(platform(), server.port);
       const command = platform() === "linux"
-        ? ["sudo", "-n", "mount", "-t", "nfs", "-o", `${options},nolock`, "127.0.0.1:/", mountpoint]
-        : ["mount_nfs", "-o", `${options},locallocks`, "127.0.0.1:/", mountpoint];
+        ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", mountpoint]
+        : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint];
       expect(await runMountCommand(command)).toBe(0);
       mounted = true;
       if (spaces.length > 1) {
@@ -424,6 +428,34 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       try {
         expect(await file.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md")));
       } finally { await file.close(); }
+      if (visibility) {
+        const missing = join(mountpoint, "new-page-999", "_index.md");
+        await expect(stat(missing)).rejects.toMatchObject({ code: "ENOENT" });
+        await client.updatePage({ id: "100", title: "Home", storage: "<p>Externally updated Grüße 🐴</p>", version: 2 });
+        client.seedPage({ id: "999", title: "New Page", spaceKey: "DOCSY", parentId: "100", storage: "<p>New</p>" });
+        // Move only the core clock past its production TTL. Kernel time is real;
+        // do not force-refresh the index or flush OS caches.
+        clock += 60_001;
+        const started = performance.now();
+        let updated = false;
+        let created = false;
+        while (performance.now() - started < 5000) {
+          const current = await open(bodyPath, "r");
+          try {
+            const bytes = await current.readFile();
+            updated = bytes.toString().includes("Externally updated Grüße 🐴");
+          } finally { await current.close(); }
+          try { created = (await stat(missing)).isFile(); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+          if (updated && created) break;
+          await Bun.sleep(100);
+        }
+        expect(updated).toBe(true);
+        expect(created).toBe(true);
+        const refreshed = await open(bodyPath, "r");
+        try { expect(await refreshed.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md"))); }
+        finally { await refreshed.close(); }
+      }
       const probe = await promisify(execFile)("python3", ["-c", `
 import errno, fcntl, subprocess, sys
 child = """

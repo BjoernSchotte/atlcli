@@ -199,6 +199,10 @@ export class PageStore {
    * nothing to match against.
    */
   async readBody(node: TreeNode, path: string): Promise<string> {
+    // Direct reads may never revisit a directory listing. Reuse the bounded,
+    // body-free metadata refresh before trusting an old cached version.
+    await this.opts.index.revalidatePages([node.id]);
+    node = this.opts.index.node(node.id) ?? node;
     if (node.version !== undefined) {
       const hit = this.opts.cache.getBody(node.id, node.version);
       if (hit) return hit.markdown;

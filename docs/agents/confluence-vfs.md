@@ -241,6 +241,15 @@ to the client: they coordinate processes on that client, not other clients or
 Confluence edits. No NLM/NSM lock service runs. Native tests verify nonblocking
 `flock` contention/release and shared POSIX read locks on the current RO mounts;
 write-lock/editor-save acceptance still requires the pending RW implementation.
+NFS sets `actimeo=1` on both systems and disables negative-name caching
+(`nonegnamecache` on macOS, `lookupcache=positive` on Linux). The core metadata
+TTL remains 60 seconds by default: directly reopening a cached page checks its
+version after that TTL, even without a directory listing. Warm reads within the
+TTL make no additional API calls. Allow the core TTL, the one-second kernel
+attribute cache and backend response time for external changes; this is not an
+instantaneous-consistency promise. Native synthetic tests advance the core clock
+past its TTL and verify updated bytes and a previously absent file through the
+real OS client within five seconds, without flushing kernel caches.
 NFS READDIR/READDIRPLUS entry attributes do not enumerate each child directory.
 Listing a child directory fetches its children on demand. An explicit directory
 GETATTR still refreshes its listing to validate pagination state.

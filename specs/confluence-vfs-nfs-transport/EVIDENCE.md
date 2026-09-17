@@ -1002,3 +1002,62 @@ Validation:
   the authorized outside-sandbox run passed.
 
 RW publication, snapshot decisions and remaining acceptance gates stay open.
+
+## Slice 39 — explicit cache options and external-update visibility
+
+Native synthetic tests on both hosts exposed a shared core bug: reopening a
+cached page without relisting its directory kept the old body beyond the
+metadata TTL. A core regression reproduced this before the fix. PageStore now
+uses the existing requested-page metadata revalidation before a cached read.
+Cloud uses the version probe; Data Center fetches a stale requested body.
+Within-TTL reads still make no additional API calls.
+
+Production NFS options now set actimeo=1 and disable negative name caching
+(macOS nonegnamecache; Linux lookupcache=positive). CLI, native fixtures,
+lifecycle fixtures and benchmark reuse the same option builder. The installed
+macOS mount_nfs manual documents these options; native mounts accepted and
+exercised them on both hosts.
+
+The new native case first reads a page and observes ENOENT for a missing path,
+then updates/creates synthetic backend pages and advances only the VFS clock
+past its default 60-second TTL. It never forces index refresh or flushes kernel
+caches. Both updated full bytes and the formerly absent file become visible
+within its five-second deadline. This proves the post-TTL behavior through real
+kernel clients, not a live Confluence propagation SLA or a multi-READ snapshot.
+
+Validation:
+- macOS core/adapter/WebDAV suite: 404 tests, 1353 assertions, passed before adding
+  the second deployment-type case; final PageStore suite: 36 tests, 98 assertions.
+- Linux core/transport suite: 339 tests, 859 assertions, passed; final PageStore
+  suite also passed all 36 tests / 98 assertions. An initially stale Linux
+  resolver test was synchronized after a checksum comparison confirmed it was
+  the only differing core source/test file.
+- Shell grep planner/parser: 24 tests, 97 assertions, passed.
+- macOS native external-change test passed after failing before the fix; the
+  existing wire/native cases passed in the preceding run.
+- Linux native: four tests, 31 assertions, passed; live DOCSY and combined spaces
+  remained strictly read-only, attachment/change cases were synthetic.
+
+Five fresh cold/warm runs per transport and host used
+scripts/bench/run-vfs-mount.ts. Wall times below are median [min–max] milliseconds;
+API counts are identical across all five runs of each cell:
+
+| Host | Transport | Cold ms | Warm ms | Cold/warm API |
+| --- | --- | --- | --- | --- |
+| macOS arm64 | WebDAV | 52.2 [49.2–67.3] | 12.0 [9.7–16.3] | 46 / 0 |
+| macOS arm64 | NFS | 87.8 [81.2–95.4] | 2.9 [2.6–3.4] | 64 / 0 |
+| Linux x64 | WebDAV | 84.8 [81.2–93.4] | 8.0 [7.2–9.4] | 82 / 0 |
+| Linux x64 | NFS | 107.9 [103.4–128.3] | 24.0 [20.4–26.8] | 64 / 0 |
+
+No startup body downloads and no warm API calls. Exact bytes passed every run.
+The earlier >10% transport regression review remains open: this slice bounds
+freshness, not the extra NFS cold directory-GETATTR work or Linux warm overhead.
+Timing is synthetic, not production network performance; earlier benchmark
+limitations (metadata bytes, protocol counts, RSS peak, Glow/editor timing)
+remain. Raw current runs are in /tmp/atlcli-nfs-slice39-{mac,linux}.json on the Mac;
+the committed baseline files still describe Slice 32.
+
+Linux live DOCSY CLI lifecycle also passed all five cases / 61 assertions with
+the new options (signal, busy, explicit detach, helper and parent crash). Final
+typecheck passed all four tasks; test mounts detached normally. No live content
+was modified. RW publication and snapshot acceptance remain open.

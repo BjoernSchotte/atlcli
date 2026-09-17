@@ -524,3 +524,26 @@ describe("round trip", () => {
     });
   }
 });
+
+for (const deploymentType of ["cloud", "data-center"] as const) {
+it(`revalidates directly reopened cached bodies after the metadata TTL (${deploymentType})`, async () => {
+  const client = new FakeConfluenceClient({ deploymentType })
+    .seedSpace({ id: "sp-1", key: "DOCSY", name: "Docs", homepageId: "100" })
+    .seedPage({ id: "100", title: "Docs Home", spaceKey: "DOCSY", storage: "<p>Home page.</p>" });
+  const vfs = await openVfs(client);
+  try {
+    const initial = await vfs.readFile("/DOCSY/_index.md");
+    await client.updatePage({ id: "100", title: "Docs Home", storage: "<p>Updated Grüße 🐴</p>", version: 2 });
+    const calls = client.calls.length;
+    expect(await vfs.readFile("/DOCSY/_index.md")).toBe(initial);
+    expect(client.calls.length).toBe(calls);
+    clock += 60_001;
+    const updated = await vfs.readFile("/DOCSY/_index.md");
+    expect(updated).toContain("Updated Grüße 🐴");
+    expect(updated).toContain("  version: 2");
+    const freshCalls = client.calls.length;
+    expect(await vfs.readFile("/DOCSY/_index.md")).toBe(updated);
+    expect(client.calls.length).toBe(freshCalls);
+  } finally { await vfs.close(); }
+});
+}
