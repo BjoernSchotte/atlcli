@@ -92,6 +92,20 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
+  it("preserves the exact page title when moving a canonical directory name", async () => {
+    const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("move-parent"), storage: "<p>Parent</p>" });
+    created.push(parent.id);
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("move-case"), storage: "<p>Move body</p>" });
+    created.push(page.id);
+    const source = dirname(await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`));
+    const targetParent = dirname(await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${parent.id}.md`));
+    await vfs.rename(source, `${targetParent}/${source.split("/").at(-1)}`);
+    const moved = await client.getPage(page.id);
+    expect(moved.title).toBe(page.title);
+    expect(moved.storage).toContain("Move body");
+    expect((await client.getAncestors(page.id)).at(-1)?.id).toBe(parent.id);
+  }, 30_000);
+
   it("rejects unsupported folder renaming without changing the real folder", async () => {
     const space = await client.getSpace(E2E_SPACE_KEY);
     const folder = await client.createFolder({ spaceId: space.id, title: makeE2eTitle("folder-rename") });

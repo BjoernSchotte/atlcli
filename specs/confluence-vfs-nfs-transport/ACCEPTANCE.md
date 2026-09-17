@@ -1,7 +1,7 @@
 # NFS acceptance checkpoint
 
 This is a working audit of PLAN.md, not acceptance of the feature. The complete
-read/write objective remains open. Implementation evidence reviewed through Slice 121; broad build/CI evidence below
+read/write objective remains open. Implementation evidence reviewed through Slice 122; broad build/CI evidence below
 is historical and still requires a final rerun.
 [EVIDENCE.md](EVIDENCE.md) contains commands, host boundaries and detailed results.
 

@@ -540,3 +540,7 @@ Confluence Cloud folders cannot currently be retitled through the supported REST
 API. The VFS rejects folder retitles with `EROFS` before any accompanying move,
 so a combined move/rename cannot leave a partially moved folder. This restriction
 concerns actual Confluence folders, not pages represented as directories.
+
+Moving a page using its unchanged canonical directory name preserves its exact
+Confluence title, including case, punctuation and Unicode. A move does not infer
+a new title from the lossy filename slug or upload the body just to retitle it.

@@ -470,6 +470,21 @@ describe("mkdir", () => {
 });
 
 describe("rename and move", () => {
+  it.each(["API Design", "Über Grüße: 日本語!", "release_v2.0"])("preserves exact title %s when moving the canonical directory name", async title => {
+    const client = seeded().seedPage({ id: "101", title, spaceKey: "DOCSY", parentId: "100", storage: "<p>Body</p>" });
+    const vfs = await openVfs(client);
+    try {
+      const body = await vfs.readlink("/DOCSY/.by-id/101.md");
+      const source = body.slice(0, -"/_index.md".length);
+      await vfs.rename(source, `/DOCSY/architecture-102/${source.split("/").at(-1)}`);
+      expect(client.peekPage("101")?.title).toBe(title);
+      expect(client.peekPage("101")?.parentId).toBe("102");
+      expect(client.callsTo("updatePage")).toBe(0);
+      expect(client.callsTo("getPage")).toBe(0);
+      expect(client.callsTo("movePage")).toBe(1);
+    } finally { await vfs.close(); }
+  });
+
   it("rejects unsupported folder retitles before moving or updating remote content", async () => {
     const client = seeded();
     const vfs = await openVfs(client);

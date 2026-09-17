@@ -1115,9 +1115,13 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     const destination = await this.resolver.resolve(target.parent);
     const { spaceKey, parentNode } = await this.containerOf(destination as Resolved, to);
     const sameParent = parentNode.id === node.parentId;
-    const newTitle = parsedTarget.idCandidate
-      ? titleFromName(parsedTarget.slugCandidate)
-      : titleFromName(parsedTarget.stem);
+    // Slugs are lossy (case, punctuation, Unicode). Moving the canonical name
+    // must retain the original title rather than reverse-convert that slug.
+    const newTitle = parsedTarget.stem === formatDirName(node.title, node.id)
+      ? node.title
+      : parsedTarget.idCandidate
+        ? titleFromName(parsedTarget.slugCandidate)
+        : titleFromName(parsedTarget.stem);
 
     // Cloud exposes no supported folder title update. Reject before a move can
     // partially apply a combined reparent/retitle request.

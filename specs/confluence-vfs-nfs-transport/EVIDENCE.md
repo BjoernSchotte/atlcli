@@ -3212,3 +3212,25 @@ fail at title update. Page-directory rename behavior is unchanged.
 This is an honest capability boundary, not implemented folder retitling. Native
 NFS page-directory mutation wiring and durable recovery remain open. No new
 native-kernel acceptance is claimed.
+
+
+## Slice 122 — preserve original page titles during directory moves
+
+Shared VFS rename reconstructed the title from its slug even for an unchanged
+canonical basename. Moving `API Design` could therefore retitle it to `Api Design`
+and issue an unnecessary body GET/update. Comparing the target stem with the
+existing canonical name now retains the exact title for a pure move.
+
+- macOS/Linux write-back suite: 75 passed / 203 assertions each. Three regressions
+  cover acronym case, Unicode/punctuation and underscores/version punctuation;
+  each verifies the new parent, unchanged title, one move and zero body GET/update.
+- Linux DOCSY: one passed / three assertions. A real page moved under a disposable
+  parent, retaining its original lowercase/hyphenated title and body; server
+  ancestors confirm the new parent. Both resources were cleaned up.
+- An initial live invocation rejected an invalid test-resource feature slug;
+  it was corrected to the standard sweepable name before the successful run.
+- Typecheck: all four tasks passed.
+
+This fixes the shared operation required by NFS; native NFS directory mutation
+wiring, durable namespace intents and crash recovery remain open. No native
+mount acceptance is claimed for this slice.
