@@ -500,6 +500,26 @@ describe("rename and move", () => {
     } finally { await vfs.close(); }
   });
 
+  it("guards journaled moves against changed identities and freshly changed parents", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const source = "/DOCSY/getting-started-101", target = "/DOCSY/architecture-102/getting-started-101";
+    const expected = { id: "101", spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "102" };
+    try {
+      await vfs.stat(source);
+      await expect(vfs.rename(source, target, { ...expected, id: "103" })).rejects.toMatchObject({ code: "EBUSY" });
+      await expect(vfs.rename(source, target, { ...expected, targetParentId: "104" })).rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("movePage")).toBe(0);
+      await client.movePage("101", "104");
+      await expect(vfs.rename(source, target, expected)).rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("movePage")).toBe(1);
+      expect(await vfs.confirmMove("101", "DOCSY", "102", "Getting Started")).toBe(false);
+      expect(await vfs.confirmMove("101", "DOCSY", "104", "Wrong title")).toBe(false);
+      expect(await vfs.confirmMove("101", "DOCSY", "104", "Getting Started")).toBe(true);
+      expect(client.callsTo("getPage")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
   it("retitles inside the same directory", async () => {
     const client = seeded();
     const vfs = await openVfs(client);

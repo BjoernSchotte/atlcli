@@ -1093,7 +1093,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * that tries to change it is `EINVAL` rather than a silent no-op on a
    * different page.
    */
-  async rename(from: string, to: string): Promise<void> {
+  async rename(from: string, to: string, expected?: { id: string; spaceKey: string; sourceParentId: string; targetParentId: string }): Promise<void> {
     const source = (await this.resolver.resolve(this.canonicalize(from))) as Resolved;
     if (source.kind !== "container" && source.kind !== "body") {
       throw new VfsError("EROFS", `${from} is a generated view and cannot be renamed`, {
@@ -1114,6 +1114,17 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
     const destination = await this.resolver.resolve(target.parent);
     const { spaceKey, parentNode } = await this.containerOf(destination as Resolved, to);
+    if (expected) {
+      if (node.type !== "page" || node.id !== expected.id || node.spaceKey !== expected.spaceKey ||
+          spaceKey !== expected.spaceKey || parentNode.id !== expected.targetParentId) {
+        throw new VfsError("EBUSY", "Move identity or destination changed");
+      }
+      const current = await this.opts.client.getPageMetadata(node.id).catch(error => { throw mapClientError(error, from); });
+      if (current.id !== node.id || current.spaceKey !== expected.spaceKey ||
+          current.parentId !== expected.sourceParentId || current.title !== node.title) {
+        throw new VfsError("EBUSY", "Move source changed");
+      }
+    }
     const sameParent = parentNode.id === node.parentId;
     // Slugs are lossy (case, punctuation, Unicode). Moving the canonical name
     // must retain the original title rather than reverse-convert that slug.
@@ -1141,6 +1152,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
         } else {
           await this.opts.client.movePage(node.id, parentNode.id);
         }
+        this.cache?.forgetPage(node.id); // Current Markdown frontmatter includes the parent.
         this.index.forget(node.id);
         this.index.attachChild(parentNode.id, {
           id: node.id,
@@ -1263,6 +1275,18 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
         throw mapped;
       }
     }
+  }
+
+  async confirmMove(id: string, spaceKey: string, parentId: string, title: string): Promise<boolean> {
+    const mounted = this.opts.spaces ?? (await this.index.listSpaces()).map(space => space.key);
+    if (!mounted.includes(spaceKey)) throw new VfsError("EACCES", "Move identity is outside the selected export");
+    const page = await this.opts.client.getPageMetadata(id).catch(error => { throw mapClientError(error); });
+    if (page.id !== id || page.spaceKey !== spaceKey || page.parentId !== parentId || page.title !== title) return false;
+    this.cache?.forgetPage(id);
+    this.index.forget(id);
+    this.index.attachChild(parentId, { id, title, type: "page", spaceKey,
+      version: page.version, lastModified: page.lastModified });
+    return true;
   }
 
   async confirmTrash(id: string, spaceKey: string): Promise<boolean> {

@@ -359,6 +359,7 @@ export class NfsFilesystem {
     if (values.mode !== undefined && (!Number.isInteger(values.mode) || values.mode < 0 || values.mode > 0o777)) throw new VfsError("EINVAL", "Invalid CREATE mode");
     if (values.size !== undefined && (!Number.isSafeInteger(values.size) || values.size < 0)) throw new VfsError("EINVAL", "Invalid CREATE size");
     const path = await this.mutationPath(parent, name);
+    this.journal!.assertNoMove(path);
     if (this.journal!.displaced(path)) {
       await this.checkReservation(path);
       const page = this.journal!.restoreCreated(path, values);
@@ -402,6 +403,7 @@ export class NfsFilesystem {
 
   private async createEntry(parent: number, name: string, directory: boolean, verifier?: string, mode = 0o755): Promise<number> {
     const path = await this.mutationPath(parent, name);
+    this.journal!.assertNoMove(path);
     if (this.journal!.displaced(path)) {
       if (directory) throw new VfsError("EISDIR", "Reserved page position requires a file");
       await this.checkReservation(path);
@@ -430,6 +432,7 @@ export class NfsFilesystem {
 
   async remove(parent: number, name: string, directory = false): Promise<void> {
     const path = await this.mutationPath(parent, name);
+    this.journal!.assertNoMove(path);
     const local = this.journal!.local(path);
     if (!local) {
       if (path === `${this.root}/_index.md`) throw new VfsError("EROFS", "Cannot trash the export homepage");
@@ -485,6 +488,45 @@ export class NfsFilesystem {
     const source = await this.mutationPath(parent, name);
     const target = await this.mutationPath(targetParent, targetName);
     if (source === target) { await this.stat(source); return null; }
+    const previous = this.journal!.moveIntent(source);
+    if (previous) {
+      try {
+        const current = await this.stat(source);
+        if (current.id !== previous.id) throw new VfsError("EBUSY", "Previous move source name was reused");
+      } catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
+      if (previous.target !== target) throw new VfsError("EBUSY", "Previous move has a different destination");
+      if (!await this.vfs.confirmMove(previous.id, previous.spaceKey, previous.targetParentId, previous.title)) {
+        throw new VfsError("EBUSY", "Previous move outcome remains unknown");
+      }
+      this.journal!.completeMove(source);
+      return null;
+    }
+    this.journal!.assertNoMove(source); this.journal!.assertNoMove(target);
+    const sourceStat = await this.stat(source);
+    if (sourceStat.isDirectory && !this.journal!.local(source)) {
+      if (sourceStat.kind !== "page" || name !== targetName || source.split("/")[1] !== target.split("/")[1]) {
+        throw new VfsError("EROFS", "Remote directory moves currently preserve the page name and space");
+      }
+      if (target.startsWith(`${source}/`)) throw new VfsError("EINVAL", "Cannot move a page into itself");
+      try { await this.stat(target); throw new VfsError("EEXIST", "Move destination exists"); }
+      catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
+      const node = await this.vfs.resolve(source);
+      let destination = await this.vfs.resolve(posix.dirname(target));
+      if (destination.kind === "space") destination = await this.vfs.resolve(posix.join(posix.dirname(target), "_index.md"));
+      if (node.readOnly || destination.readOnly || !node.parentId || !node.spaceKey ||
+          !["page", "folder"].includes(destination.kind) || destination.spaceKey !== node.spaceKey) {
+        throw new VfsError("EACCES", "Move is outside writable page containers");
+      }
+      this.journal!.beginMove({ id: node.id, source, target, spaceKey: node.spaceKey,
+        sourceParentId: node.parentId, targetParentId: destination.id, title: node.title });
+      await this.vfs.rename(source, target, { id: node.id, spaceKey: node.spaceKey,
+        sourceParentId: node.parentId, targetParentId: destination.id });
+      if (!await this.vfs.confirmMove(node.id, node.spaceKey, destination.id, node.title)) {
+        throw new VfsError("EBUSY", "Move result requires reconciliation");
+      }
+      this.journal!.completeMove(source);
+      return null;
+    }
     if (!this.journal!.local(source)) {
       const sourceId = await this.register(source);
       const page = await this.stagedFile(sourceId);
@@ -563,7 +605,9 @@ export class NfsFilesystem {
     const { frontmatter } = parseVfsFrontmatter(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
     if (frontmatter.id !== file.id || frontmatter.version === undefined) throw new VfsError("EAGAIN", "Page changed during refresh");
     await this.checkResolvedScope(path);
-    return this.journal.refreshClean(file.id, path, bytes, frontmatter.version, file.revision);
+    const previous = parseVfsFrontmatter(new TextDecoder().decode(file.bytes)).frontmatter;
+    const parentChanged = previous.id === file.id && previous.parentId !== frontmatter.parentId;
+    return this.journal.refreshClean(file.id, path, bytes, frontmatter.version, file.revision, parentChanged);
   }
 
   /** Returns only after SQLite has durably committed the local byte image. */

@@ -54,6 +54,7 @@ export class NfsPublisher {
   }
 
   resume(): void {
+    for (const move of this.journal.pendingMoves()) this.schedule(`move:${move.source}`);
     for (const id of [...this.journal.pendingIds(), ...this.journal.localFileIds(), ...this.journal.pendingTrashIds()]) this.schedule(id);
   }
 
@@ -135,6 +136,15 @@ export class NfsPublisher {
   }
 
   private async publishImage(id: string): Promise<VfsWriteResult | null> {
+    if (id.startsWith("move:")) {
+      const source = id.slice(5);
+      const move = this.journal.moveIntent(source);
+      if (move && !move.completed && this.spaces.includes(move.spaceKey) &&
+          await this.vfs.confirmMove(move.id, move.spaceKey, move.targetParentId, move.title)) {
+        this.journal.completeMove(source);
+      }
+      return null;
+    }
     const file = this.journal.get(id);
     if (!file) return null;
     if (this.journal.displaced(file.path)?.id === id) return null;

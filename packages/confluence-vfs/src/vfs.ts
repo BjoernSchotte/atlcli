@@ -48,7 +48,10 @@ export interface ConfluenceVfs {
   mkdir(path: string): Promise<VfsWriteResult>;
 
   /** Retitle, reparent or move across spaces, depending on what changed. */
-  rename(from: string, to: string): Promise<void>;
+  rename(from: string, to: string, expected?: { id: string; spaceKey: string; sourceParentId: string; targetParentId: string }): Promise<void>;
+
+  /** Positively confirm a page location from fresh metadata after an uncertain move. */
+  confirmMove(id: string, spaceKey: string, parentId: string, title: string): Promise<boolean>;
 
   /** Move to trash. Needs `mode: "rw"` *and* `allowDelete`. Never purges.
    * An expected identity restricts deletion to that page in that space. */

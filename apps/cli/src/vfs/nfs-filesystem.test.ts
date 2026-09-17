@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { ConfluenceVfsImpl, parseVfsFrontmatter } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { NfsPublisher } from "./nfs-publisher.js";
 import { NfsJournal } from "./nfs-journal.js";
@@ -753,6 +753,64 @@ it("keeps a replacement source handle writable after rename without changing the
   expect(Buffer.from((await fs.read(temporary, 0, 65536)).data, "base64")).toEqual(expected);
 });
 
+
+it.each([false, true])("reparents remote page directories with stable handles and reconciles lost replies (%s)", async lostReply => {
+  const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  const directory = await fs.lookup(1, "child-0-200");
+  const body = await fs.lookup(directory, "_index.md");
+  const destination = await fs.lookup(1, "child-1-201");
+  const content = await fs.read(body, 0, 65536);
+  // Admit a clean image so its durable path must follow the move as well.
+  await fs.truncate(body, Buffer.from(content.data, "base64").length);
+  const move = client.movePage.bind(client);
+  client.movePage = async (...args) => { const result = await move(...args); if (lostReply) throw new Error("Lost move response"); return result; };
+  const operation = fs.rename(1, "child-0-200", destination, "child-0-200");
+  if (lostReply) {
+    await expect(operation).rejects.toThrow("Lost move response");
+    expect(journal!.writeStatus().unresolvedPublications).toBe(1);
+    await expect(fs.write(body, 0, Buffer.from("blocked"))).rejects.toMatchObject({ code: "EBUSY" });
+    const recovered = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+    try { await recovered.publish("move:/DOCSY/child-0-200"); } finally { await recovered.stop(); }
+  } else await operation;
+  expect(journal!.writeStatus().unresolvedPublications).toBe(0);
+  expect(client.peekPage("200")?.parentId).toBe("201");
+  expect(client.peekPage("200")?.title).toBe("Child 0");
+  expect(client.callsTo("movePage")).toBe(1);
+  expect(await fs.lookup(destination, "child-0-200")).toBe(directory);
+  expect(await fs.lookup(directory, "_index.md")).toBe(body);
+  const after = parseVfsFrontmatter(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString());
+  expect(after.body).toBe(parseVfsFrontmatter(Buffer.from(content.data, "base64").toString()).body);
+  expect(after.frontmatter.parentId).toBe("201");
+  expect(journal!.get("200")?.path).toBe("/DOCSY/child-1-201/child-0-200/_index.md");
+  // Lost RPC response replay is answered from the confirmed durable receipt.
+  await fs.rename(1, "child-0-200", destination, "child-0-200");
+  expect(client.callsTo("movePage")).toBe(1);
+});
+
+it("retains an unconfirmed move and never retries its remote mutation", async () => {
+  const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  const destination = await fs.lookup(1, "child-1-201");
+  let attempts = 0;
+  client.movePage = async () => { attempts++; throw new Error("Unknown delivery"); };
+  await expect(fs.rename(1, "child-0-200", destination, "child-0-200")).rejects.toThrow();
+  const recovered = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+  try { await recovered.publish("move:/DOCSY/child-0-200"); } finally { await recovered.stop(); }
+  await expect(fs.rename(1, "child-0-200", destination, "child-0-200")).rejects.toMatchObject({ code: "EBUSY" });
+  expect(attempts).toBe(1);
+  expect(journal!.pendingMoves()).toHaveLength(1);
+  expect(journal!.writeStatus().unresolvedPublications).toBe(1);
+  expect(client.peekPage("200")?.parentId).toBe("100");
+});
+
+it("refuses page-tree moves with pending local data without sending a move", async () => {
+  const { fs, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  const directory = await fs.lookup(1, "child-0-200");
+  const destination = await fs.lookup(1, "child-1-201");
+  await fs.create(directory, ".editor.tmp");
+  await expect(fs.rename(1, "child-0-200", destination, "child-0-200")).rejects.toMatchObject({ code: "EBUSY" });
+  expect(client.callsTo("movePage")).toBe(0);
+  expect(await fs.lookup(1, "child-0-200")).toBe(directory);
+});
 
 it("projects durable local editor directories and keeps handles across tree rename", async () => {
   const { fs, journal, client } = await fixture(["DOCSY"], "rw", undefined, true);

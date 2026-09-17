@@ -24,7 +24,7 @@ import { platform, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { getActiveProfile, loadConfig, type Profile } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
-import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { ConfluenceVfsImpl, parseVfsFrontmatter } from "@atlcli/confluence-vfs";
 import { startNfsServer } from "../vfs/nfs-bridge.js";
 import { nfsMountOptionsFor } from "../vfs/mount-transport.js";
 import { NfsFilesystem } from "../vfs/nfs-filesystem.js";
@@ -119,6 +119,36 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     const reopened = new NfsJournal(location.path, location.scope);
     try { expect(reopened.pendingIds()).toEqual([]); }
     finally { reopened.close(); }
+  }, 30_000);
+
+  it("reparents a live page through the journaled NFS filesystem", async () => {
+    const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("nfs-move-parent"), storage: "<p>Parent</p>" });
+    created.push(parent.id);
+    const home = await client.getSpaceHomepageId(E2E_SPACE_KEY);
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY, parentId: home!, title: makeE2eTitle("nfs-move-child"), storage: "<p>Preserved move body</p>" });
+    created.push(page.id);
+    const journal = new NfsJournal(join(cacheDir, "move.sqlite"), "live:DOCSY");
+    try {
+      const fs = new NfsFilesystem(vfs, [E2E_SPACE_KEY], undefined, journal);
+      const source = dirname(await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`));
+      const target = dirname(await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${parent.id}.md`));
+      let targetHandle = 1;
+      for (const name of target.split("/").slice(2)) targetHandle = await fs.lookup(targetHandle, name);
+      const name = source.split("/").at(-1)!;
+      const directory = await fs.lookup(1, name);
+      const body = await fs.lookup(directory, "_index.md");
+      const before = await fs.read(body, 0, 65536);
+      await fs.rename(1, name, targetHandle, name);
+      const actual = await client.getPage(page.id);
+      expect(actual.parentId).toBe(parent.id);
+      expect(actual.title).toBe(page.title);
+      expect(actual.storage).toContain("Preserved move body");
+      expect(await fs.lookup(targetHandle, name)).toBe(directory);
+      const after = parseVfsFrontmatter(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString());
+      expect(after.body).toBe(parseVfsFrontmatter(Buffer.from(before.data, "base64").toString()).body);
+      expect(after.frontmatter.parentId).toBe(parent.id);
+      expect(journal.pendingMoves()).toEqual([]);
+    } finally { journal.close(); }
   }, 30_000);
 
   it("preserves the exact page title when moving a canonical directory name", async () => {

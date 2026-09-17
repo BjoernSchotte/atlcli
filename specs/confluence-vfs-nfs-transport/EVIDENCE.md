@@ -3451,3 +3451,40 @@ bytes, absence of CREATE/creation intents, and absence of a publication error.
 
 This fixes local directory handling; remote directory rename/reparent and
 namespace recovery remain required before full acceptance.
+
+
+## Slice 131 — journaled NFS page-directory reparenting
+
+The NFS adapter now moves an existing page directory under another page or
+folder in the same space, preserving its canonical basename and immutable ID.
+Schema 13 records source/destination paths, parent identities and title before
+the remote mutation. Pending local data blocks admission; unresolved moves
+reserve both trees against subsequent mutations. Guarded core rename checks
+source metadata and target identity. Successful moves update durable cached
+paths and retain a bounded receipt. Replay and publisher resume only confirm
+fresh remote identity/parent/title; they never blindly repeat a move. Unknown
+outcomes remain counted in unresolved recovery state.
+
+The native test keeps a body descriptor open while renaming its directory and
+checks readable body content afterward. Core cache invalidation also prevents
+stale parent frontmatter; NFS clean images can refresh changed parent metadata
+without a version increase, while plain Markdown save bytes keep their existing
+semantics. A regression against the broader initial refresh exposed that
+distinction and the final implementation restricts same-version refresh to
+identified parent changes.
+
+- macOS and Linux: 225 tests / 1779 assertions each across filesystem, journal,
+  publisher and core write-back suites. Covers lost reply, repeated RPC, retained
+  unknown outcome, pending local data, fresh identity checks and journal reopen.
+- Native macOS and Linux RW suite: one passed / 57 assertions each, including
+  directory move with an open descriptor and the existing editor-save cases.
+- Linux DOCSY adapter-to-API move: one passed / seven assertions; verifies exact
+  title, ID-bound handles, body and changed parent. Temporary pages cleaned up.
+  Confluence increments metadata/version on the tested live move, so current
+  Markdown frontmatter is deliberately not asserted byte-identical.
+- Typecheck: all four tasks passed.
+
+Remaining: directory retitles, cross-space moves, actual folder moves/removal,
+clean receipt eviction and resolving confirmed-negative move outcomes. Journal
+reopen and uncertain-result reconciliation are tested separately here; this is
+not a claim of native SIGKILL at every move boundary. Public CLI RW stays gated.

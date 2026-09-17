@@ -841,3 +841,33 @@ it("rejects missing identities, credential-bearing sites and invalid exports bef
     expect(() => nfsJournalLocation({ ...identity, ...changed })).toThrow();
   }
 });
+
+it("retains an uncertain reparent across reopen and reserves both trees", () => {
+  const { path, journal } = fixture();
+  journal.admit("200", "/DOCSY/page-200/_index.md", bytes("Body"), 1);
+  const move = { id: "200", source: "/DOCSY/page-200", target: "/DOCSY/target-201/page-200",
+    spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "201", title: "Page" };
+  journal.beginMove(move);
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.pendingMoves()).toEqual([{ ...move, completed: 0 }]);
+  expect(() => recovered.write("200", 0, bytes("Lost"))).toThrow("reconciliation");
+  expect(() => recovered.createLocal(`${move.target}/new.md`)).toThrow("reconciliation");
+  expect(() => recovered.beginMove({ ...move, target: "/DOCSY/other-202/page-200" })).toThrow("frozen");
+  recovered.completeMove(move.source);
+  expect(recovered.pendingMoves()).toEqual([]);
+  expect(recovered.get("200")?.path).toBe(`${move.target}/_index.md`);
+  expect(Buffer.from(recovered.get("200")!.bytes).toString()).toBe("Body");
+  expect(recovered.moveIntent(move.source)?.completed).toBe(1);
+});
+
+it("refreshes changed metadata at the same version without repeatedly dirtying a clean image", () => {
+  const { journal } = fixture();
+  journal.admit("200", "/DOCSY/page-200/_index.md", bytes("old metadata"), 1);
+  const fresh = journal.refreshClean("200", "/DOCSY/target-201/page-200/_index.md", bytes("new metadata"), 1, 0, true);
+  expect(Buffer.from(fresh.bytes).toString()).toBe("new metadata");
+  expect(fresh.revision).toBe(fresh.publishedRevision);
+  expect(journal.refreshClean("200", fresh.path, fresh.bytes, 1, fresh.revision, true)).toEqual(fresh);
+  expect(Buffer.from(journal.publishedSource("200")!).toString()).toBe("old metadata");
+  expect(journal.pendingIds()).toEqual([]);
+});

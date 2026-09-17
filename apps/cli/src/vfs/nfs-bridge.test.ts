@@ -10,7 +10,7 @@ import { open, opendir, stat, unlink, rename, readFile, mkdir, rmdir } from "nod
 import { getActiveProfile, loadConfig } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { runMountCommand, processIdentity } from "../commands/wiki-mount.js";
-import { ConfluenceVfsImpl, VfsError } from "@atlcli/confluence-vfs";
+import { ConfluenceVfsImpl, VfsError, parseVfsFrontmatter } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { nfsMountOptionsFor } from "./mount-transport.js";
 import { NfsJournal, nfsJournalLocation } from "./nfs-journal.js";
@@ -957,6 +957,17 @@ with socket.socket() as client:
       : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint];
     expect(await runMountCommand(command)).toBe(0);
     mounted = true;
+    const sourceDirectory = join(mountpoint, "child-30-430");
+    const movedDirectory = join(mountpoint, "child-31-431", "child-30-430");
+    const beforeMove = await readFile(join(sourceDirectory, "_index.md"));
+    const moveDescriptor = await open(join(sourceDirectory, "_index.md"), "r");
+    try {
+      await rename(sourceDirectory, movedDirectory);
+      expect(parseVfsFrontmatter((await moveDescriptor.readFile()).toString()).body).toBe(parseVfsFrontmatter(beforeMove.toString()).body);
+      expect(parseVfsFrontmatter((await readFile(join(movedDirectory, "_index.md"))).toString()).body).toBe(parseVfsFrontmatter(beforeMove.toString()).body);
+      expect(client.peekPage("430")?.parentId).toBe("431");
+      expect(client.callsTo("movePage")).toBe(1);
+    } finally { await moveDescriptor.close(); }
     const path = join(mountpoint, "_index.md");
     const metadata = await stat(path);
     expect(metadata.uid).toBe(process.getuid!());
