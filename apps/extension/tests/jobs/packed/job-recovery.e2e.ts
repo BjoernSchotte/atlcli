@@ -1015,37 +1015,48 @@ async function waitForRestartedTarget(
 
 async function seedLegacyExportCatalog(autoCloseAfterMs?: number): Promise<void> {
   await page.evaluate(async (closeAfterMs) => {
-    const old = await new Promise<IDBDatabase>((resolve, reject) => {
-      const deletion = indexedDB.deleteDatabase("atlcli-export-jobs");
-      const timeout = setTimeout(
-        () => reject(new Error("Legacy export catalog cleanup stayed blocked.")),
-        5_000,
-      );
-      deletion.onerror = () => {
-        clearTimeout(timeout);
-        reject(deletion.error);
-      };
-      deletion.onblocked = () => undefined;
-      // Queue the legacy open immediately behind deletion. This leaves no
-      // event-loop gap in which the live worker can recreate version 3.
-      const open = indexedDB.open("atlcli-export-jobs", 1);
-      open.onupgradeneeded = () => {
-        const jobs = open.result.createObjectStore("jobs", { keyPath: "id" });
-        jobs.createIndex("idempotencyKey", "idempotencyKey", { unique: true });
-        jobs.createIndex("derivationKey", "derivationKey", { unique: true });
-        open.result.createObjectStore("requests", { keyPath: "ref" });
-      };
-      open.onsuccess = () => {
-        clearTimeout(timeout);
-        resolve(open.result);
-      };
-      open.onerror = () => {
-        clearTimeout(timeout);
-        reject(open.error);
-      };
-    });
+    // Worker startup can queue a v3 open in another context. Retry only fixture
+    // construction on that precise race; never retry the upgrade under test.
+    const old = await (async () => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await new Promise<IDBDatabase>((resolve, reject) => {
+            const deletion = indexedDB.deleteDatabase("atlcli-export-jobs");
+            const timeout = setTimeout(
+              () => reject(new Error("Legacy export catalog cleanup stayed blocked.")),
+              5_000,
+            );
+            deletion.onerror = () => {
+              clearTimeout(timeout);
+              reject(deletion.error);
+            };
+            deletion.onblocked = () => undefined;
+            // Queue the legacy open immediately behind deletion in this context.
+            const open = indexedDB.open("atlcli-export-jobs", 1);
+            open.onupgradeneeded = () => {
+              const jobs = open.result.createObjectStore("jobs", { keyPath: "id" });
+              jobs.createIndex("idempotencyKey", "idempotencyKey", { unique: true });
+              jobs.createIndex("derivationKey", "derivationKey", { unique: true });
+              open.result.createObjectStore("requests", { keyPath: "ref" });
+            };
+            open.onsuccess = () => {
+              clearTimeout(timeout);
+              resolve(open.result);
+            };
+            open.onerror = () => {
+              clearTimeout(timeout);
+              reject(open.error);
+            };
+          });
+        } catch (error) {
+          if (!(error instanceof DOMException) || error.name !== "VersionError" || attempt >= 3) throw error;
+        }
+      }
+    })();
     (globalThis as unknown as { oldExportDb: IDBDatabase }).oldExportDb = old;
-    if (typeof closeAfterMs === "number") setTimeout(() => old.close(), closeAfterMs);
+    if (typeof closeAfterMs === "number") {
+      old.onversionchange = () => setTimeout(() => old.close(), closeAfterMs);
+    }
   }, autoCloseAfterMs);
 }
 

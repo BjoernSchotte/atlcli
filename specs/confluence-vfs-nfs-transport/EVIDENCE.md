@@ -4594,3 +4594,24 @@ Validation: all 185 affected tests passed / 1273 assertions and their real JUnit
 output passed the unchanged `parseBunJUnit` parser. All nine parser regression
 tests passed / 25 assertions. Root typecheck and Linux compiled DOCSY RW LIVE
 passed, with owned fixture cleanup. No runtime behavior changes.
+
+## Slice 171: isolate the legacy-catalog fixture race
+
+Run 35265033528 failed the first packed-browser migration test while constructing
+its fixture: IndexedDB version 3 already existed when the requested version-1
+open ran. Worker startup badge/retention work can enqueue its own open between
+requests originating from the probe page. The fixture now retries only this
+DOM VersionError, at most three retries; deletion timeouts and other errors
+still fail. The tested production upgrade is never retried. The old connection
+closes 100 ms after an actual versionchange event instead of after fixture
+creation, preserving a real blocker even on a slower runner.
+
+Stopping/restarting the worker during fixture construction was experimentally
+rejected because it adds startup opens to the late-abort test. The final change
+does not alter worker lifecycle or product code. Both unchanged blocked-upgrade
+tests passed three times each; the full packed jobs suite passed all 25 tests.
+Root typecheck and Linux DOCSY compiled RW LIVE passed (1 / 15, 4.04 seconds)
+with cleanup. The Draft PR description now reflects the actual RW feature and
+validation boundaries. All four native NFS jobs on 35265033528 passed, including
+Intel storage faults and packaged/Homebrew checks; full CI is rerun after this
+browser-fixture correction.
