@@ -10,28 +10,67 @@ not override newer evidence.
 
 ## Requirements and remaining proof
 
-| Plan requirement | Current evidence | Still required |
+Audit at Slice 169. Evidence references are specific test sources and recorded
+native executions; skipped opt-in cases are not counted as passed. The final
+CI gate remains open, including confirmation of the Intel storage-test issue.
+
+| Plan requirement | Inspected implementation and executable proof | Status |
 | --- | --- | --- |
-| Optional transport, unchanged WebDAV default, experimental NFS, no runtime downloads | mount-transport tests; wiki-mount handler; helper discovery/handshake tests; Slice 54 subprocess flag rejection and valid boundaries | Slice 163 enables RW/opt-in trash, retains side-effect-free --sync-writes rejection, removes double coalescing and updates CLI/help; final audit remains |
-| Single-space root and combined-space roots | Native macOS synthetic and Linux live RO tests | Slice 167 repeats combined DOCSY/mayflower roots and both homepage reads using the compiled RW-enabled artifact on Linux, strictly RO; final macOS combined-root audit remains |
-| Glow directory selection and rendering | Slice 58 PTY probe on native NFS mounts: macOS Glow 2.1.1 and Linux Glow 3.0.0 | Slice 165 completes the release-helper repeat on both hosts, five cold/warm runs per transport |
-| Versioned private bridge, loopback, credentials stay in Bun | Framing/handshake tests, helper env isolation, vendor limits; Slice 48 handle cap and bounded directory signatures; Slices 52–53 real deadline faults | Final bounds audit of all maps/caches |
-| Byte ranges, exact UTF-8 sizes, EOF, attachments | Adapter plus real-wire/native byte tests; Slice 62 split-UTF8 version reads across edits, moves and cache misses on both hosts | Repeat against final RW artifact; live paths intentionally remain refreshable |
-| Stable page/folder/attachment/generated-view identities | Slices 23–28 and 41–43; real-wire rename/move tests | Final identity/collision audit including convenience aliases and concurrent mutation races |
-| Directory pagination and changing-directory cookies | READDIR and READDIRPLUS wire tests with independent client mutation; Slice 57 native open-cursor mutations on both hosts | Repeat with final RW-enabled artifact |
-| Metadata/body consistency and external/negative visibility | Slice 39 direct-read TTL fix and real-kernel post-TTL test; Slices 43–44 historic timestamps/cache migration; Slices 46–47 generated-file attributes and native same-size comment visibility | Slice 93 adds native clean-page refresh after save and Linux live default-TTL timing; broader conflicting-write recovery still required |
-| Durable staged ranges, truncate, quotas, isolation and crash recovery | Journal tests including SIGKILL, full DB rollback and legacy WAL recovery; Slices 66–69 add WRITE/SETATTR/COMMIT and native macOS/Linux durable writes | Namespace journal now covers local directories, backups and replay verifiers; Slice 140 fixes statement-lifetime locks and proves helper restart at the same port before normal hard-mount detach; Slices 147–148 add ancestor-sync failure ordering and real APFS/ext4 exhaustion after successful CREATE/UPDATE with duplicate-free reconciliation; Slice 159 maps the finite persistence boundaries in DURABILITY.md and adds before/after MOVE/TRASH receipt failures; final public CLI lifecycle and packaged artifact repetition remain |
-| Automatic snapshot publication boundary | User explicitly accepts intermediate versions after 500 ms quiet; Slice 96 tests a valid prefix followed by a delayed suffix; Slice 71 proves automatic native/live publication | Final artifact/fault matrix; no universal editor-completion guarantee is required or advertised |
-| Read-your-writes, validation, optimistic conflicts, replay reconciliation | Slices 65–71 connect staged reads/core publication; Slices 88–89 protect paused publication/replay identity; Slice 92 refreshes clean images and preserves an external addition across a stale-editor save | Slice 159 maps ambiguous-result and concurrent-write tests in DURABILITY.md. Unknown outcomes intentionally retain recovery bytes; no generic conflict-resolution UI or clean-record eviction is required by PLAN.md. Final packaged-artifact validation remains |
-| CREATE/RENAME/REMOVE and editor replacement saves | Slices 72–89 implement journaled local files/directories, CREATE modes, metadata, backup rename and replacement under original page IDs; Slice 103 automatically creates plain Markdown through native Vim on both OSes, with Linux DOCSY verification | Slice 111 covers native WebDAV Vim new pages on both OSes; creation recovery for altered/missing markers and changed remote pages (Slices 116–117 reconcile marked creations against their first version, preserving later remote edits), Slice 137 covers native Linux VS Code new pages/autosave on both transports with synthetic API verification (Slice 113 covers macOS VS Code; Slice 112 covers macOS TextEdit), Slice 131 adds journaled same-space page-directory reparenting, native open-handle checks and DOCSY verification; Slice 132 extends this to real folder identities and live folder-to-folder moves; Slice 133 adds canonical page-directory retitles with lost-reply and native coverage; Slice 134 adds combined retitle/reparent and positive intermediate-state recovery; Slices 149–151 add ordinary mkdir publication with distinct body/directory handles, parent-first creation and native macOS/Linux plus Linux DOCSY/Vim proof; Slice 154 adds cross-space page/folder moves, preserved descendant handles and restart reconciliation with synthetic native proof on both hosts; Slice 155 covers Cloud parentless pages, canonical ID links and parent-preserving retitles with Linux DOCSY proof; ID-less names are supported for new-page aliases; arbitrary ID-less retitles of existing directories are not a separate plan requirement. Root folders/Data Center roots remain shared-VFS scope limitations. Slice 157 documents and natively tests non-atomic recursive removal; Slice 108 adds guarded page-body trash, and Slice 109 confirms explicit remote trash after restart; Slice 136 verifies fresh page identity/space before each DELETE; unprovable outcomes remain explicitly unresolved without duplicate mutations. Deleted local handles deliberately become ESTALE; general POSIX open-unlink lifetime is not promised |
-| Local locks, honest capabilities, unsupported operations | Native flock/lockf RO probes; macOS locallocks/Linux nolock; metadata error mapping; Slice 56 RO capability and mutation wire audit | Slice 145 verifies RW flock/lockf contention and release on both hosts; final artifact capability audit remains |
-| Signals, busy mount, explicit unmount, helper/parent death, stale recovery | Linux live CLI lifecycle covers five cases; macOS native helper/kernel tests | Slice 90 adds durable status counts and once-only normal-shutdown reporting; Slice 91 bounds restart publication. Slice 142 wires one same-port helper restart before normal detach and verifies the Linux busy-helper-crash case. Slice 160 adds compiled macOS/Linux signal, busy, helper-crash, busy-helper-crash and explicit-unmount cases. Slice 163 repeats signal, busy, helper loss, busy helper loss and explicit unmount through compiled public RO/RW CLIs on both hosts, including pending-byte export after helper loss; Slice 163 four-platform packaged RO/RW lifecycle passed in run 35261770483; required-CI rerun remains |
-| Indexer safeguards and request accounting | Shared markers and distinct-file sweep hint (Slices 37–38) | Complete transport request accounting and resource-bound acceptance |
-| Native Vim/Linux and TextEdit/macOS writes with API verification | Slice 87 proves native TextEdit manual save and VS Code autosave on macOS with a synthetic backend; native Vim and real DOCSY saves on Linux | Real-tenant macOS editor proof is unavailable without a profile; native synthetic editor proof is the plan gate. Slice 163 enables public RW after the documented correctness gates, proves compiled Vim creation/stable aliases on both hosts and verifies a marked DOCSY page through the compiled Linux CLI; final artifact matrix remains |
-| Four-platform companion binaries and archive/installer | Native four-platform CI; source/extracted helper and archive validation; Slice 50 clean-source Linux x64 packaged CLI lifecycle | Slice 143 adds compiled CLI mount smoke to all native CI lanes; macOS arm64 and Linux x64 locally verified. Slice 154 passed all four native CI lanes including compiled mount and real disk-full recovery (run 35248483807); Slice 162 adds native Homebrew install/test/lifecycle consumption to all four lanes and passes locally on macOS arm64/Linux x64; all four architectures passed packaged RW and Homebrew consumption in run 35261770483; required-CI rerun remains |
-| Shell without helper, no CQL behavior changes | Full source shell suites and built-bundle smoke tests | Slice 144 adds compiled shell absent/unusable-helper and WebDAV-without-helper tests. Slice 154 passed compiled CLI/shell tests on all four native CI lanes; final RW-enabled packaged matrix and remaining offline-startup checks remain |
-| Comparative performance, five cold/warm runs | Slice 61 isolated five-run comparisons on both hosts, native peak RSS, shutdown and protocol counts; zero warm API calls | Slice 158 adds metadata-inclusive synthetic payload accounting, five cold/warm Glow first-render and Vim save-to-API samples per transport/host, and reviews >10% triggers in PERFORMANCE.md. Slice 161 completes five cold/warm fully enumerated 602-document Glow scans per transport/host, fixes macOS adaptive-timer omissions and records the NFS regression; Slice 165 records the final release-helper matrix and regression review |
-| Tests, build, docs, required CI, go/no-go recommendation | Current local build and regression checkpoint below | Final regression/CI, user-facing docs and explicit experimental go/no-go after all correctness gates |
+| CLI contract and unchanged default | `wiki-mount.ts`, mount/transport tests; Slice 163 public RO/RW, opt-in trash and early NFS `--sync-writes` rejection | Verified; WebDAV stays default, NFS explicit/experimental |
+| Single and combined roots | `nfs-bridge.test.ts` native single/combined cases; Slice 168 macOS 7/666; Slice 167 compiled Linux combined LIVE 1/14, Slice 163 single-root LIVE | Verified; MAYFLOWER only read |
+| Exact bytes, ranges, EOF and attachments | `nfs-filesystem.test.ts`, real-wire/native `nfs-bridge.test.ts`; Slice 168 exact-byte/attachment repeat | Verified |
+| Immutable versions and live-path freshness | split-UTF8 wire and native snapshot cases, external-change/negative-cache probes; Slices 39, 43–47, 62, 93, 168 | Verified; normal paths can change between READs |
+| Handles and namespace identity | filesystem tests cover page/body/directory/attachment identities, rename/reparent, alias promotion, exclusive replay, deleted handles and concurrent replacement; Slices 103, 131–136, 149–155 | Verified; deleted handles become ESTALE, no open-unlink lifetime promise |
+| Pagination and changing directories | pinned vendor READDIR/READDIRPLUS patches, wire small-budget/cookie tests and native open-cursor mutation; Slices 57, 161, 168 | Verified; changed views restart via BAD_COOKIE |
+| Link/export confinement, RO, honest capabilities | filesystem and wire traversal/foreign-handle/RO tests, homepage protection, unsupported metadata/hardlink/device errors; Slices 48, 56, 136, 153 | Verified |
+| Bridge framing and bounded resources | `nfs-framing.ts`, `nfs-bridge.ts`, Rust `main.rs`, vendor TCP/replay code, malformed-frame/deadline/backpressure tests; bounds audit below | Verified |
+| Durable WRITE/SETATTR/COMMIT, quotas and crash recovery | exact finite boundary matrix in [DURABILITY.md](DURABILITY.md), SQLite transactions/sync ordering, SIGKILL and real APFS/ext4 faults | Local and previous four-platform proof passed; final Intel confirmation pending |
+| Automatic publication, debounce and retry | `nfs-publisher.ts` and tests: 500 ms quiet window, serialized snapshots, newer writes retained, five transient retries with backoff/jitter and Retry-After; Slices 71, 96, 156, 163 | Verified; intermediate valid versions accepted |
+| Read-your-writes and remote uncertainty | staged-byte reads, merge/conflict tests, positive CREATE/UPDATE/MOVE/TRASH reconciliation; [DURABILITY.md](DURABILITY.md) | Verified semantics; Intel duplicate-call observation remains under final CI confirmation |
+| New plain files, stable aliases and temporary files | native Vim new-file cases, original-path repeated saves, backup/replacement/restart tests; Slices 103, 111, 114–117, 163 | Verified on NFS and WebDAV |
+| Editor matrix | actual Vim both OSes (103/111/163), VS Code macOS (113) and Linux (137), TextEdit macOS (112), both transports; synthetic API identity/version checks | Verified; historical GUI runs, current compiled Vim repeat; no claim of fresh GUI runs on every documentation commit |
+| Directory create/move/retitle and opt-in trash | native and wire MKDIR, same/cross-space page/folder moves, intermediate recovery and guarded trash; Slices 108–109, 131–136, 149–155, 157 | Verified; recursive deletion is explicitly non-atomic, never purge |
+| Local locking | native RO and RW flock/lockf contention/release on both hosts; Slice 145 | Verified; macOS locallocks/Linux nolock, no cross-client lock service |
+| Signals, busy mounts, explicit detach and helper/parent death | compiled RO/RW lifecycle including pending-byte recovery; Slice 163; all four native packaged/Homebrew jobs passed in run 35261770483 | Verified prior artifact; current full CI still running |
+| Credentials, loopback and process ownership | empty helper environment/private inherited pipes, loopback-only listener, state identity checks, orphan/busy preservation and helper restart tests | Verified; loopback is not local-user authentication |
+| Indexer safeguards and accounting | shared shield names, distinct-file sweep hint; RPC counter before dispatch; synthetic API payload ledger assertions in final benchmark | Verified; no automatic protection against arbitrary recursive scans |
+| Distribution and supply chain | pinned Rust/Cargo/vendor, license/checksum/protocol/architecture verifiers; native source, archive, shell installer and actual Homebrew execution on four platforms | Verified run 35261770483; no release/tap merge requested or performed |
+| Missing helper, offline startup and Windows rejection | compiled absent/unusable-helper shell/WebDAV cases, offline version and local installer fixtures; platform rejection tests | Verified; Windows native NFS outside scope |
+| Performance matrix | Slice 165: 80 records per host, four workloads, five cold/warm repetitions, numeric medians/ranges, API/payload/RSS/protocol metrics and >10% review | Verified; [PERFORMANCE.md](PERFORMANCE.md), no universal NFS speed claim |
+| Regression/build/docs/CI and final go/no-go | Slice 163 local 771/4005 plus 35-task build; Slice 164 API/closure checks; Slice 166 actual Chrome 6/6; current guides/help and helper README | Full required CI and final go/no-go still pending |
+
+### Bounds and identity audit
+
+The adapter caps handles at 65,536 and never recycles IDs. One hashed directory
+signature is retained per known directory, with 32-operation lookup batches.
+Names are limited to 255 UTF-8 bytes, READ/WRITE to 1 MiB and bridge frames to
+8 MiB. Rust admits 32 TCP connections, sequential dispatch per connection,
+4 MiB records/1,024 fragments, 60/120/30-second read/dispatch/write deadlines,
+and 4,096 replay entries cleared when their TCP session ends. Both bridge peers
+limit pending operations to 32; Bun serializes reply writes and drains stderr
+without retaining a growing log. The helper receives an empty environment.
+
+The journal defaults to 4,096 files, 64 MiB per file and 256 MiB logical staged
+bytes, with a 545 MiB SQLite-page ceiling. Temporary rollback-journal disk use is
+additional and documented. Statement templates are retained/finalized rather
+than allocated per request. Publication has one worker; retry state is retired
+with deleted/completed identities. None of these bounds promise successful work
+past capacity: explicit errors preserve acknowledged bytes.
+
+The reviewed identity paths distinguish local files/directories, canonical
+pages, persistent original-name aliases, backups and promotions. Tests cover
+concurrent replacement, stale exclusive-create replay, moved descendants,
+foreign scopes and homepage deletion protection. No OS symlink or renamed path
+is used as a substitute for Confluence page identity.
+
+### Remaining acceptance gate
+
+Complete required CI on the final product source, including native Intel
+storage recovery, then record the final experimental go/no-go and close WP6.
+The most recent relevant runs are 35263874754 (Chrome fix) and 35265033528
+(filler fault isolation); their live results must be checked before acceptance.
+Do not convert configured jobs or earlier green architectures into a claim of
+current full CI success.
 
 ## Accepted product decisions (2026-09-17)
 

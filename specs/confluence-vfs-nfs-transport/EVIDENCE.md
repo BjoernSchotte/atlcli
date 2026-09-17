@@ -4563,3 +4563,19 @@ required, not inferred from this test hardening.
 
 Final real APFS and ext4 runs each passed 2 tests / 26 assertions. Root typecheck
 passed all four tasks. Linux compiled DOCSY RW LIVE passed with owned cleanup.
+
+## Slice 169: consolidated requirement audit
+
+Replaced obsolete per-row acceptance placeholders with a current mapping of
+every plan requirement group to implementation/test sources and named native
+evidence. Rechecked framing, pending work/backpressure, handle and replay caps,
+journal quotas, publication retries, vendor provenance/patches, identity tests
+and the complete editor matrix. Separate historical GUI proof from current
+compiled Vim/native repetitions; do not claim a live second identity or macOS
+tenant credentials. The durability matrix now records the later Intel test
+observation rather than treating an earlier green run as final acceptance.
+
+No runtime changes. Full required CI (including Intel storage recovery) and
+explicit final go/no-go remain the only acceptance gate; they are not checked
+off by this document. Root typecheck and the Linux compiled combined-space
+RO LIVE test are run before committing this audit.

@@ -79,7 +79,8 @@ has the separate real-filesystem proof above.
 Slice 163 enables public RW after the documented boundary tests and four-native-
 platform correctness run at c4ee457f. It repeats compiled RO/RW lifecycle on
 macOS/Linux, including exact recovery export of writes acknowledged immediately
-before helper loss. The final four-platform artifact matrix, full required CI
-and the explicit experimental
-go/no-go remain in [ACCEPTANCE.md](ACCEPTANCE.md). The [plan](PLAN.md) remains
+before helper loss. The four-platform artifact matrix passed in run 35261770483. A later Intel
+ENOSPC test observed an extra attempted UPDATE without an extra version;
+Slice 168 isolates filler-sync ENOSPC from simulated remote reply loss. Final
+CI confirmation and the explicit experimental go/no-go remain in [ACCEPTANCE.md](ACCEPTANCE.md). The [plan](PLAN.md) remains
 authoritative. Editor and performance evidence is tracked separately.
