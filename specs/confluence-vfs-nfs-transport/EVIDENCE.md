@@ -3752,3 +3752,41 @@ test. These are explicit
 open failures, not waived performance or durability gates. Public NFS RW remains
 gated. The next work is to diagnose these native failures and finish the aligned
 Linux repository run.
+
+
+## Slice 140 — deterministic journal close and hard-mount recovery
+
+The helper-death test exposed two separate issues. A hard mount can wait for RPC
+replies while unmounting after its helper is dead. The test now restores the
+journal-backed endpoint at the same port before normal detach/remount. It proves
+that an old root handle receives ESTALE from the new helper generation. No
+forced/lazy unmount or softened RW retry semantics are used. This remains an
+internal recovery path; automatic public CLI RW recovery is not implemented.
+
+Reordering recovery also reliably exposed SQLite writer locks surviving close.
+Inspection of the installed Bun implementation showed that Database.query caches
+20 statements; later statements are prepared without entering that cache, and
+Database.close only finalizes cached statements. The journal now owns its fixed
+SQL-template statement map, finalizes every entry, and closes strictly. This
+reuses the repository's explicit-statement-lifetime pattern and neither changes
+the database schema nor relies on GC to release locks.
+
+- New mixed editor/publication regression failed on the old code with database
+  locked and passed with the fix; acknowledged page bytes, local draft and
+  interrupted publication intent survive immediate reopen without GC.
+- macOS/Linux broad core and CLI VFS suites: 705 passed, 34 opt-in native/helper
+  cases skipped, 3568 assertions each.
+- Final native hard-mount/helper-death/recovery test: one passed / 13 assertions
+  on each host, approximately 4.66s macOS and 1.17s Linux. Confirms persisted
+  denied-publication bytes, restored publication at version 2, old-handle ESTALE,
+  normal detach and fresh-mount readback. Owned mounts were cleaned up.
+- Linux DOCSY owned-journal restart/publication: one passed / five assertions,
+  disposable page cleaned up. Typecheck: all four tasks passed.
+
+The aligned Linux full repository rerun from Slice 139 completed with 9278
+passed, 104 skipped, one failed and 46926 assertions across 760 files. Its sole
+remaining failure was the unrelated 500-action palette p95 benchmark; isolated
+rerun passed (one test / 37 assertions, p95 30.67ms). This is a full run plus a
+targeted isolation result, not an all-green full rerun after this journal fix.
+The Linux native directory-listing CI budget failure remains open. Public NFS RW
+and overall acceptance remain gated.

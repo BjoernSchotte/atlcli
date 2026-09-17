@@ -910,3 +910,25 @@ it("reserves and remaps the intermediate path of a combined move across reopen",
   expect(recovered.get("200")?.path).toBe(`${move.target}/_index.md`);
   expect(Buffer.from(recovered.get("200")!.bytes).toString()).toBe("read during recovery");
 });
+
+
+it("releases the writer lock after a mixed editor and publication session without GC", () => {
+  const { path, journal } = fixture();
+  journal.admit("100", "/DOCSY/_index.md", bytes("before"), 1);
+  journal.setAttributes("100", { mode: 0o644, mtime: 1234 });
+  journal.write("100", 0, bytes("saved!"));
+  journal.beginPublish("100");
+  journal.failPublish("100", "EACCES");
+  const local = journal.createLocal("/DOCSY/.editor.tmp");
+  journal.write(local.id, 0, bytes("draft"));
+  journal.localEntries("/DOCSY"); journal.localFileIds(); journal.pendingIds();
+  journal.pending(); journal.isBackup(local.id); journal.attributes("100");
+  journal.displaced("/DOCSY/_index.md"); journal.exclusivePageReplay("/DOCSY/_index.md", "0000000000000000");
+  journal.createIntent(local.id); journal.promotion(local.id); journal.publishedSource("100");
+  journal.moveIntent("/DOCSY/page-100"); journal.pendingMoves(); journal.writeStatus();
+  journal.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(Buffer.from(reopened.get("100")!.bytes).toString()).toBe("saved!");
+  expect(reopened.publishIntent("100")).not.toBeNull();
+  expect(Buffer.from(reopened.local("/DOCSY/.editor.tmp")!.bytes).toString()).toBe("draft");
+});

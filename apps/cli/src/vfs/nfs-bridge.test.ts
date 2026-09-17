@@ -911,16 +911,24 @@ with socket.socket() as client:
       while (!server.writeStatus()!.failedPages && Date.now() < failedDeadline) await Bun.sleep(50);
       expect(server.writeStatus()!.failedPages).toBe(1);
       expect(client.peekPage("100")?.version).toBe(1);
+      const recoveryPort = server.port;
+      const mountedRoot = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+      const oldRoot = mountedRoot.subarray(8, 8 + mountedRoot.readUInt32BE(4));
       process.kill(server.pid, "SIGKILL");
       await server.exited;
-      await detach();
       await server.stop();
       expect(server.writeStatus()!.pendingPages).toBe(1);
       const reopened = new NfsJournal(location.path, location.scope);
       try { expect(Buffer.from(reopened.get("100")!.bytes).toString()).toBe(content); }
       finally { reopened.close(); }
       client.updatePage = update;
-      server = await startNfsServer({ vfs, spaces: ["DOCSY"], journalLocation: location, helperPath: resolve(helperPath!) });
+      // A hard-mounted client can issue RPCs during normal unmount. Restore
+      // the dead endpoint first; the new generation rejects old handles as
+      // ESTALE, allowing detach before a fresh mount reads recovered content.
+      server = await startNfsServer({ vfs, spaces: ["DOCSY"], journalLocation: location,
+        port: recoveryPort, helperPath: resolve(helperPath!) });
+      expect((await rpc(server, 100003, 1, opaque(oldRoot))).readUInt32BE()).toBe(70); // ESTALE
+      await detach();
       const deadline = Date.now() + 5000;
       while (server.writeStatus()!.pendingPages && Date.now() < deadline) await Bun.sleep(50);
       expect(server.writeStatus()!.pendingPages).toBe(0);

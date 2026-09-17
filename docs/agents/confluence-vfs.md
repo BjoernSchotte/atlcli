@@ -472,6 +472,14 @@ forced or lazy detachment. Close applications using the volume if it is busy.
 
 ### Recovering local NFS edits
 
+The development journal explicitly finalizes its SQL statements at shutdown;
+reopening it does not depend on garbage collection releasing SQLite locks.
+A hard RW mount may still issue requests during unmount after a helper crash.
+The native recovery test restores the journal-backed server at the same port
+before normal detach/remount. The restarted helper rejects old handles with
+`ESTALE`; this is an internal recovery proof, not yet an automatic public CLI
+recovery command. Public NFS RW remains gated.
+
 Automatic NFS publication retries transient `EAGAIN` failures up to five times
 with exponential backoff (starting at one second) and up to 25% jitter. Explicit
 connection-reset/refused, timeout and temporary DNS transport errors are also
