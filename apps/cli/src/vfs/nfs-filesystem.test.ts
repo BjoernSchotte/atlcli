@@ -1478,3 +1478,47 @@ it("validates a listed parent once rather than once per child while retaining ch
   const large = await countParentStats(200);
   expect(large).toBeLessThanOrEqual(small + 2);
 });
+
+for (const operation of ["move", "trash"] as const) {
+  for (const boundary of ["before-receipt", "after-receipt"] as const) {
+    it(`recovers ${operation} after remote success and ${boundary} failure without repeating the mutation`, async () => {
+      const { fs, journal, client, vfs, cacheDir } = await fixture(["DOCSY"], "rw", undefined, true);
+      const directory = await fs.lookup(1, "child-0-200");
+      const body = await fs.lookup(directory, "_index.md");
+      const image = Buffer.from((await fs.read(body, 0, 65536)).data, "base64");
+      await fs.truncate(body, image.length); // Admit the unchanged recovery image.
+      const destination = await fs.lookup(1, "child-1-201");
+      const method = operation === "move" ? "completeMove" : "completeTrash";
+      const complete = journal![method].bind(journal!);
+      journal![method] = (id: string) => {
+        if (boundary === "after-receipt") complete(id);
+        throw new Error("Receipt boundary failure");
+      };
+      try {
+        await expect(operation === "move"
+          ? fs.rename(1, "child-0-200", destination, "child-0-200")
+          : fs.remove(directory, "_index.md")).rejects.toThrow("Receipt boundary failure");
+      } finally { journal![method] = complete; }
+      expect(client.callsTo(operation === "move" ? "movePage" : "deletePage")).toBe(1);
+      await vfs.close(); journal!.close();
+      const reopened = new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY");
+      const fresh = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"], mode: "rw",
+        allowDelete: true, coalesceMs: 0, cacheDir: join(cacheDir, "reopened"), offline: false });
+      const publisher = new NfsPublisher(reopened, fresh, ["DOCSY"]);
+      try {
+        expect(Buffer.from(reopened.get("200")!.bytes)).toEqual(image);
+        await publisher.publish(operation === "move" ? "move:/DOCSY/child-0-200" : "200");
+        expect(reopened.writeStatus().unresolvedPublications).toBe(0);
+        expect(client.callsTo(operation === "move" ? "movePage" : "deletePage")).toBe(1);
+        expect(Buffer.from(reopened.get("200")!.bytes)).toEqual(image);
+        if (operation === "move") {
+          expect(reopened.get("200")!.path).toBe("/DOCSY/child-1-201/child-0-200/_index.md");
+          expect(client.peekPage("200")?.parentId).toBe("201");
+        } else {
+          expect(reopened.trashIntent("200")?.completed).toBe(1);
+          expect(client.isTrashed("200")).toBe(true);
+        }
+      } finally { await publisher.stop(); await fresh.close(); reopened.close(); }
+    });
+  }
+}

@@ -4283,3 +4283,29 @@ page cleanup completed.
 Limits remain explicit: Glow quits after first render, so its asynchronous
 background scan is not a fully drained large-directory comparison. No universal
 NFS speed claim or public RW acceptance is inferred from these measurements.
+
+## Slice 159: finite durability matrix and MOVE/TRASH receipt boundaries
+
+[DURABILITY.md](DURABILITY.md) maps the concrete local commit, directory fsync,
+remote-effect, receipt, promotion, concurrent-write and process-lifecycle
+boundaries to executable tests and their required recovered state. It separates
+injected method failures from real disk exhaustion and process kill from
+physical power-loss claims. The acceptance checkpoint no longer treats
+optional clean-record eviction or arbitrary ID-less directory retitles as
+unimplemented requirements.
+
+Added four adapter tests: MOVE and TRASH each fail immediately before and
+after committing their local completion receipt, after remote success. After
+closing/reopening the journal and VFS, recovery preserves the exact saved
+image, confirms the target state, clears uncertainty and performs only one
+remote mutation total. No product behavior was changed in this slice.
+
+macOS and Linux each passed the filesystem/journal/publisher/bridge-failure/
+real-storage-fault suite: 207 tests / 1947 assertions. One helper-opt-in test
+was skipped in that command and then covered in a separate helper run with
+parent SIGKILL, native hard-mount helper death and shutdown reporting: four
+tests / 43 assertions per host. APFS/ext4 exhaustion used owned 64 MiB images;
+all native test mounts detached normally. Typecheck passed all four tasks.
+Linux DOCSY LIVE journal resume passed (one / five; four host-specific cases
+skipped), with owned page cleanup. Public RW and final CLI acceptance remain
+open; the finite matrix is not a substitute for those gates.
