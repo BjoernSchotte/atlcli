@@ -1,8 +1,8 @@
 import { VfsError } from "@atlcli/confluence-vfs";
 import { Database } from "bun:sqlite";
 import { chmodSync, mkdirSync } from "node:fs";
-import { dirname, posix } from "node:path";
-import { randomUUID } from "node:crypto";
+import { dirname, posix, resolve, join } from "node:path";
+import { randomUUID, createHash } from "node:crypto";
 import { isNfsPageDraft } from "./mount-client-probes.js";
 
 export interface StagedNfsFile {
@@ -38,6 +38,26 @@ export interface NfsWriteStatus {
   displacedPages: number;
   localEntries: number;
   unresolvedPublications: number;
+}
+
+/** Stable across remounts; exact identity components are hashed, never used as path segments. */
+export function nfsJournalLocation(identity: {
+  cacheDir: string; profile: string; accountId: string; instanceUrl: string; spaces: readonly string[];
+}): { path: string; scope: string } {
+  for (const value of [identity.cacheDir, identity.profile, identity.accountId, identity.instanceUrl]) {
+    if (!value || value.includes("\0")) throw new Error("Invalid NFS journal identity");
+  }
+  const site = new URL(identity.instanceUrl);
+  if (!["https:", "http:"].includes(site.protocol) || site.username || site.password || site.search || site.hash) {
+    throw new Error("Invalid NFS journal site");
+  }
+  if (!identity.spaces.length || identity.spaces.some(space => !space || /[\/\0]/.test(space) || space === "." || space === "..")) {
+    throw new Error("Invalid NFS journal export");
+  }
+  const scope = JSON.stringify([1, identity.profile, identity.accountId, site.href.replace(/\/+$/, ""),
+    [...new Set(identity.spaces)].sort()]);
+  const key = createHash("sha256").update(scope).digest("hex");
+  return { path: join(resolve(identity.cacheDir), "nfs-journals", `${key}.sqlite`), scope };
 }
 
 /** Non-evictable local stable storage. Separate from the disposable VFS cache. */

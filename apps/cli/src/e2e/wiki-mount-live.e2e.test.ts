@@ -28,7 +28,7 @@ import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { startNfsServer } from "../vfs/nfs-bridge.js";
 import { nfsMountOptionsFor } from "../vfs/mount-transport.js";
 import { NfsFilesystem } from "../vfs/nfs-filesystem.js";
-import { NfsJournal } from "../vfs/nfs-journal.js";
+import { NfsJournal, nfsJournalLocation } from "../vfs/nfs-journal.js";
 import { NfsPublisher } from "../vfs/nfs-publisher.js";
 import { startWebdavServer, type RunningWebdavServer } from "../vfs/webdav-server.js";
 import { mountUrlFor, mountCommandFor, unmountCommandFor, runMountCommand } from "../commands/wiki-mount.js";
@@ -309,8 +309,9 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       title: makeE2eTitle("nfs-restart-parent"), storage: "<p>Restart parent</p>" });
     created.push(parent.id);
     let childId: string | undefined;
-    const journalPath = join(cacheDir, "creation-restart.sqlite");
-    let journal = new NfsJournal(journalPath, "live:DOCSY");
+    const location = nfsJournalLocation({ ...vfs.runtime!, profile: profile!.name, spaces: [E2E_SPACE_KEY] });
+    const journalPath = location.path;
+    let journal = new NfsJournal(journalPath, location.scope);
     let fresh: ConfluenceVfsImpl | undefined;
     let publisher: NfsPublisher | undefined;
     try {
@@ -326,7 +327,7 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       journal.truncate(local.id, 0);
       journal.write(local.id, 0, Buffer.from("Newer durable image 🐴"));
       journal.close();
-      journal = new NfsJournal(journalPath, "live:DOCSY");
+      journal = new NfsJournal(journalPath, location.scope);
       fresh = await ConfluenceVfsImpl.open({ profile: profile!.name, client,
         spaces: [E2E_SPACE_KEY], mode: "rw", allowDelete: false, offline: false,
         cacheDir: join(cacheDir, "creation-restart-core"), coalesceMs: 0 });

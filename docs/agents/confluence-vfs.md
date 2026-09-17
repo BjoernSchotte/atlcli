@@ -554,3 +554,10 @@ builder; RO mounts retain soft retries. A hard mount can wait when the daemon is
 unavailable, so unmount normally before stopping it. NFS stable-write replies
 still confirm local journal durability, not completed Confluence publication.
 Public CLI RW mode remains gated pending full acceptance.
+
+Managed NFS staging uses `<cache-dir>/nfs-journals/<scope-hash>.sqlite`. The scope
+includes site, profile, authenticated account and selected spaces; changing their
+order does not change the journal. A changed identity or export gets a separate
+journal. These files contain durable edits, not disposable body-cache entries;
+keep them until publication/recovery is verified. The CLI RW startup wiring is
+prepared but remains behind the existing acceptance gate.

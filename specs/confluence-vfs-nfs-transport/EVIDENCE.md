@@ -3332,3 +3332,31 @@ before enabling it. Stable NFS replies remain local-durability acknowledgements.
 
 Hard-mount behavior after unexpected helper death is not newly certified here;
 full RW lifecycle and public activation remain part of the unfinished goal.
+
+
+## Slice 126 — stable authenticated journal location and startup ownership
+
+Journal location hashes exact profile/account/site identity and sorted unique
+export spaces. It lives under cache-dir/nfs-journals, separate from disposable
+body-cache databases. Credentials/query/fragment-bearing site URLs and empty or
+invalid export identities are rejected. Site trailing slash and export order do
+not create a different journal; different identities/exports do.
+
+The CLI NFS branch is prepared to create this journal from the core's verified
+runtime identity, pass it to the server and close it after server/publisher stop
+or failed startup. Startup output includes its recovery path. The original RW
+validation gates remain unchanged; no new public writable mount is advertised.
+This lifecycle wiring still needs end-to-end RW CLI activation/fault acceptance.
+
+- macOS journal suite: 41 passed / 551 assertions; CLI suite: 20 / 153.
+- Linux combined suites: 61 passed / 704 assertions.
+- Regression verifies account/profile/site/export isolation, reordered exports,
+  reopened durable bytes, file mode 0600 and invalid identity rejection.
+- Linux DOCSY confirmed-create/reopen/fresh-core test uses the new locator:
+  one passed / five assertions. Newer local content publishes to the existing
+  page after reopening; remote version/body and intent retirement verified.
+  Disposable child and parent pages cleaned up.
+- Typecheck passed; no claim of a live second-identity test (none available).
+
+Public RW lifecycle, interrupted namespace changes, complete editor matrix and
+remaining final acceptance gates remain open.

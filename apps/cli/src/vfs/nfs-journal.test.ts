@@ -3,7 +3,7 @@ import { afterEach, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { NfsJournal } from "./nfs-journal.js";
+import { NfsJournal, nfsJournalLocation } from "./nfs-journal.js";
 
 const roots: string[] = [];
 const journals: NfsJournal[] = [];
@@ -807,4 +807,37 @@ it("refuses trash of dirty, displaced, foreign and unresolved pages", () => {
   journal.backupPage("100", "/DOCSY/backup.md");
   expect(() => journal.beginTrash("100", "/DOCSY/page/_index.md", "DOCSY")).toThrow("unpublished");
   expect(journal.trashIntent("100")).toBeNull();
+});
+
+
+it("locates durable export journals by exact identity and resumes them across reordered spaces", () => {
+  const root = mkdtempSync(join(tmpdir(), "nfs-export-journal-")); roots.push(root);
+  const identity = { cacheDir: root, profile: "mayflower", accountId: "account/one",
+    instanceUrl: "https://example.test/wiki/", spaces: ["DOCSY", "mayflower"] };
+  const original = nfsJournalLocation(identity);
+  const reordered = nfsJournalLocation({ ...identity, instanceUrl: "https://example.test/wiki",
+    spaces: ["mayflower", "DOCSY", "DOCSY"] });
+  expect(reordered).toEqual(original);
+  expect(original.path).toMatch(/nfs-journals\/[0-9a-f]{64}\.sqlite$/);
+  for (const changed of [{ profile: "other" }, { accountId: "account_one" },
+    { instanceUrl: "https://other.test/wiki" }, { spaces: ["DOCSY"] }]) {
+    expect(nfsJournalLocation({ ...identity, ...changed }).path).not.toBe(original.path);
+  }
+  let journal = new NfsJournal(original.path, original.scope);
+  const local = journal.createLocal("/DOCSY/newpage.md");
+  journal.write(local.id, 0, Buffer.from("Retained bytes"));
+  journal.close();
+  journal = new NfsJournal(reordered.path, reordered.scope); journals.push(journal);
+  expect(Buffer.from(journal.local("/DOCSY/newpage.md")!.bytes).toString()).toBe("Retained bytes");
+  expect(statSync(original.path).mode & 0o777).toBe(0o600);
+});
+
+it("rejects missing identities, credential-bearing sites and invalid exports before opening a journal", () => {
+  const identity = { cacheDir: "/tmp", profile: "fixture", accountId: "account",
+    instanceUrl: "https://example.test/wiki", spaces: ["DOCSY"] };
+  for (const changed of [{ accountId: "" }, { profile: "" }, { cacheDir: "" },
+    { instanceUrl: "https://user:secret@example.test/wiki" }, { instanceUrl: "file:///tmp" },
+    { instanceUrl: "https://example.test/wiki?token=x" }, { spaces: [] }, { spaces: ["../DOCSY"] }]) {
+    expect(() => nfsJournalLocation({ ...identity, ...changed })).toThrow();
+  }
 });
