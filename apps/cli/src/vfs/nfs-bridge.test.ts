@@ -800,7 +800,8 @@ with socket.socket() as client:
   }
 
   it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("writes and fsyncs existing pages through a native RW kernel mount", async () => {
-    const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now(), true, 4096);
+    let clockOffset = 0;
+    const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now() + clockOffset, true, 4096);
     const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-rw-"));
     let mounted = false;
     cleanups.push(async () => {
@@ -907,7 +908,17 @@ with socket.socket() as client:
     while (!client.peekPage("100")?.storage.includes("Backup rename save") && Date.now() < backupDeadline) await Bun.sleep(20);
     expect(journal!.pending()).toHaveLength(0);
     expect(client.peekPage("100")?.storage).toContain("Backup rename save");
-  }, 30000);
+    client.bumpVersion("100", `${client.peekPage("100")!.storage}<p>External kernel refresh 🐴</p>`);
+    clockOffset += 61000; // Expire core metadata naturally; keep real kernel caching.
+    let refreshed = await readFile(path);
+    const refreshDeadline = Date.now() + 5000;
+    while (!refreshed.includes("External kernel refresh") && Date.now() < refreshDeadline) {
+      await Bun.sleep(100); refreshed = await readFile(path);
+    }
+    expect(refreshed.toString()).toContain("External kernel refresh 🐴");
+    expect((await stat(path)).size).toBe(refreshed.byteLength);
+    expect(journal!.pendingIds()).toEqual([]);
+    }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [
     { spaces: ["DOCSY"], attachments: false },

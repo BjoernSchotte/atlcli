@@ -2458,3 +2458,30 @@ updates the index; it is not a new measurement of kernel/TTL visibility latency.
 Clean-record eviction, the public recovery workflow and remaining full RW gates
 are still open. No general multi-editor convergence guarantee is inferred from
 one tested stale-editor conflict-merge sequence.
+
+
+## Slice 93 — native external-update visibility after publication
+
+The live Linux DOCSY test now updates its disposable page through the API after
+native NFS/Vim publication, polls the mounted file without invalidating caches,
+checks exact byte size and absence of a new publication, then saves an older
+editor image with a change in a different paragraph. The API result contains
+both the external addition and the new local edit under the original page ID.
+
+With the default 60-second core TTL, the successful run observed the external
+addition after 55,968 ms (the TTL had already partly elapsed). This is one
+visibility observation, not a latency distribution or an instantaneous-consistency
+claim. The full live test passed 26 assertions in about 63 seconds and cleaned
+up its mount and page.
+
+An initial variant appended both edits at the end of the document. Visibility
+passed after 55,897 ms, but the follow-up remained failed/pending with a retained
+intent. Its error code was not captured. That overlapping-edit recovery case
+remains open; the passing disjoint-edit test does not substitute for it.
+
+The native synthetic save regression additionally expires core metadata using
+its injected clock while retaining real OS caching, then proves mounted bytes,
+size and a clean journal. macOS and Linux each passed 37 assertions. This proves
+kernel refresh behavior, not real-tenant macOS latency. All four typecheck tasks
+passed. ACCEPTANCE.md was reconciled with implemented namespace/editor/status
+work; historical broad build/CI results remain explicitly historical.

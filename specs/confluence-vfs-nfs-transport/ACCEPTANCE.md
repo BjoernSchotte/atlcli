@@ -1,7 +1,8 @@
 # NFS acceptance checkpoint
 
 This is a working audit of PLAN.md, not acceptance of the feature. The complete
-read/write objective remains open. Source checkpoint: b8267310 (implementation through Slice 49; Slice 50 packaged proof).
+read/write objective remains open. Implementation evidence reviewed through Slice 93; broad build/CI evidence below
+is historical and still requires a final rerun.
 [EVIDENCE.md](EVIDENCE.md) contains commands, host boundaries and detailed results.
 
 ## Requirements and remaining proof
@@ -15,15 +16,15 @@ read/write objective remains open. Source checkpoint: b8267310 (implementation t
 | Byte ranges, exact UTF-8 sizes, EOF, attachments | Adapter plus real-wire/native byte tests; Slice 62 split-UTF8 version reads across edits, moves and cache misses on both hosts | Repeat against final RW artifact; live paths intentionally remain refreshable |
 | Stable page/folder/attachment/generated-view identities | Slices 23–28 and 41–43; real-wire rename/move tests | Final identity/collision audit including convenience aliases and concurrent mutation races |
 | Directory pagination and changing-directory cookies | READDIR and READDIRPLUS wire tests with independent client mutation; Slice 57 native open-cursor mutations on both hosts | Repeat with final RW-enabled artifact |
-| Metadata/body consistency and external/negative visibility | Slice 39 direct-read TTL fix and real-kernel post-TTL test; Slices 43–44 historic timestamps/cache migration; Slices 46–47 generated-file attributes and native same-size comment visibility | Broader live visibility timing |
-| Durable staged ranges, truncate, quotas, isolation and crash recovery | Journal tests including SIGKILL, full DB rollback and legacy WAL recovery; Slices 66–69 add WRITE/SETATTR/COMMIT and native macOS/Linux durable writes | Namespace journal and fault injection at every remaining acknowledgement boundary |
+| Metadata/body consistency and external/negative visibility | Slice 39 direct-read TTL fix and real-kernel post-TTL test; Slices 43–44 historic timestamps/cache migration; Slices 46–47 generated-file attributes and native same-size comment visibility | Slice 93 adds native clean-page refresh after save and Linux live default-TTL timing; broader conflicting-write recovery still required |
+| Durable staged ranges, truncate, quotas, isolation and crash recovery | Journal tests including SIGKILL, full DB rollback and legacy WAL recovery; Slices 66–69 add WRITE/SETATTR/COMMIT and native macOS/Linux durable writes | Namespace journal now covers local directories, backups and replay verifiers; fault injection at remaining boundaries still required |
 | Complete-document publication boundary | User requires automatic publication; Slice 71 verifies 500 ms trailing debounce through native synthetic macOS/Linux and live DOCSY NFS saves | Prove editor completion boundaries; a quiet interval alone does not establish document completion |
-| Read-your-writes, validation, optimistic conflicts, replay reconciliation | Slices 65–71 connect staged reads, core publication, replay reconciliation and newer-edit rebasing | Clean-record refresh, broader ambiguous-result faults and pending/recovery CLI |
-| CREATE/RENAME/REMOVE and editor replacement saves | Existing WebDAV behavior tested; NFS still returns ROFS | Implement/test NFS namespace operations with stable page IDs, temporary files and opt-in trash |
+| Read-your-writes, validation, optimistic conflicts, replay reconciliation | Slices 65–71 connect staged reads/core publication; Slices 88–89 protect paused publication/replay identity; Slice 92 refreshes clean images and preserves an external addition across a stale-editor save | Broader ambiguous-result and multi-editor faults, clean-record eviction, pending/recovery CLI |
+| CREATE/RENAME/REMOVE and editor replacement saves | Slices 72–89 implement journaled local files/directories, CREATE modes, metadata, backup rename and replacement under original page IDs | Remote page creation/tree rename/opt-in trash; full overwritten/unlinked handle lifetime and mutation-race audit |
 | Local locks, honest capabilities, unsupported operations | Native flock/lockf RO probes; macOS locallocks/Linux nolock; metadata error mapping; Slice 56 RO capability and mutation wire audit | RW editor lock behavior and capability audit after writes are implemented |
-| Signals, busy mount, explicit unmount, helper/parent death, stale recovery | Linux live CLI lifecycle covers five cases; macOS native helper/kernel tests | Full macOS CLI lifecycle; pending-write shutdown and recovery once RW exists |
+| Signals, busy mount, explicit unmount, helper/parent death, stale recovery | Linux live CLI lifecycle covers five cases; macOS native helper/kernel tests | Slice 90 adds durable status counts and once-only normal-shutdown reporting; Slice 91 bounds restart publication. Still required: public recovery workflow, unexpected-death reporting, full macOS CLI lifecycle |
 | Indexer safeguards and request accounting | Shared markers and distinct-file sweep hint (Slices 37–38) | Complete transport request accounting and resource-bound acceptance |
-| Native Vim/Linux and TextEdit/macOS writes with API verification | Not achieved; RO guard remains enabled | Synthetic DOCSY create/update/editor save/rename/trash; stable IDs, complete bytes and cleanup |
+| Native Vim/Linux and TextEdit/macOS writes with API verification | Slice 87 proves native TextEdit manual save and VS Code autosave on macOS with a synthetic backend; native Vim and real DOCSY saves on Linux | Real-tenant macOS editor proof unavailable without profile; create/trash, broader faults and final artifact matrix remain open; public RO guard remains enabled |
 | Four-platform companion binaries and archive/installer | Native four-platform CI; source/extracted helper and archive validation; Slice 50 clean-source Linux x64 packaged CLI lifecycle | Compiled CLI mount execution on macOS arm64/x64 and Linux arm64, remaining Homebrew architecture proof |
 | Shell without helper, no CQL behavior changes | Full source shell suites and built-bundle smoke tests | Final packaged smoke matrix with helper absent/wrong and offline startup |
 | Comparative performance, five cold/warm runs | Slice 61 isolated five-run comparisons on both hosts, native peak RSS, shutdown and protocol counts; zero warm API calls | All downloaded bytes, Glow scan/startup and editor-save visibility; resolve >10% review triggers |
@@ -46,7 +47,7 @@ read/write objective remains open. Source checkpoint: b8267310 (implementation t
 These decisions do not establish that the implementation has passed RW or
 snapshot acceptance. Both still require the executable proof above.
 
-## Current local verification
+## Historical broad verification (not final acceptance)
 
 On macOS at source da25dabe:
 

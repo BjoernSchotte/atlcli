@@ -17,7 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { open, readdir, readFile, writeFile, rename, unlink } from "node:fs/promises";
+import { open, readdir, readFile, writeFile, rename, unlink, stat } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { platform, tmpdir } from "node:os";
@@ -156,6 +156,29 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(editorSaved.id).toBe(page.id);
       expect(editorSaved.version).toBe((replaced.version ?? 1) + 1);
       expect(editorSaved.storage).toContain("Live Vim saved");
+      const staleEditorImage = await readFile(destination);
+      const external = await client.updatePage({ id: page.id, title: editorSaved.title,
+        version: (editorSaved.version ?? 1) + 1,
+        storage: `${editorSaved.storage}<p>External NFS refresh addition 🐴</p>` });
+      const refreshStarted = Date.now();
+      let refreshed = await readFile(destination);
+      while (!refreshed.includes("External NFS refresh addition") && Date.now() - refreshStarted < 75000) {
+        await Bun.sleep(500);
+        refreshed = await readFile(destination);
+      }
+      expect(refreshed.toString()).toContain("External NFS refresh addition 🐴");
+      expect((await stat(destination)).size).toBe(refreshed.byteLength);
+      expect(journal.pendingIds()).toEqual([]);
+      expect((await client.getPage(page.id)).version).toBe(external.version);
+      console.info(`[nfs-live] external refresh visible after ${Date.now() - refreshStarted} ms (default core TTL)`);
+      await writeFile(destination, staleEditorImage.toString().replace("Native atomic replacement", "Local save after external refresh"));
+      const followupDeadline = Date.now() + 15000;
+      while (journal.pendingIds().length && Date.now() < followupDeadline) await Bun.sleep(50);
+      expect(journal.pendingIds()).toEqual([]);
+      const followup = await client.getPage(page.id);
+      expect(followup.id).toBe(page.id);
+      expect(followup.storage).toContain("External NFS refresh addition 🐴");
+      expect(followup.storage).toContain("Local save after external refresh");
     } finally {
       if (mounted) {
         const detach = platform() === "linux" ? ["sudo", "-n", "umount", local] : ["umount", local];
@@ -168,7 +191,7 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       await endpoint.stop(); journal.close(); rmSync(local, { recursive: true, force: true });
       await client.deletePage(page.id); created.splice(created.indexOf(page.id), 1);
     }
-  }, 30000);
+  }, 120000);
 
   it("publishes a durable NFS journal image through the core", async () => {
     const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
