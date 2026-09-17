@@ -1407,3 +1407,36 @@ Neither group created its mountpoint or cache. macOS's first broad sandbox run
 could not bind the existing local-listener test; the authorized unsandboxed run
 passed. All five Linux live DOCSY RO lifecycle cases passed (61 assertions),
 with normal/orphan-recovery detach. Final typecheck passed all four tasks.
+
+## Slice 55 — isolated peak-RSS and shutdown benchmarks
+
+The comparison now runs each transport/sample in its own process and records
+native `/usr/bin/time` high-water RSS for that process and the NFS helper.
+Platform units are normalized to bytes. Peaks cover the whole isolated run,
+not individual cold/warm phases; native resource accounting is not an aggregate
+of simultaneous process RSS. The helper's final `ps` sample is removed because
+the benchmark-only timing wrapper would make that PID misleading. Shutdown time
+covers normal detach, server stop and VFS close. Schema is now 2; the checked-in
+JSON results replace the older baseline, which remains in Git history.
+
+Five cold/warm runs per transport passed on each host: full byte equality,
+zero warm API requests, positive native peak values and normal cleanup.
+The coordinator asserts that native peaks cover observed parent RSS. An initial
+Bun resourceUsage conversion exposed macOS-specific units; the final data uses
+native time output for both processes instead. Final typecheck passed all tasks.
+
+| Host / transport | Cold ms median [range] | Warm ms median [range] | Parent / helper peak MiB median | Shutdown ms median |
+| --- | --- | --- | --- | --- |
+| macOS WebDAV | 71.2 [67.7–71.7] | 11.8 [11.7–17.7] | 160.59 / 0 | 15.81 |
+| macOS NFS | 112.2 [111.0–122.2] | 3.1 [2.9–11.4] | 173.56 / 4.61 | 15.74 |
+| Linux WebDAV | 117.0 [84.7–121.1] | 8.0 [5.7–10.8] | 143.50 / 0 | 3156.43 |
+| Linux NFS | 136.8 [133.7–147.8] | 23.1 [21.0–24.6] | 143.16 / 4.20 | 39.75 |
+
+NFS startup fetched zero body payload bytes on both hosts. Linux davfs fetched
+21 bytes (the visited root page), not the whole space. Cold API counts were
+46/64 for WebDAV/NFS on macOS and 82/64 on Linux. Isolating each run also resets
+JIT/allocator history, so timings must not be directly compared to the former
+shared-process series. This corpus still triggers >10% transport reviews: NFS
+is slower cold on both hosts and warm on Linux, faster warm on macOS. It does
+not justify a general speed claim. Protocol counts, full HTTP-byte accounting,
+Glow/editor timings and the final acceptance recommendation remain open.

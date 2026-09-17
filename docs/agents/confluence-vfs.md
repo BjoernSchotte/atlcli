@@ -247,6 +247,11 @@ from 0 to 65535 (0 chooses an available port). Missing option values are errors.
 Experimental NFS additionally rejects `rw`, `--sync-writes` and `--allow-delete`
 until write acceptance passes. WebDAV remains the default transport.
 
+NFS is not generally faster than WebDAV. The current synthetic native comparison
+shows different results by OS and cache state; see the [measured results and
+limits](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md#slice-55--isolated-peak-rss-and-shutdown-benchmarks).
+Its per-run peak RSS and normal shutdown measurements include startup and cleanup.
+
 NFS sets `actimeo=1` on both systems and disables negative-name caching
 (`nonegnamecache` on macOS, `lookupcache=positive` on Linux). The core metadata
 TTL remains 60 seconds by default: directly reopening a cached page checks its

@@ -1,11 +1,10 @@
 import { nfsMountOptionsFor } from "../../apps/cli/src/vfs/mount-transport.js";
 /** Native read-only transport comparison. Run with bun --conditions=development. */
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, chmodSync, readFileSync } from "node:fs";
 import { open, opendir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { platform, release, arch, tmpdir } from "node:os";
-import { execFileSync } from "node:child_process";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { startNfsServer } from "../../apps/cli/src/vfs/nfs-bridge.js";
@@ -14,6 +13,7 @@ import { isMounted, mountUrlFor, runMountCommand } from "../../apps/cli/src/comm
 
 const helper = process.env.ATLCLI_NFS_TEST_HELPER;
 const output = process.argv[2];
+const sample = process.argv[3];
 assert(helper && output, "Set ATLCLI_NFS_TEST_HELPER and pass the output JSON path");
 assert(["darwin", "linux"].includes(platform()), "Native macOS/Linux only");
 const attachment = Buffer.from("Grüße 🐴\n".repeat(100_000));
@@ -28,13 +28,52 @@ async function retryInterrupted<T>(action: () => Promise<T>): Promise<T> {
     }
   }
 }
-const results = { schema: 1, host: { os: platform(), release: release(), arch: arch(), bun: Bun.version },
+const results = { schema: 2, host: { os: platform(), release: release(), arch: arch(), bun: Bun.version },
   corpus: { pages: 26, attachmentBytes: attachment.length, backend: "in-process synthetic; no network latency" },
   cachePolicy: "Cold: fresh mount, endpoint, VFS and davfs cache. Warm: immediate identical workload on same mount.",
-  limitations: ["Body payload bytes exclude API metadata/HTTP overhead", "RSS is a final sample, not a peak", "VFS calls are not wire protocol request counts", "No Glow/editor/write timing"], records };
+  limitations: ["Body payload bytes exclude API metadata/HTTP overhead", "Peak RSS covers one isolated transport run (startup, cold, warm and shutdown), not each phase", "VFS calls are not wire protocol request counts", "No Glow/editor/write timing"], records };
+
+function peakRss(path: string): number {
+  const usage = readFileSync(path, "utf8");
+  const match = platform() === "darwin"
+    ? /([0-9]+)\s+maximum resident set size/.exec(usage)
+    : /Maximum resident set size \(kbytes\):\s*([0-9]+)/.exec(usage);
+  assert(match, "Missing native peak RSS");
+  const bytes = Number(match[1]) * (platform() === "darwin" ? 1 : 1024);
+  assert(Number.isSafeInteger(bytes) && bytes > 0);
+  return bytes;
+}
+
+// Isolate allocator high-water marks between transports/runs.
+if (!sample) {
+  const scratch = mkdtempSync(join(tmpdir(), "atlcli-bench-results-"));
+  try {
+    for (let run = 0; run < 5; run++) {
+      for (const transport of run % 2 ? ["nfs", "webdav"] : ["webdav", "nfs"]) {
+        const path = join(scratch, `${run}-${transport}.json`);
+        const usagePath = join(scratch, `${run}-${transport}-usage.txt`);
+        const child = Bun.spawn(["/usr/bin/time", platform() === "darwin" ? "-l" : "-v", "-o", usagePath,
+          process.execPath, "--conditions=development", import.meta.path, path, `${run}:${transport}`], { stdout: "inherit", stderr: "inherit" });
+        assert.equal(await child.exited, 0, `Benchmark ${run}:${transport}`);
+        const parentPeakRss = peakRss(usagePath);
+        const rows = JSON.parse(readFileSync(path, "utf8")).records;
+        assert.equal(rows.length, 2);
+        for (const row of rows) {
+          assert(row.parentRss <= parentPeakRss, "Native peak must cover sampled RSS");
+          records.push({ ...row, parentPeakRss });
+        }
+        writeFileSync(output!, JSON.stringify(results, null, 2) + "\n");
+      }
+    }
+    assert.equal(records.length, 20);
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
+  process.exit(0);
+}
+assert(/^[0-4]:(webdav|nfs)$/.test(sample), "Invalid benchmark worker");
 
 for (let run = 0; run < 5; run++) {
   for (const transport of run % 2 ? ["nfs", "webdav"] : ["webdav", "nfs"]) {
+    if (sample !== `${run}:${transport}`) continue;
     const root = mkdtempSync(join(tmpdir(), "atlcli-mount-bench-"));
     const mountpoint = join(root, "mount"); mkdirSync(mountpoint);
     const client = new FakeConfluenceClient()
@@ -66,9 +105,15 @@ for (let run = 0; run < 5; run++) {
       const original = vfs[method].bind(vfs);
       (vfs as any)[method] = (...args: any[]) => { vfsCalls++; return (original as any)(...args); };
     }
+    const usagePath = join(root, "helper-usage.txt");
+    const timedHelper = join(root, "timed-helper");
+    if (transport === "nfs") {
+      const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+      writeFileSync(timedHelper, `#!/bin/sh\nexec /usr/bin/time ${platform() === "darwin" ? "-l" : "-v"} -o ${quote(usagePath)} ${quote(resolve(helper!))} "$@"\n`, { mode: 0o700 });
+    }
     let server: Awaited<ReturnType<typeof startNfsServer>> | Awaited<ReturnType<typeof startWebdavServer>> | undefined;
     try {
-      server = transport === "nfs" ? await startNfsServer({ vfs, spaces: ["DOCSY"], helperPath: resolve(helper!) })
+      server = transport === "nfs" ? await startNfsServer({ vfs, spaces: ["DOCSY"], helperPath: timedHelper })
         : await startWebdavServer({ vfs, spaces: ["DOCSY"] });
       let command: string[];
       if (transport === "nfs") {
@@ -128,8 +173,7 @@ for (let run = 0; run < 5; run++) {
             counts[call.method] = (counts[call.method] ?? 0) + 1; return counts;
           }, {}),
           cacheHits: vfs.cache!.stats().hits - before.hits, vfsCalls: vfsCalls - before.vfsCalls,
-          parentRss: process.memoryUsage().rss, interruptedRetries: interrupted - before.interrupted,
-          helperRss: "pid" in server ? Number(execFileSync("ps", ["-o", "rss=", "-p", String(server.pid)], { encoding: "utf8" }).trim()) * 1024 : 0 };
+          parentRss: process.memoryUsage().rss, interruptedRetries: interrupted - before.interrupted };
         for (const [path, bytes] of actual) {
           if (phase === "cold") expected.set(path, Buffer.from(await vfs.readFileBytes(`/DOCSY/${path}`)));
           assert(bytes.equals(expected.get(path)!), `${transport} ${phase} ${path}: ${bytes.length} bytes vs expected ${expected.get(path)!.length}`);
@@ -140,11 +184,16 @@ for (let run = 0; run < 5; run++) {
         console.error(`${transport} ${run + 1}/5 ${phase}: ${Number(row.wallMs).toFixed(1)}ms, ${row.apiRequests} API calls`);
       }
     } finally {
+      const shutdownBegan = performance.now();
       if (isMounted(mountpoint)) {
         const command = platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint];
         assert.equal(await runMountCommand(command, true), 0, `Detach manually before removing ${root}`);
       }
       await server?.stop(); await vfs.close();
+      const shutdownMs = performance.now() - shutdownBegan;
+      const helperPeakRss = server && transport === "nfs" ? peakRss(usagePath) : 0;
+      for (const row of records) Object.assign(row, { shutdownMs, helperPeakRss });
+      writeFileSync(output!, JSON.stringify(results, null, 2) + "\n");
       if (platform() === "linux" && transport === "webdav") {
         await runMountCommand(["sudo", "-n", "chown", "-R", `${process.getuid!()}:${process.getgid!()}`, join(root, "davfs-cache")], true);
       }
@@ -152,4 +201,4 @@ for (let run = 0; run < 5; run++) {
     }
   }
 }
-assert.equal(records.length, 20);
+assert.equal(records.length, 2);

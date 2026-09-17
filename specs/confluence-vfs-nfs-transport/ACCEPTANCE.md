@@ -25,7 +25,7 @@ read/write objective remains open. Source checkpoint: b8267310 (implementation t
 | Native Vim/Linux and TextEdit/macOS writes with API verification | Not achieved; RO guard remains enabled | Synthetic DOCSY create/update/editor save/rename/trash; stable IDs, complete bytes and cleanup |
 | Four-platform companion binaries and archive/installer | Native four-platform CI; source/extracted helper and archive validation; Slice 50 clean-source Linux x64 packaged CLI lifecycle | Compiled CLI mount execution on macOS arm64/x64 and Linux arm64, remaining Homebrew architecture proof |
 | Shell without helper, no CQL behavior changes | Full source shell suites and built-bundle smoke tests | Final packaged smoke matrix with helper absent/wrong and offline startup |
-| Comparative performance, five cold/warm runs | Slice 32 baseline and Slice 39 rerun on both hosts; zero warm API calls | Protocol counts, all downloaded bytes, peak RSS, Glow scan/startup, editor-save visibility and shutdown timing; resolve >10% review triggers |
+| Comparative performance, five cold/warm runs | Slice 55 isolated five-run comparisons on both hosts, native peak RSS and shutdown timing; zero warm API calls | Protocol counts, all downloaded bytes, Glow scan/startup and editor-save visibility; resolve >10% review triggers |
 | Tests, build, docs, required CI, go/no-go recommendation | Current local build and regression checkpoint below | Final regression/CI, user-facing docs and explicit experimental go/no-go after all correctness gates |
 
 ## Decisions still awaiting an answer
