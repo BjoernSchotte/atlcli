@@ -2167,3 +2167,29 @@ No user document or editor preference was changed. The successful VS Code
 Linux real-DOCSY native save regression still passes (one test, 18 assertions),
 including fixture cleanup. All four typecheck tasks and diff whitespace checks
 passed. This slice changes evidence only; it does not mark TextEdit accepted.
+
+
+## Slice 82 — durable local editor directory trees
+
+Journal schema 6 distinguishes local files and directories while migrating all
+existing local entries as files. Directories share the existing entry/database
+quotas and never enter publication. Tree rename preserves descendant identities
+and exclusive-create verifiers in one transaction. Nonempty removal, type
+mismatches, recursive self-moves and byte writes to directories fail without
+losing the acknowledged tree. Page replacement accepts file bytes only.
+
+The filesystem projection now exposes directory attributes, children, parent
+lookups, rename and empty-directory removal. Recovered directories remain
+read-only in RO exports; generated views and export boundaries remain guarded.
+Open descendant handles survive directory rename. Directory modes constrain
+namespace changes. No extra Confluence pages are created for local staging.
+
+- Journal/projection: 66 tests / 1,018 assertions passed on macOS and Linux.
+- SIGKILL recovery now verifies a local directory and its child bytes too.
+- Schema-five migration retains file identity, content and exclusive replay.
+- Linux live DOCSY save regression: one test / 18 assertions, with cleanup.
+- macOS native kernel save regression: one test / 25 assertions, with cleanup.
+- Typecheck: all four tasks passed.
+
+MKDIR/RMDIR wire hooks are still pending; TextEdit acceptance remains open.
+This slice supplies the durable storage/projection that those hooks require.

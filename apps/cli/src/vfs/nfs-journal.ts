@@ -13,6 +13,9 @@ export interface StagedNfsFile {
   publishedRevision: number;
   error: string | null;
 }
+export interface LocalNfsEntry extends StagedNfsFile {
+  kind: "file" | "directory";
+}
 export interface NfsPublishIntent {
   id: string;
   bytes: Uint8Array;
@@ -37,7 +40,7 @@ export class NfsJournal {
     try {
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers; EXTRA syncs the journal's unlink.
@@ -68,7 +71,8 @@ export class NfsJournal {
       this.db.transaction(() => {
         const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(locals)").all();
         if (!columns.some(column => column.name === "verifier")) this.db.exec("ALTER TABLE locals ADD COLUMN verifier TEXT");
-        this.db.exec("CREATE TABLE IF NOT EXISTS attributes (id TEXT PRIMARY KEY REFERENCES files(id), mode INTEGER NOT NULL, atime INTEGER, mtime INTEGER); PRAGMA user_version=5;");
+        if (!columns.some(column => column.name === "kind")) this.db.exec("ALTER TABLE locals ADD COLUMN kind TEXT NOT NULL DEFAULT 'file' CHECK(kind IN ('file','directory'))");
+        this.db.exec("CREATE TABLE IF NOT EXISTS attributes (id TEXT PRIMARY KEY REFERENCES files(id), mode INTEGER NOT NULL, atime INTEGER, mtime INTEGER); PRAGMA user_version=6;");
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.db.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -93,40 +97,62 @@ export class NfsJournal {
     }
   }
 
-  local(path: string): StagedNfsFile | null {
-    return this.db.query<StagedNfsFile, [string]>(
-      "SELECT files.* FROM files JOIN locals USING(id) WHERE locals.path=?",
+  local(path: string): LocalNfsEntry | null {
+    return this.db.query<LocalNfsEntry, [string]>(
+      "SELECT files.*,locals.kind FROM files JOIN locals USING(id) WHERE locals.path=?",
     ).get(path);
   }
 
   /** Local editor files survive restart but never enter the remote publish queue. */
-  createLocal(path: string, verifier?: string): StagedNfsFile {
+  createLocal(path: string, verifier?: string): LocalNfsEntry {
+    return this.createLocalEntry(path, "file", verifier);
+  }
+
+  createLocalDirectory(path: string): LocalNfsEntry {
+    return this.createLocalEntry(path, "directory");
+  }
+
+  private checkLocalParents(path: string): void {
+    for (let parent = posix.dirname(path); parent !== "/"; parent = posix.dirname(parent)) {
+      if (this.local(parent)?.kind === "file") throw new VfsError("ENOTDIR", "Local parent is a file");
+    }
+  }
+
+  private createLocalEntry(path: string, kind: LocalNfsEntry["kind"], verifier?: string): LocalNfsEntry {
     this.localPath(path);
     if (verifier !== undefined && !/^[0-9a-f]{16}$/.test(verifier)) throw new VfsError("EINVAL", "Invalid exclusive CREATE verifier");
     return this.db.transaction(() => {
+      this.checkLocalParents(path);
       const existing = this.local(path);
       if (existing) {
         const stored = this.db.query<{ verifier: string | null }, [string]>("SELECT verifier FROM locals WHERE id=?").get(existing.id);
-        if (verifier !== undefined && stored?.verifier === verifier) return existing;
+        if (kind === "file" && existing.kind === "file" && verifier !== undefined && stored?.verifier === verifier) return existing;
         throw new VfsError("EEXIST", "Local NFS file exists");
       }
+      if (this.hasLocalDescendants(path)) throw new VfsError("EEXIST", "Local descendants already exist");
       const file = this.admit(`local:${randomUUID()}`, path, new Uint8Array(), 0);
-      this.db.run("INSERT INTO locals (id,path,verifier) VALUES (?, ?, ?)", [file.id, path, verifier ?? null]);
-      return file;
+      this.db.run("INSERT INTO locals (id,path,verifier,kind) VALUES (?, ?, ?, ?)", [file.id, path, verifier ?? null, kind]);
+      return this.local(path)!;
     }).immediate();
   }
 
-  localEntries(directory: string): StagedNfsFile[] {
+  localEntries(directory: string): LocalNfsEntry[] {
     const prefix = directory === "/" ? "/" : `${directory}/`;
-    return this.db.query<StagedNfsFile, [string, string]>(
-      "SELECT files.* FROM files JOIN locals USING(id) WHERE substr(locals.path,1,length(?1))=?1 AND instr(substr(locals.path,length(?2)+1),'/')=0 ORDER BY locals.path",
+    return this.db.query<LocalNfsEntry, [string, string]>(
+      "SELECT files.*,locals.kind FROM files JOIN locals USING(id) WHERE substr(locals.path,1,length(?1))=?1 AND instr(substr(locals.path,length(?2)+1),'/')=0 ORDER BY locals.path",
     ).all(prefix, prefix);
   }
 
-  removeLocal(path: string): void {
+  private hasLocalDescendants(path: string): boolean {
+    return !!this.db.query("SELECT id FROM locals WHERE substr(path,1,length(?1))=?1 LIMIT 1").get(`${path}/`);
+  }
+
+  removeLocal(path: string, directory = false): void {
     this.db.transaction(() => {
       const file = this.local(path);
       if (!file) throw new VfsError("ENOENT", "Local NFS file not found");
+      if (directory !== (file.kind === "directory")) throw new VfsError(directory ? "ENOTDIR" : "EISDIR", "Local entry type mismatch");
+      if (file.kind === "directory" && this.hasLocalDescendants(path)) throw new VfsError("ENOTEMPTY", "Local directory is not empty");
       this.db.run("DELETE FROM locals WHERE id=?", [file.id]);
       this.db.run("DELETE FROM attributes WHERE id=?", [file.id]);
       this.db.run("DELETE FROM files WHERE id=?", [file.id]);
@@ -139,9 +165,19 @@ export class NfsJournal {
       const file = this.local(source);
       if (!file) throw new VfsError("ENOENT", "Local NFS file not found");
       if (source === target) return;
-      if (this.local(target)) this.removeLocal(target);
-      this.db.run("UPDATE locals SET path=? WHERE id=?", [target, file.id]);
-      this.db.run("UPDATE files SET path=? WHERE id=?", [target, file.id]);
+      this.checkLocalParents(target);
+      if (target.startsWith(`${source}/`)) throw new VfsError("EINVAL", "Cannot move a directory into itself");
+      const replaced = this.local(target);
+      if (replaced) this.removeLocal(target, file.kind === "directory");
+      const descendants = file.kind === "directory" ? this.db.query<{ id: string; path: string }, [string]>(
+        "SELECT id,path FROM locals WHERE substr(path,1,length(?1))=?1 ORDER BY path",
+      ).all(`${source}/`) : [];
+      const moved = [file, ...descendants].map(entry => ({ id: entry.id, path: target + entry.path.slice(source.length) }));
+      for (const entry of moved) this.localPath(entry.path);
+      for (const entry of moved) {
+        this.db.run("UPDATE locals SET path=? WHERE id=?", [entry.path, entry.id]);
+        this.db.run("UPDATE files SET path=? WHERE id=?", [entry.path, entry.id]);
+      }
     }).immediate();
   }
 
@@ -151,6 +187,7 @@ export class NfsJournal {
       const local = this.local(source);
       const page = this.get(pageId);
       if (!local || !page) throw new VfsError("ENOENT", "NFS replacement source or page not found");
+      if (local.kind === "directory") throw new VfsError("EISDIR", "Cannot replace page bytes with a directory");
       if (this.db.query("SELECT id FROM locals WHERE id=?").get(pageId)) {
         throw new VfsError("EINVAL", "Replacement target must be an admitted page");
       }
@@ -206,8 +243,15 @@ export class NfsJournal {
     if (additional > this.maxFileBytes || used + additional > this.maxBytes) throw new VfsError("ENOSPC", "NFS journal quota exceeded");
   }
 
+  private assertFile(id: string): void {
+    if (this.db.query("SELECT id FROM locals WHERE id=? AND kind='directory'").get(id)) {
+      throw new VfsError("EISDIR", "Cannot write a directory");
+    }
+  }
+
   private change(id: string, size: (oldSize: number) => number, update: (bytes: Uint8Array) => void): StagedNfsFile {
     return this.db.transaction(() => {
+      this.assertFile(id);
       const old = this.get(id);
       if (!old) throw new Error("Unknown NFS journal file");
       const length = size(old.bytes.byteLength);
@@ -226,6 +270,7 @@ export class NfsJournal {
 
   write(id: string, offset: number, bytes: Uint8Array): StagedNfsFile {
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > this.maxFileBytes - bytes.byteLength) throw new VfsError("EINVAL", "Invalid NFS write range");
+    this.assertFile(id);
     if (bytes.byteLength === 0) {
       const file = this.get(id);
       if (!file) throw new Error("Unknown NFS journal file");

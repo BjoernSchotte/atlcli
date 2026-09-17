@@ -121,6 +121,9 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     const replay=j.createLocal("/DOCSY/replay.tmp","0123456789abcdef");
     j.setAttributes(replay.id,{mode:384,atime:0});
     j.write(replay.id,0,Buffer.from("exclusive survives crash"));
+    j.createLocalDirectory("/DOCSY/editor-dir");
+    const draft=j.createLocal("/DOCSY/editor-dir/draft");
+    j.write(draft.id,0,Buffer.from("directory crash recovery"));
     console.log("ACK");setInterval(()=>{},1000);`;
   const child = Bun.spawn([process.execPath, "--conditions=development", "-e", source], { stdout: "pipe", stderr: "pipe" });
   try {
@@ -131,7 +134,9 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     child.kill("SIGKILL"); await child.exited;
     const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
     expect(Buffer.from(recovered.get("1")!.bytes).toString()).toBe("replaced after intent");
-    expect(recovered.localEntries("/DOCSY")).toHaveLength(1);
+    expect(recovered.localEntries("/DOCSY")).toHaveLength(2);
+    expect(recovered.local("/DOCSY/editor-dir")?.kind).toBe("directory");
+    expect(Buffer.from(recovered.local("/DOCSY/editor-dir/draft")!.bytes).toString()).toBe("directory crash recovery");
     expect(Buffer.from(recovered.createLocal("/DOCSY/replay.tmp", "0123456789abcdef").bytes).toString()).toBe("exclusive survives crash");
     expect(Buffer.from(recovered.beginPublish("1")!.bytes).toString()).toBe("durable 🐴");
     expect(recovered.pending()).toHaveLength(1);
@@ -411,4 +416,72 @@ it("persists local file attributes without publishing metadata-only changes", ()
   expect(recovered.attributes(file.id)!.mtime).toBeGreaterThan(1234);
   recovered.removeLocal(file.path);
   expect(recovered.attributes(file.id)).toBeNull();
+});
+
+
+it("durably stages editor directories, renames their children and replaces only page bytes", () => {
+  const { path, journal } = fixture();
+  journal.admit("100", "/DOCSY/_index.md", bytes("old"), 1);
+  const directory = journal.createLocalDirectory("/DOCSY/_index.md.sb-test");
+  journal.setAttributes(directory.id, { mode: 0o700 });
+  const nested = journal.createLocalDirectory(`${directory.path}/nested`);
+  const file = journal.createLocal(`${nested.path}/draft`, "0123456789abcdef");
+  journal.write(file.id, 0, bytes("replacement 🐴"));
+  expect(journal.localEntries(directory.path).map(entry => entry.kind)).toEqual(["directory"]);
+  expect(() => journal.removeLocal(directory.path, true)).toThrow("not empty");
+  expect(() => journal.removeLocal(directory.path)).toThrow("type mismatch");
+  expect(() => journal.removeLocal(file.path, true)).toThrow("type mismatch");
+  expect(() => journal.write(directory.id, 0, bytes(""))).toThrow("directory");
+  expect(() => journal.write(directory.id, 0, bytes("x"))).toThrow("directory");
+  expect(() => journal.truncate(directory.id, 0)).toThrow("directory");
+  expect(() => journal.replaceLocal(directory.path, "100")).toThrow("directory");
+  expect(() => journal.createLocal(`${file.path}/child`)).toThrow("parent is a file");
+  expect(() => journal.renameLocal(directory.path, `${directory.path}/child`)).toThrow("into itself");
+  expect(journal.pending()).toEqual([]);
+  expect(journal.beginPublish(directory.id)).toBeNull();
+  journal.renameLocal(directory.path, "/DOCSY/renamed");
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.local(directory.path)).toBeNull();
+  expect(recovered.local("/DOCSY/renamed")).toMatchObject({ id: directory.id, kind: "directory" });
+  expect(recovered.attributes(directory.id)?.mode).toBe(0o700);
+  expect(recovered.local("/DOCSY/renamed/nested/draft")).toMatchObject({ id: file.id, kind: "file" });
+  expect(recovered.createLocal("/DOCSY/renamed/nested/draft", "0123456789abcdef").id).toBe(file.id);
+  expect(Buffer.from(recovered.replaceLocal("/DOCSY/renamed/nested/draft", "100").bytes).toString()).toBe("replacement 🐴");
+  recovered.removeLocal("/DOCSY/renamed/nested", true);
+  recovered.removeLocal("/DOCSY/renamed", true);
+  expect(recovered.localEntries("/DOCSY")).toEqual([]);
+  expect(recovered.pending().map(entry => entry.id)).toEqual(["100"]);
+});
+
+it("counts directories against the journal quota and rolls back invalid tree replacements", () => {
+  const { journal } = fixture(64, 64, 4);
+  const source = journal.createLocalDirectory("/DOCSY/source");
+  const child = journal.createLocal(`${source.path}/child`);
+  const target = journal.createLocalDirectory("/DOCSY/target");
+  const occupied = journal.createLocal(`${target.path}/keep`);
+  expect(() => journal.createLocalDirectory("/DOCSY/excess")).toThrow("quota");
+  expect(() => journal.renameLocal(source.path, target.path)).toThrow("not empty");
+  expect(journal.local(child.path)?.id).toBe(child.id);
+  expect(journal.local(occupied.path)?.id).toBe(occupied.id);
+  expect(() => journal.renameLocal(child.path, target.path)).toThrow("type mismatch");
+  expect(() => journal.renameLocal(source.path, occupied.path)).toThrow("type mismatch");
+  journal.removeLocal(occupied.path);
+  journal.renameLocal(source.path, target.path);
+  expect(journal.get(target.id)).toBeNull();
+  expect(journal.local(target.path)?.id).toBe(source.id);
+  expect(journal.local(`${target.path}/child`)?.id).toBe(child.id);
+});
+
+it("migrates schema-five temporary files without changing identity or exclusive-create replay", () => {
+  const { path, journal } = fixture();
+  const file = journal.createLocal("/DOCSY/legacy", "0123456789abcdef");
+  journal.write(file.id, 0, bytes("keep"));
+  journal.close();
+  const old = new Database(path);
+  old.exec("ALTER TABLE locals DROP COLUMN kind; PRAGMA user_version=5;"); old.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.local(file.path)).toMatchObject({ kind: "file", id: file.id });
+  expect(Buffer.from(recovered.createLocal(file.path, "0123456789abcdef").bytes).toString()).toBe("keep");
+  expect(recovered.createLocalDirectory("/DOCSY/new-dir").kind).toBe("directory");
 });

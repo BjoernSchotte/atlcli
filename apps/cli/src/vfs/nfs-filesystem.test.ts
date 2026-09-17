@@ -748,3 +748,51 @@ it("keeps a replacement source handle writable after rename without changing the
   expect(Buffer.from((await fs.read(page, 0, 65536)).data, "base64")).toEqual(expected);
   expect(Buffer.from((await fs.read(temporary, 0, 65536)).data, "base64")).toEqual(expected);
 });
+
+
+it("projects durable local editor directories and keeps handles across tree rename", async () => {
+  const { fs, journal, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  const dir = await fs.mkdir(1, "_index.md.sb-test");
+  const nested = await fs.mkdir(dir, "nested");
+  const file = await fs.create(nested, "draft", "0123456789abcdef");
+  expect(await fs.write(file, 0, Buffer.from("local draft"))).toBeNull();
+  await fs.setAttributes(dir, { mode: 0o700 });
+  expect(await fs.getattr(dir)).toMatchObject({ directory: true, mode: 0o700, size: 0 });
+  expect((await fs.readdir(dir, 0, 10)).entries.map(entry => entry.name)).toEqual(["nested"]);
+  expect((await fs.readdir(nested, 0, 10)).entries[0]!.attr.size).toBe(11);
+  await expect(fs.remove(1, "_index.md.sb-test", true)).rejects.toMatchObject({ code: "ENOTEMPTY" });
+  await expect(fs.remove(1, "_index.md.sb-test")).rejects.toMatchObject({ code: "EISDIR" });
+  await expect(fs.write(dir, 0, Buffer.from("x"))).rejects.toMatchObject({ code: "EISDIR" });
+  await expect(fs.read(dir, 0, 1)).rejects.toMatchObject({ code: "EISDIR" });
+  await fs.setAttributes(dir, { mode: 0o500 });
+  await expect(fs.create(dir, "denied")).rejects.toMatchObject({ code: "EACCES" });
+  await fs.setAttributes(dir, { mode: 0o700 });
+  await fs.rename(1, "_index.md.sb-test", 1, "renamed");
+  expect(await fs.lookup(1, "renamed")).toBe(dir);
+  expect(await fs.lookup(dir, "nested")).toBe(nested);
+  expect(await fs.lookup(nested, "draft")).toBe(file);
+  expect(Buffer.from((await fs.read(file, 0, 100)).data, "base64").toString()).toBe("local draft");
+  expect(await fs.lookup(nested, "..")).toBe(dir);
+  expect(await fs.rename(nested, "draft", 1, "_index.md")).toBe("100");
+  expect(Buffer.from((await fs.read(file, 0, 100)).data, "base64").toString()).toBe("local draft");
+  await fs.remove(dir, "nested", true);
+  await fs.remove(1, "renamed", true);
+  await expect(fs.getattr(dir)).rejects.toMatchObject({ code: "ESTALE" });
+  expect(journal!.pending().map(entry => entry.id)).toEqual(["100"]);
+  expect(client.callsTo("updatePage")).toBe(0);
+});
+
+it("keeps recovered local directories read-only and out of generated views", async () => {
+  const { fs, journal } = await fixture(["DOCSY"], "ro", undefined, true);
+  journal!.createLocalDirectory("/DOCSY/recovered");
+  const dir = await fs.lookup(1, "recovered");
+  expect(await fs.getattr(dir)).toMatchObject({ directory: true, mode: 0o555, writable: false });
+  await expect(fs.mkdir(dir, "child")).rejects.toThrow();
+  await expect(fs.setAttributes(dir, { mode: 0o777 })).rejects.toThrow();
+  await expect(fs.remove(1, "recovered", true)).rejects.toThrow();
+  const writable = await fixture(["DOCSY"], "rw", undefined, true);
+  const byId = await writable.fs.lookup(1, ".by-id");
+  await expect(writable.fs.mkdir(byId, "escape")).rejects.toThrow();
+  await expect(writable.fs.mkdir(1, "../escape")).rejects.toThrow();
+  await expect(writable.fs.mkdir(1, ".Spotlight-V100")).rejects.toThrow();
+});
