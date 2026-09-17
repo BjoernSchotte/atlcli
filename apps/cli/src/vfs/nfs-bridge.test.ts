@@ -868,6 +868,25 @@ with socket.socket() as client:
     while (!client.peekPage("100")?.storage.includes("Native Vim save") && Date.now() < vimDeadline) await Bun.sleep(20);
     expect(journal!.pending()).toHaveLength(0);
     expect(client.peekPage("100")?.storage).toContain("Native Vim save");
+    const saved = await readFile(path);
+    const oldDescriptor = await open(path, "r");
+    const backupPath = join(mountpoint, "save-backup.md");
+    try {
+      await rename(path, backupPath);
+      await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await oldDescriptor.readFile()).toEqual(saved);
+      const next = await open(join(mountpoint, "next-save.tmp"), "wx");
+      try { await next.writeFile(Buffer.concat([saved, Buffer.from("\nBackup rename save\n")])); await next.sync(); }
+      finally { await next.close(); }
+      await rename(join(mountpoint, "next-save.tmp"), path);
+      expect(await readFile(backupPath)).toEqual(saved);
+      expect((await readFile(path)).toString()).toContain("Backup rename save");
+    } finally { await oldDescriptor.close(); }
+    await unlink(backupPath);
+    const backupDeadline = Date.now() + 5000;
+    while (!client.peekPage("100")?.storage.includes("Backup rename save") && Date.now() < backupDeadline) await Bun.sleep(20);
+    expect(journal!.pending()).toHaveLength(0);
+    expect(client.peekPage("100")?.storage).toContain("Backup rename save");
   }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [

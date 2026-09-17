@@ -191,19 +191,19 @@ it("bounds empty-file entries and metadata without replacing recovered records",
 
 it("caps SQLite storage and rolls back full-database writes without losing acknowledged bytes", () => {
   const { path, journal: initial } = fixture(); initial.close();
-  const journal = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 65536);
+  const journal = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 98304);
   journals.push(journal);
   journal.admit("1", "/DOCSY/a", bytes("acknowledged"), 1);
   journal.write("1", 0, bytes("ACK"));
   const before = journal.get("1")!;
   expect(() => journal.write("1", 0, new Uint8Array(100_000))).toThrow();
   expect(journal.get("1")).toEqual(before);
-  expect(journal.databaseLimitBytes).toBe(65536);
+  expect(journal.databaseLimitBytes).toBe(98304);
   expect(statSync(path).size).toBeLessThanOrEqual(journal.databaseLimitBytes);
   expect(existsSync(path + "-wal")).toBe(false);
   expect(existsSync(path + "-journal")).toBe(false);
   journal.close();
-  const recovered = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 65536);
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 98304);
   journals.push(recovered);
   expect(recovered.get("1")).toEqual(before);
 });
@@ -545,4 +545,20 @@ it("rolls back backup quota failures and preserves original and overwritten loca
   expect(journal.displaced("/DOCSY/_index.md")).toBeNull();
   expect(Buffer.from(journal.get("100")!.bytes).toString()).toBe("original");
   expect(() => journal.backupPage(oldBackup.id, "/DOCSY/not-page")).toThrow("admitted page");
+});
+
+
+it("retains exclusive recreation replay after restart without truncating acknowledged bytes", () => {
+  const { path, journal } = fixture();
+  journal.admit("100", "/DOCSY/_index.md", bytes("before"), 1);
+  journal.backupPage("100", "/DOCSY/backup");
+  journal.restoreCreated("/DOCSY/_index.md", {}, "0123456789abcdef");
+  journal.write("100", 0, bytes("acknowledged"));
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(Buffer.from(recovered.exclusivePageReplay("/DOCSY/_index.md", "0123456789abcdef")!.bytes).toString()).toBe("acknowledged");
+  expect(recovered.exclusivePageReplay("/DOCSY/_index.md", "fedcba9876543210")).toBeNull();
+  const replacement = recovered.createLocal("/DOCSY/next");
+  recovered.replaceLocal(replacement.path, "100");
+  expect(recovered.exclusivePageReplay("/DOCSY/_index.md", "0123456789abcdef")).toBeNull();
 });

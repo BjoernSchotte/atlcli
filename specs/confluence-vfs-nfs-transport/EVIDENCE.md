@@ -2298,3 +2298,46 @@ This is the durable-storage slice. The NFS namespace still needs to hide the
 vacated path, move existing handles with the backup, bind replacement to the
 reserved page, and coordinate publication. Native backup-rename/TextEdit
 acceptance remains open until that integration is tested.
+
+
+## Slice 87 — backup rename, recreation and real editor saves
+
+The projection now hides a vacated page path, moves existing handles to its
+local backup, and restores replacements under the original Confluence page ID.
+Both temporary-file rename and ordinary/exclusive CREATE can restore the slot.
+Schema 8 persists exclusive recreation verifiers across restart without
+truncating acknowledged bytes on replay. Replacement invalidates stale verifiers.
+The SQLite cap test uses 96 KiB because the extra schema table exceeds its old
+64 KiB fixture cap; the oversized-write rollback and physical-cap assertions stay.
+
+- macOS/Linux: 74 journal/projection tests, 1,085 assertions each.
+- macOS/Linux native mount: 34 assertions each, including Vim, backup rename,
+  recreation, old-handle reads and replacement under the original identity.
+  Initially refusing CREATE at the reserved path broke Vim; both CREATE modes
+  now have explicit regression coverage.
+- Linux real DOCSY automatic save: 18 assertions, disposable fixture cleaned up.
+- Publisher regression suite: 12 tests, 63 assertions, covering the trailing
+  quiet window, in-flight serialization, restart and invalid-byte repair.
+- All four typecheck tasks passed.
+
+Real macOS UI validation used a synthetic backend and the native NFS mount.
+TextEdit saved twice successfully (backend versions 1 -> 2 -> 3). Its idle
+changes did not autosave during observation, so those are manual safe-save
+results only. The version-history warning at close is expected on this volume.
+
+VS Code used a separate temporary workspace with afterDelay autosave (100 ms),
+without changing global preferences or trusting the workspace. No Cmd-S was used.
+A valid edit automatically produced version 4; three rapid text additions then
+produced exactly one further backend update, version 5, containing all additions.
+The journal ended with revision/publishedRevision 12/12 and no pending error.
+This UI observation proves the complete route; the publisher regression tests
+separately prove coalescing of multiple scheduled saves within the quiet window.
+Malformed frontmatter caused by UI typing/autoindent was retained locally as
+EINVAL without a backend update; replacing it with valid text resumed publication.
+Both editor documents/workspaces closed and the owned mount unmounted normally.
+
+This does not close the general document-completion gate: valid partial Markdown
+can still outlive a quiet window. Broader unlink/overwrite handle lifetime,
+external-change refresh and recovery/status acceptance remain open. Public NFS
+RW stays gated. macOS editor results use a fake backend; Linux DOCSY results are
+real API checks, not a claim of real-tenant macOS editor coverage.

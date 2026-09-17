@@ -245,7 +245,8 @@ export class NfsFilesystem {
     if (shield === "file") throw new VfsError("ENOTDIR", "Not a directory");
     const names = (shield || this.journal?.local(path)?.kind === "directory" ? [] : await this.vfs.readdir(path))
       .filter((entry) => path !== "/" || this.spaces.has(entry.name))
-      .map((entry) => entry.name);
+      .map((entry) => entry.name)
+      .filter(name => !this.journal?.displaced(posix.join(path, name)) || this.journal?.local(posix.join(path, name)));
     if (!shield) for (const local of this.journal?.localEntries(path) ?? []) {
       const name = posix.basename(local.path);
       if (!names.includes(name)) names.push(name);
@@ -291,6 +292,7 @@ export class NfsFilesystem {
   private async stat(path: string): Promise<VfsStat> {
     const file = this.journal?.local(path);
     if (!file) {
+      if (this.journal?.displaced(path)) throw new VfsError("ENOENT", "Page moved aside for replacement");
       const stat = await this.vfs.stat(path);
       const metadata = stat.kind === "page" && !stat.isDirectory ? this.journal?.attributes(stat.id) : undefined;
       return metadata ? { ...stat, mode: metadata.mode & (this.vfs.guard.mode === "rw" ? 0o777 : 0o555) } : stat;
@@ -319,6 +321,11 @@ export class NfsFilesystem {
     if (values.mode !== undefined && (!Number.isInteger(values.mode) || values.mode < 0 || values.mode > 0o777)) throw new VfsError("EINVAL", "Invalid CREATE mode");
     if (values.size !== undefined && (!Number.isSafeInteger(values.size) || values.size < 0)) throw new VfsError("EINVAL", "Invalid CREATE size");
     const path = await this.mutationPath(parent, name);
+    if (this.journal!.displaced(path)) {
+      await this.checkReservation(path);
+      const page = this.journal!.restoreCreated(path, values);
+      return { file: await this.register(path), pageId: page.id };
+    }
     let stat: VfsStat | undefined;
     try { stat = await this.stat(path); }
     catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
@@ -346,6 +353,13 @@ export class NfsFilesystem {
 
   private async createEntry(parent: number, name: string, directory: boolean, verifier?: string, mode = 0o755): Promise<number> {
     const path = await this.mutationPath(parent, name);
+    if (this.journal!.displaced(path)) {
+      if (directory) throw new VfsError("EISDIR", "Reserved page position requires a file");
+      await this.checkReservation(path);
+      this.journal!.restoreCreated(path, {}, verifier);
+      return this.register(path);
+    }
+    if (verifier !== undefined && this.journal!.exclusivePageReplay(path, verifier)) return this.register(path);
     if (verifier !== undefined && this.journal!.local(path)) {
       this.journal!.createLocal(path, verifier);
       return this.register(path);
@@ -370,12 +384,53 @@ export class NfsFilesystem {
     if (handle !== undefined) this.forgetHandle(handle);
   }
 
+  private async checkReservation(path: string): Promise<VfsStat> {
+    const reserved = this.journal!.displaced(path)!;
+    const stat = await this.vfs.stat(path);
+    await this.checkResolvedScope(path);
+    if (stat.isDirectory || stat.kind !== "page" || stat.id !== reserved.id) throw Object.assign(new Error("Reserved page identity changed"), { code: "ESTALE" });
+    if (this.paths.size >= NFS_MAX_HANDLES || this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
+    return stat;
+  }
+
+  private moveHandles(previous: string, identity: string, path: string, canonical: number): void {
+    this.identities.delete(previous);
+    for (const [id, entry] of this.paths) {
+      if (entry.identity === previous) this.paths.set(id, { path, identity });
+    }
+    this.identities.set(identity, canonical);
+  }
+
   /** Returns the page identity to schedule only after a local-to-page replacement. */
   async rename(parent: number, name: string, targetParent: number, targetName: string): Promise<string | null> {
     const source = await this.mutationPath(parent, name);
     const target = await this.mutationPath(targetParent, targetName);
-    if (!this.journal!.local(source)) throw new VfsError("EROFS", "Remote rename is not enabled for NFS yet");
-    if (source === target) return null;
+    if (source === target) { await this.stat(source); return null; }
+    if (!this.journal!.local(source)) {
+      const sourceId = await this.register(source);
+      const page = await this.stagedFile(sourceId);
+      const oldTarget = this.journal!.local(target);
+      if (!oldTarget) {
+        try { await this.stat(target); throw new VfsError("EROFS", "Cannot rename a page over remote content"); }
+        catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
+      }
+      const backup = this.journal!.backupPage(page.id, target, source);
+      if (oldTarget) {
+        const oldHandle = this.identities.get(oldTarget.id);
+        if (oldHandle !== undefined) this.forgetHandle(oldHandle);
+      }
+      this.moveHandles(this.paths.get(sourceId)!.identity, backup.id, target, sourceId);
+      return null;
+    }
+    const reserved = this.journal!.displaced(target);
+    if (reserved) {
+      const stat = await this.checkReservation(target);
+      const sourceId = await this.register(source);
+      const identity = this.paths.get(sourceId)!.identity;
+      this.journal!.replaceLocal(source, reserved.id);
+      this.moveHandles(identity, this.identity(stat, target), target, sourceId);
+      return reserved.id;
+    }
     const replaced = this.journal!.local(target);
     if (replaced) {
       this.journal!.renameLocal(source, target);

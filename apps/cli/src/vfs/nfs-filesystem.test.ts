@@ -813,3 +813,57 @@ it("keeps regular CREATE scoped and truncates an existing page under its origina
   const readonly = await fixture(["DOCSY"], "ro", undefined, true);
   await expect(readonly.fs.createRegular(1, "new", false, {})).rejects.toThrow();
 });
+
+
+it("moves page handles to backups and restores replacement under the original page ID", async () => {
+  const { fs, journal, vfs, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  const original = await fs.lookup(1, "_index.md");
+  const before = Buffer.from((await fs.read(original, 0, 65536)).data, "base64");
+  expect(await fs.rename(1, "_index.md", 1, "backup.md")).toBeNull();
+  expect(await fs.lookup(1, "backup.md")).toBe(original);
+  await expect(fs.lookup(1, "_index.md")).rejects.toMatchObject({ code: "ENOENT" });
+  expect((await fs.readdir(1, 0, 256)).entries.map(entry => entry.name)).not.toContain("_index.md");
+  expect(Buffer.from((await fs.read(original, 0, 65536)).data, "base64")).toEqual(before);
+  const incoming = await fs.create(1, "new.tmp");
+  await fs.write(incoming, 0, Buffer.concat([before, Buffer.from("new content")]));
+  expect(await fs.rename(1, "new.tmp", 1, "_index.md")).toBe("100");
+  expect(await fs.lookup(1, "_index.md")).toBe(incoming);
+  expect(Buffer.from((await fs.read(original, 0, 65536)).data, "base64")).toEqual(before);
+  expect(Buffer.from((await fs.read(incoming, 0, 65536)).data, "base64").toString()).toContain("new content");
+  expect(await fs.write(original, before.length, Buffer.from("backup only"))).toBeNull();
+  expect(journal!.pending().map(file => file.id)).toEqual(["100"]);
+  expect(Buffer.from(journal!.get("100")!.bytes).toString()).not.toContain("backup only");
+  const recovered = new NfsFilesystem(vfs, ["DOCSY"], undefined, journal);
+  expect(Buffer.from((await recovered.read(await recovered.lookup(1, "_index.md"), 0, 65536)).data, "base64").toString()).toContain("new content");
+  await fs.remove(1, "backup.md");
+  await expect(fs.getattr(original)).rejects.toMatchObject({ code: "ESTALE" });
+  expect(client.callsTo("updatePage")).toBe(0);
+});
+
+it("recovers a vacant page path and permits restoring its backup without changing content", async () => {
+  const { fs, journal, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  await fs.rename(1, "_index.md", 1, "backup.md");
+  const recovered = new NfsFilesystem(vfs, ["DOCSY"], undefined, journal);
+  await expect(recovered.lookup(1, "_index.md")).rejects.toMatchObject({ code: "ENOENT" });
+  const backup = await recovered.lookup(1, "backup.md");
+  expect(await recovered.rename(1, "backup.md", 1, "_index.md")).toBe("100");
+  expect(await recovered.lookup(1, "_index.md")).toBe(backup);
+  expect(journal!.displaced("/DOCSY/_index.md")).toBeNull();
+  expect(journal!.pending()).toEqual([]);
+});
+
+
+it("recreates a backed-up page through ordinary and exclusive CREATE under the same ID", async () => {
+  const { fs, journal } = await fixture(["DOCSY"], "rw", undefined, true);
+  await fs.rename(1, "_index.md", 1, "backup-one");
+  const ordinary = await fs.createRegular(1, "_index.md", true, { mode: 0o600 });
+  expect(ordinary.pageId).toBe("100");
+  expect((await fs.getattr(ordinary.file)).size).toBe(0);
+  await fs.write(ordinary.file, 0, Buffer.from("draft"));
+  await fs.rename(1, "_index.md", 1, "backup-two");
+  const exclusive = await fs.create(1, "_index.md", "0123456789abcdef");
+  expect(await fs.write(exclusive, 0, Buffer.from("new draft"))).toBe("100");
+  expect(await fs.create(1, "_index.md", "0123456789abcdef")).toBe(exclusive);
+  await expect(fs.create(1, "_index.md", "fedcba9876543210")).rejects.toMatchObject({ code: "EEXIST" });
+  expect(Buffer.from(journal!.get("100")!.bytes).toString()).toBe("new draft");
+});

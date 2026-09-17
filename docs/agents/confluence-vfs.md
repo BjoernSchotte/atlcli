@@ -257,6 +257,11 @@ from 0 to 65535 (0 chooses an available port). Missing option values are errors.
 Experimental NFS additionally rejects `rw`, `--sync-writes` and `--allow-delete`
 until write acceptance passes. WebDAV remains the default transport.
 
+Development tests now cover TextEdit safe-save and VS Code autosave on a native
+macOS NFS mount, plus Vim/native saves and real DOCSY publication on Linux.
+These are individual write gates, not general RW acceptance; see the
+[write evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md).
+
 NFS is not generally faster than WebDAV. The current synthetic native comparison
 shows different results by OS and cache state; see the [measured results and
 limits](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md#slice-55--isolated-peak-rss-and-shutdown-benchmarks).
