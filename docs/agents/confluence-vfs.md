@@ -511,9 +511,16 @@ atlcli wiki mount recovery /path/to/journal.sqlite --id 12345 --output ./recover
 ```
 
 The listing includes frozen creation targets and confirmed creation receipts
-when present (journal schemas 9–12), local editor entries, interrupted replacements, revision
+when present (journal schemas 9–15), local editor entries, interrupted replacements, revision
 numbers, safe error codes and available publication images, without page bodies.
-Schema 12 also lists the trash target and whether remote trash was confirmed.
+Schema 12 and later also list the trash target and whether remote trash was
+confirmed. Schemas 13–15 include move/retitle receipts even when no page body was
+staged: `moveSource`, `moveTarget`, parent IDs, target title and `moveCompleted`.
+`moveKind` distinguishes pages and folders; `moveSourceTitle` is null for older
+journals that did not record it. `hasCurrent: 0` means there is no local byte
+image to export for that ID. A move sharing an ID with a staged image appears
+in the same record. `moveCompleted: 0` means the outcome needs reconciliation;
+offline inspection cannot determine which remote steps succeeded.
 To compare an unresolved publication with the bytes currently saved by an editor:
 
 ```bash

@@ -61,12 +61,19 @@ it("fails closed for missing journals, images, invalid arguments and unsupported
 
 it("provides offline inspection and export through the source CLI", async () => {
   const { root, path } = fixture();
+  const journal = new NfsJournal(path, "synthetic:DOCSY");
+  journal.beginMove({ id: "200", kind: "page", source: "/DOCSY/source-200", target: "/DOCSY/target-201/renamed-200",
+    spaceKey: "DOCSY", sourceParentId: "100", sourceTitle: "Source", targetParentId: "201", title: "Renamed" });
+  journal.close();
   const run = async (...args: string[]) => {
     const child = Bun.spawn([process.execPath, "--conditions=development", "run", "--cwd", "apps/cli", "src/index.ts", "wiki", "mount", "recovery", path, ...args, "--json"], { stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
     expect(stderr).toBe(""); expect(code).toBe(0); return stdout;
   };
-  expect(await run()).toContain("REMOTE_RESULT_UNKNOWN");
+  const listing = await run();
+  expect(listing).toContain("REMOTE_RESULT_UNKNOWN");
+  expect(listing).toContain('"moveSource": "/DOCSY/source-200"');
+  expect(listing).toContain('"hasCurrent": 0');
   const output = join(root, "export.bin");
   expect(await run("--id", "100", "--output", output)).toContain('"bytes": 4');
   expect(readFileSync(output)).toEqual(Buffer.from([255, 0, 128, 10]));
@@ -110,5 +117,49 @@ it("lists interrupted trash without discarding its recoverable page bytes", () =
   const output = join(root, "trash-recovery.md");
   recoverNfsJournal(path, { id: "200", output });
   expect(readFileSync(output).toString()).toBe("preserved");
+  expect(readFileSync(path)).toEqual(original);
+});
+
+it.each([13, 14, 15])("inspects schema %s namespace-only moves without changing the journal", schema => {
+  const { root, path } = fixture();
+  const journal = new NfsJournal(path, "synthetic:DOCSY");
+  journal.beginMove({ id: "200", kind: "page", source: "/DOCSY/source-200", target: "/DOCSY/target-201/renamed-200",
+    spaceKey: "DOCSY", sourceParentId: "100", sourceTitle: "Source", targetParentId: "201", title: "Renamed" });
+  journal.close();
+  const db = new Database(path);
+  if (schema < 15) db.exec("ALTER TABLE moves DROP COLUMN sourceTitle");
+  if (schema < 14) db.exec("ALTER TABLE moves DROP COLUMN kind");
+  db.exec(`PRAGMA user_version=${schema}`); db.close();
+  const original = readFileSync(path);
+  const records = recoverNfsJournal(path) as Record<string, unknown>[];
+  expect(records.find(record => record.id === "200")).toMatchObject({
+    moveKind: "page", moveSource: "/DOCSY/source-200", moveTarget: "/DOCSY/target-201/renamed-200",
+    moveSourceParent: "100", moveTargetParent: "201", moveSpace: "DOCSY", moveTitle: "Renamed",
+    moveSourceTitle: schema >= 15 ? "Source" : null, moveCompleted: 0, hasCurrent: 0, size: null,
+  });
+  const output = join(root, "no-image.md");
+  expect(() => recoverNfsJournal(path, { id: "200", output })).toThrow("No such recovery image");
+  expect(existsSync(output)).toBe(false);
+  expect(readFileSync(path)).toEqual(original);
+});
+
+it("merges move receipts with file images and lists completed folder moves", () => {
+  const { root, path } = fixture();
+  const journal = new NfsJournal(path, "synthetic:DOCSY");
+  journal.admit("200", "/DOCSY/source-200/_index.md", Buffer.from("Retained bytes"), 1);
+  const move = { id: "200", kind: "page" as const, source: "/DOCSY/source-200", target: "/DOCSY/target-201/source-200",
+    spaceKey: "DOCSY", sourceParentId: "100", sourceTitle: "Source", targetParentId: "201", title: "Source" };
+  journal.beginMove(move);
+  journal.beginMove({ ...move, id: "300", kind: "folder", source: "/DOCSY/folder-300", target: "/DOCSY/target-201/folder-300", title: "Folder", sourceTitle: "Folder" });
+  journal.completeMove("/DOCSY/folder-300");
+  journal.close();
+  const original = readFileSync(path);
+  const records = recoverNfsJournal(path) as Record<string, unknown>[];
+  expect(records.filter(record => record.id === "200")).toHaveLength(1);
+  expect(records.find(record => record.id === "200")).toMatchObject({ hasCurrent: 1, size: 14, moveCompleted: 0, moveSourceTitle: "Source" });
+  expect(records.find(record => record.id === "300")).toMatchObject({ hasCurrent: 0, moveKind: "folder", moveCompleted: 1 });
+  const output = join(root, "move-page.md");
+  recoverNfsJournal(path, { id: "200", output });
+  expect(readFileSync(output).toString()).toBe("Retained bytes");
   expect(readFileSync(path)).toEqual(original);
 });

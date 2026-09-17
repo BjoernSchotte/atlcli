@@ -29,6 +29,7 @@ import { startNfsServer } from "../vfs/nfs-bridge.js";
 import { nfsMountOptionsFor } from "../vfs/mount-transport.js";
 import { NfsFilesystem } from "../vfs/nfs-filesystem.js";
 import { NfsJournal, nfsJournalLocation } from "../vfs/nfs-journal.js";
+import { recoverNfsJournal } from "../vfs/nfs-recovery.js";
 import { NfsPublisher } from "../vfs/nfs-publisher.js";
 import { startWebdavServer, type RunningWebdavServer } from "../vfs/webdav-server.js";
 import { mountUrlFor, mountCommandFor, unmountCommandFor, runMountCommand } from "../commands/wiki-mount.js";
@@ -223,6 +224,10 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(await fs.lookup(destination, target)).toBe(directory);
       expect(journal.pendingMoves()).toEqual([]);
     } finally { journal.close(); }
+    const records = recoverNfsJournal(join(cacheDir, "combined-move.sqlite")) as Record<string, unknown>[];
+    expect(records.find(record => record.id === page.id)).toMatchObject({
+      moveCompleted: 1, moveKind: "page", moveSourceTitle: page.title, moveTargetParent: parent.id, hasCurrent: 0,
+    });
   }, 30_000);
 
   it("preserves the exact page title when moving a canonical directory name", async () => {

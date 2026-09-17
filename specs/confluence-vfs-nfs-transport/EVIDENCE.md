@@ -3587,3 +3587,29 @@ are retained; a changed intermediate title leaves the intent unresolved.
 Names without IDs, cross-space moves, parentless items, namespace removal and
 remaining recovery/resource/editor acceptance still require work. Public NFS RW
 remains gated; the overall objective is not accepted.
+
+
+## Slice 135 — offline recovery for current namespace journals
+
+The offline reader still rejected schemas newer than 12, including journals
+written by the current implementation. It now reads schemas 8–15 without a
+migration or network request and includes move receipts even when no page image
+was staged. Records sharing an ID are merged; namespace-only records report
+`hasCurrent: 0` and cannot export invented bytes. Older move schemas retain an
+unknown original title. Existing export permissions and exclusive creation stay
+unchanged.
+
+- The existing recovery suite reproduced the schema rejection before the fix.
+- macOS/Linux broad core and CLI VFS suites: 700 passed, 34 opt-in native/helper
+  cases skipped, 3548 assertions on each host. These runs do not claim native
+  mount acceptance.
+- Recovery tests cover schemas 13, 14 and 15, namespace-only and merged receipts,
+  completed folder moves, exact export, source CLI output and byte-for-byte
+  unchanged journal files.
+- Linux DOCSY combined move/retitle and subsequent offline inspection: one
+  passed / seven assertions. Both temporary pages deleted; native macOS cases
+  in that file remained explicitly skipped.
+- Typecheck: all four tasks passed.
+
+This fixes inspection/export compatibility; it does not implement negative
+uncertain-outcome resolution or receipt eviction. Public NFS RW remains gated.

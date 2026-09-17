@@ -555,7 +555,8 @@ NFS development:
   beside atlcli. There is no runtime download or automatic transport fallback.
 
 Recovery:
-  Inspect local NFS journal metadata without authentication or network access.
+  Inspect local NFS journal metadata, including move/retitle receipts, without
+  authentication or network access. Move-only records may have no byte image.
   Export exact bytes with --id and --output; --image current|intent|base selects
   the local image (default: current), unresolved publication, or last published
   source. Existing output files are never overwritten. Recovery does not publish
