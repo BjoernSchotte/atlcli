@@ -1482,3 +1482,24 @@ covered separately by the READDIR/READDIRPLUS wire tests.
 All mutations and mounts in this case were synthetic. Both hosts detached
 normally; typecheck passed all four tasks. This adds native directory-change
 acceptance without changing the pending RW or multi-READ snapshot contracts.
+
+## Slice 58 — Glow selection through a real terminal and native mount
+
+An opt-in native test launches the installed Glow in a Python stdlib PTY,
+opens a synthetic mounted page directory, waits for `_index.md`, selects it
+with Enter and verifies the rendered fixture text. The probe has a 15-second
+deadline and reaps its own child; native mount cleanup uses the existing test
+cleanup. It neither installs Glow nor changes user configuration.
+
+Run the native bridge suite with `ATLCLI_NFS_KERNEL=1`,
+`ATLCLI_NFS_TEST_HELPER` pointing to the built helper, and `ATLCLI_NFS_GLOW`
+pointing to the installed Glow executable; filter with `--test-name-pattern
+'; Glow'`. macOS used `/opt/homebrew/bin/glow` (2.1.1), Linux used
+`/home/linuxbrew/.linuxbrew/bin/glow` (3.0.0).
+
+Both hosts passed seven assertions. macOS listed the fixture in 56.0 ms and
+rendered the selected document in another 1.6 ms; Linux took 52.1 ms and
+17.2 ms respectively. These are single small-directory acceptance observations,
+not five-run comparative performance measurements or a large-space scan claim.
+All content was synthetic and both mounts detached normally. Typecheck passed
+all four tasks. Comparative Glow scanning remains open.

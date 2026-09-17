@@ -573,16 +573,17 @@ with socket.socket() as client:
     });
   }
 
-  for (const { spaces, attachments, visibility = false, mutation = false } of [
+  for (const { spaces, attachments, visibility = false, mutation = false, glow = false } of [
     { spaces: ["DOCSY"], attachments: false },
     { spaces: ["DOCSY", "mayflower"], attachments: false },
     { spaces: ["DOCSY"], attachments: true },
     { spaces: ["DOCSY"], attachments: false, visibility: true },
     { spaces: ["DOCSY"], attachments: false, mutation: true },
+    { spaces: ["DOCSY"], attachments: false, glow: true },
   ]) {
-    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""}${visibility ? "; external changes" : ""}${mutation ? "; directory mutation" : ""})`, async () => {
+    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1" || (glow && !process.env.ATLCLI_NFS_GLOW))(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""}${visibility ? "; external changes" : ""}${mutation ? "; directory mutation" : ""}${glow ? "; Glow" : ""})`, async () => {
       let clock = Date.now();
-      const { server, vfs, client } = await fixture(spaces, attachments || visibility || mutation ? false : undefined,
+      const { server, vfs, client } = await fixture(spaces, attachments || visibility || mutation || glow ? false : undefined,
         visibility || mutation ? () => clock : undefined);
       if (mutation) {
         client.seedPage({ id: "9000", title: "Mutation", spaceKey: "DOCSY", parentId: "100", storage: "<p>Directory</p>" });
@@ -628,6 +629,16 @@ with socket.socket() as client:
       try {
         expect(await file.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md")));
       } finally { await file.close(); }
+      if (glow) {
+        const probe = await promisify(execFile)("python3", [
+          resolve(import.meta.dir, "../../../../scripts/bench/glow-probe.py"),
+          process.env.ATLCLI_NFS_GLOW!, join(mountpoint, "child-0-400"), "Test",
+        ], { timeout: 20_000 });
+        const timing = JSON.parse(probe.stdout);
+        expect(timing.listingMs).toBeLessThan(15_000);
+        expect(timing.renderMs).toBeLessThan(15_000);
+        console.error(`Glow native listing ${timing.listingMs.toFixed(1)}ms; selected view ${timing.renderMs.toFixed(1)}ms`);
+      }
       if (mutation) {
         const path = join(mountpoint, "mutation-9000");
         const before = (await vfs.readdir("/DOCSY/mutation-9000")).map(entry => entry.name).sort();

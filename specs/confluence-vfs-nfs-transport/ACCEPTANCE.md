@@ -10,6 +10,7 @@ read/write objective remains open. Source checkpoint: b8267310 (implementation t
 | --- | --- | --- |
 | Optional transport, unchanged WebDAV default, experimental NFS, no runtime downloads | mount-transport tests; wiki-mount handler; helper discovery/handshake tests; Slice 54 subprocess flag rejection and valid boundaries | Final CLI/help audit including every incompatible option and side-effect-free rejection |
 | Single-space root and combined-space roots | Native macOS synthetic and Linux live RO tests | Repeat with final RW-enabled artifact; combined live spaces remain RO |
+| Glow directory selection and rendering | Slice 58 PTY probe on native NFS mounts: macOS Glow 2.1.1 and Linux Glow 3.0.0 | Comparative large-directory cold/warm scans; final artifact repeat |
 | Versioned private bridge, loopback, credentials stay in Bun | Framing/handshake tests, helper env isolation, vendor limits; Slice 48 handle cap and bounded directory signatures; Slices 52–53 real deadline faults | Final bounds audit of all maps/caches |
 | Byte ranges, exact UTF-8 sizes, EOF, attachments | Adapter plus real-wire/native byte tests, long binary and Unicode fixture | Immutable multi-READ snapshot contract and adversarial concurrent-version proof |
 | Stable page/folder/attachment/generated-view identities | Slices 23–28 and 41–43; real-wire rename/move tests | Final identity/collision audit including convenience aliases and concurrent mutation races |
