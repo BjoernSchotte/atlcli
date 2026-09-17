@@ -3086,3 +3086,32 @@ suite's default five-second network deadline; the bounded live case now allows
 Recovery for changed initial pages, confirmed-not-created outcomes and folder
 move interruptions still needs explicit handling. Public NFS RW and final
 acceptance remain gated; this slice does not complete the full recovery matrix.
+
+## Slice 117 — recover creations after subsequent remote edits
+
+A matching creation marker can now be verified against immutable version 1 when
+the current page has advanced. Current identity, space, parent and title must
+still match; the historical ID/version/title/storage must prove the frozen
+creation image. Recovery records the original version, leaves current remote
+content untouched and seeds the confirmed initial image as the merge base for
+newer local writes. It does not equate current content with the original intent.
+
+The new regression initially failed because a historical view did not populate
+the editable merge-base cache. Explicitly retaining the verified first image
+fixes that missing-base conflict. Automatic resume now merges non-overlapping
+local and remote edits into version 3, with exactly one original CREATE. Missing
+historical proof retains the unpromoted local file and frozen intent.
+
+- macOS core/publisher: 388 passed, 1132 assertions.
+- Linux core/publisher: 388 passed, 1131 assertions (timer polling differs).
+- Additional missing-history regression: one pass / five assertions on each OS.
+- Linux DOCSY, journal close/reopen after injected lost CREATE reply: both the
+  unchanged and externally updated variants passed, twelve assertions total.
+  The externally updated page remained version 2 with its external content.
+  Both disposable pages were cleaned up. No additional native mount test is
+  claimed for this recovery-only change.
+- Final typecheck: all four tasks passed.
+
+Retitled/moved pages, missing markers, ambiguous matches, absent historical proof
+and confirmed-not-created outcomes remain recovery boundaries. Full native/editor,
+Data Center and public RW acceptance remain open.

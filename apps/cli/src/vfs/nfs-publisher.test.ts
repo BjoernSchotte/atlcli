@@ -451,7 +451,51 @@ it("recovers a lost CREATE reply from its marker without another POST", async ()
   } finally { await recovered.stop(); }
 });
 
-for (const fault of ["missing-marker", "wrong-marker", "changed-body", "changed-parent", "new-version"]) {
+it("recovers initial creation against history and merges later local edits with remote changes", async () => {
+  const { client, vfs, journal, publisher } = await fixture();
+  const local = journal.createLocal("/DOCSY/history-recovery.md");
+  journal.write(local.id, 0, Buffer.from("Alpha\n\nBeta\n"));
+  const create = client.createPage.bind(client);
+  let pageId = "";
+  client.createPage = async params => {
+    const result = await create(params); pageId = result.id;
+    await client.updatePage({ id: pageId, title: params.title, storage: "<p>Remote Alpha</p>\n<p>Beta</p>\n", version: 2 });
+    throw new Error("Lost reply");
+  };
+  await expect(publisher.publish(local.id)).rejects.toThrow();
+  journal.truncate(local.id, 0);
+  journal.write(local.id, 0, Buffer.from("Alpha\n\nLocal Beta\n"));
+  await publisher.stop();
+  const recovered = new NfsPublisher(journal, vfs, ["DOCSY"]);
+  try {
+    recovered.resume();
+    await until(() => journal.promotion(local.id) !== null && journal.pendingIds().length === 0);
+    expect(client.callsTo("createPage")).toBe(1);
+    expect(client.peekPage(pageId)?.storage).toContain("Remote Alpha");
+    expect(client.peekPage(pageId)?.storage).toContain("Local Beta");
+    expect(client.peekPage(pageId)?.version).toBe(3);
+  } finally { await recovered.stop(); }
+});
+
+it("retains the creation intent when its historical proof is missing", async () => {
+  const { client, journal, publisher } = await fixture();
+  const local = journal.createLocal("/DOCSY/missing-history.md");
+  journal.write(local.id, 0, Buffer.from("Original"));
+  const create = client.createPage.bind(client);
+  client.createPage = async params => {
+    const page = await create(params);
+    await client.updatePage({ id: page.id, title: params.title, storage: "<p>External</p>", version: 2 });
+    throw new Error("Lost reply");
+  };
+  await expect(publisher.publish(local.id)).rejects.toThrow();
+  client.getPageAtVersion = async () => { throw new Error("Historical version unavailable"); };
+  await expect(publisher.publish(local.id)).rejects.toThrow("Historical version unavailable");
+  expect(client.callsTo("createPage")).toBe(1);
+  expect(journal.promotion(local.id)).toBeNull();
+  expect(Buffer.from(journal.createIntent(local.id)!.bytes).toString()).toBe("Original");
+});
+
+for (const fault of ["missing-marker", "wrong-marker", "changed-body", "changed-parent"]) {
   it(`retains ambiguous creation when recovery evidence differs: ${fault}`, async () => {
     const { client, journal, publisher } = await fixture();
     const local = journal.createLocal("/DOCSY/newpage.md");
@@ -464,7 +508,6 @@ for (const fault of ["missing-marker", "wrong-marker", "changed-body", "changed-
         ...(fault === "changed-body" ? { storage: "<p>Other</p>" } : {}),
         ...(fault === "changed-parent" ? { parentId: "999" } : {}),
       });
-      if (fault === "new-version") await client.updatePage({ id: result.id, title: params.title, storage: params.storage, version: 2 });
       throw new Error("Lost reply");
     };
     await expect(publisher.publish(local.id)).rejects.toThrow();

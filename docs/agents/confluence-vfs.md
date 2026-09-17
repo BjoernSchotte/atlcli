@@ -171,7 +171,7 @@ This comparison ignores only outer storage whitespace, not content differences.
 
 Page creation is not automatically repeated after an HTTP 5xx response: the
 server may already have created the page. Keep the pending journal image when
-an NFS creation result is uncertain; recovery can identify an unchanged initial creation by its unique marker.
+an NFS creation result is uncertain; recovery can identify the initial creation by its unique marker and verified first version.
 
 ### Machine-readable output
 
@@ -472,10 +472,13 @@ therefore produce an empty initial version, consistent with the accepted snapsho
 publication contract.
 Each new NFS creation sends its durable local identity as a content property in
 the initial POST. After a lost reply, resume looks up the exact title directly
-and verifies the marker, space, parent, title, initial version and storage body
-before promoting the local file. It never issues another POST to guess the
+and verifies the marker, space, parent and title, then verifies the first version and its storage
+body before promoting the local file. If the page has newer versions, the
+confirmed first version becomes the merge base; recovery preserves the current
+remote content and merges later local edits through normal conflict handling. It never issues another POST to guess the
 outcome. Missing markers (including older attempts), ambiguous matches or pages
-changed since creation stay pending with their bytes retained. Data Center
+retitled or moved since creation stay pending with their bytes retained. Missing
+historical proof also retains the pending image. Data Center
 reconciliation is not yet live-verified.
 
 The create-only guard prevents overwriting an occupied page. Confirmed creations

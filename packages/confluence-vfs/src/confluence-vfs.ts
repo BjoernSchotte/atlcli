@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   BodyCache,
+  hashStorage,
   identityPathFor,
   recallIdentity,
   rememberIdentity,
@@ -37,7 +38,7 @@ import { PageStore } from "./page-store.js";
 import { AuditLog } from "./audit-log.js";
 import { ConflictStore } from "./conflict-store.js";
 import { assertWritable, type ModeGuard } from "./mode.js";
-import { parseVfsFrontmatter, toStorage } from "./page-store.js";
+import { parseVfsFrontmatter, toStorage, renderPageMarkdown } from "./page-store.js";
 import { PathResolver, isContainer, type MissingLeaf, type Resolved } from "./resolver.js";
 import { VirtualDirs } from "./virtual-dirs.js";
 import { WriteBack } from "./write-back.js";
@@ -931,9 +932,15 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     if (!marker || typeof marker !== "object" || !("token" in marker) || marker.token !== target.creationToken) return null;
     const page = await this.opts.client.getPage(candidate.id);
     if (page.id !== candidate.id || page.spaceKey !== target.spaceKey || page.parentId !== target.parentId ||
-        page.title !== title || page.version !== 1 || page.storage.trim() !== toStorage(body).trim()) return null;
-    this.index.attachChild(target.parentId, { id: page.id, title: page.title,
-      type: "page", spaceKey: target.spaceKey, version: 1, lastModified: page.lastModified });
+        page.title !== title || !Number.isSafeInteger(page.version) || page.version! < 1) return null;
+    const initial = page.version === 1 ? page : await this.opts.client.getPageAtVersion(page.id, 1);
+    if (initial.id !== page.id || initial.version !== 1 || initial.title !== title ||
+        initial.storage.trim() !== toStorage(body).trim()) return null;
+    const node = this.index.attachChild(target.parentId, { id: page.id, title: page.title,
+      type: "page", spaceKey: target.spaceKey, version: page.version, lastModified: page.lastModified });
+    // The confirmed initial image is the merge base for edits saved while POST was uncertain.
+    this.cache?.putBody({ pageId: page.id, version: 1, storageHash: hashStorage(initial.storage),
+      markdown: renderPageMarkdown({ ...node, version: 1, lastModified: initial.lastModified }, initial.storage, this.runtime!.instanceUrl) });
     return { path, pageId: page.id, version: 1, created: true };
   }
 

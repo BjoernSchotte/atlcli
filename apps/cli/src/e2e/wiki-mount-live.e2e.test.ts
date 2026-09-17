@@ -471,8 +471,8 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     created.splice(created.indexOf(created_![2]!), 1);
   });
 
-  it("recovers a lost NFS creation reply after reopening its journal without another POST", async () => {
-    const journalPath = join(cacheDir, "creation-recovery.sqlite");
+  for (const changedRemotely of [false, true]) it(`recovers a lost NFS creation reply after reopening its journal without another POST (remote edit: ${changedRemotely})`, async () => {
+    const journalPath = join(cacheDir, `creation-recovery-${changedRemotely}.sqlite`);
     let journal = new NfsJournal(journalPath, "live-creation-recovery");
     let publisher = new NfsPublisher(journal, vfs, [E2E_SPACE_KEY]);
     const create = client.createPage.bind(client);
@@ -488,6 +488,10 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       const local = journal.createLocal(`/${E2E_SPACE_KEY}/${makeE2eTitle("recover-create")}.md`);
       journal.write(local.id, 0, Buffer.from("Recovered initial NFS content"));
       await expect(publisher.publish(local.id)).rejects.toThrow();
+      if (changedRemotely) {
+        const remote = await client.getPage(pageId);
+        await client.updatePage({ id: pageId, title: remote.title, storage: "<p>External update after creation</p>", version: 2 });
+      }
       await publisher.stop(); journal.close();
       journal = new NfsJournal(journalPath, "live-creation-recovery");
       publisher = new NfsPublisher(journal, vfs, [E2E_SPACE_KEY]);
@@ -495,8 +499,8 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(recovered?.pageId).toBe(pageId);
       expect(posts).toBe(1);
       expect(journal.promotion(local.id)?.pageId).toBe(pageId);
-      expect((await client.getPage(pageId)).version).toBe(1);
-      expect((await client.getPage(pageId)).storage).toContain("Recovered initial NFS content");
+      expect((await client.getPage(pageId)).version).toBe(changedRemotely ? 2 : 1);
+      expect((await client.getPage(pageId)).storage).toContain(changedRemotely ? "External update after creation" : "Recovered initial NFS content");
     } finally {
       client.createPage = create;
       await publisher.stop(); journal.close();
