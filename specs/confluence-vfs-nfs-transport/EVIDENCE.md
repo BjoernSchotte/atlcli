@@ -2133,3 +2133,37 @@ all forced backup-rename strategies or swap-file behavior.
 
 TextEdit, swap-file workflows, forced rename backups, additional CREATE variants
 and the complete-document publication contract remain separate open gates.
+
+## Slice 81 — native TextEdit exposes safe-save directory requirement
+
+A real macOS TextEdit window opened `_index.md` through the native NFS mount
+against an isolated synthetic DOCSY backend. The UI displayed the complete
+frontmatter and baseline. Appending a test paragraph and pressing Command-S
+failed; closing the modified document also triggered an automatic-save failure.
+The backend stayed at version 1 with zero updates and an empty pending queue.
+This is a failed acceptance test, not editor compatibility evidence.
+
+Temporary helper diagnostics identified the first refused operation as MKDIR
+for a sibling safe-save directory named `_index.md.sb-<suffix>`. The helper
+currently returns ROFS for MKDIR, producing TextEdit's misleading read-only
+volume message even though ordinary file writes work on this mount. A separate
+experiment returning NOTSUPP for MKDIR changed the message to a generic save
+failure; it did not cause TextEdit to fall back successfully. Both experimental
+changes and diagnostic logging were removed, and the original helper rebuilt.
+
+The next implementation requirement is durable local temporary directories,
+including child file lookup/creation, replacement into the original page and
+cleanup. These directories must remain local, share journal resource limits,
+respect export/mode restrictions, and never create Confluence pages merely
+because the editor stages a save. Further operations after MKDIR remain
+unobserved until that first blocker is implemented; do not assume it is the
+only missing operation.
+
+Only synthetic edits were discarded through the UI. Each test document closed
+and each owned mount unmounted normally; all three harness runs exited cleanly.
+No user document or editor preference was changed. The successful VS Code
+(Slice 72) and Vim (Slice 80) tests do not cover this TextEdit save strategy.
+
+Linux real-DOCSY native save regression still passes (one test, 18 assertions),
+including fixture cleanup. All four typecheck tasks and diff whitespace checks
+passed. This slice changes evidence only; it does not mark TextEdit accepted.
