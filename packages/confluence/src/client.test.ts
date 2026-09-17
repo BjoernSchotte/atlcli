@@ -43,6 +43,37 @@ describe("Confluence page metadata", () => {
   });
 });
 
+describe("explicit trash confirmation", () => {
+  afterEach(() => { globalThis.fetch = originalFetch; });
+  test("uses body-free Data Center metadata and checks the returned space", async () => {
+    let requested: URL | undefined;
+    globalThis.fetch = mock((url: string) => {
+      requested = new URL(url);
+      return Promise.resolve(Response.json({ id: "123", status: "trashed", space: { key: "DOCSY" } }));
+    }) as unknown as typeof fetch;
+    const client = new ConfluenceClient({ ...mockProfile, deploymentType: "data-center" });
+    expect(await client.isPageTrashed("123", "DOCSY")).toBe(true);
+    expect(requested!.searchParams.get("expand")).toBe("space");
+    expect(requested!.searchParams.get("status")).toBe("trashed");
+    expect(await client.isPageTrashed("123", "OTHER")).toBe(false);
+  });
+  for (const state of ["trashed", "current", "foreign", "wrong-id", "missing"] as const) {
+    test(`requires explicit matching metadata: ${state}`, async () => {
+      const requests: URL[] = [];
+      globalThis.fetch = mock((url: string) => {
+        const request = new URL(url); requests.push(request);
+        if (request.pathname.includes("/space/")) return Promise.resolve(Response.json({ id: 42, key: "DOCSY" }));
+        if (state === "missing") return Promise.resolve(Response.json({}, { status: 404 }));
+        return Promise.resolve(Response.json({ id: state === "wrong-id" ? "999" : "123",
+          status: state === "current" ? "current" : "trashed", spaceId: state === "foreign" ? "99" : "42" }));
+      }) as unknown as typeof fetch;
+      expect(await new ConfluenceClient(mockProfile).isPageTrashed("123", "DOCSY")).toBe(state === "trashed");
+      expect(requests.at(-1)!.searchParams.getAll("status")).toEqual(["trashed"]);
+      expect(requests.at(-1)!.searchParams.has("body-format")).toBe(false);
+    });
+  }
+});
+
 describe("Confluence v2 space pagination", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;

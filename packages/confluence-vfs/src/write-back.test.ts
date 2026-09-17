@@ -509,6 +509,19 @@ describe("rename and move", () => {
 });
 
 describe("rm", () => {
+  it("confirms only explicit trash inside the selected export", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { spaces: ["DOCSY"] });
+    try {
+      await expect(vfs.confirmTrash("101", "OTHER")).rejects.toMatchObject({ code: "EACCES" });
+      expect(client.callsTo("isPageTrashed")).toBe(0);
+      expect(await vfs.confirmTrash("101", "DOCSY")).toBe(false);
+      await client.deletePage("101");
+      expect(await vfs.confirmTrash("101", "DOCSY")).toBe(true);
+      expect(await vfs.confirmTrash("999", "DOCSY")).toBe(false);
+    } finally { await vfs.close(); }
+  });
+
   it("binds guarded trash to page identity and space before any mutation", async () => {
     const client = seeded();
     const vfs = await openVfs(client);

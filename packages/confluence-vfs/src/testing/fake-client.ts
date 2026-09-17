@@ -411,6 +411,12 @@ export class FakeConfluenceClient implements VfsClient {
     return this.toPage(this.mustPage(id));
   }
 
+  async isPageTrashed(id: string, spaceKey: string): Promise<boolean> {
+    this.record("isPageTrashed", { id, spaceKey });
+    const page = this.pages.get(id);
+    return !!page && this.visible(id) && page.trashed && page.spaceKey === spaceKey;
+  }
+
   async getPage(id: string): Promise<ConfluencePage & { storage: string }> {
     this.record("getPage", id);
     const page = this.mustPage(id);

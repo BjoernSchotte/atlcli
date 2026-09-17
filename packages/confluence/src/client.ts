@@ -1164,6 +1164,23 @@ export class ConfluenceClient {
     return { ...this.parsePageMetadata(data), storage: data.body?.storage?.value ?? "" };
   }
 
+  /** Confirm explicit trash status; absence alone is never proof. */
+  async isPageTrashed(id: string, spaceKey: string): Promise<boolean> {
+    if (!/^[0-9]+$/.test(id) || !spaceKey) throw new Error("Invalid trash confirmation identity");
+    try {
+      if (this.deploymentType === "cloud") {
+        const space = await this.getSpace(spaceKey);
+        const page = await this.requestV2(`/pages/${id}`, { query: { status: ["trashed"] }, logBody: "meta-only" }) as any;
+        return page.id === id && page.status === "trashed" && /^[0-9]+$/.test(String(space.id)) && String(page.spaceId) === String(space.id);
+      }
+      const page = await this.request(`/content/${id}`, { query: { status: "trashed", expand: "space" }, logBody: "meta-only" }) as any;
+      return page.id === id && page.status === "trashed" && page.space?.key === spaceKey;
+    } catch (error) {
+      if ((error instanceof ConfluenceRequestError || error instanceof ConfluenceV2RequestError) && error.status === 404) return false;
+      throw error;
+    }
+  }
+
   /** Body-free identity/version lookup for stat and direct-id filesystem paths. */
   async getPageMetadata(
     id: string,

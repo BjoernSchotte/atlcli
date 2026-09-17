@@ -38,7 +38,7 @@ export class NfsPublisher {
   }
 
   resume(): void {
-    for (const id of [...this.journal.pendingIds(), ...this.journal.localFileIds()]) this.schedule(id);
+    for (const id of [...this.journal.pendingIds(), ...this.journal.localFileIds(), ...this.journal.pendingTrashIds()]) this.schedule(id);
   }
 
   async stop(): Promise<void> {
@@ -113,6 +113,11 @@ export class NfsPublisher {
     if (!file) return null;
     if (this.journal.displaced(file.path)?.id === id) return null;
     try {
+      const trash = this.journal.trashIntent(id);
+      if (trash) {
+        if (!trash.completed && this.spaces.includes(trash.spaceKey) && await this.vfs.confirmTrash(id, trash.spaceKey)) this.journal.completeTrash(id);
+        return null;
+      }
       if (this.journal.local(file.path)?.id === id) return await this.publishNew(file);
       if (file.revision === file.publishedRevision) return null;
       // Reject incomplete local bytes before freezing a publication intent.

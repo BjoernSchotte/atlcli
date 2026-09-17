@@ -547,6 +547,11 @@ export class NfsJournal {
     }).immediate();
   }
 
+  pendingTrashIds(): string[] {
+    const statement = this.db.prepare<{ id: string }, []>("SELECT id FROM trash WHERE completed=0");
+    try { return statement.all().map(row => row.id); } finally { statement.finalize(); }
+  }
+
   completeTrash(id: string): void {
     if (!this.trashIntent(id)) throw new VfsError("ENOENT", "Unknown trash intent");
     this.db.run("UPDATE trash SET completed=1 WHERE id=?", [id]);

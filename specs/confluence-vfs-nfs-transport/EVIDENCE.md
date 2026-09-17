@@ -2843,3 +2843,29 @@ are explicitly finalized so close/reopen releases ownership under Bun 1.3.14.
 
 Automatic uncertain-trash reconciliation, page-tree rename/directory parity,
 full overwritten/unlinked handle semantics and the public RW gate remain open.
+
+## Slice 109 — positive trash confirmation after restart
+
+Restart now schedules retained trash intents. A body-free metadata request must
+explicitly report `trashed` for the recorded page ID and selected space before
+the journal marks the intent complete. No second DELETE is sent. A current page,
+404, mismatched identity/space or failed request leaves the intent unresolved and
+retains the saved bytes. Cloud space IDs are normalized across the numeric v1
+space response and string v2 page response; the live test caught this difference.
+The Data Center metadata route has mocked coverage only.
+
+- macOS and Linux: 226 tests / 1121 assertions each across client, VFS write-back,
+  NFS journal and publisher suites; no failures.
+- Linux live DOCSY: one test / seven assertions. A disposable page is guarded
+  against wrong identity/space, trashed, positively confirmed, then its reopened
+  journal automatically completes the intent. The test page is left in trash,
+  never purged. This test exercises API and journal recovery, not a kernel mount.
+- Typecheck: all four tasks passed. Turbo emitted sandbox IO warnings while
+  writing cache metadata; TypeScript checks succeeded.
+
+The restart regression proves no repeated DELETE and preservation of recoverable
+bytes. Export isolation and negative confirmations have focused coverage. The
+[Cloud page API](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/)
+supports the explicit status query without requesting a body.
+Unknown outcomes lacking positive confirmation still need a recovery decision;
+directory parity, full editor acceptance and the public RW gate remain open.

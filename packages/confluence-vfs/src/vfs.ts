@@ -50,6 +50,8 @@ export interface ConfluenceVfs {
   /** Move to trash. Needs `mode: "rw"` *and* `allowDelete`. Never purges.
    * An expected identity restricts deletion to that page in that space. */
   rm(path: string, options?: { recursive?: boolean; expected?: { id: string; spaceKey: string } }): Promise<void>;
+  /** Confirm trash by identity without treating absence or denial as confirmation. */
+  confirmTrash(id: string, spaceKey: string): Promise<boolean>;
 
   /** Copy a page through the existing `copyPage` endpoint. */
   copy(from: string, to: string): Promise<VfsWriteResult>;

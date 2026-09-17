@@ -519,3 +519,33 @@ it("publishes an empty new Markdown document on resume without a WRITE", async (
   await Bun.sleep(600);
   expect(client.callsTo("createPage")).toBe(1);
 });
+
+
+it("confirms interrupted trash on resume without a second DELETE", async () => {
+  const { client, vfs, journal, publisher, root } = await fixture();
+  journal.beginTrash("100", "/DOCSY/_index.md", "DOCSY");
+  await client.deletePage("100");
+  await publisher.stop(); journal.close();
+  const reopened = new NfsJournal(join(root, "journal.sqlite"), "fixture:DOCSY");
+  const recovered = new NfsPublisher(reopened, vfs, ["DOCSY"]);
+  try {
+    recovered.resume();
+    await until(() => reopened.trashIntent("100")?.completed === 1);
+    expect(client.callsTo("deletePage")).toBe(1);
+    expect(reopened.writeStatus().unresolvedPublications).toBe(0);
+    expect(Buffer.from(reopened.get("100")!.bytes).toString()).toContain("Original");
+  } finally { await recovered.stop(); reopened.close(); }
+});
+
+it("keeps unresolved trash for current, inaccessible and failed confirmations", async () => {
+  const { client, journal, publisher } = await fixture();
+  journal.beginTrash("100", "/DOCSY/_index.md", "DOCSY");
+  expect(await publisher.publish("100")).toBeNull();
+  expect(journal.trashIntent("100")?.completed).toBe(0);
+  client.isPageTrashed = async () => false;
+  expect(await publisher.publish("100")).toBeNull();
+  client.isPageTrashed = async () => { throw new Error("Unavailable"); };
+  await expect(publisher.publish("100")).rejects.toThrow("Unavailable");
+  expect(journal.writeStatus().unresolvedPublications).toBe(1);
+  expect(client.callsTo("deletePage")).toBe(0);
+});

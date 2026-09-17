@@ -272,8 +272,11 @@ published image. It records the page ID before sending the trash request and
 blocks subsequent mutations to that page. Dirty pages and local child drafts
 must be resolved first. An uncertain DELETE is never blindly retried: retain the
 journal and inspect its trash metadata. Recovery exports retain the saved bytes
-even after confirmed trash. Remote directory removal and automatic reconciliation
-of uncertain trash results are still pending; public NFS RW remains gated.
+even after confirmed trash. On restart, an explicit trashed status for the same
+page ID and space completes the retained intent without another DELETE. Missing,
+inaccessible or still-current pages remain unresolved; a 404 is not confirmation.
+Remote directory removal and resolution of those remaining uncertain outcomes
+are still pending; public NFS RW remains gated.
 Development NFS publication waits for 500 ms without newer writes to a page.
 If an editor sends a valid partial document and pauses longer, Confluence can
 receive an intermediate version before later blocks arrive. Automatic publication

@@ -76,6 +76,7 @@ export interface VfsClient {
 
   // --- bodies and versions ------------------------------------------------
   getPageMetadata(id: string, options?: { signal?: AbortSignal }): Promise<ConfluencePage>;
+  isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
   getPage(
     id: string,
     options?: { signal?: AbortSignal },

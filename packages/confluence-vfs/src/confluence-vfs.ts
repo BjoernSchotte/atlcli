@@ -1222,6 +1222,15 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     }
   }
 
+  async confirmTrash(id: string, spaceKey: string): Promise<boolean> {
+    const mounted = this.opts.spaces ?? (await this.index.listSpaces()).map(space => space.key);
+    if (!mounted.includes(spaceKey)) throw new VfsError("EACCES", "Trash identity is outside the selected export");
+    if (!await this.opts.client.isPageTrashed(id, spaceKey)) return false;
+    this.cache?.forgetPage(id);
+    this.index.forget(id);
+    return true;
+  }
+
   async copy(from: string, to: string): Promise<VfsWriteResult> {
     const source = (await this.resolver.resolve(this.canonicalize(from))) as Resolved;
     if (source.kind !== "container" && source.kind !== "body") {

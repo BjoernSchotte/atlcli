@@ -417,9 +417,25 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     await expect(vfs.rm(path, { expected: { id: "0", spaceKey: E2E_SPACE_KEY } })).rejects.toMatchObject({ code: "EBUSY" });
     await expect(vfs.rm(path, { expected: { id: page.id, spaceKey: "OTHER" } })).rejects.toMatchObject({ code: "EBUSY" });
     expect((await client.getPage(page.id)).storage).toContain("Disposable guarded trash");
+    const journalPath = join(cacheDir, "trash-restart.sqlite");
+    const journal = new NfsJournal(journalPath, "live:DOCSY");
+    try {
+      journal.admit(page.id, path, Buffer.from(await vfs.readFile(path)), page.version ?? 1);
+      journal.beginTrash(page.id, path, E2E_SPACE_KEY);
+    } finally { journal.close(); }
     await vfs.rm(path, { expected: { id: page.id, spaceKey: E2E_SPACE_KEY } });
     created.splice(created.indexOf(page.id), 1);
     await expect(client.getPage(page.id)).rejects.toMatchObject({ status: 404 });
+    expect(await vfs.confirmTrash(page.id, E2E_SPACE_KEY)).toBe(true);
+    const recovered = new NfsJournal(journalPath, "live:DOCSY");
+    const publisher = new NfsPublisher(recovered, vfs, [E2E_SPACE_KEY]);
+    try {
+      publisher.resume();
+      const deadline = Date.now() + 10000;
+      while (!recovered.trashIntent(page.id)?.completed && Date.now() < deadline) await Bun.sleep(50);
+      expect(recovered.trashIntent(page.id)?.completed).toBe(1);
+      expect(recovered.writeStatus().unresolvedPublications).toBe(0);
+    } finally { await publisher.stop(); recovered.close(); }
   });
 
   it("creates and then trashes a page through PUT and DELETE", async () => {
