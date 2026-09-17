@@ -67,6 +67,16 @@ export async function startNfsServer(options: {
         case "lookup":
           if (typeof args.name !== "string") throw new Error("Invalid NFS name");
           result = await fs.lookup(number(args.parent), args.name); break;
+        case "remove":
+          if (typeof args.name !== "string") throw new VfsError("EINVAL", "Invalid NFS name");
+          await fs.remove(number(args.parent), args.name);
+          result = null; break;
+        case "rename": {
+          if (typeof args.name !== "string" || typeof args.targetName !== "string") throw new VfsError("EINVAL", "Invalid NFS name");
+          const pageId = await fs.rename(number(args.parent), args.name, number(args.targetParent), args.targetName);
+          if (pageId !== null) publisher?.schedule(pageId);
+          result = null; break;
+        }
         case "getattr": result = await fs.getattr(number(args.file)); break;
         case "read": result = await fs.read(number(args.file), number(args.offset), number(args.count)); break;
         case "write": {

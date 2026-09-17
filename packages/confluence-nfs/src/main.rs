@@ -75,6 +75,7 @@ impl Bridge {
         if let Some(error) = value.get("error").and_then(Value::as_str) {
             return Err(match error {
                 "ENOENT" => nfsstat3::NFS3ERR_NOENT,
+                "EEXIST" => nfsstat3::NFS3ERR_EXIST,
                 "ESTALE" => nfsstat3::NFS3ERR_STALE,
                 "EBADCOOKIE" => nfsstat3::NFS3ERR_BAD_COOKIE,
                 "EACCES" => nfsstat3::NFS3ERR_ACCES,
@@ -330,17 +331,29 @@ impl NFSFileSystem for Bridge {
     async fn mkdir(&self, _: fileid3, _: &filename3) -> Result<(fileid3, fattr3), nfsstat3> {
         Err(nfsstat3::NFS3ERR_ROFS)
     }
-    async fn remove(&self, _: fileid3, _: &filename3) -> Result<(), nfsstat3> {
-        Err(nfsstat3::NFS3ERR_ROFS)
+    async fn remove(&self, parent: fileid3, name: &filename3) -> Result<(), nfsstat3> {
+        if !self.writable {
+            return Err(nfsstat3::NFS3ERR_ROFS);
+        }
+        let name = std::str::from_utf8(name).map_err(|_| nfsstat3::NFS3ERR_INVAL)?;
+        self.call("remove", json!({"parent":parent,"name":name}))
+            .await?;
+        Ok(())
     }
     async fn rename(
         &self,
-        _: fileid3,
-        _: &filename3,
-        _: fileid3,
-        _: &filename3,
+        parent: fileid3,
+        name: &filename3,
+        target_parent: fileid3,
+        target_name: &filename3,
     ) -> Result<(), nfsstat3> {
-        Err(nfsstat3::NFS3ERR_ROFS)
+        if !self.writable {
+            return Err(nfsstat3::NFS3ERR_ROFS);
+        }
+        let name = std::str::from_utf8(name).map_err(|_| nfsstat3::NFS3ERR_INVAL)?;
+        let target_name = std::str::from_utf8(target_name).map_err(|_| nfsstat3::NFS3ERR_INVAL)?;
+        self.call("rename", json!({"parent":parent,"name":name,"targetParent":target_parent,"targetName":target_name})).await?;
+        Ok(())
     }
     async fn symlink(
         &self,

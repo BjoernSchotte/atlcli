@@ -1980,3 +1980,29 @@ names remain in the journal until replacement or explicit local removal.
 The Rust CREATE/RENAME/REMOVE hooks are not yet connected to these methods.
 Native replacement and backup-handle semantics, exclusive-create replay handling,
 new-page publication, opt-in trash and the complete-document gate remain open.
+
+## Slice 75 — RENAME and REMOVE over the Rust bridge
+
+Bridge protocol 6 connects the Rust RENAME/REMOVE hooks to the guarded projection.
+Renaming a staged local image over a page schedules its automatic publication.
+Local renames/removals never send remote deletes; remote page removal and remote
+source rename remain explicitly disabled. Invalid UTF-8 names are rejected at
+the Rust boundary and projection validation enforces filename/export limits.
+
+- macOS and Linux real-RPC test: one passed / 31 assertions each. A durable local
+  fixture is looked up over TCP, renamed locally with the same handle, refused
+  when targeting generated metadata, then renamed over the page. The page handle
+  survives, the temporary handle becomes stale, and exactly one automatic update
+  reaches the synthetic backend. REMOVE retires a local handle but refuses the
+  real page without any remote delete.
+- macOS native existing-file write/fsync plus WRITE/COMMIT and RO mutation
+  regressions: three passed / 92 assertions. Linux live DOCSY native autosave:
+  one passed / four assertions, with normal unmount and test-page cleanup.
+- Rust build, tests, strict clippy, TypeScript typecheck and whitespace checks
+  passed. Both native helpers were rebuilt with protocol 6.
+
+The test deliberately seeds the local file through the journal: CREATE is still
+unconnected. Audit found that vendored EXCLUSIVE CREATE does not deserialize or
+forward the verifier to its VFS hook. That must be fixed with durable replay
+semantics before CREATE/native atomic-editor acceptance. This slice does not
+claim that gate or complete-document publication safety.

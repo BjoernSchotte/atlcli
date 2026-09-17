@@ -77,6 +77,43 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
 }
 
 describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
+  it("renames durable local files over a page and removes only local files through real RPCs", async () => {
+    const { server, journal, vfs, client } = await fixture(["DOCSY"], false, () => Date.now(), true);
+    const local = journal!.createLocal("/DOCSY/.editor.tmp");
+    const content = (await vfs.readFile("/DOCSY/_index.md")).replace("Grüße 🐴", "RPC replacement");
+    journal!.write(local.id, 0, Buffer.from(content));
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = async (name: string) => {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(0);
+      return reply.subarray(8, 8 + reply.readUInt32BE(4));
+    };
+    const pageHandle = await lookup("_index.md");
+    const localHandle = await lookup(".editor.tmp");
+    const rename = (from: string, to: string) => rpc(server, 100003, 14, Buffer.concat([
+      opaque(root), opaque(Buffer.from(from)), opaque(root), opaque(Buffer.from(to)),
+    ]));
+    expect((await rename(".editor.tmp", ".renamed.tmp")).readUInt32BE()).toBe(0);
+    expect(await lookup(".renamed.tmp")).toEqual(localHandle);
+    expect((await rename(".renamed.tmp", "_space.json")).readUInt32BE()).toBe(30);
+    expect((await rename(".renamed.tmp", "_index.md")).readUInt32BE()).toBe(0);
+    expect(await lookup("_index.md")).toEqual(pageHandle);
+    expect((await rpc(server, 100003, 1, opaque(localHandle))).readUInt32BE()).toBe(70);
+    const deadline = Date.now() + 5000;
+    while (journal!.pending().length && Date.now() < deadline) await Bun.sleep(20);
+    expect(journal!.pending()).toEqual([]);
+    expect(client.callsTo("updatePage")).toBe(1);
+    expect(client.peekPage("100")!.storage).toContain("RPC replacement");
+    journal!.createLocal("/DOCSY/discard.tmp");
+    const discard = await lookup("discard.tmp");
+    const remove = (name: string) => rpc(server, 100003, 12, Buffer.concat([opaque(root), opaque(Buffer.from(name))]));
+    expect((await remove("discard.tmp")).readUInt32BE()).toBe(0);
+    expect((await rpc(server, 100003, 1, opaque(discard))).readUInt32BE()).toBe(70);
+    expect((await remove("_index.md")).readUInt32BE()).toBe(30);
+    expect(client.callsTo("deletePage")).toBe(0);
+  });
+
   it("acknowledges journal-backed WRITE as FILE_SYNC and applies SETATTR sizes", async () => {
     const { server, journal, client } = await fixture(["DOCSY"], false, () => Date.now(), true);
     const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
