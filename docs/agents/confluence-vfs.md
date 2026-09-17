@@ -572,7 +572,9 @@ Confluence title, including case, punctuation and Unicode. A move does not infer
 a new title from the lossy filename slug or upload the body just to retitle it.
 
 NFS directory enumeration checks the parent once per listing and validates child
-identities in bounded batches. Large listings still scale with their entry count;
+identities in bounded batches. Name lookups do not enumerate all siblings just
+to supply optional parent attributes; explicit attribute and listing requests
+still refresh directory revisions. Large listings still scale with their entry count;
 core metadata TTL and kernel caching both affect external-change visibility.
 
 Development RW NFS mounts use hard retries through the shared mount-option

@@ -362,6 +362,25 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const readonly = await fixture(["DOCSY"], false);
     expect((await rpc(readonly.server, 100003, 9, Buffer.alloc(0))).readUInt32BE()).toBe(30);
   });
+  it("does not enumerate siblings for incidental LOOKUP parent attributes", async () => {
+    const { server, vfs } = await fixture(["DOCSY"], false);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const listing = spyOn(vfs, "readdir");
+    try {
+      const lookup = (name: string) => rpc(server, 100003, 3,
+        Buffer.concat([opaque(root), opaque(Buffer.from(name))]));
+      const found = await lookup("_index.md");
+      expect(found.readUInt32BE()).toBe(0);
+      expect(found.readUInt32BE(found.length - 4)).toBe(0); // No parent post-op attributes.
+      expect((await lookup("missing.md")).readUInt32BE()).toBe(2);
+      expect((await lookup("../mayflower")).readUInt32BE()).toBe(22);
+      expect(listing).not.toHaveBeenCalled();
+      // Explicit attribute requests still refresh the directory revision.
+      expect((await rpc(server, 100003, 1, opaque(root))).readUInt32BE()).toBe(0);
+      expect(listing).toHaveBeenCalledWith("/DOCSY");
+    } finally { listing.mockRestore(); }
+  });
   it("counts protocol requests including backend-free NFS and mount calls", async () => {
     const { server, client } = await fixture(["DOCSY"], false);
     client.resetCalls();
@@ -740,7 +759,7 @@ with socket.socket() as client:
   }, 50_000);
 
   it("enforces the dispatch deadline across individually responsive bridge calls", async () => {
-    const child = spawn(resolve(helperPath!), ["0"], { env: {}, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(resolve(helperPath!), ["0", "--staged-rw"], { env: {}, stdio: ["pipe", "pipe", "pipe"] });
     child.stderr.resume();
     child.stdin.on("error", () => {});
     const exited = new Promise<void>((done, reject) => {
@@ -759,11 +778,11 @@ with socket.socket() as client:
         for await (const raw of frames) {
           const request = raw as { id: number; op: string; args: { file: number } };
           calls++;
-          // LOOKUP performs directory attributes, lookup, then object attributes.
+          // Exclusive CREATE performs pre-attributes, creation, then post-attributes.
           // Each responds before the bridge's 60s limit; together they exceed 120s.
           const timer = setTimeout(() => {
             timers.delete(timer);
-            const result = request.op === "lookup" ? 2 : {
+            const result = request.op === "create-exclusive" ? 2 : {
               id: request.args.file, directory: request.args.file === 1, size: 0, mtime: 0,
             };
             child.stdin.write(encodeNfsFrame({ id: request.id, result }));
@@ -773,8 +792,8 @@ with socket.socket() as client:
       })();
       const mounted = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
       const root = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
-      const payload = Buffer.concat([ints(19, 0, 2, 100003, 3, 3, 0, 0, 0, 0),
-        opaque(root), opaque(Buffer.from("slow.md"))]);
+      const payload = Buffer.concat([ints(19, 0, 2, 100003, 3, 8, 0, 0, 0, 0),
+        opaque(root), opaque(Buffer.from("slow.md")), ints(2), Buffer.alloc(8)]);
       const started = performance.now();
       socket = connect(server.port, "127.0.0.1");
       const closed = new Promise<void>((done, reject) => {

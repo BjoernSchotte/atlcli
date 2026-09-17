@@ -1,7 +1,7 @@
 # NFS acceptance checkpoint
 
 This is a working audit of PLAN.md, not acceptance of the feature. The complete
-read/write objective remains open. Implementation evidence reviewed through Slice 140. Slice 123 reruns broad VFS, native mount, Rust and compiled-shell
+read/write objective remains open. Implementation evidence reviewed through Slice 141. Slice 123 reruns broad VFS, native mount, Rust and compiled-shell
 checks on both hosts; full repository build/CI and final acceptance remain open.
 [EVIDENCE.md](EVIDENCE.md) contains commands, host boundaries and detailed results.
 
@@ -71,3 +71,12 @@ by draft policy are not claimed as completed. Compiled CLI mount execution is
 still a separate open requirement.
 
 The subsequent local `bun run typecheck` passed all four tasks.
+
+## Slice 141: native directory lookup cost
+
+Removed incidental parent attributes from LOOKUP replies, avoiding a complete
+sibling enumeration for each name lookup. Explicit GETATTR/READDIR revision
+checks and normal parent/child scope validation remain. Linux's 600-entry fresh
+listing fell from 4015.9ms to 500.5ms on the same host; macOS measured 788.5ms.
+The 5-second native test budget is unchanged. See EVIDENCE.md for the measured
+request breakdown and validation; the four-platform CI result remains pending.

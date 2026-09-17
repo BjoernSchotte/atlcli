@@ -3790,3 +3790,42 @@ rerun passed (one test / 37 assertions, p95 30.67ms). This is a full run plus a
 targeted isolation result, not an all-green full rerun after this journal fix.
 The Linux native directory-listing CI budget failure remains open. Public NFS RW
 and overall acceptance remain gated.
+
+
+## Slice 141 — avoid quadratic LOOKUP parent enumeration (2026-09-17)
+
+Profiling the synthetic 600-entry Linux mutation test found 956 GETATTR bridge
+calls consuming 7529.8ms across both listings, compared with 19 READDIR calls
+consuming 431.3ms. LOOKUP requested parent attributes each time; the adapter
+computed those by enumerating/registering all siblings. TCP_NODELAY was already
+active. The uninstrumented baseline fresh listing took 4015.9ms.
+
+The vendor LOOKUP handler now omits incidental parent post-operation attributes,
+consistent with the existing READ approach. Parent and child resolution still
+validate identity, type and export scope; explicit GETATTR and READDIR refresh
+directory revisions. RFC 1813 section 2.5 allows absent attributes while
+encouraging best effort; a client can request them separately. No cache, TTL or
+timeout was added or widened. The wire regression fails with the old helper and
+checks success, missing/invalid names, no sibling enumeration, and explicit
+GETATTR refreshing the parent.
+
+The dispatch-deadline fixture formerly relied on LOOKUP making three sequential
+bridge calls. It now uses exclusive CREATE (pre-attributes, creation,
+post-attributes), retaining the same three 45-second delays and 120-second
+connection deadline. The first full runs reported only this obsolete fixture
+failure; all other 30 cases passed on each host (1384 assertions), with Glow
+intentionally skipped because no executable was supplied. Native coverage
+included RW Vim saves, helper-death recovery, external changes, immutable views,
+attachments and single/multi-space roots. Fresh listings were 500.5ms Linux and
+788.5ms macOS; a separate Linux probe was 512.6ms. The 5-second budget is unchanged.
+
+Additional checks: adapter 74 passed / 844 assertions; Rust seven passed;
+typecheck all four tasks passed; Linux real DOCSY owned-journal restart and
+publication one passed / five assertions, disposable page cleaned up.
+Overall acceptance and public RW remain gated; four-platform CI must still
+confirm the listing improvement.
+
+The updated dispatch-deadline regression passed separately on both hosts:
+one test / seven assertions each, disconnecting after 120.01 seconds. This is
+full-suite coverage plus the corrected fixture rerun, not a second full-suite
+run. Native test mounts were normally detached.

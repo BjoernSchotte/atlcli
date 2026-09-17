@@ -264,10 +264,10 @@ pub async fn nfsproc3_lookup(
     }
     let dirid = dirid.unwrap();
 
-    let dir_attr = match context.vfs.getattr(dirid).await {
-        Ok(v) => nfs::post_op_attr::attributes(v),
-        Err(_) => nfs::post_op_attr::Void,
-    };
+    // LOOKUP validates the parent and child itself. Computing directory attributes
+    // here enumerates every sibling for each lookup (quadratic native listings).
+    // Omit incidental parent attributes; GETATTR/READDIR still refresh them.
+    let dir_attr = nfs::post_op_attr::Void;
     match context.vfs.lookup(dirid, &dirops.name).await {
         Ok(fid) => {
             let obj_attr = match context.vfs.getattr(fid).await {

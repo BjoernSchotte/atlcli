@@ -99,3 +99,12 @@ so implementations can enforce EISDIR/ENOTDIR and nonempty-directory semantics.
 Pass the GUARDED flag into the filesystem create hook. Remove the separate
 lookup-before-create check: the backend must enforce existence and creation
 atomically rather than racing another request between those operations.
+
+LOOKUP performance follow-up: omit incidental parent post-operation attributes.
+Computing them enumerated all siblings for every Linux LOOKUP while listing a
+large directory. The real lookup still validates parent type, identity, scope
+and child access; explicit GETATTR and READDIR retain current directory revisions.
+RFC 1813 section 2.5 permits absent post-op attributes (while encouraging best
+effort); clients may issue GETATTR separately. The wire regression verifies
+successful/missing/invalid names without sibling enumeration and explicit
+GETATTR refresh. Native mutation/visibility tests cover client cache behavior.
