@@ -1120,6 +1120,13 @@ with socket.socket() as client:
       expect((await readFile(join(retitledDirectory, "_index.md"))).toString()).toContain("Test");
       await expect(stat(movedDirectory)).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await retitleDescriptor.close(); }
+    const combinedDirectory = join(mountpoint, "combined-430");
+    await rename(retitledDirectory, combinedDirectory);
+    expect(client.peekPage("430")?.title).toBe("Combined");
+    expect(client.peekPage("430")?.parentId).toBe("100");
+    expect((await readFile(join(combinedDirectory, "_index.md"))).toString()).toContain("Test");
+    await expect(stat(retitledDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+
 
     }, 30000);
 

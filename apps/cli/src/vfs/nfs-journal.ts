@@ -39,6 +39,7 @@ export interface NfsMoveIntent {
   target: string;
   spaceKey: string;
   sourceParentId: string;
+  sourceTitle: string | null;
   targetParentId: string;
   title: string;
   completed: number;
@@ -94,7 +95,7 @@ export class NfsJournal {
       this.db.exec("COMMIT");
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11 && version !== 12 && version !== 13 && version !== 14) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11 && version !== 12 && version !== 13 && version !== 14 && version !== 15) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers. Exclusive mode retains the rollback
@@ -135,12 +136,13 @@ export class NfsJournal {
         ); CREATE TABLE IF NOT EXISTS promotions (localId TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, pageId TEXT NOT NULL UNIQUE REFERENCES files(id)); CREATE TABLE IF NOT EXISTS trash (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL, spaceKey TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1))); CREATE TABLE IF NOT EXISTS moves (id TEXT PRIMARY KEY, source TEXT NOT NULL UNIQUE,
           target TEXT NOT NULL UNIQUE, spaceKey TEXT NOT NULL, sourceParentId TEXT NOT NULL,
           targetParentId TEXT NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)));
-          PRAGMA user_version=14;`);
+          PRAGMA user_version=15;`);
         const moveColumns = this.db.prepare<{ name: string }, []>("PRAGMA table_info(moves)");
-        let hasMoveKind: boolean;
-        try { hasMoveKind = moveColumns.all().some(column => column.name === "kind"); }
+        let moveColumnNames: string[];
+        try { moveColumnNames = moveColumns.all().map(column => column.name); }
         finally { moveColumns.finalize(); }
-        if (!hasMoveKind) this.db.exec("ALTER TABLE moves ADD COLUMN kind TEXT NOT NULL DEFAULT 'page' CHECK(kind IN ('page','folder'))");
+        if (!moveColumnNames.includes("kind")) this.db.exec("ALTER TABLE moves ADD COLUMN kind TEXT NOT NULL DEFAULT 'page' CHECK(kind IN ('page','folder'))");
+        if (!moveColumnNames.includes("sourceTitle")) this.db.exec("ALTER TABLE moves ADD COLUMN sourceTitle TEXT");
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.db.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -579,7 +581,7 @@ export class NfsJournal {
     if (!["page", "folder"].includes(move.kind) || ![move.id, move.sourceParentId, move.targetParentId].every(id => /^[0-9]+$/.test(id)) ||
         move.source.split("/")[1] !== move.spaceKey || move.target.split("/")[1] !== move.spaceKey ||
         (posix.basename(move.source) !== posix.basename(move.target) &&
-          (move.kind !== "page" || posix.dirname(move.source) !== posix.dirname(move.target))) || move.target.startsWith(`${move.source}/`)) {
+          move.kind !== "page") || move.target.startsWith(`${move.source}/`)) {
       throw new VfsError("EINVAL", "Invalid page reparent intent");
     }
     this.db.transaction(() => {
@@ -594,21 +596,27 @@ export class NfsJournal {
       if (this.db.query<{ count: number }, []>("SELECT count(*) AS count FROM moves").get()!.count >= this.maxFiles) {
         throw new VfsError("ENOSPC", "Move journal capacity exceeded");
       }
-      for (const path of [move.source, move.target]) {
+      for (const path of new Set([move.source, move.target, posix.join(posix.dirname(move.target), posix.basename(move.source))])) {
         if (this.local(path) || this.hasLocalDescendants(path) || this.db.query(
           "SELECT id FROM files WHERE (path=?1 OR substr(path,1,length(?1)+1)=?1||'/') AND (revision>publishedRevision OR id IN (SELECT id FROM intents) OR id IN (SELECT id FROM displaced) OR id IN (SELECT id FROM trash)) LIMIT 1",
         ).get(path)) throw new VfsError("EBUSY", "Move contains pending editor data");
         this.assertNoMove(path);
       }
-      this.db.run("INSERT INTO moves(id,source,target,spaceKey,sourceParentId,targetParentId,title,kind) VALUES (?,?,?,?,?,?,?,?)",
-        [move.id, move.source, move.target, move.spaceKey, move.sourceParentId, move.targetParentId, move.title, move.kind]);
+      this.db.run("INSERT INTO moves(id,source,target,spaceKey,sourceParentId,targetParentId,title,kind,sourceTitle) VALUES (?,?,?,?,?,?,?,?,?)",
+        [move.id, move.source, move.target, move.spaceKey, move.sourceParentId, move.targetParentId, move.title, move.kind, move.sourceTitle]);
     }).immediate();
   }
 
   /** Pending outcomes reserve both trees until positively reconciled. */
   assertNoMove(path: string): void {
-    const row = this.db.query("SELECT id FROM moves WHERE completed=0 AND (source=?1 OR target=?1 OR substr(?1,1,length(source)+1)=source||'/' OR substr(?1,1,length(target)+1)=target||'/' OR substr(source,1,length(?1)+1)=?1||'/' OR substr(target,1,length(?1)+1)=?1||'/') LIMIT 1").get(path);
-    if (row) throw new VfsError("EBUSY", "Move outcome requires reconciliation");
+    // ponytail: scan the bounded pending move set; index prefixes if concurrent recovery becomes large.
+    for (const move of this.pendingMoves()) {
+      for (const tree of [move.source, move.target, posix.join(posix.dirname(move.target), posix.basename(move.source))]) {
+        if (path === tree || path.startsWith(`${tree}/`) || tree.startsWith(`${path}/`)) {
+          throw new VfsError("EBUSY", "Move outcome requires reconciliation");
+        }
+      }
+    }
   }
 
   completeMove(source: string): void {
@@ -616,8 +624,10 @@ export class NfsJournal {
       const move = this.moveIntent(source);
       if (!move) throw new VfsError("ENOENT", "Unknown move intent");
       if (move.completed) return;
-      this.db.run("UPDATE files SET path=?2||substr(path,length(?1)+1) WHERE substr(path,1,length(?1)+1)=?1||'/'", [move.source, move.target]);
-      this.db.run("UPDATE promotions SET path=?2||substr(path,length(?1)+1) WHERE substr(path,1,length(?1)+1)=?1||'/'", [move.source, move.target]);
+      for (const previous of new Set([move.source, posix.join(posix.dirname(move.target), posix.basename(move.source))])) {
+        this.db.run("UPDATE files SET path=?2||substr(path,length(?1)+1) WHERE substr(path,1,length(?1)+1)=?1||'/'", [previous, move.target]);
+        this.db.run("UPDATE promotions SET path=?2||substr(path,length(?1)+1) WHERE substr(path,1,length(?1)+1)=?1||'/'", [previous, move.target]);
+      }
       this.db.run("UPDATE moves SET completed=1 WHERE source=?", [source]);
     }).immediate();
   }

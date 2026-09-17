@@ -1174,13 +1174,13 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       if (newTitle && newTitle !== current.title) {
         assertWritable(this.guard, "rename", from);
         const page = await this.opts.client.getPage(node.id);
-        await this.opts.client.updatePage({
-          id: node.id,
-          title: newTitle,
-          storage: page.storage,
-          version: (page.version ?? current.version ?? 1) + 1,
-        });
-        this.index.upsert({ id: node.id, title: newTitle, version: (page.version ?? 1) + 1 });
+        let version = page.version ?? current.version ?? 1;
+        // Another in-flight attempt can finish after the metadata check.
+        if (page.title !== newTitle) {
+          version++;
+          await this.opts.client.updatePage({ id: node.id, title: newTitle, storage: page.storage, version });
+        }
+        this.index.upsert({ id: node.id, title: newTitle, version });
         this.audit?.record({
           op: "rename",
           path: from,

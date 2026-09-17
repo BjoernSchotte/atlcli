@@ -3554,3 +3554,36 @@ assigned a parent and its VFS path was accessible. This does not prove support
 for genuinely parentless items. Remaining: ID-less directory aliases, combined
 retitle/reparent, cross-space moves, removal/recovery work and final acceptance.
 Public CLI NFS RW remains gated.
+
+
+## Slice 134 — recoverable combined page reparent and retitle
+
+One NFS rename can now move and retitle a page while preserving its ID. Schema
+15 stores the original title as well as the desired title. Old records migrate
+with an unknown original title rather than guessing from a lossy slug. Source,
+intermediate and destination trees remain reserved while the outcome is pending.
+
+RPC replay and publisher resume share one recovery function. It first confirms
+the final outcome. Otherwise it only resumes the title step after fresh metadata
+positively identifies the original title under the destination parent. It never
+repeats an uncertain reparent. The core avoids another version if an in-flight
+retitle finishes between the metadata check and body fetch. Existing body changes
+are retained; a changed intermediate title leaves the intent unresolved.
+
+- macOS/Linux filesystem, journal, publisher and core write-back suites: 239
+  passed / 1879 assertions each before the final extra conflict assertion/test.
+- Final targeted combined cases: six passed / 46 assertions on each host,
+  including the existing combined-export homepage guard. Covers normal operation,
+  interruption after reparent, before retitle and after retitle, an external body
+  edit during recovery, and an incompatible external title.
+- Journal tests reopen the reserved intermediate state and migrate schema 14;
+  these are distinct from native process-kill injection, which remains open.
+- Native RW/editor/move suite: one passed / 69 assertions on each host, including
+  combined rename and old-path disappearance.
+- Linux DOCSY combined operation: one passed / six assertions, with ID, parent,
+  title, body and stable handle verified. Both temporary pages deleted.
+- Typecheck: all four tasks passed.
+
+Names without IDs, cross-space moves, parentless items, namespace removal and
+remaining recovery/resource/editor acceptance still require work. Public NFS RW
+remains gated; the overall objective is not accepted.

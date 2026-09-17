@@ -846,7 +846,7 @@ it("retains an uncertain reparent across reopen and reserves both trees", () => 
   const { path, journal } = fixture();
   journal.admit("200", "/DOCSY/page-200/_index.md", bytes("Body"), 1);
   const move = { id: "200", kind: "page" as const, source: "/DOCSY/page-200", target: "/DOCSY/target-201/page-200",
-    spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "201", title: "Page" };
+    spaceKey: "DOCSY", sourceParentId: "100", sourceTitle: "Page", targetParentId: "201", title: "Page" };
   journal.beginMove(move);
   journal.close();
   const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
@@ -875,7 +875,7 @@ it("refreshes changed metadata at the same version without repeatedly dirtying a
 it("migrates schema-thirteen pending moves as pages and keeps folder intents across reopen", () => {
   const { path, journal } = fixture();
   const move = { id: "200", kind: "page" as const, source: "/DOCSY/page-200", target: "/DOCSY/target-201/page-200",
-    spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "201", title: "Page" };
+    spaceKey: "DOCSY", sourceParentId: "100", sourceTitle: "Page", targetParentId: "201", title: "Page" };
   journal.beginMove(move); journal.close();
   const db = new Database(path); db.exec("ALTER TABLE moves DROP COLUMN kind; PRAGMA user_version=13"); db.close();
   const upgraded = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(upgraded);
@@ -884,4 +884,29 @@ it("migrates schema-thirteen pending moves as pages and keeps folder intents acr
   upgraded.close();
   const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
   expect(reopened.moveIntent("/DOCSY/folder-300")?.kind).toBe("folder");
+});
+
+it("migrates old move receipts without inventing a source title", () => {
+  const { path, journal } = fixture();
+  const move = { id: "200", kind: "page" as const, source: "/DOCSY/page-200", target: "/DOCSY/target-201/page-200",
+    sourceParentId: "100", sourceTitle: "Original Title", targetParentId: "201", spaceKey: "DOCSY", title: "Original Title" };
+  journal.beginMove(move); journal.close();
+  const db = new Database(path); db.exec("ALTER TABLE moves DROP COLUMN sourceTitle; PRAGMA user_version=14"); db.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.pendingMoves()).toEqual([{ ...move, sourceTitle: null, completed: 0 }]);
+});
+
+it("reserves and remaps the intermediate path of a combined move across reopen", () => {
+  const { path, journal } = fixture();
+  const move = { id: "200", kind: "page" as const, source: "/DOCSY/page-200", target: "/DOCSY/target-201/renamed-200",
+    sourceParentId: "100", sourceTitle: "Page", targetParentId: "201", spaceKey: "DOCSY", title: "Renamed" };
+  journal.beginMove(move); journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.moveIntent(move.source)?.sourceTitle).toBe("Page");
+  expect(() => recovered.createLocal("/DOCSY/target-201/page-200/draft.md")).toThrow("reconciliation");
+  recovered.admit("200", "/DOCSY/target-201/page-200/_index.md", bytes("read during recovery"), 2);
+  expect(() => recovered.write("200", 0, bytes("blocked"))).toThrow("reconciliation");
+  recovered.completeMove(move.source);
+  expect(recovered.get("200")?.path).toBe(`${move.target}/_index.md`);
+  expect(Buffer.from(recovered.get("200")!.bytes).toString()).toBe("read during recovery");
 });

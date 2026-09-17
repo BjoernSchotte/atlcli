@@ -1,3 +1,4 @@
+import { reconcileNfsMove } from "./nfs-move.js";
 import { posix } from "node:path";
 import { createInOrderLimiter } from "@atlcli/confluence";
 import { threeWayMerge } from "@atlcli/confluence/internal";
@@ -139,9 +140,8 @@ export class NfsPublisher {
     if (id.startsWith("move:")) {
       const source = id.slice(5);
       const move = this.journal.moveIntent(source);
-      if (move && !move.completed && this.spaces.includes(move.spaceKey) &&
-          await this.vfs.confirmMove(move.id, move.spaceKey, move.targetParentId, move.title, move.kind)) {
-        this.journal.completeMove(source);
+      if (move && !move.completed && this.spaces.includes(move.spaceKey)) {
+        await reconcileNfsMove(this.vfs, this.journal, source);
       }
       return null;
     }

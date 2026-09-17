@@ -202,6 +202,29 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     } finally { journal.close(); }
   }, 30_000);
 
+  it("combines live NFS reparenting and retitling without changing the page ID", async () => {
+    const home = await client.getSpaceHomepageId(E2E_SPACE_KEY);
+    const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY, parentId: home!, title: makeE2eTitle("combined-parent"), storage: "<p>Parent</p>" }); created.push(parent.id);
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY, parentId: home!, title: makeE2eTitle("combined-child"), storage: "<p>Combined body retained</p>" }); created.push(page.id);
+    const journal = new NfsJournal(join(cacheDir, "combined-move.sqlite"), "live:DOCSY");
+    try {
+      const fs = new NfsFilesystem(vfs, [E2E_SPACE_KEY], undefined, journal);
+      const source = dirname(await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`)).split("/").at(-1)!;
+      const parentName = dirname(await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${parent.id}.md`)).split("/").at(-1)!;
+      const directory = await fs.lookup(1, source);
+      const destination = await fs.lookup(1, parentName);
+      const stamp = Date.now(), target = `combined-e2e-${stamp}-${page.id}`;
+      await fs.rename(1, source, destination, target);
+      const actual = await client.getPage(page.id);
+      expect(actual.id).toBe(page.id);
+      expect(actual.parentId).toBe(parent.id);
+      expect(actual.title).toBe(`Combined E2e ${stamp}`);
+      expect(actual.storage).toContain("Combined body retained");
+      expect(await fs.lookup(destination, target)).toBe(directory);
+      expect(journal.pendingMoves()).toEqual([]);
+    } finally { journal.close(); }
+  }, 30_000);
+
   it("preserves the exact page title when moving a canonical directory name", async () => {
     const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("move-parent"), storage: "<p>Parent</p>" });
     created.push(parent.id);

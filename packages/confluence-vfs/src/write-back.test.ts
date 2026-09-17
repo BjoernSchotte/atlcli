@@ -542,6 +542,25 @@ describe("rename and move", () => {
     } finally { await vfs.close(); }
   });
 
+  it("does not add a version when an in-flight retitle completes before the body fetch", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const read = client.getPage.bind(client);
+    let pending = true;
+    client.getPage = async id => {
+      if (id === "101" && pending) {
+        pending = false;
+        await client.updatePage({ id, title: "Renamed", storage: "<p>Install the CLI.</p>", version: 2 });
+      }
+      return read(id);
+    };
+    try {
+      await vfs.rename("/DOCSY/getting-started-101", "/DOCSY/renamed-101");
+      expect(client.peekPage("101")?.version).toBe(2);
+      expect(client.callsTo("updatePage")).toBe(1);
+    } finally { await vfs.close(); }
+  });
+
   it("retitles inside the same directory", async () => {
     const client = seeded();
     const vfs = await openVfs(client);

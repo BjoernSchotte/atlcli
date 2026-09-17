@@ -578,8 +578,13 @@ the page body is preserved. Page directories can also be retitled in place: keep
 canonical lowercase slug, for example `mv old-title-123 new-title-123`. NFS
 exposes only the current directory name; open handles continue to address the
 same page. Retitles use the durable move journal and reconcile lost API replies
-without issuing a second title update. Names without an ID, simultaneous
-retitle-and-reparent, and cross-space moves still require implementation.
+without issuing a second title update. A page can be retitled and reparented in one `mv`. Confluence performs this in
+two steps, so interruption can leave it temporarily at the destination under
+its old title. The journal reserves that intermediate path as well. Recovery
+confirms the page ID, destination parent and original title before completing
+the title update, preserving concurrent body edits. A conflicting external title
+leaves the intent unresolved. Names without an ID and cross-space moves still
+require implementation.
 Folder moves use the positional REST endpoint and verify numeric space identity
 against folder metadata; journal migration preserves existing page move intents.
 Public NFS RW remains gated.

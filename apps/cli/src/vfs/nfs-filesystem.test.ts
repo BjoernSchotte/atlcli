@@ -849,6 +849,59 @@ it("rejects changed IDs and unsupported folder retitles before freezing an inten
   expect(client.callsTo("updatePage")).toBe(0);
 });
 
+it.each(["none", "after-move", "before-retitle", "after-retitle"])("recovers combined reparent and retitle at %s without repeating completed steps", async boundary => {
+  const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  const directory = await fs.lookup(1, "child-0-200");
+  const body = await fs.lookup(directory, "_index.md");
+  const destination = await fs.lookup(1, "child-1-201");
+  const move = client.movePage.bind(client), update = client.updatePage.bind(client);
+  client.movePage = async (...args) => { const result = await move(...args); if (boundary === "after-move") throw new Error("Interrupted move"); return result; };
+  client.updatePage = async params => {
+    if (boundary === "before-retitle") throw new Error("Interrupted retitle");
+    const result = await update(params);
+    if (boundary === "after-retitle") throw new Error("Interrupted retitle reply");
+    return result;
+  };
+  const operation = fs.rename(1, "child-0-200", destination, "renamed-child-200");
+  if (boundary === "none") await operation;
+  else {
+    await expect(operation).rejects.toThrow("Interrupted");
+    expect(journal!.pendingMoves()).toHaveLength(1);
+    await expect(fs.create(destination, "child-0-200")).rejects.toMatchObject({ code: "EBUSY" });
+    client.movePage = move; client.updatePage = update;
+    if (boundary === "after-move") client.bumpVersion("200", "<p>Body 0</p><p>Concurrent external text</p>");
+    if (boundary === "before-retitle") {
+      // An NFS retry can finish the second step without restarting the daemon.
+      await fs.rename(1, "child-0-200", destination, "renamed-child-200");
+    } else {
+      const recovered = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+      try { await recovered.publish("move:/DOCSY/child-0-200"); } finally { await recovered.stop(); }
+    }
+  }
+  expect(client.peekPage("200")?.parentId).toBe("201");
+  expect(client.peekPage("200")?.title).toBe("Renamed Child");
+  expect(client.callsTo("movePage")).toBe(1);
+  expect(client.callsTo("updatePage")).toBe(1);
+  if (boundary === "after-move") expect(client.peekPage("200")?.storage).toContain("Concurrent external text");
+  expect(journal!.pendingMoves()).toEqual([]);
+  expect(await fs.lookup(destination, "renamed-child-200")).toBe(directory);
+  expect(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString()).toContain("Body 0");
+});
+
+it("does not complete a combined move after another actor changes the intermediate title", async () => {
+  const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  const destination = await fs.lookup(1, "child-1-201");
+  const move = client.movePage.bind(client);
+  client.movePage = async (...args) => { await move(...args); throw new Error("Lost reply"); };
+  await expect(fs.rename(1, "child-0-200", destination, "renamed-child-200")).rejects.toThrow();
+  await client.updatePage({ id: "200", title: "External Title", storage: "<p>External body</p>", version: 2 });
+  const recovered = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+  try { await recovered.publish("move:/DOCSY/child-0-200"); } finally { await recovered.stop(); }
+  expect(client.peekPage("200")?.title).toBe("External Title");
+  expect(client.callsTo("updatePage")).toBe(1);
+  expect(journal!.pendingMoves()).toHaveLength(1);
+});
+
 it("retains an unconfirmed move and never retries its remote mutation", async () => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   const destination = await fs.lookup(1, "child-1-201");

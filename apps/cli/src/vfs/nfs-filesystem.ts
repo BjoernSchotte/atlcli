@@ -1,4 +1,5 @@
 import type { NfsJournal, StagedNfsFile } from "./nfs-journal.js";
+import { reconcileNfsMove } from "./nfs-move.js";
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { VfsError, assertWritable, parseVfsFrontmatter, formatDirName, parseName, titleFromName, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
@@ -499,10 +500,9 @@ export class NfsFilesystem {
         if (current.id !== previous.id) throw new VfsError("EBUSY", "Previous move source name was reused");
       } catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
       if (previous.target !== target) throw new VfsError("EBUSY", "Previous move has a different destination");
-      if (!await this.vfs.confirmMove(previous.id, previous.spaceKey, previous.targetParentId, previous.title, previous.kind)) {
+      if (!await reconcileNfsMove(this.vfs, this.journal!, source)) {
         throw new VfsError("EBUSY", "Previous move outcome remains unknown");
       }
-      this.journal!.completeMove(source);
       return null;
     }
     this.journal!.assertNoMove(source); this.journal!.assertNoMove(target);
@@ -517,8 +517,8 @@ export class NfsFilesystem {
       const node = await this.vfs.resolve(source);
       let title = node.title;
       if (name !== targetName) {
-        if (sourceStat.kind !== "page" || posix.dirname(source) !== posix.dirname(target)) {
-          throw new VfsError("EROFS", "Retitle pages in their current directory before moving them");
+        if (sourceStat.kind !== "page") {
+          throw new VfsError("EROFS", "Confluence folder retitles are unsupported");
         }
         const parsed = parseName(targetName);
         title = titleFromName(parsed.slugCandidate);
@@ -533,7 +533,7 @@ export class NfsFilesystem {
         throw new VfsError("EACCES", "Move is outside writable page containers");
       }
       this.journal!.beginMove({ id: node.id, kind: sourceStat.kind as "page" | "folder", source, target, spaceKey: node.spaceKey,
-        sourceParentId: node.parentId, targetParentId: destination.id, title });
+        sourceParentId: node.parentId, sourceTitle: node.title, targetParentId: destination.id, title });
       await this.vfs.rename(source, target, { id: node.id, kind: sourceStat.kind as "page" | "folder", spaceKey: node.spaceKey,
         sourceParentId: node.parentId, targetParentId: destination.id });
       if (!await this.vfs.confirmMove(node.id, node.spaceKey, destination.id, title, sourceStat.kind as "page" | "folder")) {
