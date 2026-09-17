@@ -261,6 +261,49 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     }
   }, 30000);
 
+  it("resumes a confirmed creation from a reopened journal and fresh core", async () => {
+    const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY,
+      title: makeE2eTitle("nfs-restart-parent"), storage: "<p>Restart parent</p>" });
+    created.push(parent.id);
+    let childId: string | undefined;
+    const journalPath = join(cacheDir, "creation-restart.sqlite");
+    let journal = new NfsJournal(journalPath, "live:DOCSY");
+    let fresh: ConfluenceVfsImpl | undefined;
+    let publisher: NfsPublisher | undefined;
+    try {
+      const parentPath = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${parent.id}.md`);
+      const path = `${dirname(parentPath)}/${makeE2eTitle("nfs-restart-child")}.md`;
+      const local = journal.createLocal(path);
+      const image = journal.write(local.id, 0, Buffer.from("First durable image"));
+      journal.beginCreate(local.id, path, E2E_SPACE_KEY, parent.id, image.revision);
+      const result = await vfs.writeFile(path, "First durable image",
+        { createOnly: true, spaceKey: E2E_SPACE_KEY, parentId: parent.id });
+      childId = result.pageId; created.push(childId);
+      journal.recordCreated(local.id, image.revision, childId, result.version);
+      journal.truncate(local.id, 0);
+      journal.write(local.id, 0, Buffer.from("Newer durable image 🐴"));
+      journal.close();
+      journal = new NfsJournal(journalPath, "live:DOCSY");
+      fresh = await ConfluenceVfsImpl.open({ profile: profile!.name, client,
+        spaces: [E2E_SPACE_KEY], mode: "rw", allowDelete: false, offline: false,
+        cacheDir: join(cacheDir, "creation-restart-core"), coalesceMs: 0 });
+      publisher = new NfsPublisher(journal, fresh, [E2E_SPACE_KEY]);
+      publisher.resume();
+      const deadline = Date.now() + 15000;
+      while (journal.writeStatus().pendingPages && Date.now() < deadline) await Bun.sleep(50);
+      expect(journal.writeStatus().pendingPages).toBe(0);
+      expect(journal.promotion(path)?.pageId).toBe(childId);
+      const actual = await client.getPage(childId);
+      expect(actual.version).toBe(result.version + 1);
+      expect(actual.storage).toContain("Newer durable image");
+      expect(journal.createIntent(local.id)).toBeNull();
+    } finally {
+      await publisher?.stop(); await fresh?.close(); journal.close();
+      if (childId) { await client.deletePage(childId); created.splice(created.indexOf(childId), 1); }
+      await client.deletePage(parent.id); created.splice(created.indexOf(parent.id), 1);
+    }
+  }, 30000);
+
   it("publishes a durable NFS journal image through the core", async () => {
     const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
       title: makeE2eTitle("nfs-journal"), storage: "<p>Journal original</p>" });

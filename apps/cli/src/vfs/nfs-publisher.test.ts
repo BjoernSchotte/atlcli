@@ -26,7 +26,7 @@ async function fixture(mode: "ro" | "rw" = "rw") {
     journal.write("100", 0, Buffer.from(value));
   };
   const publisher = new NfsPublisher(journal, vfs, ["DOCSY"]);
-  return { client, vfs, journal, original, stage, publisher };
+  return { client, vfs, journal, original, stage, publisher, root };
 }
 
 it("publishes a durable image through the core while preserving newer local bytes", async () => {
@@ -463,3 +463,43 @@ it("never creates pages for hidden drafts, swap files or page backups", async ()
   expect(await publisher.publish(backup.id)).toBeNull();
   expect(client.callsTo("createPage")).toBe(0);
 });
+
+for (const boundary of ["before-post", "unknown-result", "confirmed-result"] as const) {
+  it(`recovers new-page publication after reopening at ${boundary}`, async () => {
+    const { client, vfs, journal, publisher, root } = await fixture();
+    const local = journal.createLocal("/DOCSY/restart.md");
+    journal.write(local.id, 0, Buffer.from("First image"));
+    let createdId: string | undefined;
+    if (boundary !== "before-post") {
+      const intent = journal.beginCreate(local.id, local.path, "DOCSY", "100", journal.get(local.id)!.revision)!;
+      const result = await vfs.writeFile(local.path, "First image", { createOnly: true, spaceKey: "DOCSY", parentId: "100" });
+      createdId = result.pageId;
+      if (boundary === "confirmed-result") journal.recordCreated(local.id, intent.revision, result.pageId, result.version);
+    }
+    journal.truncate(local.id, 0);
+    journal.write(local.id, 0, Buffer.from("Latest image"));
+    await publisher.stop(); await vfs.close(); journal.close();
+    const reopened = new NfsJournal(join(root, "journal.sqlite"), "fixture:DOCSY");
+    const freshVfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"],
+      mode: "rw", allowDelete: false, coalesceMs: 0, cacheDir: join(root, "fresh"), offline: false });
+    const recovered = new NfsPublisher(reopened, freshVfs, ["DOCSY"]);
+    try {
+      recovered.resume();
+      if (boundary === "unknown-result") {
+        await until(() => reopened.writeStatus().failedPages === 1);
+        expect(reopened.promotion(local.id)).toBeNull();
+        expect(Buffer.from(reopened.get(local.id)!.bytes).toString()).toBe("Latest image");
+        expect(Buffer.from(reopened.createIntent(local.id)!.bytes).toString()).toBe("First image");
+        expect(client.peekPage(createdId!)?.storage).toContain("First image");
+      } else {
+        await until(() => reopened.promotion(local.id) !== null && reopened.writeStatus().pendingPages === 0);
+        const pageId = reopened.promotion(local.id)!.pageId;
+        expect(client.peekPage(pageId)?.storage).toContain("Latest image");
+        expect(client.peekPage(pageId)?.version).toBe(boundary === "before-post" ? 1 : 2);
+        expect(reopened.createIntent(local.id)).toBeNull();
+        if (createdId) expect(pageId).toBe(createdId);
+      }
+      expect(client.callsTo("createPage")).toBe(1);
+    } finally { await recovered.stop(); await freshVfs.close(); reopened.close(); }
+  });
+}

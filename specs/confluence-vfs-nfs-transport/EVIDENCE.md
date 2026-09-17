@@ -2747,3 +2747,23 @@ existing close/reopen regression and the new draft-status regression both pass.
 
 This closes the new-page status omission, not the remaining recovery/public RW
 or editor-matrix gates.
+
+
+## Slice 105 — new-page publication across journal/core restart
+
+A three-boundary regression closes and reopens the actual journal and starts a
+fresh core cache before publisher resume. Before POST, the latest durable image
+creates once. With a confirmed receipt, the original ID is promoted and newer
+bytes become its next version without a second create. An unknown POST result
+remains failed/recoverable, retaining both frozen and latest images without a
+blind retry. These are controlled reopen tests, not new process-kill evidence.
+
+- macOS/Linux full publisher suites: 29 tests / 167 assertions each.
+- Linux live DOCSY confirmed-receipt reopen/fresh-core test: five assertions;
+  same page ID, next version and latest content verified through the API.
+  Disposable child and parent deleted. The synthetic tests additionally count
+  POST calls; live verification uses identity/version/content.
+- All four typecheck tasks passed.
+
+Automatic resolution of unknown create results, public NFS RW lifecycle, the
+full editor matrix and the other acceptance gates remain open.
