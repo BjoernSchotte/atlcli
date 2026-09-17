@@ -161,11 +161,12 @@ export interface ConfluenceVfs {
     rename(from: string, to: string, expected?: {
         id: string;
         spaceKey: string;
-        sourceParentId: string;
-        targetParentId: string;
+        targetSpaceKey?: string;
+        sourceParentId: string | null;
+        targetParentId: string | null;
         kind?: "page" | "folder";
     }): Promise<void>;
-    confirmMove(id: string, spaceKey: string, parentId: string, title: string, kind?: "page" | "folder"): Promise<boolean>;
+    confirmMove(id: string, spaceKey: string, parentId: string | null, title: string, kind?: "page" | "folder"): Promise<boolean>;
     rm(path: string, options?: {
         recursive?: boolean;
         expected?: {
@@ -273,8 +274,9 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     rename(from: string, to: string, expected?: {
         id: string;
         spaceKey: string;
-        sourceParentId: string;
-        targetParentId: string;
+        targetSpaceKey?: string;
+        sourceParentId: string | null;
+        targetParentId: string | null;
         kind?: "page" | "folder";
     }): Promise<void>;
     rm(path: string, options?: {
@@ -284,7 +286,7 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
             spaceKey: string;
         };
     }): Promise<void>;
-    confirmMove(id: string, spaceKey: string, parentId: string, title: string, kind?: "page" | "folder"): Promise<boolean>;
+    confirmMove(id: string, spaceKey: string, parentId: string | null, title: string, kind?: "page" | "folder"): Promise<boolean>;
     confirmTrash(id: string, spaceKey: string): Promise<boolean>;
     copy(from: string, to: string): Promise<VfsWriteResult>;
     attachmentPath(id: string, spaceKey: string): Promise<string>;
@@ -641,6 +643,7 @@ export declare class TreeIndex {
     listSpaces(): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
     getHomepageId(key: string): Promise<string | null>;
+    loadRootPages(key: string): Promise<TreeNode[]>;
     loadChildren(id: string, options?: {
         force?: boolean;
     }): Promise<TreeNode[]>;
@@ -727,6 +730,9 @@ export interface VfsClient {
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDirectChildren(pageId: string, options?: {
         limit?: number;
         signal?: AbortSignal;
@@ -1170,6 +1176,7 @@ export declare class FakeConfluenceClient implements VfsClient {
     }>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">): Promise<ConfluencePage[]>;
     getSpaceHomepageId(spaceKey: string): Promise<string | null>;
     getPageDirectChildren(pageId: string, _options?: {
         limit?: number;

@@ -999,6 +999,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -4384,6 +4387,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -7769,6 +7775,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -10851,6 +10860,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -14635,6 +14647,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -17215,6 +17230,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;

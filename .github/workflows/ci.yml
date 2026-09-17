@@ -639,6 +639,9 @@ jobs:
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
 
+      - name: Install pinned Playwright video recorder
+        run: bunx playwright@1.55.0 install ffmpeg
+
       - name: Record browser compatibility surface
         run: |
           {

@@ -4454,3 +4454,26 @@ four-platform packaged proof, full required CI and the final go/no-go audit
 are still required. The help and both VFS guides describe local-vs-remote
 acknowledgement, quiet-window publication, plain-file creation/aliases, pending
 recovery, opt-in trash and the rejected synchronous-write promise.
+
+## Slice 164: close full-CI API-report and Chrome recorder gaps
+
+Full workflow-dispatch run 35261770483 on `be093b3c` exposed stale public
+API reports for Confluence and the VFS. Regenerated and reviewed both reports:
+changes match the already implemented body-free Cloud root listing, nullable
+root parents, and guarded cross-space move destination. The required VfsClient
+root-listing member is now explicit in the report; custom implementations must
+provide it. No runtime behavior changes in this slice.
+
+The non-required system-Chrome lane failed before opening its recorded page
+because Playwright ffmpeg was absent. Install only the pinned 1.55.0 recorder;
+the lane still uses system Chrome and remains non-required. The workflow policy
+regression requires the recorder without installing a substitute Chromium.
+
+Validation: workflow policy 35 tests / 615 assertions; freshly built API and
+closure reports 5 / 14; root-page, tree-index and write-back regressions 121 /
+334; typecheck all four tasks. The local HTTP regression initially hit sandbox
+listen restrictions and passed with local-server permission. Linux compiled
+CLI DOCSY RW LIVE repeated successfully (1 / 15, 4.05 seconds whole case),
+including owned fixture cleanup. Remote CI verification of the fixes remains
+pending the next pushed head. Final release-helper benchmark matrices completed
+on both hosts and await the separate performance report update.

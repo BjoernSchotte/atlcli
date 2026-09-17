@@ -792,7 +792,8 @@ describe("CI workflow policy", () => {
     expect(canary).toContain("github.event_name == 'schedule'");
     expect(canary).toContain("ATLCLI_PLAYWRIGHT_CHANNEL: chrome");
     expect(canary).toContain("google-chrome --version");
-    expect(canary).not.toContain("playwright@1.55.0 install");
+    expect(canary).toContain("bunx playwright@1.55.0 install ffmpeg");
+    expect(canary).not.toContain("install --with-deps chromium");
     expect(required).not.toBeNull();
     expect(required).not.toContain("browser-system-chrome-canary");
   });
