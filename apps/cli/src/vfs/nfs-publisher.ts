@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import { createInOrderLimiter } from "@atlcli/confluence";
 import { threeWayMerge } from "@atlcli/confluence/internal";
-import { parseVfsFrontmatter, renderFrontmatter, VfsError, type ConfluenceVfs, type VfsWriteResult } from "@atlcli/confluence-vfs";
+import { parseVfsFrontmatter, renderFrontmatter, retryAfterMsOf, VfsError, type ConfluenceVfs, type VfsWriteResult } from "@atlcli/confluence-vfs";
 import { isNfsPageDraft } from "./mount-client-probes.js";
 import { NfsJournal, type StagedNfsFile } from "./nfs-journal.js";
 
@@ -9,6 +9,7 @@ import { NfsJournal, type StagedNfsFile } from "./nfs-journal.js";
 export class NfsPublisher {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private stopped = false;
+  private readonly retries = new Map<string, { attempts: number; until: number }>();
   private readonly running = new Map<string, Promise<VfsWriteResult | null>>();
   // ponytail: one publication at a time bounds materialized bodies; raise only with a measured memory budget.
   private readonly limit = createInOrderLimiter(1);
@@ -28,11 +29,26 @@ export class NfsPublisher {
       await this.running.get(id)?.catch(() => {});
       if (this.stopped || this.timers.get(id) !== timer) return;
       this.timers.delete(id);
-      const result = await this.publish(id).catch(() => null); // Durable errors stay in the journal.
+      const result = await this.publish(id).then(result => {
+        if (result) this.retries.delete(id);
+        return result;
+      }, error => {
+        // Retry only transient failures; publish() reconciles its frozen intent first.
+        const attempts = (this.retries.get(id)?.attempts ?? 0) + 1;
+        if (!this.stopped && error instanceof VfsError && error.code === "EAGAIN" && attempts <= 5) {
+          const retryAfter = retryAfterMsOf(error) ?? retryAfterMsOf(error.cause) ?? 0;
+          const delay = Math.max(retryAfter, Math.min(30_000, 1000 * 2 ** (attempts - 1)) * (1 + Math.random() * 0.25));
+          if (delay <= 2_147_483_647) {
+            this.retries.set(id, { attempts, until: Date.now() + delay });
+            this.schedule(id);
+          }
+        }
+        return null; // Durable errors stay in the journal after exhaustion/denial/conflict.
+      });
       // Recovery may first reconcile an older intent; no new editor event will
       // schedule the newer bytes that were already durable before restart.
       if (result && !this.timers.has(id) && this.journal.pendingIds().includes(id)) this.schedule(id);
-    }, 500);
+    }, Math.max(500, (this.retries.get(id)?.until ?? 0) - Date.now()));
     timer.unref();
     this.timers.set(id, timer);
   }
@@ -45,6 +61,7 @@ export class NfsPublisher {
     this.stopped = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
+    this.retries.clear();
     await Promise.allSettled(this.running.values());
   }
 

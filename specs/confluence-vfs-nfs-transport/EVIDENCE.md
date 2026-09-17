@@ -3137,3 +3137,29 @@ Cloud keeps its existing v2 lookup; property mutation methods are unchanged.
 This closes the known Cloud-only marker-reader implementation gap. It is mocked
 Data Center transport evidence, not a live Data Center deployment claim. Full
 recovery/namespace/lifecycle and native editor acceptance remain open.
+
+## Slice 119 — bounded automatic publication retry
+
+Namespace inspection confirmed that remote directory renames are still open.
+It also exposed an adjacent lifecycle gap: scheduled publication retained bytes
+after transient failure but never tried again without a new save or restart.
+The publisher now retries EAGAIN failures up to five times, using exponential
+backoff from one second plus up to 25% jitter and respecting Retry-After from the
+error or its cause. New save events cannot shorten an active retry deadline.
+Attempts replay/reconcile the frozen publication intent. Denials, conflicts and
+validation errors do not enter this loop; exhausted errors remain durable.
+stop() cancels retry timers. Retry timing is session-local, not journal metadata.
+
+- macOS and Linux full publisher suite: 41 passed, 241 assertions each.
+- Real-timer regression proves automatic recovery after a transient 503 with
+  at least the initial one-second backoff, and no retries after a 403 denial.
+- Timer-driven regression checks the initial quiet delay, all five retry ranges,
+  Retry-After, exhaustion after six total attempts, and retained pending intent.
+- Linux DOCSY: two recovery cases / sixteen assertions. The unchanged case now
+  includes a subsequent save with an injected pre-request 503, automatic retry,
+  exactly two attempts and backend version/body verification. Pages cleaned up.
+- Typecheck: all four tasks passed.
+
+This adds recovery for explicitly transient EAGAIN failures. Generic network
+errors currently mapped to EINVAL, remote directory mutations, the wider fault
+matrix and final acceptance remain open. No new native-kernel test is claimed.

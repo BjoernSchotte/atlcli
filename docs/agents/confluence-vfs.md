@@ -461,6 +461,14 @@ forced or lazy detachment. Close applications using the volume if it is busy.
 
 ### Recovering local NFS edits
 
+Automatic NFS publication retries transient `EAGAIN` failures up to five times
+with exponential backoff (starting at one second) and up to 25% jitter. A supplied
+`Retry-After` is a minimum delay. New save events retain the current retry delay;
+permission/validation errors and conflicts do not trigger this retry loop. After
+exhaustion, bytes and publication intent remain in the journal for recovery.
+The delay state is session-local; restarting resumes from the durable intent.
+
+
 Use the journal path from your development mount setup. These commands need no
 profile, authentication, or running server. Public NFS RW mounting is still gated.
 Development NFS mounts automatically publish visible Markdown drafts after the

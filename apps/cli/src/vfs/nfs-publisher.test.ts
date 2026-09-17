@@ -2,7 +2,7 @@ import { afterEach, expect, it, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { ConfluenceVfsImpl, VfsError } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { NfsJournal } from "./nfs-journal.js";
 import { NfsPublisher } from "./nfs-publisher.js";
@@ -28,6 +28,75 @@ async function fixture(mode: "ro" | "rw" = "rw") {
   const publisher = new NfsPublisher(journal, vfs, ["DOCSY"]);
   return { client, vfs, journal, original, stage, publisher, root };
 }
+
+it("retries a transient publication automatically with backoff and keeps the frozen image", async () => {
+  const { client, original, stage, publisher, journal } = await fixture();
+  const update = client.updatePage.bind(client);
+  const attempts: number[] = [];
+  client.updatePage = async params => {
+    attempts.push(Date.now());
+    if (attempts.length === 1) throw new VfsError("EAGAIN", "Temporarily unavailable", { status: 503 });
+    return update(params);
+  };
+  stage(original.replace("Original", "Recovered"));
+  publisher.schedule("100");
+  await until(() => journal.pendingIds().length === 0);
+  expect(attempts).toHaveLength(2);
+  expect(attempts[1]! - attempts[0]!).toBeGreaterThanOrEqual(990);
+  expect(client.peekPage("100")?.storage).toContain("Recovered");
+  expect(journal.publishIntent("100")).toBeNull();
+});
+
+it("bounds transient retries, adds jitter and honors Retry-After while retaining pending data", async () => {
+  const { client, original, stage, publisher, journal } = await fixture();
+  stage(original.replace("Original", "Pending"));
+  let attempts = 0;
+  client.updatePage = async () => {
+    attempts++;
+    throw new VfsError("EAGAIN", "Unavailable", { status: 503, cause: { retryAfterMs: 2000 } });
+  };
+  const queue: { run: () => Promise<void>; delay: number }[] = [];
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const realTimeout = globalThis.setTimeout;
+  const timerSpy = spyOn(globalThis, "setTimeout").mockImplementation(((run: () => Promise<void>, delay: number) => {
+    queue.push({ run, delay });
+    const timer = realTimeout(() => {}, 2_147_483_647); timer.unref(); timers.push(timer); return timer;
+  }) as typeof setTimeout);
+  try {
+    publisher.schedule("100");
+    expect(queue[0]!.delay).toBe(500);
+    for (let i = 0; i < 6; i++) {
+      const next = queue.shift()!;
+      expect(next).toBeDefined();
+      if (i > 0) {
+        expect(next.delay).toBeGreaterThanOrEqual(Math.max(2000, 1000 * 2 ** (i - 1)) - 20);
+        expect(next.delay).toBeLessThanOrEqual(Math.max(2000, 1250 * 2 ** (i - 1)));
+      }
+      await next.run();
+    }
+    expect(attempts).toBe(6);
+    expect(queue).toHaveLength(0);
+    expect(journal.pendingIds()).toEqual(["100"]);
+    expect(journal.publishIntent("100")).not.toBeNull();
+  } finally {
+    timerSpy.mockRestore();
+    for (const timer of timers) clearTimeout(timer);
+    await publisher.stop();
+  }
+});
+
+it("does not automatically retry a publication denied by the server", async () => {
+  const { client, original, stage, publisher, journal } = await fixture();
+  let attempts = 0;
+  client.updatePage = async () => { attempts++; throw new VfsError("EACCES", "Denied", { status: 403 }); };
+  stage(original.replace("Original", "Retained"));
+  publisher.schedule("100");
+  await until(() => attempts === 1);
+  await Bun.sleep(1300);
+  expect(attempts).toBe(1);
+  expect(journal.pendingIds()).toEqual(["100"]);
+  expect(Buffer.from(journal.get("100")!.bytes).toString()).toContain("Retained");
+});
 
 it("publishes a durable image through the core while preserving newer local bytes", async () => {
   const { client, journal, original, stage, publisher } = await fixture();

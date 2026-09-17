@@ -501,6 +501,25 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(journal.promotion(local.id)?.pageId).toBe(pageId);
       expect((await client.getPage(pageId)).version).toBe(changedRemotely ? 2 : 1);
       expect((await client.getPage(pageId)).storage).toContain(changedRemotely ? "External update after creation" : "Recovered initial NFS content");
+      if (!changedRemotely) {
+        const update = client.updatePage.bind(client);
+        let attempts = 0;
+        client.updatePage = async params => {
+          if (++attempts === 1) throw Object.assign(new Error("Injected transient API failure"), { status: 503 });
+          return update(params);
+        };
+        try {
+          const bytes = Buffer.from("Automatically retried NFS save");
+          journal.truncate(pageId, 0); journal.write(pageId, 0, bytes);
+          publisher.schedule(pageId);
+          const deadline = Date.now() + 20_000;
+          while (journal.pendingIds().length && Date.now() < deadline) await Bun.sleep(100);
+          expect(journal.pendingIds()).toHaveLength(0);
+          expect(attempts).toBe(2);
+          expect((await client.getPage(pageId)).version).toBe(2);
+          expect((await client.getPage(pageId)).storage).toContain("Automatically retried NFS save");
+        } finally { client.updatePage = update; }
+      }
     } finally {
       client.createPage = create;
       await publisher.stop(); journal.close();
