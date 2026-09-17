@@ -3,7 +3,6 @@ import { posix } from "node:path";
 import { createInOrderLimiter } from "@atlcli/confluence";
 import { threeWayMerge } from "@atlcli/confluence/internal";
 import { parseVfsFrontmatter, renderFrontmatter, retryAfterMsOf, VfsError, type ConfluenceVfs, type VfsWriteResult } from "@atlcli/confluence-vfs";
-import { isNfsPageDraft } from "./mount-client-probes.js";
 import { NfsJournal, type StagedNfsFile } from "./nfs-journal.js";
 
 /** Debounced publication of durable page images; transport save boundaries remain separate. */
@@ -92,7 +91,23 @@ export class NfsPublisher {
   }
 
   private async publishNew(file: StagedNfsFile): Promise<VfsWriteResult | null> {
-    if (!isNfsPageDraft(file.path) || this.journal.isBackup(file.id)) return null;
+    if (!this.journal.isPageDraft(file.path) || this.journal.isBackup(file.id)) return null;
+    const directory = posix.basename(file.path) === "_index.md";
+    const creationPath = directory ? posix.dirname(file.path) : file.path;
+    const parentPath = posix.dirname(creationPath);
+    const localParent = this.journal.local(parentPath);
+    if (localParent) {
+      const parentBody = this.journal.local(posix.join(parentPath, "_index.md"));
+      if (localParent.kind !== "directory" || !parentBody || !this.journal.isPageDraft(parentBody.path)) return null;
+      if (this.timers.has(parentBody.id)) { this.schedule(file.id); return null; }
+      // Already inside the single publication worker: queueing publish(parent)
+      // here would deadlock. Reconcile ancestors through the same private path.
+      await this.publishImage(parentBody.id);
+      if (!this.journal.promotion(parentBody.id)) return null;
+      const relocated = this.journal.get(file.id);
+      if (!relocated || this.timers.has(file.id)) return null;
+      return this.publishNew(relocated);
+    }
     let intent = this.journal.createIntent(file.id);
     if (!intent) {
       let content: string;
@@ -102,7 +117,6 @@ export class NfsPublisher {
       if (content.includes("\0") || frontmatter.id !== undefined || frontmatter.version !== undefined) {
         throw new VfsError("EINVAL", "Invalid new-page image");
       }
-      const parentPath = posix.dirname(file.path);
       if (!(await this.vfs.stat(parentPath)).isDirectory) throw new VfsError("ENOTDIR", "Creation parent is not a directory");
       let parent = await this.vfs.resolve(parentPath);
       if (parent.kind === "space") parent = await this.vfs.resolve(posix.join(parentPath, "_index.md"));
@@ -110,14 +124,14 @@ export class NfsPublisher {
           !["page", "folder"].includes(parent.kind)) throw new VfsError("EACCES", "Creation parent is outside the writable export");
       intent = this.journal.beginCreate(file.id, file.path, parent.spaceKey, parent.id, file.revision);
       if (!intent) { this.schedule(file.id); return null; }
-      const result = await this.vfs.writeFile(intent.path, content,
+      const result = await this.vfs.writeFile(creationPath, content,
         { createOnly: true, spaceKey: intent.spaceKey, parentId: intent.parentId, creationToken: file.id });
       if (!result.created) throw new Error("Unexpected creation result");
       this.journal.recordCreated(file.id, intent.revision, result.pageId, result.version);
       intent = this.journal.createIntent(file.id)!;
     }
     if (!intent.pageId) {
-      const recovered = await this.vfs.reconcileCreate(intent.path,
+      const recovered = await this.vfs.reconcileCreate(creationPath,
         new TextDecoder("utf-8", { fatal: true }).decode(intent.bytes),
         { spaceKey: intent.spaceKey, parentId: intent.parentId, creationToken: file.id });
       if (recovered) {
@@ -132,6 +146,9 @@ export class NfsPublisher {
       throw new VfsError("EACCES", "Created page identity or export changed");
     }
     const promoted = this.journal.promoteCreated(file.id, path);
+    if (directory) for (const child of this.journal.localFileIds(posix.dirname(path))) {
+      if (!this.running.has(child) && !this.timers.has(child)) this.schedule(child);
+    }
     if (promoted.revision !== promoted.publishedRevision) this.schedule(promoted.id);
     return { path, pageId: promoted.id, version: intent.version, created: true };
   }

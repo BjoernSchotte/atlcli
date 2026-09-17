@@ -24,6 +24,7 @@ import { platform, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { getActiveProfile, loadConfig, type Profile } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
+import { storageToMarkdown } from "@atlcli/confluence/internal";
 import { ConfluenceVfsImpl, parseVfsFrontmatter } from "@atlcli/confluence-vfs";
 import { startNfsServer } from "../vfs/nfs-bridge.js";
 import { nfsMountOptionsFor } from "../vfs/mount-transport.js";
@@ -93,6 +94,49 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
+  it("publishes a journaled page directory before its child in DOCSY", async () => {
+    const journalPath = join(cacheDir, "page-directory.sqlite");
+    const journal = new NfsJournal(journalPath, "live:DOCSY");
+    const publisher = new NfsPublisher(journal, vfs, [E2E_SPACE_KEY]);
+    const createPage = client.createPage.bind(client);
+    let creates = 0;
+    client.createPage = async params => {
+      const result = await createPage(params);
+      created.unshift(result.id); creates++;
+      return result;
+    };
+    try {
+      const directory = journal.createPageDirectory(`/${E2E_SPACE_KEY}/${makeE2eTitle("nfs-directory")}`);
+      const body = journal.local(`${directory.path}/_index.md`)!;
+      journal.write(body.id, 0, Buffer.from("Directory Grüße 🐴"));
+      const child = journal.createLocal(`${directory.path}/${makeE2eTitle("nfs-directory-child")}.md`);
+      journal.write(child.id, 0, Buffer.from("Child preserved"));
+      await publisher.publish(child.id);
+      const deadline = Date.now() + 15_000;
+      while (!journal.promotion(child.id) && Date.now() < deadline) await Bun.sleep(50);
+      const parentId = journal.promotion(directory.id)!.pageId;
+      const childId = journal.promotion(child.id)!.pageId;
+      const actualParent = await client.getPage(parentId);
+      const actualChild = await client.getPage(childId);
+      expect(actualParent.parentId).toBe(await client.getSpaceHomepageId(E2E_SPACE_KEY));
+      expect(storageToMarkdown(actualParent.storage)).toContain("Directory Grüße 🐴");
+      expect(actualParent.version).toBe(1);
+      expect(actualChild.parentId).toBe(parentId);
+      expect(actualChild.storage).toContain("Child preserved");
+      expect(actualChild.version).toBe(1);
+      expect(creates).toBe(2);
+      expect(journal.writeStatus().pendingPages).toBe(0);
+      await publisher.stop(); journal.close();
+      const reopened = new NfsJournal(journalPath, "live:DOCSY");
+      try {
+        expect(reopened.promotion(directory.path)?.directory).toBe(true);
+        expect(reopened.promotion(body.id)?.pageId).toBe(parentId);
+        expect(reopened.promotion(child.id)?.pageId).toBe(childId);
+        expect(reopened.writeStatus().pendingPages).toBe(0);
+      } finally { reopened.close(); }
+    } finally { await publisher.stop(); journal.close(); client.createPage = createPage; }
+  }, 30_000);
+
   it.skipIf(!process.env.ATLCLI_NFS_TEST_HELPER)("resumes an owned NFS journal and releases it after publication", async () => {
     const page = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("owned-journal"), storage: "<p>Owned original</p>" });
     created.push(page.id);

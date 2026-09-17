@@ -4035,3 +4035,31 @@ This slice prepares the durable representation only. The NFS MKDIR adapter,
 parent-first publisher scheduling, role-aware handles/alias traversal, native
 mkdir/editor verification and DOCSY directory publication are still pending;
 ordinary directories are not yet automatically published. Public RW stays gated.
+
+## Slice 150 — parent-first page-directory publication (2026-09-17)
+
+The publisher now recognizes durable _index.md images inside ordinary local
+page directories and sends guarded, token-marked creation at the missing
+directory path. Existing CREATE receipts, reconciliation and atomic promotion
+are reused. If a child is requested first, its ancestors publish first through
+the same single worker without awaiting another queued worker task. Parent
+quiet-window timers are respected; children are resumed after promotion.
+
+Hidden/editor staging ancestry, backup/temporary suffixes and macOS .sb-
+containers do not publish Markdown or directory bodies. Tests cover nested
+parent IDs, child-first requests, lost parent replies followed by restart,
+pre-publication rename, changes during initial POST, quiet windows and denied
+parent creation with retained child bytes and no fallback creation.
+
+macOS and Linux each passed 193 journal/publisher/filesystem/recovery tests /
+1837 assertions. New Linux DOCSY LIVE directory + child publication passed
+one test / 12 assertions, checking both API parent IDs, initial versions,
+Unicode body content and aliases after journal reopen; test pages were deleted
+child-first. The first LIVE assertion was corrected to decode Confluence HTML
+entities before comparing Unicode. Existing owned-journal LIVE also passed
+one test / five assertions. Typecheck: four tasks passed.
+
+Native MKDIR allocation/scheduling and role-aware directory/body handles remain
+the next integration slice; no native mkdir completion is claimed here. The
+Slice-148 CI run 35242504420 completed Linux arm64 successfully, but the next
+push cancelled its other native jobs; this is not an all-platform green run.

@@ -3,7 +3,7 @@ import { Database, type Statement, type SQLQueryBindings } from "bun:sqlite";
 import fs, { chmodSync, mkdirSync, realpathSync } from "node:fs";
 import { dirname, posix, resolve, join } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
-import { isNfsPageDraft } from "./mount-client-probes.js";
+import { isNfsPageDirectory, isNfsPageDraft } from "./mount-client-probes.js";
 
 export interface StagedNfsFile {
   id: string;
@@ -188,7 +188,7 @@ export class NfsJournal {
       FROM locals JOIN files USING(id) WHERE kind='file' AND originId IS NULL`);
     try {
       for (const draft of statement.all()) {
-        if (!isNfsPageDraft(draft.path)) continue;
+        if (!this.isPageDraft(draft.path)) continue;
         status.pendingPages++;
         if (draft.error !== null) status.failedPages++;
       }
@@ -208,8 +208,16 @@ export class NfsJournal {
     return !!this.query("SELECT id FROM locals WHERE id=? AND originId IS NOT NULL").get(id);
   }
 
-  localFileIds(): string[] {
-    return this.query<{ id: string }, []>("SELECT id FROM locals WHERE kind='file'").all().map(row => row.id);
+  localFileIds(directory?: string): string[] {
+    return this.query<{ id: string }, [string | null]>(
+      "SELECT id FROM locals WHERE kind='file' AND (?1 IS NULL OR substr(path,1,length(?1))=?1)",
+    ).all(directory === undefined ? null : `${directory}/`).map(row => row.id);
+  }
+
+  isPageDraft(path: string): boolean {
+    if (!isNfsPageDirectory(posix.dirname(path))) return false;
+    return isNfsPageDraft(path) || (posix.basename(path) === "_index.md" &&
+      this.local(posix.dirname(path))?.kind === "directory");
   }
 
   pendingIds(): string[] {

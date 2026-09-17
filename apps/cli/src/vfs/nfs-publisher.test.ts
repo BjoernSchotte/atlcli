@@ -678,6 +678,133 @@ it("publishes an empty new Markdown document on resume without a WRITE", async (
   expect(client.callsTo("createPage")).toBe(1);
 });
 
+it("publishes nested page directories before a child requested first, without duplicate pages", async () => {
+  const { client, journal, publisher } = await fixture();
+  const parent = journal.createPageDirectory("/DOCSY/new-parent");
+  const nested = journal.createPageDirectory(`${parent.path}/nested`);
+  const body = journal.local(`${parent.path}/_index.md`)!;
+  journal.write(body.id, 0, Buffer.from("Parent body"));
+  const child = journal.createLocal(`${nested.path}/child.md`);
+  journal.write(child.id, 0, Buffer.from("Child Grüße 🐴"));
+  expect(journal.writeStatus().pendingPages).toBe(3);
+  await publisher.publish(child.id);
+  await until(() => journal.promotion(child.id) !== null);
+  const childId = journal.promotion(child.id)!.pageId;
+  const parentId = journal.promotion(parent.id)!.pageId;
+  const nestedId = journal.promotion(nested.id)!.pageId;
+  expect(client.peekPage(parentId)).toMatchObject({ title: "New Parent", parentId: "100", version: 1 });
+  expect(client.peekPage(parentId)?.storage).toContain("Parent body");
+  expect(client.peekPage(nestedId)).toMatchObject({ title: "Nested", parentId, version: 1 });
+  expect(client.peekPage(childId)).toMatchObject({ parentId: nestedId, version: 1 });
+  expect(client.peekPage(childId)?.storage).toContain("Child Grüße 🐴");
+  publisher.resume();
+  await Bun.sleep(650);
+  expect(client.callsTo("createPage")).toBe(3);
+  expect(journal.writeStatus().pendingPages).toBe(0);
+});
+
+it("reconciles a lost directory creation reply after restart before publishing its child", async () => {
+  const { client, journal, publisher, vfs, root } = await fixture();
+  const directory = journal.createPageDirectory("/DOCSY/new-parent");
+  const body = journal.local(`${directory.path}/_index.md`)!;
+  const child = journal.createLocal(`${directory.path}/child.md`);
+  journal.write(child.id, 0, Buffer.from("Retained child"));
+  const create = client.createPage.bind(client);
+  let loseReply = true;
+  client.createPage = async params => {
+    const result = await create(params);
+    if (loseReply) { loseReply = false; throw new Error("Lost directory reply"); }
+    return result;
+  };
+  await expect(publisher.publish(child.id)).rejects.toThrow("Lost directory reply");
+  expect(journal.createIntent(body.id)).not.toBeNull();
+  expect(journal.createIntent(child.id)).toBeNull();
+  await publisher.stop(); await vfs.close(); journal.close();
+  const reopened = new NfsJournal(join(root, "journal.sqlite"), "fixture:DOCSY");
+  const fresh = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"],
+    mode: "rw", allowDelete: false, coalesceMs: 0, cacheDir: join(root, "fresh-directory"), offline: false });
+  const recovered = new NfsPublisher(reopened, fresh, ["DOCSY"]);
+  try {
+    recovered.resume();
+    await until(() => reopened.promotion(child.id) !== null);
+    const parentId = reopened.promotion(directory.id)!.pageId;
+    expect(client.peekPage(reopened.promotion(child.id)!.pageId)?.parentId).toBe(parentId);
+    expect(client.callsTo("createPage")).toBe(2);
+    expect(reopened.writeStatus().pendingPages).toBe(0);
+  } finally { await recovered.stop(); await fresh.close(); reopened.close(); }
+});
+
+it.each([".hidden", "#autosave#", "backup~", "save.tmp", "page.md.sb-123"])("keeps editor directory %s and its Markdown children local", async name => {
+  const { client, journal, publisher } = await fixture();
+  const directory = journal.createPageDirectory(`/DOCSY/${name}`);
+  const child = journal.createLocal(`${directory.path}/child.md`);
+  journal.write(child.id, 0, Buffer.from("Temporary"));
+  expect(await publisher.publish(child.id)).toBeNull();
+  expect(await publisher.publish(journal.local(`${directory.path}/_index.md`)!.id)).toBeNull();
+  expect(client.callsTo("createPage")).toBe(0);
+  expect(journal.writeStatus().pendingPages).toBe(0);
+});
+
+it("respects a parent directory's trailing quiet window before publishing a child", async () => {
+  const { client, journal, publisher } = await fixture();
+  const directory = journal.createPageDirectory("/DOCSY/new-parent");
+  const body = journal.local(`${directory.path}/_index.md`)!;
+  const child = journal.createLocal(`${directory.path}/child.md`);
+  publisher.schedule(body.id);
+  expect(await publisher.publish(child.id)).toBeNull();
+  expect(client.callsTo("createPage")).toBe(0);
+  journal.write(body.id, 0, Buffer.from("Latest"));
+  publisher.schedule(body.id);
+  await until(() => journal.promotion(child.id) !== null);
+  expect(client.peekPage(journal.promotion(directory.id)!.pageId)?.storage).toContain("Latest");
+  expect(client.callsTo("createPage")).toBe(2);
+});
+
+it("publishes newer directory body bytes after an in-flight initial creation", async () => {
+  const { client, journal, publisher } = await fixture();
+  const directory = journal.createPageDirectory("/DOCSY/new-parent");
+  const body = journal.local(`${directory.path}/_index.md`)!;
+  journal.write(body.id, 0, Buffer.from("First"));
+  const create = client.createPage.bind(client);
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  client.createPage = async params => { entered(); await gate; return create(params); };
+  const pending = publisher.publish(body.id);
+  await started;
+  journal.write(body.id, 0, Buffer.from("Later"));
+  release();
+  const result = (await pending)!;
+  expect(client.peekPage(result.pageId)?.storage).toContain("First");
+  await until(() => journal.pendingIds().length === 0);
+  expect(client.peekPage(result.pageId)?.storage).toContain("Later");
+  expect(client.peekPage(result.pageId)?.version).toBe(2);
+  expect(client.callsTo("createPage")).toBe(1);
+});
+
+it("uses a directory's current name after an unpublished rename", async () => {
+  const { client, journal, publisher } = await fixture();
+  const directory = journal.createPageDirectory("/DOCSY/old-title");
+  const body = journal.local(`${directory.path}/_index.md`)!;
+  journal.renameLocal(directory.path, "/DOCSY/new-title");
+  const result = (await publisher.publish(body.id))!;
+  expect(client.peekPage(result.pageId)?.title).toBe("New Title");
+  expect(journal.promotion(directory.id)?.path).toBe("/DOCSY/new-title");
+  expect(client.callsTo("createPage")).toBe(1);
+});
+
+it("retains child bytes and creates no fallback page when parent publication is denied", async () => {
+  const { client, journal, publisher } = await fixture();
+  const directory = journal.createPageDirectory("/DOCSY/denied");
+  const child = journal.createLocal(`${directory.path}/child.md`);
+  journal.write(child.id, 0, Buffer.from("Retained"));
+  client.createPage = async () => { throw new VfsError("EACCES", "Denied", { status: 403 }); };
+  await expect(publisher.publish(child.id)).rejects.toMatchObject({ code: "EACCES" });
+  expect(journal.createIntent(child.id)).toBeNull();
+  expect(Buffer.from(journal.get(child.id)!.bytes).toString()).toBe("Retained");
+  expect(journal.writeStatus().pendingPages).toBe(2);
+});
+
 
 it("confirms interrupted trash on resume without a second DELETE", async () => {
   const { client, vfs, journal, publisher, root } = await fixture();

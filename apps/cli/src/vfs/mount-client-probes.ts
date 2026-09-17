@@ -95,3 +95,10 @@ export function isNfsPageDraft(path: string): boolean {
   return name.endsWith(".md") && name !== "_index.md" && !/^[.#~]/.test(name) &&
     !parts.some(part => part.startsWith("."));
 }
+
+/** Ordinary directory names denote pages; editor staging trees stay local. */
+export function isNfsPageDirectory(path: string): boolean {
+  return path.split("/").filter(Boolean).every(part => !/^[.#~]/.test(part) &&
+    !/(?:~|\.(?:tmp|swp|swo|bak))$/i.test(part) && !/\.sb-/.test(part) &&
+    part !== "_attachments" && !isClientDropping(part));
+}

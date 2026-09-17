@@ -506,6 +506,8 @@ retryable. Cancellation, certificate errors and unclassified exceptions are not.
 permission/validation errors and conflicts do not trigger this retry loop. After
 exhaustion, bytes and publication intent remain in the journal for recovery.
 The delay state is session-local; restarting resumes from the durable intent.
+Markdown inside editor staging directories (hidden names, `#...`, `~...`,
+backup/temporary suffixes and macOS `.sb-...` containers) stays local.
 If storage fills after Confluence accepts a write, the local receipt can fail.
 Free disk space and reopen the same journal: recovery reconciles the saved
 intent with Confluence before sending another creation or update.
