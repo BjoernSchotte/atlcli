@@ -1,3 +1,4 @@
+import type { NfsJournal, StagedNfsFile } from "./nfs-journal.js";
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { VfsError, parseVfsFrontmatter, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
@@ -12,7 +13,7 @@ export interface NfsAttributes {
   mtime: number;
 }
 
-/** Read-only protocol projection. All paths are resolved inside the selected export. */
+/** Protocol projection. All paths are resolved inside the selected export. */
 export class NfsFilesystem {
   private readonly paths = new Map<number, { path: string; identity: string; parent?: number; name?: string; shield?: "file" | "directory"; rendered?: { hash: string; mtime: number } }>();
   private readonly shieldIds = new Map<string, number>();
@@ -22,7 +23,7 @@ export class NfsFilesystem {
   readonly root: string;
 
   constructor(private readonly vfs: ConfluenceVfs, spaces: readonly string[],
-    private readonly sweepDetector = new SweepDetector()) {
+    private readonly sweepDetector = new SweepDetector(), private readonly journal?: NfsJournal) {
     if (spaces.length === 0 || spaces.some((s) => !s || /[\/\0]/.test(s) || s === "." || s === "..")) {
       throw new VfsError("EINVAL", "Invalid NFS export spaces");
     }
@@ -248,6 +249,37 @@ export class NfsFilesystem {
     return { names, ids, mtime: revision.mtime };
   }
 
+  private async stagedFile(id: number): Promise<StagedNfsFile> {
+    if (!this.journal) throw new VfsError("EROFS", "NFS staging is disabled");
+    const path = await this.pathFor(id);
+    const stat = await this.vfs.stat(path);
+    if (stat.isDirectory) throw new VfsError("EISDIR", "Cannot write a directory");
+    if (stat.kind !== "page" || !(stat.mode & 0o222)) throw new VfsError("EROFS", "Not a writable page body");
+    const existing = this.journal.get(stat.id);
+    if (existing) return existing;
+    const bytes = await this.vfs.readFileBytes(path);
+    const { frontmatter } = parseVfsFrontmatter(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (frontmatter.id !== stat.id || frontmatter.version === undefined) {
+      throw new VfsError("EAGAIN", "Page changed during staging admission");
+    }
+    return this.journal.admit(stat.id, path, bytes, frontmatter.version);
+  }
+
+  /** Returns only after SQLite has durably committed the local byte image. */
+  async write(id: number, offset: number, bytes: Uint8Array): Promise<void> {
+    if (!Number.isSafeInteger(offset) || offset < 0 || bytes.byteLength > NFS_MAX_READ) {
+      throw new VfsError("EINVAL", "Invalid NFS write range");
+    }
+    const file = await this.stagedFile(id);
+    this.journal!.write(file.id, offset, bytes);
+  }
+
+  async truncate(id: number, size: number): Promise<void> {
+    if (!Number.isSafeInteger(size) || size < 0) throw new VfsError("EINVAL", "Invalid NFS file size");
+    const file = await this.stagedFile(id);
+    this.journal!.truncate(file.id, size);
+  }
+
   async getattr(id: number): Promise<NfsAttributes> {
     return this.attributes(id, true);
   }
@@ -258,6 +290,15 @@ export class NfsFilesystem {
     if (shield) return { id, directory: shield === "directory", size: 0,
       mtime: shield === "directory" ? (await this.directoryView(id, path)).mtime : 0 };
     const stat = await this.vfs.stat(path);
+    const staged = stat.kind === "page" && !stat.isDirectory ? this.journal?.get(stat.id) : undefined;
+    if (staged) {
+      const entry = this.paths.get(id)!;
+      const hash = createHash("sha256").update(staged.bytes).digest("hex");
+      if (!entry.rendered || entry.rendered.hash !== hash) {
+        entry.rendered = { hash, mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1, stat.mtime.getTime() + 1) };
+      }
+      return { id, directory: false, size: staged.bytes.byteLength, mtime: entry.rendered.mtime };
+    }
     // Never publish estimated sizes to a kernel client.
     const bytes = stat.isDirectory || (stat.kind === "attachment" && !stat.sizeEstimated)
       ? undefined : await this.vfs.readFileBytes(path);
@@ -296,8 +337,10 @@ export class NfsFilesystem {
     const shield = this.paths.get(id)?.shield;
     if (shield === "directory") throw new VfsError("EISDIR", "Cannot read directory");
     if (shield === "file") return { data: "", eof: true };
-    if ((await this.vfs.stat(path)).isDirectory) throw new VfsError("EISDIR", "Cannot read directory");
-    const bytes = await this.vfs.readFileBytes(path);
+    const stat = await this.vfs.stat(path);
+    if (stat.isDirectory) throw new VfsError("EISDIR", "Cannot read directory");
+    const staged = stat.kind === "page" ? this.journal?.get(stat.id) : undefined;
+    const bytes = staged?.bytes ?? await this.vfs.readFileBytes(path);
     if (count > 0) this.sweepDetector.noteRead(posix.dirname(path), id);
     const start = Math.min(offset, bytes.byteLength);
     const end = Math.min(start + count, bytes.byteLength);

@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
+import { NfsJournal } from "./nfs-journal.js";
 import { NfsFilesystem, NFS_MAX_READ, NFS_MAX_HANDLES } from "./nfs-filesystem.js";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, SweepDetector } from "./mount-client-probes.js";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
-async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro", treeTtlMs?: number) {
+async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro", treeTtlMs?: number, staging = false) {
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-core-"));
   const client = new FakeConfluenceClient()
     .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
@@ -20,8 +21,9 @@ async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro", treeTtlMs?:
     spaceKey: "DOCSY", parentId: "100", storage: `<p>Body ${i}</p>` });
   const vfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY", "mayflower"],
     mode, allowDelete: mode === "rw", coalesceMs: 0, cacheDir, offline: false, treeTtlMs });
-  cleanup.push(async () => { await vfs.close(); rmSync(cacheDir, { recursive: true, force: true }); });
-  return { fs: new NfsFilesystem(vfs, spaces), vfs, client };
+  const journal = staging ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY") : undefined;
+  cleanup.push(async () => { await vfs.close(); journal?.close(); rmSync(cacheDir, { recursive: true, force: true }); });
+  return { fs: new NfsFilesystem(vfs, spaces, undefined, journal), vfs, client, journal };
 }
 
 it("exports a single space directly and confines parent lookups", async () => {
@@ -610,4 +612,45 @@ it("bounds retained handles without evicting live identities or recycling stale 
   expect(replacement).toBeGreaterThan(first);
   await expect(fs.getattr(first)).rejects.toMatchObject({ code: "ESTALE" });
   await expect(fs.lookup(1, "still-full")).rejects.toMatchObject({ code: "ENOSPC" });
+});
+
+
+it("stages split UTF-8 writes durably and serves exact local bytes through aliases", async () => {
+  const { fs, journal, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  const directory = await fs.lookup(1, "child-0-200");
+  const file = await fs.lookup(directory, "_index.md");
+  const original = await fs.getattr(file);
+  const content = Buffer.from("Local Grüße 🐴");
+  await fs.truncate(file, 0);
+  for (let i = content.length - 1; i >= 0; i--) await fs.write(file, i, content.subarray(i, i + 1));
+  const stat = await fs.getattr(file);
+  expect(stat.size).toBe(content.length);
+  expect(stat.mtime).toBeGreaterThan(original.mtime);
+  expect((await fs.getattr(file)).mtime).toBe(stat.mtime);
+  expect(Buffer.from((await fs.read(file, 0, 1024)).data, "base64")).toEqual(content);
+  expect(Buffer.from(journal!.get("200")!.bytes)).toEqual(content);
+  const alias = await fs.lookup(1, "child-0-200.md");
+  expect(Buffer.from((await fs.read(alias, 0, 1024)).data, "base64")).toEqual(content);
+  await fs.truncate(file, content.length + 3);
+  expect((await fs.getattr(file)).size).toBe(content.length + 3);
+  expect(Buffer.from((await fs.read(file, content.length, 3)).data, "base64")).toEqual(Buffer.alloc(3));
+  expect(client.callsTo("updatePage")).toBe(0);
+});
+
+it("refuses staging without a journal, through a read-only core or into generated views", async () => {
+  const disabled = await fixture(["DOCSY"], "rw");
+  await expect(disabled.fs.write(await disabled.fs.lookup(1, "_index.md"), 0, Buffer.from("x")))
+    .rejects.toMatchObject({ code: "EROFS" });
+  const readonly = await fixture(["DOCSY"], "ro", undefined, true);
+  await expect(readonly.fs.truncate(await readonly.fs.lookup(1, "_index.md"), 0))
+    .rejects.toMatchObject({ code: "EROFS" });
+  expect(readonly.journal!.get("100")).toBeNull();
+  const writable = await fixture(["DOCSY"], "rw", undefined, true);
+  await expect(writable.fs.write(await writable.fs.lookup(1, "_space.json"), 0, Buffer.from("x")))
+    .rejects.toMatchObject({ code: "EROFS" });
+  await expect(writable.fs.truncate(1, 0)).rejects.toMatchObject({ code: "EISDIR" });
+  const file = await writable.fs.lookup(1, "_index.md");
+  await expect(writable.fs.write(file, -1, Buffer.from("x"))).rejects.toMatchObject({ code: "EINVAL" });
+  await expect(writable.fs.write(file, 0, new Uint8Array(NFS_MAX_READ + 1))).rejects.toMatchObject({ code: "EINVAL" });
+  expect(writable.journal!.get("100")).toBeNull();
 });

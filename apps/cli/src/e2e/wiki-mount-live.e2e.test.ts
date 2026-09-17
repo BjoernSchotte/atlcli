@@ -23,6 +23,7 @@ import { join } from "node:path";
 import { getActiveProfile, loadConfig, type Profile } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { NfsFilesystem } from "../vfs/nfs-filesystem.js";
 import { NfsJournal } from "../vfs/nfs-journal.js";
 import { NfsPublisher } from "../vfs/nfs-publisher.js";
 import { startWebdavServer, type RunningWebdavServer } from "../vfs/webdav-server.js";
@@ -95,10 +96,14 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     try {
       const path = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`);
       const original = await vfs.readFile(path);
-      journal.admit(page.id, path, Buffer.from(original), page.version ?? 1);
+      const fs = new NfsFilesystem(vfs, [E2E_SPACE_KEY], undefined, journal);
+      let handle = 1;
+      for (const part of path.split("/").slice(2)) handle = await fs.lookup(handle, part);
       const edited = Buffer.from(original.replace("Journal original", "Journal saved"));
-      journal.truncate(page.id, edited.length);
-      journal.write(page.id, 0, edited);
+      await fs.truncate(handle, edited.length);
+      await fs.write(handle, 0, edited);
+      expect((await fs.getattr(handle)).size).toBe(edited.length);
+      expect(Buffer.from((await fs.read(handle, 0, edited.length)).data, "base64")).toEqual(edited);
       const publisher = new NfsPublisher(journal, vfs, [E2E_SPACE_KEY]);
       expect((await publisher.publish(page.id))?.version).toBe((page.version ?? 1) + 1);
       const actual = await client.getPage(page.id);

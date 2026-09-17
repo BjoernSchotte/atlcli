@@ -1708,3 +1708,31 @@ local revisions after one's own successful publication remains to be connected.
 NFS WRITE/SETATTR/COMMIT, completion-boundary scheduling, namespace operations,
 recovery lifecycle and native editor acceptance remain open. The production NFS
 transport still advertises RO; this executor is not yet wired to its bridge.
+
+
+## Slice 66 — durable byte staging in the NFS projection
+
+`NfsFilesystem` now accepts an optional journal and exposes byte-range write and
+truncate methods for existing writable page bodies. Admission checks the core's
+file mode and page identity/version, and reuses the journal's non-evictable SQLite
+storage. Writes return after its durable transaction. Read and getattr serve the
+same staged byte image, including incomplete UTF-8 during chunk assembly, exact
+sizes and stable per-image modification times. Aliases read the same page record.
+
+Without a journal the adapter rejects writes; read-only core files and generated
+views remain protected even when a journal is supplied. This is not yet wired to
+the helper's WRITE/SETATTR RPCs: the production NFS transport remains read-only.
+
+- macOS and Linux adapter suites: 36 passed, 530 assertions each. New cases cover
+  reversed byte-by-byte UTF-8 writes, truncate-to-zero, sparse extension, alias
+  reads, exact size, stable mtime, invalid ranges and read-only/generated guards.
+- Linux mayflower/DOCSY live publication test now writes and truncates through
+  this adapter, checks local read-your-writes and size, then publishes via the
+  Slice 65 executor and verifies the API version/content: one passed, seven
+  assertions; synthetic page deleted. The four macOS-only kernel tests are skipped
+  in that Linux invocation, not claimed as native write acceptance.
+- `bun run typecheck`: all four tasks passed; `git diff --check` clean.
+
+Remaining integration includes helper RPCs and error mapping, COMMIT/save-boundary
+scheduling, lifecycle of clean admitted records (so later remote edits refresh),
+rebasing newer edits, namespace mutations, recovery and native editor saves.
