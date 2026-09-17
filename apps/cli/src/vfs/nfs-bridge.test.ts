@@ -1262,6 +1262,14 @@ with socket.socket() as client:
       expect(client.callsTo("createPage")).toBe(5);
     } finally { await bodyDescriptor.close(); await directoryDescriptor.close(); }
 
+    const removedDirectory = join(mountpoint, "child-0-400");
+    // Generated views remain read-only, even with deletion enabled. rm -r can
+    // fail on those views after/before _index.md has already trashed the page.
+    await expect(promisify(execFile)("rm", ["-r", removedDirectory], { timeout: 5000 }))
+      .rejects.toMatchObject({ code: 1 });
+    expect(client.isTrashed("400")).toBe(true);
+    expect(journal!.trashIntent("400")?.completed).toBe(1);
+    await expect(stat(removedDirectory)).rejects.toMatchObject({ code: "ENOENT" });
     }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [

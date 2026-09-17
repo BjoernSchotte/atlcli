@@ -179,6 +179,12 @@ visible name makes its directories eligible for publication. Public NFS RW
 remains gated until the complete acceptance suite passes.
 
 Deletion moves a page to the **trash**; there is no purge.
+To trash a page in a development NFS RW mount with deletion enabled, remove
+its `_index.md`. Do not use `rm -r` as an atomic page deletion: generated
+comments, versions and attachment views remain protected, so the command can
+exit unsuccessfully even though removing `_index.md` has already trashed the
+page. Inspect the result before retrying. Deleted handles become stale; open
+descriptors do not guarantee continued access after deletion.
 The space homepage cannot be moved, renamed or deleted through filesystem
 operations. Its `_index.md` body remains editable in write mode.
 

@@ -4227,3 +4227,22 @@ assertions each. Typecheck passed all four tasks. Linux DOCSY LIVE journal
 resume/publication passed: one test / five assertions; the four macOS-only
 tests were skipped, not claimed as passing. The fixture cleans up its owned
 page. Public NFS RW remains gated pending final acceptance.
+
+## Slice 157: native recursive-removal semantics
+
+The native RW test now invokes the system `rm -r` on an owned synthetic leaf
+page on both macOS and Linux. It verifies a nonzero exit, confirmed remote
+trash of that page, a completed durable trash receipt, and disappearance of
+the original directory. Generated comments/version/attachment views remain
+protected; removing `_index.md` can still trash the page during a recursive
+walk. Recursive deletion is therefore not an atomic operation. User docs now
+state this explicitly and recommend targeted body removal. No protection was
+weakened to make recursive removal appear successful. Existing adapter tests
+cover ESTALE after confirmed trash and reject writes during DELETE.
+
+Both native RW runs passed: one test / 87 assertions per host, also covering
+Vim creation/replacement, mkdir publication, moves, locks and byte writes.
+Mounts detached normally. Typecheck passed all four tasks. Linux DOCSY LIVE
+journal resume passed: one test / five assertions, four host-specific tests
+skipped; owned page cleanup completed. This is synthetic native deletion
+evidence, not a claim of a real-tenant recursive deletion test.
