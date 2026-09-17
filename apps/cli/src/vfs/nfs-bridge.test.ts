@@ -195,6 +195,9 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const folderMetadata = await lookupHandle(folder, "_index.md");
     const attachments = await lookupHandle(directory, "_attachments");
     const attachment = await lookupHandle(attachments, "proof.txt");
+    const comments = await lookupHandle(directory, ".comments.md");
+    const versions = await lookupHandle(directory, ".versions");
+    const historic = await lookupHandle(versions, "1.md");
     await client.movePage("400", "401");
     await vfs.index.loadChildren("100", { force: true });
     const read = await rpc(server, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 65536)]));
@@ -218,6 +221,15 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(await lookupHandle(directory, "..")).toEqual(newParent);
     expect(await lookupHandle(newParent, "child-0-400")).toEqual(directory);
     expect(await lookupHandle(directory, "_index.md")).toEqual(file);
+    expect(await lookupHandle(directory, ".comments.md")).toEqual(comments);
+    expect(await lookupHandle(directory, ".versions")).toEqual(versions);
+    expect(await lookupHandle(versions, "1.md")).toEqual(historic);
+    for (const [handle, suffix] of [[comments, ".comments.md"], [historic, ".versions/1.md"]] as const) {
+      const body = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, 0, 65536)]));
+      expect(body.readUInt32BE()).toBe(0);
+      expect(body.subarray(20, 20 + body.readUInt32BE(16))).toEqual(
+        Buffer.from(await vfs.readFileBytes(`/DOCSY/child-1-401/child-0-400/${suffix}`)));
+    }
   });
 
   it("rejects old handles after restarting a helper even when file IDs are reused", async () => {

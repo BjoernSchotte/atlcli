@@ -272,6 +272,11 @@ For current Markdown pages and page aliases, GETATTR derives the modification
 time from the same materialized Markdown used for its exact byte size when
 Confluence supplies the version timestamp. A cold fetch therefore cannot pair
 the newer body's size with the preceding metadata lookup's older timestamp.
+Historic `.versions/<n>.md` uses that version's own timestamp in its Markdown
+and NFS attributes, not the current page timestamp. If the historic response
+omits it, the Markdown omits it and NFS reports an unknown time (Unix epoch).
+Handles for `.comments.md`, `.versions` and its version files follow their
+owner page across rename/reparent operations within the export.
 
 When a refreshed listing observes a moved page or folder, the shared tree index
 removes its old parent association while retaining its already loaded children.

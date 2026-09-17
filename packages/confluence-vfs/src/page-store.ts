@@ -254,7 +254,7 @@ export class PageStore {
       path,
     );
     const markdown = renderPageMarkdown(
-      { ...node, title: page.title, version },
+      { ...node, title: page.title, version, lastModified: page.lastModified },
       page.storage,
       this.opts.instanceUrl,
     );

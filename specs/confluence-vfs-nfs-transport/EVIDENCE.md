@@ -1156,3 +1156,31 @@ The adapter tests additionally cover relocation between two selected spaces,
 a cached owner subsequently moved outside the export, malformed backend paths
 and wrong returned attachment IDs. Generated-view identities and the remaining
 RW/publication/snapshot acceptance are still separate open work.
+
+## Slice 43 — generated page-view identities and historic timestamps
+
+The existing object-view classification now recognizes the stable IDs for a
+page's comments, versions directory and individual historic versions. They
+reuse the existing parent-handle recovery instead of baking the current path
+into identity. Rename/reparent preserves their handles; moving the owner outside
+the export makes them stale. Distinct pages remain distinct views.
+
+Historical Markdown rendering previously inherited the current page timestamp.
+It now uses the timestamp supplied for the requested historic version. NFS
+GETATTR reads the same materialized historic Markdown for size and timestamp.
+An omitted historic timestamp stays omitted; the adapter reports epoch rather
+than claiming the current page's modification time.
+
+Validation:
+- macOS: 401 core/adapter/WebDAV tests, 1361 assertions, passed.
+- Linux: 66 PageStore/adapter tests, 482 assertions, passed.
+- macOS and Linux: five real-helper/native tests, 103 assertions, passed,
+  including opaque comments/version handles read after their owner moved.
+- Typecheck passed all four tasks. Linux basic native cases used live DOCSY
+  and DOCSY+mayflower read-only; mutation fixtures and all macOS cases were
+  synthetic. All mounts detached normally and no live content was modified.
+
+The regressions check renamed/reparented views, cross-page identity separation,
+foreign-owner rejection, historic bytes with a newer current page, and missing
+historic timestamps. This does not resolve multi-READ snapshot publication or
+the remaining RW/editor acceptance gates.

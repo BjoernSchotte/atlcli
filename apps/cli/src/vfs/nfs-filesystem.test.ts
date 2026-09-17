@@ -444,3 +444,55 @@ it("checks fresh owner scope and rejects malformed attachment relocation metadat
   expect(client.callsTo("downloadAttachment")).toBe(0);
   expect(client.callsTo("getPage")).toBe(0);
 });
+
+it("keeps comments and historic-version handles attached to a renamed and reparented page", async () => {
+  const { fs, vfs } = await fixture(["DOCSY"], "rw");
+  const page = await fs.lookup(1, "child-0-200");
+  const comments = await fs.lookup(page, ".comments.md");
+  const versions = await fs.lookup(page, ".versions");
+  const historic = await fs.lookup(versions, "1.md");
+  const commentBytes = await fs.read(comments, 0, 65536);
+  const historicBytes = await fs.read(historic, 0, 65536);
+  const otherPage = await fs.lookup(1, "child-1-201");
+  expect(await fs.lookup(otherPage, ".comments.md")).not.toBe(comments);
+  expect(await fs.lookup(await fs.lookup(otherPage, ".versions"), "1.md")).not.toBe(historic);
+  await vfs.rename("/DOCSY/child-0-200", "/DOCSY/child-1-201/moved-200");
+  expect(await fs.read(historic, 0, 65536)).toEqual(historicBytes);
+  // Rendered comment headings may change with the page title, but identity remains.
+  expect((await fs.read(comments, 0, 65536)).eof).toBe(commentBytes.eof);
+  expect(await fs.lookup(page, ".comments.md")).toBe(comments);
+  expect(await fs.lookup(page, ".versions")).toBe(versions);
+  expect(await fs.lookup(versions, "1.md")).toBe(historic);
+  expect(await fs.lookup(versions, "..")).toBe(page);
+  await vfs.rename("/DOCSY/child-1-201/moved-200", "/mayflower/outside-200");
+  for (const id of [comments, versions, historic]) {
+    await expect(fs.getattr(id)).rejects.toMatchObject({ code: "ESTALE" });
+  }
+});
+
+it("uses the historic version timestamp for its Markdown and exact NFS attributes", async () => {
+  const { fs, vfs, client } = await fixture();
+  const original = await client.getPageAtVersion("200", 1);
+  await client.updatePage({ id: "200", title: "Child 0", storage: "<p>New version</p>", version: 2 });
+  await vfs.readFile("/DOCSY/child-0-200/_index.md");
+  const page = await fs.lookup(1, "child-0-200");
+  const historic = await fs.lookup(await fs.lookup(page, ".versions"), "1.md");
+  const attributes = await fs.getattr(historic);
+  const data = Buffer.from((await fs.read(historic, 0, 65536)).data, "base64");
+  expect(data.toString()).toContain(original.lastModified!);
+  expect(attributes.mtime).toBe(Date.parse(original.lastModified!));
+  expect(attributes.size).toBe(data.length);
+  expect(data.toString()).toContain("Body 0");
+  expect(data.toString()).not.toContain("New version");
+});
+
+it("does not label historic content with the current timestamp when the historic API omits it", async () => {
+  const { fs, vfs, client } = await fixture();
+  await client.updatePage({ id: "200", title: "Child 0", storage: "<p>New version</p>", version: 2 });
+  await vfs.readFile("/DOCSY/child-0-200/_index.md");
+  const get = client.getPageAtVersion.bind(client);
+  client.getPageAtVersion = async (id, version) => ({ ...await get(id, version), lastModified: undefined });
+  const historic = await fs.lookup(await fs.lookup(await fs.lookup(1, "child-0-200"), ".versions"), "1.md");
+  expect((await fs.getattr(historic)).mtime).toBe(0);
+  expect(Buffer.from((await fs.read(historic, 0, 65536)).data, "base64").toString()).not.toContain("lastModified:");
+});
