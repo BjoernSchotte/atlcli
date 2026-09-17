@@ -1736,3 +1736,44 @@ the helper's WRITE/SETATTR RPCs: the production NFS transport remains read-only.
 Remaining integration includes helper RPCs and error mapping, COMMIT/save-boundary
 scheduling, lifecycle of clean admitted records (so later remote edits refresh),
 rebasing newer edits, namespace mutations, recovery and native editor saves.
+
+
+## Slice 67 — real WRITE/SETATTR RPCs backed by the journal
+
+Private bridge version 4 adds bounded canonical-base64 WRITE and size-only
+SETATTR forwarding. Passing a journal to the internal server constructor opts
+into the helper's `staged-rw` handshake; the user CLI does not enable this mode.
+Rust advertises the implemented write transfer limit (1 MiB) and default journal
+file limit (64 MiB). Page attributes reflect core writability. Existing directory
+and generated-file protections remain enforced in Bun.
+
+Successful WRITE receives FILE_SYNC only after the synchronous durable journal
+transaction and post-write attributes complete. That is local durability, not a
+Confluence publication acknowledgement. Identical retransmissions retain the
+journal revision. Quota exhaustion maps to NFS3ERR_NOSPC; unsupported SETATTR
+metadata is rejected before applying an accompanying size change. COMMIT and
+namespace operations remain unimplemented and are not claimed as accepted RW.
+
+Verification:
+
+- macOS and Linux: final real TCP/Rust/Bun WRITE/SETATTR test passed with 33
+  assertions each: split UTF-8, reordered ranges, exact reads, FILE_SYNC, replay,
+  growth, quota rollback, unsupported compound attributes and FSINFO limits.
+- Both hosts: immutable snapshot wire regression passed; six Rust tests passed,
+  helper builds and clippy with warnings denied passed.
+- macOS native RO regression: six passed, 658 assertions; optional Glow skipped.
+  Linux native RO plus mutation rejection: seven passed, 693 assertions; optional
+  Glow skipped. Single- and multi-space roots, attachments, external changes,
+  changing directories and immutable snapshots remain covered.
+- macOS adapter/journal/framing suites: 54 passed, 920 assertions. Bridge fault
+  suite: five passed, 11 assertions; opt-in real-helper pipe-death test skipped
+  in that invocation.
+- Linux mayflower/DOCSY journal-publication live test: one passed, seven
+  assertions; synthetic page cleaned up. This tests adapter-to-API publication,
+  not yet automatic RPC-to-API publication.
+- Typecheck: all four tasks passed.
+
+Next requirements remain COMMIT and save-boundary scheduling, clean-record
+refresh, newer-edit rebasing, namespace operations, native RW permissions/editor
+behavior and lifecycle recovery. Production CLI NFS remains RO until those are
+validated; no native RW editor acceptance is claimed here.

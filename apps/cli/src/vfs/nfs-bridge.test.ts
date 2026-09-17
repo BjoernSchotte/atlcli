@@ -13,6 +13,7 @@ import { runMountCommand } from "../commands/wiki-mount.js";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { nfsMountOptionsFor } from "./mount-transport.js";
+import { NfsJournal } from "./nfs-journal.js";
 import { startNfsServer, type RunningNfsServer } from "./nfs-bridge.js";
 import { encodeNfsFrame, readNfsFrames } from "./nfs-framing.js";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES } from "./mount-client-probes.js";
@@ -52,7 +53,8 @@ async function rpc(server: Pick<RunningNfsServer, "port">, program: number, proc
     socket.on("end", () => reject(new Error("RPC closed before reply")));
   });
 }
-async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now()) {
+async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now(), writable = false) {
+  if (live && writable) throw new Error("RW wire fixtures must be synthetic");
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-wire-"));
   const client = new FakeConfluenceClient()
     .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
@@ -66,14 +68,58 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
   const profile = live ? getActiveProfile(await loadConfig(), "mayflower") : undefined;
   if (live && !profile) throw new Error("Missing mayflower test profile");
   const vfs = await ConfluenceVfsImpl.open({ profile: profile?.name ?? "fixture",
-    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: "ro", allowDelete: false, offline: false, cacheDir, now });
-  cleanups.push(async () => { await vfs.close(); rmSync(cacheDir, { recursive: true, force: true }); });
-  const server = await startNfsServer({ vfs, spaces, helperPath: resolve(helperPath!) });
+    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: writable ? "rw" : "ro", allowDelete: false, offline: false, cacheDir, now });
+  const journal = writable ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY", 512, 2048) : undefined;
+  cleanups.push(async () => { await vfs.close(); journal?.close(); rmSync(cacheDir, { recursive: true, force: true }); });
+  const server = await startNfsServer({ vfs, spaces, journal, helperPath: resolve(helperPath!) });
   cleanups.push(() => server.stop());
-  return { server, vfs, client };
+  return { server, vfs, client, journal };
 }
 
 describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
+  it("acknowledges journal-backed WRITE as FILE_SYNC and applies SETATTR sizes", async () => {
+    const { server, journal, client } = await fixture(["DOCSY"], false, () => Date.now(), true);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("_index.md"))]));
+    expect(lookup.readUInt32BE()).toBe(0);
+    const file = lookup.subarray(8, 8 + lookup.readUInt32BE(4));
+    const info = await rpc(server, 100003, 19, opaque(file));
+    expect(info.readUInt32BE(104)).toBe(1024 * 1024);
+    expect(info.readBigUInt64BE(info.length - 20)).toBe(BigInt(64 * 1024 * 1024));
+    const truncate = async (size: number) => rpc(server, 100003, 2,
+      Buffer.concat([opaque(file), ints(0, 0, 0, 1, 0, size, 0, 0, 0)]));
+    expect((await truncate(0)).readUInt32BE()).toBe(0);
+    const bytes = Buffer.from("Grüße 🐴");
+    const cut = bytes.length - 2;
+    for (const [offset, data] of [[cut, bytes.subarray(cut)], [0, bytes.subarray(0, cut)]] as const) {
+      const reply = await rpc(server, 100003, 7,
+        Buffer.concat([opaque(file), ints(0, offset, data.length, 0), opaque(data)]));
+      expect(reply.readUInt32BE()).toBe(0);
+      expect(reply.readUInt32BE(120)).toBe(data.length);
+      expect(reply.readUInt32BE(124)).toBe(2); // FILE_SYNC: durable locally, not yet published.
+    }
+    expect(Buffer.from(journal!.get("100")!.bytes)).toEqual(bytes);
+    const read = await rpc(server, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 1024)]));
+    expect(read.readUInt32BE()).toBe(0);
+    expect(read.subarray(20, 20 + read.readUInt32BE(16))).toEqual(bytes);
+    const revision = journal!.get("100")!.revision;
+    const replay = await rpc(server, 100003, 7,
+      Buffer.concat([opaque(file), ints(0, 0, bytes.length, 2), opaque(bytes)]));
+    expect(replay.readUInt32BE()).toBe(0);
+    expect(journal!.get("100")!.revision).toBe(revision);
+    expect((await truncate(bytes.length + 3)).readUInt32BE()).toBe(0);
+    expect(journal!.get("100")!.bytes.length).toBe(bytes.length + 3);
+    // Unsupported metadata changes must not partially apply the accompanying truncate.
+    const unsupported = await rpc(server, 100003, 2,
+      Buffer.concat([opaque(file), ints(1, 0o600, 0, 0, 1, 0, 0, 0, 0, 0)]));
+    expect(unsupported.readUInt32BE()).toBe(10004);
+    expect(journal!.get("100")!.bytes.length).toBe(bytes.length + 3);
+    expect((await truncate(700)).readUInt32BE()).toBe(28); // NFS3ERR_NOSPC
+    expect(journal!.get("100")!.bytes.length).toBe(bytes.length + 3);
+    expect(client.callsTo("updatePage")).toBe(0);
+  });
+
   it("preserves immutable version bytes across split-UTF8 wire reads and an external move", async () => {
     let clock = Date.now();
     const { server, client, vfs } = await fixture(["DOCSY", "mayflower"], false, () => clock);

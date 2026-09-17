@@ -1,8 +1,9 @@
 import { SweepDetector, type SweepReport } from "./mount-client-probes.js";
 import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
-import type { ConfluenceVfs } from "@atlcli/confluence-vfs";
-import { NfsFilesystem } from "./nfs-filesystem.js";
+import { VfsError, type ConfluenceVfs } from "@atlcli/confluence-vfs";
+import type { NfsJournal } from "./nfs-journal.js";
+import { NfsFilesystem, NFS_MAX_READ } from "./nfs-filesystem.js";
 import { encodeNfsFrame, NFS_BRIDGE_VERSION, readNfsFrames } from "./nfs-framing.js";
 
 export interface RunningNfsServer {
@@ -25,13 +26,13 @@ function number(value: unknown): number {
 }
 
 export async function startNfsServer(options: {
-  vfs: ConfluenceVfs; spaces: readonly string[]; helperPath: string; port?: number; onSweep?: (report: SweepReport) => void;
+  vfs: ConfluenceVfs; spaces: readonly string[]; journal?: NfsJournal; helperPath: string; port?: number; onSweep?: (report: SweepReport) => void;
 }): Promise<RunningNfsServer> {
   const port = options.port ?? 0;
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Invalid NFS port");
   if (!isAbsolute(options.helperPath)) throw new Error("NFS helper path must be absolute");
-  const fs = new NfsFilesystem(options.vfs, options.spaces, new SweepDetector(50, 10_000, options.onSweep));
-  const child = spawn(options.helperPath, [String(port)], { stdio: ["pipe", "pipe", "pipe"], env: {} });
+  const fs = new NfsFilesystem(options.vfs, options.spaces, new SweepDetector(50, 10_000, options.onSweep), options.journal);
+  const child = spawn(options.helperPath, [String(port), ...(options.journal ? ["--staged-rw"] : [])], { stdio: ["pipe", "pipe", "pipe"], env: {} });
   // Drain diagnostic output without collecting unbounded or tenant-derived text.
   child.stderr.resume();
   let resolveExit!: () => void;
@@ -65,6 +66,16 @@ export async function startNfsServer(options: {
           result = await fs.lookup(number(args.parent), args.name); break;
         case "getattr": result = await fs.getattr(number(args.file)); break;
         case "read": result = await fs.read(number(args.file), number(args.offset), number(args.count)); break;
+        case "write": {
+          if (typeof args.data !== "string" || args.data.length > Math.ceil(NFS_MAX_READ / 3) * 4) throw new VfsError("EINVAL", "Invalid NFS write data");
+          const bytes = Buffer.from(args.data, "base64");
+          if (bytes.toString("base64") !== args.data || bytes.length > NFS_MAX_READ) throw new VfsError("EINVAL", "Invalid NFS write data");
+          await fs.write(number(args.file), number(args.offset), bytes);
+          result = await fs.getattr(number(args.file)); break;
+        }
+        case "truncate":
+          await fs.truncate(number(args.file), number(args.size));
+          result = await fs.getattr(number(args.file)); break;
         case "readdir":
           if (typeof args.verifier !== "string" || !/^[0-9a-f]{16}$/.test(args.verifier)) throw new Error("Invalid NFS directory verifier");
           result = await fs.readdir(number(args.file), number(args.after), number(args.count), args.verifier); break;
@@ -72,7 +83,7 @@ export async function startNfsServer(options: {
       }
     } catch (error) {
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "EIO";
-      await reply({ id, error: code });
+      await reply({ id, error: code === "SQLITE_FULL" ? "ENOSPC" : code });
       return;
     }
     await reply({ id, result });
@@ -85,7 +96,7 @@ export async function startNfsServer(options: {
         const message = record(raw);
         if (!initialized) {
           const bound = number(message.port);
-          if (message.hello !== NFS_BRIDGE_VERSION || message.mode !== "ro" || bound < 1 || bound > 65535 || (port !== 0 && port !== bound)) {
+          if (message.hello !== NFS_BRIDGE_VERSION || message.mode !== (options.journal ? "staged-rw" : "ro") || bound < 1 || bound > 65535 || (port !== 0 && port !== bound)) {
             throw new Error("Incompatible NFS helper handshake");
           }
           initialized = true;

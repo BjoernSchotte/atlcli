@@ -42,6 +42,7 @@ async fn send_request(
     .map_err(|_| nfsstat3::NFS3ERR_IO)?
 }
 struct Bridge {
+    writable: bool,
     session: [u8; 16],
     pending: Pending,
     sequence: AtomicU64,
@@ -112,7 +113,13 @@ fn attr(v: &Value) -> Result<fattr3, nfsstat3> {
         } else {
             ftype3::NF3REG
         },
-        mode: if directory { 0o555 } else { 0o444 },
+        mode: if directory {
+            0o555
+        } else if v["writable"].as_bool() == Some(true) {
+            0o644
+        } else {
+            0o444
+        },
         nlink: 1,
         size,
         used: size,
@@ -130,7 +137,11 @@ fn name(bytes: &[u8]) -> Result<&str, nfsstat3> {
 #[async_trait]
 impl NFSFileSystem for Bridge {
     fn capabilities(&self) -> VFSCapabilities {
-        VFSCapabilities::ReadOnly
+        if self.writable {
+            VFSCapabilities::ReadWrite
+        } else {
+            VFSCapabilities::ReadOnly
+        }
     }
     fn root_dir(&self) -> fileid3 {
         1
@@ -238,11 +249,15 @@ impl NFSFileSystem for Bridge {
             rtmax: 1024 * 1024,
             rtpref: 128 * 1024,
             rtmult: 4096,
-            wtmax: 0,
-            wtpref: 0,
+            wtmax: if self.writable { 1024 * 1024 } else { 0 },
+            wtpref: if self.writable { 128 * 1024 } else { 0 },
             wtmult: 4096,
             dtpref: 16384,
-            maxfilesize: 128 * 1024 * 1024 * 1024,
+            maxfilesize: if self.writable {
+                64 * 1024 * 1024
+            } else {
+                128 * 1024 * 1024 * 1024
+            },
             time_delta: nfstime3 {
                 seconds: 0,
                 nseconds: 1_000_000,
@@ -250,11 +265,42 @@ impl NFSFileSystem for Bridge {
             properties: 0,
         })
     }
-    async fn setattr(&self, _: fileid3, _: sattr3) -> Result<fattr3, nfsstat3> {
-        Err(nfsstat3::NFS3ERR_ROFS)
+    async fn setattr(&self, id: fileid3, value: sattr3) -> Result<fattr3, nfsstat3> {
+        if !self.writable {
+            return Err(nfsstat3::NFS3ERR_ROFS);
+        }
+        if !matches!(value.mode, set_mode3::Void)
+            || !matches!(value.uid, set_uid3::Void)
+            || !matches!(value.gid, set_gid3::Void)
+            || !matches!(value.atime, set_atime::DONT_CHANGE)
+            || !matches!(value.mtime, set_mtime::DONT_CHANGE)
+        {
+            return Err(nfsstat3::NFS3ERR_NOTSUPP);
+        }
+        match value.size {
+            set_size3::size(size) => attr(
+                &self
+                    .call("truncate", json!({"file":id,"size":size}))
+                    .await?,
+            ),
+            set_size3::Void => self.getattr(id).await,
+        }
     }
-    async fn write(&self, _: fileid3, _: u64, _: &[u8]) -> Result<fattr3, nfsstat3> {
-        Err(nfsstat3::NFS3ERR_ROFS)
+    async fn write(&self, id: fileid3, offset: u64, bytes: &[u8]) -> Result<fattr3, nfsstat3> {
+        if !self.writable {
+            return Err(nfsstat3::NFS3ERR_ROFS);
+        }
+        if bytes.len() > 1024 * 1024 {
+            return Err(nfsstat3::NFS3ERR_INVAL);
+        }
+        attr(
+            &self
+                .call(
+                    "write",
+                    json!({"file":id,"offset":offset,"data":STANDARD.encode(bytes)}),
+                )
+                .await?,
+        )
     }
     async fn create(
         &self,
@@ -314,10 +360,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "0".into())
         .parse()?;
+    let writable = std::env::args().nth(2).as_deref() == Some("--staged-rw");
     let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
     let mut session = [0; 16];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut session)?;
     let bridge = Bridge {
+        writable,
         session,
         pending: pending.clone(),
         sequence: AtomicU64::new(1),
@@ -326,7 +374,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server = Arc::new(NFSTcpListener::bind(&format!("127.0.0.1:{port}"), bridge).await?);
     write_frame(
         &mut std::io::stdout().lock(),
-        &json!({"hello":BRIDGE_VERSION,"port":server.get_listen_port(),"mode":"ro"}),
+        &json!({"hello":BRIDGE_VERSION,"port":server.get_listen_port(),"mode":if writable { "staged-rw" } else { "ro" }}),
     )?;
     let (closed_tx, closed_rx) = oneshot::channel::<()>();
     let metrics_server = server.clone();
@@ -373,6 +421,7 @@ mod tests {
 
     fn bridge(session: [u8; 16]) -> Bridge {
         Bridge {
+            writable: false,
             session,
             pending: Arc::new(Mutex::new(HashMap::new())),
             sequence: AtomicU64::new(1),

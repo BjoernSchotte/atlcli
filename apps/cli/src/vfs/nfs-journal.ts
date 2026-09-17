@@ -1,3 +1,4 @@
+import { VfsError } from "@atlcli/confluence-vfs";
 import { Database } from "bun:sqlite";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -87,7 +88,7 @@ export class NfsJournal {
       const existing = this.get(id);
       if (existing) return existing;
       if (this.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM files").get()!.count >= this.maxFiles) {
-        throw new Error("NFS journal file-count quota exceeded");
+        throw new VfsError("ENOSPC", "NFS journal file-count quota exceeded");
       }
       this.checkQuota(bytes.byteLength);
       this.db.run("INSERT INTO files VALUES (?, ?, ?, ?, 0, 0, NULL)", [id, path, bytes, baseVersion]);
@@ -99,7 +100,7 @@ export class NfsJournal {
     const used = this.db.query<{ size: number }, []>(
       "SELECT (SELECT COALESCE(SUM(length(bytes)),0) FROM files)+(SELECT COALESCE(SUM(length(bytes)),0) FROM intents) AS size",
     ).get()!.size;
-    if (additional > this.maxFileBytes || used + additional > this.maxBytes) throw new Error("NFS journal quota exceeded");
+    if (additional > this.maxFileBytes || used + additional > this.maxBytes) throw new VfsError("ENOSPC", "NFS journal quota exceeded");
   }
 
   private change(id: string, size: (oldSize: number) => number, update: (bytes: Uint8Array) => void): StagedNfsFile {
@@ -107,7 +108,7 @@ export class NfsJournal {
       const old = this.get(id);
       if (!old) throw new Error("Unknown NFS journal file");
       const length = size(old.bytes.byteLength);
-      if (!Number.isSafeInteger(length) || length < 0 || length > this.maxFileBytes) throw new Error("Invalid NFS journal file size");
+      if (!Number.isSafeInteger(length) || length < 0 || length > this.maxFileBytes) throw new VfsError("EINVAL", "Invalid NFS journal file size");
       this.checkQuota(length - old.bytes.byteLength);
       const bytes = new Uint8Array(length);
       bytes.set(old.bytes.subarray(0, length));
@@ -120,7 +121,7 @@ export class NfsJournal {
   }
 
   write(id: string, offset: number, bytes: Uint8Array): StagedNfsFile {
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset > this.maxFileBytes - bytes.byteLength) throw new Error("Invalid NFS write range");
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > this.maxFileBytes - bytes.byteLength) throw new VfsError("EINVAL", "Invalid NFS write range");
     if (bytes.byteLength === 0) {
       const file = this.get(id);
       if (!file) throw new Error("Unknown NFS journal file");

@@ -11,6 +11,7 @@ export interface NfsAttributes {
   directory: boolean;
   size: number;
   mtime: number;
+  writable?: boolean;
 }
 
 /** Protocol projection. All paths are resolved inside the selected export. */
@@ -297,7 +298,7 @@ export class NfsFilesystem {
       if (!entry.rendered || entry.rendered.hash !== hash) {
         entry.rendered = { hash, mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1, stat.mtime.getTime() + 1) };
       }
-      return { id, directory: false, size: staged.bytes.byteLength, mtime: entry.rendered.mtime };
+      return { id, directory: false, size: staged.bytes.byteLength, mtime: entry.rendered.mtime, writable: !!(stat.mode & 0o222) };
     }
     // Never publish estimated sizes to a kernel client.
     const bytes = stat.isDirectory || (stat.kind === "attachment" && !stat.sizeEstimated)
@@ -326,7 +327,8 @@ export class NfsFilesystem {
     if (stat.isDirectory) {
       mtime = refreshDirectory ? (await this.directoryView(id, path)).mtime : this.directories.get(id)?.mtime ?? mtime;
     }
-    return { id, directory: stat.isDirectory, size, mtime };
+    return { id, directory: stat.isDirectory, size, mtime,
+      writable: !!this.journal && stat.kind === "page" && !stat.isDirectory && !!(stat.mode & 0o222) };
   }
 
   async read(id: number, offset: number, count: number): Promise<{ data: string; eof: boolean }> {
