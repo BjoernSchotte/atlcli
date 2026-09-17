@@ -51,6 +51,9 @@ export interface ConfluenceVfs {
   /** Resolve a folder identity within one selected space, without downloading bodies. */
   folderPath(id: string, spaceKey: string): Promise<string>;
 
+  /** Resolve an attachment ID inside one selected space, without downloading bytes. */
+  attachmentPath(id: string, spaceKey: string): Promise<string>;
+
   /** Resolve a path to its node without the `stat` projection. */
   resolve(path: string): Promise<VfsNode>;
 }

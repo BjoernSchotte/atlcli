@@ -279,6 +279,24 @@ export class VirtualDirs {
     ].join("\n");
   }
 
+  /** Locate only this attachment and its owner; never search a space or fetch a body. */
+  async attachmentPath(id: string, spaceKey: string): Promise<string> {
+    if (!/^[A-Za-z0-9-]{1,256}$/.test(id)) throw new VfsError("EINVAL", "Invalid attachment ID");
+    if (this.opts.offline) throw new VfsError("ENOENT", "Attachment relocation requires online metadata");
+    await this.opts.index.getSpace(spaceKey); // Enforce the configured export before lookup.
+    const attachment = await this.request(() => this.opts.client.getAttachment(id));
+    if (attachment.id !== id || !/^[0-9]+$/.test(attachment.pageId) ||
+        !attachment.filename || /[\/\0]/.test(attachment.filename) ||
+        attachment.filename === "." || attachment.filename === "..") {
+      throw new VfsError("EINVAL", "Invalid attachment identity or filename");
+    }
+    // An owner already in the index may itself have moved across spaces.
+    await this.loadNode(attachment.pageId, spaceKey, "attachment owner", true);
+    const directory = await this.canonicalPath(attachment.pageId, spaceKey, "attachment owner");
+    this.invalidateAttachments(attachment.pageId);
+    return `${directory}/_attachments/${attachment.filename}`;
+  }
+
   /** Recover an existing folder handle without enumerating unrelated branches. */
   async folderPath(id: string, spaceKey: string): Promise<string> {
     if (!/^[0-9]+$/.test(id)) throw new VfsError("EINVAL", "Invalid folder ID");
@@ -320,9 +338,9 @@ export class VirtualDirs {
   }
 
   /** Records a page the index has not walked to, so `stat` can answer. */
-  async loadNode(id: string, spaceKey: string, path: string): Promise<TreeNode> {
+  async loadNode(id: string, spaceKey: string, path: string, force = false): Promise<TreeNode> {
     const known = this.opts.index.node(id);
-    if (known) {
+    if (known && !force) {
       if (known.spaceKey !== spaceKey || known.type !== "page") {
         throw new VfsError("ENOENT", `No such page: ${path}`, { path });
       }
@@ -335,7 +353,7 @@ export class VirtualDirs {
       });
     }
     const page = await this.request(() => this.opts.client.getPageMetadata(id), path);
-    if (page.spaceKey !== spaceKey) {
+    if (page.id !== id || page.spaceKey !== spaceKey) {
       throw new VfsError("ENOENT", `No such page: ${path}`, { path });
     }
     const node = this.opts.index.upsert({

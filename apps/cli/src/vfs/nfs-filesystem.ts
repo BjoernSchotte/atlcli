@@ -65,6 +65,29 @@ export class NfsFilesystem {
     throw Object.assign(new Error("Stale NFS handle; look up the file again"), { code: "ESTALE" });
   }
 
+  private async relocateAttachment(id: number): Promise<string> {
+    const entry = this.paths.get(id)!;
+    const attachmentId = entry.identity.slice("attachment:".length, -":file".length);
+    for (const space of this.spaces) {
+      try {
+        const path = await this.vfs.attachmentPath(attachmentId, space);
+        this.assertExport(path);
+        await this.checkResolvedScope(path);
+        if (this.identity(await this.vfs.stat(path), path) !== entry.identity) {
+          throw new VfsError("EAGAIN", "Attachment moved while resolving its path; retry");
+        }
+        entry.parent = await this.register(posix.dirname(path));
+        entry.name = posix.basename(path);
+        entry.path = path;
+        return path;
+      } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") continue;
+        throw error;
+      }
+    }
+    return this.stale(id);
+  }
+
   private async checkResolvedScope(path: string): Promise<void> {
     const node = await this.vfs.resolve(path);
     if (node.spaceKey && !this.spaces.has(node.spaceKey)) throw new VfsError("EACCES", "Outside NFS export");
@@ -100,7 +123,7 @@ export class NfsFilesystem {
               const candidate = (await this.vfs.readdir(parentPath)).find(child =>
                 child.kind === "attachment" && child.id !== undefined &&
                 `attachment:${child.id}:file` === entry.identity);
-              if (!candidate) return this.stale(id);
+              if (!candidate) throw new VfsError("ENOENT", "Attachment left its previous owner");
               if (!candidate.name || /[\/\0]/.test(candidate.name) || candidate.name === "." || candidate.name === "..") {
                 throw new VfsError("EINVAL", "Invalid attachment filename");
               }
@@ -114,7 +137,9 @@ export class NfsFilesystem {
             return relocated;
           } catch (relocationError) {
             if (relocationError && typeof relocationError === "object" && "code" in relocationError &&
-                (relocationError.code === "ENOENT" || relocationError.code === "ESTALE")) return this.stale(id);
+                (relocationError.code === "ENOENT" || relocationError.code === "ESTALE")) {
+              return entry.identity.startsWith("attachment:") ? this.relocateAttachment(id) : this.stale(id);
+            }
             throw relocationError;
           }
         }

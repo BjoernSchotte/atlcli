@@ -132,6 +132,7 @@ export interface VfsClient {
   getAllComments(pageId: string, options?: { limit?: number }): Promise<PageComments>;
 
   // --- attachments --------------------------------------------------------
+  getAttachment(id: string): Promise<AttachmentInfo>;
   listAttachments(
     pageId: string,
     options?: { limit?: number; signal?: AbortSignal },

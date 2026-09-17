@@ -95,6 +95,20 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(await lookup(directory, "renamed.bin")).toEqual(handle);
     expect(await lookup(directory, "large.bin")).not.toEqual(handle);
     expect(client.callsTo("downloadAttachment")).toBe(1);
+    client.seedAttachment({ id: "a1", pageId: "400", filename: "moved.bin", bytes: attachmentBytes });
+    clock += 60_001;
+    const movedRead = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, 0, 4096)]));
+    expect(movedRead.readUInt32BE()).toBe(0);
+    expect(movedRead.subarray(20, 20 + movedRead.readUInt32BE(16))).toEqual(attachmentBytes.subarray(0, 4096));
+    const newOwner = await lookup(root, "child-0-400");
+    expect(await lookup(await lookup(newOwner, "_attachments"), "moved.bin")).toEqual(handle);
+    expect(client.callsTo("getAttachment")).toBe(1);
+    expect(client.callsTo("getPage")).toBe(0);
+    client.seedAttachment({ id: "a1", pageId: "300", filename: "foreign.bin", bytes: attachmentBytes });
+    clock += 60_001;
+    const foreign = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, 0, 4096)]));
+    expect(foreign.readUInt32BE()).toBe(70);
+    expect(client.callsTo("downloadAttachment")).toBe(1);
   });
 
   it("rejects expired object handles for ACCESS, FSSTAT and PATHCONF", async () => {

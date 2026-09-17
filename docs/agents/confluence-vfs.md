@@ -260,7 +260,10 @@ An NFS attachment handle also survives a filename change within its owner page.
 Recovery matches the attachment ID in that page's cached metadata listing; it
 does not download sibling attachments or search the whole space. Reusing the
 old filename for a different attachment never redirects the original handle.
-Moving an attachment independently to another owner page is not yet recovered.
+If an attachment moves to another owner page, recovery uses its ID and fresh
+owner metadata. The new owner must belong to a selected export space; moves
+outside the export return `ESTALE` without downloading the attachment. No
+whole-space search is used.
 READ currently omits optional NFS attributes rather than combining bytes with
 separately fetched attributes from another version. Clients can use GETATTR;
 concurrent external changes across multiple READ requests are not yet covered

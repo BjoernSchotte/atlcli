@@ -404,3 +404,43 @@ it("preserves renamed attachment handles on a temporary metadata error and confi
   client.seedAttachment({ id: "a1", pageId: "300", filename: "new.txt", bytes });
   await expect(fs.getattr(file)).rejects.toMatchObject({ code: "ESTALE" });
 });
+
+it("recovers attachment handles after an independent owner change inside the export", async () => {
+  const { fs, client } = await fixture(["DOCSY", "mayflower"], "ro", 0);
+  const bytes = Buffer.from("moved attachment Grüße 🐴");
+  client.seedAttachment({ id: "a1", pageId: "100", filename: "old.txt", bytes });
+  const docsy = await fs.lookup(1, "DOCSY");
+  const oldDirectory = await fs.lookup(docsy, "_attachments");
+  const file = await fs.lookup(oldDirectory, "old.txt");
+  client.seedAttachment({ id: "a1", pageId: "200", filename: "new.txt", bytes });
+  expect((await fs.getattr(file)).size).toBe(bytes.length);
+  const child = await fs.lookup(docsy, "child-0-200");
+  const newDirectory = await fs.lookup(child, "_attachments");
+  expect(await fs.lookup(newDirectory, "new.txt")).toBe(file);
+  expect(client.callsTo("getAttachment")).toBe(1);
+  expect(client.callsTo("getPage")).toBe(0);
+  expect(client.callsTo("downloadAttachment")).toBe(0);
+  client.seedAttachment({ id: "a1", pageId: "300", filename: "other.txt", bytes });
+  expect(Buffer.from((await fs.read(file, 0, 1000)).data, "base64")).toEqual(bytes);
+  const other = await fs.lookup(await fs.lookup(1, "mayflower"), "_attachments");
+  expect(await fs.lookup(other, "other.txt")).toBe(file);
+});
+
+it("checks fresh owner scope and rejects malformed attachment relocation metadata", async () => {
+  const { fs, client } = await fixture(["DOCSY"], "ro", 0);
+  const bytes = Buffer.from("private attachment");
+  client.seedAttachment({ id: "a1", pageId: "100", filename: "old.txt", bytes });
+  const file = await fs.lookup(await fs.lookup(1, "_attachments"), "old.txt");
+  await fs.lookup(1, "child-0-200"); // Owner is cached in the original space.
+  client.seedAttachment({ id: "a1", pageId: "200", filename: "new.txt", bytes });
+  const get = client.getAttachment.bind(client);
+  client.getAttachment = async id => ({ ...await get(id), filename: "../escape" });
+  await expect(fs.getattr(file)).rejects.toMatchObject({ code: "EINVAL" });
+  client.getAttachment = async id => ({ ...await get(id), id: "different" });
+  await expect(fs.getattr(file)).rejects.toMatchObject({ code: "EINVAL" });
+  client.getAttachment = get;
+  await client.movePage("200", "300");
+  await expect(fs.read(file, 0, 1000)).rejects.toMatchObject({ code: "ESTALE" });
+  expect(client.callsTo("downloadAttachment")).toBe(0);
+  expect(client.callsTo("getPage")).toBe(0);
+});

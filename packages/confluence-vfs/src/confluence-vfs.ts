@@ -1252,6 +1252,10 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * walk — so a page keeps exactly one home in the tree however many labels,
    * searches or recency windows list it.
    */
+  async attachmentPath(id: string, spaceKey: string): Promise<string> {
+    return this.requireVirtual().attachmentPath(id, spaceKey);
+  }
+
   async folderPath(id: string, spaceKey: string): Promise<string> {
     return this.requireVirtual().folderPath(id, spaceKey);
   }

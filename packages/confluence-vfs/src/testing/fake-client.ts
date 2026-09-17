@@ -622,6 +622,14 @@ export class FakeConfluenceClient implements VfsClient {
     );
   }
 
+  async getAttachment(id: string): Promise<AttachmentInfo> {
+    this.record("getAttachment", id);
+    const attachment = this.attachments.get(id);
+    if (!attachment) throw new FakeHttpError(404, "Confluence API error (404): no attachment");
+    this.mustPage(attachment.pageId);
+    return this.toAttachmentInfo(attachment);
+  }
+
   async listAttachments(pageId: string): Promise<AttachmentInfo[]> {
     this.record("listAttachments", pageId);
     this.mustPage(pageId);

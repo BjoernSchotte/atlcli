@@ -1125,3 +1125,34 @@ Validation:
 Independent moves to another attachment owner still need scoped ID-to-owner
 resolution. Generated-view identities and the broader RW/snapshot acceptance
 are not closed by this slice.
+
+## Slice 42 — scoped attachment owner relocation
+
+Independent attachment moves now recover through the existing Confluence
+getAttachment metadata endpoint. The core validates the returned identity,
+filename and owner ID, checks the owner's freshly fetched space against the
+selected space, resolves that owner's path and invalidates its attachment
+listing. NFS then validates the resolved identity and updates the handle's
+parent/name association. No body is needed for relocation; only a later READ
+downloads attachment bytes.
+
+This extends the deliberately narrow VFS client port with the already existing
+read-only metadata method and adds a scoped attachmentPath operation. Fresh
+owner metadata is mandatory even when the owner was previously cached in the
+allowed space. Invalid filenames/IDs fail before path construction; foreign
+owners do not yield attachment bytes. Temporary errors remain retryable.
+
+Validation:
+- macOS: 398 core/adapter/WebDAV tests, 1343 assertions, passed.
+- Linux: 68 focused adapter/virtual-view/client-port tests, 475 assertions, passed.
+- Both platforms: five real-helper/native tests, 62 assertions, passed. Wire
+  tests move the same opaque handle between owners, then outside the export,
+  and verify original bytes, stable ID and STALE respectively. Basic Linux
+  native cases use live DOCSY and DOCSY+mayflower read-only; all relocation
+  mutations use synthetic fixtures. No live attachment was moved.
+- Typecheck passed all four tasks. Native mounts detached normally.
+
+The adapter tests additionally cover relocation between two selected spaces,
+a cached owner subsequently moved outside the export, malformed backend paths
+and wrong returned attachment IDs. Generated-view identities and the remaining
+RW/publication/snapshot acceptance are still separate open work.
