@@ -1,0 +1,68 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["bun", "npm", "github-actions", "asdf", "custom.regex"],
+  "timezone": "Europe/Berlin",
+  "schedule": ["* 0-6 * * 1"],
+  "prConcurrentLimit": 3,
+  "automerge": false,
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/fixtures/**",
+    "spec/**",
+    "specs/**",
+    "spikes/**"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/reusable-release-artifacts\\.yml$/"
+      ],
+      "matchStrings": [
+        "BUN_VERSION: \"(?<currentValue>[^\"\\s]+)\""
+      ],
+      "depNameTemplate": "bun",
+      "datasourceTemplate": "github-tags",
+      "packageNameTemplate": "oven-sh/bun",
+      "extractVersionTemplate": "^bun-v(?<version>.*)$",
+      "versioningTemplate": "semver"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": ["astro", "@astrojs/*"],
+      "groupName": "Astro"
+    },
+    {
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
+      "groupName": "React"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Review local patches and the deepagents override before approving research stack updates.",
+      "matchPackageNames": ["deepagents", "@langchain/*", "langchain", "langsmith"],
+      "groupName": "LangChain and deepagents",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Review the local webdav-server patch before approving updates.",
+      "matchPackageNames": ["webdav-server"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "groupName": null,
+      "dependencyDashboardApproval": true
+    },
+    {
+      "matchPackageNames": ["bun", "oven-sh/bun"],
+      "groupName": "Bun runtime",
+      "dependencyDashboardApproval": true
+    }
+  ]
+}

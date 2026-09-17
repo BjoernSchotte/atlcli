@@ -53,9 +53,9 @@
     "@atlcli/core": "workspace:*",
     "@atlcli/import-core": "workspace:*",
     "@embedpdf/pdfium": "2.15.0",
-    "yaml": "2.9.0"
+    "yaml": "2.9.1"
   },
   "devDependencies": {
-    "@types/emscripten": "1.41.5"
+    "@types/emscripten": "1.41.6"
   }
 }
