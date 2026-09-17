@@ -1096,3 +1096,32 @@ References checked for this change:
 RW bridge integration, namespace journaling and the publication/snapshot
 decisions remain open. Process crashes are tested; power failures and faulty
 storage are not simulated by these tests.
+
+## Slice 41 — attachment identity across filename changes
+
+Attachment directory entries now carry the backend ID already present in their
+metadata response. NFS recovers a missing/replaced attachment path by matching
+that ID within the known owner's attachment directory, validating scope and the
+resulting stat before using it. A different attachment at the old filename
+therefore cannot inherit the original handle. Recovery reuses the listing cache
+and fetches no sibling bodies; it does not walk other pages or spaces.
+
+Tests cover rename plus simultaneous old-name reuse, deletion, a temporary
+metadata failure followed by recovery, and a move outside the export returning
+STALE. The real Rust helper test retains an opaque NFS filehandle across the
+rename, reads the original binary payload and confirms distinct handles for the
+replacement and original object.
+
+Validation:
+- macOS and Linux: each 64 focused VFS/adapter tests, 461 assertions, passed.
+- macOS: 396 core/NFS/WebDAV tests, 1331 assertions, passed.
+- Both hosts: the real-helper attachment identity test passed (16 assertions);
+  four native mount cases passed (31 assertions). Linux used live read-only
+  DOCSY and DOCSY+mayflower for the basic cases, synthetic data for changes and
+  attachments; macOS used synthetic fixtures.
+- Typecheck passed all four tasks. All native mounts detached normally, and no
+  live content was modified.
+
+Independent moves to another attachment owner still need scoped ID-to-owner
+resolution. Generated-view identities and the broader RW/snapshot acceptance
+are not closed by this slice.

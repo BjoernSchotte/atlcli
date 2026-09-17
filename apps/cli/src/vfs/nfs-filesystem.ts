@@ -86,12 +86,27 @@ export class NfsFilesystem {
     try {
       const stat = await this.vfs.stat(entry.path);
       await this.checkResolvedScope(entry.path);
-      if (id !== 1 && this.identity(stat, entry.path) !== entry.identity) return this.stale(id);
+      if (id !== 1 && this.identity(stat, entry.path) !== entry.identity) {
+        // The old filename may have been reused; recover the original object,
+        // never serve the replacement through its handle.
+        throw new VfsError("ENOENT", "NFS object moved from its previous path");
+      }
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
         if (entry.parent !== undefined && entry.name !== undefined) {
           try {
-            const relocated = posix.join(await this.pathFor(entry.parent), entry.name);
+            const parentPath = await this.pathFor(entry.parent);
+            if (entry.identity.startsWith("attachment:")) {
+              const candidate = (await this.vfs.readdir(parentPath)).find(child =>
+                child.kind === "attachment" && child.id !== undefined &&
+                `attachment:${child.id}:file` === entry.identity);
+              if (!candidate) return this.stale(id);
+              if (!candidate.name || /[\/\0]/.test(candidate.name) || candidate.name === "." || candidate.name === "..") {
+                throw new VfsError("EINVAL", "Invalid attachment filename");
+              }
+              entry.name = candidate.name;
+            }
+            const relocated = posix.join(parentPath, entry.name);
             this.assertExport(relocated);
             await this.checkResolvedScope(relocated);
             if (this.identity(await this.vfs.stat(relocated), relocated) !== entry.identity) return this.stale(id);

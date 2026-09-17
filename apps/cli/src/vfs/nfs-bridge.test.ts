@@ -73,6 +73,30 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
 }
 
 describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
+  it("retains wire attachment identity after rename and old-name replacement", async () => {
+    let clock = Date.now();
+    const { server, client } = await fixture(["DOCSY"], false, () => clock);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = async (parent: Buffer, name: string) => {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(parent), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(0);
+      return reply.subarray(8, 8 + reply.readUInt32BE(4));
+    };
+    const directory = await lookup(root, "_attachments");
+    const handle = await lookup(directory, "large.bin");
+    client.seedAttachment({ id: "a1", pageId: "100", filename: "renamed.bin", bytes: attachmentBytes });
+    client.seedAttachment({ id: "a2", pageId: "100", filename: "large.bin", bytes: Buffer.from("replacement") });
+    clock += 60_001;
+    const read = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, 0, 4096)]));
+    expect(read.readUInt32BE()).toBe(0);
+    expect(read.readUInt32BE(4)).toBe(0); // READ has no separate post-op attributes.
+    expect(read.subarray(20, 20 + read.readUInt32BE(16))).toEqual(attachmentBytes.subarray(0, 4096));
+    expect(await lookup(directory, "renamed.bin")).toEqual(handle);
+    expect(await lookup(directory, "large.bin")).not.toEqual(handle);
+    expect(client.callsTo("downloadAttachment")).toBe(1);
+  });
+
   it("rejects expired object handles for ACCESS, FSSTAT and PATHCONF", async () => {
     const { server, vfs, client } = await fixture(["DOCSY"], false);
     const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));

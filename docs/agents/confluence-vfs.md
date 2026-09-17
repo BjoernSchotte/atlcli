@@ -256,6 +256,11 @@ GETATTR still refreshes its listing to validate pagination state.
 Attachment directory listings and stat use exact Confluence size metadata without
 downloading attachment contents. A read downloads the attachment through the
 shared body cache; subsequent ranges reuse it.
+An NFS attachment handle also survives a filename change within its owner page.
+Recovery matches the attachment ID in that page's cached metadata listing; it
+does not download sibling attachments or search the whole space. Reusing the
+old filename for a different attachment never redirects the original handle.
+Moving an attachment independently to another owner page is not yet recovered.
 READ currently omits optional NFS attributes rather than combining bytes with
 separately fetched attributes from another version. Clients can use GETATTR;
 concurrent external changes across multiple READ requests are not yet covered

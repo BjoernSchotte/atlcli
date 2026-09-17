@@ -9,7 +9,7 @@ import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, SweepDetector } from "./mount-clie
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
-async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro") {
+async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro", treeTtlMs?: number) {
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-core-"));
   const client = new FakeConfluenceClient()
     .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
@@ -19,7 +19,7 @@ async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro") {
   for (let i = 0; i < 4; i++) client.seedPage({ id: String(200 + i), title: `Child ${i}`,
     spaceKey: "DOCSY", parentId: "100", storage: `<p>Body ${i}</p>` });
   const vfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY", "mayflower"],
-    mode, allowDelete: mode === "rw", coalesceMs: 0, cacheDir, offline: false });
+    mode, allowDelete: mode === "rw", coalesceMs: 0, cacheDir, offline: false, treeTtlMs });
   cleanup.push(async () => { await vfs.close(); rmSync(cacheDir, { recursive: true, force: true }); });
   return { fs: new NfsFilesystem(vfs, spaces), vfs, client };
 }
@@ -369,4 +369,38 @@ it("only successful client listings suppress NFS sweep warnings", async () => {
   await expect(fs.readdir(child, 0, 256, "bad")).rejects.toThrow();
   await fs.read(await fs.lookup(child, "_index.md"), 0, 1);
   expect(reports).toHaveLength(1);
+});
+
+it("retains an attachment handle across rename and filename reuse without downloading other bodies", async () => {
+  const { fs, client } = await fixture(["DOCSY"], "ro", 0);
+  const original = Buffer.from("original Grüße 🐴");
+  client.seedAttachment({ id: "a1", pageId: "100", filename: "old.txt", bytes: original });
+  const directory = await fs.lookup(1, "_attachments");
+  const file = await fs.lookup(directory, "old.txt");
+  client.seedAttachment({ id: "a1", pageId: "100", filename: "renamed.txt", bytes: original });
+  client.seedAttachment({ id: "a2", pageId: "100", filename: "old.txt", bytes: Buffer.from("replacement") });
+  expect(Buffer.from((await fs.read(file, 0, 1000)).data, "base64")).toEqual(original);
+  expect(await fs.lookup(directory, "renamed.txt")).toBe(file);
+  expect(await fs.lookup(directory, "old.txt")).not.toBe(file);
+  expect(client.callsTo("getPage")).toBe(0);
+  expect(client.callsTo("downloadAttachment")).toBe(1);
+  await client.deleteAttachment("a1");
+  await expect(fs.getattr(file)).rejects.toMatchObject({ code: "ESTALE" });
+});
+
+it("preserves renamed attachment handles on a temporary metadata error and confines recovery to the owner", async () => {
+  const { fs, client } = await fixture(["DOCSY"], "ro", 0);
+  const bytes = Buffer.from("owner scoped");
+  client.seedAttachment({ id: "a1", pageId: "100", filename: "old.txt", bytes });
+  const directory = await fs.lookup(1, "_attachments");
+  const file = await fs.lookup(directory, "old.txt");
+  client.seedAttachment({ id: "a1", pageId: "100", filename: "new.txt", bytes });
+  const list = client.listAttachments.bind(client);
+  client.listAttachments = async () => { throw Object.assign(new Error("temporary"), { status: 503 }); };
+  await expect(fs.getattr(file)).rejects.toMatchObject({ code: "EAGAIN" });
+  client.listAttachments = list;
+  expect((await fs.getattr(file)).size).toBe(bytes.length);
+  expect(await fs.lookup(directory, "new.txt")).toBe(file);
+  client.seedAttachment({ id: "a1", pageId: "300", filename: "new.txt", bytes });
+  await expect(fs.getattr(file)).rejects.toMatchObject({ code: "ESTALE" });
 });

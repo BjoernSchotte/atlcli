@@ -146,6 +146,7 @@ export class VirtualDirs {
     const attachments = await this.listAttachments(node.id);
     return attachments.map((attachment) => ({
       name: attachment.filename,
+      id: attachment.id,
       kind: "attachment" as const,
       isDirectory: false,
       isFile: true,

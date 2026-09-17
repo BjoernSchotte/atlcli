@@ -62,6 +62,8 @@ export interface VfsStat {
 /** One entry of a `readdir`, carrying enough type information to skip a `stat`. */
 export interface VfsDirent {
   name: string;
+  /** Stable backend identity when supplied by the listing (currently attachments). */
+  id?: string;
   kind: VfsNodeKind;
   isDirectory: boolean;
   isFile: boolean;
