@@ -4337,3 +4337,40 @@ uses noninteractive `rm -rf`, avoiding GNU rm write-protection prompts; this
 does not bypass the VFS-generated views' EROFS protection. Native RW suites
 passed again on both hosts (one / 87 each). Linux CI revalidation is still
 required; local passes are not substituted for the failed CI result.
+
+## Slice 161: complete Glow scans and macOS retry timing
+
+Added an explicit `glow-scan` benchmark workload with 602 pages and an expected
+602-document TUI count before selecting/rendering. Native resize events force
+full redraws rather than interpreting incomplete terminal counter updates;
+observation resolution is up to 500 ms. Each workload remains independently
+runnable; the default matrix now includes it. First-byte timing includes the
+full scan when selection intentionally waits for enumeration. Warm scans assert
+no duplicate page/version/attachment body downloads, while recording all
+metadata calls and any first-ever version read.
+
+The old macOS NFS options intermittently omitted one page. A temporary Glow
+2.1.1 diagnostic build (upstream d37e9887875a2faa4baee6a7d090eb357dd63771)
+logged each found synthetic path; an instrumented gitcha walker identified
+`fdopendir: operation timed out` on a missing page directory. macOS now supplies
+`dumbtimer`, preserving the configured timeout rather than its adaptive
+loopback estimate. No third-party code or dependency was added to the product.
+Five cold/warm samples for each transport on both hosts now pass with installed,
+unmodified Glow binaries and all 602 documents. Raw data and every numeric
+metric's median/range are in `benchmark-glow-scan-{mac,linux}.json`.
+PERFORMANCE.md explicitly reviews the slower NFS scans; WebDAV remains default.
+
+The Slice 160 `rm -rf` change did not resolve Linux CI: both Linux lanes still
+failed the assumption that recursive removal must have reached `_index.md`.
+The native test now requires an actual EROFS diagnostic, permits documented
+partial failure before the body, then verifies the supported targeted unlink
+and exactly one remote DELETE. It does not weaken server mutation guards.
+Linux CI must validate this change; the earlier prompt explanation was not
+established by the failed run.
+
+Verification: macOS native RW one test / 89 assertions and all seven native
+read variants / 666 assertions; Linux native RW one / 89; mount option tests
+four / 31 on each host. Typecheck passed four tasks. Linux DOCSY live journal
+resume passed one / five assertions with owned resource cleanup (the separate
+four macOS-host-only live cases remain skipped). Every owned benchmark/test
+mount detached normally. Final RW-enabled artifacts and required CI remain open.

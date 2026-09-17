@@ -379,7 +379,10 @@ limits](../../specs/confluence-vfs-nfs-transport/PERFORMANCE.md).
 Its per-run peak RSS and normal shutdown measurements include startup and cleanup.
 
 NFS sets `actimeo=1` on both systems and disables negative-name caching
-(`nonegnamecache` on macOS, `lookupcache=positive` on Linux). The core metadata
+(`nonegnamecache` on macOS, `lookupcache=positive` on Linux). macOS also uses
+`dumbtimer` so its adaptive loopback estimator cannot shorten the configured
+retry timeout and cause directory walkers to skip entries. Remount to apply
+changed kernel options. The core metadata
 TTL remains 60 seconds by default: directly reopening a cached page checks its
 version after that TTL, even without a directory listing. Warm reads within the
 TTL make no additional API calls. Allow the core TTL, the one-second kernel

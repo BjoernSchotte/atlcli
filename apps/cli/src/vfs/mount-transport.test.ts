@@ -13,7 +13,7 @@ it("keeps WebDAV as default and rejects unsupported selection before startup", (
 it("uses explicit loopback ports and tested client options", () => {
   const mac = nfsMountCommandFor("darwin", 12345, "/tmp/wiki docs");
   expect("run" in mac && mac.run).toEqual(["mount_nfs", "-o",
-    "vers=3,tcp,ro,soft,timeo=10,retrans=2,actimeo=1,port=12345,mountport=12345,locallocks,nonegnamecache", "127.0.0.1:/", "/tmp/wiki docs"]);
+    "vers=3,tcp,ro,soft,timeo=10,retrans=2,actimeo=1,port=12345,mountport=12345,locallocks,nonegnamecache,dumbtimer", "127.0.0.1:/", "/tmp/wiki docs"]);
   const linux = nfsMountCommandFor("linux", 12345, "/tmp/wiki's docs");
   expect("instructions" in linux && linux.instructions).toContain("'/tmp/wiki'\\''s docs'");
   expect("instructions" in linux && linux.instructions).toContain("nolock,lookupcache=positive");

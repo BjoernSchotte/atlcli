@@ -17,7 +17,11 @@ const helper = process.env.ATLCLI_NFS_TEST_HELPER;
 const output = process.argv[2];
 const sample = process.argv[3];
 const workload = process.argv[4] ?? "read";
-assert(["read", "glow", "editor"].includes(workload), "Invalid workload");
+assert(["read", "glow", "glow-scan", "editor"].includes(workload), "Invalid workload");
+const workloads = process.argv[4] ? [workload] : ["read", "glow", "glow-scan", "editor"];
+const sections = workload === "glow-scan" ? 1 : 5;
+const children = workload === "glow-scan" ? 600 : 4;
+const pageCount = 1 + sections * (children + 1);
 const execute = promisify(execFile);
 assert(helper && output, "Set ATLCLI_NFS_TEST_HELPER and pass the output JSON path");
 assert(["darwin", "linux"].includes(platform()), "Native macOS/Linux only");
@@ -37,9 +41,9 @@ const glowBinary = Bun.which("glow"); assert(glowBinary, "Install Glow for the n
 const versions = { glow: (await execute(glowBinary, ["--version"])).stdout.trim(),
   vim: (await execute("vim", ["--version"])).stdout.split("\n")[0] };
 const results = { schema: 4, host: { os: platform(), release: release(), arch: arch(), bun: Bun.version, ...versions },
-  corpus: { pages: 26, attachmentBytes: attachment.length, backend: "in-process synthetic; no network latency" },
+  corpus: { pages: pageCount, largeScanPages: 602, attachmentBytes: attachment.length, backend: "in-process synthetic; no network latency" },
   cachePolicy: "Cold: fresh mount, endpoint, VFS and davfs cache. Warm: immediate identical workload on same mount.",
-  limitations: ["API response payload bytes serialize all synthetic responses, including metadata; excludes HTTP envelopes, compression and transport overhead", "Peak RSS covers one isolated transport run (startup, cold, warm and shutdown), not each phase", "Protocol requests count complete NFS RPC records or received WebDAV HTTP requests; incomplete records are excluded", "Glow stops after first selection/render; background scans may leave uncached files for the second run", "Vim save-to-API uses BufWritePre marker mtime and update response time; excludes editor startup"], records };
+  limitations: ["API response payload bytes serialize all synthetic responses, including metadata; excludes HTTP envelopes, compression and transport overhead", "Peak RSS covers one isolated transport run (startup, cold, warm and shutdown), not each phase", "Protocol requests count complete NFS RPC records or received WebDAV HTTP requests; incomplete records are excluded", "glow stops after first render; glow-scan waits for all 602 documents, with up to 500 ms observation resolution from native terminal redraws", "Vim save-to-API uses BufWritePre marker mtime and update response time; excludes editor startup"], records };
 
 function peakRss(path: string): number {
   const usage = readFileSync(path, "utf8");
@@ -56,7 +60,7 @@ function peakRss(path: string): number {
 if (!sample) {
   const scratch = mkdtempSync(join(tmpdir(), "atlcli-bench-results-"));
   try {
-    for (const workload of ["read", "glow", "editor"]) {
+    for (const workload of workloads) {
       for (let run = 0; run < 5; run++) {
         for (const transport of run % 2 ? ["nfs", "webdav"] : ["webdav", "nfs"]) {
           const path = join(scratch, `${workload}-${run}-${transport}.json`);
@@ -75,7 +79,7 @@ if (!sample) {
         }
       }
     }
-    assert.equal(records.length, 60);
+    assert.equal(records.length, 20 * workloads.length);
   } finally { rmSync(scratch, { recursive: true, force: true }); }
   process.exit(0);
 }
@@ -91,12 +95,12 @@ for (let run = 0; run < 5; run++) {
       .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Benchmark proof home</p>" });
     const paths = ["_index.md", "_attachments/proof.txt"];
     const directories = [""];
-    for (let section = 0; section < 5; section++) {
+    for (let section = 0; section < sections; section++) {
       const id = String(200 + section), directory = `section-${section}-${id}`;
       client.seedPage({ id, title: `Section ${section}`, spaceKey: "DOCSY", parentId: "100", storage: "<p>Benchmark proof section</p>" });
       directories.push(directory); paths.push(`${directory}/_index.md`);
-      for (let page = 0; page < 4; page++) {
-        const child = String(1000 + section * 4 + page);
+      for (let page = 0; page < children; page++) {
+        const child = String(1000 + section * children + page);
         client.seedPage({ id: child, title: `Page ${page}`, spaceKey: "DOCSY", parentId: id,
           storage: `<p>Benchmark proof ${"Long Unicode Grüße 🐴. ".repeat(400)}</p>` });
         paths.push(`${directory}/page-${page}-${child}/_index.md`);
@@ -160,7 +164,7 @@ for (let run = 0; run < 5; run++) {
       const startupApiRequests = client.requestCount, startupBodyPayloadBytes = bodyBytes, startupApiResponsePayloadBytes = responseBytes;
       const startupProtocolRequests = await server.requestCount();
       assert(isMounted(mountpoint));
-      assert(client.callsTo("getPage") < 26, "Mount startup must not download every page body");
+      assert(client.callsTo("getPage") < pageCount, "Mount startup must not download every page body");
       const expected = new Map<string, Buffer>();
       for (const phase of ["cold", "warm"]) {
         const before = { api: client.requestCount, bodyBytes, responseBytes, hits: vfs.cache!.stats().hits, vfsCalls, interrupted,
@@ -193,11 +197,13 @@ for (let run = 0; run < 5; run++) {
               actual.set(path, bytes); readBytes += bytes.length;
             } finally { await file.close(); }
           }
-        } else if (workload === "glow") {
-          const probe = await execute("python3", [resolve(import.meta.dir, "glow-probe.py"), glowBinary, mountpoint, "Benchmark proof"], { timeout: 20000 });
+        } else if (workload === "glow" || workload === "glow-scan") {
+          const probe = await execute("python3", [resolve(import.meta.dir, "glow-probe.py"), glowBinary, mountpoint, "Benchmark proof",
+            ...(workload === "glow-scan" ? [String(pageCount)] : [])], { timeout: workload === "glow-scan" ? 65000 : 20000 });
           const timing = JSON.parse(probe.stdout);
+          if (workload === "glow-scan") { assert.equal(timing.documents, pageCount); extra.glowScanMs = timing.scanMs; }
           extra.glowListingMs = timing.listingMs; extra.glowRenderMs = timing.renderMs;
-          firstListingMs = timing.listingMs; firstByteMs = timing.listingMs + timing.renderMs;
+          firstListingMs = timing.listingMs; firstByteMs = (timing.scanMs ?? timing.listingMs) + timing.renderMs;
         } else {
           const marker = `Editor proof ${phase} ${run}`;
           const saveMarker = join(root, "vim-save-start");
@@ -216,7 +222,7 @@ for (let run = 0; run < 5; run++) {
         assert.equal(measuredResponses, client.requestCount, "Every synthetic API response must be measured");
         const wallMs = performance.now() - began;
         const protocolRequests = await server.requestCount() - before.protocol;
-        const row: Record<string, unknown> = { transport, workload, ...extra, run: run + 1, phase, startupMs: phase === "cold" ? startupMs : 0,
+        const row: Record<string, unknown> = { transport, workload, corpusPages: pageCount, ...extra, run: run + 1, phase, startupMs: phase === "cold" ? startupMs : 0,
           wallMs, firstListingMs, firstByteMs, readBytes, protocolRequests,
           startupProtocolRequests: phase === "cold" ? startupProtocolRequests : 0,
           startupApiRequests: phase === "cold" ? startupApiRequests : 0,
@@ -234,6 +240,11 @@ for (let run = 0; run < 5; run++) {
           assert(bytes.equals(expected.get(path)!), `${transport} ${phase} ${path}: ${bytes.length} bytes vs expected ${expected.get(path)!.length}`);
         }
         if (phase === "warm" && workload === "read") assert.equal(row.apiRequests, 0, "Warm reads within the metadata TTL must not call the backend");
+        if (phase === "warm" && workload === "glow-scan") {
+          const bodyCalls = client.calls.filter(call => ["getPage", "getPageAtVersion", "downloadAttachment"].includes(call.method));
+          const keys = bodyCalls.map(call => `${call.method}:${call.arg}`);
+          assert.equal(new Set(keys).size, keys.length, "Large scans must not download an already cached body again");
+        }
         records.push(row);
         writeFileSync(output!, JSON.stringify(results, null, 2) + "\n");
         console.error(`${workload} ${transport} ${run + 1}/5 ${phase}: ${Number(row.wallMs).toFixed(1)}ms, ${row.apiRequests} API calls`);

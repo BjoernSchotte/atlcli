@@ -4,6 +4,7 @@
 
 - [Reproduction](#reproduction)
 - [Results](#results)
+- [Complete large-directory scan](#complete-large-directory-scan)
 - [Interpretation and limits](#interpretation-and-limits)
 - [Related material](#related-material)
 
@@ -17,7 +18,8 @@ ATLCLI_NFS_TEST_HELPER="$PWD/packages/confluence-nfs/target/debug/atlcli-conflue
   bun --conditions=development scripts/bench/run-vfs-mount.ts /tmp/vfs-mount-results.json
 ```
 
-The harness uses only synthetic data: 26 pages across six listed directories,
+The harness uses only synthetic data: 26 pages across six listed directories
+for read/first-render/editor workloads, and 602 pages for `glow-scan`, with
 long Unicode bodies and a 1.3 MB attachment. It runs five isolated processes
 per workload and transport, alternating transport order. Each process owns a
 fresh endpoint, kernel mount, VFS cache and (on Linux) davfs cache, followed
@@ -46,6 +48,48 @@ Full samples and median/min/max of every numeric metric are retained in
 [Linux results](benchmark-extended-linux.json). These include startup, first
 listing/byte, complete-read time, API requests/payload bytes, cache hits,
 protocol requests, parent/helper RSS and shutdown.
+
+## Complete large-directory scan
+
+The separate `glow-scan` workload waits until the native Glow TUI lists all
+602 Markdown documents, then renders the selected fixture. Run it alone with:
+
+```sh
+ATLCLI_NFS_TEST_HELPER="$PWD/packages/confluence-nfs/target/debug/atlcli-confluence-nfs" \
+  bun --conditions=development scripts/bench/run-vfs-mount.ts /tmp/glow-scan.json "" glow-scan
+```
+
+The table measures completed enumeration, excluding subsequent selected-file
+rendering. Periodic terminal resizes force full counter redraws; observation
+resolution is up to 500 ms. All five cold/warm samples per transport/host
+verified the expected document count. Raw metrics, including selected rendering,
+API methods/payloads, RSS and shutdown, are in [macOS](benchmark-glow-scan-mac.json)
+and [Linux](benchmark-glow-scan-linux.json).
+
+| Host | Phase | WebDAV ms, median [min–max] | NFS ms, median [min–max] |
+| --- | --- | --- | --- |
+| mac | cold | 3549.1 [3546.5–4395.8] | 8916.1 [8648.1–11065.2] |
+| mac | warm | 1765.7 [1697.6–1882.4] | 6682.8 [6415.9–7499.5] |
+| linux | cold | 4630.9 [4117.5–4680.2] | 6701.5 [6632.7–6731.9] |
+| linux | warm | 2579.7 [2063.2–2597.3] | 3114.1 [3097.4–3146.6] |
+
+NFS exceeds the 10% regression review threshold on both hosts. Explicit NFS
+directory attribute validation and Glow's recursive stat/walk work make this
+workload more expensive; this is evidence against a blanket NFS speed claim.
+WebDAV remains the default. Cold scans materialize visited Markdown bodies for
+exact sizes. Warm scans never download an already cached body again, but they
+still issue roughly 1204–1208 metadata calls: the bounded 256-entry comment and
+attachment listing caches cannot retain all 602 directories. A first-ever
+version read on the second pass is allowed and appears in the recorded methods.
+This complete-tree workload is distinct from interactive first selection and
+from the approximately 500 ms editor-save measurements above.
+
+The original macOS NFS options intermittently returned `ETIMEDOUT` from
+`fdopendir`; Glow 2.1.1 then silently omitted one document. A temporary pinned
+Glow diagnostic build identified the missing paths and actual errors. macOS
+now uses `dumbtimer` to honor its configured retransmit timer rather than the
+adaptive loopback estimate. The five-run results use the installed, unmodified
+Glow binary; every scan found all 602 documents.
 
 ## Interpretation and limits
 

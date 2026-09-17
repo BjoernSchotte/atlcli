@@ -30,7 +30,9 @@ export function nfsMountOptionsFor(os: NodeJS.Platform, port: number, mode: "ro"
   // Soft retries bound RO reader waits. RW must keep retrying write
   // requests instead of returning timeout errors that can lose application data.
   const options = `vers=3,tcp,${mode},${mode === "rw" ? "hard" : "soft"},timeo=10,retrans=2,actimeo=1,port=${port},mountport=${port}`;
-  return `${options},${os === "darwin" ? "locallocks,nonegnamecache" : "nolock,lookupcache=positive"}`;
+  // macOS otherwise adapts the timeout below timeo after fast loopback replies;
+  // a later metadata request can expire and silently disappear from directory walkers.
+  return `${options},${os === "darwin" ? "locallocks,nonegnamecache,dumbtimer" : "nolock,lookupcache=positive"}`;
 }
 
 export function nfsMountCommandFor(os: NodeJS.Platform, port: number, mountpoint: string, mode: "ro" | "rw" = "ro"):

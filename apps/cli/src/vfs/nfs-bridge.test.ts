@@ -1267,9 +1267,20 @@ with socket.socket() as client:
     // fail on those views after/before _index.md has already trashed the page.
     // -f avoids GNU rm's protection prompts when stdin is not a terminal;
     // server-side read-only views still reject deletion.
-    await expect(promisify(execFile)("rm", ["-rf", removedDirectory], { timeout: 5000 }))
-      .rejects.toMatchObject({ code: 1 });
+    const deletesBefore = client.callsTo("deletePage");
+    const removal = await promisify(execFile)("rm", ["-rf", removedDirectory],
+      { timeout: 5000, env: { ...process.env, LC_ALL: "C" } }).then(() => null,
+        error => error as { code: number; stderr: string });
+    expect(removal?.code).toBe(1);
+    expect(removal?.stderr).toContain("Read-only file system");
+    // Recursive removal may stop before reaching the body. The supported
+    // targeted operation must still work, without a second remote DELETE.
+    if (!client.isTrashed("400")) {
+      expect((await readFile(join(removedDirectory, "_index.md"))).toString()).toContain("Test");
+      await unlink(join(removedDirectory, "_index.md"));
+    }
     expect(client.isTrashed("400")).toBe(true);
+    expect(client.callsTo("deletePage")).toBe(deletesBefore + 1);
     expect(journal!.trashIntent("400")?.completed).toBe(1);
     await expect(stat(removedDirectory)).rejects.toMatchObject({ code: "ENOENT" });
     }, 30000);
