@@ -6,6 +6,7 @@
  * error object. That is the whole contract: `apps/cli/src/vfs/just-bash-fs.ts`
  * and `apps/cli/src/vfs/webdav-fs.ts` are adapters over these ten methods.
  */
+import type { ModeGuard } from "./mode.js";
 import type { VfsDirent, VfsNode, VfsStat } from "./types.js";
 
 export interface VfsWriteResult {
@@ -18,6 +19,8 @@ export interface VfsWriteResult {
 }
 
 export interface ConfluenceVfs {
+  readonly guard: ModeGuard;
+
   /** Metadata for one path. Never fetches a body (demand principle, rule 2). */
   stat(path: string): Promise<VfsStat>;
 

@@ -1953,3 +1953,30 @@ rolls back both, and replacement needs no extra logical copy of the local bytes.
 This is the journal prerequisite. NFS CREATE/RENAME/REMOVE routing, native atomic
 editor replacement, backup-handle semantics and completion boundaries remain
 open. No new CLI RW availability is claimed by this slice.
+
+## Slice 74 — local editor files in the NFS projection
+
+`NfsFilesystem` now resolves, lists and reads journal-backed local files with
+exact sizes and stable identities across local renames. Internal create, remove
+and rename methods enforce the core mode guard, selected export, content-parent
+kind, filename bounds and protected metadata. Recovered local files cannot be
+modified through a read-only core. Generated directories cannot hold temporary
+files. Removed/overwritten local handles are retired without ID reuse.
+
+A local-to-page replacement preserves the destination page handle/identity and
+returns that page ID for publication scheduling. Writes/truncates of local files
+return no publication ID, avoiding temporary-file publication timers. Temporary
+names remain in the journal until replacement or explicit local removal.
+
+- macOS and Linux projection + publisher suites: 51 passed / 632 assertions each.
+  Final projection suite after handle cleanup: 39 passed / 569 assertions.
+- Linux mayflower/DOCSY: projection-to-real-API E2E passed (13 assertions). After
+  one ordinary journal publication, a local temporary image replaces `_index.md`;
+  the same handle/page ID survives and publication increments the version once.
+  Temporary bytes never enter the remote queue before replacement. Test page
+  cleanup succeeded. This test calls the projection directly, not NFS RPCs.
+- Typecheck and diff whitespace checks passed.
+
+The Rust CREATE/RENAME/REMOVE hooks are not yet connected to these methods.
+Native replacement and backup-handle semantics, exclusive-create replay handling,
+new-page publication, opt-in trash and the complete-document gate remain open.

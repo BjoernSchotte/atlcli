@@ -654,3 +654,65 @@ it("refuses staging without a journal, through a read-only core or into generate
   await expect(writable.fs.write(file, 0, new Uint8Array(NFS_MAX_READ + 1))).rejects.toMatchObject({ code: "EINVAL" });
   expect(writable.journal!.get("100")).toBeNull();
 });
+
+
+it("serves local editor files, preserves renamed handles and expires removed identities", async () => {
+  const { fs, vfs, journal, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  const id = await fs.create(1, ".editor.tmp");
+  expect(await fs.write(id, 0, Buffer.from("draft 🐴"))).toBeNull();
+  expect((await fs.getattr(id)).size).toBe(Buffer.byteLength("draft 🐴"));
+  expect(Buffer.from((await fs.read(id, 0, 1024)).data, "base64").toString()).toBe("draft 🐴");
+  expect((await fs.readdir(1, 0, 256)).entries.map(e => e.name)).toContain(".editor.tmp");
+  expect(journal!.pending()).toEqual([]);
+  const other = await fs.create(1, "backup.tmp");
+  expect(await fs.rename(1, ".editor.tmp", 1, "backup.tmp")).toBeNull();
+  expect(await fs.lookup(1, "backup.tmp")).toBe(id);
+  await expect(fs.getattr(other)).rejects.toMatchObject({ code: "ESTALE" });
+  await expect(fs.lookup(1, ".editor.tmp")).rejects.toMatchObject({ code: "ENOENT" });
+  const recovered = new NfsFilesystem(vfs, ["DOCSY"], undefined, journal);
+  const recoveredId = await recovered.lookup(1, "backup.tmp");
+  expect(Buffer.from((await recovered.read(recoveredId, 0, 1024)).data, "base64").toString()).toBe("draft 🐴");
+  await recovered.remove(1, "backup.tmp");
+  await expect(fs.read(id, 0, 100)).rejects.toMatchObject({ code: "ESTALE" });
+  expect(client.callsTo("createPage")).toBe(0);
+  expect(client.callsTo("updatePage")).toBe(0);
+});
+
+it("stages editor replacement under the original page ID without exposing a temporary page", async () => {
+  const { fs, vfs, journal, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  const page = await fs.lookup(1, "_index.md");
+  const local = await fs.create(1, ".save.tmp");
+  const content = (await vfs.readFile("/DOCSY/_index.md")).replace("Grüße 🐴", "Replacement 🐴");
+  await fs.write(local, 0, Buffer.from(content));
+  expect(await fs.rename(1, ".save.tmp", 1, "_index.md")).toBe("100");
+  expect(await fs.lookup(1, "_index.md")).toBe(page);
+  expect(Buffer.from((await fs.read(page, 0, 65536)).data, "base64").toString()).toBe(content);
+  expect(journal!.pending().map(f => f.id)).toEqual(["100"]);
+  await expect(fs.getattr(local)).rejects.toMatchObject({ code: "ESTALE" });
+  expect(client.callsTo("updatePage")).toBe(0);
+});
+
+it("guards local namespace operations by core mode, content directories and reserved paths", async () => {
+  const readonly = await fixture(["DOCSY"], "ro", undefined, true);
+  await expect(readonly.fs.create(1, "draft.tmp")).rejects.toMatchObject({ code: "EROFS" });
+  expect(readonly.journal!.localEntries("/DOCSY")).toEqual([]);
+  readonly.journal!.createLocal("/DOCSY/recovered.tmp");
+  const recovered = await readonly.fs.lookup(1, "recovered.tmp");
+  await expect(readonly.fs.write(recovered, 0, Buffer.from("x"))).rejects.toMatchObject({ code: "EROFS" });
+  await expect(readonly.fs.remove(1, "recovered.tmp")).rejects.toMatchObject({ code: "EROFS" });
+  await expect(readonly.fs.rename(1, "recovered.tmp", 1, "new.tmp")).rejects.toMatchObject({ code: "EROFS" });
+  const { fs, journal } = await fixture(["DOCSY"], "rw", undefined, true);
+  for (const name of ["..", ".", "x/y", "a\0b"]) await expect(fs.create(1, name)).rejects.toMatchObject({ code: "EINVAL" });
+  await expect(fs.create(1, "x".repeat(256))).rejects.toMatchObject({ code: "ENAMETOOLONG" });
+  await expect(fs.create(1, "_index.md")).rejects.toMatchObject({ code: "EEXIST" });
+  for (const name of [".DS_Store", ".metadata_never_index", ".fseventsd"]) {
+    await expect(fs.create(1, name)).rejects.toMatchObject({ code: "EROFS" });
+  }
+  for (const directory of [".by-id", ".versions", "_attachments"]) {
+    await expect(fs.create(await fs.lookup(1, directory), "draft.tmp")).rejects.toMatchObject({ code: "EROFS" });
+  }
+  await fs.create(1, "draft.tmp");
+  await expect(fs.rename(1, "draft.tmp", 1, "_space.json")).rejects.toMatchObject({ code: "EROFS" });
+  expect(journal!.local("/DOCSY/draft.tmp")).not.toBeNull();
+  await expect(fs.remove(1, "_index.md")).rejects.toMatchObject({ code: "EROFS" });
+});

@@ -74,12 +74,12 @@ export async function startNfsServer(options: {
           const bytes = Buffer.from(args.data, "base64");
           if (bytes.toString("base64") !== args.data || bytes.length > NFS_MAX_READ) throw new VfsError("EINVAL", "Invalid NFS write data");
           const pageId = await fs.write(number(args.file), number(args.offset), bytes);
-          publisher?.schedule(pageId);
+          if (pageId !== null) publisher?.schedule(pageId);
           result = await fs.getattr(number(args.file)); break;
         }
         case "truncate": {
           const pageId = await fs.truncate(number(args.file), number(args.size));
-          publisher?.schedule(pageId);
+          if (pageId !== null) publisher?.schedule(pageId);
           result = await fs.getattr(number(args.file)); break;
         }
         case "readdir":

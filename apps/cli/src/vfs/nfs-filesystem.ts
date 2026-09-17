@@ -1,7 +1,7 @@
 import type { NfsJournal, StagedNfsFile } from "./nfs-journal.js";
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
-import { VfsError, parseVfsFrontmatter, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
+import { VfsError, assertWritable, parseVfsFrontmatter, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping, SweepDetector } from "./mount-client-probes.js";
 
 export const NFS_MAX_READ = 1024 * 1024;
@@ -64,11 +64,15 @@ export class NfsFilesystem {
     return `${stat.kind}:${stat.id}:${stat.isDirectory ? "directory" : "file"}${view}`;
   }
 
-  private stale(id: number): never {
+  private forgetHandle(id: number): void {
     const old = this.paths.get(id);
     if (old && this.identities.get(old.identity) === id) this.identities.delete(old.identity);
     this.paths.delete(id);
     this.directories.delete(id);
+  }
+
+  private stale(id: number): never {
+    this.forgetHandle(id);
     throw Object.assign(new Error("Stale NFS handle; look up the file again"), { code: "ESTALE" });
   }
 
@@ -113,6 +117,14 @@ export class NfsFilesystem {
     if (!entry) return this.stale(id);
     if (entry.shield) return entry.path; // Fixed empty volume markers, never backend paths.
     this.assertExport(entry.path);
+    if (entry.identity.startsWith("local:")) {
+      const file = this.journal?.get(entry.identity);
+      if (!file || this.journal?.local(file.path)?.id !== file.id) return this.stale(id);
+      this.assertExport(file.path);
+      await this.localParent(posix.dirname(file.path));
+      entry.path = file.path;
+      return file.path;
+    }
     try {
       const stat = await this.vfs.stat(entry.path);
       await this.checkResolvedScope(entry.path);
@@ -181,9 +193,10 @@ export class NfsFilesystem {
   private async register(path: string): Promise<number> {
     this.assertExport(path);
     if (path === this.root) return 1;
-    const stat = await this.vfs.stat(path);
-    await this.checkResolvedScope(path);
-    const identity = this.identity(stat, path);
+    const local = this.journal?.local(path);
+    const stat = await this.stat(path);
+    if (!local) await this.checkResolvedScope(path);
+    const identity = local?.id ?? this.identity(stat, path);
     const followsParent = stat.kind === "attachment" || this.isObjectView(stat);
     const entry = { path, identity, ...(followsParent
       ? { parent: await this.register(posix.dirname(path)), name: posix.basename(path) } : {}) };
@@ -219,7 +232,7 @@ export class NfsFilesystem {
       if (isClientDropping(name)) throw new VfsError("ENOENT", "No such file");
     }
     const directory = await this.pathFor(parent);
-    if (!(await this.vfs.stat(directory)).isDirectory) throw new VfsError("ENOTDIR", "Not a directory");
+    if (!(await this.stat(directory)).isDirectory) throw new VfsError("ENOTDIR", "Not a directory");
     if (name === ".") return parent;
     if (name === "..") return directory === this.root ? 1 : this.register(posix.dirname(directory));
     return this.register(posix.join(directory, name));
@@ -231,6 +244,10 @@ export class NfsFilesystem {
     const names = (shield ? [] : await this.vfs.readdir(path))
       .filter((entry) => path !== "/" || this.spaces.has(entry.name))
       .map((entry) => entry.name);
+    if (!shield) for (const local of this.journal?.localEntries(path) ?? []) {
+      const name = posix.basename(local.path);
+      if (!names.includes(name)) names.push(name);
+    }
     if (id === 1) names.push(...this.shieldIds.keys());
     names.sort();
     const ids: number[] = [];
@@ -252,10 +269,92 @@ export class NfsFilesystem {
     return { names, ids, mtime: revision.mtime };
   }
 
+  private async localParent(path: string): Promise<void> {
+    this.assertExport(path);
+    await this.checkResolvedScope(path);
+    const stat = await this.vfs.stat(path);
+    const node = await this.vfs.resolve(path);
+    if (!stat.isDirectory) throw new VfsError("ENOTDIR", "Not a directory");
+    if (!["space", "page", "folder"].includes(stat.kind) || node.readOnly) {
+      throw new VfsError("EROFS", "Not a writable content directory");
+    }
+  }
+
+  private async stat(path: string): Promise<VfsStat> {
+    const file = this.journal?.local(path);
+    if (!file) return this.vfs.stat(path);
+    await this.localParent(posix.dirname(path));
+    return { id: file.id, kind: "page", isFile: true, isDirectory: false, isSymbolicLink: false,
+      size: file.bytes.byteLength, sizeEstimated: false, mtime: new Date(0),
+      mode: this.vfs.guard.mode === "rw" ? 0o644 : 0o444 };
+  }
+
+  private async mutationPath(parent: number, name: string): Promise<string> {
+    if (!this.journal) throw new VfsError("EROFS", "NFS staging is disabled");
+    assertWritable(this.vfs.guard, "update");
+    if (!name || name === "." || name === ".." || /[\/\0]/.test(name)) throw new VfsError("EINVAL", "Invalid NFS filename");
+    if (Buffer.byteLength(name) > 255) throw Object.assign(new Error("NFS filename too long"), { code: "ENAMETOOLONG" });
+    if (this.paths.get(parent)?.shield || INDEXER_SHIELDS.has(name) || SHIELD_DIRECTORIES.has(name) || isClientDropping(name)) {
+      throw new VfsError("EROFS", "Protected mount metadata");
+    }
+    const directory = await this.pathFor(parent);
+    await this.localParent(directory);
+    return posix.join(directory, name);
+  }
+
+  async create(parent: number, name: string): Promise<number> {
+    const path = await this.mutationPath(parent, name);
+    try { await this.stat(path); }
+    catch (error) {
+      if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error;
+      if (this.paths.size >= NFS_MAX_HANDLES || this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
+      this.journal!.createLocal(path);
+      return this.register(path);
+    }
+    throw new VfsError("EEXIST", "NFS file exists");
+  }
+
+  async remove(parent: number, name: string): Promise<void> {
+    const path = await this.mutationPath(parent, name);
+    const local = this.journal!.local(path);
+    if (!local) throw new VfsError("EROFS", "Remote removal is not enabled for NFS yet");
+    this.journal!.removeLocal(path);
+    const handle = this.identities.get(local.id);
+    if (handle !== undefined) this.forgetHandle(handle);
+  }
+
+  /** Returns the page identity to schedule only after a local-to-page replacement. */
+  async rename(parent: number, name: string, targetParent: number, targetName: string): Promise<string | null> {
+    const source = await this.mutationPath(parent, name);
+    const target = await this.mutationPath(targetParent, targetName);
+    if (!this.journal!.local(source)) throw new VfsError("EROFS", "Remote rename is not enabled for NFS yet");
+    if (source === target) return null;
+    const replaced = this.journal!.local(target);
+    if (replaced) {
+      this.journal!.renameLocal(source, target);
+      const handle = this.identities.get(replaced.id);
+      if (handle !== undefined) this.forgetHandle(handle);
+      return null;
+    }
+    let targetId: number;
+    try { targetId = await this.register(target); }
+    catch (error) {
+      if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error;
+      this.journal!.renameLocal(source, target);
+      return null;
+    }
+    const page = await this.stagedFile(targetId);
+    const local = this.journal!.local(source)!;
+    this.journal!.replaceLocal(source, page.id);
+    const handle = this.identities.get(local.id);
+    if (handle !== undefined) this.forgetHandle(handle);
+    return page.id;
+  }
+
   private async stagedFile(id: number): Promise<StagedNfsFile> {
     if (!this.journal) throw new VfsError("EROFS", "NFS staging is disabled");
     const path = await this.pathFor(id);
-    const stat = await this.vfs.stat(path);
+    const stat = await this.stat(path);
     if (stat.isDirectory) throw new VfsError("EISDIR", "Cannot write a directory");
     if (stat.kind !== "page" || !(stat.mode & 0o222)) throw new VfsError("EROFS", "Not a writable page body");
     const existing = this.journal.get(stat.id);
@@ -269,16 +368,16 @@ export class NfsFilesystem {
   }
 
   /** Returns only after SQLite has durably committed the local byte image. */
-  async write(id: number, offset: number, bytes: Uint8Array): Promise<string> {
+  async write(id: number, offset: number, bytes: Uint8Array): Promise<string | null> {
     if (!Number.isSafeInteger(offset) || offset < 0 || bytes.byteLength > NFS_MAX_READ) {
       throw new VfsError("EINVAL", "Invalid NFS write range");
     }
     const file = await this.stagedFile(id);
     this.journal!.write(file.id, offset, bytes);
-    return file.id;
+    return file.id.startsWith("local:") ? null : file.id;
   }
 
-  async truncate(id: number, size: number): Promise<string> {
+  async truncate(id: number, size: number): Promise<string | null> {
     if (!Number.isSafeInteger(size) || size < 0) throw new VfsError("EINVAL", "Invalid NFS file size");
     const file = await this.stagedFile(id);
     const updated = this.journal!.truncate(file.id, size);
@@ -286,7 +385,7 @@ export class NfsFilesystem {
     const entry = this.paths.get(id)!;
     entry.rendered = { hash: createHash("sha256").update(updated.bytes).digest("hex"),
       mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1) };
-    return file.id;
+    return file.id.startsWith("local:") ? null : file.id;
   }
 
   async getattr(id: number): Promise<NfsAttributes> {
@@ -298,7 +397,7 @@ export class NfsFilesystem {
     const shield = this.paths.get(id)?.shield;
     if (shield) return { id, directory: shield === "directory", size: 0,
       mtime: shield === "directory" ? (await this.directoryView(id, path)).mtime : 0 };
-    const stat = await this.vfs.stat(path);
+    const stat = await this.stat(path);
     const staged = stat.kind === "page" && !stat.isDirectory ? this.journal?.get(stat.id) : undefined;
     if (staged) {
       const entry = this.paths.get(id)!;
@@ -348,7 +447,7 @@ export class NfsFilesystem {
     const shield = this.paths.get(id)?.shield;
     if (shield === "directory") throw new VfsError("EISDIR", "Cannot read directory");
     if (shield === "file") return { data: "", eof: true };
-    const stat = await this.vfs.stat(path);
+    const stat = await this.stat(path);
     if (stat.isDirectory) throw new VfsError("EISDIR", "Cannot read directory");
     const staged = stat.kind === "page" ? this.journal?.get(stat.id) : undefined;
     const bytes = staged?.bytes ?? await this.vfs.readFileBytes(path);

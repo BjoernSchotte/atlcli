@@ -143,8 +143,8 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       const path = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`);
       const original = await vfs.readFile(path);
       const fs = new NfsFilesystem(vfs, [E2E_SPACE_KEY], undefined, journal);
-      let handle = 1;
-      for (const part of path.split("/").slice(2)) handle = await fs.lookup(handle, part);
+      let handle = 1, parent = 1;
+      for (const part of path.split("/").slice(2)) { parent = handle; handle = await fs.lookup(handle, part); }
       const edited = Buffer.from(original.replace("Journal original", "Journal saved"));
       await fs.truncate(handle, edited.length);
       await fs.write(handle, 0, edited);
@@ -158,8 +158,11 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(await publisher.publish(page.id)).toBeNull();
       expect((await client.getPage(page.id)).version).toBe(actual.version);
       const next = Buffer.from(original.replace("Journal original", "Journal follow-up"));
-      await fs.truncate(handle, next.length);
-      await fs.write(handle, 0, next);
+      const temporary = await fs.create(parent, ".editor-save.tmp");
+      expect(await fs.write(temporary, 0, next)).toBeNull();
+      expect(journal.pending()).toHaveLength(0);
+      expect(await fs.rename(parent, ".editor-save.tmp", parent, "_index.md")).toBe(page.id);
+      expect(await fs.lookup(parent, "_index.md")).toBe(handle);
       expect((await publisher.publish(page.id))?.version).toBe((actual.version ?? 1) + 1);
       expect((await client.getPage(page.id)).storage).toContain("Journal follow-up");
     } finally {
