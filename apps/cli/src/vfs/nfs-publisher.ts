@@ -30,7 +30,11 @@ export class NfsPublisher {
       if (this.stopped || this.timers.get(id) !== timer) return;
       this.timers.delete(id);
       const result = await this.publish(id).then(result => {
-        if (result) this.retries.delete(id);
+        const move = id.startsWith("move:") ? this.journal.moveIntent(id.slice(5)) : null;
+        const retired = id.startsWith("move:")
+          ? !move || move.completed
+          : !this.journal.get(id);
+        if (result || retired) this.retries.delete(id);
         return result;
       }, error => {
         // Retry only transient failures; publish() reconciles its frozen intent first.

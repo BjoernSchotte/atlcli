@@ -4211,3 +4211,19 @@ The preceding pushed source 9cb1646a passed all four native CI lanes in
 including APFS/ext4 exhaustion and compiled CLI mount tests. This closes the
 previous Intel provisioning revalidation, not the final RW-enabled acceptance.
 Draft-skipped product-quality gates are not counted as passing.
+
+## Slice 156: retire publication retry history
+
+A transient failure before a new draft freezes its CREATE intent can leave a
+retry scheduled after the draft is deleted. The subsequent no-op publication
+now drops retry history for missing journal identities; completed or removed
+move receipts also release their history. Pending identities retain their
+existing retry budget and backoff.
+
+The regression repeats transient failure, deletion and retry completion three
+times and verifies that no retry entries accumulate and no CREATE intent was
+frozen. Full publisher suites passed on macOS and Linux: 55 tests / 320
+assertions each. Typecheck passed all four tasks. Linux DOCSY LIVE journal
+resume/publication passed: one test / five assertions; the four macOS-only
+tests were skipped, not claimed as passing. The fixture cleans up its owned
+page. Public NFS RW remains gated pending final acceptance.

@@ -87,6 +87,26 @@ it("bounds transient retries, adds jitter and honors Retry-After while retaining
   }
 });
 
+it("releases retry history when failed local drafts are deleted", async () => {
+  const { vfs, journal, publisher } = await fixture();
+  const stat = spyOn(vfs, "stat").mockRejectedValue(new VfsError("EAGAIN", "Offline"));
+  const retries = (publisher as unknown as { retries: Map<string, unknown> }).retries;
+  try {
+    for (let i = 0; i < 3; i++) {
+      const path = `/DOCSY/draft-${i}.md`;
+      const file = journal.createLocal(path);
+      journal.write(file.id, 0, Buffer.from("Draft"));
+      publisher.schedule(file.id);
+      await until(() => retries.has(file.id));
+      expect(journal.createIntent(file.id)).toBeNull();
+      journal.removeLocal(path);
+      await until(() => retries.size === 0);
+      expect(journal.get(file.id)).toBeNull();
+    }
+    expect(stat).toHaveBeenCalledTimes(3);
+  } finally { stat.mockRestore(); }
+}, 10_000);
+
 it("does not automatically retry a publication denied by the server", async () => {
   const { client, original, stage, publisher, journal } = await fixture();
   let attempts = 0;
