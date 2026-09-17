@@ -112,6 +112,8 @@ export class NfsJournal {
       const bytes = new Uint8Array(length);
       bytes.set(old.bytes.subarray(0, length));
       update(bytes);
+      // Replayed stable writes must not schedule another remote publication.
+      if (Buffer.compare(bytes, old.bytes) === 0) return old;
       this.db.run("UPDATE files SET bytes=?, revision=revision+1 WHERE id=?", [bytes, id]);
       return this.get(id)!;
     }).immediate();

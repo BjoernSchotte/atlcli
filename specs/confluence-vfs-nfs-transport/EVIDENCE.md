@@ -1503,3 +1503,27 @@ rendered the selected document in another 1.6 ms; Linux took 52.1 ms and
 not five-run comparative performance measurements or a large-space scan claim.
 All content was synthetic and both mounts detached normally. Typecheck passed
 all four tasks. Comparative Glow scanning remains open.
+
+## Slice 59 — byte-identical journal mutation retries
+
+The shared journal mutation path previously incremented its revision even when
+a repeated WRITE or same-size TRUNCATE left every byte unchanged. After a
+publication acknowledgement, such a retry incorrectly made the file pending
+again. The transaction now compares the resulting byte image with the stored
+image and preserves its revision, publication state and unresolved error when
+they are identical. Actual length/content changes still advance the revision.
+
+The new regression failed against the previous implementation. It verifies
+unchanged partial writes and truncation on initial admission, retries while an
+ambiguous publication intent exists, and retries after publication plus restart.
+Zero extension and subsequent shortening remain real mutations. The existing
+storage-reuse stress test now changes bytes on its first iteration too, so every
+iteration still exercises an actual publication.
+
+Both macOS and Linux passed all 12 journal tests (316 assertions each), including
+SIGKILL, rollback and quota recovery. Typecheck passed all four tasks. macOS
+native RO mount cases and the Linux live DOCSY CLI signal lifecycle also passed.
+This is byte-image idempotence, not a general solution for delayed/reordered RPCs:
+an old write arriving after different newer bytes still needs replay handling in
+the eventual RW transport. NFS RW remains disabled and publication/snapshot
+decisions remain open.

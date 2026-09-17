@@ -53,6 +53,32 @@ it("retains the published snapshot and newer bytes independently", () => {
   expect(journal.pending()).toEqual([]);
 });
 
+it("does not dirty a byte-identical WRITE or TRUNCATE replay before or after publication", () => {
+  const { path, journal } = fixture();
+  journal.admit("1", "/DOCSY/page/_index.md", bytes("old"), 1);
+  expect(journal.write("1", 1, bytes("ld")).revision).toBe(0);
+  expect(journal.truncate("1", 3).revision).toBe(0);
+  expect(journal.beginPublish("1")).toBeNull();
+  const changed = journal.write("1", 0, bytes("new"));
+  const intent = journal.beginPublish("1")!;
+  journal.failPublish("1", "REMOTE_RESULT_UNKNOWN");
+  expect(journal.write("1", 0, bytes("new")).revision).toBe(changed.revision);
+  expect(journal.truncate("1", 3).revision).toBe(changed.revision);
+  expect(journal.get("1")!.error).toBe("REMOTE_RESULT_UNKNOWN");
+  expect(journal.beginPublish("1")).toEqual(intent);
+  journal.completePublish("1", intent.revision, 2);
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.write("1", 0, bytes("new")).revision).toBe(changed.revision);
+  expect(recovered.truncate("1", 3).revision).toBe(changed.revision);
+  expect(recovered.pending()).toEqual([]);
+  expect(recovered.beginPublish("1")).toBeNull();
+  // Changed lengths remain mutations even when their extra bytes are zero.
+  expect(recovered.truncate("1", 4).revision).toBe(changed.revision + 1);
+  expect(recovered.write("1", 3, bytes("\0")).revision).toBe(changed.revision + 1);
+  expect(recovered.truncate("1", 3).revision).toBe(changed.revision + 2);
+});
+
 it("preserves failed/ambiguous publication intent across restart and readmission", () => {
   const { path, journal } = fixture();
   journal.admit("1", "/DOCSY/page/_index.md", bytes("old"), 1);
@@ -168,7 +194,7 @@ it("reuses bounded database pages over repeated overwrites and publication inten
   journals.push(journal);
   journal.admit("1", "/DOCSY/a", new Uint8Array(8192), 1);
   for (let i = 0; i < 80; i++) {
-    journal.write("1", 0, new Uint8Array(8192).fill(i));
+    journal.write("1", 0, new Uint8Array(8192).fill(i + 1));
     const intent = journal.beginPublish("1")!;
     journal.completePublish("1", intent.revision, i + 2);
     expect(statSync(path).size).toBeLessThanOrEqual(journal.databaseLimitBytes);
