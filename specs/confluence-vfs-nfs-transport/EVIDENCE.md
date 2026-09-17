@@ -2992,3 +2992,32 @@ applied or claimed. Typecheck passed all four tasks before this evidence push.
 
 Linux DOCSY HTTP identity/backup/LOCK regression rerun: one pass, 13 assertions,
 fixture cleanup completed; four macOS-only native cases skipped on Linux.
+
+## Slice 114 — suppress identical saved-image updates
+
+The shared write-back path previously submitted another UPDATE for every
+identical current-version save. A regression first reproduced versions 2 and 3
+instead of retaining version 1 for two identical writes through the creation
+alias and canonical path. It now skips the UPDATE when the title and exact
+converted storage hash equal the cached current image. The check runs inside
+per-page serialization and after stale-version routing; differing titles,
+content and stale conflict handling retain their existing paths. No additional
+body download is needed. This is a comparison against the mount's observed
+version, not proof of fresh server state. Storage comparison avoids treating
+lossy Markdown equality as proof that the original storage is unchanged.
+
+- macOS write-back + HTTP regressions: 112 passed, 354 assertions.
+- macOS full VFS core + native WebDAV/Vim: 353 passed, 951 assertions.
+- Linux full VFS core + HTTP + native WebDAV/Vim: 394 passed, 1127 assertions.
+- Linux live DOCSY: 17 assertions, including three repeated PUTs retaining the
+  backend version, followed by changed-content backup/LOCK/MOVE publication.
+  Disposable page cleanup completed; macOS-only cases skipped on Linux.
+- Additional no-body-download assertion: focused regression passed (8 assertions).
+- Typecheck: four tasks passed. The initial sandboxed HTTP invocation could not
+  bind loopback; the authorized native/network rerun passed.
+
+The existing serialization test now starts with a real title edit instead of
+an unchanged image, preserving its in-flight update/flush assertions. This fix
+removes duplicate saved-image versions; it does not eliminate legitimate empty
+CREATE/truncate snapshots or prove optimal editor burst coalescing. Those and
+final VS Code/native performance verification remain open.

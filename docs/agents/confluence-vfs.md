@@ -152,7 +152,10 @@ atlcli wiki sh --space DOCSY --mode rw -c 'echo "# Release notes" > release-note
 
 Deletion moves a page to the **trash**; there is no purge.
 
-Every write is versioned. If the page changed since you read it, the VFS merges;
+Content changes are versioned. Repeated saves matching the cached current title
+and exact storage content do not create another version or download the body
+again. This uses the mount's observed version; it is not a fresh server probe.
+If the page changed since you read it, the VFS merges;
 if the merge conflicts, the write fails with `EBUSY` and your content is kept —
 check `atlcli wiki vfs conflicts list` and tell the user rather than retrying.
 

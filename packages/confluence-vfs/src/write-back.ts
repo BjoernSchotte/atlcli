@@ -241,6 +241,14 @@ export class WriteBack {
       return this.mergeAndRetry(node, path, body, title, basedOn, serverVersion!);
     }
 
+    // Repeated editor PUTs of the same saved image need no new wiki version.
+    // Compare storage as well as title: Markdown equality can hide lossy macros.
+    const storage = toStorage(body);
+    if (serverVersion !== undefined && title === node.title &&
+        this.opts.cache.getBody(node.id, serverVersion)?.storageHash === hashStorage(storage)) {
+      return { path, pageId: node.id, version: serverVersion, created: false };
+    }
+
     const nextVersion = (serverVersion ?? basedOn ?? 0) + 1;
     try {
       const updated = await this.request(
@@ -248,7 +256,7 @@ export class WriteBack {
           this.opts.client.updatePage({
             id: node.id,
             title,
-            storage: toStorage(body),
+            storage,
             version: nextVersion,
           }),
         path,

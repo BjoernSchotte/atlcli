@@ -478,6 +478,11 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     expect(first.status).toBe(201); await first.text();
     const id = (await vfs.resolve(path)).id; created.push(id);
     const original = await client.getPage(id);
+    for (let i = 0; i < 3; i++) {
+      const repeated = await fetch(url, { method: "PUT", body: "Live plain WebDAV original" });
+      expect(repeated.status).toBe(200); await repeated.text();
+    }
+    expect((await client.getPage(id)).version).toBe(original.version);
     const moved = await fetch(url, { method: "MOVE", headers: { Destination: `${url.href}~` } });
     expect(moved.status).toBe(204); await moved.text();
     expect((await client.getPage(id)).title).toBe(original.title);

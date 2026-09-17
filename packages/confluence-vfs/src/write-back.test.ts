@@ -128,6 +128,32 @@ describe("mode guard on every route", () => {
 });
 
 describe("update", () => {
+  it("does not version identical plain saves through the creation alias and canonical path", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      const alias = "/DOCSY/repeated-save.md";
+      const created = await vfs.writeFile(alias, "Repeated save 🐴\n");
+      const canonical = `/DOCSY/repeated-save-${created.pageId}/_index.md`;
+      const bodyReads = client.callsTo("getPage");
+      const results = await Promise.all([
+        vfs.writeFile(alias, "Repeated save 🐴\n"),
+        vfs.writeFile(canonical, "Repeated save 🐴\n"),
+      ]);
+      expect(results.map(result => result.version)).toEqual([1, 1]);
+      expect(client.callsTo("getPage")).toBe(bodyReads);
+      expect(client.callsTo("updatePage")).toBe(0);
+      expect(client.callsTo("createPage")).toBe(1);
+      const changed = await vfs.writeFile(alias, "Changed save 🐴\n");
+      expect(changed.version).toBe(2);
+      expect(client.callsTo("updatePage")).toBe(1);
+      const current = await vfs.readFile(canonical);
+      const renamed = await vfs.writeFile(alias, current.replace('title: "Repeated Save"', 'title: "Renamed"'));
+      expect(renamed.version).toBe(3);
+      expect(client.peekPage(created.pageId)?.title).toBe("Renamed");
+    } finally { await vfs.close(); }
+  });
+
   it("writes a changed body back at version + 1", async () => {
     const client = seeded();
     const vfs = await openVfs(client);
@@ -746,7 +772,7 @@ describe("write coalescing", () => {
       try { if (calls === 1) await gate; return await update(params); }
       finally { active--; }
     };
-    const first = vfs.writeFile("/DOCSY/getting-started-101.md", original);
+    const first = vfs.writeFile("/DOCSY/getting-started-101.md", original.replace('title: "Getting Started"', 'title: "First title"'));
     await settle(); runScheduled(); await settle();
     expect(calls).toBe(1);
     const second = vfs.writeFile("/DOCSY/getting-started-101/_index.md", `${original}saved\n`);

@@ -442,6 +442,21 @@ describe("the binding rule", () => {
 
 
 describe("macOS editor atomic saves", () => {
+  it("does not publish duplicate PUTs of the same newly created page", async () => {
+    await start(seeded(), { allowDelete: false });
+    const path = "/DOCSY/repeated-put.md";
+    const body = "Editor save 🐴\n";
+    expect((await dav(path, { method: "PUT", body })).status).toBe(201);
+    const id = (await vfs.resolve(path)).id!;
+    const version = client.peekPage(id)!.version;
+    const updates = client.callsTo("updatePage");
+    for (let i = 0; i < 3; i++) expect((await dav(path, { method: "PUT", body })).status).toBe(200);
+    expect(client.peekPage(id)!.version).toBe(version);
+    expect(client.callsTo("updatePage")).toBe(updates);
+    expect(client.callsTo("createPage")).toBe(1);
+    expect((await dav(path)).body).toContain(body.trim());
+  });
+
   for (const overwrite of [undefined, "T", "F"]) {
     it(`honors MOVE overwrite semantics for an editor replacement (${overwrite ?? "omitted"})`, async () => {
       await start(seeded(), { allowDelete: false });
