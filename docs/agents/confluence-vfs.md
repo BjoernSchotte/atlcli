@@ -241,6 +241,12 @@ to the client: they coordinate processes on that client, not other clients or
 Confluence edits. No NLM/NSM lock service runs. Native tests verify nonblocking
 `flock` contention/release and shared POSIX read locks on the current RO mounts;
 write-lock/editor-save acceptance still requires the pending RW implementation.
+Mount options reject malformed values before opening a cache or starting a
+server: `--mode` accepts only `ro` or `rw`, and `--port` accepts decimal integers
+from 0 to 65535 (0 chooses an available port). Missing option values are errors.
+Experimental NFS additionally rejects `rw`, `--sync-writes` and `--allow-delete`
+until write acceptance passes. WebDAV remains the default transport.
+
 NFS sets `actimeo=1` on both systems and disables negative-name caching
 (`nonegnamecache` on macOS, `lookupcache=positive` on Linux). The core metadata
 TTL remains 60 seconds by default: directly reopening a cached page checks its

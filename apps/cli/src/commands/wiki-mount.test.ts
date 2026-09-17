@@ -6,9 +6,9 @@
  * kernel and belongs to WP7.9's gated live run.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createServer } from "node:http";
 import {
   mountCommandFor,
@@ -196,4 +196,39 @@ describe("safe shutdown", () => {
     expect(attempts).toBe(2);
     expect(process.listenerCount("SIGTERM")).toBe(before);
   });
+});
+
+describe("mount startup validation", () => {
+  it("rejects malformed flags before profile lookup or filesystem side effects", () => {
+    const invalid = [
+      ...["webdav", "nfs"].flatMap(transport => [
+        ...["invalid", "-1", "1.5", "65536", "0x50", "1e3"].map(port => ["--transport", transport, "--port", port]),
+        ["--transport", transport, "--port"],
+        ["--transport", transport, "--mode", "readwrite"],
+        ["--transport", transport, "--mode"],
+      ]),
+      ["--transport", "nfs", "--mode", "rw"],
+      ["--transport", "nfs", "--sync-writes"],
+      ["--transport", "nfs", "--allow-delete"],
+      ["--transport", "unknown"],
+    ];
+    const cases = [
+      ...invalid.map(flags => ({ flags, code: 2, error: "VALIDATION" })),
+      ...["webdav", "nfs"].flatMap(transport => ["0", "1", "65535"].map(port => ({
+        flags: ["--transport", transport, "--port", port, "--mode", "ro"], code: 1, error: "AUTH",
+      }))),
+    ];
+    for (const { flags, code, error } of cases) {
+      const mountpoint = join(root, "must-not-exist");
+      const cache = join(root, "no-cache");
+      const result = Bun.spawnSync([process.execPath, "--conditions=development", "run", "--cwd",
+        resolve(import.meta.dir, "../.."), "src/index.ts", "wiki", "mount", mountpoint,
+        "--profile", "__missing_mount_validation_profile__", "--cache-dir", cache, "--json", ...flags],
+        { timeout: 10_000 });
+      expect(result.exitCode).toBe(code);
+      expect(result.stdout.toString() + result.stderr.toString()).toContain(error);
+      expect(existsSync(mountpoint)).toBe(false);
+      expect(existsSync(cache)).toBe(false);
+    }
+  }, 30_000);
 });

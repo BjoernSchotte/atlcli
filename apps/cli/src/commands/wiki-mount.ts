@@ -173,7 +173,23 @@ async function handleMount(
   }
 
   let transport: MountTransport;
-  try { transport = parseMountTransport(flags.transport, platform()); }
+  let portFlag: number;
+  try {
+    transport = parseMountTransport(flags.transport, platform());
+    if (flags.mode !== undefined && flags.mode !== "ro" && flags.mode !== "rw") {
+      throw new Error("Use --mode ro|rw");
+    }
+    if (flags.port !== undefined && (typeof flags.port !== "string" || !/^[0-9]+$/.test(flags.port))) {
+      throw new Error("Use --port with an integer from 0 to 65535");
+    }
+    portFlag = Number(flags.port ?? 0);
+    if (!Number.isInteger(portFlag) || portFlag > 65535) {
+      throw new Error("Use --port with an integer from 0 to 65535");
+    }
+    if (transport === "nfs" && (flags.mode === "rw" || hasFlag(flags, "sync-writes") || hasFlag(flags, "allow-delete"))) {
+      throw new Error("Experimental NFS currently supports --mode ro only; write durability acceptance is still pending.");
+    }
+  }
   catch (error) { fail(opts, 2, ERROR_CODES.VALIDATION, (error as Error).message, {}); return; }
 
   const config = await loadConfig();
@@ -199,11 +215,10 @@ async function handleMount(
   const mode: VfsMode =
     modeFlag === "rw" ? "rw" : modeFlag === "ro" ? "ro" : (vfsConfig.mode ?? "ro");
   const cacheDir = getFlag(flags, "cache-dir") ?? vfsConfig.cacheDir ?? DEFAULT_CACHE_DIR;
-  const portFlag = Number(getFlag(flags, "port") ?? 0);
 
   let helperPath: string | undefined;
   if (transport === "nfs") {
-    if (mode !== "ro" || (flags.mode !== undefined && flags.mode !== "ro") || hasFlag(flags, "sync-writes") || hasFlag(flags, "allow-delete")) {
+    if (mode !== "ro") {
       fail(opts, 2, ERROR_CODES.VALIDATION, "Experimental NFS currently supports --mode ro only; write durability acceptance is still pending.", {});
       return;
     }
@@ -240,14 +255,14 @@ async function handleMount(
     if (transport === "nfs") {
       const { startNfsServer } = await import("../vfs/nfs-bridge.js");
       const nfs = await startNfsServer({ vfs, spaces, onSweep, helperPath: helperPath!,
-        port: Number.isFinite(portFlag) && portFlag > 0 ? portFlag : 0 });
+        port: portFlag });
       helperPid = nfs.pid;
       helperExited = nfs.exited;
       running = { port: nfs.port, url: `nfs://127.0.0.1:${nfs.port}/`, stop: () => nfs.stop() };
     } else {
       const { startWebdavServer } = await import("../vfs/webdav-server.js");
       running = await startWebdavServer({ vfs, spaces,
-        port: Number.isFinite(portFlag) && portFlag > 0 ? portFlag : 0,
+        port: portFlag,
         onSweep,
       });
     }

@@ -1388,3 +1388,22 @@ buffer enlargement; removing that test-only tuning made the client portable.
 Linux's live DOCSY RO signal lifecycle test also passed (10 assertions), with
 normal detach, and local typecheck passed all four tasks. Synthetic attachment
 bytes are used for the blocked-reader test; no wiki content was modified.
+
+## Slice 54 — validate mount flags before startup side effects
+
+Malformed ports previously fell back to automatic allocation in some cases;
+unknown modes could silently use the configured mode. Mount startup now accepts
+only explicit `ro|rw` modes and decimal ports from 0 through 65535. Missing flag
+values, fractions, negatives, overflow and alternate numeric notation fail
+before loading a profile, opening a cache or starting a helper. Explicit NFS
+write options are rejected at the same boundary; a configured RW mode remains
+checked after profile resolution. Valid WebDAV and NFS behavior is unchanged.
+
+On both hosts the 23 existing mount/transport tests passed (145 assertions).
+The final expanded subprocess matrix passed 28 invocations / 112 assertions:
+22 invalid option combinations returned validation errors ahead of missing
+profile errors; six valid boundary combinations reached authentication instead.
+Neither group created its mountpoint or cache. macOS's first broad sandbox run
+could not bind the existing local-listener test; the authorized unsandboxed run
+passed. All five Linux live DOCSY RO lifecycle cases passed (61 assertions),
+with normal/orphan-recovery detach. Final typecheck passed all four tasks.
