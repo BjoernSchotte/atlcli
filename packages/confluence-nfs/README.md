@@ -86,6 +86,17 @@ remaining native architecture coverage are tracked in the evidence.
 
 Place `atlcli-confluence-nfs` next to a compiled `atlcli`. Without
 `ATLCLI_NFS_HELPER`, the mount command discovers this companion automatically.
+The credential-free smoke test mounts against a local Confluence stand-in,
+reads Unicode, rejects writes in RO and verifies signal-driven normal detach:
+
+```sh
+ATLCLI_VFS_TEST_BINARY=/path/to/extracted/atlcli ATLCLI_NFS_KERNEL=1 \
+  bun run test apps/cli/src/e2e/wiki-sh-built.e2e.test.ts
+```
+
+All four native CI lanes run this against their extracted review archive.
+The helper override is cleared inside the test to verify adjacent discovery.
+
 For the live DOCSY lifecycle test of an extracted local bundle:
 
 ```sh

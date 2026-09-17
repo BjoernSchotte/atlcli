@@ -22,8 +22,11 @@
  * behaviour; this covers packaging.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { tmpdir, platform } from "node:os";
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { isMounted, runMountCommand, type MountRecord } from "../commands/wiki-mount.js";
+import { nfsMountOptionsFor } from "../vfs/mount-transport.js";
 import { join, resolve } from "node:path";
 
 const BINARY = process.env.ATLCLI_VFS_TEST_BINARY;
@@ -54,7 +57,7 @@ const PAGES = new Map<string, StandInPage>([
       id: "201",
       title: "Architecture",
       parentId: "100",
-      storage: "<h1>Architecture</h1><p>Runs on clusters.</p>",
+      storage: "<h1>Architecture</h1><p>Runs on clusters. Grüße 🐴</p>",
     },
   ],
 ]);
@@ -99,6 +102,9 @@ beforeAll(() => {
           homepage: { id: "100" },
           _links: { base: url.origin, webui: "/spaces/DOCSY" },
         });
+      }
+      if (/\/api\/v2\/pages\/\d+\/(footer-comments|inline-comments)$/.test(path)) {
+        return Response.json({ results: [], _links: {} });
       }
       const children = /\/api\/v2\/pages\/(\d+)\/direct-children/.exec(path);
       if (children) {
@@ -176,6 +182,7 @@ beforeAll(() => {
 afterAll(() => {
   if (!RUN) return;
   server?.stop(true);
+  if (home && isMounted(join(home, "mount"))) throw new Error(`Test mount remains attached: ${join(home, "mount")}`);
   if (home) rmSync(home, { recursive: true, force: true });
 });
 
@@ -184,13 +191,18 @@ afterAll(() => {
  * in-process stand-in could never answer the child's request and the pair
  * would deadlock. (It did, the first time.)
  */
-async function cli(...args: string[]): Promise<{ out: string; err: string; code: number }> {
+function startCli(...args: string[]) {
   const proc = Bun.spawn([...(BINARY ? [BINARY] : ["bun", BUNDLE]), ...args], {
-    env: { ...process.env, HOME: home, ATLCLI_API_TOKEN: "token" },
+    env: { ...process.env, HOME: home, ATLCLI_API_TOKEN: "token", ATLCLI_NFS_HELPER: undefined },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
   });
+  return proc;
+}
+
+async function cli(...args: string[]): Promise<{ out: string; err: string; code: number }> {
+  const proc = startCli(...args);
   const [out, err, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -200,6 +212,53 @@ async function cli(...args: string[]): Promise<{ out: string; err: string; code:
 }
 
 describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
+  it.skipIf(!BINARY || process.env.ATLCLI_NFS_KERNEL !== "1")("mounts through the compiled CLI and adjacent NFS companion", async () => {
+    const mountpoint = join(home, "mount");
+    const cache = join(home, "mount-cache");
+    const proc = startCli("wiki", "mount", mountpoint, "--transport", "nfs", "--space", "DOCSY",
+      "--mode", "ro", "--cache-dir", cache, "--json");
+    let stdout = "", stderr = "";
+    const drain = async (stream: ReadableStream<Uint8Array>, append: (s: string) => void) => {
+      const decoder = new TextDecoder();
+      for await (const chunk of stream) append(decoder.decode(chunk, { stream: true }));
+    };
+    const drained = Promise.all([drain(proc.stdout, text => { stdout += text; }),
+      drain(proc.stderr, text => { stderr += text; })]);
+    try {
+      let record: MountRecord | undefined;
+      const deadline = Date.now() + 15000;
+      while (Date.now() < deadline) {
+        if (proc.exitCode !== null) throw new Error(`Compiled CLI exited before mount: ${stderr || stdout}`);
+        try {
+          const name = readdirSync(join(cache, "mounts")).find(name => name.endsWith(".json"));
+          if (name) record = JSON.parse(readFileSync(join(cache, "mounts", name), "utf8"));
+        } catch { /* Waiting for atomic state publication. */ }
+        if (record && stdout.includes('"transport"')) break;
+        await Bun.sleep(25);
+      }
+      expect(record?.transport).toBe("nfs");
+      expect(record?.helperPid).toBeGreaterThan(0);
+      if (platform() === "linux") {
+        expect(await runMountCommand(["sudo", "-n", "mount", "-t", "nfs", "-o",
+          nfsMountOptionsFor("linux", record!.port), "127.0.0.1:/", mountpoint])).toBe(0);
+      }
+      expect(isMounted(mountpoint)).toBe(true);
+      expect(await readdir(mountpoint)).toContain("architecture-201");
+      expect(await readFile(join(mountpoint, "architecture-201", "_index.md"), "utf8")).toContain("Grüße 🐴");
+      await expect(writeFile(join(mountpoint, "architecture-201", "_index.md"), "denied")).rejects.toMatchObject({ code: "EROFS" });
+      proc.kill("SIGTERM");
+      expect(await Promise.race([proc.exited, Bun.sleep(10000).then(() => { throw new Error("Compiled CLI did not detach"); })])).toBe(0);
+      expect(isMounted(mountpoint)).toBe(false);
+      expect(readdirSync(join(cache, "mounts")).filter(name => name.endsWith(".json"))).toEqual([]);
+    } finally {
+      if (isMounted(mountpoint)) await runMountCommand(platform() === "linux"
+        ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint]);
+      proc.kill("SIGTERM");
+      await proc.exited;
+      await drained;
+    }
+  }, 40000);
+
   it("lists a space", async () => {
     const result = await cli("wiki", "sh", "--space", "DOCSY", "-c", "ls");
     expect(result.code).toBe(0);

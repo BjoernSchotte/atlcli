@@ -1,7 +1,7 @@
 # NFS acceptance checkpoint
 
 This is a working audit of PLAN.md, not acceptance of the feature. The complete
-read/write objective remains open. Implementation evidence reviewed through Slice 142. Slice 123 reruns broad VFS, native mount, Rust and compiled-shell
+read/write objective remains open. Implementation evidence reviewed through Slice 143. Slice 123 reruns broad VFS, native mount, Rust and compiled-shell
 checks on both hosts; full repository build/CI and final acceptance remain open.
 [EVIDENCE.md](EVIDENCE.md) contains commands, host boundaries and detailed results.
 
@@ -25,7 +25,7 @@ checks on both hosts; full repository build/CI and final acceptance remain open.
 | Signals, busy mount, explicit unmount, helper/parent death, stale recovery | Linux live CLI lifecycle covers five cases; macOS native helper/kernel tests | Slice 90 adds durable status counts and once-only normal-shutdown reporting; Slice 91 bounds restart publication. Slice 142 wires one same-port helper restart before normal detach and verifies the Linux busy-helper-crash case. Still required: remaining death/fault cases and full macOS CLI lifecycle |
 | Indexer safeguards and request accounting | Shared markers and distinct-file sweep hint (Slices 37–38) | Complete transport request accounting and resource-bound acceptance |
 | Native Vim/Linux and TextEdit/macOS writes with API verification | Slice 87 proves native TextEdit manual save and VS Code autosave on macOS with a synthetic backend; native Vim and real DOCSY saves on Linux | Real-tenant macOS editor proof unavailable without profile; create/trash, broader faults and final artifact matrix remain open; public RO guard remains enabled |
-| Four-platform companion binaries and archive/installer | Native four-platform CI; source/extracted helper and archive validation; Slice 50 clean-source Linux x64 packaged CLI lifecycle | Compiled CLI mount execution on macOS arm64/x64 and Linux arm64, remaining Homebrew architecture proof |
+| Four-platform companion binaries and archive/installer | Native four-platform CI; source/extracted helper and archive validation; Slice 50 clean-source Linux x64 packaged CLI lifecycle | Slice 143 adds compiled CLI mount smoke to all native CI lanes; macOS arm64 and Linux x64 locally verified. Pending: CI macOS x64/Linux arm64 results and remaining Homebrew architecture proof |
 | Shell without helper, no CQL behavior changes | Full source shell suites and built-bundle smoke tests | Final packaged smoke matrix with helper absent/wrong and offline startup |
 | Comparative performance, five cold/warm runs | Slice 61 isolated five-run comparisons on both hosts, native peak RSS, shutdown and protocol counts; zero warm API calls | All downloaded bytes, Glow scan/startup and editor-save visibility; resolve >10% review triggers |
 | Tests, build, docs, required CI, go/no-go recommendation | Current local build and regression checkpoint below | Final regression/CI, user-facing docs and explicit experimental go/no-go after all correctness gates |

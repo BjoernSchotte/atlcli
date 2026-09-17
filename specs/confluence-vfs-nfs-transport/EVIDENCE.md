@@ -3864,3 +3864,26 @@ completed successfully on source c0169c47. macOS arm64 measured 772.7ms and Inte
 listing-budget repair and Slice 140's helper-death test repair across the matrix.
 These CI results precede the Slice 142 CLI recovery change; draft-skipped product
 quality checks and final compiled-CLI mount acceptance remain open.
+
+
+## Slice 143 — compiled CLI native mount acceptance in CI (2026-09-17)
+
+Extended the existing built-shell HTTP stand-in with empty comment collections
+and a compiled CLI mount case. It clears the helper override, starts the binary,
+lets it discover the adjacent companion, mounts through the native kernel,
+lists the root, reads Unicode, verifies EROFS on write, then signals the CLI
+and verifies normal detach plus state cleanup. Fixture teardown refuses to
+recursively remove an attached test mount. No real credentials are used here.
+The four native CI lanes now run this case and the existing shell smoke tests
+against the actual extracted review archive, after their bridge/kernel suite.
+
+Local development-compiled binaries with adjacent helpers: macOS arm64 ten
+passed / 42 assertions; Linux x64 ten passed / 43 assertions. Linux also ran
+all six real DOCSY compiled-CLI lifecycle cases: six passed / 85 assertions,
+including helper death while busy and parent death. These local binaries are
+not claimed as release archives; CI validates that packaging boundary.
+Final typecheck passed all four tasks.
+
+The macOS real-tenant lifecycle/editor proof remains open because the local
+Mayflower profile is unavailable. Synthetic native tests do not replace that
+requirement. Workflow policy tests passed (35 tests / 614 assertions).
