@@ -60,3 +60,8 @@ the Bun adapter and Rust bridge return NAMETOOLONG for larger UTF-8 names.
 Wire regressions cover deleted-object handles on all three procedures, PATHCONF
 fields, and ASCII/Unicode name boundaries. See RFC 1813 sections 3.3.4, 3.3.18,
 3.3.20 and filename handling: https://www.rfc-editor.org/rfc/rfc1813.html.
+
+- FSINFO failure replies include the required absent post-operation attributes,
+  allowing the helper's identity-aware FSINFO implementation to return STALE
+  without producing a truncated XDR error arm.
+- ACCESS removes the directory-only LOOKUP bit for non-directory objects.

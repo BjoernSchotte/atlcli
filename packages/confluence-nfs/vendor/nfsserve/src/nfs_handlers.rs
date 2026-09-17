@@ -451,6 +451,7 @@ pub async fn nfsproc3_fsinfo(
             error!("fsinfo error {:?} --> {:?}", xid, stat);
             make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
+            nfs::post_op_attr::Void.serialize(output)?;
         },
     }
     Ok(())
@@ -512,7 +513,12 @@ pub async fn nfsproc3_access(
     let id = id.unwrap();
 
     let obj_attr = match context.vfs.getattr(id).await {
-        Ok(v) => nfs::post_op_attr::attributes(v),
+        Ok(v) => {
+            if !matches!(v.ftype, nfs::ftype3::NF3DIR) {
+                access &= !ACCESS3_LOOKUP;
+            }
+            nfs::post_op_attr::attributes(v)
+        },
         Err(stat) => {
             make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;

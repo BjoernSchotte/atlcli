@@ -312,7 +312,8 @@ metadata, including when an ancestor page moves. Inconsistent ancestry returns a
 retryable error. The folder’s generated `_index.md` follows its owning folder
 handle and keeps its identity after relocation. Attachment handles also follow
 independent renames and owner changes within the selected export.
-Deleted or replaced identities report `ESTALE`; look up the path again, or remount
+NFS ACCESS grants reading for regular files and reading/lookup for directories;
+write operations remain rejected. Deleted or replaced identities report `ESTALE`; look up the path again, or remount
 after a helper restart. Single-space and combined-space native reads are covered
 by the [NFS evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md).
 

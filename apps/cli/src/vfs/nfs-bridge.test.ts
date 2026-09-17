@@ -30,7 +30,7 @@ function ints(...values: number[]): Buffer {
 function opaque(value: Buffer): Buffer {
   return Buffer.concat([ints(value.length), value, Buffer.alloc((4 - value.length % 4) % 4)]);
 }
-async function rpc(server: Pick<RunningNfsServer, "port">, program: number, procedure: number, body: Buffer): Promise<Buffer> {
+async function rpc(server: Pick<RunningNfsServer, "port">, program: number, procedure: number, body: Buffer, acceptStatus = 0): Promise<Buffer> {
   const payload = Buffer.concat([ints(7, 0, 2, program, 3, procedure, 0, 0, 0, 0), body]);
   return new Promise((resolveReply, reject) => {
     const socket = connect(server.port, "127.0.0.1");
@@ -44,7 +44,7 @@ async function rpc(server: Pick<RunningNfsServer, "port">, program: number, proc
         socket.destroy();
         // Accepted RPC response: xid, reply, accepted, AUTH_NONE verifier, success.
         try {
-          expect([...Array(6)].map((_, i) => response.readUInt32BE(4 + i * 4))).toEqual([7, 1, 0, 0, 0, 0]);
+          expect([...Array(6)].map((_, i) => response.readUInt32BE(4 + i * 4))).toEqual([7, 1, 0, 0, 0, acceptStatus]);
           resolveReply(response.subarray(28));
         } catch (error) { reject(error); }
       }
@@ -112,7 +112,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(client.callsTo("downloadAttachment")).toBe(1);
   });
 
-  it("rejects expired object handles for ACCESS, FSSTAT and PATHCONF", async () => {
+  it("rejects expired object handles for ACCESS, FSSTAT, FSINFO and PATHCONF", async () => {
     const { server, vfs, client } = await fixture(["DOCSY"], false);
     const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
     const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
@@ -121,13 +121,41 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const file = lookup.subarray(8, 8 + lookup.readUInt32BE(4));
     await client.deletePage("400");
     await vfs.index.loadChildren("100", { force: true });
-    for (const procedure of [4, 18, 20]) {
+    for (const procedure of [4, 18, 19, 20]) {
       const reply = await rpc(server, 100003, procedure,
         Buffer.concat([opaque(file), procedure === 4 ? ints(63) : Buffer.alloc(0)]));
       expect(reply.readUInt32BE()).toBe(70); // NFS3ERR_STALE
       expect(reply.readUInt32BE(4)).toBe(0); // absent attributes in error arm
       expect(reply.length).toBe(8);
     }
+  });
+
+  it("advertises only implemented capabilities and rejects every supported mutation in RO", async () => {
+    const { server, client } = await fixture(["DOCSY"], false);
+    const mounted = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
+    const info = await rpc(server, 100003, 19, opaque(root));
+    expect(info.readUInt32BE()).toBe(0);
+    expect(info.readUInt32BE(4)).toBe(1); // post-op attributes
+    expect(info.readUInt32BE(info.length - 4)).toBe(0); // no optional capabilities
+    const access = await rpc(server, 100003, 4, Buffer.concat([opaque(root), ints(63)]));
+    expect(access.readUInt32BE()).toBe(0);
+    expect(access.readUInt32BE(access.length - 4)).toBe(3); // READ | LOOKUP, no writes
+    const found = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("_index.md"))]));
+    const file = found.subarray(8, 8 + found.readUInt32BE(4));
+    const fileAccess = await rpc(server, 100003, 4, Buffer.concat([opaque(file), ints(63)]));
+    expect(fileAccess.readUInt32BE()).toBe(0);
+    expect(fileAccess.readUInt32BE(fileAccess.length - 4)).toBe(1); // regular files: READ only
+    client.resetCalls();
+    // The RO capability gate runs before decoding mutation payloads or backend access.
+    for (const procedure of [2, 7, 8, 9, 10, 12, 13, 14]) {
+      const reply = await rpc(server, 100003, procedure, Buffer.alloc(0));
+      expect(reply.readUInt32BE()).toBe(30); // ROFS
+    }
+    for (const procedure of [11, 15, 21]) { // MKNOD, LINK, COMMIT are not implemented in RO.
+      expect(await rpc(server, 100003, procedure, Buffer.alloc(0), 3)).toEqual(Buffer.alloc(0));
+    }
+    expect(client.requestCount).toBe(0);
   });
 
   it("advertises and enforces the same 255-byte filename limit", async () => {

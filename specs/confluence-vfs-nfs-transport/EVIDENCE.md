@@ -1440,3 +1440,24 @@ shared-process series. This corpus still triggers >10% transport reviews: NFS
 is slower cold on both hosts and warm on Linux, faster warm on macOS. It does
 not justify a general speed claim. Protocol counts, full HTTP-byte accounting,
 Glow/editor timings and the final acceptance recommendation remain open.
+
+## Slice 56 — FSINFO error shape and RO capability audit
+
+The helper already overrides upstream FSINFO and advertises no unsupported
+optional capabilities. The audit found a narrower vendor bug: the FSINFO failure
+arm omitted mandatory post-operation attributes, so STALE yielded only four
+bytes instead of the required eight. It now serializes absent attributes.
+ACCESS also removes directory-only LOOKUP permission for regular files.
+
+Real-wire regressions verify exact STALE error arms for ACCESS, FSSTAT, FSINFO
+and PATHCONF; FSINFO's zero optional capabilities; READ/LOOKUP for directories
+and READ-only for files; ROFS for SETATTR, WRITE, CREATE, MKDIR, SYMLINK, REMOVE,
+RMDIR and RENAME; and RPC procedure-unavailable for MKNOD, LINK and COMMIT.
+The mutation probes assert zero backend requests. The file ACCESS assertion
+failed against the old helper and passed after rebuilding with the correction.
+
+Final macOS and Linux runs each passed six wire/native tests with 90 assertions.
+Locked builds and Clippy passed on both hosts; typecheck passed all four tasks.
+Linux basic native cases used DOCSY/combined spaces live RO; mutations were
+synthetic. All mounts detached normally. RW capabilities remain gated and need
+fresh acceptance when the write implementation is enabled.
