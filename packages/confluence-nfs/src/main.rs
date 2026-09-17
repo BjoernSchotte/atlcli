@@ -323,17 +323,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sequence: AtomicU64::new(1),
         capacity: Arc::new(Semaphore::new(32)),
     };
-    let server = NFSTcpListener::bind(&format!("127.0.0.1:{port}"), bridge).await?;
+    let server = Arc::new(NFSTcpListener::bind(&format!("127.0.0.1:{port}"), bridge).await?);
     write_frame(
         &mut std::io::stdout().lock(),
         &json!({"hello":BRIDGE_VERSION,"port":server.get_listen_port(),"mode":"ro"}),
     )?;
     let (closed_tx, closed_rx) = oneshot::channel::<()>();
+    let metrics_server = server.clone();
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
         loop {
             match read_frame(&mut input) {
                 Ok(Some(value)) => {
+                    if let Some(id) = value["stats"].as_u64() {
+                        if write_frame(
+                            &mut std::io::stdout().lock(),
+                            &json!({"stats":id,"requests":metrics_server.request_count()}),
+                        )
+                        .is_err()
+                        {
+                            break;
+                        }
+                        continue;
+                    }
                     let Some(id) = value["id"].as_u64() else {
                         break;
                     };

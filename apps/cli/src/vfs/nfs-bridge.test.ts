@@ -74,6 +74,18 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
 }
 
 describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
+  it("counts protocol requests including backend-free NFS and mount calls", async () => {
+    const { server, client } = await fixture(["DOCSY"], false);
+    client.resetCalls();
+    expect(await server.requestCount()).toBe(0);
+    await rpc(server, 100003, 0, Buffer.alloc(0));
+    await rpc(server, 100005, 0, Buffer.alloc(0));
+    expect(await server.requestCount()).toBe(2);
+    expect(await server.requestCount()).toBe(2); // Private accounting is not NFS traffic.
+    expect(client.requestCount).toBe(0);
+    await server.stop();
+    await expect(server.requestCount()).rejects.toThrow("stopped");
+  });
   it("retains wire attachment identity after rename and old-name replacement", async () => {
     let clock = Date.now();
     const { server, client } = await fixture(["DOCSY"], false, () => clock);

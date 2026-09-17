@@ -1,6 +1,7 @@
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use anyhow;
@@ -22,6 +23,7 @@ pub struct NFSTcpListener<T: NFSFileSystem + Send + Sync + 'static> {
     mount_signal: Option<mpsc::Sender<bool>>,
     export_name: Arc<String>,
     transaction_tracker: Arc<TransactionTracker>,
+    requests: Arc<AtomicU64>,
 }
 
 pub fn generate_host_ip(hostnum: u16) -> String {
@@ -29,12 +31,13 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 }
 
 /// processes an established socket
-async fn process_socket(mut socket: tokio::net::TcpStream, context: RPCContext) -> Result<(), anyhow::Error> {
+async fn process_socket(mut socket: tokio::net::TcpStream, context: RPCContext, requests: Arc<AtomicU64>) -> Result<(), anyhow::Error> {
     let _ = socket.set_nodelay(true);
     // ponytail: sequential per connection bounds request/reply memory without queues.
     // Add bounded multiplexing only if native benchmarks demonstrate a bottleneck.
     loop {
         let record = tokio::time::timeout(Duration::from_secs(60), read_record(&mut socket)).await??;
+        requests.fetch_add(1, Ordering::Relaxed);
         let mut reply = Vec::new();
         let should_reply = tokio::time::timeout(
             Duration::from_secs(120),
@@ -121,6 +124,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(TransactionTracker::new(Duration::from_secs(60))),
+            requests: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -132,6 +136,11 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
     /// Default path is `/` if not set.
     pub fn with_export_name<S: AsRef<str>>(&mut self, export_name: S) {
         self.export_name = Arc::new(format!("/{}", export_name.as_ref().trim_end_matches('/').trim_start_matches('/')))
+    }
+
+    /// Complete received RPC records, including mount calls, errors and retries.
+    pub fn request_count(&self) -> u64 {
+        self.requests.load(Ordering::Relaxed)
     }
 }
 
@@ -174,11 +183,12 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
             };
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);
+            let requests = self.requests.clone();
             tokio::spawn(async move {
                 let _permit = permit;
                 let tracker = context.transaction_tracker.clone();
                 let client = context.client_addr.clone();
-                let _ = process_socket(socket, context).await;
+                let _ = process_socket(socket, context, requests).await;
                 tracker.remove_client(&client);
             });
         }

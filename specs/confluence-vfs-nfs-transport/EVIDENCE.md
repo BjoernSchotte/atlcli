@@ -1551,3 +1551,43 @@ in this slice also passed basic native single/combined-space, attachment and
 visibility checks, including Linux live DOCSY and mayflower RO. Typecheck passed
 all four tasks; mounts detached normally. Comprehensive resource/performance
 acceptance remains open.
+
+## Slice 61 — local protocol request counts and refreshed comparison
+
+WebDAV now counts received HTTP requests at the HTTP server. The NFS listener
+counts complete received RPC records before dispatch, including mount/NULL,
+errors and retries; rejected incomplete/oversized records are excluded. A single
+atomic integer retains no request data. Private bridge version 3 adds an explicit
+counter query with one outstanding request, a five-second deadline and rejection
+on helper exit. Old companions are rejected by the existing version checks.
+The benchmark records startup and per-phase deltas, outside its wall-time window.
+
+Schema-3 benchmark artifacts replace the previous series, using five isolated
+cold/warm runs per transport and host with the same corpus and byte checks:
+
+| Host / transport | Cold median ms | Warm median ms | Cold protocol requests (range) | Warm protocol requests (range) |
+| --- | ---: | ---: | ---: | ---: |
+| macOS WebDAV | 74.1 | 12.4 | 64–66 | 6 |
+| macOS NFS | 115.3 | 3.3 | 183–186 | 0–16 |
+| Linux WebDAV | 115.3 | 9.4 | 80 | 0 |
+| Linux NFS | 142.4 | 23.4 | 140 | 54 |
+
+Startup adds two/three WebDAV requests on macOS/Linux and six/eight-to-nine NFS
+requests respectively. Warm Confluence API calls remain zero in every sample.
+Linux NFS's warm local RPCs, versus WebDAV's local cache hit, identify local work
+behind the warm regression; operation-level profiling is still needed to assign
+the cost. Neither RPC counts nor these results establish a general speed win.
+API metadata/HTTP overhead bytes and Glow/editor comparisons remain open.
+
+Both hosts passed the real-wire NFS counter test, all six Rust tests, locked
+builds and Clippy. macOS passed 35 HTTP tests/135 assertions and 26
+framing/failure/artifact tests/149 assertions; Linux passed 47 HTTP/framing/failure
+tests/226 assertions. The timeout test initially blocked inside Bun's promise
+matcher before it could stop the helper; attaching an ordinary rejection handler
+before stop fixes the test ordering. Final native macOS mount checks and Linux
+live DOCSY CLI signal cleanup passed; all four typecheck tasks passed. Benchmark
+mounts detached normally. No live content was stored in benchmark artifacts.
+
+The plan and acceptance record also capture the user's explicit decisions for
+automatic buffered saves and immutable version paths alongside live normal paths.
+These preferences are resolved; their remaining implementation/proof is not.

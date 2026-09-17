@@ -1,7 +1,7 @@
 //! Private pipe protocol shared with apps/cli/src/vfs/nfs-framing.ts.
 use std::io::{self, Read, Write};
 
-pub const BRIDGE_VERSION: u32 = 2;
+pub const BRIDGE_VERSION: u32 = 3;
 pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 fn invalid(message: &str) -> io::Error {

@@ -128,7 +128,7 @@ performed by this spec.
 | --- | --- |
 | LOOKUP / handles | Identity-based IDs distinguish page directory, Markdown, attachment and generated node; preserve IDs across rename/reparent and never reuse deleted IDs for another object. |
 | GETATTR / READDIRPLUS | Exact UTF-8 byte sizes, backed by the existing body cache. Fetch only visited/listed file bodies when needed; shell stat stays metadata-only. |
-| READ | Offset/count in bytes, correct EOF, bounded ranges and consistent version snapshot; Unicode may span read boundaries. |
+| READ | Offset/count in bytes, correct EOF, bounded ranges; immutable version paths preserve one version across all READs. Normal paths expose current state and may refresh between READs. Unicode may span read boundaries. |
 | READDIR | Deterministic pagination and explicit behavior when a directory changes between requests; no silent skipping caused by ID/path ordering or bad cookies. |
 | WRITE / SETATTR | Byte-range writes, truncate and extend need the durable staging design below; whole-file VFS writes cannot directly substitute for them. |
 | CREATE / RENAME / REMOVE | Preserve existing page identity and deletion safeguards, including editor temporary/backup replacement sequences. Never purge pages. |
@@ -136,8 +136,11 @@ performed by this spec.
 
 NFS attributes and data caches must agree after a write. Define and measure
 external-update and negative-cache visibility using explicit mount options and
-VFS TTLs; do not promise instantaneous consistency. Never combine bytes from two
-page versions in a single logical read snapshot.
+VFS TTLs; do not promise instantaneous consistency. Version paths must never
+combine bytes from two page versions in a logical read snapshot. Normal paths
+remain live and may change between READ calls; use a version path when an agent
+needs a reproducible whole-document read. The user accepted this distinction on
+2026-09-17.
 
 Upstream default handles contain a server-start generation. Treat helper restart
 as invalidating handles and require remount; expose ESTALE/recovery instructions
@@ -155,6 +158,14 @@ unsupported locks explicitly, with no cross-client locking promise. Existing
 optimistic Confluence version checks remain the authority for write conflicts.
 
 ## Writes and durability gate
+
+Product decision (2026-09-17): editor saves must publish automatically; a required
+manual publish command is rejected. Buffer rapid saves per document and publish
+the latest state after the existing 500 ms coalescing window. Preserve staged
+bytes durably and serialize publication so edits arriving during a request remain
+pending for the next pass. This debounce is separate from API retry backoff.
+The completion-boundary and fault tests below remain required: a quiet period
+does not by itself prove that every block of an editor save has arrived.
 
 The upstream implementation inspected on 2026-09-16 responds to successful WRITE
 with FILE_SYNC, while its VFS write hook receives only ID, offset and bytes.

@@ -53,6 +53,20 @@ it("exposes helper death after readiness and allows repeated stop", async () => 
   expect(() => process.kill(server.pid, 0)).toThrow();
 });
 
+it("bounds statistics requests and rejects unanswered queries on timeout or helper exit", async () => {
+  const server = await startNfsServer({ vfs, spaces: ["DOCSY"],
+    helperPath: helper(`${send({ hello: NFS_BRIDGE_VERSION, mode: "ro", port: 12345 })}
+      process.stdin.resume();process.stdin.on("end",()=>process.exit(0));`) });
+  try {
+    const pending = server.requestCount();
+    await expect(server.requestCount()).rejects.toThrow("already pending");
+    await expect(pending).rejects.toThrow("timed out");
+    const stopped = server.requestCount().catch(error => error);
+    await server.stop();
+    expect((await stopped).message).toContain("stopped");
+  } finally { await server.stop(); }
+}, 10000);
+
 
 it.skipIf(!process.env.ATLCLI_NFS_TEST_HELPER)("real helper exits when its parent pipe closes cleanly or mid-frame", async () => {
   for (const tail of [Buffer.alloc(0), Buffer.from([0, 0])]) {

@@ -28,10 +28,10 @@ async function retryInterrupted<T>(action: () => Promise<T>): Promise<T> {
     }
   }
 }
-const results = { schema: 2, host: { os: platform(), release: release(), arch: arch(), bun: Bun.version },
+const results = { schema: 3, host: { os: platform(), release: release(), arch: arch(), bun: Bun.version },
   corpus: { pages: 26, attachmentBytes: attachment.length, backend: "in-process synthetic; no network latency" },
   cachePolicy: "Cold: fresh mount, endpoint, VFS and davfs cache. Warm: immediate identical workload on same mount.",
-  limitations: ["Body payload bytes exclude API metadata/HTTP overhead", "Peak RSS covers one isolated transport run (startup, cold, warm and shutdown), not each phase", "VFS calls are not wire protocol request counts", "No Glow/editor/write timing"], records };
+  limitations: ["Body payload bytes exclude API metadata/HTTP overhead", "Peak RSS covers one isolated transport run (startup, cold, warm and shutdown), not each phase", "Protocol requests count complete NFS RPC records or received WebDAV HTTP requests; incomplete records are excluded", "No Glow/editor/write timing"], records };
 
 function peakRss(path: string): number {
   const usage = readFileSync(path, "utf8");
@@ -134,10 +134,12 @@ for (let run = 0; run < 5; run++) {
       assert.equal(await runMountCommand(command), 0, `Attach ${transport}`);
       const startupMs = performance.now() - started;
       const startupApiRequests = client.requestCount, startupBodyPayloadBytes = bodyBytes;
+      const startupProtocolRequests = await server.requestCount();
       assert(isMounted(mountpoint));
       const expected = new Map<string, Buffer>();
       for (const phase of ["cold", "warm"]) {
-        const before = { api: client.requestCount, bodyBytes, hits: vfs.cache!.stats().hits, vfsCalls, interrupted };
+        const before = { api: client.requestCount, bodyBytes, hits: vfs.cache!.stats().hits, vfsCalls, interrupted,
+          protocol: await server.requestCount() };
         const began = performance.now(); let firstListingMs = 0, firstByteMs = 0, readBytes = 0;
         for (const directory of directories) {
           const entries: string[] = [];
@@ -164,8 +166,11 @@ for (let run = 0; run < 5; run++) {
             actual.set(path, bytes); readBytes += bytes.length;
           } finally { await file.close(); }
         }
+        const wallMs = performance.now() - began;
+        const protocolRequests = await server.requestCount() - before.protocol;
         const row: Record<string, unknown> = { transport, run: run + 1, phase, startupMs: phase === "cold" ? startupMs : 0,
-          wallMs: performance.now() - began, firstListingMs, firstByteMs, readBytes,
+          wallMs, firstListingMs, firstByteMs, readBytes, protocolRequests,
+          startupProtocolRequests: phase === "cold" ? startupProtocolRequests : 0,
           startupApiRequests: phase === "cold" ? startupApiRequests : 0,
           startupBodyPayloadBytes: phase === "cold" ? startupBodyPayloadBytes : 0,
           apiRequests: client.requestCount - before.api, bodyPayloadBytes: bodyBytes - before.bodyBytes,

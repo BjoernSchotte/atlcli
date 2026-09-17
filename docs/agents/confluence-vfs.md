@@ -325,7 +325,7 @@ If a directory changes during NFS pagination, the server returns `BAD_COOKIE`;
 restart the listing if the OS does not retry automatically. A kernel may finish
 returning entries it buffered before a change; reopen the directory after the
 metadata freshness window to obtain the updated listing. Directory timestamps
-track changes observed by this mount. Source builds require bridge-version-2
+track changes observed by this mount. Source builds require bridge-version-3
 helpers; rebuild an older companion binary before mounting.
 
 Each NFS session retains at most 65,536 handles, including root and volume
@@ -335,6 +335,11 @@ stale release capacity, but their numeric IDs are never reused in that session.
 Directory revisions retain fixed-size hashes rather than copies of listings.
 Each directory request resolves at most 32 entries concurrently and drains a
 failed batch before returning its error; large listings remain paginated.
+Transport benchmarks distinguish local protocol requests from Confluence API
+requests: NFS counts complete received RPC records (including mount calls and
+retries), while WebDAV counts received HTTP requests. Counter queries use the
+private helper pipe and do not themselves count as NFS traffic. Neither counter
+retains filenames, credentials or content.
 
 The experimental NFS listener rejects RPC records over 4 MiB, more than 1,024
 fragments per record, and XDR arrays exceeding 4 MiB before allocating their

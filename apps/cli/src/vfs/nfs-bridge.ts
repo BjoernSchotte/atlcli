@@ -10,6 +10,8 @@ export interface RunningNfsServer {
   pid: number;
   /** Resolves on any helper termination. Callers must recover a surviving mount. */
   exited: Promise<void>;
+  /** Complete received RPC records, including mount calls and retries. */
+  requestCount(): Promise<number>;
   stop(): Promise<void>;
 }
 
@@ -35,6 +37,9 @@ export async function startNfsServer(options: {
   let resolveExit!: () => void;
   const exited = new Promise<void>((resolve) => { resolveExit = resolve; });
   child.once("close", resolveExit);
+  let statsSequence = 0;
+  let stats: { id: number; resolve(value: number): void; reject(error: Error): void } | undefined;
+  child.once("close", () => stats?.reject(new Error("NFS helper stopped")));
   child.stdin.on("error", () => { child.kill(); });
   let resolveReady!: (port: number) => void;
   let rejectReady!: (error: Error) => void;
@@ -88,6 +93,11 @@ export async function startNfsServer(options: {
           resolveReady(bound);
           continue;
         }
+        if ("stats" in message) {
+          const id = number(message.stats), requests = number(message.requests);
+          if (stats?.id === id) stats.resolve(requests);
+          continue;
+        }
         if (pending.size >= 32) await Promise.race(pending);
         const task = serve(message);
         pending.add(task);
@@ -102,7 +112,19 @@ export async function startNfsServer(options: {
   })();
   try {
     const bound = await ready;
-    return { port: bound, pid: child.pid!, exited, stop: async () => {
+    return { port: bound, pid: child.pid!, exited, requestCount: async () => {
+      if (stats) throw new Error("NFS statistics request already pending");
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error("NFS helper stopped");
+      const id = ++statsSequence;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await new Promise<number>((resolve, reject) => {
+          stats = { id, resolve, reject };
+          timeout = setTimeout(() => reject(new Error("NFS statistics timed out")), 5000);
+          void reply({ stats: id }).catch(reject);
+        });
+      } finally { clearTimeout(timeout); stats = undefined; }
+    }, stop: async () => {
       child.stdin.end();
       const kill = setTimeout(() => child.kill("SIGKILL"), 3000);
       try { await exited; } finally { clearTimeout(kill); }

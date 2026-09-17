@@ -84,6 +84,20 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "vfs-dav-"));
 });
 
+it("counts HTTP protocol requests independently of backend calls", async () => {
+  await start(seeded());
+  expect(await server.requestCount()).toBe(0);
+  expect((await dav("/DOCSY/", { method: "OPTIONS" })).status).toBe(200);
+  expect((await dav("/DOCSY/.metadata_never_index")).status).toBe(200);
+  expect(await server.requestCount()).toBe(2);
+  expect(await server.requestCount()).toBe(2);
+  client.resetCalls();
+  await dav("/DOCSY/", { method: "OPTIONS" });
+  await dav("/DOCSY/.metadata_never_index");
+  expect(await server.requestCount()).toBe(4);
+  expect(client.requestCount).toBe(0);
+});
+
 afterEach(async () => {
   await server?.stop();
   await vfs?.close();

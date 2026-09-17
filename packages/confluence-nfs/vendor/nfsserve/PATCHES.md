@@ -65,3 +65,9 @@ fields, and ASCII/Unicode name boundaries. See RFC 1813 sections 3.3.4, 3.3.18,
   allowing the helper's identity-aware FSINFO implementation to return STALE
   without producing a truncated XDR error arm.
 - ACCESS removes the directory-only LOOKUP bit for non-directory objects.
+
+Request accounting: tcp.rs retains one atomic counter of complete received RPC
+records, before dispatch. It includes mount/NULL/failed/replayed calls, even when
+they do not invoke the VFS. Incomplete or oversized rejected records are not
+counted. The helper reads it over the private pipe; no diagnostic payload or
+unbounded request history is retained.
