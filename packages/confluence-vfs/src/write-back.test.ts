@@ -658,6 +658,32 @@ describe("rm", () => {
     } finally { await vfs.close(); }
   });
 
+  it.each([false, true])("rejects a stale trash target after an external space move (guarded: %s)", async guarded => {
+    const client = seeded();
+    const vfs = await openVfs(client, { spaces: ["DOCSY"] });
+    try {
+      const path = "/DOCSY/getting-started-101/_index.md";
+      await vfs.stat(path);
+      client.seedPage({ id: "101", title: "Getting Started", spaceKey: "OTHER", storage: "<p>Moved externally</p>" });
+      await expect(vfs.rm(path, guarded ? { expected: { id: "101", spaceKey: "DOCSY" } } : {}))
+        .rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("deletePage")).toBe(0);
+      expect(client.isTrashed("101")).toBe(false);
+    } finally { await vfs.close(); }
+  });
+
+  it("does not delete when fresh trash metadata is unavailable", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      const path = "/DOCSY/getting-started-101/_index.md";
+      await vfs.stat(path);
+      client.failNext({ method: "getPageMetadata", match: "101", status: 403, times: 1 });
+      await expect(vfs.rm(path)).rejects.toMatchObject({ code: "EACCES" });
+      expect(client.callsTo("deletePage")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
   it("retains deletion opt-in for matching expected identities", async () => {
     const client = seeded();
     const vfs = await openVfs(client, { allowDelete: false });

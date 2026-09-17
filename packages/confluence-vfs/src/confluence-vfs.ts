@@ -1269,6 +1269,12 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     // no writes, so a limit/listing/type failure cannot leave a half-deleted tree.
     for (const target of [...descendants.reverse(), node]) {
       try {
+        // The path index may predate an external cross-space move. Never use
+        // cached space membership as authorization for a destructive request.
+        const current = await this.opts.client.getPageMetadata(target.id);
+        if (current.id !== target.id || current.spaceKey !== node.spaceKey) {
+          throw new VfsError("EBUSY", "Deletion target identity or space changed", { path });
+        }
         await this.opts.client.deletePage(target.id);
         this.cache?.forgetPage(target.id);
         this.index.forget(target.id);

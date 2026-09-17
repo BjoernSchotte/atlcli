@@ -3613,3 +3613,28 @@ unchanged.
 
 This fixes inspection/export compatibility; it does not implement negative
 uncertain-outcome resolution or receipt eviction. Public NFS RW remains gated.
+
+
+## Slice 136 — fresh space membership before trash
+
+Deletion previously trusted a resolved node's cached space membership, including
+the expected-identity path used by NFS. An external move to another space could
+therefore leave an old path capable of trashing that page. The shared core now
+fetches metadata immediately before each page DELETE and verifies page ID and
+space. This covers NFS, WebDAV and shell callers without transport-specific
+checks. Metadata failures prevent that DELETE and use existing error mapping.
+
+- Three regression cases failed before the fix: external space change with and
+  without an expected identity, and failure to obtain fresh metadata. After the
+  fix all reject without issuing DELETE. The other space is synthetic only.
+- macOS/Linux broad core and CLI VFS suites: 703 passed, 34 opt-in native/helper
+  cases skipped, 3556 assertions each.
+- Linux DOCSY guarded trash and restart reconciliation: one passed / seven
+  assertions; the disposable page was trashed. Native macOS cases in that file
+  were explicitly skipped.
+- Typecheck: all four tasks passed.
+
+Each trashed page now costs one metadata request. REST metadata lookup and DELETE
+are not atomic: a concurrent move after the check remains possible. Recursive
+removal can still partially complete when a later target fails. Namespace
+removal semantics and full acceptance remain open; public NFS RW stays gated.

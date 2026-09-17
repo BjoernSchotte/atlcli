@@ -152,6 +152,12 @@ atlcli wiki sh --space DOCSY --mode rw -c 'echo "# Release notes" > release-note
 
 Deletion moves a page to the **trash**; there is no purge.
 
+Before trashing a page, the shared VFS checks fresh page metadata against the
+resolved page ID and space. A stale path after an external space move fails
+instead of deleting through its old location. This adds a metadata request per
+page being trashed; a metadata failure prevents that DELETE. The REST calls are
+not atomic, so a concurrent move after the check remains a server-side race.
+
 Content changes are versioned. Repeated saves matching the cached current title
 and exact storage content do not create another version or download the body
 again. This uses the mount's observed version; it is not a fresh server probe.
