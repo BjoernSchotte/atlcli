@@ -1527,3 +1527,27 @@ This is byte-image idempotence, not a general solution for delayed/reordered RPC
 an old write arriving after different newer bytes still needs replay handling in
 the eventual RW transport. NFS RW remains disabled and publication/snapshot
 decisions remain open.
+
+## Slice 60 — bound directory lookup work, including failed batches
+
+Directory metadata previously used one Promise.all over every entry. A 117-entry
+fixture demonstrated 117 simultaneous LOOKUPs, independent of bridge admission
+limits. Directory views now resolve names in batches of at most 32. Each batch
+settles completely before propagating an error, so retrying a failed directory
+request cannot leave its remaining lookups detached in the background. Ordering
+and the existing directory identity/cookie calculation are unchanged.
+
+The regression failed against the old implementation and now verifies the
+32-lookup maximum, complete duplicate-free pagination of 100 seeded children,
+and zero unfinished lookups after an injected immediate failure. The bound is
+per directory request, not a global 32-operation bound; the bridge separately
+admits at most 32 requests. This does not make core metadata storage or whole
+directory materialization constant-size.
+
+Final macOS and Linux adapter suites each passed 33 tests/506 assertions.
+READDIR/READDIRPLUS wire pagination and native 600-child directory mutation
+passed on both final builds (three tests/822 assertions per host). Earlier runs
+in this slice also passed basic native single/combined-space, attachment and
+visibility checks, including Linux live DOCSY and mayflower RO. Typecheck passed
+all four tasks; mounts detached normally. Comprehensive resource/performance
+acceptance remains open.

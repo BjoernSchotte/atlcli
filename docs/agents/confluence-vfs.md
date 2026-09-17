@@ -333,6 +333,8 @@ markers. At capacity, new object lookups return `ENOSPC`; existing handles keep
 working. Remount to reset the session, or select fewer spaces. Handles confirmed
 stale release capacity, but their numeric IDs are never reused in that session.
 Directory revisions retain fixed-size hashes rather than copies of listings.
+Each directory request resolves at most 32 entries concurrently and drains a
+failed batch before returning its error; large listings remain paginated.
 
 The experimental NFS listener rejects RPC records over 4 MiB, more than 1,024
 fragments per record, and XDR arrays exceeding 4 MiB before allocating their

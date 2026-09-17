@@ -229,7 +229,16 @@ export class NfsFilesystem {
       .map((entry) => entry.name);
     if (id === 1) names.push(...this.shieldIds.keys());
     names.sort();
-    const ids = await Promise.all(names.map((name) => this.lookup(id, name)));
+    const ids: number[] = [];
+    // Bound pending lookup work independently of the number of directory entries.
+    for (let offset = 0; offset < names.length; offset += 32) {
+      const batch = await Promise.allSettled(names.slice(offset, offset + 32).map(name => this.lookup(id, name)));
+      // Drain a failed batch too: retries must not accumulate detached lookups.
+      for (const result of batch) {
+        if (result.status === "rejected") throw result.reason;
+        ids.push(result.value);
+      }
+    }
     const signature = createHash("sha256").update(JSON.stringify(names.map((name, i) => [name, ids[i]]))).digest("hex");
     let revision = this.directories.get(id);
     if (!revision || revision.signature !== signature) {

@@ -43,6 +43,45 @@ it("keeps selected space directories for multi-space exports", async () => {
   expect(await fs.lookup(await fs.lookup(1, "DOCSY"), "..")).toBe(1);
 });
 
+it("bounds directory lookup fan-out while retaining every paginated entry", async () => {
+  const { fs, client } = await fixture();
+  for (let i = 0; i < 100; i++) client.seedPage({ id: String(1000 + i), title: `Large ${i}`,
+    spaceKey: "DOCSY", parentId: "100", storage: "<p>Large</p>" });
+  const lookup = fs.lookup.bind(fs);
+  let active = 0, peak = 0;
+  fs.lookup = async (...args) => {
+    active++; peak = Math.max(peak, active);
+    try { await Bun.sleep(1); return await lookup(...args); }
+    finally { active--; }
+  };
+  const names: string[] = [];
+  let after = 0;
+  for (let page = 0; page < 10; page++) {
+    const result = await fs.readdir(1, after, 17);
+    names.push(...result.entries.map(entry => entry.name));
+    if (result.end) break;
+    after = result.entries.at(-1)!.attr.id;
+  }
+  expect(peak).toBeLessThanOrEqual(32);
+  expect(active).toBe(0);
+  expect(new Set(names).size).toBe(names.length);
+  for (let i = 0; i < 100; i++) expect(names).toContain(`large-${i}-${1000 + i}`);
+
+  let calls = 0;
+  fs.lookup = async (...args) => {
+    const first = calls++ === 0;
+    active++;
+    try {
+      if (first) throw Object.assign(new Error("Temporary lookup failure"), { code: "EAGAIN" });
+      await Bun.sleep(5);
+      return await lookup(...args);
+    } finally { active--; }
+  };
+  await expect(fs.readdir(1, 0, 17)).rejects.toMatchObject({ code: "EAGAIN" });
+  expect(calls).toBe(32);
+  expect(active).toBe(0);
+});
+
 for (const spaces of [["DOCSY"], ["DOCSY", "mayflower"]]) {
   it(`serves empty volume shields without backend requests (${spaces.join(",")})`, async () => {
     const { fs, client } = await fixture(spaces);
