@@ -485,6 +485,9 @@ forced or lazy detachment. Close applications using the volume if it is busy.
 
 The development journal explicitly finalizes its SQL statements at shutdown;
 reopening it does not depend on garbage collection releasing SQLite locks.
+Opening the journal synchronizes its containing directory and all ancestors,
+including on retries after a failed startup. A directory-sync failure aborts
+startup before the mount can acknowledge writes.
 A hard RW mount may still issue requests during unmount after a helper crash.
 If the CLI survives a helper crash, it makes one attempt to restart the endpoint
 on the same port before normal unmount, then exits with an error so a fresh mount

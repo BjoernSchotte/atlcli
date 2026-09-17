@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
-import { afterEach, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { afterEach, expect, it, spyOn } from "bun:test";
+import fs, { existsSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { NfsJournal, nfsJournalLocation } from "./nfs-journal.js";
 
@@ -19,6 +19,42 @@ function fixture(maxBytes = 4096, maxFileBytes = 1024, maxFiles = 4096) {
   return { path, journal };
 }
 const bytes = (value: string) => Buffer.from(value);
+
+it("syncs the journal directory and every ancestor before returning, including after a failed sync", () => {
+  const root = mkdtempSync(join(tmpdir(), "nfs-journal-sync-")); roots.push(root);
+  const path = join(root, "new", "nested", "journal.sqlite");
+  const open = fs.openSync, sync = fs.fsyncSync;
+  const directories = new Map<number, string>();
+  const synced: string[] = [];
+  const opened = spyOn(fs, "openSync").mockImplementation(((...args: Parameters<typeof fs.openSync>) => {
+    const fd = open(...args);
+    directories.set(fd, String(args[0]));
+    return fd;
+  }) as typeof fs.openSync);
+  let fail = true;
+  const flushed = spyOn(fs, "fsyncSync").mockImplementation(fd => {
+    synced.push(directories.get(fd)!);
+    if (fail) throw Object.assign(new Error("Injected directory sync failure"), { code: "EIO" });
+    sync(fd);
+  });
+  try {
+    expect(() => new NfsJournal(path, "sync-test")).toThrow("Injected directory sync failure");
+    for (const fd of directories.keys()) expect(() => fs.fstatSync(fd)).toThrow();
+    fail = false;
+    synced.length = 0;
+    const journal = new NfsJournal(path, "sync-test"); journals.push(journal);
+    const expected: string[] = [];
+    for (let directory = realpathSync(dirname(path)); ; directory = dirname(directory)) {
+      expected.push(directory);
+      if (dirname(directory) === directory) break;
+    }
+    expect(synced).toEqual(expected);
+    journal.admit("1", "/DOCSY/_index.md", bytes("durable"), 1);
+    journal.close();
+    const reopened = new NfsJournal(path, "sync-test"); journals.push(reopened);
+    expect(Buffer.from(reopened.get("1")!.bytes).toString()).toBe("durable");
+  } finally { flushed.mockRestore(); opened.mockRestore(); }
+});
 
 it("preserves byte ranges, split Unicode, truncation and sparse extension across reopen", () => {
   const { path, journal } = fixture();

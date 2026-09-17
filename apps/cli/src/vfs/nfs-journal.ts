@@ -1,6 +1,6 @@
 import { VfsError } from "@atlcli/confluence-vfs";
 import { Database, type Statement, type SQLQueryBindings } from "bun:sqlite";
-import { chmodSync, mkdirSync } from "node:fs";
+import fs, { chmodSync, mkdirSync, realpathSync } from "node:fs";
 import { dirname, posix, resolve, join } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { isNfsPageDraft } from "./mount-client-probes.js";
@@ -155,6 +155,13 @@ export class NfsJournal {
         const stored = this.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
       }).immediate();
+      // SQLite syncs its own directory, not newly created ancestor entries.
+      // Also repeat on reopen: a previous startup may have failed halfway here.
+      for (let directory = realpathSync(dirname(path)); ; directory = dirname(directory)) {
+        const fd = fs.openSync(directory, "r");
+        try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+        if (dirname(directory) === directory) break;
+      }
     } catch (error) { this.close(); throw error; }
   }
 

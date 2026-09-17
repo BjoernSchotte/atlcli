@@ -3968,3 +3968,22 @@ intent and pending image, and performs no further publication. Both hosts passed
 124 publisher/write-back tests with 484 assertions. Linux DOCSY owned-journal
 restart/publication passed one test / five assertions with disposable cleanup.
 Typecheck passed all four tasks. Public NFS RW remains gated.
+
+## Slice 147 — journal ancestor-directory persistence (2026-09-17)
+
+After SQLite initializes the journal, startup now fsyncs its real containing
+directory and each ancestor through the filesystem root. Resolving the real
+path covers symlinked cache locations. The chain is synced on every open, so
+existing directories left by a failed startup are not mistaken for durable
+entries. Errors close the directory descriptor and database and abort startup
+before the mount can acknowledge writes. SQLite EXTRA/fullfsync remains enabled
+for journal transactions; see the [SQLite synchronous contract](https://www.sqlite.org/pragma.html#pragma_synchronous).
+
+The regression injects a directory-sync EIO, verifies startup rejection and
+descriptor closure, then opens the same database immediately, checks the entire
+leaf-to-root sync order and preserves staged bytes across another reopen. This
+would fail before the fix. Both macOS and Linux passed 165 journal, publisher
+and filesystem tests / 1677 assertions. Linux DOCSY owned-journal publication
+passed one test / five assertions with disposable cleanup; typecheck passed
+all four tasks. This is ordering/error-path evidence, not an actual power-cut
+test. Real filesystem exhaustion after remote success remains a separate gate.
