@@ -4541,3 +4541,25 @@ public RW, durable-local vs delayed-remote acknowledgement, plain new-file
 aliases, rejected synchronous writes, and four-platform packaged/Homebrew
 proof. No release/tap merge is implied. Remaining final acceptance work is
 still explicit rather than checking off the plan wholesale.
+
+## Slice 168: repeat native macOS reads and separate filler sync failures
+
+Final release-helper macOS read matrix passed 7 tests / 666 assertions, including
+single/combined roots, attachments, external changes, changing directories,
+Glow and immutable snapshots. An initial Glow invocation supplied `1` instead
+of the executable path; the corrected run used `/opt/homebrew/bin/glow`.
+
+Run 35263039655 failed the macOS Intel storage-fault assertion: two UPDATE calls
+but still the expected single remote version. The exact Intel trigger has not
+yet been reproduced locally. Ten unmodified APFS repetitions passed (240
+assertions). Inspection identified a separate test-boundary flaw: a delayed
+ENOSPC from syncing the disposable filler could escape the fake successful HTTP
+response, unintentionally changing this test into a lost-reply scenario. Only
+that filler ENOSPC is now accepted; other sync failures still escape. A small
+injected regression proves both branches. Journal SQLITE_FULL, exact recovered
+bytes, one remote mutation call and one version remain mandatory. Product
+persistence/reconciliation logic is unchanged; remote confirmation is still
+required, not inferred from this test hardening.
+
+Final real APFS and ext4 runs each passed 2 tests / 26 assertions. Root typecheck
+passed all four tasks. Linux compiled DOCSY RW LIVE passed with owned cleanup.

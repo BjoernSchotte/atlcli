@@ -9,6 +9,18 @@ import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { NfsJournal } from "./nfs-journal.js";
 import { NfsPublisher } from "./nfs-publisher.js";
 
+// The filler is disposable. Its delayed ENOSPC must not turn a successful
+// fake HTTP reply into a lost reply; the journal itself must still fail.
+function syncFullFiller(fd: number, sync: (fd: number) => void = fsyncSync): void {
+  try { sync(fd); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOSPC") throw error; }
+}
+
+it("keeps filler ENOSPC separate from a lost API reply without hiding other sync errors", () => {
+  expect(() => syncFullFiller(1, () => { throw Object.assign(new Error("full"), { code: "ENOSPC" }); })).not.toThrow();
+  expect(() => syncFullFiller(1, () => { throw Object.assign(new Error("io"), { code: "EIO" }); })).toThrow("io");
+});
+
 const run = (command: string, args: string[]) => promisify(execFile)(command, args, { timeout: 30_000 });
 
 // Opt-in: creates only a disposable 64 MiB image, never fills the host volume.
@@ -48,7 +60,7 @@ it.skipIf(process.env.ATLCLI_NFS_STORAGE_FAULTS !== "1")("recovers CREATE and UP
             }
           }
         }
-        fsyncSync(fd);
+        syncFullFiller(fd);
       } finally { closeSync(fd); }
       expect(total).toBeGreaterThan(1024 * 1024);
     };
