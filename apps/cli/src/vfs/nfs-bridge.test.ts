@@ -9,7 +9,7 @@ import { platform } from "node:os";
 import { open, opendir, stat, unlink, rename, readFile, mkdir, rmdir } from "node:fs/promises";
 import { getActiveProfile, loadConfig } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
-import { runMountCommand } from "../commands/wiki-mount.js";
+import { runMountCommand, processIdentity } from "../commands/wiki-mount.js";
 import { ConfluenceVfsImpl, VfsError } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { nfsMountOptionsFor } from "./mount-transport.js";
@@ -148,6 +148,80 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect((await remove("_index.md")).readUInt32BE()).toBe(30);
     expect(client.callsTo("deletePage")).toBe(0);
   });
+
+  it("preserves a FILE_SYNC write when the owning Bun process is killed", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "nfs-parent-crash-"));
+    const location = { path: join(rootDir, "journal.sqlite"), scope: "fixture:DOCSY" };
+    const cacheDir = join(rootDir, "cache");
+    const source = `
+      import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+      import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
+      import { startNfsServer } from ${JSON.stringify(join(import.meta.dir, "nfs-bridge.ts"))};
+      const client = new FakeConfluenceClient()
+        .seedSpace({id:"s1",key:"DOCSY",name:"Docs",homepageId:"100"})
+        .seedPage({id:"100",title:"Home",spaceKey:"DOCSY",storage:"<p>Original</p>"});
+      client.updatePage = async () => new Promise(() => {});
+      const vfs = await ConfluenceVfsImpl.open({profile:"fixture",client,spaces:["DOCSY"],
+        mode:"rw",allowDelete:false,offline:false,cacheDir:${JSON.stringify(cacheDir)},coalesceMs:0});
+      const server = await startNfsServer({vfs,spaces:["DOCSY"],journalLocation:${JSON.stringify(location)},helperPath:${JSON.stringify(resolve(helperPath!))}});
+      console.log(JSON.stringify({port:server.port,pid:server.pid}));
+      setInterval(()=>{},1000);
+    `;
+    const parent = Bun.spawn([process.execPath, "--conditions=development", "-e", source], { stdout: "pipe", stderr: "pipe" });
+    let resumed: RunningNfsServer | undefined;
+    let fresh: ConfluenceVfsImpl | undefined;
+    let helperPid: number | undefined;
+    let helperIdentity: string | undefined;
+    try {
+      const reader = parent.stdout.getReader();
+      const ready = await Promise.race([(async () => {
+        let line = "";
+        while (!line.includes("\n")) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error("Parent exited before readiness");
+          line += Buffer.from(chunk.value).toString();
+          if (line.length > 4096) throw new Error("Unexpected parent output");
+        }
+        return JSON.parse(line.split("\n")[0]!) as { port: number; pid: number };
+      })(), Bun.sleep(5000).then(() => { throw new Error("Parent startup timeout"); })]);
+      reader.releaseLock();
+      helperPid = ready.pid; helperIdentity = processIdentity(ready.pid);
+      expect(helperIdentity).toBeTruthy();
+      const mount = await rpc(ready, 100005, 1, opaque(Buffer.from("/")));
+      const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+      const lookup = await rpc(ready, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("_index.md"))]));
+      const file = lookup.subarray(8, 8 + lookup.readUInt32BE(4));
+      const read = await rpc(ready, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 65536)]));
+      const bytes = Buffer.from(read.subarray(20, 20 + read.readUInt32BE(16)).toString().replace("Original", "Survived parent crash 🐴"));
+      expect((await rpc(ready, 100003, 2, Buffer.concat([opaque(file), ints(0, 0, 0, 1, 0, 0, 0, 0, 0)]))).readUInt32BE()).toBe(0);
+      const written = await rpc(ready, 100003, 7, Buffer.concat([opaque(file), ints(0, 0, bytes.length, 0), opaque(bytes)]));
+      expect(written.readUInt32BE()).toBe(0);
+      expect(written.readUInt32BE(120)).toBe(bytes.length);
+      expect(written.readUInt32BE(124)).toBe(2);
+      parent.kill("SIGKILL"); await parent.exited;
+      const exitDeadline = Date.now() + 5000;
+      while (processIdentity(ready.pid) === helperIdentity && Date.now() < exitDeadline) await Bun.sleep(25);
+      expect(processIdentity(ready.pid)).not.toBe(helperIdentity);
+      const journal = new NfsJournal(location.path, location.scope);
+      try { expect(Buffer.from(journal.get("100")!.bytes)).toEqual(bytes); expect(journal.pendingIds()).toEqual(["100"]); }
+      finally { journal.close(); }
+      const client = new FakeConfluenceClient()
+        .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
+        .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Original</p>" });
+      fresh = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"],
+        mode: "rw", allowDelete: false, offline: false, cacheDir, coalesceMs: 0 });
+      resumed = await startNfsServer({ vfs: fresh, spaces: ["DOCSY"], journalLocation: location, helperPath: resolve(helperPath!) });
+      const deadline = Date.now() + 5000;
+      while (resumed.writeStatus()!.pendingPages && Date.now() < deadline) await Bun.sleep(50);
+      expect(resumed.writeStatus()!.pendingPages).toBe(0);
+      expect(client.peekPage("100")?.storage).toContain("Survived parent crash 🐴");
+      expect(client.peekPage("100")?.version).toBe(2);
+    } finally {
+      parent.kill(); await parent.exited;
+      if (helperPid && helperIdentity && processIdentity(helperPid) === helperIdentity) process.kill(helperPid, "SIGKILL");
+      await resumed?.stop(); await fresh?.close(); rmSync(rootDir, { recursive: true, force: true });
+    }
+  }, 20_000);
 
   it("acknowledges journal-backed WRITE as FILE_SYNC and applies SETATTR sizes", async () => {
     const { server, journal, client } = await fixture(["DOCSY"], false, () => Date.now(), true);

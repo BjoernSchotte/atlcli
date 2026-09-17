@@ -3410,3 +3410,23 @@ boundary. It uses a synthetic backend for the native fault injection. It does
 not test parent SIGKILL with active writes, OS calls blocked during helper death,
 or automatic recovery of interrupted directory moves. The public RW CLI gate
 and the full objective remain open.
+
+
+## Slice 129 — FILE_SYNC survives owning-process SIGKILL
+
+A real-wire regression starts the Bun owner and Rust helper in separate
+processes, truncates and writes a Markdown body over NFS, and checks FILE_SYNC
+before killing the Bun owner. Publication cannot complete in the injected
+backend. The helper exits after its parent pipe closes; reopening the journal
+recovers the exact acknowledged bytes. A fresh server resumes publication and
+verifies the expected body and version two.
+
+- macOS: one passed / 16 assertions, 669ms.
+- Linux: one passed / 16 assertions, 718ms.
+- Linux DOCSY owned-journal live gate: one passed / five assertions; temporary
+  page cleaned up.
+- Typecheck: all four tasks passed.
+
+This is a real NFS protocol test with a synthetic backend, without an OS mount.
+It does not establish recovery of blocked kernel calls or guarantee that an
+upload was already in flight at the kill. Public RW activation remains gated.
