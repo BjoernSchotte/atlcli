@@ -3308,3 +3308,27 @@ boundary rather than the public lookup wrapper.
 Remaining work includes native directory mutation wiring/recovery and final
 performance, memory, full editor and CLI acceptance. This optimization does not
 claim those requirements complete.
+
+
+## Slice 125 — shared safe RW mount-option construction
+
+The mount-option and command builders now accept explicit ro/rw mode. RO keeps
+its existing soft retry behavior; RW selects hard retries. Runtime mode validation
+prevents malformed values, and Linux instructions distinguish the writable mount
+and need to keep its daemon running until normal unmount.
+
+Both native RW test paths now use this shared builder directly instead of
+rewriting a read-only option string. The public CLI RW gate is unchanged: journal
+path/ownership, recovery/lifecycle and remaining acceptance must still be wired
+before enabling it. Stable NFS replies remain local-durability acknowledgements.
+
+- macOS/Linux mount-transport suites: four passed / 31 assertions each, including
+  both platforms, unchanged RO defaults, no soft option in RW and invalid mode.
+- macOS/Linux native RW write/fsync/editor replacement test: one passed / 53
+  assertions each, using the shared options and normal unmount cleanup.
+- Linux native DOCSY automatic publication: one passed / 36 assertions, 68s,
+  disposable resources cleaned up.
+- Typecheck: all four tasks passed.
+
+Hard-mount behavior after unexpected helper death is not newly certified here;
+full RW lifecycle and public activation remain part of the unfinished goal.

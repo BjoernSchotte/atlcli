@@ -23,20 +23,22 @@ export function findNfsHelper(override = process.env.ATLCLI_NFS_HELPER, executab
 function quote(value: string): string { return `'${value.replaceAll("'", "'\\''")}'`; }
 
 /** Explicit kernel freshness bound; core metadata still has its separate 60s TTL. */
-export function nfsMountOptionsFor(os: NodeJS.Platform, port: number): string {
+export function nfsMountOptionsFor(os: NodeJS.Platform, port: number, mode: "ro" | "rw" = "ro"): string {
   parseMountTransport("nfs", os);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid NFS port");
-  // RO prototype: bounded retry avoids a hung reader after helper death. RW must
-  // revisit soft mounts before enabling writes; they can lose application data.
-  const options = `vers=3,tcp,ro,soft,timeo=10,retrans=2,actimeo=1,port=${port},mountport=${port}`;
+  if (mode !== "ro" && mode !== "rw") throw new Error("Use NFS mode ro|rw");
+  // Soft retries bound RO reader waits. RW must keep retrying write
+  // requests instead of returning timeout errors that can lose application data.
+  const options = `vers=3,tcp,${mode},${mode === "rw" ? "hard" : "soft"},timeo=10,retrans=2,actimeo=1,port=${port},mountport=${port}`;
   return `${options},${os === "darwin" ? "locallocks,nonegnamecache" : "nolock,lookupcache=positive"}`;
 }
 
-export function nfsMountCommandFor(os: NodeJS.Platform, port: number, mountpoint: string):
+export function nfsMountCommandFor(os: NodeJS.Platform, port: number, mountpoint: string, mode: "ro" | "rw" = "ro"):
   { run: string[] } | { instructions: string } {
-  const options = nfsMountOptionsFor(os, port);
+  const options = nfsMountOptionsFor(os, port, mode);
   if (os === "darwin") return { run: ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint] };
   return { instructions: "The experimental NFS server is listening. Attach it with the Linux NFS client:\n\n" +
     `    sudo mount -t nfs -o ${quote(options)} 127.0.0.1:/ ${quote(mountpoint)}\n\n` +
-    "The volume is read-only. Ctrl-C attempts a normal unmount before stopping the server.\n" };
+    (mode === "ro" ? "The volume is read-only. " : "The writable volume uses hard retries; keep the server running until it is unmounted. ") +
+    "Ctrl-C attempts a normal unmount before stopping the server.\n" };
 }

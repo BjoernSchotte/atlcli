@@ -816,7 +816,7 @@ with socket.socket() as client:
       rmSync(mountpoint, { recursive: true, force: true });
     });
     // RW requires hard retries. This private test does not enable the CLI RW option.
-    const options = nfsMountOptionsFor(platform(), server.port).replace(",ro,soft,", ",rw,hard,");
+    const options = nfsMountOptionsFor(platform(), server.port, "rw");
     const command = platform() === "linux"
       ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", mountpoint]
       : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint];

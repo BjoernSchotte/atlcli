@@ -133,7 +133,7 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     try {
       const path = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`);
       const original = await vfs.readFile(path);
-      const options = nfsMountOptionsFor(platform(), endpoint.port).replace(",ro,soft,", ",rw,hard,");
+      const options = nfsMountOptionsFor(platform(), endpoint.port, "rw");
       const attach = platform() === "linux"
         ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", local]
         : ["mount_nfs", "-o", options, "127.0.0.1:/", local];

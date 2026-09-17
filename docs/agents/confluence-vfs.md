@@ -548,3 +548,9 @@ a new title from the lossy filename slug or upload the body just to retitle it.
 NFS directory enumeration checks the parent once per listing and validates child
 identities in bounded batches. Large listings still scale with their entry count;
 core metadata TTL and kernel caching both affect external-change visibility.
+
+Development RW NFS mounts use hard retries through the shared mount-option
+builder; RO mounts retain soft retries. A hard mount can wait when the daemon is
+unavailable, so unmount normally before stopping it. NFS stable-write replies
+still confirm local journal durability, not completed Confluence publication.
+Public CLI RW mode remains gated pending full acceptance.
