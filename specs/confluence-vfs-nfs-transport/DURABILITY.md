@@ -77,7 +77,8 @@ has the separate real-filesystem proof above.
 ## Remaining release gates
 
 This matrix does not itself enable public RW. Final packaged CLI lifecycle
-coverage (particularly macOS busy shutdown/helper loss), the final artifact
+repetition against the final public RW artifact (Slice 160 covers compiled
+RO busy shutdown/helper loss on both hosts), the final artifact
 platform matrix, full regression/build/CI and the explicit experimental
 go/no-go remain in [ACCEPTANCE.md](ACCEPTANCE.md). The [plan](PLAN.md) remains
 authoritative. Editor and performance evidence is tracked separately.

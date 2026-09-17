@@ -144,7 +144,9 @@ async function detachVolume(os: NodeJS.Platform, mountpoint: string): Promise<bo
   }
   if (os === "darwin" && !isMounted(mountpoint)) return true;
   const command = unmountCommandFor(os, mountpoint);
-  return "run" in command && await runMountCommand(command.run, true) === 0;
+  const detached = "run" in command && await runMountCommand(command.run, true) === 0;
+  if (!detached) process.stderr.write(`atlcli: could not unmount ${mountpoint}; server stays running. Close files and leave the mount directory, then retry Ctrl-C.\n`);
+  return detached;
 }
 
 export async function handleWikiMount(

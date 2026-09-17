@@ -4309,3 +4309,31 @@ all native test mounts detached normally. Typecheck passed all four tasks.
 Linux DOCSY LIVE journal resume passed (one / five; four host-specific cases
 skipped), with owned page cleanup. Public RW and final CLI acceptance remain
 open; the finite matrix is not a substitute for those gates.
+
+## Slice 160: compiled CLI lifecycle on both native hosts
+
+The packaged CLI fixture now covers NFS SIGTERM, a cwd-held busy mount with
+SIGINT/retry, helper SIGKILL with normal recovery/unmount, helper SIGKILL while
+busy, and explicit `wiki mount unmount`. The busy-helper case verifies the
+replacement PID and its saved process identity before releasing the owned cwd
+holder. Every case verifies normal detach and removal of the mount record.
+Cleanup checks every fixture mountpoint before deleting the fixture home.
+WebDAV remains tested without a companion.
+
+macOS previously returned false silently when normal unmount failed. It now
+prints an actionable message that the server stays running and the user should
+close files/leave the directory before retrying Ctrl-C. The compiled busy tests
+assert that message and continued server/mount state.
+
+Fresh compiled CLI results: macOS six lifecycle cases / 65 assertions plus
+eleven shell/packaging cases / 45 assertions; Linux all 17 / 117. Typecheck
+passed four tasks. Linux DOCSY LIVE journal resume passed (one / five, four
+host-specific skips) and cleaned its owned page. These CLI lifecycle mounts
+are RO; final public RW artifact repetition remains required.
+
+CI review found the earlier Slice 157 Linux failure in recursive deletion:
+`rm -r` exited unsuccessfully but had not trashed the fixture. The harness now
+uses noninteractive `rm -rf`, avoiding GNU rm write-protection prompts; this
+does not bypass the VFS-generated views' EROFS protection. Native RW suites
+passed again on both hosts (one / 87 each). Linux CI revalidation is still
+required; local passes are not substituted for the failed CI result.

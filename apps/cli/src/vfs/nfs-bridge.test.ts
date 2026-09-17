@@ -1265,7 +1265,9 @@ with socket.socket() as client:
     const removedDirectory = join(mountpoint, "child-0-400");
     // Generated views remain read-only, even with deletion enabled. rm -r can
     // fail on those views after/before _index.md has already trashed the page.
-    await expect(promisify(execFile)("rm", ["-r", removedDirectory], { timeout: 5000 }))
+    // -f avoids GNU rm's protection prompts when stdin is not a terminal;
+    // server-side read-only views still reject deletion.
+    await expect(promisify(execFile)("rm", ["-rf", removedDirectory], { timeout: 5000 }))
       .rejects.toMatchObject({ code: 1 });
     expect(client.isTrashed("400")).toBe(true);
     expect(journal!.trashIntent("400")?.completed).toBe(1);

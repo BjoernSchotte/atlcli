@@ -25,7 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync, copyFileSync } from "node:fs";
 import { tmpdir, platform } from "node:os";
 import { readFile, readdir, writeFile } from "node:fs/promises";
-import { isMounted, runMountCommand, type MountRecord } from "../commands/wiki-mount.js";
+import { isMounted, processIdentity, runMountCommand, type MountRecord } from "../commands/wiki-mount.js";
 import { nfsMountOptionsFor } from "../vfs/mount-transport.js";
 import { join, resolve } from "node:path";
 
@@ -187,7 +187,7 @@ beforeAll(() => {
 afterAll(() => {
   if (!RUN) return;
   server?.stop(true);
-  if (home) for (const name of ["mount", "webdav-mount"]) {
+  if (home) for (const name of readdirSync(home)) {
     if (isMounted(join(home, name))) throw new Error(`Test mount remains attached: ${join(home, name)}`);
   }
   if (home) rmSync(home, { recursive: true, force: true });
@@ -221,9 +221,10 @@ async function cli(...args: string[]) { return finishCli(startCli(args)); }
 
 describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
   for (const transport of ["nfs", "webdav"] as const) {
-  it.skipIf(!BINARY || process.env.ATLCLI_NFS_KERNEL !== "1")(`runs compiled ${transport} ${transport === "nfs" ? "with adjacent companion" : "without an NFS companion"}`, async () => {
-    const mountpoint = join(home, transport === "nfs" ? "mount" : "webdav-mount");
-    const cache = join(home, `${transport}-mount-cache`);
+  for (const shutdownCase of transport === "nfs" ? ["signal", "busy", "helper", "busy-helper", "explicit"] : ["signal"]) {
+  it.skipIf(!BINARY || process.env.ATLCLI_NFS_KERNEL !== "1")(`runs compiled ${transport} ${transport === "nfs" ? "with adjacent companion" : "without an NFS companion"} (${shutdownCase})`, async () => {
+    const mountpoint = join(home, `${transport}-mount-${shutdownCase}`);
+    const cache = join(home, `${transport}-${shutdownCase}-mount-cache`);
     let binary = BINARY;
     if (transport === "webdav") {
       const directory = join(home, "webdav-binary"); mkdirSync(directory);
@@ -231,6 +232,7 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
     }
     const proc = startCli(["wiki", "mount", mountpoint, "--transport", transport, "--space", "DOCSY",
       "--mode", "ro", "--cache-dir", cache, "--json"], binary);
+    let holder: ReturnType<typeof Bun.spawn> | undefined;
     let stdout = "", stderr = "";
     const drain = async (stream: ReadableStream<Uint8Array>, append: (s: string) => void) => {
       const decoder = new TextDecoder();
@@ -274,11 +276,40 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
         expect(await readFile(join(mountpoint, "architecture-201", "_index.md"), "utf8")).toContain("Grüße 🐴");
         await expect(writeFile(join(mountpoint, "architecture-201", "_index.md"), "denied")).rejects.toMatchObject({ code: "EROFS" });
       }
-      proc.kill("SIGTERM");
-      expect(await Promise.race([proc.exited, Bun.sleep(10000).then(() => { throw new Error("Compiled CLI did not detach"); })])).toBe(0);
+      const busy = shutdownCase.startsWith("busy");
+      const helperCrash = shutdownCase.includes("helper");
+      if (busy) {
+        holder = Bun.spawn([process.execPath, "-e", "console.log('ready'); setInterval(()=>{},1000)"],
+          { cwd: mountpoint, stdout: "pipe", stderr: "ignore" });
+        const reader = (holder.stdout as ReadableStream<Uint8Array>).getReader();
+        try { expect(new TextDecoder().decode((await reader.read()).value)).toContain("ready"); }
+        finally { reader.releaseLock(); }
+      }
+      if (helperCrash) process.kill(record!.helperPid!, "SIGKILL");
+      else if (shutdownCase === "explicit") {
+        const detached = await cli("wiki", "mount", "unmount", mountpoint, "--cache-dir", cache, "--json");
+        expect(detached.code).toBe(0);
+      } else proc.kill(busy ? "SIGINT" : "SIGTERM");
+      if (busy) {
+        const deadline = Date.now() + 10000;
+        while (!stderr.includes("could not unmount") && proc.exitCode === null && Date.now() < deadline) await Bun.sleep(25);
+        expect(stderr).toContain("could not unmount");
+        expect(proc.exitCode).toBeNull();
+        expect(isMounted(mountpoint)).toBe(true);
+        const name = readdirSync(join(cache, "mounts")).find(name => name.endsWith(".json"))!;
+        const retained = JSON.parse(readFileSync(join(cache, "mounts", name), "utf8"));
+        if (helperCrash) {
+          expect(retained.helperPid).not.toBe(record!.helperPid);
+          expect(processIdentity(retained.helperPid)).toBe(retained.helperIdentity);
+        }
+        holder!.kill("SIGTERM"); await holder!.exited; holder = undefined;
+        proc.kill("SIGINT");
+      }
+      expect(await Promise.race([proc.exited, Bun.sleep(10000).then(() => { throw new Error("Compiled CLI did not detach"); })])).toBe(helperCrash ? 1 : 0);
       expect(isMounted(mountpoint)).toBe(false);
       expect(readdirSync(join(cache, "mounts")).filter(name => name.endsWith(".json"))).toEqual([]);
     } finally {
+      if (holder) { holder.kill("SIGTERM"); await holder.exited; }
       if (isMounted(mountpoint)) await runMountCommand(platform() === "linux"
         ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint]);
       proc.kill("SIGTERM");
@@ -286,6 +317,7 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
       await drained;
     }
   }, 40000);
+  }
   }
 
   it.skipIf(!BINARY || !["darwin", "linux"].includes(platform()))("keeps the compiled shell independent of missing or unusable NFS helpers", async () => {
