@@ -390,14 +390,19 @@ export class NfsJournal {
     return this.change(id, () => size, () => {});
   }
 
+  publishIntent(id: string): NfsPublishIntent | null {
+    return this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);
+  }
+
   /** Persist the exact snapshot before sending a remote mutation. Replay this intent after a lost reply. */
-  beginPublish(id: string): NfsPublishIntent | null {
+  beginPublish(id: string, revision?: number): NfsPublishIntent | null {
     return this.db.transaction(() => {
       if (this.db.query("SELECT id FROM locals WHERE id=? UNION ALL SELECT id FROM displaced WHERE id=?").get(id, id)) return null;
-      const intent = this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);
+      const intent = this.publishIntent(id);
       if (intent) return intent;
       const file = this.get(id);
       if (!file || file.revision === file.publishedRevision) return null;
+      if (revision !== undefined && file.revision !== revision) return null;
       this.checkQuota(file.bytes.byteLength);
       this.db.run("INSERT INTO intents VALUES (?, ?, ?, ?)", [id, file.bytes, file.baseVersion, file.revision]);
       return this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);

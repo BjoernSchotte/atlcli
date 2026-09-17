@@ -74,8 +74,9 @@ export class NfsPublisher {
     try {
       // Reject incomplete local bytes before freezing a publication intent.
       this.validate(id, file.bytes, file.baseVersion);
-      const intent = this.journal.beginPublish(id);
-      if (!intent) return null;
+      // Existing uncertain outcomes keep their frozen image. New images are
+      // frozen only after local validation/rebasing can no longer reject them.
+      const intent = this.journal.publishIntent(id) ?? file;
       let content = this.validate(id, intent.bytes, intent.baseVersion);
 
       // Resolve by immutable page identity, never create a replacement at an old path.
@@ -116,6 +117,10 @@ export class NfsPublisher {
       }
       // A backup rename can arrive while resolving/rebasing the frozen image.
       if (this.journal.displaced(this.journal.get(id)!.path)?.id === id) return null;
+      if (!this.journal.beginPublish(id, intent.revision)) {
+        this.schedule(id); // A newer edit arrived during asynchronous preparation.
+        return null;
+      }
       const result = await this.vfs.writeFile(target.path, content, { id, spaceKey: target.spaceKey });
       if (result.created || result.pageId !== id) throw new Error("Unexpected NFS publication identity");
       this.journal.completePublish(id, intent.revision, result.version);

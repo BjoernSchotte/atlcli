@@ -320,3 +320,43 @@ it("keeps a fresh quiet window when a queued page changes behind another upload"
   expect(client.callsTo("updatePage")).toBe(2);
   expect(client.peekPage("200")?.storage).toContain("latest");
 });
+
+
+it("allows correcting a preflight merge conflict without freezing an unsent image", async () => {
+  const { client, vfs, journal, original, stage, publisher } = await fixture();
+  stage(original.replace("Original", "First"));
+  await publisher.publish("100");
+  const version = client.bumpVersion("100", "<p>Remote changed</p>");
+  vfs.index.upsert({ id: "100", version });
+  const remote = await vfs.readFile("/DOCSY/_index.md");
+  journal.refreshClean("100", "/DOCSY/_index.md", Buffer.from(remote), version, journal.get("100")!.revision);
+  stage(original.replace("Original", "Conflicting local change"));
+  const calls = client.callsTo("updatePage");
+  await expect(publisher.publish("100")).rejects.toMatchObject({ code: "EBUSY" });
+  expect(journal.publishIntent("100")).toBeNull();
+  expect(journal.get("100")!.error).toBe("EBUSY");
+  expect(client.callsTo("updatePage")).toBe(calls);
+  stage(remote + "\nResolved additional paragraph\n");
+  await publisher.publish("100");
+  expect(client.peekPage("100")?.storage).toContain("Remote changed");
+  expect(client.peekPage("100")?.storage).toContain("Resolved additional paragraph");
+  expect(journal.pendingIds()).toEqual([]);
+});
+
+
+it("prepares a newer revision again when edits arrive before intent persistence", async () => {
+  const { client, vfs, journal, original, stage, publisher } = await fixture();
+  stage(original.replace("Original", "Obsolete preparation"));
+  const readlink = vfs.readlink.bind(vfs);
+  let changed = false;
+  vfs.readlink = async path => {
+    if (!changed) { changed = true; stage(original.replace("Original", "Latest preparation")); }
+    return readlink(path);
+  };
+  expect(await publisher.publish("100")).toBeNull();
+  expect(client.callsTo("updatePage")).toBe(0);
+  expect(journal.publishIntent("100")).toBeNull();
+  await until(() => journal.pendingIds().length === 0);
+  expect(client.callsTo("updatePage")).toBe(1);
+  expect(client.peekPage("100")?.storage).toContain("Latest preparation");
+});

@@ -2485,3 +2485,27 @@ size and a clean journal. macOS and Linux each passed 37 assertions. This proves
 kernel refresh behavior, not real-tenant macOS latency. All four typecheck tasks
 passed. ACCEPTANCE.md was reconciled with implemented namespace/editor/status
 work; historical broad build/CI results remain explicitly historical.
+
+
+## Slice 94 — correctable preflight conflicts
+
+New publication intents used to be frozen before local rebase validation. A
+conflict detected before any core write therefore left an unsent frozen image
+that later corrected editor saves could not replace. Preparation now uses the
+current image unless an existing intent already needs reconciliation. Only a
+successfully prepared image is persisted immediately before the core write.
+Revision comparison prevents persisting a different image if an edit arrived
+during asynchronous preparation; the newer image gets another quiet window.
+
+Two regressions prove that a preflight EBUSY sends no update and creates no
+intent, then a corrected save succeeds with the remote content preserved; and
+that edits during target resolution publish only the newer prepared image.
+Lost-response reconciliation regressions remain green: existing intents are
+never discarded. Previously persisted ambiguous/failed intents and conflicts
+inside the core write still require the pending recovery workflow. This is not
+claimed as complete recovery of every case from Slice 93.
+
+- macOS/Linux journal/publisher suites: 50 tests / 575 assertions each.
+- Native macOS save/refresh: 37 assertions.
+- Linux real DOCSY journal publication/replay/replacement: 13 assertions, fixture
+  cleaned up. All four typecheck tasks passed.

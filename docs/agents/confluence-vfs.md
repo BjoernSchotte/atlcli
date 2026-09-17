@@ -269,7 +269,9 @@ images; a slow upload can delay other pages. The public recovery CLI remains
 part of the pending RW acceptance work. Clean staged pages refresh from newer
 core-cache versions during access; dirty pages retain local bytes. This follows
 the existing cache freshness window and does not provide immediate remote-edit
-visibility.
+visibility. Conflicts detected during local publication preparation can be
+corrected by another editor save. Persisted uncertain publication results remain
+protected for reconciliation; this is not a general conflict-resolution UI.
 
 NFS is not generally faster than WebDAV. The current synthetic native comparison
 shows different results by OS and cache state; see the [measured results and
