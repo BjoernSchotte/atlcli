@@ -1301,3 +1301,37 @@ and locked helper builds. The freshly built helpers passed four native mount
 cases (36 assertions) on each host. Linux basic cases were live RO; other cases
 were synthetic. Native mounts detached normally. This directly tests call
 cancellation; end-to-end dispatch/write-deadline fault injection remains open.
+
+## Slice 50 — clean-source packaged Linux CLI lifecycle
+
+Source b82673109ecdd4961f7a2f13c02abd0deba33841 was cloned into an isolated
+Linux x64 checkout, dependencies installed with the frozen lockfile, and its
+native companion built with `build-nfs-helper.ts`. The release-artifact builder
+created a dev dry-run archive, which was extracted into a separate directory.
+No release was published. The checkout remained clean after the proof.
+
+Archive SHA-256:
+`ac13289c6d817b33f6e75c4e3e8546507e673066a72db0ce67c42f90fb7318c1`.
+The extracted CLI ran `wiki-nfs-cli.e2e.test.ts` with
+`ATLCLI_NFS_CLI_E2E=1` and `ATLCLI_NFS_TEST_CLI` pointing to the executable.
+Both helper override variables were explicitly absent, proving adjacent
+companion discovery. All five scenarios passed (61 assertions): signal,
+busy mount, explicit unmount, helper crash and parent crash/orphan recovery.
+The mountpoint included spaces. These were live mayflower-profile DOCSY RO
+reads; no wiki content was modified and mounts detached normally.
+
+An initial run from the older copied Linux checkout also passed but carried an
+old Git source identity. Only the clean-source repeat above is used as packaged
+source-provenance evidence. Compiled CLI lifecycle on macOS and Linux arm64,
+plus the separate RW/publication gates, remain open.
+
+The same compiled CLI copied alone into a separate directory also passed
+`wiki sh --profile mayflower --space DOCSY --mode ro -c 'test -f _index.md'`
+with `ATLCLI_NFS_HELPER` unset and no adjacent helper. Local typecheck passed
+all four tasks before the evidence push.
+
+CI run [35181072816](https://github.com/BjoernSchotte/atlcli/actions/runs/35181072816)
+passed on b8267310: all four native NFS platforms, draft type/policy,
+documentation, privacy and draft-fast gates. Product-quality gates skipped by
+draft policy are not claimed as passing. These native lanes include the recent
+comment visibility, handle capacity and cancellation regressions.
