@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
+import { NfsPublisher } from "./nfs-publisher.js";
 import { NfsJournal } from "./nfs-journal.js";
 import { NfsFilesystem, NFS_MAX_READ, NFS_MAX_HANDLES } from "./nfs-filesystem.js";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, SweepDetector } from "./mount-client-probes.js";
@@ -896,4 +897,31 @@ it("checks exclusive recreation replay against the current page identity and sco
   const replay = await recovered.create(1, "_index.md", verifier);
   expect(Buffer.from((await recovered.read(replay, 0, 65536)).data, "base64").toString()).toBe("acknowledged bytes");
   expect(client.callsTo("updatePage")).toBe(0);
+});
+
+
+it("refreshes published pages without losing remote edits when a stale editor saves again", async () => {
+  const { fs, journal, vfs, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  const handle = await fs.lookup(1, "_index.md");
+  const original = Buffer.from((await fs.read(handle, 0, 65536)).data, "base64").toString();
+  const first = original.replace("Grüße 🐴", "First edit");
+  await fs.truncate(handle, 0); await fs.write(handle, 0, Buffer.from(first));
+  const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+  try {
+    await publisher.publish("100");
+    const source = journal!.publishedSource("100");
+    const version = client.bumpVersion("100", "<p>First edit</p><p>Remote addition</p>");
+    vfs.index.upsert({ id: "100", version }); // Simulate metadata TTL observing the newer version.
+    const current = Buffer.from((await fs.read(handle, 0, 65536)).data, "base64").toString();
+    expect(current).toContain("Remote addition");
+    expect((await fs.getattr(handle)).size).toBe(Buffer.byteLength(current));
+    expect(journal!.pendingIds()).toEqual([]);
+    expect(journal!.publishedSource("100")).toEqual(source);
+    const staleEditor = first.replace("First edit", "Second edit");
+    await fs.truncate(handle, 0); await fs.write(handle, 0, Buffer.from(staleEditor));
+    await publisher.publish("100");
+    expect(client.peekPage("100")?.storage).toContain("Second edit");
+    expect(client.peekPage("100")?.storage).toContain("Remote addition");
+    expect(journal!.pendingIds()).toEqual([]);
+  } finally { await publisher.stop(); }
 });

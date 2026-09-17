@@ -473,7 +473,7 @@ export class NfsFilesystem {
     const stat = await this.stat(path);
     if (stat.isDirectory) throw new VfsError("EISDIR", "Cannot write a directory");
     if (stat.kind !== "page" || this.vfs.guard.mode !== "rw" || (!metadataOnly && !(stat.mode & 0o222))) throw new VfsError("EROFS", "Not a writable page body");
-    const existing = this.journal.get(stat.id);
+    const existing = await this.stagedImage(path, stat);
     if (existing) return existing;
     const bytes = await this.vfs.readFileBytes(path);
     const { frontmatter } = parseVfsFrontmatter(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
@@ -481,6 +481,18 @@ export class NfsFilesystem {
       throw new VfsError("EAGAIN", "Page changed during staging admission");
     }
     return this.journal.admit(stat.id, path, bytes, frontmatter.version);
+  }
+
+  private async stagedImage(path: string, stat: VfsStat): Promise<StagedNfsFile | undefined> {
+    if (stat.kind !== "page" || stat.isDirectory || !this.journal) return undefined;
+    const file = this.journal.get(stat.id);
+    if (!file) return undefined;
+    if (file.revision !== file.publishedRevision || file.id.startsWith("local:") || this.journal.displaced(file.path)) return file;
+    const bytes = await this.vfs.readFileBytes(path);
+    const { frontmatter } = parseVfsFrontmatter(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (frontmatter.id !== file.id || frontmatter.version === undefined) throw new VfsError("EAGAIN", "Page changed during refresh");
+    await this.checkResolvedScope(path);
+    return this.journal.refreshClean(file.id, path, bytes, frontmatter.version, file.revision);
   }
 
   /** Returns only after SQLite has durably committed the local byte image. */
@@ -534,7 +546,7 @@ export class NfsFilesystem {
         atime: metadata?.atime ?? undefined, uid: process.getuid?.() ?? 0, gid: process.getgid?.() ?? 0,
         writable: this.vfs.guard.mode === "rw" };
     }
-    const staged = stat.kind === "page" && !stat.isDirectory ? this.journal?.get(stat.id) : undefined;
+    const staged = await this.stagedImage(path, stat);
     if (staged) {
       const entry = this.paths.get(id)!;
       const hash = createHash("sha256").update(staged.bytes).digest("hex");
@@ -590,7 +602,7 @@ export class NfsFilesystem {
     if (shield === "file") return { data: "", eof: true };
     const stat = await this.stat(path);
     if (stat.isDirectory) throw new VfsError("EISDIR", "Cannot read directory");
-    const staged = stat.kind === "page" ? this.journal?.get(stat.id) : undefined;
+    const staged = await this.stagedImage(path, stat);
     const bytes = staged?.bytes ?? await this.vfs.readFileBytes(path);
     if (count > 0) this.sweepDetector.noteRead(posix.dirname(path), id);
     const start = Math.min(offset, bytes.byteLength);

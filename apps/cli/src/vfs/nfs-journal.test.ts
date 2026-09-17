@@ -584,3 +584,34 @@ it("reports durable recovery counts without treating local editor entries as pub
   recovered.completePublish("100", recovered.beginPublish("100")!.revision, 2);
   expect(recovered.writeStatus()).toEqual({ pendingPages: 0, failedPages: 0, displacedPages: 0, localEntries: 0, unresolvedPublications: 0 });
 });
+
+
+it("refreshes only unchanged clean images and retains their original merge source", () => {
+  const { journal } = fixture();
+  journal.admit("100", "/DOCSY/page", bytes("before"), 1);
+  const refreshed = journal.refreshClean("100", "/DOCSY/page", bytes("remote"), 2, 0);
+  expect(Buffer.from(refreshed.bytes).toString()).toBe("remote");
+  expect(refreshed.revision).toBe(refreshed.publishedRevision);
+  expect(Buffer.from(journal.publishedSource("100")!).toString()).toBe("before");
+  expect(journal.refreshClean("100", "/DOCSY/page", bytes("stale fetch"), 3, 0)).toEqual(refreshed);
+  journal.write("100", 0, bytes("local!"));
+  const dirty = journal.get("100")!;
+  expect(journal.refreshClean("100", "/DOCSY/page", bytes("new remote"), 3, dirty.revision)).toEqual(dirty);
+  journal.beginPublish("100");
+  expect(journal.refreshClean("100", "/DOCSY/page", bytes("new remote"), 3, dirty.revision)).toEqual(dirty);
+});
+
+
+it("rolls back refresh quota failures and preserves displaced clean pages", () => {
+  const { path, journal } = fixture(12, 12);
+  const before = journal.admit("100", "/DOCSY/page", bytes("before"), 1);
+  expect(() => journal.refreshClean("100", "/DOCSY/page", bytes("too long"), 2, 0)).toThrow("quota");
+  expect(journal.get("100")).toEqual(before);
+  expect(journal.publishedSource("100")).toBeNull();
+  journal.backupPage("100", "/DOCSY/backup");
+  expect(journal.refreshClean("100", "/DOCSY/page", bytes("remote"), 2, 0)).toEqual(before);
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.get("100")).toEqual(before);
+  expect(recovered.displaced("/DOCSY/page")?.id).toBe("100");
+});

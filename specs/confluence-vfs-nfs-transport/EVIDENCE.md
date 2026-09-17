@@ -2428,3 +2428,33 @@ IDs remain eligible for recovery.
 
 This bounds publication body concurrency, not the entire VFS cache or helper
 memory. The pending recovery CLI and other write gates remain open.
+
+
+## Slice 92 — refresh clean staged pages
+
+Previously any admitted journal image permanently shadowed newer remote content,
+even after successful publication. READ, GETATTR and subsequent staging now
+consult the shared VFS body cache for clean page images. Only a strictly newer
+version replaces a clean journal image. Dirty pages and local editor files stay
+local. Versions are still governed by the existing core freshness policy.
+
+The refresh transaction checks the captured revision, pending intent and backup
+reservation before changing bytes. It advances clean revisions together, keeps
+the previous editor source for conflict merging, preserves permissions and drops
+an obsolete explicit mtime. Quota failures roll back completely. No separate
+refresh timer or eager mount scan was added; immutable version views bypass it.
+
+Tests prove external content becomes visible with exact size once core metadata
+observes the newer version, then a stale editor save preserves a remote addition.
+They also cover stale refresh revisions, dirty images, failed quota, displaced
+clean pages and restart preservation. The metadata-observation test explicitly
+updates the index; it is not a new measurement of kernel/TTL visibility latency.
+
+- macOS/Linux journal/projection/publisher suites: 96 tests / 1,211 assertions.
+- Additional quota/restart regression: six assertions per host.
+- Native macOS save: 34 assertions; Linux real DOCSY save: 18 assertions, with
+  normal cleanup. All four typecheck tasks passed before the final test-only addition.
+
+Clean-record eviction, the public recovery workflow and remaining full RW gates
+are still open. No general multi-editor convergence guarantee is inferred from
+one tested stale-editor conflict-merge sequence.

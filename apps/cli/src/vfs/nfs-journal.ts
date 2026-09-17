@@ -332,6 +332,24 @@ export class NfsJournal {
     if (additional > this.maxFileBytes || used + additional > this.maxBytes) throw new VfsError("ENOSPC", "NFS journal quota exceeded");
   }
 
+  /** Refresh only clean pages; retain the editor's previous source for conflict merging. */
+  refreshClean(id: string, path: string, bytes: Uint8Array, version: number, revision: number): StagedNfsFile {
+    if (!Number.isSafeInteger(version) || version < 1 || bytes.byteLength > this.maxFileBytes) throw new VfsError("EINVAL", "Invalid refreshed page");
+    this.localPath(path);
+    return this.db.transaction(() => {
+      const old = this.get(id);
+      if (!old) throw new VfsError("ENOENT", "Unknown staged page");
+      if (old.revision !== revision || old.revision !== old.publishedRevision || version <= old.baseVersion ||
+          this.db.query("SELECT id FROM intents WHERE id=? UNION ALL SELECT id FROM locals WHERE id=? UNION ALL SELECT id FROM displaced WHERE id=?").get(id, id, id)) return old;
+      const source = this.publishedSource(id);
+      this.checkQuota(bytes.byteLength - old.bytes.byteLength + (source ? 0 : old.bytes.byteLength));
+      if (!source) this.db.run("INSERT INTO bases VALUES (?, ?)", [id, old.bytes]);
+      this.db.run("UPDATE files SET path=?,bytes=?,baseVersion=?,revision=revision+1,publishedRevision=publishedRevision+1,error=NULL WHERE id=?", [path, bytes, version, id]);
+      this.db.run("UPDATE attributes SET mtime=NULL WHERE id=?", [id]);
+      return this.get(id)!;
+    }).immediate();
+  }
+
   private assertFile(id: string): void {
     if (this.db.query("SELECT id FROM locals WHERE id=? AND kind='directory'").get(id)) {
       throw new VfsError("EISDIR", "Cannot write a directory");
