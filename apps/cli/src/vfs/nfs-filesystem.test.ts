@@ -496,3 +496,23 @@ it("does not label historic content with the current timestamp when the historic
   expect((await fs.getattr(historic)).mtime).toBe(0);
   expect(Buffer.from((await fs.read(historic, 0, 65536)).data, "base64").toString()).not.toContain("lastModified:");
 });
+
+it("changes generated-view attributes for same-size content edits without a page version", async () => {
+  const { fs, vfs } = await fixture();
+  const page = await fs.lookup(1, "child-0-200");
+  const id = await fs.lookup(page, ".comments.md");
+  const originalRead = vfs.readFileBytes.bind(vfs);
+  let content = "comment A";
+  vfs.readFileBytes = async path => path.endsWith("/.comments.md")
+    ? Buffer.from(content) : originalRead(path);
+  const before = await fs.getattr(id);
+  expect(await fs.getattr(id)).toEqual(before);
+  expect(await fs.lookup(page, ".comments.md")).toBe(id);
+  expect(await fs.getattr(id)).toEqual(before);
+  content = "comment B";
+  const after = await fs.getattr(id);
+  expect(after.size).toBe(before.size);
+  expect(after.mtime).toBeGreaterThan(before.mtime);
+  expect(await fs.getattr(id)).toEqual(after);
+  expect(Buffer.from((await fs.read(id, 0, 1024)).data, "base64").toString()).toBe(content);
+});

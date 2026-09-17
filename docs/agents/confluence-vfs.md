@@ -276,6 +276,12 @@ Rendered Markdown cache entries carry a format revision as well as the
 Confluence version. After this upgrade, older Markdown entries are refreshed
 only when requested; cached attachments are retained. Offline reads of an old
 Markdown format require one online read before becoming available again.
+Mutable generated files such as `.comments.md` use a session-local observed-change
+timestamp in NFS. It stays stable while the rendered bytes are unchanged and
+advances on content changes, even when the page version and byte length stay the
+same. This is not a Confluence authoring timestamp; existing metadata TTLs still
+bound when external changes become visible.
+
 Historic `.versions/<n>.md` uses that version's own timestamp in its Markdown
 and NFS attributes, not the current page timestamp. If the historic response
 omits it, the Markdown omits it and NFS reports an unknown time (Unix epoch).

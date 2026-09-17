@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { VfsError, parseVfsFrontmatter, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping, SweepDetector } from "./mount-client-probes.js";
@@ -12,7 +13,7 @@ export interface NfsAttributes {
 
 /** Read-only protocol projection. All paths are resolved inside the selected export. */
 export class NfsFilesystem {
-  private readonly paths = new Map<number, { path: string; identity: string; parent?: number; name?: string; shield?: "file" | "directory" }>();
+  private readonly paths = new Map<number, { path: string; identity: string; parent?: number; name?: string; shield?: "file" | "directory"; rendered?: { hash: string; mtime: number } }>();
   private readonly shieldIds = new Map<string, number>();
   private readonly identities = new Map<string, number>();
   private nextId = 2;
@@ -182,7 +183,7 @@ export class NfsFilesystem {
       ? { parent: await this.register(posix.dirname(path)), name: posix.basename(path) } : {}) };
     const existing = this.identities.get(identity);
     if (existing !== undefined) {
-      this.paths.set(existing, entry);
+      this.paths.set(existing, { ...entry, rendered: this.paths.get(existing)?.rendered });
       return existing;
     }
     if (this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
@@ -259,6 +260,16 @@ export class NfsFilesystem {
       const modified = parseVfsFrontmatter(Buffer.from(bytes).toString("utf8")).frontmatter.lastModified;
       if (modified && Number.isFinite(Date.parse(modified))) mtime = Date.parse(modified);
       else if (stat.kind === "virtual-file") mtime = 0; // Unknown historic time is not the current page time.
+    }
+    if (bytes && stat.kind === "virtual-file" && !/^[0-9]+@[0-9]+$/.test(stat.id)) {
+      // Generated content can change without a page version (comments, metadata).
+      // Keep a stable revision until the actual bytes change, including same-size edits.
+      const entry = this.paths.get(id)!;
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      if (!entry.rendered || entry.rendered.hash !== hash) {
+        entry.rendered = { hash, mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1) };
+      }
+      mtime = entry.rendered.mtime;
     }
     if (stat.isDirectory) {
       mtime = refreshDirectory ? (await this.directoryView(id, path)).mtime : this.directories.get(id)?.mtime ?? mtime;
