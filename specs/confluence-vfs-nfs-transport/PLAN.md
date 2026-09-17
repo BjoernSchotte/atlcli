@@ -164,8 +164,11 @@ manual publish command is rejected. Buffer rapid saves per document and publish
 the latest state after the existing 500 ms coalescing window. Preserve staged
 bytes durably and serialize publication so edits arriving during a request remain
 pending for the next pass. This debounce is separate from API retry backoff.
-The completion-boundary and fault tests below remain required: a quiet period
-does not by itself prove that every block of an editor save has arrived.
+Clarification accepted by the user (2026-09-17): intermediate Confluence
+versions are explicitly permitted when a valid partial image is followed by
+later writes after the quiet window. The contract is automatic publication of
+validated snapshots, not detection of a universal editor-save completion event.
+Fault tests and preservation of acknowledged bytes remain mandatory.
 
 The upstream implementation inspected on 2026-09-16 responds to successful WRITE
 with FILE_SYNC, while its VFS write hook receives only ID, offset and bytes.
@@ -179,16 +182,16 @@ tests for all of the following:
    staging journal before promising local stable storage. Include fsync ordering,
    truncate/rename records, bounded disk use, profile/export isolation and restart
    recovery. Reuse existing storage only if it actually provides this contract.
-2. Specify when a complete staged Markdown document is published to Confluence.
-   Idle time alone does not prove completion. Analyze stable WRITE, COMMIT,
-   truncate and atomic rename for real macOS/Linux clients. If the existing
-   library hooks cannot express the required boundary, make the smallest audited
-   upstream change or stop at an explicitly RO-only experimental milestone.
+2. Publish a validated staged snapshot after 500 ms without newer writes.
+   A later block may produce another version; this is explicitly accepted.
+   Test a valid prefix followed by a delayed suffix, rapid-save coalescing,
+   updates during publication and interrupted saves. WRITE/COMMIT confirm local
+   durability, not document completion or successful remote publication.
 3. Distinguish durable local saving from successful Confluence publication in
    status, errors and documentation. Local fsync must never be advertised as a
    remote Confluence commit if it is only journal durability. Specify
    `--sync-writes` behavior; reject it until its stronger promise is implementable.
-4. Read-your-writes returns staged bytes. Publish only validated complete content
+4. Read-your-writes returns staged bytes. Publish only validated staged content
    through existing conversion/version-conflict logic. Preserve page IDs across
    editor backup and replacement renames; temporary files must not become pages.
 5. Replayed RPCs must not duplicate creates or updates. Preserve a verifier/session
@@ -198,9 +201,10 @@ tests for all of the following:
    helper crash or journal exhaustion. Surface recovery/pending state. Clean
    shutdown drains publication or reports pending recovery and retains its data.
 
-The implementation decision must select one concrete publication/durability
-contract before RW code ships. A journal by itself does not solve the missing
-document-completion boundary. Do not present a partial solution as RW acceptance.
+The publication/durability contract is now selected: durable local acknowledgement
+and automatic, debounced publication of valid snapshots, with possible intermediate
+versions. RW still requires all other correctness and recovery gates; this
+product decision alone does not establish acceptance.
 
 ## Lifecycle and security
 
@@ -232,7 +236,7 @@ Do not interpret these unchecked tasks as implementation completed by this spec.
 
 - [ ] **WP1 — feasibility:** pin/audit nfsserve, minimal RO bridge on macOS/Linux,
   exact sizes and range reads, native mount/unmount proof. Record library gaps,
-  permissions and packaging viability. Complete the RW durability decision above.
+  permissions and packaging viability. Implement and verify the accepted RW durability decision above.
 - [ ] **WP2 — CLI/lifecycle:** add transport selection, backward-compatible state,
   status and unmount dispatch; test unchanged default, unsupported platforms,
   child failure and busy shutdown. Keep NFS experimental and RO until WP4 passes.

@@ -264,6 +264,10 @@ These are individual write gates, not general RW acceptance; see the
 RW shutdown reports counts of retained pending pages, interrupted replacements,
 local editor entries and unresolved publications. Keep the staging journal when
 this notice appears: locally durable bytes do not prove Confluence publication.
+Development NFS publication waits for 500 ms without newer writes to a page.
+If an editor sends a valid partial document and pauses longer, Confluence can
+receive an intermediate version before later blocks arrive. Automatic publication
+does not detect the end of an editor save; fsync confirms local durability only.
 Development publication processes one page at a time to bound retained page
 images; a slow upload can delay other pages. The public recovery CLI remains
 part of the pending RW acceptance work. Clean staged pages refresh from newer

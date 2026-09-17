@@ -1,7 +1,7 @@
 # NFS acceptance checkpoint
 
 This is a working audit of PLAN.md, not acceptance of the feature. The complete
-read/write objective remains open. Implementation evidence reviewed through Slice 93; broad build/CI evidence below
+read/write objective remains open. Implementation evidence reviewed through Slice 96; broad build/CI evidence below
 is historical and still requires a final rerun.
 [EVIDENCE.md](EVIDENCE.md) contains commands, host boundaries and detailed results.
 
@@ -18,7 +18,7 @@ is historical and still requires a final rerun.
 | Directory pagination and changing-directory cookies | READDIR and READDIRPLUS wire tests with independent client mutation; Slice 57 native open-cursor mutations on both hosts | Repeat with final RW-enabled artifact |
 | Metadata/body consistency and external/negative visibility | Slice 39 direct-read TTL fix and real-kernel post-TTL test; Slices 43–44 historic timestamps/cache migration; Slices 46–47 generated-file attributes and native same-size comment visibility | Slice 93 adds native clean-page refresh after save and Linux live default-TTL timing; broader conflicting-write recovery still required |
 | Durable staged ranges, truncate, quotas, isolation and crash recovery | Journal tests including SIGKILL, full DB rollback and legacy WAL recovery; Slices 66–69 add WRITE/SETATTR/COMMIT and native macOS/Linux durable writes | Namespace journal now covers local directories, backups and replay verifiers; fault injection at remaining boundaries still required |
-| Complete-document publication boundary | User requires automatic publication; Slice 71 verifies 500 ms trailing debounce through native synthetic macOS/Linux and live DOCSY NFS saves | Prove editor completion boundaries; a quiet interval alone does not establish document completion |
+| Automatic snapshot publication boundary | User explicitly accepts intermediate versions after 500 ms quiet; Slice 96 tests a valid prefix followed by a delayed suffix; Slice 71 proves automatic native/live publication | Final artifact/fault matrix; no universal editor-completion guarantee is required or advertised |
 | Read-your-writes, validation, optimistic conflicts, replay reconciliation | Slices 65–71 connect staged reads/core publication; Slices 88–89 protect paused publication/replay identity; Slice 92 refreshes clean images and preserves an external addition across a stale-editor save | Broader ambiguous-result and multi-editor faults, clean-record eviction, pending/recovery CLI |
 | CREATE/RENAME/REMOVE and editor replacement saves | Slices 72–89 implement journaled local files/directories, CREATE modes, metadata, backup rename and replacement under original page IDs | Remote page creation/tree rename/opt-in trash; full overwritten/unlinked handle lifetime and mutation-race audit |
 | Local locks, honest capabilities, unsupported operations | Native flock/lockf RO probes; macOS locallocks/Linux nolock; metadata error mapping; Slice 56 RO capability and mutation wire audit | RW editor lock behavior and capability audit after writes are implemented |
@@ -37,8 +37,11 @@ is historical and still requires a final rerun.
    saves before sending the latest state to Confluence. Reuse the existing
    500 ms write-coalescing default, with durable staging, serialized publication
    per document and preservation of newer edits. Retry backoff for API failures
-   is separate from this save buffering. The remaining completion-boundary
-   problem is engineering work, not an unanswered manual/automatic preference.
+   is separate from this save buffering. The user subsequently explicitly accepted intermediate Confluence versions
+   when a valid partial image is followed by delayed writes. The contract is
+   validated snapshot publication after a quiet window, not guaranteed detection
+   of complete editor documents. No editor integration or manual publish step
+   is required. This resolves the former completion-boundary product gate.
 2. **Read snapshots:** the user accepted normal paths for the current, refreshable
    state and immutable version paths for guaranteed whole-read snapshots.
    Concurrent changes may become visible between READs on a normal path. Version

@@ -2532,3 +2532,25 @@ no-change shortcut bypasses the authoritative core result.
 
 This does not promise every identical editor save avoids a PUT; it ensures a
 core-confirmed reconciliation does not become a false pending failure.
+
+
+## Slice 96 — accepted automatic snapshot publication
+
+User decision (2026-09-17): publish validated snapshots automatically after
+500 ms quiet, explicitly accepting intermediate versions when a slow editor
+sends further blocks later. This resolves the former universal editor-completion
+product gate; NFSv3 WRITE/COMMIT still confirms local durability only. The plan,
+acceptance checklist, and user documentation now state this contract.
+
+A regression stages a valid prefix, waits for its automatic publication, then
+stages a delayed suffix. It verifies two updates and the final complete content.
+This is intended behavior, not a claim that the quiet window detects save end.
+
+- macOS focused regression: 1 test / 7 assertions (rerun with final test name).
+- Linux publisher suite: 22 tests / 124 assertions.
+- Linux real DOCSY journal publication: 1 test / 13 assertions; fixture cleaned up.
+- All four typecheck tasks passed. No runtime behavior changed in this slice.
+
+Public RW lifecycle/recovery, remaining namespace operations, and final platform
+and fault gates remain open; acceptance of intermediate versions does not waive
+those requirements.

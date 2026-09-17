@@ -375,3 +375,21 @@ it("completes a reconciled save at the existing remote version", async () => {
   expect(journal.pendingIds()).toEqual([]);
   expect(journal.publishIntent("100")).toBeNull();
 });
+
+
+it("publishes an accepted intermediate version when a valid prefix precedes a delayed suffix", async () => {
+  const { client, journal, original, stage, publisher } = await fixture();
+  // Accepted contract: the quiet window publishes a valid snapshot, not a
+  // guarantee that the editor will send no later blocks.
+  stage(original.replace("Original", "Valid prefix"));
+  publisher.schedule("100");
+  await until(() => client.peekPage("100")?.version === 2);
+  expect(client.peekPage("100")?.storage).toContain("Valid prefix");
+  expect(client.peekPage("100")?.storage).not.toContain("Delayed suffix");
+  stage(original.replace("Original", "Valid prefix\n\nDelayed suffix"));
+  publisher.schedule("100");
+  await until(() => journal.pendingIds().length === 0);
+  expect(client.peekPage("100")?.storage).toContain("Valid prefix");
+  expect(client.peekPage("100")?.storage).toContain("Delayed suffix");
+  expect(client.callsTo("updatePage")).toBe(2);
+});
