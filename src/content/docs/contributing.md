@@ -98,9 +98,14 @@ Automerge is disabled. Keep the existing **required** CI check enforced by
 branch protection and review each PR before merging.
 
 Bun/npm packages and GitHub Actions are covered. Related Astro, React,
-LangChain/deepagents and Action updates are grouped; major updates get separate
+LangChain/deepagents (including `langchain` and `langsmith`) and Action updates are grouped; major updates get separate
 PRs and require approval in the **Dependency Dashboard** first. Fixture,
 specification, spike and generated dependency directories are excluded.
+
+Bun runtime updates require dashboard approval and stay in one PR across
+`packageManager`, `.tool-versions`, workflow pins and the release
+`BUN_VERSION` constant. Run `bun run test scripts/bun-version-pin.test.ts`
+to verify those pins stay aligned.
 
 For example, an ordinary Astro patch update can open a grouped PR during the
 weekly window. Every LangChain/deepagents update needs dashboard approval,
