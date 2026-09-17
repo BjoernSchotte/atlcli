@@ -4504,3 +4504,25 @@ Validation for this documentation slice: checked all 160 records for the exact
 five-run cold/warm matrix and recomputed summary statistics from raw values.
 Typecheck passed all four tasks; Linux compiled DOCSY RW LIVE passed again
 (1 test / 15 assertions, 4.54 seconds whole case), with fixture cleanup.
+
+## Slice 166: ordinary Chrome conformance checks
+
+The follow-up system-Chrome canary reached the Activity case and failed. A real
+local Chrome probe confirmed the cause: ordinary Chrome supplies `chrome.app`,
+`chrome.csi` and `chrome.loadTimes` without extension APIs. Activity and both
+spool cases incorrectly rejected the mere presence of this native object.
+They now share a small assertion that still rejects Node globals and extension
+runtime/storage/tabs/scripting APIs, while permitting ordinary Chrome. A
+regression checks both boundaries and is included in the harness unit command.
+The compiled output scanner remains unchanged and strict.
+
+The first corrected Chrome run passed the cases but exposed a console 404;
+the Playwright trace identified `/favicon.ico`. An explicit empty data favicon
+prevents that incidental request without filtering console errors.
+
+Validation: actual Chrome full harness passed all six tests; the output policy
+and environment regression passed 35 tests / 50 assertions; browser output
+scan, harness build/typecheck and root typecheck passed. Linux compiled DOCSY
+RW LIVE passed again (1 / 15, 4.17 seconds), with owned fixture cleanup. This
+fix concerns the pre-existing browser canary, not NFS runtime behavior. Remote
+confirmation remains pending a full CI run on this commit.

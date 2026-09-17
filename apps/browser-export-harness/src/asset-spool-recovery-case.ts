@@ -1,3 +1,4 @@
+import { assertGenericBrowserGlobals } from "./generic-browser-globals.js";
 import {
   InMemorySpoolStore,
   bindExportJobSpool,
@@ -60,12 +61,7 @@ function executionContext(
 
 /** Generic production-browser proof of the shared PDF/DOCX asset spool. */
 export async function runAssetSpoolRecoveryCase(): Promise<unknown> {
-  const globals = globalThis as typeof globalThis & Record<string, unknown>;
-  for (const forbidden of ["Buffer", "process", "chrome", "browser"]) {
-    if (globals[forbidden] !== undefined) {
-      throw new Error(`generic asset spool imported forbidden global ${forbidden}`);
-    }
-  }
+  assertGenericBrowserGlobals();
 
   const store = new InMemorySpoolStore();
   const bytes = Uint8Array.of(137, 80, 78, 71, 1, 2, 3, 4);
