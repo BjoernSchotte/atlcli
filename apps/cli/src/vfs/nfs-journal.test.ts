@@ -195,26 +195,26 @@ it("bounds empty-file entries and metadata without replacing recovered records",
 
 it("caps SQLite storage and rolls back full-database writes without losing acknowledged bytes", () => {
   const { path, journal: initial } = fixture(); initial.close();
-  const journal = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 98304);
+  const journal = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 131072);
   journals.push(journal);
   journal.admit("1", "/DOCSY/a", bytes("acknowledged"), 1);
   journal.write("1", 0, bytes("ACK"));
   const before = journal.get("1")!;
   expect(() => journal.write("1", 0, new Uint8Array(100_000))).toThrow();
   expect(journal.get("1")).toEqual(before);
-  expect(journal.databaseLimitBytes).toBe(98304);
+  expect(journal.databaseLimitBytes).toBe(131072);
   expect(statSync(path).size).toBeLessThanOrEqual(journal.databaseLimitBytes);
   expect(existsSync(path + "-wal")).toBe(false);
   expect(existsSync(path + "-journal") ? statSync(path + "-journal").size : 0).toBe(0);
   journal.close();
-  const recovered = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 98304);
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 131072);
   journals.push(recovered);
   expect(recovered.get("1")).toEqual(before);
 });
 
 it("reuses bounded database pages over repeated overwrites and publication intents", () => {
   const { path, journal: initial } = fixture(); initial.close();
-  const journal = new NfsJournal(path, "synthetic-account:DOCSY", 65536, 16384, 4, 131072);
+  const journal = new NfsJournal(path, "synthetic-account:DOCSY", 65536, 16384, 4, 196608);
   journals.push(journal);
   journal.admit("1", "/DOCSY/a", new Uint8Array(8192), 1);
   for (let i = 0; i < 80; i++) {
@@ -694,4 +694,31 @@ it("rolls back new-page intent quota failures and upgrades schema eight without 
   const upgraded = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(upgraded);
   expect(Buffer.from(upgraded.get(local.id)!.bytes).toString()).toBe("12345");
   expect(upgraded.beginCreate(local.id, local.path, "DOCSY", "100", image.revision)).not.toBeNull();
+});
+
+
+it("promotes confirmed creations atomically and retains aliases, metadata and newer bytes after restart", () => {
+  const { path, journal } = fixture();
+  const local = journal.createLocal("/DOCSY/new.md", "0123456789abcdef");
+  journal.setAttributes(local.id, { mode: 0o600 });
+  const first = journal.write(local.id, 0, bytes("First"));
+  journal.beginCreate(local.id, local.path, "DOCSY", "100", first.revision);
+  expect(() => journal.promoteCreated(local.id, "/DOCSY/new-123.md")).toThrow("confirmed");
+  journal.recordCreated(local.id, first.revision, "123", 1);
+  journal.write(local.id, 0, bytes("Newer"));
+  expect(() => journal.promoteCreated(local.id, "/OTHER/new-123.md")).toThrow("export");
+  journal.promoteCreated(local.id, "/DOCSY/new-123.md");
+  expect(journal.promoteCreated(local.id, "/DOCSY/new-123.md").id).toBe("123");
+  expect(journal.get(local.id)).toBeNull();
+  expect(journal.local(local.path)).toBeNull();
+  expect(journal.createIntent(local.id)).toBeNull();
+  expect(journal.pendingIds()).toEqual(["123"]);
+  journal.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(reopened.promotion(local.id)).toEqual({ localId: local.id, path: local.path, pageId: "123" });
+  expect(reopened.promotion(local.path)?.pageId).toBe("123");
+  expect(Buffer.from(reopened.get("123")!.bytes).toString()).toBe("Newer");
+  expect(Buffer.from(reopened.publishedSource("123")!).toString()).toBe("First");
+  expect(reopened.attributes("123")?.mode).toBe(0o600);
+  expect(reopened.exclusivePageReplay("/DOCSY/new-123.md", "0123456789abcdef")?.id).toBe("123");
 });

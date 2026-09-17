@@ -24,7 +24,7 @@ async function fixture(spaces = ["DOCSY"], mode: "ro" | "rw" = "ro", treeTtlMs?:
     mode, allowDelete: mode === "rw", coalesceMs: 0, cacheDir, offline: false, treeTtlMs });
   const journal = staging ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY") : undefined;
   cleanup.push(async () => { await vfs.close(); journal?.close(); rmSync(cacheDir, { recursive: true, force: true }); });
-  return { fs: new NfsFilesystem(vfs, spaces, undefined, journal), vfs, client, journal };
+  return { fs: new NfsFilesystem(vfs, spaces, undefined, journal), vfs, client, journal, cacheDir };
 }
 
 it("exports a single space directly and confines parent lookups", async () => {
@@ -923,5 +923,40 @@ it("refreshes published pages without losing remote edits when a stale editor sa
     expect(client.peekPage("100")?.storage).toContain("Second edit");
     expect(client.peekPage("100")?.storage).toContain("Remote addition");
     expect(journal!.pendingIds()).toEqual([]);
+  } finally { await publisher.stop(); }
+});
+
+
+it("keeps the original new-page handle and plain Markdown saves after confirmed creation", async () => {
+  const { fs, vfs, client, journal, cacheDir } = await fixture(["DOCSY"], "rw", undefined, true);
+  const handle = await fs.create(1, "newpage.md");
+  await fs.write(handle, 0, Buffer.from("First"));
+  const local = journal!.local("/DOCSY/newpage.md")!;
+  journal!.beginCreate(local.id, local.path, "DOCSY", "100", local.revision);
+  const result = await vfs.writeFile(local.path, "First", { createOnly: true, spaceKey: "DOCSY", parentId: "100" });
+  // A later save arrives while the first POST is in flight.
+  await fs.write(handle, 0, Buffer.from("Newer"));
+  journal!.recordCreated(local.id, local.revision, result.pageId, result.version);
+  journal!.promoteCreated(local.id, result.path);
+  expect(await fs.lookup(1, result.path.split("/").at(-1)!)).toBe(handle);
+  expect(await fs.lookup(1, "newpage.md")).toBe(handle);
+  expect(Buffer.from((await fs.read(handle, 0, 100)).data, "base64").toString()).toBe("Newer");
+  expect(journal!.pendingIds()).toEqual([result.pageId]);
+  const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+  try {
+    expect((await publisher.publish(result.pageId))?.version).toBe(2);
+    expect(client.peekPage(result.pageId)?.storage).toContain("Newer");
+    expect(await fs.write(handle, 0, Buffer.from("Third"))).toBe(result.pageId);
+    await publisher.publish(result.pageId);
+    expect(client.peekPage(result.pageId)?.storage).toContain("Third");
+    expect(client.callsTo("createPage")).toBe(1);
+    expect(journal!.pendingIds()).toEqual([]);
+    const restarted = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"], mode: "rw", allowDelete: false, cacheDir: join(cacheDir, "fresh"), offline: false, coalesceMs: 0 });
+    try {
+      const nextFs = new NfsFilesystem(restarted, ["DOCSY"], undefined, journal);
+      const nextHandle = await nextFs.lookup(1, "newpage.md");
+      expect(Buffer.from((await nextFs.read(nextHandle, 0, 100)).data, "base64").toString()).toBe("Third");
+      await expect(nextFs.createRegular(1, "newpage.md", true, {})).rejects.toMatchObject({ code: "EEXIST" });
+    } finally { await restarted.close(); }
   } finally { await publisher.stop(); }
 });

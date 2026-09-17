@@ -198,12 +198,20 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       title: makeE2eTitle("nfs-create-parent"), storage: "<p>Creation parent</p>" });
     created.push(parent.id);
     let childId: string | undefined;
+    const journal = new NfsJournal(join(cacheDir, "creation.sqlite"), "live:DOCSY");
     try {
       const parentPath = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${parent.id}.md`);
       const path = `${dirname(parentPath)}/${makeE2eTitle("nfs-create-child")}.md`;
       const condition = { createOnly: true as const, spaceKey: E2E_SPACE_KEY, parentId: parent.id };
       await expect(vfs.writeFile(path, "Wrong parent", { ...condition, parentId: "0" })).rejects.toMatchObject({ code: "EBUSY" });
-      const result = await vfs.writeFile(path, "Created through guarded publication 🐴", condition);
+      const content = "Created through guarded publication 🐴";
+      const local = journal.createLocal(path);
+      const image = journal.write(local.id, 0, Buffer.from(content));
+      journal.beginCreate(local.id, path, E2E_SPACE_KEY, parent.id, image.revision);
+      const fs = new NfsFilesystem(vfs, [E2E_SPACE_KEY], undefined, journal);
+      let handle = 1;
+      for (const part of path.split("/").slice(2)) handle = await fs.lookup(handle, part);
+      const result = await vfs.writeFile(path, content, condition);
       childId = result.pageId; created.push(childId);
       expect(result.created).toBe(true);
       const actual = await client.getPage(childId);
@@ -212,7 +220,19 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       const after = await client.getPage(childId);
       expect(after.version).toBe(actual.version);
       expect(after.storage).toBe(actual.storage);
+      journal.recordCreated(local.id, image.revision, result.pageId, result.version);
+      journal.promoteCreated(local.id, result.path);
+      const next = Buffer.from("Follow-up without frontmatter 🐴");
+      await fs.truncate(handle, next.length);
+      expect(await fs.write(handle, 0, next)).toBe(childId);
+      const publisher = new NfsPublisher(journal, vfs, [E2E_SPACE_KEY]);
+      try { await publisher.publish(childId); } finally { await publisher.stop(); }
+      const updated = await client.getPage(childId);
+      expect(updated.storage).toContain("Follow-up without frontmatter");
+      expect(updated.version).toBe(result.version + 1);
+      expect(journal.pendingIds()).toEqual([]);
     } finally {
+      journal.close();
       if (childId) { await client.deletePage(childId); created.splice(created.indexOf(childId), 1); }
       await client.deletePage(parent.id); created.splice(created.indexOf(parent.id), 1);
     }

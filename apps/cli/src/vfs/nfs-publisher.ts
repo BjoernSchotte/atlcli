@@ -64,7 +64,8 @@ export class NfsPublisher {
     catch { throw new VfsError("EINVAL", "Staged page is not complete UTF-8"); }
     if (content.includes("\0")) throw new VfsError("EINVAL", "Staged page contains unwritten or binary bytes");
     const { frontmatter } = parseVfsFrontmatter(content);
-    if (frontmatter.id !== id || frontmatter.version === undefined || frontmatter.version > baseVersion) {
+    const plain = frontmatter.id === undefined && frontmatter.version === undefined;
+    if (!plain && (frontmatter.id !== id || frontmatter.version === undefined || frontmatter.version > baseVersion)) {
       throw new VfsError("EINVAL", "Staged page identity or base version is invalid");
     }
     return content;
@@ -100,6 +101,9 @@ export class NfsPublisher {
       }
       if (!target) throw new VfsError("ENOENT", "Staged page is outside the selected export or was deleted");
       const source = this.journal.publishedSource(id);
+      if (!source && parseVfsFrontmatter(content).frontmatter.id === undefined) {
+        throw new VfsError("EINVAL", "Plain Markdown requires a durable published source");
+      }
       if (source) {
         const base = parseVfsFrontmatter(new TextDecoder("utf-8", { fatal: true }).decode(source));
         const ours = parseVfsFrontmatter(content);

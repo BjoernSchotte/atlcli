@@ -139,7 +139,11 @@ must create a page on both NFS and WebDAV. The filename supplies the default tit
 its location supplies the space/parent. Confluence assigns the ID, and subsequent
 saves target that same page. Swap/backup/temporary editor files remain local.
 Test repeated saves and atomic replacements on both transports, verifying exactly
-one created page and cleanup of the test resources.
+one created page and cleanup of the test resources. Required editor matrix:
+Vim and VS Code on macOS and Linux, plus TextEdit on macOS, for both NFS and
+WebDAV. Include repeated saves, autosave where supported, and temporary-file
+handling. Record unavailable GUI environments explicitly, without substituting
+scripted writes for an actual editor acceptance result.
 
 NFS attributes and data caches must agree after a write. Define and measure
 external-update and negative-cache visibility using explicit mount options and

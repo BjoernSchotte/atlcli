@@ -119,6 +119,13 @@ export class NfsFilesystem {
     if (!entry) return this.stale(id);
     if (entry.shield) return entry.path; // Fixed empty volume markers, never backend paths.
     this.assertExport(entry.path);
+    if (entry.identity.startsWith("local:") && this.journal?.promotion(entry.identity)) {
+      const pageId = this.journal.promotion(entry.identity)!.pageId;
+      const path = await this.promotedPath(pageId);
+      const stat = await this.vfs.stat(path);
+      this.moveHandles(entry.identity, this.identity(stat, path), path, id);
+      return path;
+    }
     if (entry.identity.startsWith("local:")) {
       const file = this.journal?.get(entry.identity);
       if (!file || this.journal?.local(file.path)?.id !== file.id) return this.stale(id);
@@ -192,12 +199,33 @@ export class NfsFilesystem {
     return entry.path;
   }
 
+  private async promotedPath(pageId: string): Promise<string> {
+    for (const space of this.spaces) {
+      try {
+        const path = await this.vfs.readlink(`/${space}/.by-id/${pageId}.md`);
+        this.assertExport(path);
+        await this.checkPageIdentity(path, pageId);
+        return path;
+      } catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
+    }
+    throw new VfsError("ENOENT", "Created page left the export or was deleted");
+  }
+
   private async register(path: string): Promise<number> {
     this.assertExport(path);
+    const promoted = this.journal?.promotion(path);
+    if (promoted) {
+      const handle = this.identities.get(promoted.localId);
+      if (handle !== undefined) await this.pathFor(handle);
+      path = await this.promotedPath(promoted.pageId);
+    }
     if (path === this.root) return 1;
     const local = this.journal?.local(path);
     const stat = await this.stat(path);
     if (!local) await this.checkResolvedScope(path);
+    const promotion = !local && this.journal?.promotion(stat.id);
+    const localHandle = promotion ? this.identities.get(promotion.localId) : undefined;
+    if (localHandle !== undefined) await this.pathFor(localHandle);
     const identity = local?.id ?? this.identity(stat, path);
     const followsParent = stat.kind === "attachment" || this.isObjectView(stat);
     const entry = { path, identity, ...(followsParent
@@ -290,6 +318,9 @@ export class NfsFilesystem {
   }
 
   private async stat(path: string): Promise<VfsStat> {
+    if (this.journal?.displaced(path)) throw new VfsError("ENOENT", "Page moved aside for replacement");
+    const promotion = this.journal?.promotion(path);
+    if (promotion) path = await this.promotedPath(promotion.pageId);
     const file = this.journal?.local(path);
     if (!file) {
       if (this.journal?.displaced(path)) throw new VfsError("ENOENT", "Page moved aside for replacement");

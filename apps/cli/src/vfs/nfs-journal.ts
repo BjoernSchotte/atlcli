@@ -61,7 +61,7 @@ export class NfsJournal {
       this.db.exec("COMMIT");
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers. Exclusive mode retains the rollback
@@ -98,7 +98,7 @@ export class NfsJournal {
           id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL,
           spaceKey TEXT NOT NULL, parentId TEXT NOT NULL, pageId TEXT UNIQUE, version INTEGER,
           CHECK ((pageId IS NULL AND version IS NULL) OR (pageId IS NOT NULL AND version > 0))
-        ); PRAGMA user_version=9;`);
+        ); CREATE TABLE IF NOT EXISTS promotions (localId TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, pageId TEXT NOT NULL UNIQUE REFERENCES files(id)); PRAGMA user_version=10;`);
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.db.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -443,6 +443,34 @@ export class NfsJournal {
       this.db.run("INSERT INTO intents VALUES (?, ?, ?, ?)", [id, local.bytes, 0, revision]);
       this.db.run("INSERT INTO creations VALUES (?, ?, ?, ?, NULL, NULL)", [id, path, spaceKey, parentId]);
       return this.createIntent(id)!;
+    }).immediate();
+  }
+
+  promotion(idOrPath: string): { localId: string; path: string; pageId: string } | null {
+    return this.db.query<{ localId: string; path: string; pageId: string }, [string]>("SELECT * FROM promotions WHERE localId=?1 OR path=?1 OR pageId=?1").get(idOrPath);
+  }
+
+  /** Atomically turn a confirmed local creation into an ID-bound page, retaining newer bytes. */
+  promoteCreated(id: string, canonicalPath: string): StagedNfsFile {
+    this.localPath(canonicalPath);
+    return this.db.transaction(() => {
+      const promoted = this.promotion(id);
+      if (promoted) return this.get(promoted.pageId)!;
+      const intent = this.createIntent(id);
+      if (!intent?.pageId || !intent.version) throw new VfsError("EBUSY", "Creation has no confirmed remote result");
+      if (canonicalPath.split("/")[1] !== intent.spaceKey) throw new VfsError("EACCES", "Created page is outside its export");
+      const file = this.get(id)!;
+      if (this.get(intent.pageId)) throw new VfsError("EBUSY", "Created page is already staged");
+      this.db.run("INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, NULL)", [intent.pageId, canonicalPath, file.bytes, intent.version, file.revision, intent.revision]);
+      this.db.run("INSERT INTO bases VALUES (?, ?)", [intent.pageId, intent.bytes]);
+      this.db.run("UPDATE attributes SET id=? WHERE id=?", [intent.pageId, id]);
+      this.db.run("INSERT INTO page_verifiers SELECT ?,verifier FROM locals WHERE id=? AND verifier IS NOT NULL", [intent.pageId, id]);
+      this.db.run("INSERT INTO promotions VALUES (?, ?, ?)", [id, intent.path, intent.pageId]);
+      this.db.run("DELETE FROM creations WHERE id=?", [id]);
+      this.db.run("DELETE FROM intents WHERE id=?", [id]);
+      this.db.run("DELETE FROM locals WHERE id=?", [id]);
+      this.db.run("DELETE FROM files WHERE id=?", [id]);
+      return this.get(intent.pageId)!;
     }).immediate();
   }
 

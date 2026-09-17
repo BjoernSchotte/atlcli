@@ -432,6 +432,9 @@ Use the journal path from your development mount setup. These commands need no
 profile, authentication, or running server. Public NFS RW mounting is still gated. New-page publication is not yet connected
 to native NFS CREATE; the core now has a create-only space/parent guard for that
 work, preventing a delayed creation from silently updating an occupied path.
+Confirmed creations can now retain their original filehandle and filename alias;
+subsequent plain-Markdown saves use the recorded page identity and merge source.
+Automatic native creation and the full editor matrix are still pending.
 
 ```bash
 atlcli wiki mount recovery /path/to/journal.sqlite --json
@@ -439,7 +442,7 @@ atlcli wiki mount recovery /path/to/journal.sqlite --id 12345 --output ./recover
 ```
 
 The listing includes frozen creation targets and confirmed creation receipts
-when present (journal schema 9), local editor entries, interrupted replacements, revision
+when present (journal schemas 9–10), local editor entries, interrupted replacements, revision
 numbers, safe error codes and available publication images, without page bodies.
 To compare an unresolved publication with the bytes currently saved by an editor:
 

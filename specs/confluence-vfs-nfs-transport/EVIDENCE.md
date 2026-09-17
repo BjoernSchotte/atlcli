@@ -2668,3 +2668,29 @@ frontmatter on both transports to the acceptance plan.
 This slice does not yet send a native new-page POST or promote its filehandle.
 The persisted receipt enables that integration; ambiguous POST reconciliation
 and the complete no-frontmatter Vim acceptance remain open.
+
+
+## Slice 102 — preserve handles and plain Markdown after confirmed creation
+
+Schema 10 atomically promotes a confirmed local creation to its remote page ID,
+retaining newer bytes, the published source, permissions and exclusive-create
+verifiers. Persistent original-name/local-ID aliases allow subsequent lookups
+and existing filehandles to reach that same page, including with a fresh core
+session. Alias resolution verifies current page identity and export scope.
+Plain Markdown updates are accepted when a durable published source supplies
+the merge base; altered explicit page identities remain rejected.
+
+- macOS/Linux filesystem, journal, recovery and publisher suites: 113 tests /
+  1340 assertions each. Promotion/reopen, canonical-first and original-name
+  lookup, repeated headerless saves and guarded recreation are covered.
+- Linux live DOCSY creation/promotion/follow-up: 10 assertions; same page ID,
+  version increment, preserved content and cleanup of child/parent verified.
+- All four typecheck tasks passed. Schema growth required raising two synthetic
+  small database ceilings (128/192 KiB); overflow rollback and retained-storage
+  assertions remain enforced, production defaults unchanged.
+
+This tests the projection/core path, not a complete automatic native CREATE or
+an editor run. The user requests Vim/VS Code on both OSes and TextEdit on macOS,
+for both transports; PLAN.md now names the matrix. Inventory found all three
+macOS apps and Linux Vim; code is absent from the Linux SSH PATH and loginctl
+listed no graphical session. Linux GUI availability requires further checking.
