@@ -279,6 +279,11 @@ export class WriteBack {
     serverVersion: number,
   ): Promise<VfsWriteResult> {
     const fresh = await this.refetch(node, path);
+    // A successful PUT can lose its reply; the client's retry then gets 409.
+    // Compare storage, not lossy Markdown, before creating another version.
+    if (fresh.title === title && fresh.storage.trim() === toStorage(body).trim()) {
+      return { path, pageId: node.id, version: fresh.version, created: false };
+    }
     const base =
       basedOn !== undefined ? this.opts.cache.getBody(node.id, basedOn)?.markdown : undefined;
     const theirs = parseVfsFrontmatter(fresh.markdown).body;
@@ -348,7 +353,7 @@ export class WriteBack {
   private async refetch(
     node: TreeNode,
     path: string,
-  ): Promise<{ version: number; markdown: string }> {
+  ): Promise<{ version: number; markdown: string; title: string; storage: string }> {
     const page = await this.request(() => this.opts.client.getPage(node.id), path);
     const version = page.version ?? 1;
     const refreshed = this.opts.index.upsert({
@@ -364,7 +369,7 @@ export class WriteBack {
       markdown,
       storageHash: hashStorage(page.storage),
     });
-    return { version, markdown };
+    return { version, markdown, title: page.title, storage: page.storage };
   }
 
   /** Updates the index and the cache so the next read is a hit, not a fetch. */

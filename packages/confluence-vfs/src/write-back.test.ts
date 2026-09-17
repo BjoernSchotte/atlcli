@@ -288,6 +288,42 @@ describe("conflicts", () => {
     await readOnly.close();
   });
 
+  it("reconciles a successful PUT followed by a lost reply and retry conflict", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const update = client.updatePage.bind(client);
+    client.updatePage = async params => {
+      await update({ ...params, storage: params.storage.trim() });
+      // The transport retries the same version after losing the success reply.
+      return update(params);
+    };
+    const result = await vfs.writeFile("/DOCSY/getting-started-101.md", original.replace("CLI", "tool"));
+    expect(result.version).toBe(2);
+    expect(client.peekPage("101")?.version).toBe(2);
+    expect(client.callsTo("updatePage")).toBe(2);
+    expect(await vfs.readFile("/DOCSY/getting-started-101.md")).toContain("tool");
+    expect(vfs.conflicts!.list()).toHaveLength(0);
+    await vfs.close();
+  });
+
+  it("reconciles stale replay without a cached merge base but never discards title changes", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const edited = original.replace("CLI", "tool");
+    await vfs.writeFile("/DOCSY/getting-started-101.md", edited);
+    vfs.cache!.forgetPage("101");
+    client.resetCalls();
+    expect((await vfs.writeFile("/DOCSY/getting-started-101.md", edited)).version).toBe(2);
+    expect(client.callsTo("updatePage")).toBe(0);
+    // Equality must include the title, not only the body.
+    await expect(vfs.writeFile("/DOCSY/getting-started-101.md",
+      edited.replace('title: "Getting Started"', 'title: "Changed"'))).rejects.toMatchObject({ code: "EBUSY" });
+    expect(client.peekPage("101")?.title).toBe("Getting Started");
+    await vfs.close();
+  });
+
   it("handles a 409 the server raised after our check", async () => {
     const client = seeded();
     const vfs = await openVfs(client);
@@ -667,11 +703,11 @@ describe("write coalescing", () => {
       try { if (calls === 1) await gate; return await update(params); }
       finally { active--; }
     };
-    const first = vfs.writeFile("/DOCSY/getting-started-101.md", `${original}saved\n`);
+    const first = vfs.writeFile("/DOCSY/getting-started-101.md", original);
     await settle(); runScheduled(); await settle();
     expect(calls).toBe(1);
     const second = vfs.writeFile("/DOCSY/getting-started-101/_index.md", `${original}saved\n`);
-    const third = vfs.writeFile("/DOCSY/getting-started-101.md", `${original}saved\n`);
+    const third = vfs.writeFile("/DOCSY/getting-started-101.md", `${original.replace('title: "Getting Started"', 'title: "Retitled"')}saved\n`);
     await settle(); runScheduled(); await settle();
     let flushed = false;
     const flushing = vfs.flush().then(() => { flushed = true; });

@@ -107,6 +107,12 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(actual.version).toBe((page.version ?? 1) + 1);
       expect(actual.storage).toContain("Debounce latest");
       expect(actual.storage).not.toContain("Debounce intermediate");
+      // Replay the old editor image after dropping its merge base.
+      delayed.cache!.forgetPage(page.id);
+      const replay = await fetch(target, { method: "PUT", body: original.replace("Debounce original", "Debounce latest") });
+      expect([200, 204]).toContain(replay.status);
+      await replay.text();
+      expect((await client.getPage(page.id)).version).toBe(actual.version);
     } finally {
       await endpoint?.stop();
       await delayed.close();

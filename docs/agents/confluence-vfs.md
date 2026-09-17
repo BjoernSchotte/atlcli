@@ -162,6 +162,9 @@ time; writes arriving during it wait for the next batch and retain normal
 version/conflict checks. Flushing waits for queued and running updates.
 `--sync-writes` disables the delay and bundling, while retaining serialization.
 This is save coalescing; retry backoff for API errors is a separate mechanism.
+A stale replay whose title and storage content already match the server succeeds
+without creating another version, even if its old merge base has been evicted.
+This comparison ignores only outer storage whitespace, not content differences.
 
 ### Machine-readable output
 

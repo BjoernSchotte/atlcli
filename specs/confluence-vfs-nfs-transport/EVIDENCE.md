@@ -1651,3 +1651,29 @@ The API confirmed exactly one new version containing only the latest content;
 the test deleted its fixture successfully (one test/five assertions). All four
 typecheck tasks passed. This validates the shared publication path, not NFS RW:
 the durable journal and NFS mutations still need to be connected to it.
+
+
+## Slice 64 — reconcile already-applied page updates
+
+The shared write-back path now checks the freshly fetched title and complete
+storage representation before merging a stale write. If both match the requested
+state, it returns the existing version without another PUT. This also works
+without a cached merge base. Only outer storage whitespace is ignored: live
+Confluence strips the converter's final newline. Markdown equivalence alone is
+not accepted, because it could hide storage content lost by conversion.
+
+- macOS and Linux: `bun run test packages/confluence-vfs/src/write-back.test.ts`:
+  66 passed, 148 assertions each. Tests cover a successful PUT whose transport
+  retry receives 409, missing-base replay, title mismatch, and serialization of
+  distinct saves with coalescing enabled and disabled.
+- Linux mayflower/DOCSY: `ATLCLI_WIKI_MOUNT_E2E=1 bun run test
+  apps/cli/src/e2e/wiki-mount-live.e2e.test.ts --test-name-pattern "coalesces rapid"`:
+  one passed, seven assertions. Two rapid HTTP PUTs produce one version; replay
+  after base-cache eviction leaves that version unchanged. Synthetic page deleted
+  in finally. Four macOS-only kernel cases skipped on this Linux invocation.
+- The first live run correctly exposed outer-whitespace normalization; the
+  corrected comparison then passed. Typecheck passed all four tasks.
+
+This is shared-core replay reconciliation, not NFS RW acceptance. Journal-to-core
+publication, ambiguous merged writes, remote edits after a lost reply, namespace
+mutations and native editor saves remain open.
