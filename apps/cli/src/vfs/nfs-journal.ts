@@ -103,7 +103,7 @@ export class NfsJournal {
       this.db.exec("COMMIT");
       chmodSync(path, 0o600);
       const version = this.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11 && version !== 12 && version !== 13 && version !== 14 && version !== 15) throw new Error("Unsupported NFS journal schema version");
+      if (!Number.isInteger(version) || version < 0 || version > 16) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers. Exclusive mode retains the rollback
@@ -144,7 +144,10 @@ export class NfsJournal {
         ); CREATE TABLE IF NOT EXISTS promotions (localId TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, pageId TEXT NOT NULL UNIQUE REFERENCES files(id)); CREATE TABLE IF NOT EXISTS trash (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL, spaceKey TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1))); CREATE TABLE IF NOT EXISTS moves (id TEXT PRIMARY KEY, source TEXT NOT NULL UNIQUE,
           target TEXT NOT NULL UNIQUE, spaceKey TEXT NOT NULL, sourceParentId TEXT NOT NULL,
           targetParentId TEXT NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)));
-          PRAGMA user_version=15;`);
+          PRAGMA user_version=16;`);
+        const promotionColumns = this.query<{ name: string }, []>("PRAGMA table_info(promotions)").all();
+        if (!promotionColumns.some(column => column.name === "directoryId")) this.db.exec("ALTER TABLE promotions ADD COLUMN directoryId TEXT REFERENCES files(id)");
+        this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS promotion_directory ON promotions(directoryId)");
         const moveColumns = this.db.prepare<{ name: string }, []>("PRAGMA table_info(moves)");
         let moveColumnNames: string[];
         try { moveColumnNames = moveColumns.all().map(column => column.name); }
@@ -248,6 +251,16 @@ export class NfsJournal {
       const entry = this.createLocalEntry(path, "directory");
       this.setAttributes(entry.id, { mode });
       return entry;
+    }).immediate();
+  }
+
+  /** Persist both identities before acknowledging an ordinary page-directory MKDIR. */
+  createPageDirectory(path: string, mode = 0o755): LocalNfsEntry {
+    return this.db.transaction(() => {
+      const directory = this.createLocalDirectory(path, mode);
+      const body = this.createLocal(`${path}/_index.md`);
+      this.setAttributes(body.id, { mode: 0o644 });
+      return directory;
     }).immediate();
   }
 
@@ -501,7 +514,9 @@ export class NfsJournal {
   }
 
   write(id: string, offset: number, bytes: Uint8Array): StagedNfsFile {
-    id = this.promotion(id)?.pageId ?? id;
+    const promotion = this.promotion(id);
+    if (promotion?.directory) throw new VfsError("EISDIR", "Cannot write a directory");
+    id = promotion?.pageId ?? id;
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > this.maxFileBytes - bytes.byteLength) throw new VfsError("EINVAL", "Invalid NFS write range");
     this.assertFile(id);
     if (bytes.byteLength === 0) {
@@ -513,7 +528,9 @@ export class NfsJournal {
   }
 
   truncate(id: string, size: number): StagedNfsFile {
-    return this.change(this.promotion(id)?.pageId ?? id, () => size, () => {});
+    const promotion = this.promotion(id);
+    if (promotion?.directory) throw new VfsError("EISDIR", "Cannot truncate a directory");
+    return this.change(promotion?.pageId ?? id, () => size, () => {});
   }
 
   createIntent(id: string): NfsCreateIntent | null {
@@ -546,8 +563,15 @@ export class NfsJournal {
     }).immediate();
   }
 
-  promotion(idOrPath: string): { localId: string; path: string; pageId: string } | null {
-    return this.query<{ localId: string; path: string; pageId: string }, [string]>("SELECT * FROM promotions WHERE localId=?1 OR path=?1 OR pageId=?1").get(idOrPath);
+  promotion(idOrPath: string, directory = false): { localId: string; path: string; pageId: string; directory?: true } | null {
+    const row = this.query<{ localId: string; path: string; pageId: string; directoryId: string | null }, [string]>(
+      "SELECT * FROM promotions WHERE localId=?1 OR path=?1 OR pageId=?1 OR directoryId=?1 OR (directoryId IS NOT NULL AND substr(path,1,length(path)-10)=?1)",
+    ).get(idOrPath);
+    if (!row) return null;
+    if (row.directoryId && (directory || row.directoryId === idOrPath || posix.dirname(row.path) === idOrPath)) {
+      return { localId: row.directoryId, path: posix.dirname(row.path), pageId: row.pageId, directory: true };
+    }
+    return directory ? null : { localId: row.localId, path: row.path, pageId: row.pageId };
   }
 
   /** Atomically turn a confirmed local creation into an ID-bound page, retaining newer bytes. */
@@ -560,12 +584,35 @@ export class NfsJournal {
       if (!intent?.pageId || !intent.version) throw new VfsError("EBUSY", "Creation has no confirmed remote result");
       if (canonicalPath.split("/")[1] !== intent.spaceKey) throw new VfsError("EACCES", "Created page is outside its export");
       const file = this.get(id)!;
+      const directory = posix.basename(intent.path) === "_index.md" ? this.local(posix.dirname(intent.path)) : null;
+      if (directory && (directory.kind !== "directory" || posix.basename(canonicalPath) !== "_index.md")) {
+        throw new VfsError("EINVAL", "Page-directory promotion requires its canonical body path");
+      }
       if (this.get(intent.pageId)) throw new VfsError("EBUSY", "Created page is already staged");
       this.db.run("INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, NULL)", [intent.pageId, canonicalPath, file.bytes, intent.version, file.revision, intent.revision]);
       this.db.run("INSERT INTO bases VALUES (?, ?)", [intent.pageId, intent.bytes]);
       this.db.run("UPDATE attributes SET id=? WHERE id=?", [intent.pageId, id]);
       this.db.run("INSERT INTO page_verifiers SELECT ?,verifier FROM locals WHERE id=? AND verifier IS NOT NULL", [intent.pageId, id]);
-      this.db.run("INSERT INTO promotions VALUES (?, ?, ?)", [id, intent.path, intent.pageId]);
+      this.db.run("INSERT INTO promotions(localId,path,pageId,directoryId) VALUES (?, ?, ?, ?)", [id, intent.path, intent.pageId, directory?.id ?? null]);
+      if (directory) {
+        const prefix = `${directory.path}/`;
+        if (this.query("SELECT id FROM creations WHERE id<>?1 AND substr(path,1,length(?2))=?2 LIMIT 1").get(id, prefix)) {
+          throw new VfsError("EBUSY", "Child creation must be reconciled before promoting its parent");
+        }
+        const descendants = this.query<{ id: string; path: string }, [string, string]>(
+          "SELECT id,path FROM locals WHERE id<>?1 AND substr(path,1,length(?2))=?2 ORDER BY path",
+        ).all(id, prefix);
+        const target = posix.dirname(canonicalPath);
+        for (const child of descendants) {
+          const path = target + child.path.slice(directory.path.length);
+          this.localPath(path);
+          this.db.run("UPDATE locals SET path=? WHERE id=?", [path, child.id]);
+          this.db.run("UPDATE files SET path=? WHERE id=?", [path, child.id]);
+        }
+        this.db.run("DELETE FROM locals WHERE id=?", [directory.id]);
+        // Keep the small directory row and its attributes separate from the body.
+        this.db.run("UPDATE files SET path=? WHERE id=?", [target, directory.id]);
+      }
       this.db.run("DELETE FROM creations WHERE id=?", [id]);
       this.db.run("DELETE FROM intents WHERE id=?", [id]);
       this.db.run("DELETE FROM locals WHERE id=?", [id]);
@@ -691,7 +738,12 @@ export class NfsJournal {
       if (!this.trashIntent(id)) throw new VfsError("ENOENT", "Unknown trash intent");
       this.db.run("UPDATE trash SET completed=1 WHERE id=?", [id]);
       // Retire the name, not the recoverable image or its tombstone.
+      const directory = this.promotion(id, true);
       this.db.run("DELETE FROM promotions WHERE pageId=?", [id]);
+      if (directory) {
+        this.db.run("DELETE FROM attributes WHERE id=?", [directory.localId]);
+        this.db.run("DELETE FROM files WHERE id=?", [directory.localId]);
+      }
       this.db.run("DELETE FROM page_verifiers WHERE id=?", [id]);
     }).immediate();
   }

@@ -4011,3 +4011,27 @@ workflow now invokes this suite; results for this new matrix step are pending.
 Workflow-policy tests: 35 passed / 614 assertions. Typecheck: four tasks passed.
 Linux DOCSY owned-journal publication: one passed / five assertions, disposable
 resources cleaned up. Public RW remains gated by the remaining requirements.
+
+## Slice 149 — atomic page-directory journal identities (2026-09-17)
+
+Schema 16 extends the existing creation promotion with an optional directory
+identity. A page-directory allocation persists the directory and writable
+_index.md in one transaction. Promotion retains distinct directory/body aliases
+and attributes, preserves newer body edits, and relocates local descendants
+atomically. Frozen child creations or path collisions roll back promotion while
+retaining the confirmed parent receipt. Confirmed trash retires both aliases
+and the directory metadata row without deleting the recoverable page image.
+
+Schema-15 file aliases migrate unchanged; offline recovery now accepts schema
+16 without mutating it. Tests cover quota rollback during allocation, restart
+before and after promotion, child bytes/path retention, directory-write rejection,
+collision rollback, frozen-child guards, separate mode bits and alias retirement.
+macOS and Linux each passed 182 journal/publisher/filesystem/recovery tests with
+1784 assertions, plus both real ENOSPC cases (26 assertions). Linux DOCSY
+owned-journal publication passed one test / five assertions with cleanup;
+typecheck passed four tasks.
+
+This slice prepares the durable representation only. The NFS MKDIR adapter,
+parent-first publisher scheduling, role-aware handles/alias traversal, native
+mkdir/editor verification and DOCSY directory publication are still pending;
+ordinary directories are not yet automatically published. Public RW stays gated.

@@ -20,6 +20,116 @@ function fixture(maxBytes = 4096, maxFileBytes = 1024, maxFiles = 4096) {
 }
 const bytes = (value: string) => Buffer.from(value);
 
+it("atomically promotes a page directory and body with distinct identities and retained children", () => {
+  const { path, journal } = fixture();
+  const directory = journal.createPageDirectory("/DOCSY/new-page", 0o700);
+  const body = journal.local(`${directory.path}/_index.md`)!;
+  expect(body.id).not.toBe(directory.id);
+  expect(journal.attributes(body.id)?.mode).toBe(0o644);
+  journal.write(body.id, 0, bytes("First"));
+  const nested = journal.createPageDirectory(`${directory.path}/child`);
+  const child = journal.local(`${nested.path}/_index.md`)!;
+  journal.write(child.id, 0, bytes("Child"));
+  const intent = journal.beginCreate(body.id, body.path, "DOCSY", "100", journal.get(body.id)!.revision)!;
+  journal.write(body.id, 0, bytes("Later"));
+  journal.recordCreated(body.id, intent.revision, "200", 1);
+  journal.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  const promoted = reopened.promoteCreated(body.id, "/DOCSY/new-page-200/_index.md");
+  expect(Buffer.from(promoted.bytes).toString()).toBe("Later");
+  expect(Buffer.from(reopened.publishedSource("200")!).toString()).toBe("First");
+  expect(promoted.revision).toBeGreaterThan(promoted.publishedRevision);
+  expect(reopened.promotion(directory.id)).toEqual({ localId: directory.id, path: directory.path, pageId: "200", directory: true });
+  expect(reopened.promotion(directory.path)).toEqual(reopened.promotion("200", true));
+  expect(reopened.promotion(body.id)).toEqual({ localId: body.id, path: body.path, pageId: "200" });
+  expect(reopened.attributes(directory.id)?.mode).toBe(0o700);
+  expect(reopened.attributes("200")?.mode).toBe(0o644);
+  expect(reopened.get(nested.id)?.path).toBe("/DOCSY/new-page-200/child");
+  expect(reopened.get(child.id)?.path).toBe("/DOCSY/new-page-200/child/_index.md");
+  expect(Buffer.from(reopened.get(child.id)!.bytes).toString()).toBe("Child");
+  expect(() => reopened.write(directory.id, 0, bytes("wrong"))).toThrow("directory");
+  expect(() => reopened.truncate(directory.id, 0)).toThrow("directory");
+  expect(reopened.promoteCreated(body.id, "/DOCSY/new-page-200/_index.md")).toEqual(promoted);
+  reopened.close();
+  const again = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(again);
+  expect(again.promotion(directory.id)?.directory).toBe(true);
+  expect(again.promotion(body.id)?.pageId).toBe("200");
+});
+
+it("rolls back a page-directory allocation when the second identity exceeds quota", () => {
+  const { journal } = fixture(4096, 1024, 1);
+  expect(() => journal.createPageDirectory("/DOCSY/new-page")).toThrow("quota");
+  expect(journal.localEntries("/DOCSY")).toEqual([]);
+  expect(journal.local("/DOCSY/new-page/_index.md")).toBeNull();
+  expect(journal.createLocal("/DOCSY/still-available")).toBeDefined();
+});
+
+it("keeps a confirmed directory creation recoverable when descendant promotion collides", () => {
+  const { journal } = fixture();
+  const directory = journal.createPageDirectory("/DOCSY/new-page");
+  const body = journal.local(`${directory.path}/_index.md`)!;
+  const child = journal.createLocal(`${directory.path}/child.md`);
+  journal.write(child.id, 0, bytes("Preserved"));
+  journal.createLocal("/DOCSY/new-page-200/child.md");
+  const intent = journal.beginCreate(body.id, body.path, "DOCSY", "100", body.revision)!;
+  journal.recordCreated(body.id, intent.revision, "200", 1);
+  expect(() => journal.promoteCreated(body.id, "/DOCSY/new-page-200/_index.md")).toThrow();
+  expect(journal.createIntent(body.id)?.pageId).toBe("200");
+  expect(journal.promotion(directory.id)).toBeNull();
+  expect(journal.get("200")).toBeNull();
+  expect(journal.get(child.id)?.path).toBe(child.path);
+  expect(Buffer.from(journal.get(child.id)!.bytes).toString()).toBe("Preserved");
+});
+
+it("retires both page-directory aliases after confirmed trash without reusing their identities", () => {
+  const { journal } = fixture();
+  const directory = journal.createPageDirectory("/DOCSY/new-page");
+  const body = journal.local(`${directory.path}/_index.md`)!;
+  const intent = journal.beginCreate(body.id, body.path, "DOCSY", "100", body.revision)!;
+  journal.recordCreated(body.id, intent.revision, "200", 1);
+  journal.promoteCreated(body.id, "/DOCSY/new-page-200/_index.md");
+  journal.beginTrash("200", "/DOCSY/new-page-200/_index.md", "DOCSY");
+  journal.completeTrash("200");
+  expect(journal.promotion(directory.id)).toBeNull();
+  expect(journal.promotion(body.id)).toBeNull();
+  expect(journal.get(directory.id)).toBeNull();
+  expect(journal.get("200")).not.toBeNull();
+  expect(journal.createPageDirectory(directory.path).id).not.toBe(directory.id);
+});
+
+it("migrates schema-fifteen file aliases without changing their identity or saved bytes", () => {
+  const { path, journal } = fixture();
+  const file = journal.createLocal("/DOCSY/newpage.md");
+  journal.write(file.id, 0, bytes("Saved"));
+  const intent = journal.beginCreate(file.id, file.path, "DOCSY", "100", journal.get(file.id)!.revision)!;
+  journal.recordCreated(file.id, intent.revision, "200", 1);
+  journal.promoteCreated(file.id, "/DOCSY/newpage-200/_index.md");
+  journal.close();
+  const legacy = new Database(path);
+  legacy.exec("DROP INDEX promotion_directory; ALTER TABLE promotions DROP COLUMN directoryId; PRAGMA user_version=15");
+  legacy.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(reopened.promotion(file.id)).toEqual({ localId: file.id, path: file.path, pageId: "200" });
+  expect(reopened.promotion("200", true)).toBeNull();
+  expect(Buffer.from(reopened.get("200")!.bytes).toString()).toBe("Saved");
+  expect(reopened.createPageDirectory("/DOCSY/next").kind).toBe("directory");
+});
+
+it("refuses to relocate a child's frozen creation while promoting its directory", () => {
+  const { journal } = fixture();
+  const directory = journal.createPageDirectory("/DOCSY/new-page");
+  const body = journal.local(`${directory.path}/_index.md`)!;
+  const child = journal.createLocal(`${directory.path}/child.md`);
+  journal.beginCreate(child.id, child.path, "DOCSY", "999", child.revision);
+  const intent = journal.beginCreate(body.id, body.path, "DOCSY", "100", body.revision)!;
+  journal.recordCreated(body.id, intent.revision, "200", 1);
+  expect(() => journal.promoteCreated(body.id, "/DOCSY/new-page-200/_index.md")).toThrow("Child creation");
+  expect(journal.get(child.id)?.path).toBe(child.path);
+  expect(journal.createIntent(child.id)?.parentId).toBe("999");
+  expect(journal.get("200")).toBeNull();
+  expect(journal.createIntent(body.id)?.pageId).toBe("200");
+});
+
 it("syncs the journal directory and every ancestor before returning, including after a failed sync", () => {
   const root = mkdtempSync(join(tmpdir(), "nfs-journal-sync-")); roots.push(root);
   const path = join(root, "new", "nested", "journal.sqlite");

@@ -551,7 +551,7 @@ atlcli wiki mount recovery /path/to/journal.sqlite --id 12345 --output ./recover
 ```
 
 The listing includes frozen creation targets and confirmed creation receipts
-when present (journal schemas 9–15), local editor entries, interrupted replacements, revision
+when present (journal schemas 9–16), local editor entries, interrupted replacements, revision
 numbers, safe error codes and available publication images, without page bodies.
 Schema 12 and later also list the trash target and whether remote trash was
 confirmed. Schemas 13–15 include move/retitle receipts even when no page body was
