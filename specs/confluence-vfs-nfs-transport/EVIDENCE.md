@@ -3115,3 +3115,25 @@ historical proof retains the unpromoted local file and frozen intent.
 Retitled/moved pages, missing markers, ambiguous matches, absent historical proof
 and confirmed-not-created outcomes remain recovery boundaries. Full native/editor,
 Data Center and public RW acceptance remain open.
+
+## Slice 118 — Data Center creation-marker reads
+
+The shared property-by-key method used by NFS reconciliation previously always
+called Cloud REST v2. It now uses the Data Center v1 content-property resource
+when appropriate, preserving the configured context path and encoding the key.
+Numeric page identity and dot-segment keys are validated before requests. Only
+an exact returned key supplies a value; 404 means absent, while 403 and server
+failures propagate. Response bodies use the existing meta-only log policy.
+Cloud keeps its existing v2 lookup; property mutation methods are unchanged.
+
+- Full Confluence client suite: 94 passed, 255 assertions on macOS and Linux.
+- Coverage includes both endpoint families, a `/confluence` context path, keys
+  containing slash/space/question mark, wrong returned keys, invalid identity,
+  404/403 and exhausted 500 retries. Tests reuse the immediate retry scheduler.
+- Linux DOCSY: both lost-CREATE journal-reopen cases passed, twelve assertions,
+  with and without a subsequent external edit; disposable pages cleaned up.
+- Typecheck: all four tasks passed.
+
+This closes the known Cloud-only marker-reader implementation gap. It is mocked
+Data Center transport evidence, not a live Data Center deployment claim. Full
+recovery/namespace/lifecycle and native editor acceptance remain open.

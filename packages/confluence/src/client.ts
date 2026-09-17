@@ -2063,8 +2063,18 @@ export class ConfluenceClient {
     return { id: String(data.id), key: data.key, version: data.version?.number ?? 1 };
   }
 
-  /** Read a v2 page property by key; undefined when absent. */
+  /** Read a page property by key on Cloud or Data Center; undefined when absent. */
   async getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined> {
+    if (!/^[0-9]+$/.test(pageId) || !key || key === "." || key === "..") throw new Error("Invalid page property identity");
+    if (this.deploymentType === "data-center") {
+      try {
+        const data = await this.request(`/content/${pageId}/property/${encodeURIComponent(key)}`, { logBody: "meta-only" });
+        return isRecord(data) && data.key === key ? data.value : undefined;
+      } catch (error) {
+        if (error instanceof ConfluenceRequestError && error.status === 404) return undefined;
+        throw error;
+      }
+    }
     return (await this.getPageProperty(pageId, key))?.value;
   }
 

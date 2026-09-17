@@ -21,6 +21,48 @@ describe("escapeCqlValue", () => {
   });
 });
 
+describe("page property reads by deployment", () => {
+  beforeEach(() => { installImmediateRetryScheduler([]); });
+  afterEach(() => { globalThis.fetch = originalFetch; restoreRetryScheduler(); });
+  for (const deploymentType of ["cloud", "data-center"] as const) {
+    test(`reads the exact key through ${deploymentType}'s endpoint`, async () => {
+      let requested: URL | undefined;
+      const key = "marker/key ?";
+      globalThis.fetch = mock((url: string) => {
+        requested = new URL(url);
+        return Promise.resolve(Response.json(deploymentType === "cloud"
+          ? { results: [{ id: "9", key, version: { number: 1 }, value: { token: "proof" } }] }
+          : { key, value: { token: "proof" } }));
+      }) as unknown as typeof fetch;
+      const client = new ConfluenceClient({ ...mockProfile, deploymentType,
+        ...(deploymentType === "data-center" ? { baseUrl: "https://dc.example.test/confluence" } : {}) });
+      expect(await client.getPagePropertyByKey("123", key)).toEqual({ token: "proof" });
+      if (deploymentType === "data-center") {
+        expect(requested!.pathname).toBe(`/confluence/rest/api/content/123/property/${encodeURIComponent(key)}`);
+        expect(requested!.search).toBe("");
+      } else {
+        expect(requested!.pathname).toBe("/wiki/api/v2/pages/123/properties");
+        expect(requested!.searchParams.get("key")).toBe(key);
+      }
+    });
+  }
+  for (const status of [404, 403, 500]) test(`Data Center property handles HTTP ${status} without positive evidence`, async () => {
+    globalThis.fetch = mock(() => Promise.resolve(Response.json({}, { status }))) as unknown as typeof fetch;
+    const client = new ConfluenceClient({ ...mockProfile, deploymentType: "data-center" });
+    if (status === 404) expect(await client.getPagePropertyByKey("123", "marker")).toBeUndefined();
+    else await expect(client.getPagePropertyByKey("123", "marker")).rejects.toThrow(String(status));
+  });
+  test("does not accept a different returned key or unsafe path identity", async () => {
+    let calls = 0;
+    globalThis.fetch = mock(() => { calls++; return Promise.resolve(Response.json({ key: "other", value: { token: "proof" } })); }) as unknown as typeof fetch;
+    const client = new ConfluenceClient({ ...mockProfile, deploymentType: "data-center" });
+    expect(await client.getPagePropertyByKey("123", "marker")).toBeUndefined();
+    await expect(client.getPagePropertyByKey("../123", "marker")).rejects.toThrow("identity");
+    await expect(client.getPagePropertyByKey("123", "..")).rejects.toThrow("identity");
+    expect(calls).toBe(1);
+  });
+});
+
 describe("Confluence page metadata", () => {
   afterEach(() => { globalThis.fetch = originalFetch; });
 

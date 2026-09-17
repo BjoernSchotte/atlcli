@@ -478,8 +478,10 @@ confirmed first version becomes the merge base; recovery preserves the current
 remote content and merges later local edits through normal conflict handling. It never issues another POST to guess the
 outcome. Missing markers (including older attempts), ambiguous matches or pages
 retitled or moved since creation stay pending with their bytes retained. Missing
-historical proof also retains the pending image. Data Center
-reconciliation is not yet live-verified.
+historical proof also retains the pending image. Marker reads use REST v2 on
+Cloud and the context-path-aware REST v1 property endpoint on Data Center.
+Data Center reconciliation is covered by mocked transport tests but is not yet
+live-verified.
 
 The create-only guard prevents overwriting an occupied page. Confirmed creations
 retain their original filehandle and a durable virtual filename alias, so later
