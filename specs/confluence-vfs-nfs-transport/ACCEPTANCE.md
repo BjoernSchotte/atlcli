@@ -10,7 +10,7 @@ read/write objective remains open. Source checkpoint: da25dabe (Slices 1–44).
 | --- | --- | --- |
 | Optional transport, unchanged WebDAV default, experimental NFS, no runtime downloads | mount-transport tests; wiki-mount handler; helper discovery/handshake tests | Final CLI/help audit including every incompatible option and side-effect-free rejection |
 | Single-space root and combined-space roots | Native macOS synthetic and Linux live RO tests | Repeat with final RW-enabled artifact; combined live spaces remain RO |
-| Versioned private bridge, loopback, credentials stay in Bun | Framing/handshake tests, helper env isolation, vendor limits | Final bounds audit of all maps/caches; fault-inject response-write and dispatch deadlines |
+| Versioned private bridge, loopback, credentials stay in Bun | Framing/handshake tests, helper env isolation, vendor limits; Slice 48 handle cap and bounded directory signatures | Final bounds audit of all maps/caches; fault-inject response-write and dispatch deadlines |
 | Byte ranges, exact UTF-8 sizes, EOF, attachments | Adapter plus real-wire/native byte tests, long binary and Unicode fixture | Immutable multi-READ snapshot contract and adversarial concurrent-version proof |
 | Stable page/folder/attachment/generated-view identities | Slices 23–28 and 41–43; real-wire rename/move tests | Final identity/collision audit including convenience aliases and concurrent mutation races |
 | Directory pagination and changing-directory cookies | READDIR and READDIRPLUS wire tests with independent client mutation | Final native-kernel concurrent-directory mutation acceptance |

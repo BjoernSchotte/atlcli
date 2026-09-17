@@ -1266,3 +1266,22 @@ Both macOS and Linux passed the extended native test (14 assertions each).
 All mutations were synthetic; both mounts detached normally. Typecheck passed
 all four tasks. This closes native generated-comment visibility for the tested
 clients, not the separate arbitrary multi-READ snapshot or RW requirements.
+
+## Slice 48 — bounded NFS handle retention
+
+The adapter caps retained handles at 65,536 including root and volume markers.
+New identities fail with ENOSPC at capacity; existing identities remain usable,
+with no LRU eviction of valid client handles. Confirmed stale handles release
+their identity and directory revision, and IDs remain monotonically allocated.
+Directory revisions now store SHA-256 signatures rather than retained serialized
+name lists. This bounds adapter entry counts; it is not a claim that every core
+cache or temporary listing allocation has a total byte quota.
+
+The regression fills the actual production limit, checks concurrent overflow,
+relooks up an existing identity, invalidates one object and verifies admission
+without reusing its stale ID. Both macOS and Linux passed 32 adapter tests with
+400 assertions, four native cases with 36 assertions and both real-wire
+READDIR/READDIRPLUS cases with 210 assertions. Typecheck passed all four tasks.
+Linux basic native cases used live DOCSY/combined spaces RO; mutations and Mac
+cases were synthetic. Mounts detached normally. User docs describe capacity
+errors and now also reflect the already-tested attachment rename recovery.

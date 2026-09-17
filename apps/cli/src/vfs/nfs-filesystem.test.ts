@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
-import { NfsFilesystem, NFS_MAX_READ } from "./nfs-filesystem.js";
+import { NfsFilesystem, NFS_MAX_READ, NFS_MAX_HANDLES } from "./nfs-filesystem.js";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, SweepDetector } from "./mount-client-probes.js";
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -515,4 +515,33 @@ it("changes generated-view attributes for same-size content edits without a page
   expect(after.mtime).toBeGreaterThan(before.mtime);
   expect(await fs.getattr(id)).toEqual(after);
   expect(Buffer.from((await fs.read(id, 0, 1024)).data, "base64").toString()).toBe(content);
+});
+
+it("bounds retained handles without evicting live identities or recycling stale IDs", async () => {
+  const { fs, vfs } = await fixture();
+  const rootStat = await vfs.stat("/DOCSY");
+  const rootNode = await vfs.resolve("/DOCSY");
+  let removed = "";
+  vfs.stat = async path => {
+    if (path === removed) throw Object.assign(new Error("Removed"), { code: "ENOENT" });
+    return path === "/DOCSY" ? rootStat : { ...rootStat, id: path,
+      kind: "virtual-file", isDirectory: false, isFile: true };
+  };
+  vfs.resolve = async () => rootNode;
+  const first = await fs.lookup(1, "entry-0");
+  // Root and volume shields also count toward the bound.
+  const available = NFS_MAX_HANDLES - 1 - INDEXER_SHIELDS.size - SHIELD_DIRECTORIES.size;
+  for (let i = 1; i < available; i++) await fs.lookup(1, `entry-${i}`);
+  expect(await fs.lookup(1, "entry-0")).toBe(first);
+  const overflow = await Promise.allSettled([fs.lookup(1, "overflow-a"), fs.lookup(1, "overflow-b")]);
+  for (const result of overflow) {
+    expect(result.status).toBe("rejected");
+    if (result.status === "rejected") expect(result.reason.code).toBe("ENOSPC");
+  }
+  removed = "/DOCSY/entry-0";
+  await expect(fs.getattr(first)).rejects.toMatchObject({ code: "ESTALE" });
+  const replacement = await fs.lookup(1, "replacement");
+  expect(replacement).toBeGreaterThan(first);
+  await expect(fs.getattr(first)).rejects.toMatchObject({ code: "ESTALE" });
+  await expect(fs.lookup(1, "still-full")).rejects.toMatchObject({ code: "ENOSPC" });
 });

@@ -299,8 +299,8 @@ when the owning page moves, without requiring a lookup of its new location.
 Moving outside the export or deleting the page expires these handles. Folder directory handles are recovered through space-checked folder and ancestor
 metadata, including when an ancestor page moves. Inconsistent ancestry returns a
 retryable error. The folder’s generated `_index.md` follows its owning folder
-handle and keeps its identity after relocation. Independently renamed
-attachments are not yet covered by that recovery.
+handle and keeps its identity after relocation. Attachment handles also follow
+independent renames and owner changes within the selected export.
 Deleted or replaced identities report `ESTALE`; look up the path again, or remount
 after a helper restart. Single-space and combined-space native reads are covered
 by the [NFS evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md).
@@ -313,6 +313,12 @@ If a directory changes during NFS pagination, the server returns `BAD_COOKIE`;
 restart the listing if the OS does not retry automatically. Directory timestamps
 track changes observed by this mount. Source builds require bridge-version-2
 helpers; rebuild an older companion binary before mounting.
+
+Each NFS session retains at most 65,536 handles, including root and volume
+markers. At capacity, new object lookups return `ENOSPC`; existing handles keep
+working. Remount to reset the session, or select fewer spaces. Handles confirmed
+stale release capacity, but their numeric IDs are never reused in that session.
+Directory revisions retain fixed-size hashes rather than copies of listings.
 
 The experimental NFS listener rejects RPC records over 4 MiB, more than 1,024
 fragments per record, and XDR arrays exceeding 4 MiB before allocating their

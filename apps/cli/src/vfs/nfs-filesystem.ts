@@ -4,6 +4,7 @@ import { VfsError, parseVfsFrontmatter, type ConfluenceVfs, type VfsStat } from 
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping, SweepDetector } from "./mount-client-probes.js";
 
 export const NFS_MAX_READ = 1024 * 1024;
+export const NFS_MAX_HANDLES = 65_536;
 export interface NfsAttributes {
   id: number;
   directory: boolean;
@@ -63,6 +64,7 @@ export class NfsFilesystem {
     const old = this.paths.get(id);
     if (old && this.identities.get(old.identity) === id) this.identities.delete(old.identity);
     this.paths.delete(id);
+    this.directories.delete(id);
     throw Object.assign(new Error("Stale NFS handle; look up the file again"), { code: "ESTALE" });
   }
 
@@ -186,7 +188,7 @@ export class NfsFilesystem {
       this.paths.set(existing, { ...entry, rendered: this.paths.get(existing)?.rendered });
       return existing;
     }
-    if (this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
+    if (this.paths.size >= NFS_MAX_HANDLES || this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
     const id = this.nextId++;
     this.paths.set(id, entry);
     this.identities.set(identity, id);
@@ -228,7 +230,7 @@ export class NfsFilesystem {
     if (id === 1) names.push(...this.shieldIds.keys());
     names.sort();
     const ids = await Promise.all(names.map((name) => this.lookup(id, name)));
-    const signature = JSON.stringify(names.map((name, i) => [name, ids[i]]));
+    const signature = createHash("sha256").update(JSON.stringify(names.map((name, i) => [name, ids[i]]))).digest("hex");
     let revision = this.directories.get(id);
     if (!revision || revision.signature !== signature) {
       revision = { signature, mtime: Math.max(Date.now(), (revision?.mtime ?? 0) + 1) };
