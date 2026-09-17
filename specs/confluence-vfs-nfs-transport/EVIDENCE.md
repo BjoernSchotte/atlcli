@@ -2893,3 +2893,35 @@ remain recoverable; old handles cannot mutate the replacement page.
 
 This closes the confirmed-trash filename reuse bug. It does not establish full
 directory rename/removal parity or complete the remaining editor/fault matrix.
+
+## Slice 111 — native WebDAV Vim new-page saves on both hosts
+
+Added opt-in native WebDAV editor tests (`ATLCLI_WEBDAV_KERNEL=1`) for plain
+Markdown creation and three saves, both direct and backup/rename style. These
+invoke real Vim and the native macOS WebDAV/Linux davfs2 clients with synthetic
+DOCSY content. `backupskip=` explicitly enables Vim backups inside the temporary
+fixture directory. Linux uses a private synthetic cache and `delay_upload 0`;
+locks remain enabled. The harness detaches normally and reclaims its cache.
+
+The tests exposed two backup defects: `newpage.md~` reached the page-rename path,
+and the replacement remained hidden during davfs LOCK after CREATE. Tilde backups
+now reuse the existing local editor staging store. Successful CREATE and PUT
+clear the pending-backup reservation. Failed writes retain it. HTTP regressions
+verify unchanged page title/identity and successful LOCK then PUT without another
+page creation. Temporary HTTP diagnosis was removed before commit.
+
+- macOS: 39 tests / 177 assertions across HTTP and native editor suites.
+- Linux: 39 tests / 179 assertions (two additional privileged cache cleanup
+  checks). Direct-save run about 5.3 s, backup-save run about 3.2 s, including
+  normal davfs detach. The original immediate direct-save read sometimes returned
+  empty while davfs was completing upload; the final test requires correct
+  mounted readback within ten seconds. This is eventual visibility evidence,
+  not proof of zero-latency read-your-writes on davfs2.
+- Linux live DOCSY: nine assertions for HTTP create, backup MOVE, replacement
+  LOCK/PUT, same ID/title and API/body readback. Fixture cleanup ran afterwards.
+  This live case is a protocol test; native editor evidence above is synthetic.
+- Typecheck: all four tasks passed.
+
+The Vim new-page WebDAV cases are covered on both OSes. VS Code/TextEdit new-page
+coverage, remaining NFS namespace/recovery work and final artifact acceptance
+remain open.

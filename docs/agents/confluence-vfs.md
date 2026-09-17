@@ -216,6 +216,14 @@ also `--allow-delete`; do not add them unless asked.
 
 Full documentation: [Virtual Filesystem](https://atlcli.dev/confluence/virtual-filesystem/).
 
+WebDAV mounts accept `vim newpage.md` without frontmatter. Vim `~` backups and
+TextEdit `.sb-*` staging files stay local to the mount session; they do not rename
+or create wiki pages. Subsequent saves to the original name update the same page.
+Linux davfs2 uploads asynchronously and its local readback can lag behind a save;
+the native editor tests wait for both backend content and mounted-file visibility.
+Keep the mount running until outstanding uploads finish. Local WebDAV editor
+backups are session data, not the durable recovery journal used by NFS.
+
 
 ### Find recently changed pages without body downloads
 

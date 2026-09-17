@@ -121,7 +121,7 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
   private readonly pendingBackups = new Map<string, string>();
 
   private isDraft(path: webdav.Path): boolean {
-    return path.toString().split("/").some((part) => /\.sb-[a-zA-Z0-9_-]+$/.test(part));
+    return path.toString().split("/").some((part) => /\.sb-[a-zA-Z0-9_-]+$/.test(part) || part.endsWith("~"));
   }
 
   constructor(private readonly options: ConfluenceWebdavOptions) {
@@ -474,7 +474,7 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
         }
         this.options.vfs
           .writeFile(target, new Uint8Array(Buffer.concat(chunks)))
-          .then(() => done())
+          .then(() => { this.pendingBackups.delete(path.toString()); done(); })
           .catch((error: unknown) => done(httpErrorFor(error)));
       },
     });
@@ -509,7 +509,8 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
       ctx.type.isDirectory
         ? this.options.vfs.mkdir(target)
         : this.options.vfs.writeFile(target, "");
-    created.then(() => callback()).catch((error: unknown) => callback(httpErrorFor(error)));
+    created.then(() => { this.pendingBackups.delete(path.toString()); callback(); })
+      .catch((error: unknown) => callback(httpErrorFor(error)));
   }
 
   protected _delete(

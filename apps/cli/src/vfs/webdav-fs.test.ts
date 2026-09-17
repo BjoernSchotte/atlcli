@@ -442,6 +442,44 @@ describe("the binding rule", () => {
 
 
 describe("macOS editor atomic saves", () => {
+  it("makes a PUT replacement visible after moving the original to a Vim backup", async () => {
+    await start(seeded(), { allowDelete: false });
+    const target = "/DOCSY/newpage.md";
+    expect((await dav(target, { method: "PUT", body: "First plain page" })).status).toBe(201);
+    const id = (await vfs.resolve(target)).id;
+    expect((await dav(target, { method: "MOVE", headers: {
+      Destination: new URL(`${target}~`, server.url).href, Overwrite: "T",
+    } })).status).toBe(204);
+    expect(client.peekPage(id)?.title).toBe("Newpage");
+    expect((await dav(`${target}~`)).body).toContain("First plain page");
+    expect((await dav(target, { method: "PUT", body: "Second plain page" })).status).toBe(201);
+    const read = await dav(target);
+    expect(read.status).toBe(200);
+    expect(read.body).toContain("Second plain page");
+    expect((await vfs.resolve(target)).id).toBe(id);
+    expect(client.callsTo("createPage")).toBe(1);
+    expect(client.callsTo("deletePage")).toBe(0);
+  });
+
+  it("allows davfs to LOCK a replacement after moving its original to a backup", async () => {
+    await start(seeded(), { allowDelete: false });
+    const target = "/DOCSY/newpage.md";
+    await dav(target, { method: "PUT", body: "Original" });
+    const id = (await vfs.resolve(target)).id;
+    await dav(target, { method: "MOVE", headers: { Destination: new URL(`${target}~`, server.url).href } });
+    const locked = await fetch(new URL(target, server.url), { method: "LOCK", headers: { "Content-Type": "application/xml" },
+      body: '<D:lockinfo xmlns:D="DAV:"><D:lockscope><D:exclusive/></D:lockscope><D:locktype><D:write/></D:locktype></D:lockinfo>' });
+    expect(locked.status).toBe(201);
+    await locked.text();
+    const token = locked.headers.get("lock-token");
+    expect(token).not.toBeNull();
+    const written = await dav(target, { method: "PUT", headers: { If: `(<${token}>)` }, body: "Replacement" });
+    expect(written.status).toBe(200);
+    expect((await dav(target)).body).toContain("Replacement");
+    expect((await vfs.resolve(target)).id).toBe(id);
+    expect(client.callsTo("createPage")).toBe(1);
+  });
+
   it("stages sibling drafts locally and replaces the body without creating or deleting pages", async () => {
     await start(seeded(), { allowDelete: false });
     const target = "/DOCSY/page-0-200/_index.md";

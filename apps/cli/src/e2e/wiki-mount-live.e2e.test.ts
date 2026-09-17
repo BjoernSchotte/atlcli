@@ -470,6 +470,31 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     expect([200, 204]).toContain(del.status);
     created.splice(created.indexOf(created_![2]!), 1);
   });
+
+  it("keeps a plain WebDAV page identity through Vim backup and LOCK replacement", async () => {
+    const path = `/${E2E_SPACE_KEY}/${makeE2eTitle("dav-vim")}.md`;
+    const url = new URL(path, server.url);
+    const first = await fetch(url, { method: "PUT", body: "Live plain WebDAV original" });
+    expect(first.status).toBe(201); await first.text();
+    const id = (await vfs.resolve(path)).id; created.push(id);
+    const original = await client.getPage(id);
+    const moved = await fetch(url, { method: "MOVE", headers: { Destination: `${url.href}~` } });
+    expect(moved.status).toBe(204); await moved.text();
+    expect((await client.getPage(id)).title).toBe(original.title);
+    const locked = await fetch(url, { method: "LOCK", headers: { "Content-Type": "application/xml" },
+      body: '<D:lockinfo xmlns:D="DAV:"><D:lockscope><D:exclusive/></D:lockscope><D:locktype><D:write/></D:locktype></D:lockinfo>' });
+    expect(locked.status).toBe(201); await locked.text();
+    const token = locked.headers.get("lock-token");
+    const written = await fetch(url, { method: "PUT", headers: { If: `(<${token}>)` }, body: "Live plain WebDAV replacement 🐴" });
+    expect(written.status).toBe(200); await written.text();
+    expect((await client.getPage(id)).storage).toContain("Live plain WebDAV replacement");
+    expect((await vfs.resolve(path)).id).toBe(id);
+    expect(await (await fetch(url)).text()).toContain("Live plain WebDAV replacement");
+    const unlocked = await fetch(url, { method: "UNLOCK", headers: { "Lock-Token": `<${token}>` } });
+    await unlocked.text();
+    const backup = await fetch(`${url.href}~`, { method: "DELETE" });
+    expect(backup.status).toBe(200); await backup.text();
+  });
 });
 
 describe.skipIf(!KERNEL).serial("wiki mount through the macOS kernel client", () => {
