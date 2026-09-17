@@ -169,6 +169,11 @@ A stale replay whose title and storage content already match the server succeeds
 without creating another version, even if its old merge base has been evicted.
 This comparison ignores only outer storage whitespace, not content differences.
 
+Page creation is not automatically repeated after an HTTP 5xx response: the
+server may already have created the page. Keep the pending journal image when
+an NFS creation result is uncertain; automatic creation reconciliation is still
+under development.
+
 ### Machine-readable output
 
 ```bash

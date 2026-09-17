@@ -557,6 +557,31 @@ describe("ConfluenceClient", () => {
       expect(result.id).toBe("456");
     });
 
+    test("createPage never repeats an ambiguous server error", async () => {
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        return Promise.resolve(new Response("ambiguous creation", { status: 503 }));
+      }) as unknown as typeof fetch;
+      const client = new ConfluenceClient(mockProfile);
+      await expect(client.createPage({ spaceKey: "TEST", title: "Recovery", storage: "<p>body</p>" })).rejects.toThrow("503");
+      expect(calls).toBe(1);
+    });
+
+    test("createPage includes recovery properties in the same POST", async () => {
+      const requests: { body: any; method: string | undefined }[] = [];
+      globalThis.fetch = mock((_url: string, options: RequestInit) => {
+        requests.push({ body: JSON.parse(options.body as string), method: options.method });
+        return Promise.resolve(new Response(JSON.stringify({ id: "456", version: { number: 1 } }), { status: 200 }));
+      }) as unknown as typeof fetch;
+      const client = new ConfluenceClient(mockProfile);
+      await client.createPage({ spaceKey: "TEST", title: "Recovery", storage: "<p>body</p>",
+        properties: { "atlcli-vfs-creation": { token: "test-token" } } });
+      expect(requests).toHaveLength(1);
+      expect(requests[0].method).toBe("POST");
+      expect(requests[0].body.metadata.properties).toEqual({ "atlcli-vfs-creation": { value: { token: "test-token" } } });
+    });
+
     test("updatePage sends version number", async () => {
       let capturedBody: any;
 

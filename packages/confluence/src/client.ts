@@ -783,6 +783,8 @@ export class ConfluenceClient {
       query?: Record<string, string | number | undefined>;
       body?: unknown;
       signal?: AbortSignal;
+      /** Non-idempotent mutations must reconcile ambiguous server errors. */
+      retryServerErrors?: false;
       /**
        * Response-body logging policy (spec 004). Default (`undefined`/`true`)
        * keeps the existing full-body logging for all current callers. The
@@ -941,7 +943,7 @@ export class ConfluenceClient {
         );
 
         // Retry on server errors (5xx)
-        if (res.status >= 500 && attempt < this.maxRetries) {
+        if (res.status >= 500 && options.retryServerErrors !== false && attempt < this.maxRetries) {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
           continue;
         }
@@ -1945,6 +1947,8 @@ export class ConfluenceClient {
     title: string;
     storage: string;
     parentId?: string;
+    /** Properties persisted in the initial content creation request. */
+    properties?: Record<string, unknown>;
   }): Promise<ConfluencePage> {
     const body: any = {
       type: "page",
@@ -1963,8 +1967,15 @@ export class ConfluenceClient {
       body.ancestors = [{ id: params.parentId }];
     }
 
+    if (params.properties !== undefined) {
+      body.metadata = { properties: Object.fromEntries(
+        Object.entries(params.properties).map(([key, value]) => [key, { value }]),
+      ) };
+    }
+
     const data = (await this.request("/content", {
       method: "POST",
+      retryServerErrors: false,
       body,
     })) as any;
 

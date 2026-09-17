@@ -3021,3 +3021,32 @@ an unchanged image, preserving its in-flight update/flush assertions. This fix
 removes duplicate saved-image versions; it does not eliminate legitimate empty
 CREATE/truncate snapshots or prove optimal editor burst coalescing. Those and
 final VS Code/native performance verification remain open.
+
+## Slice 115 — initial creation marker and ambiguous-POST retry boundary
+
+ConfluenceClient.createPage can now include properties in the initial content
+POST (`metadata.properties`, each entry wrapping its JSON value). The DOCSY
+probe sends a random marker with CREATE, reads it back through the property API
+and verifies that the page remains version 1 with its expected body. No separate
+property mutation is issued. This validates the Cloud primitive needed to match
+an uncertain NFS creation to its original attempt; it is not yet publisher
+integration or proof of transactional behavior for every failure mode.
+
+The audit also found that the general REST retry loop repeated CREATE after
+HTTP 5xx. createPage now disables those ambiguous server-error retries, while
+existing GET retry behavior remains covered. A regression requires exactly one
+POST when the response is 503. Rate-limit handling is unchanged.
+
+- Complete client suite on macOS and Linux: 88 passed, 242 assertions each.
+- Linux live DOCSY marker probe: three assertions; disposable page cleaned up.
+- Typecheck: all four tasks passed. An initial sandboxed client-suite run could
+  not bind its loopback servers; the authorized rerun passed.
+
+The initial-POST marker is not yet passed by the VFS/NFS creation intent. Matching
+must bind the token to the frozen space/parent/image and reject absent, altered
+or ambiguous evidence; no blind repeat of a timed-out POST is acceptable.
+Data Center marker support and crash/fault reconciliation remain unverified.
+Current official references describe [content properties](https://developer.atlassian.com/cloud/confluence/confluence-entity-properties/);
+the create-content operation no longer appears on the current Cloud v1 reference,
+so this slice relies on the explicit live probe rather than claiming a currently
+documented atomic CREATE guarantee.

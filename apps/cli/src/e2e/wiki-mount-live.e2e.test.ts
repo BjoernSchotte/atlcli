@@ -471,6 +471,17 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     created.splice(created.indexOf(created_![2]!), 1);
   });
 
+  it("persists a creation marker in the initial page POST", async () => {
+    const token = crypto.randomUUID();
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
+      title: makeE2eTitle("creation-marker"), storage: "<p>Disposable creation marker probe</p>",
+      properties: { "atlcli-vfs-creation": { token } } });
+    created.push(page.id);
+    expect(await client.getPagePropertyByKey(page.id, "atlcli-vfs-creation")).toEqual({ token });
+    expect((await client.getPage(page.id)).version).toBe(1);
+    expect((await client.getPage(page.id)).storage).toContain("Disposable creation marker probe");
+  });
+
   it("keeps a plain WebDAV page identity through Vim backup and LOCK replacement", async () => {
     const path = `/${E2E_SPACE_KEY}/${makeE2eTitle("dav-vim")}.md`;
     const url = new URL(path, server.url);
