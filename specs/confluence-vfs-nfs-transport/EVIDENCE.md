@@ -2575,3 +2575,25 @@ journal tests cover actual process crashes and reopen.
 - Native macOS existing-page save/refresh test: 37 assertions.
 - Linux live DOCSY journal publication/replay/replacement: 13 assertions; test
   page cleaned up. All four typecheck tasks passed.
+
+
+## Slice 98 — offline recovery inspection and byte export
+
+`wiki mount recovery <journal.sqlite>` lists metadata, including local editor
+entries, interrupted replacements and unresolved intents. Selecting an ID and
+new output path exports exact current/intent/base bytes. No authentication or
+Confluence connection is required. The journal is opened SQLite read-only, never
+migrated or created; schema mismatch fails closed. Outputs use exclusive creation
+and mode 0600, refusing existing files/symlinks, then fsync the written bytes.
+
+Tests cover distinct binary images, metadata without bodies, byte-identical
+journal preservation, displaced pages/local directories, missing images/files,
+unsupported schemas, invalid options, existing output/symlink refusal, and actual
+source CLI list/export calls. This provides extraction, not automatic conflict
+resolution or permission to discard unresolved journal data.
+
+- macOS/Linux recovery and mount command suites: 23 tests / 188 assertions each.
+  macOS's first sandbox run could not bind its local test port; the same suite
+  passed with the authorized local-network permissions.
+- Linux live DOCSY journal publication: 13 assertions; fixture cleaned up.
+- All four typecheck tasks passed; final CLI argument validation rerun separately.

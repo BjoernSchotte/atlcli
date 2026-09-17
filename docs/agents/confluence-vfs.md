@@ -271,8 +271,8 @@ does not detect the end of an editor save; fsync confirms local durability only.
 After restart, successful reconciliation of an interrupted publication also
 schedules any newer durable edits, without requiring another editor save.
 Development publication processes one page at a time to bound retained page
-images; a slow upload can delay other pages. The public recovery CLI remains
-part of the pending RW acceptance work. Clean staged pages refresh from newer
+images; a slow upload can delay other pages. Offline journal inspection and byte export are available; publication retry and
+conflict resolution remain part of the pending RW acceptance work. Clean staged pages refresh from newer
 core-cache versions during access; dirty pages retain local bytes. This follows
 the existing cache freshness window and does not provide immediate remote-edit
 visibility. Conflicts detected during local publication preparation can be
@@ -424,3 +424,35 @@ if one was specified. Once detached, start a fresh mount: old filehandles do not
 survive a helper restart. Handles carry a fresh random session identity, so their
 validity does not depend on the wall clock. The recovery command uses regular unmount, without
 forced or lazy detachment. Close applications using the volume if it is busy.
+
+
+### Recovering local NFS edits
+
+Use the journal path from your development mount setup. These commands need no
+profile, authentication, or running server. Public NFS RW mounting is still gated.
+
+```bash
+atlcli wiki mount recovery /path/to/journal.sqlite --json
+atlcli wiki mount recovery /path/to/journal.sqlite --id 12345 --output ./recovered.md
+```
+
+The listing includes local editor entries, interrupted replacements, revision
+numbers, safe error codes and available publication images, without page bodies.
+To compare an unresolved publication with the bytes currently saved by an editor:
+
+```bash
+atlcli wiki mount recovery /path/to/journal.sqlite --id 12345 --image intent --output ./sent.md
+atlcli wiki mount recovery /path/to/journal.sqlite --id 12345 --image current --output ./current.md
+diff -u ./sent.md ./current.md
+```
+
+`--image` accepts `current` (default), `intent` (an unresolved publication), or
+`base` (the last published local source used for merging). The base is not
+necessarily an exact remote snapshot after conflict merging. Exports preserve
+all bytes, including incomplete UTF-8, and create private files without replacing
+existing paths. Journal inspection/export never publishes, clears, or migrates
+records. Keep the original journal until remote publication is verified.
+
+A missing image is an error; inspect the listing before choosing an ID/image.
+If the journal is busy, stop the owning mount normally and retry. Unsupported
+schemas require the CLI matching that journal; do not edit its schema version.

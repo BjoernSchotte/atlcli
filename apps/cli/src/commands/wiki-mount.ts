@@ -151,6 +151,17 @@ export async function handleWikiMount(
     return;
   }
   const [first, ...rest] = args;
+  if (first === "recovery") {
+    if (!rest[0] || rest.length !== 1 || ["id", "output", "image"].some(key => flags[key] !== undefined && (typeof flags[key] !== "string" || !flags[key]))) {
+      fail(opts, 2, ERROR_CODES.VALIDATION, "Use recovery <journal.sqlite>; --id, --output and --image require single nonempty values.", {});
+      return;
+    }
+    try {
+      const { recoverNfsJournal } = await import("../vfs/nfs-recovery.js");
+      output(recoverNfsJournal(rest[0], { id: getFlag(flags, "id"), output: getFlag(flags, "output"), image: getFlag(flags, "image") }), opts);
+    } catch (error) { fail(opts, 2, ERROR_CODES.VALIDATION, (error as Error).message, {}); }
+    return;
+  }
   if (first === "list" || first === "status") {
     await handleList(flags, opts);
     return;
@@ -506,6 +517,7 @@ No kernel extension, no driver, no administrator rights on macOS or Windows.
 Usage:
   atlcli wiki mount ~/confluence --space DOCSY
   atlcli wiki mount list
+  atlcli wiki mount recovery <journal.sqlite> [--id <id> --output <new-file>]
   atlcli wiki mount unmount ~/confluence
 
 Options:
@@ -531,6 +543,13 @@ NFS development:
   Build packages/confluence-nfs with cargo build --locked and set ATLCLI_NFS_HELPER
   to the absolute helper binary path. Published installs need the matching helper
   beside atlcli. There is no runtime download or automatic transport fallback.
+
+Recovery:
+  Inspect local NFS journal metadata without authentication or network access.
+  Export exact bytes with --id and --output; --image current|intent|base selects
+  the local image (default: current), unresolved publication, or last published
+  source. Existing output files are never overwritten. Recovery does not publish
+  or alter journal records. Keep the journal until remote publication is verified.
 
 Full-text search:
   A mount does not enforce the shell prefetch budget — the kernel knows nothing about it — so
