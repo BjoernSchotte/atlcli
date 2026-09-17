@@ -2,7 +2,8 @@ import { posix } from "node:path";
 import { createInOrderLimiter } from "@atlcli/confluence";
 import { threeWayMerge } from "@atlcli/confluence/internal";
 import { parseVfsFrontmatter, renderFrontmatter, VfsError, type ConfluenceVfs, type VfsWriteResult } from "@atlcli/confluence-vfs";
-import { NfsJournal } from "./nfs-journal.js";
+import { isNfsPageDraft } from "./mount-client-probes.js";
+import { NfsJournal, type StagedNfsFile } from "./nfs-journal.js";
 
 /** Debounced publication of durable page images; transport save boundaries remain separate. */
 export class NfsPublisher {
@@ -37,7 +38,7 @@ export class NfsPublisher {
   }
 
   resume(): void {
-    for (const id of this.journal.pendingIds()) this.schedule(id);
+    for (const id of [...this.journal.pendingIds(), ...this.journal.localFileIds()]) this.schedule(id);
   }
 
   async stop(): Promise<void> {
@@ -71,11 +72,48 @@ export class NfsPublisher {
     return content;
   }
 
+  private async publishNew(file: StagedNfsFile): Promise<VfsWriteResult | null> {
+    if (!isNfsPageDraft(file.path) || this.journal.isBackup(file.id)) return null;
+    let intent = this.journal.createIntent(file.id);
+    if (!intent) {
+      let content: string;
+      try { content = new TextDecoder("utf-8", { fatal: true }).decode(file.bytes); }
+      catch { throw new VfsError("EINVAL", "New page is not complete UTF-8"); }
+      const { frontmatter } = parseVfsFrontmatter(content);
+      if (content.includes("\0") || frontmatter.id !== undefined || frontmatter.version !== undefined) {
+        throw new VfsError("EINVAL", "Invalid new-page image");
+      }
+      const parentPath = posix.dirname(file.path);
+      if (!(await this.vfs.stat(parentPath)).isDirectory) throw new VfsError("ENOTDIR", "Creation parent is not a directory");
+      let parent = await this.vfs.resolve(parentPath);
+      if (parent.kind === "space") parent = await this.vfs.resolve(posix.join(parentPath, "_index.md"));
+      if (!parent.spaceKey || !this.spaces.includes(parent.spaceKey) || parent.readOnly ||
+          !["page", "folder"].includes(parent.kind)) throw new VfsError("EACCES", "Creation parent is outside the writable export");
+      intent = this.journal.beginCreate(file.id, file.path, parent.spaceKey, parent.id, file.revision);
+      if (!intent) { this.schedule(file.id); return null; }
+      const result = await this.vfs.writeFile(intent.path, content,
+        { createOnly: true, spaceKey: intent.spaceKey, parentId: intent.parentId });
+      if (!result.created) throw new Error("Unexpected creation result");
+      this.journal.recordCreated(file.id, intent.revision, result.pageId, result.version);
+      intent = this.journal.createIntent(file.id)!;
+    }
+    if (!intent.pageId || !intent.version) throw new VfsError("EBUSY", "Creation result unknown; retained for reconciliation, not retried");
+    const path = await this.vfs.readlink(`/${intent.spaceKey}/.by-id/${intent.pageId}.md`);
+    const node = await this.vfs.resolve(path);
+    if (node.id !== intent.pageId || node.spaceKey !== intent.spaceKey || !this.spaces.includes(intent.spaceKey)) {
+      throw new VfsError("EACCES", "Created page identity or export changed");
+    }
+    const promoted = this.journal.promoteCreated(file.id, path);
+    if (promoted.revision !== promoted.publishedRevision) this.schedule(promoted.id);
+    return { path, pageId: promoted.id, version: intent.version, created: true };
+  }
+
   private async publishImage(id: string): Promise<VfsWriteResult | null> {
     const file = this.journal.get(id);
     if (!file || file.revision === file.publishedRevision) return null;
-    if (this.journal.local(file.path)?.id === id || this.journal.displaced(file.path)?.id === id) return null;
+    if (this.journal.displaced(file.path)?.id === id) return null;
     try {
+      if (this.journal.local(file.path)?.id === id) return await this.publishNew(file);
       // Reject incomplete local bytes before freezing a publication intent.
       this.validate(id, file.bytes, file.baseVersion);
       // Existing uncertain outcomes keep their frozen image. New images are

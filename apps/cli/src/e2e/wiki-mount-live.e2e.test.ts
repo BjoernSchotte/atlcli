@@ -17,7 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { open, readdir, readFile, writeFile, rename, unlink, stat } from "node:fs/promises";
+import { open, readdir, readFile, writeFile, rename, unlink, stat, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { platform, tmpdir } from "node:os";
@@ -101,6 +101,7 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       helperPath: process.env.ATLCLI_NFS_TEST_HELPER! });
     const local = mkdtempSync(join(tmpdir(), "atlcli-live-nfs-"));
     let mounted = false;
+    let newPageId: string | undefined;
     try {
       const path = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`);
       const original = await vfs.readFile(path);
@@ -179,6 +180,27 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(followup.id).toBe(page.id);
       expect(followup.storage).toContain("External NFS refresh addition 🐴");
       expect(followup.storage).toContain("Local save after external refresh");
+      const newName = `${makeE2eTitle("vim-no-frontmatter")}.md`;
+      const newPath = join(dirname(destination), newName);
+      const alias = `${dirname(path)}/${newName}`;
+      const vim = ["-Nu", "NONE", "-i", "NONE", "-n", "-es", newPath];
+      await promisify(execFile)("vim", [...vim, "-c", "call setline(1, 'Live plain new page')", "-c", "wq"], { timeout: 10000 });
+      const creationDeadline = Date.now() + 15000;
+      while (!journal.promotion(alias) && Date.now() < creationDeadline) await Bun.sleep(50);
+      newPageId = journal.promotion(alias)?.pageId;
+      expect(newPageId).toBeDefined();
+      created.push(newPageId!);
+      const firstNew = await client.getPage(newPageId!);
+      expect(firstNew.storage).toContain("Live plain new page");
+      await promisify(execFile)("vim", [...vim, "-c", "set backup writebackup backupcopy=no", "-c", "call setline(1, 'Live plain follow-up')", "-c", "wq"], { timeout: 10000 });
+      const newSaveDeadline = Date.now() + 15000;
+      while (journal.pendingIds().length && Date.now() < newSaveDeadline) await Bun.sleep(50);
+      const nextNew = await client.getPage(newPageId!);
+      expect(nextNew.id).toBe(newPageId!);
+      expect(nextNew.version).toBe((firstNew.version ?? 1) + 1);
+      expect(nextNew.storage).toContain("Live plain follow-up");
+      await rm(`${newPath}~`, { force: true });
+
     } finally {
       if (mounted) {
         const detach = platform() === "linux" ? ["sudo", "-n", "umount", local] : ["umount", local];
@@ -189,6 +211,7 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
         if (status !== 0) throw new Error(`Test mount remains attached: ${local}`);
       }
       await endpoint.stop(); journal.close(); rmSync(local, { recursive: true, force: true });
+      if (newPageId) { await client.deletePage(newPageId); created.splice(created.indexOf(newPageId), 1); }
       await client.deletePage(page.id); created.splice(created.indexOf(page.id), 1);
     }
   }, 120000);

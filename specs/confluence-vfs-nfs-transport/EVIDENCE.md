@@ -2694,3 +2694,36 @@ an editor run. The user requests Vim/VS Code on both OSes and TextEdit on macOS,
 for both transports; PLAN.md now names the matrix. Inventory found all three
 macOS apps and Linux Vim; code is absent from the Linux SSH PATH and loginctl
 listed no graphical session. Linux GUI availability requires further checking.
+
+
+## Slice 103 — automatic native creation and persistent editor aliases
+
+Visible Markdown drafts now enter the existing quiet-window publisher. Creation
+freezes the target and bytes before the guarded POST, persists its receipt, and
+promotes the local file to the remote ID. Newer writes remain queued. Unknown
+POST outcomes stay recoverable and are not blindly retried. Schema 11 records
+backup origin identity so even renamed plain-Markdown backups cannot create pages.
+Hidden drafts and swap/backup suffixes are excluded; arbitrary visible temporary
+names cannot universally be distinguished from intentional Markdown drafts.
+
+A real Vim replacement exposed alias lookup happening before the displaced-page
+check. Reordering that check and resolving reserved aliases by page ID preserves
+the same page through backup-and-recreate saves. Atomic replacement of an
+unpublished draft now queues its new bytes too. Directory enumeration contains
+only the canonical ID-bearing page directory; the old name remains resolvable.
+
+- macOS/Linux affected suites: 117 tests / 1364 assertions each.
+- Expanded alias/listing regression: 14 assertions each on both hosts, including
+  no duplicate original-name listing and lookup through a fresh core session.
+- Native NFS Vim new-page and backup-replacement fixture: 44 assertions on each
+  OS. macOS uses a synthetic backend, not the live mayflower profile.
+- Linux live DOCSY native NFS test: 31 assertions; actual Vim creates without
+  frontmatter and saves again to the same ID with a version increment. Existing
+  external refresh was visible after 55,868 ms with the default core TTL. Both
+  disposable pages were deleted and the owned mount was normally detached.
+- All four typecheck tasks passed. Initial live run reached all 31 assertions
+  but failed cleanup of an absent optional Vim backup; cleanup now allows absence.
+
+Public NFS RW mounting remains gated. Automatic ambiguous-create reconciliation,
+WebDAV/new-page editor coverage, VS Code/TextEdit new-page coverage, and the
+remaining acceptance matrix are still open.

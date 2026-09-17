@@ -1,7 +1,7 @@
 # NFS acceptance checkpoint
 
 This is a working audit of PLAN.md, not acceptance of the feature. The complete
-read/write objective remains open. Implementation evidence reviewed through Slice 102; broad build/CI evidence below
+read/write objective remains open. Implementation evidence reviewed through Slice 103; broad build/CI evidence below
 is historical and still requires a final rerun.
 [EVIDENCE.md](EVIDENCE.md) contains commands, host boundaries and detailed results.
 
@@ -20,7 +20,7 @@ is historical and still requires a final rerun.
 | Durable staged ranges, truncate, quotas, isolation and crash recovery | Journal tests including SIGKILL, full DB rollback and legacy WAL recovery; Slices 66–69 add WRITE/SETATTR/COMMIT and native macOS/Linux durable writes | Namespace journal now covers local directories, backups and replay verifiers; fault injection at remaining boundaries still required |
 | Automatic snapshot publication boundary | User explicitly accepts intermediate versions after 500 ms quiet; Slice 96 tests a valid prefix followed by a delayed suffix; Slice 71 proves automatic native/live publication | Final artifact/fault matrix; no universal editor-completion guarantee is required or advertised |
 | Read-your-writes, validation, optimistic conflicts, replay reconciliation | Slices 65–71 connect staged reads/core publication; Slices 88–89 protect paused publication/replay identity; Slice 92 refreshes clean images and preserves an external addition across a stale-editor save | Broader ambiguous-result and multi-editor faults, clean-record eviction, publication retry/conflict resolution (Slice 98 adds offline inspection/export) |
-| CREATE/RENAME/REMOVE and editor replacement saves | Slices 72–89 implement journaled local files/directories, CREATE modes, metadata, backup rename and replacement under original page IDs | Remote page creation (Slices 100–101 add guarded core creation and durable attempts/receipts), plain Vim saves on both transports, tree rename/opt-in trash; full overwritten/unlinked handle lifetime and mutation-race audit |
+| CREATE/RENAME/REMOVE and editor replacement saves | Slices 72–89 implement journaled local files/directories, CREATE modes, metadata, backup rename and replacement under original page IDs; Slice 103 automatically creates plain Markdown through native Vim on both OSes, with Linux DOCSY verification | Ambiguous creation reconciliation, WebDAV/new-page editor matrix, tree rename/opt-in trash; full overwritten/unlinked handle lifetime and mutation-race audit |
 | Local locks, honest capabilities, unsupported operations | Native flock/lockf RO probes; macOS locallocks/Linux nolock; metadata error mapping; Slice 56 RO capability and mutation wire audit | RW editor lock behavior and capability audit after writes are implemented |
 | Signals, busy mount, explicit unmount, helper/parent death, stale recovery | Linux live CLI lifecycle covers five cases; macOS native helper/kernel tests | Slice 90 adds durable status counts and once-only normal-shutdown reporting; Slice 91 bounds restart publication. Still required: public recovery workflow, unexpected-death reporting, full macOS CLI lifecycle |
 | Indexer safeguards and request accounting | Shared markers and distinct-file sweep hint (Slices 37–38) | Complete transport request accounting and resource-bound acceptance |

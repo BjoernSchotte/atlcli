@@ -87,3 +87,11 @@ export class SweepDetector {
 
   get suspected(): boolean { return this.reported; }
 }
+
+/** Visible Markdown drafts may become pages; common hidden/swap/backup names stay local. */
+export function isNfsPageDraft(path: string): boolean {
+  const parts = path.split("/");
+  const name = parts.at(-1)!;
+  return name.endsWith(".md") && name !== "_index.md" && !/^[.#~]/.test(name) &&
+    !parts.some(part => part.startsWith("."));
+}

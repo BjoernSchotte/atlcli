@@ -61,7 +61,7 @@ export class NfsJournal {
       this.db.exec("COMMIT");
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers. Exclusive mode retains the rollback
@@ -93,12 +93,13 @@ export class NfsJournal {
       this.db.transaction(() => {
         const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(locals)").all();
         if (!columns.some(column => column.name === "verifier")) this.db.exec("ALTER TABLE locals ADD COLUMN verifier TEXT");
+        if (!columns.some(column => column.name === "originId")) this.db.exec("ALTER TABLE locals ADD COLUMN originId TEXT");
         if (!columns.some(column => column.name === "kind")) this.db.exec("ALTER TABLE locals ADD COLUMN kind TEXT NOT NULL DEFAULT 'file' CHECK(kind IN ('file','directory'))");
         this.db.exec(`CREATE TABLE IF NOT EXISTS attributes (id TEXT PRIMARY KEY REFERENCES files(id), mode INTEGER NOT NULL, atime INTEGER, mtime INTEGER); CREATE TABLE IF NOT EXISTS displaced (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL UNIQUE); CREATE TABLE IF NOT EXISTS page_verifiers (id TEXT PRIMARY KEY REFERENCES files(id), verifier TEXT NOT NULL); CREATE TABLE IF NOT EXISTS creations (
           id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL,
           spaceKey TEXT NOT NULL, parentId TEXT NOT NULL, pageId TEXT UNIQUE, version INTEGER,
           CHECK ((pageId IS NULL AND version IS NULL) OR (pageId IS NOT NULL AND version > 0))
-        ); CREATE TABLE IF NOT EXISTS promotions (localId TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, pageId TEXT NOT NULL UNIQUE REFERENCES files(id)); PRAGMA user_version=10;`);
+        ); CREATE TABLE IF NOT EXISTS promotions (localId TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, pageId TEXT NOT NULL UNIQUE REFERENCES files(id)); PRAGMA user_version=11;`);
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.db.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -124,6 +125,14 @@ export class NfsJournal {
 
   pending(): StagedNfsFile[] {
     return this.db.query<StagedNfsFile, []>("SELECT * FROM files WHERE revision>publishedRevision AND id NOT IN (SELECT id FROM locals) AND id NOT IN (SELECT id FROM displaced) ORDER BY id").all();
+  }
+
+  isBackup(id: string): boolean {
+    return !!this.db.query("SELECT id FROM locals WHERE id=? AND originId IS NOT NULL").get(id);
+  }
+
+  localFileIds(): string[] {
+    return this.db.query<{ id: string }, []>("SELECT id FROM locals WHERE kind='file'").all().map(row => row.id);
   }
 
   pendingIds(): string[] {
@@ -284,6 +293,7 @@ export class NfsJournal {
       if (this.local(target)) this.removeLocal(target);
       const backup = this.createLocal(target);
       this.write(backup.id, 0, page.bytes);
+      this.db.run("UPDATE locals SET originId=? WHERE id=?", [pageId, backup.id]);
       const attributes = this.attributes(pageId);
       if (attributes) this.db.run("INSERT INTO attributes VALUES (?, ?, ?, ?)", [backup.id, attributes.mode, attributes.atime, attributes.mtime]);
       this.db.run("DELETE FROM page_verifiers WHERE id=?", [pageId]);
@@ -402,6 +412,7 @@ export class NfsJournal {
   }
 
   write(id: string, offset: number, bytes: Uint8Array): StagedNfsFile {
+    id = this.promotion(id)?.pageId ?? id;
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > this.maxFileBytes - bytes.byteLength) throw new VfsError("EINVAL", "Invalid NFS write range");
     this.assertFile(id);
     if (bytes.byteLength === 0) {
@@ -413,7 +424,7 @@ export class NfsJournal {
   }
 
   truncate(id: string, size: number): StagedNfsFile {
-    return this.change(id, () => size, () => {});
+    return this.change(this.promotion(id)?.pageId ?? id, () => size, () => {});
   }
 
   createIntent(id: string): NfsCreateIntent | null {

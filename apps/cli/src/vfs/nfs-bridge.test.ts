@@ -918,6 +918,21 @@ with socket.socket() as client:
     expect(refreshed.toString()).toContain("External kernel refresh 🐴");
     expect((await stat(path)).size).toBe(refreshed.byteLength);
     expect(journal!.pendingIds()).toEqual([]);
+    const newPath = join(mountpoint, "newpage.md");
+    const vim = ["vim", "-u", "NONE", "-U", "NONE", "-i", "NONE", "-n", "-es", newPath];
+    expect(await runMountCommand([...vim, "-c", "call setline(1, 'Plain first 🐴')", "-c", "wq"])).toBe(0);
+    const createDeadline = Date.now() + 5000;
+    while (!journal!.promotion("/DOCSY/newpage.md") && Date.now() < createDeadline) await Bun.sleep(50);
+    const createdId = journal!.promotion("/DOCSY/newpage.md")?.pageId;
+    expect(createdId).toBeDefined();
+    expect(client.peekPage(createdId!)?.storage).toContain("Plain first");
+    expect(await runMountCommand([...vim, "-c", "set backup writebackup backupcopy=no", "-c", "call setline(1, 'Plain second 🐴')", "-c", "wq"])).toBe(0);
+    const saveDeadline = Date.now() + 5000;
+    while (client.peekPage(createdId!)?.version !== 2 && Date.now() < saveDeadline) await Bun.sleep(50);
+    expect(client.peekPage(createdId!)?.version).toBe(2);
+    expect(client.peekPage(createdId!)?.storage).toContain("Plain second");
+    expect(client.callsTo("createPage")).toBe(1);
+
     }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [

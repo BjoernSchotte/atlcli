@@ -940,6 +940,9 @@ it("keeps the original new-page handle and plain Markdown saves after confirmed 
   journal!.promoteCreated(local.id, result.path);
   expect(await fs.lookup(1, result.path.split("/").at(-1)!)).toBe(handle);
   expect(await fs.lookup(1, "newpage.md")).toBe(handle);
+  const names = (await fs.readdir(1, 0, 256)).entries.map(entry => entry.name);
+  expect(names).toContain(result.path.split("/").at(-1)!.replace(/\.md$/, ""));
+  expect(names).not.toContain("newpage.md");
   expect(Buffer.from((await fs.read(handle, 0, 100)).data, "base64").toString()).toBe("Newer");
   expect(journal!.pendingIds()).toEqual([result.pageId]);
   const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
@@ -959,4 +962,15 @@ it("keeps the original new-page handle and plain Markdown saves after confirmed 
       await expect(nextFs.createRegular(1, "newpage.md", true, {})).rejects.toMatchObject({ code: "EEXIST" });
     } finally { await restarted.close(); }
   } finally { await publisher.stop(); }
+});
+
+
+it("queues atomic editor replacement of an unpublished Markdown draft", async () => {
+  const { fs, journal } = await fixture(["DOCSY"], "rw", undefined, true);
+  await fs.create(1, "newpage.md");
+  const temporary = await fs.create(1, ".save.tmp");
+  expect(await fs.write(temporary, 0, Buffer.from("Plain new page"))).toBeNull();
+  const id = await fs.rename(1, ".save.tmp", 1, "newpage.md");
+  expect(id).toBe(journal!.local("/DOCSY/newpage.md")!.id);
+  expect(id).not.toBeNull();
 });

@@ -413,3 +413,53 @@ it("automatically drains newer saved bytes after reconciling an interrupted publ
     expect(journal.publishIntent("100")).toBeNull();
   } finally { await recovered.stop(); }
 });
+
+
+it("automatically creates plain Markdown once and resumes newer saves under the returned page ID", async () => {
+  const { client, vfs, journal, publisher } = await fixture();
+  const local = journal.createLocal("/DOCSY/newpage.md");
+  journal.write(local.id, 0, Buffer.from("First plain page"));
+  publisher.schedule(local.id);
+  await until(() => journal.promotion(local.id) !== null);
+  const pageId = journal.promotion(local.id)!.pageId;
+  expect(client.peekPage(pageId)?.title).toBe("Newpage");
+  expect(client.peekPage(pageId)?.storage).toContain("First plain page");
+  expect(client.callsTo("createPage")).toBe(1);
+  journal.truncate(pageId, 6); journal.write(pageId, 0, Buffer.from("Second")); publisher.schedule(pageId);
+  await until(() => journal.pendingIds().length === 0);
+  expect(client.peekPage(pageId)?.version).toBe(2);
+  expect(client.peekPage(pageId)?.storage).toContain("Second");
+  expect(client.callsTo("createPage")).toBe(1);
+  expect((await vfs.resolve(await vfs.readlink(`/DOCSY/.by-id/${pageId}.md`))).id).toBe(pageId);
+});
+
+it("does not repeat an ambiguous create and recovers a confirmed receipt without another POST", async () => {
+  const { client, journal, publisher } = await fixture();
+  const local = journal.createLocal("/DOCSY/newpage.md");
+  journal.write(local.id, 0, Buffer.from("Plain"));
+  const create = client.createPage.bind(client);
+  let pageId = "";
+  client.createPage = async params => { const result = await create(params); pageId = result.id; throw new Error("Lost reply"); };
+  await expect(publisher.publish(local.id)).rejects.toThrow();
+  await expect(publisher.publish(local.id)).rejects.toMatchObject({ code: "EBUSY" });
+  expect(client.callsTo("createPage")).toBe(1);
+  const intent = journal.createIntent(local.id)!;
+  expect(intent.pageId).toBeNull();
+  // Simulates recovery of a proven receipt, not an automatic guess by title.
+  journal.recordCreated(local.id, intent.revision, pageId, 1);
+  expect((await publisher.publish(local.id))?.pageId).toBe(pageId);
+  expect(client.callsTo("createPage")).toBe(1);
+  expect(journal.promotion(local.id)?.pageId).toBe(pageId);
+});
+
+it("never creates pages for hidden drafts, swap files or page backups", async () => {
+  const { client, journal, publisher } = await fixture();
+  for (const path of ["/DOCSY/.newpage.md", "/DOCSY/newpage.md~", "/DOCSY/.newpage.md.swp"]) {
+    const local = journal.createLocal(path); journal.write(local.id, 0, Buffer.from("Text"));
+    expect(await publisher.publish(local.id)).toBeNull();
+  }
+  const backup = journal.backupPage("100", "/DOCSY/backup.md");
+  journal.truncate(backup.id, 5); journal.write(backup.id, 0, Buffer.from("Plain"));
+  expect(await publisher.publish(backup.id)).toBeNull();
+  expect(client.callsTo("createPage")).toBe(0);
+});

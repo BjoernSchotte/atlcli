@@ -2,7 +2,7 @@ import type { NfsJournal, StagedNfsFile } from "./nfs-journal.js";
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { VfsError, assertWritable, parseVfsFrontmatter, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
-import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping, SweepDetector } from "./mount-client-probes.js";
+import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping, isNfsPageDraft, SweepDetector } from "./mount-client-probes.js";
 
 export const NFS_MAX_READ = 1024 * 1024;
 export const NFS_MAX_HANDLES = 65_536;
@@ -213,6 +213,7 @@ export class NfsFilesystem {
 
   private async register(path: string): Promise<number> {
     this.assertExport(path);
+    if (this.journal?.displaced(path)) throw new VfsError("ENOENT", "Page moved aside for replacement");
     const promoted = this.journal?.promotion(path);
     if (promoted) {
       const handle = this.identities.get(promoted.localId);
@@ -427,6 +428,8 @@ export class NfsFilesystem {
   }
 
   private async checkPageIdentity(path: string, id: string): Promise<VfsStat> {
+    const promotion = this.journal?.promotion(path);
+    if (promotion) path = await this.vfs.readlink(`/${path.split("/")[1]}/.by-id/${promotion.pageId}.md`);
     const stat = await this.vfs.stat(path);
     await this.checkResolvedScope(path);
     if (stat.isDirectory || stat.kind !== "page" || stat.id !== id) throw Object.assign(new Error("Reserved page identity changed"), { code: "ESTALE" });
@@ -476,14 +479,15 @@ export class NfsFilesystem {
       this.journal!.renameLocal(source, target);
       const handle = this.identities.get(replaced.id);
       if (handle !== undefined) this.forgetHandle(handle);
-      return null;
+      const renamed = this.journal!.local(target)!;
+      return isNfsPageDraft(target) && !this.journal!.isBackup(renamed.id) ? renamed.id : null;
     }
     let targetId: number;
     try { targetId = await this.register(target); }
     catch (error) {
       if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error;
       this.journal!.renameLocal(source, target);
-      return null;
+      return isNfsPageDraft(target) ? this.journal!.local(target)!.id : null;
     }
     const page = await this.stagedFile(targetId);
     const local = this.journal!.local(source)!;
@@ -532,8 +536,8 @@ export class NfsFilesystem {
       throw new VfsError("EINVAL", "Invalid NFS write range");
     }
     const file = await this.stagedFile(id);
-    this.journal!.write(file.id, offset, bytes);
-    return file.id.startsWith("local:") ? null : file.id;
+    const updated = this.journal!.write(file.id, offset, bytes);
+    return updated.id.startsWith("local:") && (!isNfsPageDraft(updated.path) || this.journal!.isBackup(updated.id)) ? null : updated.id;
   }
 
   async truncate(id: number, size: number): Promise<string | null> {
@@ -544,7 +548,7 @@ export class NfsFilesystem {
     const entry = this.paths.get(id)!;
     entry.rendered = { hash: createHash("sha256").update(updated.bytes).digest("hex"),
       mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1) };
-    return file.id.startsWith("local:") ? null : file.id;
+    return updated.id.startsWith("local:") && (!isNfsPageDraft(updated.path) || this.journal!.isBackup(updated.id)) ? null : updated.id;
   }
 
   async setAttributes(id: number, values: { mode?: number; atime?: number; mtime?: number }): Promise<void> {
