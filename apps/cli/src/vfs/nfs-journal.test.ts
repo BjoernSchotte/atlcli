@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -251,4 +252,33 @@ it("recovers the previous acknowledgement after a crash inside an uncommitted ro
     expect(recovered.get("1")).toEqual(previous);
     expect(recovered.pending()).toEqual([previous!]);
   } finally { child.kill(); await child.exited; }
+});
+
+
+it("retains the published source across restart and includes it in the quota", () => {
+  const { path, journal } = fixture(9, 9);
+  journal.admit("1", "/DOCSY/page/_index.md", bytes("old"), 1);
+  journal.write("1", 0, bytes("one"));
+  journal.completePublish("1", journal.beginPublish("1")!.revision, 2);
+  journal.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY", 9, 9); journals.push(reopened);
+  expect(Buffer.from(reopened.publishedSource("1")!).toString()).toBe("one");
+  reopened.write("1", 0, bytes("two"));
+  reopened.beginPublish("1"); // file + intent + published source = nine bytes
+  expect(() => reopened.admit("2", "/DOCSY/other.md", bytes("x"), 1)).toThrow("quota");
+  reopened.completePublish("1", reopened.get("1")!.revision, 3);
+  expect(Buffer.from(reopened.publishedSource("1")!).toString()).toBe("two");
+});
+
+it("upgrades schema-one pending records without inventing a publication base", () => {
+  const { path, journal } = fixture();
+  journal.admit("1", "/DOCSY/page/_index.md", bytes("old"), 1);
+  journal.write("1", 0, bytes("new"));
+  journal.close();
+  const old = new Database(path);
+  old.exec("DROP TABLE bases; PRAGMA user_version=1;"); old.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(Buffer.from(reopened.get("1")!.bytes).toString()).toBe("new");
+  expect(reopened.pending()).toHaveLength(1);
+  expect(reopened.publishedSource("1")).toBeNull();
 });

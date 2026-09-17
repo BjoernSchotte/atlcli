@@ -36,7 +36,7 @@ export class NfsJournal {
     try {
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers; EXTRA syncs the journal's unlink.
@@ -59,8 +59,9 @@ export class NfsJournal {
           id TEXT PRIMARY KEY REFERENCES files(id), bytes BLOB NOT NULL,
           baseVersion INTEGER NOT NULL, revision INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS bases (id TEXT PRIMARY KEY REFERENCES files(id), bytes BLOB NOT NULL);
         PRAGMA foreign_keys=ON;
-        PRAGMA user_version=1;
+        PRAGMA user_version=2;
       `);
       this.db.transaction(() => {
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
@@ -98,7 +99,7 @@ export class NfsJournal {
 
   private checkQuota(additional: number): void {
     const used = this.db.query<{ size: number }, []>(
-      "SELECT (SELECT COALESCE(SUM(length(bytes)),0) FROM files)+(SELECT COALESCE(SUM(length(bytes)),0) FROM intents) AS size",
+      "SELECT (SELECT COALESCE(SUM(length(bytes)),0) FROM files)+(SELECT COALESCE(SUM(length(bytes)),0) FROM intents)+(SELECT COALESCE(SUM(length(bytes)),0) FROM bases) AS size",
     ).get()!.size;
     if (additional > this.maxFileBytes || used + additional > this.maxBytes) throw new VfsError("ENOSPC", "NFS journal quota exceeded");
   }
@@ -147,6 +148,11 @@ export class NfsJournal {
     }).immediate();
   }
 
+  /** Source image of the last completed publication, for rebasing later edits. */
+  publishedSource(id: string): Uint8Array | null {
+    return this.db.query<{ bytes: Uint8Array }, [string]>("SELECT bytes FROM bases WHERE id=?").get(id)?.bytes ?? null;
+  }
+
   /** Completing R must leave bytes from a newer R+1 untouched and still pending. */
   completePublish(id: string, revision: number, remoteVersion: number): void {
     if (!Number.isSafeInteger(remoteVersion) || remoteVersion < 1) throw new Error("Invalid remote version");
@@ -154,6 +160,7 @@ export class NfsJournal {
       const intent = this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);
       if (!intent || intent.revision !== revision || remoteVersion <= intent.baseVersion) throw new Error("Stale NFS publication result");
       this.db.run("UPDATE files SET baseVersion=?, publishedRevision=?, error=NULL WHERE id=?", [remoteVersion, revision, id]);
+      this.db.run("INSERT OR REPLACE INTO bases SELECT id, bytes FROM intents WHERE id=?", [id]);
       this.db.run("DELETE FROM intents WHERE id=?", [id]);
     }).immediate();
   }

@@ -1,4 +1,6 @@
-import { parseVfsFrontmatter, VfsError, type ConfluenceVfs, type VfsWriteResult } from "@atlcli/confluence-vfs";
+import { posix } from "node:path";
+import { threeWayMerge } from "@atlcli/confluence/internal";
+import { parseVfsFrontmatter, renderFrontmatter, VfsError, type ConfluenceVfs, type VfsWriteResult } from "@atlcli/confluence-vfs";
 import { NfsJournal } from "./nfs-journal.js";
 
 /** Publishes one durable page image; scheduling and NFS save boundaries are separate. */
@@ -39,7 +41,7 @@ export class NfsPublisher {
       // Reject incomplete local bytes before freezing a publication intent.
       this.validate(id, file.bytes, file.baseVersion);
       const intent = this.journal.beginPublish(id)!;
-      const content = this.validate(id, intent.bytes, intent.baseVersion);
+      let content = this.validate(id, intent.bytes, intent.baseVersion);
 
       // Resolve by immutable page identity, never create a replacement at an old path.
       let target: { path: string; spaceKey: string } | undefined;
@@ -58,6 +60,25 @@ export class NfsPublisher {
         }
       }
       if (!target) throw new VfsError("ENOENT", "Staged page is outside the selected export or was deleted");
+      const source = this.journal.publishedSource(id);
+      if (source) {
+        const base = parseVfsFrontmatter(new TextDecoder("utf-8", { fatal: true }).decode(source));
+        const ours = parseVfsFrontmatter(content);
+        let remote = parseVfsFrontmatter(await this.vfs.readFile(target.path));
+        if (remote.frontmatter.version !== intent.baseVersion) {
+          remote = parseVfsFrontmatter(await this.vfs.readFile(posix.join(posix.dirname(target.path), ".versions", `${intent.baseVersion}.md`)));
+        }
+        if (remote.frontmatter.id !== id || remote.frontmatter.version !== intent.baseVersion) {
+          throw new VfsError("EBUSY", "Published base version is unavailable");
+        }
+        const merged = threeWayMerge(base.body, ours.body, remote.body);
+        const title = ours.frontmatter.title === undefined || ours.frontmatter.title === base.frontmatter.title ? remote.frontmatter.title : ours.frontmatter.title;
+        if (title === undefined || !merged.success || (ours.frontmatter.title !== undefined && ours.frontmatter.title !== base.frontmatter.title &&
+            remote.frontmatter.title !== base.frontmatter.title && remote.frontmatter.title !== ours.frontmatter.title)) {
+          throw new VfsError("EBUSY", "New local edits conflict with the previously published result");
+        }
+        content = `${renderFrontmatter({ ...ours.frontmatter, id, version: intent.baseVersion, title })}\n${merged.content}`;
+      }
       const result = await this.vfs.writeFile(target.path, content, { id, spaceKey: target.spaceKey });
       if (result.created || result.pageId !== id) throw new Error("Unexpected NFS publication identity");
       this.journal.completePublish(id, intent.revision, result.version);

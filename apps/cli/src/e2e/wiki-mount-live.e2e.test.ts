@@ -111,6 +111,11 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(journal.pending()).toHaveLength(0);
       expect(await publisher.publish(page.id)).toBeNull();
       expect((await client.getPage(page.id)).version).toBe(actual.version);
+      const next = Buffer.from(original.replace("Journal original", "Journal follow-up"));
+      await fs.truncate(handle, next.length);
+      await fs.write(handle, 0, next);
+      expect((await publisher.publish(page.id))?.version).toBe((actual.version ?? 1) + 1);
+      expect((await client.getPage(page.id)).storage).toContain("Journal follow-up");
     } finally {
       journal.close();
       await client.deletePage(page.id);

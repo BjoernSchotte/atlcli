@@ -47,6 +47,9 @@ it("publishes a durable image through the core while preserving newer local byte
   expect(Buffer.from(journal.get("100")!.bytes).toString()).toContain("Newer");
   expect(journal.pending()).toHaveLength(1);
   expect(journal.get("100")!.baseVersion).toBe(2);
+  expect((await publisher.publish("100"))?.version).toBe(3);
+  expect(client.peekPage("100")?.storage).toContain("Newer");
+  expect(journal.pending()).toHaveLength(0);
 });
 
 it("reconciles an ambiguous successful update without duplicating the version", async () => {
@@ -109,5 +112,39 @@ it("rejects altered page frontmatter before freezing a publication intent", asyn
   expect(client.callsTo("updatePage")).toBe(0);
   stage(original.replace("Original", "Valid"));
   expect((await publisher.publish("100"))?.version).toBe(2);
+  expect(journal.pending()).toHaveLength(0);
+});
+
+
+it("rebases later local edits without dropping remote content merged by the first publication", async () => {
+  const { client, journal, original, stage, publisher } = await fixture();
+  client.bumpVersion("100", "<p>Original</p><p>Remote addition.</p>");
+  stage(original.replace("Original", "First"));
+  expect((await publisher.publish("100"))?.version).toBe(3);
+  expect(client.peekPage("100")?.storage).toContain("Remote addition.");
+  // The editor still holds its original header and never saw the remote addition.
+  stage(original.replace("Original", "Second"));
+  expect((await publisher.publish("100"))?.version).toBe(4);
+  expect(client.peekPage("100")?.storage).toContain("Second");
+  expect(client.peekPage("100")?.storage).toContain("Remote addition.");
+  expect(journal.pending()).toHaveLength(0);
+});
+
+it("replays a rebased follow-up from its immutable version after losing the reply", async () => {
+  const { client, journal, original, stage, publisher } = await fixture();
+  stage(original.replace("Original", "First"));
+  await publisher.publish("100");
+  stage(original.replace("Original", "Second"));
+  const update = client.updatePage.bind(client);
+  let loseReply = true;
+  client.updatePage = async params => {
+    const result = await update(params);
+    if (loseReply) { loseReply = false; throw new Error("Lost reply"); }
+    return result;
+  };
+  await expect(publisher.publish("100")).rejects.toThrow();
+  expect(client.peekPage("100")?.version).toBe(3);
+  expect((await publisher.publish("100"))?.version).toBe(3);
+  expect(client.peekPage("100")?.storage).toContain("Second");
   expect(journal.pending()).toHaveLength(0);
 });

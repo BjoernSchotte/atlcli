@@ -1833,3 +1833,34 @@ Temporary attribute diagnostics used to find the Linux issue were removed.
 The CLI still uses RO mounts. Automatic publication, clean-record refresh,
 newer-edit rebasing, editor replacement/namespace operations, recovery and final
 native Vim/TextEdit acceptance remain open.
+
+
+## Slice 70 — rebase saves arriving after an earlier publication
+
+Journal schema 2 retains the source bytes of the last completed publication in a
+bounded `bases` table. Completing an intent atomically moves its source into that
+table without altering newer local bytes; source storage counts toward the same
+journal quota. Schema-one records upgrade without inventing missing history.
+
+For a subsequent save, the publisher merges changes from that retained local
+source into the previous published result, then submits against its known server
+version. It reuses current cached content when the version matches, otherwise
+reads the immutable version path. The shared three-way merge preserves external
+additions merged by an earlier publication. Conflicts retain staged bytes and a
+safe error. The resulting current publication still uses core optimistic checks.
+
+- macOS and Linux journal/publisher suites: 22 passed, 367 assertions each.
+  Coverage includes newer bytes arriving during an in-flight update and then
+  publishing successfully, preservation of previously merged external content,
+  lost-reply replay of a rebased save, source persistence after reopen, schema-one
+  upgrade and source-byte quota accounting.
+- Linux mayflower/DOCSY live regression: one passed, nine assertions. The adapter
+  stages and publishes two editor images carrying the original version header;
+  each produces exactly one successive API version with expected content.
+  Synthetic page deleted afterward. No live mayflower-space writes.
+- Typecheck passed all four tasks. Existing SQLite-full/SIGKILL/rollback tests
+  remain in the passing suite.
+
+The scheduler, complete-save boundary, clean-record refresh, namespace saves and
+final native editor/recovery acceptance remain open. Production CLI NFS is still
+RO; this step does not enable automatic publication on a user mount.
