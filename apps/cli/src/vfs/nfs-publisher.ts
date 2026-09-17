@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { createInOrderLimiter } from "@atlcli/confluence";
 import { threeWayMerge } from "@atlcli/confluence/internal";
 import { parseVfsFrontmatter, renderFrontmatter, VfsError, type ConfluenceVfs, type VfsWriteResult } from "@atlcli/confluence-vfs";
 import { NfsJournal } from "./nfs-journal.js";
@@ -8,6 +9,8 @@ export class NfsPublisher {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private stopped = false;
   private readonly running = new Map<string, Promise<VfsWriteResult | null>>();
+  // ponytail: one publication at a time bounds materialized bodies; raise only with a measured memory budget.
+  private readonly limit = createInOrderLimiter(1);
 
   constructor(private readonly journal: NfsJournal, private readonly vfs: ConfluenceVfs,
     private readonly spaces: readonly string[]) {
@@ -31,7 +34,7 @@ export class NfsPublisher {
   }
 
   resume(): void {
-    for (const file of this.journal.pending()) this.schedule(file.id);
+    for (const id of this.journal.pendingIds()) this.schedule(id);
   }
 
   async stop(): Promise<void> {
@@ -45,7 +48,8 @@ export class NfsPublisher {
     if (this.stopped) return Promise.reject(new VfsError("EAGAIN", "NFS publisher stopped"));
     const existing = this.running.get(id);
     if (existing) return existing;
-    const task = this.publishImage(id).finally(() => this.running.delete(id));
+    const task = this.limit(() => this.stopped || this.timers.has(id) ? Promise.resolve(null) : this.publishImage(id))
+      .finally(() => this.running.delete(id));
     this.running.set(id, task);
     return task;
   }

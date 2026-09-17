@@ -2404,3 +2404,27 @@ Repeated stop calls share one promise and emit the notice only once.
 This provides bridge shutdown reporting, not a completed public recovery CLI.
 NFS RW remains gated; listing/recovery command integration and unexpected-death
 reporting remain open alongside the broader write acceptance requirements.
+
+
+## Slice 91 — bounded recovery publication
+
+Startup recovery now enumerates pending IDs without materializing every pending
+body. Publication reuses the existing in-order limiter at concurrency one, so
+queued pages do not load their staged images while another upload is active.
+This deliberately trades multi-page upload throughput for bounded body retention;
+no RSS reduction or throughput improvement is claimed without measurement.
+
+Queued jobs recheck shutdown and newer debounce timers before materialization.
+Stopping preserves unstarted jobs in the journal. A new edit behind a blocked
+upload retains its full quiet window instead of publishing early when the slot
+opens. Local entries/displaced pages stay outside the recovery queue; failed page
+IDs remain eligible for recovery.
+
+- Linux journal/publisher suites: 46 tests / 550 assertions; real DOCSY save:
+  18 assertions, with fixture cleanup.
+- macOS initial journal/publisher run: 45 tests / 544 assertions. Final focused
+  queue/quiet-window/native save run: six tests / 64 assertions.
+- All four typecheck tasks passed.
+
+This bounds publication body concurrency, not the entire VFS cache or helper
+memory. The pending recovery CLI and other write gates remain open.

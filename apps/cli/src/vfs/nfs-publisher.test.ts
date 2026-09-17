@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "bun:test";
+import { afterEach, expect, it, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +13,8 @@ async function fixture(mode: "ro" | "rw" = "rw") {
   const root = mkdtempSync(join(tmpdir(), "nfs-publish-"));
   const client = new FakeConfluenceClient()
     .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
-    .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Original</p>" });
+    .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Original</p>" })
+    .seedPage({ id: "200", title: "Second", parentId: "100", spaceKey: "DOCSY", storage: "<p>Second</p>" });
   const vfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"],
     mode, allowDelete: false, coalesceMs: 0, cacheDir: join(root, "cache"), offline: false });
   const journal = new NfsJournal(join(root, "journal.sqlite"), "fixture:DOCSY");
@@ -262,4 +263,60 @@ it("pauses before the remote write when backup rename races with path resolution
   expect((await publisher.publish("100"))?.version).toBe(2);
   expect(client.peekPage("100")?.storage).toContain("Frozen");
   expect(journal.pending()).toHaveLength(0);
+});
+
+
+for (const stopWhileQueued of [false, true]) it(`bounds queued publication bodies and preserves work on stop=${stopWhileQueued}`, async () => {
+  const { client, vfs, journal, original, stage, publisher } = await fixture();
+  const second = await vfs.readFile("/DOCSY/second-200/_index.md");
+  journal.admit("200", "/DOCSY/second-200/_index.md", Buffer.from(second), 1);
+  journal.write("200", Buffer.byteLength(second), Buffer.from("queued"));
+  stage(original.replace("Original", "First edit"));
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const update = client.updatePage.bind(client);
+  let entered = false;
+  client.updatePage = async params => { if (!entered) { entered = true; await gate; } return update(params); };
+  const get = spyOn(journal, "get");
+  const first = publisher.publish("100");
+  await until(() => entered);
+  const queued = publisher.publish("200");
+  expect(publisher.publish("200")).toBe(queued);
+  expect(get.mock.calls.some(call => call[0] === "200")).toBe(false);
+  const stopping = stopWhileQueued ? publisher.stop() : undefined;
+  release();
+  try {
+    expect((await first)?.version).toBe(2);
+    expect(await queued).toEqual(stopWhileQueued ? null : expect.objectContaining({ pageId: "200", version: 2 }));
+    await stopping;
+    expect(journal.pendingIds()).toEqual(stopWhileQueued ? ["200"] : []);
+    expect(client.callsTo("updatePage")).toBe(stopWhileQueued ? 1 : 2);
+  } finally { get.mockRestore(); }
+});
+
+
+it("keeps a fresh quiet window when a queued page changes behind another upload", async () => {
+  const { client, vfs, journal, original, stage, publisher } = await fixture();
+  const second = await vfs.readFile("/DOCSY/second-200/_index.md");
+  journal.admit("200", "/DOCSY/second-200/_index.md", Buffer.from(second), 1);
+  journal.write("200", Buffer.byteLength(second), Buffer.from("queued"));
+  stage(original.replace("Original", "First edit"));
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const update = client.updatePage.bind(client);
+  let entered = false;
+  client.updatePage = async params => { if (!entered) { entered = true; await gate; } return update(params); };
+  const first = publisher.publish("100");
+  await until(() => entered);
+  const queued = publisher.publish("200");
+  journal.write("200", Buffer.byteLength(second), Buffer.from("latest"));
+  publisher.schedule("200");
+  release();
+  await first;
+  expect(await queued).toBeNull();
+  await Bun.sleep(200);
+  expect(client.callsTo("updatePage")).toBe(1);
+  await until(() => journal.pendingIds().length === 0);
+  expect(client.callsTo("updatePage")).toBe(2);
+  expect(client.peekPage("200")?.storage).toContain("latest");
 });

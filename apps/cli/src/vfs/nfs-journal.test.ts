@@ -571,10 +571,12 @@ it("reports durable recovery counts without treating local editor entries as pub
   journal.write("100", 0, bytes("changed"));
   journal.beginPublish("100");
   journal.failPublish("100", "REMOTE_RESULT_UNKNOWN");
+  expect(journal.pendingIds()).toEqual(["100"]);
   expect(journal.writeStatus()).toEqual({ pendingPages: 1, failedPages: 1, displacedPages: 0, localEntries: 0, unresolvedPublications: 1 });
   journal.backupPage("100", "/DOCSY/backup");
   const expected = { pendingPages: 0, failedPages: 1, displacedPages: 1, localEntries: 1, unresolvedPublications: 1 };
   expect(journal.writeStatus()).toEqual(expected);
+  expect(journal.pendingIds()).toEqual([]);
   journal.close();
   const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
   expect(recovered.writeStatus()).toEqual(expected);

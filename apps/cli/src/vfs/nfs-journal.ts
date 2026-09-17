@@ -108,6 +108,10 @@ export class NfsJournal {
     return this.db.query<StagedNfsFile, []>("SELECT * FROM files WHERE revision>publishedRevision AND id NOT IN (SELECT id FROM locals) AND id NOT IN (SELECT id FROM displaced) ORDER BY id").all();
   }
 
+  pendingIds(): string[] {
+    return this.db.query<{ id: string }, []>("SELECT id FROM files WHERE revision>publishedRevision AND id NOT IN (SELECT id FROM locals) AND id NOT IN (SELECT id FROM displaced) ORDER BY id").all().map(file => file.id);
+  }
+
   private localPath(path: string): void {
     if (!path.startsWith("/") || path === "/" || path.includes("\0") ||
       posix.normalize(path) !== path || path.endsWith("/") || Buffer.byteLength(path) > 4096) {
