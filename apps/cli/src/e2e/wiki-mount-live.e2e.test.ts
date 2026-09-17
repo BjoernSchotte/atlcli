@@ -630,6 +630,9 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     const created_ = [...body.matchAll(new RegExp(`<D:href>[^<]*\\/(${title.toLowerCase()}-(\\d+))\\/<\\/D:href>`, "g"))][0];
     expect(created_).toBeDefined();
     created.push(created_![2]!);
+    const page = await client.getPage(created_![2]!);
+    expect(page.version).toBe(1);
+    expect(page.storage).toContain("Created by the live mount E2E.");
 
     const del = await fetch(new URL(`/${E2E_SPACE_KEY}/${created_![1]}`, server.url), {
       method: "DELETE",

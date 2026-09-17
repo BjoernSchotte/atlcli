@@ -13,6 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
+import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
@@ -450,11 +451,37 @@ describe("macOS editor atomic saves", () => {
     const id = (await vfs.resolve(path)).id!;
     const version = client.peekPage(id)!.version;
     const updates = client.callsTo("updatePage");
+    expect(version).toBe(1);
+    expect(updates).toBe(0);
     for (let i = 0; i < 3; i++) expect((await dav(path, { method: "PUT", body })).status).toBe(200);
     expect(client.peekPage(id)!.version).toBe(version);
     expect(client.callsTo("updatePage")).toBe(updates);
     expect(client.callsTo("createPage")).toBe(1);
     expect((await dav(path)).body).toContain(body.trim());
+  });
+
+  it("publishes a new PUT only after its complete body arrives", async () => {
+    await start(seeded());
+    const body = "Complete streamed page 🐴";
+    const req = request(new URL("/DOCSY/streamed.md", server.url), {
+      method: "PUT", headers: { "Content-Length": Buffer.byteLength(body) },
+    });
+    const completed = new Promise<number | undefined>((resolve, reject) => {
+      req.on("error", reject);
+      req.on("response", response => { response.resume(); response.on("end", () => resolve(response.statusCode)); });
+    });
+    req.write(body.slice(0, 5));
+    await Bun.sleep(100);
+    const before = client.callsTo("createPage");
+    req.end(body.slice(5));
+    expect(await completed).toBe(201);
+    expect(before).toBe(0);
+    const id = (await vfs.resolve("/DOCSY/streamed.md")).id!;
+    expect(client.peekPage(id)).toMatchObject({ version: 1, storage: `<p>${body}</p>\n` });
+    expect(client.callsTo("updatePage")).toBe(0);
+    expect((await dav("/DOCSY/empty.md", { method: "PUT", body: "" })).status).toBe(201);
+    expect(client.callsTo("createPage")).toBe(2);
+    expect(client.callsTo("updatePage")).toBe(0);
   });
 
   for (const overwrite of [undefined, "T", "F"]) {

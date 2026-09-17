@@ -3682,3 +3682,36 @@ The scratch harness/CDP driver and snapshots remain under the private temporary
 test directory for diagnosis. The requested editor matrix now has native
 new-page/repeated-save evidence on both OSes, but final packaged-artifact, fault,
 performance and live-tenant requirements remain open. Public NFS RW is gated.
+
+
+## Slice 138 — publish a new WebDAV PUT once
+
+The WebDAV dependency invokes create before opening a new PUT stream. The
+adapter previously published an empty page in that callback and updated it
+when the stream finished. PUT creation is now request-local until stream final:
+its size is zero for that request's storage check, and the existing final-write
+path creates the page with its complete body. A weak map avoids retaining ended
+request contexts. Other creation methods and editor draft handling are unchanged.
+
+- Tightened HTTP regression failed before the change (version 2 instead of 1).
+  It now proves one CREATE, zero UPDATEs, version 1 and no extra versions from
+  repeated identical PUTs. A streamed-body test observes no CREATE before final
+  bytes and verifies Unicode plus an explicitly empty PUT.
+- macOS/Linux broad core and CLI VFS suites: 704 passed, 34 native/helper opt-ins
+  skipped, 3565 assertions each. WebDAV HTTP suite alone: 42 passed / 183 asserts.
+- Native WebDAV Vim new-page/repeated-save tests with and without backups: two
+  passed on each host, 26 assertions on macOS and 28 on Linux (cache ownership
+  cleanup adds the Linux assertions). All mounts detached normally.
+- Linux DOCSY HTTP PUT/DELETE: one passed / five assertions, now including the
+  real page's initial version 1 and expected body. Disposable page trashed.
+- Real Linux VS Code repeated with the isolated profile from Slice 137: initial
+  save still reached version 2, next autosave version 3 with the same ID. A
+  separate traced run showed three core writes: empty, empty, then the actual
+  Unicode body. Thus the adapter's within-PUT issue is fixed, but native client
+  creation/empty-write semantics still need investigation before claiming
+  minimal first-save churn. No real tenant content was used in these GUI runs.
+- Test windows closed, both extra harnesses exited 0 after graceful davfs2
+  unmount, and the dedicated Xvfb display was stopped. Typecheck passed all four
+  tasks, including the final live-test assertions.
+
+Public NFS RW and overall acceptance remain gated.

@@ -150,6 +150,11 @@ atlcli wiki sh --space DOCSY --mode rw -c '
 atlcli wiki sh --space DOCSY --mode rw -c 'echo "# Release notes" > release-notes.md'
 ```
 
+A new WebDAV PUT publishes its complete body directly as the initial page
+version. Separate empty writes from an OS mount can still create an initial
+empty version before the editor sends content; this is distinct from buffering
+multiple saves of an existing page.
+
 Deletion moves a page to the **trash**; there is no purge.
 
 Before trashing a page, the shared VFS checks fresh page metadata against the

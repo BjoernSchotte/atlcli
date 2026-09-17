@@ -1,7 +1,7 @@
 # NFS acceptance checkpoint
 
 This is a working audit of PLAN.md, not acceptance of the feature. The complete
-read/write objective remains open. Implementation evidence reviewed through Slice 137. Slice 123 reruns broad VFS, native mount, Rust and compiled-shell
+read/write objective remains open. Implementation evidence reviewed through Slice 138. Slice 123 reruns broad VFS, native mount, Rust and compiled-shell
 checks on both hosts; full repository build/CI and final acceptance remain open.
 [EVIDENCE.md](EVIDENCE.md) contains commands, host boundaries and detailed results.
 

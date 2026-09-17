@@ -119,6 +119,7 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
   // These are local drafts, never Confluence pages. Retain drafts on failure.
   private readonly drafts = new Map<string, { bytes: Buffer; modified: number; directory?: boolean }>();
   private readonly pendingBackups = new Map<string, string>();
+  private readonly pendingPuts = new WeakMap<webdav.RequestContext, string>();
 
   private isDraft(path: webdav.Path): boolean {
     return path.toString().split("/").some((part) => /\.sb-[a-zA-Z0-9_-]+$/.test(part) || part.endsWith("~"));
@@ -283,6 +284,10 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     ctx: webdav.SizeInfo,
     callback: webdav.ReturnCallback<number>,
   ): void {
+    if (this.pendingPuts.get(ctx.context) === path.toString()) {
+      callback(undefined, 0);
+      return;
+    }
     if (this.isDraft(path)) {
       const draft = this.drafts.get(path.toString());
       if (!draft) callback(webdav.Errors.ResourceNotFound);
@@ -422,7 +427,7 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
    */
   protected _openWriteStream(
     path: webdav.Path,
-    _ctx: webdav.OpenWriteStreamInfo,
+    ctx: webdav.OpenWriteStreamInfo,
     callback: webdav.ReturnCallback<Writable>,
   ): void {
     const target = this.vfsPath(path);
@@ -474,7 +479,7 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
         }
         this.options.vfs
           .writeFile(target, new Uint8Array(Buffer.concat(chunks)))
-          .then(() => { this.pendingBackups.delete(path.toString()); done(); })
+          .then(() => { this.pendingPuts.delete(ctx.context); this.pendingBackups.delete(path.toString()); done(); })
           .catch((error: unknown) => done(httpErrorFor(error)));
       },
     });
@@ -502,6 +507,14 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     }
     if (this.isDraft(path)) {
       this.drafts.set(path.toString(), { bytes: Buffer.alloc(0), modified: Date.now(), directory: ctx.type.isDirectory });
+      callback();
+      return;
+    }
+    // PUT immediately opens a stream after create. Publish its final bytes
+    // once, rather than creating an empty page and then another wiki version.
+    const request = (ctx.context as { request?: { method?: string } }).request;
+    if (ctx.type.isFile && request?.method === "PUT") {
+      this.pendingPuts.set(ctx.context, path.toString());
       callback();
       return;
     }
