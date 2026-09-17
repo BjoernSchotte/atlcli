@@ -144,7 +144,8 @@ export class NfsPublisher {
         if (!trash.completed && this.spaces.includes(trash.spaceKey) && await this.vfs.confirmTrash(id, trash.spaceKey)) this.journal.completeTrash(id);
         return null;
       }
-      if (this.journal.local(file.path)?.id === id) return await this.publishNew(file);
+      const local = this.journal.local(file.path);
+      if (local?.id === id) return local.kind === "file" ? await this.publishNew(file) : null;
       if (file.revision === file.publishedRevision) return null;
       // Reject incomplete local bytes before freezing a publication intent.
       this.validate(id, file.bytes, file.baseVersion);

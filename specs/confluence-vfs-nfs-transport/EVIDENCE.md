@@ -3430,3 +3430,24 @@ verifies the expected body and version two.
 This is a real NFS protocol test with a synthetic backend, without an OS mount.
 It does not establish recovery of blocked kernel calls or guarantee that an
 upload was already in flight at the kill. Public RW activation remains gated.
+
+
+## Slice 130 — directory type checked before draft publication
+
+Renaming a local editor directory to a Markdown-looking name sent its ID to
+the publisher. The durable creation guard already prevented a remote page, but
+the attempt incorrectly recorded EINVAL against the directory. Publication now
+checks the durable local entry type before interpreting its bytes as a draft.
+The two regressions exercise the filesystem-to-publisher path with and without
+replacement of an empty destination directory, checking stable handles, child
+bytes, absence of CREATE/creation intents, and absence of a publication error.
+
+- Both regressions failed before the fix at the journal's file-only guard.
+- macOS and Linux filesystem/publisher suites: 102 passed / 969 assertions each.
+- Additional error-state assertion: targeted tests passed on both hosts, two
+  tests / 16 assertions each.
+- Linux DOCSY owned-journal live publication: one passed / five assertions;
+  temporary page cleaned up. Typecheck: all four tasks passed.
+
+This fixes local directory handling; remote directory rename/reparent and
+namespace recovery remain required before full acceptance.

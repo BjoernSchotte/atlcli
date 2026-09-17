@@ -786,6 +786,28 @@ it("projects durable local editor directories and keeps handles across tree rena
   expect(client.callsTo("updatePage")).toBe(0);
 });
 
+it.each([false, true])("never publishes a renamed Markdown-named directory (replacement=%s)", async replace => {
+  const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+  try {
+    const directory = await fs.mkdir(1, "drafts");
+    const child = await fs.create(directory, "notes.txt");
+    await fs.write(child, 0, Buffer.from("Retained local notes"));
+    if (replace) await fs.mkdir(1, "drafts.md");
+    const scheduled = await fs.rename(1, "drafts", 1, "drafts.md");
+    // Exercise the bridge's publication request, including directory names
+    // that look like Markdown; the publisher must check the durable type.
+    if (scheduled) expect(await publisher.publish(scheduled)).toBeNull();
+    expect(client.callsTo("createPage")).toBe(0);
+    expect(journal!.createIntent(journal!.local("/DOCSY/drafts.md")!.id)).toBeNull();
+    expect(journal!.local("/DOCSY/drafts.md")!.error).toBeNull();
+    expect(await fs.lookup(1, "drafts.md")).toBe(directory);
+    expect(await fs.getattr(directory)).toMatchObject({ directory: true });
+    expect(await fs.lookup(directory, "notes.txt")).toBe(child);
+    expect(Buffer.from((await fs.read(child, 0, 100)).data, "base64").toString()).toBe("Retained local notes");
+  } finally { await publisher.stop(); }
+});
+
 it("keeps recovered local directories read-only and out of generated views", async () => {
   const { fs, journal } = await fixture(["DOCSY"], "ro", undefined, true);
   journal!.createLocalDirectory("/DOCSY/recovered");
