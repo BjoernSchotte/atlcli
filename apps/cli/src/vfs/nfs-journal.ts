@@ -46,15 +46,21 @@ export class NfsJournal {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     this.db = new Database(path, { create: true });
     try {
+      // SQLite owns the cross-process lock and releases it even after SIGKILL.
+      // Retain it between transactions: two publishers must never share a journal.
+      this.db.exec("PRAGMA locking_mode=EXCLUSIVE");
+      this.db.exec("BEGIN EXCLUSIVE");
+      this.db.exec("COMMIT");
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
       if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
-      // avoids WAL growth pinned by readers; EXTRA syncs the journal's unlink.
+      // avoids WAL growth pinned by readers. Exclusive mode retains the rollback
+      // file; truncate it after each transaction instead of retaining its peak size.
       const mode = this.db.query<{ journal_mode: string }, []>("PRAGMA journal_mode=DELETE").get()!.journal_mode;
       if (mode !== "delete") throw new Error("Cannot enable bounded NFS rollback journal");
-      this.db.exec("PRAGMA synchronous=EXTRA; PRAGMA fullfsync=ON;");
+      this.db.exec("PRAGMA synchronous=EXTRA; PRAGMA fullfsync=ON; PRAGMA journal_size_limit=0;");
       const pageSize = this.db.query<{ page_size: number }, []>("PRAGMA page_size").get()!.page_size;
       const pages = this.db.query<{ max_page_count: number }, []>(
         `PRAGMA max_page_count=${Math.floor(maxDatabaseBytes / pageSize)}`,

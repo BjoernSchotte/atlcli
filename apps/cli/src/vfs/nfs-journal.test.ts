@@ -99,13 +99,14 @@ it("rejects profile/export mismatch and quota failures without altering acknowle
   const { path, journal } = fixture(8, 8);
   journal.admit("1", "/DOCSY/page/_index.md", bytes("12345678"), 1);
   expect(journal.write("1", 8, new Uint8Array()).revision).toBe(0);
-  expect(() => new NfsJournal(path, "other-account:DOCSY")).toThrow("identity");
   expect(() => journal.write("1", 8, bytes("x"))).toThrow();
   expect(() => journal.admit("2", "/DOCSY/other/_index.md", bytes("x"), 1)).toThrow("quota");
   journal.write("1", 0, bytes("X"));
   expect(() => journal.beginPublish("1")).toThrow("quota");
   expect(Buffer.from(journal.get("1")!.bytes).toString()).toBe("X2345678");
   expect(journal.get("1")!.revision).toBe(1);
+  journal.close();
+  expect(() => new NfsJournal(path, "other-account:DOCSY")).toThrow("identity");
 });
 
 it("recovers an acknowledged write and publication intent after SIGKILL", async () => {
@@ -201,7 +202,7 @@ it("caps SQLite storage and rolls back full-database writes without losing ackno
   expect(journal.databaseLimitBytes).toBe(98304);
   expect(statSync(path).size).toBeLessThanOrEqual(journal.databaseLimitBytes);
   expect(existsSync(path + "-wal")).toBe(false);
-  expect(existsSync(path + "-journal")).toBe(false);
+  expect(existsSync(path + "-journal") ? statSync(path + "-journal").size : 0).toBe(0);
   journal.close();
   const recovered = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 98304);
   journals.push(recovered);
@@ -219,7 +220,7 @@ it("reuses bounded database pages over repeated overwrites and publication inten
     journal.completePublish("1", intent.revision, i + 2);
     expect(statSync(path).size).toBeLessThanOrEqual(journal.databaseLimitBytes);
     expect(existsSync(path + "-wal")).toBe(false);
-    expect(existsSync(path + "-journal")).toBe(false);
+    expect(existsSync(path + "-journal") ? statSync(path + "-journal").size : 0).toBe(0);
   }
   expect(journal.pending()).toEqual([]);
 });
@@ -630,4 +631,19 @@ it("accepts confirmed same-version completion but rejects older versions and sta
   expect(journal.pendingIds()).toEqual(["100"]);
   expect(journal.publishIntent("100")).toBeNull();
   expect(Buffer.from(journal.publishedSource("100")!).toString()).toBe("staged");
+});
+
+
+it("rejects concurrent journal owners and releases ownership on close", async () => {
+  const { path, journal } = fixture();
+  journal.admit("100", "/DOCSY/_index.md", bytes("saved"), 1);
+  expect(() => { const second = new NfsJournal(path, "synthetic-account:DOCSY"); second.close(); }).toThrow("locked");
+  const code = `import { NfsJournal } from ${JSON.stringify(join(import.meta.dir, "nfs-journal.ts"))};
+    try { const j = new NfsJournal(${JSON.stringify(path)}, "synthetic-account:DOCSY"); j.close(); process.exit(1); }
+    catch (error) { process.exit(String(error).includes("locked") ? 0 : 2); }`;
+  const child = Bun.spawn([process.execPath, "--conditions=development", "-e", code], { stdout: "pipe", stderr: "pipe" });
+  expect(await child.exited).toBe(0);
+  journal.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(Buffer.from(reopened.get("100")!.bytes).toString()).toBe("saved");
 });

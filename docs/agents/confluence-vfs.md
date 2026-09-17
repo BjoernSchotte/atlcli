@@ -454,5 +454,7 @@ existing paths. Journal inspection/export never publishes, clears, or migrates
 records. Keep the original journal until remote publication is verified.
 
 A missing image is an error; inspect the listing before choosing an ID/image.
-If the journal is busy, stop the owning mount normally and retry. Unsupported
+A journal permits only one writer process. SQLite releases its ownership lock
+on close or process death; no stale PID lock file needs removal. Stop the owning
+mount normally before offline recovery inspection/export. Unsupported
 schemas require the CLI matching that journal; do not edit its schema version.

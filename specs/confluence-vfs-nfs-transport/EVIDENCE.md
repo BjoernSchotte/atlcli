@@ -2597,3 +2597,26 @@ resolution or permission to discard unresolved journal data.
   passed with the authorized local-network permissions.
 - Linux live DOCSY journal publication: 13 assertions; fixture cleaned up.
 - All four typecheck tasks passed; final CLI argument validation rerun separately.
+
+
+## Slice 99 — exclusive journal ownership
+
+A regression proved that two NfsJournal instances could open and mutate the same
+journal, allowing independent publishers to race. Startup now acquires SQLite's
+exclusive lock before initialization and retains it between transactions. Native
+SQLite ownership is released on close or process death, without PID files or
+stale-lock cleanup. Lock acquisition statements are executed individually so a
+failed BEGIN cannot be masked by a subsequent COMMIT error.
+
+Exclusive locking retains SQLite's rollback sidecar; journal_size_limit=0
+truncates it after transactions. Quota tests now verify zero retained sidecar
+bytes, preserving the storage bound instead of requiring file absence. Existing
+SIGKILL, hot rollback/WAL recovery and database-full rollback tests remain green.
+Offline inspection must follow normal mount shutdown because readers cannot
+bypass the writer's exclusive lock.
+
+- macOS/Linux journal, publisher and recovery suites: 58 tests / 635 assertions.
+- New ownership test exercises same-process and separate-process rejection,
+  followed by successful reopen with preserved bytes.
+- Native macOS save/refresh: 37 assertions; Linux live DOCSY publication: 13
+  assertions with disposable-page cleanup. All four typecheck tasks passed.
