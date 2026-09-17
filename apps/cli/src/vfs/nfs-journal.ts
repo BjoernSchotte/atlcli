@@ -578,7 +578,8 @@ export class NfsJournal {
     this.localPath(move.source); this.localPath(move.target);
     if (!["page", "folder"].includes(move.kind) || ![move.id, move.sourceParentId, move.targetParentId].every(id => /^[0-9]+$/.test(id)) ||
         move.source.split("/")[1] !== move.spaceKey || move.target.split("/")[1] !== move.spaceKey ||
-        posix.basename(move.source) !== posix.basename(move.target) || move.target.startsWith(`${move.source}/`)) {
+        (posix.basename(move.source) !== posix.basename(move.target) &&
+          (move.kind !== "page" || posix.dirname(move.source) !== posix.dirname(move.target))) || move.target.startsWith(`${move.source}/`)) {
       throw new VfsError("EINVAL", "Invalid page reparent intent");
     }
     this.db.transaction(() => {

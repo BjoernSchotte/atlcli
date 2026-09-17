@@ -813,6 +813,42 @@ it.each([false, true])("moves real folder identities and preserves descendant ha
   expect(client.callsTo("movePage")).toBe(0);
 });
 
+it.each([false, true])("retitles a page directory without changing its ID (lost reply=%s)", async lostReply => {
+  const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  const directory = await fs.lookup(1, "child-0-200");
+  const body = await fs.lookup(directory, "_index.md");
+  await expect(fs.lookup(1, "renamed-child-200")).rejects.toMatchObject({ code: "ENOENT" });
+  const update = client.updatePage.bind(client);
+  client.updatePage = async params => { const result = await update(params); if (lostReply) throw new Error("Lost retitle reply"); return result; };
+  const operation = fs.rename(1, "child-0-200", 1, "renamed-child-200");
+  if (lostReply) {
+    await expect(operation).rejects.toThrow("Lost retitle reply");
+    const recovered = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+    try { await recovered.publish("move:/DOCSY/child-0-200"); } finally { await recovered.stop(); }
+  } else await operation;
+  expect(client.peekPage("200")?.title).toBe("Renamed Child");
+  expect(client.peekPage("200")?.parentId).toBe("100");
+  expect(client.callsTo("updatePage")).toBe(1);
+  expect(await fs.lookup(1, "renamed-child-200")).toBe(directory);
+  expect(await fs.getattr(directory)).toMatchObject({ directory: true });
+  expect(await fs.lookup(directory, "_index.md")).toBe(body);
+  expect(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString()).toContain("Body 0");
+  await expect(fs.lookup(1, "child-0-200")).rejects.toMatchObject({ code: "ENOENT" });
+  await fs.rename(1, "child-0-200", 1, "renamed-child-200");
+  expect(client.callsTo("updatePage")).toBe(1);
+  expect(journal!.pendingMoves()).toEqual([]);
+});
+
+it("rejects changed IDs and unsupported folder retitles before freezing an intent", async () => {
+  const { fs, journal, client } = await fixture(["DOCSY"], "rw", undefined, true);
+  client.seedPage({ id: "900", title: "Archive", type: "folder", parentId: "100", spaceKey: "DOCSY" });
+  await expect(fs.rename(1, "child-0-200", 1, "renamed-999")).rejects.toMatchObject({ code: "EINVAL" });
+  await expect(fs.rename(1, "child-0-200", 1, "renamed")).rejects.toMatchObject({ code: "EINVAL" });
+  await expect(fs.rename(1, "archive-900", 1, "renamed-900")).rejects.toMatchObject({ code: "EROFS" });
+  expect(journal!.pendingMoves()).toEqual([]);
+  expect(client.callsTo("updatePage")).toBe(0);
+});
+
 it("retains an unconfirmed move and never retries its remote mutation", async () => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   const destination = await fs.lookup(1, "child-1-201");

@@ -557,7 +557,8 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       case "space":
         return dir(resolved.spaceKey, epoch, "space");
       case "container":
-        return dir(resolved.node.id, mtimeOf(resolved.node, epoch), resolved.node.type === "folder" ? "folder" : "page");
+        return { ...dir(resolved.node.id, mtimeOf(resolved.node, epoch), resolved.node.type === "folder" ? "folder" : "page"),
+          canonicalName: formatDirName(resolved.node.title, resolved.node.id) };
       case "body":
         return file(resolved.node.id, mtimeOf(resolved.node, epoch), "page", {
           version: resolved.node.version,

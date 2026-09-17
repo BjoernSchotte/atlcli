@@ -1,7 +1,7 @@
 import type { NfsJournal, StagedNfsFile } from "./nfs-journal.js";
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
-import { VfsError, assertWritable, parseVfsFrontmatter, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
+import { VfsError, assertWritable, parseVfsFrontmatter, formatDirName, parseName, titleFromName, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping, isNfsPageDraft, SweepDetector } from "./mount-client-probes.js";
 
 export const NFS_MAX_READ = 1024 * 1024;
@@ -135,7 +135,7 @@ export class NfsFilesystem {
       return file.path;
     }
     try {
-      const stat = await this.vfs.stat(entry.path);
+      const stat = await this.stat(entry.path);
       await this.checkResolvedScope(entry.path);
       if (id !== 1 && this.identity(stat, entry.path) !== entry.identity) {
         // The old filename may have been reused; recover the original object,
@@ -332,6 +332,10 @@ export class NfsFilesystem {
     if (!file) {
       if (this.journal?.displaced(path)) throw new VfsError("ENOENT", "Page moved aside for replacement");
       const stat = await this.vfs.stat(path);
+      if (stat.isDirectory && (stat.kind === "page" || stat.kind === "folder")) {
+        const name = stat.canonicalName ?? formatDirName((await this.vfs.resolve(path)).title, stat.id);
+        if (posix.basename(path) !== name) throw new VfsError("ENOENT", "Noncanonical NFS directory name");
+      }
       const metadata = stat.kind === "page" && !stat.isDirectory ? this.journal?.attributes(stat.id) : undefined;
       return metadata ? { ...stat, mode: metadata.mode & (this.vfs.guard.mode === "rw" ? 0o777 : 0o555) } : stat;
     }
@@ -504,13 +508,24 @@ export class NfsFilesystem {
     this.journal!.assertNoMove(source); this.journal!.assertNoMove(target);
     const sourceStat = await this.stat(source);
     if (sourceStat.isDirectory && !this.journal!.local(source)) {
-      if (!["page", "folder"].includes(sourceStat.kind) || name !== targetName || source.split("/")[1] !== target.split("/")[1]) {
-        throw new VfsError("EROFS", "Remote directory moves currently preserve the page name and space");
+      if (!["page", "folder"].includes(sourceStat.kind) || source.split("/")[1] !== target.split("/")[1]) {
+        throw new VfsError("EROFS", "Remote directory moves currently preserve the space");
       }
       if (target.startsWith(`${source}/`)) throw new VfsError("EINVAL", "Cannot move a page into itself");
       try { await this.stat(target); throw new VfsError("EEXIST", "Move destination exists"); }
       catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
       const node = await this.vfs.resolve(source);
+      let title = node.title;
+      if (name !== targetName) {
+        if (sourceStat.kind !== "page" || posix.dirname(source) !== posix.dirname(target)) {
+          throw new VfsError("EROFS", "Retitle pages in their current directory before moving them");
+        }
+        const parsed = parseName(targetName);
+        title = titleFromName(parsed.slugCandidate);
+        if (parsed.idCandidate !== node.id || formatDirName(title, node.id) !== targetName) {
+          throw new VfsError("EINVAL", "Renamed directories require a canonical slug and the unchanged page ID");
+        }
+      }
       let destination = await this.vfs.resolve(posix.dirname(target));
       if (destination.kind === "space") destination = await this.vfs.resolve(posix.join(posix.dirname(target), "_index.md"));
       if (node.readOnly || destination.readOnly || !node.parentId || !node.spaceKey ||
@@ -518,10 +533,10 @@ export class NfsFilesystem {
         throw new VfsError("EACCES", "Move is outside writable page containers");
       }
       this.journal!.beginMove({ id: node.id, kind: sourceStat.kind as "page" | "folder", source, target, spaceKey: node.spaceKey,
-        sourceParentId: node.parentId, targetParentId: destination.id, title: node.title });
+        sourceParentId: node.parentId, targetParentId: destination.id, title });
       await this.vfs.rename(source, target, { id: node.id, kind: sourceStat.kind as "page" | "folder", spaceKey: node.spaceKey,
         sourceParentId: node.parentId, targetParentId: destination.id });
-      if (!await this.vfs.confirmMove(node.id, node.spaceKey, destination.id, node.title, sourceStat.kind as "page" | "folder")) {
+      if (!await this.vfs.confirmMove(node.id, node.spaceKey, destination.id, title, sourceStat.kind as "page" | "folder")) {
         throw new VfsError("EBUSY", "Move result requires reconciliation");
       }
       this.journal!.completeMove(source);

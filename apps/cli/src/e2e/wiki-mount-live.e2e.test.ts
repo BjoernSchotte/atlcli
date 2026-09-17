@@ -178,6 +178,30 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     }
   }, 30_000);
 
+  it("retitles a live page through the journaled NFS filesystem", async () => {
+    const home = await client.getSpaceHomepageId(E2E_SPACE_KEY);
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY, parentId: home!, title: makeE2eTitle("nfs-retitle"), storage: "<p>Retained retitle body</p>" });
+    created.push(page.id);
+    const journal = new NfsJournal(join(cacheDir, "retitle.sqlite"), "live:DOCSY");
+    try {
+      const fs = new NfsFilesystem(vfs, [E2E_SPACE_KEY], undefined, journal);
+      const source = dirname(await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`)).split("/").at(-1)!;
+      const directory = await fs.lookup(1, source);
+      const body = await fs.lookup(directory, "_index.md");
+      const stamp = Date.now();
+      const target = `retitled-e2e-${stamp}-${page.id}`;
+      await fs.rename(1, source, 1, target);
+      const actual = await client.getPage(page.id);
+      expect(actual.title).toBe(`Retitled E2e ${stamp}`);
+      expect(actual.parentId).toBe(home);
+      expect(actual.storage).toContain("Retained retitle body");
+      expect(await fs.lookup(1, target)).toBe(directory);
+      expect(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString()).toContain("Retained retitle body");
+      await expect(fs.lookup(1, source)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(journal.pendingMoves()).toEqual([]);
+    } finally { journal.close(); }
+  }, 30_000);
+
   it("preserves the exact page title when moving a canonical directory name", async () => {
     const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("move-parent"), storage: "<p>Parent</p>" });
     created.push(parent.id);

@@ -574,7 +574,12 @@ source and destination before the API call; a lost reply is reconciled from
 fresh remote metadata on replay or restart, without blindly repeating the move.
 Both trees remain reserved while the result is uncertain. Open handles follow
 the page identity. A real Confluence move can update version and frontmatter;
-the page body is preserved. NFS directory retitling and cross-space moves still require implementation.
+the page body is preserved. Page directories can also be retitled in place: keep the ID suffix and use the
+canonical lowercase slug, for example `mv old-title-123 new-title-123`. NFS
+exposes only the current directory name; open handles continue to address the
+same page. Retitles use the durable move journal and reconcile lost API replies
+without issuing a second title update. Names without an ID, simultaneous
+retitle-and-reparent, and cross-space moves still require implementation.
 Folder moves use the positional REST endpoint and verify numeric space identity
 against folder metadata; journal migration preserves existing page move intents.
 Public NFS RW remains gated.

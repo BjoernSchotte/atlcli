@@ -45,6 +45,8 @@ export interface VfsNode {
 
 /** The subset of `fs.Stats` the frontends need. */
 export interface VfsStat {
+  /** Current basename for real content directories; avoids resolving metadata twice in mounts. */
+  canonicalName?: string;
   kind: VfsNodeKind;
   isDirectory: boolean;
   isFile: boolean;

@@ -1111,6 +1111,16 @@ with socket.socket() as client:
     expect(reusedId).not.toBe(emptyId);
     expect(client.callsTo("createPage")).toBe(3);
 
+    const retitledDirectory = join(mountpoint, "child-31-431", "retitled-430");
+    const retitleDescriptor = await open(join(movedDirectory, "_index.md"), "r");
+    try {
+      await rename(movedDirectory, retitledDirectory);
+      expect(client.peekPage("430")?.title).toBe("Retitled");
+      expect((await retitleDescriptor.readFile()).toString()).toContain("Test");
+      expect((await readFile(join(retitledDirectory, "_index.md"))).toString()).toContain("Test");
+      await expect(stat(movedDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await retitleDescriptor.close(); }
+
     }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [

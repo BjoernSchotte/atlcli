@@ -3518,3 +3518,39 @@ Remaining namespace work includes page-directory retitles, cross-space moves,
 folder removal, parentless root-item coverage, receipt eviction and explicit
 resolution of confirmed-negative outcomes. Native SIGKILL during a folder move
 is not established by these tests. The public CLI RW gate remains enabled.
+
+
+## Slice 133 — journaled page-directory retitles and canonical NFS names
+
+NFS now retitles page directories in their current parent when the new name
+retains the page ID and uses the canonical slug. The existing move journal
+freezes the target title; fresh metadata reconciles lost replies without a
+second update. Open directory/body handles retain the same identity. Invalid
+ID changes, ID-less names, folder retitles and combined reparent/retitle reject
+before a new intent is admitted. Those unsupported cases remain explicit.
+
+The core intentionally resolves by ID even for an old slug. NFS must instead
+report only the current directory name, otherwise a native rename can see two
+names for the same inode before the operation. Its directory-name check now
+uses the canonical name already available in core stat metadata; old handles
+relocate by ID while old directory lookups return ENOENT.
+
+- macOS/Linux broad core + NFS filesystem/journal/publisher suites: 514 passed /
+  2619 assertions each. Initial sandboxed macOS run could not bind a contract
+  test's loopback server; rerun with the existing test permission passed.
+- Native RW/editor/retitle plus 600-entry directory mutation: two passed / 678
+  assertions on each host. Retitle keeps an open descriptor readable and removes
+  the old directory name.
+- A duplicate resolve initially regressed Linux fresh listing to 5502ms. Reusing
+  stat metadata brought it to 4165ms (4752ms initial cursor); macOS final sample
+  was 995ms fresh / 249ms initial cursor. These are individual acceptance runs,
+  not the final five-run benchmark.
+- Linux DOCSY retitle: one passed / seven assertions; exact new title, unchanged
+  parent/body, stable handles, old-name absence and cleared journal verified.
+  Test page deleted. Typecheck: all four tasks passed.
+
+A separate DOCSY probe created a folder without an explicit parent: Confluence
+assigned a parent and its VFS path was accessible. This does not prove support
+for genuinely parentless items. Remaining: ID-less directory aliases, combined
+retitle/reparent, cross-space moves, removal/recovery work and final acceptance.
+Public CLI NFS RW remains gated.
