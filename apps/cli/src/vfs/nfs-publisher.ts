@@ -27,7 +27,10 @@ export class NfsPublisher {
       await this.running.get(id)?.catch(() => {});
       if (this.stopped || this.timers.get(id) !== timer) return;
       this.timers.delete(id);
-      await this.publish(id).catch(() => {}); // Durable error/pending state stays in the journal.
+      const result = await this.publish(id).catch(() => null); // Durable errors stay in the journal.
+      // Recovery may first reconcile an older intent; no new editor event will
+      // schedule the newer bytes that were already durable before restart.
+      if (result && !this.timers.has(id) && this.journal.pendingIds().includes(id)) this.schedule(id);
     }, 500);
     timer.unref();
     this.timers.set(id, timer);

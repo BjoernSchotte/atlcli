@@ -2554,3 +2554,24 @@ This is intended behavior, not a claim that the quiet window detects save end.
 Public RW lifecycle/recovery, remaining namespace operations, and final platform
 and fault gates remain open; acceptance of intermediate versions does not waive
 those requirements.
+
+
+## Slice 97 — drain recovered edits behind an older intent
+
+A red/green regression reproduced a recovery stall: an API update succeeded but
+its reply was lost, newer bytes were staged, and the publisher restarted. Resume
+reconciled the older intent but never scheduled the already-durable newer image.
+Automatic publication now schedules another quiet window after a successful
+result if the page remains pending and no newer timer already covers it. Errors
+remain retained without introducing an unbounded retry loop; existing timers
+are not postponed. The pending-ID query does not materialize page bodies.
+
+The regression verifies automatic convergence to the latest bytes, exactly the
+expected remote version, and removal of the reconciled intent without another
+editor event. It restarts the publisher against the retained journal; separate
+journal tests cover actual process crashes and reopen.
+
+- macOS/Linux journal and publisher suites: 54 tests / 597 assertions each.
+- Native macOS existing-page save/refresh test: 37 assertions.
+- Linux live DOCSY journal publication/replay/replacement: 13 assertions; test
+  page cleaned up. All four typecheck tasks passed.

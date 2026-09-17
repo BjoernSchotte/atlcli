@@ -393,3 +393,23 @@ it("publishes an accepted intermediate version when a valid prefix precedes a de
   expect(client.peekPage("100")?.storage).toContain("Delayed suffix");
   expect(client.callsTo("updatePage")).toBe(2);
 });
+
+
+it("automatically drains newer saved bytes after reconciling an interrupted publication", async () => {
+  const { client, vfs, journal, original, stage, publisher } = await fixture();
+  const update = client.updatePage.bind(client);
+  client.updatePage = async params => { await update(params); throw new Error("Lost response"); };
+  stage(original.replace("Original", "First"));
+  await expect(publisher.publish("100")).rejects.toThrow();
+  stage(original.replace("Original", "Latest"));
+  await publisher.stop();
+  client.updatePage = update;
+  const recovered = new NfsPublisher(journal, vfs, ["DOCSY"]);
+  try {
+    recovered.resume();
+    await until(() => journal.pendingIds().length === 0);
+    expect(client.peekPage("100")?.version).toBe(3);
+    expect(client.peekPage("100")?.storage).toContain("Latest");
+    expect(journal.publishIntent("100")).toBeNull();
+  } finally { await recovered.stop(); }
+});
