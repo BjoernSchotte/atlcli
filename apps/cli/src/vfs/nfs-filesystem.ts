@@ -244,6 +244,12 @@ export class NfsFilesystem {
   }
 
   async lookup(parent: number, name: string): Promise<number> {
+    return this.lookupAt(parent, name);
+  }
+
+  // Only directoryView supplies knownDirectory after resolving/listing the parent.
+  // Child registration still checks each object's identity and export scope.
+  private async lookupAt(parent: number, name: string, knownDirectory?: string): Promise<number> {
     if (!name || /[\/\0]/.test(name)) {
       throw new VfsError("EINVAL", "Invalid NFS filename");
     }
@@ -262,8 +268,8 @@ export class NfsFilesystem {
       if (marker !== undefined) return marker;
       if (isClientDropping(name)) throw new VfsError("ENOENT", "No such file");
     }
-    const directory = await this.pathFor(parent);
-    if (!(await this.stat(directory)).isDirectory) throw new VfsError("ENOTDIR", "Not a directory");
+    const directory = knownDirectory ?? await this.pathFor(parent);
+    if (knownDirectory === undefined && !(await this.stat(directory)).isDirectory) throw new VfsError("ENOTDIR", "Not a directory");
     if (name === ".") return parent;
     if (name === "..") return directory === this.root ? 1 : this.register(posix.dirname(directory));
     return this.register(posix.join(directory, name));
@@ -285,7 +291,7 @@ export class NfsFilesystem {
     const ids: number[] = [];
     // Bound pending lookup work independently of the number of directory entries.
     for (let offset = 0; offset < names.length; offset += 32) {
-      const batch = await Promise.allSettled(names.slice(offset, offset + 32).map(name => this.lookup(id, name)));
+      const batch = await Promise.allSettled(names.slice(offset, offset + 32).map(name => this.lookupAt(id, name, path)));
       // Drain a failed batch too: retries must not accumulate detached lookups.
       for (const result of batch) {
         if (result.status === "rejected") throw result.reason;

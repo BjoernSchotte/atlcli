@@ -3275,3 +3275,36 @@ All final verification runs completed successfully. This checkpoint does not clo
 native directory mutation implementation, durable namespace recovery, Linux
 VS Code/macOS TextEdit autosave coverage, full repository CI/build or final
 performance/memory/capability acceptance.
+
+
+## Slice 124 — avoid repeated parent resolution during NFS enumeration
+
+The 600-entry native test now separates draining its active cursor from a fresh
+listing. Before this fix on Linux those phases took 5434ms and 4956ms: the prior
+11-second whole-test time was not a direct external-change latency measurement.
+Directory enumeration re-resolved and statted its parent for every child. It now
+passes the already resolved/listed parent privately to child lookup; filename,
+child identity and export-scope checks still run, and batches remain bounded at
+32. No new persistent cache or dependency was added.
+
+Regression checks compare parent-stat work with zero and 200 added children,
+require every child to be checked, and test bounded/drained backend fan-out on
+failure. The existing fan-out test now injects its error at the backend stat
+boundary rather than the public lookup wrapper.
+
+- macOS/Linux filesystem suites: 58 passed / 709 assertions each.
+- macOS broad core/mount suite: 668 passed, 32 skipped, 3319 assertions.
+- Native 600-entry mutation case: macOS and Linux each passed / 613 assertions.
+  Final cursor/fresh-list phases: macOS 134/687ms; Linux 3964/4003ms.
+  An earlier post-fix Linux sample was 4085/3913ms. These are individual samples,
+  not a five-run benchmark. The final Linux whole test fell to 8.1s from 10.5s.
+- The native regression now checks actual fresh-list elapsed time <5000ms, so
+  one overlong listing cannot pass merely because it eventually returned the
+  expected names. This applies after advancing the core TTL clock in the test,
+  not as a universal five-second external-edit SLA.
+- Linux native DOCSY publication: one pass / 36 assertions, 68s, cleanup complete.
+- Typecheck: all four tasks passed.
+
+Remaining work includes native directory mutation wiring/recovery and final
+performance, memory, full editor and CLI acceptance. This optimization does not
+claim those requirements complete.

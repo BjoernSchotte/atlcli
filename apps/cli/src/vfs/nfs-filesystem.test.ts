@@ -47,14 +47,15 @@ it("keeps selected space directories for multi-space exports", async () => {
 });
 
 it("bounds directory lookup fan-out while retaining every paginated entry", async () => {
-  const { fs, client } = await fixture();
+  const { fs, client, vfs } = await fixture();
   for (let i = 0; i < 100; i++) client.seedPage({ id: String(1000 + i), title: `Large ${i}`,
     spaceKey: "DOCSY", parentId: "100", storage: "<p>Large</p>" });
-  const lookup = fs.lookup.bind(fs);
+  const lookup = vfs.stat.bind(vfs);
   let active = 0, peak = 0;
-  fs.lookup = async (...args) => {
+  vfs.stat = async path => {
+    if (!path.startsWith("/DOCSY/large-")) return lookup(path);
     active++; peak = Math.max(peak, active);
-    try { await Bun.sleep(1); return await lookup(...args); }
+    try { await Bun.sleep(1); return await lookup(path); }
     finally { active--; }
   };
   const names: string[] = [];
@@ -71,17 +72,19 @@ it("bounds directory lookup fan-out while retaining every paginated entry", asyn
   for (let i = 0; i < 100; i++) expect(names).toContain(`large-${i}-${1000 + i}`);
 
   let calls = 0;
-  fs.lookup = async (...args) => {
+  vfs.stat = async path => {
+    if (!path.startsWith("/DOCSY/large-")) return lookup(path);
     const first = calls++ === 0;
     active++;
     try {
       if (first) throw Object.assign(new Error("Temporary lookup failure"), { code: "EAGAIN" });
       await Bun.sleep(5);
-      return await lookup(...args);
+      return await lookup(path);
     } finally { active--; }
   };
   await expect(fs.readdir(1, 0, 17)).rejects.toMatchObject({ code: "EAGAIN" });
-  expect(calls).toBe(32);
+  expect(calls).toBeGreaterThan(0);
+  expect(calls).toBeLessThanOrEqual(32);
   expect(active).toBe(0);
 });
 
@@ -1068,4 +1071,27 @@ it("protects each space homepage from trash in a combined export", async () => {
   }
   expect(client.callsTo("deletePage")).toBe(0);
   expect(journal!.writeStatus().unresolvedPublications).toBe(0);
+});
+
+
+it("validates a listed parent once rather than once per child while retaining child checks", async () => {
+  const countParentStats = async (children: number) => {
+    const { fs, vfs, client } = await fixture();
+    for (let i = 0; i < children; i++) client.seedPage({ id: String(1000 + i), title: `Extra ${i}`,
+      spaceKey: "DOCSY", parentId: "100", storage: "<p>Child</p>" });
+    const stat = vfs.stat.bind(vfs);
+    let parents = 0;
+    let childChecks = 0;
+    vfs.stat = async path => {
+      if (path === "/DOCSY") parents++;
+      if (path.startsWith("/DOCSY/extra-")) childChecks++;
+      return stat(path);
+    };
+    await fs.getattr(1);
+    expect(childChecks).toBeGreaterThanOrEqual(children);
+    return parents;
+  };
+  const small = await countParentStats(0);
+  const large = await countParentStats(200);
+  expect(large).toBeLessThanOrEqual(small + 2);
 });

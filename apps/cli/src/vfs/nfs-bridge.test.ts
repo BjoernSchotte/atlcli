@@ -1046,6 +1046,7 @@ with socket.socket() as client:
         console.error(`Glow native listing ${timing.listingMs.toFixed(1)}ms; selected view ${timing.renderMs.toFixed(1)}ms`);
       }
       if (mutation) {
+        const started = performance.now();
         const path = join(mountpoint, "mutation-9000");
         const before = (await vfs.readdir("/DOCSY/mutation-9000")).map(entry => entry.name).sort();
         const cursor = await opendir(path, { bufferSize: 1 });
@@ -1077,6 +1078,7 @@ with socket.socket() as client:
             !["item-500-9500", "item-501-9501", "renamed-9501", "inserted-9999"].includes(name)).sort();
           expect(stable(seen)).toEqual(stable(before));
         }
+        const drained = performance.now();
         const expected = before.filter(name => !["item-500-9500", "item-501-9501"].includes(name))
           .concat("renamed-9501", "inserted-9999").sort();
         let after: string[] = [];
@@ -1089,6 +1091,9 @@ with socket.socket() as client:
           await Bun.sleep(100);
         } while (performance.now() < deadline);
         expect(after).toEqual(expected);
+        const freshMs = performance.now() - drained;
+        expect(freshMs).toBeLessThan(5000);
+        console.error(`Directory mutation: initial cursor ${(drained - started).toFixed(1)}ms; fresh listing ${freshMs.toFixed(1)}ms; restarted=${restart}`);
       }
       if (visibility) {
         const missing = join(mountpoint, "new-page-999", "_index.md");

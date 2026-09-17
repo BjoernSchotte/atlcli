@@ -544,3 +544,7 @@ concerns actual Confluence folders, not pages represented as directories.
 Moving a page using its unchanged canonical directory name preserves its exact
 Confluence title, including case, punctuation and Unicode. A move does not infer
 a new title from the lossy filename slug or upload the body just to retitle it.
+
+NFS directory enumeration checks the parent once per listing and validates child
+identities in bounded batches. Large listings still scale with their entry count;
+core metadata TTL and kernel caching both affect external-change visibility.
