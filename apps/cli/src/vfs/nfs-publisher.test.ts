@@ -360,3 +360,18 @@ it("prepares a newer revision again when edits arrive before intent persistence"
   expect(client.callsTo("updatePage")).toBe(1);
   expect(client.peekPage("100")?.storage).toContain("Latest preparation");
 });
+
+
+it("completes a reconciled save at the existing remote version", async () => {
+  const { client, vfs, journal, original, stage, publisher } = await fixture();
+  stage("temporary editor content");
+  stage(original);
+  // A stale core index proposes an already-existing version. The core refetch
+  // proves the storage already matches and returns that version without another version.
+  vfs.index.upsert({ id: "100", version: 0 });
+  const result = await publisher.publish("100");
+  expect(result?.version).toBe(1);
+  expect(client.peekPage("100")?.version).toBe(1);
+  expect(journal.pendingIds()).toEqual([]);
+  expect(journal.publishIntent("100")).toBeNull();
+});

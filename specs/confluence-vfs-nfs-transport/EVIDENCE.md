@@ -2509,3 +2509,26 @@ claimed as complete recovery of every case from Slice 93.
 - Native macOS save/refresh: 37 assertions.
 - Linux real DOCSY journal publication/replay/replacement: 13 assertions, fixture
   cleaned up. All four typecheck tasks passed.
+
+
+## Slice 95 — acknowledge same-version reconciliation
+
+A regression reproduced a real core/journal contract mismatch: after temporary
+editor writes return to the original bytes, a stale core index can propose an
+already-existing remote version. The core refetches, compares storage, and
+correctly returns the current version without creating another one. The journal
+previously rejected that equal-version success and left the page pending.
+
+Completion now accepts a confirmed version equal to the frozen base. Versions
+below the base and mismatched local revisions remain rejected. Newer local bytes
+remain pending when an older image is acknowledged. No optimistic local
+no-change shortcut bypasses the authoritative core result.
+
+- Red/green publisher regression exercises the actual core and fake API conflict
+  response, not a stubbed successful result.
+- macOS/Linux journal/publisher suites: 52 tests / 585 assertions each.
+- Native macOS save/refresh: 37 assertions; real Linux DOCSY publication and
+  replacement: 13 assertions, fixture cleaned up. All four typecheck tasks passed.
+
+This does not promise every identical editor save avoids a PUT; it ensures a
+core-confirmed reconciliation does not become a false pending failure.

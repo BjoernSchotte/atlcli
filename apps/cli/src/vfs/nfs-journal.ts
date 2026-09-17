@@ -419,7 +419,7 @@ export class NfsJournal {
     if (!Number.isSafeInteger(remoteVersion) || remoteVersion < 1) throw new Error("Invalid remote version");
     this.db.transaction(() => {
       const intent = this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);
-      if (!intent || intent.revision !== revision || remoteVersion <= intent.baseVersion) throw new Error("Stale NFS publication result");
+      if (!intent || intent.revision !== revision || remoteVersion < intent.baseVersion) throw new Error("Stale NFS publication result");
       this.db.run("UPDATE files SET baseVersion=?, publishedRevision=?, error=NULL WHERE id=?", [remoteVersion, revision, id]);
       this.db.run("INSERT OR REPLACE INTO bases SELECT id, bytes FROM intents WHERE id=?", [id]);
       this.db.run("DELETE FROM intents WHERE id=?", [id]);

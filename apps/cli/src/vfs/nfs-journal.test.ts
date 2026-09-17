@@ -615,3 +615,19 @@ it("rolls back refresh quota failures and preserves displaced clean pages", () =
   expect(recovered.get("100")).toEqual(before);
   expect(recovered.displaced("/DOCSY/page")?.id).toBe("100");
 });
+
+
+it("accepts confirmed same-version completion but rejects older versions and stale revisions", () => {
+  const { journal } = fixture();
+  journal.admit("100", "/DOCSY/page", bytes("before"), 3);
+  journal.write("100", 0, bytes("staged"));
+  const intent = journal.beginPublish("100")!;
+  expect(() => journal.completePublish("100", intent.revision, 2)).toThrow("Stale");
+  expect(() => journal.completePublish("100", intent.revision + 1, 3)).toThrow("Stale");
+  journal.write("100", 0, bytes("newest"));
+  journal.completePublish("100", intent.revision, 3);
+  expect(Buffer.from(journal.get("100")!.bytes).toString()).toBe("newest");
+  expect(journal.pendingIds()).toEqual(["100"]);
+  expect(journal.publishIntent("100")).toBeNull();
+  expect(Buffer.from(journal.publishedSource("100")!).toString()).toBe("staged");
+});
