@@ -1,7 +1,8 @@
 # Optional NFS transport for Confluence mounts
 
-Status: implementation in progress; read-only CLI mounts pass native macOS and
-Linux DOCSY reads and signal shutdown. Full lifecycle and read/write acceptance remain open.
+Status: experimental RO/RW implementation enabled and native packaged lifecycle
+tests passed on all four declared platforms. Final required CI and the complete
+requirement audit remain open; this is not yet final acceptance.
 See [evidence](EVIDENCE.md) and the [acceptance checkpoint](ACCEPTANCE.md).
 Baseline: PR #202, merged as `8b08ad65` on 2026-09-16.
 
@@ -49,7 +50,7 @@ atlcli wiki mount ~/mnt/docsy-nfs --profile mayflower --space DOCSY --mode ro --
 # Multiple spaces retain their directories. Both are read-only here.
 atlcli wiki mount ~/mnt/wiki-nfs --profile mayflower --space DOCSY,mayflower --mode ro --transport nfs
 
-# Available only after the write-durability acceptance gate passes.
+# Experimental automatic publication after durable local staging.
 atlcli wiki mount ~/mnt/docsy-nfs --profile mayflower --space DOCSY --mode rw --transport nfs
 
 atlcli wiki mount list

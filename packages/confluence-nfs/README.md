@@ -31,12 +31,13 @@ The manifest identifies the actual local tree even for an uncommitted build.
 This is provenance, not a signature or a byte-reproducibility certification.
 
 Native target mapping covers macOS arm64/x64 and Linux arm64/x64 (GNU libc).
-Native helper mounts passed on all four architectures in CI run 35153148522:
-Linux glibc 2.35, macOS arm64 14.8.9 and macOS x64 15.7.9. The shell installer passed the same four native CI lanes. Homebrew support is
-prepared in [tap draft PR #1](https://github.com/BjoernSchotte/homebrew-tap/pull/1),
-with actual macOS arm64/Linux x64 installation proof; merging the tap and complete
-packaged CLI acceptance remain WP5 work; do not
-label these artifacts a complete release bundle. Windows continues to use WebDAV.
+Native release-helper and packaged RO/RW mounts passed on all four architectures
+in [CI run 35261770483](https://github.com/BjoernSchotte/atlcli/actions/runs/35261770483),
+including shell installer and real Homebrew installation, formula tests and
+compiled CLI lifecycle checks. The Linux baseline is GNU libc 2.35. The Homebrew
+formula update is prepared in [tap draft PR #1](https://github.com/BjoernSchotte/homebrew-tap/pull/1).
+These are review bundles; no release or tap merge is performed by this feature
+work. Windows continues to use WebDAV.
 
 ## Native CI matrix
 
@@ -79,15 +80,19 @@ release workflow now builds native companions on the four declared Unix runners
 and passes them into this builder; Windows retains its CLI-only archive. Draft
 NFS CI also builds/extracts review archives, runs both offline version commands,
 and uses the extracted helper for kernel tests. The shell installer is exercised
-against that archive on every native lane; the separate Homebrew draft and its
-remaining native architecture coverage are tracked in the evidence.
+against that archive on every native lane. Each lane also installs the review
+bundle through the prepared Homebrew formula in an isolated temporary tap,
+executes its tests and repeats the compiled CLI lifecycle through that install.
 
 ## Compiled CLI acceptance
 
 Place `atlcli-confluence-nfs` next to a compiled `atlcli`. Without
 `ATLCLI_NFS_HELPER`, the mount command discovers this companion automatically.
 The credential-free smoke test mounts against a local Confluence stand-in,
-reads Unicode, rejects writes in RO and verifies signal-driven normal detach:
+reads Unicode, rejects writes in RO, publishes RW saves and verifies signal,
+busy-mount, explicit-unmount and helper-loss cleanup. It also creates a plain
+Markdown page with Vim, verifies the original filename remains an alias, and
+exports pending durable bytes after helper loss:
 
 ```sh
 ATLCLI_VFS_TEST_BINARY=/path/to/extracted/atlcli ATLCLI_NFS_KERNEL=1 \
@@ -110,7 +115,9 @@ env -u ATLCLI_NFS_TEST_HELPER -u ATLCLI_NFS_HELPER \
 
 This requires the local mayflower profile and native NFS mount privileges.
 The test covers normal, busy, explicit and helper-crash shutdown and cleans up
-its own mounts. Keep the companion and CLI on the same bridge protocol version.
+its own mounts. The `rw-save` case creates, updates and deletes an owned DOCSY
+fixture; `combined` only reads DOCSY and mayflower through their separate roots.
+Keep the companion and CLI on the same bridge protocol version.
 
 ## Related documents
 
@@ -128,7 +135,13 @@ binding. This is restart isolation, not local-user authentication; remount after
 restarting the helper. No new dependency or persistent token is needed.
 
 
-The Bun-side NfsJournal is a tested foundation, not an enabled NFS write path.
+The public experimental `--transport nfs --mode rw` path uses the Bun-side
+NfsJournal. WRITE/COMMIT acknowledge durable local bytes; valid snapshots publish
+automatically after the 500 ms quiet window. Intermediate versions are possible
+for delayed multipart saves. `--sync-writes` is rejected for NFS. Plain new
+Markdown files need no frontmatter and retain their original path as a virtual
+alias after publication. See the [VFS guide](../../docs/agents/confluence-vfs.md)
+for publication status, conflicts, recovery export and opt-in trash.
 Its default logical limits are 256 MiB of staged/intent bytes, 64 MiB per file,
 and 4,096 files; IDs and paths are limited to 256 and 4,096 UTF-8 bytes. Existing
 recovered records remain readable when limits are reduced. Unresolved publication

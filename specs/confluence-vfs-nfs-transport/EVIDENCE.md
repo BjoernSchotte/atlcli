@@ -4526,3 +4526,18 @@ scan, harness build/typecheck and root typecheck passed. Linux compiled DOCSY
 RW LIVE passed again (1 / 15, 4.17 seconds), with owned fixture cleanup. This
 fix concerns the pre-existing browser canary, not NFS runtime behavior. Remote
 confirmation remains pending a full CI run on this commit.
+
+## Slice 167: compiled combined-space LIVE repeat and current helper docs
+
+Extended the existing compiled/source CLI lifecycle test with a strictly RO
+combined-space case. Against the Slice 163 compiled Linux review bundle,
+DOCSY and mayflower appeared as separate directories, no flat root `_index.md`
+was exposed, both homepage bodies were readable, and normal signal shutdown
+removed the mount/state. One test / 14 assertions passed in 2.81 seconds;
+no pages were created or changed.
+
+Updated helper README and the plan/checkpoint introduction to reflect enabled
+public RW, durable-local vs delayed-remote acknowledgement, plain new-file
+aliases, rejected synchronous writes, and four-platform packaged/Homebrew
+proof. No release/tap merge is implied. Remaining final acceptance work is
+still explicit rather than checking off the plan wholesale.

@@ -17,7 +17,7 @@ const run = process.env.ATLCLI_NFS_CLI_E2E === "1";
 const binary = process.env.ATLCLI_NFS_TEST_CLI;
 const command = binary ? [resolve(binary)] : [process.execPath, "--conditions=development", "run", "--cwd",
   resolve(import.meta.dir, "../.."), "src/index.ts"];
-for (const scenario of ["signal", "busy", "explicit", "helper-crash", "helper-crash-busy", "parent-crash", "rw-save"] as const) {
+for (const scenario of ["signal", "busy", "explicit", "helper-crash", "helper-crash-busy", "parent-crash", "rw-save", "combined"] as const) {
 it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${scenario}`, async () => {
   const root = mkdtempSync(join(tmpdir(), "atlcli-nfs-cli-"));
   const mountpoint = join(root, "wiki docs");
@@ -43,7 +43,7 @@ it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${sc
   if (helper) env.ATLCLI_NFS_HELPER = helper;
   else delete env.ATLCLI_NFS_HELPER; // Compiled tests prove adjacent companion discovery.
   const child = spawn(command[0]!, [...command.slice(1),
-    "wiki", "mount", mountpoint, "--profile", "mayflower", "--space", "DOCSY", "--mode", mode,
+    "wiki", "mount", mountpoint, "--profile", "mayflower", "--space", scenario === "combined" ? "DOCSY,mayflower" : "DOCSY", "--mode", mode,
     "--transport", "nfs", "--cache-dir", cache, "--json"], {
     cwd: resolve(import.meta.dir, "../../../.."), env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -78,7 +78,12 @@ it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${sc
         "127.0.0.1:/", mountpoint])).toBe(0);
     }
     expect(isMounted(mountpoint)).toBe(true);
-    const file = await open(join(mountpoint, "_index.md"), "r");
+    if (scenario === "combined") {
+      expect(readdirSync(mountpoint)).toEqual(expect.arrayContaining(["DOCSY", "mayflower"]));
+      expect(readdirSync(mountpoint)).not.toContain("_index.md");
+      expect((await readFile(join(mountpoint, "mayflower", "_index.md"))).byteLength).toBeGreaterThan(0);
+    }
+    const file = await open(join(mountpoint, ...(scenario === "combined" ? ["DOCSY"] : []), "_index.md"), "r");
     try { expect((await file.readFile()).byteLength).toBeGreaterThan(0); }
     finally { await file.close(); }
     if (fixture) {
