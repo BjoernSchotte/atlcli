@@ -2869,3 +2869,27 @@ bytes. Export isolation and negative confirmations have focused coverage. The
 supports the explicit status query without requesting a body.
 Unknown outcomes lacking positive confirmation still need a recovery decision;
 directory parity, full editor acceptance and the public RW gate remain open.
+
+## Slice 110 — reuse original filenames after confirmed trash
+
+The new regression reproduced a real namespace bug: after creating and deleting
+`newpage.md`, CREATE of the same name failed with ENOENT because its durable
+promotion still redirected registration to the trashed page. `completeTrash` now
+atomically retires the promotion and exclusive-CREATE verifier along with recording
+completion. Pending/unknown trash retains its alias. The page bytes and tombstone
+remain recoverable; old handles cannot mutate the replacement page.
+
+- macOS/Linux journal, filesystem and publisher suites: 128 tests / 1423 assertions
+  each. Includes close/reopen, uncertain-versus-confirmed alias retirement, new ID
+  allocation, stale-handle rejection and preservation of the deleted page image.
+- Native macOS/Linux NFS suites: 53 assertions each. An empty Markdown page is
+  published, unlinked, and recreated at the same filename under a different ID.
+- Linux native live DOCSY/Vim: 36 assertions, including create, backup-style save,
+  unlink and another Vim creation at the original filename. API readback confirms
+  the distinct new page ID and content. Fixtures were trashed and the owned mount
+  detached normally. The separate external-refresh probe took 55,867 ms at the
+  default core TTL; the full test took about 68 seconds.
+- All four typecheck tasks passed; diff whitespace validation passed.
+
+This closes the confirmed-trash filename reuse bug. It does not establish full
+directory rename/removal parity or complete the remaining editor/fault matrix.

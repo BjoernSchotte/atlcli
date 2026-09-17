@@ -772,6 +772,26 @@ it("durably reserves clean pages for trash and preserves bytes against later mut
   expect(Buffer.from(recovered.get("100")!.bytes).toString()).toBe("published");
 });
 
+it("retires creation aliases only on confirmed trash and preserves the tombstone across reopen", () => {
+  const { path, journal } = fixture();
+  const local = journal.createLocal("/DOCSY/new.md", "0123456789abcdef");
+  const image = journal.write(local.id, 0, bytes("Original"));
+  journal.beginCreate(local.id, local.path, "DOCSY", "100", image.revision);
+  journal.recordCreated(local.id, image.revision, "123", 1);
+  journal.promoteCreated(local.id, "/DOCSY/new-123.md");
+  journal.beginTrash("123", "/DOCSY/new-123.md", "DOCSY");
+  expect(journal.promotion(local.path)?.pageId).toBe("123");
+  journal.completeTrash("123");
+  journal.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(reopened.promotion(local.path)).toBeNull();
+  expect(reopened.promotion(local.id)).toBeNull();
+  expect(reopened.exclusivePageReplay("/DOCSY/new-123.md", "0123456789abcdef")).toBeNull();
+  expect(reopened.trashIntent("123")?.completed).toBe(1);
+  expect(Buffer.from(reopened.get("123")!.bytes).toString()).toBe("Original");
+  expect(reopened.createLocal(local.path).id).not.toBe(local.id);
+});
+
 it("refuses trash of dirty, displaced, foreign and unresolved pages", () => {
   const { journal } = fixture();
   journal.admit("100", "/DOCSY/page/_index.md", bytes("published"), 1);

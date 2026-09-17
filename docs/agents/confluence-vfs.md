@@ -454,6 +454,10 @@ The create-only guard prevents overwriting an occupied page. Confirmed creations
 retain their original filehandle and a durable virtual filename alias, so later
 saves to `newpage.md` update the same page as its canonical name containing the
 page ID. This is not an OS symlink that an atomic editor save could replace.
+Confirmed trash releases that original filename for a new page with a new ID;
+old filehandles cannot write to the replacement. Uncertain trash retains the
+alias until the remote outcome is confirmed. Saved recovery bytes remain in the
+journal after the alias is released.
 Hidden drafts, swap suffixes and recorded page backups are not published.
 An uncertain create response is retained for reconciliation without blindly
 retrying the POST. Full editor coverage and automatic reconciliation remain open.

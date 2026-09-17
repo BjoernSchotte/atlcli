@@ -975,6 +975,27 @@ it("queues atomic editor replacement of an unpublished Markdown draft", async ()
   expect(id).not.toBeNull();
 });
 
+it("reuses a trashed new-page alias without redirecting its old handle", async () => {
+  const { fs, vfs, client, journal } = await fixture(["DOCSY"], "rw", undefined, true);
+  const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+  try {
+    const oldHandle = await fs.create(1, "newpage.md");
+    const localId = await fs.write(oldHandle, 0, Buffer.from("First page"));
+    const first = (await publisher.publish(localId!))!;
+    await fs.remove(1, "newpage.md");
+    expect(client.isTrashed(first.pageId)).toBe(true);
+    const newHandle = await fs.create(1, "newpage.md");
+    expect(newHandle).not.toBe(oldHandle);
+    const nextId = await fs.write(newHandle, 0, Buffer.from("Replacement page"));
+    const second = (await publisher.publish(nextId!))!;
+    expect(second.pageId).not.toBe(first.pageId);
+    expect(client.peekPage(second.pageId)?.storage).toContain("Replacement page");
+    await expect(fs.write(oldHandle, 0, Buffer.from("stale"))).rejects.toMatchObject({ code: "ESTALE" });
+    expect(Buffer.from(journal!.get(first.pageId)!.bytes).toString()).toBe("First page");
+    expect(client.callsTo("createPage")).toBe(2);
+  } finally { await publisher.stop(); }
+});
+
 
 it("queues empty regular and exclusive Markdown creates but not editor temporary files", async () => {
   const { fs, journal } = await fixture(["DOCSY"], "rw", undefined, true);

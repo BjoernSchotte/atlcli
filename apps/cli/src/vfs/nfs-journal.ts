@@ -553,8 +553,13 @@ export class NfsJournal {
   }
 
   completeTrash(id: string): void {
-    if (!this.trashIntent(id)) throw new VfsError("ENOENT", "Unknown trash intent");
-    this.db.run("UPDATE trash SET completed=1 WHERE id=?", [id]);
+    this.db.transaction(() => {
+      if (!this.trashIntent(id)) throw new VfsError("ENOENT", "Unknown trash intent");
+      this.db.run("UPDATE trash SET completed=1 WHERE id=?", [id]);
+      // Retire the name, not the recoverable image or its tombstone.
+      this.db.run("DELETE FROM promotions WHERE pageId=?", [id]);
+      this.db.run("DELETE FROM page_verifiers WHERE id=?", [id]);
+    }).immediate();
   }
 
   private assertNotTrashing(id: string): void {

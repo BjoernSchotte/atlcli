@@ -946,6 +946,15 @@ with socket.socket() as client:
     expect(journal!.trashIntent(emptyId!)?.completed).toBe(1);
     expect(client.callsTo("deletePage")).toBe(1);
 
+    const reused = await open(join(mountpoint, "empty.md"), "wx");
+    await reused.close();
+    const reuseDeadline = Date.now() + 5000;
+    while (!journal!.promotion("/DOCSY/empty.md") && Date.now() < reuseDeadline) await Bun.sleep(50);
+    const reusedId = journal!.promotion("/DOCSY/empty.md")?.pageId;
+    expect(reusedId).toBeDefined();
+    expect(reusedId).not.toBe(emptyId);
+    expect(client.callsTo("createPage")).toBe(3);
+
     }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [

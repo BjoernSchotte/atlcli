@@ -207,6 +207,15 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       newPageId = undefined;
       await expect(client.getPage(trashedId)).rejects.toMatchObject({ status: 404 });
 
+      await promisify(execFile)("vim", [...vim, "-c", "call setline(1, 'Reused original filename')", "-c", "wq"], { timeout: 10000 });
+      const reuseDeadline = Date.now() + 15000;
+      while (!journal.promotion(alias) && Date.now() < reuseDeadline) await Bun.sleep(50);
+      newPageId = journal.promotion(alias)?.pageId;
+      expect(newPageId).toBeDefined();
+      created.push(newPageId!);
+      expect(newPageId).not.toBe(trashedId);
+      expect((await client.getPage(newPageId!)).storage).toContain("Reused original filename");
+
     } finally {
       if (mounted) {
         const detach = platform() === "linux" ? ["sudo", "-n", "umount", local] : ["umount", local];
