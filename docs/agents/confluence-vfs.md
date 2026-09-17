@@ -223,6 +223,11 @@ Linux davfs2 uploads asynchronously and its local readback can lag behind a save
 the native editor tests wait for both backend content and mounted-file visibility.
 Keep the mount running until outstanding uploads finish. Local WebDAV editor
 backups are session data, not the durable recovery journal used by NFS.
+TextEdit can create a plain-text `.md` document and save subsequent edits through
+either transport. Repeated WebDAV safe-saves use the standard MOVE overwrite
+default when the header is absent; explicit `Overwrite: F` still rejects an
+occupied destination. TextEdit's macOS document-version history is unavailable
+on these mounts; this is separate from Confluence page versions.
 
 
 ### Find recently changed pages without body downloads

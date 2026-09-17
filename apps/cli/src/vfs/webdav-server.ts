@@ -91,6 +91,15 @@ export async function startWebdavServer(
       : {}),
   });
 
+  // webdav-server 2.6.3 treats an omitted Overwrite as F; RFC 4918 §10.6
+  // requires T. TextEdit omits it on repeated safe-save replacements.
+  server.beforeRequest((ctx, next) => {
+    if (ctx.request.method === "MOVE" && ctx.request.headers.overwrite === undefined) {
+      ctx.request.headers.overwrite = "T";
+    }
+    next();
+  });
+
   // One sweep detector for the whole volume: an indexer walking three spaces
   // is one sweep, not three.
   const sweepDetector = new SweepDetector(50, 10_000, options.onSweep);

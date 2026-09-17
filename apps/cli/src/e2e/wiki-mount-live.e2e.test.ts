@@ -492,6 +492,13 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     expect(await (await fetch(url)).text()).toContain("Live plain WebDAV replacement");
     const unlocked = await fetch(url, { method: "UNLOCK", headers: { "Lock-Token": `<${token}>` } });
     await unlocked.text();
+    const draftUrl = `${url.href}.sb-repeat`;
+    const staged = await fetch(draftUrl, { method: "PUT", body: "Live repeated TextEdit save" });
+    expect(staged.status).toBe(201); await staged.text();
+    const replacement = await fetch(draftUrl, { method: "MOVE", headers: { Destination: url.href } });
+    expect(replacement.status).toBe(204); await replacement.text();
+    expect((await client.getPage(id)).storage).toContain("Live repeated TextEdit save");
+    expect((await vfs.resolve(path)).id).toBe(id);
     const backup = await fetch(`${url.href}~`, { method: "DELETE" });
     expect(backup.status).toBe(200); await backup.text();
   });

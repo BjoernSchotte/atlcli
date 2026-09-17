@@ -442,6 +442,22 @@ describe("the binding rule", () => {
 
 
 describe("macOS editor atomic saves", () => {
+  for (const overwrite of [undefined, "T", "F"]) {
+    it(`honors MOVE overwrite semantics for an editor replacement (${overwrite ?? "omitted"})`, async () => {
+      await start(seeded(), { allowDelete: false });
+      const target = "/DOCSY/page-0-200/_index.md", draft = `${target}.sb-repeat`;
+      await dav(draft, { method: "PUT", body: "Repeated TextEdit save" });
+      const headers: Record<string, string> = { Destination: new URL(target, server.url).href };
+      if (overwrite !== undefined) headers.Overwrite = overwrite;
+      const moved = await dav(draft, { method: "MOVE", headers });
+      expect(moved.status).toBe(overwrite === "F" ? 412 : 204);
+      expect(client.callsTo("updatePage")).toBe(overwrite === "F" ? 0 : 1);
+      expect(client.callsTo("createPage")).toBe(0);
+      expect(client.callsTo("deletePage")).toBe(0);
+      expect((await dav(draft)).status).toBe(overwrite === "F" ? 200 : 404);
+    });
+  }
+
   it("makes a PUT replacement visible after moving the original to a Vim backup", async () => {
     await start(seeded(), { allowDelete: false });
     const target = "/DOCSY/newpage.md";

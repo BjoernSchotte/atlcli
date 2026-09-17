@@ -2925,3 +2925,39 @@ page creation. Temporary HTTP diagnosis was removed before commit.
 The Vim new-page WebDAV cases are covered on both OSes. VS Code/TextEdit new-page
 coverage, remaining NFS namespace/recovery work and final artifact acceptance
 remain open.
+
+## Slice 112 — real TextEdit new pages and repeated WebDAV safe-saves
+
+Real macOS TextEdit UI runs created UTF-8 plain-text `.md` documents without
+frontmatter on separate native NFS and WebDAV mounts. NFS completed three manual
+saves as versions 1, 2 and 3 of one synthetic page, with one CREATE and two UPDATEs;
+the journal finished with no pending images. The original filename remained
+usable while the listing showed the canonical ID-bearing directory.
+
+WebDAV reproduced a third-save failure. The dependency's MOVE handler interpreted
+an absent Overwrite header as false. Native request tracing confirmed TextEdit
+omits that header. A before-request normalization now supplies `T` for MOVE only
+when the header is absent, as required by
+[RFC 4918 section 10.6](https://www.rfc-editor.org/rfc/rfc4918#section-10.6).
+Explicit `F` continues to reject an occupied destination with 412 and retains
+the draft. No lock or conditional-header checks are bypassed. An alias-listing
+experiment did not fix the issue and was removed; directory layout is unchanged.
+
+With the final fix, a fresh TextEdit WebDAV document completed three manual saves
+as versions 1, 2 and 3 of the same page (one CREATE, two UPDATEs). Every backend
+snapshot contained the expected text. Both successful editor documents closed;
+the ordinary macOS version-history notice was confirmed without suppressing it.
+All owned mounts detached normally. UI fixtures used a synthetic backend; this
+is not real-tenant macOS proof and does not claim TextEdit autosave.
+
+- macOS HTTP/native Vim regression suites: 42 tests / 192 assertions.
+- Linux HTTP/native Vim regression suites: 42 tests / 194 assertions, including
+  privileged synthetic-cache cleanup checks.
+- Linux live DOCSY protocol test: 13 assertions, including a repeated draft MOVE
+  without Overwrite, backend text and retained page ID; disposable page cleaned up.
+- All four typecheck tasks passed. Temporary diagnostic logging was removed.
+
+VS Code new-page/autosave coverage remains open. Linux has Xvfb and Chromium but
+no `code` executable in the inspected PATH; no Linux VS Code run is claimed.
+Generic namespace/COPY overwrite parity, NFS recovery and final acceptance also
+remain open.
