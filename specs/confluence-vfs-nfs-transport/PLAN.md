@@ -2,7 +2,7 @@
 
 Status: implementation in progress; read-only CLI mounts pass native macOS and
 Linux DOCSY reads and signal shutdown. Full lifecycle and read/write acceptance remain open.
-See [evidence](EVIDENCE.md).
+See [evidence](EVIDENCE.md) and the [acceptance checkpoint](ACCEPTANCE.md).
 Baseline: PR #202, merged as `8b08ad65` on 2026-09-16.
 
 ## Contents

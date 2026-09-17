@@ -1214,3 +1214,23 @@ Validation:
 
 This closes persisted-cache compatibility for the timestamp correction.
 RW/publication/snapshot decisions and remaining acceptance work stay open.
+
+## Slice 45 — consolidated acceptance and four-platform CI checkpoint
+
+Source da25dabe passed CI run
+[35179935477](https://github.com/BjoernSchotte/atlcli/actions/runs/35179935477).
+All four native lanes completed: macOS arm64/x64 and Linux arm64/x64. These
+prove helper builds/tests, companion/archive checks and synthetic native RO
+mounts; they do not prove compiled-CLI mount lifecycle or RW editor saves.
+Draft type/policy, documentation, privacy and draft-fast gates passed. Other
+product-quality gates skipped by draft policy remain unclaimed.
+
+Local macOS verification: all 35 build tasks passed; the combined core, mount,
+shell and built-shell regression command passed 547 tests with 2327 assertions
+(16 opt-in native/helper cases skipped). Typecheck passed all four tasks.
+No source changed during this checkpoint.
+
+[ACCEPTANCE.md](ACCEPTANCE.md) maps the plan requirements to evidence and remaining
+work. It explicitly retains the full RW goal, unanswered publication/snapshot
+choices and independent packaging/resource/performance gates. This is an audit
+checkpoint, not feature completion or a release recommendation.
