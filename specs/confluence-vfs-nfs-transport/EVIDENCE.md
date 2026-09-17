@@ -1061,3 +1061,38 @@ Linux live DOCSY CLI lifecycle also passed all five cases / 61 assertions with
 the new options (signal, busy, explicit detach, helper and parent crash). Final
 typecheck passed all four tasks; test mounts detached normally. No live content
 was modified. RW publication and snapshot acceptance remain open.
+
+## Slice 40 — bounded journal database growth and rollback recovery
+
+The journal foundation now uses SQLite DELETE rollback journaling with
+synchronous=EXTRA/fullfsync=ON, plus max_page_count on each connection. It has one
+synchronous writer and needs no WAL reader/writer concurrency. This avoids the
+unbounded historical WAL accumulation possible when readers prevent checkpoints.
+A journal_size_limit alone would not solve that problem.
+
+The default database allowance is 2 × logical bytes + 8192 × maximum file count
++ 1 MiB, rounded down to complete SQLite pages (545 MiB at defaults). SQLite
+transactionally rejects growth beyond it. Reopening a larger recovered database
+keeps its current page count as the minimum limit; never truncate pending data.
+A transaction additionally needs its rollback journal (original pages and
+headers). This is a bounded database plus transactional journal design, **not**
+a promise that the configured logical quota equals total physical disk usage.
+No database compaction or eviction of acknowledged records was introduced.
+
+Validation on macOS and Linux: 11 journal tests / 302 assertions passed on each.
+They include 80 overwrite/publication cycles without WAL accumulation, a
+database-full write that leaves the previous revision intact after reopen,
+recovery after an acknowledged commit, SIGKILL during an uncommitted transaction,
+and migration from a committed WAL actually left behind by a killed process.
+The latter also proves recovery when the newly configured database ceiling is
+lower than the recovered data. Typecheck passed all four tasks.
+Linux live DOCSY read-only CLI signal/unmount E2E passed (1 test / 10 assertions);
+it is regression evidence only, not journal-backed NFS write acceptance.
+
+References checked for this change:
+- [SQLite WAL checkpoint starvation](https://www.sqlite.org/wal.html)
+- [SQLite synchronous, journal modes and max_page_count](https://www.sqlite.org/pragma.html)
+
+RW bridge integration, namespace journaling and the publication/snapshot
+decisions remain open. Process crashes are tested; power failures and faulty
+storage are not simulated by these tests.

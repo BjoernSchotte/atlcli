@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { NfsJournal } from "./nfs-journal.js";
@@ -141,4 +141,88 @@ it("bounds empty-file entries and metadata without replacing recovered records",
   expect(Buffer.from(recovered.get("1")!.bytes).toString()).toBe("keep");
   expect(recovered.get("2")).not.toBeNull();
   expect(() => recovered.admit("3", "/DOCSY/c", bytes(""), 1)).toThrow("file-count quota");
+});
+
+it("caps SQLite storage and rolls back full-database writes without losing acknowledged bytes", () => {
+  const { path, journal: initial } = fixture(); initial.close();
+  const journal = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 65536);
+  journals.push(journal);
+  journal.admit("1", "/DOCSY/a", bytes("acknowledged"), 1);
+  journal.write("1", 0, bytes("ACK"));
+  const before = journal.get("1")!;
+  expect(() => journal.write("1", 0, new Uint8Array(100_000))).toThrow();
+  expect(journal.get("1")).toEqual(before);
+  expect(journal.databaseLimitBytes).toBe(65536);
+  expect(statSync(path).size).toBeLessThanOrEqual(journal.databaseLimitBytes);
+  expect(existsSync(path + "-wal")).toBe(false);
+  expect(existsSync(path + "-journal")).toBe(false);
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY", 1024 * 1024, 512 * 1024, 16, 65536);
+  journals.push(recovered);
+  expect(recovered.get("1")).toEqual(before);
+});
+
+it("reuses bounded database pages over repeated overwrites and publication intents", () => {
+  const { path, journal: initial } = fixture(); initial.close();
+  const journal = new NfsJournal(path, "synthetic-account:DOCSY", 65536, 16384, 4, 131072);
+  journals.push(journal);
+  journal.admit("1", "/DOCSY/a", new Uint8Array(8192), 1);
+  for (let i = 0; i < 80; i++) {
+    journal.write("1", 0, new Uint8Array(8192).fill(i));
+    const intent = journal.beginPublish("1")!;
+    journal.completePublish("1", intent.revision, i + 2);
+    expect(statSync(path).size).toBeLessThanOrEqual(journal.databaseLimitBytes);
+    expect(existsSync(path + "-wal")).toBe(false);
+    expect(existsSync(path + "-journal")).toBe(false);
+  }
+  expect(journal.pending()).toEqual([]);
+});
+
+it("migrates a recovered WAL and preserves databases larger than a reduced limit", async () => {
+  const { path, journal } = fixture(); journal.close();
+  const source = `import { Database } from "bun:sqlite";
+    const db=new Database(${JSON.stringify(path)});
+    db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA wal_autocheckpoint=0;");
+    db.run("INSERT INTO files VALUES (?, ?, ?, 1, 1, 0, NULL)", ["1", "/DOCSY/a", new Uint8Array(100_000).fill(7)]);
+    console.log("ACK");setInterval(()=>{},1000);`;
+  const child = Bun.spawn([process.execPath, "-e", source], { stdout: "pipe", stderr: "pipe" });
+  try {
+    const reader = child.stdout.getReader();
+    const ack = await Promise.race([reader.read(), Bun.sleep(5000).then(() => { throw new Error("No legacy ACK"); })]);
+    expect(Buffer.from(ack.value!).toString()).toContain("ACK");
+    reader.releaseLock();
+    child.kill("SIGKILL"); await child.exited;
+    expect(statSync(path + "-wal").size).toBeGreaterThan(100_000);
+  } finally { child.kill(); await child.exited; }
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY", 200_000, 120_000, 4, 65536);
+  journals.push(recovered);
+  expect(recovered.databaseLimitBytes).toBeGreaterThan(65536);
+  expect(recovered.get("1")!.bytes).toEqual(new Uint8Array(100_000).fill(7));
+  expect(recovered.pending()).toHaveLength(1);
+  expect(existsSync(path + "-wal")).toBe(false);
+});
+
+it("recovers the previous acknowledgement after a crash inside an uncommitted rollback transaction", async () => {
+  const { path, journal } = fixture();
+  journal.admit("1", "/DOCSY/a", bytes("durable previous image"), 1);
+  journal.write("1", 0, bytes("ACK"));
+  const previous = journal.get("1");
+  journal.close();
+  const source = `import { Database } from "bun:sqlite";
+    const db=new Database(${JSON.stringify(path)});
+    db.exec("PRAGMA cache_size=1; PRAGMA synchronous=EXTRA; BEGIN IMMEDIATE;");
+    db.run("UPDATE files SET bytes=?, revision=revision+1 WHERE id='1'", [new Uint8Array(100_000).fill(8)]);
+    console.log("UNCOMMITTED");setInterval(()=>{},1000);`;
+  const child = Bun.spawn([process.execPath, "-e", source], { stdout: "pipe", stderr: "pipe" });
+  try {
+    const reader = child.stdout.getReader();
+    const ready = await Promise.race([reader.read(), Bun.sleep(5000).then(() => { throw new Error("No transaction marker"); })]);
+    expect(Buffer.from(ready.value!).toString()).toContain("UNCOMMITTED");
+    reader.releaseLock();
+    expect(existsSync(path + "-journal")).toBe(true);
+    child.kill("SIGKILL"); await child.exited;
+    const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+    expect(recovered.get("1")).toEqual(previous);
+    expect(recovered.pending()).toEqual([previous!]);
+  } finally { child.kill(); await child.exited; }
 });

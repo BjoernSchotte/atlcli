@@ -21,18 +21,32 @@ export interface NfsPublishIntent {
 /** Non-evictable local stable storage. Separate from the disposable VFS cache. */
 export class NfsJournal {
   private readonly db: Database;
+  /** Actual database ceiling; recovered larger databases are never truncated. */
+  readonly databaseLimitBytes: number;
   constructor(path: string, scope: string, private readonly maxBytes = 256 * 1024 * 1024,
-    private readonly maxFileBytes = 64 * 1024 * 1024, private readonly maxFiles = 4096) {
+    private readonly maxFileBytes = 64 * 1024 * 1024, private readonly maxFiles = 4096,
+    maxDatabaseBytes = 2 * maxBytes + 8192 * maxFiles + 1024 * 1024) {
     if (!scope || !Number.isSafeInteger(maxBytes) || maxBytes < 1 ||
       !Number.isSafeInteger(maxFileBytes) || maxFileBytes < 1 ||
-      !Number.isSafeInteger(maxFiles) || maxFiles < 1) throw new Error("Invalid NFS journal limits or scope");
+      !Number.isSafeInteger(maxFiles) || maxFiles < 1 ||
+      !Number.isSafeInteger(maxDatabaseBytes) || maxDatabaseBytes < 65536 || maxDatabaseBytes > 1024 ** 4) throw new Error("Invalid NFS journal limits or scope");
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     this.db = new Database(path, { create: true });
     try {
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
       if (version !== 0 && version !== 1) throw new Error("Unsupported NFS journal schema version");
-      this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA fullfsync=ON; PRAGMA busy_timeout=5000;");
+      this.db.exec("PRAGMA busy_timeout=5000;");
+      // No concurrent reader/writer throughput is needed here. Rollback mode
+      // avoids WAL growth pinned by readers; EXTRA syncs the journal's unlink.
+      const mode = this.db.query<{ journal_mode: string }, []>("PRAGMA journal_mode=DELETE").get()!.journal_mode;
+      if (mode !== "delete") throw new Error("Cannot enable bounded NFS rollback journal");
+      this.db.exec("PRAGMA synchronous=EXTRA; PRAGMA fullfsync=ON;");
+      const pageSize = this.db.query<{ page_size: number }, []>("PRAGMA page_size").get()!.page_size;
+      const pages = this.db.query<{ max_page_count: number }, []>(
+        `PRAGMA max_page_count=${Math.floor(maxDatabaseBytes / pageSize)}`,
+      ).get()!.max_page_count;
+      this.databaseLimitBytes = pages * pageSize;
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS identity (singleton INTEGER PRIMARY KEY CHECK(singleton=1), scope TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS files (

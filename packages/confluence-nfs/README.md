@@ -118,5 +118,21 @@ The Bun-side NfsJournal is a tested foundation, not an enabled NFS write path.
 Its default logical limits are 256 MiB of staged/intent bytes, 64 MiB per file,
 and 4,096 files; IDs and paths are limited to 256 and 4,096 UTF-8 bytes. Existing
 recovered records remain readable when limits are reduced. Unresolved publication
-errors survive subsequent local edits until a publication is confirmed. These
-limits do not constitute a hard cap on SQLite/WAL physical disk usage.
+errors survive subsequent local edits until a publication is confirmed.
+
+SQLite uses DELETE rollback journaling, synchronous=EXTRA and fullfsync=ON.
+The database page limit defaults to 2 × the logical byte quota + 8 KiB per
+allowed file + 1 MiB of schema/rounding allowance (545 MiB with defaults).
+SQLite rejects database growth beyond that limit transactionally. One
+transaction's rollback journal temporarily needs additional disk space for
+original pages and journal headers; the limit is **not** a total filesystem-byte
+quota. Rollback journaling avoids accumulation of old WAL transactions pinned
+by readers. Successful commits remove the rollback journal.
+
+Reopening an existing larger database preserves it and adopts its current page
+count as the minimum ceiling, rather than truncating acknowledged data. Old WAL
+databases are recovered and converted by SQLite; a reader preventing conversion
+causes startup to fail. The maximum-page setting is applied on every open.
+Tests cover database-full rollback, repeated updates, SIGKILL after commit,
+SIGKILL during an uncommitted transaction, and migration of a committed WAL left
+by SIGKILL. These process-crash tests do not simulate power loss or faulty disks.
