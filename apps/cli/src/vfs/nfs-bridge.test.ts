@@ -356,6 +356,61 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     } finally { socket.destroy(); }
   }, 70000);
 
+  it("disconnects a blocked response reader without stalling other clients", async () => {
+    const { server, vfs } = await fixture(["DOCSY"], false);
+    const mounted = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    let file = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
+    for (const name of ["_attachments", "large.bin"]) {
+      const found = await rpc(server, 100003, 3, Buffer.concat([opaque(file), opaque(Buffer.from(name))]));
+      expect(found.readUInt32BE()).toBe(0);
+      file = found.subarray(8, 8 + found.readUInt32BE(4));
+    }
+    let reads = 0;
+    const read = vfs.readFileBytes.bind(vfs);
+    vfs.readFileBytes = async path => { reads++; return read(path); };
+    const result = promisify(execFile)("python3", ["-c", `
+import base64, json, socket, struct, sys, time
+handle = base64.b64decode(sys.argv[2])
+def words(*values):
+    return struct.pack('>' + 'I' * len(values), *values)
+with socket.socket() as client:
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+    client.settimeout(5)
+    client.connect(('127.0.0.1', int(sys.argv[1])))
+    for xid in range(32):
+        request = words(xid + 100, 0, 2, 100003, 3, 6, 0, 0, 0, 0)
+        request += words(len(handle)) + handle + words(0, 0, 1024 * 1024)
+        client.sendall(words(0x80000000 + len(request)) + request)
+    # Keep the negotiated receive window small until the production 30s write
+    # deadline has elapsed. Then drain queued bytes to observe FIN/reset.
+    time.sleep(35)
+    received = 0
+    while True:
+        try:
+            data = client.recv(1024 * 1024)
+        except ConnectionResetError:
+            break
+        if not data:
+            break
+        received += len(data)
+    print(json.dumps({'received': received}))
+`, String(server.port), file.toString("base64")], { timeout: 45_000 });
+    // Attach a rejection handler immediately while the independent RPC runs.
+    void result.catch(() => {});
+    try {
+      await Bun.sleep(500);
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+      const { stdout } = await result;
+      expect(JSON.parse(stdout).received).toBeLessThan(32 * 1024 * 1024);
+      expect(reads).toBeGreaterThan(0);
+      expect(reads).toBeLessThan(32);
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+    } finally {
+      result.child.kill("SIGTERM");
+      await result.catch(() => {});
+    }
+  }, 50_000);
+
   it("enforces the dispatch deadline across individually responsive bridge calls", async () => {
     const child = spawn(resolve(helperPath!), ["0"], { env: {}, stdio: ["pipe", "pipe", "pipe"] });
     child.stderr.resume();

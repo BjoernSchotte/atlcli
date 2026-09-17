@@ -1370,3 +1370,21 @@ The test passed on macOS in 120.012 seconds and Linux in 120.017 seconds
 dispatch deadline with real TCP, helper and pipe framing; the separate 30-second
 response-write timeout still requires a blocked-reader fault test. No remote wiki
 content is involved in this synthetic fault injection.
+
+## Slice 53 — blocked TCP response-reader fault
+
+A real TCP client negotiates a 4 KiB receive buffer and pipelines 32 one-MiB
+attachment READs without consuming replies. After 35 seconds it drains queued
+data and must observe EOF/reset, proving the blocked response write was closed
+before the 60-second idle/read and 120-second dispatch limits. The test checks
+that fewer than 32 reads were serviced, fewer than 32 MiB arrived, and separate
+NULL RPCs work during and after the stalled connection. No production timeout
+or socket tuning is changed. The subprocess is terminated and awaited on all
+assertion paths.
+
+Both hosts passed the final test with 12 assertions (macOS 35.071 seconds,
+Linux 35.052 seconds). The initial macOS probe rejected a needless 1 MiB receive
+buffer enlargement; removing that test-only tuning made the client portable.
+Linux's live DOCSY RO signal lifecycle test also passed (10 assertions), with
+normal detach, and local typecheck passed all four tasks. Synthetic attachment
+bytes are used for the blocked-reader test; no wiki content was modified.
