@@ -274,6 +274,14 @@ attach instructions also include the selected `ro` or `rw` mode.
 WebDAV mounts accept `vim newpage.md` without frontmatter. Vim `~` backups and
 TextEdit `.sb-*` staging files stay local to the mount session; they do not rename
 or create wiki pages. Subsequent saves to the original name update the same page.
+On Linux, use the mount command printed by atlcli: its `conf=` option selects
+an owned per-mount configuration with `delay_upload 0`. This removes davfs2's
+additional ten-second upload delay; atlcli still buffers rapid saves for 500 ms.
+Existing mounts need a normal unmount and remount with that command. A manually
+configured mount must also set `delay_upload 0` in its davfs2 configuration.
+The generated configuration stays beside the mount state for reuse in fstab;
+it contains no credentials and does not change system-wide davfs2 settings.
+
 Linux davfs2 uploads asynchronously and its local readback can lag behind a save;
 the native editor tests wait for both backend content and mounted-file visibility.
 Keep the mount running until outstanding uploads finish. Local WebDAV editor
@@ -367,7 +375,7 @@ checks remain responsible for remote edit conflicts.
 
 NFS is not generally faster than WebDAV. The current synthetic native comparison
 shows different results by OS and cache state; see the [measured results and
-limits](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md#slice-55--isolated-peak-rss-and-shutdown-benchmarks).
+limits](../../specs/confluence-vfs-nfs-transport/PERFORMANCE.md).
 Its per-run peak RSS and normal shutdown measurements include startup and cleanup.
 
 NFS sets `actimeo=1` on both systems and disables negative-name caching

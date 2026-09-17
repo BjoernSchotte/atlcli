@@ -83,6 +83,15 @@ describe("platform commands", () => {
     });
   });
 
+  it("uses the mount-specific immediate-upload davfs config and quotes shell paths", () => {
+    const command = mountCommandFor("linux", "http://127.0.0.1:8080/", "/tmp/wiki space", "Docs", "rw", "/tmp/config space.davfs.conf");
+    if (!("instructions" in command)) throw new Error("Expected Linux instructions");
+    expect(command.instructions).toContain("-o 'rw,conf=/tmp/config space.davfs.conf'");
+    expect(command.instructions).toContain("'/tmp/wiki space'");
+    expect(command.instructions).toContain("conf=/tmp/config\\040space.davfs.conf");
+    expect(command.instructions).toContain("500 ms");
+  });
+
   /**
    * Linux prints rather than runs: davfs2 needs root, and a CLI that asks for
    * a password to mount something is a CLI that teaches a bad habit.

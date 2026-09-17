@@ -258,6 +258,10 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
           nfsMountOptionsFor("linux", record!.port), "127.0.0.1:/", mountpoint])).toBe(0);
       }
       if (platform() === "linux" && transport === "webdav") {
+        const config = readdirSync(join(cache, "mounts")).find(name => name.endsWith(".davfs.conf"));
+        expect(config).toBeDefined();
+        expect(readFileSync(join(cache, "mounts", config!), "utf8")).toBe("delay_upload 0\n");
+        expect(stderr).toContain(`conf=${join(cache, "mounts", config!)}`);
         // Linux WebDAV attach is manual and CI needs no davfs2 installation.
         const url = new URL("architecture-201/_index.md", record!.url.endsWith("/") ? record!.url : `${record!.url}/`);
         const content = await fetch(url);

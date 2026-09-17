@@ -4246,3 +4246,40 @@ Mounts detached normally. Typecheck passed all four tasks. Linux DOCSY LIVE
 journal resume passed: one test / five assertions, four host-specific tests
 skipped; owned page cleanup completed. This is synthetic native deletion
 evidence, not a claim of a real-tenant recursive deletion test.
+
+## Slice 158: comparative editor/Glow metrics and Linux upload latency fix
+
+Extended the existing native comparison to three independently cold workloads:
+complete reads, Glow first selection/render and actual Vim saves. Five cold/warm
+samples per transport/workload/host yield 60 records per host. API accounting
+now includes serialized metadata responses as well as bodies and attachments;
+an assertion detects unaccounted successful fixture API calls. These are
+synthetic response payload bytes, not HTTP wire traffic. The report records
+all numeric medians/ranges, host/client versions and >10% review triggers in
+[PERFORMANCE.md](PERFORMANCE.md), with complete extended JSON samples.
+
+The initial Linux matrix exposed davfs2's default ten-second upload delay:
+median save-to-API 11,510.5/11,514.1 ms cold/warm. The user rejected that latency.
+The CLI now writes an owned, credential-free per-mount davfs configuration with
+`delay_upload 0` beside its mount state and includes `conf=` in its printed
+mount/fstab instructions. Existing mounts need a normal remount. System-wide
+configuration is unchanged; normal VFS coalescing remains configurable and
+defaults to 500 ms. Shell paths are quoted using the existing transport helper.
+
+The final Linux five-run matrix uses the same config constant as production:
+WebDAV 508.1/501.9 ms and NFS 509.8/505.0 ms median save-to-API cold/warm. Vim's
+BufWritePre writes a local timing marker; editor startup is measured separately.
+Every save verifies the expected marker and exactly one new API version.
+Warm complete reads make zero API calls on both hosts/transports. Cold startup
+does not download the whole corpus. Every test mount was normally detached.
+
+Validation: mount/transport suites passed on macOS and Linux, 26 tests / 193
+assertions each. Fresh compiled CLI suites passed on macOS (13 / 63) and Linux
+(13 / 66); Linux additionally verifies the generated config bytes and printed
+`conf=` option. Typecheck passed all four tasks. Linux DOCSY LIVE journal resume
+passed (one test / five assertions, four macOS-specific cases skipped); owned
+page cleanup completed.
+
+Limits remain explicit: Glow quits after first render, so its asynchronous
+background scan is not a fully drained large-directory comparison. No universal
+NFS speed claim or public RW acceptance is inferred from these measurements.

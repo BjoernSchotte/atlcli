@@ -20,7 +20,7 @@ export function findNfsHelper(override = process.env.ATLCLI_NFS_HELPER, executab
   return helper;
 }
 
-function quote(value: string): string { return `'${value.replaceAll("'", "'\\''")}'`; }
+export function quote(value: string): string { return `'${value.replaceAll("'", "'\\''")}'`; }
 
 /** Explicit kernel freshness bound; core metadata still has its separate 60s TTL. */
 export function nfsMountOptionsFor(os: NodeJS.Platform, port: number, mode: "ro" | "rw" = "ro"): string {

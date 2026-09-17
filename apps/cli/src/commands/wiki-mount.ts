@@ -32,7 +32,9 @@ import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl, type VfsMode } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
 
-import { findNfsHelper, nfsMountCommandFor, parseMountTransport, type MountTransport } from "../vfs/mount-transport.js";
+import { quote, findNfsHelper, nfsMountCommandFor, parseMountTransport, type MountTransport } from "../vfs/mount-transport.js";
+
+export const DAVFS_MOUNT_CONFIG = "delay_upload 0\n";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -84,6 +86,7 @@ export function mountCommandFor(
   mountpoint: string,
   volumeName: string,
   mode: VfsMode = "ro",
+  davfsConfig?: string,
 ): { run: string[] } | { instructions: string } {
   switch (os) {
     case "darwin":
@@ -97,9 +100,11 @@ export function mountCommandFor(
         instructions:
           `Linux needs davfs2 and root to attach a WebDAV volume, so atlcli will not do it for you.\n` +
           `The server is running. Mount it with:\n\n` +
-          `    sudo mount -t davfs -o ${mode} ${url} ${mountpoint}\n\n` +
+          `    sudo mount -t davfs -o ${davfsConfig ? quote(`${mode},conf=${davfsConfig}`) : mode} ${quote(url)} ${quote(mountpoint)}\n\n` +
+          (davfsConfig ? `The supplied mount-specific config disables davfs2's upload delay; atlcli retains its configured save buffering (500 ms by default).\n\n` :
+            `For prompt saves, set delay_upload 0 in the davfs2 configuration used by this mount.\n\n`) +
           `Or add an fstab entry so it can be mounted without sudo:\n\n` +
-          `    ${url} ${mountpoint} davfs user,noauto,${mode} 0 0\n`,
+          `    ${url} ${mountpoint.replaceAll(" ", "\\040")} davfs user,noauto,${mode}${davfsConfig ? `,conf=${davfsConfig.replaceAll(" ", "\\040")}` : ""} 0 0\n`,
       };
   }
 }
@@ -316,8 +321,14 @@ async function handleMount(
     saveMountRecord(cacheDir, record);
 
     mkdirSync(mountpoint, { recursive: true });
+    let davfsConfig: string | undefined;
+    if (platform() === "linux" && transport === "webdav") {
+      davfsConfig = mountStatePath(cacheDir, mountpoint).replace(/\.json$/, ".davfs.conf");
+      if (/[\n\r,]/.test(davfsConfig)) throw new Error("davfs2 config path cannot contain commas or line breaks");
+      writeFileSync(davfsConfig, DAVFS_MOUNT_CONFIG, { mode: 0o600 });
+    }
     const attach = transport === "nfs" ? nfsMountCommandFor(platform(), running.port, mountpoint, mode)
-      : mountCommandFor(platform(), mountUrl, mountpoint, `atlcli-${spaces[0]}`, mode);
+      : mountCommandFor(platform(), mountUrl, mountpoint, `atlcli-${spaces[0]}`, mode, davfsConfig);
     if ("instructions" in attach) {
       process.stderr.write(attach.instructions);
     } else {
