@@ -327,6 +327,11 @@ visibility. Conflicts detected during local publication preparation can be
 corrected by another editor save. Persisted uncertain publication results remain
 protected for reconciliation; this is not a general conflict-resolution UI.
 
+Native RO and development RW mounts use local advisory locks. Tests verify
+that another process on the same host cannot acquire an exclusive lock until
+it is released; this is not a cross-client lock service. Confluence version
+checks remain responsible for remote edit conflicts.
+
 NFS is not generally faster than WebDAV. The current synthetic native comparison
 shows different results by OS and cache state; see the [measured results and
 limits](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md#slice-55--isolated-peak-rss-and-shutdown-benchmarks).

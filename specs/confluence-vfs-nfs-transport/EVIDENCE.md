@@ -3923,3 +3923,33 @@ Those two/three-process cases, plus the other two-process cases, now allow
 15 seconds; the copied-binary five-process case allows 30 seconds. No listing
 or other product performance threshold changed. A fresh matrix must verify
 these correctness-test budgets; the old Intel job is not reported as green.
+
+
+## Slice 145 — native RW advisory locks and gate audit (2026-09-17)
+
+Reused the existing native lock probe for the staged RW mount. With an r+b
+file, both flock and POSIX lockf now prove exclusive-lock contention against a
+second process, then successful acquisition after unlock. The RO flock/shared
+lockf probe remains. Python subprocess deadlines bound accidental NLM waits.
+macOS and Linux each passed the native RW save/fsync case and the RO read case:
+two tests / 75 assertions. This proves same-host local advisory locks only;
+no cross-client lock service or consistency guarantee is added.
+
+The source audit identifies two concrete next durability investigations beyond
+these lock checks: a lost successful UPDATE followed by an external edit may
+send an unnecessary identical merged PUT; and first-journal ancestor-directory
+fsync ordering plus actual filesystem exhaustion after remote success require
+stronger evidence than process SIGKILL or SQLite max_page_count tests. Bounded
+storage rejection itself meets the cap requirement; clean-record eviction is
+an operational improvement, not independently required by the durability gate.
+Public RW remains gated pending the full requirements/fault audit.
+
+Linux DOCSY owned-journal restart/publication also passed (one test / five
+assertions), with disposable-page cleanup; typecheck passed all four tasks.
+Namespace audit against the linked original VFS PLAN confirms ordinary mkdir
+publication and cross-space moves as genuine write-parity gaps. Parentless
+objects need explicit support without weakening homepage protection. Conversely,
+remote RMDIR returning ENOTEMPTY preserves the original recursive-delete guard;
+ID-less existing-directory rename is additional convenience beyond the explicit
+unchanged-ID retitle contract. These distinctions do not remove the pending
+checkpoint entries or enable public RW.

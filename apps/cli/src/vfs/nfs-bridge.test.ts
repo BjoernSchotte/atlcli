@@ -23,6 +23,35 @@ Buffer.from("Grüße 🐴").copy(attachmentBytes, 1024 * 1024 - 5);
 const helperPath = process.env.ATLCLI_NFS_TEST_HELPER;
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+async function assertNativeLocks(path: string, writable = false): Promise<void> {
+  const probe = await promisify(execFile)("python3", ["-c", `
+import errno, fcntl, subprocess, sys
+mode = 'r+b' if sys.argv[2] == 'rw' else 'rb'
+child = """
+import errno, fcntl, sys
+with open(sys.argv[1], sys.argv[2]) as file:
+    try:
+        getattr(fcntl, sys.argv[3])(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        if error.errno not in (errno.EACCES, errno.EAGAIN):
+            raise
+        sys.exit(10)
+"""
+for operation in (['flock', 'lockf'] if mode == 'r+b' else ['flock']):
+    with open(sys.argv[1], mode) as file:
+        lock = getattr(fcntl, operation)
+        lock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        args = [sys.executable, '-c', child, sys.argv[1], mode, operation]
+        assert subprocess.run(args, timeout=2).returncode == 10
+        lock(file, fcntl.LOCK_UN)
+        assert subprocess.run(args, timeout=2).returncode == 0
+with open(sys.argv[1], mode) as file:
+    fcntl.lockf(file, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    fcntl.lockf(file, fcntl.LOCK_UN)
+print('local locks verified')
+`, path, writable ? "rw" : "ro"], { timeout: 5000 });
+  expect(probe.stdout.trim()).toBe("local locks verified");
+}
 function ints(...values: number[]): Buffer {
   const result = Buffer.alloc(values.length * 4);
   values.forEach((n, i) => result.writeUInt32BE(n >>> 0, i * 4));
@@ -1006,6 +1035,7 @@ with socket.socket() as client:
       expect(client.callsTo("movePageToPosition")).toBe(1);
     } finally { await folderDescriptor.close(); }
     const path = join(mountpoint, "_index.md");
+    await assertNativeLocks(path, true);
     const metadata = await stat(path);
     expect(metadata.uid).toBe(process.getuid!());
     expect(metadata.mode & 0o777).toBe(0o644);
@@ -1354,28 +1384,7 @@ with socket.socket() as client:
         expect((await stat(commentsPath)).mtimeMs).toBeGreaterThan(beforeComments.mtimeMs);
         expect((await client.getPageVersions(["100"])).get("100")!.version).toBe(pageVersion);
       }
-      const probe = await promisify(execFile)("python3", ["-c", `
-import errno, fcntl, subprocess, sys
-child = """
-import errno, fcntl, sys
-with open(sys.argv[1], 'rb') as file:
-    try:
-        fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError as error:
-        if error.errno not in (errno.EACCES, errno.EAGAIN):
-            raise
-        sys.exit(10)
-"""
-with open(sys.argv[1], 'rb') as file:
-    fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    assert subprocess.run([sys.executable, '-c', child, sys.argv[1]], timeout=2).returncode == 10
-    fcntl.flock(file, fcntl.LOCK_UN)
-    assert subprocess.run([sys.executable, '-c', child, sys.argv[1]], timeout=2).returncode == 0
-    fcntl.lockf(file, fcntl.LOCK_SH | fcntl.LOCK_NB)
-    fcntl.lockf(file, fcntl.LOCK_UN)
-print('local locks verified')
-`, bodyPath], { timeout: 5000 });
-      expect(probe.stdout.trim()).toBe("local locks verified");
+      await assertNativeLocks(bodyPath);
       if (attachments) {
         const attachment = join(mountpoint, "_attachments", "large.bin");
         const directory = await opendir(join(mountpoint, "_attachments"));
