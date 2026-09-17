@@ -3829,3 +3829,38 @@ The updated dispatch-deadline regression passed separately on both hosts:
 one test / seven assertions each, disconnecting after 120.01 seconds. This is
 full-suite coverage plus the corrected fixture rerun, not a second full-suite
 run. Native test mounts were normally detached.
+
+
+## Slice 142 — CLI helper recovery before normal detach (2026-09-17)
+
+The surviving CLI now finishes the dead helper's publisher/journal lifecycle,
+restarts the endpoint once on its original port and updates the stored helper
+PID/process identity before requesting normal unmount. Shutdown waits for a
+concurrent recovery so an explicit signal cannot leave the replacement behind.
+Busy volumes retain the replacement and state until a later normal shutdown.
+No forced/lazy detach or unrelated process signalling was added. Parent SIGKILL
+and failed restart remain explicit recovery limits; public RW remains gated.
+
+Linux real DOCSY source CLI: all five existing lifecycle cases passed (signal,
+busy, explicit unmount, helper crash, parent crash), 64 assertions. Added native
+helper-crash-while-busy regression passed separately, 20 assertions: the saved
+helper PID changes, its identity is live, its port is unchanged, mount/state
+survive the busy detach, and releasing the holder then signalling cleans up.
+All tests read DOCSY only. Mount-command unit tests: 20 passed / 153 assertions.
+Final typecheck: four tasks passed. macOS native hard-mount recovery is covered
+by Slice 141; the public macOS CLI tenant test remains unverified because the
+local config has only the acme profile, not mayflower. This is not a claim that
+the complete lifecycle/fault acceptance is finished.
+
+Final six-case Linux lifecycle rerun passed together: six tests / 85 assertions,
+including verification that the replacement helper is gone after final detach.
+No owned test mounts remained. Slice 141 CI Linux jobs are now green: x64 fresh
+listing 861.2ms and arm64 799.1ms, each 174 passed / zero failed in the native
+suite, without increasing the 5-second limit.
+
+All four native jobs in CI run [35236587926](https://github.com/BjoernSchotte/atlcli/actions/runs/35236587926)
+completed successfully on source c0169c47. macOS arm64 measured 772.7ms and Intel
+653.2ms; both also passed all 174 native-suite tests. This confirms Slice 141's
+listing-budget repair and Slice 140's helper-death test repair across the matrix.
+These CI results precede the Slice 142 CLI recovery change; draft-skipped product
+quality checks and final compiled-CLI mount acceptance remain open.

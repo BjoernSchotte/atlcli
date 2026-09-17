@@ -263,6 +263,7 @@ async function handleMount(
   let journalPath: string | undefined;
   let helperPid: number | undefined;
   let helperExited: Promise<void> | undefined;
+  let restartHelper: (() => Promise<void>) | undefined;
   let running: { port: number; url: string; stop(): Promise<void> };
   try {
     if (transport === "nfs") {
@@ -274,11 +275,19 @@ async function handleMount(
         journalPath = location.path;
         journalLocation = location;
       }
-      const nfs = await startNfsServer({ vfs, spaces, onSweep, helperPath: helperPath!,
+      let nfs = await startNfsServer({ vfs, spaces, onSweep, helperPath: helperPath!,
         port: portFlag, journalLocation });
       helperPid = nfs.pid;
       helperExited = nfs.exited;
       running = { port: nfs.port, url: `nfs://127.0.0.1:${nfs.port}/`, stop: () => nfs.stop() };
+      restartHelper = async () => {
+        await nfs.stop(); // Finish publication and release the owned journal first.
+        nfs = await startNfsServer({ vfs, spaces, onSweep, helperPath: helperPath!,
+          port: running.port, journalLocation });
+        record.helperPid = nfs.pid;
+        record.helperIdentity = processIdentity(nfs.pid);
+        saveMountRecord(cacheDir, record);
+      };
     } else {
       const { startWebdavServer } = await import("../vfs/webdav-server.js");
       running = await startWebdavServer({ vfs, spaces,
@@ -344,8 +353,12 @@ async function handleMount(
   );
 
   let stopping = false;
+  let recovery: Promise<void> | undefined;
   const shutdown = waitForShutdown(async () => {
+    await recovery;
     if (!await detachVolume(platform(), mountpoint)) return false;
+    // Helper death may race an already-running detach; drain that restart too.
+    await recovery;
     stopping = true;
     await running.stop();
     await vfs.close();
@@ -355,8 +368,16 @@ async function handleMount(
   void helperExited?.then(() => {
     if (stopping) return;
     process.exitCode = 1;
-    process.stderr.write("atlcli: NFS helper stopped unexpectedly; attempting normal unmount. Remount after recovery.\n");
-    process.emit("SIGTERM");
+    process.stderr.write("atlcli: NFS helper stopped unexpectedly; restoring its endpoint before normal unmount. Remount after recovery.\n");
+    recovery = (async () => {
+      if (isMounted(mountpoint)) {
+        try { await restartHelper!(); }
+        catch (error) {
+          process.stderr.write(`atlcli: NFS endpoint recovery failed: ${String(error)}. Keep the mount state and journal for recovery.\n`);
+        }
+      }
+    })();
+    void recovery.then(() => { process.emit("SIGTERM"); });
   });
   await shutdown;
 }

@@ -11,7 +11,7 @@ const run = process.env.ATLCLI_NFS_CLI_E2E === "1";
 const binary = process.env.ATLCLI_NFS_TEST_CLI;
 const command = binary ? [resolve(binary)] : [process.execPath, "--conditions=development", "run", "--cwd",
   resolve(import.meta.dir, "../.."), "src/index.ts"];
-for (const scenario of ["signal", "busy", "explicit", "helper-crash", "parent-crash"] as const) {
+for (const scenario of ["signal", "busy", "explicit", "helper-crash", "helper-crash-busy", "parent-crash"] as const) {
 it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${scenario}`, async () => {
   const root = mkdtempSync(join(tmpdir(), "atlcli-nfs-cli-"));
   const mountpoint = join(root, "wiki docs");
@@ -32,6 +32,7 @@ it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${sc
   child.stdout.on("data", (data) => { stdout += data; });
   child.stderr.on("data", (data) => { stderr += data; });
   let holder: ReturnType<typeof spawn> | undefined;
+  let replacement: MountRecord | undefined;
   const exited = new Promise<void>((resolveExit) => child.once("close", () => resolveExit()));
   try {
     let record: MountRecord | undefined;
@@ -77,10 +78,22 @@ it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${sc
       expect(readMounts(cache)).toEqual([]);
       return;
     }
-    if (scenario === "busy") {
+    if (scenario === "busy" || scenario === "helper-crash-busy") {
       holder = spawn("/bin/sleep", ["30"], { cwd: mountpoint, stdio: "ignore" });
       await new Promise<void>((resolveSpawn, reject) => { holder!.once("spawn", resolveSpawn); holder!.once("error", reject); });
-      child.kill("SIGTERM");
+      if (scenario === "helper-crash-busy") {
+        process.kill(record!.helperPid!, "SIGKILL");
+        const recoveryDeadline = Date.now() + 5000;
+        while (Date.now() < recoveryDeadline) {
+          replacement = readMounts(cache)[0];
+          if (replacement?.helperPid !== record!.helperPid) break;
+          await Bun.sleep(25);
+        }
+        expect(replacement?.helperPid).toBeGreaterThan(0);
+        expect(replacement?.helperPid).not.toBe(record!.helperPid);
+        expect(replacement?.port).toBe(record!.port);
+        expect(processIdentity(replacement!.helperPid!)).toBe(replacement!.helperIdentity);
+      } else child.kill("SIGTERM");
       await Bun.sleep(300);
       expect(child.exitCode).toBeNull();
       expect(isMounted(mountpoint)).toBe(true);
@@ -96,7 +109,13 @@ it.skipIf(!run)(`${binary ? "compiled" : "source"} CLI NFS DOCSY lifecycle: ${sc
     } else if (scenario === "helper-crash") process.kill(record!.helperPid!, "SIGKILL");
     else child.kill("SIGTERM");
     await Promise.race([exited, Bun.sleep(10000).then(() => { throw new Error("CLI did not detach and stop"); })]);
-    expect(child.exitCode).toBe(scenario === "helper-crash" ? 1 : 0);
+    expect(child.exitCode).toBe(scenario.startsWith("helper-crash") ? 1 : 0);
+    if (scenario.startsWith("helper-crash")) {
+      expect(stderr).toContain("restoring its endpoint before normal unmount");
+      expect(stderr).not.toContain("endpoint recovery failed");
+      expect(processIdentity(record!.helperPid!)).not.toBe(record!.helperIdentity);
+    }
+    if (replacement) expect(processIdentity(replacement.helperPid!)).not.toBe(replacement.helperIdentity);
     expect(isMounted(mountpoint)).toBe(false);
     expect(readdirSync(join(cache, "mounts")).filter((name) => name.endsWith(".json"))).toEqual([]);
   } finally {

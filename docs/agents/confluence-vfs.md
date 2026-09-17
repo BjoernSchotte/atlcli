@@ -475,10 +475,14 @@ forced or lazy detachment. Close applications using the volume if it is busy.
 The development journal explicitly finalizes its SQL statements at shutdown;
 reopening it does not depend on garbage collection releasing SQLite locks.
 A hard RW mount may still issue requests during unmount after a helper crash.
-The native recovery test restores the journal-backed server at the same port
-before normal detach/remount. The restarted helper rejects old handles with
-`ESTALE`; this is an internal recovery proof, not yet an automatic public CLI
-recovery command. Public NFS RW remains gated.
+If the CLI survives a helper crash, it makes one attempt to restart the endpoint
+on the same port before normal unmount, then exits with an error so a fresh mount
+can be started. A busy volume keeps the replacement serving; close viewers and
+leave the directory, then retry Ctrl-C. The saved helper PID/identity is updated.
+The native recovery test also proves this sequence with a durable RW journal;
+the restarted helper rejects old handles with `ESTALE`. Public NFS RW remains
+gated. A killed parent cannot run this recovery, and a failed endpoint restart
+still requires manual recovery; no forced or lazy unmount is used.
 
 Automatic NFS publication retries transient `EAGAIN` failures up to five times
 with exponential backoff (starting at one second) and up to 25% jitter. Explicit
