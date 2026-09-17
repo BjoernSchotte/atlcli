@@ -2249,3 +2249,27 @@ save operations remain to diagnose; native TextEdit acceptance is still open.
 Temporary diagnostics were removed, the test document closed, and owned mounts
 unmounted normally. CREATE semantics were checked against
 [RFC 1813 section 3.3.8](https://www.rfc-editor.org/rfc/rfc1813.html#section-3.3.8).
+
+
+## Slice 85 — native st_mode type bits during safe save
+
+A real synthetic TextEdit trace showed SETATTR mode 33188 (0100644): native
+copyfile/chmod included file-type bits alongside permissions. The shared Rust
+permission parser now strips only the file-type mask before validating supported
+permissions, without changing the actual object type. SETATTR, CREATE and MKDIR
+all use it. Setuid/setgid/sticky and unknown high bits remain unsupported.
+
+- Seven Rust tests passed, including type-bit normalization and rejected special
+  permissions. Wire tests cover CREATE 0100600, MKDIR 040700, SETATTR 0100600 and
+  rejected SETATTR 0104644 with unchanged permissions.
+- macOS and Linux: three focused RPC/native tests / 69 assertions each.
+- Linux real DOCSY save regression: 18 assertions with cleanup.
+
+After this correction, TextEdit advanced to another refused operation: RENAME
+from the original `_index.md` to a temporary `_index.md.sb-...` backup. This is
+the still-unimplemented existing-page-to-local-backup rename pattern, not a
+failed local-temporary-to-page replacement. It also attempted CREATE of an
+AppleDouble `.__index.md` metadata file, currently rejected by mount protection;
+its necessity for successful save has not yet been established. TextEdit save
+acceptance therefore remains open. Synthetic edits were discarded, mounts
+unmounted normally and temporary diagnostics removed.

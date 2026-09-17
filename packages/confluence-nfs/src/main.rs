@@ -162,6 +162,16 @@ fn attr(v: &Value) -> Result<fattr3, nfsstat3> {
         ..Default::default()
     })
 }
+// Some native chmod/copyfile clients include the file-type bits in st_mode.
+// They cannot change an object's type; retain only supported permission bits.
+fn permissions(mode: u32) -> Result<u32, nfsstat3> {
+    let mode = mode & !0o170000;
+    if mode > 0o777 {
+        return Err(nfsstat3::NFS3ERR_NOTSUPP);
+    }
+    Ok(mode)
+}
+
 fn name(bytes: &[u8]) -> Result<&str, nfsstat3> {
     std::str::from_utf8(bytes).map_err(|_| nfsstat3::NFS3ERR_INVAL)
 }
@@ -310,10 +320,7 @@ impl NFSFileSystem for Bridge {
                 .as_millis() as u64;
             let mut args = json!({"file": id});
             if let set_mode3::mode(mode) = value.mode {
-                if mode > 0o777 {
-                    return Err(nfsstat3::NFS3ERR_NOTSUPP);
-                }
-                args["mode"] = json!(mode);
+                args["mode"] = json!(permissions(mode)?);
             }
             match value.atime {
                 set_atime::DONT_CHANGE => (),
@@ -384,10 +391,7 @@ impl NFSFileSystem for Bridge {
         }
         let mut args = json!({"parent":parent,"name":name(filename)?,"guarded":guarded});
         if let set_mode3::mode(mode) = value.mode {
-            if mode > 0o777 {
-                return Err(nfsstat3::NFS3ERR_NOTSUPP);
-            }
-            args["mode"] = json!(mode);
+            args["mode"] = json!(permissions(mode)?);
         }
         if let set_size3::size(size) = value.size {
             args["size"] = json!(size);
@@ -430,9 +434,8 @@ impl NFSFileSystem for Bridge {
             return Err(nfsstat3::NFS3ERR_NOTSUPP);
         }
         let mode = match value.mode {
-            set_mode3::mode(mode) if mode <= 0o777 => mode,
+            set_mode3::mode(mode) => permissions(mode)?,
             set_mode3::Void => 0o755,
-            _ => return Err(nfsstat3::NFS3ERR_NOTSUPP),
         };
         let id = self
             .call(
@@ -566,6 +569,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mode_type_bits_do_not_change_permissions() {
+        for mode in [0o644, 0o100644, 0o40644] {
+            assert_eq!(permissions(mode).unwrap(), 0o644);
+        }
+        for mode in [0o104644, 0o102644, 0o101644, 0o200644] {
+            assert!(matches!(permissions(mode), Err(nfsstat3::NFS3ERR_NOTSUPP)));
+        }
+    }
 
     fn bridge(session: [u8; 16]) -> Bridge {
         Bridge {

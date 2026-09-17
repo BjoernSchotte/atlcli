@@ -226,7 +226,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
     const create = (mode: number, attributes: Buffer) => rpc(server, 100003, 8,
       Buffer.concat([opaque(root), opaque(Buffer.from("ordinary.tmp")), ints(mode), attributes]));
-    const first = await create(1, ints(1, 0o600, 0, 0, 0, 0, 0));
+    const first = await create(1, ints(1, 0o100600, 0, 0, 0, 0, 0));
     expect(first.readUInt32BE()).toBe(0);
     const id = journal!.local("/DOCSY/ordinary.tmp")!.id;
     journal!.write(id, 0, Buffer.from("keep bytes"));
@@ -235,6 +235,10 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(replay.readUInt32BE()).toBe(0);
     expect(replay.subarray(12, 12 + replay.readUInt32BE(8))).toEqual(first.subarray(12, 12 + first.readUInt32BE(8)));
     expect(Buffer.from(journal!.get(id)!.bytes).toString()).toBe("keep bytes");
+    expect(journal!.attributes(id)?.mode).toBe(0o600);
+    const handle = first.subarray(12, 12 + first.readUInt32BE(8));
+    expect((await rpc(server, 100003, 2, Buffer.concat([opaque(handle), ints(1, 0o100600, 0, 0, 0, 0, 0, 0)]))).readUInt32BE()).toBe(0);
+    expect((await rpc(server, 100003, 2, Buffer.concat([opaque(handle), ints(1, 0o104644, 0, 0, 0, 0, 0, 0)]))).readUInt32BE()).toBe(10004);
     expect(journal!.attributes(id)?.mode).toBe(0o600);
     expect((await create(0, ints(0, 0, 0, 1, 0, 0, 0, 0))).readUInt32BE()).toBe(0);
     expect(journal!.get(id)!.bytes.byteLength).toBe(0);
@@ -245,7 +249,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
     const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
     const name = opaque(Buffer.from("editor-dir"));
-    const created = await rpc(server, 100003, 9, Buffer.concat([opaque(root), name, ints(1, 0o700, 0, 0, 0, 0, 0)]));
+    const created = await rpc(server, 100003, 9, Buffer.concat([opaque(root), name, ints(1, 0o40700, 0, 0, 0, 0, 0)]));
     expect(created.readUInt32BE()).toBe(0);
     const directory = created.subarray(12, 12 + created.readUInt32BE(8));
     expect(journal!.attributes(journal!.local("/DOCSY/editor-dir")!.id)?.mode).toBe(0o700);
