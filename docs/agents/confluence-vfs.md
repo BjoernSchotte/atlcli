@@ -234,6 +234,10 @@ also `--allow-delete`; do not add them unless asked.
 
 Full documentation: [Virtual Filesystem](https://atlcli.dev/confluence/virtual-filesystem/).
 
+WebDAV `--mode ro` mounts use the macOS kernel read-only option, so local
+writes fail immediately rather than appearing saved in the client cache. Linux
+attach instructions also include the selected `ro` or `rw` mode.
+
 WebDAV mounts accept `vim newpage.md` without frontmatter. Vim `~` backups and
 TextEdit `.sb-*` staging files stay local to the mount session; they do not rename
 or create wiki pages. Subsequent saves to the original name update the same page.

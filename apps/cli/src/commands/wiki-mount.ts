@@ -83,12 +83,13 @@ export function mountCommandFor(
   url: string,
   mountpoint: string,
   volumeName: string,
+  mode: VfsMode = "ro",
 ): { run: string[] } | { instructions: string } {
   switch (os) {
     case "darwin":
       // -S suppresses the authentication dialog, which would otherwise appear
       // for a server that needs no authentication.
-      return { run: ["mount_webdav", "-S", "-v", volumeName, url, mountpoint] };
+      return { run: ["mount_webdav", "-S", ...(mode === "ro" ? ["-o", "rdonly"] : []), "-v", volumeName, url, mountpoint] };
     case "win32":
       return { run: ["net", "use", mountpoint, url] };
     default:
@@ -96,9 +97,9 @@ export function mountCommandFor(
         instructions:
           `Linux needs davfs2 and root to attach a WebDAV volume, so atlcli will not do it for you.\n` +
           `The server is running. Mount it with:\n\n` +
-          `    sudo mount -t davfs ${url} ${mountpoint}\n\n` +
+          `    sudo mount -t davfs -o ${mode} ${url} ${mountpoint}\n\n` +
           `Or add an fstab entry so it can be mounted without sudo:\n\n` +
-          `    ${url} ${mountpoint} davfs user,noauto,rw 0 0\n`,
+          `    ${url} ${mountpoint} davfs user,noauto,${mode} 0 0\n`,
       };
   }
 }
@@ -316,7 +317,7 @@ async function handleMount(
 
     mkdirSync(mountpoint, { recursive: true });
     const attach = transport === "nfs" ? nfsMountCommandFor(platform(), running.port, mountpoint, mode)
-      : mountCommandFor(platform(), mountUrl, mountpoint, `atlcli-${spaces[0]}`);
+      : mountCommandFor(platform(), mountUrl, mountpoint, `atlcli-${spaces[0]}`, mode);
     if ("instructions" in attach) {
       process.stderr.write(attach.instructions);
     } else {

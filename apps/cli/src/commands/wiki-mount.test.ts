@@ -61,8 +61,20 @@ describe("platform commands", () => {
   it("uses mount_webdav on macOS, with the dialog suppressed", () => {
     const command = mountCommandFor("darwin", "http://127.0.0.1:8080/", "/Users/x/confluence", "atlcli-DOCSY");
     expect(command).toEqual({
-      run: ["mount_webdav", "-S", "-v", "atlcli-DOCSY", "http://127.0.0.1:8080/", "/Users/x/confluence"],
+      run: ["mount_webdav", "-S", "-o", "rdonly", "-v", "atlcli-DOCSY", "http://127.0.0.1:8080/", "/Users/x/confluence"],
     });
+  });
+
+  it("keeps explicit RW WebDAV mounts writable and prints matching Linux modes", () => {
+    expect(mountCommandFor("darwin", "http://127.0.0.1:8080/", "/tmp/wiki", "Docs", "rw")).toEqual({
+      run: ["mount_webdav", "-S", "-v", "Docs", "http://127.0.0.1:8080/", "/tmp/wiki"],
+    });
+    for (const mode of ["ro", "rw"] as const) {
+      const command = mountCommandFor("linux", "http://127.0.0.1:8080/", "/tmp/wiki", "Docs", mode);
+      if (!("instructions" in command)) throw new Error("Expected Linux mount instructions");
+      expect(command.instructions).toContain(`mount -t davfs -o ${mode}`);
+      expect(command.instructions).toContain(`davfs user,noauto,${mode} 0 0`);
+    }
   });
 
   it("uses net use on Windows", () => {

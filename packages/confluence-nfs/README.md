@@ -96,6 +96,9 @@ ATLCLI_VFS_TEST_BINARY=/path/to/extracted/atlcli ATLCLI_NFS_KERNEL=1 \
 
 All four native CI lanes run this against their extracted review archive.
 The helper override is cleared inside the test to verify adjacent discovery.
+It also copies the CLI into an isolated directory and verifies shell startup
+with absent/unusable helpers and WebDAV without a companion. WebDAV uses a native
+mount on macOS and HTTP on Linux; these cases use no tenant credentials.
 
 For the live DOCSY lifecycle test of an extracted local bundle:
 

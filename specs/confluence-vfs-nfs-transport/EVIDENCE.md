@@ -3887,3 +3887,39 @@ Final typecheck passed all four tasks.
 The macOS real-tenant lifecycle/editor proof remains open because the local
 Mayflower profile is unavailable. Synthetic native tests do not replace that
 requirement. Workflow policy tests passed (35 tests / 614 assertions).
+
+
+## Slice 144 — helper-independent artifacts and native WebDAV RO (2026-09-17)
+
+The compiled smoke suite now copies only the CLI into its own disposable
+directory. With no helper, NFS startup fails before creating a mountpoint and
+explains the missing executable. Version and shell commands still succeed.
+An adjacent executable that exits unsuccessfully likewise does not affect the
+shell. A second isolated binary proves WebDAV needs no NFS companion: native
+mount/read on macOS, HTTP read/denied PUT on Linux, followed by normal shutdown.
+The five-process helper-independence case has a 30-second test timeout; macOS's
+cold copied executable exceeded the default five-second aggregate timeout.
+This is a correctness test, not a relaxed product performance gate.
+
+The macOS WebDAV check exposed a real RO bug: a filesystem write resolved
+successfully into the OS cache despite server-side denial. The platform mount
+command now passes `-o rdonly` for RO; explicit RW retains its writable mount.
+Linux instructions and fstab examples now carry the selected mode too. The
+existing RW live kernel caller passes its mode explicitly. All callers were
+reviewed. The compiled native regression failed before the fix and now rejects
+writes with EROFS. Local mount_webdav(8) documents the rdonly option.
+
+Validation: macOS and Linux each passed 33 tests / 218 assertions (compiled
+artifact smoke plus mount-command tests). Linux DOCSY WebDAV LIVE: two passed /
+12 assertions, disposable resources cleaned up. Typecheck: four tasks passed.
+The existing four-platform workflow invokes this expanded suite against its
+extracted native release review archive; current-slice matrix results remain
+pending. macOS real-tenant tests still need the unavailable Mayflower profile.
+
+Slice 143 CI passed the new compiled native mount on all four platforms. The
+Intel macOS job then failed two pre-existing multi-command shell smoke cases
+on their default five-second aggregate timeout (extra commands and help).
+Those two/three-process cases, plus the other two-process cases, now allow
+15 seconds; the copied-binary five-process case allows 30 seconds. No listing
+or other product performance threshold changed. A fresh matrix must verify
+these correctness-test budgets; the old Intel job is not reported as green.

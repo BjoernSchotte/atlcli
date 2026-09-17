@@ -68,7 +68,7 @@ beforeAll(async () => {
   server = await startWebdavServer({ vfs, spaces: [E2E_SPACE_KEY] });
 
   if (KERNEL) {
-    const attach = mountCommandFor("darwin", mountUrlFor(server.url, [E2E_SPACE_KEY]), mountpoint, "atlcli-e2e");
+    const attach = mountCommandFor("darwin", mountUrlFor(server.url, [E2E_SPACE_KEY]), mountpoint, "atlcli-e2e", "rw");
     if ("run" in attach) expect(await runMountCommand(attach.run)).toBe(0);
   }
 });

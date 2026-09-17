@@ -22,7 +22,7 @@
  * behaviour; this covers packaging.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync, copyFileSync } from "node:fs";
 import { tmpdir, platform } from "node:os";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { isMounted, runMountCommand, type MountRecord } from "../commands/wiki-mount.js";
@@ -182,7 +182,9 @@ beforeAll(() => {
 afterAll(() => {
   if (!RUN) return;
   server?.stop(true);
-  if (home && isMounted(join(home, "mount"))) throw new Error(`Test mount remains attached: ${join(home, "mount")}`);
+  if (home) for (const name of ["mount", "webdav-mount"]) {
+    if (isMounted(join(home, name))) throw new Error(`Test mount remains attached: ${join(home, name)}`);
+  }
   if (home) rmSync(home, { recursive: true, force: true });
 });
 
@@ -191,8 +193,8 @@ afterAll(() => {
  * in-process stand-in could never answer the child's request and the pair
  * would deadlock. (It did, the first time.)
  */
-function startCli(...args: string[]) {
-  const proc = Bun.spawn([...(BINARY ? [BINARY] : ["bun", BUNDLE]), ...args], {
+function startCli(args: string[], binary = BINARY) {
+  const proc = Bun.spawn([...(binary ? [binary] : ["bun", BUNDLE]), ...args], {
     env: { ...process.env, HOME: home, ATLCLI_API_TOKEN: "token", ATLCLI_NFS_HELPER: undefined },
     stdin: "ignore",
     stdout: "pipe",
@@ -201,8 +203,7 @@ function startCli(...args: string[]) {
   return proc;
 }
 
-async function cli(...args: string[]): Promise<{ out: string; err: string; code: number }> {
-  const proc = startCli(...args);
+async function finishCli(proc: ReturnType<typeof startCli>): Promise<{ out: string; err: string; code: number }> {
   const [out, err, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -211,12 +212,20 @@ async function cli(...args: string[]): Promise<{ out: string; err: string; code:
   return { out, err, code };
 }
 
+async function cli(...args: string[]) { return finishCli(startCli(args)); }
+
 describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
-  it.skipIf(!BINARY || process.env.ATLCLI_NFS_KERNEL !== "1")("mounts through the compiled CLI and adjacent NFS companion", async () => {
-    const mountpoint = join(home, "mount");
-    const cache = join(home, "mount-cache");
-    const proc = startCli("wiki", "mount", mountpoint, "--transport", "nfs", "--space", "DOCSY",
-      "--mode", "ro", "--cache-dir", cache, "--json");
+  for (const transport of ["nfs", "webdav"] as const) {
+  it.skipIf(!BINARY || process.env.ATLCLI_NFS_KERNEL !== "1")(`runs compiled ${transport} ${transport === "nfs" ? "with adjacent companion" : "without an NFS companion"}`, async () => {
+    const mountpoint = join(home, transport === "nfs" ? "mount" : "webdav-mount");
+    const cache = join(home, `${transport}-mount-cache`);
+    let binary = BINARY;
+    if (transport === "webdav") {
+      const directory = join(home, "webdav-binary"); mkdirSync(directory);
+      binary = join(directory, "atlcli"); copyFileSync(BINARY!, binary);
+    }
+    const proc = startCli(["wiki", "mount", mountpoint, "--transport", transport, "--space", "DOCSY",
+      "--mode", "ro", "--cache-dir", cache, "--json"], binary);
     let stdout = "", stderr = "";
     const drain = async (stream: ReadableStream<Uint8Array>, append: (s: string) => void) => {
       const decoder = new TextDecoder();
@@ -236,16 +245,26 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
         if (record && stdout.includes('"transport"')) break;
         await Bun.sleep(25);
       }
-      expect(record?.transport).toBe("nfs");
-      expect(record?.helperPid).toBeGreaterThan(0);
-      if (platform() === "linux") {
+      expect(record?.transport).toBe(transport);
+      if (transport === "nfs") expect(record?.helperPid).toBeGreaterThan(0);
+      else expect(record?.helperPid).toBeUndefined();
+      if (platform() === "linux" && transport === "nfs") {
         expect(await runMountCommand(["sudo", "-n", "mount", "-t", "nfs", "-o",
           nfsMountOptionsFor("linux", record!.port), "127.0.0.1:/", mountpoint])).toBe(0);
       }
-      expect(isMounted(mountpoint)).toBe(true);
-      expect(await readdir(mountpoint)).toContain("architecture-201");
-      expect(await readFile(join(mountpoint, "architecture-201", "_index.md"), "utf8")).toContain("Grüße 🐴");
-      await expect(writeFile(join(mountpoint, "architecture-201", "_index.md"), "denied")).rejects.toMatchObject({ code: "EROFS" });
+      if (platform() === "linux" && transport === "webdav") {
+        // Linux WebDAV attach is manual and CI needs no davfs2 installation.
+        const url = new URL("architecture-201/_index.md", record!.url.endsWith("/") ? record!.url : `${record!.url}/`);
+        const content = await fetch(url);
+        expect(content.status).toBe(200);
+        expect(await content.text()).toContain("Grüße 🐴");
+        expect((await fetch(url, { method: "PUT", body: "denied" })).status).toBe(403);
+      } else {
+        expect(isMounted(mountpoint)).toBe(true);
+        expect(await readdir(mountpoint)).toContain("architecture-201");
+        expect(await readFile(join(mountpoint, "architecture-201", "_index.md"), "utf8")).toContain("Grüße 🐴");
+        await expect(writeFile(join(mountpoint, "architecture-201", "_index.md"), "denied")).rejects.toMatchObject({ code: "EROFS" });
+      }
       proc.kill("SIGTERM");
       expect(await Promise.race([proc.exited, Bun.sleep(10000).then(() => { throw new Error("Compiled CLI did not detach"); })])).toBe(0);
       expect(isMounted(mountpoint)).toBe(false);
@@ -258,6 +277,28 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
       await drained;
     }
   }, 40000);
+  }
+
+  it.skipIf(!BINARY || !["darwin", "linux"].includes(platform()))("keeps the compiled shell independent of missing or unusable NFS helpers", async () => {
+    const directory = join(home, "standalone");
+    mkdirSync(directory);
+    const binary = join(directory, "atlcli");
+    copyFileSync(BINARY!, binary);
+    const run = (...args: string[]) => finishCli(startCli(args, binary));
+    const missing = await run("wiki", "mount", join(home, "missing-helper-mount"), "--transport", "nfs",
+      "--space", "DOCSY", "--mode", "ro");
+    expect(missing.code).not.toBe(0);
+    expect(missing.err).toContain("NFS helper missing or not executable");
+    expect(existsSync(join(home, "missing-helper-mount"))).toBe(false);
+    for (const unusable of [false, true]) {
+      if (unusable) writeFileSync(join(directory, "atlcli-confluence-nfs"), "#!/bin/sh\nexit 98\n", { mode: 0o700 });
+      const version = await run("--version");
+      expect(version.code).toBe(0);
+      const shell = await run("wiki", "sh", "--space", "DOCSY", "-c", "cat architecture-201/_index.md");
+      expect(shell.code).toBe(0);
+      expect(shell.out).toContain("Grüße 🐴");
+    }
+  }, 30000); // Copies a native executable and launches five separate processes.
 
   it("lists a space", async () => {
     const result = await cli("wiki", "sh", "--space", "DOCSY", "-c", "ls");
@@ -307,14 +348,14 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
     expect(miss.code).toBe(1);
     const hit = await cli("wiki", "sh", "--space", "DOCSY", "-c", "ls > /dev/null");
     expect(hit.code).toBe(0);
-  });
+  }, 15000); // Multiple cold compiled-CLI launches on native CI runners.
 
   it("runs the extra commands", async () => {
     const status = await cli("wiki", "sh", "--space", "DOCSY", "-c", "vfs-status");
     expect(status.out).toContain("mode:");
     const id = await cli("wiki", "sh", "--space", "DOCSY", "-c", "page-id architecture-201");
     expect(id.out.trim()).toBe("201");
-  });
+  }, 15000); // Multiple cold compiled-CLI launches on native CI runners.
 
   it("runs the maintenance commands", async () => {
     const stats = await cli("wiki", "vfs", "cache", "stats", "--json");
@@ -322,7 +363,7 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
     expect(stats.out).toContain("bodies");
     const conflicts = await cli("wiki", "vfs", "conflicts", "list", "--json");
     expect(conflicts.code).toBe(0);
-  });
+  }, 15000); // Multiple cold compiled-CLI launches on native CI runners.
 
   it("prints help for every new command", async () => {
     for (const command of [
@@ -334,5 +375,5 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
       expect(result.code).toBe(0);
       expect(result.out.length).toBeGreaterThan(100);
     }
-  });
+  }, 15000); // Multiple cold compiled-CLI launches on native CI runners.
 });
