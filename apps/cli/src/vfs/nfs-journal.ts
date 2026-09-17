@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname, posix } from "node:path";
 import { randomUUID } from "node:crypto";
+import { isNfsPageDraft } from "./mount-client-probes.js";
 
 export interface StagedNfsFile {
   id: string;
@@ -111,12 +112,23 @@ export class NfsJournal {
 
   /** Counts only; never materializes page bodies or exposes tenant paths. */
   writeStatus(): NfsWriteStatus {
-    return this.db.query<NfsWriteStatus, []>(`SELECT
+    const status = this.db.query<NfsWriteStatus, []>(`SELECT
       (SELECT count(*) FROM files WHERE revision>publishedRevision AND id NOT IN (SELECT id FROM locals) AND id NOT IN (SELECT id FROM displaced)) AS pendingPages,
       (SELECT count(*) FROM files WHERE error IS NOT NULL AND revision>publishedRevision AND id NOT IN (SELECT id FROM locals)) AS failedPages,
       (SELECT count(*) FROM displaced) AS displacedPages,
       (SELECT count(*) FROM locals) AS localEntries,
       (SELECT count(*) FROM intents) AS unresolvedPublications`).get()!;
+    const statement = this.db.prepare<{ path: string; error: string | null }, []>(`SELECT locals.path,files.error
+      FROM locals JOIN files USING(id) WHERE kind='file' AND originId IS NULL
+      AND revision>publishedRevision`);
+    try {
+      for (const draft of statement.all()) {
+        if (!isNfsPageDraft(draft.path)) continue;
+        status.pendingPages++;
+        if (draft.error !== null) status.failedPages++;
+      }
+    } finally { statement.finalize(); }
+    return status;
   }
 
   get(id: string): StagedNfsFile | null {

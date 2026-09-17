@@ -590,6 +590,29 @@ it("reports durable recovery counts without treating local editor entries as pub
 });
 
 
+it("reports pending and failed new pages across restart without counting backups or hidden drafts", () => {
+  const { path, journal } = fixture();
+  journal.admit("100", "/DOCSY/_index.md", bytes("original"), 1);
+  journal.backupPage("100", "/DOCSY/backup.md");
+  const hidden = journal.createLocal("/DOCSY/.save.md");
+  journal.write(hidden.id, 0, bytes("temporary"));
+  journal.failPublish(hidden.id, "EINVAL");
+  const draft = journal.createLocal("/DOCSY/newpage.md");
+  journal.write(draft.id, 0, bytes("plain"));
+  expect(journal.writeStatus()).toMatchObject({ pendingPages: 1, failedPages: 0 });
+  journal.beginCreate(draft.id, draft.path, "DOCSY", "100", journal.get(draft.id)!.revision);
+  journal.failPublish(draft.id, "REMOTE_RESULT_UNKNOWN");
+  const expected = { pendingPages: 1, failedPages: 1, displacedPages: 1, localEntries: 3, unresolvedPublications: 1 };
+  expect(journal.writeStatus()).toEqual(expected);
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.writeStatus()).toEqual(expected);
+  const intent = recovered.createIntent(draft.id)!;
+  recovered.recordCreated(draft.id, intent.revision, "200", 1);
+  recovered.promoteCreated(draft.id, "/DOCSY/newpage-200.md");
+  expect(recovered.writeStatus()).toEqual({ pendingPages: 0, failedPages: 0, displacedPages: 1, localEntries: 2, unresolvedPublications: 0 });
+});
+
 it("refreshes only unchanged clean images and retains their original merge source", () => {
   const { journal } = fixture();
   journal.admit("100", "/DOCSY/page", bytes("before"), 1);

@@ -262,7 +262,10 @@ macOS NFS mount, plus Vim/native saves and real DOCSY publication on Linux.
 These are individual write gates, not general RW acceptance; see the
 [write evidence](../../specs/confluence-vfs-nfs-transport/EVIDENCE.md). Development
 RW shutdown reports counts of retained pending pages, interrupted replacements,
-local editor entries and unresolved publications. Keep the staging journal when
+local editor entries and unresolved publications. Pending/failed page counts include
+eligible new Markdown drafts before Confluence assigns their IDs; recorded backups
+and hidden editor files are excluded. Local-entry counts overlap with those drafts
+until creation is confirmed. Keep the staging journal when
 this notice appears: locally durable bytes do not prove Confluence publication.
 Development NFS publication waits for 500 ms without newer writes to a page.
 If an editor sends a valid partial document and pauses longer, Confluence can

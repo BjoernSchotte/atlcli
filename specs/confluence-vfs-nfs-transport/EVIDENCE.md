@@ -2727,3 +2727,23 @@ only the canonical ID-bearing page directory; the old name remains resolvable.
 Public NFS RW mounting remains gated. Automatic ambiguous-create reconciliation,
 WebDAV/new-page editor coverage, VS Code/TextEdit new-page coverage, and the
 remaining acceptance matrix are still open.
+
+
+## Slice 104 — report unpublished new pages in recovery status
+
+Pending and failed page counts now include eligible dirty local Markdown drafts,
+using the same filename classifier as publication. Hidden editor files and
+recorded backups remain excluded. The query reads metadata only; local-entry
+counts still include drafts until promotion, as now documented. Counts survive
+reopen and clear after confirmed creation without double-counting the promoted ID.
+
+The empty-result metadata join initially retained a statement that prevented
+immediate journal reopen under Bun 1.3.14. Explicit finalization fixes it; the
+existing close/reopen regression and the new draft-status regression both pass.
+
+- macOS and Linux journal suites: 36 tests / 509 assertions each.
+- Linux live DOCSY journal publication: 13 assertions; fixture deleted.
+- All four typecheck tasks passed.
+
+This closes the new-page status omission, not the remaining recovery/public RW
+or editor-matrix gates.
