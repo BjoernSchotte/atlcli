@@ -495,7 +495,7 @@ export class NfsFilesystem {
         if (current.id !== previous.id) throw new VfsError("EBUSY", "Previous move source name was reused");
       } catch (error) { if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error; }
       if (previous.target !== target) throw new VfsError("EBUSY", "Previous move has a different destination");
-      if (!await this.vfs.confirmMove(previous.id, previous.spaceKey, previous.targetParentId, previous.title)) {
+      if (!await this.vfs.confirmMove(previous.id, previous.spaceKey, previous.targetParentId, previous.title, previous.kind)) {
         throw new VfsError("EBUSY", "Previous move outcome remains unknown");
       }
       this.journal!.completeMove(source);
@@ -504,7 +504,7 @@ export class NfsFilesystem {
     this.journal!.assertNoMove(source); this.journal!.assertNoMove(target);
     const sourceStat = await this.stat(source);
     if (sourceStat.isDirectory && !this.journal!.local(source)) {
-      if (sourceStat.kind !== "page" || name !== targetName || source.split("/")[1] !== target.split("/")[1]) {
+      if (!["page", "folder"].includes(sourceStat.kind) || name !== targetName || source.split("/")[1] !== target.split("/")[1]) {
         throw new VfsError("EROFS", "Remote directory moves currently preserve the page name and space");
       }
       if (target.startsWith(`${source}/`)) throw new VfsError("EINVAL", "Cannot move a page into itself");
@@ -517,11 +517,11 @@ export class NfsFilesystem {
           !["page", "folder"].includes(destination.kind) || destination.spaceKey !== node.spaceKey) {
         throw new VfsError("EACCES", "Move is outside writable page containers");
       }
-      this.journal!.beginMove({ id: node.id, source, target, spaceKey: node.spaceKey,
+      this.journal!.beginMove({ id: node.id, kind: sourceStat.kind as "page" | "folder", source, target, spaceKey: node.spaceKey,
         sourceParentId: node.parentId, targetParentId: destination.id, title: node.title });
-      await this.vfs.rename(source, target, { id: node.id, spaceKey: node.spaceKey,
+      await this.vfs.rename(source, target, { id: node.id, kind: sourceStat.kind as "page" | "folder", spaceKey: node.spaceKey,
         sourceParentId: node.parentId, targetParentId: destination.id });
-      if (!await this.vfs.confirmMove(node.id, node.spaceKey, destination.id, node.title)) {
+      if (!await this.vfs.confirmMove(node.id, node.spaceKey, destination.id, node.title, sourceStat.kind as "page" | "folder")) {
         throw new VfsError("EBUSY", "Move result requires reconciliation");
       }
       this.journal!.completeMove(source);

@@ -567,12 +567,14 @@ stopped. Failed startup releases the lock; normal stop retains the database and
 its last recovery counts for inspection. Caller-supplied test journals remain
 caller-owned. This does not enable the gated public RW mode.
 
-Development RW NFS supports moving an existing page directory beneath another
+Development RW NFS supports moving an existing page or Confluence-folder directory beneath another
 page or folder in the same space while retaining its canonical name and page
 ID. Pending local editor data blocks the move. Its durable journal records the
 source and destination before the API call; a lost reply is reconciled from
 fresh remote metadata on replay or restart, without blindly repeating the move.
 Both trees remain reserved while the result is uncertain. Open handles follow
 the page identity. A real Confluence move can update version and frontmatter;
-the page body is preserved. NFS directory retitling, cross-space moves and moving
-actual Confluence folders still require implementation. Public NFS RW remains gated.
+the page body is preserved. NFS directory retitling and cross-space moves still require implementation.
+Folder moves use the positional REST endpoint and verify numeric space identity
+against folder metadata; journal migration preserves existing page move intents.
+Public NFS RW remains gated.

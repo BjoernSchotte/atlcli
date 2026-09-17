@@ -787,6 +787,32 @@ it.each([false, true])("reparents remote page directories with stable handles an
   expect(client.callsTo("movePage")).toBe(1);
 });
 
+it.each([false, true])("moves real folder identities and preserves descendant handles (lost reply=%s)", async lostReply => {
+  const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  client.seedPage({ id: "900", title: "Archive", type: "folder", parentId: "100", spaceKey: "DOCSY" });
+  client.seedPage({ id: "901", title: "Nested", parentId: "900", spaceKey: "DOCSY", storage: "<p>Preserved descendant</p>" });
+  const source = await fs.lookup(1, "archive-900");
+  const child = await fs.lookup(source, "nested-901");
+  const body = await fs.lookup(child, "_index.md");
+  const destination = await fs.lookup(1, "child-1-201");
+  const move = client.movePageToPosition.bind(client);
+  client.movePageToPosition = async (...args) => { const result = await move(...args); if (lostReply) throw new Error("Lost folder move reply"); return result; };
+  const operation = fs.rename(1, "archive-900", destination, "archive-900");
+  if (lostReply) {
+    await expect(operation).rejects.toThrow("Lost folder move reply");
+    const recovered = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+    try { await recovered.publish("move:/DOCSY/archive-900"); } finally { await recovered.stop(); }
+  } else await operation;
+  expect(journal!.pendingMoves()).toEqual([]);
+  expect(journal!.moveIntent("/DOCSY/archive-900")?.kind).toBe("folder");
+  expect(await fs.lookup(destination, "archive-900")).toBe(source);
+  expect(await fs.lookup(source, "nested-901")).toBe(child);
+  expect(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString()).toContain("Preserved descendant");
+  expect(client.peekPage("900")?.parentId).toBe("201");
+  expect(client.callsTo("movePageToPosition")).toBe(1);
+  expect(client.callsTo("movePage")).toBe(0);
+});
+
 it("retains an unconfirmed move and never retries its remote mutation", async () => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   const destination = await fs.lookup(1, "child-1-201");

@@ -1093,7 +1093,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * that tries to change it is `EINVAL` rather than a silent no-op on a
    * different page.
    */
-  async rename(from: string, to: string, expected?: { id: string; spaceKey: string; sourceParentId: string; targetParentId: string }): Promise<void> {
+  async rename(from: string, to: string, expected?: { id: string; spaceKey: string; sourceParentId: string; targetParentId: string; kind?: "page" | "folder" }): Promise<void> {
     const source = (await this.resolver.resolve(this.canonicalize(from))) as Resolved;
     if (source.kind !== "container" && source.kind !== "body") {
       throw new VfsError("EROFS", `${from} is a generated view and cannot be renamed`, {
@@ -1115,11 +1115,14 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     const destination = await this.resolver.resolve(target.parent);
     const { spaceKey, parentNode } = await this.containerOf(destination as Resolved, to);
     if (expected) {
-      if (node.type !== "page" || node.id !== expected.id || node.spaceKey !== expected.spaceKey ||
+      if (node.type !== (expected.kind ?? "page") || node.id !== expected.id || node.spaceKey !== expected.spaceKey ||
           spaceKey !== expected.spaceKey || parentNode.id !== expected.targetParentId) {
         throw new VfsError("EBUSY", "Move identity or destination changed");
       }
-      const current = await this.opts.client.getPageMetadata(node.id).catch(error => { throw mapClientError(error, from); });
+      const current = await (node.type === "folder"
+        ? this.opts.client.getFolder(node.id).then(async folder => ({ ...folder,
+          spaceKey: folder.spaceId && String(folder.spaceId) === String((await this.index.getSpace(expected.spaceKey)).id) ? expected.spaceKey : undefined }))
+        : this.opts.client.getPageMetadata(node.id)).catch(error => { throw mapClientError(error, from); });
       if (current.id !== node.id || current.spaceKey !== expected.spaceKey ||
           current.parentId !== expected.sourceParentId || current.title !== node.title) {
         throw new VfsError("EBUSY", "Move source changed");
@@ -1143,9 +1146,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     try {
       if (!sameParent) {
         assertWritable(this.guard, "move", from);
-        if (spaceKey !== node.spaceKey) {
-          // Cross-space moves go through the v1 positional endpoint, which is
-          // the only one that accepts a target in another space.
+        if (node.type === "folder" || spaceKey !== node.spaceKey) {
+          // Folder and cross-space moves use the positional endpoint; the
+          // page-update endpoint cannot update a folder.
           await this.opts.client.movePageToPosition(node.id, "append", parentNode.id);
         } else if (parentNode.type === "folder") {
           await this.opts.client.movePageToFolder(node.id, parentNode.id);
@@ -1277,9 +1280,17 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     }
   }
 
-  async confirmMove(id: string, spaceKey: string, parentId: string, title: string): Promise<boolean> {
+  async confirmMove(id: string, spaceKey: string, parentId: string, title: string, kind: "page" | "folder" = "page"): Promise<boolean> {
     const mounted = this.opts.spaces ?? (await this.index.listSpaces()).map(space => space.key);
     if (!mounted.includes(spaceKey)) throw new VfsError("EACCES", "Move identity is outside the selected export");
+    if (kind === "folder") {
+      const folder = await this.opts.client.getFolder(id).catch(error => { throw mapClientError(error); });
+      const space = await this.index.getSpace(spaceKey);
+      if (folder.id !== id || !folder.spaceId || !space.id || String(folder.spaceId) !== String(space.id) || folder.parentId !== parentId || folder.title !== title) return false;
+      this.index.forget(id);
+      this.index.attachChild(parentId, { id, title, type: "folder", spaceKey });
+      return true;
+    }
     const page = await this.opts.client.getPageMetadata(id).catch(error => { throw mapClientError(error); });
     if (page.id !== id || page.spaceKey !== spaceKey || page.parentId !== parentId || page.title !== title) return false;
     this.cache?.forgetPage(id);

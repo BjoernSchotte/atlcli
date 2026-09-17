@@ -520,6 +520,28 @@ describe("rename and move", () => {
     } finally { await vfs.close(); }
   });
 
+  it("uses folder metadata and the positional endpoint for guarded folder moves", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const source = "/DOCSY/runbooks-104", target = "/DOCSY/architecture-102/runbooks-104";
+    const expected = { id: "104", spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "102", kind: "folder" as const };
+    const getFolder = client.getFolder.bind(client);
+    try {
+      await vfs.stat(source);
+      client.getFolder = async id => ({ ...await getFolder(id), spaceId: "outside-export" });
+      await expect(vfs.rename(source, target, expected)).rejects.toMatchObject({ code: "EBUSY" });
+      expect(await vfs.confirmMove("104", "DOCSY", "100", "Runbooks", "folder")).toBe(false);
+      expect(client.callsTo("movePageToPosition")).toBe(0);
+      client.getFolder = getFolder;
+      await vfs.rename(source, target, expected);
+      expect(await vfs.confirmMove("104", "DOCSY", "102", "Runbooks", "folder")).toBe(true);
+      expect(client.callsTo("movePageToPosition")).toBe(1);
+      expect(client.callsTo("movePage")).toBe(0);
+      expect(client.callsTo("getPage")).toBe(0);
+      expect((await vfs.resolve(target)).kind).toBe("folder");
+    } finally { await vfs.close(); }
+  });
+
   it("retitles inside the same directory", async () => {
     const client = seeded();
     const vfs = await openVfs(client);

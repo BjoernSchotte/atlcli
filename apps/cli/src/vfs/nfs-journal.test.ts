@@ -845,7 +845,7 @@ it("rejects missing identities, credential-bearing sites and invalid exports bef
 it("retains an uncertain reparent across reopen and reserves both trees", () => {
   const { path, journal } = fixture();
   journal.admit("200", "/DOCSY/page-200/_index.md", bytes("Body"), 1);
-  const move = { id: "200", source: "/DOCSY/page-200", target: "/DOCSY/target-201/page-200",
+  const move = { id: "200", kind: "page" as const, source: "/DOCSY/page-200", target: "/DOCSY/target-201/page-200",
     spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "201", title: "Page" };
   journal.beginMove(move);
   journal.close();
@@ -870,4 +870,18 @@ it("refreshes changed metadata at the same version without repeatedly dirtying a
   expect(journal.refreshClean("200", fresh.path, fresh.bytes, 1, fresh.revision, true)).toEqual(fresh);
   expect(Buffer.from(journal.publishedSource("200")!).toString()).toBe("old metadata");
   expect(journal.pendingIds()).toEqual([]);
+});
+
+it("migrates schema-thirteen pending moves as pages and keeps folder intents across reopen", () => {
+  const { path, journal } = fixture();
+  const move = { id: "200", kind: "page" as const, source: "/DOCSY/page-200", target: "/DOCSY/target-201/page-200",
+    spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "201", title: "Page" };
+  journal.beginMove(move); journal.close();
+  const db = new Database(path); db.exec("ALTER TABLE moves DROP COLUMN kind; PRAGMA user_version=13"); db.close();
+  const upgraded = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(upgraded);
+  expect(upgraded.pendingMoves()).toEqual([{ ...move, completed: 0 }]);
+  upgraded.beginMove({ ...move, id: "300", kind: "folder", source: "/DOCSY/folder-300", target: "/DOCSY/other-301/folder-300", targetParentId: "301" });
+  upgraded.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(reopened.moveIntent("/DOCSY/folder-300")?.kind).toBe("folder");
 });

@@ -140,7 +140,7 @@ export class NfsPublisher {
       const source = id.slice(5);
       const move = this.journal.moveIntent(source);
       if (move && !move.completed && this.spaces.includes(move.spaceKey) &&
-          await this.vfs.confirmMove(move.id, move.spaceKey, move.targetParentId, move.title)) {
+          await this.vfs.confirmMove(move.id, move.spaceKey, move.targetParentId, move.title, move.kind)) {
         this.journal.completeMove(source);
       }
       return null;

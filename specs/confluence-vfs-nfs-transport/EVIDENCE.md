@@ -3488,3 +3488,33 @@ Remaining: directory retitles, cross-space moves, actual folder moves/removal,
 clean receipt eviction and resolving confirmed-negative move outcomes. Journal
 reopen and uncertain-result reconciliation are tested separately here; this is
 not a claim of native SIGKILL at every move boundary. Public CLI RW stays gated.
+
+
+## Slice 132 — journaled real Confluence-folder moves
+
+The existing positional move client successfully moved two disposable DOCSY
+folders in a live probe, retaining the source title. Core rename now uses that
+endpoint for real folders instead of the page-update endpoint. NFS carries the
+page/folder kind through its durable intent and recovery confirmation; folder
+checks use fresh folder metadata and compare its numeric space ID to the mounted
+space. Unsupported folder retitles still reject before mutation.
+
+Schema 14 migrates existing move intents as pages and persists folder kind.
+A cached schema-inspection statement initially caused three reopen tests to
+retain a SQLite lock; explicit statement finalization fixes that regression.
+
+- macOS/Linux: 229 tests / 1806 assertions each across filesystem, journal,
+  publisher and core write-back suites. Includes lost folder-move reply,
+  descendant handle preservation, wrong-space metadata rejection, and migration
+  from schema 13 with a pending page move.
+- Native macOS/Linux RW suite: one passed / 61 assertions each. Moves a folder
+  while a descendant body descriptor stays open, then reads both the old handle
+  and new path, alongside existing page/editor-save coverage.
+- Linux DOCSY journaled folder-to-folder move: one passed / five assertions;
+  verifies ID, parent, title, stable directory handle and cleared intent. Probe
+  and test folders were deleted. Typecheck: all four tasks passed.
+
+Remaining namespace work includes page-directory retitles, cross-space moves,
+folder removal, parentless root-item coverage, receipt eviction and explicit
+resolution of confirmed-negative outcomes. Native SIGKILL during a folder move
+is not established by these tests. The public CLI RW gate remains enabled.

@@ -151,6 +151,33 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     } finally { journal.close(); }
   }, 30_000);
 
+  it("reparents a live Confluence folder through the journaled NFS filesystem", async () => {
+    const space = await client.getSpace(E2E_SPACE_KEY);
+    const home = await client.getSpaceHomepageId(E2E_SPACE_KEY);
+    const folders: string[] = [];
+    const journal = new NfsJournal(join(cacheDir, "folder-move.sqlite"), "live:DOCSY");
+    try {
+      const target = await client.createFolder({ spaceId: String(space.id), parentFolderId: home!, title: makeE2eTitle("nfs-folder-target") }); folders.push(target.id);
+      const source = await client.createFolder({ spaceId: String(space.id), parentFolderId: home!, title: makeE2eTitle("nfs-folder-source") }); folders.push(source.id);
+      const fs = new NfsFilesystem(vfs, [E2E_SPACE_KEY], undefined, journal);
+      const sourcePath = await vfs.folderPath(source.id, E2E_SPACE_KEY);
+      const targetPath = await vfs.folderPath(target.id, E2E_SPACE_KEY);
+      const name = sourcePath.split("/").at(-1)!;
+      const directory = await fs.lookup(1, name);
+      const destination = await fs.lookup(1, targetPath.split("/").at(-1)!);
+      await fs.rename(1, name, destination, name);
+      const actual = await client.getFolder(source.id);
+      expect(actual.id).toBe(source.id);
+      expect(actual.parentId).toBe(target.id);
+      expect(actual.title).toBe(source.title);
+      expect(await fs.lookup(destination, name)).toBe(directory);
+      expect(journal.pendingMoves()).toEqual([]);
+    } finally {
+      journal.close();
+      for (const id of folders.reverse()) await client.deleteFolder(id);
+    }
+  }, 30_000);
+
   it("preserves the exact page title when moving a canonical directory name", async () => {
     const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("move-parent"), storage: "<p>Parent</p>" });
     created.push(parent.id);

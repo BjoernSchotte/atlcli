@@ -937,6 +937,8 @@ with socket.socket() as client:
   it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("writes and fsyncs existing pages through a native RW kernel mount", async () => {
     let clockOffset = 0;
     const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now() + clockOffset, true, 4096, true);
+    client.seedPage({ id: "800", title: "Archive", type: "folder", parentId: "100", spaceKey: "DOCSY" });
+    client.seedPage({ id: "801", title: "Nested", parentId: "800", spaceKey: "DOCSY", storage: "<p>Folder child</p>" });
     const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-rw-"));
     let mounted = false;
     cleanups.push(async () => {
@@ -968,6 +970,14 @@ with socket.socket() as client:
       expect(client.peekPage("430")?.parentId).toBe("431");
       expect(client.callsTo("movePage")).toBe(1);
     } finally { await moveDescriptor.close(); }
+    const folderDescriptor = await open(join(mountpoint, "archive-800", "nested-801", "_index.md"), "r");
+    try {
+      await rename(join(mountpoint, "archive-800"), join(mountpoint, "child-31-431", "archive-800"));
+      expect((await folderDescriptor.readFile()).toString()).toContain("Folder child");
+      expect((await readFile(join(mountpoint, "child-31-431", "archive-800", "nested-801", "_index.md"))).toString()).toContain("Folder child");
+      expect(client.peekPage("800")?.parentId).toBe("431");
+      expect(client.callsTo("movePageToPosition")).toBe(1);
+    } finally { await folderDescriptor.close(); }
     const path = join(mountpoint, "_index.md");
     const metadata = await stat(path);
     expect(metadata.uid).toBe(process.getuid!());
