@@ -3715,3 +3715,40 @@ request contexts. Other creation methods and editor draft handling are unchanged
   tasks, including the final live-test assertions.
 
 Public NFS RW and overall acceptance remain gated.
+
+
+## Slice 139 — full-build checkpoint and current API reports
+
+Both hosts completed all 35 repository build tasks. The macOS full repository
+run finished with 9283 passed, 98 skipped, two failed and 46981 assertions across
+760 files. Its only failures were stale public API and closure reports left by
+the NFS work. The reports were regenerated from fresh dist and reviewed: the
+Confluence additions are optional creation properties, lastModified and trash
+status; the experimental VFS additions describe guarded writes, namespace
+reconciliation and identity lookup. No stable export was removed. The dedicated
+API/closure guard rerun passed all five tests / 14 assertions, including the
+guard's negative fixtures. This is a broad run plus a targeted repair check,
+not a subsequent all-green full run.
+
+Linux's first full run found older packaging/test sources and Node 20.19.4, which
+Astro rejects. That run had 9250 passed, 104 skipped and 24 failed; it is not
+current-source acceptance. Changed NFS/package/CI sources and reports were
+synchronized after it ended; pre-sync existing files were archived under /tmp.
+Two unrelated documentation differences were preserved. The corrected run uses
+the already-installed Node 24.12.0 and is still running at this checkpoint.
+
+- macOS Rust helper: all seven unit tests passed with the locked dependency set.
+- Linux synchronized Rust helper tests and full rebuild passed before the new
+  full test run began.
+- Typecheck: all four tasks passed. Linux DOCSY PUT/readback/DELETE: one passed /
+  five assertions, with initial version 1 confirmed and temporary page trashed.
+- Full tests wrote a generated Starlight inventory and Astro dist-file output;
+  those test artifacts were restored/removed and are not included in the commit.
+
+CI run 35232069381 on 1ccd0a9f failed native NFS acceptance. Linux x64 and arm64
+returned the correct directory contents but exceeded the 5000ms fresh-listing
+budget (7022ms / 6707ms). Both macOS arm64 and Intel hit the 30s timeout in the helper-death recovery
+test. These are explicit
+open failures, not waived performance or durability gates. Public NFS RW remains
+gated. The next work is to diagnose these native failures and finish the aligned
+Linux repository run.
