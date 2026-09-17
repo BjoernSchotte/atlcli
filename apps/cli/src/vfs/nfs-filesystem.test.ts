@@ -754,6 +754,60 @@ it("keeps a replacement source handle writable after rename without changing the
 });
 
 
+it.each([false, true])("retitles a parentless page without implicitly moving it under the homepage (lost reply=%s)", async lostReply => {
+  const { fs, client, journal, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
+  client.seedPage({ id: "900", title: "Detached", spaceKey: "DOCSY", storage: "<p>Root</p>" });
+  const directory = await fs.lookup(1, "detached-900");
+  const update = client.updatePage.bind(client);
+  client.updatePage = async params => { const result = await update(params); if (lostReply) throw new Error("Lost root retitle"); return result; };
+  const operation = fs.rename(1, "detached-900", 1, "renamed-900");
+  if (lostReply) {
+    await expect(operation).rejects.toThrow("Lost root retitle");
+    const publisher = new NfsPublisher(journal!, vfs, ["DOCSY"]);
+    try { await publisher.publish("move:/DOCSY/detached-900"); } finally { await publisher.stop(); }
+  } else await operation;
+  expect(client.peekPage("900")?.parentId ?? null).toBeNull();
+  expect(client.peekPage("900")?.title).toBe("Renamed");
+  expect(client.callsTo("movePage")).toBe(0);
+  expect(client.callsTo("updatePage")).toBe(1);
+  expect(await fs.lookup(1, "renamed-900")).toBe(directory);
+  expect(journal!.pendingMoves()).toEqual([]);
+});
+
+it.each([false, true])("lists and reparents an actual parentless page (lost reply=%s)", async lostReply => {
+  const { fs, journal, client, vfs, cacheDir } = await fixture(["DOCSY"], "rw", undefined, true);
+  client.seedPage({ id: "900", title: "Detached", spaceKey: "DOCSY", storage: "<p>Root Grüße 🐴</p>" });
+  client.seedPage({ id: "901", title: "Nested", spaceKey: "DOCSY", parentId: "900", storage: "<p>Child</p>" });
+  expect((await fs.readdir(1, 0, 256)).entries.some(entry => entry.name === "detached-900")).toBe(true);
+  const directory = await fs.lookup(1, "detached-900");
+  const body = await fs.lookup(directory, "_index.md");
+  await fs.lookup(directory, "nested-901");
+  expect(await vfs.readlink("/DOCSY/.by-id/900.md")).toBe("/DOCSY/detached-900/_index.md");
+  expect(await vfs.readlink("/DOCSY/.by-id/901.md")).toBe("/DOCSY/detached-900/nested-901/_index.md");
+  const destination = await fs.lookup(1, "child-0-200");
+  expect(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString()).toContain("Root Grüße 🐴");
+  const move = client.movePage.bind(client);
+  client.movePage = async (...args) => { const result = await move(...args); if (lostReply) throw new Error("Lost root move"); return result; };
+  if (lostReply) {
+    await expect(fs.rename(1, "detached-900", destination, "detached-900")).rejects.toThrow("Lost root move");
+    expect(journal!.moveIntent("/DOCSY/detached-900")?.sourceParentId).toBeNull();
+    journal!.close();
+    const reopened = new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY");
+    const publisher = new NfsPublisher(reopened, vfs, ["DOCSY"]);
+    try {
+      await publisher.publish("move:/DOCSY/detached-900");
+      expect(reopened.pendingMoves()).toEqual([]);
+    } finally { await publisher.stop(); reopened.close(); }
+  } else {
+    await fs.rename(1, "detached-900", destination, "detached-900");
+    expect(await fs.lookup(destination, "detached-900")).toBe(directory);
+    expect(await fs.lookup(directory, "_index.md")).toBe(body);
+    expect((await fs.readdir(1, 0, 256)).entries.some(entry => entry.name === "detached-900")).toBe(false);
+  }
+  expect(client.peekPage("900")?.parentId).toBe("200");
+  expect(client.callsTo("movePage")).toBe(1);
+});
+
 it.each([false, true])("reparents remote page directories with stable handles and reconciles lost replies (%s)", async lostReply => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   const directory = await fs.lookup(1, "child-0-200");

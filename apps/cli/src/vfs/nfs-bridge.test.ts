@@ -1013,7 +1013,7 @@ with socket.socket() as client:
       : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint])).toBe(0);
     mounted = true;
     for (const [kind, id, childId] of [["page", "900", "901"], ["folder", "902", "903"]] as const) {
-      client.seedPage({ id, title: "Portable", type: kind, spaceKey: "DOCSY", parentId: "100", storage: "<p>Parent</p>" });
+      client.seedPage({ id, title: "Portable", type: kind, spaceKey: "DOCSY", parentId: kind === "page" ? null : "100", storage: "<p>Parent</p>" });
       client.seedPage({ id: childId, title: "Nested", spaceKey: "DOCSY", parentId: id, storage: "<p>Grüße 🐴</p>" });
     }
     for (const [id, childId] of [["900", "901"], ["902", "903"]]) {

@@ -333,6 +333,13 @@ export class FakeConfluenceClient implements VfsClient {
     return rest;
   }
 
+  async getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">): Promise<ConfluencePage[]> {
+    const spaceKey = space.key;
+    this.record("getSpaceRootPages", spaceKey);
+    return [...this.pages.values()].filter(page => page.spaceKey === spaceKey && page.type === "page" &&
+      !page.parentId && !page.trashed && (!page.status || page.status === "current") && this.visible(page.id)).map(page => this.toPage(page));
+  }
+
   async getSpaceHomepageId(spaceKey: string): Promise<string | null> {
     this.record("getSpaceHomepageId", spaceKey);
     const space = this.spaces.get(spaceKey);

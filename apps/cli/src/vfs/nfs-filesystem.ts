@@ -535,16 +535,19 @@ export class NfsFilesystem {
         }
       }
       let destination = await this.vfs.resolve(posix.dirname(target));
-      if (destination.kind === "space") destination = await this.vfs.resolve(posix.join(posix.dirname(target), "_index.md"));
-      if (node.readOnly || destination.readOnly || !node.parentId || !node.spaceKey ||
+      const keepRoot = destination.kind === "space" && !node.parentId && posix.dirname(source) === posix.dirname(target);
+      if (keepRoot) destination = node;
+      else if (destination.kind === "space") destination = await this.vfs.resolve(posix.join(posix.dirname(target), "_index.md"));
+      if (node.readOnly || destination.readOnly || !node.spaceKey ||
           !["page", "folder"].includes(destination.kind) || !destination.spaceKey || !this.spaces.has(destination.spaceKey)) {
         throw new VfsError("EACCES", "Move is outside writable page containers");
       }
+      const targetParentId = keepRoot ? null : destination.id;
       this.journal!.beginMove({ id: node.id, kind: sourceStat.kind as "page" | "folder", source, target, spaceKey: node.spaceKey,
-        sourceParentId: node.parentId, sourceTitle: node.title, targetParentId: destination.id, title });
+        sourceParentId: node.parentId ?? null, sourceTitle: node.title, targetParentId, title });
       await this.vfs.rename(source, target, { id: node.id, kind: sourceStat.kind as "page" | "folder", spaceKey: node.spaceKey,
-        sourceParentId: node.parentId, targetParentId: destination.id, targetSpaceKey: destination.spaceKey });
-      if (!await this.vfs.confirmMove(node.id, destination.spaceKey, destination.id, title, sourceStat.kind as "page" | "folder")) {
+        sourceParentId: node.parentId ?? null, targetParentId, targetSpaceKey: destination.spaceKey });
+      if (!await this.vfs.confirmMove(node.id, destination.spaceKey, targetParentId, title, sourceStat.kind as "page" | "folder")) {
         throw new VfsError("EBUSY", "Move result requires reconciliation");
       }
       this.journal!.completeMove(source);

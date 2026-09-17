@@ -1028,6 +1028,28 @@ it("refreshes changed metadata at the same version without repeatedly dirtying a
   expect(journal.pendingIds()).toEqual([]);
 });
 
+it("migrates required-parent receipts and durably records a parentless source", () => {
+  const { path, journal } = fixture();
+  const move = { id: "200", kind: "page" as const, source: "/DOCSY/page-200", target: "/DOCSY/target-201/page-200",
+    spaceKey: "DOCSY", sourceParentId: "100", sourceTitle: "Page", targetParentId: "201", title: "Page" };
+  journal.beginMove(move); journal.close();
+  const db = new Database(path);
+  db.exec(`ALTER TABLE moves RENAME TO newer_moves;
+    CREATE TABLE moves (id TEXT PRIMARY KEY, source TEXT NOT NULL UNIQUE, target TEXT NOT NULL UNIQUE,
+      spaceKey TEXT NOT NULL, sourceParentId TEXT NOT NULL, targetParentId TEXT NOT NULL, title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)),
+      kind TEXT NOT NULL DEFAULT 'page' CHECK(kind IN ('page','folder')), sourceTitle TEXT);
+    INSERT INTO moves SELECT * FROM newer_moves; DROP TABLE newer_moves; PRAGMA user_version=17;`);
+  db.close();
+  const migrated = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(migrated);
+  expect(migrated.moveIntent(move.source)).toEqual({ ...move, completed: 0 });
+  const rootMove = { ...move, id: "900", source: "/DOCSY/root-900", target: "/DOCSY/other-901/root-900", targetParentId: "901", sourceParentId: null };
+  migrated.beginMove(rootMove); migrated.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(reopened.moveIntent(rootMove.source)).toEqual({ ...rootMove, completed: 0 });
+  expect(() => reopened.beginMove({ ...rootMove, sourceParentId: "" })).toThrow("Invalid");
+});
+
 it("migrates schema-thirteen pending moves as pages and keeps folder intents across reopen", () => {
   const { path, journal } = fixture();
   const move = { id: "200", kind: "page" as const, source: "/DOCSY/page-200", target: "/DOCSY/target-201/page-200",

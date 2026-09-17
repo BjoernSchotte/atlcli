@@ -161,6 +161,17 @@ export class PathResolver {
         break;
     }
 
+    if (parseName(head!).idCandidate !== undefined) {
+      const root = this.matchChild(await this.index.loadRootPages(spaceKey), head!);
+      if (root) {
+        if (root.asBody) {
+          if (rest.length) throw new VfsError("ENOTDIR", `Not a directory: ${path}`, { path });
+          return { kind: "body", node: root.node };
+        }
+        if (!rest.length) return { kind: "container", node: root.node };
+        return this.resolveUnderContainer(root.node.id, rest, path, options);
+      }
+    }
     if (!homepageId) throw enoent(path);
     return this.resolveUnderContainer(homepageId, segments, path, options);
   }

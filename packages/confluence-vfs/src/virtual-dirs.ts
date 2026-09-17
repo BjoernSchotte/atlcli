@@ -323,14 +323,14 @@ export class VirtualDirs {
   /** The canonical path of a page, for `readlink`. */
   async canonicalPath(id: string, spaceKey: string, path: string): Promise<string> {
     const node = await this.loadNode(id, spaceKey, path);
-    const segments = this.segmentsFromIndex(node, spaceKey);
+    const homepageId = await this.opts.index.getHomepageId(spaceKey);
+    const segments = this.segmentsFromIndex(node, homepageId);
     if (segments) return `/${[spaceKey, ...segments].join("/")}`;
 
     // The index has not walked down to this page, so ask Confluence directly.
     // One request, and only for an explicit `.by-id` address.
     const target = node;
     const ancestors = await this.request(() => this.opts.client.getAncestors(id), path);
-    const homepageId = await this.opts.index.getHomepageId(spaceKey);
     const chain = ancestors
       .filter((ancestor) => ancestor.id !== homepageId)
       .map((ancestor) => `${vfsSlug(ancestor.title)}-${ancestor.id}`);
@@ -368,8 +368,7 @@ export class VirtualDirs {
     return node;
   }
 
-  private segmentsFromIndex(node: TreeNode, spaceKey: string): string[] | undefined {
-    void spaceKey;
+  private segmentsFromIndex(node: TreeNode, homepageId: string | null): string[] | undefined {
     const segments: string[] = [];
     let current: TreeNode | undefined = node;
     // A cycle would only come from a corrupt index, but an infinite loop inside
@@ -378,8 +377,9 @@ export class VirtualDirs {
     while (current) {
       if (seen.has(current.id)) return undefined;
       seen.add(current.id);
-      if (current.parentId === null) break;
+      if (current.id === homepageId) break;
       segments.unshift(formatDirName(current.title, current.id));
+      if (current.parentId === null) break;
       const parent: TreeNode | undefined = this.opts.index.node(current.parentId!);
       if (!parent) return undefined;
       current = parent;

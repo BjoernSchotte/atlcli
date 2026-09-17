@@ -67,6 +67,18 @@ function makeVfs(client: FakeConfluenceClient, overrides = {}): ConfluenceVfsImp
 }
 
 describe("resolve", () => {
+  it("lists and resolves roots even in a space without a homepage", async () => {
+    const client = new FakeConfluenceClient().seedSpace({ id: "sp-1", key: "DOCSY", name: "Docs" })
+      .seedPage({ id: "900", title: "Detached", spaceKey: "DOCSY", storage: "<p>Root</p>" });
+    const vfs = makeVfs(client);
+    expect((await vfs.readdir("/DOCSY")).some(entry => entry.name === "detached-900")).toBe(true);
+    expect((await vfs.resolve("/DOCSY/detached-900/_index.md")).id).toBe("900");
+    expect((await vfs.resolve("/DOCSY/detached-900.md")).id).toBe("900");
+    await expect(vfs.resolve("/DOCSY/_index.md")).rejects.toMatchObject({ code: "ENOENT" });
+    expect(client.callsTo("getPage")).toBe(0);
+    expect(client.callsTo("getSpaceHomepageId")).toBe(1);
+  });
+
   let client: FakeConfluenceClient;
   let vfs: ConfluenceVfsImpl;
 

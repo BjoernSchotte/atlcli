@@ -38,9 +38,9 @@ export interface NfsMoveIntent {
   source: string;
   target: string;
   spaceKey: string;
-  sourceParentId: string;
+  sourceParentId: string | null;
   sourceTitle: string | null;
-  targetParentId: string;
+  targetParentId: string | null;
   title: string;
   completed: number;
 }
@@ -103,7 +103,7 @@ export class NfsJournal {
       this.db.exec("COMMIT");
       chmodSync(path, 0o600);
       const version = this.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (!Number.isInteger(version) || version < 0 || version > 17) throw new Error("Unsupported NFS journal schema version");
+      if (!Number.isInteger(version) || version < 0 || version > 18) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers. Exclusive mode retains the rollback
@@ -142,18 +142,32 @@ export class NfsJournal {
           spaceKey TEXT NOT NULL, parentId TEXT NOT NULL, pageId TEXT UNIQUE, version INTEGER,
           CHECK ((pageId IS NULL AND version IS NULL) OR (pageId IS NOT NULL AND version > 0))
         ); CREATE TABLE IF NOT EXISTS promotions (localId TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, pageId TEXT NOT NULL UNIQUE REFERENCES files(id)); CREATE TABLE IF NOT EXISTS trash (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL, spaceKey TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1))); CREATE TABLE IF NOT EXISTS moves (id TEXT PRIMARY KEY, source TEXT NOT NULL UNIQUE,
-          target TEXT NOT NULL UNIQUE, spaceKey TEXT NOT NULL, sourceParentId TEXT NOT NULL,
-          targetParentId TEXT NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)));
-          PRAGMA user_version=17;`);
+          target TEXT NOT NULL UNIQUE, spaceKey TEXT NOT NULL, sourceParentId TEXT,
+          targetParentId TEXT, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)));
+          PRAGMA user_version=18;`);
         const promotionColumns = this.query<{ name: string }, []>("PRAGMA table_info(promotions)").all();
         if (!promotionColumns.some(column => column.name === "directoryId")) this.db.exec("ALTER TABLE promotions ADD COLUMN directoryId TEXT REFERENCES files(id)");
         this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS promotion_directory ON promotions(directoryId)");
-        const moveColumns = this.db.prepare<{ name: string }, []>("PRAGMA table_info(moves)");
+        const moveColumns = this.db.prepare<{ name: string; notnull: number }, []>("PRAGMA table_info(moves)");
         let moveColumnNames: string[];
-        try { moveColumnNames = moveColumns.all().map(column => column.name); }
+        let migrateParent: boolean;
+        try {
+          const columns = moveColumns.all();
+          moveColumnNames = columns.map(column => column.name);
+          migrateParent = columns.some(column => (column.name === "sourceParentId" || column.name === "targetParentId") && column.notnull === 1);
+        }
         finally { moveColumns.finalize(); }
         if (!moveColumnNames.includes("kind")) this.db.exec("ALTER TABLE moves ADD COLUMN kind TEXT NOT NULL DEFAULT 'page' CHECK(kind IN ('page','folder'))");
         if (!moveColumnNames.includes("sourceTitle")) this.db.exec("ALTER TABLE moves ADD COLUMN sourceTitle TEXT");
+        if (migrateParent) this.db.exec(`
+          ALTER TABLE moves RENAME TO legacy_moves;
+          CREATE TABLE moves (id TEXT PRIMARY KEY, source TEXT NOT NULL UNIQUE, target TEXT NOT NULL UNIQUE,
+            spaceKey TEXT NOT NULL, sourceParentId TEXT, targetParentId TEXT, title TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)),
+            kind TEXT NOT NULL DEFAULT 'page' CHECK(kind IN ('page','folder')), sourceTitle TEXT);
+          INSERT INTO moves SELECT id,source,target,spaceKey,sourceParentId,targetParentId,title,completed,kind,sourceTitle FROM legacy_moves;
+          DROP TABLE legacy_moves;
+        `);
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -659,7 +673,10 @@ export class NfsJournal {
 
   beginMove(move: Omit<NfsMoveIntent, "completed">): void {
     this.localPath(move.source); this.localPath(move.target);
-    if (!["page", "folder"].includes(move.kind) || ![move.id, move.sourceParentId, move.targetParentId].every(id => /^[0-9]+$/.test(id)) ||
+    if (!["page", "folder"].includes(move.kind) || !/^[0-9]+$/.test(move.id) ||
+        (move.targetParentId !== null && !/^[0-9]+$/.test(move.targetParentId)) ||
+        (move.targetParentId === null && (move.sourceParentId !== null || posix.dirname(move.source) !== posix.dirname(move.target))) ||
+        (move.sourceParentId !== null && !/^[0-9]+$/.test(move.sourceParentId)) ||
         move.source.split("/")[1] !== move.spaceKey || move.target.split("/").length < 3 ||
         (posix.basename(move.source) !== posix.basename(move.target) &&
           move.kind !== "page") || move.target.startsWith(`${move.source}/`)) {

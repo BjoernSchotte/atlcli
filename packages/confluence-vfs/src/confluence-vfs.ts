@@ -704,6 +704,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
   private async readdirSpace(spaceKey: string, homepageId: string | null): Promise<VfsDirent[]> {
     const entries: VfsDirent[] = [virtualFileEntry("_space.json")];
+    for (const root of await this.index.loadRootPages(spaceKey)) entries.push(direntFor(root));
     if (homepageId) {
       entries.push({
         name: INDEX_FILE,
@@ -1094,7 +1095,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * that tries to change it is `EINVAL` rather than a silent no-op on a
    * different page.
    */
-  async rename(from: string, to: string, expected?: { id: string; spaceKey: string; targetSpaceKey?: string; sourceParentId: string; targetParentId: string; kind?: "page" | "folder" }): Promise<void> {
+  async rename(from: string, to: string, expected?: { id: string; spaceKey: string; targetSpaceKey?: string; sourceParentId: string | null; targetParentId: string | null; kind?: "page" | "folder" }): Promise<void> {
     const source = (await this.resolver.resolve(this.canonicalize(from))) as Resolved;
     if (source.kind !== "container" && source.kind !== "body") {
       throw new VfsError("EROFS", `${from} is a generated view and cannot be renamed`, {
@@ -1117,10 +1118,14 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     }
 
     const destination = await this.resolver.resolve(target.parent);
-    const { spaceKey, parentNode } = await this.containerOf(destination as Resolved, to);
+    const keepRoot = destination.kind === "space" && destination.spaceKey === node.spaceKey && node.parentId === null;
+    const container = keepRoot ? undefined : await this.containerOf(destination as Resolved, to);
+    const spaceKey = container?.spaceKey ?? node.spaceKey;
+    const parentNode = container?.parentNode;
+    const parentId = parentNode?.id ?? null;
     if (expected) {
       if (node.type !== (expected.kind ?? "page") || node.id !== expected.id || node.spaceKey !== expected.spaceKey ||
-          spaceKey !== (expected.targetSpaceKey ?? expected.spaceKey) || parentNode.id !== expected.targetParentId) {
+          spaceKey !== (expected.targetSpaceKey ?? expected.spaceKey) || parentId !== expected.targetParentId) {
         throw new VfsError("EBUSY", "Move identity or destination changed");
       }
       const current = await (node.type === "folder"
@@ -1128,11 +1133,11 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
           spaceKey: folder.spaceId && String(folder.spaceId) === String((await this.index.getSpace(expected.spaceKey)).id) ? expected.spaceKey : undefined }))
         : this.opts.client.getPageMetadata(node.id)).catch(error => { throw mapClientError(error, from); });
       if (current.id !== node.id || current.spaceKey !== expected.spaceKey ||
-          current.parentId !== expected.sourceParentId || current.title !== node.title) {
+          (current.parentId ?? null) !== expected.sourceParentId || current.title !== node.title) {
         throw new VfsError("EBUSY", "Move source changed");
       }
     }
-    const sameParent = parentNode.id === node.parentId;
+    const sameParent = parentId === node.parentId;
     // Slugs are lossy (case, punctuation, Unicode). Moving the canonical name
     // must retain the original title rather than reverse-convert that slug.
     const newTitle = parsedTarget.stem === formatDirName(node.title, node.id)
@@ -1150,6 +1155,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     try {
       if (!sameParent) {
         assertWritable(this.guard, "move", from);
+        if (!parentNode) throw new VfsError("EINVAL", "Move destination requires a parent page");
         if (node.type === "folder" || spaceKey !== node.spaceKey) {
           // Folder and cross-space moves use the positional endpoint; the
           // page-update endpoint cannot update a folder.
@@ -1293,7 +1299,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     }
   }
 
-  async confirmMove(id: string, spaceKey: string, parentId: string, title: string, kind: "page" | "folder" = "page"): Promise<boolean> {
+  async confirmMove(id: string, spaceKey: string, parentId: string | null, title: string, kind: "page" | "folder" = "page"): Promise<boolean> {
     const mounted = this.opts.spaces ?? (await this.index.listSpaces()).map(space => space.key);
     if (!mounted.includes(spaceKey)) throw new VfsError("EACCES", "Move identity is outside the selected export");
     if (kind === "folder") {
@@ -1301,15 +1307,17 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       const space = await this.index.getSpace(spaceKey);
       if (folder.id !== id || !folder.spaceId || !space.id || String(folder.spaceId) !== String(space.id) || folder.parentId !== parentId || folder.title !== title) return false;
       this.index.forget(id);
-      this.index.attachChild(parentId, { id, title, type: "folder", spaceKey });
+      if (parentId === null) this.index.upsert({ id, title, type: "folder", spaceKey, parentId });
+      else this.index.attachChild(parentId, { id, title, type: "folder", spaceKey });
       return true;
     }
     const page = await this.opts.client.getPageMetadata(id).catch(error => { throw mapClientError(error); });
     if (page.id !== id || page.spaceKey !== spaceKey || page.parentId !== parentId || page.title !== title) return false;
     this.cache?.forgetPage(id);
     this.index.forget(id);
-    this.index.attachChild(parentId, { id, title, type: "page", spaceKey,
-      version: page.version, lastModified: page.lastModified });
+    const node = { id, title, type: "page", spaceKey, parentId, version: page.version, lastModified: page.lastModified };
+    if (parentId === null) this.index.upsert(node);
+    else this.index.attachChild(parentId, node);
     return true;
   }
 

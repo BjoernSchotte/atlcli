@@ -120,7 +120,7 @@ it("lists interrupted trash without discarding its recoverable page bytes", () =
   expect(readFileSync(path)).toEqual(original);
 });
 
-it.each([13, 14, 15, 16, 17])("inspects schema %s namespace-only moves without changing the journal", schema => {
+it.each([13, 14, 15, 16, 17, 18])("inspects schema %s namespace-only moves without changing the journal", schema => {
   const { root, path } = fixture();
   const journal = new NfsJournal(path, "synthetic:DOCSY");
   journal.beginMove({ id: "200", kind: "page", source: "/DOCSY/source-200", target: "/DOCSY/target-201/renamed-200",

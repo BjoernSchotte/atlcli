@@ -21,7 +21,7 @@ import { open, readdir, readFile, writeFile, rename, unlink, stat, rm, mkdir } f
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { platform, tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { getActiveProfile, loadConfig, type Profile } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { storageToMarkdown } from "@atlcli/confluence/internal";
@@ -94,6 +94,49 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
+  it("lists, reads and reparents a genuinely root-level DOCSY page", async () => {
+    const space = await client.getSpace(E2E_SPACE_KEY);
+    // Fixture-only v2 creation: ordinary VFS new files still use their chosen parent.
+    const root = await (client as unknown as {
+      requestV2(path: string, options: Record<string, unknown>): Promise<{ id: string }>;
+    }).requestV2("/pages", { method: "POST", query: { "root-level": "true" }, retryServerErrors: false,
+      body: { spaceId: String(space.id), title: makeE2eTitle("nfs-parentless"),
+        body: { representation: "storage", value: "<p>Parentless Grüße 🐴</p>" } }, logBody: "meta-only" });
+    created.push(root.id);
+    const parent = await client.createPage({ spaceKey: E2E_SPACE_KEY, title: makeE2eTitle("nfs-root-destination"), storage: "<p>Destination</p>" });
+    created.push(parent.id);
+    expect((await client.getPageMetadata(root.id)).parentId ?? null).toBeNull();
+    expect((await client.getSpaceRootPages(space)).some(page => page.id === root.id)).toBe(true);
+    vfs.index.clear();
+    const journal = new NfsJournal(join(cacheDir, "parentless.sqlite"), "live:DOCSY");
+    const fs = new NfsFilesystem(vfs, [E2E_SPACE_KEY], undefined, journal);
+    try {
+      let rootName = basename(dirname(await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${root.id}.md`)));
+      let listedName: string | undefined, cursor = 0;
+      for (;;) {
+        const batch = await fs.readdir(1, cursor, 256);
+        listedName ??= batch.entries.find(entry => entry.name.endsWith(`-${root.id}`))?.name;
+        if (batch.end) break;
+        cursor = batch.entries.at(-1)!.attr.id;
+      }
+      expect(listedName).toBe(rootName);
+      const directory = await fs.lookup(1, rootName);
+      const body = await fs.lookup(directory, "_index.md");
+      expect(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString()).toContain("Parentless Grüße 🐴");
+      const renamed = rootName.replace(`-${root.id}`, `-renamed-${root.id}`);
+      await fs.rename(1, rootName, 1, renamed);
+      rootName = renamed;
+      expect((await client.getPageMetadata(root.id)).parentId ?? null).toBeNull();
+      const destination = basename(dirname(await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${parent.id}.md`)));
+      const target = await fs.lookup(1, destination);
+      await fs.rename(1, rootName, target, rootName);
+      expect((await client.getPageMetadata(root.id)).parentId).toBe(parent.id);
+      expect(await fs.lookup(target, rootName)).toBe(directory);
+      expect(await fs.lookup(directory, "_index.md")).toBe(body);
+      expect(journal.pendingMoves()).toEqual([]);
+    } finally { journal.close(); }
+  }, 30_000);
+
   it("publishes a journaled page directory before its child in DOCSY", async () => {
     const journalPath = join(cacheDir, "page-directory.sqlite");
     const journal = new NfsJournal(journalPath, "live:DOCSY");

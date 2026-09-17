@@ -50,6 +50,14 @@ things over several calls.
 `<slug>-<id>`: **the id resolves, the slug is decoration.** A path keeps working
 after a page is renamed. `<slug>-<id>.md` is a short form for the body.
 
+On Confluence Cloud, the space root includes both homepage children and pages
+with no parent. `_index.md` still belongs only to the actual homepage. Root-page
+listing adds a body-free, paginated metadata request when that level's cache
+expires; it does not scan the whole space. Loaded root metadata is retained for
+offline use. Renaming a parentless page in place preserves its absent parent;
+moving it into another page changes the parent normally. Root folders and
+parentless Data Center pages are not covered by this Cloud page endpoint.
+
 Comment and attachment listings share concurrent requests and remain cached in
 the current VFS session for the metadata TTL (60 seconds by default). External
 comment changes appear on the next read after expiry. Each listing cache retains

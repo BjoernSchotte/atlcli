@@ -2409,6 +2409,33 @@ export class ConfluenceClient {
     });
   }
 
+  /** Cloud space-root pages, without bodies or a scan of the homepage tree. */
+  async getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options: { signal?: AbortSignal } = {}): Promise<ConfluencePage[]> {
+    if (this.deploymentType !== "cloud") throw new Error("Space-root page listing requires Confluence Cloud");
+    if (!/^[0-9]+$/.test(String(space.id))) throw new Error("Invalid root-listing space ID");
+    const spaceKey = space.key;
+    const seen = new Set<string>();
+    return drainPaginated<ConfluencePage>(async cursor => {
+      const data = await this.requestV2(`/spaces/${space.id}/pages`, {
+        query: { depth: "root", status: "current", limit: 250, cursor },
+        signal: options.signal, logBody: "meta-only",
+      }) as any;
+      if (!Array.isArray(data.results)) throw new Error("Invalid space-root page response");
+      const items = data.results.map((item: any): ConfluencePage => {
+        if (typeof item.id !== "string" || !/^[0-9]+$/.test(item.id) || typeof item.title !== "string" ||
+            String(item.spaceId) !== String(space.id) || (item.parentId !== null && item.parentId !== undefined) ||
+            seen.has(item.id) || (item.status !== undefined && item.status !== "current")) {
+          throw new Error("Invalid space-root page identity or parent");
+        }
+        seen.add(item.id);
+        return { id: item.id, title: item.title, spaceKey, parentId: null,
+          version: item.version?.number, lastModified: item.version?.createdAt,
+          url: this.buildWebUrl(item._links?.webui) };
+      });
+      return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+    });
+  }
+
   /**
    * Get mixed direct descendants of a Cloud page through the descendants API.
    *

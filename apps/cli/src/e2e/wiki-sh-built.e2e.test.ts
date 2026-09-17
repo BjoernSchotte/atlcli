@@ -42,6 +42,7 @@ interface StandInPage {
 
 const PAGES = new Map<string, StandInPage>([
   ["100", { id: "100", title: "Docs Home", parentId: null, storage: "<p>Home.</p>" }],
+  ["202", { id: "202", title: "Detached Root", parentId: null, storage: "<p>Parentless Grüße 🐴</p>" }],
   [
     "200",
     {
@@ -75,6 +76,10 @@ beforeAll(() => {
 
       if (path.includes("/user")) {
         return Response.json({ accountId: "acct-1", displayName: "Built Smoke", type: "known" });
+      }
+      if (path.endsWith("/api/v2/spaces/1/pages") && url.searchParams.get("depth") === "root") {
+        return Response.json({ results: [...PAGES.values()].filter(page => page.parentId === null)
+          .map(page => ({ id: page.id, title: page.title, spaceId: "1", parentId: null, version: { number: 1 } })), _links: {} });
       }
       if (path.includes("/api/v2/spaces")) {
         // Cloud resolves the home page from here, not from the v1 space record.
@@ -311,6 +316,14 @@ describe.skipIf(!RUN).serial("the built CLI drives a shell session", () => {
     const result = await cli("wiki", "sh", "--space", "DOCSY", "-c", "cat architecture-201/_index.md");
     expect(result.out).toContain("atlcli:");
     expect(result.out).toContain("Runs on clusters");
+  });
+
+  it("reads a parentless page and resolves its own canonical ID link", async () => {
+    const result = await cli("wiki", "sh", "--space", "DOCSY", "-c",
+      "cat detached-root-202/_index.md; readlink .by-id/202.md");
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("Parentless Grüße 🐴");
+    expect(result.out).toContain("detached-root-202/_index.md");
   });
 
   it("greps, and names the path it took on stderr", async () => {

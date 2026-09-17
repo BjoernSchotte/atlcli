@@ -4163,3 +4163,51 @@ without a new Confluence version. Immutable version reads stay separate.
 Parentless items, ID-less existing-directory renames, removal/mutation audits,
 remaining durability/resource/artifact gates and final performance acceptance
 remain open. Public CLI NFS RW remains gated.
+
+
+## Slice 155 — Cloud parentless pages and root-preserving rename (2026-09-17)
+
+The shared VFS now lists Cloud pages outside the homepage tree alongside
+homepage children. Root listings use the documented body-free
+[`GET /spaces/{id}/pages?depth=root`](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/#api-spaces-id-pages-get),
+reuse the already resolved space ID, follow short cursor pages, validate source
+space/absent parents and cache that level with the existing metadata TTL. This
+adds a root-level metadata request (plus pagination), not a full-space scan.
+Snapshots retain loaded roots for offline use; an absent homepage is cached too.
+Root folders and parentless Data Center pages remain outside this endpoint.
+
+A live test exposed the old canonical-path assumption that every parentless
+page was the homepage. Canonical ID links now stop only at the actual homepage
+ID, preserving another root's name and the path of its children. In-place
+retitles preserve a null parent instead of implicitly moving the page under the
+homepage. Moving into a page still selects that parent. The homepage namespace
+protection from Slice 153 remains in place.
+
+Journal schema 18 transactionally migrates move receipts to nullable source and
+target parents. Existing pending/completed receipts are retained; null target
+parents are admitted only for same-directory retitles of parentless sources.
+Tests cover migration/reopen, lost move and retitle replies, exactly-once API
+calls, stable handles, disappearing roots, offline metadata and no-homepage
+spaces. No journal discard or blind reparent retry was introduced.
+
+- Broad macOS/Linux suites: 576 passed / 2985 assertions each across all shared
+  VFS tests, the root REST contract and NFS filesystem/journal/publisher/recovery.
+  After eliminating the redundant space-ID lookup, the affected root/client/
+  resolver suites passed again on each host: 64 tests / 148 assertions.
+- Fresh compiled CLI on both hosts: 13 tests / 63 assertions each, including
+  native NFS/WebDAV RO mounts, helper-independent shell and a genuinely
+  parentless page's body and canonical ID link in the synthetic HTTP fixture.
+- Native NFS RW page/folder move probe on both hosts: one test / ten assertions
+  each; the page source is now parentless and its descendant descriptor stays
+  open across the move.
+- Linux DOCSY LIVE: one test / nine assertions. A disposable page created with
+  the v2 root-level flag is confirmed parentless, listed, read, retitled without
+  a parent change and then reparented through the NFS adapter. IDs/handles and
+  cleared move intents verified. Root and destination pages were cleaned up.
+  MAYFLOWER was not written. Final typecheck passed all four tasks.
+
+The preceding pushed source 9cb1646a passed all four native CI lanes in
+[run 35248483807](https://github.com/BjoernSchotte/atlcli/actions/runs/35248483807),
+including APFS/ext4 exhaustion and compiled CLI mount tests. This closes the
+previous Intel provisioning revalidation, not the final RW-enabled acceptance.
+Draft-skipped product-quality gates are not counted as passing.

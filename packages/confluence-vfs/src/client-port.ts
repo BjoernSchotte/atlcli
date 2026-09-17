@@ -53,6 +53,7 @@ export interface VfsClient {
   ): Promise<string | null>;
 
   // --- hierarchy (read) ---------------------------------------------------
+  getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: { signal?: AbortSignal }): Promise<ConfluencePage[]>;
   getPageDirectChildren(
     pageId: string,
     options?: { limit?: number; signal?: AbortSignal },
