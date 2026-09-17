@@ -2109,3 +2109,27 @@ has no general close notification with which to safely reclaim them early.
 This fixes an open-source-descriptor save pattern. Full POSIX unlink semantics
 for overwritten destination descriptors, backup sequences, native editor matrix,
 additional CREATE variants and complete-document publication remain open.
+
+## Slice 80 — actual Vim save and backup acceptance
+
+Native regressions now invoke the installed Vim in Ex mode to edit and save the
+mounted Markdown document. They use `-Nu NONE -i NONE -n` and `nomodeline` to keep
+the user's configuration, viminfo and swap files out of this isolated test.
+`backupskip=` prevents Vim's default `/tmp` exclusion from silently bypassing the
+backup test. `backupdir=.` confines backups to the test mount; `backup` retains the
+backup long enough to verify the old bytes and then explicitly remove it.
+No `backupcopy` override is supplied: this proves Vim's selected strategy, not
+all forced backup-rename strategies or swap-file behavior.
+
+- macOS and Linux native sequence including Vim: one test / 25 assertions each.
+  The saved document contains the new text, the backup contains the previous
+  text without the new line, and the synthetic remote backend receives the save.
+- Linux real DOCSY native E2E: one / 18 assertions. Vim edits a disposable page
+  after native replacement; API verification shows the same page ID, exactly one
+  additional version and the new Vim text. Backup removal, normal unmount and
+  disposable page deletion succeeded.
+- The harness verifies local readback as well as remote publication, so editor
+  exit code alone cannot pass this test. Typecheck and whitespace checks passed.
+
+TextEdit, swap-file workflows, forced rename backups, additional CREATE variants
+and the complete-document publication contract remain separate open gates.

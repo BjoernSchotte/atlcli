@@ -17,7 +17,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { open, readdir, readFile, writeFile, rename } from "node:fs/promises";
+import { open, readdir, readFile, writeFile, rename, unlink } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { platform, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { getActiveProfile, loadConfig, type Profile } from "@atlcli/core";
@@ -140,6 +142,20 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       expect(replaced.version).toBe((actual.version ?? 1) + 1);
       expect(replaced.storage).toContain("Native atomic replacement 🐴");
       expect(replaced.storage).toContain("Native open-descriptor continuation");
+      await promisify(execFile)("vim", ["-Nu", "NONE", "-i", "NONE", "-n", "-es", "-c",
+        "set nomodeline backupskip= backupdir=. backup", "-c", "normal! GoLive Vim saved", "-c", "wq", destination], { timeout: 10000 });
+      expect((await readFile(destination)).toString()).toContain("Live Vim saved");
+      const backup = (await readFile(`${destination}~`)).toString();
+      expect(backup).toContain("Native open-descriptor continuation");
+      expect(backup).not.toContain("Live Vim saved");
+      await unlink(`${destination}~`);
+      const editorDeadline = Date.now() + 15000;
+      while (journal.pending().length && Date.now() < editorDeadline) await Bun.sleep(50);
+      expect(journal.pending()).toHaveLength(0);
+      const editorSaved = await client.getPage(page.id);
+      expect(editorSaved.id).toBe(page.id);
+      expect(editorSaved.version).toBe((replaced.version ?? 1) + 1);
+      expect(editorSaved.storage).toContain("Live Vim saved");
     } finally {
       if (mounted) {
         const detach = platform() === "linux" ? ["sudo", "-n", "umount", local] : ["umount", local];

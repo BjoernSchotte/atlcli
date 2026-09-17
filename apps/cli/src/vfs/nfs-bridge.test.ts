@@ -800,6 +800,16 @@ with socket.socket() as client:
     expect(client.callsTo("updatePage")).toBe(2);
     expect(client.peekPage("100")?.storage).toContain("Atomic replacement 🐴");
     expect(client.peekPage("100")?.storage).toContain("Open descriptor continuation");
+    await promisify(execFile)("vim", [ "-Nu", "NONE", "-i", "NONE", "-n", "-es", "-c", "set nomodeline backupskip= backupdir=. backup", "-c", "normal! GoNative Vim save", "-c", "wq", path], { timeout: 10000 });
+    expect((await readFile(path)).toString()).toContain("Native Vim save");
+    const backup = await readFile(`${path}~`);
+    expect(backup.toString()).toContain("Open descriptor continuation");
+    expect(backup.toString()).not.toContain("Native Vim save");
+    await unlink(`${path}~`);
+    const vimDeadline = Date.now() + 5000;
+    while (!client.peekPage("100")?.storage.includes("Native Vim save") && Date.now() < vimDeadline) await Bun.sleep(20);
+    expect(journal!.pending()).toHaveLength(0);
+    expect(client.peekPage("100")?.storage).toContain("Native Vim save");
   }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [
