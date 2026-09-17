@@ -23,6 +23,8 @@ import { join } from "node:path";
 import { getActiveProfile, loadConfig, type Profile } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { NfsJournal } from "../vfs/nfs-journal.js";
+import { NfsPublisher } from "../vfs/nfs-publisher.js";
 import { startWebdavServer, type RunningWebdavServer } from "../vfs/webdav-server.js";
 import { mountUrlFor, mountCommandFor, unmountCommandFor, runMountCommand } from "../commands/wiki-mount.js";
 import { E2E_SPACE_KEY, makeE2eTitle } from "./resources.js";
@@ -85,6 +87,32 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
+  it("publishes a durable NFS journal image through the core", async () => {
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
+      title: makeE2eTitle("nfs-journal"), storage: "<p>Journal original</p>" });
+    created.push(page.id);
+    const journal = new NfsJournal(join(cacheDir, "publication.sqlite"), "live:DOCSY");
+    try {
+      const path = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`);
+      const original = await vfs.readFile(path);
+      journal.admit(page.id, path, Buffer.from(original), page.version ?? 1);
+      const edited = Buffer.from(original.replace("Journal original", "Journal saved"));
+      journal.truncate(page.id, edited.length);
+      journal.write(page.id, 0, edited);
+      const publisher = new NfsPublisher(journal, vfs, [E2E_SPACE_KEY]);
+      expect((await publisher.publish(page.id))?.version).toBe((page.version ?? 1) + 1);
+      const actual = await client.getPage(page.id);
+      expect(actual.storage).toContain("Journal saved");
+      expect(journal.pending()).toHaveLength(0);
+      expect(await publisher.publish(page.id)).toBeNull();
+      expect((await client.getPage(page.id)).version).toBe(actual.version);
+    } finally {
+      journal.close();
+      await client.deletePage(page.id);
+      created.splice(created.indexOf(page.id), 1);
+    }
+  }, 30000);
+
   it("coalesces rapid editor PUTs into one verified Confluence version", async () => {
     const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
       title: makeE2eTitle("vfs-debounce"), storage: "<p>Debounce original</p>" });

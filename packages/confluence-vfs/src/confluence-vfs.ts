@@ -870,12 +870,16 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * version file, a comments file, a label link — is structurally read-only and
    * says so with `EROFS`, whatever the mode.
    */
-  async writeFile(path: string, content: string | Uint8Array): Promise<VfsWriteResult> {
+  async writeFile(path: string, content: string | Uint8Array, existingPage?: { id: string; spaceKey: string }): Promise<VfsWriteResult> {
     const text = typeof content === "string" ? content : new TextDecoder().decode(content);
     const resolved = await this.resolver.resolve(this.canonicalize(path), {
       allowMissingLeaf: true,
     });
 
+    if (existingPage && (resolved.kind !== "body" || resolved.node.id !== existingPage.id ||
+        resolved.node.spaceKey !== existingPage.spaceKey)) {
+      throw new VfsError("EBUSY", "Page identity or export changed before publication", { path });
+    }
     if (resolved.kind === "missing") {
       return this.createFromMissing(resolved, path, text);
     }

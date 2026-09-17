@@ -1677,3 +1677,34 @@ not accepted, because it could hide storage content lost by conversion.
 This is shared-core replay reconciliation, not NFS RW acceptance. Journal-to-core
 publication, ambiguous merged writes, remote edits after a lost reply, namespace
 mutations and native editor saves remain open.
+
+
+## Slice 65 — journal-to-core publication executor
+
+`NfsPublisher` publishes one immutable journal intent for an existing page via
+shared VFS write-back. Concurrent calls for the same page share one operation.
+It resolves the current path by page ID within the selected spaces; a new optional
+core write precondition verifies resolved page ID and space and prohibits implicit
+creation. Read-only policy, conversion and optimistic conflict handling remain
+in the core. Newer journal bytes stay pending after the older intent completes.
+
+Invalid UTF-8 or missing/changed frontmatter identity is rejected before freezing
+an intent. Failed publication keeps its intent and safe error code; a repeated
+call can reconcile an already-applied update. This is an internal executor, not
+a manual-publish user workflow and not yet an automatically scheduled NFS writer.
+It deliberately retains stale frontmatter and conflict detection; rebasing newer
+local revisions after one's own successful publication remains to be connected.
+
+- macOS: core write-back plus publisher tests passed (71 tests); final publisher
+  suite including invalid-byte and identity repair checks: six passed, 31 assertions.
+- Linux: publisher suite six passed, 31 assertions.
+- Linux mayflower/DOCSY live: `ATLCLI_WIKI_MOUNT_E2E=1 bun run test
+  apps/cli/src/e2e/wiki-mount-live.e2e.test.ts --test-name-pattern "durable NFS journal"`:
+  one passed, five assertions. Journal content reached the API, pending state
+  cleared, a second clean invocation made no new version; synthetic page deleted.
+  Four macOS-only kernel tests skipped in this Linux invocation.
+- `bun run typecheck`: all four tasks passed.
+
+NFS WRITE/SETATTR/COMMIT, completion-boundary scheduling, namespace operations,
+recovery lifecycle and native editor acceptance remain open. The production NFS
+transport still advertises RO; this executor is not yet wired to its bridge.

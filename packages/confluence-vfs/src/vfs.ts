@@ -30,8 +30,9 @@ export interface ConfluenceVfs {
   /** Raw bytes, the path attachments take. */
   readFileBytes(path: string): Promise<Uint8Array>;
 
-  /** Create or update a page. Throws `EROFS` in `ro` mode. */
-  writeFile(path: string, content: string | Uint8Array): Promise<VfsWriteResult>;
+  /** Create or update a page. Throws `EROFS` in `ro` mode.
+   * existingPage requires the resolved body to match that ID and space; it never creates. */
+  writeFile(path: string, content: string | Uint8Array, existingPage?: { id: string; spaceKey: string }): Promise<VfsWriteResult>;
 
   /** Create a page with an empty body (decision 7). Throws `EROFS` in `ro` mode. */
   mkdir(path: string): Promise<VfsWriteResult>;
