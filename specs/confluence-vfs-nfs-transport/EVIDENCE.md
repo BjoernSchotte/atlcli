@@ -3234,3 +3234,44 @@ existing canonical name now retains the exact title for a pure move.
 This fixes the shared operation required by NFS; native NFS directory mutation
 wiring, durable namespace intents and crash recovery remain open. No native
 mount acceptance is claimed for this slice.
+
+
+## Slice 123 — current cross-platform integration checkpoint
+
+Revalidated code at 38f9853f; no implementation changes in this slice.
+
+| Check | macOS | Linux |
+| --- | --- | --- |
+| `bun run test packages/confluence-vfs/src apps/cli/src/vfs` | 667 pass, 32 skip, 3315 assertions | 667 pass, 32 skip, 3315 assertions |
+| Rust helper `cargo test --manifest-path packages/confluence-nfs/Cargo.toml` | 3 library + 4 binary tests pass | 3 library + 4 binary tests pass |
+| Full `nfs-bridge.test.ts` + `webdav-editors.test.ts`, native flags enabled | 30 pass, 1 skip, 1356 assertions, 224s | 30 pass, 1 skip, 1358 assertions, 241s |
+| Separately enabled native Glow test | 1 pass, 7 assertions | 1 pass, 7 assertions |
+| Fresh compiled CLI + `wiki-sh-built.e2e.test.ts` | 9 pass, 33 assertions | 9 pass, 33 assertions |
+
+Native runs set ATLCLI_NFS_TEST_HELPER to each host's existing debug helper,
+ATLCLI_NFS_KERNEL=1 and ATLCLI_WEBDAV_KERNEL=1. The skipped Glow case was run
+separately with ATLCLI_NFS_GLOW pointing to the installed executable. The tests
+cover actual Vim saves over WebDAV, NFS staged writes/fsync/create/replacement,
+wire identity and malformed-input handling, real timeout enforcement, single
+and multiple fixture spaces, attachments, external changes and version snapshots.
+The DOCSY/mayflower dual-space cases use synthetic data, not tenant content.
+
+Fresh CLI binaries were compiled from source with --conditions=development into
+/tmp/atlcli-slice123 on each host. macOS cargo needed its absolute ~/.cargo/bin
+path because it was absent from PATH; the subsequent test run passed.
+
+Linux real-tenant native publication additionally passed: one test, 36 assertions,
+69s, using mayflower authentication and disposable DOCSY pages, with normal
+unmount/cleanup. macOS real-tenant authentication is still unavailable.
+Typecheck: four tasks passed.
+
+One-run synthetic Glow listing/selected-view times: macOS 66.3/2.3ms, Linux
+53.2/15.7ms. These are not the final five-run cold/warm or large-live-space
+benchmark. The native directory-change test took 11.25s on Linux versus 1.20s
+on macOS; a passing eventual-visibility test does not establish a five-second
+visibility guarantee. That latency boundary remains in final performance review.
+
+All final verification runs completed successfully. This checkpoint does not close
+native directory mutation implementation, durable namespace recovery, Linux
+VS Code/macOS TextEdit autosave coverage, full repository CI/build or final
+performance/memory/capability acceptance.
