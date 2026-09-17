@@ -14,7 +14,7 @@ Install the matching NFS helper, Vim and Glow. Linux also needs davfs2 and
 passwordless sudo for the native test mounts. Run from the repository root:
 
 ```sh
-ATLCLI_NFS_TEST_HELPER="$PWD/packages/confluence-nfs/target/debug/atlcli-confluence-nfs" \
+ATLCLI_NFS_TEST_HELPER="$PWD/packages/confluence-nfs/target/release/atlcli-confluence-nfs" \
   bun --conditions=development scripts/bench/run-vfs-mount.ts /tmp/vfs-mount-results.json
 ```
 
@@ -30,24 +30,27 @@ Read/Glow mounts are read-only; only the editor fixture is writable.
 
 | Host | Workload / metric | Phase | WebDAV ms, median [min–max] | NFS ms, median [min–max] | API calls WebDAV / NFS (median) |
 | --- | --- | --- | --- | --- | --- |
-| mac | complete read | cold | 74.6 [71.5–79.4] | 102.8 [99.5–112.8] | 47 / 64 |
-| mac | complete read | warm | 13.1 [11.8–13.6] | 4.0 [3.9–10.3] | 0 / 0 |
-| mac | Glow first listing | cold | 46.8 [31.0–78.9] | 32.2 [30.0–32.7] | 33 / 21 |
-| mac | Glow first listing | warm | 32.1 [31.5–33.7] | 32.5 [30.9–33.4] | 0 / 12 |
-| mac | Vim save → API | cold | 516.5 [515.3–519.0] | 537.5 [533.8–539.7] | 6 / 3 |
-| mac | Vim save → API | warm | 512.7 [512.4–513.0] | 527.8 [524.0–529.4] | 2 / 1 |
-| linux | complete read | cold | 128.4 [99.0–133.4] | 140.1 [134.6–146.1] | 82 / 64 |
-| linux | complete read | warm | 8.0 [7.0–9.9] | 24.3 [22.5–26.5] | 0 / 0 |
-| linux | Glow first listing | cold | 48.8 [30.2–49.5] | 65.6 [48.5–66.4] | 22 / 23 |
-| linux | Glow first listing | warm | 33.2 [30.1–34.3] | 33.9 [32.7–34.8] | 27 / 8 |
-| linux | Vim save → API | cold | 508.1 [507.7–509.3] | 509.8 [509.4–510.2] | 1 / 2 |
-| linux | Vim save → API | warm | 501.9 [501.8–502.6] | 505.0 [504.4–505.2] | 1 / 1 |
+| mac | complete read | cold | 74.7 [73.0–78.4] | 80.4 [80.1–85.7] | 47 / 64 |
+| mac | complete read | warm | 13.2 [13.2–13.6] | 3.8 [2.8–6.9] | 0 / 0 |
+| mac | Glow first listing | cold | 33.8 [30.9–48.5] | 31.3 [30.6–32.0] | 18 / 25 |
+| mac | Glow first listing | warm | 32.1 [31.5–32.9] | 31.9 [29.0–34.0] | 10 / 9 |
+| mac | Vim save → API | cold | 516.9 [515.5–520.2] | 534.6 [534.1–536.0] | 6 / 3 |
+| mac | Vim save → API | warm | 511.7 [510.8–512.9] | 527.7 [525.8–530.5] | 2 / 1 |
+| linux | complete read | cold | 125.7 [89.6–133.4] | 112.6 [111.1–117.7] | 82 / 64 |
+| linux | complete read | warm | 8.8 [7.2–10.0] | 19.9 [18.2–20.8] | 0 / 0 |
+| linux | Glow first listing | cold | 49.9 [32.8–50.4] | 50.3 [49.6–67.9] | 23 / 21 |
+| linux | Glow first listing | warm | 32.9 [31.0–34.4] | 33.5 [33.1–35.1] | 25 / 14 |
+| linux | Vim save → API | cold | 508.3 [506.4–511.5] | 509.4 [508.9–510.3] | 1 / 2 |
+| linux | Vim save → API | warm | 501.9 [501.5–502.6] | 504.1 [502.7–504.5] | 1 / 1 |
 
-Full samples and median/min/max of every numeric metric are retained in
-[macOS results](benchmark-extended-mac.json) and
-[Linux results](benchmark-extended-linux.json). These include startup, first
-listing/byte, complete-read time, API requests/payload bytes, cache hits,
-protocol requests, parent/helper RSS and shutdown.
+Final release-helper samples and median/min/max of every numeric metric are in
+[macOS results](benchmark-final-mac.json) and [Linux results](benchmark-final-linux.json).
+Each host completed 80 records: four workloads × two transports × five runs ×
+two cache phases. Helpers were built in release mode from the Slice 163 source;
+these are local native review bundles, not downloaded CI artifacts. Earlier
+benchmark files remain historical evidence. The current data include startup,
+first listing/byte, API requests/payload bytes, cache hits, protocol requests,
+parent/helper RSS and shutdown.
 
 ## Complete large-directory scan
 
@@ -55,7 +58,7 @@ The separate `glow-scan` workload waits until the native Glow TUI lists all
 602 Markdown documents, then renders the selected fixture. Run it alone with:
 
 ```sh
-ATLCLI_NFS_TEST_HELPER="$PWD/packages/confluence-nfs/target/debug/atlcli-confluence-nfs" \
+ATLCLI_NFS_TEST_HELPER="$PWD/packages/confluence-nfs/target/release/atlcli-confluence-nfs" \
   bun --conditions=development scripts/bench/run-vfs-mount.ts /tmp/glow-scan.json "" glow-scan
 ```
 
@@ -63,17 +66,18 @@ The table measures completed enumeration, excluding subsequent selected-file
 rendering. Periodic terminal resizes force full counter redraws; observation
 resolution is up to 500 ms. All five cold/warm samples per transport/host
 verified the expected document count. Raw metrics, including selected rendering,
-API methods/payloads, RSS and shutdown, are in [macOS](benchmark-glow-scan-mac.json)
-and [Linux](benchmark-glow-scan-linux.json).
+API methods/payloads, RSS and shutdown, are in [macOS](benchmark-final-mac.json)
+and [Linux](benchmark-final-linux.json).
 
 | Host | Phase | WebDAV ms, median [min–max] | NFS ms, median [min–max] |
 | --- | --- | --- | --- |
-| mac | cold | 3549.1 [3546.5–4395.8] | 8916.1 [8648.1–11065.2] |
-| mac | warm | 1765.7 [1697.6–1882.4] | 6682.8 [6415.9–7499.5] |
-| linux | cold | 4630.9 [4117.5–4680.2] | 6701.5 [6632.7–6731.9] |
-| linux | warm | 2579.7 [2063.2–2597.3] | 3114.1 [3097.4–3146.6] |
+| mac | cold | 3514.2 [3497.4–3664.4] | 7599.8 [7562.4–7647.4] |
+| mac | warm | 1732.3 [1698.3–1766.3] | 5614.4 [5549.3–5633.1] |
+| linux | cold | 4583.6 [4063.8–4665.7] | 5699.0 [5645.7–5716.1] |
+| linux | warm | 2563.6 [2046.2–2613.4] | 2098.9 [2080.7–2131.8] |
 
-NFS exceeds the 10% regression review threshold on both hosts. Explicit NFS
+Cold NFS scans exceed the 10% regression review threshold on both hosts.
+The warm Linux NFS scan is faster; macOS remains slower in both phases. Explicit NFS
 directory attribute validation and Glow's recursive stat/walk work make this
 workload more expensive; this is evidence against a blanket NFS speed claim.
 WebDAV remains the default. Cold scans materialize visited Markdown bodies for
@@ -126,21 +130,30 @@ phase rows describe the same observation. No parent-RSS trigger occurred.
 
 | Host | Workload / phase | Metric | NFS median vs WebDAV |
 | --- | --- | --- | --- |
-| mac | read / cold | `wallMs` | 102.8 vs 74.6 (+38%) |
-| mac | read / cold | `startupMs` | 292.0 vs 130.3 (+124%) |
-| mac | glow / cold | `startupMs` | 286.7 vs 126.8 (+126%) |
-| mac | glow / cold | `shutdownMs` | 29.1 vs 25.4 (+15%) |
-| mac | glow / warm | `shutdownMs` | 29.1 vs 25.4 (+15%) |
-| mac | editor / cold | `startupMs` | 303.6 vs 126.0 (+141%) |
-| mac | editor / cold | `shutdownMs` | 29.1 vs 22.9 (+27%) |
-| mac | editor / warm | `shutdownMs` | 29.1 vs 22.9 (+27%) |
-| linux | read / cold | `firstListingMs` | 13.5 vs 0.8 (+1641%) |
-| linux | read / cold | `firstByteMs` | 34.5 vs 27.9 (+24%) |
-| linux | read / warm | `wallMs` | 24.3 vs 8.0 (+202%) |
-| linux | read / warm | `firstListingMs` | 0.6 vs 0.2 (+143%) |
-| linux | read / warm | `firstByteMs` | 3.4 vs 0.9 (+284%) |
-| linux | glow / cold | `wallMs` | 156.4 vs 139.2 (+12%) |
-| linux | glow / cold | `glowListingMs` | 65.6 vs 48.8 (+34%) |
+| mac | read / cold | `startupMs` | 279.8 vs 127.7 (+119%) |
+| mac | glow / cold | `startupMs` | 272.3 vs 126.8 (+115%) |
+| mac | glow-scan / cold | `startupMs` | 274.5 vs 127.0 (+116%) |
+| mac | glow-scan / cold | `wallMs` | 8292.5 vs 4190.0 (+98%) |
+| mac | glow-scan / cold | `firstByteMs` | 7600.9 vs 3516.8 (+116%) |
+| mac | glow-scan / cold | `glowScanMs` | 7599.8 vs 3514.2 (+116%) |
+| mac | glow-scan / cold | `shutdownMs` | 33.8 vs 25.8 (+31%) |
+| mac | glow-scan / warm | `wallMs` | 6323.4 vs 2397.6 (+164%) |
+| mac | glow-scan / warm | `firstListingMs` | 98.0 vs 65.9 (+49%) |
+| mac | glow-scan / warm | `firstByteMs` | 5616.6 vs 1733.1 (+224%) |
+| mac | glow-scan / warm | `glowListingMs` | 98.0 vs 65.9 (+49%) |
+| mac | glow-scan / warm | `glowScanMs` | 5614.4 vs 1732.3 (+224%) |
+| mac | glow-scan / warm | `shutdownMs` | 33.8 vs 25.8 (+31%) |
+| mac | editor / cold | `startupMs` | 291.8 vs 128.5 (+127%) |
+| linux | read / cold | `firstListingMs` | 12.1 vs 0.7 (+1557%) |
+| linux | read / cold | `firstByteMs` | 33.9 vs 24.8 (+36%) |
+| linux | read / warm | `wallMs` | 19.9 vs 8.8 (+125%) |
+| linux | read / warm | `firstListingMs` | 0.7 vs 0.4 (+91%) |
+| linux | read / warm | `firstByteMs` | 3.1 vs 1.4 (+126%) |
+| linux | glow-scan / cold | `wallMs` | 5789.3 vs 4671.5 (+24%) |
+| linux | glow-scan / cold | `firstByteMs` | 5715.6 vs 4599.2 (+24%) |
+| linux | glow-scan / cold | `glowScanMs` | 5699.0 vs 4583.6 (+24%) |
+| linux | glow-scan / warm | `firstListingMs` | 63.8 vs 47.0 (+36%) |
+| linux | glow-scan / warm | `glowListingMs` | 63.8 vs 47.0 (+36%) |
 
 The macOS cold-read API count is 64 for NFS versus 47 for WebDAV
 (excluding startup). Method counters locate the difference primarily in child
@@ -165,16 +178,16 @@ latency is consequently higher even with zero backend calls. The first-listing
 percentages include sub-millisecond WebDAV baselines. The data prove this
 host-specific difference, not a general kernel-level causal profile.
 
-Glow's Linux cold-listing regression and variable call counts are retained
+Glow's first-listing timings and variable call counts are retained
 as observed client behavior; asynchronous discovery means these samples do
 not isolate an identical complete scan. No general Glow speed claim is made.
-A fully drained, large-directory comparative scan remains separate acceptance
-work. API calls after a second Glow launch must not be mistaken for violations
+The separately measured fully drained scan above provides the complete-tree
+comparison. API calls after a second Glow launch must not be mistaken for violations
 of the verified warm-complete-body-read invariant.
 
 The comparison supports offering transport choice, not marketing NFS as
-universally faster. Public RW acceptance still depends on the remaining
-correctness, packaging and lifecycle gates.
+universally faster. Public RW is enabled; full required CI and the final requirement audit remain
+separate from this performance evidence.
 
 
 ## Related material

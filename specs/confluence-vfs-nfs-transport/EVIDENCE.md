@@ -4477,3 +4477,30 @@ CLI DOCSY RW LIVE repeated successfully (1 / 15, 4.05 seconds whole case),
 including owned fixture cleanup. Remote CI verification of the fixes remains
 pending the next pushed head. Final release-helper benchmark matrices completed
 on both hosts and await the separate performance report update.
+
+## Slice 165: final release-helper comparison
+
+The complete benchmark finished on macOS ARM64 and Linux x64 with release-mode
+companions from the Slice 163 source. Committed all 80 records per host and
+median/min/max for every numeric metric. Each workload/transport has five
+independent cold mounts and immediate warm repeats. The existing harness
+asserts full bytes, complete 602-document Glow enumeration, zero API calls for
+warm complete reads, no duplicate warm body fetches, single-version editor
+saves, and normal detach. No private wiki data is present in these synthetic
+results. These are local review builds, not downloaded CI bundles.
+
+PERFORMANCE.md now uses this final matrix and lists every >10% latency/parent
+RSS regression trigger. Linux save-to-API medians are WebDAV 508.3/501.9 ms
+and NFS 509.4/504.1 ms cold/warm. Full scans retain a substantial macOS NFS
+penalty (7.60/5.61 s vs WebDAV 3.51/1.73 s); Linux cold NFS is slower but
+warm NFS is faster. WebDAV remains the default; no universal speed claim.
+
+Workflow 35261770483 completed all four native NFS jobs successfully, including
+packaged RW lifecycle and Homebrew consumption. Its overall failure came from
+the API-report/Chrome setup issues fixed in Slice 164; the replacement full
+workflow 35263039655 remains the required-CI gate. Final plan/docs audit remains.
+
+Validation for this documentation slice: checked all 160 records for the exact
+five-run cold/warm matrix and recomputed summary statistics from raw values.
+Typecheck passed all four tasks; Linux compiled DOCSY RW LIVE passed again
+(1 test / 15 assertions, 4.54 seconds whole case), with fixture cleanup.
