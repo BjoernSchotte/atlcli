@@ -3387,3 +3387,26 @@ RW command or full native hard-mount crash recovery.
 
 Full public RW activation, hard-mount crash/unmount behavior, namespace mutation
 recovery and remaining editor/performance acceptance are still open.
+
+
+## Slice 128 — native hard-mount helper crash with durable pending writes
+
+A new native regression exercises the owned-journal path on a real RW hard
+mount. It writes and fsyncs Markdown, injects a publication denial, verifies the
+backend is still at version one, then kills the actual Rust helper. All file
+handles have been closed before the kill. The test normally unmounts (no forced
+or lazy detachment), stops the server, reopens the journal and checks exact bytes.
+A fresh server resumes the pending image, publishes version two and serves it
+through a new native mount. Cleanup normally unmounts the new volume.
+
+- macOS: one native test passed / ten assertions, 16.5s total.
+- Linux: same test passed / ten assertions, 1.2s total.
+- Linux DOCSY owned-journal publication gate: one passed / five assertions,
+  temporary page cleaned up.
+- Typecheck: all four tasks passed.
+
+This closes a concrete acknowledged-write/helper-death case, not every crash
+boundary. It uses a synthetic backend for the native fault injection. It does
+not test parent SIGKILL with active writes, OS calls blocked during helper death,
+or automatic recovery of interrupted directory moves. The public RW CLI gate
+and the full objective remain open.

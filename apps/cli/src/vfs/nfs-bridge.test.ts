@@ -10,10 +10,10 @@ import { open, opendir, stat, unlink, rename, readFile, mkdir, rmdir } from "nod
 import { getActiveProfile, loadConfig } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { runMountCommand } from "../commands/wiki-mount.js";
-import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { ConfluenceVfsImpl, VfsError } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { nfsMountOptionsFor } from "./mount-transport.js";
-import { NfsJournal } from "./nfs-journal.js";
+import { NfsJournal, nfsJournalLocation } from "./nfs-journal.js";
 import { startNfsServer, type RunningNfsServer } from "./nfs-bridge.js";
 import { encodeNfsFrame, readNfsFrames } from "./nfs-framing.js";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES } from "./mount-client-probes.js";
@@ -798,6 +798,67 @@ with socket.socket() as client:
         ...(await vfs.readdir("/DOCSY")).map((e) => e.name)].sort());
     });
   }
+
+  it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("recovers durable writes after helper death under a native hard mount", async () => {
+    const root = mkdtempSync(join(tmpdir(), "nfs-hard-recovery-"));
+    const mountpoint = join(root, "mount"); await mkdir(mountpoint);
+    const client = new FakeConfluenceClient()
+      .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
+      .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Original</p>" });
+    const vfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"],
+      mode: "rw", allowDelete: false, offline: false, cacheDir: join(root, "cache"), coalesceMs: 0 });
+    const location = nfsJournalLocation({ ...vfs.runtime!, profile: "fixture", spaces: ["DOCSY"] });
+    let server: RunningNfsServer | undefined;
+    let mounted = false;
+    const detach = async () => {
+      const command = platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint];
+      let status = await runMountCommand(command);
+      for (let i = 0; status !== 0 && i < 10; i++) { await Bun.sleep(100); status = await runMountCommand(command); }
+      if (status !== 0) throw new Error(`Recovery test mount remains attached: ${mountpoint}`);
+      mounted = false;
+    };
+    const attach = async () => {
+      const options = nfsMountOptionsFor(platform(), server!.port, "rw");
+      expect(await runMountCommand(platform() === "linux"
+        ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", mountpoint]
+        : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint])).toBe(0);
+      mounted = true;
+    };
+    try {
+      const update = client.updatePage.bind(client);
+      client.updatePage = async () => { throw new VfsError("EACCES", "Injected publication denial"); };
+      server = await startNfsServer({ vfs, spaces: ["DOCSY"], journalLocation: location, helperPath: resolve(helperPath!) });
+      await attach();
+      const content = (await vfs.readFile("/DOCSY/_index.md")).replace("Original", "Recovered hard mount 🐴");
+      const file = await open(join(mountpoint, "_index.md"), "r+");
+      try { await file.truncate(0); await file.writeFile(content); await file.sync(); }
+      finally { await file.close(); }
+      const failedDeadline = Date.now() + 5000;
+      while (!server.writeStatus()!.failedPages && Date.now() < failedDeadline) await Bun.sleep(50);
+      expect(server.writeStatus()!.failedPages).toBe(1);
+      expect(client.peekPage("100")?.version).toBe(1);
+      process.kill(server.pid, "SIGKILL");
+      await server.exited;
+      await detach();
+      await server.stop();
+      expect(server.writeStatus()!.pendingPages).toBe(1);
+      const reopened = new NfsJournal(location.path, location.scope);
+      try { expect(Buffer.from(reopened.get("100")!.bytes).toString()).toBe(content); }
+      finally { reopened.close(); }
+      client.updatePage = update;
+      server = await startNfsServer({ vfs, spaces: ["DOCSY"], journalLocation: location, helperPath: resolve(helperPath!) });
+      const deadline = Date.now() + 5000;
+      while (server.writeStatus()!.pendingPages && Date.now() < deadline) await Bun.sleep(50);
+      expect(server.writeStatus()!.pendingPages).toBe(0);
+      expect(client.peekPage("100")?.version).toBe(2);
+      expect(client.peekPage("100")?.storage).toContain("Recovered hard mount 🐴");
+      await attach();
+      expect((await readFile(join(mountpoint, "_index.md"))).toString()).toContain("Recovered hard mount 🐴");
+    } finally {
+      if (mounted) await detach();
+      await server?.stop(); await vfs.close(); rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("writes and fsyncs existing pages through a native RW kernel mount", async () => {
     let clockOffset = 0;
