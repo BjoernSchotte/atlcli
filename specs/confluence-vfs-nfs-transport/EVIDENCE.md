@@ -1900,3 +1900,31 @@ Markdown prefix can pass validation if a later WRITE is delayed beyond the quiet
 window. That plan requirement remains open, as do atomic editor replacement,
 clean-record refresh, pending/recovery CLI and final native editor acceptance.
 The user CLI remains RO until those remaining gates are satisfied.
+
+## Slice 72 — real VS Code autosave on macOS
+
+VS Code 1.127.0 was exercised through its native UI against the internal staged-RW
+NFS hard mount, with a synthetic DOCSY backend and a temporary editor profile.
+The profile used `files.autoSave: afterDelay` and `files.autoSaveDelay: 100`.
+No manual save or publish command was used for the mounted Markdown document.
+
+- First appended paragraph: backend version 1 → 2, exactly one update.
+- Three quick appended lines: version 2 → 3, exactly one further update.
+- Another three lines in the same open document: version 3 → 4, exactly one
+  further update. All seven appended lines remained present in final storage.
+- Durable revisions progressed 2 → 4 → 6; each publication cleared pending
+  work. Final error was null. The editor showed no unsaved marker/save error.
+- The tested existing-file autosave path succeeded without CREATE/RENAME support.
+  This does not establish atomic replacement compatibility for other editors.
+- The rapid typing batches may themselves have been coalesced by VS Code; they
+  do not independently prove multiple distinct autosaves inside the server's
+  500 ms window. The scheduler tests in slice 71 cover that separate property.
+- The temporary window and unused isolated test instance were closed; normal
+  unmount and server shutdown succeeded. Normal editor settings were unchanged.
+
+This is real macOS editor/kernel evidence with a synthetic remote backend, not
+a macOS live-Confluence or Linux-editor claim. Complete-document boundaries,
+atomic replacement and the remaining native editor matrix are still open.
+
+Validation: publisher regression suite passed (12 tests, 63 assertions);
+typecheck passed all four tasks. `git diff --check` passed.
