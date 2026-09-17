@@ -98,7 +98,7 @@
     "github-slugger": "^2.0.0",
     "jszip": "3.10.2",
     "terser": "^5.44.1",
-    "turbo": "2.10.11",
+    "turbo": "2.10.13",
     "typescript": "^5.9.3"
   },
   "patchedDependencies": {
