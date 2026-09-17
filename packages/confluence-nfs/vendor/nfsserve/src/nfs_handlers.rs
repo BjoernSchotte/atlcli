@@ -140,6 +140,7 @@ pub async fn handle_nfs(
         NFSProgram::NFSPROC3_FSSTAT => nfsproc3_fsstat(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_READDIR => nfsproc3_readdir(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_READDIRPLUS => nfsproc3_readdirplus(xid, input, output, context).await?,
+        NFSProgram::NFSPROC3_COMMIT => nfsproc3_commit(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_WRITE => nfsproc3_write(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_CREATE => nfsproc3_create(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_SETATTR => nfsproc3_setattr(xid, input, output, context).await?,
@@ -155,7 +156,6 @@ pub async fn handle_nfs(
         }, /*
            NFSPROC3_MKNOD,
            NFSPROC3_LINK,
-           NFSPROC3_COMMIT,
            INVALID*/
     }
     Ok(())
@@ -1133,6 +1133,61 @@ pub enum stable_how {
     FILE_SYNC = 2,
 }
 xdr_enum_serde!(stable_how);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+struct COMMIT3args {
+    file: nfs::nfs_fh3,
+    offset: nfs::offset3,
+    count: nfs::count3,
+}
+xdr_struct!(COMMIT3args, file, offset, count);
+
+// WRITE always replies FILE_SYNC: successful writes already reached stable
+// storage. COMMIT validates the object and returns that same server verifier;
+// it is not a document-close event or a remote publication acknowledgement.
+pub async fn nfsproc3_commit(
+    xid: u32,
+    input: &mut impl Read,
+    output: &mut impl Write,
+    context: &RPCContext,
+) -> Result<(), anyhow::Error> {
+    if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
+        make_success_reply(xid).serialize(output)?;
+        nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
+        nfs::wcc_data::default().serialize(output)?;
+        return Ok(());
+    }
+    let mut args = COMMIT3args::default();
+    args.deserialize(input)?;
+    let result = async {
+        let id = context.vfs.fh_to_id(&args.file)?;
+        if args.offset.checked_add(u64::from(args.count)).is_none() {
+            return Err(nfs::nfsstat3::NFS3ERR_INVAL);
+        }
+        let attributes = context.vfs.getattr(id).await?;
+        if !matches!(attributes.ftype, nfs::ftype3::NF3REG) {
+            return Err(nfs::nfsstat3::NFS3ERR_ISDIR);
+        }
+        Ok(attributes)
+    }.await;
+    make_success_reply(xid).serialize(output)?;
+    match result {
+        Ok(attributes) => {
+            nfs::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs::wcc_data {
+                before: nfs::pre_op_attr::Void,
+                after: nfs::post_op_attr::attributes(attributes),
+            }.serialize(output)?;
+            context.vfs.serverid().serialize(output)?;
+        },
+        Err(status) => {
+            status.serialize(output)?;
+            nfs::wcc_data::default().serialize(output)?;
+        },
+    }
+    Ok(())
+}
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]

@@ -1777,3 +1777,29 @@ Next requirements remain COMMIT and save-boundary scheduling, clean-record
 refresh, newer-edit rebasing, namespace operations, native RW permissions/editor
 behavior and lifecycle recovery. Production CLI NFS remains RO until those are
 validated; no native RW editor acceptance is claimed here.
+
+
+## Slice 68 — COMMIT for the all-FILE_SYNC write contract
+
+The vendored NFS dispatcher now implements COMMIT. Since every successful WRITE
+already returns FILE_SYNC after durable local storage, COMMIT needs no second
+flush or remote request: it validates the handle, regular-file type and offset
+arithmetic, returns post-operation attributes and the current WRITE verifier.
+Read-only exports return ROFS. This does not identify an editor save boundary or
+mean that Confluence has received the document. PATCHES.md records that an
+UNSTABLE write implementation would require a real flush hook before shipping.
+
+- macOS and Linux real-wire suites: two selected tests, 80 assertions on each.
+  Full-file and ranged COMMIT return the WRITE verifier; stale handles,
+  directories and overflow fail; journal revisions and backend update counts
+  remain unchanged. Existing READ/WRITE/SETATTR/RO checks in those tests pass.
+- Helper builds and `cargo clippy --locked --manifest-path
+  packages/confluence-nfs/Cargo.toml -- -D warnings` passed on both hosts.
+- `bun run typecheck`: all four tasks passed.
+- Linux mayflower/DOCSY journal-publication live regression passed (one test,
+  seven assertions), with the synthetic page removed afterward.
+
+Automatic save scheduling, native writable permissions, clean-record lifecycle,
+newer-edit rebasing, namespace operations and final native editor acceptance are
+still required. Production CLI remains RO; internal staged writes are not yet a
+complete RW feature.

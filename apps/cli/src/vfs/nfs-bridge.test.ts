@@ -107,6 +107,19 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const replay = await rpc(server, 100003, 7,
       Buffer.concat([opaque(file), ints(0, 0, bytes.length, 2), opaque(bytes)]));
     expect(replay.readUInt32BE()).toBe(0);
+    for (const [offset, count] of [[0, 0], [2, 3]]) {
+      const commit = await rpc(server, 100003, 21, Buffer.concat([opaque(file), ints(0, offset, count)]));
+      expect(commit.readUInt32BE()).toBe(0);
+      expect(commit.subarray(-8)).toEqual(replay.subarray(-8));
+    }
+    const badRange = await rpc(server, 100003, 21,
+      Buffer.concat([opaque(file), ints(0xffffffff, 0xffffffff, 1)]));
+    expect(badRange.readUInt32BE()).toBe(22);
+    const directoryCommit = await rpc(server, 100003, 21, Buffer.concat([opaque(root), ints(0, 0, 0)]));
+    expect(directoryCommit.readUInt32BE()).toBe(21);
+    const stale = Buffer.from(file); stale[0] ^= 0xff;
+    const staleCommit = await rpc(server, 100003, 21, Buffer.concat([opaque(stale), ints(0, 0, 0)]));
+    expect(staleCommit.readUInt32BE()).toBe(70);
     expect(journal!.get("100")!.revision).toBe(revision);
     expect((await truncate(bytes.length + 3)).readUInt32BE()).toBe(0);
     expect(journal!.get("100")!.bytes.length).toBe(bytes.length + 3);
@@ -241,11 +254,11 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     expect(fileAccess.readUInt32BE(fileAccess.length - 4)).toBe(1); // regular files: READ only
     client.resetCalls();
     // The RO capability gate runs before decoding mutation payloads or backend access.
-    for (const procedure of [2, 7, 8, 9, 10, 12, 13, 14]) {
+    for (const procedure of [2, 7, 8, 9, 10, 12, 13, 14, 21]) {
       const reply = await rpc(server, 100003, procedure, Buffer.alloc(0));
       expect(reply.readUInt32BE()).toBe(30); // ROFS
     }
-    for (const procedure of [11, 15, 21]) { // MKNOD, LINK, COMMIT are not implemented in RO.
+    for (const procedure of [11, 15]) { // MKNOD and LINK are not implemented.
       expect(await rpc(server, 100003, procedure, Buffer.alloc(0), 3)).toEqual(Buffer.alloc(0));
     }
     expect(client.requestCount).toBe(0);

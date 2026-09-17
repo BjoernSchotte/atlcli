@@ -71,3 +71,12 @@ records, before dispatch. It includes mount/NULL/failed/replayed calls, even whe
 they do not invoke the VFS. Incomplete or oversized rejected records are not
 counted. The helper reads it over the private pipe; no diagnostic payload or
 unbounded request history is retained.
+
+COMMIT follow-up: nfs_handlers.rs implements COMMIT for the existing all-FILE_SYNC
+write contract. Successful writes are already durable; COMMIT validates the
+handle, regular-file type and range overflow, returns post-operation attributes
+and the same session verifier as WRITE, and does not call remote publication.
+Read-only exports return ROFS. If WRITE ever begins returning UNSTABLE, this
+handler must gain a real stable-storage flush hook before that change ships.
+Real-wire tests cover full/ranged COMMIT, matching verifiers, stale handles,
+directories, overflow and RO rejection.
