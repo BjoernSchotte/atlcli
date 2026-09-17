@@ -325,8 +325,18 @@ impl NFSFileSystem for Bridge {
     ) -> Result<(fileid3, fattr3), nfsstat3> {
         Err(nfsstat3::NFS3ERR_ROFS)
     }
-    async fn create_exclusive(&self, _: fileid3, _: &filename3) -> Result<fileid3, nfsstat3> {
-        Err(nfsstat3::NFS3ERR_ROFS)
+    async fn create_exclusive(
+        &self,
+        parent: fileid3,
+        name: &filename3,
+        verifier: createverf3,
+    ) -> Result<fileid3, nfsstat3> {
+        if !self.writable {
+            return Err(nfsstat3::NFS3ERR_ROFS);
+        }
+        let name = std::str::from_utf8(name).map_err(|_| nfsstat3::NFS3ERR_INVAL)?;
+        self.call("create-exclusive", json!({"parent":parent,"name":name,"verifier":format!("{:016x}",u64::from_be_bytes(verifier))}))
+            .await?.as_u64().ok_or(nfsstat3::NFS3ERR_IO)
     }
     async fn mkdir(&self, _: fileid3, _: &filename3) -> Result<(fileid3, fattr3), nfsstat3> {
         Err(nfsstat3::NFS3ERR_ROFS)

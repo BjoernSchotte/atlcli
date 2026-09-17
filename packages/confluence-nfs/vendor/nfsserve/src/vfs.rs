@@ -134,7 +134,7 @@ pub trait NFSFileSystem: Sync {
 
     /// Creates a file if it does not already exist
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
-    async fn create_exclusive(&self, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3>;
+    async fn create_exclusive(&self, dirid: fileid3, filename: &filename3, verifier: createverf3) -> Result<fileid3, nfsstat3>;
 
     /// Makes a directory with the following attributes.
     /// If not supported dur to readonly file system

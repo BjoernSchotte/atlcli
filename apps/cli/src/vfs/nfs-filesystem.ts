@@ -302,13 +302,17 @@ export class NfsFilesystem {
     return posix.join(directory, name);
   }
 
-  async create(parent: number, name: string): Promise<number> {
+  async create(parent: number, name: string, verifier?: string): Promise<number> {
     const path = await this.mutationPath(parent, name);
+    if (verifier !== undefined && this.journal!.local(path)) {
+      this.journal!.createLocal(path, verifier);
+      return this.register(path);
+    }
     try { await this.stat(path); }
     catch (error) {
       if (!(error instanceof VfsError) || error.code !== "ENOENT") throw error;
       if (this.paths.size >= NFS_MAX_HANDLES || this.nextId > Number.MAX_SAFE_INTEGER) throw new VfsError("ENOSPC", "NFS handle capacity exceeded");
-      this.journal!.createLocal(path);
+      this.journal!.createLocal(path, verifier);
       return this.register(path);
     }
     throw new VfsError("EEXIST", "NFS file exists");

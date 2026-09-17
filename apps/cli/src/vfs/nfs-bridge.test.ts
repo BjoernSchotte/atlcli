@@ -79,9 +79,7 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
 describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
   it("renames durable local files over a page and removes only local files through real RPCs", async () => {
     const { server, journal, vfs, client } = await fixture(["DOCSY"], false, () => Date.now(), true);
-    const local = journal!.createLocal("/DOCSY/.editor.tmp");
     const content = (await vfs.readFile("/DOCSY/_index.md")).replace("Grüße 🐴", "RPC replacement");
-    journal!.write(local.id, 0, Buffer.from(content));
     const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
     const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
     const lookup = async (name: string) => {
@@ -90,7 +88,24 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       return reply.subarray(8, 8 + reply.readUInt32BE(4));
     };
     const pageHandle = await lookup("_index.md");
-    const localHandle = await lookup(".editor.tmp");
+    const exclusive = (name: string, verifier: string) => rpc(server, 100003, 8, Buffer.concat([
+      opaque(root), opaque(Buffer.from(name)), ints(2), Buffer.from(verifier, "hex"),
+    ]));
+    const created = await exclusive(".editor.tmp", "0102030405060708");
+    expect(created.readUInt32BE()).toBe(0);
+    const localHandle = created.subarray(12, 12 + created.readUInt32BE(8));
+    expect(await lookup(".editor.tmp")).toEqual(localHandle);
+    const written = await rpc(server, 100003, 7, Buffer.concat([
+      opaque(localHandle), ints(0, 0, Buffer.byteLength(content), 2), opaque(Buffer.from(content)),
+    ]));
+    expect(written.readUInt32BE()).toBe(0);
+    const replayed = await exclusive(".editor.tmp", "0102030405060708");
+    expect(replayed.readUInt32BE()).toBe(0);
+    expect(replayed.subarray(12, 12 + replayed.readUInt32BE(8))).toEqual(localHandle);
+    expect((await exclusive(".editor.tmp", "0102030405060709")).readUInt32BE()).toBe(17);
+    expect((await exclusive("_index.md", "0102030405060708")).readUInt32BE()).toBe(17);
+    expect(Buffer.from(journal!.local("/DOCSY/.editor.tmp")!.bytes).toString()).toBe(content);
+    expect(journal!.pending()).toEqual([]);
     const rename = (from: string, to: string) => rpc(server, 100003, 14, Buffer.concat([
       opaque(root), opaque(Buffer.from(from)), opaque(root), opaque(Buffer.from(to)),
     ]));

@@ -67,6 +67,9 @@ export async function startNfsServer(options: {
         case "lookup":
           if (typeof args.name !== "string") throw new Error("Invalid NFS name");
           result = await fs.lookup(number(args.parent), args.name); break;
+        case "create-exclusive":
+          if (typeof args.name !== "string" || typeof args.verifier !== "string" || !/^[0-9a-f]{16}$/.test(args.verifier)) throw new VfsError("EINVAL", "Invalid exclusive CREATE");
+          result = await fs.create(number(args.parent), args.name, args.verifier); break;
         case "remove":
           if (typeof args.name !== "string") throw new VfsError("EINVAL", "Invalid NFS name");
           await fs.remove(number(args.parent), args.name);

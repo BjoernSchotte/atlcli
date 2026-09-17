@@ -118,6 +118,8 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     j.write(local.id,0,Buffer.from("replaced after intent"));
     j.renameLocal(local.path,"/DOCSY/.renamed.tmp");
     j.replaceLocal("/DOCSY/.renamed.tmp","1");
+    const replay=j.createLocal("/DOCSY/replay.tmp","0123456789abcdef");
+    j.write(replay.id,0,Buffer.from("exclusive survives crash"));
     console.log("ACK");setInterval(()=>{},1000);`;
   const child = Bun.spawn([process.execPath, "--conditions=development", "-e", source], { stdout: "pipe", stderr: "pipe" });
   try {
@@ -128,7 +130,8 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     child.kill("SIGKILL"); await child.exited;
     const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
     expect(Buffer.from(recovered.get("1")!.bytes).toString()).toBe("replaced after intent");
-    expect(recovered.localEntries("/DOCSY")).toEqual([]);
+    expect(recovered.localEntries("/DOCSY")).toHaveLength(1);
+    expect(Buffer.from(recovered.createLocal("/DOCSY/replay.tmp", "0123456789abcdef").bytes).toString()).toBe("exclusive survives crash");
     expect(Buffer.from(recovered.beginPublish("1")!.bytes).toString()).toBe("durable 🐴");
     expect(recovered.pending()).toHaveLength(1);
   } finally { child.kill(); await child.exited; }
@@ -360,4 +363,33 @@ it("accounts for local-file quotas and rolls back failed replacement without los
   const restored = new NfsJournal(path, "synthetic-account:DOCSY", 8, 8, 2); journals.push(restored);
   expect(Buffer.from(restored.replaceLocal(local.path, "1").bytes).toString()).toBe("newer");
   expect(restored.local(local.path)).toBeNull();
+});
+
+
+it("persists exclusive-create verifiers and never truncates a matching replay", () => {
+  const { path, journal } = fixture();
+  const verifier = "0123456789abcdef";
+  const file = journal.createLocal("/DOCSY/exclusive.tmp", verifier);
+  journal.write(file.id, 0, bytes("acknowledged draft"));
+  expect(journal.createLocal(file.path, verifier).id).toBe(file.id);
+  expect(() => journal.createLocal(file.path, "fedcba9876543210")).toThrow("exists");
+  expect(() => journal.createLocal(file.path)).toThrow("exists");
+  expect(() => journal.createLocal("/DOCSY/invalid", "xyz")).toThrow("verifier");
+  journal.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(Buffer.from(reopened.createLocal(file.path, verifier).bytes).toString()).toBe("acknowledged draft");
+  reopened.removeLocal(file.path);
+  expect(reopened.createLocal(file.path, verifier).id).not.toBe(file.id);
+});
+
+it("upgrades schema-three local files without inventing an exclusive verifier", () => {
+  const { path, journal } = fixture();
+  const local = journal.createLocal("/DOCSY/legacy.tmp");
+  journal.write(local.id, 0, bytes("keep"));
+  journal.close();
+  const old = new Database(path);
+  old.exec("ALTER TABLE locals DROP COLUMN verifier; PRAGMA user_version=3;"); old.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(() => reopened.createLocal(local.path, "0000000000000000")).toThrow("exists");
+  expect(Buffer.from(reopened.local(local.path)!.bytes).toString()).toBe("keep");
 });

@@ -1423,6 +1423,7 @@ pub async fn nfsproc3_create(
         },
     };
     let mut target_attributes = nfs::sattr3::default();
+    let mut create_verifier = nfs::createverf3::default();
 
     match createhow {
         createmode3::UNCHECKED => {
@@ -1452,6 +1453,7 @@ pub async fn nfsproc3_create(
             }
         },
         createmode3::EXCLUSIVE => {
+            create_verifier.deserialize(input)?;
             debug!("create exclusive");
         },
     }
@@ -1462,7 +1464,7 @@ pub async fn nfsproc3_create(
     if matches!(createhow, createmode3::EXCLUSIVE) {
         // the API for exclusive is very slightly different
         // We are not returning a post op attribute
-        fid = context.vfs.create_exclusive(dirid, &dirops.name).await;
+        fid = context.vfs.create_exclusive(dirid, &dirops.name, create_verifier).await;
         postopattr = nfs::post_op_attr::Void;
     } else {
         // create!

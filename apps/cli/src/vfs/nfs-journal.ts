@@ -37,7 +37,7 @@ export class NfsJournal {
     try {
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers; EXTRA syncs the journal's unlink.
@@ -62,10 +62,13 @@ export class NfsJournal {
         );
         CREATE TABLE IF NOT EXISTS bases (id TEXT PRIMARY KEY REFERENCES files(id), bytes BLOB NOT NULL);
         PRAGMA foreign_keys=ON;
-        CREATE TABLE IF NOT EXISTS locals (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL UNIQUE);
-        PRAGMA user_version=3;
+        CREATE TABLE IF NOT EXISTS locals (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL UNIQUE, verifier TEXT);
+
       `);
       this.db.transaction(() => {
+        const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(locals)").all();
+        if (!columns.some(column => column.name === "verifier")) this.db.exec("ALTER TABLE locals ADD COLUMN verifier TEXT");
+        this.db.exec("PRAGMA user_version=4");
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.db.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -97,12 +100,18 @@ export class NfsJournal {
   }
 
   /** Local editor files survive restart but never enter the remote publish queue. */
-  createLocal(path: string): StagedNfsFile {
+  createLocal(path: string, verifier?: string): StagedNfsFile {
     this.localPath(path);
+    if (verifier !== undefined && !/^[0-9a-f]{16}$/.test(verifier)) throw new VfsError("EINVAL", "Invalid exclusive CREATE verifier");
     return this.db.transaction(() => {
-      if (this.local(path)) throw new VfsError("EEXIST", "Local NFS file exists");
+      const existing = this.local(path);
+      if (existing) {
+        const stored = this.db.query<{ verifier: string | null }, [string]>("SELECT verifier FROM locals WHERE id=?").get(existing.id);
+        if (verifier !== undefined && stored?.verifier === verifier) return existing;
+        throw new VfsError("EEXIST", "Local NFS file exists");
+      }
       const file = this.admit(`local:${randomUUID()}`, path, new Uint8Array(), 0);
-      this.db.run("INSERT INTO locals VALUES (?, ?)", [file.id, path]);
+      this.db.run("INSERT INTO locals (id,path,verifier) VALUES (?, ?, ?)", [file.id, path, verifier ?? null]);
       return file;
     }).immediate();
   }

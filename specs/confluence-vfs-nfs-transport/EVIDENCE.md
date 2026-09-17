@@ -2006,3 +2006,29 @@ unconnected. Audit found that vendored EXCLUSIVE CREATE does not deserialize or
 forward the verifier to its VFS hook. That must be fixed with durable replay
 semantics before CREATE/native atomic-editor acceptance. This slice does not
 claim that gate or complete-document publication safety.
+
+## Slice 76 — durable EXCLUSIVE CREATE replay
+
+The vendored handler now deserializes the eight-byte EXCLUSIVE CREATE verifier
+and forwards it to the VFS hook. Bridge protocol 7 carries its exact hexadecimal
+representation to the guarded projection. Journal schema 4 stores the verifier
+with the local file in the creation transaction. A matching replay returns the
+same identity and current bytes; a different or absent verifier returns EEXIST.
+Legacy local records migrate with a null verifier and cannot be mistaken for a
+successful exclusive create. Verifiers and acknowledged bytes survive SIGKILL.
+
+- macOS: 58 journal/projection tests passed (938 assertions), followed by the
+  expanded SIGKILL test (six assertions). Linux final suites: 58 / 939.
+- Both hosts: real CREATE/WRITE/RENAME/REMOVE and RO protection tests passed
+  (two tests / 80 assertions). The replacement test now creates its temporary
+  file and writes its data over RPC instead of pre-seeding the journal. Repeated
+  CREATE retains its handle and bytes; a different verifier and an existing real
+  page return EXIST. Exactly one automatic page update follows replacement.
+- Linux live native DOCSY autosave regression passed (one / four assertions),
+  followed by normal unmount and disposable page cleanup.
+- Rust tests (six), strict clippy, TypeScript typecheck and diff checks passed.
+  Helpers were rebuilt on both hosts with protocol 7.
+
+UNCHECKED/GUARDED CREATE, native post-create SETATTR/permissions, backup and
+open-handle semantics, native atomic-editor testing and the complete-document
+publication boundary remain open. CLI RW is still gated.

@@ -80,3 +80,8 @@ Read-only exports return ROFS. If WRITE ever begins returning UNSTABLE, this
 handler must gain a real stable-storage flush hook before that change ships.
 Real-wire tests cover full/ranged COMMIT, matching verifiers, stale handles,
 directories, overflow and RO rejection.
+
+EXCLUSIVE CREATE: deserialize its eight-byte verifier and forward it through the
+VFS hook. The upstream handler omitted that field entirely. The adapter persists
+the verifier with its local file and accepts only a matching existing-file replay;
+a different verifier returns EXIST without truncating acknowledged bytes.
