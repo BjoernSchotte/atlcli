@@ -1150,8 +1150,13 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * Confluence trashes only the requested page. Recursive removal first checks
    * the complete bounded subtree, then explicitly trashes children before parents.
    */
-  async rm(path: string, options: { recursive?: boolean } = {}): Promise<void> {
+  async rm(path: string, options: { recursive?: boolean; expected?: { id: string; spaceKey: string } } = {}): Promise<void> {
     const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
+    if (options.expected && ((resolved.kind !== "container" && resolved.kind !== "body") ||
+        resolved.node.type !== "page" || resolved.node.id !== options.expected.id ||
+        resolved.node.spaceKey !== options.expected.spaceKey)) {
+      throw new VfsError("EBUSY", "Deletion target identity changed", { path });
+    }
 
     if (resolved.kind === "conflict-file") {
       // Local only: touches no Confluence content, so it is allowed in ro mode

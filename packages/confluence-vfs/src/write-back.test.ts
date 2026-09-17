@@ -509,6 +509,36 @@ describe("rename and move", () => {
 });
 
 describe("rm", () => {
+  it("binds guarded trash to page identity and space before any mutation", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      const path = "/DOCSY/getting-started-101/_index.md";
+      for (const expected of [{ id: "102", spaceKey: "DOCSY" }, { id: "101", spaceKey: "OTHER" }]) {
+        await expect(vfs.rm(path, { expected })).rejects.toMatchObject({ code: "EBUSY" });
+      }
+      await expect(vfs.rm("/DOCSY/getting-started-101/.comments.md", {
+        expected: { id: "101", spaceKey: "DOCSY" },
+      })).rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("deletePage")).toBe(0);
+      await vfs.rm(path, { expected: { id: "101", spaceKey: "DOCSY" } });
+      expect(client.isTrashed("101")).toBe(true);
+      expect(client.isTrashed("102")).toBe(false);
+      expect(client.peekPage("101")).toBeDefined();
+    } finally { await vfs.close(); }
+  });
+
+  it("retains deletion opt-in for matching expected identities", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { allowDelete: false });
+    try {
+      await expect(vfs.rm("/DOCSY/getting-started-101/_index.md", {
+        expected: { id: "101", spaceKey: "DOCSY" },
+      })).rejects.toMatchObject({ code: "EACCES" });
+      expect(client.callsTo("deletePage")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
   it("sends a page to the trash and never purges it", async () => {
     const client = seeded();
     const vfs = await openVfs(client);

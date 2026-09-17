@@ -2790,3 +2790,23 @@ accepted intermediate-snapshot contract.
 
 Remaining public RW, unknown-create reconciliation, broader editor and final
 acceptance gates are unchanged.
+
+
+## Slice 107 — identity-bound core trash prerequisite
+
+The shared rm operation accepts an optional expected root page ID/space. Before
+any mutation it rejects another page, space or generated/attachment node. Matching
+expectations retain the existing mode/allow-delete safeguards and trash-only API.
+Existing callers keep their behavior. This gives the NFS removal path a guard at
+the authoritative resolution boundary, rather than trusting an earlier stat.
+
+- macOS/Linux write-back suites: 69 tests / 168 assertions each, including
+  wrong-ID/space/generated-target refusal, positive trash and deletion opt-in.
+- Linux DOCSY live guard test: four assertions; wrong expectations leave the
+  disposable page readable, the matching operation trashes it, and the API
+  subsequently returns 404. No purge endpoint is involved.
+- All four typecheck tasks passed.
+
+Native NFS remote removal is not enabled by this prerequisite. It still needs
+coordination with durable writes and interrupted/ambiguous deletion recovery;
+these are mandatory before the public RW gate can open.

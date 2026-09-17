@@ -403,6 +403,19 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
     expect(page.headers.get("content-length")).toBe(String(Buffer.byteLength(text, "utf8")));
   });
 
+  it("guards live trash by expected page identity and space", async () => {
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
+      title: makeE2eTitle("nfs-guarded-trash"), storage: "<p>Disposable guarded trash</p>" });
+    created.push(page.id);
+    const path = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`);
+    await expect(vfs.rm(path, { expected: { id: "0", spaceKey: E2E_SPACE_KEY } })).rejects.toMatchObject({ code: "EBUSY" });
+    await expect(vfs.rm(path, { expected: { id: page.id, spaceKey: "OTHER" } })).rejects.toMatchObject({ code: "EBUSY" });
+    expect((await client.getPage(page.id)).storage).toContain("Disposable guarded trash");
+    await vfs.rm(path, { expected: { id: page.id, spaceKey: E2E_SPACE_KEY } });
+    created.splice(created.indexOf(page.id), 1);
+    await expect(client.getPage(page.id)).rejects.toMatchObject({ status: 404 });
+  });
+
   it("creates and then trashes a page through PUT and DELETE", async () => {
     const title = makeE2eTitle("vfs-mount");
     const put = await fetch(new URL(`/${E2E_SPACE_KEY}/${title}.md`, server.url), {

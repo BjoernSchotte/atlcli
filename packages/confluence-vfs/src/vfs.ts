@@ -47,8 +47,9 @@ export interface ConfluenceVfs {
   /** Retitle, reparent or move across spaces, depending on what changed. */
   rename(from: string, to: string): Promise<void>;
 
-  /** Move to trash. Needs `mode: "rw"` *and* `allowDelete`. Never purges. */
-  rm(path: string, options?: { recursive?: boolean }): Promise<void>;
+  /** Move to trash. Needs `mode: "rw"` *and* `allowDelete`. Never purges.
+   * An expected identity restricts deletion to that page in that space. */
+  rm(path: string, options?: { recursive?: boolean; expected?: { id: string; spaceKey: string } }): Promise<void>;
 
   /** Copy a page through the existing `copyPage` endpoint. */
   copy(from: string, to: string): Promise<VfsWriteResult>;
