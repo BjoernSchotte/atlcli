@@ -17,9 +17,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { open, readdir, readFile, writeFile } from "node:fs/promises";
+import { open, readdir, readFile, writeFile, rename } from "node:fs/promises";
 import { platform, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { getActiveProfile, loadConfig, type Profile } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
@@ -120,6 +120,22 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
       const actual = await client.getPage(page.id);
       expect(actual.version).toBe((page.version ?? 1) + 1);
       expect(actual.storage).toContain("Native automatically saved");
+      const destination = join(local, ...path.split("/").slice(2));
+      const temporaryPath = join(dirname(destination), ".editor-replacement.tmp");
+      const replacementBytes = Buffer.from(original.replace("Native original", "Native atomic replacement 🐴"));
+      const temporary = await open(temporaryPath, "wx", 0o600);
+      try { await temporary.write(replacementBytes); await temporary.sync(); }
+      finally { await temporary.close(); }
+      expect((await client.getPage(page.id)).version).toBe(actual.version);
+      await rename(temporaryPath, destination);
+      expect(await readFile(destination)).toEqual(replacementBytes);
+      const replacedDeadline = Date.now() + 15000;
+      while (journal.pending().length && Date.now() < replacedDeadline) await Bun.sleep(50);
+      expect(journal.pending()).toHaveLength(0);
+      const replaced = await client.getPage(page.id);
+      expect(replaced.id).toBe(page.id);
+      expect(replaced.version).toBe((actual.version ?? 1) + 1);
+      expect(replaced.storage).toContain("Native atomic replacement 🐴");
     } finally {
       if (mounted) {
         const detach = platform() === "linux" ? ["sudo", "-n", "umount", local] : ["umount", local];

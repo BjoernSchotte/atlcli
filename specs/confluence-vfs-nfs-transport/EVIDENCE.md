@@ -2061,3 +2061,24 @@ forms are accepted. Arbitrary ownership, client-supplied timestamps and combined
 size/metadata changes are still refused before mutation. UNCHECKED/GUARDED CREATE,
 full native editor replacement/backup sequences and publication completion
 boundaries remain open; CLI RW is not enabled by this evidence.
+
+## Slice 78 — native atomic replacement on both kernels and live DOCSY
+
+The native RW regression now exercises the complete closed-temporary-file path:
+exclusive create, write, fsync, close, rename over `_index.md`, reopen/read, and
+wait for automatic publication. Both macOS and Linux passed (19 assertions each).
+The native fixture uses a 4096-byte journal budget because its former 512-byte
+fault-test budget correctly rejected the additional temporary image with ENOSPC;
+wire quota tests retain their original small limit.
+
+The Linux mayflower/DOCSY E2E repeats replacement against a disposable real page
+(ten assertions). Creating/writing the 0600 temporary file leaves the remote
+version unchanged. Replacement is immediately readable through the mounted path,
+then automatically produces exactly one new version with the complete Unicode
+content and the same page ID. Pending work clears, normal unmount succeeds and
+the disposable page is deleted. Typecheck and diff checks passed.
+
+This proves the closed-temp-file native save sequence, not arbitrary editor
+behavior. Renaming while a descriptor remains open, backup renames, actual
+Vim/TextEdit workflows, additional CREATE variants and the document-completion
+boundary for in-place writes still require implementation/acceptance.

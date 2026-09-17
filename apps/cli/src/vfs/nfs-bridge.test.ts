@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { platform } from "node:os";
-import { open, opendir, stat, unlink } from "node:fs/promises";
+import { open, opendir, stat, unlink, rename, readFile } from "node:fs/promises";
 import { getActiveProfile, loadConfig } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { runMountCommand } from "../commands/wiki-mount.js";
@@ -53,7 +53,7 @@ async function rpc(server: Pick<RunningNfsServer, "port">, program: number, proc
     socket.on("end", () => reject(new Error("RPC closed before reply")));
   });
 }
-async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now(), writable = false) {
+async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now(), writable = false, journalBytes = 512) {
   if (live && writable) throw new Error("RW wire fixtures must be synthetic");
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-wire-"));
   const client = new FakeConfluenceClient()
@@ -69,7 +69,7 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
   if (live && !profile) throw new Error("Missing mayflower test profile");
   const vfs = await ConfluenceVfsImpl.open({ profile: profile?.name ?? "fixture",
     client: profile ? new ConfluenceClient(profile) : client, spaces, mode: writable ? "rw" : "ro", allowDelete: false, offline: false, cacheDir, now, coalesceMs: writable ? 0 : undefined });
-  const journal = writable ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY", 512, 2048) : undefined;
+  const journal = writable ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY", journalBytes, 2048) : undefined;
   cleanups.push(async () => { await vfs.close(); journal?.close(); rmSync(cacheDir, { recursive: true, force: true }); });
   const server = await startNfsServer({ vfs, spaces, journal, helperPath: resolve(helperPath!) });
   cleanups.push(() => server.stop());
@@ -732,7 +732,7 @@ with socket.socket() as client:
   }
 
   it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("writes and fsyncs existing pages through a native RW kernel mount", async () => {
-    const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now(), true);
+    const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now(), true, 4096);
     const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-rw-"));
     let mounted = false;
     cleanups.push(async () => {
@@ -784,6 +784,18 @@ with socket.socket() as client:
     expect(localStat.mode & 0o777).toBe(0o600);
     expect(localStat.mtimeMs).toBeGreaterThan(Date.now() - 30_000);
     await unlink(join(mountpoint, ".native.tmp"));
+    const replacementBytes = Buffer.from(bytes.toString().replace("Native Grüße 🐴", "Atomic replacement 🐴"));
+    const replacementPath = join(mountpoint, ".replacement.tmp");
+    const replacement = await open(replacementPath, "wx", 0o644);
+    try { await replacement.write(replacementBytes); await replacement.sync(); }
+    finally { await replacement.close(); }
+    await rename(replacementPath, path);
+    expect(await readFile(path)).toEqual(replacementBytes);
+    const replacementDeadline = Date.now() + 5000;
+    while (journal!.pending().length && Date.now() < replacementDeadline) await Bun.sleep(20);
+    expect(journal!.pending()).toHaveLength(0);
+    expect(client.callsTo("updatePage")).toBe(2);
+    expect(client.peekPage("100")?.storage).toContain("Atomic replacement 🐴");
   }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [
