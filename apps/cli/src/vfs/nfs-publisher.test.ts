@@ -29,13 +29,15 @@ async function fixture(mode: "ro" | "rw" = "rw") {
   return { client, vfs, journal, original, stage, publisher, root };
 }
 
-it("retries a transient publication automatically with backoff and keeps the frozen image", async () => {
+it.each(["http", "network"])("retries a transient %s publication automatically with backoff and keeps the frozen image", async kind => {
   const { client, original, stage, publisher, journal } = await fixture();
   const update = client.updatePage.bind(client);
   const attempts: number[] = [];
   client.updatePage = async params => {
     attempts.push(Date.now());
-    if (attempts.length === 1) throw new VfsError("EAGAIN", "Temporarily unavailable", { status: 503 });
+    if (attempts.length === 1) throw kind === "http"
+      ? new VfsError("EAGAIN", "Temporarily unavailable", { status: 503 })
+      : new TypeError("fetch failed", { cause: Object.assign(new Error("reset"), { code: "ECONNRESET" }) });
     return update(params);
   };
   stage(original.replace("Original", "Recovered"));

@@ -3163,3 +3163,27 @@ stop() cancels retry timers. Retry timing is session-local, not journal metadata
 This adds recovery for explicitly transient EAGAIN failures. Generic network
 errors currently mapped to EINVAL, remote directory mutations, the wider fault
 matrix and final acceptance remain open. No new native-kernel test is claimed.
+
+
+## Slice 120 — transient network failures enter bounded publication retry
+
+Shared REST-to-VFS error mapping recognizes explicit Bun/Node connection,
+reset, timeout and temporary DNS codes, including wrapped fetch causes.
+Cancellation, certificate failures and unclassified exceptions remain EINVAL;
+cyclic cause chains terminate. This changes classification, not the REST client's
+mutation retry behavior. NFS uses the existing frozen-intent reconciliation and
+bounded backoff; uncertain CREATE is not blindly repeated.
+
+- macOS refused-loopback probe observed Bun code `ConnectionRefused`.
+- macOS/Linux: `bun run test packages/confluence-vfs/src/errors.test.ts
+  apps/cli/src/vfs/nfs-publisher.test.ts`: 71 passed / 353 assertions each.
+  Real timers cover HTTP and wrapped connection-reset automatic recovery;
+  code mapping covers direct/nested failures and nonretryable/cyclic cases.
+- Linux DOCSY recovery: 2 passed / 16 assertions, now injecting a pre-request
+  ECONNRESET on the first update. Automatic retry verified the final remote
+  version/body with two attempts and no second save. Test pages cleaned up.
+- `bun run typecheck`: all four tasks passed.
+
+The live network fault is injected before the request, not an OS network outage.
+Remote directory mutations, wider fault/editor matrix and final acceptance remain
+open. No new native-kernel or Data Center live coverage is claimed.

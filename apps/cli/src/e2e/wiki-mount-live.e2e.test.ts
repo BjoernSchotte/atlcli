@@ -505,7 +505,7 @@ describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
         const update = client.updatePage.bind(client);
         let attempts = 0;
         client.updatePage = async params => {
-          if (++attempts === 1) throw Object.assign(new Error("Injected transient API failure"), { status: 503 });
+          if (++attempts === 1) throw Object.assign(new Error("Injected connection reset before request"), { code: "ECONNRESET" });
           return update(params);
         };
         try {

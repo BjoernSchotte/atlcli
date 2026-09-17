@@ -38,6 +38,26 @@ export function retryAfterMsOf(error: unknown): number | undefined {
   return undefined;
 }
 
+// Explicit transport codes only: cancellation, TLS and programming errors must
+// not become retryable merely because fetch failed.
+const TRANSIENT_NETWORK_CODES = new Set([
+  "ConnectionRefused", "ConnectionClosed", "ECONNREFUSED", "ECONNRESET",
+  "ECONNABORTED", "ETIMEDOUT", "EPIPE", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "UND_ERR_SOCKET",
+]);
+
+function isTransientNetworkError(error: unknown): boolean {
+  const seen = new Set<object>();
+  while (typeof error === "object" && error !== null && !seen.has(error)) {
+    seen.add(error);
+    const value = error as { name?: unknown; code?: unknown; cause?: unknown };
+    if (value.name === "AbortError") return false;
+    if (typeof value.code === "string" && TRANSIENT_NETWORK_CODES.has(value.code)) return true;
+    error = value.cause;
+  }
+  return false;
+}
+
 const STATUS_CODES: Record<number, VfsErrorCode> = {
   400: "EINVAL",
   401: "EACCES",
@@ -87,7 +107,8 @@ export function mapClientError(error: unknown, path?: string): VfsError {
   const status = httpStatusOf(error);
   if (status === undefined) {
     const message = error instanceof Error ? error.message : String(error);
-    return new VfsError("EINVAL", `Confluence request failed: ${message}`, { path, cause: error });
+    return new VfsError(isTransientNetworkError(error) ? "EAGAIN" : "EINVAL",
+      `Confluence request failed: ${message}`, { path, cause: error });
   }
   const code = STATUS_CODES[status] ?? (status >= 500 ? "EAGAIN" : "EINVAL");
   let message = describe(status, path);

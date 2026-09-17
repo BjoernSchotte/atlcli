@@ -462,7 +462,9 @@ forced or lazy detachment. Close applications using the volume if it is busy.
 ### Recovering local NFS edits
 
 Automatic NFS publication retries transient `EAGAIN` failures up to five times
-with exponential backoff (starting at one second) and up to 25% jitter. A supplied
+with exponential backoff (starting at one second) and up to 25% jitter. Explicit
+connection-reset/refused, timeout and temporary DNS transport errors are also
+retryable. Cancellation, certificate errors and unclassified exceptions are not. A supplied
 `Retry-After` is a minimum delay. New save events retain the current retry delay;
 permission/validation errors and conflicts do not trigger this retry loop. After
 exhaustion, bytes and publication intent remain in the journal for recovery.
