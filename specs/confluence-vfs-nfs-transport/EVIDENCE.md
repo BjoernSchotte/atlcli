@@ -3050,3 +3050,39 @@ Current official references describe [content properties](https://developer.atla
 the create-content operation no longer appears on the current Cloud v1 reference,
 so this slice relies on the explicit live probe rather than claiming a currently
 documented atomic CREATE guarantee.
+
+## Slice 116 — reconcile an unchanged initial NFS creation after lost reply
+
+NFS now passes its durable random local file identity through the create-only
+VFS condition into the initial CREATE property. No journal schema migration is
+needed: the existing local ID is unique and persists with the frozen image.
+On resume, an uncertain creation performs the existing direct exact-title lookup
+(no CQL indexing dependency), requires a single matching result, then checks the
+marker and the current page's ID, space, parent, title, version 1 and storage body
+against the frozen intent. Only positive agreement records a receipt and promotes
+the same local file. No additional POST is issued. Old attempts without a marker,
+changed pages and ambiguous/missing results stay pending; no absence is interpreted
+as permission to recreate. No Data Center live claim is made.
+
+The first DOCSY fault test identified a stale-directory-index bug: a positively
+recovered page was not attached to the already-loaded parent. Recovery now adds
+that verified identity before resolving its canonical path. A later run hit the
+suite's default five-second network deadline; the bounded live case now allows
+30 seconds. Final run completed in about 1.6 seconds.
+
+- Final macOS core/publisher suites: 388 passed, 1131 assertions.
+- Final Linux core/publisher suites: 388 passed, 1130 assertions (timer-driven
+  polling assertions can differ by one between hosts).
+- Earlier core/publisher/journal run: 427 passed on both OSes.
+- Regression variants retain frozen bytes and prevent another POST for absent or
+  wrong markers, differing body/parent, and a remote page advanced to version 2.
+  The matching case uses automatic `resume()` and verifies namespace promotion.
+- Linux live DOCSY: six assertions after injected lost reply and journal close /
+  reopen, same page ID, exactly one POST, remote version 1 and expected body.
+  The disposable page was cleaned up. This is real API/journal evidence, not an
+  additional native kernel/editor test.
+- Final typecheck: four tasks passed.
+
+Recovery for changed initial pages, confirmed-not-created outcomes and folder
+move interruptions still needs explicit handling. Public NFS RW and final
+acceptance remain gated; this slice does not complete the full recovery matrix.

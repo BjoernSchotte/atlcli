@@ -726,11 +726,26 @@ export class FakeConfluenceClient implements VfsClient {
     }
   }
 
+  private readonly creationProperties = new Map<string, Record<string, unknown>>();
+
+  async findPagesByTitle(title: string, options: { spaceKey: string }) {
+    this.record("findPagesByTitle", title);
+    return [...this.pages.values()].filter(p => !p.trashed && p.title === title && p.spaceKey === options.spaceKey)
+      .map(p => ({ id: p.id, title: p.title, spaceKey: p.spaceKey }));
+  }
+
+  async getPagePropertyByKey(id: string, key: string): Promise<unknown> {
+    this.record("getPagePropertyByKey", id);
+    this.mustPage(id);
+    return this.creationProperties.get(id)?.[key];
+  }
+
   async createPage(params: {
     spaceKey: string;
     title: string;
     storage: string;
     parentId?: string;
+    properties?: Record<string, unknown>;
   }): Promise<ConfluencePage> {
     this.record("createPage", `${params.spaceKey}/${params.title}`);
     const clash = [...this.pages.values()].find(
@@ -754,6 +769,7 @@ export class FakeConfluenceClient implements VfsClient {
       version: 1,
       lastModified: new Date(this.clock).toISOString(),
     });
+    this.creationProperties.set(id, structuredClone(params.properties ?? {}));
     return this.toPage(this.pages.get(id)!);
   }
 

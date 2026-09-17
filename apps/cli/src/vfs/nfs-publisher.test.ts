@@ -433,24 +433,47 @@ it("automatically creates plain Markdown once and resumes newer saves under the 
   expect((await vfs.resolve(await vfs.readlink(`/DOCSY/.by-id/${pageId}.md`))).id).toBe(pageId);
 });
 
-it("does not repeat an ambiguous create and recovers a confirmed receipt without another POST", async () => {
-  const { client, journal, publisher } = await fixture();
+it("recovers a lost CREATE reply from its marker without another POST", async () => {
+  const { client, vfs, journal, publisher } = await fixture();
   const local = journal.createLocal("/DOCSY/newpage.md");
   journal.write(local.id, 0, Buffer.from("Plain"));
   const create = client.createPage.bind(client);
   let pageId = "";
   client.createPage = async params => { const result = await create(params); pageId = result.id; throw new Error("Lost reply"); };
   await expect(publisher.publish(local.id)).rejects.toThrow();
-  await expect(publisher.publish(local.id)).rejects.toMatchObject({ code: "EBUSY" });
-  expect(client.callsTo("createPage")).toBe(1);
-  const intent = journal.createIntent(local.id)!;
-  expect(intent.pageId).toBeNull();
-  // Simulates recovery of a proven receipt, not an automatic guess by title.
-  journal.recordCreated(local.id, intent.revision, pageId, 1);
-  expect((await publisher.publish(local.id))?.pageId).toBe(pageId);
-  expect(client.callsTo("createPage")).toBe(1);
-  expect(journal.promotion(local.id)?.pageId).toBe(pageId);
+  await publisher.stop();
+  const recovered = new NfsPublisher(journal, vfs, ["DOCSY"]);
+  try {
+    recovered.resume();
+    await until(() => journal.promotion(local.id) !== null);
+    expect(client.callsTo("createPage")).toBe(1);
+    expect(journal.promotion(local.id)?.pageId).toBe(pageId);
+  } finally { await recovered.stop(); }
 });
+
+for (const fault of ["missing-marker", "wrong-marker", "changed-body", "changed-parent", "new-version"]) {
+  it(`retains ambiguous creation when recovery evidence differs: ${fault}`, async () => {
+    const { client, journal, publisher } = await fixture();
+    const local = journal.createLocal("/DOCSY/newpage.md");
+    journal.write(local.id, 0, Buffer.from("Plain"));
+    const create = client.createPage.bind(client);
+    client.createPage = async params => {
+      const result = await create({ ...params,
+        ...(fault === "missing-marker" ? { properties: {} } : {}),
+        ...(fault === "wrong-marker" ? { properties: { "atlcli-vfs-creation": { token: "other" } } } : {}),
+        ...(fault === "changed-body" ? { storage: "<p>Other</p>" } : {}),
+        ...(fault === "changed-parent" ? { parentId: "999" } : {}),
+      });
+      if (fault === "new-version") await client.updatePage({ id: result.id, title: params.title, storage: params.storage, version: 2 });
+      throw new Error("Lost reply");
+    };
+    await expect(publisher.publish(local.id)).rejects.toThrow();
+    await expect(publisher.publish(local.id)).rejects.toMatchObject({ code: "EBUSY" });
+    expect(client.callsTo("createPage")).toBe(1);
+    expect(journal.promotion(local.id)).toBeNull();
+    expect(Buffer.from(journal.createIntent(local.id)!.bytes).toString()).toBe("Plain");
+  });
+}
 
 it("never creates pages for hidden drafts, swap files or page backups", async () => {
   const { client, journal, publisher } = await fixture();

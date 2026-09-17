@@ -37,7 +37,7 @@ import { PageStore } from "./page-store.js";
 import { AuditLog } from "./audit-log.js";
 import { ConflictStore } from "./conflict-store.js";
 import { assertWritable, type ModeGuard } from "./mode.js";
-import { parseVfsFrontmatter } from "./page-store.js";
+import { parseVfsFrontmatter, toStorage } from "./page-store.js";
 import { PathResolver, isContainer, type MissingLeaf, type Resolved } from "./resolver.js";
 import { VirtualDirs } from "./virtual-dirs.js";
 import { WriteBack } from "./write-back.js";
@@ -915,11 +915,33 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     }
   }
 
+  async reconcileCreate(path: string, content: string,
+    target: { spaceKey: string; parentId: string; creationToken: string }): Promise<VfsWriteResult | null> {
+    assertWritable(this.guard, "create", path);
+    const mounted = this.opts.spaces ?? (await this.index.listSpaces()).map(space => space.key);
+    if (!mounted.includes(target.spaceKey) || normalizePath(path).split("/")[1] !== target.spaceKey ||
+        !/^local:[0-9a-f-]{36}$/.test(target.creationToken)) throw new VfsError("EINVAL", "Invalid creation recovery identity");
+    const { frontmatter, body } = parseVfsFrontmatter(content);
+    const title = frontmatter.title?.trim() || titleFromName(splitParent(normalizePath(path)).name);
+    const candidates = await this.opts.client.findPagesByTitle(title, { spaceKey: target.spaceKey });
+    if (candidates.length !== 1) return null;
+    const candidate = candidates[0]!;
+    if (candidate.spaceKey !== target.spaceKey || candidate.title !== title || !/^[0-9]+$/.test(candidate.id)) return null;
+    const marker = await this.opts.client.getPagePropertyByKey(candidate.id, "atlcli-vfs-creation");
+    if (!marker || typeof marker !== "object" || !("token" in marker) || marker.token !== target.creationToken) return null;
+    const page = await this.opts.client.getPage(candidate.id);
+    if (page.id !== candidate.id || page.spaceKey !== target.spaceKey || page.parentId !== target.parentId ||
+        page.title !== title || page.version !== 1 || page.storage.trim() !== toStorage(body).trim()) return null;
+    this.index.attachChild(target.parentId, { id: page.id, title: page.title,
+      type: "page", spaceKey: target.spaceKey, version: 1, lastModified: page.lastModified });
+    return { path, pageId: page.id, version: 1, created: true };
+  }
+
   private async createFromMissing(
     missing: MissingLeaf,
     path: string,
     text: string,
-    condition?: { spaceKey: string; parentId: string },
+    condition?: { spaceKey: string; parentId: string; creationToken?: string },
   ): Promise<VfsWriteResult> {
     const parent = missing.parent;
     if (parent.kind !== "container" && parent.kind !== "space") {
@@ -929,6 +951,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
     const { spaceKey, parentNode, parentIsFolder } = await this.containerOf(parent, path);
     if (condition) {
+      if (condition.creationToken !== undefined && !/^local:[0-9a-f-]{36}$/.test(condition.creationToken)) {
+        throw new VfsError("EINVAL", "Invalid creation token", { path });
+      }
       if (condition.spaceKey !== spaceKey || condition.parentId !== parentNode.id) {
         throw new VfsError("EBUSY", "Creation parent or export changed before publication", { path });
       }
@@ -944,6 +969,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       path,
       content: text,
       parentIsFolder,
+      creationToken: condition?.creationToken,
     });
     // The canonical name carries the new id; report it so a caller does not go
     // on addressing a name that only exists as a session alias.

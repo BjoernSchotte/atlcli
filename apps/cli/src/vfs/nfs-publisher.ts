@@ -92,10 +92,19 @@ export class NfsPublisher {
       intent = this.journal.beginCreate(file.id, file.path, parent.spaceKey, parent.id, file.revision);
       if (!intent) { this.schedule(file.id); return null; }
       const result = await this.vfs.writeFile(intent.path, content,
-        { createOnly: true, spaceKey: intent.spaceKey, parentId: intent.parentId });
+        { createOnly: true, spaceKey: intent.spaceKey, parentId: intent.parentId, creationToken: file.id });
       if (!result.created) throw new Error("Unexpected creation result");
       this.journal.recordCreated(file.id, intent.revision, result.pageId, result.version);
       intent = this.journal.createIntent(file.id)!;
+    }
+    if (!intent.pageId) {
+      const recovered = await this.vfs.reconcileCreate(intent.path,
+        new TextDecoder("utf-8", { fatal: true }).decode(intent.bytes),
+        { spaceKey: intent.spaceKey, parentId: intent.parentId, creationToken: file.id });
+      if (recovered) {
+        this.journal.recordCreated(file.id, intent.revision, recovered.pageId, recovered.version);
+        intent = this.journal.createIntent(file.id)!;
+      }
     }
     if (!intent.pageId || !intent.version) throw new VfsError("EBUSY", "Creation result unknown; retained for reconciliation, not retried");
     const path = await this.vfs.readlink(`/${intent.spaceKey}/.by-id/${intent.pageId}.md`);

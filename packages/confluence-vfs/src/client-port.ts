@@ -159,6 +159,9 @@ export interface VfsClient {
   }): Promise<AttachmentInfo>;
   deleteAttachment(attachmentId: string): Promise<void>;
 
+  findPagesByTitle(title: string, options: { spaceKey: string }): Promise<Array<{ id: string; title: string; spaceKey?: string }>>;
+  getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
+
   // --- writes -------------------------------------------------------------
   // Note what is absent and must stay absent: any purge endpoint. `deletePage`
   // is Confluence's trash, and the VFS offers nothing beyond it (plan §9).
@@ -167,6 +170,7 @@ export interface VfsClient {
     title: string;
     storage: string;
     parentId?: string;
+    properties?: Record<string, unknown>;
   }): Promise<ConfluencePage>;
   updatePage(params: {
     id: string;

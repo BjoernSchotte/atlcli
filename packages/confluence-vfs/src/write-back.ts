@@ -426,6 +426,7 @@ export class WriteBack {
     path: string;
     content: string;
     parentIsFolder: boolean;
+    creationToken?: string;
   }): Promise<VfsWriteResult> {
     assertWritable(this.opts.guard, "create", params.path);
     const { frontmatter, body } = parseVfsFrontmatter(params.content);
@@ -439,6 +440,7 @@ export class WriteBack {
             title,
             storage: toStorage(body),
             parentId: params.parent.id,
+            ...(params.creationToken ? { properties: { "atlcli-vfs-creation": { token: params.creationToken } } } : {}),
           }),
         params.path,
       );

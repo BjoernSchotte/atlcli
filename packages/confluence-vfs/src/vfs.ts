@@ -20,7 +20,7 @@ export interface VfsWriteResult {
 
 export type VfsWriteCondition =
   | { id: string; spaceKey: string }
-  | { createOnly: true; spaceKey: string; parentId: string };
+  | { createOnly: true; spaceKey: string; parentId: string; creationToken?: string };
 
 export interface ConfluenceVfs {
   readonly guard: ModeGuard;
@@ -40,6 +40,9 @@ export interface ConfluenceVfs {
   /** Create or update a page. Throws `EROFS` in `ro` mode.
    * An ID condition only updates that page; createOnly only creates under the specified parent. */
   writeFile(path: string, content: string | Uint8Array, condition?: VfsWriteCondition): Promise<VfsWriteResult>;
+
+  /** Recover a positively identified initial creation; never issue another POST. */
+  reconcileCreate(path: string, content: string, target: { spaceKey: string; parentId: string; creationToken: string }): Promise<VfsWriteResult | null>;
 
   /** Create a page with an empty body (decision 7). Throws `EROFS` in `ro` mode. */
   mkdir(path: string): Promise<VfsWriteResult>;

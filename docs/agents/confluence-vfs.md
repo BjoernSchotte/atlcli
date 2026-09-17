@@ -171,8 +171,7 @@ This comparison ignores only outer storage whitespace, not content differences.
 
 Page creation is not automatically repeated after an HTTP 5xx response: the
 server may already have created the page. Keep the pending journal image when
-an NFS creation result is uncertain; automatic creation reconciliation is still
-under development.
+an NFS creation result is uncertain; recovery can identify an unchanged initial creation by its unique marker.
 
 ### Machine-readable output
 
@@ -471,6 +470,14 @@ An empty `.md` file is also a new page: CREATE alone starts the quiet window,
 and later writes postpone publication. A long pause before the first content can
 therefore produce an empty initial version, consistent with the accepted snapshot
 publication contract.
+Each new NFS creation sends its durable local identity as a content property in
+the initial POST. After a lost reply, resume looks up the exact title directly
+and verifies the marker, space, parent, title, initial version and storage body
+before promoting the local file. It never issues another POST to guess the
+outcome. Missing markers (including older attempts), ambiguous matches or pages
+changed since creation stay pending with their bytes retained. Data Center
+reconciliation is not yet live-verified.
+
 The create-only guard prevents overwriting an occupied page. Confirmed creations
 retain their original filehandle and a durable virtual filename alias, so later
 saves to `newpage.md` update the same page as its canonical name containing the
