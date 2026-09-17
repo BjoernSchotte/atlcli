@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { NfsFilesystem, NFS_MAX_READ } from "./nfs-filesystem.js";
+import { INDEXER_SHIELDS, SHIELD_DIRECTORIES } from "./mount-client-probes.js";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
@@ -37,9 +38,37 @@ it("exports a single space directly and confines parent lookups", async () => {
 
 it("keeps selected space directories for multi-space exports", async () => {
   const { fs } = await fixture(["DOCSY", "mayflower"]);
-  expect((await fs.readdir(1, 0, 256)).entries.map((e) => e.name)).toEqual(["DOCSY", "mayflower"]);
+  expect((await fs.readdir(1, 0, 256)).entries.map((e) => e.name)).toEqual(
+    [...INDEXER_SHIELDS, ...SHIELD_DIRECTORIES, "DOCSY", "mayflower"].sort());
   expect(await fs.lookup(await fs.lookup(1, "DOCSY"), "..")).toBe(1);
 });
+
+for (const spaces of [["DOCSY"], ["DOCSY", "mayflower"]]) {
+  it(`serves empty volume shields without backend requests (${spaces.join(",")})`, async () => {
+    const { fs, client } = await fixture(spaces);
+    client.resetCalls();
+    for (const name of INDEXER_SHIELDS) {
+      const id = await fs.lookup(1, name);
+      expect(await fs.lookup(1, name)).toBe(id);
+      expect(await fs.getattr(id)).toMatchObject({ id, directory: false, size: 0 });
+      expect(await fs.read(id, 0, 1024)).toEqual({ data: "", eof: true });
+      await expect(fs.readdir(id, 0, 1)).rejects.toMatchObject({ code: "ENOTDIR" });
+    }
+    const directory = await fs.lookup(1, ".fseventsd");
+    expect((await fs.getattr(directory)).directory).toBe(true);
+    expect(await fs.readdir(directory, 0, 1)).toEqual({ entries: [], end: true });
+    expect(await fs.lookup(directory, "..")).toBe(1);
+    expect(await fs.lookup(directory, ".")).toBe(directory);
+    await expect(fs.lookup(directory, "absent")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.read(directory, 0, 1)).rejects.toMatchObject({ code: "EISDIR" });
+    for (const name of [".DS_Store", "._index.md", ".Spotlight-V100", "desktop.ini", "Thumbs.db"]) {
+      await expect(fs.lookup(1, name)).rejects.toMatchObject({ code: "ENOENT" });
+    }
+    expect(client.requestCount).toBe(0);
+    const names = (await fs.readdir(1, 0, 256)).entries.map(entry => entry.name);
+    for (const name of [...INDEXER_SHIELDS, ...SHIELD_DIRECTORIES]) expect(names).toContain(name);
+  });
+}
 
 it("reports exact cold byte size and reads split UTF-8 ranges through EOF", async () => {
   const { fs, vfs } = await fixture();

@@ -13,6 +13,7 @@ import { runMountCommand } from "../commands/wiki-mount.js";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { startNfsServer, type RunningNfsServer } from "./nfs-bridge.js";
+import { INDEXER_SHIELDS, SHIELD_DIRECTORIES } from "./mount-client-probes.js";
 
 const attachmentBytes = Buffer.alloc(1024 * 1024 + 29, 0xab);
 Buffer.from("Grüße 🐴").copy(attachmentBytes, 1024 * 1024 - 5);
@@ -372,7 +373,8 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
         expect(changed.readUInt32BE()).toBe(10003);
       } finally { vfs.readdir = originalReaddir; }
       expect(pages).toBeGreaterThan(1);
-      expect(names.sort()).toEqual((await vfs.readdir("/DOCSY")).map((e) => e.name).sort());
+      expect(names.sort()).toEqual([...INDEXER_SHIELDS, ...SHIELD_DIRECTORIES,
+        ...(await vfs.readdir("/DOCSY")).map((e) => e.name)].sort());
     });
   }
 
@@ -408,8 +410,15 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
         const directory = await opendir(mountpoint);
         const names: string[] = [];
         for await (const entry of directory) names.push(entry.name);
-        expect(names.sort()).toEqual(["DOCSY", "mayflower"]);
+        expect(names.sort()).toEqual([...INDEXER_SHIELDS, ...SHIELD_DIRECTORIES, "DOCSY", "mayflower"].sort());
       }
+      const marker = await open(join(mountpoint, ".metadata_never_index"), "r");
+      try { expect((await marker.readFile()).length).toBe(0); }
+      finally { await marker.close(); }
+      const events = await opendir(join(mountpoint, ".fseventsd"));
+      const eventNames: string[] = [];
+      for await (const entry of events) eventNames.push(entry.name);
+      expect(eventNames).toEqual([]);
       const bodyPath = join(mountpoint, ...(spaces.length > 1 ? ["DOCSY"] : []), "_index.md");
       const file = await open(bodyPath, "r");
       try {

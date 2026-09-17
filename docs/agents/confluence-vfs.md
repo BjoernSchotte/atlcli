@@ -223,6 +223,10 @@ fetched. Index lag can omit recent changes. Other find expressions retain the
 filesystem-metadata walk; `--no-cql` on `wiki sh` disables acceleration.
 
 Experimental NFS handles distinguish generated files in each selected space.
+NFS exposes the same empty indexer marker files as WebDAV at the volume root,
+plus an empty `.fseventsd` directory. These synthetic entries and common desktop
+metadata probes at the root require no Confluence requests. They are local mount
+entries, not wiki pages. This does not guarantee that every indexer honors them.
 Expired object handles also fail metadata/access probes with `ESTALE`.
 NFS advertises a 255-byte filename-component limit and rejects longer UTF-8
 names with `ENAMETOOLONG`; names are never silently truncated.

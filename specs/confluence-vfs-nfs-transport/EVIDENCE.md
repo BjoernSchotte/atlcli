@@ -944,3 +944,32 @@ These results cover local advisory locks on current read-only mounts. They do
 not establish cross-client locking, exclusive POSIX write-lock behavior on an RW
 mount, successful editor saving, or safe Confluence publication. The remaining
 RW and snapshot gates are unchanged.
+
+
+## Slice 37 — local indexer markers for NFS volumes
+
+NFS now exposes the existing WebDAV empty indexer marker filenames at the volume
+root, plus an empty .fseventsd directory. Their names and desktop-probe rules
+are extracted into a shared dependency-free module; existing WebDAV exports
+remain compatible. Synthetic NFS entries have distinct session-local handles,
+fixed empty contents, correct file/directory errors and normal directory-cookie
+validation. Their parent remains the export root. Common desktop metadata probes
+at that root fail locally instead of resolving backend paths.
+
+Unit coverage proves zero backend calls for marker LOOKUP/GETATTR/READ, empty
+.fseventsd listing, parent traversal and absent desktop files in both single-
+and multi-space exports. Root listings include the markers; real page identity,
+export scoping and pagination remain covered. Native tests open the empty marker
+and enumerate the empty event directory, alongside existing full reads and locks.
+
+Validation: 21 filesystem tests / 337 assertions; both macOS and Linux passed
+five pagination/native cases / 232 assertions. Five additional macOS wire
+identity/attribute/error cases passed / 107 assertions. WebDAV's 41 adapter and
+request-cost tests passed / 147 assertions after extraction. Linux live RO DOCSY
+and DOCSY+mayflower native runs passed three cases / 22 assertions (attachment
+fixture synthetic). Typecheck passed. All test mounts detached normally and no
+live content changed.
+
+These are filesystem marker/probe guarantees, not proof that all OS indexers
+honor exclusions. NFS sweep diagnostics/request-accounting parity and the full
+performance, snapshot and RW gates remain open.

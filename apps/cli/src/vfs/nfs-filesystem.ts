@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { VfsError, parseVfsFrontmatter, type ConfluenceVfs, type VfsStat } from "@atlcli/confluence-vfs";
+import { INDEXER_SHIELDS, SHIELD_DIRECTORIES, isClientDropping } from "./mount-client-probes.js";
 
 export const NFS_MAX_READ = 1024 * 1024;
 export interface NfsAttributes {
@@ -11,7 +12,8 @@ export interface NfsAttributes {
 
 /** Read-only protocol projection. All paths are resolved inside the selected export. */
 export class NfsFilesystem {
-  private readonly paths = new Map<number, { path: string; identity: string; parent?: number; name?: string }>();
+  private readonly paths = new Map<number, { path: string; identity: string; parent?: number; name?: string; shield?: "file" | "directory" }>();
+  private readonly shieldIds = new Map<string, number>();
   private readonly identities = new Map<string, number>();
   private nextId = 2;
   private readonly directories = new Map<number, { signature: string; mtime: number }>();
@@ -24,6 +26,12 @@ export class NfsFilesystem {
     this.root = spaces.length === 1 ? `/${spaces[0]}` : "/";
     this.spaces = new Set(spaces);
     this.paths.set(1, { path: this.root, identity: "root" });
+    for (const name of [...INDEXER_SHIELDS, ...SHIELD_DIRECTORIES]) {
+      const id = this.nextId++;
+      this.shieldIds.set(name, id);
+      this.paths.set(id, { path: posix.join(this.root, name), identity: `shield:${name}`,
+        shield: SHIELD_DIRECTORIES.has(name) ? "directory" : "file" });
+    }
   }
 
   private readonly spaces: Set<string>;
@@ -72,6 +80,7 @@ export class NfsFilesystem {
     if (!Number.isSafeInteger(id) || id < 1) throw new VfsError("EINVAL", "Invalid NFS handle");
     const entry = this.paths.get(id);
     if (!entry) return this.stale(id);
+    if (entry.shield) return entry.path; // Fixed empty volume markers, never backend paths.
     this.assertExport(entry.path);
     try {
       const stat = await this.vfs.stat(entry.path);
@@ -143,23 +152,39 @@ export class NfsFilesystem {
   }
 
   async lookup(parent: number, name: string): Promise<number> {
-    const directory = await this.pathFor(parent);
-    if (!(await this.vfs.stat(directory)).isDirectory) throw new VfsError("ENOTDIR", "Not a directory");
     if (!name || /[\/\0]/.test(name)) {
       throw new VfsError("EINVAL", "Invalid NFS filename");
     }
     if (Buffer.byteLength(name) > 255) {
       throw Object.assign(new Error("NFS filenames must not exceed 255 bytes"), { code: "ENAMETOOLONG" });
     }
+    const shield = this.paths.get(parent)?.shield;
+    if (shield === "file") throw new VfsError("ENOTDIR", "Not a directory");
+    if (shield === "directory") {
+      if (name === ".") return parent;
+      if (name === "..") return 1;
+      throw new VfsError("ENOENT", "No such file");
+    }
+    if (parent === 1) {
+      const marker = this.shieldIds.get(name);
+      if (marker !== undefined) return marker;
+      if (isClientDropping(name)) throw new VfsError("ENOENT", "No such file");
+    }
+    const directory = await this.pathFor(parent);
+    if (!(await this.vfs.stat(directory)).isDirectory) throw new VfsError("ENOTDIR", "Not a directory");
     if (name === ".") return parent;
     if (name === "..") return directory === this.root ? 1 : this.register(posix.dirname(directory));
     return this.register(posix.join(directory, name));
   }
 
   private async directoryView(id: number, path: string) {
-    const names = (await this.vfs.readdir(path))
+    const shield = this.paths.get(id)?.shield;
+    if (shield === "file") throw new VfsError("ENOTDIR", "Not a directory");
+    const names = (shield ? [] : await this.vfs.readdir(path))
       .filter((entry) => path !== "/" || this.spaces.has(entry.name))
-      .map((entry) => entry.name).sort();
+      .map((entry) => entry.name);
+    if (id === 1) names.push(...this.shieldIds.keys());
+    names.sort();
     const ids = await Promise.all(names.map((name) => this.lookup(id, name)));
     const signature = JSON.stringify(names.map((name, i) => [name, ids[i]]));
     let revision = this.directories.get(id);
@@ -176,6 +201,9 @@ export class NfsFilesystem {
 
   private async attributes(id: number, refreshDirectory: boolean): Promise<NfsAttributes> {
     const path = await this.pathFor(id);
+    const shield = this.paths.get(id)?.shield;
+    if (shield) return { id, directory: shield === "directory", size: 0,
+      mtime: shield === "directory" ? (await this.directoryView(id, path)).mtime : 0 };
     const stat = await this.vfs.stat(path);
     // Never publish estimated sizes to a kernel client.
     const bytes = stat.isDirectory || (stat.kind === "attachment" && !stat.sizeEstimated)
@@ -200,6 +228,9 @@ export class NfsFilesystem {
       throw new VfsError("EINVAL", "Invalid NFS read range");
     }
     const path = await this.pathFor(id);
+    const shield = this.paths.get(id)?.shield;
+    if (shield === "directory") throw new VfsError("EISDIR", "Cannot read directory");
+    if (shield === "file") return { data: "", eof: true };
     if ((await this.vfs.stat(path)).isDirectory) throw new VfsError("EISDIR", "Cannot read directory");
     const bytes = await this.vfs.readFileBytes(path);
     const start = Math.min(offset, bytes.byteLength);
