@@ -4615,3 +4615,22 @@ with cleanup. The Draft PR description now reflects the actual RW feature and
 validation boundaries. All four native NFS jobs on 35265033528 passed, including
 Intel storage faults and packaged/Homebrew checks; full CI is rerun after this
 browser-fixture correction.
+
+## Slice 172: final experimental acceptance
+
+Full workflow 35266459209 completed successfully on exact source
+`f9809f2bc1debd9ecc1d86908231e047274f0272`. All four native NFS jobs,
+compiled CLI and Homebrew checks, product quality, browser evidence, system
+Chrome and timing telemetry passed. Policy-skipped jobs are not claimed as run.
+The earlier Intel storage-fault and packed migration fixture observations are
+closed by this final run, without weakening their product assertions.
+
+The requirement audit in ACCEPTANCE.md closes WP1–WP6. Decision: go for explicit
+experimental NFS RO/RW, keep WebDAV default, preserve the documented durability,
+publication and host-specific performance limits. This slice changes only
+acceptance documents; no release, tap merge or PR merge is performed.
+
+Before commit: root typecheck passed all four tasks; Linux compiled DOCSY RW
+LIVE passed 1 test / 15 assertions in 4.32 seconds with fixture cleanup.
+The complete performance/editor/durability proofs remain linked rather than
+misrepresented as freshly repeated GUI tests on this documentation-only slice.

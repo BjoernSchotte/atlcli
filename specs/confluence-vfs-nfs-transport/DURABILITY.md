@@ -5,7 +5,7 @@
 - [Contract](#contract)
 - [Executable boundary matrix](#executable-boundary-matrix)
 - [Reproduction and evidence](#reproduction-and-evidence)
-- [Remaining release gates](#remaining-release-gates)
+- [Final acceptance](#final-acceptance)
 
 ## Contract
 
@@ -74,7 +74,7 @@ These inject a failure at the journal method boundary and reopen the database;
 they are not mislabeled as physical disk failures. CREATE/UPDATE disk exhaustion
 has the separate real-filesystem proof above.
 
-## Remaining release gates
+## Final acceptance
 
 Slice 163 enables public RW after the documented boundary tests and four-native-
 platform correctness run at c4ee457f. It repeats compiled RO/RW lifecycle on
@@ -82,5 +82,8 @@ macOS/Linux, including exact recovery export of writes acknowledged immediately
 before helper loss. The four-platform artifact matrix passed in run 35261770483. A later Intel
 ENOSPC test observed an extra attempted UPDATE without an extra version;
 Slice 168 isolates filler-sync ENOSPC from simulated remote reply loss. Final
-CI confirmation and the explicit experimental go/no-go remain in [ACCEPTANCE.md](ACCEPTANCE.md). The [plan](PLAN.md) remains
-authoritative. Editor and performance evidence is tracked separately.
+full CI run [35266459209](https://github.com/BjoernSchotte/atlcli/actions/runs/35266459209)
+passed on all four native platforms, including Intel storage recovery with the
+strict single-call assertion. The experimental go decision and accepted limits
+are recorded in [ACCEPTANCE.md](ACCEPTANCE.md). Editor and performance evidence
+is tracked separately; this is not a general POSIX or remote-commit guarantee.

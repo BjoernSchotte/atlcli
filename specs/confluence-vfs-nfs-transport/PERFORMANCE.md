@@ -186,8 +186,9 @@ comparison. API calls after a second Glow launch must not be mistaken for violat
 of the verified warm-complete-body-read invariant.
 
 The comparison supports offering transport choice, not marketing NFS as
-universally faster. Public RW is enabled; full required CI and the final requirement audit remain
-separate from this performance evidence.
+universally faster. Public RW is enabled; full CI run 35266459209 and the final requirement audit
+passed. [ACCEPTANCE.md](ACCEPTANCE.md) records the experimental go decision and
+retains these measured limitations.
 
 
 ## Related material

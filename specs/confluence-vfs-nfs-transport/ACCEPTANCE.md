@@ -1,18 +1,17 @@
 # NFS acceptance checkpoint
 
-This is a working audit of PLAN.md, not final acceptance. Public experimental
-RO/RW is enabled. Native packaged lifecycle, Homebrew consumption and companion
-checks passed on all four declared platforms in run 35261770483; Slice 165
-records the final release-helper comparison. The full required-CI rerun and
-requirement-by-requirement audit remain open. Historical checkpoints below do
-not override newer evidence.
-[EVIDENCE.md](EVIDENCE.md) contains commands, host boundaries and detailed results.
+Accepted for explicit experimental NFS RO/RW use; WebDAV remains the default.
+Full workflow [35266459209](https://github.com/BjoernSchotte/atlcli/actions/runs/35266459209)
+passed on `f9809f2bc1debd9ecc1d86908231e047274f0272`, including all four native
+platforms, packaged/Homebrew lifecycle, product/browser checks and timing telemetry.
+This final documentation slice changes no runtime code. Historical checkpoints
+below do not override this acceptance or imply release/tap publication.
+[EVIDENCE.md](EVIDENCE.md) records commands, host boundaries and detailed results.
 
-## Requirements and remaining proof
+## Requirements and proof
 
-Audit at Slice 169. Evidence references are specific test sources and recorded
-native executions; skipped opt-in cases are not counted as passed. The final
-CI gate remains open, including confirmation of the Intel storage-test issue.
+The Slice 169 requirement audit is closed by the final CI run above. Skipped
+opt-in cases and policy-skipped jobs are not counted as executed tests.
 
 | Plan requirement | Inspected implementation and executable proof | Status |
 | --- | --- | --- |
@@ -24,20 +23,20 @@ CI gate remains open, including confirmation of the Intel storage-test issue.
 | Pagination and changing directories | pinned vendor READDIR/READDIRPLUS patches, wire small-budget/cookie tests and native open-cursor mutation; Slices 57, 161, 168 | Verified; changed views restart via BAD_COOKIE |
 | Link/export confinement, RO, honest capabilities | filesystem and wire traversal/foreign-handle/RO tests, homepage protection, unsupported metadata/hardlink/device errors; Slices 48, 56, 136, 153 | Verified |
 | Bridge framing and bounded resources | `nfs-framing.ts`, `nfs-bridge.ts`, Rust `main.rs`, vendor TCP/replay code, malformed-frame/deadline/backpressure tests; bounds audit below | Verified |
-| Durable WRITE/SETATTR/COMMIT, quotas and crash recovery | exact finite boundary matrix in [DURABILITY.md](DURABILITY.md), SQLite transactions/sync ordering, SIGKILL and real APFS/ext4 faults | Local and previous four-platform proof passed; final Intel confirmation pending |
+| Durable WRITE/SETATTR/COMMIT, quotas and crash recovery | exact finite boundary matrix in [DURABILITY.md](DURABILITY.md), SQLite transactions/sync ordering, SIGKILL and real APFS/ext4 faults | Verified, including final four-platform CI and Intel storage faults |
 | Automatic publication, debounce and retry | `nfs-publisher.ts` and tests: 500 ms quiet window, serialized snapshots, newer writes retained, five transient retries with backoff/jitter and Retry-After; Slices 71, 96, 156, 163 | Verified; intermediate valid versions accepted |
-| Read-your-writes and remote uncertainty | staged-byte reads, merge/conflict tests, positive CREATE/UPDATE/MOVE/TRASH reconciliation; [DURABILITY.md](DURABILITY.md) | Verified semantics; Intel duplicate-call observation remains under final CI confirmation |
+| Read-your-writes and remote uncertainty | staged-byte reads, merge/conflict tests, positive CREATE/UPDATE/MOVE/TRASH reconciliation; [DURABILITY.md](DURABILITY.md) | Verified; final Intel storage-fault test passed with strict single-call assertion |
 | New plain files, stable aliases and temporary files | native Vim new-file cases, original-path repeated saves, backup/replacement/restart tests; Slices 103, 111, 114–117, 163 | Verified on NFS and WebDAV |
 | Editor matrix | actual Vim both OSes (103/111/163), VS Code macOS (113) and Linux (137), TextEdit macOS (112), both transports; synthetic API identity/version checks | Verified; historical GUI runs, current compiled Vim repeat; no claim of fresh GUI runs on every documentation commit |
 | Directory create/move/retitle and opt-in trash | native and wire MKDIR, same/cross-space page/folder moves, intermediate recovery and guarded trash; Slices 108–109, 131–136, 149–155, 157 | Verified; recursive deletion is explicitly non-atomic, never purge |
 | Local locking | native RO and RW flock/lockf contention/release on both hosts; Slice 145 | Verified; macOS locallocks/Linux nolock, no cross-client lock service |
-| Signals, busy mounts, explicit detach and helper/parent death | compiled RO/RW lifecycle including pending-byte recovery; Slice 163; all four native packaged/Homebrew jobs passed in run 35261770483 | Verified prior artifact; current full CI still running |
+| Signals, busy mounts, explicit detach and helper/parent death | compiled RO/RW lifecycle including pending-byte recovery; Slice 163; all four native packaged/Homebrew jobs passed in run 35261770483 | Verified again in final four-platform CI |
 | Credentials, loopback and process ownership | empty helper environment/private inherited pipes, loopback-only listener, state identity checks, orphan/busy preservation and helper restart tests | Verified; loopback is not local-user authentication |
 | Indexer safeguards and accounting | shared shield names, distinct-file sweep hint; RPC counter before dispatch; synthetic API payload ledger assertions in final benchmark | Verified; no automatic protection against arbitrary recursive scans |
-| Distribution and supply chain | pinned Rust/Cargo/vendor, license/checksum/protocol/architecture verifiers; native source, archive, shell installer and actual Homebrew execution on four platforms | Verified run 35261770483; no release/tap merge requested or performed |
+| Distribution and supply chain | pinned Rust/Cargo/vendor, license/checksum/protocol/architecture verifiers; native source, archive, shell installer and actual Homebrew execution on four platforms | Verified again in final CI; no release/tap merge requested or performed |
 | Missing helper, offline startup and Windows rejection | compiled absent/unusable-helper shell/WebDAV cases, offline version and local installer fixtures; platform rejection tests | Verified; Windows native NFS outside scope |
 | Performance matrix | Slice 165: 80 records per host, four workloads, five cold/warm repetitions, numeric medians/ranges, API/payload/RSS/protocol metrics and >10% review | Verified; [PERFORMANCE.md](PERFORMANCE.md), no universal NFS speed claim |
-| Regression/build/docs/CI and final go/no-go | Slice 163 local 771/4005 plus 35-task build; Slice 164 API/closure checks; Slice 166 actual Chrome 6/6; current guides/help and helper README | Full required CI and final go/no-go still pending |
+| Regression/build/docs/CI and final go/no-go | Slice 163 local 771/4005 plus 35-task build; Slice 164 API/closure checks; Slice 166 actual Chrome 6/6; current guides/help and helper README | Verified; final full CI successful, experimental go |
 
 ### Bounds and identity audit
 
@@ -63,14 +62,22 @@ concurrent replacement, stale exclusive-create replay, moved descendants,
 foreign scopes and homepage deletion protection. No OS symlink or renamed path
 is used as a substitute for Confluence page identity.
 
-### Remaining acceptance gate
+### Final experimental go/no-go
 
-Complete required CI on the final product source, including native Intel
-storage recovery, then record the final experimental go/no-go and close WP6.
-The most recent relevant runs are 35263874754 (Chrome fix) and 35265033528
-(filler fault isolation); their live results must be checked before acceptance.
-Do not convert configured jobs or earlier green architectures into a claim of
-current full CI success.
+**Go for explicit experimental NFS on the four declared platforms.** All six work
+packages and the requirement matrix above have executable evidence. Final full
+CI, including required checks, timing telemetry and Intel storage recovery, passed.
+Local root typecheck and compiled Linux DOCSY RW LIVE were repeated before this
+documentation commit: four typecheck tasks; one LIVE test / 15 assertions, with
+owned fixture cleanup.
+
+The accepted limits remain: local durable acknowledgment precedes remote publication;
+500 ms quiet-window publication can create intermediate versions; normal paths
+can change between reads, while version paths are immutable. Recursive remote
+trash is non-atomic. No second live identity or Windows native NFS proof is claimed.
+Mac native/editor proof uses synthetic data; Linux additionally uses real DOCSY.
+Complete macOS Glow scans are slower via NFS. None of these limits is hidden by
+changing the default from WebDAV. PR #203 remains draft; no release is performed.
 
 ## Accepted product decisions (2026-09-17)
 
@@ -89,8 +96,7 @@ current full CI success.
    Concurrent changes may become visible between READs on a normal path. Version
    paths must never mix versions, including across cache expiry or eviction.
 
-These decisions do not establish that the implementation has passed RW or
-snapshot acceptance. Both still require the executable proof above.
+The executable proof above validates these accepted RW and snapshot semantics.
 
 ## Historical broad verification (not final acceptance)
 

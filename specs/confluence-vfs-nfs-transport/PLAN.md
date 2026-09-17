@@ -1,9 +1,9 @@
 # Optional NFS transport for Confluence mounts
 
-Status: experimental RO/RW implementation enabled and native packaged lifecycle
-tests passed on all four declared platforms. Final required CI and the complete
-requirement audit remain open; this is not yet final acceptance.
-See [evidence](EVIDENCE.md) and the [acceptance checkpoint](ACCEPTANCE.md).
+Status: WP1–WP6 complete; accepted for explicit experimental RO/RW use.
+Full CI passed on `f9809f2b` in run [35266459209](https://github.com/BjoernSchotte/atlcli/actions/runs/35266459209),
+including all four native platforms. WebDAV remains the default.
+See [evidence](EVIDENCE.md) and [acceptance](ACCEPTANCE.md).
 Baseline: PR #202, merged as `8b08ad65` on 2026-09-16.
 
 ## Contents
@@ -244,23 +244,23 @@ product decision alone does not establish acceptance.
 
 Each slice includes regression tests, relevant live proof, documentation and a
 reviewable commit. Push validated slices to the eventual implementation draft PR.
-Do not interpret these unchecked tasks as implementation completed by this spec.
+The checked tasks are backed by the final requirement matrix in ACCEPTANCE.md.
 
-- [ ] **WP1 — feasibility:** pin/audit nfsserve, minimal RO bridge on macOS/Linux,
+- [x] **WP1 — feasibility:** pin/audit nfsserve, minimal RO bridge on macOS/Linux,
   exact sizes and range reads, native mount/unmount proof. Record library gaps,
   permissions and packaging viability. Implement and verify the accepted RW durability decision above.
-- [ ] **WP2 — CLI/lifecycle:** add transport selection, backward-compatible state,
+- [x] **WP2 — CLI/lifecycle:** add transport selection, backward-compatible state,
   status and unmount dispatch; test unchanged default, unsupported platforms,
   child failure and busy shutdown. Keep NFS experimental and RO until WP4 passes.
-- [ ] **WP3 — read parity:** identities, paginated directories, links/export roots,
+- [x] **WP3 — read parity:** identities, paginated directories, links/export roots,
   attachments, caches and external-change visibility. Run cold/warm native tests.
-- [ ] **WP4 — write parity:** implement the accepted staging/publication contract;
+- [x] **WP4 — write parity:** implement the accepted staging/publication contract;
   byte-level/fault tests, real editor saves, API verification and crash recovery.
   Enable RW only after every correctness gate passes.
-- [ ] **WP5 — distribution/docs:** build and verify helper artifacts, source and
+- [x] **WP5 — distribution/docs:** build and verify helper artifacts, source and
   compiled CLI behavior, prerequisites, mount examples, limitations and recovery.
   Update the existing VFS feature guide and CLI help; no automatic release.
-- [ ] **WP6 — comparative acceptance:** execute the matrix below, record bounded
+- [x] **WP6 — comparative acceptance:** execute the matrix below, record bounded
   performance evidence and publish a go/no-go recommendation for experimental NFS.
 
 ## Acceptance and performance
@@ -300,20 +300,19 @@ limits; do not infer untested architectures from compilation alone.
 
 ## Open questions
 
-No user/product decision blocks starting WP1: explicit transport, default WebDAV,
-experimental NFS, macOS/Linux and unchanged shell are agreed.
+No unresolved product or engineering questions remain for this experimental scope.
 
-Engineering questions that WP1 must resolve with evidence:
-
-1. Can the pinned nfsserve hooks implement the chosen durable write/publication
-   contract, or is a small upstream patch required? RW remains gated meanwhile.
-2. Which macOS elevation/mount options and Linux client cache options give correct
-   editor behavior and bounded external-update visibility?
-3. Which helper packaging/libc combinations pass native tests, and does measured
-   benefit justify maintaining the extra transport?
-
-If feasibility fails, document that outcome and keep WebDAV; do not silently
-replace the agreed backend or expand scope into a new filesystem framework.
+1. The pinned nfsserve adapter needs the narrowly scoped patches recorded in
+   `packages/confluence-nfs/vendor/nfsserve/PATCHES.md`; the durable journal and
+   automatic publisher supply the accepted write contract. The executable
+   durability matrix passed, including real APFS/ext4 exhaustion.
+2. Native editor and freshness tests validate the documented mount options:
+   macOS local locks and `dumbtimer`, Linux `nolock` and `actimeo=1`.
+   Mount/unmount elevation stays confined to the native platform operation.
+3. Packaged companions and Homebrew installation passed on Linux x64/arm64 and
+   macOS x64/arm64. The comparison justifies an optional transport, not a default
+   change or universal speed claim; slower complete macOS Glow scans are accepted
+   and quantified in [PERFORMANCE.md](PERFORMANCE.md).
 
 ## Sources and related documents
 
