@@ -3638,3 +3638,47 @@ Each trashed page now costs one metadata request. REST metadata lookup and DELET
 are not atomic: a concurrent move after the check remains possible. Recursive
 removal can still partially complete when a later target fails. Namespace
 removal semantics and full acceptance remain open; public NFS RW stays gated.
+
+
+## Slice 137 — native Linux VS Code new-page autosaves
+
+Real VS Code 1.138.0 (`7debcd0e2acdea1c52de81bf9ee1620444407dda`, x64)
+ran on ms-s1-max.local under a dedicated Xvfb display. The official Linux archive
+was extracted under `/tmp/atlcli-vscode-linux`; no system installation was
+performed. A separate user-data/extension directory set afterDelay autosave to
+100ms. The window remained in Restricted Mode, with extensions disabled and no
+sign-in. The portable Electron sandbox helper was not installed setuid; this
+synthetic test process used `--no-sandbox`.
+
+Two private servers used the current source at 4f0cdc28 and disposable synthetic
+DOCSY clients. Native mounts used `nfsMountOptionsFor("linux", port, "rw")`
+and davfs2 with a private cache, `ask_auth 0`, `delay_upload 0`, and the test user's
+UID/GID. Core coalescing was disabled as in the previous editor harness; NFS's
+500ms publisher quiet window remained active.
+
+The Electron DevTools connection supplied actual editor keyboard/text input:
+open a nonexistent mount `code-new.md`, type plain Markdown, Ctrl-S once, then
+Ctrl-A/type a replacement twice without sending Save. No filesystem write
+script or editor extension supplied document bytes. The workbench DOM and
+backend snapshots were inspected after each step.
+
+- NFS: one CREATE, then two UPDATEs, versions 1/2/3 of page 700000001. Bodies
+  were respectively `First`, `Second`, `Third plain Linux page 🐴`. The original
+  alias stayed open throughout; the final alias and ID-directory `_index.md`
+  both returned the final body. No pending journal publications remained.
+- WebDAV: one CREATE and three UPDATEs, versions 2/3/4 after the three user
+  edits. The first save incurred an extra version; each subsequent autosave
+  added one. All three Unicode bodies matched the editor text, and final reads
+  via alias and ID-directory `_index.md` agreed. This is successful editor
+  acceptance, not a claim of minimal first-save version churn.
+- The test editor exited 0 after closing its window. Both harnesses exited 0
+  after normal unmount; davfs2 completed its graceful shutdown. `findmnt` showed
+  neither owned mount afterward. The dedicated Xvfb process was stopped.
+- No real tenant pages were used or changed. This closes the previously missing
+  Linux VS Code synthetic editor case; live-tenant editor evidence remains
+  separately scoped. Typecheck: all four tasks passed.
+
+The scratch harness/CDP driver and snapshots remain under the private temporary
+test directory for diagnosis. The requested editor matrix now has native
+new-page/repeated-save evidence on both OSes, but final packaged-artifact, fault,
+performance and live-tenant requirements remain open. Public NFS RW is gated.
