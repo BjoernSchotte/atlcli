@@ -4094,3 +4094,19 @@ macOS arm64. Intel macOS passed CREATE exhaustion but hdiutil reported Resource
 busy while creating the second APFS test image; compiled smoke was not reached.
 This test-environment failure remains to fix/revalidate. Public RW remains gated
 pending remaining namespace, fault, resource and final artifact requirements.
+
+## Slice 152 — reuse the isolated exhaustion-test volume (2026-09-17)
+
+The storage-fault suite now provisions one owned 64 MiB APFS/ext4 image for both
+CREATE and UPDATE cases. Each case still uses a separate journal, cache and
+synthetic client, closes/reopens its journal after actual ENOSPC and checks
+duplicate-free reconciliation. This removes the second hdiutil-create step that
+failed with Resource busy in Intel CI; it does not retry or suppress faults.
+Both operations log successful verification independently. The volume is
+normally detached once after both cases.
+
+macOS APFS and Linux ext4 each passed the combined test (24 assertions); the
+two shared device/capacity assertions now run once. No owned test mounts remained.
+Linux native DOCSY mkdir/Vim LIVE passed one test / 11 assertions with cleanup.
+Typecheck passed four tasks. Intel runner confirmation is still pending on the
+new CI run; no all-platform success is claimed from local arm64 evidence.
