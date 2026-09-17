@@ -1,0 +1,1503 @@
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { connect } from "node:net";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { platform } from "node:os";
+import { open, opendir, stat, unlink, rename, readFile, mkdir, rmdir } from "node:fs/promises";
+import { getActiveProfile, loadConfig } from "@atlcli/core";
+import { ConfluenceClient } from "@atlcli/confluence";
+import { runMountCommand, processIdentity } from "../commands/wiki-mount.js";
+import { ConfluenceVfsImpl, VfsError, parseVfsFrontmatter } from "@atlcli/confluence-vfs";
+import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
+import { nfsMountOptionsFor } from "./mount-transport.js";
+import { NfsJournal, nfsJournalLocation } from "./nfs-journal.js";
+import { startNfsServer, type RunningNfsServer } from "./nfs-bridge.js";
+import { encodeNfsFrame, readNfsFrames } from "./nfs-framing.js";
+import { INDEXER_SHIELDS, SHIELD_DIRECTORIES } from "./mount-client-probes.js";
+
+const attachmentBytes = Buffer.alloc(1024 * 1024 + 29, 0xab);
+Buffer.from("Grüße 🐴").copy(attachmentBytes, 1024 * 1024 - 5);
+const helperPath = process.env.ATLCLI_NFS_TEST_HELPER;
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+async function assertNativeLocks(path: string, writable = false): Promise<void> {
+  const probe = await promisify(execFile)("python3", ["-c", `
+import errno, fcntl, subprocess, sys
+mode = 'r+b' if sys.argv[2] == 'rw' else 'rb'
+child = """
+import errno, fcntl, sys
+with open(sys.argv[1], sys.argv[2]) as file:
+    try:
+        getattr(fcntl, sys.argv[3])(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        if error.errno not in (errno.EACCES, errno.EAGAIN):
+            raise
+        sys.exit(10)
+"""
+for operation in (['flock', 'lockf'] if mode == 'r+b' else ['flock']):
+    with open(sys.argv[1], mode) as file:
+        lock = getattr(fcntl, operation)
+        lock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        args = [sys.executable, '-c', child, sys.argv[1], mode, operation]
+        assert subprocess.run(args, timeout=2).returncode == 10
+        lock(file, fcntl.LOCK_UN)
+        assert subprocess.run(args, timeout=2).returncode == 0
+with open(sys.argv[1], mode) as file:
+    fcntl.lockf(file, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    fcntl.lockf(file, fcntl.LOCK_UN)
+print('local locks verified')
+`, path, writable ? "rw" : "ro"], { timeout: 5000 });
+  expect(probe.stdout.trim()).toBe("local locks verified");
+}
+function ints(...values: number[]): Buffer {
+  const result = Buffer.alloc(values.length * 4);
+  values.forEach((n, i) => result.writeUInt32BE(n >>> 0, i * 4));
+  return result;
+}
+function opaque(value: Buffer): Buffer {
+  return Buffer.concat([ints(value.length), value, Buffer.alloc((4 - value.length % 4) % 4)]);
+}
+async function rpc(server: Pick<RunningNfsServer, "port">, program: number, procedure: number, body: Buffer, acceptStatus = 0): Promise<Buffer> {
+  const payload = Buffer.concat([ints(7, 0, 2, program, 3, procedure, 0, 0, 0, 0), body]);
+  return new Promise((resolveReply, reject) => {
+    const socket = connect(server.port, "127.0.0.1");
+    let response = Buffer.alloc(0);
+    socket.setTimeout(5000, () => socket.destroy(new Error("RPC timeout")));
+    socket.on("error", reject);
+    socket.on("connect", () => socket.write(Buffer.concat([ints(0x80000000 + payload.length), payload])));
+    socket.on("data", (bytes) => {
+      response = Buffer.concat([response, typeof bytes === "string" ? Buffer.from(bytes) : bytes]);
+      if (response.length >= 4 && response.length >= 4 + (response.readUInt32BE() & 0x7fffffff)) {
+        socket.destroy();
+        // Accepted RPC response: xid, reply, accepted, AUTH_NONE verifier, success.
+        try {
+          expect([...Array(6)].map((_, i) => response.readUInt32BE(4 + i * 4))).toEqual([7, 1, 0, 0, 0, acceptStatus]);
+          resolveReply(response.subarray(28));
+        } catch (error) { reject(error); }
+      }
+    });
+    socket.on("end", () => reject(new Error("RPC closed before reply")));
+  });
+}
+async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now(), writable = false, journalBytes = 512, allowDelete = false) {
+  if (live && writable) throw new Error("RW wire fixtures must be synthetic");
+  const cacheDir = mkdtempSync(join(tmpdir(), "nfs-wire-"));
+  const client = new FakeConfluenceClient()
+    .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
+    .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Grüße 🐴</p>" })
+    .seedSpace({ id: "s2", key: "mayflower", name: "Other", homepageId: "300" })
+    .seedPage({ id: "300", title: "Other", spaceKey: "mayflower", storage: "<p>Other</p>" });
+  for (let i = 0; i < 32; i++) client.seedPage({ id: String(400 + i), title: `Child ${i}`,
+    spaceKey: "DOCSY", parentId: "100", storage: "<p>Test</p>" });
+  client.seedAttachment({ id: "a1", pageId: "100", filename: "large.bin", bytes: attachmentBytes,
+    mediaType: "application/octet-stream", modified: "2026-09-10T00:00:00.000Z" });
+  const profile = live ? getActiveProfile(await loadConfig(), "mayflower") : undefined;
+  if (live && !profile) throw new Error("Missing mayflower test profile");
+  const vfs = await ConfluenceVfsImpl.open({ profile: profile?.name ?? "fixture",
+    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: writable ? "rw" : "ro", allowDelete, offline: false, cacheDir, now, coalesceMs: writable ? 0 : undefined });
+  const journal = writable ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY", journalBytes, 2048) : undefined;
+  cleanups.push(async () => { await vfs.close(); journal?.close(); rmSync(cacheDir, { recursive: true, force: true }); });
+  const server = await startNfsServer({ vfs, spaces, journal, helperPath: resolve(helperPath!) });
+  cleanups.push(() => server.stop());
+  return { server, vfs, client, journal };
+}
+
+describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
+  it("reports preserved recovery data once on shutdown without exposing content", async () => {
+    const { server, journal } = await fixture(["DOCSY"], false, undefined, true, 4096);
+    const file = journal!.createLocal("/DOCSY/private-editor-name");
+    journal!.write(file.id, 0, Buffer.from("private editor body"));
+    expect(server.writeStatus()).toEqual({ pendingPages: 0, failedPages: 0, displacedPages: 0, localEntries: 1, unresolvedPublications: 0 });
+    const messages: string[] = [];
+    const stderr = spyOn(process.stderr, "write").mockImplementation(((message: unknown) => { messages.push(String(message)); return true; }) as typeof process.stderr.write);
+    try {
+      const stopped = server.stop();
+      expect(server.stop()).toBe(stopped);
+      await stopped;
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toContain("1 local editor entries");
+      expect(messages[0]).toContain("local durability does not confirm Confluence publication");
+      expect(messages[0]).not.toContain("private-editor-name");
+      expect(messages[0]).not.toContain("private editor body");
+      expect(Buffer.from(journal!.get(file.id)!.bytes).toString()).toBe("private editor body");
+    } finally { stderr.mockRestore(); }
+  });
+
+  it("renames durable local files over a page and removes only local files through real RPCs", async () => {
+    const { server, journal, vfs, client } = await fixture(["DOCSY"], false, () => Date.now(), true);
+    const content = (await vfs.readFile("/DOCSY/_index.md")).replace("Grüße 🐴", "RPC replacement");
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = async (name: string) => {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(0);
+      return reply.subarray(8, 8 + reply.readUInt32BE(4));
+    };
+    const pageHandle = await lookup("_index.md");
+    const exclusive = (name: string, verifier: string) => rpc(server, 100003, 8, Buffer.concat([
+      opaque(root), opaque(Buffer.from(name)), ints(2), Buffer.from(verifier, "hex"),
+    ]));
+    const created = await exclusive(".editor.tmp", "0102030405060708");
+    expect(created.readUInt32BE()).toBe(0);
+    const localHandle = created.subarray(12, 12 + created.readUInt32BE(8));
+    expect(await lookup(".editor.tmp")).toEqual(localHandle);
+    const written = await rpc(server, 100003, 7, Buffer.concat([
+      opaque(localHandle), ints(0, 0, Buffer.byteLength(content), 2), opaque(Buffer.from(content)),
+    ]));
+    expect(written.readUInt32BE()).toBe(0);
+    const replayed = await exclusive(".editor.tmp", "0102030405060708");
+    expect(replayed.readUInt32BE()).toBe(0);
+    expect(replayed.subarray(12, 12 + replayed.readUInt32BE(8))).toEqual(localHandle);
+    expect((await exclusive(".editor.tmp", "0102030405060709")).readUInt32BE()).toBe(17);
+    expect((await exclusive("_index.md", "0102030405060708")).readUInt32BE()).toBe(17);
+    expect(Buffer.from(journal!.local("/DOCSY/.editor.tmp")!.bytes).toString()).toBe(content);
+    expect(journal!.pending()).toEqual([]);
+    const rename = (from: string, to: string) => rpc(server, 100003, 14, Buffer.concat([
+      opaque(root), opaque(Buffer.from(from)), opaque(root), opaque(Buffer.from(to)),
+    ]));
+    expect((await rename(".editor.tmp", ".renamed.tmp")).readUInt32BE()).toBe(0);
+    expect(await lookup(".renamed.tmp")).toEqual(localHandle);
+    expect((await rename(".renamed.tmp", "_space.json")).readUInt32BE()).toBe(30);
+    expect((await rename(".renamed.tmp", "_index.md")).readUInt32BE()).toBe(0);
+    expect(await lookup("_index.md")).toEqual(pageHandle);
+    expect((await rpc(server, 100003, 1, opaque(localHandle))).readUInt32BE()).toBe(0);
+    const deadline = Date.now() + 5000;
+    while (journal!.pending().length && Date.now() < deadline) await Bun.sleep(20);
+    expect(journal!.pending()).toEqual([]);
+    expect(client.callsTo("updatePage")).toBe(1);
+    expect(client.peekPage("100")!.storage).toContain("RPC replacement");
+    journal!.createLocal("/DOCSY/discard.tmp");
+    const discard = await lookup("discard.tmp");
+    const remove = (name: string) => rpc(server, 100003, 12, Buffer.concat([opaque(root), opaque(Buffer.from(name))]));
+    expect((await remove("discard.tmp")).readUInt32BE()).toBe(0);
+    expect((await rpc(server, 100003, 1, opaque(discard))).readUInt32BE()).toBe(70);
+    expect((await remove("_index.md")).readUInt32BE()).toBe(30);
+    expect(client.callsTo("deletePage")).toBe(0);
+  });
+
+  it("preserves a FILE_SYNC write when the owning Bun process is killed", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "nfs-parent-crash-"));
+    const location = { path: join(rootDir, "journal.sqlite"), scope: "fixture:DOCSY" };
+    const cacheDir = join(rootDir, "cache");
+    const source = `
+      import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+      import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
+      import { startNfsServer } from ${JSON.stringify(join(import.meta.dir, "nfs-bridge.ts"))};
+      const client = new FakeConfluenceClient()
+        .seedSpace({id:"s1",key:"DOCSY",name:"Docs",homepageId:"100"})
+        .seedPage({id:"100",title:"Home",spaceKey:"DOCSY",storage:"<p>Original</p>"});
+      client.updatePage = async () => new Promise(() => {});
+      const vfs = await ConfluenceVfsImpl.open({profile:"fixture",client,spaces:["DOCSY"],
+        mode:"rw",allowDelete:false,offline:false,cacheDir:${JSON.stringify(cacheDir)},coalesceMs:0});
+      const server = await startNfsServer({vfs,spaces:["DOCSY"],journalLocation:${JSON.stringify(location)},helperPath:${JSON.stringify(resolve(helperPath!))}});
+      console.log(JSON.stringify({port:server.port,pid:server.pid}));
+      setInterval(()=>{},1000);
+    `;
+    const parent = Bun.spawn([process.execPath, "--conditions=development", "-e", source], { stdout: "pipe", stderr: "pipe" });
+    let resumed: RunningNfsServer | undefined;
+    let fresh: ConfluenceVfsImpl | undefined;
+    let helperPid: number | undefined;
+    let helperIdentity: string | undefined;
+    try {
+      const reader = parent.stdout.getReader();
+      const ready = await Promise.race([(async () => {
+        let line = "";
+        while (!line.includes("\n")) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error("Parent exited before readiness");
+          line += Buffer.from(chunk.value).toString();
+          if (line.length > 4096) throw new Error("Unexpected parent output");
+        }
+        return JSON.parse(line.split("\n")[0]!) as { port: number; pid: number };
+      })(), Bun.sleep(5000).then(() => { throw new Error("Parent startup timeout"); })]);
+      reader.releaseLock();
+      helperPid = ready.pid; helperIdentity = processIdentity(ready.pid);
+      expect(helperIdentity).toBeTruthy();
+      const mount = await rpc(ready, 100005, 1, opaque(Buffer.from("/")));
+      const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+      const lookup = await rpc(ready, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("_index.md"))]));
+      const file = lookup.subarray(8, 8 + lookup.readUInt32BE(4));
+      const read = await rpc(ready, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 65536)]));
+      const bytes = Buffer.from(read.subarray(20, 20 + read.readUInt32BE(16)).toString().replace("Original", "Survived parent crash 🐴"));
+      expect((await rpc(ready, 100003, 2, Buffer.concat([opaque(file), ints(0, 0, 0, 1, 0, 0, 0, 0, 0)]))).readUInt32BE()).toBe(0);
+      const written = await rpc(ready, 100003, 7, Buffer.concat([opaque(file), ints(0, 0, bytes.length, 0), opaque(bytes)]));
+      expect(written.readUInt32BE()).toBe(0);
+      expect(written.readUInt32BE(120)).toBe(bytes.length);
+      expect(written.readUInt32BE(124)).toBe(2);
+      parent.kill("SIGKILL"); await parent.exited;
+      const exitDeadline = Date.now() + 5000;
+      while (processIdentity(ready.pid) === helperIdentity && Date.now() < exitDeadline) await Bun.sleep(25);
+      expect(processIdentity(ready.pid)).not.toBe(helperIdentity);
+      const journal = new NfsJournal(location.path, location.scope);
+      try { expect(Buffer.from(journal.get("100")!.bytes)).toEqual(bytes); expect(journal.pendingIds()).toEqual(["100"]); }
+      finally { journal.close(); }
+      const client = new FakeConfluenceClient()
+        .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
+        .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Original</p>" });
+      fresh = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"],
+        mode: "rw", allowDelete: false, offline: false, cacheDir, coalesceMs: 0 });
+      resumed = await startNfsServer({ vfs: fresh, spaces: ["DOCSY"], journalLocation: location, helperPath: resolve(helperPath!) });
+      const deadline = Date.now() + 5000;
+      while (resumed.writeStatus()!.pendingPages && Date.now() < deadline) await Bun.sleep(50);
+      expect(resumed.writeStatus()!.pendingPages).toBe(0);
+      expect(client.peekPage("100")?.storage).toContain("Survived parent crash 🐴");
+      expect(client.peekPage("100")?.version).toBe(2);
+    } finally {
+      parent.kill(); await parent.exited;
+      if (helperPid && helperIdentity && processIdentity(helperPid) === helperIdentity) process.kill(helperPid, "SIGKILL");
+      await resumed?.stop(); await fresh?.close(); rmSync(rootDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("acknowledges journal-backed WRITE as FILE_SYNC and applies SETATTR sizes", async () => {
+    const { server, journal, client } = await fixture(["DOCSY"], false, () => Date.now(), true);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("_index.md"))]));
+    expect(lookup.readUInt32BE()).toBe(0);
+    const file = lookup.subarray(8, 8 + lookup.readUInt32BE(4));
+    const info = await rpc(server, 100003, 19, opaque(file));
+    expect(info.readUInt32BE(104)).toBe(1024 * 1024);
+    expect(info.readBigUInt64BE(info.length - 20)).toBe(BigInt(64 * 1024 * 1024));
+    const truncate = async (size: number, mtime = 0) => rpc(server, 100003, 2,
+      Buffer.concat([opaque(file), ints(0, 0, 0, 1, 0, size, 0, mtime, 0)]));
+    expect((await truncate(0, 1)).readUInt32BE()).toBe(0);
+    const bytes = Buffer.from("Grüße 🐴");
+    const cut = bytes.length - 2;
+    for (const [offset, data] of [[cut, bytes.subarray(cut)], [0, bytes.subarray(0, cut)]] as const) {
+      const reply = await rpc(server, 100003, 7,
+        Buffer.concat([opaque(file), ints(0, offset, data.length, 0), opaque(data)]));
+      expect(reply.readUInt32BE()).toBe(0);
+      expect(reply.readUInt32BE(120)).toBe(data.length);
+      expect(reply.readUInt32BE(124)).toBe(2); // FILE_SYNC: durable locally, not yet published.
+    }
+    expect(Buffer.from(journal!.get("100")!.bytes)).toEqual(bytes);
+    const read = await rpc(server, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 1024)]));
+    expect(read.readUInt32BE()).toBe(0);
+    expect(read.subarray(20, 20 + read.readUInt32BE(16))).toEqual(bytes);
+    const revision = journal!.get("100")!.revision;
+    const replay = await rpc(server, 100003, 7,
+      Buffer.concat([opaque(file), ints(0, 0, bytes.length, 2), opaque(bytes)]));
+    expect(replay.readUInt32BE()).toBe(0);
+    for (const [offset, count] of [[0, 0], [2, 3]]) {
+      const commit = await rpc(server, 100003, 21, Buffer.concat([opaque(file), ints(0, offset, count)]));
+      expect(commit.readUInt32BE()).toBe(0);
+      expect(commit.subarray(-8)).toEqual(replay.subarray(-8));
+    }
+    const badRange = await rpc(server, 100003, 21,
+      Buffer.concat([opaque(file), ints(0xffffffff, 0xffffffff, 1)]));
+    expect(badRange.readUInt32BE()).toBe(22);
+    const directoryCommit = await rpc(server, 100003, 21, Buffer.concat([opaque(root), ints(0, 0, 0)]));
+    expect(directoryCommit.readUInt32BE()).toBe(21);
+    const stale = Buffer.from(file); stale[0] ^= 0xff;
+    const staleCommit = await rpc(server, 100003, 21, Buffer.concat([opaque(stale), ints(0, 0, 0)]));
+    expect(staleCommit.readUInt32BE()).toBe(70);
+    expect(journal!.get("100")!.revision).toBe(revision);
+    expect((await truncate(bytes.length + 3)).readUInt32BE()).toBe(0);
+    expect(journal!.get("100")!.bytes.length).toBe(bytes.length + 3);
+    // Unsupported metadata changes must not partially apply the accompanying truncate.
+    const unsupported = await rpc(server, 100003, 2,
+      Buffer.concat([opaque(file), ints(1, 0o600, 0, 0, 1, 0, 0, 0, 0, 0)]));
+    expect(unsupported.readUInt32BE()).toBe(10004);
+    expect(journal!.get("100")!.bytes.length).toBe(bytes.length + 3);
+    expect((await truncate(700)).readUInt32BE()).toBe(28); // NFS3ERR_NOSPC
+    expect(journal!.get("100")!.bytes.length).toBe(bytes.length + 3);
+    expect(client.callsTo("updatePage")).toBe(0);
+  });
+
+  it("preserves immutable version bytes across split-UTF8 wire reads and an external move", async () => {
+    let clock = Date.now();
+    const { server, client, vfs } = await fixture(["DOCSY", "mayflower"], false, () => clock);
+    client.seedPage({ id: "400", title: "Child 0", spaceKey: "DOCSY", parentId: "100",
+      storage: `<p>${"Historical Grüße 🐴. ".repeat(2000)}</p>` });
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = async (parent: Buffer, name: string) => {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(parent), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(0);
+      return reply.subarray(8, 8 + reply.readUInt32BE(4));
+    };
+    const directory = await lookup(await lookup(root, "DOCSY"), "child-0-400");
+    const live = await lookup(directory, "_index.md");
+    const historic = await lookup(await lookup(directory, ".versions"), "1.md");
+    const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/child-0-400/.versions/1.md"));
+    const cut = expected.indexOf(Buffer.from("🐴")) + 1;
+    expect(cut).toBeGreaterThan(1);
+    const read = async (handle: Buffer, offset: number, count: number) => {
+      const reply = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, offset, count)]));
+      expect(reply.readUInt32BE()).toBe(0);
+      expect(reply.readUInt32BE(4)).toBe(0);
+      return reply.subarray(20, 20 + reply.readUInt32BE(16));
+    };
+    const first = await read(historic, 0, cut);
+    client.bumpVersion("400", "<p>New current document</p>");
+    await client.movePage("400", "300");
+    clock += 60_001;
+    vfs.cache!.forgetPage("400");
+    const rest = await read(historic, cut, 65536);
+    expect(Buffer.concat([first, rest])).toEqual(expected);
+    expect((await read(live, 0, 65536)).toString()).toContain("New current document");
+    expect(await read(historic, 0, 65536)).toEqual(expected);
+    expect(client.callsTo("getPageAtVersion")).toBe(2);
+  });
+  it("implements guarded and unchecked CREATE without losing existing file identity", async () => {
+    const { server, journal } = await fixture(["DOCSY"], false, undefined, true);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const create = (mode: number, attributes: Buffer) => rpc(server, 100003, 8,
+      Buffer.concat([opaque(root), opaque(Buffer.from("ordinary.tmp")), ints(mode), attributes]));
+    const first = await create(1, ints(1, 0o100600, 0, 0, 0, 0, 0));
+    expect(first.readUInt32BE()).toBe(0);
+    const id = journal!.local("/DOCSY/ordinary.tmp")!.id;
+    journal!.write(id, 0, Buffer.from("keep bytes"));
+    expect((await create(1, ints(1, 0o644, 0, 0, 0, 0, 0))).readUInt32BE()).toBe(17);
+    const replay = await create(0, ints(1, 0o644, 0, 0, 0, 0, 0));
+    expect(replay.readUInt32BE()).toBe(0);
+    expect(replay.subarray(12, 12 + replay.readUInt32BE(8))).toEqual(first.subarray(12, 12 + first.readUInt32BE(8)));
+    expect(Buffer.from(journal!.get(id)!.bytes).toString()).toBe("keep bytes");
+    expect(journal!.attributes(id)?.mode).toBe(0o600);
+    const handle = first.subarray(12, 12 + first.readUInt32BE(8));
+    expect((await rpc(server, 100003, 2, Buffer.concat([opaque(handle), ints(1, 0o100600, 0, 0, 0, 0, 0, 0)]))).readUInt32BE()).toBe(0);
+    expect((await rpc(server, 100003, 2, Buffer.concat([opaque(handle), ints(1, 0o104644, 0, 0, 0, 0, 0, 0)]))).readUInt32BE()).toBe(10004);
+    expect(journal!.attributes(id)?.mode).toBe(0o600);
+    expect((await create(0, ints(0, 0, 0, 1, 0, 0, 0, 0))).readUInt32BE()).toBe(0);
+    expect(journal!.get(id)!.bytes.byteLength).toBe(0);
+    expect(journal!.pending()).toEqual([]);
+  });
+  it("distinguishes directory RPCs and validates MKDIR attributes before mutation", async () => {
+    const { server, journal } = await fixture(["DOCSY"], false, undefined, true);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const name = opaque(Buffer.from("editor-dir"));
+    const created = await rpc(server, 100003, 9, Buffer.concat([opaque(root), name, ints(1, 0o40700, 0, 0, 0, 0, 0)]));
+    expect(created.readUInt32BE()).toBe(0);
+    const directory = created.subarray(12, 12 + created.readUInt32BE(8));
+    expect(journal!.attributes(journal!.local("/DOCSY/editor-dir")!.id)?.mode).toBe(0o700);
+    expect((await rpc(server, 100003, 12, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(21);
+    expect((await rpc(server, 100003, 9, Buffer.concat([opaque(root), name, ints(0, 0, 0, 0, 0, 0)]))).readUInt32BE()).toBe(17);
+    const unsupported = await rpc(server, 100003, 9, Buffer.concat([opaque(root), opaque(Buffer.from("unsupported")), ints(1, 0o7777, 0, 0, 0, 0, 0)]));
+    expect(unsupported.readUInt32BE()).toBe(10004);
+    expect(journal!.local("/DOCSY/unsupported")).toBeNull();
+    const local = journal!.createLocal("/DOCSY/editor-dir/child");
+    expect((await rpc(server, 100003, 13, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(66);
+    expect((await rpc(server, 100003, 13, Buffer.concat([opaque(directory), opaque(Buffer.from("child"))]))).readUInt32BE()).toBe(20);
+    journal!.removeLocal(local.path);
+    expect((await rpc(server, 100003, 13, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(66);
+    expect((await rpc(server, 100003, 12, Buffer.concat([opaque(directory), opaque(Buffer.from("_index.md"))]))).readUInt32BE()).toBe(0);
+    expect((await rpc(server, 100003, 13, Buffer.concat([opaque(root), name]))).readUInt32BE()).toBe(0);
+    expect((await rpc(server, 100003, 1, opaque(directory))).readUInt32BE()).toBe(70);
+    expect(journal!.pending()).toEqual([]);
+    const readonly = await fixture(["DOCSY"], false);
+    expect((await rpc(readonly.server, 100003, 9, Buffer.alloc(0))).readUInt32BE()).toBe(30);
+  });
+  it("does not enumerate siblings for incidental LOOKUP parent attributes", async () => {
+    const { server, vfs } = await fixture(["DOCSY"], false);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const listing = spyOn(vfs, "readdir");
+    try {
+      const lookup = (name: string) => rpc(server, 100003, 3,
+        Buffer.concat([opaque(root), opaque(Buffer.from(name))]));
+      const found = await lookup("_index.md");
+      expect(found.readUInt32BE()).toBe(0);
+      expect(found.readUInt32BE(found.length - 4)).toBe(0); // No parent post-op attributes.
+      expect((await lookup("missing.md")).readUInt32BE()).toBe(2);
+      expect((await lookup("../mayflower")).readUInt32BE()).toBe(22);
+      expect(listing).not.toHaveBeenCalled();
+      // Explicit attribute requests still refresh the directory revision.
+      expect((await rpc(server, 100003, 1, opaque(root))).readUInt32BE()).toBe(0);
+      expect(listing).toHaveBeenCalledWith("/DOCSY");
+    } finally { listing.mockRestore(); }
+  });
+  it("counts protocol requests including backend-free NFS and mount calls", async () => {
+    const { server, client } = await fixture(["DOCSY"], false);
+    client.resetCalls();
+    expect(await server.requestCount()).toBe(0);
+    await rpc(server, 100003, 0, Buffer.alloc(0));
+    await rpc(server, 100005, 0, Buffer.alloc(0));
+    expect(await server.requestCount()).toBe(2);
+    expect(await server.requestCount()).toBe(2); // Private accounting is not NFS traffic.
+    expect(client.requestCount).toBe(0);
+    await server.stop();
+    await expect(server.requestCount()).rejects.toThrow("stopped");
+  });
+  it("retains wire attachment identity after rename and old-name replacement", async () => {
+    let clock = Date.now();
+    const { server, client } = await fixture(["DOCSY"], false, () => clock);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = async (parent: Buffer, name: string) => {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(parent), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(0);
+      return reply.subarray(8, 8 + reply.readUInt32BE(4));
+    };
+    const directory = await lookup(root, "_attachments");
+    const handle = await lookup(directory, "large.bin");
+    client.seedAttachment({ id: "a1", pageId: "100", filename: "renamed.bin", bytes: attachmentBytes });
+    client.seedAttachment({ id: "a2", pageId: "100", filename: "large.bin", bytes: Buffer.from("replacement") });
+    clock += 60_001;
+    const read = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, 0, 4096)]));
+    expect(read.readUInt32BE()).toBe(0);
+    expect(read.readUInt32BE(4)).toBe(0); // READ has no separate post-op attributes.
+    expect(read.subarray(20, 20 + read.readUInt32BE(16))).toEqual(attachmentBytes.subarray(0, 4096));
+    expect(await lookup(directory, "renamed.bin")).toEqual(handle);
+    expect(await lookup(directory, "large.bin")).not.toEqual(handle);
+    expect(client.callsTo("downloadAttachment")).toBe(1);
+    client.seedAttachment({ id: "a1", pageId: "400", filename: "moved.bin", bytes: attachmentBytes });
+    clock += 60_001;
+    const movedRead = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, 0, 4096)]));
+    expect(movedRead.readUInt32BE()).toBe(0);
+    expect(movedRead.subarray(20, 20 + movedRead.readUInt32BE(16))).toEqual(attachmentBytes.subarray(0, 4096));
+    const newOwner = await lookup(root, "child-0-400");
+    expect(await lookup(await lookup(newOwner, "_attachments"), "moved.bin")).toEqual(handle);
+    expect(client.callsTo("getAttachment")).toBe(1);
+    expect(client.callsTo("getPage")).toBe(0);
+    client.seedAttachment({ id: "a1", pageId: "300", filename: "foreign.bin", bytes: attachmentBytes });
+    clock += 60_001;
+    const foreign = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, 0, 4096)]));
+    expect(foreign.readUInt32BE()).toBe(70);
+    expect(client.callsTo("downloadAttachment")).toBe(1);
+  });
+
+  it("rejects expired object handles for ACCESS, FSSTAT, FSINFO and PATHCONF", async () => {
+    const { server, vfs, client } = await fixture(["DOCSY"], false);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("child-0-400"))]));
+    expect(lookup.readUInt32BE()).toBe(0);
+    const file = lookup.subarray(8, 8 + lookup.readUInt32BE(4));
+    await client.deletePage("400");
+    await vfs.index.loadChildren("100", { force: true });
+    for (const procedure of [4, 18, 19, 20]) {
+      const reply = await rpc(server, 100003, procedure,
+        Buffer.concat([opaque(file), procedure === 4 ? ints(63) : Buffer.alloc(0)]));
+      expect(reply.readUInt32BE()).toBe(70); // NFS3ERR_STALE
+      expect(reply.readUInt32BE(4)).toBe(0); // absent attributes in error arm
+      expect(reply.length).toBe(8);
+    }
+  });
+
+  it("advertises only implemented capabilities and rejects every supported mutation in RO", async () => {
+    const { server, client } = await fixture(["DOCSY"], false);
+    const mounted = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
+    const info = await rpc(server, 100003, 19, opaque(root));
+    expect(info.readUInt32BE()).toBe(0);
+    expect(info.readUInt32BE(4)).toBe(1); // post-op attributes
+    expect(info.readUInt32BE(info.length - 4)).toBe(0); // no optional capabilities
+    const access = await rpc(server, 100003, 4, Buffer.concat([opaque(root), ints(63)]));
+    expect(access.readUInt32BE()).toBe(0);
+    expect(access.readUInt32BE(access.length - 4)).toBe(3); // READ | LOOKUP, no writes
+    const found = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("_index.md"))]));
+    const file = found.subarray(8, 8 + found.readUInt32BE(4));
+    const fileAccess = await rpc(server, 100003, 4, Buffer.concat([opaque(file), ints(63)]));
+    expect(fileAccess.readUInt32BE()).toBe(0);
+    expect(fileAccess.readUInt32BE(fileAccess.length - 4)).toBe(1); // regular files: READ only
+    client.resetCalls();
+    // The RO capability gate runs before decoding mutation payloads or backend access.
+    for (const procedure of [2, 7, 8, 9, 10, 12, 13, 14, 21]) {
+      const reply = await rpc(server, 100003, procedure, Buffer.alloc(0));
+      expect(reply.readUInt32BE()).toBe(30); // ROFS
+    }
+    for (const procedure of [11, 15]) { // MKNOD and LINK are not implemented.
+      expect(await rpc(server, 100003, procedure, Buffer.alloc(0), 3)).toEqual(Buffer.alloc(0));
+    }
+    expect(client.requestCount).toBe(0);
+  });
+
+  it("advertises and enforces the same 255-byte filename limit", async () => {
+    const { server } = await fixture(["DOCSY"], false);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const pathconf = await rpc(server, 100003, 20, opaque(root));
+    expect(pathconf.readUInt32BE()).toBe(0);
+    expect(pathconf.readUInt32BE(4)).toBe(1);
+    expect(pathconf.readUInt32BE(96)).toBe(255);
+    expect(pathconf.readUInt32BE(100)).toBe(1); // no_trunc
+    for (const name of ["x".repeat(256), "ü".repeat(128)]) {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(63); // NFS3ERR_NAMETOOLONG
+    }
+    const boundary = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("x".repeat(255)))]));
+    expect(boundary.readUInt32BE()).toBe(2); // valid length, nonexistent object
+  });
+
+  it("mounts, resolves a file, reports exact attributes and reads Unicode bytes", async () => {
+    const { server, vfs } = await fixture();
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    expect(mount.readUInt32BE()).toBe(0);
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = await rpc(server, 100003, 3, Buffer.concat([opaque(root), opaque(Buffer.from("_index.md"))]));
+    expect(lookup.readUInt32BE()).toBe(0);
+    const file = lookup.subarray(8, 8 + lookup.readUInt32BE(4));
+    const attributes = await rpc(server, 100003, 1, opaque(file));
+    expect(attributes.readUInt32BE()).toBe(0);
+    const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md"));
+    expect(Number(attributes.readBigUInt64BE(24))).toBe(expected.length);
+    const modified = (await vfs.stat("/DOCSY/_index.md")).mtime.getTime();
+    expect(attributes.readUInt32BE(72)).toBe(Math.floor(modified / 1000));
+    expect(attributes.readUInt32BE(76)).toBe((modified % 1000) * 1_000_000);
+    let bodyReads = 0;
+    const readBytes = vfs.readFileBytes.bind(vfs);
+    vfs.readFileBytes = async (path) => { bodyReads++; return readBytes(path); };
+    const read = await rpc(server, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 1024 * 1024)]));
+    expect(bodyReads).toBe(1); // READ must not materialize a separate GETATTR body.
+    expect(read.readUInt32BE()).toBe(0);
+    expect(read.readUInt32BE(4)).toBe(0); // no separate pre-read attributes
+    expect(read.readUInt32BE(8)).toBe(expected.length);
+    expect(read.readUInt32BE(12)).toBe(1); // EOF
+    expect(read.subarray(20, 20 + read.readUInt32BE(16))).toEqual(expected);
+    const write = await rpc(server, 100003, 7, Buffer.concat([opaque(file), ints(0, 0, 1, 2), opaque(Buffer.from("x"))]));
+    expect(write.readUInt32BE()).toBe(30); // NFS3ERR_ROFS
+    await server.stop();
+    await server.exited;
+  });
+
+  it("keeps a wire filehandle usable after an externally observed page move", async () => {
+    const { server, vfs, client } = await fixture(["DOCSY"], false);
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookupHandle = async (parent: Buffer, name: string) => {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(parent), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(0);
+      return reply.subarray(8, 8 + reply.readUInt32BE(4));
+    };
+    client.seedPage({ id: "900", type: "folder", title: "Folder", spaceKey: "DOCSY", parentId: "400" });
+    const attachmentBytes = Buffer.from("Moved attachment Grüße 🐴");
+    client.seedAttachment({ id: "moved-attachment", pageId: "400", filename: "proof.txt", bytes: attachmentBytes });
+    const directory = await lookupHandle(root, "child-0-400");
+    const file = await lookupHandle(directory, "_index.md");
+    const folder = await lookupHandle(directory, "folder-900");
+    const folderMetadata = await lookupHandle(folder, "_index.md");
+    const attachments = await lookupHandle(directory, "_attachments");
+    const attachment = await lookupHandle(attachments, "proof.txt");
+    const comments = await lookupHandle(directory, ".comments.md");
+    const versions = await lookupHandle(directory, ".versions");
+    const historic = await lookupHandle(versions, "1.md");
+    await client.movePage("400", "401");
+    await vfs.index.loadChildren("100", { force: true });
+    const read = await rpc(server, 100003, 6, Buffer.concat([opaque(file), ints(0, 0, 65536)]));
+    expect(read.readUInt32BE()).toBe(0);
+    const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/child-1-401/child-0-400/_index.md"));
+    expect(read.subarray(20, 20 + read.readUInt32BE(16))).toEqual(expected);
+    const attachmentRead = await rpc(server, 100003, 6, Buffer.concat([opaque(attachment), ints(0, 0, 65536)]));
+    expect(attachmentRead.readUInt32BE()).toBe(0);
+    expect(attachmentRead.subarray(20, 20 + attachmentRead.readUInt32BE(16))).toEqual(attachmentBytes);
+    expect(await lookupHandle(attachments, "..")).toEqual(directory);
+    expect(await lookupHandle(directory, "_attachments")).toEqual(attachments);
+    expect(await lookupHandle(attachments, "proof.txt")).toEqual(attachment);
+    const metadataRead = await rpc(server, 100003, 6, Buffer.concat([opaque(folderMetadata), ints(0, 0, 65536)]));
+    expect(metadataRead.readUInt32BE()).toBe(0);
+    expect(metadataRead.subarray(20, 20 + metadataRead.readUInt32BE(16)))
+      .toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/child-1-401/child-0-400/folder-900/_index.md")));
+    expect(await lookupHandle(folder, "_index.md")).toEqual(folderMetadata);
+    expect(await lookupHandle(folder, "..")).toEqual(directory);
+    expect(await lookupHandle(directory, "folder-900")).toEqual(folder);
+    const newParent = await lookupHandle(root, "child-1-401");
+    expect(await lookupHandle(directory, "..")).toEqual(newParent);
+    expect(await lookupHandle(newParent, "child-0-400")).toEqual(directory);
+    expect(await lookupHandle(directory, "_index.md")).toEqual(file);
+    expect(await lookupHandle(directory, ".comments.md")).toEqual(comments);
+    expect(await lookupHandle(directory, ".versions")).toEqual(versions);
+    expect(await lookupHandle(versions, "1.md")).toEqual(historic);
+    for (const [handle, suffix] of [[comments, ".comments.md"], [historic, ".versions/1.md"]] as const) {
+      const body = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, 0, 65536)]));
+      expect(body.readUInt32BE()).toBe(0);
+      expect(body.subarray(20, 20 + body.readUInt32BE(16))).toEqual(
+        Buffer.from(await vfs.readFileBytes(`/DOCSY/child-1-401/child-0-400/${suffix}`)));
+    }
+  });
+
+  it("rejects old handles after restarting a helper even when file IDs are reused", async () => {
+    const first = await fixture(["DOCSY"], false);
+    const mounted = await rpc(first.server, 100005, 1, opaque(Buffer.from("/")));
+    const oldRoot = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
+    await first.server.stop();
+    const second = await fixture(["DOCSY"], false);
+    const remounted = await rpc(second.server, 100005, 1, opaque(Buffer.from("/")));
+    const freshRoot = remounted.subarray(8, 8 + remounted.readUInt32BE(4));
+    expect(freshRoot).not.toEqual(oldRoot);
+    let stats = 0;
+    const stat = second.vfs.stat.bind(second.vfs);
+    second.vfs.stat = async path => { stats++; return stat(path); };
+    expect((await rpc(second.server, 100003, 1, opaque(oldRoot))).readUInt32BE()).toBe(70); // STALE
+    expect((await rpc(second.server, 100003, 6, Buffer.concat([opaque(oldRoot), ints(0, 0, 16)]))).readUInt32BE()).toBe(70);
+    expect(stats).toBe(0); // Foreign session handles never reach the authoritative VFS.
+    expect((await rpc(second.server, 100003, 1, opaque(freshRoot))).readUInt32BE()).toBe(0);
+    expect(stats).toBeGreaterThan(0);
+  });
+
+  it("closes oversized or excessively fragmented RPCs and survives malformed XDR lengths", async () => {
+    const { server } = await fixture(["DOCSY"], false);
+    const maximum = 4 * 1024 * 1024;
+    const call = ints(9, 0, 2, 100003, 3, 0, 0, 0, 0, 0);
+    const invalidAuth = ints(9, 0, 2, 100003, 3, 0, 0, 0xffffffff);
+    const authUnix = ints(0, 0, 0, 0, 0xffffffff); // stamp, hostname, uid, gid, group count
+    const invalidGroups = Buffer.concat([ints(9, 0, 2, 100003, 3, 0, 1), opaque(authUnix), ints(0, 0)]);
+    for (const attack of [
+      ints(0x80000000 + maximum + 1),
+      Buffer.concat([ints(maximum), Buffer.alloc(maximum), ints(0x80000001)]),
+      Buffer.alloc(4 * 1025), // empty non-final fragments still consume the fragment budget
+      Buffer.concat([ints(0x80000000 + invalidAuth.length), invalidAuth]),
+      Buffer.concat([ints(0x80000000 + invalidGroups.length), invalidGroups]),
+    ]) {
+      await new Promise<void>((done, reject) => {
+        const socket = connect(server.port, "127.0.0.1");
+        const timeout = setTimeout(() => { socket.destroy(); reject(new Error("Malformed RPC was not disconnected")); }, 3000);
+        socket.on("connect", () => socket.write(attack));
+        socket.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET" && error.code !== "EPIPE") reject(error); });
+        socket.on("close", () => { clearTimeout(timeout); done(); });
+      });
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+    }
+    // A valid fragmented record is accepted, including a header split across writes.
+    await new Promise<void>((done, reject) => {
+      const socket = connect(server.port, "127.0.0.1");
+      socket.setTimeout(3000, () => socket.destroy(new Error("Fragmented RPC timed out")));
+      socket.on("error", reject);
+      socket.on("connect", () => {
+        socket.write(ints(12).subarray(0, 2));
+        socket.write(Buffer.concat([ints(12).subarray(2), call.subarray(0, 12), ints(0x80000000 + call.length - 12), call.subarray(12)]));
+      });
+      let reply = Buffer.alloc(0);
+      socket.on("data", (data) => {
+        reply = Buffer.concat([reply, Buffer.from(data)]);
+        if (reply.length >= 28) {
+          try { expect(reply.readUInt32BE(4)).toBe(9); socket.destroy(); done(); }
+          catch (error) { socket.destroy(); reject(error); }
+        }
+      });
+    });
+  });
+
+  it("bounds persistent connections and pipelined transaction history", async () => {
+    const { server } = await fixture(["DOCSY"], false);
+    const sockets: ReturnType<typeof connect>[] = [];
+    const nullCall = (id: number) => Buffer.concat([ints(0x80000028), ints(id, 0, 2, 100003, 3, 0, 0, 0, 0, 0)]);
+    try {
+      for (let i = 0; i < 32; i++) {
+        await new Promise<void>((done, reject) => {
+          const socket = connect(server.port, "127.0.0.1");
+          sockets.push(socket);
+          socket.setTimeout(5000, () => socket.destroy(new Error("Connection admission timed out")));
+          socket.on("error", reject);
+          socket.on("connect", () => socket.write(nullCall(i)));
+          socket.once("data", () => { socket.setTimeout(0); done(); });
+        });
+      }
+      await new Promise<void>((done, reject) => {
+        const extra = connect(server.port, "127.0.0.1");
+        extra.setTimeout(3000, () => extra.destroy(new Error("Connection cap not enforced")));
+        extra.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
+        extra.on("close", () => done());
+      });
+    } finally {
+      await Promise.all(sockets.map((socket) => new Promise<void>((done) => { socket.once("close", done); socket.destroy(); })));
+    }
+    // Exercise backpressure and the finite replay table with unique pipelined RPCs.
+    const received = await new Promise<number[]>((done, reject) => {
+      const socket = connect(server.port, "127.0.0.1");
+      let remaining = Buffer.alloc(0);
+      const ids: number[] = [];
+      socket.setTimeout(10000, () => socket.destroy(new Error("Pipeline did not complete")));
+      socket.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
+      socket.on("connect", () => socket.write(Buffer.concat(Array.from({ length: 4097 }, (_, i) => nullCall(i)))));
+      socket.on("data", (data) => {
+        remaining = Buffer.concat([remaining, Buffer.from(data)]);
+        while (remaining.length >= 28) {
+          ids.push(remaining.readUInt32BE(4));
+          remaining = remaining.subarray(28);
+        }
+      });
+      socket.on("close", () => done(ids));
+    });
+    expect(received).toEqual(Array.from({ length: 4096 }, (_, i) => i));
+    expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+  }, 20000);
+
+  it("disconnects a stalled partial record without blocking other clients", async () => {
+    const { server } = await fixture(["DOCSY"], false);
+    const socket = connect(server.port, "127.0.0.1");
+    const closed = new Promise<void>((done, reject) => {
+      socket.setTimeout(65000, () => socket.destroy(new Error("Server read deadline was not enforced")));
+      socket.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
+      socket.on("close", done);
+      socket.on("connect", () => socket.write(Buffer.from([0x80])));
+    });
+    try {
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+      await closed;
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+    } finally { socket.destroy(); }
+  }, 70000);
+
+  it("disconnects a blocked response reader without stalling other clients", async () => {
+    const { server, vfs } = await fixture(["DOCSY"], false);
+    const mounted = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    let file = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
+    for (const name of ["_attachments", "large.bin"]) {
+      const found = await rpc(server, 100003, 3, Buffer.concat([opaque(file), opaque(Buffer.from(name))]));
+      expect(found.readUInt32BE()).toBe(0);
+      file = found.subarray(8, 8 + found.readUInt32BE(4));
+    }
+    let reads = 0;
+    const read = vfs.readFileBytes.bind(vfs);
+    vfs.readFileBytes = async path => { reads++; return read(path); };
+    const result = promisify(execFile)("python3", ["-c", `
+import base64, json, socket, struct, sys, time
+handle = base64.b64decode(sys.argv[2])
+def words(*values):
+    return struct.pack('>' + 'I' * len(values), *values)
+with socket.socket() as client:
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+    client.settimeout(5)
+    client.connect(('127.0.0.1', int(sys.argv[1])))
+    for xid in range(32):
+        request = words(xid + 100, 0, 2, 100003, 3, 6, 0, 0, 0, 0)
+        request += words(len(handle)) + handle + words(0, 0, 1024 * 1024)
+        client.sendall(words(0x80000000 + len(request)) + request)
+    # Keep the negotiated receive window small until the production 30s write
+    # deadline has elapsed. Then drain queued bytes to observe FIN/reset.
+    time.sleep(35)
+    received = 0
+    while True:
+        try:
+            data = client.recv(1024 * 1024)
+        except ConnectionResetError:
+            break
+        if not data:
+            break
+        received += len(data)
+    print(json.dumps({'received': received}))
+`, String(server.port), file.toString("base64")], { timeout: 45_000 });
+    // Attach a rejection handler immediately while the independent RPC runs.
+    void result.catch(() => {});
+    try {
+      await Bun.sleep(500);
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+      const { stdout } = await result;
+      expect(JSON.parse(stdout).received).toBeLessThan(32 * 1024 * 1024);
+      expect(reads).toBeGreaterThan(0);
+      expect(reads).toBeLessThan(32);
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+    } finally {
+      result.child.kill("SIGTERM");
+      await result.catch(() => {});
+    }
+  }, 50_000);
+
+  it("enforces the dispatch deadline across individually responsive bridge calls", async () => {
+    const child = spawn(resolve(helperPath!), ["0", "--staged-rw"], { env: {}, stdio: ["pipe", "pipe", "pipe"] });
+    child.stderr.resume();
+    child.stdin.on("error", () => {});
+    const exited = new Promise<void>((done, reject) => {
+      child.once("close", () => done());
+      child.once("error", reject);
+    });
+    const frames = readNfsFrames(child.stdout);
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    let calls = 0;
+    let socket: ReturnType<typeof connect> | undefined;
+    let pump: Promise<void> | undefined;
+    try {
+      const hello = (await frames.next()).value as { port: number };
+      const server = { port: hello.port };
+      pump = (async () => {
+        for await (const raw of frames) {
+          const request = raw as { id: number; op: string; args: { file: number } };
+          calls++;
+          // Exclusive CREATE performs pre-attributes, creation, then post-attributes.
+          // Each responds before the bridge's 60s limit; together they exceed 120s.
+          const timer = setTimeout(() => {
+            timers.delete(timer);
+            const result = request.op === "create-exclusive" ? 2 : {
+              id: request.args.file, directory: request.args.file === 1, size: 0, mtime: 0,
+            };
+            child.stdin.write(encodeNfsFrame({ id: request.id, result }));
+          }, 45_000);
+          timers.add(timer);
+        }
+      })();
+      const mounted = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+      const root = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
+      const payload = Buffer.concat([ints(19, 0, 2, 100003, 3, 8, 0, 0, 0, 0),
+        opaque(root), opaque(Buffer.from("slow.md")), ints(2), Buffer.alloc(8)]);
+      const started = performance.now();
+      socket = connect(server.port, "127.0.0.1");
+      const closed = new Promise<void>((done, reject) => {
+        socket!.setTimeout(130_000, () => socket!.destroy(new Error("Dispatch deadline not enforced")));
+        socket!.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
+        socket!.on("data", () => reject(new Error("Slow RPC replied instead of hitting dispatch deadline")));
+        socket!.on("close", done);
+        socket!.on("connect", () => socket!.write(Buffer.concat([ints(0x80000000 + payload.length), payload])));
+      });
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+      await closed;
+      expect(performance.now() - started).toBeGreaterThanOrEqual(118_000);
+      expect(calls).toBe(3);
+      expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
+    } finally {
+      for (const timer of timers) clearTimeout(timer);
+      socket?.destroy();
+      child.stdin.end();
+      const kill = setTimeout(() => child.kill("SIGKILL"), 3000);
+      try { await exited; await pump; }
+      finally { clearTimeout(kill); }
+    }
+  }, 140_000);
+
+  for (const procedure of [16, 17]) {
+    it(`paginates NFS procedure ${procedure} without repeating or omitting entries`, async () => {
+      const { server, vfs, client } = await fixture(["DOCSY"], false);
+      const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+      const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+      for (const budget of [0, 128, 129, 256]) {
+        const rejected = await rpc(server, 100003, procedure, Buffer.concat([
+          opaque(root), Buffer.alloc(16), procedure === 16 ? ints(budget) : ints(512, budget),
+        ]));
+        expect(rejected.readUInt32BE()).toBe(10005); // NFS3ERR_TOOSMALL, helper remains usable
+      }
+      if (procedure === 17) {
+        const rejected = await rpc(server, 100003, procedure, Buffer.concat([
+          opaque(root), Buffer.alloc(16), ints(0, 768),
+        ]));
+        expect(rejected.readUInt32BE()).toBe(10005);
+      }
+      let cookie: Buffer = Buffer.alloc(8);
+      let verifier: Buffer = Buffer.alloc(8);
+      const names: string[] = [];
+      let pages = 0;
+      for (;;) {
+        const reply = await rpc(server, 100003, procedure, Buffer.concat([
+          opaque(root), cookie, verifier, procedure === 16 ? ints(512) : ints(512, 768),
+        ]));
+        expect(reply.readUInt32BE()).toBe(0);
+        let offset = 8 + (reply.readUInt32BE(4) ? 84 : 0);
+        verifier = reply.subarray(offset, offset + 8);
+        offset += 8;
+        let received = 0;
+        while (reply.readUInt32BE(offset)) {
+          offset += 12; // entry present and file ID
+          const length = reply.readUInt32BE(offset);
+          offset += 4;
+          const name = reply.subarray(offset, offset + length).toString();
+          expect(names).not.toContain(name);
+          names.push(name);
+          offset += (length + 3) & ~3;
+          cookie = reply.subarray(offset, offset + 8);
+          offset += 8;
+          if (procedure === 17) {
+            const attr = reply.readUInt32BE(offset);
+            offset += 4 + (attr ? 84 : 0);
+            const handle = reply.readUInt32BE(offset);
+            offset += 4;
+            if (handle) offset += 4 + ((reply.readUInt32BE(offset) + 3) & ~3);
+          }
+          received++;
+        }
+        pages++;
+        if (reply.readUInt32BE(offset + 4)) break;
+        expect(received).toBeGreaterThan(0);
+        expect(pages).toBeLessThan(100);
+      }
+      expect(client.callsTo("getPageDirectChildren")).toBe(1);
+      expect(Array.from({ length: 32 }, (_, i) => vfs.index.isUnloaded(String(400 + i))).every(Boolean)).toBe(true);
+      const expired = await rpc(server, 100003, procedure, Buffer.concat([
+        opaque(root), cookie, Buffer.alloc(8, 255), procedure === 16 ? ints(512) : ints(512, 768),
+      ]));
+      expect(expired.readUInt32BE()).toBe(10003); // NFS3ERR_BAD_COOKIE
+      const originalReaddir = vfs.readdir.bind(vfs);
+      vfs.readdir = async (path) => (await originalReaddir(path)).filter((entry) => entry.name !== "child-0-400");
+      try {
+        const changed = await rpc(server, 100003, procedure, Buffer.concat([
+          opaque(root), cookie, verifier, procedure === 16 ? ints(512) : ints(512, 768),
+        ]));
+        expect(changed.readUInt32BE()).toBe(10003);
+      } finally { vfs.readdir = originalReaddir; }
+      expect(pages).toBeGreaterThan(1);
+      expect(names.sort()).toEqual([...INDEXER_SHIELDS, ...SHIELD_DIRECTORIES,
+        ...(await vfs.readdir("/DOCSY")).map((e) => e.name)].sort());
+    });
+  }
+
+  it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("recovers durable writes after helper death under a native hard mount", async () => {
+    const root = mkdtempSync(join(tmpdir(), "nfs-hard-recovery-"));
+    const mountpoint = join(root, "mount"); await mkdir(mountpoint);
+    const client = new FakeConfluenceClient()
+      .seedSpace({ id: "s1", key: "DOCSY", name: "Docs", homepageId: "100" })
+      .seedPage({ id: "100", title: "Home", spaceKey: "DOCSY", storage: "<p>Original</p>" });
+    const vfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"],
+      mode: "rw", allowDelete: false, offline: false, cacheDir: join(root, "cache"), coalesceMs: 0 });
+    const location = nfsJournalLocation({ ...vfs.runtime!, profile: "fixture", spaces: ["DOCSY"] });
+    let server: RunningNfsServer | undefined;
+    let mounted = false;
+    const detach = async () => {
+      const command = platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint];
+      let status = await runMountCommand(command);
+      for (let i = 0; status !== 0 && i < 10; i++) { await Bun.sleep(100); status = await runMountCommand(command); }
+      if (status !== 0) throw new Error(`Recovery test mount remains attached: ${mountpoint}`);
+      mounted = false;
+    };
+    const attach = async () => {
+      const options = nfsMountOptionsFor(platform(), server!.port, "rw");
+      expect(await runMountCommand(platform() === "linux"
+        ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", mountpoint]
+        : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint])).toBe(0);
+      mounted = true;
+    };
+    try {
+      const update = client.updatePage.bind(client);
+      client.updatePage = async () => { throw new VfsError("EACCES", "Injected publication denial"); };
+      server = await startNfsServer({ vfs, spaces: ["DOCSY"], journalLocation: location, helperPath: resolve(helperPath!) });
+      await attach();
+      const content = (await vfs.readFile("/DOCSY/_index.md")).replace("Original", "Recovered hard mount 🐴");
+      const file = await open(join(mountpoint, "_index.md"), "r+");
+      try { await file.truncate(0); await file.writeFile(content); await file.sync(); }
+      finally { await file.close(); }
+      const failedDeadline = Date.now() + 5000;
+      while (!server.writeStatus()!.failedPages && Date.now() < failedDeadline) await Bun.sleep(50);
+      expect(server.writeStatus()!.failedPages).toBe(1);
+      expect(client.peekPage("100")?.version).toBe(1);
+      const recoveryPort = server.port;
+      const mountedRoot = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+      const oldRoot = mountedRoot.subarray(8, 8 + mountedRoot.readUInt32BE(4));
+      process.kill(server.pid, "SIGKILL");
+      await server.exited;
+      await server.stop();
+      expect(server.writeStatus()!.pendingPages).toBe(1);
+      const reopened = new NfsJournal(location.path, location.scope);
+      try { expect(Buffer.from(reopened.get("100")!.bytes).toString()).toBe(content); }
+      finally { reopened.close(); }
+      client.updatePage = update;
+      // A hard-mounted client can issue RPCs during normal unmount. Restore
+      // the dead endpoint first; the new generation rejects old handles as
+      // ESTALE, allowing detach before a fresh mount reads recovered content.
+      server = await startNfsServer({ vfs, spaces: ["DOCSY"], journalLocation: location,
+        port: recoveryPort, helperPath: resolve(helperPath!) });
+      expect((await rpc(server, 100003, 1, opaque(oldRoot))).readUInt32BE()).toBe(70); // ESTALE
+      await detach();
+      const deadline = Date.now() + 5000;
+      while (server.writeStatus()!.pendingPages && Date.now() < deadline) await Bun.sleep(50);
+      expect(server.writeStatus()!.pendingPages).toBe(0);
+      expect(client.peekPage("100")?.version).toBe(2);
+      expect(client.peekPage("100")?.storage).toContain("Recovered hard mount 🐴");
+      await attach();
+      expect((await readFile(join(mountpoint, "_index.md"))).toString()).toContain("Recovered hard mount 🐴");
+    } finally {
+      if (mounted) await detach();
+      await server?.stop(); await vfs.close(); rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("moves page and folder trees between spaces through a native RW mount", async () => {
+    const { server, client } = await fixture(["DOCSY", "mayflower"], false, undefined, true, 4096);
+    const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-cross-space-"));
+    let mounted = false;
+    cleanups.push(async () => {
+      if (mounted) {
+        const command = platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint];
+        let status = await runMountCommand(command);
+        for (let attempt = 0; status !== 0 && attempt < 10; attempt++) {
+          await Bun.sleep(100); status = await runMountCommand(command);
+        }
+        if (status !== 0) throw new Error(`Test mount remains attached: ${mountpoint}`);
+      }
+      rmSync(mountpoint, { recursive: true, force: true });
+    });
+    const options = nfsMountOptionsFor(platform(), server.port, "rw");
+    expect(await runMountCommand(platform() === "linux"
+      ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", mountpoint]
+      : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint])).toBe(0);
+    mounted = true;
+    for (const [kind, id, childId] of [["page", "900", "901"], ["folder", "902", "903"]] as const) {
+      client.seedPage({ id, title: "Portable", type: kind, spaceKey: "DOCSY", parentId: kind === "page" ? null : "100", storage: "<p>Parent</p>" });
+      client.seedPage({ id: childId, title: "Nested", spaceKey: "DOCSY", parentId: id, storage: "<p>Grüße 🐴</p>" });
+    }
+    for (const [id, childId] of [["900", "901"], ["902", "903"]]) {
+      const source = join(mountpoint, "DOCSY", `portable-${id}`);
+      const target = join(mountpoint, "mayflower", `portable-${id}`);
+      const childPath = `nested-${childId}/_index.md`;
+      const descriptor = await open(join(source, childPath), "r");
+      try {
+        const inode = (await descriptor.stat()).ino;
+        await rename(source, target);
+        // Existing open descriptors retain attributes for the advertised actimeo=1.
+        await Bun.sleep(1100);
+        expect((await stat(join(target, childPath))).ino).toBe(inode);
+        expect((await descriptor.readFile()).toString()).toContain("Grüße 🐴");
+        expect((await readFile(join(target, childPath))).toString()).toContain("/spaces/mayflower/");
+        expect(client.peekPage(childId!)?.spaceKey).toBe("mayflower");
+      } finally { await descriptor.close(); }
+    }
+    expect(client.callsTo("movePageToPosition")).toBe(2);
+  }, 30_000);
+
+  it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("writes and fsyncs existing pages through a native RW kernel mount", async () => {
+    let clockOffset = 0;
+    const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now() + clockOffset, true, 4096, true);
+    client.seedPage({ id: "800", title: "Archive", type: "folder", parentId: "100", spaceKey: "DOCSY" });
+    client.seedPage({ id: "801", title: "Nested", parentId: "800", spaceKey: "DOCSY", storage: "<p>Folder child</p>" });
+    const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-rw-"));
+    let mounted = false;
+    cleanups.push(async () => {
+      if (mounted) {
+        const command = platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint];
+        let status = await runMountCommand(command);
+        for (let attempt = 0; status !== 0 && attempt < 10; attempt++) {
+          await Bun.sleep(100); status = await runMountCommand(command);
+        }
+        if (status !== 0) throw new Error(`Test mount remains attached: ${mountpoint}`);
+      }
+      rmSync(mountpoint, { recursive: true, force: true });
+    });
+    // RW requires hard retries. This private test does not enable the CLI RW option.
+    const options = nfsMountOptionsFor(platform(), server.port, "rw");
+    const command = platform() === "linux"
+      ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", mountpoint]
+      : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint];
+    expect(await runMountCommand(command)).toBe(0);
+    mounted = true;
+    const sourceDirectory = join(mountpoint, "child-30-430");
+    const movedDirectory = join(mountpoint, "child-31-431", "child-30-430");
+    const beforeMove = await readFile(join(sourceDirectory, "_index.md"));
+    const moveDescriptor = await open(join(sourceDirectory, "_index.md"), "r");
+    try {
+      await rename(sourceDirectory, movedDirectory);
+      expect(parseVfsFrontmatter((await moveDescriptor.readFile()).toString()).body).toBe(parseVfsFrontmatter(beforeMove.toString()).body);
+      expect(parseVfsFrontmatter((await readFile(join(movedDirectory, "_index.md"))).toString()).body).toBe(parseVfsFrontmatter(beforeMove.toString()).body);
+      expect(client.peekPage("430")?.parentId).toBe("431");
+      expect(client.callsTo("movePage")).toBe(1);
+    } finally { await moveDescriptor.close(); }
+    const folderDescriptor = await open(join(mountpoint, "archive-800", "nested-801", "_index.md"), "r");
+    try {
+      await rename(join(mountpoint, "archive-800"), join(mountpoint, "child-31-431", "archive-800"));
+      expect((await folderDescriptor.readFile()).toString()).toContain("Folder child");
+      expect((await readFile(join(mountpoint, "child-31-431", "archive-800", "nested-801", "_index.md"))).toString()).toContain("Folder child");
+      expect(client.peekPage("800")?.parentId).toBe("431");
+      expect(client.callsTo("movePageToPosition")).toBe(1);
+    } finally { await folderDescriptor.close(); }
+    const path = join(mountpoint, "_index.md");
+    await assertNativeLocks(path, true);
+    const metadata = await stat(path);
+    expect(metadata.uid).toBe(process.getuid!());
+    expect(metadata.mode & 0o777).toBe(0o644);
+    const bytes = Buffer.from((await vfs.readFile("/DOCSY/_index.md")).replace("Grüße 🐴", "Native Grüße 🐴"));
+    const file = await open(path, "r+");
+    try {
+      await file.truncate(0);
+      const cut = bytes.indexOf(Buffer.from("🐴")) + 1;
+      expect((await file.write(bytes.subarray(cut), 0, bytes.length - cut, cut)).bytesWritten).toBe(bytes.length - cut);
+      expect((await file.write(bytes.subarray(0, cut), 0, cut, 0)).bytesWritten).toBe(cut);
+      await file.sync();
+      expect(Buffer.from(journal!.get("100")!.bytes)).toEqual(bytes);
+      const read = Buffer.alloc(bytes.length);
+      expect((await file.read(read, 0, read.length, 0)).bytesRead).toBe(bytes.length);
+      expect(read).toEqual(bytes);
+      expect((await file.stat()).size).toBe(bytes.length);
+    } finally { await file.close(); }
+    const deadline = Date.now() + 3000;
+    while (journal!.pending().length && Date.now() < deadline) await Bun.sleep(20);
+    expect(journal!.pending()).toHaveLength(0);
+    expect(client.callsTo("updatePage")).toBe(1);
+    expect(client.peekPage("100")?.storage).toContain("Native Grüße 🐴");
+    const saveDirectory = join(mountpoint, "_index.md.sb-test");
+    await mkdir(saveDirectory, { mode: 0o700 });
+    expect((await stat(saveDirectory)).mode & 0o777).toBe(0o700);
+    const childPath = join(saveDirectory, "child.tmp");
+    const child = await open(childPath, "w", 0o600);
+    await child.writeFile("directory child"); await child.sync(); await child.close();
+    expect((await readFile(childPath)).toString()).toBe("directory child");
+    await expect(rmdir(saveDirectory)).rejects.toMatchObject({ code: "ENOTEMPTY" });
+    await unlink(childPath);
+    await rmdir(saveDirectory);
+    const temporary = await open(join(mountpoint, ".native.tmp"), "wx", 0o600);
+    try { await temporary.write(Buffer.from("draft")); await temporary.sync(); }
+    finally { await temporary.close(); }
+    const localStat = await stat(join(mountpoint, ".native.tmp"));
+    expect(localStat.size).toBe(5);
+    expect(localStat.mode & 0o777).toBe(0o600);
+    expect(localStat.mtimeMs).toBeGreaterThan(Date.now() - 30_000);
+    await unlink(join(mountpoint, ".native.tmp"));
+    const replacementBytes = Buffer.from(bytes.toString().replace("Native Grüße 🐴", "Atomic replacement 🐴"));
+    const replacementPath = join(mountpoint, ".replacement.tmp");
+    const replacement = await open(replacementPath, "wx", 0o644);
+    const continued = Buffer.from("\nOpen descriptor continuation\n");
+    try {
+      await replacement.write(replacementBytes); await replacement.sync();
+      await rename(replacementPath, path);
+      await replacement.write(continued); await replacement.sync();
+    } finally { await replacement.close(); }
+    expect(await readFile(path)).toEqual(Buffer.concat([replacementBytes, continued]));
+    const replacementDeadline = Date.now() + 5000;
+    while (journal!.pending().length && Date.now() < replacementDeadline) await Bun.sleep(20);
+    expect(journal!.pending()).toHaveLength(0);
+    expect(client.callsTo("updatePage")).toBe(2);
+    expect(client.peekPage("100")?.storage).toContain("Atomic replacement 🐴");
+    expect(client.peekPage("100")?.storage).toContain("Open descriptor continuation");
+    await promisify(execFile)("vim", [ "-Nu", "NONE", "-i", "NONE", "-n", "-es", "-c", "set nomodeline backupskip= backupdir=. backup", "-c", "normal! GoNative Vim save", "-c", "wq", path], { timeout: 10000 });
+    expect((await readFile(path)).toString()).toContain("Native Vim save");
+    const backup = await readFile(`${path}~`);
+    expect(backup.toString()).toContain("Open descriptor continuation");
+    expect(backup.toString()).not.toContain("Native Vim save");
+    await unlink(`${path}~`);
+    const vimDeadline = Date.now() + 5000;
+    while (!client.peekPage("100")?.storage.includes("Native Vim save") && Date.now() < vimDeadline) await Bun.sleep(20);
+    expect(journal!.pending()).toHaveLength(0);
+    expect(client.peekPage("100")?.storage).toContain("Native Vim save");
+    const saved = await readFile(path);
+    const oldDescriptor = await open(path, "r");
+    const backupPath = join(mountpoint, "save-backup.md");
+    try {
+      await rename(path, backupPath);
+      await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await oldDescriptor.readFile()).toEqual(saved);
+      const next = await open(join(mountpoint, "next-save.tmp"), "wx");
+      try { await next.writeFile(Buffer.concat([saved, Buffer.from("\nBackup rename save\n")])); await next.sync(); }
+      finally { await next.close(); }
+      await rename(join(mountpoint, "next-save.tmp"), path);
+      expect(await readFile(backupPath)).toEqual(saved);
+      expect((await readFile(path)).toString()).toContain("Backup rename save");
+    } finally { await oldDescriptor.close(); }
+    await unlink(backupPath);
+    const backupDeadline = Date.now() + 5000;
+    while (!client.peekPage("100")?.storage.includes("Backup rename save") && Date.now() < backupDeadline) await Bun.sleep(20);
+    expect(journal!.pending()).toHaveLength(0);
+    expect(client.peekPage("100")?.storage).toContain("Backup rename save");
+    client.bumpVersion("100", `${client.peekPage("100")!.storage}<p>External kernel refresh 🐴</p>`);
+    clockOffset += 61000; // Expire core metadata naturally; keep real kernel caching.
+    let refreshed = await readFile(path);
+    const refreshDeadline = Date.now() + 5000;
+    while (!refreshed.includes("External kernel refresh") && Date.now() < refreshDeadline) {
+      await Bun.sleep(100); refreshed = await readFile(path);
+    }
+    expect(refreshed.toString()).toContain("External kernel refresh 🐴");
+    expect((await stat(path)).size).toBe(refreshed.byteLength);
+    expect(journal!.pendingIds()).toEqual([]);
+    const newPath = join(mountpoint, "newpage.md");
+    const vim = ["vim", "-u", "NONE", "-U", "NONE", "-i", "NONE", "-n", "-es", newPath];
+    expect(await runMountCommand([...vim, "-c", "call setline(1, 'Plain first 🐴')", "-c", "wq"])).toBe(0);
+    const createDeadline = Date.now() + 5000;
+    while (!journal!.promotion("/DOCSY/newpage.md") && Date.now() < createDeadline) await Bun.sleep(50);
+    const createdId = journal!.promotion("/DOCSY/newpage.md")?.pageId;
+    expect(createdId).toBeDefined();
+    expect(client.peekPage(createdId!)?.storage).toContain("Plain first");
+    expect(await runMountCommand([...vim, "-c", "set backup writebackup backupcopy=no", "-c", "call setline(1, 'Plain second 🐴')", "-c", "wq"])).toBe(0);
+    const saveDeadline = Date.now() + 5000;
+    while (client.peekPage(createdId!)?.version !== 2 && Date.now() < saveDeadline) await Bun.sleep(50);
+    expect(client.peekPage(createdId!)?.version).toBe(2);
+    expect(client.peekPage(createdId!)?.storage).toContain("Plain second");
+    expect(client.callsTo("createPage")).toBe(1);
+
+    const empty = await open(join(mountpoint, "empty.md"), "wx");
+    await empty.close();
+    const emptyDeadline = Date.now() + 5000;
+    while (!journal!.promotion("/DOCSY/empty.md") && Date.now() < emptyDeadline) await Bun.sleep(50);
+    const emptyId = journal!.promotion("/DOCSY/empty.md")?.pageId;
+    expect(emptyId).toBeDefined();
+    expect(client.peekPage(emptyId!)?.title).toBe("Empty");
+    expect(client.callsTo("createPage")).toBe(2);
+    await unlink(join(mountpoint, "empty.md"));
+    expect(client.isTrashed(emptyId!)).toBe(true);
+    expect(journal!.trashIntent(emptyId!)?.completed).toBe(1);
+    expect(client.callsTo("deletePage")).toBe(1);
+
+    const reused = await open(join(mountpoint, "empty.md"), "wx");
+    await reused.close();
+    const reuseDeadline = Date.now() + 5000;
+    while (!journal!.promotion("/DOCSY/empty.md") && Date.now() < reuseDeadline) await Bun.sleep(50);
+    const reusedId = journal!.promotion("/DOCSY/empty.md")?.pageId;
+    expect(reusedId).toBeDefined();
+    expect(reusedId).not.toBe(emptyId);
+    expect(client.callsTo("createPage")).toBe(3);
+
+    const retitledDirectory = join(mountpoint, "child-31-431", "retitled-430");
+    const retitleDescriptor = await open(join(movedDirectory, "_index.md"), "r");
+    try {
+      await rename(movedDirectory, retitledDirectory);
+      expect(client.peekPage("430")?.title).toBe("Retitled");
+      expect((await retitleDescriptor.readFile()).toString()).toContain("Test");
+      expect((await readFile(join(retitledDirectory, "_index.md"))).toString()).toContain("Test");
+      await expect(stat(movedDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await retitleDescriptor.close(); }
+    const combinedDirectory = join(mountpoint, "combined-430");
+    await rename(retitledDirectory, combinedDirectory);
+    expect(client.peekPage("430")?.title).toBe("Combined");
+    expect(client.peekPage("430")?.parentId).toBe("100");
+    expect((await readFile(join(combinedDirectory, "_index.md"))).toString()).toContain("Test");
+    await expect(stat(retitledDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const pageDirectory = join(mountpoint, "native-directory");
+    await mkdir(pageDirectory, { mode: 0o700 });
+    const directoryDescriptor = await open(pageDirectory, "r");
+    const bodyDescriptor = await open(join(pageDirectory, "_index.md"), "r+");
+    try {
+      const directoryInode = (await directoryDescriptor.stat()).ino;
+      const bodyInode = (await bodyDescriptor.stat()).ino;
+      expect(directoryInode).not.toBe(bodyInode);
+      await bodyDescriptor.truncate(0);
+      await bodyDescriptor.writeFile("Native directory Grüße 🐴");
+      await bodyDescriptor.sync();
+      const child = await open(join(pageDirectory, "native-child.md"), "wx");
+      try { await child.writeFile("Native child preserved"); await child.sync(); }
+      finally { await child.close(); }
+      const deadline = Date.now() + 5000;
+      while ((journal!.writeStatus().pendingPages || !journal!.promotion("/DOCSY/native-directory")) && Date.now() < deadline) await Bun.sleep(50);
+      expect(journal!.writeStatus().pendingPages).toBe(0);
+      const pageId = journal!.promotion("/DOCSY/native-directory")!.pageId;
+      const canonicalDirectory = join(mountpoint, "native-directory-" + pageId);
+      expect((await directoryDescriptor.stat()).isDirectory()).toBe(true);
+      expect((await directoryDescriptor.stat()).ino).toBe(directoryInode);
+      expect((await stat(canonicalDirectory)).ino).toBe(directoryInode);
+      expect((await bodyDescriptor.stat()).ino).toBe(bodyInode);
+      expect((await stat(join(canonicalDirectory, "_index.md"))).ino).toBe(bodyInode);
+      expect((await readFile(join(pageDirectory, "_index.md"))).toString()).toContain("Native directory Grüße 🐴");
+      expect(client.peekPage(pageId)?.storage).toContain("Native directory Grüße 🐴");
+      const children = await client.findPagesByTitle("Native Child", { spaceKey: "DOCSY" });
+      expect(children).toHaveLength(1);
+      expect(client.peekPage(children[0]!.id)?.parentId).toBe(pageId);
+      expect(client.peekPage(children[0]!.id)?.storage).toContain("Native child preserved");
+      expect(client.callsTo("createPage")).toBe(5);
+    } finally { await bodyDescriptor.close(); await directoryDescriptor.close(); }
+
+    const removedDirectory = join(mountpoint, "child-0-400");
+    // Generated views remain read-only, even with deletion enabled. rm -r can
+    // fail on those views after/before _index.md has already trashed the page.
+    // -f avoids GNU rm's protection prompts when stdin is not a terminal;
+    // server-side read-only views still reject deletion.
+    const deletesBefore = client.callsTo("deletePage");
+    const removal = await promisify(execFile)("rm", ["-rf", removedDirectory],
+      { timeout: 5000, env: { ...process.env, LC_ALL: "C" } }).then(() => null,
+        error => error as { code: number; stderr: string });
+    expect(removal?.code).toBe(1);
+    expect(removal?.stderr).toContain("Read-only file system");
+    // Recursive removal may stop before reaching the body. The supported
+    // targeted operation must still work, without a second remote DELETE.
+    if (!client.isTrashed("400")) {
+      expect((await readFile(join(removedDirectory, "_index.md"))).toString()).toContain("Test");
+      await unlink(join(removedDirectory, "_index.md"));
+    }
+    expect(client.isTrashed("400")).toBe(true);
+    expect(client.callsTo("deletePage")).toBe(deletesBefore + 1);
+    expect(journal!.trashIntent("400")?.completed).toBe(1);
+    await expect(stat(removedDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+    }, 30000);
+
+  for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [
+    { spaces: ["DOCSY"], attachments: false },
+    { spaces: ["DOCSY", "mayflower"], attachments: false },
+    { spaces: ["DOCSY"], attachments: true },
+    { spaces: ["DOCSY"], attachments: false, visibility: true },
+    { spaces: ["DOCSY"], attachments: false, mutation: true },
+    { spaces: ["DOCSY"], attachments: false, glow: true },
+    { spaces: ["DOCSY", "mayflower"], attachments: false, snapshot: true },
+  ]) {
+    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1" || (glow && !process.env.ATLCLI_NFS_GLOW))(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""}${visibility ? "; external changes" : ""}${mutation ? "; directory mutation" : ""}${glow ? "; Glow" : ""}${snapshot ? "; snapshot" : ""})`, async () => {
+      let clock = Date.now();
+      const { server, vfs, client } = await fixture(spaces, attachments || visibility || mutation || glow || snapshot ? false : undefined,
+        visibility || mutation || snapshot ? () => clock : undefined);
+      if (snapshot) client.seedPage({ id: "400", title: "Child 0", spaceKey: "DOCSY", parentId: "100",
+        storage: `<p>${"Historical Grüße 🐴. ".repeat(2000)}</p>` });
+      if (mutation) {
+        client.seedPage({ id: "9000", title: "Mutation", spaceKey: "DOCSY", parentId: "100", storage: "<p>Directory</p>" });
+        for (let i = 1; i <= 600; i++) client.seedPage({ id: String(9000 + i), title: `Item ${i}`,
+          spaceKey: "DOCSY", parentId: "9000", storage: "<p>Child</p>" });
+      }
+      const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-kernel-"));
+      let mounted = false;
+      cleanups.push(async () => {
+        if (mounted) {
+          const command = platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint];
+          let status = await runMountCommand(command);
+          // Linux can retain a just-closed read briefly; never force or lazily detach.
+          for (let attempt = 0; status !== 0 && attempt < 10; attempt++) {
+            await Bun.sleep(100);
+            status = await runMountCommand(command);
+          }
+          if (status !== 0) throw new Error(`Test mount remains attached: ${mountpoint}`);
+        }
+        rmSync(mountpoint, { recursive: true, force: true });
+      });
+      const options = nfsMountOptionsFor(platform(), server.port);
+      const command = platform() === "linux"
+        ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", mountpoint]
+        : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint];
+      expect(await runMountCommand(command)).toBe(0);
+      mounted = true;
+      if (spaces.length > 1) {
+        const directory = await opendir(mountpoint);
+        const names: string[] = [];
+        for await (const entry of directory) names.push(entry.name);
+        expect(names.sort()).toEqual([...INDEXER_SHIELDS, ...SHIELD_DIRECTORIES, "DOCSY", "mayflower"].sort());
+      }
+      const marker = await open(join(mountpoint, ".metadata_never_index"), "r");
+      try { expect((await marker.readFile()).length).toBe(0); }
+      finally { await marker.close(); }
+      const events = await opendir(join(mountpoint, ".fseventsd"));
+      const eventNames: string[] = [];
+      for await (const entry of events) eventNames.push(entry.name);
+      expect(eventNames).toEqual([]);
+      const bodyPath = join(mountpoint, ...(spaces.length > 1 ? ["DOCSY"] : []), "_index.md");
+      const file = await open(bodyPath, "r");
+      try {
+        expect(await file.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md")));
+      } finally { await file.close(); }
+      if (snapshot) {
+        const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/child-0-400/.versions/1.md"));
+        const historical = await open(join(mountpoint, "DOCSY/child-0-400/.versions/1.md"), "r");
+        try {
+          const cut = expected.indexOf(Buffer.from("🐴")) + 1;
+          const first = Buffer.alloc(cut);
+          expect((await historical.read(first, 0, cut, 0)).bytesRead).toBe(cut);
+          client.bumpVersion("400", "<p>New native current body</p>");
+          await client.movePage("400", "300");
+          clock += 60_001;
+          vfs.cache!.forgetPage("400");
+          const rest = Buffer.alloc(expected.length - cut);
+          expect((await historical.read(rest, 0, rest.length, cut)).bytesRead).toBe(rest.length);
+          expect(Buffer.concat([first, rest])).toEqual(expected);
+        } finally { await historical.close(); }
+        const moved = await open(join(mountpoint, "mayflower/child-0-400/.versions/1.md"), "r");
+        try { expect(await moved.readFile()).toEqual(expected); }
+        finally { await moved.close(); }
+      }
+      if (glow) {
+        const probe = await promisify(execFile)("python3", [
+          resolve(import.meta.dir, "../../../../scripts/bench/glow-probe.py"),
+          process.env.ATLCLI_NFS_GLOW!, join(mountpoint, "child-0-400"), "Test",
+        ], { timeout: 20_000 });
+        const timing = JSON.parse(probe.stdout);
+        expect(timing.listingMs).toBeLessThan(15_000);
+        expect(timing.renderMs).toBeLessThan(15_000);
+        console.error(`Glow native listing ${timing.listingMs.toFixed(1)}ms; selected view ${timing.renderMs.toFixed(1)}ms`);
+      }
+      if (mutation) {
+        const started = performance.now();
+        const path = join(mountpoint, "mutation-9000");
+        const before = (await vfs.readdir("/DOCSY/mutation-9000")).map(entry => entry.name).sort();
+        const cursor = await opendir(path, { bufferSize: 1 });
+        const seen: string[] = [];
+        let restart = false;
+        try {
+          const first = await cursor.read();
+          expect(first).not.toBeNull();
+          seen.push(first!.name);
+          await client.deletePage("9500");
+          await client.updatePage({ id: "9501", title: "Renamed", storage: "<p>Child</p>", version: 2 });
+          client.seedPage({ id: "9999", title: "Inserted", spaceKey: "DOCSY", parentId: "9000", storage: "<p>New</p>" });
+          clock += 60_001;
+          try {
+            for (;;) {
+              const entry = await cursor.read();
+              if (!entry) break;
+              seen.push(entry.name);
+              expect(seen.length).toBeLessThan(1300);
+            }
+          } catch (error) {
+            if (!["EIO", "EINVAL", "ESTALE"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+            restart = true; // A changed cookie may require a caller to restart.
+          }
+        } finally { await cursor.close(); }
+        if (!restart) {
+          expect(new Set(seen).size).toBe(seen.length);
+          const stable = (names: string[]) => names.filter(name =>
+            !["item-500-9500", "item-501-9501", "renamed-9501", "inserted-9999"].includes(name)).sort();
+          expect(stable(seen)).toEqual(stable(before));
+        }
+        const drained = performance.now();
+        const expected = before.filter(name => !["item-500-9500", "item-501-9501"].includes(name))
+          .concat("renamed-9501", "inserted-9999").sort();
+        let after: string[] = [];
+        const deadline = performance.now() + 5000;
+        do {
+          after = [];
+          for await (const entry of await opendir(path)) after.push(entry.name);
+          after.sort();
+          if (JSON.stringify(after) === JSON.stringify(expected)) break;
+          await Bun.sleep(100);
+        } while (performance.now() < deadline);
+        expect(after).toEqual(expected);
+        const freshMs = performance.now() - drained;
+        expect(freshMs).toBeLessThan(5000);
+        console.error(`Directory mutation: initial cursor ${(drained - started).toFixed(1)}ms; fresh listing ${freshMs.toFixed(1)}ms; restarted=${restart}`);
+      }
+      if (visibility) {
+        const missing = join(mountpoint, "new-page-999", "_index.md");
+        await expect(stat(missing)).rejects.toMatchObject({ code: "ENOENT" });
+        await client.updatePage({ id: "100", title: "Home", storage: "<p>Externally updated Grüße 🐴</p>", version: 2 });
+        client.seedPage({ id: "999", title: "New Page", spaceKey: "DOCSY", parentId: "100", storage: "<p>New</p>" });
+        // Move only the core clock past its production TTL. Kernel time is real;
+        // do not force-refresh the index or flush OS caches.
+        clock += 60_001;
+        const started = performance.now();
+        let updated = false;
+        let created = false;
+        while (performance.now() - started < 5000) {
+          const current = await open(bodyPath, "r");
+          try {
+            const bytes = await current.readFile();
+            updated = bytes.toString().includes("Externally updated Grüße 🐴");
+          } finally { await current.close(); }
+          try { created = (await stat(missing)).isFile(); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+          if (updated && created) break;
+          await Bun.sleep(100);
+        }
+        expect(updated).toBe(true);
+        expect(created).toBe(true);
+        const refreshed = await open(bodyPath, "r");
+        try { expect(await refreshed.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md"))); }
+        finally { await refreshed.close(); }
+
+        const commentsPath = join(mountpoint, ".comments.md");
+        const seedComment = (body: string) => client.seedComments("100", {
+          pageId: "100", lastSynced: "2026-09-17T00:00:00Z", inlineComments: [],
+          footerComments: [{ id: "c1", author: { displayName: "Ada" },
+            created: "2026-09-17T00:00:00Z", body, status: "open", replies: [] }],
+        });
+        seedComment("<p>Comment A</p>");
+        const readComments = async () => {
+          const file = await open(commentsPath, "r");
+          try { return await file.readFile(); }
+          finally { await file.close(); }
+        };
+        const originalComments = await readComments();
+        expect(originalComments.toString()).toContain("Comment A");
+        const beforeComments = await stat(commentsPath);
+        const pageVersion = (await client.getPageVersions(["100"])).get("100")!.version;
+        seedComment("<p>Comment B</p>");
+        clock += 60_001;
+        const expectedComments = Buffer.from(originalComments.toString().replace("Comment A", "Comment B"));
+        expect(expectedComments.length).toBe(originalComments.length);
+        const commentStarted = performance.now();
+        let actualComments = originalComments;
+        while (performance.now() - commentStarted < 5000) {
+          actualComments = await readComments();
+          if (actualComments.equals(expectedComments)) break;
+          await Bun.sleep(100);
+        }
+        expect(actualComments).toEqual(expectedComments);
+        expect((await stat(commentsPath)).mtimeMs).toBeGreaterThan(beforeComments.mtimeMs);
+        expect((await client.getPageVersions(["100"])).get("100")!.version).toBe(pageVersion);
+      }
+      await assertNativeLocks(bodyPath);
+      if (attachments) {
+        const attachment = join(mountpoint, "_attachments", "large.bin");
+        const directory = await opendir(join(mountpoint, "_attachments"));
+        const names: string[] = [];
+        for await (const entry of directory) names.push(entry.name);
+        expect(names).toEqual(["large.bin"]);
+        expect((await stat(attachment)).size).toBe(attachmentBytes.length);
+        expect(client.callsTo("downloadAttachment")).toBe(0);
+        for (let pass = 0; pass < 2; pass++) {
+          const opened = await open(attachment, "r");
+          try { expect(await opened.readFile()).toEqual(attachmentBytes); }
+          finally { await opened.close(); }
+        }
+        expect(client.callsTo("downloadAttachment")).toBe(1);
+      }
+    }, 30000);
+  }
+});

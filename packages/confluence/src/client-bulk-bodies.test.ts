@@ -45,7 +45,7 @@ beforeAll(() => {
           id,
           title: `Page ${id}`,
           parentId: "100",
-          version: { number: Number(id) % 10 },
+          version: { number: Number(id) % 10, createdAt: "2026-09-17T12:34:56Z" },
           ...(withBody ? { body: { storage: { value: `<p>body of ${id}</p>` } } } : {}),
           _links: { webui: `/spaces/DOCSY/pages/${id}` },
         })),
@@ -81,6 +81,7 @@ describe("getPagesBulk", () => {
 
     expect(pages.map((p) => p.id)).toEqual(["101", "102", "103"]);
     expect(pages[0]!.storage).toBe("<p>body of 101</p>");
+    expect(pages[0]!.lastModified).toBe("2026-09-17T12:34:56Z");
     expect(recorded).toHaveLength(1);
     expect(recorded[0]!.query.get("id")).toBe("101,102,103");
     expect(recorded[0]!.query.get("body-format")).toBe("storage");

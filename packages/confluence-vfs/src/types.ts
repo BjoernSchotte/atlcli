@@ -45,6 +45,8 @@ export interface VfsNode {
 
 /** The subset of `fs.Stats` the frontends need. */
 export interface VfsStat {
+  /** Current basename for real content directories; avoids resolving metadata twice in mounts. */
+  canonicalName?: string;
   kind: VfsNodeKind;
   isDirectory: boolean;
   isFile: boolean;
@@ -62,6 +64,8 @@ export interface VfsStat {
 /** One entry of a `readdir`, carrying enough type information to skip a `stat`. */
 export interface VfsDirent {
   name: string;
+  /** Stable backend identity when supplied by the listing (currently attachments). */
+  id?: string;
   kind: VfsNodeKind;
   isDirectory: boolean;
   isFile: boolean;

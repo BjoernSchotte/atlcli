@@ -75,7 +75,8 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function runScheduled(): void {
+function runScheduled(advanceMs = 500): void {
+  clock += advanceMs;
   const due = scheduled;
   scheduled = [];
   for (const fn of due) fn();
@@ -127,6 +128,32 @@ describe("mode guard on every route", () => {
 });
 
 describe("update", () => {
+  it("does not version identical plain saves through the creation alias and canonical path", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      const alias = "/DOCSY/repeated-save.md";
+      const created = await vfs.writeFile(alias, "Repeated save 🐴\n");
+      const canonical = `/DOCSY/repeated-save-${created.pageId}/_index.md`;
+      const bodyReads = client.callsTo("getPage");
+      const results = await Promise.all([
+        vfs.writeFile(alias, "Repeated save 🐴\n"),
+        vfs.writeFile(canonical, "Repeated save 🐴\n"),
+      ]);
+      expect(results.map(result => result.version)).toEqual([1, 1]);
+      expect(client.callsTo("getPage")).toBe(bodyReads);
+      expect(client.callsTo("updatePage")).toBe(0);
+      expect(client.callsTo("createPage")).toBe(1);
+      const changed = await vfs.writeFile(alias, "Changed save 🐴\n");
+      expect(changed.version).toBe(2);
+      expect(client.callsTo("updatePage")).toBe(1);
+      const current = await vfs.readFile(canonical);
+      const renamed = await vfs.writeFile(alias, current.replace('title: "Repeated Save"', 'title: "Renamed"'));
+      expect(renamed.version).toBe(3);
+      expect(client.peekPage(created.pageId)?.title).toBe("Renamed");
+    } finally { await vfs.close(); }
+  });
+
   it("writes a changed body back at version + 1", async () => {
     const client = seeded();
     const vfs = await openVfs(client);
@@ -287,6 +314,42 @@ describe("conflicts", () => {
     await readOnly.close();
   });
 
+  it("reconciles a successful PUT followed by a lost reply and retry conflict", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const update = client.updatePage.bind(client);
+    client.updatePage = async params => {
+      await update({ ...params, storage: params.storage.trim() });
+      // The transport retries the same version after losing the success reply.
+      return update(params);
+    };
+    const result = await vfs.writeFile("/DOCSY/getting-started-101.md", original.replace("CLI", "tool"));
+    expect(result.version).toBe(2);
+    expect(client.peekPage("101")?.version).toBe(2);
+    expect(client.callsTo("updatePage")).toBe(2);
+    expect(await vfs.readFile("/DOCSY/getting-started-101.md")).toContain("tool");
+    expect(vfs.conflicts!.list()).toHaveLength(0);
+    await vfs.close();
+  });
+
+  it("reconciles stale replay without a cached merge base but never discards title changes", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const edited = original.replace("CLI", "tool");
+    await vfs.writeFile("/DOCSY/getting-started-101.md", edited);
+    vfs.cache!.forgetPage("101");
+    client.resetCalls();
+    expect((await vfs.writeFile("/DOCSY/getting-started-101.md", edited)).version).toBe(2);
+    expect(client.callsTo("updatePage")).toBe(0);
+    // Equality must include the title, not only the body.
+    await expect(vfs.writeFile("/DOCSY/getting-started-101.md",
+      edited.replace('title: "Getting Started"', 'title: "Changed"'))).rejects.toMatchObject({ code: "EBUSY" });
+    expect(client.peekPage("101")?.title).toBe("Getting Started");
+    await vfs.close();
+  });
+
   it("handles a 409 the server raised after our check", async () => {
     const client = seeded();
     const vfs = await openVfs(client);
@@ -407,6 +470,129 @@ describe("mkdir", () => {
 });
 
 describe("rename and move", () => {
+  it("protects the space homepage from namespace mutations while allowing body edits", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      await expect(vfs.rename("/DOCSY/_index.md", "/DOCSY/architecture-102/home-100"))
+        .rejects.toMatchObject({ code: "EROFS" });
+      await expect(vfs.rm("/DOCSY/_index.md", { recursive: true }))
+        .rejects.toMatchObject({ code: "EROFS" });
+      expect(client.callsTo("movePage")).toBe(0);
+      expect(client.callsTo("updatePage")).toBe(0);
+      expect(client.callsTo("deletePage")).toBe(0);
+      const homepage = await vfs.readFile("/DOCSY/_index.md");
+      await vfs.writeFile("/DOCSY/_index.md", `${homepage}\nUpdated homepage\n`);
+      expect(client.peekPage("100")?.storage).toContain("Updated homepage");
+    } finally { await vfs.close(); }
+  });
+
+  it.each(["API Design", "Über Grüße: 日本語!", "release_v2.0"])("preserves exact title %s when moving the canonical directory name", async title => {
+    const client = seeded().seedPage({ id: "101", title, spaceKey: "DOCSY", parentId: "100", storage: "<p>Body</p>" });
+    const vfs = await openVfs(client);
+    try {
+      const body = await vfs.readlink("/DOCSY/.by-id/101.md");
+      const source = body.slice(0, -"/_index.md".length);
+      await vfs.rename(source, `/DOCSY/architecture-102/${source.split("/").at(-1)}`);
+      expect(client.peekPage("101")?.title).toBe(title);
+      expect(client.peekPage("101")?.parentId).toBe("102");
+      expect(client.callsTo("updatePage")).toBe(0);
+      expect(client.callsTo("getPage")).toBe(0);
+      expect(client.callsTo("movePage")).toBe(1);
+    } finally { await vfs.close(); }
+  });
+
+  it("rejects unsupported folder retitles before moving or updating remote content", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      for (const target of ["/DOCSY/new-runbooks-104", "/DOCSY/architecture-102/new-runbooks-104"]) {
+        await expect(vfs.rename("/DOCSY/runbooks-104", target)).rejects.toMatchObject({ code: "EROFS" });
+      }
+      expect(client.callsTo("updatePage")).toBe(0);
+      expect(client.callsTo("getPage")).toBe(0);
+      expect(client.callsTo("movePage")).toBe(0);
+      expect(client.peekPage("104")?.title).toBe("Runbooks");
+      expect(client.peekPage("104")?.parentId).toBe("100");
+    } finally { await vfs.close(); }
+  });
+
+  it("guards journaled moves against changed identities and freshly changed parents", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const source = "/DOCSY/getting-started-101", target = "/DOCSY/architecture-102/getting-started-101";
+    const expected = { id: "101", spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "102" };
+    try {
+      await vfs.stat(source);
+      await expect(vfs.rename(source, target, { ...expected, id: "103" })).rejects.toMatchObject({ code: "EBUSY" });
+      await expect(vfs.rename(source, target, { ...expected, targetParentId: "104" })).rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("movePage")).toBe(0);
+      await client.movePage("101", "104");
+      await expect(vfs.rename(source, target, expected)).rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("movePage")).toBe(1);
+      expect(await vfs.confirmMove("101", "DOCSY", "102", "Getting Started")).toBe(false);
+      expect(await vfs.confirmMove("101", "DOCSY", "104", "Wrong title")).toBe(false);
+      expect(await vfs.confirmMove("101", "DOCSY", "104", "Getting Started")).toBe(true);
+      expect(client.callsTo("getPage")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
+  it("requires the recorded destination space for a guarded cross-space move", async () => {
+    const client = seeded().seedSpace({ id: "sp-2", key: "OTHER", name: "Other", homepageId: "200" })
+      .seedPage({ id: "200", title: "Other Home", spaceKey: "OTHER", storage: "<p>Home</p>" });
+    const vfs = await openVfs(client);
+    const expected = { id: "101", spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "200" };
+    try {
+      await expect(vfs.rename("/DOCSY/getting-started-101", "/OTHER/getting-started-101", expected))
+        .rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("movePageToPosition")).toBe(0);
+      await vfs.rename("/DOCSY/getting-started-101", "/OTHER/getting-started-101", { ...expected, targetSpaceKey: "OTHER" });
+      expect(await vfs.confirmMove("101", "OTHER", "200", "Getting Started")).toBe(true);
+      expect(client.callsTo("movePageToPosition")).toBe(1);
+    } finally { await vfs.close(); }
+  });
+
+  it("uses folder metadata and the positional endpoint for guarded folder moves", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const source = "/DOCSY/runbooks-104", target = "/DOCSY/architecture-102/runbooks-104";
+    const expected = { id: "104", spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "102", kind: "folder" as const };
+    const getFolder = client.getFolder.bind(client);
+    try {
+      await vfs.stat(source);
+      client.getFolder = async id => ({ ...await getFolder(id), spaceId: "outside-export" });
+      await expect(vfs.rename(source, target, expected)).rejects.toMatchObject({ code: "EBUSY" });
+      expect(await vfs.confirmMove("104", "DOCSY", "100", "Runbooks", "folder")).toBe(false);
+      expect(client.callsTo("movePageToPosition")).toBe(0);
+      client.getFolder = getFolder;
+      await vfs.rename(source, target, expected);
+      expect(await vfs.confirmMove("104", "DOCSY", "102", "Runbooks", "folder")).toBe(true);
+      expect(client.callsTo("movePageToPosition")).toBe(1);
+      expect(client.callsTo("movePage")).toBe(0);
+      expect(client.callsTo("getPage")).toBe(0);
+      expect((await vfs.resolve(target)).kind).toBe("folder");
+    } finally { await vfs.close(); }
+  });
+
+  it("does not add a version when an in-flight retitle completes before the body fetch", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const read = client.getPage.bind(client);
+    let pending = true;
+    client.getPage = async id => {
+      if (id === "101" && pending) {
+        pending = false;
+        await client.updatePage({ id, title: "Renamed", storage: "<p>Install the CLI.</p>", version: 2 });
+      }
+      return read(id);
+    };
+    try {
+      await vfs.rename("/DOCSY/getting-started-101", "/DOCSY/renamed-101");
+      expect(client.peekPage("101")?.version).toBe(2);
+      expect(client.callsTo("updatePage")).toBe(1);
+    } finally { await vfs.close(); }
+  });
+
   it("retitles inside the same directory", async () => {
     const client = seeded();
     const vfs = await openVfs(client);
@@ -472,6 +658,77 @@ describe("rename and move", () => {
 });
 
 describe("rm", () => {
+  it("confirms only explicit trash inside the selected export", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { spaces: ["DOCSY"] });
+    try {
+      await expect(vfs.confirmTrash("101", "OTHER")).rejects.toMatchObject({ code: "EACCES" });
+      expect(client.callsTo("isPageTrashed")).toBe(0);
+      expect(await vfs.confirmTrash("101", "DOCSY")).toBe(false);
+      await client.deletePage("101");
+      expect(await vfs.confirmTrash("101", "DOCSY")).toBe(true);
+      expect(await vfs.confirmTrash("999", "DOCSY")).toBe(false);
+    } finally { await vfs.close(); }
+  });
+
+  it("binds guarded trash to page identity and space before any mutation", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      const path = "/DOCSY/getting-started-101/_index.md";
+      for (const expected of [{ id: "102", spaceKey: "DOCSY" }, { id: "101", spaceKey: "OTHER" }]) {
+        await expect(vfs.rm(path, { expected })).rejects.toMatchObject({ code: "EBUSY" });
+      }
+      await expect(vfs.rm("/DOCSY/getting-started-101/.comments.md", {
+        expected: { id: "101", spaceKey: "DOCSY" },
+      })).rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("deletePage")).toBe(0);
+      await vfs.rm(path, { expected: { id: "101", spaceKey: "DOCSY" } });
+      expect(client.isTrashed("101")).toBe(true);
+      expect(client.isTrashed("102")).toBe(false);
+      expect(client.peekPage("101")).toBeDefined();
+    } finally { await vfs.close(); }
+  });
+
+  for (const guarded of [false, true]) {
+it(`rejects a stale trash target after an external space move (guarded: ${guarded})`, async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { spaces: ["DOCSY"] });
+    try {
+      const path = "/DOCSY/getting-started-101/_index.md";
+      await vfs.stat(path);
+      client.seedPage({ id: "101", title: "Getting Started", spaceKey: "OTHER", storage: "<p>Moved externally</p>" });
+      await expect(vfs.rm(path, guarded ? { expected: { id: "101", spaceKey: "DOCSY" } } : {}))
+        .rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("deletePage")).toBe(0);
+      expect(client.isTrashed("101")).toBe(false);
+    } finally { await vfs.close(); }
+  });
+}
+
+  it("does not delete when fresh trash metadata is unavailable", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      const path = "/DOCSY/getting-started-101/_index.md";
+      await vfs.stat(path);
+      client.failNext({ method: "getPageMetadata", match: "101", status: 403, times: 1 });
+      await expect(vfs.rm(path)).rejects.toMatchObject({ code: "EACCES" });
+      expect(client.callsTo("deletePage")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
+  it("retains deletion opt-in for matching expected identities", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { allowDelete: false });
+    try {
+      await expect(vfs.rm("/DOCSY/getting-started-101/_index.md", {
+        expected: { id: "101", spaceKey: "DOCSY" },
+      })).rejects.toMatchObject({ code: "EACCES" });
+      expect(client.callsTo("deletePage")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
   it("sends a page to the trash and never purges it", async () => {
     const client = seeded();
     const vfs = await openVfs(client);
@@ -631,6 +888,61 @@ describe("attachments in rw mode", () => {
 });
 
 describe("write coalescing", () => {
+  it("waits for a full quiet window after the latest save, including aliases", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { coalesceMs: 500 });
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const first = vfs.writeFile("/DOCSY/getting-started-101.md", `${original}first\n`);
+    await settle();
+    clock += 400;
+    const second = vfs.writeFile("/DOCSY/getting-started-101/_index.md", `${original}latest\n`);
+    await settle();
+    runScheduled(100);
+    await settle();
+    expect(client.callsTo("updatePage")).toBe(0);
+    runScheduled(399);
+    await settle();
+    expect(client.callsTo("updatePage")).toBe(0);
+    runScheduled(1);
+    await Promise.all([first, second]);
+    expect(client.callsTo("updatePage")).toBe(1);
+    expect(client.peekPage("101")?.storage).toContain("latest");
+    await vfs.close();
+  });
+
+  for (const coalesceMs of [0, 500]) it(`serializes saves behind an in-flight update and flush waits for all (${coalesceMs}ms)`, async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { coalesceMs });
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const update = client.updatePage.bind(client);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let active = 0, peak = 0, calls = 0;
+    client.updatePage = async params => {
+      calls++; active++; peak = Math.max(peak, active);
+      try { if (calls === 1) await gate; return await update(params); }
+      finally { active--; }
+    };
+    const first = vfs.writeFile("/DOCSY/getting-started-101.md", original.replace('title: "Getting Started"', 'title: "First title"'));
+    await settle(); runScheduled(); await settle();
+    expect(calls).toBe(1);
+    const second = vfs.writeFile("/DOCSY/getting-started-101/_index.md", `${original}saved\n`);
+    const third = vfs.writeFile("/DOCSY/getting-started-101.md", `${original.replace('title: "Getting Started"', 'title: "Retitled"')}saved\n`);
+    await settle(); runScheduled(); await settle();
+    let flushed = false;
+    const flushing = vfs.flush().then(() => { flushed = true; });
+    try {
+      await settle();
+      expect(calls).toBe(1);
+      expect(flushed).toBe(false);
+    } finally { release(); }
+    await Promise.all([first, second, third, flushing]);
+    expect(peak).toBe(1);
+    expect(calls).toBe(coalesceMs === 0 ? 3 : 2);
+    expect(flushed).toBe(true);
+    await vfs.close();
+  });
+
   it("merges several writes to the same file into one update", async () => {
     const client = seeded();
     const vfs = await openVfs(client, { coalesceMs: 500 });
@@ -648,6 +960,26 @@ describe("write coalescing", () => {
     expect(client.callsTo("updatePage")).toBe(1);
     expect(client.peekPage("101")?.version).toBe(2);
     expect(client.peekPage("101")?.storage).toContain("chunk two");
+    await vfs.close();
+  });
+
+  it("continues the serialized queue after a rejected update without hiding its error", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    const original = await vfs.readFile("/DOCSY/getting-started-101.md");
+    const update = client.updatePage.bind(client);
+    let calls = 0;
+    client.updatePage = async params => {
+      if (++calls === 1) throw Object.assign(new Error("denied"), { status: 403 });
+      return update(params);
+    };
+    const failed = vfs.writeFile("/DOCSY/getting-started-101.md", `${original}denied\n`).catch(error => error);
+    const next = vfs.writeFile("/DOCSY/getting-started-101/_index.md", `${original}retry\n`);
+    await settle();
+    await vfs.flush();
+    expect((await failed).code).toBe("EACCES");
+    expect((await next).version).toBe(2);
+    expect(client.peekPage("101")?.storage).toContain("retry");
     await vfs.close();
   });
 
@@ -866,4 +1198,25 @@ describe("Mermaid roundtrip through the shared converter", () => {
     expect(client.callsTo("uploadAttachment")).toBe(0);
     await vfs.close();
   });
+});
+
+
+it("guards create-only publication against occupied paths and changed parent/export identities", async () => {
+  const client = seeded();
+  const vfs = await openVfs(client);
+  const condition = { createOnly: true as const, spaceKey: "DOCSY", parentId: "100" };
+  try {
+    await expect(vfs.writeFile("/DOCSY/_index.md", "Replacement", condition)).rejects.toMatchObject({ code: "EEXIST" });
+    await expect(vfs.writeFile("/DOCSY/new.md", "New", { ...condition, parentId: "102" })).rejects.toMatchObject({ code: "EBUSY" });
+    await expect(vfs.writeFile("/DOCSY/new.md", "New", { ...condition, spaceKey: "OTHER" })).rejects.toMatchObject({ code: "EBUSY" });
+    await expect(vfs.writeFile("/DOCSY/new.md", await vfs.readFile("/DOCSY/_index.md"), condition)).rejects.toMatchObject({ code: "EINVAL" });
+    expect(client.callsTo("createPage")).toBe(0);
+    expect(client.callsTo("updatePage")).toBe(0);
+    const created = await vfs.writeFile("/DOCSY/new.md", "New page", condition);
+    expect(created.created).toBe(true);
+    expect(client.peekPage(created.pageId)?.parentId).toBe("100");
+    await expect(vfs.writeFile("/DOCSY/new.md", "Replay must not update", condition)).rejects.toMatchObject({ code: "EEXIST" });
+    expect(client.callsTo("createPage")).toBe(1);
+    expect(client.callsTo("updatePage")).toBe(0);
+  } finally { await vfs.close(); }
 });

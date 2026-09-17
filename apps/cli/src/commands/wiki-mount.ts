@@ -11,11 +11,11 @@
  * fstab entry, and a CLI that silently asks for a password to mount a
  * filesystem is a CLI nobody should trust. So it prints the command.
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   ERROR_CODES,
   fail,
@@ -31,6 +31,10 @@ import {
 import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl, type VfsMode } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
+
+import { quote, findNfsHelper, nfsMountCommandFor, parseMountTransport, type MountTransport } from "../vfs/mount-transport.js";
+
+export const DAVFS_MOUNT_CONFIG = "delay_upload 0\n";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -53,6 +57,12 @@ const DEFAULT_CACHE_DIR = join(homedir(), ".atlcli", "vfs");
 export interface MountRecord {
   mountpoint: string;
   url: string;
+  transport?: MountTransport;
+  helperPid?: number;
+  helperIdentity?: string;
+  processIdentity?: string;
+  status?: "listening" | "mounted" | "orphaned";
+  serverAlive?: boolean;
   port: number;
   pid: number;
   spaces: string[];
@@ -75,12 +85,14 @@ export function mountCommandFor(
   url: string,
   mountpoint: string,
   volumeName: string,
+  mode: VfsMode = "ro",
+  davfsConfig?: string,
 ): { run: string[] } | { instructions: string } {
   switch (os) {
     case "darwin":
       // -S suppresses the authentication dialog, which would otherwise appear
       // for a server that needs no authentication.
-      return { run: ["mount_webdav", "-S", "-v", volumeName, url, mountpoint] };
+      return { run: ["mount_webdav", "-S", ...(mode === "ro" ? ["-o", "rdonly"] : []), "-v", volumeName, url, mountpoint] };
     case "win32":
       return { run: ["net", "use", mountpoint, url] };
     default:
@@ -88,9 +100,11 @@ export function mountCommandFor(
         instructions:
           `Linux needs davfs2 and root to attach a WebDAV volume, so atlcli will not do it for you.\n` +
           `The server is running. Mount it with:\n\n` +
-          `    sudo mount -t davfs ${url} ${mountpoint}\n\n` +
+          `    sudo mount -t davfs -o ${davfsConfig ? quote(`${mode},conf=${davfsConfig}`) : mode} ${quote(url)} ${quote(mountpoint)}\n\n` +
+          (davfsConfig ? `The supplied mount-specific config disables davfs2's upload delay; atlcli retains its configured save buffering (500 ms by default).\n\n` :
+            `For prompt saves, set delay_upload 0 in the davfs2 configuration used by this mount.\n\n`) +
           `Or add an fstab entry so it can be mounted without sudo:\n\n` +
-          `    ${url} ${mountpoint} davfs user,noauto,rw 0 0\n`,
+          `    ${url} ${mountpoint.replaceAll(" ", "\\040")} davfs user,noauto,${mode}${davfsConfig ? `,conf=${davfsConfig.replaceAll(" ", "\\040")}` : ""} 0 0\n`,
       };
   }
 }
@@ -128,8 +142,11 @@ async function detachVolume(os: NodeJS.Platform, mountpoint: string): Promise<bo
     process.stderr.write(`atlcli: could not unmount ${mountpoint}; server stays running. Close files and leave the mount directory, then retry Ctrl-C, or run sudo umount manually.\n`);
     return false;
   }
+  if (os === "darwin" && !isMounted(mountpoint)) return true;
   const command = unmountCommandFor(os, mountpoint);
-  return "run" in command && await runMountCommand(command.run, true) === 0;
+  const detached = "run" in command && await runMountCommand(command.run, true) === 0;
+  if (!detached) process.stderr.write(`atlcli: could not unmount ${mountpoint}; server stays running. Close files and leave the mount directory, then retry Ctrl-C.\n`);
+  return detached;
 }
 
 export async function handleWikiMount(
@@ -142,6 +159,17 @@ export async function handleWikiMount(
     return;
   }
   const [first, ...rest] = args;
+  if (first === "recovery") {
+    if (!rest[0] || rest.length !== 1 || ["id", "output", "image"].some(key => flags[key] !== undefined && (typeof flags[key] !== "string" || !flags[key]))) {
+      fail(opts, 2, ERROR_CODES.VALIDATION, "Use recovery <journal.sqlite>; --id, --output and --image require single nonempty values.", {});
+      return;
+    }
+    try {
+      const { recoverNfsJournal } = await import("../vfs/nfs-recovery.js");
+      output(recoverNfsJournal(rest[0], { id: getFlag(flags, "id"), output: getFlag(flags, "output"), image: getFlag(flags, "image") }), opts);
+    } catch (error) { fail(opts, 2, ERROR_CODES.VALIDATION, (error as Error).message, {}); }
+    return;
+  }
   if (first === "list" || first === "status") {
     await handleList(flags, opts);
     return;
@@ -162,6 +190,26 @@ async function handleMount(
     fail(opts, 2, ERROR_CODES.VALIDATION, "Pass a mountpoint: atlcli wiki mount <path>", {});
     return;
   }
+
+  let transport: MountTransport;
+  let portFlag: number;
+  try {
+    transport = parseMountTransport(flags.transport, platform());
+    if (flags.mode !== undefined && flags.mode !== "ro" && flags.mode !== "rw") {
+      throw new Error("Use --mode ro|rw");
+    }
+    if (flags.port !== undefined && (typeof flags.port !== "string" || !/^[0-9]+$/.test(flags.port))) {
+      throw new Error("Use --port with an integer from 0 to 65535");
+    }
+    portFlag = Number(flags.port ?? 0);
+    if (!Number.isInteger(portFlag) || portFlag > 65535) {
+      throw new Error("Use --port with an integer from 0 to 65535");
+    }
+    if (transport === "nfs" && hasFlag(flags, "sync-writes")) {
+      throw new Error("NFS does not support --sync-writes: WRITE/COMMIT persist locally; Confluence publication follows the quiet window.");
+    }
+  }
+  catch (error) { fail(opts, 2, ERROR_CODES.VALIDATION, (error as Error).message, {}); return; }
 
   const config = await loadConfig();
   const profile = getActiveProfile(config, getFlag(flags, "profile"));
@@ -186,7 +234,16 @@ async function handleMount(
   const mode: VfsMode =
     modeFlag === "rw" ? "rw" : modeFlag === "ro" ? "ro" : (vfsConfig.mode ?? "ro");
   const cacheDir = getFlag(flags, "cache-dir") ?? vfsConfig.cacheDir ?? DEFAULT_CACHE_DIR;
-  const portFlag = Number(getFlag(flags, "port") ?? 0);
+
+  let helperPath: string | undefined;
+  if (transport === "nfs") {
+    try { helperPath = findNfsHelper(); }
+    catch (error) { fail(opts, 2, ERROR_CODES.VALIDATION, (error as Error).message, {}); return; }
+    if (!Bun.which(platform() === "darwin" ? "mount_nfs" : "mount.nfs")) {
+      fail(opts, 2, ERROR_CODES.VALIDATION, "NFS client missing. Install the platform NFS client (nfs-common on Debian/Ubuntu) or use --transport webdav.", {});
+      return;
+    }
+  }
 
   const vfs = await ConfluenceVfsImpl.open({
     profile: profile.name,
@@ -194,73 +251,146 @@ async function handleMount(
     spaces,
     mode,
     allowDelete: hasFlag(flags, "allow-delete"),
-    ...(hasFlag(flags, "sync-writes") ? { coalesceMs: 0 } : {}),
+    // NFS already debounces durable snapshots; do not add a second quiet window.
+    ...(transport === "nfs" || hasFlag(flags, "sync-writes") ? { coalesceMs: 0 } : {}),
     cacheDir,
     offline: false,
   });
 
-  const { startWebdavServer } = await import("../vfs/webdav-server.js");
-  const running = await startWebdavServer({
-    vfs,
-    spaces,
-    port: Number.isFinite(portFlag) && portFlag > 0 ? portFlag : 0,
-    onSweep: (report) => {
-      // Rule 3: a sweep is exactly what the demand principle is defending
-      // against, so it is reported rather than absorbed.
-      process.stderr.write(
-        `atlcli: ${report.reads} file reads in ${report.windowMs / 1000}s without a directory listing — ` +
-          `this looks like a search indexer walking the volume. ` +
-          `Check that .metadata_never_index is honoured, or unmount while indexing.\n`,
-      );
-    },
-  });
+  const onSweep = (report: { reads: number; windowMs: number }) => {
+    process.stderr.write(
+      `atlcli: ${report.reads} distinct file reads in ${report.windowMs / 1000}s without a recent directory listing — ` +
+        `this may be a search indexer walking the volume. ` +
+        `Check that .metadata_never_index is honoured, or unmount while indexing.\n`,
+    );
+  };
+  let journalLocation: { path: string; scope: string } | undefined;
+  let journalPath: string | undefined;
+  let helperPid: number | undefined;
+  let helperExited: Promise<void> | undefined;
+  let restartHelper: (() => Promise<void>) | undefined;
+  let running: { port: number; url: string; stop(): Promise<void> };
+  try {
+    if (transport === "nfs") {
+      const { startNfsServer } = await import("../vfs/nfs-bridge.js");
+      if (vfs.guard.mode === "rw") {
+        const { nfsJournalLocation } = await import("../vfs/nfs-journal.js");
+        if (!vfs.runtime) throw new Error("NFS writes require a verified profile identity");
+        const location = nfsJournalLocation({ ...vfs.runtime, profile: profile.name, spaces });
+        journalPath = location.path;
+        journalLocation = location;
+      }
+      let nfs = await startNfsServer({ vfs, spaces, onSweep, helperPath: helperPath!,
+        port: portFlag, journalLocation });
+      helperPid = nfs.pid;
+      helperExited = nfs.exited;
+      running = { port: nfs.port, url: `nfs://127.0.0.1:${nfs.port}/`, stop: () => nfs.stop() };
+      restartHelper = async () => {
+        await nfs.stop(); // Finish publication and release the owned journal first.
+        nfs = await startNfsServer({ vfs, spaces, onSweep, helperPath: helperPath!,
+          port: running.port, journalLocation });
+        record.helperPid = nfs.pid;
+        record.helperIdentity = processIdentity(nfs.pid);
+        saveMountRecord(cacheDir, record);
+      };
+    } else {
+      const { startWebdavServer } = await import("../vfs/webdav-server.js");
+      running = await startWebdavServer({ vfs, spaces,
+        port: portFlag,
+        onSweep,
+      });
+    }
+  } catch (error) { await vfs.close(); throw error; }
 
-  const mountUrl = mountUrlFor(running.url, spaces);
+  const mountUrl = transport === "nfs" ? running.url : mountUrlFor(running.url, spaces);
   const record: MountRecord = {
     mountpoint,
+    transport,
+    ...(helperPid ? { helperPid, helperIdentity: processIdentity(helperPid) } : {}),
+    status: "listening",
     url: mountUrl,
     port: running.port,
     pid: process.pid,
+    processIdentity: processIdentity(process.pid),
     spaces,
     mode,
     startedAt: new Date().toISOString(),
   };
-  mkdirSync(mountStateDir(cacheDir), { recursive: true });
-  writeFileSync(mountStatePath(cacheDir, mountpoint), JSON.stringify(record, null, 2));
+  try {
+    saveMountRecord(cacheDir, record);
 
-  const attach = mountCommandFor(platform(), mountUrl, mountpoint, `atlcli-${spaces[0]}`);
-  if ("instructions" in attach) {
-    process.stderr.write(attach.instructions);
-  } else {
     mkdirSync(mountpoint, { recursive: true });
-    const status = await runMountCommand(attach.run);
-    if (status !== 0) {
-      process.stderr.write(
-        `atlcli: ${attach.run[0]} exited with ${status ?? "a signal"}. ` +
-          `The server is still running at ${mountUrl}; attach it manually if you prefer.\n`,
-      );
+    let davfsConfig: string | undefined;
+    if (platform() === "linux" && transport === "webdav") {
+      davfsConfig = mountStatePath(cacheDir, mountpoint).replace(/\.json$/, ".davfs.conf");
+      if (/[\n\r,]/.test(davfsConfig)) throw new Error("davfs2 config path cannot contain commas or line breaks");
+      writeFileSync(davfsConfig, DAVFS_MOUNT_CONFIG, { mode: 0o600 });
     }
+    const attach = transport === "nfs" ? nfsMountCommandFor(platform(), running.port, mountpoint, mode)
+      : mountCommandFor(platform(), mountUrl, mountpoint, `atlcli-${spaces[0]}`, mode, davfsConfig);
+    if ("instructions" in attach) {
+      process.stderr.write(attach.instructions);
+    } else {
+      const status = await runMountCommand(attach.run);
+      if (status === 0) record.status = "mounted";
+      if (status !== 0) {
+        process.stderr.write(
+          `atlcli: ${attach.run[0]} exited with ${status ?? "a signal"}. ` +
+            `The server is still running at ${mountUrl}; attach it manually if you prefer.\n`,
+        );
+      }
+    }
+
+    saveMountRecord(cacheDir, record);
+  } catch (error) {
+    if (!isMounted(mountpoint)) { await running.stop(); await vfs.close(); rmSync(mountStatePath(cacheDir, mountpoint), { force: true }); }
+    throw error;
   }
 
   output(
     {
-      mounted: mountpoint,
+      mounted: transport === "webdav" ? mountpoint : (record.status === "mounted" ? mountpoint : null),
+      transport,
+      status: record.status,
+      mountpoint,
       url: mountUrl,
       spaces,
       mode,
       allowDelete: hasFlag(flags, "allow-delete"),
+      ...(journalPath ? { journalPath } : {}),
       note: "Press Ctrl-C to unmount and stop the server.",
     },
     opts,
   );
 
-  await waitForShutdown(async () => {
+  let stopping = false;
+  let recovery: Promise<void> | undefined;
+  const shutdown = waitForShutdown(async () => {
+    await recovery;
     if (!await detachVolume(platform(), mountpoint)) return false;
+    // Helper death may race an already-running detach; drain that restart too.
+    await recovery;
+    stopping = true;
     await running.stop();
     await vfs.close();
     rmSync(mountStatePath(cacheDir, mountpoint), { force: true });
     return true;
   });
+  void helperExited?.then(() => {
+    if (stopping) return;
+    process.exitCode = 1;
+    process.stderr.write("atlcli: NFS helper stopped unexpectedly; restoring its endpoint before normal unmount. Remount after recovery.\n");
+    recovery = (async () => {
+      if (isMounted(mountpoint)) {
+        try { await restartHelper!(); }
+        catch (error) {
+          process.stderr.write(`atlcli: NFS endpoint recovery failed: ${String(error)}. Keep the mount state and journal for recovery.\n`);
+        }
+      }
+    })();
+    void recovery.then(() => { process.emit("SIGTERM"); });
+  });
+  await shutdown;
 }
 
 /**
@@ -299,6 +429,46 @@ async function handleList(flags: Flags, opts: OutputOptions): Promise<void> {
   output(readMounts(cacheDir), opts);
 }
 
+/** The identity must match before a saved PID may be signalled. */
+export function processIdentity(pid: number): string | undefined {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return undefined;
+  try {
+    if (platform() === "linux") {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      return `linux:${stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]}`;
+    }
+    if (platform() === "darwin") {
+      return execFileSync("/bin/ps", ["-p", String(pid), "-o", "lstart=,comm="], { encoding: "utf8" }).trim() || undefined;
+    }
+  } catch { /* A dead or inaccessible process has no proven identity. */ }
+  return undefined;
+}
+
+export function isMounted(mountpoint: string): boolean {
+  if (platform() === "linux") return isLinuxMounted(mountpoint);
+  if (platform() === "darwin") {
+    try {
+      // Do not realpath the mounted directory itself: synchronous NFS lookup
+      // can deadlock against the server running on this same Bun event loop.
+      const absolute = resolve(mountpoint);
+      const canonical = join(realpathSync(dirname(absolute)), basename(absolute));
+      return execFileSync("/sbin/mount", [], { encoding: "utf8" }).split("\n")
+        .some((line) => line.match(/ on (.*) \(/)?.[1] === canonical);
+    } catch { return false; }
+  }
+  return false;
+}
+
+function saveMountRecord(cacheDir: string, record: MountRecord): void {
+  mkdirSync(mountStateDir(cacheDir), { recursive: true, mode: 0o700 });
+  const path = mountStatePath(cacheDir, record.mountpoint);
+  const temporary = `${path}.${process.pid}.tmp`;
+  try {
+    writeFileSync(temporary, JSON.stringify(record, null, 2), { mode: 0o600 });
+    renameSync(temporary, path);
+  } finally { rmSync(temporary, { force: true }); }
+}
+
 /** Active mounts, with records whose process is gone pruned as they are read. */
 export function readMounts(cacheDir: string): MountRecord[] {
   const dir = mountStateDir(cacheDir);
@@ -309,7 +479,13 @@ export function readMounts(cacheDir: string): MountRecord[] {
     const file = join(dir, name);
     try {
       const record = JSON.parse(readFileSync(file, "utf8")) as MountRecord;
-      if (isRunning(record.pid)) records.push(record);
+      record.transport ??= "webdav";
+      const mounted = isMounted(record.mountpoint);
+      const parentAlive = isRunning(record.pid) && (!record.processIdentity || record.processIdentity === processIdentity(record.pid));
+      record.serverAlive = parentAlive && (!record.helperPid ||
+        (isRunning(record.helperPid) && (!record.helperIdentity || record.helperIdentity === processIdentity(record.helperPid))));
+      record.status = mounted ? (record.serverAlive ? "mounted" : "orphaned") : "listening";
+      if (parentAlive || mounted) records.push(record);
       else rmSync(file, { force: true });
     } catch {
       rmSync(file, { force: true });
@@ -319,6 +495,7 @@ export function readMounts(cacheDir: string): MountRecord[] {
 }
 
 function isRunning(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
   try {
     // Signal 0 tests for existence without delivering anything.
     process.kill(pid, 0);
@@ -351,7 +528,9 @@ async function handleUnmount(
   if (existsSync(file)) {
     try {
       const record = JSON.parse(readFileSync(file, "utf8")) as MountRecord;
-      if (isRunning(record.pid)) process.kill(record.pid, "SIGTERM");
+      if (record.processIdentity && record.processIdentity === processIdentity(record.pid)) {
+        process.kill(record.pid, "SIGTERM");
+      }
     } catch {
       // A malformed record is nothing to act on; removing it is the fix.
     }
@@ -374,19 +553,21 @@ export function spawnDetached(argv: string[], logFile: string): number {
 export function wikiMountHelp(): string {
   return `atlcli wiki mount <mountpoint>
 
-Mount Confluence as a real filesystem, through a WebDAV server on loopback.
+Mount Confluence through WebDAV (default) or experimental NFS on loopback.
 No kernel extension, no driver, no administrator rights on macOS or Windows.
 
 Usage:
   atlcli wiki mount ~/confluence --space DOCSY
   atlcli wiki mount list
+  atlcli wiki mount recovery <journal.sqlite> [--id <id> --output <new-file>]
   atlcli wiki mount unmount ~/confluence
 
 Options:
   --space <KEY[,KEY]>  Spaces to expose (default: the profile's space)
   --mode ro|rw         Write posture (default: ro)
+  --transport <name>  webdav (default) or nfs (experimental, macOS/Linux)
   --allow-delete       Additionally allow deletion, which moves pages to the trash
-  --sync-writes        Persist each write immediately (disable 500 ms coalescing)
+  --sync-writes        WebDAV only: disable its 500 ms write coalescing
   --cache-dir <path>   Cache root (default: ~/.atlcli/vfs)
   --port <n>           Bind to a fixed port (default: a free one)
   --profile <name>     Use a specific auth profile
@@ -399,6 +580,24 @@ Platform notes:
            which affects large attachments only.
   Linux    davfs2 and root are needed, so atlcli prints the mount command
            instead of running it.
+
+NFS writes:
+  --mode rw stages writes durably before acknowledgement and publishes valid
+  snapshots after 500 ms quiet. WRITE/COMMIT confirm local durability, not remote
+  publication. Intermediate versions are possible. --allow-delete opts into trash.
+
+NFS development:
+  Build packages/confluence-nfs with cargo build --locked and set ATLCLI_NFS_HELPER
+  to the absolute helper binary path. Published installs need the matching helper
+  beside atlcli. There is no runtime download or automatic transport fallback.
+
+Recovery:
+  Inspect local NFS journal metadata, including move/retitle receipts, without
+  authentication or network access. Move-only records may have no byte image.
+  Export exact bytes with --id and --output; --image current|intent|base selects
+  the local image (default: current), unresolved publication, or last published
+  source. Existing output files are never overwritten. Recovery does not publish
+  or alter journal records. Keep the journal until remote publication is verified.
 
 Full-text search:
   A mount does not enforce the shell prefetch budget — the kernel knows nothing about it — so

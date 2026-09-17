@@ -1,3 +1,4 @@
+import { assertGenericBrowserGlobals } from "./generic-browser-globals.js";
 import {
   createEmptyExportJobStatsV1,
   projectExportActivityV1,
@@ -77,12 +78,7 @@ function snapshot(
  * projection used by the extension runs in an ordinary Vite page.
  */
 export async function runActivityMonitorCase(): Promise<unknown> {
-  const globals = globalThis as typeof globalThis & Record<string, unknown>;
-  for (const forbidden of ["Buffer", "process", "chrome", "browser"]) {
-    if (globals[forbidden] !== undefined) {
-      throw new Error(`generic Activity imported forbidden global ${forbidden}`);
-    }
-  }
+  assertGenericBrowserGlobals();
 
   const snapshots = [
     snapshot("acknowledged", "failed", {

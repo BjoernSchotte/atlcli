@@ -71,6 +71,10 @@ describe("release artifact builder safety", () => {
     ).rejects.toThrow("unsupported release target");
   });
 
+  test("does not silently omit a requested helper directory", async () => {
+    await expect(runReleaseArtifactBuildCli(["--channel", "dev", "--dry-run", "--nfs-helpers"])).rejects.toThrow("--nfs-helpers requires a value");
+  });
+
   test("never accepts a build that skips every product artifact", async () => {
     await expect(
       runReleaseArtifactBuildCli([

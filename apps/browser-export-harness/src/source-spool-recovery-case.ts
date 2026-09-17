@@ -1,3 +1,4 @@
+import { assertGenericBrowserGlobals } from "./generic-browser-globals.js";
 import {
   InMemorySpoolStore,
   bindExportJobSpool,
@@ -97,12 +98,7 @@ function source(fetched: string[]): TreeSource {
 
 /** Generic production-browser proof of the same page spool used by CLI/Extension. */
 export async function runSourceSpoolRecoveryCase(): Promise<unknown> {
-  const globals = globalThis as typeof globalThis & Record<string, unknown>;
-  for (const forbidden of ["Buffer", "process", "chrome", "browser"]) {
-    if (globals[forbidden] !== undefined) {
-      throw new Error(`generic source spool imported forbidden global ${forbidden}`);
-    }
-  }
+  assertGenericBrowserGlobals();
 
   const store = new InMemorySpoolStore();
   const first = executionContext(store, 1);

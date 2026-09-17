@@ -1,0 +1,109 @@
+name: NFS transport proof
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Native NFS / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: linux-x64
+          - os: ubuntu-22.04-arm
+            target: linux-arm64
+          - os: macos-14
+            target: darwin-arm64
+          - os: macos-15-intel
+            target: darwin-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Verify native runner architecture
+        run: test "$(bun -e 'process.stdout.write(`${process.platform}-${process.arch}`)')" = "${{ matrix.target }}"
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.92.0 --profile minimal --component rustfmt --component clippy
+      - name: Install Linux mount client
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y nfs-common e2fsprogs
+      - name: Install workspace dependencies
+        run: bash scripts/ci/install-frozen-dependencies.sh
+      - name: Build and test locked helper
+        run: |
+          cargo +1.92.0 fmt --manifest-path packages/confluence-nfs/Cargo.toml --check
+          cargo +1.92.0 clippy --locked --manifest-path packages/confluence-nfs/Cargo.toml --all-targets -- -D warnings
+          cargo +1.92.0 test --locked --manifest-path packages/confluence-nfs/Cargo.toml
+          cargo +1.92.0 build --locked --manifest-path packages/confluence-nfs/Cargo.toml
+      - name: Build native companion with provenance
+        run: bun scripts/build-nfs-helper.ts "$RUNNER_TEMP/nfs-helper"
+      - name: Provision pinned CLI PDF fonts
+        run: bun run fonts:ensure
+      - name: Build and consume native CLI review bundle
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/nfs-helpers"
+          mv "$RUNNER_TEMP/nfs-helper" "$RUNNER_TEMP/nfs-helpers/${{ matrix.target }}"
+          bun scripts/release-artifacts.ts build --channel dev --dry-run \
+            --target "${{ matrix.target }}" --skip-extension \
+            --nfs-helpers "$RUNNER_TEMP/nfs-helpers" --output "$RUNNER_TEMP/nfs-release"
+          mkdir "$RUNNER_TEMP/nfs-helper"
+          tar -xzf "$RUNNER_TEMP/nfs-release/atlcli-${{ matrix.target }}.tar.gz" -C "$RUNNER_TEMP/nfs-helper"
+          "$RUNNER_TEMP/nfs-helper/atlcli" --version
+          "$RUNNER_TEMP/nfs-helper/atlcli-confluence-nfs" --version
+          test -s "$RUNNER_TEMP/nfs-helper/THIRD-PARTY-nfs.html"
+          ATLCLI_INSTALL_TEST_ARCHIVE="$RUNNER_TEMP/nfs-release/atlcli-${{ matrix.target }}.tar.gz" \
+            bun run test scripts/install-binary.test.ts
+      - name: Test bridge and native read-only mounts with synthetic data
+        env:
+          ATLCLI_NFS_KERNEL: "1"
+          ATLCLI_NFS_LIVE: "0"
+        run: |
+          export ATLCLI_NFS_TEST_HELPER="$RUNNER_TEMP/nfs-helper/atlcli-confluence-nfs"
+          bun run test scripts/build-nfs-helper.test.ts apps/cli/src/vfs/nfs-framing.test.ts apps/cli/src/vfs/nfs-filesystem.test.ts apps/cli/src/vfs/nfs-bridge.test.ts apps/cli/src/vfs/nfs-bridge-failures.test.ts apps/cli/src/vfs/nfs-journal.test.ts apps/cli/src/vfs/mount-transport.test.ts
+      - name: Test journal recovery on full disposable filesystems
+        env:
+          ATLCLI_NFS_STORAGE_FAULTS: "1"
+        run: bun run test apps/cli/src/vfs/nfs-storage-faults.test.ts
+      - name: Test compiled CLI shell and native mount with adjacent companion
+        env:
+          ATLCLI_NFS_KERNEL: "1"
+        run: |
+          ATLCLI_VFS_TEST_BINARY="$RUNNER_TEMP/nfs-helper/atlcli" \
+            bun run test apps/cli/src/e2e/wiki-sh-built.e2e.test.ts
+      - name: Set up Homebrew for native installer proof
+        uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c # 2026.07.10.1
+      - name: Test companion-aware Homebrew installation
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location \
+            https://raw.githubusercontent.com/BjoernSchotte/homebrew-tap/94b7a0c121843a4c3d535ea5d82ee8e773d21ab1/Formula/atlcli.rb \
+            --output "$RUNNER_TEMP/atlcli.rb"
+          bun scripts/ci/nfs-homebrew-proof.ts \
+            "$RUNNER_TEMP/nfs-release/atlcli-${{ matrix.target }}.tar.gz" "$RUNNER_TEMP/atlcli.rb"
+      - name: Record native runtime
+        shell: bash
+        run: |
+          uname -s -m > "$RUNNER_TEMP/nfs-runtime.txt"
+          if [ "$RUNNER_OS" = Linux ]; then
+            getconf GNU_LIBC_VERSION >> "$RUNNER_TEMP/nfs-runtime.txt"
+          else
+            sw_vers -productVersion >> "$RUNNER_TEMP/nfs-runtime.txt"
+          fi
+      - name: Preserve native build evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: nfs-native-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/nfs-helper/nfs-helper-build.json
+            ${{ runner.temp }}/nfs-runtime.txt
+          if-no-files-found: error
+          retention-days: 7

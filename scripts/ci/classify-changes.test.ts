@@ -11,6 +11,7 @@ const narrow = (overrides: Partial<CiRoutes> = {}): CiRoutes => ({
   astroPlatform: false,
   pdfPlatform: false,
   browserHarness: false,
+  nfs: false,
   docs: false,
   readmeMedia: false,
   researchPrivacy: true,
@@ -135,7 +136,7 @@ describe("classifyChanges", () => {
     {
       name: "shared Confluence renderer",
       paths: ["packages/confluence/src/export-blocks.ts"],
-      expected: narrow({
+      expected: narrow({ nfs: true,
         code: true,
         consumer: true,
         staticQuality: true,
@@ -150,7 +151,7 @@ describe("classifyChanges", () => {
     {
       name: "mixed docs and CLI",
       paths: ["src/content/docs/index.md", "apps/cli/src/index.ts"],
-      expected: narrow({ code: true, staticQuality: true, unitTests: true, docs: true }),
+      expected: narrow({ nfs: true, code: true, staticQuality: true, unitTests: true, docs: true }),
     },
     {
       name: "README media",
@@ -170,6 +171,16 @@ describe("classifyChanges", () => {
       }),
     },
   ];
+
+  it("selects NFS proof for helper and VFS inputs but not unrelated CLI code", () => {
+    for (const path of ["packages/confluence-nfs/src/main.rs", "packages/confluence-vfs/src/vfs.ts",
+      "apps/cli/src/vfs/nfs-framing.ts", "apps/cli/src/commands/wiki-mount.ts", "packages/core/src/config.ts",
+      "scripts/build-nfs-helper.ts", "scripts/release-archive.ts", "scripts/verify-release-artifacts.ts"]) {
+      expect(classifyChanges([path]).nfs).toBe(true);
+    }
+    expect(classifyChanges(["apps/cli/src/commands/jira.ts"]).nfs).toBe(false);
+    expect(classifyChanges(["specs/confluence-vfs-nfs-transport/PLAN.md"]).nfs).toBe(false);
+  });
 
   for (const { name, paths, expected } of cases) {
     it(`routes ${name}`, () => {

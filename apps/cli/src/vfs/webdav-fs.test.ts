@@ -13,6 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
+import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
@@ -84,6 +85,20 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "vfs-dav-"));
 });
 
+it("counts HTTP protocol requests independently of backend calls", async () => {
+  await start(seeded());
+  expect(await server.requestCount()).toBe(0);
+  expect((await dav("/DOCSY/", { method: "OPTIONS" })).status).toBe(200);
+  expect((await dav("/DOCSY/.metadata_never_index")).status).toBe(200);
+  expect(await server.requestCount()).toBe(2);
+  expect(await server.requestCount()).toBe(2);
+  client.resetCalls();
+  await dav("/DOCSY/", { method: "OPTIONS" });
+  await dav("/DOCSY/.metadata_never_index");
+  expect(await server.requestCount()).toBe(4);
+  expect(client.requestCount).toBe(0);
+});
+
 afterEach(async () => {
   await server?.stop();
   await vfs?.close();
@@ -120,6 +135,21 @@ describe("listing", () => {
 });
 
 describe("reading", () => {
+  it("keeps homepage attachments discoverable after repeated root listings", async () => {
+    await start(seeded().seedAttachment({ id: "900", pageId: "100", filename: "proof.txt", bytes: Buffer.from("Grüße 🐴") }));
+    for (let pass = 0; pass < 2; pass++) {
+      const root = await dav("/DOCSY/", { method: "PROPFIND", depth: "1" });
+      expect(root.body).toContain("/DOCSY/_attachments");
+      expect(root.body).toContain("/DOCSY/.versions");
+      expect(root.body).toContain("/DOCSY/.comments.md");
+      const directory = await dav("/DOCSY/_attachments/", { method: "PROPFIND", depth: "1" });
+      expect(directory.body).toContain("proof.txt");
+      const file = await dav("/DOCSY/_attachments/proof.txt", { method: "GET" });
+      expect(file.status).toBe(200);
+      expect(file.body).toBe("Grüße 🐴");
+    }
+  });
+
   it("GETs a page as Markdown", async () => {
     await start(seeded());
     const result = await dav("/DOCSY/page-0-200.md", { method: "GET" });
@@ -306,7 +336,7 @@ describe("the sweep detector", () => {
     const detector = new SweepDetector(5, 1000, (report) => seen.push(report), () => now);
     for (let i = 0; i < 5; i++) {
       now += 10;
-      detector.noteRead("/DOCSY");
+      detector.noteRead("/DOCSY", i);
     }
     expect(seen).toHaveLength(1);
     expect(detector.suspected).toBe(true);
@@ -319,7 +349,7 @@ describe("the sweep detector", () => {
     detector.noteListing("/DOCSY");
     for (let i = 0; i < 10; i++) {
       now += 10;
-      detector.noteRead("/DOCSY");
+      detector.noteRead("/DOCSY", i);
     }
     expect(seen).toHaveLength(0);
   });
@@ -330,7 +360,7 @@ describe("the sweep detector", () => {
     const detector = new SweepDetector(3, 1000, (report) => seen.push(report), () => now);
     for (let i = 0; i < 10; i++) {
       now += 5000;
-      detector.noteRead("/DOCSY");
+      detector.noteRead("/DOCSY", i);
     }
     expect(seen).toHaveLength(0);
   });
@@ -341,10 +371,25 @@ describe("the sweep detector", () => {
     const detector = new SweepDetector(3, 10_000, (report) => seen.push(report), () => now);
     for (let i = 0; i < 50; i++) {
       now += 10;
-      detector.noteRead("/DOCSY");
+      detector.noteRead("/DOCSY", i);
     }
     expect(seen).toHaveLength(1);
   });
+});
+
+it("expires old listings and deduplicates repeated reads within the sweep window", () => {
+  let now = 0;
+  const reports: unknown[] = [];
+  const detector = new SweepDetector(2, 1000, report => reports.push(report), () => now);
+  detector.noteListing("/DOCSY");
+  detector.noteRead("/DOCSY", "a");
+  detector.noteRead("/DOCSY", "b");
+  expect(reports).toHaveLength(0);
+  now = 1001;
+  for (let i = 0; i < 60; i++) detector.noteRead("/DOCSY", "a");
+  expect(reports).toHaveLength(0);
+  detector.noteRead("/DOCSY", "b");
+  expect(reports).toEqual([{ reads: 2, windowMs: 1000 }]);
 });
 
 describe("the name guards", () => {
@@ -398,6 +443,101 @@ describe("the binding rule", () => {
 
 
 describe("macOS editor atomic saves", () => {
+  it("does not publish duplicate PUTs of the same newly created page", async () => {
+    await start(seeded(), { allowDelete: false });
+    const path = "/DOCSY/repeated-put.md";
+    const body = "Editor save 🐴\n";
+    expect((await dav(path, { method: "PUT", body })).status).toBe(201);
+    const id = (await vfs.resolve(path)).id!;
+    const version = client.peekPage(id)!.version;
+    const updates = client.callsTo("updatePage");
+    expect(version).toBe(1);
+    expect(updates).toBe(0);
+    for (let i = 0; i < 3; i++) expect((await dav(path, { method: "PUT", body })).status).toBe(200);
+    expect(client.peekPage(id)!.version).toBe(version);
+    expect(client.callsTo("updatePage")).toBe(updates);
+    expect(client.callsTo("createPage")).toBe(1);
+    expect((await dav(path)).body).toContain(body.trim());
+  });
+
+  it("publishes a new PUT only after its complete body arrives", async () => {
+    await start(seeded());
+    const body = "Complete streamed page 🐴";
+    const req = request(new URL("/DOCSY/streamed.md", server.url), {
+      method: "PUT", headers: { "Content-Length": Buffer.byteLength(body) },
+    });
+    const completed = new Promise<number | undefined>((resolve, reject) => {
+      req.on("error", reject);
+      req.on("response", response => { response.resume(); response.on("end", () => resolve(response.statusCode)); });
+    });
+    req.write(body.slice(0, 5));
+    await Bun.sleep(100);
+    const before = client.callsTo("createPage");
+    req.end(body.slice(5));
+    expect(await completed).toBe(201);
+    expect(before).toBe(0);
+    const id = (await vfs.resolve("/DOCSY/streamed.md")).id!;
+    expect(client.peekPage(id)).toMatchObject({ version: 1, storage: `<p>${body}</p>\n` });
+    expect(client.callsTo("updatePage")).toBe(0);
+    expect((await dav("/DOCSY/empty.md", { method: "PUT", body: "" })).status).toBe(201);
+    expect(client.callsTo("createPage")).toBe(2);
+    expect(client.callsTo("updatePage")).toBe(0);
+  });
+
+  for (const overwrite of [undefined, "T", "F"]) {
+    it(`honors MOVE overwrite semantics for an editor replacement (${overwrite ?? "omitted"})`, async () => {
+      await start(seeded(), { allowDelete: false });
+      const target = "/DOCSY/page-0-200/_index.md", draft = `${target}.sb-repeat`;
+      await dav(draft, { method: "PUT", body: "Repeated TextEdit save" });
+      const headers: Record<string, string> = { Destination: new URL(target, server.url).href };
+      if (overwrite !== undefined) headers.Overwrite = overwrite;
+      const moved = await dav(draft, { method: "MOVE", headers });
+      expect(moved.status).toBe(overwrite === "F" ? 412 : 204);
+      expect(client.callsTo("updatePage")).toBe(overwrite === "F" ? 0 : 1);
+      expect(client.callsTo("createPage")).toBe(0);
+      expect(client.callsTo("deletePage")).toBe(0);
+      expect((await dav(draft)).status).toBe(overwrite === "F" ? 200 : 404);
+    });
+  }
+
+  it("makes a PUT replacement visible after moving the original to a Vim backup", async () => {
+    await start(seeded(), { allowDelete: false });
+    const target = "/DOCSY/newpage.md";
+    expect((await dav(target, { method: "PUT", body: "First plain page" })).status).toBe(201);
+    const id = (await vfs.resolve(target)).id;
+    expect((await dav(target, { method: "MOVE", headers: {
+      Destination: new URL(`${target}~`, server.url).href, Overwrite: "T",
+    } })).status).toBe(204);
+    expect(client.peekPage(id)?.title).toBe("Newpage");
+    expect((await dav(`${target}~`)).body).toContain("First plain page");
+    expect((await dav(target, { method: "PUT", body: "Second plain page" })).status).toBe(201);
+    const read = await dav(target);
+    expect(read.status).toBe(200);
+    expect(read.body).toContain("Second plain page");
+    expect((await vfs.resolve(target)).id).toBe(id);
+    expect(client.callsTo("createPage")).toBe(1);
+    expect(client.callsTo("deletePage")).toBe(0);
+  });
+
+  it("allows davfs to LOCK a replacement after moving its original to a backup", async () => {
+    await start(seeded(), { allowDelete: false });
+    const target = "/DOCSY/newpage.md";
+    await dav(target, { method: "PUT", body: "Original" });
+    const id = (await vfs.resolve(target)).id;
+    await dav(target, { method: "MOVE", headers: { Destination: new URL(`${target}~`, server.url).href } });
+    const locked = await fetch(new URL(target, server.url), { method: "LOCK", headers: { "Content-Type": "application/xml" },
+      body: '<D:lockinfo xmlns:D="DAV:"><D:lockscope><D:exclusive/></D:lockscope><D:locktype><D:write/></D:locktype></D:lockinfo>' });
+    expect(locked.status).toBe(201);
+    await locked.text();
+    const token = locked.headers.get("lock-token");
+    expect(token).not.toBeNull();
+    const written = await dav(target, { method: "PUT", headers: { If: `(<${token}>)` }, body: "Replacement" });
+    expect(written.status).toBe(200);
+    expect((await dav(target)).body).toContain("Replacement");
+    expect((await vfs.resolve(target)).id).toBe(id);
+    expect(client.callsTo("createPage")).toBe(1);
+  });
+
   it("stages sibling drafts locally and replaces the body without creating or deleting pages", async () => {
     await start(seeded(), { allowDelete: false });
     const target = "/DOCSY/page-0-200/_index.md";

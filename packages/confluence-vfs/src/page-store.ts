@@ -199,9 +199,21 @@ export class PageStore {
    * nothing to match against.
    */
   async readBody(node: TreeNode, path: string): Promise<string> {
+    // Direct reads may never revisit a directory listing. Reuse the bounded,
+    // body-free metadata refresh before trusting an old cached version.
+    await this.opts.index.revalidatePages([node.id]);
+    node = this.opts.index.node(node.id) ?? node;
     if (node.version !== undefined) {
       const hit = this.opts.cache.getBody(node.id, node.version);
-      if (hit) return hit.markdown;
+      if (hit) {
+        // Moves can change ancestry/space without changing the body version.
+        const { frontmatter, body } = parseVfsFrontmatter(hit.markdown);
+        const url = `${this.opts.instanceUrl}/spaces/${node.spaceKey}/pages/${node.id}`;
+        if (frontmatter.parentId === (node.parentId ?? undefined) && frontmatter.url === url && frontmatter.title === node.title) return hit.markdown;
+        const { parentId: _oldParent, ...metadata } = frontmatter;
+        return `${renderFrontmatter({ ...metadata, id: node.id, title: node.title, url,
+          ...(node.parentId ? { parentId: node.parentId } : {}) })}${body}`;
+      }
     }
     if (this.opts.offline) {
       throw new VfsError(
@@ -219,6 +231,7 @@ export class PageStore {
       id: node.id,
       title: page.title,
       version,
+      ...(page.lastModified === undefined ? {} : { lastModified: page.lastModified }),
       parentId: page.parentId ?? node.parentId,
     });
     const refreshed = this.opts.index.node(node.id) ?? node;
@@ -234,7 +247,9 @@ export class PageStore {
 
   /** Reads one historic version. Immutable, so it is cached forever. */
   async readVersion(node: TreeNode, version: number, path: string): Promise<string> {
-    const hit = this.opts.cache.getBody(node.id, version);
+    // Live Markdown contains current ancestry/URLs; snapshots must not inherit it.
+    const cacheId = `version:${node.id}`;
+    const hit = this.opts.cache.getBody(cacheId, version);
     if (hit) return hit.markdown;
     if (this.opts.offline) {
       throw new VfsError(
@@ -248,13 +263,12 @@ export class PageStore {
       () => this.opts.client.getPageAtVersion(node.id, version),
       path,
     );
-    const markdown = renderPageMarkdown(
-      { ...node, title: page.title, version },
-      page.storage,
-      this.opts.instanceUrl,
-    );
+    // Only version-owned metadata belongs in a reproducible snapshot. Current
+    // parent/space/location may change without modifying this historic version.
+    const markdown = `${renderFrontmatter({ id: node.id, title: page.title, version,
+      lastModified: page.lastModified })}\n${storageToMarkdown(page.storage).trim()}\n`;
     this.opts.cache.putBody({
-      pageId: node.id,
+      pageId: cacheId,
       version,
       markdown,
       storageHash: hashStorage(page.storage),
@@ -330,6 +344,7 @@ export class PageStore {
       for (const page of pages) {
         const version = page.version ?? 1;
         this.opts.index.upsert({ id: page.id, title: page.title, version,
+          ...(page.lastModified === undefined ? {} : { lastModified: page.lastModified }),
           ...(page.parentId === undefined ? {} : { parentId: page.parentId }) });
         const node = this.opts.index.node(page.id);
         if (!node) continue;

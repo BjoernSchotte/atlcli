@@ -6,9 +6,9 @@
  * kernel and belongs to WP7.9's gated live run.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createServer } from "node:http";
 import {
   mountCommandFor,
@@ -18,6 +18,7 @@ import {
   mountStateDir,
   mountStatePath,
   readMounts,
+  processIdentity,
   runMountCommand,
   unmountCommandFor,
   wikiMountHelp,
@@ -60,14 +61,35 @@ describe("platform commands", () => {
   it("uses mount_webdav on macOS, with the dialog suppressed", () => {
     const command = mountCommandFor("darwin", "http://127.0.0.1:8080/", "/Users/x/confluence", "atlcli-DOCSY");
     expect(command).toEqual({
-      run: ["mount_webdav", "-S", "-v", "atlcli-DOCSY", "http://127.0.0.1:8080/", "/Users/x/confluence"],
+      run: ["mount_webdav", "-S", "-o", "rdonly", "-v", "atlcli-DOCSY", "http://127.0.0.1:8080/", "/Users/x/confluence"],
     });
+  });
+
+  it("keeps explicit RW WebDAV mounts writable and prints matching Linux modes", () => {
+    expect(mountCommandFor("darwin", "http://127.0.0.1:8080/", "/tmp/wiki", "Docs", "rw")).toEqual({
+      run: ["mount_webdav", "-S", "-v", "Docs", "http://127.0.0.1:8080/", "/tmp/wiki"],
+    });
+    for (const mode of ["ro", "rw"] as const) {
+      const command = mountCommandFor("linux", "http://127.0.0.1:8080/", "/tmp/wiki", "Docs", mode);
+      if (!("instructions" in command)) throw new Error("Expected Linux mount instructions");
+      expect(command.instructions).toContain(`mount -t davfs -o ${mode}`);
+      expect(command.instructions).toContain(`davfs user,noauto,${mode} 0 0`);
+    }
   });
 
   it("uses net use on Windows", () => {
     expect(mountCommandFor("win32", "http://127.0.0.1:8080/", "X:", "atlcli-DOCSY")).toEqual({
       run: ["net", "use", "X:", "http://127.0.0.1:8080/"],
     });
+  });
+
+  it("uses the mount-specific immediate-upload davfs config and quotes shell paths", () => {
+    const command = mountCommandFor("linux", "http://127.0.0.1:8080/", "/tmp/wiki space", "Docs", "rw", "/tmp/config space.davfs.conf");
+    if (!("instructions" in command)) throw new Error("Expected Linux instructions");
+    expect(command.instructions).toContain("-o 'rw,conf=/tmp/config space.davfs.conf'");
+    expect(command.instructions).toContain("'/tmp/wiki space'");
+    expect(command.instructions).toContain("conf=/tmp/config\\040space.davfs.conf");
+    expect(command.instructions).toContain("500 ms");
   });
 
   /**
@@ -115,6 +137,20 @@ describe("mount records", () => {
   it("lists a mount whose process is alive", () => {
     write({ mountpoint: "/mnt/live", pid: process.pid });
     expect(readMounts(root).map((m) => m.mountpoint)).toEqual(["/mnt/live"]);
+    expect(readMounts(root)[0].transport).toBe("webdav");
+    expect(readMounts(root)[0].serverAlive).toBe(true);
+  });
+
+  it("does not mistake a reused PID for the mount server", () => {
+    write({ mountpoint: "/mnt/reused", pid: process.pid, processIdentity: "not-this-process" });
+    expect(readMounts(root)).toEqual([]);
+    expect(processIdentity(0)).toBeUndefined();
+    expect(processIdentity(-1)).toBeUndefined();
+  });
+
+  it("reports a dead helper without claiming that the server is alive", () => {
+    write({ mountpoint: "/mnt/helper-dead", pid: process.pid, transport: "nfs", helperPid: 0x7ffffffe });
+    expect(readMounts(root)[0].serverAlive).toBe(false);
   });
 
   /**
@@ -181,4 +217,38 @@ describe("safe shutdown", () => {
     expect(attempts).toBe(2);
     expect(process.listenerCount("SIGTERM")).toBe(before);
   });
+});
+
+describe("mount startup validation", () => {
+  it("rejects malformed flags before profile lookup or filesystem side effects", () => {
+    const invalid = [
+      ...["webdav", "nfs"].flatMap(transport => [
+        ...["invalid", "-1", "1.5", "65536", "0x50", "1e3"].map(port => ["--transport", transport, "--port", port]),
+        ["--transport", transport, "--port"],
+        ["--transport", transport, "--mode", "readwrite"],
+        ["--transport", transport, "--mode"],
+      ]),
+      ["--transport", "nfs", "--sync-writes"],
+      ["--transport", "unknown"],
+    ];
+    const cases = [
+      ...invalid.map(flags => ({ flags, code: 2, error: "VALIDATION" })),
+      { flags: ["--transport", "nfs", "--mode", "rw", "--allow-delete"], code: 1, error: "AUTH" },
+      ...["webdav", "nfs"].flatMap(transport => ["0", "1", "65535"].map(port => ({
+        flags: ["--transport", transport, "--port", port, "--mode", "ro"], code: 1, error: "AUTH",
+      }))),
+    ];
+    for (const { flags, code, error } of cases) {
+      const mountpoint = join(root, "must-not-exist");
+      const cache = join(root, "no-cache");
+      const result = Bun.spawnSync([process.execPath, "--conditions=development", "run", "--cwd",
+        resolve(import.meta.dir, "../.."), "src/index.ts", "wiki", "mount", mountpoint,
+        "--profile", "__missing_mount_validation_profile__", "--cache-dir", cache, "--json", ...flags],
+        { timeout: 10_000 });
+      expect(result.exitCode).toBe(code);
+      expect(result.stdout.toString() + result.stderr.toString()).toContain(error);
+      expect(existsSync(mountpoint)).toBe(false);
+      expect(existsSync(cache)).toBe(false);
+    }
+  }, 30_000);
 });

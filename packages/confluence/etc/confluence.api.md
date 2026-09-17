@@ -855,6 +855,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
     getPageMetadata(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePage>;
@@ -925,6 +926,7 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         parentId?: string;
+        properties?: Record<string, unknown>;
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -997,6 +999,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -1249,6 +1254,7 @@ export type ConfluencePage = {
     title: string;
     url?: string;
     version?: number;
+    lastModified?: string;
     spaceKey?: string;
     parentId?: string | null;
     ancestors?: {
@@ -4237,6 +4243,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
     getPageMetadata(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePage>;
@@ -4307,6 +4314,7 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         parentId?: string;
+        properties?: Record<string, unknown>;
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -4379,6 +4387,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -4631,6 +4642,7 @@ export type ConfluencePage = {
     title: string;
     url?: string;
     version?: number;
+    lastModified?: string;
     spaceKey?: string;
     parentId?: string | null;
     ancestors?: {
@@ -7619,6 +7631,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
     getPageMetadata(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePage>;
@@ -7689,6 +7702,7 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         parentId?: string;
+        properties?: Record<string, unknown>;
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -7761,6 +7775,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -8013,6 +8030,7 @@ export type ConfluencePage = {
     title: string;
     url?: string;
     version?: number;
+    lastModified?: string;
     spaceKey?: string;
     parentId?: string | null;
     ancestors?: {
@@ -10698,6 +10716,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
     getPageMetadata(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePage>;
@@ -10768,6 +10787,7 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         parentId?: string;
+        properties?: Record<string, unknown>;
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -10840,6 +10860,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -11081,6 +11104,7 @@ export type ConfluencePage = {
     title: string;
     url?: string;
     version?: number;
+    lastModified?: string;
     spaceKey?: string;
     parentId?: string | null;
     ancestors?: {
@@ -14479,6 +14503,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
     getPageMetadata(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePage>;
@@ -14549,6 +14574,7 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         parentId?: string;
+        properties?: Record<string, unknown>;
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -14621,6 +14647,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;
@@ -14873,6 +14902,7 @@ export type ConfluencePage = {
     title: string;
     url?: string;
     version?: number;
+    lastModified?: string;
     spaceKey?: string;
     parentId?: string | null;
     ancestors?: {
@@ -17056,6 +17086,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
     getPageMetadata(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePage>;
@@ -17126,6 +17157,7 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         parentId?: string;
+        properties?: Record<string, unknown>;
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -17198,6 +17230,9 @@ export declare class ConfluenceClient {
         limit?: number;
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDescendants(pageId: string, options?: {
         depth?: number;
         limit?: number;

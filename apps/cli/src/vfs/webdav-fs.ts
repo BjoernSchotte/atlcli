@@ -44,6 +44,9 @@ import {
   type VfsErrorCode,
 } from "@atlcli/confluence-vfs";
 
+import { INDEXER_SHIELDS, isClientDropping, isIndexerShield, isShieldDirectory } from "./mount-client-probes.js";
+export { isClientDropping, isIndexerShield, isShieldDirectory } from "./mount-client-probes.js";
+
 /**
  * POSIX code to the webdav-server error the request layer understands.
  *
@@ -90,93 +93,8 @@ export function httpErrorFor(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-/**
- * Names a desktop client invents and then asks for on every directory it shows.
- *
- * Answering these from the backend would double the request count of an
- * ordinary `ls` in the Finder, for files that never exist.
- */
-const CLIENT_DROPPINGS = [
-  /^\._/, // AppleDouble sidecars
-  /^\.DS_Store$/,
-  /^\.hidden$/,
-  /^desktop\.ini$/i,
-  /^Thumbs\.db$/i,
-  /^\.Spotlight-V100$/,
-  /^\.Trashes$/,
-  /^\.TemporaryItems$/,
-  /^\.apdisk$/,
-];
-
-/**
- * Files served as **empty** rather than refused (WP7.3b).
- *
- * `.metadata_never_index` tells Spotlight to skip a volume — but only if it is
- * there. A 404 is an invitation to index, which on a demand-driven filesystem
- * means downloading every page in every space. `.fseventsd` exists for the same
- * reason: its absence makes the volume look like one worth watching.
- */
-const INDEXER_SHIELDS = new Set([
-  ".metadata_never_index",
-  ".metadata_never_index_unless_rootfs",
-  ".metadata_direct_scope_only",
-]);
-
-const SHIELD_DIRECTORIES = new Set([".fseventsd"]);
-
-export function isClientDropping(name: string): boolean {
-  return CLIENT_DROPPINGS.some((pattern) => pattern.test(name));
-}
-
-export function isIndexerShield(name: string): boolean {
-  return INDEXER_SHIELDS.has(name);
-}
-
-export function isShieldDirectory(name: string): boolean {
-  return SHIELD_DIRECTORIES.has(name);
-}
-
-export interface SweepReport {
-  reads: number;
-  windowMs: number;
-}
-
-/**
- * Notices a client reading many distinct files without having listed their
- * directories first — the signature of an indexer, not of a person.
- */
-export class SweepDetector {
-  private readonly reads: number[] = [];
-  private readonly listedDirs = new Set<string>();
-  private reported = false;
-
-  constructor(
-    private readonly threshold = 50,
-    private readonly windowMs = 10_000,
-    private readonly onSweep: (report: SweepReport) => void = () => {},
-    private readonly now: () => number = () => Date.now(),
-  ) {}
-
-  noteListing(directory: string): void {
-    this.listedDirs.add(directory);
-  }
-
-  noteRead(directory: string): void {
-    // A read from a directory the client listed first is ordinary browsing.
-    if (this.listedDirs.has(directory)) return;
-    const at = this.now();
-    this.reads.push(at);
-    while (this.reads.length > 0 && at - this.reads[0]! > this.windowMs) this.reads.shift();
-    if (this.reads.length >= this.threshold && !this.reported) {
-      this.reported = true;
-      this.onSweep({ reads: this.reads.length, windowMs: this.windowMs });
-    }
-  }
-
-  get suspected(): boolean {
-    return this.reported;
-  }
-}
+export { SweepDetector, type SweepReport } from "./mount-client-probes.js";
+import { SweepDetector, type SweepReport } from "./mount-client-probes.js";
 
 export interface ConfluenceWebdavOptions {
   vfs: ConfluenceVfsImpl;
@@ -201,9 +119,10 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
   // These are local drafts, never Confluence pages. Retain drafts on failure.
   private readonly drafts = new Map<string, { bytes: Buffer; modified: number; directory?: boolean }>();
   private readonly pendingBackups = new Map<string, string>();
+  private readonly pendingPuts = new WeakMap<webdav.RequestContext, string>();
 
   private isDraft(path: webdav.Path): boolean {
-    return path.toString().split("/").some((part) => /\.sb-[a-zA-Z0-9_-]+$/.test(part));
+    return path.toString().split("/").some((part) => /\.sb-[a-zA-Z0-9_-]+$/.test(part) || part.endsWith("~"));
   }
 
   constructor(private readonly options: ConfluenceWebdavOptions) {
@@ -365,6 +284,10 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
     ctx: webdav.SizeInfo,
     callback: webdav.ReturnCallback<number>,
   ): void {
+    if (this.pendingPuts.get(ctx.context) === path.toString()) {
+      callback(undefined, 0);
+      return;
+    }
     if (this.isDraft(path)) {
       const draft = this.drafts.get(path.toString());
       if (!draft) callback(webdav.Errors.ResourceNotFound);
@@ -485,10 +408,12 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
       callback(webdav.Errors.ResourceNotFound);
       return;
     }
-    this.sweepDetector.noteRead(this.parentOf(path));
     this.options.vfs
       .readFileBytes(this.vfsPath(path))
-      .then((bytes) => callback(undefined, Readable.from([Buffer.from(bytes)])))
+      .then((bytes) => {
+        this.sweepDetector.noteRead(this.parentOf(path), this.vfsPath(path));
+        callback(undefined, Readable.from([Buffer.from(bytes)]));
+      })
       .catch((error: unknown) => callback(httpErrorFor(error)));
   }
 
@@ -502,7 +427,7 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
    */
   protected _openWriteStream(
     path: webdav.Path,
-    _ctx: webdav.OpenWriteStreamInfo,
+    ctx: webdav.OpenWriteStreamInfo,
     callback: webdav.ReturnCallback<Writable>,
   ): void {
     const target = this.vfsPath(path);
@@ -554,7 +479,7 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
         }
         this.options.vfs
           .writeFile(target, new Uint8Array(Buffer.concat(chunks)))
-          .then(() => done())
+          .then(() => { this.pendingPuts.delete(ctx.context); this.pendingBackups.delete(path.toString()); done(); })
           .catch((error: unknown) => done(httpErrorFor(error)));
       },
     });
@@ -585,11 +510,20 @@ export class ConfluenceWebdavFileSystem extends webdav.FileSystem {
       callback();
       return;
     }
+    // PUT immediately opens a stream after create. Publish its final bytes
+    // once, rather than creating an empty page and then another wiki version.
+    const request = (ctx.context as { request?: { method?: string } }).request;
+    if (ctx.type.isFile && request?.method === "PUT") {
+      this.pendingPuts.set(ctx.context, path.toString());
+      callback();
+      return;
+    }
     const created =
       ctx.type.isDirectory
         ? this.options.vfs.mkdir(target)
         : this.options.vfs.writeFile(target, "");
-    created.then(() => callback()).catch((error: unknown) => callback(httpErrorFor(error)));
+    created.then(() => { this.pendingBackups.delete(path.toString()); callback(); })
+      .catch((error: unknown) => callback(httpErrorFor(error)));
   }
 
   protected _delete(

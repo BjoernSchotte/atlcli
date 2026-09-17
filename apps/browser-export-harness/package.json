@@ -14,7 +14,7 @@
     "precheck:parity": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && bun run --cwd ../.. vendor:pdfium",
     "check:parity": "bun --conditions=development run check:parity:prebuilt",
     "check:parity:prebuilt": "bun --conditions=development scripts/check-parity.ts",
-    "test:unit": "bun --conditions=development test tests/boundaries.test.ts tests/output-scan.test.ts tests/pdf-worker-client.test.ts tests/pdf-job-parity.test.ts tests/docx-job-parity.test.ts scripts/check-parity.test.ts",
+    "test:unit": "bun --conditions=development test tests/generic-browser-globals.test.ts tests/boundaries.test.ts tests/output-scan.test.ts tests/pdf-worker-client.test.ts tests/pdf-job-parity.test.ts tests/docx-job-parity.test.ts scripts/check-parity.test.ts",
     "pretest:e2e": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && bun run --cwd ../.. vendor:pdfium",
     "test:e2e": "bun --conditions=development run test:e2e:prebuilt",
     "test:e2e:prebuilt": "playwright test"

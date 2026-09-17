@@ -325,7 +325,7 @@ limits output, not downloads.
 | `--mode ro\|rw` | enum | `ro` | no | Write posture |
 | `--allow-delete` | flag | off | no | Needed for `rm`, on top of `rw` |
 | `--confirm` | flag | off | no | Skip terminal confirmation for deletion and cross-space moves; does not grant write/delete permission |
-| `--sync-writes` | flag | off | no | Persist writes immediately instead of coalescing for 500 ms |
+| `--sync-writes` | flag | off | no | Shell/WebDAV: disable 500 ms coalescing; rejected by NFS |
 | `--cache-dir <path>` | path | `~/.atlcli/vfs` | no | Cache root |
 | `--offline` | flag | off | no | Read the cache only; issue no requests |
 | `--cwd <path>` | path | the first space | no | Starting directory |
@@ -343,7 +343,7 @@ limits output, not downloads.
 | `--space <KEY[,KEY]>` | string list | the profile's space | yes, unless configured | Spaces to expose |
 | `--mode ro\|rw` | enum | `ro` | no | Write posture |
 | `--allow-delete` | flag | off | no | Needed for deletion |
-| `--sync-writes` | flag | off | no | Persist writes immediately instead of coalescing for 500 ms |
+| `--sync-writes` | flag | off | no | Shell/WebDAV: disable 500 ms coalescing; rejected by NFS |
 | `--cache-dir <path>` | path | `~/.atlcli/vfs` | no | Cache root |
 | `--port <n>` | number | a free port | no | Bind to a fixed port |
 
@@ -475,6 +475,66 @@ costs a request. Run the command once without `--offline` first.
 Confluence API latency dominates; the protocol does not. Check `vfs-status`
 for the cache hit rate — a cold cache pays one request per directory and one
 bulk request per group of bodies read.
+
+## Experimental NFS transport (development builds)
+
+WebDAV remains the default. macOS and Linux development builds can select an
+additional **experimental NFSv3** transport, read-only by default. Use
+`--mode rw` for durable local staging and automatic Confluence publication.
+Final distribution acceptance is tracked in the implementation specification;
+this remains experimental. Windows should continue using WebDAV.
+
+From the repository root, build the pinned helper and point the CLI at it:
+
+```bash
+cargo build --locked --manifest-path packages/confluence-nfs/Cargo.toml
+export ATLCLI_NFS_HELPER="$PWD/packages/confluence-nfs/target/debug/atlcli-confluence-nfs"
+bun --conditions=development run --cwd apps/cli src/index.ts \
+  wiki mount ~/mnt/docsy --profile mayflower --space DOCSY --mode ro --transport nfs
+```
+
+For writable DOCSY:
+
+```bash
+atlcli wiki mount ~/mnt/docsy --profile mayflower --space DOCSY --mode rw --transport nfs
+# In another terminal, after attaching with the printed command on Linux:
+vim ~/mnt/docsy/newpage.md
+```
+
+No frontmatter is required: the filename supplies the initial title. After
+creation, `newpage.md` remains an alias to the assigned page ID; subsequent
+saves update that page. This is a virtual alias, not an OS symlink.
+
+NFS acknowledges writes after durable local staging. Valid snapshots publish
+automatically after 500 ms without newer writes; rapid saves coalesce. Local
+fsync/COMMIT does **not** confirm Confluence publication, and an editor pause can
+produce an intermediate wiki version. Transient API failures use bounded retry
+backoff/jitter; denial, conflicts and unknown outcomes retain recovery bytes.
+`--sync-writes` is rejected for NFS. Deletion requires `--allow-delete` and moves
+pages to trash. Recursive OS removal is not atomic and can fail on generated
+read-only views; use the page's `_index.md` for targeted trash.
+
+When shutdown reports pending recovery, retain the journal path printed at
+startup. Inspect it with `atlcli wiki mount recovery <journal.sqlite>` and export
+bytes with `--id <page-id> --output <new-file>`. Remounting the same profile,
+cache and selected spaces resumes eligible publication; ambiguous remote results
+need positive reconciliation before another mutation.
+
+For a combined read-only export, use `--space DOCSY,mayflower`; the mount then
+contains one directory per space. A single-space export exposes its contents
+directly. `wiki mount list` reports the selected transport; `wiki mount unmount
+<path>` and Ctrl-C use the usual cleanup flow.
+
+macOS uses its native `mount_nfs` client. Linux requires the NFS client package
+(commonly `nfs-common`); atlcli prints the explicit privileged mount command.
+The server must remain running. Busy mounts keep the server alive: close files,
+leave the mounted directory and retry unmount. On helper failure, remount after
+recovery; old NFS filehandles are not reusable after a helper restart.
+
+The helper must be executable and compatible with the CLI. Missing helpers fail
+without falling back to WebDAV or downloading anything. Development uses the
+explicit environment variable; companion-aware review archives place the matching
+helper beside the CLI. Loopback access is not isolation from other local users.
 
 ## Related topics
 

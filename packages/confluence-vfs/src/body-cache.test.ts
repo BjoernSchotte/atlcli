@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -303,4 +304,41 @@ describe("persistence", () => {
     expect(second.getBody("1", 7)?.markdown).toBe("# Seven");
     second.close();
   });
+});
+
+it("migrates legacy Markdown rows as misses without dropping attachments and replaces them once", () => {
+  const paths = resolveCachePaths({ cacheDir: root, profile: "mayflower", accountId: "acct-1",
+    instanceUrl: "https://example.atlassian.net/wiki" });
+  const old = makeCache();
+  old.putBody({ pageId: "1", version: 1, markdown: "old historic timestamp", storageHash: "h" });
+  old.putAttachment({ attachmentId: "a1", pageId: "1", filename: "a.txt", mediaType: "text/plain",
+    version: 1, bytes: Buffer.from("keep") });
+  old.close();
+  const legacy = new Database(paths.dbPath);
+  legacy.exec("ALTER TABLE bodies DROP COLUMN render_version; DELETE FROM schema_info WHERE version=2;");
+  legacy.run("INSERT OR IGNORE INTO schema_info(version) VALUES(1)");
+  legacy.close();
+  const migrated = makeCache();
+  expect(migrated.getBody("1", 1)).toBeUndefined();
+  expect(migrated.readAttachmentBytes(migrated.getAttachment("a1", 1)!)).toEqual(Buffer.from("keep"));
+  migrated.putBody({ pageId: "1", version: 1, markdown: "correct historic timestamp", storageHash: "new" });
+  expect(migrated.getBody("1", 1)?.markdown).toBe("correct historic timestamp");
+  migrated.putBody({ pageId: "1", version: 1, markdown: "must remain immutable", storageHash: "other" });
+  expect(migrated.getBody("1", 1)?.markdown).toBe("correct historic timestamp");
+  expect(migrated.stats().bodies).toBe(1);
+  migrated.close();
+  const reopened = makeCache();
+  expect(reopened.getBody("1", 1)?.markdown).toBe("correct historic timestamp");
+  reopened.close();
+});
+
+it("does not evict other bodies when refreshing the access time of an immutable cached body", () => {
+  const cache = makeCache(10);
+  cache.putBody({ pageId: "1", version: 1, markdown: "12345", storageHash: "h" });
+  cache.putBody({ pageId: "2", version: 1, markdown: "67890", storageHash: "h" });
+  cache.putBody({ pageId: "1", version: 1, markdown: "other", storageHash: "h" });
+  expect(cache.getBody("1", 1)?.markdown).toBe("12345");
+  expect(cache.getBody("2", 1)?.markdown).toBe("67890");
+  expect(cache.usedBytes()).toBe(10);
+  cache.close();
 });

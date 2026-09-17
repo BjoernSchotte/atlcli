@@ -38,6 +38,8 @@ export interface RunningWebdavServer {
   port: number;
   hostname: string;
   bearerToken: string | undefined;
+  /** Received HTTP requests; no paths, credentials or bodies are retained. */
+  requestCount(): Promise<number>;
   /** Flushes pending writes, then stops listening. */
   stop(): Promise<void>;
 }
@@ -89,6 +91,15 @@ export async function startWebdavServer(
       : {}),
   });
 
+  // webdav-server 2.6.3 treats an omitted Overwrite as F; RFC 4918 §10.6
+  // requires T. TextEdit omits it on repeated safe-save replacements.
+  server.beforeRequest((ctx, next) => {
+    if (ctx.request.method === "MOVE" && ctx.request.headers.overwrite === undefined) {
+      ctx.request.headers.overwrite = "T";
+    }
+    next();
+  });
+
   // One sweep detector for the whole volume: an indexer walking three spaces
   // is one sweep, not three.
   const sweepDetector = new SweepDetector(50, 10_000, options.onSweep);
@@ -102,8 +113,10 @@ export async function startWebdavServer(
     );
   }
 
+  let requests = 0;
   const port = await new Promise<number>((resolve) => {
     server.start((httpServer?: Server) => {
+      httpServer?.on("request", () => { requests++; });
       const address = httpServer?.address();
       resolve(typeof address === "object" && address ? address.port : (options.port ?? 0));
     });
@@ -116,6 +129,7 @@ export async function startWebdavServer(
     port,
     hostname,
     bearerToken,
+    requestCount: async () => requests,
     async stop(): Promise<void> {
       // Pending coalesced writes first: stopping the server must not be the
       // thing that loses an edit.

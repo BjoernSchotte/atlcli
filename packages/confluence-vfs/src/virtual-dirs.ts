@@ -61,11 +61,11 @@ function linkEntry(name: string): VfsDirent {
   return { name, kind: "symlink", isDirectory: false, isFile: false, isSymbolicLink: true };
 }
 
+type CachedListing<T> = { expires: number; result: Promise<T> };
+
 export class VirtualDirs {
-  private readonly attachmentListings = new Map<string, {
-    expires: number;
-    result: Promise<Awaited<ReturnType<VfsClient["listAttachments"]>>>;
-  }>();
+  private readonly attachmentListings = new Map<string, CachedListing<Awaited<ReturnType<VfsClient["listAttachments"]>>>>();
+  private readonly commentListings = new Map<string, CachedListing<PageComments>>();
 
   constructor(private readonly opts: VirtualDirsOptions) {}
 
@@ -74,22 +74,27 @@ export class VirtualDirs {
   }
 
   private listAttachments(pageId: string, path?: string) {
-    const cached = this.attachmentListings.get(pageId);
+    return this.cachedListing(this.attachmentListings, pageId,
+      () => this.request(() => this.opts.client.listAttachments(pageId), path));
+  }
+
+  private cachedListing<T>(listings: Map<string, CachedListing<T>>, pageId: string, load: () => Promise<T>): Promise<T> {
+    const cached = listings.get(pageId);
     if (cached && this.opts.now() < cached.expires) return cached.result;
-    this.attachmentListings.delete(pageId);
-    // Bound session metadata; attachment bytes still use the existing blob cache.
-    if (this.attachmentListings.size >= 256) {
-      this.attachmentListings.delete(this.attachmentListings.keys().next().value!);
+    listings.delete(pageId);
+    // Bound session listings; attachment bytes still use the existing blob cache.
+    if (listings.size >= 256) {
+      listings.delete(listings.keys().next().value!);
     }
     const entry = {
       expires: Infinity,
-      result: this.request(() => this.opts.client.listAttachments(pageId), path),
+      result: load(),
     };
-    this.attachmentListings.set(pageId, entry);
+    listings.set(pageId, entry);
     void entry.result.then(() => {
       entry.expires = this.opts.now() + (this.opts.metadataTtlMs ?? VFS_DEFAULTS.treeTtlMs);
     }, () => {
-      if (this.attachmentListings.get(pageId) === entry) this.attachmentListings.delete(pageId);
+      if (listings.get(pageId) === entry) listings.delete(pageId);
     });
     return entry.result;
   }
@@ -141,6 +146,7 @@ export class VirtualDirs {
     const attachments = await this.listAttachments(node.id);
     return attachments.map((attachment) => ({
       name: attachment.filename,
+      id: attachment.id,
       kind: "attachment" as const,
       isDirectory: false,
       isFile: true,
@@ -237,7 +243,8 @@ export class VirtualDirs {
 
   /** Footer and inline comments as one Markdown document. Read-only. */
   async commentsMarkdown(node: TreeNode, path: string): Promise<string> {
-    const comments = await this.request(() => this.opts.client.getAllComments(node.id), path);
+    const comments = await this.cachedListing(this.commentListings, node.id,
+      () => this.request(() => this.opts.client.getAllComments(node.id), path));
     return renderComments(node, comments);
   }
 
@@ -272,17 +279,58 @@ export class VirtualDirs {
     ].join("\n");
   }
 
+  /** Locate only this attachment and its owner; never search a space or fetch a body. */
+  async attachmentPath(id: string, spaceKey: string): Promise<string> {
+    if (!/^[A-Za-z0-9-]{1,256}$/.test(id)) throw new VfsError("EINVAL", "Invalid attachment ID");
+    if (this.opts.offline) throw new VfsError("ENOENT", "Attachment relocation requires online metadata");
+    await this.opts.index.getSpace(spaceKey); // Enforce the configured export before lookup.
+    const attachment = await this.request(() => this.opts.client.getAttachment(id));
+    if (attachment.id !== id || !/^[0-9]+$/.test(attachment.pageId) ||
+        !attachment.filename || /[\/\0]/.test(attachment.filename) ||
+        attachment.filename === "." || attachment.filename === "..") {
+      throw new VfsError("EINVAL", "Invalid attachment identity or filename");
+    }
+    // An owner already in the index may itself have moved across spaces.
+    await this.loadNode(attachment.pageId, spaceKey, "attachment owner", true);
+    const directory = await this.canonicalPath(attachment.pageId, spaceKey, "attachment owner");
+    this.invalidateAttachments(attachment.pageId);
+    return `${directory}/_attachments/${attachment.filename}`;
+  }
+
+  /** Recover an existing folder handle without enumerating unrelated branches. */
+  async folderPath(id: string, spaceKey: string): Promise<string> {
+    if (!/^[0-9]+$/.test(id)) throw new VfsError("EINVAL", "Invalid folder ID");
+    if (this.opts.offline) throw new VfsError("ENOENT", "Folder relocation requires online metadata");
+    const space = await this.opts.index.getSpace(spaceKey);
+    const folder = await this.request(() => this.opts.client.getFolder(id));
+    // Confluence v1 space IDs may be numbers; v2 folder IDs are strings.
+    if (folder.id !== id || !folder.spaceId || !space.id || String(folder.spaceId) !== String(space.id)) {
+      throw new VfsError("ENOENT", "Folder is outside selected space");
+    }
+    const ancestors = await this.request(() => this.opts.client.getAncestors(id));
+    if (ancestors.length > 256 || new Set([id, ...ancestors.map(node => node.id)]).size !== ancestors.length + 1 ||
+        ancestors.some(node => !/^[0-9]+$/.test(node.id))) {
+      throw new VfsError("EINVAL", "Invalid folder ancestry");
+    }
+    if ((ancestors.at(-1)?.id ?? null) !== folder.parentId) {
+      throw new VfsError("EAGAIN", "Folder moved while resolving its path; retry");
+    }
+    const homepage = await this.opts.index.getHomepageId(spaceKey);
+    return `/${[spaceKey, ...ancestors.filter(node => node.id !== homepage)
+      .map(node => formatDirName(node.title, node.id)), formatDirName(folder.title, id)].join("/")}`;
+  }
+
   /** The canonical path of a page, for `readlink`. */
   async canonicalPath(id: string, spaceKey: string, path: string): Promise<string> {
     const node = await this.loadNode(id, spaceKey, path);
-    const segments = this.segmentsFromIndex(node, spaceKey);
+    const homepageId = await this.opts.index.getHomepageId(spaceKey);
+    const segments = this.segmentsFromIndex(node, homepageId);
     if (segments) return `/${[spaceKey, ...segments].join("/")}`;
 
     // The index has not walked down to this page, so ask Confluence directly.
     // One request, and only for an explicit `.by-id` address.
     const target = node;
     const ancestors = await this.request(() => this.opts.client.getAncestors(id), path);
-    const homepageId = await this.opts.index.getHomepageId(spaceKey);
     const chain = ancestors
       .filter((ancestor) => ancestor.id !== homepageId)
       .map((ancestor) => `${vfsSlug(ancestor.title)}-${ancestor.id}`);
@@ -290,9 +338,9 @@ export class VirtualDirs {
   }
 
   /** Records a page the index has not walked to, so `stat` can answer. */
-  async loadNode(id: string, spaceKey: string, path: string): Promise<TreeNode> {
+  async loadNode(id: string, spaceKey: string, path: string, force = false): Promise<TreeNode> {
     const known = this.opts.index.node(id);
-    if (known) {
+    if (known && !force) {
       if (known.spaceKey !== spaceKey || known.type !== "page") {
         throw new VfsError("ENOENT", `No such page: ${path}`, { path });
       }
@@ -305,7 +353,7 @@ export class VirtualDirs {
       });
     }
     const page = await this.request(() => this.opts.client.getPageMetadata(id), path);
-    if (page.spaceKey !== spaceKey) {
+    if (page.id !== id || page.spaceKey !== spaceKey) {
       throw new VfsError("ENOENT", `No such page: ${path}`, { path });
     }
     const node = this.opts.index.upsert({
@@ -320,8 +368,7 @@ export class VirtualDirs {
     return node;
   }
 
-  private segmentsFromIndex(node: TreeNode, spaceKey: string): string[] | undefined {
-    void spaceKey;
+  private segmentsFromIndex(node: TreeNode, homepageId: string | null): string[] | undefined {
     const segments: string[] = [];
     let current: TreeNode | undefined = node;
     // A cycle would only come from a corrupt index, but an infinite loop inside
@@ -330,8 +377,9 @@ export class VirtualDirs {
     while (current) {
       if (seen.has(current.id)) return undefined;
       seen.add(current.id);
-      if (current.parentId === null) break;
+      if (current.id === homepageId) break;
       segments.unshift(formatDirName(current.title, current.id));
+      if (current.parentId === null) break;
       const parent: TreeNode | undefined = this.opts.index.node(current.parentId!);
       if (!parent) return undefined;
       current = parent;

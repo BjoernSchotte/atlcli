@@ -146,18 +146,39 @@ export declare class ConflictStore {
 
 // export: ConfluenceVfs
 export interface ConfluenceVfs {
+    readonly guard: ModeGuard;
     stat(path: string): Promise<VfsStat>;
     readdir(path: string): Promise<VfsDirent[]>;
     readFile(path: string): Promise<string>;
     readFileBytes(path: string): Promise<Uint8Array>;
-    writeFile(path: string, content: string | Uint8Array): Promise<VfsWriteResult>;
+    writeFile(path: string, content: string | Uint8Array, condition?: VfsWriteCondition): Promise<VfsWriteResult>;
+    reconcileCreate(path: string, content: string, target: {
+        spaceKey: string;
+        parentId: string;
+        creationToken: string;
+    }): Promise<VfsWriteResult | null>;
     mkdir(path: string): Promise<VfsWriteResult>;
-    rename(from: string, to: string): Promise<void>;
+    rename(from: string, to: string, expected?: {
+        id: string;
+        spaceKey: string;
+        targetSpaceKey?: string;
+        sourceParentId: string | null;
+        targetParentId: string | null;
+        kind?: "page" | "folder";
+    }): Promise<void>;
+    confirmMove(id: string, spaceKey: string, parentId: string | null, title: string, kind?: "page" | "folder"): Promise<boolean>;
     rm(path: string, options?: {
         recursive?: boolean;
+        expected?: {
+            id: string;
+            spaceKey: string;
+        };
     }): Promise<void>;
+    confirmTrash(id: string, spaceKey: string): Promise<boolean>;
     copy(from: string, to: string): Promise<VfsWriteResult>;
     readlink(path: string): Promise<string>;
+    folderPath(id: string, spaceKey: string): Promise<string>;
+    attachmentPath(id: string, spaceKey: string): Promise<string>;
     resolve(path: string): Promise<VfsNode>;
 }
 
@@ -240,16 +261,36 @@ export declare class ConfluenceVfsImpl implements ConfluenceVfs {
     readFile(path: string): Promise<string>;
     readFileBytes(path: string): Promise<Uint8Array>;
     private renderNonPage;
-    writeFile(path: string, content: string | Uint8Array): Promise<VfsWriteResult>;
+    writeFile(path: string, content: string | Uint8Array, condition?: VfsWriteCondition): Promise<VfsWriteResult>;
+    reconcileCreate(path: string, content: string, target: {
+        spaceKey: string;
+        parentId: string;
+        creationToken: string;
+    }): Promise<VfsWriteResult | null>;
     private createFromMissing;
     private containerOf;
     private writeAttachment;
     mkdir(path: string): Promise<VfsWriteResult>;
-    rename(from: string, to: string): Promise<void>;
+    rename(from: string, to: string, expected?: {
+        id: string;
+        spaceKey: string;
+        targetSpaceKey?: string;
+        sourceParentId: string | null;
+        targetParentId: string | null;
+        kind?: "page" | "folder";
+    }): Promise<void>;
     rm(path: string, options?: {
         recursive?: boolean;
+        expected?: {
+            id: string;
+            spaceKey: string;
+        };
     }): Promise<void>;
+    confirmMove(id: string, spaceKey: string, parentId: string | null, title: string, kind?: "page" | "folder"): Promise<boolean>;
+    confirmTrash(id: string, spaceKey: string): Promise<boolean>;
     copy(from: string, to: string): Promise<VfsWriteResult>;
+    attachmentPath(id: string, spaceKey: string): Promise<string>;
+    folderPath(id: string, spaceKey: string): Promise<string>;
     readlink(path: string): Promise<string>;
     private toNode;
 }
@@ -602,6 +643,7 @@ export declare class TreeIndex {
     listSpaces(): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
     getHomepageId(key: string): Promise<string | null>;
+    loadRootPages(key: string): Promise<TreeNode[]>;
     loadChildren(id: string, options?: {
         force?: boolean;
     }): Promise<TreeNode[]>;
@@ -688,6 +730,9 @@ export interface VfsClient {
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage[]>;
     getPageDirectChildren(pageId: string, options?: {
         limit?: number;
         signal?: AbortSignal;
@@ -707,6 +752,7 @@ export interface VfsClient {
     getPageMetadata(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePage>;
+    isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
     getPage(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePage & {
@@ -749,6 +795,7 @@ export interface VfsClient {
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
+    getAttachment(id: string): Promise<AttachmentInfo>;
     listAttachments(pageId: string, options?: {
         limit?: number;
         signal?: AbortSignal;
@@ -774,11 +821,20 @@ export interface VfsClient {
         comment?: string;
     }): Promise<AttachmentInfo>;
     deleteAttachment(attachmentId: string): Promise<void>;
+    findPagesByTitle(title: string, options: {
+        spaceKey: string;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        spaceKey?: string;
+    }>>;
+    getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
     createPage(params: {
         spaceKey: string;
         title: string;
         storage: string;
         parentId?: string;
+        properties?: Record<string, unknown>;
     }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;
@@ -801,6 +857,7 @@ export interface VfsClient {
 // export: VfsDirent
 export interface VfsDirent {
     name: string;
+    id?: string;
     kind: VfsNodeKind;
     isDirectory: boolean;
     isFile: boolean;
@@ -901,6 +958,7 @@ export declare function vfsSlug(title: string | undefined | null): string;
 
 // export: VfsStat
 export interface VfsStat {
+    canonicalName?: string;
     kind: VfsNodeKind;
     isDirectory: boolean;
     isFile: boolean;
@@ -912,6 +970,17 @@ export interface VfsStat {
     id: string;
     version?: number;
 }
+
+// export: VfsWriteCondition
+export type VfsWriteCondition = {
+    id: string;
+    spaceKey: string;
+} | {
+    createOnly: true;
+    spaceKey: string;
+    parentId: string;
+    creationToken?: string;
+};
 
 // export: VfsWriteResult
 export interface VfsWriteResult {
@@ -925,9 +994,11 @@ export interface VfsWriteResult {
 export declare class VirtualDirs {
     private readonly opts;
     private readonly attachmentListings;
+    private readonly commentListings;
     constructor(opts: VirtualDirsOptions);
     invalidateAttachments(pageId: string): void;
     private listAttachments;
+    private cachedListing;
     spaceJson(spaceKey: string): Promise<string>;
     meJson(identity: {
         accountId: string;
@@ -947,8 +1018,10 @@ export declare class VirtualDirs {
     commentsMarkdown(node: TreeNode, path: string): Promise<string>;
     byIdReaddir(): VfsDirent[];
     byIdReadme(spaceKey: string): string;
+    attachmentPath(id: string, spaceKey: string): Promise<string>;
+    folderPath(id: string, spaceKey: string): Promise<string>;
     canonicalPath(id: string, spaceKey: string, path: string): Promise<string>;
-    loadNode(id: string, spaceKey: string, path: string): Promise<TreeNode>;
+    loadNode(id: string, spaceKey: string, path: string, force?: boolean): Promise<TreeNode>;
     private segmentsFromIndex;
     labelsReaddir(spaceKey: string): VfsDirent[];
     labelsReadme(spaceKey: string): string;
@@ -988,9 +1061,11 @@ export declare function withRateLimitRetry<T>(task: () => Promise<T>, options?: 
 export declare class WriteBack {
     private readonly opts;
     private readonly pending;
+    private readonly running;
     private readonly warnedLossy;
     constructor(opts: WriteBackOptions);
     updatePage(node: TreeNode, path: string, content: string): Promise<VfsWriteResult>;
+    private schedule;
     flush(): Promise<void>;
     get pendingCount(): number;
     private drain;
@@ -1008,6 +1083,7 @@ export declare class WriteBack {
         path: string;
         content: string;
         parentIsFolder: boolean;
+        creationToken?: string;
     }): Promise<VfsWriteResult>;
     private request;
 }
@@ -1100,6 +1176,7 @@ export declare class FakeConfluenceClient implements VfsClient {
     }>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
+    getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">): Promise<ConfluencePage[]>;
     getSpaceHomepageId(spaceKey: string): Promise<string | null>;
     getPageDirectChildren(pageId: string, _options?: {
         limit?: number;
@@ -1116,6 +1193,7 @@ export declare class FakeConfluenceClient implements VfsClient {
         limit?: number;
     }): Promise<FolderChild[]>;
     getPageMetadata(id: string): Promise<ConfluencePage>;
+    isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
@@ -1142,6 +1220,7 @@ export declare class FakeConfluenceClient implements VfsClient {
         limit?: number;
     }): Promise<PageChangeInfo[]>;
     getAllComments(pageId: string): Promise<PageComments>;
+    getAttachment(id: string): Promise<AttachmentInfo>;
     listAttachments(pageId: string): Promise<AttachmentInfo[]>;
     private toAttachmentInfo;
     downloadAttachment(attachment: AttachmentInfo | {
@@ -1161,11 +1240,21 @@ export declare class FakeConfluenceClient implements VfsClient {
         mimeType?: string;
     }): Promise<AttachmentInfo>;
     deleteAttachment(attachmentId: string): Promise<void>;
+    private readonly creationProperties;
+    findPagesByTitle(title: string, options: {
+        spaceKey: string;
+    }): Promise<{
+        id: string;
+        title: string;
+        spaceKey: string;
+    }[]>;
+    getPagePropertyByKey(id: string, key: string): Promise<unknown>;
     createPage(params: {
         spaceKey: string;
         title: string;
         storage: string;
         parentId?: string;
+        properties?: Record<string, unknown>;
     }): Promise<ConfluencePage>;
     updatePage(params: {
         id: string;

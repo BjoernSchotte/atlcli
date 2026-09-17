@@ -76,6 +76,28 @@ describe("mapClientError", () => {
     expect(mapClientError(original)).toBe(original);
   });
 
+  it("recognizes explicit Bun and Node transport codes, preserving the cause", () => {
+    for (const code of ["ConnectionRefused", "ConnectionClosed", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "UND_ERR_SOCKET"]) {
+      const cause = Object.assign(new Error("network failure"), { code });
+      for (const error of [cause, new TypeError("fetch failed", { cause })]) {
+        const mapped = mapClientError(error, "/DOCSY");
+        expect(mapped.code).toBe("EAGAIN");
+        expect(mapped.cause).toBe(error);
+        expect(mapped.path).toBe("/DOCSY");
+      }
+    }
+  });
+
+  it("does not retry cancellation, certificate errors, unknown failures or cyclic causes", () => {
+    const cycle = Object.assign(new Error("cycle"), { cause: null as unknown });
+    cycle.cause = cycle;
+    for (const error of [cycle, new TypeError("fetch failed"),
+      Object.assign(new Error("certificate"), { code: "CERT_HAS_EXPIRED" }),
+      Object.assign(new Error("cancelled", { cause: { code: "ECONNRESET" } }), { name: "AbortError" })]) {
+      expect(mapClientError(error).code).toBe("EINVAL");
+    }
+  });
+
   it("falls back to EINVAL when nothing carries a status", () => {
     const mapped = mapClientError(new Error("socket hang up"), "/DOCSY");
     expect(mapped.code).toBe("EINVAL");

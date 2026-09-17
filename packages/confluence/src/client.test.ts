@@ -21,6 +21,48 @@ describe("escapeCqlValue", () => {
   });
 });
 
+describe("page property reads by deployment", () => {
+  beforeEach(() => { installImmediateRetryScheduler([]); });
+  afterEach(() => { globalThis.fetch = originalFetch; restoreRetryScheduler(); });
+  for (const deploymentType of ["cloud", "data-center"] as const) {
+    test(`reads the exact key through ${deploymentType}'s endpoint`, async () => {
+      let requested: URL | undefined;
+      const key = "marker/key ?";
+      globalThis.fetch = mock((url: string) => {
+        requested = new URL(url);
+        return Promise.resolve(Response.json(deploymentType === "cloud"
+          ? { results: [{ id: "9", key, version: { number: 1 }, value: { token: "proof" } }] }
+          : { key, value: { token: "proof" } }));
+      }) as unknown as typeof fetch;
+      const client = new ConfluenceClient({ ...mockProfile, deploymentType,
+        ...(deploymentType === "data-center" ? { baseUrl: "https://dc.example.test/confluence" } : {}) });
+      expect(await client.getPagePropertyByKey("123", key)).toEqual({ token: "proof" });
+      if (deploymentType === "data-center") {
+        expect(requested!.pathname).toBe(`/confluence/rest/api/content/123/property/${encodeURIComponent(key)}`);
+        expect(requested!.search).toBe("");
+      } else {
+        expect(requested!.pathname).toBe("/wiki/api/v2/pages/123/properties");
+        expect(requested!.searchParams.get("key")).toBe(key);
+      }
+    });
+  }
+  for (const status of [404, 403, 500]) test(`Data Center property handles HTTP ${status} without positive evidence`, async () => {
+    globalThis.fetch = mock(() => Promise.resolve(Response.json({}, { status }))) as unknown as typeof fetch;
+    const client = new ConfluenceClient({ ...mockProfile, deploymentType: "data-center" });
+    if (status === 404) expect(await client.getPagePropertyByKey("123", "marker")).toBeUndefined();
+    else await expect(client.getPagePropertyByKey("123", "marker")).rejects.toThrow(String(status));
+  });
+  test("does not accept a different returned key or unsafe path identity", async () => {
+    let calls = 0;
+    globalThis.fetch = mock(() => { calls++; return Promise.resolve(Response.json({ key: "other", value: { token: "proof" } })); }) as unknown as typeof fetch;
+    const client = new ConfluenceClient({ ...mockProfile, deploymentType: "data-center" });
+    expect(await client.getPagePropertyByKey("123", "marker")).toBeUndefined();
+    await expect(client.getPagePropertyByKey("../123", "marker")).rejects.toThrow("identity");
+    await expect(client.getPagePropertyByKey("123", "..")).rejects.toThrow("identity");
+    expect(calls).toBe(1);
+  });
+});
+
 describe("Confluence page metadata", () => {
   afterEach(() => { globalThis.fetch = originalFetch; });
 
@@ -29,7 +71,7 @@ describe("Confluence page metadata", () => {
     globalThis.fetch = mock((url: string) => {
       requested = new URL(url);
       return Promise.resolve(Response.json({
-        id: "123", title: "Page", version: { number: 7 }, space: { key: "DOCSY" },
+        id: "123", title: "Page", version: { number: 7, when: "2026-09-17T12:34:56Z" }, space: { key: "DOCSY" },
         ancestors: [{ id: "100", title: "Home" }, { id: "102", title: "Parent" }],
         body: { storage: { value: "should never escape metadata" } },
       }));
@@ -39,7 +81,39 @@ describe("Confluence page metadata", () => {
     expect(requested!.searchParams.get("expand")).toBe("version,space,ancestors");
     expect(result).toMatchObject({ id: "123", spaceKey: "DOCSY", version: 7, parentId: "102" });
     expect(result).not.toHaveProperty("storage");
+    expect(result.lastModified).toBe("2026-09-17T12:34:56Z");
   });
+});
+
+describe("explicit trash confirmation", () => {
+  afterEach(() => { globalThis.fetch = originalFetch; });
+  test("uses body-free Data Center metadata and checks the returned space", async () => {
+    let requested: URL | undefined;
+    globalThis.fetch = mock((url: string) => {
+      requested = new URL(url);
+      return Promise.resolve(Response.json({ id: "123", status: "trashed", space: { key: "DOCSY" } }));
+    }) as unknown as typeof fetch;
+    const client = new ConfluenceClient({ ...mockProfile, deploymentType: "data-center" });
+    expect(await client.isPageTrashed("123", "DOCSY")).toBe(true);
+    expect(requested!.searchParams.get("expand")).toBe("space");
+    expect(requested!.searchParams.get("status")).toBe("trashed");
+    expect(await client.isPageTrashed("123", "OTHER")).toBe(false);
+  });
+  for (const state of ["trashed", "current", "foreign", "wrong-id", "missing"] as const) {
+    test(`requires explicit matching metadata: ${state}`, async () => {
+      const requests: URL[] = [];
+      globalThis.fetch = mock((url: string) => {
+        const request = new URL(url); requests.push(request);
+        if (request.pathname.includes("/space/")) return Promise.resolve(Response.json({ id: 42, key: "DOCSY" }));
+        if (state === "missing") return Promise.resolve(Response.json({}, { status: 404 }));
+        return Promise.resolve(Response.json({ id: state === "wrong-id" ? "999" : "123",
+          status: state === "current" ? "current" : "trashed", spaceId: state === "foreign" ? "99" : "42" }));
+      }) as unknown as typeof fetch;
+      expect(await new ConfluenceClient(mockProfile).isPageTrashed("123", "DOCSY")).toBe(state === "trashed");
+      expect(requests.at(-1)!.searchParams.getAll("status")).toEqual(["trashed"]);
+      expect(requests.at(-1)!.searchParams.has("body-format")).toBe(false);
+    });
+  }
 });
 
 describe("Confluence v2 space pagination", () => {
@@ -523,6 +597,31 @@ describe("ConfluenceClient", () => {
       expect(capturedBody.space.key).toBe("TEST");
       expect(capturedBody.body.storage.value).toBe("<p>content</p>");
       expect(result.id).toBe("456");
+    });
+
+    test("createPage never repeats an ambiguous server error", async () => {
+      let calls = 0;
+      globalThis.fetch = mock(() => {
+        calls++;
+        return Promise.resolve(new Response("ambiguous creation", { status: 503 }));
+      }) as unknown as typeof fetch;
+      const client = new ConfluenceClient(mockProfile);
+      await expect(client.createPage({ spaceKey: "TEST", title: "Recovery", storage: "<p>body</p>" })).rejects.toThrow("503");
+      expect(calls).toBe(1);
+    });
+
+    test("createPage includes recovery properties in the same POST", async () => {
+      const requests: { body: any; method: string | undefined }[] = [];
+      globalThis.fetch = mock((_url: string, options: RequestInit) => {
+        requests.push({ body: JSON.parse(options.body as string), method: options.method });
+        return Promise.resolve(new Response(JSON.stringify({ id: "456", version: { number: 1 } }), { status: 200 }));
+      }) as unknown as typeof fetch;
+      const client = new ConfluenceClient(mockProfile);
+      await client.createPage({ spaceKey: "TEST", title: "Recovery", storage: "<p>body</p>",
+        properties: { "atlcli-vfs-creation": { token: "test-token" } } });
+      expect(requests).toHaveLength(1);
+      expect(requests[0].method).toBe("POST");
+      expect(requests[0].body.metadata.properties).toEqual({ "atlcli-vfs-creation": { value: { token: "test-token" } } });
     });
 
     test("updatePage sends version number", async () => {

@@ -6,6 +6,7 @@
  * error object. That is the whole contract: `apps/cli/src/vfs/just-bash-fs.ts`
  * and `apps/cli/src/vfs/webdav-fs.ts` are adapters over these ten methods.
  */
+import type { ModeGuard } from "./mode.js";
 import type { VfsDirent, VfsNode, VfsStat } from "./types.js";
 
 export interface VfsWriteResult {
@@ -17,7 +18,13 @@ export interface VfsWriteResult {
   created: boolean;
 }
 
+export type VfsWriteCondition =
+  | { id: string; spaceKey: string }
+  | { createOnly: true; spaceKey: string; parentId: string; creationToken?: string };
+
 export interface ConfluenceVfs {
+  readonly guard: ModeGuard;
+
   /** Metadata for one path. Never fetches a body (demand principle, rule 2). */
   stat(path: string): Promise<VfsStat>;
 
@@ -30,23 +37,39 @@ export interface ConfluenceVfs {
   /** Raw bytes, the path attachments take. */
   readFileBytes(path: string): Promise<Uint8Array>;
 
-  /** Create or update a page. Throws `EROFS` in `ro` mode. */
-  writeFile(path: string, content: string | Uint8Array): Promise<VfsWriteResult>;
+  /** Create or update a page. Throws `EROFS` in `ro` mode.
+   * An ID condition only updates that page; createOnly only creates under the specified parent. */
+  writeFile(path: string, content: string | Uint8Array, condition?: VfsWriteCondition): Promise<VfsWriteResult>;
+
+  /** Recover a positively identified initial creation; never issue another POST. */
+  reconcileCreate(path: string, content: string, target: { spaceKey: string; parentId: string; creationToken: string }): Promise<VfsWriteResult | null>;
 
   /** Create a page with an empty body (decision 7). Throws `EROFS` in `ro` mode. */
   mkdir(path: string): Promise<VfsWriteResult>;
 
   /** Retitle, reparent or move across spaces, depending on what changed. */
-  rename(from: string, to: string): Promise<void>;
+  rename(from: string, to: string, expected?: { id: string; spaceKey: string; targetSpaceKey?: string; sourceParentId: string | null; targetParentId: string | null; kind?: "page" | "folder" }): Promise<void>;
 
-  /** Move to trash. Needs `mode: "rw"` *and* `allowDelete`. Never purges. */
-  rm(path: string, options?: { recursive?: boolean }): Promise<void>;
+  /** Positively confirm a page location from fresh metadata after an uncertain move. */
+  confirmMove(id: string, spaceKey: string, parentId: string | null, title: string, kind?: "page" | "folder"): Promise<boolean>;
+
+  /** Move to trash. Needs `mode: "rw"` *and* `allowDelete`. Never purges.
+   * An expected identity restricts deletion to that page in that space. */
+  rm(path: string, options?: { recursive?: boolean; expected?: { id: string; spaceKey: string } }): Promise<void>;
+  /** Confirm trash by identity without treating absence or denial as confirmation. */
+  confirmTrash(id: string, spaceKey: string): Promise<boolean>;
 
   /** Copy a page through the existing `copyPage` endpoint. */
   copy(from: string, to: string): Promise<VfsWriteResult>;
 
   /** Symlink target for the convenience directories, absolute inside the VFS. */
   readlink(path: string): Promise<string>;
+
+  /** Resolve a folder identity within one selected space, without downloading bodies. */
+  folderPath(id: string, spaceKey: string): Promise<string>;
+
+  /** Resolve an attachment ID inside one selected space, without downloading bytes. */
+  attachmentPath(id: string, spaceKey: string): Promise<string>;
 
   /** Resolve a path to its node without the `stat` projection. */
   resolve(path: string): Promise<VfsNode>;

@@ -100,7 +100,7 @@ function writeOctal(target: Uint8Array, offset: number, length: number, value: n
   target.set(Buffer.from(`${rendered}\0`, "ascii"), offset);
 }
 
-export function deterministicTarGz(entry: ReleaseTreeEntry): Uint8Array {
+function tarEntry(entry: ReleaseTreeEntry): Uint8Array {
   const path = safeRelativePath(entry.path);
   if (Buffer.byteLength(path) > 100) throw new Error(`tar entry path exceeds 100 bytes: ${path}`);
   const header = new Uint8Array(512);
@@ -119,10 +119,24 @@ export function deterministicTarGz(entry: ReleaseTreeEntry): Uint8Array {
   header.set(Buffer.from(checksumText, "ascii"), 148);
 
   const bodyBlocks = Math.ceil(entry.bytes.byteLength / 512);
-  const tar = new Uint8Array(512 + bodyBlocks * 512 + 1024);
+  const tar = new Uint8Array(512 + bodyBlocks * 512);
   tar.set(header, 0);
   tar.set(entry.bytes, 512);
-  return gzipSync(tar, { level: 9 });
+  return tar;
+}
+
+export function deterministicTarGz(input: ReleaseTreeEntry | ReleaseTreeEntry[]): Uint8Array {
+  const entries = (Array.isArray(input) ? input : [input])
+    .map((entry) => ({ ...entry, path: safeRelativePath(entry.path) }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  if (!entries.length) throw new Error("TAR archive must contain an entry");
+  const seen = new Set<string>();
+  const blocks = entries.map((entry) => {
+    if (seen.has(entry.path)) throw new Error(`duplicate archive path: ${entry.path}`);
+    seen.add(entry.path);
+    return tarEntry(entry);
+  });
+  return gzipSync(Buffer.concat([...blocks, new Uint8Array(1024)]), { level: 9 });
 }
 
 export async function writeDeterministicZip(

@@ -166,10 +166,26 @@ describe("readFile", () => {
 
     const v1 = await vfs.readFile("/DOCSY/page-0-200/.versions/1.md");
     expect(v1).toContain("Body of page 0");
+    expect(parseVfsFrontmatter(v1).frontmatter.parentId).toBeUndefined();
+    expect(parseVfsFrontmatter(v1).frontmatter.url).toBeUndefined();
     client.resetCalls();
     await vfs.readFile("/DOCSY/page-0-200/.versions/1.md");
     expect(client.callsTo("getPageAtVersion")).toBe(0);
     await vfs.close();
+  });
+
+  it("does not serve a historical rendering as the current editable document", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      const version = await vfs.readFile("/DOCSY/page-0-200/.versions/1.md");
+      expect(parseVfsFrontmatter(version).frontmatter.parentId).toBeUndefined();
+      const current = await vfs.readFile("/DOCSY/page-0-200/_index.md");
+      expect(parseVfsFrontmatter(current).frontmatter.parentId).toBe("100");
+      expect(parseVfsFrontmatter(current).frontmatter.url).toContain("/spaces/DOCSY/pages/200");
+      expect(client.callsTo("getPageAtVersion")).toBe(1);
+      expect(client.callsTo("getPage")).toBe(1);
+    } finally { await vfs.close(); }
   });
 });
 
@@ -215,6 +231,20 @@ describe("the cache is per profile and account", () => {
 });
 
 describe("prefetch", () => {
+  it("keeps the fetched version timestamp in the index and cached Markdown", async () => {
+    const client = seeded(1);
+    const vfs = await openVfs(client);
+    try {
+      await vfs.readdir("/DOCSY");
+      client.bumpVersion("200", "<p>External update</p>");
+      const modified = (await client.getPageVersions(["200"])).get("200")!.lastModified!;
+      await vfs.prefetch(["200"]);
+      expect(vfs.index.node("200")?.lastModified).toBe(modified);
+      expect(parseVfsFrontmatter(await vfs.readFile("/DOCSY/page-0-200.md")).frontmatter.lastModified).toBe(modified);
+      expect(client.callsTo("getPage")).toBe(0);
+    } finally { await vfs.close(); }
+  });
+
   function storeFor(vfs: ConfluenceVfsImpl, client: FakeConfluenceClient): PageStore {
     return new PageStore({ client, cache: vfs.cache!, index: vfs.index,
       instanceUrl: "https://example.atlassian.net/wiki", offline: false,
@@ -510,3 +540,26 @@ describe("round trip", () => {
     });
   }
 });
+
+for (const deploymentType of ["cloud", "data-center"] as const) {
+it(`revalidates directly reopened cached bodies after the metadata TTL (${deploymentType})`, async () => {
+  const client = new FakeConfluenceClient({ deploymentType })
+    .seedSpace({ id: "sp-1", key: "DOCSY", name: "Docs", homepageId: "100" })
+    .seedPage({ id: "100", title: "Docs Home", spaceKey: "DOCSY", storage: "<p>Home page.</p>" });
+  const vfs = await openVfs(client);
+  try {
+    const initial = await vfs.readFile("/DOCSY/_index.md");
+    await client.updatePage({ id: "100", title: "Docs Home", storage: "<p>Updated Grüße 🐴</p>", version: 2 });
+    const calls = client.calls.length;
+    expect(await vfs.readFile("/DOCSY/_index.md")).toBe(initial);
+    expect(client.calls.length).toBe(calls);
+    clock += 60_001;
+    const updated = await vfs.readFile("/DOCSY/_index.md");
+    expect(updated).toContain("Updated Grüße 🐴");
+    expect(updated).toContain("  version: 2");
+    const freshCalls = client.calls.length;
+    expect(await vfs.readFile("/DOCSY/_index.md")).toBe(updated);
+    expect(client.calls.length).toBe(freshCalls);
+  } finally { await vfs.close(); }
+});
+}

@@ -1,0 +1,1285 @@
+{
+  "schema": 4,
+  "host": {
+    "os": "darwin",
+    "release": "25.4.0",
+    "arch": "arm64",
+    "bun": "1.3.14",
+    "glow": "glow version 2.1.1",
+    "vim": "VIM - Vi IMproved 9.1 (2024 Jan 02, compiled Feb 21 2026 19:49:52)"
+  },
+  "corpus": {
+    "pages": 602,
+    "largeScanPages": 602,
+    "attachmentBytes": 1300000,
+    "backend": "in-process synthetic; no network latency"
+  },
+  "cachePolicy": "Cold: fresh mount, endpoint, VFS and davfs cache. Warm: immediate identical workload on same mount.",
+  "limitations": [
+    "API response payload bytes serialize all synthetic responses, including metadata; excludes HTTP envelopes, compression and transport overhead",
+    "Peak RSS covers one isolated transport run (startup, cold, warm and shutdown), not each phase",
+    "Protocol requests count complete NFS RPC records or received WebDAV HTTP requests; incomplete records are excluded",
+    "glow stops after first render; glow-scan waits for all 602 documents, with up to 500 ms observation resolution from native terminal redraws",
+    "Vim save-to-API uses BufWritePre marker mtime and update response time; excludes editor startup"
+  ],
+  "records": [
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 3546.5037499088794,
+      "glowListingMs": 47.800458036363125,
+      "glowRenderMs": 2.3369998671114445,
+      "run": 1,
+      "phase": "cold",
+      "startupMs": 130.38412499999998,
+      "wallMs": 4219.261625,
+      "firstListingMs": 47.800458036363125,
+      "firstByteMs": 3548.840749775991,
+      "readBytes": 0,
+      "protocolRequests": 3640,
+      "startupProtocolRequests": 2,
+      "startupApiRequests": 3,
+      "startupApiResponsePayloadBytes": 189,
+      "apiResponsePayloadBytes": 13469048,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getSpaceRootPages": 1,
+        "getPageDirectChildren": 602,
+        "getPageVersions": 2,
+        "getPage": 602,
+        "getAllComments": 603,
+        "getPageAtVersion": 602,
+        "listAttachments": 602
+      },
+      "cacheHits": 4,
+      "vfsCalls": 58190,
+      "parentRss": 299614208,
+      "interruptedRetries": 0,
+      "shutdownMs": 21.932958999999755,
+      "helperPeakRss": 0,
+      "parentPeakRss": 372097024
+    },
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 1730.7107078377157,
+      "glowListingMs": 64.92591695860028,
+      "glowRenderMs": 0.44824997894465923,
+      "run": 1,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 2393.8109160000004,
+      "firstListingMs": 64.92591695860028,
+      "firstByteMs": 1731.1589578166604,
+      "readBytes": 0,
+      "protocolRequests": 1818,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 59805,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1204,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "listAttachments": 602,
+        "getAllComments": 602
+      },
+      "cacheHits": 1807,
+      "vfsCalls": 54445,
+      "parentRss": 372031488,
+      "interruptedRetries": 0,
+      "shutdownMs": 21.932958999999755,
+      "helperPeakRss": 0,
+      "parentPeakRss": 372097024
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 8949.04716592282,
+      "glowListingMs": 30.785332899540663,
+      "glowRenderMs": 2.3185829631984234,
+      "run": 1,
+      "phase": "cold",
+      "startupMs": 319.277417,
+      "wallMs": 9678.802582999999,
+      "firstListingMs": 30.785332899540663,
+      "firstByteMs": 8951.365748886019,
+      "readBytes": 0,
+      "protocolRequests": 15812,
+      "startupProtocolRequests": 6,
+      "startupApiRequests": 6,
+      "startupApiResponsePayloadBytes": 668,
+      "apiResponsePayloadBytes": 13533429,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getPage": 602,
+        "getAllComments": 603,
+        "getPagesByLabel": 1,
+        "searchPages": 2,
+        "getPageAtVersion": 602,
+        "listAttachments": 602,
+        "getPageDirectChildren": 601,
+        "getPageVersions": 1
+      },
+      "cacheHits": 618,
+      "vfsCalls": 161250,
+      "parentRss": 251740160,
+      "interruptedRetries": 0,
+      "shutdownMs": 35.724083000000974,
+      "helperPeakRss": 6586368,
+      "parentPeakRss": 269172736
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 6415.864125126973,
+      "glowListingMs": 97.86254214122891,
+      "glowRenderMs": 0.8825829718261957,
+      "run": 1,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 7118.102000000001,
+      "firstListingMs": 97.86254214122891,
+      "firstByteMs": 6416.746708098799,
+      "readBytes": 0,
+      "protocolRequests": 12707,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 153286,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1208,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "getPagesByLabel": 1,
+        "searchPages": 2,
+        "listAttachments": 603,
+        "getAllComments": 602
+      },
+      "cacheHits": 3018,
+      "vfsCalls": 117275,
+      "parentRss": 268943360,
+      "interruptedRetries": 0,
+      "shutdownMs": 35.724083000000974,
+      "helperPeakRss": 6586368,
+      "parentPeakRss": 269172736
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 8648.129583103582,
+      "glowListingMs": 29.930791119113564,
+      "glowRenderMs": 1.3184170238673687,
+      "run": 2,
+      "phase": "cold",
+      "startupMs": 273.00295800000004,
+      "wallMs": 9371.83525,
+      "firstListingMs": 29.930791119113564,
+      "firstByteMs": 8649.44800012745,
+      "readBytes": 0,
+      "protocolRequests": 15806,
+      "startupProtocolRequests": 6,
+      "startupApiRequests": 6,
+      "startupApiResponsePayloadBytes": 668,
+      "apiResponsePayloadBytes": 13533429,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getPage": 602,
+        "getAllComments": 603,
+        "getPagesByLabel": 1,
+        "searchPages": 2,
+        "getPageAtVersion": 602,
+        "listAttachments": 602,
+        "getPageDirectChildren": 601,
+        "getPageVersions": 1
+      },
+      "cacheHits": 619,
+      "vfsCalls": 160912,
+      "parentRss": 243531776,
+      "interruptedRetries": 0,
+      "shutdownMs": 35.918375000001106,
+      "helperPeakRss": 6651904,
+      "parentPeakRss": 262209536
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 6665.069583104923,
+      "glowListingMs": 98.06791716255248,
+      "glowRenderMs": 0.6683750543743372,
+      "run": 2,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 7370.163999999999,
+      "firstListingMs": 98.06791716255248,
+      "firstByteMs": 6665.737958159298,
+      "readBytes": 0,
+      "protocolRequests": 12717,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 60018,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1206,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "getPagesByLabel": 1,
+        "listAttachments": 603,
+        "getAllComments": 602
+      },
+      "cacheHits": 3019,
+      "vfsCalls": 118232,
+      "parentRss": 261799936,
+      "interruptedRetries": 0,
+      "shutdownMs": 35.918375000001106,
+      "helperPeakRss": 6651904,
+      "parentPeakRss": 262209536
+    },
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 3546.749999979511,
+      "glowListingMs": 30.734625179320574,
+      "glowRenderMs": 2.45729205198586,
+      "run": 2,
+      "phase": "cold",
+      "startupMs": 127.076542,
+      "wallMs": 4202.174334,
+      "firstListingMs": 30.734625179320574,
+      "firstByteMs": 3549.2072920314968,
+      "readBytes": 0,
+      "protocolRequests": 3645,
+      "startupProtocolRequests": 2,
+      "startupApiRequests": 3,
+      "startupApiResponsePayloadBytes": 189,
+      "apiResponsePayloadBytes": 13469048,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getPage": 602,
+        "getSpaceRootPages": 1,
+        "getPageDirectChildren": 602,
+        "getPageVersions": 2,
+        "getAllComments": 603,
+        "getPageAtVersion": 602,
+        "listAttachments": 602
+      },
+      "cacheHits": 5,
+      "vfsCalls": 58214,
+      "parentRss": 297828352,
+      "interruptedRetries": 0,
+      "shutdownMs": 27.89258400000017,
+      "helperPeakRss": 0,
+      "parentPeakRss": 343425024
+    },
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 1697.5977499969304,
+      "glowListingMs": 66.08220911584795,
+      "glowRenderMs": 0.4947921261191368,
+      "run": 2,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 2361.065334000001,
+      "firstListingMs": 66.08220911584795,
+      "firstByteMs": 1698.0925421230495,
+      "readBytes": 0,
+      "protocolRequests": 1816,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 59805,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1204,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "listAttachments": 602,
+        "getAllComments": 602
+      },
+      "cacheHits": 1807,
+      "vfsCalls": 54443,
+      "parentRss": 343359488,
+      "interruptedRetries": 0,
+      "shutdownMs": 27.89258400000017,
+      "helperPeakRss": 0,
+      "parentPeakRss": 343425024
+    },
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 3549.055584007874,
+      "glowListingMs": 31.626167008653283,
+      "glowRenderMs": 2.326832851395011,
+      "run": 3,
+      "phase": "cold",
+      "startupMs": 128.25433299999997,
+      "wallMs": 4217.605875,
+      "firstListingMs": 31.626167008653283,
+      "firstByteMs": 3551.382416859269,
+      "readBytes": 0,
+      "protocolRequests": 3645,
+      "startupProtocolRequests": 2,
+      "startupApiRequests": 3,
+      "startupApiResponsePayloadBytes": 189,
+      "apiResponsePayloadBytes": 13469048,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getPage": 602,
+        "getSpaceRootPages": 1,
+        "getPageDirectChildren": 602,
+        "getPageVersions": 2,
+        "getAllComments": 603,
+        "getPageAtVersion": 602,
+        "listAttachments": 602
+      },
+      "cacheHits": 5,
+      "vfsCalls": 58214,
+      "parentRss": 296091648,
+      "interruptedRetries": 0,
+      "shutdownMs": 25.295875000000706,
+      "helperPeakRss": 0,
+      "parentPeakRss": 362889216
+    },
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 1816.833792021498,
+      "glowListingMs": 66.60641706548631,
+      "glowRenderMs": 0.9927079081535339,
+      "run": 3,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 2512.4556660000007,
+      "firstListingMs": 66.60641706548631,
+      "firstByteMs": 1817.8264999296516,
+      "readBytes": 0,
+      "protocolRequests": 1816,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 59805,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1204,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "listAttachments": 602,
+        "getAllComments": 602
+      },
+      "cacheHits": 1807,
+      "vfsCalls": 54443,
+      "parentRss": 362807296,
+      "interruptedRetries": 0,
+      "shutdownMs": 25.295875000000706,
+      "helperPeakRss": 0,
+      "parentPeakRss": 362889216
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 8780.914291040972,
+      "glowListingMs": 32.223750138655305,
+      "glowRenderMs": 1.320041948929429,
+      "run": 3,
+      "phase": "cold",
+      "startupMs": 330.968666,
+      "wallMs": 9493.695666,
+      "firstListingMs": 32.223750138655305,
+      "firstByteMs": 8782.234332989901,
+      "readBytes": 0,
+      "protocolRequests": 15803,
+      "startupProtocolRequests": 6,
+      "startupApiRequests": 6,
+      "startupApiResponsePayloadBytes": 668,
+      "apiResponsePayloadBytes": 13533429,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getPage": 602,
+        "getAllComments": 603,
+        "getPagesByLabel": 1,
+        "searchPages": 2,
+        "getPageAtVersion": 602,
+        "listAttachments": 602,
+        "getPageDirectChildren": 601,
+        "getPageVersions": 1
+      },
+      "cacheHits": 617,
+      "vfsCalls": 160748,
+      "parentRss": 241074176,
+      "interruptedRetries": 0,
+      "shutdownMs": 32.22200000000157,
+      "helperPeakRss": 6586368,
+      "parentPeakRss": 261832704
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 6682.773584034294,
+      "glowListingMs": 99.781583994627,
+      "glowRenderMs": 0.7347920909523964,
+      "run": 3,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 7349.9376250000005,
+      "firstListingMs": 99.781583994627,
+      "firstByteMs": 6683.508376125246,
+      "readBytes": 0,
+      "protocolRequests": 12704,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 153075,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1207,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "getPagesByLabel": 1,
+        "searchPages": 2,
+        "listAttachments": 602,
+        "getAllComments": 602
+      },
+      "cacheHits": 2415,
+      "vfsCalls": 117353,
+      "parentRss": 261455872,
+      "interruptedRetries": 0,
+      "shutdownMs": 32.22200000000157,
+      "helperPeakRss": 6586368,
+      "parentPeakRss": 261832704
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 8916.142374975607,
+      "glowListingMs": 48.975749872624874,
+      "glowRenderMs": 1.329166116192937,
+      "run": 4,
+      "phase": "cold",
+      "startupMs": 273.328583,
+      "wallMs": 9641.9725,
+      "firstListingMs": 48.975749872624874,
+      "firstByteMs": 8917.4715410918,
+      "readBytes": 0,
+      "protocolRequests": 15805,
+      "startupProtocolRequests": 6,
+      "startupApiRequests": 6,
+      "startupApiResponsePayloadBytes": 668,
+      "apiResponsePayloadBytes": 13533429,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getPage": 602,
+        "getAllComments": 603,
+        "getPagesByLabel": 1,
+        "searchPages": 2,
+        "getPageAtVersion": 602,
+        "listAttachments": 602,
+        "getPageDirectChildren": 601,
+        "getPageVersions": 1
+      },
+      "cacheHits": 618,
+      "vfsCalls": 160019,
+      "parentRss": 239828992,
+      "interruptedRetries": 0,
+      "shutdownMs": 36.71037500000239,
+      "helperPeakRss": 6553600,
+      "parentPeakRss": 261734400
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 6699.376250151545,
+      "glowListingMs": 98.74683408997953,
+      "glowRenderMs": 3.6260830238461494,
+      "run": 4,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 7421.097916000002,
+      "firstListingMs": 98.74683408997953,
+      "firstByteMs": 6703.002333175391,
+      "readBytes": 0,
+      "protocolRequests": 12727,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 153286,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1208,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "getPagesByLabel": 1,
+        "searchPages": 2,
+        "listAttachments": 603,
+        "getAllComments": 602
+      },
+      "cacheHits": 3020,
+      "vfsCalls": 118771,
+      "parentRss": 261373952,
+      "interruptedRetries": 0,
+      "shutdownMs": 36.71037500000239,
+      "helperPeakRss": 6553600,
+      "parentPeakRss": 261734400
+    },
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 3564.106209203601,
+      "glowListingMs": 28.581542195752263,
+      "glowRenderMs": 2.284916117787361,
+      "run": 4,
+      "phase": "cold",
+      "startupMs": 128.259708,
+      "wallMs": 4215.618416,
+      "firstListingMs": 28.581542195752263,
+      "firstByteMs": 3566.3911253213882,
+      "readBytes": 0,
+      "protocolRequests": 3645,
+      "startupProtocolRequests": 2,
+      "startupApiRequests": 3,
+      "startupApiResponsePayloadBytes": 189,
+      "apiResponsePayloadBytes": 13469048,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getPage": 602,
+        "getSpaceRootPages": 1,
+        "getPageDirectChildren": 602,
+        "getPageVersions": 2,
+        "getAllComments": 603,
+        "getPageAtVersion": 602,
+        "listAttachments": 602
+      },
+      "cacheHits": 5,
+      "vfsCalls": 58214,
+      "parentRss": 296583168,
+      "interruptedRetries": 0,
+      "shutdownMs": 24.863290999999663,
+      "helperPeakRss": 0,
+      "parentPeakRss": 371687424
+    },
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 1765.6593341380358,
+      "glowListingMs": 65.51454216241837,
+      "glowRenderMs": 0.4812499973922968,
+      "run": 4,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 2427.449375,
+      "firstListingMs": 65.51454216241837,
+      "firstByteMs": 1766.140584135428,
+      "readBytes": 0,
+      "protocolRequests": 1816,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 59805,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1204,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "listAttachments": 602,
+        "getAllComments": 602
+      },
+      "cacheHits": 1807,
+      "vfsCalls": 54443,
+      "parentRss": 371605504,
+      "interruptedRetries": 0,
+      "shutdownMs": 24.863290999999663,
+      "helperPeakRss": 0,
+      "parentPeakRss": 371687424
+    },
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 4395.8142921328545,
+      "glowListingMs": 46.53866705484688,
+      "glowRenderMs": 2.322999993339181,
+      "run": 5,
+      "phase": "cold",
+      "startupMs": 129.221834,
+      "wallMs": 5065.4095,
+      "firstListingMs": 46.53866705484688,
+      "firstByteMs": 4398.137292126194,
+      "readBytes": 0,
+      "protocolRequests": 3643,
+      "startupProtocolRequests": 2,
+      "startupApiRequests": 3,
+      "startupApiResponsePayloadBytes": 189,
+      "apiResponsePayloadBytes": 13469048,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getPage": 602,
+        "getSpaceRootPages": 1,
+        "getPageDirectChildren": 602,
+        "getPageVersions": 2,
+        "getAllComments": 603,
+        "getPageAtVersion": 602,
+        "listAttachments": 602
+      },
+      "cacheHits": 5,
+      "vfsCalls": 58192,
+      "parentRss": 298778624,
+      "interruptedRetries": 0,
+      "shutdownMs": 21.980749999999716,
+      "helperPeakRss": 0,
+      "parentPeakRss": 368558080
+    },
+    {
+      "transport": "webdav",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 1882.3982919566333,
+      "glowListingMs": 65.93624991364777,
+      "glowRenderMs": 0.7945001125335693,
+      "run": 5,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 2553.4352500000005,
+      "firstListingMs": 65.93624991364777,
+      "firstByteMs": 1883.192792069167,
+      "readBytes": 0,
+      "protocolRequests": 1819,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 59805,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1204,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "listAttachments": 602,
+        "getAllComments": 602
+      },
+      "cacheHits": 1807,
+      "vfsCalls": 54445,
+      "parentRss": 368492544,
+      "interruptedRetries": 0,
+      "shutdownMs": 21.980749999999716,
+      "helperPeakRss": 0,
+      "parentPeakRss": 368558080
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 11065.203709062189,
+      "glowListingMs": 48.03520906716585,
+      "glowRenderMs": 1.3609579764306545,
+      "run": 5,
+      "phase": "cold",
+      "startupMs": 324.706583,
+      "wallMs": 11739.466667,
+      "firstListingMs": 48.03520906716585,
+      "firstByteMs": 11066.56466703862,
+      "readBytes": 0,
+      "protocolRequests": 15869,
+      "startupProtocolRequests": 6,
+      "startupApiRequests": 6,
+      "startupApiResponsePayloadBytes": 668,
+      "apiResponsePayloadBytes": 13533429,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 3014,
+      "bodyPayloadBytes": 6493857,
+      "apiMethods": {
+        "getPage": 602,
+        "getAllComments": 603,
+        "getPagesByLabel": 1,
+        "searchPages": 2,
+        "getPageAtVersion": 602,
+        "listAttachments": 602,
+        "getPageDirectChildren": 601,
+        "getPageVersions": 1
+      },
+      "cacheHits": 620,
+      "vfsCalls": 164203,
+      "parentRss": 245153792,
+      "interruptedRetries": 0,
+      "shutdownMs": 29.12262499999997,
+      "helperPeakRss": 6553600,
+      "parentPeakRss": 260767744
+    },
+    {
+      "transport": "nfs",
+      "workload": "glow-scan",
+      "corpusPages": 602,
+      "glowScanMs": 7499.518084106967,
+      "glowListingMs": 115.51454197615385,
+      "glowRenderMs": 1.3795839622616768,
+      "run": 5,
+      "phase": "warm",
+      "startupMs": 0,
+      "wallMs": 8183.858084000001,
+      "firstListingMs": 115.51454197615385,
+      "firstByteMs": 7500.8976680692285,
+      "readBytes": 0,
+      "protocolRequests": 12723,
+      "startupProtocolRequests": 0,
+      "startupApiRequests": 0,
+      "startupApiResponsePayloadBytes": 0,
+      "apiResponsePayloadBytes": 153286,
+      "startupBodyPayloadBytes": 0,
+      "apiRequests": 1208,
+      "bodyPayloadBytes": 0,
+      "apiMethods": {
+        "getPagesByLabel": 1,
+        "searchPages": 2,
+        "listAttachments": 603,
+        "getAllComments": 602
+      },
+      "cacheHits": 3019,
+      "vfsCalls": 118863,
+      "parentRss": 260505600,
+      "interruptedRetries": 0,
+      "shutdownMs": 29.12262499999997,
+      "helperPeakRss": 6553600,
+      "parentPeakRss": 260767744
+    }
+  ],
+  "summary": [
+    {
+      "workload": "glow-scan",
+      "phase": "cold",
+      "transport": "webdav",
+      "samples": 5,
+      "metrics": {
+        "corpusPages": {
+          "median": 602,
+          "min": 602,
+          "max": 602
+        },
+        "glowScanMs": {
+          "median": 3549.055584007874,
+          "min": 3546.5037499088794,
+          "max": 4395.8142921328545
+        },
+        "glowListingMs": {
+          "median": 31.626167008653283,
+          "min": 28.581542195752263,
+          "max": 47.800458036363125
+        },
+        "glowRenderMs": {
+          "median": 2.326832851395011,
+          "min": 2.284916117787361,
+          "max": 2.45729205198586
+        },
+        "startupMs": {
+          "median": 128.259708,
+          "min": 127.076542,
+          "max": 130.38412499999998
+        },
+        "wallMs": {
+          "median": 4217.605875,
+          "min": 4202.174334,
+          "max": 5065.4095
+        },
+        "firstListingMs": {
+          "median": 31.626167008653283,
+          "min": 28.581542195752263,
+          "max": 47.800458036363125
+        },
+        "firstByteMs": {
+          "median": 3551.382416859269,
+          "min": 3548.840749775991,
+          "max": 4398.137292126194
+        },
+        "readBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "protocolRequests": {
+          "median": 3645,
+          "min": 3640,
+          "max": 3645
+        },
+        "startupProtocolRequests": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "startupApiRequests": {
+          "median": 3,
+          "min": 3,
+          "max": 3
+        },
+        "startupApiResponsePayloadBytes": {
+          "median": 189,
+          "min": 189,
+          "max": 189
+        },
+        "apiResponsePayloadBytes": {
+          "median": 13469048,
+          "min": 13469048,
+          "max": 13469048
+        },
+        "startupBodyPayloadBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "apiRequests": {
+          "median": 3014,
+          "min": 3014,
+          "max": 3014
+        },
+        "bodyPayloadBytes": {
+          "median": 6493857,
+          "min": 6493857,
+          "max": 6493857
+        },
+        "cacheHits": {
+          "median": 5,
+          "min": 4,
+          "max": 5
+        },
+        "vfsCalls": {
+          "median": 58214,
+          "min": 58190,
+          "max": 58214
+        },
+        "parentRss": {
+          "median": 297828352,
+          "min": 296091648,
+          "max": 299614208
+        },
+        "interruptedRetries": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "shutdownMs": {
+          "median": 24.863290999999663,
+          "min": 21.932958999999755,
+          "max": 27.89258400000017
+        },
+        "helperPeakRss": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "parentPeakRss": {
+          "median": 368558080,
+          "min": 343425024,
+          "max": 372097024
+        }
+      }
+    },
+    {
+      "workload": "glow-scan",
+      "phase": "cold",
+      "transport": "nfs",
+      "samples": 5,
+      "metrics": {
+        "corpusPages": {
+          "median": 602,
+          "min": 602,
+          "max": 602
+        },
+        "glowScanMs": {
+          "median": 8916.142374975607,
+          "min": 8648.129583103582,
+          "max": 11065.203709062189
+        },
+        "glowListingMs": {
+          "median": 32.223750138655305,
+          "min": 29.930791119113564,
+          "max": 48.975749872624874
+        },
+        "glowRenderMs": {
+          "median": 1.329166116192937,
+          "min": 1.3184170238673687,
+          "max": 2.3185829631984234
+        },
+        "startupMs": {
+          "median": 319.277417,
+          "min": 273.00295800000004,
+          "max": 330.968666
+        },
+        "wallMs": {
+          "median": 9641.9725,
+          "min": 9371.83525,
+          "max": 11739.466667
+        },
+        "firstListingMs": {
+          "median": 32.223750138655305,
+          "min": 29.930791119113564,
+          "max": 48.975749872624874
+        },
+        "firstByteMs": {
+          "median": 8917.4715410918,
+          "min": 8649.44800012745,
+          "max": 11066.56466703862
+        },
+        "readBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "protocolRequests": {
+          "median": 15806,
+          "min": 15803,
+          "max": 15869
+        },
+        "startupProtocolRequests": {
+          "median": 6,
+          "min": 6,
+          "max": 6
+        },
+        "startupApiRequests": {
+          "median": 6,
+          "min": 6,
+          "max": 6
+        },
+        "startupApiResponsePayloadBytes": {
+          "median": 668,
+          "min": 668,
+          "max": 668
+        },
+        "apiResponsePayloadBytes": {
+          "median": 13533429,
+          "min": 13533429,
+          "max": 13533429
+        },
+        "startupBodyPayloadBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "apiRequests": {
+          "median": 3014,
+          "min": 3014,
+          "max": 3014
+        },
+        "bodyPayloadBytes": {
+          "median": 6493857,
+          "min": 6493857,
+          "max": 6493857
+        },
+        "cacheHits": {
+          "median": 618,
+          "min": 617,
+          "max": 620
+        },
+        "vfsCalls": {
+          "median": 160912,
+          "min": 160019,
+          "max": 164203
+        },
+        "parentRss": {
+          "median": 243531776,
+          "min": 239828992,
+          "max": 251740160
+        },
+        "interruptedRetries": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "shutdownMs": {
+          "median": 35.724083000000974,
+          "min": 29.12262499999997,
+          "max": 36.71037500000239
+        },
+        "helperPeakRss": {
+          "median": 6586368,
+          "min": 6553600,
+          "max": 6651904
+        },
+        "parentPeakRss": {
+          "median": 261832704,
+          "min": 260767744,
+          "max": 269172736
+        }
+      }
+    },
+    {
+      "workload": "glow-scan",
+      "phase": "warm",
+      "transport": "webdav",
+      "samples": 5,
+      "metrics": {
+        "corpusPages": {
+          "median": 602,
+          "min": 602,
+          "max": 602
+        },
+        "glowScanMs": {
+          "median": 1765.6593341380358,
+          "min": 1697.5977499969304,
+          "max": 1882.3982919566333
+        },
+        "glowListingMs": {
+          "median": 65.93624991364777,
+          "min": 64.92591695860028,
+          "max": 66.60641706548631
+        },
+        "glowRenderMs": {
+          "median": 0.4947921261191368,
+          "min": 0.44824997894465923,
+          "max": 0.9927079081535339
+        },
+        "startupMs": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "wallMs": {
+          "median": 2427.449375,
+          "min": 2361.065334000001,
+          "max": 2553.4352500000005
+        },
+        "firstListingMs": {
+          "median": 65.93624991364777,
+          "min": 64.92591695860028,
+          "max": 66.60641706548631
+        },
+        "firstByteMs": {
+          "median": 1766.140584135428,
+          "min": 1698.0925421230495,
+          "max": 1883.192792069167
+        },
+        "readBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "protocolRequests": {
+          "median": 1816,
+          "min": 1816,
+          "max": 1819
+        },
+        "startupProtocolRequests": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "startupApiRequests": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "startupApiResponsePayloadBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "apiResponsePayloadBytes": {
+          "median": 59805,
+          "min": 59805,
+          "max": 59805
+        },
+        "startupBodyPayloadBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "apiRequests": {
+          "median": 1204,
+          "min": 1204,
+          "max": 1204
+        },
+        "bodyPayloadBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "cacheHits": {
+          "median": 1807,
+          "min": 1807,
+          "max": 1807
+        },
+        "vfsCalls": {
+          "median": 54443,
+          "min": 54443,
+          "max": 54445
+        },
+        "parentRss": {
+          "median": 368492544,
+          "min": 343359488,
+          "max": 372031488
+        },
+        "interruptedRetries": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "shutdownMs": {
+          "median": 24.863290999999663,
+          "min": 21.932958999999755,
+          "max": 27.89258400000017
+        },
+        "helperPeakRss": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "parentPeakRss": {
+          "median": 368558080,
+          "min": 343425024,
+          "max": 372097024
+        }
+      }
+    },
+    {
+      "workload": "glow-scan",
+      "phase": "warm",
+      "transport": "nfs",
+      "samples": 5,
+      "metrics": {
+        "corpusPages": {
+          "median": 602,
+          "min": 602,
+          "max": 602
+        },
+        "glowScanMs": {
+          "median": 6682.773584034294,
+          "min": 6415.864125126973,
+          "max": 7499.518084106967
+        },
+        "glowListingMs": {
+          "median": 98.74683408997953,
+          "min": 97.86254214122891,
+          "max": 115.51454197615385
+        },
+        "glowRenderMs": {
+          "median": 0.8825829718261957,
+          "min": 0.6683750543743372,
+          "max": 3.6260830238461494
+        },
+        "startupMs": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "wallMs": {
+          "median": 7370.163999999999,
+          "min": 7118.102000000001,
+          "max": 8183.858084000001
+        },
+        "firstListingMs": {
+          "median": 98.74683408997953,
+          "min": 97.86254214122891,
+          "max": 115.51454197615385
+        },
+        "firstByteMs": {
+          "median": 6683.508376125246,
+          "min": 6416.746708098799,
+          "max": 7500.8976680692285
+        },
+        "readBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "protocolRequests": {
+          "median": 12717,
+          "min": 12704,
+          "max": 12727
+        },
+        "startupProtocolRequests": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "startupApiRequests": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "startupApiResponsePayloadBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "apiResponsePayloadBytes": {
+          "median": 153286,
+          "min": 60018,
+          "max": 153286
+        },
+        "startupBodyPayloadBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "apiRequests": {
+          "median": 1208,
+          "min": 1206,
+          "max": 1208
+        },
+        "bodyPayloadBytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "cacheHits": {
+          "median": 3019,
+          "min": 2415,
+          "max": 3020
+        },
+        "vfsCalls": {
+          "median": 118232,
+          "min": 117275,
+          "max": 118863
+        },
+        "parentRss": {
+          "median": 261455872,
+          "min": 260505600,
+          "max": 268943360
+        },
+        "interruptedRetries": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "shutdownMs": {
+          "median": 35.724083000000974,
+          "min": 29.12262499999997,
+          "max": 36.71037500000239
+        },
+        "helperPeakRss": {
+          "median": 6586368,
+          "min": 6553600,
+          "max": 6651904
+        },
+        "parentPeakRss": {
+          "median": 261832704,
+          "min": 260767744,
+          "max": 269172736
+        }
+      }
+    }
+  ]
+}

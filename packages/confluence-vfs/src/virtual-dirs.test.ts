@@ -215,6 +215,52 @@ describe(".versions", () => {
 });
 
 describe(".comments.md", () => {
+  it("shares concurrent reads and observes external comments when the metadata TTL expires", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client, { treeTtlMs: 100 });
+    const path = "/DOCSY/architecture-102/.comments.md";
+    const reads = await Promise.all(Array.from({ length: 10 }, () => vfs.readFile(path)));
+    expect(new Set(reads).size).toBe(1);
+    expect(client.callsTo("getAllComments")).toBe(1);
+    client.seedComments("102", { pageId: "102", lastSynced: "2026-09-17T00:00:00Z", inlineComments: [],
+      footerComments: [{ id: "c1", author: { displayName: "Ada" }, created: "2026-09-17T00:00:00Z",
+        body: "<p>External change</p>", status: "open", replies: [] }] });
+    clock += 99;
+    expect(await vfs.readFile(path)).toBe(reads[0]!);
+    clock++;
+    expect(await vfs.readFile(path)).toContain("External change");
+    expect(client.callsTo("getAllComments")).toBe(2);
+    await vfs.close();
+  });
+
+  it("retries failed comment loads instead of caching their rejection", async () => {
+    const client = seeded(), get = client.getAllComments.bind(client);
+    let first = true;
+    client.getAllComments = async id => {
+      if (first) { first = false; throw new Error("temporary failure"); }
+      return get(id);
+    };
+    const vfs = await openVfs(client);
+    const path = "/DOCSY/architecture-102/.comments.md";
+    await expect(vfs.readFile(path)).rejects.toThrow();
+    expect(await vfs.readFile(path)).toContain("_None._");
+    await vfs.close();
+  });
+
+  it("evicts old comment listings after 256 pages", async () => {
+    const client = seeded();
+    for (let i = 0; i < 257; i++) client.seedPage({ id: String(1000 + i), title: `Page ${i}`,
+      spaceKey: "DOCSY", parentId: "100", storage: "<p>Body</p>" });
+    const vfs = await openVfs(client);
+    for (let i = 0; i < 257; i++) await vfs.readFile(`/DOCSY/page-${i}-${1000 + i}/.comments.md`);
+    expect(client.callsTo("getAllComments")).toBe(257);
+    await vfs.readFile("/DOCSY/page-256-1256/.comments.md");
+    expect(client.callsTo("getAllComments")).toBe(257);
+    await vfs.readFile("/DOCSY/page-0-1000/.comments.md");
+    expect(client.callsTo("getAllComments")).toBe(258);
+    await vfs.close();
+  });
+
   it("renders footer and inline comments with author, date and state", async () => {
     const client = seeded();
     client.seedComments("102", {

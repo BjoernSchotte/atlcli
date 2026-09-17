@@ -278,6 +278,7 @@ export class FakeConfluenceClient implements VfsClient {
       id: page.id,
       title: page.title,
       version: page.version,
+      lastModified: page.lastModified,
       spaceKey: page.spaceKey,
       parentId: page.parentId ?? null,
       url: `${this.instanceUrl}/spaces/${page.spaceKey}/pages/${page.id}`,
@@ -330,6 +331,13 @@ export class FakeConfluenceClient implements VfsClient {
     }
     const { homepageId: _homepageId, ...rest } = space;
     return rest;
+  }
+
+  async getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">): Promise<ConfluencePage[]> {
+    const spaceKey = space.key;
+    this.record("getSpaceRootPages", spaceKey);
+    return [...this.pages.values()].filter(page => page.spaceKey === spaceKey && page.type === "page" &&
+      !page.parentId && !page.trashed && (!page.status || page.status === "current") && this.visible(page.id)).map(page => this.toPage(page));
   }
 
   async getSpaceHomepageId(spaceKey: string): Promise<string | null> {
@@ -410,6 +418,12 @@ export class FakeConfluenceClient implements VfsClient {
     return this.toPage(this.mustPage(id));
   }
 
+  async isPageTrashed(id: string, spaceKey: string): Promise<boolean> {
+    this.record("isPageTrashed", { id, spaceKey });
+    const page = this.pages.get(id);
+    return !!page && this.visible(id) && page.trashed && page.spaceKey === spaceKey;
+  }
+
   async getPage(id: string): Promise<ConfluencePage & { storage: string }> {
     this.record("getPage", id);
     const page = this.mustPage(id);
@@ -426,7 +440,7 @@ export class FakeConfluenceClient implements VfsClient {
     if (!historic) {
       throw new FakeHttpError(404, `Confluence API error (404): no version ${version} of ${pageId}`);
     }
-    return { ...this.toPage(page), version, title: historic.title, storage: historic.storage };
+    return { ...this.toPage(page), version, lastModified: historic.when, title: historic.title, storage: historic.storage };
   }
 
   async getPagesBulk(
@@ -621,6 +635,14 @@ export class FakeConfluenceClient implements VfsClient {
     );
   }
 
+  async getAttachment(id: string): Promise<AttachmentInfo> {
+    this.record("getAttachment", id);
+    const attachment = this.attachments.get(id);
+    if (!attachment) throw new FakeHttpError(404, "Confluence API error (404): no attachment");
+    this.mustPage(attachment.pageId);
+    return this.toAttachmentInfo(attachment);
+  }
+
   async listAttachments(pageId: string): Promise<AttachmentInfo[]> {
     this.record("listAttachments", pageId);
     this.mustPage(pageId);
@@ -711,11 +733,26 @@ export class FakeConfluenceClient implements VfsClient {
     }
   }
 
+  private readonly creationProperties = new Map<string, Record<string, unknown>>();
+
+  async findPagesByTitle(title: string, options: { spaceKey: string }) {
+    this.record("findPagesByTitle", title);
+    return [...this.pages.values()].filter(p => !p.trashed && p.title === title && p.spaceKey === options.spaceKey)
+      .map(p => ({ id: p.id, title: p.title, spaceKey: p.spaceKey }));
+  }
+
+  async getPagePropertyByKey(id: string, key: string): Promise<unknown> {
+    this.record("getPagePropertyByKey", id);
+    this.mustPage(id);
+    return this.creationProperties.get(id)?.[key];
+  }
+
   async createPage(params: {
     spaceKey: string;
     title: string;
     storage: string;
     parentId?: string;
+    properties?: Record<string, unknown>;
   }): Promise<ConfluencePage> {
     this.record("createPage", `${params.spaceKey}/${params.title}`);
     const clash = [...this.pages.values()].find(
@@ -739,6 +776,7 @@ export class FakeConfluenceClient implements VfsClient {
       version: 1,
       lastModified: new Date(this.clock).toISOString(),
     });
+    this.creationProperties.set(id, structuredClone(params.properties ?? {}));
     return this.toPage(this.pages.get(id)!);
   }
 
@@ -794,6 +832,18 @@ export class FakeConfluenceClient implements VfsClient {
       page.parentId = target.parentId ?? null;
       page.spaceKey = target.spaceKey;
       page.position = (target.position ?? 0) + (position === "before" ? -1 : 1);
+    }
+    // A cross-space container move also transfers its descendants.
+    const pending = [page.id];
+    const visited = new Set<string>();
+    for (const id of pending) {
+      if (visited.has(id)) continue;
+      visited.add(id);
+      for (const child of this.pages.values()) {
+        if (child.parentId !== id || child.trashed) continue;
+        child.spaceKey = page.spaceKey;
+        pending.push(child.id);
+      }
     }
     return this.toPage(page);
   }

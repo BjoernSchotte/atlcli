@@ -19,6 +19,7 @@ export interface CiRoutes {
   astroPlatform: boolean;
   pdfPlatform: boolean;
   browserHarness: boolean;
+  nfs: boolean;
   docs: boolean;
   readmeMedia: boolean;
   researchPrivacy: boolean;
@@ -104,6 +105,7 @@ function noRoutes(): CiRoutes {
     astroPlatform: false,
     pdfPlatform: false,
     browserHarness: false,
+    nfs: false,
     docs: false,
     readmeMedia: false,
     researchPrivacy: false,
@@ -165,11 +167,18 @@ function enableEveryProductCapability(routes: CiRoutes): void {
   enableAstro(routes);
   routes.pdfPlatform = true;
   routes.browserHarness = true;
+  routes.nfs = true;
 }
 
 function classifyProductCapability(path: string, routes: CiRoutes): void {
   enableProductQuality(routes);
   if (affectsConsumers(path)) enablePackageContracts(routes);
+  if (startsWithAny(path, ["packages/confluence-nfs/", "packages/confluence-vfs/", "packages/confluence/", "packages/core/",
+    "apps/cli/src/vfs/nfs-", "apps/cli/src/vfs/mount-transport", "apps/cli/src/commands/wiki-mount",
+    "apps/cli/src/e2e/wiki-nfs", "apps/cli/build", "scripts/build-nfs-helper", "scripts/release-archive", "scripts/verify-release-artifacts"]) || path === "apps/cli/package.json" || path === "apps/cli/src/index.ts") {
+    routes.nfs = true;
+  }
+
 
   if (startsWithAny(path, ASTRO_PACKAGE_PREFIXES)) enableAstro(routes);
   if (startsWithAny(path, PDF_PACKAGE_PREFIXES)) routes.pdfPlatform = true;

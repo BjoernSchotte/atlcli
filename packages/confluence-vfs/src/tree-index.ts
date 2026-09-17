@@ -70,7 +70,10 @@ export interface TreeIndexOptions {
 interface SpaceEntry {
   space: ConfluenceSpace;
   homepageId: string | null;
+  homepageLoaded?: boolean;
   loadedAt: number;
+  rootIds?: string[];
+  rootsLoadedAt?: number;
 }
 
 function offlineMiss(what: string): VfsError {
@@ -144,6 +147,7 @@ export class TreeIndex {
       for (const space of listed) {
         const existing = this.spaces.get(space.key);
         this.spaces.set(space.key, {
+          ...existing,
           space,
           homepageId: existing?.homepageId ?? null,
           loadedAt: this.opts.now(),
@@ -177,6 +181,7 @@ export class TreeIndex {
       });
     }
     this.spaces.set(key, {
+      ...cached,
       space,
       homepageId: cached?.homepageId ?? null,
       loadedAt: this.opts.now(),
@@ -192,7 +197,7 @@ export class TreeIndex {
    */
   async getHomepageId(key: string): Promise<string | null> {
     const cached = this.spaces.get(key);
-    if (cached?.homepageId) return cached.homepageId;
+    if (cached?.homepageLoaded || cached?.homepageId) return cached.homepageId;
     if (this.opts.offline) {
       if (cached) return cached.homepageId;
       throw offlineMiss(`Space ${key}`);
@@ -202,7 +207,7 @@ export class TreeIndex {
       () => this.opts.client.getSpaceHomepageId(key),
       `/${key}`,
     );
-    this.spaces.set(key, { space, homepageId, loadedAt: this.opts.now() });
+    this.spaces.set(key, { ...this.spaces.get(key), space, homepageId, homepageLoaded: true, loadedAt: this.opts.now() });
     if (homepageId) {
       this.upsert({
         id: homepageId,
@@ -217,6 +222,35 @@ export class TreeIndex {
   }
 
   // ------------------------------------------------------------- one level
+
+  /** Cloud roots are a separate metadata-only level, beside homepage children. */
+  async loadRootPages(key: string): Promise<TreeNode[]> {
+    if (this.opts.client.deploymentType !== "cloud") return [];
+    await this.getSpace(key);
+    const entry = this.spaces.get(key)!;
+    const cached = () => (entry.rootIds ?? []).map(id => this.nodes.get(id)).filter((node): node is TreeNode =>
+      !!node && node.parentId === null && node.spaceKey === key && node.id !== entry.homepageId);
+    if (this.opts.offline || (entry.rootsLoadedAt !== undefined && this.opts.now() - entry.rootsLoadedAt < this.opts.ttlMs)) return cached();
+    const flight = `space:${key}`;
+    const pending = this.inFlight.get(flight);
+    if (pending) return pending;
+    const task = this.request(() => this.opts.client.getSpaceRootPages(entry.space), `/${key}`).then(pages => {
+      for (const page of pages) {
+        if (page.spaceKey !== key || page.parentId != null) throw new VfsError("EINVAL", "Invalid space-root metadata");
+      }
+      const ids = pages.map(page => page.id);
+      for (const id of entry.rootIds ?? []) {
+        const node = this.nodes.get(id);
+        if (!ids.includes(id) && node?.parentId === null && node.spaceKey === key && id !== entry.homepageId) this.forget(id);
+      }
+      for (const page of pages) this.upsert({ ...page, type: "page", parentId: null, spaceKey: key, metaCheckedAt: this.opts.now() });
+      entry.rootIds = ids;
+      entry.rootsLoadedAt = this.opts.now();
+      return cached();
+    }).finally(() => this.inFlight.delete(flight));
+    this.inFlight.set(flight, task);
+    return task;
+  }
 
   /**
    * Load exactly one directory level.
@@ -491,6 +525,12 @@ export class TreeIndex {
       childrenLoadedAt: partial.childrenLoadedAt ?? existing?.childrenLoadedAt,
       metaCheckedAt: partial.metaCheckedAt ?? existing?.metaCheckedAt ?? this.opts.now(),
     };
+    if (existing?.parentId && existing.parentId !== merged.parentId) {
+      const previousParent = this.nodes.get(existing.parentId);
+      if (previousParent && Array.isArray(previousParent.children)) {
+        previousParent.children = previousParent.children.filter((id) => id !== merged.id);
+      }
+    }
     this.nodes.set(merged.id, merged);
     return merged;
   }

@@ -64,6 +64,26 @@ function bigSpace(width: number, depth: number): FakeConfluenceClient {
 }
 
 describe("demand principle: one directory, one request", () => {
+  it("caches body-free roots, refreshes disappearance and restores the level offline", async () => {
+    const client = bigSpace(2, 1).seedPage({ id: "900", title: "Detached", spaceKey: "DOCSY", storage: "<p>Root</p>" });
+    client.seedPage({ id: "901", title: "Archived root", spaceKey: "DOCSY", status: "archived" });
+    const { index, advance } = makeIndex(client);
+    await index.getHomepageId("DOCSY");
+    const lists = await Promise.all([index.loadRootPages("DOCSY"), index.loadRootPages("DOCSY")]);
+    expect(lists.map(nodes => nodes.map(node => node.id))).toEqual([["900"], ["900"]]);
+    expect(client.callsTo("getSpaceRootPages")).toBe(1);
+    expect(client.callsTo("getPage")).toBe(0);
+    expect(client.callsTo("getPageDirectChildren")).toBe(0);
+    const offline = makeIndex(client, { offline: true }).index;
+    offline.hydrate(index.snapshot());
+    expect((await offline.loadRootPages("DOCSY")).map(node => node.id)).toEqual(["900"]);
+    await client.movePage("900", "100");
+    advance(60_001);
+    expect(await index.loadRootPages("DOCSY")).toEqual([]);
+    expect((await index.loadChildren("100")).some(node => node.id === "900")).toBe(true);
+    expect(client.callsTo("getSpaceRootPages")).toBe(2);
+  });
+
   let client: FakeConfluenceClient;
 
   beforeEach(() => {
@@ -501,4 +521,27 @@ describe("data center revalidation", () => {
     expect(client.callsTo("getPageVersions")).toBe(0);
     expect(client.callsTo("getChildren")).toBe(2);
   });
+});
+
+
+it.each(["page", "folder"])("detaches moved %s from the old parent without forgetting its loaded subtree", async (type) => {
+  const client = bigSpace(2, 0)
+    .seedPage({ id: "500", title: "Container", type, spaceKey: "DOCSY", parentId: "1000" })
+    .seedPage({ id: "501", title: "Nested page", spaceKey: "DOCSY", parentId: "500" });
+  const { index } = makeIndex(client);
+  await index.getHomepageId("DOCSY");
+  await index.loadChildren("100");
+  await index.loadChildren("1000");
+  await index.loadChildren("1001");
+  await index.loadChildren("500");
+  await client.movePage("500", "1001");
+  await index.loadChildren("1001", { force: true });
+  expect((await index.loadChildren("1000")).map(node => node.id)).not.toContain("500");
+  await index.loadChildren("1000", { force: true });
+  expect(index.node("500")?.parentId).toBe("1001");
+  expect(index.node("501")?.parentId).toBe("500");
+  expect((await index.loadChildren("1001")).map(node => node.id)).toEqual(["500"]);
+  expect((await index.loadChildren("500")).map(node => node.id)).toEqual(["501"]);
+  expect(client.callsTo("getFolderChildren")).toBe(type === "folder" ? 1 : 0);
+  expect(client.callsTo("getPage")).toBe(0);
 });

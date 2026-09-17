@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   BodyCache,
+  hashStorage,
   identityPathFor,
   recallIdentity,
   rememberIdentity,
@@ -37,13 +38,13 @@ import { PageStore } from "./page-store.js";
 import { AuditLog } from "./audit-log.js";
 import { ConflictStore } from "./conflict-store.js";
 import { assertWritable, type ModeGuard } from "./mode.js";
-import { parseVfsFrontmatter } from "./page-store.js";
+import { parseVfsFrontmatter, toStorage, renderPageMarkdown } from "./page-store.js";
 import { PathResolver, isContainer, type MissingLeaf, type Resolved } from "./resolver.js";
 import { VirtualDirs } from "./virtual-dirs.js";
 import { WriteBack } from "./write-back.js";
 import { TreeIndex, type TreeNode } from "./tree-index.js";
 import { VfsError, type VfsDirent, type VfsNode, type VfsStat } from "./types.js";
-import type { ConfluenceVfs, VfsWriteResult } from "./vfs.js";
+import type { ConfluenceVfs, VfsWriteResult, VfsWriteCondition } from "./vfs.js";
 
 /** Everything the factory resolved that the core needs but cannot derive. */
 export interface VfsRuntime {
@@ -556,7 +557,8 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       case "space":
         return dir(resolved.spaceKey, epoch, "space");
       case "container":
-        return dir(resolved.node.id, mtimeOf(resolved.node, epoch), resolved.node.type === "folder" ? "folder" : "page");
+        return { ...dir(resolved.node.id, mtimeOf(resolved.node, epoch), resolved.node.type === "folder" ? "folder" : "page"),
+          canonicalName: formatDirName(resolved.node.title, resolved.node.id) };
       case "body":
         return file(resolved.node.id, mtimeOf(resolved.node, epoch), "page", {
           version: resolved.node.version,
@@ -702,6 +704,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
   private async readdirSpace(spaceKey: string, homepageId: string | null): Promise<VfsDirent[]> {
     const entries: VfsDirent[] = [virtualFileEntry("_space.json")];
+    for (const root of await this.index.loadRootPages(spaceKey)) entries.push(direntFor(root));
     if (homepageId) {
       entries.push({
         name: INDEX_FILE,
@@ -713,6 +716,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       for (const child of await this.index.loadChildren(homepageId)) {
         entries.push(direntFor(child));
       }
+      entries.push(virtualDirEntry("_attachments"));
+      entries.push(virtualDirEntry(".versions"));
+      entries.push(virtualFileEntry(".comments.md"));
     }
     for (const name of [".by-id", ".labels", ".recent", ".search"]) {
       entries.push(virtualDirEntry(name));
@@ -867,14 +873,21 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * version file, a comments file, a label link — is structurally read-only and
    * says so with `EROFS`, whatever the mode.
    */
-  async writeFile(path: string, content: string | Uint8Array): Promise<VfsWriteResult> {
+  async writeFile(path: string, content: string | Uint8Array, condition?: VfsWriteCondition): Promise<VfsWriteResult> {
     const text = typeof content === "string" ? content : new TextDecoder().decode(content);
     const resolved = await this.resolver.resolve(this.canonicalize(path), {
       allowMissingLeaf: true,
     });
 
+    if (condition && "createOnly" in condition && resolved.kind !== "missing") {
+      throw new VfsError("EEXIST", "Creation target is already occupied", { path });
+    }
+    if (condition && "id" in condition && (resolved.kind !== "body" || resolved.node.id !== condition.id ||
+        resolved.node.spaceKey !== condition.spaceKey)) {
+      throw new VfsError("EBUSY", "Page identity or export changed before publication", { path });
+    }
     if (resolved.kind === "missing") {
-      return this.createFromMissing(resolved, path, text);
+      return this.createFromMissing(resolved, path, text, condition && "createOnly" in condition ? condition : undefined);
     }
     switch (resolved.kind) {
       case "body": {
@@ -905,10 +918,39 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     }
   }
 
+  async reconcileCreate(path: string, content: string,
+    target: { spaceKey: string; parentId: string; creationToken: string }): Promise<VfsWriteResult | null> {
+    assertWritable(this.guard, "create", path);
+    const mounted = this.opts.spaces ?? (await this.index.listSpaces()).map(space => space.key);
+    if (!mounted.includes(target.spaceKey) || normalizePath(path).split("/")[1] !== target.spaceKey ||
+        !/^local:[0-9a-f-]{36}$/.test(target.creationToken)) throw new VfsError("EINVAL", "Invalid creation recovery identity");
+    const { frontmatter, body } = parseVfsFrontmatter(content);
+    const title = frontmatter.title?.trim() || titleFromName(splitParent(normalizePath(path)).name);
+    const candidates = await this.opts.client.findPagesByTitle(title, { spaceKey: target.spaceKey });
+    if (candidates.length !== 1) return null;
+    const candidate = candidates[0]!;
+    if (candidate.spaceKey !== target.spaceKey || candidate.title !== title || !/^[0-9]+$/.test(candidate.id)) return null;
+    const marker = await this.opts.client.getPagePropertyByKey(candidate.id, "atlcli-vfs-creation");
+    if (!marker || typeof marker !== "object" || !("token" in marker) || marker.token !== target.creationToken) return null;
+    const page = await this.opts.client.getPage(candidate.id);
+    if (page.id !== candidate.id || page.spaceKey !== target.spaceKey || page.parentId !== target.parentId ||
+        page.title !== title || !Number.isSafeInteger(page.version) || page.version! < 1) return null;
+    const initial = page.version === 1 ? page : await this.opts.client.getPageAtVersion(page.id, 1);
+    if (initial.id !== page.id || initial.version !== 1 || initial.title !== title ||
+        initial.storage.trim() !== toStorage(body).trim()) return null;
+    const node = this.index.attachChild(target.parentId, { id: page.id, title: page.title,
+      type: "page", spaceKey: target.spaceKey, version: page.version, lastModified: page.lastModified });
+    // The confirmed initial image is the merge base for edits saved while POST was uncertain.
+    this.cache?.putBody({ pageId: page.id, version: 1, storageHash: hashStorage(initial.storage),
+      markdown: renderPageMarkdown({ ...node, version: 1, lastModified: initial.lastModified }, initial.storage, this.runtime!.instanceUrl) });
+    return { path, pageId: page.id, version: 1, created: true };
+  }
+
   private async createFromMissing(
     missing: MissingLeaf,
     path: string,
     text: string,
+    condition?: { spaceKey: string; parentId: string; creationToken?: string },
   ): Promise<VfsWriteResult> {
     const parent = missing.parent;
     if (parent.kind !== "container" && parent.kind !== "space") {
@@ -917,6 +959,18 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     assertNotReserved(missing.name, path);
 
     const { spaceKey, parentNode, parentIsFolder } = await this.containerOf(parent, path);
+    if (condition) {
+      if (condition.creationToken !== undefined && !/^local:[0-9a-f-]{36}$/.test(condition.creationToken)) {
+        throw new VfsError("EINVAL", "Invalid creation token", { path });
+      }
+      if (condition.spaceKey !== spaceKey || condition.parentId !== parentNode.id) {
+        throw new VfsError("EBUSY", "Creation parent or export changed before publication", { path });
+      }
+      const { frontmatter } = parseVfsFrontmatter(text);
+      if (frontmatter.id !== undefined || frontmatter.version !== undefined) {
+        throw new VfsError("EINVAL", "New page content must not claim an existing page identity", { path });
+      }
+    }
     const result = await this.requireWriteBack().createPage({
       parent: parentNode,
       spaceKey,
@@ -924,6 +978,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       path,
       content: text,
       parentIsFolder,
+      creationToken: condition?.creationToken,
     });
     // The canonical name carries the new id; report it so a caller does not go
     // on addressing a name that only exists as a session alias.
@@ -1040,7 +1095,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * that tries to change it is `EINVAL` rather than a silent no-op on a
    * different page.
    */
-  async rename(from: string, to: string): Promise<void> {
+  async rename(from: string, to: string, expected?: { id: string; spaceKey: string; targetSpaceKey?: string; sourceParentId: string | null; targetParentId: string | null; kind?: "page" | "folder" }): Promise<void> {
     const source = (await this.resolver.resolve(this.canonicalize(from))) as Resolved;
     if (source.kind !== "container" && source.kind !== "body") {
       throw new VfsError("EROFS", `${from} is a generated view and cannot be renamed`, {
@@ -1048,6 +1103,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       });
     }
     const node = source.node;
+    if (node.id === await this.index.getHomepageId(node.spaceKey)) {
+      throw new VfsError("EROFS", "The space homepage cannot be moved or renamed", { path: from });
+    }
     const target = splitParent(normalizePath(to));
     const parsedTarget = parseName(target.name);
 
@@ -1060,24 +1118,54 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     }
 
     const destination = await this.resolver.resolve(target.parent);
-    const { spaceKey, parentNode } = await this.containerOf(destination as Resolved, to);
-    const sameParent = parentNode.id === node.parentId;
-    const newTitle = parsedTarget.idCandidate
-      ? titleFromName(parsedTarget.slugCandidate)
-      : titleFromName(parsedTarget.stem);
+    const keepRoot = destination.kind === "space" && destination.spaceKey === node.spaceKey && node.parentId === null;
+    const container = keepRoot ? undefined : await this.containerOf(destination as Resolved, to);
+    const spaceKey = container?.spaceKey ?? node.spaceKey;
+    const parentNode = container?.parentNode;
+    const parentId = parentNode?.id ?? null;
+    if (expected) {
+      if (node.type !== (expected.kind ?? "page") || node.id !== expected.id || node.spaceKey !== expected.spaceKey ||
+          spaceKey !== (expected.targetSpaceKey ?? expected.spaceKey) || parentId !== expected.targetParentId) {
+        throw new VfsError("EBUSY", "Move identity or destination changed");
+      }
+      const current = await (node.type === "folder"
+        ? this.opts.client.getFolder(node.id).then(async folder => ({ ...folder,
+          spaceKey: folder.spaceId && String(folder.spaceId) === String((await this.index.getSpace(expected.spaceKey)).id) ? expected.spaceKey : undefined }))
+        : this.opts.client.getPageMetadata(node.id)).catch(error => { throw mapClientError(error, from); });
+      if (current.id !== node.id || current.spaceKey !== expected.spaceKey ||
+          (current.parentId ?? null) !== expected.sourceParentId || current.title !== node.title) {
+        throw new VfsError("EBUSY", "Move source changed");
+      }
+    }
+    const sameParent = parentId === node.parentId;
+    // Slugs are lossy (case, punctuation, Unicode). Moving the canonical name
+    // must retain the original title rather than reverse-convert that slug.
+    const newTitle = parsedTarget.stem === formatDirName(node.title, node.id)
+      ? node.title
+      : parsedTarget.idCandidate
+        ? titleFromName(parsedTarget.slugCandidate)
+        : titleFromName(parsedTarget.stem);
+
+    // Cloud exposes no supported folder title update. Reject before a move can
+    // partially apply a combined reparent/retitle request.
+    if (node.type === "folder" && newTitle && newTitle !== node.title) {
+      throw new VfsError("EROFS", "Confluence does not support folder renaming through its REST API", { path: from });
+    }
 
     try {
       if (!sameParent) {
         assertWritable(this.guard, "move", from);
-        if (spaceKey !== node.spaceKey) {
-          // Cross-space moves go through the v1 positional endpoint, which is
-          // the only one that accepts a target in another space.
+        if (!parentNode) throw new VfsError("EINVAL", "Move destination requires a parent page");
+        if (node.type === "folder" || spaceKey !== node.spaceKey) {
+          // Folder and cross-space moves use the positional endpoint; the
+          // page-update endpoint cannot update a folder.
           await this.opts.client.movePageToPosition(node.id, "append", parentNode.id);
         } else if (parentNode.type === "folder") {
           await this.opts.client.movePageToFolder(node.id, parentNode.id);
         } else {
           await this.opts.client.movePage(node.id, parentNode.id);
         }
+        this.cache?.forgetPage(node.id); // Current Markdown frontmatter includes the parent.
         this.index.forget(node.id);
         this.index.attachChild(parentNode.id, {
           id: node.id,
@@ -1095,13 +1183,13 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       if (newTitle && newTitle !== current.title) {
         assertWritable(this.guard, "rename", from);
         const page = await this.opts.client.getPage(node.id);
-        await this.opts.client.updatePage({
-          id: node.id,
-          title: newTitle,
-          storage: page.storage,
-          version: (page.version ?? current.version ?? 1) + 1,
-        });
-        this.index.upsert({ id: node.id, title: newTitle, version: (page.version ?? 1) + 1 });
+        let version = page.version ?? current.version ?? 1;
+        // Another in-flight attempt can finish after the metadata check.
+        if (page.title !== newTitle) {
+          version++;
+          await this.opts.client.updatePage({ id: node.id, title: newTitle, storage: page.storage, version });
+        }
+        this.index.upsert({ id: node.id, title: newTitle, version });
         this.audit?.record({
           op: "rename",
           path: from,
@@ -1130,8 +1218,13 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * Confluence trashes only the requested page. Recursive removal first checks
    * the complete bounded subtree, then explicitly trashes children before parents.
    */
-  async rm(path: string, options: { recursive?: boolean } = {}): Promise<void> {
+  async rm(path: string, options: { recursive?: boolean; expected?: { id: string; spaceKey: string } } = {}): Promise<void> {
     const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
+    if (options.expected && ((resolved.kind !== "container" && resolved.kind !== "body") ||
+        resolved.node.type !== "page" || resolved.node.id !== options.expected.id ||
+        resolved.node.spaceKey !== options.expected.spaceKey)) {
+      throw new VfsError("EBUSY", "Deletion target identity changed", { path });
+    }
 
     if (resolved.kind === "conflict-file") {
       // Local only: touches no Confluence content, so it is allowed in ro mode
@@ -1161,6 +1254,9 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
 
     const node = resolved.node;
     assertWritable(this.guard, "delete", path);
+    if (node.id === await this.index.getHomepageId(node.spaceKey)) {
+      throw new VfsError("EROFS", "The space homepage cannot be deleted", { path });
+    }
     if (node.type !== "page") {
       throw new VfsError("EROFS", "Deleting folders or other non-page content is not supported", { path });
     }
@@ -1185,6 +1281,12 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     // no writes, so a limit/listing/type failure cannot leave a half-deleted tree.
     for (const target of [...descendants.reverse(), node]) {
       try {
+        // The path index may predate an external cross-space move. Never use
+        // cached space membership as authorization for a destructive request.
+        const current = await this.opts.client.getPageMetadata(target.id);
+        if (current.id !== target.id || current.spaceKey !== node.spaceKey) {
+          throw new VfsError("EBUSY", "Deletion target identity or space changed", { path });
+        }
         await this.opts.client.deletePage(target.id);
         this.cache?.forgetPage(target.id);
         this.index.forget(target.id);
@@ -1195,6 +1297,37 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
         throw mapped;
       }
     }
+  }
+
+  async confirmMove(id: string, spaceKey: string, parentId: string | null, title: string, kind: "page" | "folder" = "page"): Promise<boolean> {
+    const mounted = this.opts.spaces ?? (await this.index.listSpaces()).map(space => space.key);
+    if (!mounted.includes(spaceKey)) throw new VfsError("EACCES", "Move identity is outside the selected export");
+    if (kind === "folder") {
+      const folder = await this.opts.client.getFolder(id).catch(error => { throw mapClientError(error); });
+      const space = await this.index.getSpace(spaceKey);
+      if (folder.id !== id || !folder.spaceId || !space.id || String(folder.spaceId) !== String(space.id) || folder.parentId !== parentId || folder.title !== title) return false;
+      this.index.forget(id);
+      if (parentId === null) this.index.upsert({ id, title, type: "folder", spaceKey, parentId });
+      else this.index.attachChild(parentId, { id, title, type: "folder", spaceKey });
+      return true;
+    }
+    const page = await this.opts.client.getPageMetadata(id).catch(error => { throw mapClientError(error); });
+    if (page.id !== id || page.spaceKey !== spaceKey || page.parentId !== parentId || page.title !== title) return false;
+    this.cache?.forgetPage(id);
+    this.index.forget(id);
+    const node = { id, title, type: "page", spaceKey, parentId, version: page.version, lastModified: page.lastModified };
+    if (parentId === null) this.index.upsert(node);
+    else this.index.attachChild(parentId, node);
+    return true;
+  }
+
+  async confirmTrash(id: string, spaceKey: string): Promise<boolean> {
+    const mounted = this.opts.spaces ?? (await this.index.listSpaces()).map(space => space.key);
+    if (!mounted.includes(spaceKey)) throw new VfsError("EACCES", "Trash identity is outside the selected export");
+    if (!await this.opts.client.isPageTrashed(id, spaceKey)) return false;
+    this.cache?.forgetPage(id);
+    this.index.forget(id);
+    return true;
   }
 
   async copy(from: string, to: string): Promise<VfsWriteResult> {
@@ -1249,6 +1382,14 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * walk — so a page keeps exactly one home in the tree however many labels,
    * searches or recency windows list it.
    */
+  async attachmentPath(id: string, spaceKey: string): Promise<string> {
+    return this.requireVirtual().attachmentPath(id, spaceKey);
+  }
+
+  async folderPath(id: string, spaceKey: string): Promise<string> {
+    return this.requireVirtual().folderPath(id, spaceKey);
+  }
+
   async readlink(path: string): Promise<string> {
     const resolved = (await this.resolver.resolve(this.canonicalize(path))) as Resolved;
     switch (resolved.kind) {

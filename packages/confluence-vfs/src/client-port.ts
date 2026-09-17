@@ -53,6 +53,7 @@ export interface VfsClient {
   ): Promise<string | null>;
 
   // --- hierarchy (read) ---------------------------------------------------
+  getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options?: { signal?: AbortSignal }): Promise<ConfluencePage[]>;
   getPageDirectChildren(
     pageId: string,
     options?: { limit?: number; signal?: AbortSignal },
@@ -76,6 +77,7 @@ export interface VfsClient {
 
   // --- bodies and versions ------------------------------------------------
   getPageMetadata(id: string, options?: { signal?: AbortSignal }): Promise<ConfluencePage>;
+  isPageTrashed(id: string, spaceKey: string): Promise<boolean>;
   getPage(
     id: string,
     options?: { signal?: AbortSignal },
@@ -132,6 +134,7 @@ export interface VfsClient {
   getAllComments(pageId: string, options?: { limit?: number }): Promise<PageComments>;
 
   // --- attachments --------------------------------------------------------
+  getAttachment(id: string): Promise<AttachmentInfo>;
   listAttachments(
     pageId: string,
     options?: { limit?: number; signal?: AbortSignal },
@@ -157,6 +160,9 @@ export interface VfsClient {
   }): Promise<AttachmentInfo>;
   deleteAttachment(attachmentId: string): Promise<void>;
 
+  findPagesByTitle(title: string, options: { spaceKey: string }): Promise<Array<{ id: string; title: string; spaceKey?: string }>>;
+  getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined>;
+
   // --- writes -------------------------------------------------------------
   // Note what is absent and must stay absent: any purge endpoint. `deletePage`
   // is Confluence's trash, and the VFS offers nothing beyond it (plan §9).
@@ -165,6 +171,7 @@ export interface VfsClient {
     title: string;
     storage: string;
     parentId?: string;
+    properties?: Record<string, unknown>;
   }): Promise<ConfluencePage>;
   updatePage(params: {
     id: string;

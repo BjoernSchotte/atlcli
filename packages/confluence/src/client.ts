@@ -232,6 +232,8 @@ export type ConfluencePage = {
   title: string;
   url?: string;
   version?: number;
+  /** Timestamp of this returned page version, when supplied by Confluence. */
+  lastModified?: string;
   spaceKey?: string;
   parentId?: string | null;
   ancestors?: { id: string; title: string }[];
@@ -781,6 +783,8 @@ export class ConfluenceClient {
       query?: Record<string, string | number | undefined>;
       body?: unknown;
       signal?: AbortSignal;
+      /** Non-idempotent mutations must reconcile ambiguous server errors. */
+      retryServerErrors?: false;
       /**
        * Response-body logging policy (spec 004). Default (`undefined`/`true`)
        * keeps the existing full-body logging for all current callers. The
@@ -939,7 +943,7 @@ export class ConfluenceClient {
         );
 
         // Retry on server errors (5xx)
-        if (res.status >= 500 && attempt < this.maxRetries) {
+        if (res.status >= 500 && options.retryServerErrors !== false && attempt < this.maxRetries) {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
           continue;
         }
@@ -1162,6 +1166,23 @@ export class ConfluenceClient {
     return { ...this.parsePageMetadata(data), storage: data.body?.storage?.value ?? "" };
   }
 
+  /** Confirm explicit trash status; absence alone is never proof. */
+  async isPageTrashed(id: string, spaceKey: string): Promise<boolean> {
+    if (!/^[0-9]+$/.test(id) || !spaceKey) throw new Error("Invalid trash confirmation identity");
+    try {
+      if (this.deploymentType === "cloud") {
+        const space = await this.getSpace(spaceKey);
+        const page = await this.requestV2(`/pages/${id}`, { query: { status: ["trashed"] }, logBody: "meta-only" }) as any;
+        return page.id === id && page.status === "trashed" && /^[0-9]+$/.test(String(space.id)) && String(page.spaceId) === String(space.id);
+      }
+      const page = await this.request(`/content/${id}`, { query: { status: "trashed", expand: "space" }, logBody: "meta-only" }) as any;
+      return page.id === id && page.status === "trashed" && page.space?.key === spaceKey;
+    } catch (error) {
+      if ((error instanceof ConfluenceRequestError || error instanceof ConfluenceV2RequestError) && error.status === 404) return false;
+      throw error;
+    }
+  }
+
   /** Body-free identity/version lookup for stat and direct-id filesystem paths. */
   async getPageMetadata(
     id: string,
@@ -1189,6 +1210,8 @@ export class ConfluenceClient {
       title: data.title,
       url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
       version: data.version?.number,
+      ...(typeof data.version?.when === "string" && Number.isFinite(Date.parse(data.version.when))
+        ? { lastModified: data.version.when } : {}),
       spaceKey: data.space?.key,
       parentId,
       ancestors,
@@ -1924,6 +1947,8 @@ export class ConfluenceClient {
     title: string;
     storage: string;
     parentId?: string;
+    /** Properties persisted in the initial content creation request. */
+    properties?: Record<string, unknown>;
   }): Promise<ConfluencePage> {
     const body: any = {
       type: "page",
@@ -1942,8 +1967,15 @@ export class ConfluenceClient {
       body.ancestors = [{ id: params.parentId }];
     }
 
+    if (params.properties !== undefined) {
+      body.metadata = { properties: Object.fromEntries(
+        Object.entries(params.properties).map(([key, value]) => [key, { value }]),
+      ) };
+    }
+
     const data = (await this.request("/content", {
       method: "POST",
+      retryServerErrors: false,
       body,
     })) as any;
 
@@ -2031,8 +2063,18 @@ export class ConfluenceClient {
     return { id: String(data.id), key: data.key, version: data.version?.number ?? 1 };
   }
 
-  /** Read a v2 page property by key; undefined when absent. */
+  /** Read a page property by key on Cloud or Data Center; undefined when absent. */
   async getPagePropertyByKey(pageId: string, key: string): Promise<unknown | undefined> {
+    if (!/^[0-9]+$/.test(pageId) || !key || key === "." || key === "..") throw new Error("Invalid page property identity");
+    if (this.deploymentType === "data-center") {
+      try {
+        const data = await this.request(`/content/${pageId}/property/${encodeURIComponent(key)}`, { logBody: "meta-only" });
+        return isRecord(data) && data.key === key ? data.value : undefined;
+      } catch (error) {
+        if (error instanceof ConfluenceRequestError && error.status === 404) return undefined;
+        throw error;
+      }
+    }
     return (await this.getPageProperty(pageId, key))?.value;
   }
 
@@ -2363,6 +2405,33 @@ export class ConfluenceClient {
         url: this.buildWebUrl(item._links?.webui),
       }));
 
+      return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+    });
+  }
+
+  /** Cloud space-root pages, without bodies or a scan of the homepage tree. */
+  async getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options: { signal?: AbortSignal } = {}): Promise<ConfluencePage[]> {
+    if (this.deploymentType !== "cloud") throw new Error("Space-root page listing requires Confluence Cloud");
+    if (!/^[0-9]+$/.test(String(space.id))) throw new Error("Invalid root-listing space ID");
+    const spaceKey = space.key;
+    const seen = new Set<string>();
+    return drainPaginated<ConfluencePage>(async cursor => {
+      const data = await this.requestV2(`/spaces/${space.id}/pages`, {
+        query: { depth: "root", status: "current", limit: 250, cursor },
+        signal: options.signal, logBody: "meta-only",
+      }) as any;
+      if (!Array.isArray(data.results)) throw new Error("Invalid space-root page response");
+      const items = data.results.map((item: any): ConfluencePage => {
+        if (typeof item.id !== "string" || !/^[0-9]+$/.test(item.id) || typeof item.title !== "string" ||
+            String(item.spaceId) !== String(space.id) || (item.parentId !== null && item.parentId !== undefined) ||
+            seen.has(item.id) || (item.status !== undefined && item.status !== "current")) {
+          throw new Error("Invalid space-root page identity or parent");
+        }
+        seen.add(item.id);
+        return { id: item.id, title: item.title, spaceKey, parentId: null,
+          version: item.version?.number, lastModified: item.version?.createdAt,
+          url: this.buildWebUrl(item._links?.webui) };
+      });
       return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
     });
   }
@@ -2824,6 +2893,8 @@ export class ConfluenceClient {
             id,
             title: row.title,
             version: row.version?.number,
+            ...(typeof row.version?.createdAt === "string" && Number.isFinite(Date.parse(row.version.createdAt))
+              ? { lastModified: row.version.createdAt } : {}),
             // v2 reports a numeric `spaceId`, not a key. Callers that need the
             // key already know it (they asked for pages of a known space), so
             // this deliberately stays unset rather than guessing.

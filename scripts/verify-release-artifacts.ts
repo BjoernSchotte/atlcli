@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { verifyNfsCompanion } from "./build-nfs-helper.js";
 
 import { createHash } from "node:crypto";
 import {
@@ -382,24 +383,45 @@ function parseTarOctal(bytes: Uint8Array, offset: number, length: number): numbe
   return Number.parseInt(raw, 8);
 }
 
+export function inspectTarGz(bytes: Uint8Array): { name: string; mode: number; bytes: Uint8Array }[] {
+  const tar = gunzipSync(bytes, { maxOutputLength: 300 * 1024 * 1024 });
+  if (tar.byteLength < 1_536 || tar.byteLength % 512 !== 0) throw new Error("TAR archive is truncated or too short");
+  const entries: { name: string; mode: number; bytes: Uint8Array }[] = [];
+  const seen = new Set<string>();
+  let offset = 0;
+  while (offset + 1024 < tar.byteLength && tar.subarray(offset, offset + 512).some((byte) => byte !== 0)) {
+    if (entries.length >= 64) throw new Error("TAR entry limit exceeded");
+    const header = tar.subarray(offset, offset + 512);
+    const name = safeArchivePath(new TextDecoder("utf-8", { fatal: true }).decode(header.subarray(0, 100)).split("\0")[0]!);
+    if (seen.has(name)) throw new Error(`duplicate TAR path: ${name}`);
+    seen.add(name);
+    const mode = parseTarOctal(header, 100, 8);
+    const size = parseTarOctal(header, 124, 12);
+    if (size > 256 * 1024 * 1024) throw new Error("TAR entry exceeds size limit");
+    if (header[156] !== 0 && header[156] !== 48) throw new Error("TAR entry is not a regular file");
+    if (header.subarray(157, 257).some((byte) => byte !== 0) || header.subarray(345, 500).some((byte) => byte !== 0)) {
+      throw new Error("TAR links and name prefixes are not supported");
+    }
+    const checksumHeader = new Uint8Array(header);
+    checksumHeader.fill(0x20, 148, 156);
+    if (parseTarOctal(header, 148, 8) !== checksumHeader.reduce((sum, byte) => sum + byte, 0)) throw new Error("TAR header checksum mismatch");
+    const start = offset + 512;
+    const paddedEnd = start + Math.ceil(size / 512) * 512;
+    if (paddedEnd + 1024 > tar.byteLength) throw new Error("TAR entry body is truncated");
+    if (tar.subarray(start + size, paddedEnd).some((byte) => byte !== 0)) throw new Error("TAR padding is not empty");
+    entries.push({ name, mode, bytes: tar.subarray(start, start + size) });
+    offset = paddedEnd;
+  }
+  if (!entries.length || offset + 1024 !== tar.byteLength || tar.subarray(offset).some((byte) => byte !== 0)) {
+    throw new Error("TAR end blocks are invalid");
+  }
+  return entries;
+}
+
 export function inspectSingleBinaryTarGz(bytes: Uint8Array): { name: string; mode: number; bytes: Uint8Array } {
-  const tar = gunzipSync(bytes);
-  if (tar.byteLength < 1_536) throw new Error("TAR archive is too short");
-  const header = tar.subarray(0, 512);
-  const name = safeArchivePath(Buffer.from(header.subarray(0, 100)).toString("utf8").split("\0")[0]!);
-  const mode = parseTarOctal(header, 100, 8);
-  const size = parseTarOctal(header, 124, 12);
-  const type = header[156];
-  if (type !== 0 && type !== "0".charCodeAt(0)) throw new Error("TAR entry is not a regular file");
-  const storedChecksum = parseTarOctal(header, 148, 8);
-  const checksumHeader = new Uint8Array(header);
-  checksumHeader.fill(0x20, 148, 156);
-  const actualChecksum = checksumHeader.reduce((sum, byte) => sum + byte, 0);
-  if (storedChecksum !== actualChecksum) throw new Error("TAR header checksum mismatch");
-  const paddedEnd = 512 + Math.ceil(size / 512) * 512;
-  if (paddedEnd + 1_024 !== tar.byteLength) throw new Error("TAR must contain exactly one entry");
-  if (tar.subarray(paddedEnd).some((byte) => byte !== 0)) throw new Error("TAR end blocks are not empty");
-  return { name, mode, bytes: tar.subarray(512, 512 + size) };
+  const entries = inspectTarGz(bytes);
+  if (entries.length !== 1) throw new Error("TAR must contain exactly one entry");
+  return entries[0]!;
 }
 
 function assertBinaryIdentity(binary: Uint8Array, metadata: BuildMetadata): void {
@@ -429,8 +451,13 @@ function assertBinaryIdentity(binary: Uint8Array, metadata: BuildMetadata): void
 
 async function inspectCliArchive(name: string, bytes: Uint8Array, metadata: BuildMetadata): Promise<void> {
   if (name.endsWith(".tar.gz")) {
-    const binary = inspectSingleBinaryTarGz(bytes);
-    if (binary.name !== "atlcli") throw new Error(`${name} must contain only atlcli`);
+    const entries = inspectTarGz(bytes);
+    const binary = entries.find((entry) => entry.name === "atlcli");
+    if (!binary) throw new Error(`${name} must contain atlcli`);
+    if (entries.length > 1) {
+      verifyNfsCompanion(entries.filter((entry) => entry.name !== "atlcli").map((entry) => ({ ...entry, path: entry.name })),
+        name.slice("atlcli-".length, -".tar.gz".length), metadata.sourceSha);
+    }
     if (binary.bytes.byteLength > 256 * 1024 * 1024) throw new Error(`${name} binary exceeds size limit`);
     if ((binary.mode & 0o111) === 0) throw new Error(`${name} binary is not executable`);
     assertBinaryIdentity(binary.bytes, metadata);
