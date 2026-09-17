@@ -509,6 +509,33 @@ it("keeps comments and historic-version handles attached to a renamed and repare
   }
 });
 
+it("keeps a version snapshot byte-identical across ranged reads, live edits, moves and cache eviction", async () => {
+  const { fs, vfs, client } = await fixture(["DOCSY", "mayflower"], "rw", 0);
+  const docsy = await fs.lookup(1, "DOCSY");
+  const page = await fs.lookup(docsy, "child-0-200");
+  const live = await fs.lookup(page, "_index.md");
+  // Warming the live rendering must not determine the immutable rendering.
+  await fs.read(live, 0, 65536);
+  const snapshot = await fs.lookup(await fs.lookup(page, ".versions"), "1.md");
+  const expected = Buffer.from((await fs.read(snapshot, 0, 65536)).data, "base64");
+  const cut = Math.floor(expected.length / 2);
+  const first = Buffer.from((await fs.read(snapshot, 0, cut)).data, "base64");
+  const oldSize = (await fs.getattr(snapshot)).size;
+  client.bumpVersion("200", "<p>New live body Grüße 🐴</p>");
+  await vfs.rename("/DOCSY/child-0-200", "/mayflower/moved-200");
+  vfs.cache!.forgetPage("200");
+  const rest = await fs.read(snapshot, cut, 65536);
+  expect(Buffer.concat([first, Buffer.from(rest.data, "base64")])).toEqual(expected);
+  expect(rest.eof).toBe(true);
+  expect((await fs.getattr(snapshot)).size).toBe(oldSize);
+  expect(Buffer.from((await fs.read(live, 0, 65536)).data, "base64").toString()).toContain("New live body");
+  expect(await fs.lookup(await fs.lookup(page, ".versions"), "1.md")).toBe(snapshot);
+  // Refetch the same historic version without any current-body cache to reuse.
+  vfs.cache!.forgetPage("200");
+  expect(Buffer.from((await fs.read(snapshot, 0, 65536)).data, "base64")).toEqual(expected);
+  expect(client.callsTo("getPageAtVersion")).toBe(3);
+});
+
 it("uses the historic version timestamp for its Markdown and exact NFS attributes", async () => {
   const { fs, vfs, client } = await fixture();
   const original = await client.getPageAtVersion("200", 1);

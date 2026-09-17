@@ -306,7 +306,7 @@ export class BodyCache {
 
   /** Drops every version of one page. Used after a delete. */
   forgetPage(pageId: string): void {
-    this.db.run("DELETE FROM bodies WHERE page_id = ?", [pageId]);
+    this.db.run("DELETE FROM bodies WHERE page_id IN (?, ?)", [pageId, `version:${pageId}`]);
     for (const row of this.db
       .query<{ blob_path: string }, [string]>("SELECT blob_path FROM attachments WHERE page_id = ?")
       .all(pageId)) {

@@ -1591,3 +1591,36 @@ mounts detached normally. No live content was stored in benchmark artifacts.
 The plan and acceptance record also capture the user's explicit decisions for
 automatic buffered saves and immutable version paths alongside live normal paths.
 These preferences are resolved; their remaining implementation/proof is not.
+
+## Slice 62 — immutable historical renderings across live changes
+
+The new adversarial adapter test exposed a real snapshot defect: after a move
+between exported spaces and removal of cached bytes, the same historical version
+rendered a different current-location URL. Current and historical Markdown also
+shared a cache key, making the historical representation depend on which path
+was read first. Historical Markdown now has a separate `version:<pageId>` cache
+namespace and contains version-owned ID/title/version/timestamp metadata only.
+Current parent IDs and location URLs are omitted. Both representations remain
+under the same disk quota, and page-scoped cache cleanup removes both.
+
+Tests cover both read orders, split-UTF8 ranges with a live version update and
+cross-space move between READs, removal/refetch of the cached snapshot, stable
+handle/size identity, and current paths returning the changed document. The
+actual Rust RPC test checks split historical bytes after the move and forced
+cache miss; native macOS/Linux tests keep a descriptor open across the change
+and also reopen the historical path under its new owner. Kernel read-ahead may
+serve old cached bytes in the native case; the separate wire test deterministically
+forces the second server READ after mutation.
+
+macOS core/adapter regression: 374 tests, 1378 assertions passed. The initial
+sandboxed run could not bind the contract-test HTTP server; its elevated rerun
+passed. Linux focused core/adapter regression: 90 tests, 696 assertions passed.
+Both hosts passed the adversarial wire case (28 assertions), native snapshot
+case (10 assertions), and existing native mount regressions. Linux live DOCSY
+source CLI signal cleanup and all four typecheck tasks passed. All snapshot
+mutations were synthetic, all test mounts detached normally.
+
+An old cached current body no longer counts as a cached historical rendering;
+visit the historical path online once before offline use. Normal paths remain
+live as agreed. This establishes the read-only snapshot contract; RW publication
+and repeating these checks against its final implementation remain outstanding.

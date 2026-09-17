@@ -277,8 +277,11 @@ outside the export return `ESTALE` without downloading the attachment. No
 whole-space search is used.
 READ currently omits optional NFS attributes rather than combining bytes with
 separately fetched attributes from another version. Clients can use GETATTR;
-concurrent external changes across multiple READ requests are not yet covered
-by a stable version-snapshot guarantee.
+normal paths can refresh between READ requests when a page changes externally.
+For a stable whole-document snapshot, read `.versions/<n>.md`: all ranges of
+that file refer to the same historical version, even after a cache miss or a
+page move within the export. For example, `cat page-123/.versions/7.md` reads
+version 7; `cat page-123/_index.md` reads the current document.
 For current Markdown pages and page aliases, GETATTR derives the modification
 time from the same materialized Markdown used for its exact byte size when
 Confluence supplies the version timestamp. A cold fetch therefore cannot pair
@@ -296,6 +299,11 @@ bound when external changes become visible.
 Historic `.versions/<n>.md` uses that version's own timestamp in its Markdown
 and NFS attributes, not the current page timestamp. If the historic response
 omits it, the Markdown omits it and NFS reports an unknown time (Unix epoch).
+Historical Markdown omits current parent IDs and location URLs, which could
+otherwise change its bytes after a move. It has a separate cache representation
+from editable current Markdown; both share the existing disk budget and cleanup.
+After upgrading, visit a version path online once before using it offline, even
+if the corresponding current page was already cached.
 Handles for `.comments.md`, `.versions` and its version files follow their
 owner page across rename/reparent operations within the export.
 

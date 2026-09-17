@@ -239,7 +239,9 @@ export class PageStore {
 
   /** Reads one historic version. Immutable, so it is cached forever. */
   async readVersion(node: TreeNode, version: number, path: string): Promise<string> {
-    const hit = this.opts.cache.getBody(node.id, version);
+    // Live Markdown contains current ancestry/URLs; snapshots must not inherit it.
+    const cacheId = `version:${node.id}`;
+    const hit = this.opts.cache.getBody(cacheId, version);
     if (hit) return hit.markdown;
     if (this.opts.offline) {
       throw new VfsError(
@@ -253,13 +255,12 @@ export class PageStore {
       () => this.opts.client.getPageAtVersion(node.id, version),
       path,
     );
-    const markdown = renderPageMarkdown(
-      { ...node, title: page.title, version, lastModified: page.lastModified },
-      page.storage,
-      this.opts.instanceUrl,
-    );
+    // Only version-owned metadata belongs in a reproducible snapshot. Current
+    // parent/space/location may change without modifying this historic version.
+    const markdown = `${renderFrontmatter({ id: node.id, title: page.title, version,
+      lastModified: page.lastModified })}\n${storageToMarkdown(page.storage).trim()}\n`;
     this.opts.cache.putBody({
-      pageId: node.id,
+      pageId: cacheId,
       version,
       markdown,
       storageHash: hashStorage(page.storage),

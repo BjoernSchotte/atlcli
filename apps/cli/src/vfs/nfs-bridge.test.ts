@@ -74,6 +74,41 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
 }
 
 describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () => {
+  it("preserves immutable version bytes across split-UTF8 wire reads and an external move", async () => {
+    let clock = Date.now();
+    const { server, client, vfs } = await fixture(["DOCSY", "mayflower"], false, () => clock);
+    client.seedPage({ id: "400", title: "Child 0", spaceKey: "DOCSY", parentId: "100",
+      storage: `<p>${"Historical Grüße 🐴. ".repeat(2000)}</p>` });
+    const mount = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
+    const root = mount.subarray(8, 8 + mount.readUInt32BE(4));
+    const lookup = async (parent: Buffer, name: string) => {
+      const reply = await rpc(server, 100003, 3, Buffer.concat([opaque(parent), opaque(Buffer.from(name))]));
+      expect(reply.readUInt32BE()).toBe(0);
+      return reply.subarray(8, 8 + reply.readUInt32BE(4));
+    };
+    const directory = await lookup(await lookup(root, "DOCSY"), "child-0-400");
+    const live = await lookup(directory, "_index.md");
+    const historic = await lookup(await lookup(directory, ".versions"), "1.md");
+    const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/child-0-400/.versions/1.md"));
+    const cut = expected.indexOf(Buffer.from("🐴")) + 1;
+    expect(cut).toBeGreaterThan(1);
+    const read = async (handle: Buffer, offset: number, count: number) => {
+      const reply = await rpc(server, 100003, 6, Buffer.concat([opaque(handle), ints(0, offset, count)]));
+      expect(reply.readUInt32BE()).toBe(0);
+      expect(reply.readUInt32BE(4)).toBe(0);
+      return reply.subarray(20, 20 + reply.readUInt32BE(16));
+    };
+    const first = await read(historic, 0, cut);
+    client.bumpVersion("400", "<p>New current document</p>");
+    await client.movePage("400", "300");
+    clock += 60_001;
+    vfs.cache!.forgetPage("400");
+    const rest = await read(historic, cut, 65536);
+    expect(Buffer.concat([first, rest])).toEqual(expected);
+    expect((await read(live, 0, 65536)).toString()).toContain("New current document");
+    expect(await read(historic, 0, 65536)).toEqual(expected);
+    expect(client.callsTo("getPageAtVersion")).toBe(2);
+  });
   it("counts protocol requests including backend-free NFS and mount calls", async () => {
     const { server, client } = await fixture(["DOCSY"], false);
     client.resetCalls();
@@ -585,18 +620,21 @@ with socket.socket() as client:
     });
   }
 
-  for (const { spaces, attachments, visibility = false, mutation = false, glow = false } of [
+  for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [
     { spaces: ["DOCSY"], attachments: false },
     { spaces: ["DOCSY", "mayflower"], attachments: false },
     { spaces: ["DOCSY"], attachments: true },
     { spaces: ["DOCSY"], attachments: false, visibility: true },
     { spaces: ["DOCSY"], attachments: false, mutation: true },
     { spaces: ["DOCSY"], attachments: false, glow: true },
+    { spaces: ["DOCSY", "mayflower"], attachments: false, snapshot: true },
   ]) {
-    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1" || (glow && !process.env.ATLCLI_NFS_GLOW))(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""}${visibility ? "; external changes" : ""}${mutation ? "; directory mutation" : ""}${glow ? "; Glow" : ""})`, async () => {
+    it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1" || (glow && !process.env.ATLCLI_NFS_GLOW))(`reads full content through native kernel mount (${spaces.join(",")}${attachments ? "; attachments" : ""}${visibility ? "; external changes" : ""}${mutation ? "; directory mutation" : ""}${glow ? "; Glow" : ""}${snapshot ? "; snapshot" : ""})`, async () => {
       let clock = Date.now();
-      const { server, vfs, client } = await fixture(spaces, attachments || visibility || mutation || glow ? false : undefined,
-        visibility || mutation ? () => clock : undefined);
+      const { server, vfs, client } = await fixture(spaces, attachments || visibility || mutation || glow || snapshot ? false : undefined,
+        visibility || mutation || snapshot ? () => clock : undefined);
+      if (snapshot) client.seedPage({ id: "400", title: "Child 0", spaceKey: "DOCSY", parentId: "100",
+        storage: `<p>${"Historical Grüße 🐴. ".repeat(2000)}</p>` });
       if (mutation) {
         client.seedPage({ id: "9000", title: "Mutation", spaceKey: "DOCSY", parentId: "100", storage: "<p>Directory</p>" });
         for (let i = 1; i <= 600; i++) client.seedPage({ id: String(9000 + i), title: `Item ${i}`,
@@ -641,6 +679,25 @@ with socket.socket() as client:
       try {
         expect(await file.readFile()).toEqual(Buffer.from(await vfs.readFileBytes("/DOCSY/_index.md")));
       } finally { await file.close(); }
+      if (snapshot) {
+        const expected = Buffer.from(await vfs.readFileBytes("/DOCSY/child-0-400/.versions/1.md"));
+        const historical = await open(join(mountpoint, "DOCSY/child-0-400/.versions/1.md"), "r");
+        try {
+          const cut = expected.indexOf(Buffer.from("🐴")) + 1;
+          const first = Buffer.alloc(cut);
+          expect((await historical.read(first, 0, cut, 0)).bytesRead).toBe(cut);
+          client.bumpVersion("400", "<p>New native current body</p>");
+          await client.movePage("400", "300");
+          clock += 60_001;
+          vfs.cache!.forgetPage("400");
+          const rest = Buffer.alloc(expected.length - cut);
+          expect((await historical.read(rest, 0, rest.length, cut)).bytesRead).toBe(rest.length);
+          expect(Buffer.concat([first, rest])).toEqual(expected);
+        } finally { await historical.close(); }
+        const moved = await open(join(mountpoint, "mayflower/child-0-400/.versions/1.md"), "r");
+        try { expect(await moved.readFile()).toEqual(expected); }
+        finally { await moved.close(); }
+      }
       if (glow) {
         const probe = await promisify(execFile)("python3", [
           resolve(import.meta.dir, "../../../../scripts/bench/glow-probe.py"),

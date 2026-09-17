@@ -166,10 +166,26 @@ describe("readFile", () => {
 
     const v1 = await vfs.readFile("/DOCSY/page-0-200/.versions/1.md");
     expect(v1).toContain("Body of page 0");
+    expect(parseVfsFrontmatter(v1).frontmatter.parentId).toBeUndefined();
+    expect(parseVfsFrontmatter(v1).frontmatter.url).toBeUndefined();
     client.resetCalls();
     await vfs.readFile("/DOCSY/page-0-200/.versions/1.md");
     expect(client.callsTo("getPageAtVersion")).toBe(0);
     await vfs.close();
+  });
+
+  it("does not serve a historical rendering as the current editable document", async () => {
+    const client = seeded();
+    const vfs = await openVfs(client);
+    try {
+      const version = await vfs.readFile("/DOCSY/page-0-200/.versions/1.md");
+      expect(parseVfsFrontmatter(version).frontmatter.parentId).toBeUndefined();
+      const current = await vfs.readFile("/DOCSY/page-0-200/_index.md");
+      expect(parseVfsFrontmatter(current).frontmatter.parentId).toBe("100");
+      expect(parseVfsFrontmatter(current).frontmatter.url).toContain("/spaces/DOCSY/pages/200");
+      expect(client.callsTo("getPageAtVersion")).toBe(1);
+      expect(client.callsTo("getPage")).toBe(1);
+    } finally { await vfs.close(); }
   });
 });
 
