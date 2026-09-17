@@ -17,12 +17,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { open, readdir, readFile, writeFile } from "node:fs/promises";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { getActiveProfile, loadConfig, type Profile } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl } from "@atlcli/confluence-vfs";
+import { startNfsServer } from "../vfs/nfs-bridge.js";
+import { nfsMountOptionsFor } from "../vfs/mount-transport.js";
 import { NfsFilesystem } from "../vfs/nfs-filesystem.js";
 import { NfsJournal } from "../vfs/nfs-journal.js";
 import { NfsPublisher } from "../vfs/nfs-publisher.js";
@@ -88,6 +90,50 @@ afterAll(async () => {
 });
 
 describe.skipIf(!RUN).serial("wiki mount against a live tenant", () => {
+  it.skipIf(!process.env.ATLCLI_NFS_TEST_HELPER || process.env.ATLCLI_NFS_KERNEL !== "1")("automatically publishes native NFS saves to Confluence", async () => {
+    const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
+      title: makeE2eTitle("nfs-auto"), storage: "<p>Native original</p>" });
+    created.push(page.id);
+    const journal = new NfsJournal(join(cacheDir, "native-auto.sqlite"), "live:DOCSY");
+    const endpoint = await startNfsServer({ vfs, spaces: [E2E_SPACE_KEY], journal,
+      helperPath: process.env.ATLCLI_NFS_TEST_HELPER! });
+    const local = mkdtempSync(join(tmpdir(), "atlcli-live-nfs-"));
+    let mounted = false;
+    try {
+      const path = await vfs.readlink(`/${E2E_SPACE_KEY}/.by-id/${page.id}.md`);
+      const original = await vfs.readFile(path);
+      const options = nfsMountOptionsFor(platform(), endpoint.port).replace(",ro,soft,", ",rw,hard,");
+      const attach = platform() === "linux"
+        ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", local]
+        : ["mount_nfs", "-o", options, "127.0.0.1:/", local];
+      expect(await runMountCommand(attach)).toBe(0); mounted = true;
+      const file = await open(join(local, ...path.split("/").slice(2)), "r+");
+      try {
+        const bytes = Buffer.from(original.replace("Native original", "Native automatically saved"));
+        await file.truncate(0);
+        await file.write(bytes, 0, bytes.length, 0);
+        await file.sync();
+      } finally { await file.close(); }
+      const deadline = Date.now() + 15000;
+      while (journal.pending().length && Date.now() < deadline) await Bun.sleep(50);
+      expect(journal.pending()).toHaveLength(0);
+      const actual = await client.getPage(page.id);
+      expect(actual.version).toBe((page.version ?? 1) + 1);
+      expect(actual.storage).toContain("Native automatically saved");
+    } finally {
+      if (mounted) {
+        const detach = platform() === "linux" ? ["sudo", "-n", "umount", local] : ["umount", local];
+        let status = await runMountCommand(detach);
+        for (let attempt = 0; status !== 0 && attempt < 10; attempt++) {
+          await Bun.sleep(100); status = await runMountCommand(detach);
+        }
+        if (status !== 0) throw new Error(`Test mount remains attached: ${local}`);
+      }
+      await endpoint.stop(); journal.close(); rmSync(local, { recursive: true, force: true });
+      await client.deletePage(page.id); created.splice(created.indexOf(page.id), 1);
+    }
+  }, 30000);
+
   it("publishes a durable NFS journal image through the core", async () => {
     const page = await client.createPage({ spaceKey: E2E_SPACE_KEY,
       title: makeE2eTitle("nfs-journal"), storage: "<p>Journal original</p>" });

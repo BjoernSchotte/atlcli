@@ -17,7 +17,7 @@ async function fixture(mode: "ro" | "rw" = "rw") {
   const vfs = await ConfluenceVfsImpl.open({ profile: "fixture", client, spaces: ["DOCSY"],
     mode, allowDelete: false, coalesceMs: 0, cacheDir: join(root, "cache"), offline: false });
   const journal = new NfsJournal(join(root, "journal.sqlite"), "fixture:DOCSY");
-  cleanup.push(async () => { await vfs.close(); journal.close(); rmSync(root, { recursive: true, force: true }); });
+  cleanup.push(async () => { await publisher.stop(); await vfs.close(); journal.close(); rmSync(root, { recursive: true, force: true }); });
   const original = await vfs.readFile("/DOCSY/_index.md");
   journal.admit("100", "/DOCSY/_index.md", Buffer.from(original), 1);
   const stage = (value: string) => {
@@ -147,4 +147,70 @@ it("replays a rebased follow-up from its immutable version after losing the repl
   expect((await publisher.publish("100"))?.version).toBe(3);
   expect(client.peekPage("100")?.storage).toContain("Second");
   expect(journal.pending()).toHaveLength(0);
+});
+
+
+async function until(check: () => boolean): Promise<void> {
+  const deadline = Date.now() + 3000;
+  while (!check() && Date.now() < deadline) await Bun.sleep(20);
+  expect(check()).toBe(true);
+}
+
+it("automatically publishes only the latest image after a full quiet window", async () => {
+  const { client, journal, original, stage, publisher } = await fixture();
+  stage(original.replace("Original", "Intermediate")); publisher.schedule("100");
+  await Bun.sleep(300);
+  stage(original.replace("Original", "Latest")); publisher.schedule("100");
+  await Bun.sleep(300);
+  expect(client.callsTo("updatePage")).toBe(0);
+  await until(() => journal.pending().length === 0);
+  expect(client.callsTo("updatePage")).toBe(1);
+  expect(client.peekPage("100")?.storage).toContain("Latest");
+});
+
+it("serializes automatic follow-up saves behind an in-flight publication", async () => {
+  const { client, journal, original, stage, publisher } = await fixture();
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const update = client.updatePage.bind(client);
+  let active = 0, peak = 0, calls = 0;
+  client.updatePage = async params => {
+    calls++; active++; peak = Math.max(peak, active);
+    try { if (calls === 1) await gate; return await update(params); }
+    finally { active--; }
+  };
+  stage(original.replace("Original", "First")); publisher.schedule("100");
+  await until(() => calls === 1);
+  stage(original.replace("Original", "Latest")); publisher.schedule("100");
+  try { await Bun.sleep(600); expect(calls).toBe(1); }
+  finally { release(); }
+  await until(() => journal.pending().length === 0);
+  expect(peak).toBe(1);
+  expect(client.peekPage("100")?.version).toBe(3);
+  expect(client.peekPage("100")?.storage).toContain("Latest");
+});
+
+it("stops timers without publishing partial work and resumes durable pending images", async () => {
+  const { client, vfs, journal, original, stage, publisher } = await fixture();
+  stage(original.replace("Original", "Recovered")); publisher.schedule("100");
+  await publisher.stop();
+  await Bun.sleep(550);
+  expect(client.callsTo("updatePage")).toBe(0);
+  expect(journal.pending()).toHaveLength(1);
+  const recovered = new NfsPublisher(journal, vfs, ["DOCSY"]);
+  try {
+    recovered.resume();
+    await until(() => journal.pending().length === 0);
+    expect(client.peekPage("100")?.storage).toContain("Recovered");
+  } finally { await recovered.stop(); }
+});
+
+it("keeps sparse or binary NUL images local and publishes after the holes are repaired", async () => {
+  const { client, journal, original, stage, publisher } = await fixture();
+  stage(original.replace("Original", "Unwritten\0bytes")); publisher.schedule("100");
+  await until(() => journal.get("100")?.error === "EINVAL");
+  expect(client.callsTo("updatePage")).toBe(0);
+  stage(original.replace("Original", "Repaired")); publisher.schedule("100");
+  await until(() => journal.pending().length === 0);
+  expect(client.peekPage("100")?.storage).toContain("Repaired");
 });

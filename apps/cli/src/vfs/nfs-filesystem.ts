@@ -269,15 +269,16 @@ export class NfsFilesystem {
   }
 
   /** Returns only after SQLite has durably committed the local byte image. */
-  async write(id: number, offset: number, bytes: Uint8Array): Promise<void> {
+  async write(id: number, offset: number, bytes: Uint8Array): Promise<string> {
     if (!Number.isSafeInteger(offset) || offset < 0 || bytes.byteLength > NFS_MAX_READ) {
       throw new VfsError("EINVAL", "Invalid NFS write range");
     }
     const file = await this.stagedFile(id);
     this.journal!.write(file.id, offset, bytes);
+    return file.id;
   }
 
-  async truncate(id: number, size: number): Promise<void> {
+  async truncate(id: number, size: number): Promise<string> {
     if (!Number.isSafeInteger(size) || size < 0) throw new VfsError("EINVAL", "Invalid NFS file size");
     const file = await this.stagedFile(id);
     const updated = this.journal!.truncate(file.id, size);
@@ -285,6 +286,7 @@ export class NfsFilesystem {
     const entry = this.paths.get(id)!;
     entry.rendered = { hash: createHash("sha256").update(updated.bytes).digest("hex"),
       mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1) };
+    return file.id;
   }
 
   async getattr(id: number): Promise<NfsAttributes> {

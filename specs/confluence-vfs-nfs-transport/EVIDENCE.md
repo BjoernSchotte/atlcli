@@ -1864,3 +1864,39 @@ safe error. The resulting current publication still uses core optimistic checks.
 The scheduler, complete-save boundary, clean-record refresh, namespace saves and
 final native editor/recovery acceptance remain open. Production CLI NFS is still
 RO; this step does not enable automatic publication on a user mount.
+
+
+## Slice 71 — automatic debounced publication through native NFS
+
+The internal journal-enabled NFS server now schedules publication 500 ms after the
+latest successful range write or truncate. A newer write resets that page's timer;
+a timer waiting on an earlier publication checks that it has not been superseded.
+Only one publication per page runs. Startup resumes pending images; stop cancels
+idle timers, preserves pending bytes and awaits running publication and bridge
+work before the caller can close the journal. Helper death also stops scheduling.
+Invalid UTF-8, identity/frontmatter and NUL-filled sparse images remain local with
+safe errors; remote failures retain their durable intents.
+
+- macOS and Linux publisher suites: 12 passed, 63 assertions each. New checks
+  cover the full trailing quiet window, serialized automatic follow-up saves,
+  cancelled shutdown timers, resumed pending images and repaired NUL/sparse images.
+- Both hosts: native RW mount plus wire regression passed (two tests, 57
+  assertions each). The native test now writes valid page Markdown, fsyncs and
+  waits for automatic publication to the synthetic backend; exactly one update.
+  Writable test VFS instances disable the inner core debounce to avoid two waits.
+- Linux mayflower/DOCSY: `ATLCLI_WIKI_MOUNT_E2E=1 ATLCLI_NFS_KERNEL=1
+  ATLCLI_NFS_TEST_HELPER=... bun run test apps/cli/src/e2e/wiki-mount-live.e2e.test.ts
+  --test-name-pattern "automatically publishes native NFS"`: one passed, four
+  assertions. An actual hard NFS mount writes/fsyncs a synthetic page; without a
+  publish command, the real API receives exactly version +1 and expected content.
+  Normal unmount and synthetic-page deletion succeeded. Four macOS-only WebDAV
+  cases were skipped, not counted as native NFS evidence.
+- Typecheck passed all four tasks. Bridge-failure regression: six passed, 17
+  assertions, including real-helper pipe closure. Its initial sandboxed run could
+  not start the TCP listener; the permitted run outside the sandbox passed.
+
+This establishes the automatic path, not a complete-document boundary: a valid
+Markdown prefix can pass validation if a later WRITE is delayed beyond the quiet
+window. That plan requirement remains open, as do atomic editor replacement,
+clean-record refresh, pending/recovery CLI and final native editor acceptance.
+The user CLI remains RO until those remaining gates are satisfied.

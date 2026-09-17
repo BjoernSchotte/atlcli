@@ -3,8 +3,10 @@ import { threeWayMerge } from "@atlcli/confluence/internal";
 import { parseVfsFrontmatter, renderFrontmatter, VfsError, type ConfluenceVfs, type VfsWriteResult } from "@atlcli/confluence-vfs";
 import { NfsJournal } from "./nfs-journal.js";
 
-/** Publishes one durable page image; scheduling and NFS save boundaries are separate. */
+/** Debounced publication of durable page images; transport save boundaries remain separate. */
 export class NfsPublisher {
+  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private stopped = false;
   private readonly running = new Map<string, Promise<VfsWriteResult | null>>();
 
   constructor(private readonly journal: NfsJournal, private readonly vfs: ConfluenceVfs,
@@ -14,7 +16,33 @@ export class NfsPublisher {
     }
   }
 
+  schedule(id: string): void {
+    if (this.stopped) return;
+    clearTimeout(this.timers.get(id));
+    const timer = setTimeout(async () => {
+      // A newer write can replace this timer while a preceding upload finishes.
+      await this.running.get(id)?.catch(() => {});
+      if (this.stopped || this.timers.get(id) !== timer) return;
+      this.timers.delete(id);
+      await this.publish(id).catch(() => {}); // Durable error/pending state stays in the journal.
+    }, 500);
+    timer.unref();
+    this.timers.set(id, timer);
+  }
+
+  resume(): void {
+    for (const file of this.journal.pending()) this.schedule(file.id);
+  }
+
+  async stop(): Promise<void> {
+    this.stopped = true;
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+    await Promise.allSettled(this.running.values());
+  }
+
   publish(id: string): Promise<VfsWriteResult | null> {
+    if (this.stopped) return Promise.reject(new VfsError("EAGAIN", "NFS publisher stopped"));
     const existing = this.running.get(id);
     if (existing) return existing;
     const task = this.publishImage(id).finally(() => this.running.delete(id));
@@ -27,6 +55,7 @@ export class NfsPublisher {
     let content: string;
     try { content = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
     catch { throw new VfsError("EINVAL", "Staged page is not complete UTF-8"); }
+    if (content.includes("\0")) throw new VfsError("EINVAL", "Staged page contains unwritten or binary bytes");
     const { frontmatter } = parseVfsFrontmatter(content);
     if (frontmatter.id !== id || frontmatter.version === undefined || frontmatter.version > baseVersion) {
       throw new VfsError("EINVAL", "Staged page identity or base version is invalid");

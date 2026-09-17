@@ -2,6 +2,7 @@ import { SweepDetector, type SweepReport } from "./mount-client-probes.js";
 import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
 import { VfsError, type ConfluenceVfs } from "@atlcli/confluence-vfs";
+import { NfsPublisher } from "./nfs-publisher.js";
 import type { NfsJournal } from "./nfs-journal.js";
 import { NfsFilesystem, NFS_MAX_READ } from "./nfs-filesystem.js";
 import { encodeNfsFrame, NFS_BRIDGE_VERSION, readNfsFrames } from "./nfs-framing.js";
@@ -32,12 +33,14 @@ export async function startNfsServer(options: {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Invalid NFS port");
   if (!isAbsolute(options.helperPath)) throw new Error("NFS helper path must be absolute");
   const fs = new NfsFilesystem(options.vfs, options.spaces, new SweepDetector(50, 10_000, options.onSweep), options.journal);
+  const publisher = options.journal ? new NfsPublisher(options.journal, options.vfs, options.spaces) : undefined;
   const child = spawn(options.helperPath, [String(port), ...(options.journal ? ["--staged-rw"] : [])], { stdio: ["pipe", "pipe", "pipe"], env: {} });
   // Drain diagnostic output without collecting unbounded or tenant-derived text.
   child.stderr.resume();
   let resolveExit!: () => void;
   const exited = new Promise<void>((resolve) => { resolveExit = resolve; });
   child.once("close", resolveExit);
+  child.once("close", () => { void publisher?.stop(); });
   let statsSequence = 0;
   let stats: { id: number; resolve(value: number): void; reject(error: Error): void } | undefined;
   child.once("close", () => stats?.reject(new Error("NFS helper stopped")));
@@ -70,12 +73,15 @@ export async function startNfsServer(options: {
           if (typeof args.data !== "string" || args.data.length > Math.ceil(NFS_MAX_READ / 3) * 4) throw new VfsError("EINVAL", "Invalid NFS write data");
           const bytes = Buffer.from(args.data, "base64");
           if (bytes.toString("base64") !== args.data || bytes.length > NFS_MAX_READ) throw new VfsError("EINVAL", "Invalid NFS write data");
-          await fs.write(number(args.file), number(args.offset), bytes);
+          const pageId = await fs.write(number(args.file), number(args.offset), bytes);
+          publisher?.schedule(pageId);
           result = await fs.getattr(number(args.file)); break;
         }
-        case "truncate":
-          await fs.truncate(number(args.file), number(args.size));
+        case "truncate": {
+          const pageId = await fs.truncate(number(args.file), number(args.size));
+          publisher?.schedule(pageId);
           result = await fs.getattr(number(args.file)); break;
+        }
         case "readdir":
           if (typeof args.verifier !== "string" || !/^[0-9a-f]{16}$/.test(args.verifier)) throw new Error("Invalid NFS directory verifier");
           result = await fs.readdir(number(args.file), number(args.after), number(args.count), args.verifier); break;
@@ -88,7 +94,7 @@ export async function startNfsServer(options: {
     }
     await reply({ id, result });
   };
-  void (async () => {
+  const serving = (async () => {
     let initialized = false;
     const pending = new Set<Promise<void>>();
     try {
@@ -123,6 +129,7 @@ export async function startNfsServer(options: {
   })();
   try {
     const bound = await ready;
+    publisher?.resume();
     return { port: bound, pid: child.pid!, exited, requestCount: async () => {
       if (stats) throw new Error("NFS statistics request already pending");
       if (child.exitCode !== null || child.signalCode !== null) throw new Error("NFS helper stopped");
@@ -136,13 +143,16 @@ export async function startNfsServer(options: {
         });
       } finally { clearTimeout(timeout); stats = undefined; }
     }, stop: async () => {
+      const publishing = publisher?.stop();
       child.stdin.end();
       const kill = setTimeout(() => child.kill("SIGKILL"), 3000);
-      try { await exited; } finally { clearTimeout(kill); }
+      try { await exited; await serving; await publishing; } finally { clearTimeout(kill); }
     } };
   } catch (error) {
     child.kill();
     await exited;
+    await serving;
+    await publisher?.stop();
     throw error;
   }
 }

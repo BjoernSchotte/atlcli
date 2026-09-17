@@ -68,7 +68,7 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
   const profile = live ? getActiveProfile(await loadConfig(), "mayflower") : undefined;
   if (live && !profile) throw new Error("Missing mayflower test profile");
   const vfs = await ConfluenceVfsImpl.open({ profile: profile?.name ?? "fixture",
-    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: writable ? "rw" : "ro", allowDelete: false, offline: false, cacheDir, now });
+    client: profile ? new ConfluenceClient(profile) : client, spaces, mode: writable ? "rw" : "ro", allowDelete: false, offline: false, cacheDir, now, coalesceMs: writable ? 0 : undefined });
   const journal = writable ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY", 512, 2048) : undefined;
   cleanups.push(async () => { await vfs.close(); journal?.close(); rmSync(cacheDir, { recursive: true, force: true }); });
   const server = await startNfsServer({ vfs, spaces, journal, helperPath: resolve(helperPath!) });
@@ -680,7 +680,7 @@ with socket.socket() as client:
   }
 
   it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("writes and fsyncs existing pages through a native RW kernel mount", async () => {
-    const { server, journal, client } = await fixture(["DOCSY"], false, () => Date.now(), true);
+    const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now(), true);
     const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-rw-"));
     let mounted = false;
     cleanups.push(async () => {
@@ -705,11 +705,11 @@ with socket.socket() as client:
     const metadata = await stat(path);
     expect(metadata.uid).toBe(process.getuid!());
     expect(metadata.mode & 0o777).toBe(0o644);
-    const bytes = Buffer.from("Native Grüße 🐴");
+    const bytes = Buffer.from((await vfs.readFile("/DOCSY/_index.md")).replace("Grüße 🐴", "Native Grüße 🐴"));
     const file = await open(path, "r+");
     try {
       await file.truncate(0);
-      const cut = bytes.length - 2;
+      const cut = bytes.indexOf(Buffer.from("🐴")) + 1;
       expect((await file.write(bytes.subarray(cut), 0, bytes.length - cut, cut)).bytesWritten).toBe(bytes.length - cut);
       expect((await file.write(bytes.subarray(0, cut), 0, cut, 0)).bytesWritten).toBe(cut);
       await file.sync();
@@ -719,7 +719,11 @@ with socket.socket() as client:
       expect(read).toEqual(bytes);
       expect((await file.stat()).size).toBe(bytes.length);
     } finally { await file.close(); }
-    expect(client.callsTo("updatePage")).toBe(0);
+    const deadline = Date.now() + 3000;
+    while (journal!.pending().length && Date.now() < deadline) await Bun.sleep(20);
+    expect(journal!.pending()).toHaveLength(0);
+    expect(client.callsTo("updatePage")).toBe(1);
+    expect(client.peekPage("100")?.storage).toContain("Native Grüße 🐴");
   }, 30000);
 
   for (const { spaces, attachments, visibility = false, mutation = false, glow = false, snapshot = false } of [
