@@ -71,3 +71,28 @@ it("provides offline inspection and export through the source CLI", async () => 
   expect(await run("--id", "100", "--output", output)).toContain('"bytes": 4');
   expect(readFileSync(output)).toEqual(Buffer.from([255, 0, 128, 10]));
 });
+
+
+it("exposes creation receipts and exports their frozen bytes independently of later edits", () => {
+  const { root, path } = fixture();
+  const journal = new NfsJournal(path, "synthetic:DOCSY");
+  const file = journal.createLocal("/DOCSY/newpage.md");
+  const first = journal.write(file.id, 0, Buffer.from("First"));
+  journal.beginCreate(file.id, file.path, "DOCSY", "100", first.revision);
+  journal.recordCreated(file.id, first.revision, "200", 1);
+  journal.write(file.id, 0, Buffer.from("Newer"));
+  journal.close();
+  const records = recoverNfsJournal(path) as Record<string, unknown>[];
+  expect(records.find(row => row.id === file.id)).toMatchObject({ creationPath: file.path, creationParent: "100", createdPageId: "200", createdVersion: 1 });
+  const output = join(root, "creation.md");
+  recoverNfsJournal(path, { id: file.id, image: "intent", output });
+  expect(readFileSync(output, "utf8")).toBe("First");
+});
+
+it("still inspects schema-eight journals without upgrading them", () => {
+  const { path } = fixture();
+  const db = new Database(path); db.exec("DROP TABLE creations; PRAGMA user_version=8"); db.close();
+  const before = readFileSync(path);
+  expect((recoverNfsJournal(path) as unknown[]).length).toBe(3);
+  expect(readFileSync(path)).toEqual(before);
+});

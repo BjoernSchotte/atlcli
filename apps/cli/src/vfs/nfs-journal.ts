@@ -23,6 +23,14 @@ export interface NfsPublishIntent {
   revision: number;
 }
 
+export interface NfsCreateIntent extends NfsPublishIntent {
+  path: string;
+  spaceKey: string;
+  parentId: string;
+  pageId: string | null;
+  version: number | null;
+}
+
 export interface NfsWriteStatus {
   pendingPages: number;
   failedPages: number;
@@ -53,7 +61,7 @@ export class NfsJournal {
       this.db.exec("COMMIT");
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers. Exclusive mode retains the rollback
@@ -86,7 +94,11 @@ export class NfsJournal {
         const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(locals)").all();
         if (!columns.some(column => column.name === "verifier")) this.db.exec("ALTER TABLE locals ADD COLUMN verifier TEXT");
         if (!columns.some(column => column.name === "kind")) this.db.exec("ALTER TABLE locals ADD COLUMN kind TEXT NOT NULL DEFAULT 'file' CHECK(kind IN ('file','directory'))");
-        this.db.exec("CREATE TABLE IF NOT EXISTS attributes (id TEXT PRIMARY KEY REFERENCES files(id), mode INTEGER NOT NULL, atime INTEGER, mtime INTEGER); CREATE TABLE IF NOT EXISTS displaced (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL UNIQUE); CREATE TABLE IF NOT EXISTS page_verifiers (id TEXT PRIMARY KEY REFERENCES files(id), verifier TEXT NOT NULL); PRAGMA user_version=8;");
+        this.db.exec(`CREATE TABLE IF NOT EXISTS attributes (id TEXT PRIMARY KEY REFERENCES files(id), mode INTEGER NOT NULL, atime INTEGER, mtime INTEGER); CREATE TABLE IF NOT EXISTS displaced (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL UNIQUE); CREATE TABLE IF NOT EXISTS page_verifiers (id TEXT PRIMARY KEY REFERENCES files(id), verifier TEXT NOT NULL); CREATE TABLE IF NOT EXISTS creations (
+          id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL,
+          spaceKey TEXT NOT NULL, parentId TEXT NOT NULL, pageId TEXT UNIQUE, version INTEGER,
+          CHECK ((pageId IS NULL AND version IS NULL) OR (pageId IS NOT NULL AND version > 0))
+        ); PRAGMA user_version=9;`);
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
         const stored = this.db.query<{ scope: string }, []>("SELECT scope FROM identity WHERE singleton=1").get();
         if (stored?.scope !== scope) throw new Error("NFS journal belongs to another profile/export identity");
@@ -191,8 +203,15 @@ export class NfsJournal {
     return !!this.db.query("SELECT id FROM locals WHERE substr(path,1,length(?1))=?1 LIMIT 1").get(`${path}/`);
   }
 
+  private assertNoCreation(path: string): void {
+    if (this.db.query("SELECT id FROM creations WHERE path=?1 OR substr(path,1,length(?1)+1)=?1||'/' LIMIT 1").get(path)) {
+      throw new VfsError("EBUSY", "Creation result must be reconciled before moving or removing its local source");
+    }
+  }
+
   removeLocal(path: string, directory = false): void {
     this.db.transaction(() => {
+      this.assertNoCreation(path);
       const file = this.local(path);
       if (!file) throw new VfsError("ENOENT", "Local NFS file not found");
       if (directory !== (file.kind === "directory")) throw new VfsError(directory ? "ENOTDIR" : "EISDIR", "Local entry type mismatch");
@@ -209,6 +228,7 @@ export class NfsJournal {
       const file = this.local(source);
       if (!file) throw new VfsError("ENOENT", "Local NFS file not found");
       if (source === target) return;
+      this.assertNoCreation(source);
       this.checkLocalParents(target);
       if (target.startsWith(`${source}/`)) throw new VfsError("EINVAL", "Cannot move a directory into itself");
       const replaced = this.local(target);
@@ -396,6 +416,49 @@ export class NfsJournal {
     return this.change(id, () => size, () => {});
   }
 
+  createIntent(id: string): NfsCreateIntent | null {
+    return this.db.query<NfsCreateIntent, [string]>(
+      "SELECT intents.*,creations.path,spaceKey,parentId,pageId,version FROM creations JOIN intents USING(id) WHERE id=?",
+    ).get(id);
+  }
+
+  /** Freeze one creation attempt before POST. Existing intents must be reconciled, never sent again blindly. */
+  beginCreate(id: string, path: string, spaceKey: string, parentId: string, revision: number): NfsCreateIntent | null {
+    this.localPath(path);
+    if (!spaceKey || /[\/\0]/.test(spaceKey) || !/^[0-9]+$/.test(parentId) ||
+        path.split("/")[1] !== spaceKey) throw new VfsError("EINVAL", "Invalid creation target");
+    return this.db.transaction(() => {
+      const existing = this.createIntent(id);
+      if (existing) {
+        if (existing.path !== path || existing.spaceKey !== spaceKey || existing.parentId !== parentId) {
+          throw new VfsError("EBUSY", "Creation target already frozen");
+        }
+        return existing;
+      }
+      const local = this.local(path);
+      if (!local || local.id !== id || local.kind !== "file") throw new VfsError("EINVAL", "Creation requires a local file");
+      if (local.revision !== revision) return null;
+      if (this.publishIntent(id)) throw new VfsError("EBUSY", "Publication already pending");
+      this.checkQuota(local.bytes.byteLength);
+      this.db.run("INSERT INTO intents VALUES (?, ?, ?, ?)", [id, local.bytes, 0, revision]);
+      this.db.run("INSERT INTO creations VALUES (?, ?, ?, ?, NULL, NULL)", [id, path, spaceKey, parentId]);
+      return this.createIntent(id)!;
+    }).immediate();
+  }
+
+  /** Persist a confirmed POST result independently of namespace promotion. */
+  recordCreated(id: string, revision: number, pageId: string, version: number): void {
+    if (!/^[0-9]+$/.test(pageId) || !Number.isSafeInteger(version) || version < 1) throw new VfsError("EINVAL", "Invalid creation result");
+    this.db.transaction(() => {
+      const intent = this.createIntent(id);
+      if (!intent || intent.revision !== revision ||
+          (intent.pageId !== null && (intent.pageId !== pageId || intent.version !== version))) {
+        throw new VfsError("EBUSY", "Stale or conflicting creation result");
+      }
+      this.db.run("UPDATE creations SET pageId=?,version=? WHERE id=?", [pageId, version, id]);
+    }).immediate();
+  }
+
   publishIntent(id: string): NfsPublishIntent | null {
     return this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);
   }
@@ -422,6 +485,7 @@ export class NfsJournal {
 
   /** Completing R must leave bytes from a newer R+1 untouched and still pending. */
   completePublish(id: string, revision: number, remoteVersion: number): void {
+    if (this.createIntent(id)) throw new VfsError("EBUSY", "Creation requires namespace promotion");
     if (!Number.isSafeInteger(remoteVersion) || remoteVersion < 1) throw new Error("Invalid remote version");
     this.db.transaction(() => {
       const intent = this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);

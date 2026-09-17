@@ -124,7 +124,9 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     j.write(replay.id,0,Buffer.from("exclusive survives crash"));
     j.createLocalDirectory("/DOCSY/editor-dir");
     const draft=j.createLocal("/DOCSY/editor-dir/draft");
-    j.write(draft.id,0,Buffer.from("directory crash recovery"));
+    const draftImage=j.write(draft.id,0,Buffer.from("directory crash recovery"));
+    j.beginCreate(draft.id,draft.path,"DOCSY","100",draftImage.revision);
+    j.recordCreated(draft.id,draftImage.revision,"123",1);
     j.admit("2","/DOCSY/second/_index.md",Buffer.from("safe backup"),1);
     j.backupPage("2","/DOCSY/second-backup");
     console.log("ACK");setInterval(()=>{},1000);`;
@@ -141,6 +143,7 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     expect(recovered.displaced("/DOCSY/second/_index.md")?.id).toBe("2");
     expect(Buffer.from(recovered.local("/DOCSY/second-backup")!.bytes).toString()).toBe("safe backup");
     expect(recovered.local("/DOCSY/editor-dir")?.kind).toBe("directory");
+    expect(recovered.createIntent(recovered.local("/DOCSY/editor-dir/draft")!.id)).toMatchObject({ pageId: "123", version: 1, parentId: "100" });
     expect(Buffer.from(recovered.local("/DOCSY/editor-dir/draft")!.bytes).toString()).toBe("directory crash recovery");
     expect(Buffer.from(recovered.createLocal("/DOCSY/replay.tmp", "0123456789abcdef").bytes).toString()).toBe("exclusive survives crash");
     expect(Buffer.from(recovered.beginPublish("1")!.bytes).toString()).toBe("durable 🐴");
@@ -646,4 +649,49 @@ it("rejects concurrent journal owners and releases ownership on close", async ()
   journal.close();
   const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
   expect(Buffer.from(reopened.get("100")!.bytes).toString()).toBe("saved");
+});
+
+
+it("freezes new-page intents and confirmed receipts across restart without losing newer editor bytes", () => {
+  const { path, journal } = fixture();
+  journal.createLocalDirectory("/DOCSY/drafts");
+  const local = journal.createLocal("/DOCSY/drafts/newpage.md");
+  const first = journal.write(local.id, 0, bytes("First"));
+  expect(journal.beginCreate(local.id, local.path, "DOCSY", "100", first.revision - 1)).toBeNull();
+  const intent = journal.beginCreate(local.id, local.path, "DOCSY", "100", first.revision)!;
+  journal.write(local.id, 0, bytes("Newer"));
+  expect(journal.beginCreate(local.id, local.path, "DOCSY", "100", first.revision + 1)).toEqual(intent);
+  expect(() => journal.beginCreate(local.id, local.path, "DOCSY", "200", first.revision)).toThrow("frozen");
+  expect(() => journal.renameLocal("/DOCSY/drafts", "/DOCSY/renamed")).toThrow("reconciled");
+  expect(() => journal.removeLocal(local.path)).toThrow("reconciled");
+  expect(() => journal.completePublish(local.id, first.revision, 1)).toThrow("promotion");
+  expect(journal.pendingIds()).toEqual([]);
+  journal.close();
+  const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
+  expect(recovered.createIntent(local.id)).toEqual(intent);
+  expect(Buffer.from(recovered.get(local.id)!.bytes).toString()).toBe("Newer");
+  recovered.recordCreated(local.id, first.revision, "123", 1);
+  recovered.recordCreated(local.id, first.revision, "123", 1);
+  expect(() => recovered.recordCreated(local.id, first.revision, "124", 1)).toThrow("conflicting");
+  expect(() => recovered.recordCreated(local.id, first.revision + 1, "123", 1)).toThrow("conflicting");
+  recovered.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(reopened.createIntent(local.id)).toMatchObject({ pageId: "123", version: 1, revision: first.revision });
+  expect(Buffer.from(reopened.createIntent(local.id)!.bytes).toString()).toBe("First");
+  expect(Buffer.from(reopened.get(local.id)!.bytes).toString()).toBe("Newer");
+});
+
+it("rolls back new-page intent quota failures and upgrades schema eight without changing bytes", () => {
+  const { path, journal } = fixture(5, 5);
+  const local = journal.createLocal("/DOCSY/newpage.md");
+  const image = journal.write(local.id, 0, bytes("12345"));
+  expect(() => journal.beginCreate(local.id, local.path, "OTHER", "100", image.revision)).toThrow("target");
+  expect(() => journal.beginCreate(local.id, local.path, "DOCSY", "100", image.revision)).toThrow("quota");
+  expect(journal.createIntent(local.id)).toBeNull();
+  expect(journal.publishIntent(local.id)).toBeNull();
+  journal.close();
+  const db = new Database(path); db.exec("DROP TABLE creations; PRAGMA user_version=8"); db.close();
+  const upgraded = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(upgraded);
+  expect(Buffer.from(upgraded.get(local.id)!.bytes).toString()).toBe("12345");
+  expect(upgraded.beginCreate(local.id, local.path, "DOCSY", "100", image.revision)).not.toBeNull();
 });

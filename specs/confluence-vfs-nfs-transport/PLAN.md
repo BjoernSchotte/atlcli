@@ -134,6 +134,13 @@ performed by this spec.
 | CREATE / RENAME / REMOVE | Preserve existing page identity and deletion safeguards, including editor temporary/backup replacement sequences. Never purge pages. |
 | Links / attributes | Keep convenience links within the selected export. Reject unsupported hardlinks, ownership/permission changes and device files honestly. Advertise only supported capabilities. |
 
+Explicit editor acceptance: `vim newpage.md` with plain Markdown and no frontmatter
+must create a page on both NFS and WebDAV. The filename supplies the default title;
+its location supplies the space/parent. Confluence assigns the ID, and subsequent
+saves target that same page. Swap/backup/temporary editor files remain local.
+Test repeated saves and atomic replacements on both transports, verifying exactly
+one created page and cleanup of the test resources.
+
 NFS attributes and data caches must agree after a write. Define and measure
 external-update and negative-cache visibility using explicit mount options and
 VFS TTLs; do not promise instantaneous consistency. Version paths must never

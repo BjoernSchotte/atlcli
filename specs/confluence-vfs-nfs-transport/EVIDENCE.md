@@ -2640,3 +2640,31 @@ This is a prerequisite, not native NFS new-page acceptance. Durable creation
 intents, ambiguous POST recovery, local-to-remote handle promotion and editor
 file eligibility remain to be connected. A create-only condition prevents
 accidental updates but does not by itself reconcile an unknown create result.
+
+
+## Slice 101 — durable new-page attempts and receipts
+
+Journal schema 9 adds frozen creation targets and confirmed remote receipts.
+The exact first image reuses the existing bounded intents table; subsequent
+editor writes remain independently durable. Revision checks prevent freezing an
+obsolete preparation. Repeated calls return the same intent and must not be
+interpreted by the publisher as permission for a second POST. Confirmed receipts
+are idempotent; conflicting revisions/remote IDs are rejected. Namespace removal
+or rename of unresolved sources/ancestors is blocked until reconciliation;
+ordinary update completion cannot accidentally clear a creation intent.
+
+Recovery lists creation target/parent/receipt metadata and exports the original
+intent bytes. It can still inspect schema 8 without modifying it. Writer migration
+preserves existing bytes. The user explicitly added plain `vim newpage.md` without
+frontmatter on both transports to the acceptance plan.
+
+- macOS/Linux journal, recovery and publisher suites: 62 tests / 659 assertions
+  each, followed by the expanded real SIGKILL test (12 assertions each).
+- Quota rollback, retained newer bytes, receipt replay/conflicts, namespace guards,
+  schema migration and offline image export tested.
+- Linux live existing-page DOCSY publication: 13 assertions; fixture cleaned up.
+- All four typecheck tasks passed.
+
+This slice does not yet send a native new-page POST or promote its filehandle.
+The persisted receipt enables that integration; ambiguous POST reconciliation
+and the complete no-frontmatter Vim acceptance remain open.

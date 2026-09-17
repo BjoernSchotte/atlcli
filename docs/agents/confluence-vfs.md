@@ -438,7 +438,8 @@ atlcli wiki mount recovery /path/to/journal.sqlite --json
 atlcli wiki mount recovery /path/to/journal.sqlite --id 12345 --output ./recovered.md
 ```
 
-The listing includes local editor entries, interrupted replacements, revision
+The listing includes frozen creation targets and confirmed creation receipts
+when present (journal schema 9), local editor entries, interrupted replacements, revision
 numbers, safe error codes and available publication images, without page bodies.
 To compare an unresolved publication with the bytes currently saved by an editor:
 
