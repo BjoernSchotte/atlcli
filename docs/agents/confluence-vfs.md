@@ -415,6 +415,12 @@ When a refreshed listing observes a moved page or folder, the shared tree index
 removes its old parent association while retaining its already loaded children.
 Refreshing the old parent afterwards therefore cannot erase the relocated subtree.
 
+The internal RW implementation journals page/folder moves between selected
+spaces and reconciles lost responses in the destination space. Public NFS RW
+remains gated pending the full acceptance suite. After a move, generated
+frontmatter reflects the current location; open OS descriptors may retain old
+attributes for the documented one-second cache window.
+
 Existing page/body handles also survive a page move after the changed hierarchy
 is observed: the adapter resolves the same page ID within the selected spaces.
 Attachment files and their `_attachments` directory also retain their handles

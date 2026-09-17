@@ -516,8 +516,8 @@ export class NfsFilesystem {
     this.journal!.assertNoMove(source); this.journal!.assertNoMove(target);
     const sourceStat = await this.stat(source);
     if (sourceStat.isDirectory && !this.journal!.local(source)) {
-      if (!["page", "folder"].includes(sourceStat.kind) || source.split("/")[1] !== target.split("/")[1]) {
-        throw new VfsError("EROFS", "Remote directory moves currently preserve the space");
+      if (!["page", "folder"].includes(sourceStat.kind)) {
+        throw new VfsError("EROFS", "Only page and folder directories can be moved");
       }
       if (target.startsWith(`${source}/`)) throw new VfsError("EINVAL", "Cannot move a page into itself");
       try { await this.stat(target); throw new VfsError("EEXIST", "Move destination exists"); }
@@ -537,14 +537,14 @@ export class NfsFilesystem {
       let destination = await this.vfs.resolve(posix.dirname(target));
       if (destination.kind === "space") destination = await this.vfs.resolve(posix.join(posix.dirname(target), "_index.md"));
       if (node.readOnly || destination.readOnly || !node.parentId || !node.spaceKey ||
-          !["page", "folder"].includes(destination.kind) || destination.spaceKey !== node.spaceKey) {
+          !["page", "folder"].includes(destination.kind) || !destination.spaceKey || !this.spaces.has(destination.spaceKey)) {
         throw new VfsError("EACCES", "Move is outside writable page containers");
       }
       this.journal!.beginMove({ id: node.id, kind: sourceStat.kind as "page" | "folder", source, target, spaceKey: node.spaceKey,
         sourceParentId: node.parentId, sourceTitle: node.title, targetParentId: destination.id, title });
       await this.vfs.rename(source, target, { id: node.id, kind: sourceStat.kind as "page" | "folder", spaceKey: node.spaceKey,
-        sourceParentId: node.parentId, targetParentId: destination.id });
-      if (!await this.vfs.confirmMove(node.id, node.spaceKey, destination.id, title, sourceStat.kind as "page" | "folder")) {
+        sourceParentId: node.parentId, targetParentId: destination.id, targetSpaceKey: destination.spaceKey });
+      if (!await this.vfs.confirmMove(node.id, destination.spaceKey, destination.id, title, sourceStat.kind as "page" | "folder")) {
         throw new VfsError("EBUSY", "Move result requires reconciliation");
       }
       this.journal!.completeMove(source);
@@ -628,8 +628,8 @@ export class NfsFilesystem {
     if (frontmatter.id !== file.id || frontmatter.version === undefined) throw new VfsError("EAGAIN", "Page changed during refresh");
     await this.checkResolvedScope(path);
     const previous = parseVfsFrontmatter(new TextDecoder().decode(file.bytes)).frontmatter;
-    const parentChanged = previous.id === file.id && previous.parentId !== frontmatter.parentId;
-    return this.journal.refreshClean(file.id, path, bytes, frontmatter.version, file.revision, parentChanged);
+    const metadataChanged = previous.id === file.id && (previous.parentId !== frontmatter.parentId || previous.url !== frontmatter.url);
+    return this.journal.refreshClean(file.id, path, bytes, frontmatter.version, file.revision, metadataChanged);
   }
 
   /** Returns only after SQLite has durably committed the local byte image. */
@@ -717,12 +717,13 @@ export class NfsFilesystem {
       if (modified && Number.isFinite(Date.parse(modified))) mtime = Date.parse(modified);
       else if (stat.kind === "virtual-file") mtime = 0; // Unknown historic time is not the current page time.
     }
-    if (bytes && stat.kind === "virtual-file" && !/^[0-9]+@[0-9]+$/.test(stat.id)) {
-      // Generated content can change without a page version (comments, metadata).
+    if (bytes && (stat.kind === "page" || (stat.kind === "virtual-file" && !/^[0-9]+@[0-9]+$/.test(stat.id)))) {
+      // Generated content/frontmatter can change without a page version.
       // Keep a stable revision until the actual bytes change, including same-size edits.
       const entry = this.paths.get(id)!;
       const hash = createHash("sha256").update(bytes).digest("hex");
-      if (!entry.rendered || entry.rendered.hash !== hash) {
+      if (!entry.rendered && stat.kind === "page") entry.rendered = { hash, mtime };
+      else if (!entry.rendered || entry.rendered.hash !== hash) {
         entry.rendered = { hash, mtime: Math.max(Date.now(), (entry.rendered?.mtime ?? 0) + 1) };
       }
       mtime = entry.rendered.mtime;

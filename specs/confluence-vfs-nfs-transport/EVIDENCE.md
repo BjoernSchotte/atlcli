@@ -4129,3 +4129,37 @@ start at the homepage and enumerate its children. Removing only the NFS
 source-parent check would not make genuine parentless items accessible. Their
 listing/resolution and durable move representation require a coordinated change.
 This slice does not claim that coverage or remove the public NFS RW gate.
+
+
+## Slice 154 — journaled cross-space moves and live metadata (2026-09-17)
+
+The internal RW adapter now moves page/folder trees between selected spaces.
+The existing durable target path carries the destination space; source space
+and parent guards remain explicit. Schema 17 marks the changed receipt semantics
+so older writers cannot resume a cross-space receipt as a same-space move.
+Lost replies are confirmed in the destination space; a combined page retitle
+resumes only after positively observing the moved page with its original title.
+No uncertain reparent is blindly retried.
+
+Tests exposed stale cached frontmatter after a space move without a version
+change. The shared page store now renders current title/parent/URL over cached
+body bytes without downloading that body again. Clean staged images refresh on
+URL changes too, and live NFS page attributes track rendered-byte changes even
+without a new Confluence version. Immutable version reads stay separate.
+
+- macOS and Linux: 567 tests / 2923 assertions each across all shared VFS tests
+  plus NFS filesystem, journal, publisher and offline recovery suites.
+- Native NFS RW mounts on macOS/Linux: one test / ten assertions each, moving
+  both page and folder subtrees between two synthetic spaces while descendant
+  descriptors remain open. Inodes, complete Unicode bytes and destination URLs
+  verified after the documented one-second attribute-cache window.
+- Restart tests cover lost page/folder move replies and combined page retitle,
+  with exactly one positional move. The shared guard rejects an unrecorded
+  destination space before mutation. Typecheck passed all four tasks.
+- Linux DOCSY owned-journal LIVE: one test / five assertions, disposable page
+  cleaned up. Cross-space writes used synthetic backends only; MAYFLOWER was
+  not written. No live cross-space proof is claimed.
+
+Parentless items, ID-less existing-directory renames, removal/mutation audits,
+remaining durability/resource/artifact gates and final performance acceptance
+remain open. Public CLI NFS RW remains gated.

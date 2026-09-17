@@ -537,6 +537,21 @@ describe("rename and move", () => {
     } finally { await vfs.close(); }
   });
 
+  it("requires the recorded destination space for a guarded cross-space move", async () => {
+    const client = seeded().seedSpace({ id: "sp-2", key: "OTHER", name: "Other", homepageId: "200" })
+      .seedPage({ id: "200", title: "Other Home", spaceKey: "OTHER", storage: "<p>Home</p>" });
+    const vfs = await openVfs(client);
+    const expected = { id: "101", spaceKey: "DOCSY", sourceParentId: "100", targetParentId: "200" };
+    try {
+      await expect(vfs.rename("/DOCSY/getting-started-101", "/OTHER/getting-started-101", expected))
+        .rejects.toMatchObject({ code: "EBUSY" });
+      expect(client.callsTo("movePageToPosition")).toBe(0);
+      await vfs.rename("/DOCSY/getting-started-101", "/OTHER/getting-started-101", { ...expected, targetSpaceKey: "OTHER" });
+      expect(await vfs.confirmMove("101", "OTHER", "200", "Getting Started")).toBe(true);
+      expect(client.callsTo("movePageToPosition")).toBe(1);
+    } finally { await vfs.close(); }
+  });
+
   it("uses folder metadata and the positional endpoint for guarded folder moves", async () => {
     const client = seeded();
     const vfs = await openVfs(client);

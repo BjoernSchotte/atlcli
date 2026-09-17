@@ -103,7 +103,7 @@ export class NfsJournal {
       this.db.exec("COMMIT");
       chmodSync(path, 0o600);
       const version = this.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (!Number.isInteger(version) || version < 0 || version > 16) throw new Error("Unsupported NFS journal schema version");
+      if (!Number.isInteger(version) || version < 0 || version > 17) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers. Exclusive mode retains the rollback
@@ -144,7 +144,7 @@ export class NfsJournal {
         ); CREATE TABLE IF NOT EXISTS promotions (localId TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, pageId TEXT NOT NULL UNIQUE REFERENCES files(id)); CREATE TABLE IF NOT EXISTS trash (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL, spaceKey TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1))); CREATE TABLE IF NOT EXISTS moves (id TEXT PRIMARY KEY, source TEXT NOT NULL UNIQUE,
           target TEXT NOT NULL UNIQUE, spaceKey TEXT NOT NULL, sourceParentId TEXT NOT NULL,
           targetParentId TEXT NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)));
-          PRAGMA user_version=16;`);
+          PRAGMA user_version=17;`);
         const promotionColumns = this.query<{ name: string }, []>("PRAGMA table_info(promotions)").all();
         if (!promotionColumns.some(column => column.name === "directoryId")) this.db.exec("ALTER TABLE promotions ADD COLUMN directoryId TEXT REFERENCES files(id)");
         this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS promotion_directory ON promotions(directoryId)");
@@ -660,7 +660,7 @@ export class NfsJournal {
   beginMove(move: Omit<NfsMoveIntent, "completed">): void {
     this.localPath(move.source); this.localPath(move.target);
     if (!["page", "folder"].includes(move.kind) || ![move.id, move.sourceParentId, move.targetParentId].every(id => /^[0-9]+$/.test(id)) ||
-        move.source.split("/")[1] !== move.spaceKey || move.target.split("/")[1] !== move.spaceKey ||
+        move.source.split("/")[1] !== move.spaceKey || move.target.split("/").length < 3 ||
         (posix.basename(move.source) !== posix.basename(move.target) &&
           move.kind !== "page") || move.target.startsWith(`${move.source}/`)) {
       throw new VfsError("EINVAL", "Invalid page reparent intent");

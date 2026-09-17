@@ -48,7 +48,7 @@ export interface ConfluenceVfs {
   mkdir(path: string): Promise<VfsWriteResult>;
 
   /** Retitle, reparent or move across spaces, depending on what changed. */
-  rename(from: string, to: string, expected?: { id: string; spaceKey: string; sourceParentId: string; targetParentId: string; kind?: "page" | "folder" }): Promise<void>;
+  rename(from: string, to: string, expected?: { id: string; spaceKey: string; targetSpaceKey?: string; sourceParentId: string; targetParentId: string; kind?: "page" | "folder" }): Promise<void>;
 
   /** Positively confirm a page location from fresh metadata after an uncertain move. */
   confirmMove(id: string, spaceKey: string, parentId: string, title: string, kind?: "page" | "folder"): Promise<boolean>;

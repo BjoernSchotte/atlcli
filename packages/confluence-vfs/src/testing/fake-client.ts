@@ -826,6 +826,18 @@ export class FakeConfluenceClient implements VfsClient {
       page.spaceKey = target.spaceKey;
       page.position = (target.position ?? 0) + (position === "before" ? -1 : 1);
     }
+    // A cross-space container move also transfers its descendants.
+    const pending = [page.id];
+    const visited = new Set<string>();
+    for (const id of pending) {
+      if (visited.has(id)) continue;
+      visited.add(id);
+      for (const child of this.pages.values()) {
+        if (child.parentId !== id || child.trashed) continue;
+        child.spaceKey = page.spaceKey;
+        pending.push(child.id);
+      }
+    }
     return this.toPage(page);
   }
 

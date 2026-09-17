@@ -1094,7 +1094,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
    * that tries to change it is `EINVAL` rather than a silent no-op on a
    * different page.
    */
-  async rename(from: string, to: string, expected?: { id: string; spaceKey: string; sourceParentId: string; targetParentId: string; kind?: "page" | "folder" }): Promise<void> {
+  async rename(from: string, to: string, expected?: { id: string; spaceKey: string; targetSpaceKey?: string; sourceParentId: string; targetParentId: string; kind?: "page" | "folder" }): Promise<void> {
     const source = (await this.resolver.resolve(this.canonicalize(from))) as Resolved;
     if (source.kind !== "container" && source.kind !== "body") {
       throw new VfsError("EROFS", `${from} is a generated view and cannot be renamed`, {
@@ -1120,7 +1120,7 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
     const { spaceKey, parentNode } = await this.containerOf(destination as Resolved, to);
     if (expected) {
       if (node.type !== (expected.kind ?? "page") || node.id !== expected.id || node.spaceKey !== expected.spaceKey ||
-          spaceKey !== expected.spaceKey || parentNode.id !== expected.targetParentId) {
+          spaceKey !== (expected.targetSpaceKey ?? expected.spaceKey) || parentNode.id !== expected.targetParentId) {
         throw new VfsError("EBUSY", "Move identity or destination changed");
       }
       const current = await (node.type === "folder"

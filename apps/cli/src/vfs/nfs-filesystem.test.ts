@@ -787,6 +787,54 @@ it.each([false, true])("reparents remote page directories with stable handles an
   expect(client.callsTo("movePage")).toBe(1);
 });
 
+it.each(["page", "folder"] as const)("preserves %s and descendant handles across spaces", async kind => {
+  const { fs, client, journal } = await fixture(["DOCSY", "mayflower"], "rw", undefined, true);
+  client.seedPage({ id: "900", title: "Portable", type: kind, parentId: "100", spaceKey: "DOCSY", storage: "<p>Parent</p>" });
+  client.seedPage({ id: "901", title: "Nested", parentId: "900", spaceKey: "DOCSY", storage: "<p>Grüße 🐴</p>" });
+  const source = await fs.lookup(1, "DOCSY");
+  const target = await fs.lookup(1, "mayflower");
+  const directory = await fs.lookup(source, "portable-900");
+  const child = await fs.lookup(directory, "nested-901");
+  const body = await fs.lookup(child, "_index.md");
+  const before = await fs.read(body, 0, 65536);
+  await fs.truncate(body, Buffer.from(before.data, "base64").length);
+  await fs.rename(source, "portable-900", target, "portable-900");
+  expect(await fs.lookup(target, "portable-900")).toBe(directory);
+  expect(await fs.lookup(directory, "nested-901")).toBe(child);
+  expect(await fs.lookup(child, "_index.md")).toBe(body);
+  const after = parseVfsFrontmatter(Buffer.from((await fs.read(body, 0, 65536)).data, "base64").toString());
+  expect(after.frontmatter.url).toContain("/spaces/mayflower/");
+  expect(after.body).toContain("Grüße 🐴");
+  expect(journal!.get("901")?.path).toBe("/mayflower/portable-900/nested-901/_index.md");
+  expect(client.peekPage("901")?.spaceKey).toBe("mayflower");
+  expect(client.callsTo("movePageToPosition")).toBe(1);
+});
+
+it.each(["page", "folder"] as const)("moves a %s across selected spaces and reconciles a lost response after reopen", async kind => {
+  const { fs, journal, client, vfs, cacheDir } = await fixture(["DOCSY", "mayflower"], "rw", undefined, true);
+  client.seedPage({ id: "900", title: "Portable", type: kind, parentId: "100", spaceKey: "DOCSY", storage: "<p>Grüße 🐴</p>" });
+  const source = await fs.lookup(1, "DOCSY");
+  const target = await fs.lookup(1, "mayflower");
+  await fs.lookup(source, "portable-900");
+  const move = client.movePageToPosition.bind(client);
+  client.movePageToPosition = async (...args) => { await move(...args); throw new Error("Lost cross-space reply"); };
+  const name = kind === "page" ? "renamed-900" : "portable-900";
+  await expect(fs.rename(source, "portable-900", target, name)).rejects.toThrow("Lost cross-space reply");
+  journal!.close();
+  const reopened = new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY");
+  const publisher = new NfsPublisher(reopened, vfs, ["DOCSY", "mayflower"]);
+  try {
+    expect(reopened.pendingMoves()).toHaveLength(1);
+    await publisher.publish("move:/DOCSY/portable-900");
+    expect(reopened.pendingMoves()).toEqual([]);
+    expect(client.peekPage("900")).toMatchObject({ spaceKey: "mayflower", parentId: "300", title: kind === "page" ? "Renamed" : "Portable" });
+    expect(client.callsTo("movePageToPosition")).toBe(1);
+    const freshFs = new NfsFilesystem(vfs, ["DOCSY", "mayflower"], undefined, reopened);
+    await freshFs.rename(await freshFs.lookup(1, "DOCSY"), "portable-900", await freshFs.lookup(1, "mayflower"), name);
+    expect(client.callsTo("movePageToPosition")).toBe(1);
+  } finally { await publisher.stop(); reopened.close(); }
+});
+
 it.each([false, true])("moves real folder identities and preserves descendant handles (lost reply=%s)", async lostReply => {
   const { fs, journal, client, vfs } = await fixture(["DOCSY"], "rw", undefined, true);
   client.seedPage({ id: "900", title: "Archive", type: "folder", parentId: "100", spaceKey: "DOCSY" });

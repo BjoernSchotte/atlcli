@@ -12,8 +12,8 @@ export function recoverNfsJournal(path: string, options: { id?: string; output?:
   try {
     db.exec("PRAGMA busy_timeout=5000");
     const schema = db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version;
-    if (schema === undefined || schema < 8 || schema > 16) {
-      throw new Error("Recovery requires NFS journal schema 8–16; keep the original journal and use its matching CLI version");
+    if (schema === undefined || schema < 8 || schema > 17) {
+      throw new Error("Recovery requires NFS journal schema 8–17; keep the original journal and use its matching CLI version");
     }
     if (!options.id) {
       const files = db.query<Record<string, unknown>, []>(`SELECT files.id,files.path,files.baseVersion,files.revision,publishedRevision,error,

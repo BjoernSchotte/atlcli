@@ -205,7 +205,15 @@ export class PageStore {
     node = this.opts.index.node(node.id) ?? node;
     if (node.version !== undefined) {
       const hit = this.opts.cache.getBody(node.id, node.version);
-      if (hit) return hit.markdown;
+      if (hit) {
+        // Moves can change ancestry/space without changing the body version.
+        const { frontmatter, body } = parseVfsFrontmatter(hit.markdown);
+        const url = `${this.opts.instanceUrl}/spaces/${node.spaceKey}/pages/${node.id}`;
+        if (frontmatter.parentId === (node.parentId ?? undefined) && frontmatter.url === url && frontmatter.title === node.title) return hit.markdown;
+        const { parentId: _oldParent, ...metadata } = frontmatter;
+        return `${renderFrontmatter({ ...metadata, id: node.id, title: node.title, url,
+          ...(node.parentId ? { parentId: node.parentId } : {}) })}${body}`;
+      }
     }
     if (this.opts.offline) {
       throw new VfsError(

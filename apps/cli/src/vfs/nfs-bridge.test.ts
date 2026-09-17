@@ -992,6 +992,49 @@ with socket.socket() as client:
     }
   }, 30_000);
 
+  it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("moves page and folder trees between spaces through a native RW mount", async () => {
+    const { server, client } = await fixture(["DOCSY", "mayflower"], false, undefined, true, 4096);
+    const mountpoint = mkdtempSync(join(tmpdir(), "atlcli-nfs-cross-space-"));
+    let mounted = false;
+    cleanups.push(async () => {
+      if (mounted) {
+        const command = platform() === "linux" ? ["sudo", "-n", "umount", mountpoint] : ["umount", mountpoint];
+        let status = await runMountCommand(command);
+        for (let attempt = 0; status !== 0 && attempt < 10; attempt++) {
+          await Bun.sleep(100); status = await runMountCommand(command);
+        }
+        if (status !== 0) throw new Error(`Test mount remains attached: ${mountpoint}`);
+      }
+      rmSync(mountpoint, { recursive: true, force: true });
+    });
+    const options = nfsMountOptionsFor(platform(), server.port, "rw");
+    expect(await runMountCommand(platform() === "linux"
+      ? ["sudo", "-n", "mount", "-t", "nfs", "-o", options, "127.0.0.1:/", mountpoint]
+      : ["mount_nfs", "-o", options, "127.0.0.1:/", mountpoint])).toBe(0);
+    mounted = true;
+    for (const [kind, id, childId] of [["page", "900", "901"], ["folder", "902", "903"]] as const) {
+      client.seedPage({ id, title: "Portable", type: kind, spaceKey: "DOCSY", parentId: "100", storage: "<p>Parent</p>" });
+      client.seedPage({ id: childId, title: "Nested", spaceKey: "DOCSY", parentId: id, storage: "<p>Grüße 🐴</p>" });
+    }
+    for (const [id, childId] of [["900", "901"], ["902", "903"]]) {
+      const source = join(mountpoint, "DOCSY", `portable-${id}`);
+      const target = join(mountpoint, "mayflower", `portable-${id}`);
+      const childPath = `nested-${childId}/_index.md`;
+      const descriptor = await open(join(source, childPath), "r");
+      try {
+        const inode = (await descriptor.stat()).ino;
+        await rename(source, target);
+        // Existing open descriptors retain attributes for the advertised actimeo=1.
+        await Bun.sleep(1100);
+        expect((await stat(join(target, childPath))).ino).toBe(inode);
+        expect((await descriptor.readFile()).toString()).toContain("Grüße 🐴");
+        expect((await readFile(join(target, childPath))).toString()).toContain("/spaces/mayflower/");
+        expect(client.peekPage(childId!)?.spaceKey).toBe("mayflower");
+      } finally { await descriptor.close(); }
+    }
+    expect(client.callsTo("movePageToPosition")).toBe(2);
+  }, 30_000);
+
   it.skipIf(process.env.ATLCLI_NFS_KERNEL !== "1")("writes and fsyncs existing pages through a native RW kernel mount", async () => {
     let clockOffset = 0;
     const { server, journal, client, vfs } = await fixture(["DOCSY"], false, () => Date.now() + clockOffset, true, 4096, true);
