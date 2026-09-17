@@ -3953,3 +3953,18 @@ remote RMDIR returning ENOTEMPTY preserves the original recursive-delete guard;
 ID-less existing-directory rename is additional convenience beyond the explicit
 unchanged-ID retitle contract. These distinctions do not remove the pending
 checkpoint entries or enable public RW.
+
+## Slice 146 — replay after a later remote edit (2026-09-17)
+
+The shared write-back path now checks exact storage and title after a successful
+three-way merge, avoiding an identical PUT when a lost successful update is
+already contained in a newer remote version. It retains storage comparison
+rather than relying on potentially lossy Markdown equality.
+
+A publisher regression injects a lost version-2 reply, adds remote content in
+version 3, then replays the frozen journal intent. Before the fix it produced
+version 4; afterward it preserves version 3 and the remote addition, clears the
+intent and pending image, and performs no further publication. Both hosts passed
+124 publisher/write-back tests with 484 assertions. Linux DOCSY owned-journal
+restart/publication passed one test / five assertions with disposable cleanup.
+Typecheck passed all four tasks. Public NFS RW remains gated.

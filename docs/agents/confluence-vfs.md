@@ -178,6 +178,8 @@ version/conflict checks. Flushing waits for queued and running updates.
 This is save coalescing; retry backoff for API errors is a separate mechanism.
 A stale replay whose title and storage content already match the server succeeds
 without creating another version, even if its old merge base has been evicted.
+If a later remote edit is present, a successful three-way merge also skips the
+update when its resulting title and exact storage already match the server.
 This comparison ignores only outer storage whitespace, not content differences.
 
 Page creation is not automatically repeated after an HTTP 5xx response: the

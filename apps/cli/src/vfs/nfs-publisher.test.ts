@@ -2,7 +2,7 @@ import { afterEach, expect, it, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfluenceVfsImpl, VfsError } from "@atlcli/confluence-vfs";
+import { ConfluenceVfsImpl, VfsError, toStorage } from "@atlcli/confluence-vfs";
 import { FakeConfluenceClient } from "@atlcli/confluence-vfs/testing";
 import { NfsJournal } from "./nfs-journal.js";
 import { NfsPublisher } from "./nfs-publisher.js";
@@ -139,6 +139,27 @@ it("reconciles an ambiguous successful update without duplicating the version", 
   expect(client.peekPage("100")?.version).toBe(2);
   expect((await publisher.publish("100"))?.version).toBe(2);
   expect(journal.pending()).toHaveLength(0);
+  expect(await publisher.publish("100")).toBeNull();
+});
+
+it("reconciles a lost update reply after an external addition without another version", async () => {
+  const { client, journal, original, stage, publisher } = await fixture();
+  stage(original.replace("Original", "Saved"));
+  const update = client.updatePage.bind(client);
+  client.updatePage = async params => {
+    const result = await update(params);
+    if (result.version === 2) throw new Error("Lost response");
+    return result;
+  };
+  await expect(publisher.publish("100")).rejects.toThrow("Lost response");
+  const remoteStorage = toStorage("Saved\n\nExternal addition.\n");
+  client.bumpVersion("100", remoteStorage);
+  expect(client.peekPage("100")?.version).toBe(3);
+  expect((await publisher.publish("100"))?.version).toBe(3);
+  expect(client.peekPage("100")?.version).toBe(3);
+  expect(client.peekPage("100")?.storage).toBe(remoteStorage);
+  expect(journal.pending()).toHaveLength(0);
+  expect(journal.publishIntent("100")).toBeNull();
   expect(await publisher.publish("100")).toBeNull();
 });
 

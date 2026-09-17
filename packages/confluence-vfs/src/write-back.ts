@@ -309,12 +309,17 @@ export class WriteBack {
       });
     }
 
+    const storage = toStorage(merged.content);
+    // A replay can already be included in a newer remote edit after merging.
+    if (fresh.title === title && fresh.storage.trim() === storage.trim()) {
+      return { path, pageId: node.id, version: fresh.version, created: false };
+    }
     const updated = await this.request(
       () =>
         this.opts.client.updatePage({
           id: node.id,
           title,
-          storage: toStorage(merged.content),
+          storage,
           version: fresh.version + 1,
         }),
       path,
