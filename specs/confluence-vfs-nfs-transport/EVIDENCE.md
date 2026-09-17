@@ -1928,3 +1928,28 @@ atomic replacement and the remaining native editor matrix are still open.
 
 Validation: publisher regression suite passed (12 tests, 63 assertions);
 typecheck passed all four tasks. `git diff --check` passed.
+
+## Slice 73 — durable local editor namespace
+
+Journal schema 3 adds local editor files with bounded, unique canonical paths and
+random identities. Local create/write/rename/remove reuse the existing durable
+SQLite transactions and quotas. Local files are excluded from the publication
+queue and `beginPublish`, including after restart. An atomic local-to-page byte
+replacement preserves the existing page ID/path, base version, unresolved error
+and immutable in-flight intent; the newer bytes remain pending independently.
+The source removal and byte replacement commit together. Quota/size failure
+rolls back both, and replacement needs no extra logical copy of the local bytes.
+
+- macOS: journal tests 17 passed / 361 assertions; publisher tests 12 passed / 63
+  assertions. Linux combined: 29 passed / 424 assertions.
+- Coverage includes temporary-name isolation, path validation, identity-preserving
+  rename, overwrite/remove, file-count/byte quotas, replacement rollback under a
+  reduced file-size limit, restart recovery and SIGKILL after acknowledged rename
+  and replacement while an older publication intent remains unresolved.
+- Linux live mayflower/DOCSY native NFS automatic publication: one passed / four
+  assertions; normal unmount and disposable page cleanup succeeded.
+- Typecheck: all four tasks passed; diff whitespace check passed.
+
+This is the journal prerequisite. NFS CREATE/RENAME/REMOVE routing, native atomic
+editor replacement, backup-handle semantics and completion boundaries remain
+open. No new CLI RW availability is claimed by this slice.

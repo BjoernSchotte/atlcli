@@ -114,6 +114,10 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     const j=new NfsJournal(${JSON.stringify(path)},"synthetic-account:DOCSY");
     j.admit("1","/DOCSY/page/_index.md",new Uint8Array(),1);
     j.write("1",0,Buffer.from("durable 🐴"));j.beginPublish("1");
+    const local=j.createLocal("/DOCSY/.save.tmp");
+    j.write(local.id,0,Buffer.from("replaced after intent"));
+    j.renameLocal(local.path,"/DOCSY/.renamed.tmp");
+    j.replaceLocal("/DOCSY/.renamed.tmp","1");
     console.log("ACK");setInterval(()=>{},1000);`;
   const child = Bun.spawn([process.execPath, "--conditions=development", "-e", source], { stdout: "pipe", stderr: "pipe" });
   try {
@@ -123,7 +127,8 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     reader.releaseLock();
     child.kill("SIGKILL"); await child.exited;
     const recovered = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(recovered);
-    expect(Buffer.from(recovered.get("1")!.bytes).toString()).toBe("durable 🐴");
+    expect(Buffer.from(recovered.get("1")!.bytes).toString()).toBe("replaced after intent");
+    expect(recovered.localEntries("/DOCSY")).toEqual([]);
     expect(Buffer.from(recovered.beginPublish("1")!.bytes).toString()).toBe("durable 🐴");
     expect(recovered.pending()).toHaveLength(1);
   } finally { child.kill(); await child.exited; }
@@ -276,9 +281,83 @@ it("upgrades schema-one pending records without inventing a publication base", (
   journal.write("1", 0, bytes("new"));
   journal.close();
   const old = new Database(path);
-  old.exec("DROP TABLE bases; PRAGMA user_version=1;"); old.close();
+  old.exec("DROP TABLE locals; DROP TABLE bases; PRAGMA user_version=1;"); old.close();
   const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
   expect(Buffer.from(reopened.get("1")!.bytes).toString()).toBe("new");
   expect(reopened.pending()).toHaveLength(1);
   expect(reopened.publishedSource("1")).toBeNull();
+});
+
+
+it("recovers local editor files without ever publishing their temporary names", () => {
+  const { path, journal } = fixture();
+  const file = journal.createLocal("/DOCSY/.editor.tmp");
+  journal.write(file.id, 0, bytes("local draft 🐴"));
+  expect(journal.pending()).toEqual([]);
+  expect(journal.beginPublish(file.id)).toBeNull();
+  expect(() => journal.createLocal(file.path)).toThrow("exists");
+  for (const invalid of ["relative", "/", "/DOCSY/../escape", "/DOCSY/x/", "/DOCSY//x"]) {
+    expect(() => journal.createLocal(invalid)).toThrow("Invalid");
+  }
+  journal.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(reopened.local(file.path)?.id).toBe(file.id);
+  expect(Buffer.from(reopened.local(file.path)!.bytes).toString()).toBe("local draft 🐴");
+  expect(reopened.localEntries("/DOCSY")).toHaveLength(1);
+  expect(reopened.localEntries("/DOC")).toEqual([]);
+  expect(reopened.pending()).toEqual([]);
+  const replaced = reopened.createLocal("/DOCSY/backup.tmp");
+  reopened.renameLocal(file.path, replaced.path);
+  expect(reopened.get(replaced.id)).toBeNull();
+  expect(reopened.local(file.path)).toBeNull();
+  expect(reopened.local(replaced.path)?.id).toBe(file.id);
+  reopened.renameLocal(replaced.path, replaced.path);
+  reopened.removeLocal(replaced.path);
+  expect(reopened.localEntries("/DOCSY")).toEqual([]);
+  expect(reopened.get(file.id)).toBeNull();
+});
+
+it("atomically replaces page bytes while preserving an ambiguous publication and page identity", () => {
+  const { path, journal } = fixture();
+  journal.admit("1", "/DOCSY/_index.md", bytes("old"), 1);
+  journal.write("1", 0, bytes("sent"));
+  const intent = journal.beginPublish("1")!;
+  journal.failPublish("1", "REMOTE_RESULT_UNKNOWN");
+  const temporary = journal.createLocal("/DOCSY/.save.tmp");
+  journal.write(temporary.id, 0, bytes("replacement"));
+  const replaced = journal.replaceLocal(temporary.path, "1");
+  expect(replaced.id).toBe("1");
+  expect(replaced.path).toBe("/DOCSY/_index.md");
+  expect(replaced.error).toBe("REMOTE_RESULT_UNKNOWN");
+  expect(replaced.revision).toBe(intent.revision + 1);
+  expect(journal.get(temporary.id)).toBeNull();
+  expect(journal.beginPublish("1")).toEqual(intent);
+  journal.close();
+  const reopened = new NfsJournal(path, "synthetic-account:DOCSY"); journals.push(reopened);
+  expect(reopened.local(temporary.path)).toBeNull();
+  expect(Buffer.from(reopened.get("1")!.bytes).toString()).toBe("replacement");
+  expect(reopened.beginPublish("1")).toEqual(intent);
+  reopened.completePublish("1", intent.revision, 2);
+  expect(reopened.pending().map((file) => file.id)).toEqual(["1"]);
+  expect(Buffer.from(reopened.beginPublish("1")!.bytes).toString()).toBe("replacement");
+});
+
+it("accounts for local-file quotas and rolls back failed replacement without losing its source", () => {
+  const { path, journal } = fixture(8, 8, 2);
+  journal.admit("1", "/DOCSY/_index.md", bytes("old"), 1);
+  const local = journal.createLocal("/DOCSY/.save.tmp");
+  journal.write(local.id, 0, bytes("newer"));
+  expect(() => journal.createLocal("/DOCSY/another")).toThrow("quota");
+  expect(() => journal.write(local.id, 5, bytes("x"))).toThrow("quota");
+  expect(() => journal.replaceLocal(local.path, local.id)).toThrow("admitted page");
+  expect(Buffer.from(journal.local(local.path)!.bytes).toString()).toBe("newer");
+  journal.close();
+  const reduced = new NfsJournal(path, "synthetic-account:DOCSY", 8, 4, 2); journals.push(reduced);
+  expect(() => reduced.replaceLocal(local.path, "1")).toThrow("size");
+  expect(Buffer.from(reduced.local(local.path)!.bytes).toString()).toBe("newer");
+  expect(Buffer.from(reduced.get("1")!.bytes).toString()).toBe("old");
+  reduced.close();
+  const restored = new NfsJournal(path, "synthetic-account:DOCSY", 8, 8, 2); journals.push(restored);
+  expect(Buffer.from(restored.replaceLocal(local.path, "1").bytes).toString()).toBe("newer");
+  expect(restored.local(local.path)).toBeNull();
 });

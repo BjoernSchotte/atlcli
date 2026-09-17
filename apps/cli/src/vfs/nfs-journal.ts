@@ -1,7 +1,8 @@
 import { VfsError } from "@atlcli/confluence-vfs";
 import { Database } from "bun:sqlite";
 import { chmodSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, posix } from "node:path";
+import { randomUUID } from "node:crypto";
 
 export interface StagedNfsFile {
   id: string;
@@ -36,7 +37,7 @@ export class NfsJournal {
     try {
       chmodSync(path, 0o600);
       const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
-      if (version !== 0 && version !== 1 && version !== 2) throw new Error("Unsupported NFS journal schema version");
+      if (version !== 0 && version !== 1 && version !== 2 && version !== 3) throw new Error("Unsupported NFS journal schema version");
       this.db.exec("PRAGMA busy_timeout=5000;");
       // No concurrent reader/writer throughput is needed here. Rollback mode
       // avoids WAL growth pinned by readers; EXTRA syncs the journal's unlink.
@@ -61,7 +62,8 @@ export class NfsJournal {
         );
         CREATE TABLE IF NOT EXISTS bases (id TEXT PRIMARY KEY REFERENCES files(id), bytes BLOB NOT NULL);
         PRAGMA foreign_keys=ON;
-        PRAGMA user_version=2;
+        CREATE TABLE IF NOT EXISTS locals (id TEXT PRIMARY KEY REFERENCES files(id), path TEXT NOT NULL UNIQUE);
+        PRAGMA user_version=3;
       `);
       this.db.transaction(() => {
         this.db.run("INSERT OR IGNORE INTO identity VALUES (1, ?)", [scope]);
@@ -78,7 +80,75 @@ export class NfsJournal {
   }
 
   pending(): StagedNfsFile[] {
-    return this.db.query<StagedNfsFile, []>("SELECT * FROM files WHERE revision>publishedRevision ORDER BY id").all();
+    return this.db.query<StagedNfsFile, []>("SELECT * FROM files WHERE revision>publishedRevision AND id NOT IN (SELECT id FROM locals) ORDER BY id").all();
+  }
+
+  private localPath(path: string): void {
+    if (!path.startsWith("/") || path === "/" || path.includes("\0") ||
+      posix.normalize(path) !== path || path.endsWith("/") || Buffer.byteLength(path) > 4096) {
+      throw new VfsError("EINVAL", "Invalid local NFS path");
+    }
+  }
+
+  local(path: string): StagedNfsFile | null {
+    return this.db.query<StagedNfsFile, [string]>(
+      "SELECT files.* FROM files JOIN locals USING(id) WHERE locals.path=?",
+    ).get(path);
+  }
+
+  /** Local editor files survive restart but never enter the remote publish queue. */
+  createLocal(path: string): StagedNfsFile {
+    this.localPath(path);
+    return this.db.transaction(() => {
+      if (this.local(path)) throw new VfsError("EEXIST", "Local NFS file exists");
+      const file = this.admit(`local:${randomUUID()}`, path, new Uint8Array(), 0);
+      this.db.run("INSERT INTO locals VALUES (?, ?)", [file.id, path]);
+      return file;
+    }).immediate();
+  }
+
+  localEntries(directory: string): StagedNfsFile[] {
+    const prefix = directory === "/" ? "/" : `${directory}/`;
+    return this.db.query<StagedNfsFile, [string, string]>(
+      "SELECT files.* FROM files JOIN locals USING(id) WHERE substr(locals.path,1,length(?1))=?1 AND instr(substr(locals.path,length(?2)+1),'/')=0 ORDER BY locals.path",
+    ).all(prefix, prefix);
+  }
+
+  removeLocal(path: string): void {
+    this.db.transaction(() => {
+      const file = this.local(path);
+      if (!file) throw new VfsError("ENOENT", "Local NFS file not found");
+      this.db.run("DELETE FROM locals WHERE id=?", [file.id]);
+      this.db.run("DELETE FROM files WHERE id=?", [file.id]);
+    }).immediate();
+  }
+
+  renameLocal(source: string, target: string): void {
+    this.localPath(target);
+    this.db.transaction(() => {
+      const file = this.local(source);
+      if (!file) throw new VfsError("ENOENT", "Local NFS file not found");
+      if (source === target) return;
+      if (this.local(target)) this.removeLocal(target);
+      this.db.run("UPDATE locals SET path=? WHERE id=?", [target, file.id]);
+      this.db.run("UPDATE files SET path=? WHERE id=?", [target, file.id]);
+    }).immediate();
+  }
+
+  /** Atomic byte replacement; retain page identity, base and any in-flight intent. */
+  replaceLocal(source: string, pageId: string): StagedNfsFile {
+    return this.db.transaction(() => {
+      const local = this.local(source);
+      const page = this.get(pageId);
+      if (!local || !page) throw new VfsError("ENOENT", "NFS replacement source or page not found");
+      if (this.db.query("SELECT id FROM locals WHERE id=?").get(pageId)) {
+        throw new VfsError("EINVAL", "Replacement target must be an admitted page");
+      }
+      // Delete inside the same transaction first, so a rename needs no second
+      // copy of the source in the logical quota. Rollback retains both images.
+      this.removeLocal(source);
+      return this.change(pageId, () => local.bytes.byteLength, (bytes) => bytes.set(local.bytes));
+    }).immediate();
   }
 
   /** Admission preserves an existing recovered byte image; it never overwrites it. */
@@ -138,6 +208,7 @@ export class NfsJournal {
   /** Persist the exact snapshot before sending a remote mutation. Replay this intent after a lost reply. */
   beginPublish(id: string): NfsPublishIntent | null {
     return this.db.transaction(() => {
+      if (this.db.query("SELECT id FROM locals WHERE id=?").get(id)) return null;
       const intent = this.db.query<NfsPublishIntent, [string]>("SELECT * FROM intents WHERE id=?").get(id);
       if (intent) return intent;
       const file = this.get(id);
