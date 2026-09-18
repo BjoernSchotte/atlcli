@@ -2,6 +2,25 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import config from "../renovate.json";
 
+test("batching preserves major approval and isolates patched/runtime packages", () => {
+  const rules = config.packageRules;
+  const stable = rules[0]!;
+  expect(stable.matchManagers).toEqual(["bun", "npm"]);
+  expect(stable.matchUpdateTypes).toEqual(["minor", "patch"]);
+  expect(stable.matchCurrentVersion).toBe(">=1.0.0");
+  const majorIndex = rules.findIndex((rule) => rule.matchUpdateTypes?.includes("major"));
+  const actionsIndex = rules.findIndex((rule) => rule.groupName === "GitHub Actions");
+  expect(actionsIndex).toBeGreaterThan(majorIndex);
+  expect(rules[majorIndex]!.dependencyDashboardApproval).toBe(true);
+  expect(rules[majorIndex]!.groupName).toBeNull();
+  expect(rules[actionsIndex]!.matchPackageNames).toEqual(["actions/**"]);
+  expect(rules[actionsIndex]!.separateMajorMinor).toBe(false);
+  expect(rules[actionsIndex]!.dependencyDashboardApproval).toBe(true);
+  const webdav = rules.find((rule) => rule.matchPackageNames?.includes("webdav-server"))!;
+  expect(webdav.groupName).toBeNull();
+  expect(webdav.dependencyDashboardApproval).toBe(true);
+});
+
 test("research dependencies require approval before any update", () => {
   const rule = config.packageRules.find((rule) => rule.groupName === "LangChain and deepagents")!;
   for (const name of ["langchain", "langsmith", "deepagents", "@langchain/*"]) {

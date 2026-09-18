@@ -97,9 +97,13 @@ window; security-alert updates can bypass the schedule and PR limit.
 Automerge is disabled. Keep the existing **required** CI check enforced by
 branch protection and review each PR before merging.
 
-Bun/npm packages and GitHub Actions are covered. Related Astro, React,
-LangChain/deepagents (including `langchain` and `langsmith`) and Action updates are grouped; major updates get separate
-PRs and require approval in the **Dependency Dashboard** first. Fixture,
+Bun/npm packages and GitHub Actions are covered. Stable (1.0+) package minor
+and patch updates share a weekly PR; pre-1.0 updates stay separate unless they
+belong to an existing ecosystem group. Astro, React and LangChain/deepagents
+(including `langchain` and `langsmith`) keep their own groups. Major package
+updates get separate PRs and require **Dependency Dashboard** approval.
+Official `actions/*` updates, including majors, share one approval-gated PR.
+Node runtime updates are not part of that Actions group. Fixture,
 specification, spike and generated dependency directories are excluded.
 
 Bun runtime updates require dashboard approval and stay in one PR across

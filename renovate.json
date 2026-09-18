@@ -32,16 +32,19 @@
   ],
   "packageRules": [
     {
+      "description": "Batch stable non-major packages; keep pre-1.0 upgrades separate.",
+      "matchManagers": ["bun", "npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchCurrentVersion": ">=1.0.0",
+      "groupName": "Stable non-major dependencies"
+    },
+    {
       "matchPackageNames": ["astro", "@astrojs/*"],
       "groupName": "Astro"
     },
     {
       "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
       "groupName": "React"
-    },
-    {
-      "matchManagers": ["github-actions"],
-      "groupName": "GitHub Actions"
     },
     {
       "description": "Review local patches and the deepagents override before approving research stack updates.",
@@ -52,11 +55,19 @@
     {
       "description": "Review the local webdav-server patch before approving updates.",
       "matchPackageNames": ["webdav-server"],
+      "groupName": null,
       "dependencyDashboardApproval": true
     },
     {
       "matchUpdateTypes": ["major"],
       "groupName": null,
+      "dependencyDashboardApproval": true
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["actions/**"],
+      "groupName": "GitHub Actions",
+      "separateMajorMinor": false,
       "dependencyDashboardApproval": true
     },
     {
