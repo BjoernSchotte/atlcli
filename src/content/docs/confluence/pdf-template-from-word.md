@@ -169,6 +169,10 @@ Preview creates:
 - `proof/results.json` — compiler version, hashes, page counts, regions, and
   the project generation those PDFs prove.
 
+Preview PDFs use a fixed metadata date (January 1, 2026), so rendering the same
+snapshot again preserves its byte digest across CLI and browser hosts. Normal
+document exports retain their export date.
+
 Open the design review before building. If you change any decision afterward,
 the preview becomes stale and must be created again.
 

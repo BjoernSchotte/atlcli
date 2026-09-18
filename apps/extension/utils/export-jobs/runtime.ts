@@ -266,6 +266,9 @@ export async function runClaimedExtensionExportJob(
       throw new Error("Extension executor format does not match the claimed request.");
     }
     const result: ExportJobExecutionResultV1 = await options.executor.execute(request, runtime.context);
+    // Bytes are staged; stop and drain background writes before freezing the
+    // revision used by terminal persistence (including artifact commit).
+    await runtime.stop();
     const current = await runtime.snapshot();
     const finishedAt = now();
     const finalized = await options.catalog.finalizeArtifact({
@@ -290,8 +293,10 @@ export async function runClaimedExtensionExportJob(
     });
     return finalized;
   } catch (error) {
+    await runtime.stop();
     const current = await options.catalog.get(options.claimed.id);
     if (!current) throw error;
+    if (current.leaseEpoch !== options.claimed.leaseEpoch) return current;
     if (
       current.state === "succeeded"
       || current.state === "failed"

@@ -98,7 +98,9 @@ export function generateDiff(
   }
 
   // Generate unified diff string
-  const unified = Diff.createPatch(oldLabel, oldNorm, newNorm, "", "", { context });
+  // diff 9 omits empty header separators; preserve our existing CLI/JSON format.
+  const unified = Diff.createPatch(oldLabel, oldNorm, newNorm, "", "", { context })
+    .replace(/\n(--- [^\n]*)\n(\+\+\+ [^\n]*)\n/, "\n$1\t\n$2\t\n");
 
   return {
     hasChanges: true,

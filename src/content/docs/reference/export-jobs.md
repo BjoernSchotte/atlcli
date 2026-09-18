@@ -110,6 +110,10 @@ off in Activity without losing the static status.
 
 ## Recovery and retries
 
+After staging the output bytes, both hosts stop and drain heartbeat writes before
+committing the final job state. Revision and lease checks still fence that commit;
+a late result or failure from an old runner cannot overwrite a newer attempt.
+
 Source pages are normalized and committed in deterministic order. Assets are
 stored by SHA-256 with bounded reference checkpoints. A replacement runner
 validates request identity, lease epoch, checkpoint chain, order, and hashes

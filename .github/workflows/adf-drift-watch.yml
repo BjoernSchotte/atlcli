@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload watch reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: adf-drift-report-${{ github.run_id }}
           path: |
@@ -68,7 +68,7 @@ jobs:
       ADF_WATCH_PAGE_IDS: ${{ secrets.ADF_WATCH_PAGE_IDS }}
       ADF_WATCH_PAGE_ID: ${{ secrets.ADF_WATCH_PAGE_ID }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload observed-Cloud report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: adf-observed-report-${{ github.run_id }}
           path: |
