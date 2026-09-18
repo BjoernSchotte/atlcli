@@ -1,3 +1,4 @@
+import { installPackedConsumerOffline } from "../../../scripts/test-helpers/install-packed-consumer";
 import { expect, test } from "bun:test";
 import { cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -69,7 +70,7 @@ test("a network-disabled, packed plain-Astro consumer keeps overrides and static
       "  if (existsSync(new URL(`node_modules/${name}/`, import.meta.url))) throw new Error(`forbidden render-kit dependency: ${name}`);",
       "}",
     ].join("\n"));
-    await run(["bun", "install", "--offline"], consumer);
+    await installPackedConsumerOffline(consumer, run);
     await run(["bun", "assert-packed.mjs"], consumer);
     const output = await run(["bun", "run", "--preload", "./block-network.mjs", "build"], consumer);
     expect(output).toContain("2 page(s) built");

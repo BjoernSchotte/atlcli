@@ -1,3 +1,4 @@
+import { installPackedConsumerOffline } from "../../../scripts/test-helpers/install-packed-consumer";
 import { expect, test } from "bun:test";
 import { cp, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -387,7 +388,7 @@ test("a packed Starlight consumer builds from the published package boundary wit
         "@atlcli/web-publish-astro": `file:${webPublishAstro}`,
       },
     }, null, 2));
-    await run(["bun", "install", "--offline"], consumer);
+    await installPackedConsumerOffline(consumer, run);
     await run(["bun", "run", "build"], consumer);
     const html = await readFile(resolve(consumer, "dist/publish/guide/index.html"), "utf8");
     expect(html).toContain("Bundle publishing guide");
@@ -532,7 +533,7 @@ import InteractiveChart from "@atlcli/export-blocks-astro/components/Interactive
         "@atlcli/web-publish-astro": `file:${webPublishAstro}`,
       },
     }, null, 2));
-    await run(["bun", "install", "--offline"], consumer);
+    await installPackedConsumerOffline(consumer, run);
     await run(["bun", "run", "build"], consumer);
     const cloudHtml = await readFile(resolve(consumer, "dist/docs/publish/guide/index.html"), "utf8").catch(async () => readFile(resolve(consumer, "dist/publish/guide/index.html"), "utf8"));
     const dcHtml = await readFile(resolve(consumer, "dist/ar/publish/guide/index.html"), "utf8");

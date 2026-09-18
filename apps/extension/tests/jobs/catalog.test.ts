@@ -475,10 +475,12 @@ describe("IndexedDbExportJobCatalog", () => {
     });
     const queue = createExtensionQueueFoundation({ factory, blockedTimeoutMs: 5 });
 
-    await expect(queue.startup()).rejects.toMatchObject({ code: "blocked" });
+    // Bun async matchers can delay fake IndexedDB tasks past the short blocked timeout.
+    const blocked = await queue.startup().catch((error: unknown) => error);
+    expect(blocked).toMatchObject({ code: "blocked" });
     old.close();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    await expect(queue.startup()).resolves.toBeUndefined();
+    expect(await queue.startup()).toBeUndefined();
   });
 });

@@ -78,6 +78,7 @@ export async function startNfsServer(options: {
   const reply = (value: unknown): Promise<void> => {
     const frame = encodeNfsFrame(value);
     writeTail = writeTail.then(() => new Promise<void>((resolve, reject) => {
+      if (child.stdin.writableEnded) { reject(new Error("NFS helper stopped")); return; }
       child.stdin.write(frame, (error) => error ? reject(error) : resolve());
     }));
     return writeTail;
@@ -198,8 +199,8 @@ export async function startNfsServer(options: {
     return { port: bound, pid: child.pid!, exited,
       writeStatus: () => options.journal?.writeStatus() ?? null,
       requestCount: async () => {
+      if (stopping || child.exitCode !== null || child.signalCode !== null) throw new Error("NFS helper stopped");
       if (stats) throw new Error("NFS statistics request already pending");
-      if (child.exitCode !== null || child.signalCode !== null) throw new Error("NFS helper stopped");
       const id = ++statsSequence;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -211,6 +212,7 @@ export async function startNfsServer(options: {
       } finally { clearTimeout(timeout); stats = undefined; }
     }, stop: () => stopping ??= (async () => {
       const publishing = publisher?.stop();
+      stats?.reject(new Error("NFS helper stopped"));
       child.stdin.end();
       const kill = setTimeout(() => child.kill("SIGKILL"), 3000);
       try { await exited; await serving; await publishing; } finally { clearTimeout(kill); }
