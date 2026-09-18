@@ -450,12 +450,13 @@ describe("productive extension DOCX executor", () => {
       leaseDurationMs: 10,
       spoolLimits: EXTENSION_DOCX_SPOOL_LIMITS_V1,
     });
-    await expect(
-      createProductiveExtensionDocxExecutor({
-        ...executorOptions,
-        readyToRender: crashReady,
-      }).execute(recoveryRequest, firstRuntime.context),
-    ).rejects.toThrow("injected offscreen owner loss");
+    // Await outside Bun async matchers so fake IndexedDB tasks can drain normally.
+    const crash = await createProductiveExtensionDocxExecutor({
+      ...executorOptions,
+      readyToRender: crashReady,
+    }).execute(recoveryRequest, firstRuntime.context).catch((error: unknown) => error);
+    expect(crash).toBeInstanceOf(Error);
+    expect((crash as Error).message).toContain("injected offscreen owner loss");
     expect(await firstRuntime.snapshot()).toMatchObject({
       state: "running",
       stage: "render",

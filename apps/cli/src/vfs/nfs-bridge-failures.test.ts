@@ -63,7 +63,9 @@ it("bounds statistics requests and rejects unanswered queries on timeout or help
     await expect(server.requestCount()).rejects.toThrow("already pending");
     await expect(pending).rejects.toThrow("timed out");
     const stopped = server.requestCount().catch(error => error);
-    await server.stop();
+    const stopping = server.stop();
+    await expect(server.requestCount()).rejects.toThrow("stopped");
+    await stopping;
     expect((await stopped).message).toContain("stopped");
   } finally { await server.stop(); }
 }, 10000);

@@ -1,3 +1,4 @@
+import { installPackedConsumerOffline } from "../../../scripts/test-helpers/install-packed-consumer";
 import { expect, test } from "bun:test";
 import { cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -269,7 +270,7 @@ test("packed integration builds a clean Astro project with fetch disabled", asyn
       "const resolved = import.meta.resolve('@atlcli/web-publish-astro');",
       "if (!resolved.includes('/node_modules/')) throw new Error(`expected installed package, received ${resolved}`);",
     ].join("\n"));
-    await run(["bun", "install", "--offline"], consumerDirectory);
+    await installPackedConsumerOffline(consumerDirectory, run);
     await run(["bun", "assert-packed.mjs"], consumerDirectory);
     const result = await run(
       ["bun", "run", "--preload", "./block-network.mjs", "build"],

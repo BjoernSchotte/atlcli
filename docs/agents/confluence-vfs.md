@@ -667,7 +667,9 @@ prepared but remains behind the existing acceptance gate.
 The managed NFS server owns the journal lock until its publisher and helper have
 stopped. Failed startup releases the lock; normal stop retains the database and
 its last recovery counts for inspection. Caller-supplied test journals remain
-caller-owned. This does not enable the gated public RW mode.
+caller-owned. Pending or newly requested statistics during shutdown fail with
+`NFS helper stopped`; queued replies do not write to a closed helper pipe.
+This does not enable the gated public RW mode.
 
 Development RW NFS supports moving an existing page or Confluence-folder directory beneath another
 page or folder in the same space while retaining its canonical name and page
