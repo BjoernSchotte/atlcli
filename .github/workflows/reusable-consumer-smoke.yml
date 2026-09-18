@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 20
     continue-on-error: ${{ inputs.leg == 'latest' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Validate leg
         env:
@@ -47,7 +47,7 @@ jobs:
           bun-version: latest
 
       - name: Setup Node.js (LTS floor)
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
 
@@ -55,7 +55,7 @@ jobs:
         run: npm install -g pnpm@9
 
       - name: Restore Bun package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ inputs.leg }}-${{ hashFiles('bun.lock') }}

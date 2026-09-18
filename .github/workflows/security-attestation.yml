@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # attest.ts diffs scripts/verapdf/baseline.json against HEAD~1 to
           # report how the baseline moved in this commit; a depth-1 clone has
@@ -47,7 +47,7 @@ jobs:
         # Uploaded even on failure: a FAILED check is exactly the artifact a
         # reviewer needs to look at.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-attestation-${{ github.sha }}
           path: security-attestation.json
