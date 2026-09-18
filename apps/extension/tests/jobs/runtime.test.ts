@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import {
   createEmptyExportJobStatsV1,
@@ -253,6 +253,93 @@ describe("extension export execution runtime", () => {
     const collected: number[] = [];
     for await (const chunk of bytes.read(finished.artifact!.ref)) collected.push(...chunk);
     expect(collected).toEqual([1, 2, 3]);
+  });
+
+  it.each(["succeeded", "failed"] as const)("drains heartbeat writes before persisting %s", async (state) => {
+    let now = 20;
+    const factory = new IDBFactory();
+    const catalog = new IndexedDbExportJobCatalog({ factory, now: () => ++now });
+    const bytes = new IndexedDbExportByteStore({ factory, now: () => ++now });
+    await catalog.create({ request: durableDocxRequest(`drain-${state}`) });
+    const claimed = (await catalog.claimNext({ ownerId: "worker", now: 10, leaseDurationMs: 10_000 }))!;
+    const intervals = spyOn(globalThis, "setInterval");
+    const cleared = spyOn(globalThis, "clearInterval");
+    const finalize = catalog.finalizeArtifact.bind(catalog);
+    const cas = catalog.compareAndSet.bind(catalog);
+    let heartbeats = 0;
+    let injected = false;
+    let heartbeatAdvanced!: () => void;
+    const secondHeartbeat = new Promise<void>((resolve) => { heartbeatAdvanced = resolve; });
+    const tickAtTerminalBoundary = async () => {
+      const heartbeatTimer = intervals.mock.results[0]!.value;
+      if (!injected && !cleared.mock.calls.some(([timer]) => timer === heartbeatTimer)) {
+        injected = true;
+        // Force the timer to win between the terminal snapshot and its CAS.
+        (intervals.mock.calls[0]![0] as () => void)();
+        await secondHeartbeat;
+      }
+    };
+    const finalizeSpy = spyOn(catalog, "finalizeArtifact").mockImplementation(async (input) => {
+      await tickAtTerminalBoundary();
+      return finalize(input);
+    });
+    const casSpy = spyOn(catalog, "compareAndSet").mockImplementation(async (input) => {
+      if (input.kind === "transition" && input.to === "failed") await tickAtTerminalBoundary();
+      const result = await cas(input);
+      if (input.kind === "heartbeat" && ++heartbeats === 2) heartbeatAdvanced();
+      return result;
+    });
+    try {
+      const finished = await runClaimedExtensionExportJob({
+        claimed, catalog, bytes, now: () => ++now,
+        spoolLimits: { maxObjectBytes: 1024, maxJobBytes: 2048, maxTotalBytes: 4096 },
+        heartbeatIntervalMs: 60_000, cancelPollMs: 60_000,
+        executor: { format: "docx", async execute(_request, context) {
+          const stagedArtifact = await context.artifacts.stage({
+            mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename: "drain.docx", byteLength: 3,
+            sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+            bytes: (async function* () { yield Uint8Array.from([1, 2, 3]); })(),
+          });
+          // Queue a real heartbeat without relying on scheduler timing.
+          (intervals.mock.calls[0]![0] as () => void)();
+          if (state === "failed") throw new Error("render failed");
+          return { stagedArtifact, reportRef: "report:drain", reportSummary: {
+            issues: { info: 0, warning: 0, error: 0 }, topCodes: [], completeness: "complete",
+          } };
+        } },
+      });
+      expect(finished.state).toBe(state);
+      expect(finished.revision).toBe(claimed.revision + 2);
+      if (state === "failed") expect(finished.error?.message).toBe("render failed");
+    } finally {
+      intervals.mockRestore(); cleared.mockRestore(); finalizeSpy.mockRestore(); casSpy.mockRestore();
+    }
+  });
+
+  it("does not fail a successor lease when the old executor returns late", async () => {
+    const factory = new IDBFactory();
+    let now = 10;
+    const catalog = new IndexedDbExportJobCatalog({ factory, now: () => now });
+    const bytes = new IndexedDbExportByteStore({ factory, now: () => now });
+    await catalog.create({ request: durableDocxRequest("runtime-successor") });
+    const claimed = (await catalog.claimNext({ ownerId: "old", now, leaseDurationMs: 10 }))!;
+    let successor = claimed;
+    const finished = await runClaimedExtensionExportJob({
+      claimed, catalog, bytes, now: () => now,
+      spoolLimits: { maxObjectBytes: 1024, maxJobBytes: 2048, maxTotalBytes: 4096 },
+      heartbeatIntervalMs: 60_000, cancelPollMs: 60_000,
+      executor: { format: "docx", async execute() {
+        now = 21;
+        successor = (await recoverAndClaimExtensionExportJob(catalog, {
+          ownerId: "new", now, leaseDurationMs: 10_000,
+        }))!;
+        throw new Error("old executor failed");
+      } },
+    });
+    expect(successor).toMatchObject({ state: "running", leaseEpoch: claimed.leaseEpoch + 1 });
+    expect(finished).toEqual(successor);
+    expect(await catalog.get(claimed.id)).toEqual(successor);
   });
 
   it("turns executor failures into a durable retry decision", async () => {
