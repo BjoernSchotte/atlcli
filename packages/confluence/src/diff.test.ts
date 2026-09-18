@@ -8,6 +8,12 @@ import {
 } from "./diff.js";
 
 describe("generateDiff", () => {
+  test("preserves empty file-header separators without changing hunk contents", () => {
+    const result = generateDiff("-- old\n", "++ new\n", { oldLabel: "Version 3" });
+    expect(result.unified).toContain("--- Version 3\t\n+++ Version 3\t\n");
+    expect(result.unified).toContain("--- old\n+++ new\n");
+  });
+
   describe("no changes", () => {
     test("returns hasChanges=false when content is identical", () => {
       const content = "Line 1\nLine 2\nLine 3\n";
