@@ -111,17 +111,28 @@ describe("ordinary export job runtime", () => {
   it("streams ordinary command activity as versioned JSONL until delivery is terminal", async () => {
     const root = await fixtureRoot();
     const chunks: string[] = [];
+    let observed!: () => void;
+    const firstSnapshot = new Promise<void>((resolve) => { observed = resolve; });
+    const executor = successfulExecutor({
+      root,
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      order: [],
+      executions: { count: 0 },
+    });
     await runOrdinaryExportJobV1({
       request: request(join(root, "monitored.pdf")),
-      executor: successfulExecutor({
-        root,
-        bytes: new Uint8Array([1, 2, 3, 4]),
-        order: [],
-        executions: { count: 0 },
-      }),
+      executor: {
+        ...executor,
+        async execute(request, context) {
+          // A fast job can finish before the polling monitor observes it.
+          await firstSnapshot;
+          return executor.execute(request, context);
+        },
+      },
       persistence: createFileExportJobPersistence({ rootDir: join(root, "state") }),
-      pollIntervalMs: 0,
-      monitor: { mode: "jsonl", writer: { write: (chunk) => chunks.push(chunk) } },
+      // Avoid a zero-delay reader competing continuously for the journal lock.
+      pollIntervalMs: 25,
+      monitor: { mode: "jsonl", writer: { write: (chunk) => { chunks.push(chunk); observed(); } } },
     });
 
     const records = chunks.join("").trim().split("\n").map((line) => JSON.parse(line));

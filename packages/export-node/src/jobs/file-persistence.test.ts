@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -696,6 +696,89 @@ describe("file export persistence", () => {
       },
     ]);
     await runtime.stop();
+  });
+
+  it.each(["succeeded", "failed"] as const)("drains heartbeat writes before persisting %s", async (state) => {
+    let now = 20;
+    const persistence = createFileExportJobPersistence({ rootDir: await root(), now: () => ++now });
+    await persistence.jobs.create({ request: request(`runtime-drain-${state}`) });
+    const claimed = (await persistence.jobs.claimNext({ ownerId: "worker", now: 10, leaseDurationMs: 10_000 }))!;
+    const intervals = spyOn(globalThis, "setInterval");
+    const cleared = spyOn(globalThis, "clearInterval");
+    const finalize = persistence.jobs.finalizeArtifact.bind(persistence.jobs);
+    const cas = persistence.jobs.compareAndSet.bind(persistence.jobs);
+    let heartbeats = 0;
+    let injected = false;
+    let heartbeatAdvanced!: () => void;
+    const secondHeartbeat = new Promise<void>((resolve) => { heartbeatAdvanced = resolve; });
+    const tickAtTerminalBoundary = async () => {
+      const heartbeatTimer = intervals.mock.results[0]!.value;
+      if (!injected && !cleared.mock.calls.some(([timer]) => timer === heartbeatTimer)) {
+        injected = true;
+        // Force the timer to win between the terminal snapshot and its CAS.
+        (intervals.mock.calls[0]![0] as () => void)();
+        await secondHeartbeat;
+      }
+    };
+    const finalizeSpy = spyOn(persistence.jobs, "finalizeArtifact").mockImplementation(async (input) => {
+      await tickAtTerminalBoundary();
+      return finalize(input);
+    });
+    const casSpy = spyOn(persistence.jobs, "compareAndSet").mockImplementation(async (input) => {
+      if (input.kind === "transition" && input.to === "failed") await tickAtTerminalBoundary();
+      const result = await cas(input);
+      if (input.kind === "heartbeat" && ++heartbeats === 2) heartbeatAdvanced();
+      return result;
+    });
+    try {
+      const finished = await runClaimedFileExportJob({
+        claimed, jobs: persistence.jobs, spool: persistence.spool, artifacts: persistence.artifacts,
+        spoolLimits: persistence.spoolLimits, now: () => ++now,
+        heartbeatIntervalMs: 60_000, cancelPollMs: 60_000,
+        executor: { format: "docx", async execute(_request, context) {
+          const stagedArtifact = await context.artifacts.stage({
+            mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename: "drain.docx", byteLength: 3,
+            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            bytes: bytes("abc"),
+          });
+          // Queue a real heartbeat without relying on scheduler timing.
+          (intervals.mock.calls[0]![0] as () => void)();
+          if (state === "failed") throw new Error("render failed");
+          return { stagedArtifact, reportRef: "report:drain", reportSummary: {
+            issues: { info: 0, warning: 0, error: 0 }, topCodes: [], completeness: "complete",
+          } };
+        } },
+      });
+      expect(finished.state).toBe(state);
+      expect(finished.revision).toBe(claimed.revision + 2);
+      if (state === "failed") expect(finished.error?.message).toBe("render failed");
+    } finally {
+      intervals.mockRestore(); cleared.mockRestore(); finalizeSpy.mockRestore(); casSpy.mockRestore();
+    }
+  });
+
+  it("does not fail a successor lease when the old executor returns late", async () => {
+    let now = 10;
+    const persistence = createFileExportJobPersistence({ rootDir: await root(), now: () => now });
+    await persistence.jobs.create({ request: request("runtime-successor") });
+    const claimed = (await persistence.jobs.claimNext({ ownerId: "old", now, leaseDurationMs: 10 }))!;
+    let successor = claimed;
+    const finished = await runClaimedFileExportJob({
+      claimed, jobs: persistence.jobs, spool: persistence.spool, artifacts: persistence.artifacts,
+      spoolLimits: persistence.spoolLimits, now: () => now,
+      heartbeatIntervalMs: 60_000, cancelPollMs: 60_000,
+      executor: { format: "docx", async execute(_request, context) {
+        await context.checkpoint("ready:successor");
+        now = 21;
+        await reconcileStaleExportJobs(persistence.jobs, persistence, now);
+        successor = (await persistence.jobs.claimNext({ ownerId: "new", now, leaseDurationMs: 10_000 }))!;
+        throw new Error("old executor failed");
+      } },
+    });
+    expect(successor).toMatchObject({ state: "running", leaseEpoch: claimed.leaseEpoch + 1 });
+    expect(finished).toEqual(successor);
+    expect(await persistence.jobs.get(claimed.id)).toEqual(successor);
   });
 
   it("records terminal state, artifact, and failure issues in the file runtime", async () => {

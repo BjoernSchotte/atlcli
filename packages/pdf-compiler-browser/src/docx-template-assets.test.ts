@@ -737,12 +737,12 @@ describe("DOCX template visual assets through real Typst-WASM", () => {
     expect(contact.regions).toEqual([{ page: 1, region: "asset-grid" }]);
   }, 120_000);
 
-  it("returns byte-identical previews through the Node and browser PDF entries", async () => {
+  it.each(["design-review", "compatibility-proof", "asset-contact-sheet"] as const)("returns byte-identical %s previews across hosts and wall-clock seconds", async (purpose) => {
     const pack = await loadPdfTemplatePack(await fixturePack());
     const request = {
       generation: "generation-parity",
       snapshotDigest: "b".repeat(64),
-      purpose: "design-review" as const,
+      purpose,
       summary: {
         readyToApply: 2,
         needsReview: 1,
@@ -760,6 +760,9 @@ describe("DOCX template visual assets through real Typst-WASM", () => {
       compiler,
       resolveModel,
     }).render(request);
+    // Typst defaults document dates to compilation time. Cross a full second
+    // so identical snapshots cannot pass only because both renders were fast.
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
     const browserResult = await new BrowserTemplatePreviewCompiler({
       compiler,
       resolveModel,
