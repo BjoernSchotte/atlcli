@@ -65,7 +65,8 @@
     },
     {
       "matchManagers": ["github-actions"],
-      "matchPackageNames": ["actions/**"],
+      "description": "Match action names, not runtime sources such as actions/node-versions.",
+      "matchDepNames": ["actions/**"],
       "groupName": "GitHub Actions",
       "separateMajorMinor": false,
       "dependencyDashboardApproval": true
