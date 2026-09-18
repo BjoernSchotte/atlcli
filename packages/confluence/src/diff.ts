@@ -99,11 +99,8 @@ export function generateDiff(
 
   // Generate unified diff string
   // diff 9 omits empty header separators; preserve our existing CLI/JSON format.
-  // createPatch emits Index, underline, then the two file headers.
   const unified = Diff.createPatch(oldLabel, oldNorm, newNorm, "", "", { context })
-    .split("\n")
-    .map((line, index) => index === 2 || index === 3 ? `${line}\t` : line)
-    .join("\n");
+    .replace(/\n(--- [^\n]*)\n(\+\+\+ [^\n]*)\n/, "\n$1\t\n$2\t\n");
 
   return {
     hasChanges: true,
