@@ -13,7 +13,8 @@ test("batching preserves major approval and isolates patched/runtime packages", 
   expect(actionsIndex).toBeGreaterThan(majorIndex);
   expect(rules[majorIndex]!.dependencyDashboardApproval).toBe(true);
   expect(rules[majorIndex]!.groupName).toBeNull();
-  expect(rules[actionsIndex]!.matchPackageNames).toEqual(["actions/**"]);
+  expect(rules[actionsIndex]!.matchDepNames).toEqual(["actions/**"]);
+  expect(rules[actionsIndex]!.matchPackageNames).toBeUndefined();
   expect(rules[actionsIndex]!.separateMajorMinor).toBe(false);
   expect(rules[actionsIndex]!.dependencyDashboardApproval).toBe(true);
   const webdav = rules.find((rule) => rule.matchPackageNames?.includes("webdav-server"))!;
