@@ -140,7 +140,9 @@ function basePageSource(model: PdfTemplatePreviewModelV1): string {
   footer: template-footer-decorations(),
 `
     : "";
-  return `${decorationImport}#set document(title: "PDF template preview", author: "atlcli")
+  // Previews describe a snapshot, not an export event. Match the fixed date
+  // used by compatibilityBundle so their byte digests survive recompilation.
+  return `${decorationImport}#set document(title: "PDF template preview", author: "atlcli", date: datetime(year: 2026, month: 1, day: 1))
 #set text(font: ${typstString(current.typography.fonts.body)}, size: ${current.typography.roles.body!.size}, fill: rgb(${typstString(current.tokens.colors.ink)}), lang: "en")
 #set page(
   paper: ${typstString(paper(model.current))},
