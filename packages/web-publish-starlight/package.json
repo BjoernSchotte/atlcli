@@ -44,6 +44,6 @@
     "astro": ">=7.1.6 <8"
   },
   "devDependencies": {
-    "@playwright/test": "1.55.0"
+    "@playwright/test": "1.63.0"
   }
 }
