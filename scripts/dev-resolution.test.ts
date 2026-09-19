@@ -56,6 +56,12 @@ describe("development-condition resolution (spec 009)", () => {
         "utf8",
       ),
     ) as { scripts?: Record<string, string> };
+    const extensionTsconfig = JSON.parse(
+      readFileSync(
+        join(REPO_ROOT, "apps/extension/tsconfig.json"),
+        "utf8",
+      ),
+    ) as { compilerOptions?: Record<string, unknown> };
 
     expect(authIsolation).toContain('"--conditions=development"');
     expect(pluginCommand).toContain(
@@ -69,6 +75,20 @@ describe("development-condition resolution (spec 009)", () => {
     expect(
       extensionPackage.scripts?.["test:jobs-extension-browser:prebuilt"],
     ).toStartWith("node --conditions=development ");
+    expect(extensionTsconfig.compilerOptions).toMatchObject({
+      verbatimModuleSyntax: false,
+      noUncheckedIndexedAccess: false,
+      noImplicitOverride: false,
+    });
+  });
+
+  it("keeps live workspace sources resolvable during WXT prepare", () => {
+    const config = readFileSync(
+      join(REPO_ROOT, "apps/extension/wxt.config.ts"),
+      "utf8",
+    );
+
+    expect(config).toContain('conditions: ["development"]');
   });
 
   it("keeps independently locked spikes outside root test discovery", () => {
