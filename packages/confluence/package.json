@@ -63,7 +63,7 @@
     "diff": "^9.0.0",
     "entities": "^6.0.0",
     "ignore": "^7.0.5",
-    "markdown-it": "^14.1.0",
+    "markdown-it": "^15.0.0",
     "markdown-it-sub": "^2.0.0",
     "markdown-it-sup": "^2.0.0",
     "markdown-it-task-lists": "^2.1.1",
