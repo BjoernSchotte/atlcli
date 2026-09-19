@@ -3,25 +3,45 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   PDF_FACTS_SCHEMA_V1,
+  PDF_FACTS_SCHEMA_V2,
+  PDF_FACTS_ADAPTER_REVISION_V2,
+  PDF_ANALYSIS_POLICY_REVISION_V2,
   PDFIUM_ENGINE_VERSION,
   PDFIUM_WASM_SHA256,
   assertPdfAnalysisProvenance,
   createPdfiumFactsAdapter,
+  createPdfiumFactsAdapterV2,
   isPdfImportError,
+  orderedDescendantMcidsV2,
   type PdfAnalysisProgress,
   type PdfImportErrorCode,
   type PdfStructureNodeFact,
 } from "./index.js";
-import { createBrowserPdfiumFactsAdapter } from "./adapter/pdfium-browser.js";
-import { createPdfiumFactsAdapterForTest } from "./adapter/pdfium.js";
-import { createNodePdfiumFactsAdapter } from "./node.js";
+import {
+  createBrowserPdfiumFactsAdapter,
+  createBrowserPdfiumFactsAdapterV2,
+} from "./adapter/pdfium-browser.js";
+import {
+  createPdfiumFactsAdapterForTest,
+  createPdfiumFactsAdapterV2ForTest,
+} from "./adapter/pdfium.js";
+import {
+  createNodePdfiumFactsAdapter,
+  createNodePdfiumFactsAdapterV2,
+} from "./node.js";
 import type { PdfiumFailureStage } from "./adapter/contracts.js";
+import { generateUnresolvedStructureKidProbe } from "../../../specs/pdf-import-quality/fixtures/generate-core.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
+const qualityFixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
 const wasmPath = resolve(import.meta.dir, "../vendor/pdfium.wasm");
 
 async function fixture(name: string): Promise<Uint8Array> {
   return new Uint8Array(await readFile(resolve(fixtureRoot, name)));
+}
+
+async function qualityFixture(name: string): Promise<Uint8Array> {
+  return new Uint8Array(await readFile(resolve(qualityFixtureRoot, name)));
 }
 
 async function wasm(): Promise<Uint8Array> {
@@ -251,5 +271,166 @@ describe("PDFium facts adapter", () => {
       ...browser.facts.provenance,
       optionsDigest: "drift",
     })).toThrow("Run preview again");
+  });
+});
+
+describe("PDFium V2 facts adapter", () => {
+  it("preserves the pinned V1 facts and options digests through the V2 projection", async () => {
+    const adapter = createPdfiumFactsAdapter({ wasmBinary: await wasm() });
+    const simple = await adapter.analyze(await fixture("simple-untagged.pdf"));
+    const fragmented = await adapter.analyze(
+      await qualityFixture("independent-fragmented-tagged.pdf"),
+    );
+
+    expect(simple.factsDigest).toBe(
+      "5f2b76680800f21c8ea01d2030421bf46491ae99c3270ebac8b371aedd52c64a",
+    );
+    expect(fragmented.factsDigest).toBe(
+      "0cfb59c1212d667cd28a941336fd6f8c4263392f65a7e2ef39a930d18b3696da",
+    );
+    expect(simple.facts.provenance.optionsDigest).toBe(
+      "cc08a36bd42d41e600e84e08cf88c3b14b474f0a064ee5efc4cc4c5f8593d304",
+    );
+    expect(fragmented.facts.provenance.optionsDigest).toBe(
+      simple.facts.provenance.optionsDigest,
+    );
+  });
+
+  it("applies a tight canonical-size budget to public V1 facts, not internal V2 evidence", async () => {
+    const bytes = await fixture("simple-untagged.pdf");
+    const wasmBinary = await wasm();
+    const baseline = await createPdfiumFactsAdapter({ wasmBinary }).analyze(bytes);
+    const maxCanonicalBytes = new TextEncoder().encode(JSON.stringify(baseline.facts)).byteLength;
+
+    const compatible = await createPdfiumFactsAdapter({ wasmBinary }).analyze(bytes, {
+      budgets: { maxCanonicalBytes },
+    });
+    expect(compatible.facts.schema).toBe(PDF_FACTS_SCHEMA_V1);
+    await expectCode(
+      createPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes, {
+        budgets: { maxCanonicalBytes },
+      }),
+      "pdf/budget-exceeded",
+    );
+  });
+
+  it("emits deterministic stable text-run ordinals without serializing PDFium handles", async () => {
+    const bytes = await qualityFixture("independent-fragmented-tagged.pdf");
+    const adapter = createPdfiumFactsAdapterV2({ wasmBinary: await wasm() });
+    const first = await adapter.analyze(bytes);
+    const second = await adapter.analyze(bytes);
+    const characters = first.facts.pages[0]?.characters ?? [];
+    const harbor = characters.filter((character) => character.textRunId === "pdf:p0:text-run:1");
+    const signals = characters.filter((character) => character.textRunId === "pdf:p0:text-run:2");
+
+    expect(first.facts.schema).toBe(PDF_FACTS_SCHEMA_V2);
+    expect(first.facts.provenance.adapterRevision).toBe(PDF_FACTS_ADAPTER_REVISION_V2);
+    expect(first.facts.provenance.policyRevision).toBe(PDF_ANALYSIS_POLICY_REVISION_V2);
+    expect(harbor.map((character) => character.value).join("")).toBe("Harbor");
+    expect(signals.map((character) => character.value).join("")).toBe("signals");
+    expect(new Set(harbor.map((character) => character.textRunId)).size).toBe(1);
+    expect(new Set(signals.map((character) => character.textRunId)).size).toBe(1);
+    expect(harbor[0]?.textRunId).not.toBe(signals[0]?.textRunId);
+    expect(first.facts).toEqual(second.facts);
+    expect(first.factsDigest).toBe(second.factsDigest);
+    expect(JSON.stringify(first.facts)).not.toMatch(/(?:handle|pointer|module)/i);
+  });
+
+  it("retains mixed structure child order and avoids direct-MCID duplication", async () => {
+    const result = await createPdfiumFactsAdapterV2({ wasmBinary: await wasm() }).analyze(
+      await qualityFixture("independent-fragmented-tagged.pdf"),
+    );
+    const paragraph = result.facts.pages[0]?.structures.find((node) =>
+      node.type === "P" && node.kids.some((kid) => kid.kind === "element"),
+    );
+    expect(paragraph?.kids.map((kid) =>
+      kid.kind === "mcid" ? `mcid:${kid.mcid}` : `${kid.kind}:${kid.index}`
+    )).toEqual(["mcid:1", "element:1", "mcid:3"]);
+    expect(paragraph?.kids[1]).toMatchObject({
+      kind: "element",
+      index: 1,
+      node: { type: "Span", directMcids: [2] },
+    });
+    expect(orderedDescendantMcidsV2(paragraph!)).toEqual([1, 2, 3]);
+  });
+
+  it("retains an unresolved child at its exact index and falls back only when needed", async () => {
+    const result = await createPdfiumFactsAdapterV2({ wasmBinary: await wasm() }).analyze(
+      generateUnresolvedStructureKidProbe(),
+    );
+    const paragraph = result.facts.pages[0]?.structures[0];
+
+    expect(paragraph?.kids).toEqual([
+      { kind: "mcid", index: 0, mcid: 0 },
+      {
+        kind: "unresolved",
+        index: 1,
+        reason: "child-handle-and-mcid-unavailable",
+      },
+      { kind: "mcid", index: 2, mcid: 1 },
+    ]);
+    expect(paragraph?.directMcids).toEqual([0, 1]);
+    expect(orderedDescendantMcidsV2(paragraph!)).toEqual([0, 1]);
+    expect(orderedDescendantMcidsV2({
+      ...paragraph!,
+      kids: [{
+        kind: "unresolved",
+        index: 0,
+        reason: "child-handle-and-mcid-unavailable",
+      }],
+      directMcids: [4, 2, 4],
+    })).toEqual([4, 2]);
+  });
+
+  it("keeps V2 Node, browser, and injected adapters canonically identical", async () => {
+    const bytes = await fixture("simple-untagged.pdf");
+    const wasmBinary = await wasm();
+    const injected = await createPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes);
+    const browser = await createBrowserPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes);
+    const node = await (await createNodePdfiumFactsAdapterV2()).analyze(bytes);
+
+    expect(browser.facts).toEqual(injected.facts);
+    expect(node.facts).toEqual(injected.facts);
+    expect(browser.factsDigest).toBe(injected.factsDigest);
+    expect(node.factsDigest).toBe(injected.factsDigest);
+    expect(() => assertPdfAnalysisProvenance(
+      injected.facts.provenance,
+      browser.facts.provenance,
+    )).not.toThrow();
+  });
+
+  it("retains V2 lifecycle cleanup, cancellation, hard budgets, and recovery", async () => {
+    const wasmBinary = await wasm();
+    const bytes = await fixture("complex-tagged.pdf");
+    const expected = await createPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes);
+    const stages: PdfiumFailureStage[] = ["after-init", "after-structure-tree", "before-finalize"];
+    for (const failAt of stages) {
+      const progress: PdfAnalysisProgress[] = [];
+      await expectCode(
+        createPdfiumFactsAdapterV2ForTest({ wasmBinary, failAt }).analyze(bytes, {
+          progress: (event) => progress.push(event),
+        }),
+        "pdf/engine-failure",
+      );
+      expect(progress.at(-1)?.phase).toBe("cleanup");
+      const recovered = await createPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes);
+      expect(recovered.factsDigest).toBe(expected.factsDigest);
+      expect(recovered.telemetry.wasmFinalBytes).toBe(recovered.telemetry.wasmInitialBytes);
+    }
+
+    await expectCode(
+      createPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes, {
+        budgets: { maxTextItemsPerPage: 1 },
+      }),
+      "pdf/budget-exceeded",
+    );
+    const controller = new AbortController();
+    controller.abort();
+    await expectCode(
+      createPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes, { signal: controller.signal }),
+      "pdf/cancelled",
+    );
+    const recovered = await createPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes);
+    expect(recovered.factsDigest).toBe(expected.factsDigest);
   });
 });

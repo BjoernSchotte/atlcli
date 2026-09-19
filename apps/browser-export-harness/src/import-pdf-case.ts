@@ -17,6 +17,12 @@ export interface ImportPdfCaseResult {
   wasmSha256: string;
   factsDigest: string;
   semanticDigest: string;
+  factsSchemaV2: string;
+  semanticSchemaV2: string;
+  semanticDigestV2: string;
+  boundaryCountV2: number;
+  unresolvedBoundaryCountV2: number;
+  pageModesV2: string[];
   titleCandidate: string | null;
   blockTypes: string[];
   workerTerminated: boolean;
@@ -72,6 +78,12 @@ export async function runImportPdfCase(): Promise<ImportPdfCaseResult> {
     || result.blockTypes.join(",") !== "heading,paragraph,paragraph,paragraph,heading,list"
     || !/^[a-f0-9]{64}$/u.test(result.factsDigest)
     || !/^[a-f0-9]{64}$/u.test(result.semanticDigest)
+    || result.factsSchemaV2 !== "atlcli.pdf-facts/2"
+    || result.semanticSchemaV2 !== "atlcli.pdf-untagged-semantics/2"
+    || !/^[a-f0-9]{64}$/u.test(result.semanticDigestV2)
+    || result.boundaryCountV2 !== 51
+    || result.unresolvedBoundaryCountV2 !== 0
+    || result.pageModesV2.join(",") !== "geometry-native"
   ) {
     throw new Error(`The browser PDF import facts drifted: ${JSON.stringify(result)}`);
   }
