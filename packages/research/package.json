@@ -109,6 +109,6 @@
     "deepagents": "1.12.1",
     "langchain": "1.5.4",
     "langsmith": "0.7.17",
-    "zod": "4.4.3"
+    "zod": "4.6.5"
   }
 }
