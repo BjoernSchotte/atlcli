@@ -85,7 +85,7 @@
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
     "astro": "7.1.6",
-    "sharp": "^0.34.2"
+    "sharp": "^0.35.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
