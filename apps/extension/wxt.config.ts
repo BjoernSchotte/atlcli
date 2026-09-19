@@ -100,6 +100,16 @@ export default defineConfig({
     },
   },
   vite: () => ({
+    // WXT 0.21 imports JS entrypoints while preparing types in its `inline`
+    // Vite environment. Keep workspace packages on live source there too;
+    // their default exports intentionally point at build-only dist/ files.
+    environments: {
+      inline: {
+        resolve: {
+          conditions: ["development"],
+        },
+      },
+    },
     plugins: [
       {
         name: "research-browser-only-optional-dependencies",
