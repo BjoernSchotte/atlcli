@@ -193,7 +193,7 @@ static instead of hydrating an oversized client payload.
 
 ## Current boundaries
 
-- TanStack Charts `0.3.1` is pinned and pre-alpha. It is replaceable behind the
+- TanStack Charts `0.18.0` is pinned and pre-1.0. It is replaceable behind the
   closed adapter; source data never receives callbacks or executable options.
 - Only Bar and XY Bar hydrate in V1. The remaining shapes are first-class static
   charts with the same SVG geometry used by document export.

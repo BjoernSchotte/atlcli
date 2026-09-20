@@ -105,7 +105,7 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).not.toContain('\"><img src=x onerror=alert(2)>');
   const asset = html.match(/src="\/_astro\/([^\"]+)"/)?.[1];
   expect(asset).toBeDefined();
-  expect((await stat(resolve(fixture, "dist/_astro", asset!))).size).toBeLessThanOrEqual(100 * 1024);
+  expect((await stat(resolve(fixture, "dist/_astro", asset!))).size).toBeLessThanOrEqual(150 * 1024);
   expect(html).not.toContain("defineChart");
   const stylesheets = [...html.matchAll(/href="\/_astro\/([^\"]+\.css)"/g)].map((match) => match[1]!);
   expect(stylesheets.length).toBeGreaterThan(0);

@@ -33,7 +33,7 @@ import { curveStepAfter, pie as createPie, type PieArcDatum } from "d3-shape";
 export const TANSTACK_CHART_ADAPTER_V1 = Object.freeze({
   id: "tanstack-v0.3/all-static" as const,
   package: "@tanstack/charts" as const,
-  version: "0.3.1" as const,
+  version: "0.18.0" as const,
 });
 
 export const TANSTACK_CHART_SIZE_V1 = Object.freeze({ width: 720, height: 400 });
@@ -409,7 +409,7 @@ function categoryDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
   const yAxis = chart.orientation === "horizontal" && chart.kind === "bar"
     ? { scale: band, grid: false, axis: { label: chart.yLabel, ...axisTickOptions(chart.axes?.y) } }
     : { scale: linear, grid: true, axis: { label: chart.yLabel, ...axisTickOptions(chart.axes?.y, tickValues(extent, chart.axes?.y?.tickUnit)) } };
-  return defineClosedChart({ marks, x: xAxis, y: yAxis, color: legend(chart, series), margin: legendMargin(chart, series), theme: theme(chart), clip: true });
+  return defineClosedChart({ marks, scales: { x: xAxis, y: yAxis }, color: legend(chart, series), margin: legendMargin(chart, series), theme: theme(chart), clip: true });
 }
 
 function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
@@ -441,8 +441,10 @@ function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
     : tickValues(xExtent, chart.axes?.x?.tickUnit);
   return defineClosedChart({
     marks,
-    x: { scale: xScale, grid: false, axis: { label: chart.xLabel, ...axisTickOptions(chart.axes?.x, isTime ? dateTicks?.values : xTickValues, isTime ? (value: never) => dateTicks!.format(value as Date) : undefined) } },
-    y: { scale: yScale, grid: true, axis: { label: chart.yLabel, ...axisTickOptions(chart.axes?.y, tickValues(yExtent, chart.axes?.y?.tickUnit)) } },
+    scales: {
+      x: { scale: xScale, grid: false, axis: { label: chart.xLabel, ...axisTickOptions(chart.axes?.x, isTime ? dateTicks?.values : xTickValues, isTime ? (value: never) => dateTicks!.format(value as Date) : undefined) } },
+      y: { scale: yScale, grid: true, axis: { label: chart.yLabel, ...axisTickOptions(chart.axes?.y, tickValues(yExtent, chart.axes?.y?.tickUnit)) } },
+    },
     color: legend(chart, series),
     margin: legendMargin(chart, series),
     theme: theme(chart),
@@ -470,15 +472,16 @@ function pieDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
       radialArc(arcs, { id: "pie-arcs", key: (arc) => arc.data.id, color: (arc) => arc.data.label, fillOpacity: chart.opacity, stroke: "#ffffff", strokeWidth: 1.5 }),
       radialText(arcs, { id: "pie-labels", key: (arc) => arc.data.id, angle: (arc) => (arc.startAngle + arc.endAngle) / 2, radius: 0.62, text: "sectionLabel", fill: "#ffffff", fontSize: 11, fontWeight: 700, anchor: "middle", baseline: "middle" }),
     ],
-    angle: { scale: scaleLinear().domain([0, Math.PI * 2]), wrap: true },
-    radius: { scale: scaleLinear().domain([0, 1]) },
+    scales: {
+      angle: { scale: scaleLinear().domain([0, Math.PI * 2]), wrap: true },
+      radius: { scale: scaleLinear().domain([0, 1]) },
+    },
     inset: 12,
   })];
   const domain = rows.map((row) => row.label);
   return defineClosedChart({
     marks,
-    x: null,
-    y: null,
+    scales: { x: null, y: null },
     color: legend(chart, domain),
     theme: theme(chart),
     margin: { right: 16, bottom: 16, left: 16, ...legendMargin(chart, domain) },
@@ -510,8 +513,10 @@ function ganttDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
   const timeScale = scaleUtc().domain(extent.map((value) => new Date(value)) as [Date, Date]);
   return defineClosedChart({
     marks,
-    x: { scale: timeScale, grid: true, axis: { label: chart.xLabel, ticks: { values: timeScale.ticks(5), format } } },
-    y: { scale: scaleBand<string>().domain(tasks.map((task) => task.task)).padding(0.22), grid: false, axis: { label: chart.yLabel } },
+    scales: {
+      x: { scale: timeScale, grid: true, axis: { label: chart.xLabel, ticks: { values: timeScale.ticks(5), format } } },
+      y: { scale: scaleBand<string>().domain(tasks.map((task) => task.task)).padding(0.22), grid: false, axis: { label: chart.yLabel } },
+    },
     color: legend(chart, tasks.map((task) => task.task)),
     margin: legendMargin(chart, tasks.map((task) => task.task)),
     theme: theme(chart),

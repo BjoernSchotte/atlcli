@@ -31,7 +31,7 @@ export declare function renderTanStackChartSvgV1(input: ChartModelV1, options?: 
 export declare const TANSTACK_CHART_ADAPTER_V1: Readonly<{
     id: "tanstack-v0.3/all-static";
     package: "@tanstack/charts";
-    version: "0.3.1";
+    version: "0.18.0";
 }>;
 
 // export: TANSTACK_CHART_RENDER_BUDGET_V1

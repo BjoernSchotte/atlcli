@@ -67,7 +67,7 @@ otherwise. Project policy caps rows, series, points, payload bytes, and mount
 time. A mount error or deadline overrun destroys the client host, announces a
 visible status, and restores the complete server-rendered SVG and table.
 
-TanStack Charts `0.3.1` is an explicit, pinned pre-alpha dependency. The
+TanStack Charts `0.18.0` is an explicit, pinned pre-1.0 dependency. The
 interactive adapter is replaceable behind `ChartRendererAdapterV1`; its
 production use is limited to the tested bounded bar-chart profile until a later
 compatibility review promotes or replaces it. The server-SVG adapter is the

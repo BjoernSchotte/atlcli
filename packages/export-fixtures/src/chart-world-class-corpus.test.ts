@@ -48,7 +48,7 @@ test("callers receive a mutable clone without being able to drift the canonical 
 });
 
 test("all twelve world-class corpus models compile through the pinned TanStack scene and SVG renderer", () => {
-  expect(TANSTACK_CHART_ADAPTER_V1.version).toBe("0.3.1");
+  expect(TANSTACK_CHART_ADAPTER_V1.version).toBe("0.18.0");
   for (const block of CHART_WORLD_CLASS_BLOCKS_V1) {
     const scene = createTanStackChartSceneV1(block.chart);
     expect(scene.nodes.length, block.chart.kind).toBeGreaterThan(0);

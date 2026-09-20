@@ -11,7 +11,7 @@ Astro, DOCX, and PDF.
 
 The adapter covers `pie`, `bar`, `line`, `area`, `xyArea`, `xyBar`, `xyLine`,
 `xyStep`, `xyStepArea`, `scatter`, `timeSeries`, and `gantt`. TanStack Charts is
-pinned to `0.3.1`; its pre-alpha API never leaks through the renderer-neutral
+pinned to `0.18.0`; its pre-1.0 API never leaks through the renderer-neutral
 `ChartModelV1` contract.
 
 Provider HTML, callbacks, URLs, and executable configuration never cross this
