@@ -37,7 +37,7 @@ test("does not own a build runner or duplicate ExportBlock rendering", async () 
     readFile(resolve(root, "package.json"), "utf8"),
     readFile(resolve(root, "src/index.ts"), "utf8"),
   ]);
-  expect(manifest).toContain('"@astrojs/starlight": "^0.41.3"');
+  expect(manifest).toContain('"@astrojs/starlight": "^0.41.3 || ^0.42.0"');
   expect(manifest).toContain('"astro": ">=7.1.6 <8"');
   expect(manifest).toContain('"@atlcli/export-blocks-astro": "workspace:*"');
   expect(source).not.toContain("ExportDocument");

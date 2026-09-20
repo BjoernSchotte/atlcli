@@ -881,6 +881,8 @@ describe("CI workflow policy", () => {
     expect(publishing).toContain("packages/web-publish-starlight/src/starlight-renderer.test.ts");
     expect(publishing).toContain('ATLCLI_CONSUMER_SMOKE: "1"');
     expect(publishing).toContain("minimum-astro");
+    expect(publishing).toContain("dependencies.astro");
+    expect(publishing).not.toContain("require.resolve('astro/package.json'");
     expect(publishing).not.toContain("windows-latest");
     expect(publishing).not.toContain("latest-astro-7");
 
@@ -893,6 +895,8 @@ describe("CI workflow policy", () => {
     );
     expect(windows).toContain("packages/web-publish-astro/src/astro-consumer.test.ts");
     expect(windows).toContain("packages/web-publish-starlight/src/starlight-renderer.test.ts");
+    expect(windows).toContain("dependencies.astro");
+    expect(windows).not.toContain("require.resolve('astro/package.json'");
 
     expect(latest).not.toBeNull();
     expect(latest).toContain("github.event_name == 'schedule'");

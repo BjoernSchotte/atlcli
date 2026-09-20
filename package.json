@@ -74,7 +74,7 @@
     "docs:preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.41.3",
+    "@astrojs/starlight": "^0.42.0",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/export-fixtures": "workspace:*",
@@ -84,7 +84,7 @@
     "@atlcli/export-wiring": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
-    "astro": "7.1.6",
+    "astro": "7.3.3",
     "sharp": "^0.35.0"
   },
   "devDependencies": {
