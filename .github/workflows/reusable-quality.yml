@@ -324,21 +324,17 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const path = require('node:path');
-          const paths = [
-            'packages/web-publish-astro/fixtures/astro-consumer',
-            'packages/web-publish-starlight/fixtures/published-consumer',
+          const files = [
+            'packages/web-publish-astro/fixtures/astro-consumer/package.json',
+            'packages/web-publish-starlight/fixtures/published-consumer/package.json',
           ];
-          const versions = paths.map((fixture) => {
-            const packagePath = require.resolve('astro/package.json', { paths: [path.resolve(fixture)] });
-            return JSON.parse(fs.readFileSync(packagePath, 'utf8')).version;
-          });
-          if (new Set(versions).size !== 1) throw new Error(`Astro fixture versions diverged: ${versions.join(', ')}`);
+          const versions = files.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')).dependencies.astro);
+          if (new Set(versions).size !== 1) throw new Error(`Astro fixture pins diverged: ${versions.join(', ')}`);
           const actual = versions[0];
           if (actual !== process.env.EXPECTED_ASTRO) {
-            throw new Error(`expected Astro ${process.env.EXPECTED_ASTRO}, got ${actual}`);
+            throw new Error(`expected Astro fixture pin ${process.env.EXPECTED_ASTRO}, got ${actual}`);
           }
-          console.log(`Astro ${actual} verified for ${process.env.EXPECTED_ASTRO} lane`);
+          console.log(`Astro fixture pin ${actual} verified for ${process.env.EXPECTED_ASTRO} lane`);
           NODE
 
       - name: Run packed Astro and Starlight consumers
@@ -384,21 +380,17 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const path = require('node:path');
-          const paths = [
-            'packages/web-publish-astro/fixtures/astro-consumer',
-            'packages/web-publish-starlight/fixtures/published-consumer',
+          const files = [
+            'packages/web-publish-astro/fixtures/astro-consumer/package.json',
+            'packages/web-publish-starlight/fixtures/published-consumer/package.json',
           ];
-          const versions = paths.map((fixture) => {
-            const packagePath = require.resolve('astro/package.json', { paths: [path.resolve(fixture)] });
-            return JSON.parse(fs.readFileSync(packagePath, 'utf8')).version;
-          });
-          if (new Set(versions).size !== 1) throw new Error(`Astro fixture versions diverged: ${versions.join(', ')}`);
+          const versions = files.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')).dependencies.astro);
+          if (new Set(versions).size !== 1) throw new Error(`Astro fixture pins diverged: ${versions.join(', ')}`);
           const actual = versions[0];
           if (actual !== process.env.EXPECTED_ASTRO) {
-            throw new Error(`expected Astro ${process.env.EXPECTED_ASTRO}, got ${actual}`);
+            throw new Error(`expected Astro fixture pin ${process.env.EXPECTED_ASTRO}, got ${actual}`);
           }
-          console.log(`Astro ${actual} verified for Windows compatibility`);
+          console.log(`Astro fixture pin ${actual} verified for Windows compatibility`);
           NODE
 
       - name: Run packed Astro and Starlight consumers
