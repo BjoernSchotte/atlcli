@@ -111,7 +111,7 @@ describe("@atlcli/import-pdf production boundary", () => {
       exports?: Record<string, unknown>;
       atlcli?: { publish?: string };
     };
-    expect(manifest.dependencies?.["@embedpdf/pdfium"]).toBe("2.15.0");
+    expect(manifest.dependencies?.["@embedpdf/pdfium"]).toBe("2.15.1");
     expect(manifest.dependencies?.["pdfjs-dist"]).toBeUndefined();
     expect(manifest.exports?.["./wasm"]).toBe("./vendor/pdfium.wasm");
     expect(manifest.atlcli?.publish).toBe("public-0.x");

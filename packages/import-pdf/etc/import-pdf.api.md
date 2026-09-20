@@ -627,10 +627,10 @@ export interface PdfImportReviewV1 {
 }
 
 // export: PDFIUM_ENGINE_VERSION
-export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
+export declare const PDFIUM_ENGINE_VERSION: "2.15.1";
 
 // export: PDFIUM_WASM_SHA256
-export declare const PDFIUM_WASM_SHA256: "c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8";
+export declare const PDFIUM_WASM_SHA256: "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa";
 
 // export: PdfiumAdapterConfig
 export interface PdfiumAdapterConfig {
@@ -1673,10 +1673,10 @@ export interface PdfImportReviewV1 {
 }
 
 // export: PDFIUM_ENGINE_VERSION
-export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
+export declare const PDFIUM_ENGINE_VERSION: "2.15.1";
 
 // export: PDFIUM_WASM_SHA256
-export declare const PDFIUM_WASM_SHA256: "c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8";
+export declare const PDFIUM_WASM_SHA256: "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa";
 
 // export: PdfiumAdapterConfig
 export interface PdfiumAdapterConfig {
@@ -2685,10 +2685,10 @@ export interface PdfImportReviewV1 {
 }
 
 // export: PDFIUM_ENGINE_VERSION
-export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
+export declare const PDFIUM_ENGINE_VERSION: "2.15.1";
 
 // export: PDFIUM_WASM_SHA256
-export declare const PDFIUM_WASM_SHA256: "c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8";
+export declare const PDFIUM_WASM_SHA256: "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa";
 
 // export: PdfiumAdapterConfig
 export interface PdfiumAdapterConfig {
@@ -3737,10 +3737,10 @@ export interface PdfImportReviewV1 {
 }
 
 // export: PDFIUM_ENGINE_VERSION
-export declare const PDFIUM_ENGINE_VERSION: "2.15.0";
+export declare const PDFIUM_ENGINE_VERSION: "2.15.1";
 
 // export: PDFIUM_WASM_SHA256
-export declare const PDFIUM_WASM_SHA256: "c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8";
+export declare const PDFIUM_WASM_SHA256: "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa";
 
 // export: PdfiumAdapterConfig
 export interface PdfiumAdapterConfig {

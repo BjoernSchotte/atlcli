@@ -59,6 +59,12 @@
       "dependencyDashboardApproval": true
     },
     {
+      "description": "Review the pinned Chromium evidence baseline before updating Playwright.",
+      "matchPackageNames": ["@playwright/test"],
+      "groupName": "Playwright",
+      "dependencyDashboardApproval": true
+    },
+    {
       "matchUpdateTypes": ["major"],
       "groupName": null,
       "dependencyDashboardApproval": true

@@ -468,11 +468,26 @@ export const CODE_LANGUAGES = [
   {
     "id": "actionscript-3",
     "name": "ActionScript",
-    "aliases": []
+    "aliases": [
+      "actionscript",
+      "as3"
+    ]
   },
   {
     "id": "ada",
     "name": "Ada",
+    "aliases": []
+  },
+  {
+    "id": "ahk",
+    "name": "AutoHotkey",
+    "aliases": [
+      "ahk1"
+    ]
+  },
+  {
+    "id": "ahk2",
+    "name": "AutoHotkey2",
     "aliases": []
   },
   {
@@ -541,7 +556,8 @@ export const CODE_LANGUAGES = [
     "id": "bat",
     "name": "Batch File",
     "aliases": [
-      "batch"
+      "batch",
+      "cmd"
     ]
   },
   {
@@ -608,6 +624,13 @@ export const CODE_LANGUAGES = [
     "aliases": []
   },
   {
+    "id": "chapel",
+    "name": "Chapel",
+    "aliases": [
+      "chpl"
+    ]
+  },
+  {
     "id": "clarity",
     "name": "Clarity",
     "aliases": []
@@ -657,7 +680,7 @@ export const CODE_LANGUAGES = [
   },
   {
     "id": "coq",
-    "name": "Coq",
+    "name": "Rocq",
     "aliases": []
   },
   {
@@ -1071,7 +1094,9 @@ export const CODE_LANGUAGES = [
   {
     "id": "just",
     "name": "Just",
-    "aliases": []
+    "aliases": [
+      "justfile"
+    ]
   },
   {
     "id": "kdl",
@@ -1241,6 +1266,11 @@ export const CODE_LANGUAGES = [
     "aliases": []
   },
   {
+    "id": "nsis",
+    "name": "NSIS",
+    "aliases": []
+  },
+  {
     "id": "nushell",
     "name": "nushell",
     "aliases": [
@@ -1275,6 +1305,11 @@ export const CODE_LANGUAGES = [
     "aliases": [
       "scad"
     ]
+  },
+  {
+    "id": "org",
+    "name": "Org Markup",
+    "aliases": []
   },
   {
     "id": "pascal",
@@ -1329,7 +1364,8 @@ export const CODE_LANGUAGES = [
     "name": "PowerShell",
     "aliases": [
       "ps",
-      "ps1"
+      "ps1",
+      "pwsh"
     ]
   },
   {
@@ -1409,6 +1445,13 @@ export const CODE_LANGUAGES = [
     "id": "razor",
     "name": "ASP.NET Razor",
     "aliases": []
+  },
+  {
+    "id": "rbs",
+    "name": "RBS",
+    "aliases": [
+      "ruby-signature"
+    ]
   },
   {
     "id": "reg",
@@ -1519,7 +1562,12 @@ export const CODE_LANGUAGES = [
   },
   {
     "id": "smalltalk",
-    "name": "Smalltalk",
+    "name": "GNU Smalltalk",
+    "aliases": []
+  },
+  {
+    "id": "smithy",
+    "name": "Smithy",
     "aliases": []
   },
   {
@@ -1698,9 +1746,7 @@ export const CODE_LANGUAGES = [
   {
     "id": "vb",
     "name": "Visual Basic",
-    "aliases": [
-      "cmd"
-    ]
+    "aliases": []
   },
   {
     "id": "verilog",

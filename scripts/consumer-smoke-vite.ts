@@ -63,9 +63,9 @@ const PDF_IMPORT_FIXTURE_BYTES = readFileSync(
 const PDF_IMPORT_UNTAGGED_FIXTURE_BYTES = readFileSync(
   join(import.meta.dir, "../specs/import-pdf-mvp/fixtures/simple-untagged.pdf"),
 );
-const PDFIUM_WASM_SHA256 = "c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8";
+const PDFIUM_WASM_SHA256 = "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa";
 
-const VITE_VERSION = "8.1.4"; // same major the harness builds with
+const VITE_VERSION = "8.3.0"; // same major the harness builds with
 
 const INDEX_HTML = `<!doctype html>
 <html>

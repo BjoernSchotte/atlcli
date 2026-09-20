@@ -773,7 +773,7 @@ export function runConsumerTypecheck(dir: string): void {
 
 export const CONSUMER_DEV_DEPS = {
   typescript: "5.9.3",
-  "@types/node": "25.0.5",
+  "@types/node": "25.9.8",
 };
 
 export interface TarballSmokeResult {

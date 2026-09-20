@@ -313,9 +313,9 @@ describe("pack-check (spec 009)", () => {
     expect(runtime).toContain('import("@shikijs/langs/typescript")');
     expect(runtime).toContain('import("@shikijs/themes/github-light")');
     expect(manifest.dependencies).toMatchObject({
-      shiki: "4.3.1",
-      "@shikijs/langs": "4.3.1",
-      "@shikijs/themes": "4.3.1",
+      shiki: "4.4.3",
+      "@shikijs/langs": "4.4.3",
+      "@shikijs/themes": "4.4.3",
     });
   });
 
