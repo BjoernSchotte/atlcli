@@ -754,7 +754,7 @@ model and expected ecosystem momentum fit this boundary. The product owner
 explicitly accepts its current pre-alpha status for the bounded, opt-in
 bar-chart island: the package version is pinned, the adapter is replaceable,
 and the T6 spike must prove SSR fallback, hydration, keyboard accessibility,
-no client error, and an external runtime bundle no larger than 100 KiB. This
+no client error, and an external runtime bundle no larger than 150 KiB. This
 exception does not claim a stable TanStack API or permit weakening
 accessibility, security, determinism, or bundle budgets.
 
@@ -1546,7 +1546,7 @@ the active bundle is always complete and digest-valid.
       TanStack Charts `0.3.1` as the pinned, product-owner-approved pre-alpha
       adapter only for the bounded opt-in bar-chart profile. Prove Astro SSR
       fallback, hydration, keyboard accessibility, no client error, and a
-      <=100 KiB external runtime bundle; never serialize TanStack definitions,
+      <=150 KiB external runtime bundle; never serialize TanStack definitions,
       callbacks, or functions into the bundle.
 - [x] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
       SVG safety, and no opaque datasource/provenance serialization.

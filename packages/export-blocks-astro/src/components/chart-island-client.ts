@@ -93,8 +93,10 @@ function mountTanStackChartV1(root: HTMLElement): void {
   fallback.after(mount);
   const definition = defineChart({
     marks: [barY(rows, { x: "label", y: "value", color: "series", layout: group({ padding: 0.2 }) })],
-    x: { scale: () => scaleBand().padding(0.1) },
-    y: { scale: scaleLinear, nice: true, grid: true },
+    scales: {
+      x: { scale: () => scaleBand().padding(0.1) },
+      y: { scale: scaleLinear, nice: true, grid: true },
+    },
     color: { legend: colorLegend({ label: "Series" }) },
     focus: "group-x",
     animate: { duration: 220, easing: "ease-out", respectReducedMotion: true, resize: false },

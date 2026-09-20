@@ -66,7 +66,11 @@ function sceneNodes(nodes: readonly SceneNode[]): SceneNode[] {
 }
 
 test("pins the single all-static TanStack adapter", () => {
-  expect(TANSTACK_CHART_ADAPTER_V1).toEqual({ id: "tanstack-v0.3/all-static", package: "@tanstack/charts", version: "0.3.1" });
+  expect(TANSTACK_CHART_ADAPTER_V1).toEqual({ id: "tanstack-v0.3/all-static", package: "@tanstack/charts", version: "0.18.0" });
+});
+
+test("renders pie charts through the required polar scale registry", () => {
+  expect(() => createTanStackChartSceneV1(model("pie"))).not.toThrow();
 });
 
 test("compiles and renders all twelve normalized shapes through TanStack scenes", () => {
