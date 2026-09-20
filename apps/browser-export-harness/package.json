@@ -34,8 +34,8 @@
     "@atlcli/template-pack": "workspace:*"
   },
   "devDependencies": {
-    "@playwright/test": "1.55.0",
+    "@playwright/test": "1.63.0",
     "typescript": "5.9.3",
-    "vite": "8.1.4"
+    "vite": "8.3.0"
   }
 }
