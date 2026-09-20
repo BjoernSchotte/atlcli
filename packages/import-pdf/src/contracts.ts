@@ -1,8 +1,8 @@
 import type { ImportDocumentV2, ImportOutcome } from "@atlcli/import-core";
 
 export const PDF_FACTS_SCHEMA_V1 = "atlcli.pdf-facts/1" as const;
-export const PDFIUM_ENGINE_VERSION = "2.15.0" as const;
-export const PDFIUM_WASM_SHA256 = "c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8" as const;
+export const PDFIUM_ENGINE_VERSION = "2.15.1" as const;
+export const PDFIUM_WASM_SHA256 = "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa" as const;
 export const PDF_FACTS_ADAPTER_REVISION = "atlcli.pdfium-public-fpdf/1" as const;
 export const PDF_ANALYSIS_POLICY_REVISION = "atlcli.pdf-analysis-policy/1" as const;
 export const PDF_ASSET_MATERIALIZER_REVISION = "atlcli.pdfium-asset-materializer/1" as const;

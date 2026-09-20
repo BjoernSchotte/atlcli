@@ -60,7 +60,7 @@
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
     "@atlcli/research": "workspace:*",
-    "@copilotkit/react-core": "1.65.0",
+    "@copilotkit/react-core": "1.73.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.25.0",
@@ -90,8 +90,8 @@
     "langsmith": "0.7.17",
     "pica": "10.0.3",
     "tailwindcss": "^4.3.3",
-    "vite": "8.1.4",
+    "vite": "8.3.0",
     "wxt": "^0.21.0",
-    "zod": "4.4.3"
+    "zod": "4.6.5"
   }
 }

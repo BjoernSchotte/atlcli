@@ -42,7 +42,7 @@ The generated runtime registry contains all 235 canonical language IDs and all
 generated catalogue.
 
 `@shikijs/langs`, `@shikijs/themes`, and `shiki` are exact direct dependencies
-at `4.3.1`. Generation and `catalogue:check` fail if those installed versions,
+at `4.4.3`. Generation and `catalogue:check` fail if those installed versions,
 the package manifest, a direct module resolution, or either generated file
 drifts.
 

@@ -20,6 +20,9 @@ test("batching preserves major approval and isolates patched/runtime packages", 
   const webdav = rules.find((rule) => rule.matchPackageNames?.includes("webdav-server"))!;
   expect(webdav.groupName).toBeNull();
   expect(webdav.dependencyDashboardApproval).toBe(true);
+  const playwright = rules.find((rule) => rule.matchPackageNames?.includes("@playwright/test"))!;
+  expect(playwright.groupName).toBe("Playwright");
+  expect(playwright.dependencyDashboardApproval).toBe(true);
 });
 
 test("research dependencies require approval before any update", () => {

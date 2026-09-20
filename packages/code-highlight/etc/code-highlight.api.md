@@ -11,7 +11,7 @@
 export declare function canonicalCodeLanguage(value: string): CodeLanguageId | undefined;
 
 // export: CODE_LANGUAGE_IDS
-export declare const CODE_LANGUAGE_IDS: ("stylus" | "d" | "r" | "move" | "html" | "ruby" | "rel" | "json" | "go" | "log" | "abap" | "actionscript-3" | "ada" | "angular-html" | "angular-ts" | "apache" | "apex" | "apl" | "applescript" | "ara" | "asciidoc" | "asm" | "astro" | "awk" | "ballerina" | "bat" | "beancount" | "berry" | "bibtex" | "bicep" | "bird2" | "blade" | "bsl" | "c" | "c3" | "cadence" | "cairo" | "clarity" | "clojure" | "cmake" | "cobol" | "codeowners" | "codeql" | "coffee" | "common-lisp" | "coq" | "cpp" | "crystal" | "csharp" | "css" | "csv" | "cue" | "cypher" | "dart" | "dax" | "desktop" | "diff" | "docker" | "dotenv" | "dream-maker" | "edge" | "elixir" | "elm" | "emacs-lisp" | "erb" | "erlang" | "fennel" | "fish" | "fluent" | "fortran-fixed-form" | "fortran-free-form" | "fsharp" | "gdresource" | "gdscript" | "gdshader" | "genie" | "gherkin" | "git-commit" | "git-rebase" | "gleam" | "glimmer-js" | "glimmer-ts" | "glsl" | "gn" | "gnuplot" | "graphql" | "groovy" | "hack" | "haml" | "handlebars" | "haskell" | "haxe" | "hcl" | "hjson" | "hlsl" | "html-derivative" | "http" | "hurl" | "hxml" | "hy" | "imba" | "ini" | "java" | "javascript" | "jinja" | "jison" | "json5" | "jsonc" | "jsonl" | "jsonnet" | "jssm" | "jsx" | "julia" | "just" | "kdl" | "kotlin" | "kusto" | "latex" | "lean" | "less" | "liquid" | "llvm" | "logo" | "lua" | "luau" | "make" | "markdown" | "marko" | "matlab" | "mdc" | "mdx" | "mermaid" | "mipsasm" | "mojo" | "moonbit" | "narrat" | "nextflow" | "nextflow-groovy" | "nginx" | "nim" | "nix" | "nushell" | "objective-c" | "objective-cpp" | "ocaml" | "odin" | "openscad" | "pascal" | "perl" | "php" | "pkl" | "plsql" | "po" | "polar" | "postcss" | "powerquery" | "powershell" | "prisma" | "prolog" | "proto" | "pug" | "puppet" | "purescript" | "python" | "qml" | "qmldir" | "qss" | "racket" | "raku" | "razor" | "reg" | "regexp" | "riscv" | "ron" | "rosmsg" | "rst" | "rust" | "sas" | "sass" | "scala" | "scheme" | "scss" | "sdbl" | "shaderlab" | "shellscript" | "shellsession" | "smalltalk" | "solidity" | "soy" | "sparql" | "splunk" | "sql" | "ssh-config" | "stata" | "surrealql" | "svelte" | "swift" | "system-verilog" | "systemd" | "talonscript" | "tasl" | "tcl" | "templ" | "terraform" | "tex" | "toml" | "ts-tags" | "tsv" | "tsx" | "turtle" | "twig" | "typescript" | "typespec" | "typst" | "v" | "vala" | "vb" | "verilog" | "vhdl" | "viml" | "vue" | "vue-html" | "vue-vine" | "vyper" | "wasm" | "wenyan" | "wgsl" | "wikitext" | "wit" | "wolfram" | "xml" | "xsl" | "yaml" | "zenscript" | "zig")[];
+export declare const CODE_LANGUAGE_IDS: ("stylus" | "d" | "r" | "move" | "html" | "ruby" | "rel" | "json" | "go" | "log" | "abap" | "actionscript-3" | "ada" | "ahk" | "ahk2" | "angular-html" | "angular-ts" | "apache" | "apex" | "apl" | "applescript" | "ara" | "asciidoc" | "asm" | "astro" | "awk" | "ballerina" | "bat" | "beancount" | "berry" | "bibtex" | "bicep" | "bird2" | "blade" | "bsl" | "c" | "c3" | "cadence" | "cairo" | "chapel" | "clarity" | "clojure" | "cmake" | "cobol" | "codeowners" | "codeql" | "coffee" | "common-lisp" | "coq" | "cpp" | "crystal" | "csharp" | "css" | "csv" | "cue" | "cypher" | "dart" | "dax" | "desktop" | "diff" | "docker" | "dotenv" | "dream-maker" | "edge" | "elixir" | "elm" | "emacs-lisp" | "erb" | "erlang" | "fennel" | "fish" | "fluent" | "fortran-fixed-form" | "fortran-free-form" | "fsharp" | "gdresource" | "gdscript" | "gdshader" | "genie" | "gherkin" | "git-commit" | "git-rebase" | "gleam" | "glimmer-js" | "glimmer-ts" | "glsl" | "gn" | "gnuplot" | "graphql" | "groovy" | "hack" | "haml" | "handlebars" | "haskell" | "haxe" | "hcl" | "hjson" | "hlsl" | "html-derivative" | "http" | "hurl" | "hxml" | "hy" | "imba" | "ini" | "java" | "javascript" | "jinja" | "jison" | "json5" | "jsonc" | "jsonl" | "jsonnet" | "jssm" | "jsx" | "julia" | "just" | "kdl" | "kotlin" | "kusto" | "latex" | "lean" | "less" | "liquid" | "llvm" | "logo" | "lua" | "luau" | "make" | "markdown" | "marko" | "matlab" | "mdc" | "mdx" | "mermaid" | "mipsasm" | "mojo" | "moonbit" | "narrat" | "nextflow" | "nextflow-groovy" | "nginx" | "nim" | "nix" | "nsis" | "nushell" | "objective-c" | "objective-cpp" | "ocaml" | "odin" | "openscad" | "org" | "pascal" | "perl" | "php" | "pkl" | "plsql" | "po" | "polar" | "postcss" | "powerquery" | "powershell" | "prisma" | "prolog" | "proto" | "pug" | "puppet" | "purescript" | "python" | "qml" | "qmldir" | "qss" | "racket" | "raku" | "razor" | "rbs" | "reg" | "regexp" | "riscv" | "ron" | "rosmsg" | "rst" | "rust" | "sas" | "sass" | "scala" | "scheme" | "scss" | "sdbl" | "shaderlab" | "shellscript" | "shellsession" | "smalltalk" | "smithy" | "solidity" | "soy" | "sparql" | "splunk" | "sql" | "ssh-config" | "stata" | "surrealql" | "svelte" | "swift" | "system-verilog" | "systemd" | "talonscript" | "tasl" | "tcl" | "templ" | "terraform" | "tex" | "toml" | "ts-tags" | "tsv" | "tsx" | "turtle" | "twig" | "typescript" | "typespec" | "typst" | "v" | "vala" | "vb" | "verilog" | "vhdl" | "viml" | "vue" | "vue-html" | "vue-vine" | "vyper" | "wasm" | "wenyan" | "wgsl" | "wikitext" | "wit" | "wolfram" | "xml" | "xsl" | "yaml" | "zenscript" | "zig")[];
 
 // export: CODE_LANGUAGES
 export declare const CODE_LANGUAGES: readonly [
@@ -25,11 +25,26 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "actionscript-3";
         readonly name: "ActionScript";
         readonly aliases: readonly [
+            "actionscript",
+            "as3"
         ];
     },
     {
         readonly id: "ada";
         readonly name: "Ada";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ahk";
+        readonly name: "AutoHotkey";
+        readonly aliases: readonly [
+            "ahk1"
+        ];
+    },
+    {
+        readonly id: "ahk2";
+        readonly name: "AutoHotkey2";
         readonly aliases: readonly [
         ];
     },
@@ -110,7 +125,8 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "bat";
         readonly name: "Batch File";
         readonly aliases: readonly [
-            "batch"
+            "batch",
+            "cmd"
         ];
     },
     {
@@ -184,6 +200,13 @@ export declare const CODE_LANGUAGES: readonly [
         ];
     },
     {
+        readonly id: "chapel";
+        readonly name: "Chapel";
+        readonly aliases: readonly [
+            "chpl"
+        ];
+    },
+    {
         readonly id: "clarity";
         readonly name: "Clarity";
         readonly aliases: readonly [
@@ -237,7 +260,7 @@ export declare const CODE_LANGUAGES: readonly [
     },
     {
         readonly id: "coq";
-        readonly name: "Coq";
+        readonly name: "Rocq";
         readonly aliases: readonly [
         ];
     },
@@ -703,6 +726,7 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "just";
         readonly name: "Just";
         readonly aliases: readonly [
+            "justfile"
         ];
     },
     {
@@ -892,6 +916,12 @@ export declare const CODE_LANGUAGES: readonly [
         ];
     },
     {
+        readonly id: "nsis";
+        readonly name: "NSIS";
+        readonly aliases: readonly [
+        ];
+    },
+    {
         readonly id: "nushell";
         readonly name: "nushell";
         readonly aliases: readonly [
@@ -928,6 +958,12 @@ export declare const CODE_LANGUAGES: readonly [
         readonly name: "OpenSCAD";
         readonly aliases: readonly [
             "scad"
+        ];
+    },
+    {
+        readonly id: "org";
+        readonly name: "Org Markup";
+        readonly aliases: readonly [
         ];
     },
     {
@@ -991,7 +1027,8 @@ export declare const CODE_LANGUAGES: readonly [
         readonly name: "PowerShell";
         readonly aliases: readonly [
             "ps",
-            "ps1"
+            "ps1",
+            "pwsh"
         ];
     },
     {
@@ -1080,6 +1117,13 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "razor";
         readonly name: "ASP.NET Razor";
         readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "rbs";
+        readonly name: "RBS";
+        readonly aliases: readonly [
+            "ruby-signature"
         ];
     },
     {
@@ -1202,7 +1246,13 @@ export declare const CODE_LANGUAGES: readonly [
     },
     {
         readonly id: "smalltalk";
-        readonly name: "Smalltalk";
+        readonly name: "GNU Smalltalk";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "smithy";
+        readonly name: "Smithy";
         readonly aliases: readonly [
         ];
     },
@@ -1403,7 +1453,6 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "vb";
         readonly name: "Visual Basic";
         readonly aliases: readonly [
-            "cmd"
         ];
     },
     {
@@ -2568,7 +2617,7 @@ export declare function warmHighlight(languages: readonly string[], theme?: Code
 export declare function canonicalCodeLanguage(value: string): CodeLanguageId | undefined;
 
 // export: CODE_LANGUAGE_IDS
-export declare const CODE_LANGUAGE_IDS: ("stylus" | "d" | "r" | "move" | "html" | "ruby" | "rel" | "json" | "go" | "log" | "abap" | "actionscript-3" | "ada" | "angular-html" | "angular-ts" | "apache" | "apex" | "apl" | "applescript" | "ara" | "asciidoc" | "asm" | "astro" | "awk" | "ballerina" | "bat" | "beancount" | "berry" | "bibtex" | "bicep" | "bird2" | "blade" | "bsl" | "c" | "c3" | "cadence" | "cairo" | "clarity" | "clojure" | "cmake" | "cobol" | "codeowners" | "codeql" | "coffee" | "common-lisp" | "coq" | "cpp" | "crystal" | "csharp" | "css" | "csv" | "cue" | "cypher" | "dart" | "dax" | "desktop" | "diff" | "docker" | "dotenv" | "dream-maker" | "edge" | "elixir" | "elm" | "emacs-lisp" | "erb" | "erlang" | "fennel" | "fish" | "fluent" | "fortran-fixed-form" | "fortran-free-form" | "fsharp" | "gdresource" | "gdscript" | "gdshader" | "genie" | "gherkin" | "git-commit" | "git-rebase" | "gleam" | "glimmer-js" | "glimmer-ts" | "glsl" | "gn" | "gnuplot" | "graphql" | "groovy" | "hack" | "haml" | "handlebars" | "haskell" | "haxe" | "hcl" | "hjson" | "hlsl" | "html-derivative" | "http" | "hurl" | "hxml" | "hy" | "imba" | "ini" | "java" | "javascript" | "jinja" | "jison" | "json5" | "jsonc" | "jsonl" | "jsonnet" | "jssm" | "jsx" | "julia" | "just" | "kdl" | "kotlin" | "kusto" | "latex" | "lean" | "less" | "liquid" | "llvm" | "logo" | "lua" | "luau" | "make" | "markdown" | "marko" | "matlab" | "mdc" | "mdx" | "mermaid" | "mipsasm" | "mojo" | "moonbit" | "narrat" | "nextflow" | "nextflow-groovy" | "nginx" | "nim" | "nix" | "nushell" | "objective-c" | "objective-cpp" | "ocaml" | "odin" | "openscad" | "pascal" | "perl" | "php" | "pkl" | "plsql" | "po" | "polar" | "postcss" | "powerquery" | "powershell" | "prisma" | "prolog" | "proto" | "pug" | "puppet" | "purescript" | "python" | "qml" | "qmldir" | "qss" | "racket" | "raku" | "razor" | "reg" | "regexp" | "riscv" | "ron" | "rosmsg" | "rst" | "rust" | "sas" | "sass" | "scala" | "scheme" | "scss" | "sdbl" | "shaderlab" | "shellscript" | "shellsession" | "smalltalk" | "solidity" | "soy" | "sparql" | "splunk" | "sql" | "ssh-config" | "stata" | "surrealql" | "svelte" | "swift" | "system-verilog" | "systemd" | "talonscript" | "tasl" | "tcl" | "templ" | "terraform" | "tex" | "toml" | "ts-tags" | "tsv" | "tsx" | "turtle" | "twig" | "typescript" | "typespec" | "typst" | "v" | "vala" | "vb" | "verilog" | "vhdl" | "viml" | "vue" | "vue-html" | "vue-vine" | "vyper" | "wasm" | "wenyan" | "wgsl" | "wikitext" | "wit" | "wolfram" | "xml" | "xsl" | "yaml" | "zenscript" | "zig")[];
+export declare const CODE_LANGUAGE_IDS: ("stylus" | "d" | "r" | "move" | "html" | "ruby" | "rel" | "json" | "go" | "log" | "abap" | "actionscript-3" | "ada" | "ahk" | "ahk2" | "angular-html" | "angular-ts" | "apache" | "apex" | "apl" | "applescript" | "ara" | "asciidoc" | "asm" | "astro" | "awk" | "ballerina" | "bat" | "beancount" | "berry" | "bibtex" | "bicep" | "bird2" | "blade" | "bsl" | "c" | "c3" | "cadence" | "cairo" | "chapel" | "clarity" | "clojure" | "cmake" | "cobol" | "codeowners" | "codeql" | "coffee" | "common-lisp" | "coq" | "cpp" | "crystal" | "csharp" | "css" | "csv" | "cue" | "cypher" | "dart" | "dax" | "desktop" | "diff" | "docker" | "dotenv" | "dream-maker" | "edge" | "elixir" | "elm" | "emacs-lisp" | "erb" | "erlang" | "fennel" | "fish" | "fluent" | "fortran-fixed-form" | "fortran-free-form" | "fsharp" | "gdresource" | "gdscript" | "gdshader" | "genie" | "gherkin" | "git-commit" | "git-rebase" | "gleam" | "glimmer-js" | "glimmer-ts" | "glsl" | "gn" | "gnuplot" | "graphql" | "groovy" | "hack" | "haml" | "handlebars" | "haskell" | "haxe" | "hcl" | "hjson" | "hlsl" | "html-derivative" | "http" | "hurl" | "hxml" | "hy" | "imba" | "ini" | "java" | "javascript" | "jinja" | "jison" | "json5" | "jsonc" | "jsonl" | "jsonnet" | "jssm" | "jsx" | "julia" | "just" | "kdl" | "kotlin" | "kusto" | "latex" | "lean" | "less" | "liquid" | "llvm" | "logo" | "lua" | "luau" | "make" | "markdown" | "marko" | "matlab" | "mdc" | "mdx" | "mermaid" | "mipsasm" | "mojo" | "moonbit" | "narrat" | "nextflow" | "nextflow-groovy" | "nginx" | "nim" | "nix" | "nsis" | "nushell" | "objective-c" | "objective-cpp" | "ocaml" | "odin" | "openscad" | "org" | "pascal" | "perl" | "php" | "pkl" | "plsql" | "po" | "polar" | "postcss" | "powerquery" | "powershell" | "prisma" | "prolog" | "proto" | "pug" | "puppet" | "purescript" | "python" | "qml" | "qmldir" | "qss" | "racket" | "raku" | "razor" | "rbs" | "reg" | "regexp" | "riscv" | "ron" | "rosmsg" | "rst" | "rust" | "sas" | "sass" | "scala" | "scheme" | "scss" | "sdbl" | "shaderlab" | "shellscript" | "shellsession" | "smalltalk" | "smithy" | "solidity" | "soy" | "sparql" | "splunk" | "sql" | "ssh-config" | "stata" | "surrealql" | "svelte" | "swift" | "system-verilog" | "systemd" | "talonscript" | "tasl" | "tcl" | "templ" | "terraform" | "tex" | "toml" | "ts-tags" | "tsv" | "tsx" | "turtle" | "twig" | "typescript" | "typespec" | "typst" | "v" | "vala" | "vb" | "verilog" | "vhdl" | "viml" | "vue" | "vue-html" | "vue-vine" | "vyper" | "wasm" | "wenyan" | "wgsl" | "wikitext" | "wit" | "wolfram" | "xml" | "xsl" | "yaml" | "zenscript" | "zig")[];
 
 // export: CODE_LANGUAGES
 export declare const CODE_LANGUAGES: readonly [
@@ -2582,11 +2631,26 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "actionscript-3";
         readonly name: "ActionScript";
         readonly aliases: readonly [
+            "actionscript",
+            "as3"
         ];
     },
     {
         readonly id: "ada";
         readonly name: "Ada";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ahk";
+        readonly name: "AutoHotkey";
+        readonly aliases: readonly [
+            "ahk1"
+        ];
+    },
+    {
+        readonly id: "ahk2";
+        readonly name: "AutoHotkey2";
         readonly aliases: readonly [
         ];
     },
@@ -2667,7 +2731,8 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "bat";
         readonly name: "Batch File";
         readonly aliases: readonly [
-            "batch"
+            "batch",
+            "cmd"
         ];
     },
     {
@@ -2741,6 +2806,13 @@ export declare const CODE_LANGUAGES: readonly [
         ];
     },
     {
+        readonly id: "chapel";
+        readonly name: "Chapel";
+        readonly aliases: readonly [
+            "chpl"
+        ];
+    },
+    {
         readonly id: "clarity";
         readonly name: "Clarity";
         readonly aliases: readonly [
@@ -2794,7 +2866,7 @@ export declare const CODE_LANGUAGES: readonly [
     },
     {
         readonly id: "coq";
-        readonly name: "Coq";
+        readonly name: "Rocq";
         readonly aliases: readonly [
         ];
     },
@@ -3260,6 +3332,7 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "just";
         readonly name: "Just";
         readonly aliases: readonly [
+            "justfile"
         ];
     },
     {
@@ -3449,6 +3522,12 @@ export declare const CODE_LANGUAGES: readonly [
         ];
     },
     {
+        readonly id: "nsis";
+        readonly name: "NSIS";
+        readonly aliases: readonly [
+        ];
+    },
+    {
         readonly id: "nushell";
         readonly name: "nushell";
         readonly aliases: readonly [
@@ -3485,6 +3564,12 @@ export declare const CODE_LANGUAGES: readonly [
         readonly name: "OpenSCAD";
         readonly aliases: readonly [
             "scad"
+        ];
+    },
+    {
+        readonly id: "org";
+        readonly name: "Org Markup";
+        readonly aliases: readonly [
         ];
     },
     {
@@ -3548,7 +3633,8 @@ export declare const CODE_LANGUAGES: readonly [
         readonly name: "PowerShell";
         readonly aliases: readonly [
             "ps",
-            "ps1"
+            "ps1",
+            "pwsh"
         ];
     },
     {
@@ -3637,6 +3723,13 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "razor";
         readonly name: "ASP.NET Razor";
         readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "rbs";
+        readonly name: "RBS";
+        readonly aliases: readonly [
+            "ruby-signature"
         ];
     },
     {
@@ -3759,7 +3852,13 @@ export declare const CODE_LANGUAGES: readonly [
     },
     {
         readonly id: "smalltalk";
-        readonly name: "Smalltalk";
+        readonly name: "GNU Smalltalk";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "smithy";
+        readonly name: "Smithy";
         readonly aliases: readonly [
         ];
     },
@@ -3960,7 +4059,6 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "vb";
         readonly name: "Visual Basic";
         readonly aliases: readonly [
-            "cmd"
         ];
     },
     {
@@ -5219,7 +5317,7 @@ export declare function lockCodeHighlightEngine(): CodeHighlightEngine;
 export declare function canonicalCodeLanguage(value: string): CodeLanguageId | undefined;
 
 // export: CODE_LANGUAGE_IDS
-export declare const CODE_LANGUAGE_IDS: ("stylus" | "d" | "r" | "move" | "html" | "ruby" | "rel" | "json" | "go" | "log" | "abap" | "actionscript-3" | "ada" | "angular-html" | "angular-ts" | "apache" | "apex" | "apl" | "applescript" | "ara" | "asciidoc" | "asm" | "astro" | "awk" | "ballerina" | "bat" | "beancount" | "berry" | "bibtex" | "bicep" | "bird2" | "blade" | "bsl" | "c" | "c3" | "cadence" | "cairo" | "clarity" | "clojure" | "cmake" | "cobol" | "codeowners" | "codeql" | "coffee" | "common-lisp" | "coq" | "cpp" | "crystal" | "csharp" | "css" | "csv" | "cue" | "cypher" | "dart" | "dax" | "desktop" | "diff" | "docker" | "dotenv" | "dream-maker" | "edge" | "elixir" | "elm" | "emacs-lisp" | "erb" | "erlang" | "fennel" | "fish" | "fluent" | "fortran-fixed-form" | "fortran-free-form" | "fsharp" | "gdresource" | "gdscript" | "gdshader" | "genie" | "gherkin" | "git-commit" | "git-rebase" | "gleam" | "glimmer-js" | "glimmer-ts" | "glsl" | "gn" | "gnuplot" | "graphql" | "groovy" | "hack" | "haml" | "handlebars" | "haskell" | "haxe" | "hcl" | "hjson" | "hlsl" | "html-derivative" | "http" | "hurl" | "hxml" | "hy" | "imba" | "ini" | "java" | "javascript" | "jinja" | "jison" | "json5" | "jsonc" | "jsonl" | "jsonnet" | "jssm" | "jsx" | "julia" | "just" | "kdl" | "kotlin" | "kusto" | "latex" | "lean" | "less" | "liquid" | "llvm" | "logo" | "lua" | "luau" | "make" | "markdown" | "marko" | "matlab" | "mdc" | "mdx" | "mermaid" | "mipsasm" | "mojo" | "moonbit" | "narrat" | "nextflow" | "nextflow-groovy" | "nginx" | "nim" | "nix" | "nushell" | "objective-c" | "objective-cpp" | "ocaml" | "odin" | "openscad" | "pascal" | "perl" | "php" | "pkl" | "plsql" | "po" | "polar" | "postcss" | "powerquery" | "powershell" | "prisma" | "prolog" | "proto" | "pug" | "puppet" | "purescript" | "python" | "qml" | "qmldir" | "qss" | "racket" | "raku" | "razor" | "reg" | "regexp" | "riscv" | "ron" | "rosmsg" | "rst" | "rust" | "sas" | "sass" | "scala" | "scheme" | "scss" | "sdbl" | "shaderlab" | "shellscript" | "shellsession" | "smalltalk" | "solidity" | "soy" | "sparql" | "splunk" | "sql" | "ssh-config" | "stata" | "surrealql" | "svelte" | "swift" | "system-verilog" | "systemd" | "talonscript" | "tasl" | "tcl" | "templ" | "terraform" | "tex" | "toml" | "ts-tags" | "tsv" | "tsx" | "turtle" | "twig" | "typescript" | "typespec" | "typst" | "v" | "vala" | "vb" | "verilog" | "vhdl" | "viml" | "vue" | "vue-html" | "vue-vine" | "vyper" | "wasm" | "wenyan" | "wgsl" | "wikitext" | "wit" | "wolfram" | "xml" | "xsl" | "yaml" | "zenscript" | "zig")[];
+export declare const CODE_LANGUAGE_IDS: ("stylus" | "d" | "r" | "move" | "html" | "ruby" | "rel" | "json" | "go" | "log" | "abap" | "actionscript-3" | "ada" | "ahk" | "ahk2" | "angular-html" | "angular-ts" | "apache" | "apex" | "apl" | "applescript" | "ara" | "asciidoc" | "asm" | "astro" | "awk" | "ballerina" | "bat" | "beancount" | "berry" | "bibtex" | "bicep" | "bird2" | "blade" | "bsl" | "c" | "c3" | "cadence" | "cairo" | "chapel" | "clarity" | "clojure" | "cmake" | "cobol" | "codeowners" | "codeql" | "coffee" | "common-lisp" | "coq" | "cpp" | "crystal" | "csharp" | "css" | "csv" | "cue" | "cypher" | "dart" | "dax" | "desktop" | "diff" | "docker" | "dotenv" | "dream-maker" | "edge" | "elixir" | "elm" | "emacs-lisp" | "erb" | "erlang" | "fennel" | "fish" | "fluent" | "fortran-fixed-form" | "fortran-free-form" | "fsharp" | "gdresource" | "gdscript" | "gdshader" | "genie" | "gherkin" | "git-commit" | "git-rebase" | "gleam" | "glimmer-js" | "glimmer-ts" | "glsl" | "gn" | "gnuplot" | "graphql" | "groovy" | "hack" | "haml" | "handlebars" | "haskell" | "haxe" | "hcl" | "hjson" | "hlsl" | "html-derivative" | "http" | "hurl" | "hxml" | "hy" | "imba" | "ini" | "java" | "javascript" | "jinja" | "jison" | "json5" | "jsonc" | "jsonl" | "jsonnet" | "jssm" | "jsx" | "julia" | "just" | "kdl" | "kotlin" | "kusto" | "latex" | "lean" | "less" | "liquid" | "llvm" | "logo" | "lua" | "luau" | "make" | "markdown" | "marko" | "matlab" | "mdc" | "mdx" | "mermaid" | "mipsasm" | "mojo" | "moonbit" | "narrat" | "nextflow" | "nextflow-groovy" | "nginx" | "nim" | "nix" | "nsis" | "nushell" | "objective-c" | "objective-cpp" | "ocaml" | "odin" | "openscad" | "org" | "pascal" | "perl" | "php" | "pkl" | "plsql" | "po" | "polar" | "postcss" | "powerquery" | "powershell" | "prisma" | "prolog" | "proto" | "pug" | "puppet" | "purescript" | "python" | "qml" | "qmldir" | "qss" | "racket" | "raku" | "razor" | "rbs" | "reg" | "regexp" | "riscv" | "ron" | "rosmsg" | "rst" | "rust" | "sas" | "sass" | "scala" | "scheme" | "scss" | "sdbl" | "shaderlab" | "shellscript" | "shellsession" | "smalltalk" | "smithy" | "solidity" | "soy" | "sparql" | "splunk" | "sql" | "ssh-config" | "stata" | "surrealql" | "svelte" | "swift" | "system-verilog" | "systemd" | "talonscript" | "tasl" | "tcl" | "templ" | "terraform" | "tex" | "toml" | "ts-tags" | "tsv" | "tsx" | "turtle" | "twig" | "typescript" | "typespec" | "typst" | "v" | "vala" | "vb" | "verilog" | "vhdl" | "viml" | "vue" | "vue-html" | "vue-vine" | "vyper" | "wasm" | "wenyan" | "wgsl" | "wikitext" | "wit" | "wolfram" | "xml" | "xsl" | "yaml" | "zenscript" | "zig")[];
 
 // export: CODE_LANGUAGES
 export declare const CODE_LANGUAGES: readonly [
@@ -5233,11 +5331,26 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "actionscript-3";
         readonly name: "ActionScript";
         readonly aliases: readonly [
+            "actionscript",
+            "as3"
         ];
     },
     {
         readonly id: "ada";
         readonly name: "Ada";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ahk";
+        readonly name: "AutoHotkey";
+        readonly aliases: readonly [
+            "ahk1"
+        ];
+    },
+    {
+        readonly id: "ahk2";
+        readonly name: "AutoHotkey2";
         readonly aliases: readonly [
         ];
     },
@@ -5318,7 +5431,8 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "bat";
         readonly name: "Batch File";
         readonly aliases: readonly [
-            "batch"
+            "batch",
+            "cmd"
         ];
     },
     {
@@ -5392,6 +5506,13 @@ export declare const CODE_LANGUAGES: readonly [
         ];
     },
     {
+        readonly id: "chapel";
+        readonly name: "Chapel";
+        readonly aliases: readonly [
+            "chpl"
+        ];
+    },
+    {
         readonly id: "clarity";
         readonly name: "Clarity";
         readonly aliases: readonly [
@@ -5445,7 +5566,7 @@ export declare const CODE_LANGUAGES: readonly [
     },
     {
         readonly id: "coq";
-        readonly name: "Coq";
+        readonly name: "Rocq";
         readonly aliases: readonly [
         ];
     },
@@ -5911,6 +6032,7 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "just";
         readonly name: "Just";
         readonly aliases: readonly [
+            "justfile"
         ];
     },
     {
@@ -6100,6 +6222,12 @@ export declare const CODE_LANGUAGES: readonly [
         ];
     },
     {
+        readonly id: "nsis";
+        readonly name: "NSIS";
+        readonly aliases: readonly [
+        ];
+    },
+    {
         readonly id: "nushell";
         readonly name: "nushell";
         readonly aliases: readonly [
@@ -6136,6 +6264,12 @@ export declare const CODE_LANGUAGES: readonly [
         readonly name: "OpenSCAD";
         readonly aliases: readonly [
             "scad"
+        ];
+    },
+    {
+        readonly id: "org";
+        readonly name: "Org Markup";
+        readonly aliases: readonly [
         ];
     },
     {
@@ -6199,7 +6333,8 @@ export declare const CODE_LANGUAGES: readonly [
         readonly name: "PowerShell";
         readonly aliases: readonly [
             "ps",
-            "ps1"
+            "ps1",
+            "pwsh"
         ];
     },
     {
@@ -6288,6 +6423,13 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "razor";
         readonly name: "ASP.NET Razor";
         readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "rbs";
+        readonly name: "RBS";
+        readonly aliases: readonly [
+            "ruby-signature"
         ];
     },
     {
@@ -6410,7 +6552,13 @@ export declare const CODE_LANGUAGES: readonly [
     },
     {
         readonly id: "smalltalk";
-        readonly name: "Smalltalk";
+        readonly name: "GNU Smalltalk";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "smithy";
+        readonly name: "Smithy";
         readonly aliases: readonly [
         ];
     },
@@ -6611,7 +6759,6 @@ export declare const CODE_LANGUAGES: readonly [
         readonly id: "vb";
         readonly name: "Visual Basic";
         readonly aliases: readonly [
-            "cmd"
         ];
     },
     {

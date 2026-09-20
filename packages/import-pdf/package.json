@@ -52,7 +52,7 @@
   "dependencies": {
     "@atlcli/core": "workspace:*",
     "@atlcli/import-core": "workspace:*",
-    "@embedpdf/pdfium": "2.15.0",
+    "@embedpdf/pdfium": "2.15.1",
     "yaml": "2.9.1"
   },
   "devDependencies": {

@@ -4,25 +4,25 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const PDFIUM_PACKAGE_VERSION = "2.15.0";
-export const PDFIUM_RELEASE_COMMIT = "2cf7df3b594dfe46de2d85e6973ff50ea447a1ed";
-export const PDFIUM_FORK_COMMIT = "cb29e78f2ba00c9298714d5f4a8bf7765f1e802f";
-export const PDFIUM_WASM_SHA256 = "c0af5a6aca30d7e54a149c3a68e317116ca906d6edc28fd3318b12c7d9478ac8";
-export const PDFIUM_WASM_BYTES = 4_633_788;
-export const PDFIUM_NPM_INTEGRITY = "sha512-KgpRND2MYcdbhzb2EMb4WzWcJYrR0A6JXvhMv4WthEHKt6qmNo2v/MC68bpYvpveYT9GNnUnY/+TG5MpXY3pRw==";
+export const PDFIUM_PACKAGE_VERSION = "2.15.1";
+export const PDFIUM_RELEASE_COMMIT = "176ec6daac51458c9e80733b9c92a66a3bc5e2d1";
+export const PDFIUM_FORK_COMMIT = "73a041a5c1aaffa09ebb64f1981ff501cb91a41c";
+export const PDFIUM_WASM_SHA256 = "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa";
+export const PDFIUM_WASM_BYTES = 4_646_932;
+export const PDFIUM_NPM_INTEGRITY = "sha512-qDH4gEkGSQT0iM+07Hpm3LyvoB7PEFbW3Qyk6+LPkEYLJYfHagkHM1OzYlDq2EDOhJRguykTkzdMOT3/w27x5Q==";
 
 const THIRD_PARTY_NOTICES = `# PDFium import runtime notices
 
 AtlCLI distributes the exact WebAssembly binary from
-\`@embedpdf/pdfium@2.15.0\`. The JavaScript wrapper is MIT-licensed; its
+\`@embedpdf/pdfium@2.15.1\`. The JavaScript wrapper is MIT-licensed; its
 license is in \`LICENSE\`. PDFium is BSD-licensed and the package also carries
 the Apache License 2.0 text; both are in \`LICENSE.pdfium\`.
 
 Reviewed source identities:
 
-- wrapper release: https://github.com/embedpdf/embed-pdf-viewer/releases/tag/v2.15.0
-- wrapper release commit: \`2cf7df3b594dfe46de2d85e6973ff50ea447a1ed\`
-- PDFium fork input: https://github.com/embedpdf/pdfium/tree/cb29e78f2ba00c9298714d5f4a8bf7765f1e802f
+- wrapper release: https://github.com/embedpdf/embed-pdf-viewer/releases/tag/v2.15.1
+- wrapper release commit: \`176ec6daac51458c9e80733b9c92a66a3bc5e2d1\`
+- PDFium fork input: https://github.com/embedpdf/pdfium/tree/73a041a5c1aaffa09ebb64f1981ff501cb91a41c
 
 The upstream npm artifact does not include an SBOM or a complete transitive
 third-party notice inventory. Production release review must reconcile the
@@ -98,7 +98,7 @@ export function ensureVendoredPdfium(): { vendorDir: string; refreshed: boolean 
     package: "@embedpdf/pdfium",
     packageVersion: PDFIUM_PACKAGE_VERSION,
     npmIntegrity: PDFIUM_NPM_INTEGRITY,
-    releaseTag: "v2.15.0",
+    releaseTag: "v2.15.1",
     releaseCommit: PDFIUM_RELEASE_COMMIT,
     pdfiumForkCommit: PDFIUM_FORK_COMMIT,
     wasmBytes: PDFIUM_WASM_BYTES,
