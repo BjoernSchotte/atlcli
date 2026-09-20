@@ -24,6 +24,7 @@ one oversized wiki page.
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
 - [Preview and confirmation](#preview-and-confirmation)
+- [Source fidelity diagnostics](#source-fidelity-diagnostics)
 - [What is supported](#what-is-supported)
 - [Splitting long PDFs](#splitting-long-pdfs)
 - [Scans and visual fallbacks](#scans-and-visual-fallbacks)
@@ -90,6 +91,43 @@ atlcli wiki import handbook.pdf --space TEAM --json > import-preview.json
 The confirmed run analyzes the same source again and publishes the resulting
 review plan. Non-interactive use must pass `--confirm`; there is no implicit
 write. `--dry-run` and `--confirm` are mutually exclusive.
+
+## Source fidelity diagnostics
+
+The preview separates two checks that answer different questions:
+
+- **Extraction/source fidelity** checks whether every visible source character
+  has exactly one semantic or fallback owner, and whether every material text
+  boundary has explicit or sufficiently strong inferred evidence.
+- **Confluence semantic readback** runs after publication and checks whether
+  the projected headings, paragraphs, lists, tables, media, and links arrived
+  intact. It is a transport-integrity check; it cannot prove that the original
+  PDF was extracted correctly.
+
+JSON review schema V3 reports body-free counts per source page. Boundary counts
+distinguish authored whitespace (`explicitBoundaryCount`), deterministic
+inference (`inferredBoundaryCount`), its separately visible dehyphenation
+subset (`dehyphenatedBoundaryCount`), and ambiguity
+(`unresolvedBoundaryCount`). Ownership counts distinguish tagged, geometry,
+and visual-fallback owners, plus unowned characters and duplicate ownership
+attempts. Repair-region count, fallback scope, and normalized fallback area
+show how much non-native recovery was necessary.
+
+The terminal preview prints the source page label, these counts, fallback
+scope, and a body-free decision code. `pdf/source-fidelity-accounted` means the
+page has neither unresolved boundaries nor ownership failures.
+`pdf/text-boundary-unresolved` identifies a material spacing or joining
+decision that evidence could not settle. `pdf/character-ownership-failed`
+identifies an unowned visible character or a duplicate ownership attempt.
+Neither diagnostic prints the affected source text.
+
+On partially tagged pages, `auto` keeps verified tagged structures and repairs
+only residual regions with qualified geometry. If a region cannot be repaired
+safely, a localized visual fallback is preferred; a page fallback is the last
+safe option. `--unsupported fail` blocks unresolved boundaries and ownership
+failures even when the rest of the page looks plausible. Use
+`--unsupported report` only with the existing explicit fallback/report
+acknowledgments and after reviewing the affected page labels and locators.
 
 ## What is supported
 
@@ -373,6 +411,8 @@ by that run, children before parents.
   default.
 - Local preview reports digests and bounded evidence. Do not commit customer
   PDFs, extracted bodies, tenant identifiers, live URLs, or raw API receipts.
+- Never commit a customer PDF or any derived body, crop, screenshot, fixture,
+  digest, or diagnostic artifact that can identify or reconstruct its content.
 - Hard cancellation in browser hosts is Worker termination. The CLI checks
   cancellation and deadlines between bounded PDFium operations and releases
   page/document/bitmap/structure resources in reverse ownership order.
@@ -389,6 +429,9 @@ release claim.
 |---|---|---|
 | `Format mismatch` | Extension/flag says PDF but bytes do not start with `%PDF-` | Select the correct file or pass the correct `--format`. |
 | `--reading-order tags requires a tagged PDF` | The source has no usable structure tree | Use `auto`, review conservative geometry, or obtain a properly tagged source. |
+| Words appear merged in preview | A source boundary was absent or inferred incorrectly | Inspect V3 page metrics and `reviewRegions`; do not publish if the exact neutral/source-authorized review is wrong. Prefer a corrected source PDF over text post-processing. |
+| `pdf/text-boundary-unresolved` blocks publication | Geometry, tags, or text-run evidence cannot prove a material join or space | Keep `--unsupported fail`, obtain a better-authored PDF, or explicitly review a localized/page fallback under the report policy. |
+| `pdf/character-ownership-failed` blocks publication | A visible character is unowned or has competing semantic owners | Review the page locator and fallback scope. Do not bypass the blocker without explicit reported/fallback coverage. |
 | Image-only page blocks publication | Default scan policy forbids silent empty output | Choose `page-image`, or use `report` plus both publication acknowledgements. |
 | Too many wiki pages | Heading/range plan exceeds `--max-wiki-pages` | Increase the cap up to 200 or choose a larger `pages:N` target; review the new plan. |
 | `--split off` is rejected | Source exceeds 40 pages or a hard editability budget | Use `auto`, heading, or page-range splitting. |

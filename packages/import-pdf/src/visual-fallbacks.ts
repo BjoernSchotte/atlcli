@@ -5,7 +5,9 @@ import {
   PDF_VISUAL_FALLBACK_POLICY_REVISION,
   type PdfAssetMaterializationRequestV1,
   type PdfDecisionEvidenceV1,
+  type PdfDecisionEvidenceV2,
   type PdfFactsAdapter,
+  type PdfFactsAdapterV2,
   type PdfMaterializedAssetV1,
   type PdfNormalizedRect,
 } from "./contracts.js";
@@ -114,13 +116,17 @@ function verifiedMaterialized(
   return asset;
 }
 
-export async function materializePdfVisualFallbacks(
+type PdfVisualFallbackEvidence = PdfDecisionEvidenceV1 | PdfDecisionEvidenceV2;
+type PdfVisualFallbackAdapter = PdfFactsAdapter | PdfFactsAdapterV2;
+
+async function materializePdfVisualFallbackCandidates<E extends PdfVisualFallbackEvidence>(
   sourceBytes: Uint8Array,
-  adapter: PdfFactsAdapter,
+  adapter: PdfVisualFallbackAdapter,
   document: ImportDocumentV2,
-  evidence: readonly PdfDecisionEvidenceV1[],
+  evidence: readonly E[],
   assessments: readonly PdfPageFallbackAssessmentV1[],
-): Promise<{ document: ImportDocumentV2; evidence: PdfDecisionEvidenceV1[] }> {
+  v2: boolean,
+): Promise<{ document: ImportDocumentV2; evidence: E[] }> {
   const candidates = fallbackCandidates(assessments);
   if (candidates.length === 0) return { document, evidence: [...evidence] };
   const materialized = await adapter.materialize(sourceBytes, candidates.map((candidate) => candidate.request));
@@ -131,8 +137,14 @@ export async function materializePdfVisualFallbacks(
   const assets = new Map<string, ImportAsset>(document.assets.map((asset) => [asset.id, asset]));
   const additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }> = [];
   const nextEvidence = [...evidence];
+  const regionCoveredCodes = new Set([
+    "pdf-import/tagged-node-demoted",
+    "pdf-import/tagged-figure-deferred",
+    "pdf-import/hybrid-region-fallback-required",
+    "pdf-import/text-boundary-unresolved",
+  ]);
   const issues: ImportIssue[] = document.issues.map((issue) => {
-    if (issue.outcome !== "reported" || issue.code !== "pdf-import/tagged-node-demoted") return issue;
+    if (issue.outcome !== "reported" || !regionCoveredCodes.has(issue.code)) return issue;
     const covered = candidates.some((candidate) =>
       candidate.kind === "region" && candidate.sourceRefs.some((sourceRef) => issue.sourceRefs?.includes(sourceRef))
     );
@@ -145,6 +157,10 @@ export async function materializePdfVisualFallbacks(
     "pdf-import/tagged-structure-missing",
     "pdf-import/tagged-text-unclaimed",
     "pdf-import/tagged-node-demoted",
+    "pdf-import/tagged-figure-deferred",
+    "pdf-import/hybrid-page-fallback-required",
+    "pdf-import/hybrid-region-fallback-required",
+    "pdf-import/text-boundary-unresolved",
   ]);
   for (let index = 0; index < issues.length; index += 1) {
     const issue = issues[index]!;
@@ -205,7 +221,7 @@ export async function materializePdfVisualFallbacks(
       x: candidate.bbox.x,
       height: 0,
     });
-    nextEvidence.push({
+    const attachedEvidence: PdfDecisionEvidenceV1 = {
       sourceId: candidate.id,
       targetNodeId: blockId,
       locator: { pageIndex: candidate.pageIndex, bbox: candidate.bbox },
@@ -216,7 +232,10 @@ export async function materializePdfVisualFallbacks(
         : "pdf/region-image-fallback-attached",
       outcome: "attached",
       analyzerRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,
-    });
+    };
+    nextEvidence.push((v2
+      ? { ...attachedEvidence, boundaryDecisionIds: [] }
+      : attachedEvidence) as E);
     issues.push({
       code: candidate.kind === "page"
         ? "pdf-import/page-image-fallback-attached"
@@ -233,10 +252,46 @@ export async function materializePdfVisualFallbacks(
   return {
     document: {
       ...document,
-      blocks: mergePdfBlocksByEvidence(document.blocks, additions, nextEvidence),
+      blocks: v2
+        ? mergePdfBlocksByEvidence(document.blocks, additions, nextEvidence as PdfDecisionEvidenceV2[])
+        : mergePdfBlocksByEvidence(document.blocks, additions, nextEvidence as PdfDecisionEvidenceV1[]),
       assets: [...assets.values()],
       issues,
     },
     evidence: nextEvidence,
   };
+}
+
+export function materializePdfVisualFallbacks(
+  sourceBytes: Uint8Array,
+  adapter: PdfFactsAdapter,
+  document: ImportDocumentV2,
+  evidence: readonly PdfDecisionEvidenceV1[],
+  assessments: readonly PdfPageFallbackAssessmentV1[],
+): Promise<{ document: ImportDocumentV2; evidence: PdfDecisionEvidenceV1[] }> {
+  return materializePdfVisualFallbackCandidates(
+    sourceBytes,
+    adapter,
+    document,
+    evidence,
+    assessments,
+    false,
+  );
+}
+
+export function materializePdfVisualFallbacksV2(
+  sourceBytes: Uint8Array,
+  adapter: PdfFactsAdapterV2,
+  document: ImportDocumentV2,
+  evidence: readonly PdfDecisionEvidenceV2[],
+  assessments: readonly PdfPageFallbackAssessmentV1[],
+): Promise<{ document: ImportDocumentV2; evidence: PdfDecisionEvidenceV2[] }> {
+  return materializePdfVisualFallbackCandidates(
+    sourceBytes,
+    adapter,
+    document,
+    evidence,
+    assessments,
+    true,
+  );
 }
