@@ -27,6 +27,6 @@
     "yaml": "2.9.1"
   },
   "devDependencies": {
-    "pizzip": "3.2.0"
+    "pizzip": "3.3.0"
   }
 }
