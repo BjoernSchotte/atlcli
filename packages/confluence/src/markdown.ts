@@ -87,9 +87,13 @@ md.renderer.rules.fence = (tokens, idx) => {
     return `<ac:structured-macro ac:name="mermaid" ac:schema-version="1"><ac:parameter ac:name="theme">${theme}</ac:parameter>${serializePlainTextBody(JSON.stringify({ diagramDefinition: content }))}</ac:structured-macro>`;
   }
 
+  // markdown-it ends fence content with the newline before the closing fence;
+  // the pull side re-adds it, so drop exactly one to keep round trips stable.
+  const code = content.endsWith("\n") ? content.slice(0, -1) : content;
+
   // Handle noformat blocks: ```noformat
   if (info.toLowerCase() === "noformat") {
-    return `<ac:structured-macro ac:name="noformat">\n${serializePlainTextBody(content)}\n</ac:structured-macro>`;
+    return `<ac:structured-macro ac:name="noformat">\n${serializePlainTextBody(code)}\n</ac:structured-macro>`;
   }
 
   // Parse extended syntax: ```lang{title="..." collapse}
@@ -115,7 +119,7 @@ md.renderer.rules.fence = (tokens, idx) => {
     if (hasCollapse) {
       macroHtml += `\n<ac:parameter ac:name="collapse">true</ac:parameter>`;
     }
-    macroHtml += `\n${serializePlainTextBody(content)}\n</ac:structured-macro>`;
+    macroHtml += `\n${serializePlainTextBody(code)}\n</ac:structured-macro>`;
 
     return macroHtml;
   }
@@ -125,7 +129,7 @@ md.renderer.rules.fence = (tokens, idx) => {
   if (info) {
     macroHtml += `\n<ac:parameter ac:name="language">${escapeHtml(info)}</ac:parameter>`;
   }
-  macroHtml += `\n${serializePlainTextBody(content)}\n</ac:structured-macro>`;
+  macroHtml += `\n${serializePlainTextBody(code)}\n</ac:structured-macro>`;
   return macroHtml;
 };
 

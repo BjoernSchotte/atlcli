@@ -674,6 +674,33 @@ describe("round-trip conversion", () => {
     expect(roundtrip).not.toContain('class=""');
   });
 
+  test("fence content is stored without the closing-fence newline", () => {
+    expect(markdownToStorage("```sh\necho hi\n```\n")).toContain("<![CDATA[echo hi]]>");
+    expect(markdownToStorage('```sh{title="x"}\necho hi\n```\n')).toContain("<![CDATA[echo hi]]>");
+    expect(markdownToStorage("```noformat\nraw\n```\n")).toContain("<![CDATA[raw]]>");
+  });
+
+  test("native code body without trailing newline pulls to a tight fence", () => {
+    const storage =
+      '<ac:structured-macro ac:name="code"><ac:plain-text-body><![CDATA[echo hi]]></ac:plain-text-body></ac:structured-macro>';
+    expect(storageToMarkdown(storage)).toContain("```\necho hi\n```");
+  });
+
+  test.each([
+    ["code", "```sh\necho hi\n```\n"],
+    ["noformat", "```noformat\nraw\n```\n"],
+    ["intentional trailing blank line", "```sh\necho hi\n\n```\n"],
+  ])("%s block is stable across repeated round trips (regression)", (_name, original) => {
+    const storage = markdownToStorage(original);
+    let md = storageToMarkdown(storage);
+    expect(md).toBe(original);
+    for (let i = 0; i < 3; i++) {
+      expect(markdownToStorage(md)).toBe(storage);
+      md = storageToMarkdown(markdownToStorage(md));
+      expect(md).toBe(original);
+    }
+  });
+
   test("split CDATA terminators survive storage → markdown → storage", () => {
     const original = '```xml\nconst terminator = "]]>";\n```\n';
     const storage = markdownToStorage(original);
