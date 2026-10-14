@@ -424,31 +424,8 @@ export function inspectSingleBinaryTarGz(bytes: Uint8Array): { name: string; mod
   return entries[0]!;
 }
 
-function assertBinaryIdentity(binary: Uint8Array, metadata: BuildMetadata): void {
-  const text = Buffer.from(binary);
-  const shortSha = metadata.sourceSha.slice(0, 8);
-  const dev = /^dev-(\d{8})\.(\d+)\.(\d+)-([0-9a-f]{8})$/.exec(metadata.buildId);
-  const cliVersion = metadata.channel === "stable"
-    ? metadata.rootVersion
-    : `${metadata.rootVersion}-dev.${dev?.[1]}.${dev?.[2]}.${dev?.[3]}+${shortSha}`;
-  const createdSecond = metadata.run.createdAt.slice(0, 19).replaceAll(/[-:T]/g, "");
-  const homebrewVersion = metadata.channel === "stable"
-    ? metadata.rootVersion
-    : `${createdSecond}.${dev?.[2]}.${dev?.[3]}`;
-  for (const expected of [
-    "atlcli.release-info/v1",
-    cliVersion,
-    metadata.sourceSha,
-    metadata.buildId,
-    metadata.releaseTag,
-    homebrewVersion,
-  ]) {
-    if (!text.includes(Buffer.from(expected))) {
-      throw new Error(`CLI binary does not contain release identity field: ${expected}`);
-    }
-  }
-}
-
+// Compiled Bun bundles can encode/compress JavaScript strings. Runtime identity
+// is verified on all five native runners before either channel can publish.
 async function inspectCliArchive(name: string, bytes: Uint8Array, metadata: BuildMetadata): Promise<void> {
   if (name.endsWith(".tar.gz")) {
     const entries = inspectTarGz(bytes);
@@ -460,7 +437,6 @@ async function inspectCliArchive(name: string, bytes: Uint8Array, metadata: Buil
     }
     if (binary.bytes.byteLength > 256 * 1024 * 1024) throw new Error(`${name} binary exceeds size limit`);
     if ((binary.mode & 0o111) === 0) throw new Error(`${name} binary is not executable`);
-    assertBinaryIdentity(binary.bytes, metadata);
     return;
   }
   const entries = inspectZipCentralDirectory(bytes, {
@@ -471,8 +447,7 @@ async function inspectCliArchive(name: string, bytes: Uint8Array, metadata: Buil
     throw new Error(`${name} must contain only atlcli.exe`);
   }
   const archive = await JSZip.loadAsync(bytes, { checkCRC32: true });
-  const binary = await archive.file("atlcli.exe")!.async("uint8array");
-  assertBinaryIdentity(binary, metadata);
+  await archive.file("atlcli.exe")!.async("uint8array");
 }
 
 function parseJson<T>(path: string): T {

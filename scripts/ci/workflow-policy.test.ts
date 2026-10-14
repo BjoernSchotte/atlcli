@@ -349,6 +349,7 @@ describe("CI workflow policy", () => {
       create!.indexOf("github-release-transaction.ts create-draft"),
     );
     expect(verify).toContain("contents: write");
+    expect(verify).toContain("persist-credentials: false");
     expect(verify).toContain("GitHub exposes draft releases only to repository writers");
     expect(verify).toContain("github-release-transaction.ts download-draft");
     expect(verify).toContain("verify-release-artifacts.ts --dir downloaded");
@@ -369,6 +370,7 @@ describe("CI workflow policy", () => {
     expect(native).toContain("github-release-transaction.ts download-native-asset");
     expect(native).toContain("verify-native-cli.ts");
     expect(native).toContain("contents: write");
+    expect(native).toContain('--created-at "${{ needs.resolve-source.outputs.created_at }}"');
     expect(native).toContain("not present while the downloaded CLI itself executes");
     expect(publish).toContain(
       "needs: [resolve-source, publication-decision, create-draft, verify-downloaded-draft, native-cli-consumer]",
@@ -400,19 +402,21 @@ describe("CI workflow policy", () => {
       create!.indexOf("github-release-transaction.ts create-draft"),
     );
     const verify = block(stable, /^ {2}verify-downloaded-draft:\s*$/, 2);
+    expect(verify).toContain("contents: write");
     expect(verify).toContain("download-draft");
     expect(verify).toContain("test:worker-extension-browser:prebuilt");
     for (const suite of ["jobs", "research", "rovo", "palette"]) {
       expect(verify).not.toContain(`test:${suite}-extension-browser:prebuilt`);
     }
     const native = block(stable, /^ {2}native-cli-consumer:\s*$/, 2);
+    expect(native).toContain("contents: write");
     expect(native).toContain("download-native-asset");
     expect(native).toContain("verify-native-cli.ts");
     const publish = block(stable, /^ {2}publish-draft:\s*$/, 2);
     expect(publish).toContain("needs: [resolve, create-draft, verify-downloaded-draft, native-cli-consumer]");
     expect(publish).toContain("publish-draft");
     expect(block(stable, /^ {2}verify-published:\s*$/, 2)).toContain("verify-published");
-    expect(stable.match(/contents: write/g)).toHaveLength(2);
+    expect(stable.match(/contents: write/g)).toHaveLength(4);
     expect(stable).not.toContain("--clobber");
     expect(stable).not.toContain("softprops/action-gh-release");
   });

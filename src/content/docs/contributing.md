@@ -392,6 +392,13 @@ bun scripts/release.ts --dry-run
 8. Waits for release artifacts
 9. Triggers Homebrew tap update
 
+Archive verification binds safe archive contents to exact checksums, build
+metadata and security receipts. Compiled Bun executables can encode JavaScript
+strings, so searching their raw bytes does not prove release identity. Before
+publication, all five native runners execute the downloaded CLI and verify its
+reported version, channel, source SHA, tag and Homebrew version. Both stable and
+dev publication require this complete native consumer gate.
+
 ### Options
 
 - `--dry-run` - Print the release plan and exit; makes no changes
