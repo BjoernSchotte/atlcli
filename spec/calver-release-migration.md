@@ -1,6 +1,6 @@
 # CalVer für atlcli: Analyse und Umstellungsvorschlag
 
-Stand: 2026-10-14, atlcli HEAD `22857951`. Status: Vorschlag, keine Implementierung oder Release-Freigabe.
+Stand: 2026-10-14, atlcli HEAD `22857951`. Status: Implementiert im Draft-PR #233; erster tatsächlicher Release weiterhin separat freizugeben.
 
 ## Ziel und bestätigte Abgrenzung
 
@@ -81,26 +81,26 @@ Dateien: `scripts/release.ts`, `scripts/release.test.ts`; ein kleiner reiner
 CalVer-Helper mit Tests unter `scripts/`, falls die Logik das Release-Skript
 sonst unnötig belastet. Keine generische Versionierungsstrategie-Abstraktion.
 
-- [ ] `patch/minor/major` entfernen und mit verständlicher Migrationsmeldung
+- [x] `patch/minor/major` entfernen und mit verständlicher Migrationsmeldung
   ablehnen; kein stilles Ignorieren alter Eingaben. Neuer Aufruf:
   `bun scripts/release.ts --dry-run`, `--preview`, oder ohne diese Flags.
-- [ ] Eine Uhrzeit pro Aufruf erfassen und durchreichen; UTC-Monat nicht zwischen
+- [x] Eine Uhrzeit pro Aufruf erfassen und durchreichen; UTC-Monat nicht zwischen
   mehreren Date-Aufrufen berechnen. Version, Preview und Commit verwenden denselben Kandidaten.
-- [ ] Reiner Kern: Tags normalisieren/validieren, numerische Tupel vergleichen,
+- [x] Reiner Kern: Tags normalisieren/validieren, numerische Tupel vergleichen,
   Monatsmaximum bestimmen, Kandidat berechnen, Monotonie und Chrome-Limit prüfen.
   Legacy-Stable-Tags bleiben als Vergleichs-/Changelog-Basis lesbar.
-- [ ] Echter Schnitt: main/sauber prüfen, origin/main und Tags aktualisieren,
+- [x] Echter Schnitt: main/sauber prüfen, origin/main und Tags aktualisieren,
   Gleichheit mit origin/main prüfen, Kandidat vor Mutation neu bestimmen.
   Vorhandene Tests/Typecheck und SHA-bound CI-Publication-Gates behalten.
-- [ ] Dry-run bleibt auf Review-Branches und mit schmutzigem Worktree nutzbar.
+- [x] Dry-run bleibt auf Review-Branches und mit schmutzigem Worktree nutzbar.
   Er verändert keine Dateien/Git-Refs und bezeichnet lokale Tags als Snapshot;
   vor dem echten Schnitt wird der Remote-Stand nochmals aktualisiert.
-- [ ] Commit und annotierten Tag atomar pushen. Rollback darf nach erfolgreichem
+- [x] Commit und annotierten Tag atomar pushen. Rollback darf nach erfolgreichem
   Push oder unklarem Transportergebnis keinen publizierten Zustand umschreiben.
   Bei unklarem Ergebnis Remote-Refs lesen oder manuelle Recovery verlangen.
-- [ ] Parallel gestartete Schnitte reservieren nie durch Force-Push: ein zweiter
+- [x] Parallel gestartete Schnitte reservieren nie durch Force-Push: ein zweiter
   Push desselben Tags scheitert. Danach neu prüfen und neue Version berechnen.
-- [ ] Dry-run-Text/Help/Preview auf CalVer umstellen, besonders die bisherige
+- [x] Dry-run-Text/Help/Preview auf CalVer umstellen, besonders die bisherige
   Ableitung des Release-Typs aus `.0`-Suffixen entfernen.
 
 Tests: kein CalVer-Tag → `.1`; `.2` und `.10` → `.11`; Lücken;
@@ -115,19 +115,19 @@ Git-Fixtures nach dem vorhandenen Muster in `scripts/release.test.ts` isolieren.
 Dateien: `cliff.toml`, `scripts/release.ts`, `.github/workflows/release.yml`,
 `scripts/ci/workflow-policy.test.ts`; passende neue Changelog-Fixturetests unter `scripts/`.
 
-- [ ] Stable-Vorgänger explizit auswählen: höchster numerischer, von HEAD
+- [x] Stable-Vorgänger explizit auswählen: höchster numerischer, von HEAD
   erreichbarer Stable-Tag, inklusive historischer `v0.x`; Dev-Tags ausschließen.
   Dieselbe Basis für Changelog, Thanks und New Contributors verwenden.
-- [ ] `feat!:`/`fix(scope)!:` und `BREAKING CHANGE:` im Body unter einer
+- [x] `feat!:`/`fix(scope)!:` und `BREAKING CHANGE:` im Body unter einer
   priorisierten Breaking-Changes-Gruppe rendern. Nicht durch gewöhnliche
   feat/fix-Parser verdecken lassen.
-- [ ] GitHub-Release-Notes aus dem exakten neuen CHANGELOG-Abschnitt erstellen;
+- [x] GitHub-Release-Notes aus dem exakten neuen CHANGELOG-Abschnitt erstellen;
   bestehenden Checksums-/Installationsblock ergänzen. Der aktuelle rohe git-log
   Fallback würde die redaktionellen Migrationshinweise verlieren.
-- [ ] Workflow-Eingabe/Beispiele auf CalVer umstellen; neue Stable-Schnitte
+- [x] Workflow-Eingabe/Beispiele auf CalVer umstellen; neue Stable-Schnitte
   strikt validieren. Historische Artefakt-/Metadaten-Validatoren weiterhin
   Legacy-Versionen lesen lassen. Kein Schema-Bump allein für neue Versionszahlen.
-- [ ] Tag/Root-Version/exakter SHA, Draft-Verifikation, native Smokes und
+- [x] Tag/Root-Version/exakter SHA, Draft-Verifikation, native Smokes und
   Public-Verifikation unverändert als Gates erhalten. Keine neue Release-Cut-CI
   und kein Wechsel auf das Shell-System von agentglass nötig.
 
@@ -142,15 +142,16 @@ Dateien: `src/content/docs/contributing.md`,
 `src/content/docs/reference/versioning.md`,
 `src/content/docs/reference/updating.md`, `CLAUDE.md` sowie dieser Plan.
 
-- [ ] Produkt-CalVer und Bibliotheks-SemVer klar auseinanderhalten; Release-
+- [x] Produkt-CalVer und Bibliotheks-SemVer klar auseinanderhalten; Release-
   Beispiele, Dry-run-Pflicht, UTC, Zähler, Breaking-Policy und Recovery erklären.
-- [ ] Historische Specs nicht massenhaft umschreiben. Aktuelle Runbooks haben Vorrang.
-- [ ] Homebrew-Tap read-only prüfen: generischer Stable-Updater, Formula-Version,
+- [x] Historische Specs nicht massenhaft umschreiben. Aktuelle Runbooks haben Vorrang.
+- [x] Homebrew-Tap read-only prüfen: generischer Stable-Updater, Formula-Version,
   Download-URL, Checksums und Binary-Test müssen `2026.10.1` akzeptieren. Der Tap
-  war in dieser Analyse nicht lokal verfügbar; GitHub-Abfrage scheiterte an Netzwerkzugriff.
-- [ ] Lokal Dry-run und Preview durchführen, ohne einen Remote-Tag zu erzeugen.
+  wurde während der Implementierung live lesend geprüft. Updater und Formula
+  verwenden die Version als String und benötigen keine Anpassung.
+- [x] Lokal Dry-run und Preview durchführen, ohne einen Remote-Tag zu erzeugen.
   Ein Dry-run ist kein Beweis für GitHub-Publikation oder Homebrew-Installation.
-- [ ] Vor Implementierungs-Commit nach Repo-Regel Live-E2E mit mayflower/DOCSY/
+- [x] Vor Implementierungs-Commit nach Repo-Regel Live-E2E mit mayflower/DOCSY/
   ATLCLI durchführen und erzeugte Ressourcen entfernen. Erst danach committen.
 - [ ] Ersten tatsächlichen Release separat autorisieren. Anschließend exakten
   SHA/Tag, neun Stable-Assets, Metadaten/Checksums, CLI release-info und Chrome-
@@ -175,7 +176,7 @@ Zusätzlich alle neu hinzugefügten Helper-/Changelog-Tests über `bun run test`
 ausführen. Erwartung: exit 0, keine Tag-/Package-Mutation durch Probeaufrufe.
 Nie bare `bun test` verwenden. Kein Push und kein Release ohne ausdrückliche Freigabe.
 
-## Bereits erhobene Belege und Grenzen
+## Analysebelege und Implementierungsnachweis
 
 - 34 bestehende Tests aus Release, Artefaktidentität, Update und Extension-Kontext:
   bestanden. Lokale Bun-Version 1.3.14; CI/Repo pinnt 1.4.2. Dieser Lauf ist keine
@@ -184,7 +185,16 @@ Nie bare `bun test` verwenden. Kein Push und kein Release ohne ausdrückliche Fr
   Chrome-Version und vier Vergleiche (Legacy, Monatswechsel, zweistellige N,
   Jahreswechsel) funktionieren ohne Codeänderung.
 - agentglass Release-Library- und Publish-Fixturetests: bestanden.
-- Keine Implementierung, E2E-Ressourcen, Commits, Tags, Pushes oder Veröffentlichungen.
+- Analysephase: keine Implementierung oder Veröffentlichung.
+- Umsetzung: 100 gezielte Tests bestanden, einschließlich echtem git-cliff und
+  vollständigem Preview im schmutzigen Git-Fixture-Repo. Typecheck und
+  Dokumentationsprüfung/-Build bestanden (96 Seiten). Live-E2E lesend gegen
+  mayflower/DOCSY bestanden; keine Testressourcen angelegt.
+- Tatsächlicher Preview mit lesenden GitHub-Contributor-Abfragen bestanden.
+- Homebrew-Dispatch wartet jetzt zusätzlich auf öffentliche Stable-Assets und
+  den erfolgreichen Release-Workflow für den exakten SHA und Tag.
+- PR-Branch veröffentlicht; kein Produkt-Release, kein Release-Tag und keine
+  Homebrew-Formula veröffentlicht.
 
 ## Offene Entscheidungen
 
