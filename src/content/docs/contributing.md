@@ -386,8 +386,8 @@ bun scripts/release.ts --dry-run
 2. Runs tests and type checking
 3. Allocates `YYYY.M.N` from reserved stable tags and updates root `package.json`
 4. Prepends the changelog from the previous reachable stable tag, carries reviewed **Unreleased** notes into the new entry, and credits contributors/reporters
-5. Creates commit and tag
-6. Atomically pushes main and the annotated tag to origin (triggers GitHub release workflow)
+5. Creates the release commit, pushes a commit-bound preparation branch and runs the complete CI workflow; requires `required` to succeed on that exact SHA
+6. Creates the annotated tag and atomically pushes main and tag to origin (triggers GitHub release workflow)
 7. Waits for the SHA-bound CI preflight and security attestation
 8. Waits for release artifacts
 9. Triggers Homebrew tap update
@@ -465,6 +465,11 @@ installation instructions. Historical changelog entries are preserved.
 
 ### Release recovery
 
+- **Protected main:** the new release commit needs its own `required` check,
+  even when the feature PR was green. The script proves it on
+  `codex/release-<version>-<sha8>` before the main/tag push. It preserves the
+  prepared commit if dispatch or proof fails; inspect that branch and CI run
+  before recovery. Protection is never bypassed.
 - **Reserved version:** a conflicting tag rejects the entire atomic push.
   Inspect the remote, reconcile local main/tags and run another dry-run. Never
   force-push, move, delete or reuse a published release tag.

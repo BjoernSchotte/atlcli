@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertSuccessfulExit,
+  createTag,
   RELEASE_TEST_COMMAND,
   parseArgs,
   pushRelease,
@@ -135,11 +136,31 @@ describe("release rollback", () => {
     await git(cwd, "init", "--bare", remote);
     await git(cwd, "remote", "add", "origin", remote);
     await git(cwd, "tag", "v2026.10.1");
-    const releaseState = state();
+    const releaseState = state({ releaseCommit: startingHead });
     await pushRelease("2026.10.1", releaseState, cwd);
     expect(await git(cwd, "--git-dir", remote, "rev-parse", "refs/heads/main")).toBe(startingHead);
     expect(await git(cwd, "--git-dir", remote, "rev-parse", "refs/tags/v2026.10.1")).toBe(startingHead);
     expect(releaseState.mainPushed && releaseState.tagPushed && releaseState.pushAttempted).toBe(true);
+  });
+
+  test("tags and pushes the proved commit even if HEAD moves during proof", async () => {
+    const remote = join(cwd, "remote.git");
+    await git(cwd, "init", "--bare", remote);
+    await git(cwd, "remote", "add", "origin", remote);
+    await git(cwd, "checkout", "-b", "other");
+    await git(cwd, "commit", "--allow-empty", "-m", "unproved change");
+    await createTag("2026.10.1", startingHead, cwd);
+    await pushRelease("2026.10.1", state({ releaseCommit: startingHead }), cwd);
+    expect(await git(cwd, "--git-dir", remote, "rev-parse", "refs/heads/main")).toBe(startingHead);
+    expect(await git(cwd, "--git-dir", remote, "rev-parse", "refs/tags/v2026.10.1^{commit}")).toBe(startingHead);
+  });
+
+  test("rejects a tag that differs from the proved commit before pushing", async () => {
+    await git(cwd, "commit", "--allow-empty", "-m", "unproved change");
+    await git(cwd, "tag", "v2026.10.1");
+    const releaseState = state({ releaseCommit: startingHead });
+    await expect(pushRelease("2026.10.1", releaseState, cwd)).rejects.toThrow("Release tag does not match");
+    expect(releaseState.pushAttempted).toBe(false);
   });
 
   test("a reserved tag rejects the whole push and rollback preserves uncertain state", async () => {
@@ -242,25 +263,39 @@ describe("release dry-run pre-release checklist (spec 011)", () => {
   });
 
   test("runs from a review branch without release mutation preconditions", async () => {
-    const statusBefore = await git(join(import.meta.dir, ".."), "status", "--porcelain");
-    const tagsBefore = await git(join(import.meta.dir, ".."), "tag", "--list");
-    const proc = Bun.spawn(["bun", "scripts/release.ts", "--dry-run"], {
-      cwd: join(import.meta.dir, ".."),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
+    // CI checkouts may have a prepared CalVer version with no published tag yet.
+    // Keep this CLI contract independent of the host's version/tag inventory.
+    const fixture = await realpath(await mkdtemp(join(tmpdir(), "atlcli-release-dry-run-")));
+    try {
+      await git(fixture, "init");
+      await git(fixture, "config", "user.email", "release-test@example.com");
+      await git(fixture, "config", "user.name", "Release Test");
+      await writeFile(join(fixture, "package.json"), '{"version":"0.17.2"}\n');
+      await git(fixture, "add", "package.json");
+      await git(fixture, "commit", "-m", "initial");
+      await writeFile(join(fixture, "review-note.txt"), "dirty review fixture\n");
+      const statusBefore = await git(fixture, "status", "--porcelain");
+      const tagsBefore = await git(fixture, "tag", "--list");
+      const proc = Bun.spawn(["bun", join(import.meta.dir, "release.ts"), "--dry-run"], {
+        cwd: fixture,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
 
-    expect(stderr).toBe("");
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("DRY RUN - No changes will be made.");
-    expect(stdout).toContain("Dry run: mutation preconditions are not required");
-    expect(await git(join(import.meta.dir, ".."), "status", "--porcelain")).toBe(statusBefore);
-    expect(await git(join(import.meta.dir, ".."), "tag", "--list")).toBe(tagsBefore);
+      expect(stderr).toBe("");
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain("DRY RUN - No changes will be made.");
+      expect(stdout).toContain("Dry run: mutation preconditions are not required");
+      expect(await git(fixture, "status", "--porcelain")).toBe(statusBefore);
+      expect(await git(fixture, "tag", "--list")).toBe(tagsBefore);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
   });
 });
 
