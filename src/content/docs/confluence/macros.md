@@ -180,6 +180,8 @@ console.log(greeting);
 ```
 ````
 
+Empty code and noformat blocks, including blocks containing only line breaks, are preserved during pull/push round trips. Code language, title, and collapse settings are retained. Intentional trailing blank lines stay unchanged when present in the returned storage. Confluence Cloud may normalize a block containing only line breaks to an empty block; atlcli preserves that empty block.
+
 ### Supported Languages
 
 JavaScript, TypeScript, Python, Java, Go, Rust, C, C++, C#, Ruby, PHP, SQL, Bash, YAML, JSON, XML, HTML, CSS, and many more.

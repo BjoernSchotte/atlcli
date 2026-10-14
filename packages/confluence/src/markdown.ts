@@ -1754,6 +1754,12 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     }
   );
 
+  // Cloud canonicalizes empty code/noformat macros to self-closing elements.
+  storage = storage.replace(
+    /<ac:structured-macro\b(?=[^>]*\bac:name="(code|noformat)")[^>]*\/>/gi,
+    '<ac:structured-macro ac:name="$1"></ac:structured-macro>',
+  );
+
   // Convert code macro (with language, title, collapse)
   storage = storage.replace(
     /<ac:structured-macro\s+ac:name="code"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
@@ -2445,11 +2451,64 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
   // Preprocess Confluence macros
   const preprocessed = preprocessStorageMacros(storage, options);
 
+  const renderCodeFence = (node: HTMLElement): string => {
+    const codeNode = (node.firstChild as any) ?? null;
+    const macroType = (node as any).getAttribute?.("data-macro");
+
+    // Check if this is a Confluence noformat macro
+    if (macroType === "noformat") {
+      const text = codeNode?.textContent ?? "";
+      return `\n\n\`\`\`noformat\n${text}\n\`\`\`\n\n`;
+    }
+
+    if (macroType === "mermaid") {
+      const text = String(codeNode?.textContent ?? "");
+      const theme = (node as any).getAttribute?.("data-theme") || "default";
+      const info = theme === "default" ? "mermaid" : `mermaid{theme="${theme}"}`;
+      const fence = "`".repeat(Math.max(3, ...Array.from(text.matchAll(/`+/g), (match) => match[0].length + 1)));
+      return `\n\n${fence}${info}\n${text.endsWith("\n") ? text : text + "\n"}${fence}\n\n`;
+    }
+
+    // Check if this is a Confluence code macro
+    if (macroType === "code") {
+      const lang = (node as any).getAttribute?.("data-lang") || "";
+      const title = (node as any).getAttribute?.("data-title") || "";
+      const collapse = (node as any).getAttribute?.("data-collapse") || "";
+      const text = codeNode?.textContent ?? "";
+
+      // Build info string with optional title and collapse
+      let infoString = lang;
+      if (title || collapse === "true") {
+        // Use extended syntax: ```lang {title="..." collapse}
+        let attrs = "";
+        if (title) attrs += ` title="${title}"`;
+        if (collapse === "true") attrs += " collapse";
+        infoString = `${lang}{${attrs.trim()}}`;
+      }
+
+      return `\n\n\`\`\`${infoString}\n${text}\n\`\`\`\n\n`;
+    }
+
+    // Regular code block
+    const className = codeNode?.getAttribute?.("class") ?? "";
+    const lang = className.replace(/^language-/, "").trim();
+    const text = codeNode?.textContent ?? "";
+    return `\n\n\`\`\`${lang ? " " + lang : ""}\n${text}\n\`\`\`\n\n`;
+  };
+
   const service = new TurndownService({
     headingStyle: "atx",
     codeBlockStyle: "fenced",
     emDelimiter: "*",
     strongDelimiter: "**",
+    // Turndown routes whitespace-only nodes here before checking custom rules.
+    blankReplacement: (content, node) => {
+      if (node.nodeName === "PRE" && node.firstChild?.nodeName === "CODE") {
+        return renderCodeFence(node);
+      }
+      // A blank wrapper may contain a code fence rendered by a child.
+      return (node as any).isBlock ? `\n\n${content}\n\n` : content;
+    },
   });
   service.use(gfm);
 
@@ -3083,50 +3142,7 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
 
   service.addRule("preCodeFence", {
     filter: (node) => node.nodeName === "PRE" && node.firstChild?.nodeName === "CODE",
-    replacement: (_content, node) => {
-      const codeNode = (node.firstChild as any) ?? null;
-      const macroType = (node as any).getAttribute?.("data-macro");
-
-      // Check if this is a Confluence noformat macro
-      if (macroType === "noformat") {
-        const text = codeNode?.textContent ?? "";
-        return `\n\n\`\`\`noformat\n${text}\n\`\`\`\n\n`;
-      }
-
-      if (macroType === "mermaid") {
-        const text = String(codeNode?.textContent ?? "");
-        const theme = (node as any).getAttribute?.("data-theme") || "default";
-        const info = theme === "default" ? "mermaid" : `mermaid{theme="${theme}"}`;
-        const fence = "`".repeat(Math.max(3, ...Array.from(text.matchAll(/`+/g), (match) => match[0].length + 1)));
-        return `\n\n${fence}${info}\n${text.endsWith("\n") ? text : text + "\n"}${fence}\n\n`;
-      }
-
-      // Check if this is a Confluence code macro
-      if (macroType === "code") {
-        const lang = (node as any).getAttribute?.("data-lang") || "";
-        const title = (node as any).getAttribute?.("data-title") || "";
-        const collapse = (node as any).getAttribute?.("data-collapse") || "";
-        const text = codeNode?.textContent ?? "";
-
-        // Build info string with optional title and collapse
-        let infoString = lang;
-        if (title || collapse === "true") {
-          // Use extended syntax: ```lang {title="..." collapse}
-          let attrs = "";
-          if (title) attrs += ` title="${title}"`;
-          if (collapse === "true") attrs += " collapse";
-          infoString = `${lang}{${attrs.trim()}}`;
-        }
-
-        return `\n\n\`\`\`${infoString}\n${text}\n\`\`\`\n\n`;
-      }
-
-      // Regular code block
-      const className = codeNode?.getAttribute?.("class") ?? "";
-      const lang = className.replace(/^language-/, "").trim();
-      const text = codeNode?.textContent ?? "";
-      return `\n\n\`\`\`${lang ? " " + lang : ""}\n${text}\n\`\`\`\n\n`;
-    },
+    replacement: (_content, node) => renderCodeFence(node),
   });
 
   service.addRule("taskList", {
