@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { expectedStableReleaseAssetNames } from "./release-artifacts.js";
 import { nextCalverVersion, previousStableTag } from "./release-version.js";
 import { extractChangelogSection } from "./release-notes.js";
+import { mergeReleaseCommit } from "./release-proof.js";
 
 const REPO_OWNER = "BjoernSchotte";
 const REPO_NAME = "atlcli";
@@ -527,18 +528,20 @@ async function commitRelease(newVersion: string): Promise<string> {
   return (await $`git rev-parse HEAD`.text()).trim();
 }
 
-async function createTag(newVersion: string): Promise<void> {
+export async function createTag(newVersion: string, sourceSha: string, cwd = process.cwd()): Promise<void> {
   console.log(`Creating tag v${newVersion}...`);
-  await $`git tag -a v${newVersion} -m ${"Release v" + newVersion}`;
+  await $`git -C ${cwd} tag -a v${newVersion} ${sourceSha} -m ${"Release v" + newVersion}`;
   console.log("  Tag created");
 }
 
 export async function pushRelease(newVersion: string, state: ReleaseState, cwd = process.cwd()): Promise<void> {
+  if (!state.releaseCommit) throw new Error("Release push requires the proved release commit");
+  const tagCommit = (await $`git -C ${cwd} rev-parse ${`v${newVersion}^{commit}`}`.text()).trim();
+  if (tagCommit !== state.releaseCommit) throw new Error("Release tag does not match the proved release commit");
   console.log("Pushing to origin...");
   // A lost response may follow a successful push: never automatically undo that state.
   state.pushAttempted = true;
-  await $`git -C ${cwd} push --atomic origin main ${`v${newVersion}`}`;
-  state.mainPushed = true;
+  await $`git -C ${cwd} push origin ${`refs/tags/v${newVersion}:refs/tags/v${newVersion}`}`;
   state.tagPushed = true;
   console.log("  Pushed");
 }
@@ -599,12 +602,13 @@ Steps that would be executed:
   3. Prepend the new stable-range changelog: bunx git-cliff <previous-stable>..HEAD --tag v${newVersion} --prepend CHANGELOG.md
   4. Add "New Contributors" + "Thanks" sections to CHANGELOG.md (via GitHub API)
   5. Commit: git commit -m "chore(release): v${newVersion}"
-  6. Tag: git tag v${newVersion}
-  7. Push: git push --atomic origin main v${newVersion}
-  8. Wait for public stable assets and successful exact-SHA release workflow:
+  6. Push a preparation branch, open a release PR and merge after required CI success
+  7. Tag the resulting merge commit: git tag v${newVersion} <merge-sha>
+  8. Push: git push origin refs/tags/v${newVersion}
+  9. Wait for public stable assets and successful exact-SHA release workflow:
      five CLI archives, packaged MV3 extension, checksums, build metadata,
      and exact-SHA security receipt
-  9. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
+  10. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
        -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME}
 
 Pre-release checklist (not enforced by this script — confirm each yourself):
@@ -728,8 +732,13 @@ async function main(): Promise<void> {
     state.releaseCommit = await commitRelease(newVersion);
     state.commitCreated = true;
 
+    // GitHub owns protected-main validation; tag the resulting merge commit.
+    state.pushAttempted = true;
+    state.releaseCommit = await mergeReleaseCommit(newVersion, state.releaseCommit);
+    state.mainPushed = true;
+
     // 7. Create tag
-    await createTag(newVersion);
+    await createTag(newVersion, state.releaseCommit);
     state.tagCreated = true;
 
     // 8. Push to origin
