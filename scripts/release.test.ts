@@ -131,12 +131,13 @@ describe("release rollback", () => {
     expect(await git(cwd, "tag", "-l", "v0.17.1")).toBe("v0.17.1");
   });
 
-  test("pushes the release commit and tag atomically", async () => {
+  test("pushes only the release tag after protected main has been merged", async () => {
     const remote = join(cwd, "remote.git");
     await git(cwd, "init", "--bare", remote);
     await git(cwd, "remote", "add", "origin", remote);
+    await git(cwd, "push", "origin", "main");
     await git(cwd, "tag", "v2026.10.1");
-    const releaseState = state({ releaseCommit: startingHead });
+    const releaseState = state({ releaseCommit: startingHead, mainPushed: true });
     await pushRelease("2026.10.1", releaseState, cwd);
     expect(await git(cwd, "--git-dir", remote, "rev-parse", "refs/heads/main")).toBe(startingHead);
     expect(await git(cwd, "--git-dir", remote, "rev-parse", "refs/tags/v2026.10.1")).toBe(startingHead);
@@ -147,6 +148,7 @@ describe("release rollback", () => {
     const remote = join(cwd, "remote.git");
     await git(cwd, "init", "--bare", remote);
     await git(cwd, "remote", "add", "origin", remote);
+    await git(cwd, "push", "origin", "main");
     await git(cwd, "checkout", "-b", "other");
     await git(cwd, "commit", "--allow-empty", "-m", "unproved change");
     await createTag("2026.10.1", startingHead, cwd);
@@ -163,7 +165,7 @@ describe("release rollback", () => {
     expect(releaseState.pushAttempted).toBe(false);
   });
 
-  test("a reserved tag rejects the whole push and rollback preserves uncertain state", async () => {
+  test("a reserved tag is never moved and rollback preserves uncertain state", async () => {
     const remote = join(cwd, "remote.git");
     await git(cwd, "init", "--bare", remote);
     await git(cwd, "remote", "add", "origin", remote);
@@ -233,11 +235,12 @@ describe("release dry-run pre-release checklist (spec 011)", () => {
     expect(out).toContain("--dry-run");
   });
 
-  test("shows the CalVer invocation and atomic push", () => {
+  test("shows the CalVer invocation, protected merge and tag push", () => {
     const out = planOutput();
     expect(out).toContain("UTC");
     expect(out).toContain("local tag snapshot");
-    expect(out).toContain("git push --atomic origin main v0.18.0");
+    expect(out).toContain("open a release PR and merge after required CI success");
+    expect(out).toContain("git push origin refs/tags/v0.18.0");
     expect(out).not.toContain("release.ts patch");
     expect(out).not.toContain("release.ts minor");
   });

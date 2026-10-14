@@ -95,9 +95,11 @@ sonst unnötig belastet. Keine generische Versionierungsstrategie-Abstraktion.
 - [x] Dry-run bleibt auf Review-Branches und mit schmutzigem Worktree nutzbar.
   Er verändert keine Dateien/Git-Refs und bezeichnet lokale Tags als Snapshot;
   vor dem echten Schnitt wird der Remote-Stand nochmals aktualisiert.
-- [x] Commit und annotierten Tag atomar pushen. Rollback darf nach erfolgreichem
-  Push oder unklarem Transportergebnis keinen publizierten Zustand umschreiben.
-  Bei unklarem Ergebnis Remote-Refs lesen oder manuelle Recovery verlangen.
+- [x] Release-Commit über einen vorbereiteten PR mit `required`-CI auf protected
+  main mergen; danach genau den Merge-Commit annotiert taggen. Direkte atomare
+  main/Tag-Pushes wurden beim ersten Schnitt trotz erfolgreicher manueller CI
+  abgewiesen. Rollback darf nach Merge, Push oder unklarem Transportergebnis
+  keinen publizierten Zustand umschreiben; Remote-Refs und PR vor Recovery prüfen.
 - [x] Parallel gestartete Schnitte reservieren nie durch Force-Push: ein zweiter
   Push desselben Tags scheitert. Danach neu prüfen und neue Version berechnen.
 - [x] Dry-run-Text/Help/Preview auf CalVer umstellen, besonders die bisherige
@@ -107,7 +109,8 @@ Tests: kein CalVer-Tag → `.1`; `.2` und `.10` → `.11`; Lücken;
 September→Oktober; Dezember→Januar; UTC-Monatsgrenze; Dev-/Legacy-Tags;
 Monat 0/13; Padding; N=0; Chrome-Überlauf; Zukunftstag;
 Root-Version höher als Tags; Legacy-Aufruf; keine Mutation im Dry-run;
-Push-Konflikt, atomarer Erfolg, unklarer Remote-Ausgang und Rollback.
+Tag-Konflikt, unveränderte PR-Identität, required-CI, exakter Merge-Commit,
+unklarer Remote-Ausgang und Rollback.
 Git-Fixtures nach dem vorhandenen Muster in `scripts/release.test.ts` isolieren.
 
 ### 2. Release-Notes und Workflow-Konsistenz

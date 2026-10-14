@@ -1,13 +1,12 @@
 import { $ } from "bun";
 import { assertCalverVersion } from "./release-version.js";
 
-interface ProofRun {
-  headSha: string;
-  headBranch: string;
-  event: string;
-  status: string;
-  conclusion: string | null;
-  jobs: { name: string; status: string; conclusion: string | null }[];
+interface ReleasePullRequest {
+  headRefOid: string;
+  isDraft: boolean;
+  state: string;
+  mergeCommit: { oid: string } | null;
+  statusCheckRollup: { name?: string; status?: string; conclusion?: string }[];
 }
 
 export function releaseProofBranch(version: string, sourceSha: string): string {
@@ -16,35 +15,42 @@ export function releaseProofBranch(version: string, sourceSha: string): string {
   return `codex/release-${version}-${sourceSha.slice(0, 8)}`;
 }
 
-export function assertReleaseProof(sourceSha: string, branch: string, run: ProofRun): void {
-  const required = run.jobs.filter((job) => job.name === "required");
-  if (run.headSha !== sourceSha || run.headBranch !== branch || run.event !== "workflow_dispatch" ||
-    run.status !== "completed" || !["success", "failure"].includes(run.conclusion ?? "") ||
-    required.length !== 1 || required[0]!.status !== "completed" || required[0]!.conclusion !== "success") {
-    throw new Error("Release commit does not have completed exact-SHA required CI proof");
+export function releasePullRequestReady(sourceSha: string, pull: ReleasePullRequest): boolean {
+  if (pull.headRefOid !== sourceSha || pull.isDraft || !["OPEN", "MERGED"].includes(pull.state)) {
+    throw new Error("Release pull request identity or state changed");
   }
+  const required = pull.statusCheckRollup.filter((check) => check.name === "required");
+  if (required.length > 1) throw new Error("Ambiguous required release check");
+  if (required[0]?.status === "COMPLETED" && required[0].conclusion !== "SUCCESS") {
+    throw new Error("Required release CI failed");
+  }
+  return required.length === 1 && required[0]!.status === "COMPLETED" && required[0]!.conclusion === "SUCCESS";
 }
 
-/** Prove the new version/changelog commit before the protected main+tag push. */
-export async function proveReleaseCommit(version: string, sourceSha: string, cwd = process.cwd()): Promise<void> {
+/** Use GitHub's protected merge path, then return the immutable commit to tag. */
+export async function mergeReleaseCommit(version: string, sourceSha: string, cwd = process.cwd()): Promise<string> {
   const repository = "BjoernSchotte/atlcli";
   const branch = releaseProofBranch(version, sourceSha);
-  console.log(`Proving release commit ${sourceSha} on ${branch}...`);
   await $`git -C ${cwd} push origin ${`${sourceSha}:refs/heads/${branch}`}`;
-  const previous = await $`gh run list --repo ${repository} --workflow ci.yml --branch ${branch} --commit ${sourceSha} --event workflow_dispatch --limit 10 --json databaseId`.json() as { databaseId: number }[];
-  const previousIds = new Set(previous.map((run) => run.databaseId));
-  await $`gh workflow run ci.yml --repo ${repository} --ref ${branch}`;
-
-  let runId: number | undefined;
-  for (let attempt = 0; attempt < 45 && runId === undefined; attempt++) {
-    const runs = await $`gh run list --repo ${repository} --workflow ci.yml --branch ${branch} --commit ${sourceSha} --event workflow_dispatch --limit 10 --json databaseId`.json() as { databaseId: number }[];
-    runId = runs.find((run) => !previousIds.has(run.databaseId))?.databaseId;
-    if (runId === undefined) await Bun.sleep(2000);
+  const url = (await $`gh pr create --repo ${repository} --base main --head ${branch} --title ${`chore(release): v${version}`} --body ${`Prepare the reviewed v${version} product release and changelog. Merge through required CI before tagging the resulting merge commit.`}`.text()).trim();
+  console.log(`Prepared release pull request: ${url}`);
+  for (let attempt = 0; attempt < 90; attempt++) {
+    const pull = await $`gh pr view ${url} --repo ${repository} --json headRefOid,isDraft,state,mergeCommit,statusCheckRollup`.json() as ReleasePullRequest;
+    const ready = releasePullRequestReady(sourceSha, pull);
+    if (pull.state === "MERGED") {
+      if (!ready || !pull.mergeCommit || !/^[0-9a-f]{40}$/.test(pull.mergeCommit.oid)) {
+        throw new Error("Merged release is missing its CI proof or commit identity");
+      }
+      await $`git -C ${cwd} fetch origin main`;
+      await $`git -C ${cwd} merge-base --is-ancestor ${sourceSha} ${pull.mergeCommit.oid}`;
+      return pull.mergeCommit.oid;
+    }
+    if (ready) {
+      // GitHub rechecks protection and the expected head at the merge boundary.
+      await $`gh pr merge ${url} --repo ${repository} --merge --match-head-commit ${sourceSha}`;
+    } else {
+      await Bun.sleep(30_000);
+    }
   }
-  if (runId === undefined) throw new Error(`CI dispatch was not observed; inspect preparation branch ${branch}`);
-  // Advisory jobs may fail: the named required gate owns the release decision.
-  await $`gh run watch ${runId} --repo ${repository} --exit-status --interval 30`.nothrow();
-  const proof = await $`gh run view ${runId} --repo ${repository} --json headSha,headBranch,event,status,conclusion,jobs`.json() as ProofRun;
-  assertReleaseProof(sourceSha, branch, proof);
-  console.log(`  Exact-SHA required CI passed (run ${runId})`);
+  throw new Error(`Release PR did not finish; inspect ${url} before recovery`);
 }
