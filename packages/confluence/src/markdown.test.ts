@@ -674,6 +674,40 @@ describe("round-trip conversion", () => {
     expect(roundtrip).not.toContain('class=""');
   });
 
+  test.each(["code", "noformat"])("pulls Cloud self-closing %s macros as empty fences", (macro) => {
+    const source = `<p>Before</p><ac:structured-macro ac:schema-version="1" ac:name="${macro}" ac:macro-id="test" /><p>After</p>`;
+    const markdown = storageToMarkdown(source);
+    expect(markdown).toContain(macro === "code" ? "```\n\n```" : "```noformat\n\n```");
+    expect(markdown).toContain("Before");
+    expect(markdown).toContain("After");
+    expect(markdownToStorage(markdown)).toContain('<ac:plain-text-body><![CDATA[]]></ac:plain-text-body>');
+    expect(storageToMarkdown(markdownToStorage(markdown))).toBe(markdown);
+  });
+
+  test.each(["code", "noformat"])("preserves empty and newline-only %s macros", (macro) => {
+    for (const body of ["", "\n", "\n\n", "\n\n\n"]) {
+      const parameters = macro === "code"
+        ? '<ac:parameter ac:name="language">sh</ac:parameter><ac:parameter ac:name="title">Empty</ac:parameter><ac:parameter ac:name="collapse">true</ac:parameter>'
+        : "";
+      const source = `<ac:structured-macro ac:name="${macro}">${parameters}<ac:plain-text-body><![CDATA[${body}]]></ac:plain-text-body></ac:structured-macro>`;
+      for (const wrapped of [source, `<div>${source}</div>`, `<p>Before</p>${source}<p>After</p>`]) {
+        const original = storageToMarkdown(wrapped);
+        expect(original).toContain(macro === "code" ? '```sh{title="Empty" collapse}' : "```noformat");
+        let markdown = original;
+        for (let cycle = 0; cycle < 3; cycle++) {
+          const storage = markdownToStorage(markdown);
+          expect(storage).toContain(`<![CDATA[${body}]]>`);
+          if (macro === "code") {
+            expect(storage).toContain('<ac:parameter ac:name="title">Empty</ac:parameter>');
+            expect(storage).toContain('<ac:parameter ac:name="collapse">true</ac:parameter>');
+          }
+          markdown = storageToMarkdown(storage);
+          expect(markdown).toBe(original);
+        }
+      }
+    }
+  });
+
   test("fence content is stored without the closing-fence newline", () => {
     expect(markdownToStorage("```sh\necho hi\n```\n")).toContain("<![CDATA[echo hi]]>");
     expect(markdownToStorage('```sh{title="x"}\necho hi\n```\n')).toContain("<![CDATA[echo hi]]>");
