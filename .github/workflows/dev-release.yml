@@ -381,6 +381,7 @@ jobs:
             --version "${{ needs.resolve-source.outputs.version }}" \
             --tag "${{ needs.resolve-source.outputs.build_id }}" \
             --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --created-at "${{ needs.resolve-source.outputs.created_at }}" \
             --target "${{ matrix.target }}" \
             --out native-cli-verification.json
 
@@ -631,6 +632,7 @@ jobs:
             --version "${{ needs.resolve-source.outputs.version }}" \
             --tag "${{ needs.resolve-source.outputs.build_id }}" \
             --source-sha "${{ needs.resolve-source.outputs.source_sha }}" \
+            --created-at "${{ needs.resolve-source.outputs.created_at }}" \
             --target "${{ matrix.target }}" \
             --out native-cli-verification.json
 

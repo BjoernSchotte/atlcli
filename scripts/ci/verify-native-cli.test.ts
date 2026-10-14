@@ -21,6 +21,7 @@ describe("native CLI consumer receipt", () => {
     const receipt = verifyNativeCli({
       releaseInfo: devInfo(),
       channel: "dev",
+      createdAt: "2026-08-12T15:32:45Z",
       rootVersion: "0.17.2",
       tag: TAG,
       sourceSha: SHA,
@@ -36,6 +37,7 @@ describe("native CLI consumer receipt", () => {
     expect(() => verifyNativeCli({
       releaseInfo: devInfo(),
       channel: "dev",
+      createdAt: "2026-08-12T15:32:45Z",
       rootVersion: "0.17.2",
       tag: TAG,
       sourceSha: SHA,
@@ -48,13 +50,20 @@ describe("native CLI consumer receipt", () => {
   test("blocks source, tag, version, and Homebrew identity drift", () => {
     for (const patch of [
       { sourceSha: "f".repeat(40) },
+      { schema: "wrong" },
+      { channel: "stable" },
+      { buildId: "dev-20260812.419.2-01234567" },
       { releaseTag: "dev-20260812.419.1-01234567" },
       { version: "0.17.2" },
       { homebrewVersion: "bad" },
+      { homebrewVersion: "20260812153246.418.2" },
+      { homebrewVersion: "20260812153245.419.2" },
+      { homebrewVersion: "20260812153245.418.1" },
     ]) {
       expect(() => verifyNativeCli({
         releaseInfo: { ...devInfo(), ...patch },
         channel: "dev",
+      createdAt: "2026-08-12T15:32:45Z",
         rootVersion: "0.17.2",
         tag: TAG,
         sourceSha: SHA,
@@ -63,6 +72,13 @@ describe("native CLI consumer receipt", () => {
         arch: "x64",
       })).toThrow();
     }
+  });
+
+  test("requires the frozen timestamp for dev identity proof", () => {
+    expect(() => verifyNativeCli({
+      releaseInfo: devInfo(), channel: "dev", rootVersion: "0.17.2", tag: TAG,
+      sourceSha: SHA, target: "linux-x64", platform: "linux", arch: "x64",
+    })).toThrow("frozen build timestamp");
   });
 
   test("accepts the unchanged stable release identity", () => {

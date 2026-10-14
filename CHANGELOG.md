@@ -2,7 +2,23 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [2026.10.1] - 2026-10-14
+## [2026.10.2] - 2026-10-14
+
+First public CalVer product release. Tag `v2026.10.1` remains reserved after an
+unpublished release attempt; this entry carries forward its reviewed release
+notes. CLI and Chrome extension share this version; libraries retain SemVer.
+
+### Release verification
+
+- Verify compiled CLI identity by executing each downloaded archive on its
+  native platform. Bun executables may encode their JavaScript payload, so raw
+  string searches cannot reliably recover release metadata. Archive safety,
+  source bindings, checksums and the mandatory native publication gates remain.
+- Verify the exact frozen dev Homebrew timestamp, run and attempt at runtime.
+- Give stable draft download jobs the writer permission required by GitHub;
+  downloaded CLI and extension consumers run without persisted checkout tokens.
+- Prepare stable releases through a CI-verified pull request and tag the exact
+  resulting merge commit, respecting protected main.
 
 ### Added
 

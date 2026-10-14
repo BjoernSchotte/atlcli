@@ -179,7 +179,8 @@ jobs:
     needs: [resolve, create-draft]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # GitHub draft downloads require a repository-writer token.
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -252,7 +253,8 @@ jobs:
             archive: atlcli-windows-x64.zip
     runs-on: ${{ matrix.runner }}
     permissions:
-      contents: read
+      # GitHub draft downloads require a repository-writer token.
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:

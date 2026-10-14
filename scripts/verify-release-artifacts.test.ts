@@ -42,6 +42,7 @@ async function writeFixture(input: {
   forbiddenPath?: string;
   channel?: "stable" | "dev";
   companion?: "valid" | "wrong-source";
+  binary?: Uint8Array;
 } = {}): Promise<string> {
   const channel = input.channel ?? "dev";
   const buildId = channel === "stable" ? "v0.17.2" : BUILD_ID;
@@ -65,7 +66,7 @@ async function writeFixture(input: {
   if (input.forbiddenPath) await Bun.write(join(extension, input.forbiddenPath), "forbidden fixture\n");
 
   const artifactDigests: ArtifactDigest[] = [];
-  const binary = new TextEncoder().encode([
+  const binary = input.binary ?? new TextEncoder().encode([
     "atlcli.release-info/v1",
     cliVersion,
     SOURCE_SHA,
@@ -280,6 +281,23 @@ describe("release artifact verifier", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(`${join(root, "extracted")}.atlcli-release-extraction-v1`, { force: true });
+    }
+  });
+
+  test("accepts opaque compiled CLI payloads while preserving the bundle's digest and source proof", async () => {
+    const root = await writeFixture({ channel: "stable", binary: new Uint8Array([1, 7, 4, 2]) });
+    try {
+      const receipt = await verifyReleaseArtifacts({ directory: root, verifyExtensionRuntime: false });
+      expect(receipt.verifiedArtifacts).toHaveLength(7);
+      expect(receipt.sourceSha).toBe(SOURCE_SHA);
+      const path = join(root, cliAssetName("darwin-arm64"));
+      const bytes = readFileSync(path);
+      bytes[bytes.length - 1] ^= 1;
+      writeFileSync(path, bytes);
+      await expect(verifyReleaseArtifacts({ directory: root, verifyExtensionRuntime: false })).rejects.toThrow("digest mismatch");
+    } finally {
+      cleanupVerifiedExtractionDirectory(join(root, "extension"));
+      rmSync(root, { recursive: true, force: true });
     }
   });
 

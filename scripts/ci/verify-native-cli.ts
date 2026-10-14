@@ -34,18 +34,13 @@ const RUNTIME_BY_TARGET: Record<(typeof CLI_TARGETS)[number], [NodeJS.Platform, 
   "windows-x64": ["win32", "x64"],
 };
 
-function devTimestamp(tag: string): string {
-  const match = /^dev-(\d{4})(\d{2})(\d{2})\.\d+\.\d+-[0-9a-f]{8}$/.exec(tag);
-  if (!match) throw new Error(`invalid dev tag: ${tag}`);
-  return `${match[1]}-${match[2]}-${match[3]}T00:00:00Z`;
-}
-
 export function verifyNativeCli(input: {
   releaseInfo: NativeReleaseInfo;
   channel: ReleaseChannel;
   rootVersion: string;
   tag: string;
   sourceSha: string;
+  createdAt?: string;
   target: (typeof CLI_TARGETS)[number];
   platform: NodeJS.Platform;
   arch: string;
@@ -56,13 +51,16 @@ export function verifyNativeCli(input: {
       `native target ${input.target} cannot be proven on ${input.platform}-${input.arch}`,
     );
   }
+  if (input.channel === "dev" && !input.createdAt) {
+    throw new Error("dev native CLI proof requires the frozen build timestamp");
+  }
   const identity = input.channel === "dev"
     ? createReleaseIdentity({
         channel: "dev",
         rootVersion: input.rootVersion,
         sourceSha: input.sourceSha,
         sourceReachableFromMain: true,
-        timestamp: devTimestamp(input.tag),
+        timestamp: input.createdAt!,
         runNumber: Number(input.tag.split(".")[1]),
         runAttempt: Number(input.tag.split(".")[2]?.split("-")[0]),
       })
@@ -83,11 +81,7 @@ export function verifyNativeCli(input: {
       throw new Error(`native CLI release identity mismatch: ${field}`);
     }
   }
-  if (
-    input.channel === "stable"
-      ? input.releaseInfo.homebrewVersion !== input.rootVersion
-      : !/^\d{14}\.\d+\.\d+$/.test(input.releaseInfo.homebrewVersion ?? "")
-  ) {
+  if (input.releaseInfo.homebrewVersion !== (identity?.homebrewVersion ?? input.rootVersion)) {
     throw new Error("native CLI Homebrew version is invalid for the release channel");
   }
   return {
@@ -125,6 +119,7 @@ if (import.meta.main) {
     rootVersion: required("--version"),
     tag: required("--tag"),
     sourceSha: required("--source-sha"),
+    createdAt: value(args, "--created-at"),
     target: targetValue as (typeof CLI_TARGETS)[number],
     platform: process.platform,
     arch: process.arch,
