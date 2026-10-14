@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 0.3.0)'
+        description: 'UTC CalVer product version (e.g., 2026.10.1); must match package.json'
         required: true
         type: string
 
@@ -42,6 +42,11 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
       - name: Resolve and validate stable identity
         id: identity
         env:
@@ -53,10 +58,10 @@ jobs:
           else
             version="${GITHUB_REF#refs/tags/v}"
           fi
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid stable version: $version" >&2
-            exit 1
-          fi
+          PRODUCT_VERSION="$version" bun -e '
+            import { assertCalverVersion } from "./scripts/release-version.ts";
+            assertCalverVersion(process.env.PRODUCT_VERSION);
+          '
           package_version="$(node -p 'require("./package.json").version')"
           if [ "$version" != "$package_version" ]; then
             echo "Release version $version does not match package.json $package_version" >&2
@@ -138,34 +143,10 @@ jobs:
         run: bun scripts/verify-release-artifacts.ts cleanup-extension --out release/extension
 
       - name: Generate changelog
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV_TAG" ]; then
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" "$PREV_TAG"..HEAD)
-          else
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD~20..HEAD 2>/dev/null || git log --pretty=format:"- %s (%h)")
-          fi
-          {
-            echo "## What's Changed"
-            echo ""
-            echo "$CHANGELOG"
-            echo ""
-            echo "## Checksums"
-            echo ""
-            echo '```'
-            cat release/checksums.txt
-            echo '```'
-            echo ""
-            echo "## Installation"
-            echo ""
-            echo "### Homebrew (macOS/Linux)"
-            echo '```bash'
-            echo "brew install bjoernschotte/tap/atlcli"
-            echo '```'
-            echo ""
-            echo "### Manual Download"
-            echo "Download the appropriate CLI archive or the packaged Chrome MV3 extension."
-          } > release_notes.md
+          bun scripts/release-notes.ts "$VERSION" CHANGELOG.md release/checksums.txt release_notes.md
 
       - name: Create exclusive stable draft and exact assets
         id: draft

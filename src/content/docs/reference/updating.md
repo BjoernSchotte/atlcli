@@ -7,6 +7,13 @@ description: "Updating atlcli - atlcli documentation"
 
 atlcli includes a built-in update mechanism that checks for new versions and can self-update.
 
+CLI and Chrome extension product releases use UTC `YYYY.M.N` calendar versions,
+such as `2026.10.1` (an example). The built-in numeric comparison supports both
+historical `0.x` versions and CalVer, including month/year boundaries. Stable
+and dev remain separate channels. CalVer numbers do not promise compatibility;
+read the changelog's **Breaking changes** before upgrading. The `@atlcli/*`
+libraries retain [SemVer](/reference/versioning/).
+
 ## Quick Update
 
 ```bash

@@ -11,8 +11,10 @@
 
 import { $ } from "bun";
 import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expectedStableReleaseAssetNames } from "./release-artifacts.js";
 import { nextCalverVersion, previousStableTag } from "./release-version.js";
+import { extractChangelogSection } from "./release-notes.js";
 
 const REPO_OWNER = "BjoernSchotte";
 const REPO_NAME = "atlcli";
@@ -20,6 +22,28 @@ const HOMEBREW_TAP = "bjoernschotte/homebrew-tap";
 export function stableReleaseAssetsReady(version: string, actualNames: string[]): boolean {
   const actual = new Set(actualNames);
   return expectedStableReleaseAssetNames(version).every((name) => actual.has(name));
+}
+
+interface StableRelease {
+  draft: boolean;
+  prerelease: boolean;
+  assets: { name: string }[];
+}
+
+interface PublicationRun {
+  headSha: string;
+  headBranch: string;
+  status: string;
+  conclusion: string | null;
+}
+
+export function stableReleasePublicationReady(
+  version: string, release: StableRelease, run: PublicationRun | undefined, sourceSha: string,
+): boolean {
+  return release.draft === false && release.prerelease === false &&
+    stableReleaseAssetsReady(version, release.assets.map(({ name }) => name)) &&
+    run?.headSha === sourceSha && run.headBranch === `v${version}` &&
+    run.status === "completed" && run.conclusion === "success";
 }
 
 interface Args {
@@ -206,20 +230,36 @@ async function updateVersion(newVersion: string): Promise<void> {
   console.log("  package.json updated");
 }
 
-async function generateChangelog(
+export async function generateChangelog(
   newVersion: string,
   changelogPath = "CHANGELOG.md",
+  cwd = process.cwd(),
 ): Promise<void> {
   console.log("Generating changelog...");
-  await $`bunx git-cliff --tag v${newVersion} -o ${changelogPath}`;
+  const previousTag = await getPreviousTag(cwd);
+  const range = previousTag ? `${previousTag}..HEAD` : "HEAD";
+  // Prepend only the new entry so reviewed historical migrations survive.
+  let history = await readFile(join(cwd, "CHANGELOG.md"), "utf8");
+  const unreleasedTitle = /^## \[(unreleased)\][^\r\n]*\r?$/im.exec(history)?.[1];
+  const unreleased = unreleasedTitle ? extractChangelogSection(history, unreleasedTitle) : "";
+  const manualNotes = unreleased.split("\n").slice(1).join("\n").trim();
+  if (unreleased) history = history.replace(unreleased, "");
+  await writeFile(changelogPath, history);
+  const tagPattern = `^v${newVersion.replaceAll(".", "\\.")}$`;
+  await $`bunx git-cliff ${range} --tag v${newVersion} --tag-pattern ${tagPattern} --prepend ${changelogPath}`.cwd(cwd);
+  if (manualNotes) {
+    const generated = await readFile(changelogPath, "utf8");
+    const entry = extractChangelogSection(generated, newVersion);
+    const [heading, ...body] = entry.split("\n");
+    const reviewedEntry = `${heading}\n\n${manualNotes}\n\n${body.join("\n").trim()}`;
+    await writeFile(changelogPath, generated.replace(entry, () => reviewedEntry));
+  }
   console.log(`  ${changelogPath} updated`);
 }
 
-async function getPreviousTag(): Promise<string> {
-  const tags = (await $`git tag --merged HEAD --list ${"v*"}`.text()).trim().split("\n");
-  const tag = previousStableTag(tags);
-  if (!tag) throw new Error("No reachable stable tag found");
-  return tag;
+async function getPreviousTag(cwd = process.cwd()): Promise<string | null> {
+  const tags = (await $`git -C ${cwd} tag --merged HEAD --list ${"v*"}`.text()).trim().split("\n");
+  return previousStableTag(tags);
 }
 
 /**
@@ -299,10 +339,8 @@ async function injectNewContributors(
   newVersion: string,
   changelogPath = "CHANGELOG.md",
 ): Promise<void> {
-  let previousTag: string;
-  try {
-    previousTag = await getPreviousTag();
-  } catch {
+  const previousTag = await getPreviousTag();
+  if (!previousTag) {
     console.log("  No previous tag found, skipping contributor detection");
     return;
   }
@@ -409,10 +447,8 @@ async function findReleaseAcknowledgments(previousTag: string): Promise<ReleaseA
  * version's heading, so it lands under the new version.
  */
 async function injectThanks(_newVersion: string, changelogPath = "CHANGELOG.md"): Promise<void> {
-  let previousTag: string;
-  try {
-    previousTag = await getPreviousTag();
-  } catch {
+  const previousTag = await getPreviousTag();
+  if (!previousTag) {
     console.log("  No previous tag found, skipping thanks section");
     return;
   }
@@ -474,19 +510,7 @@ async function previewChangelog(newVersion: string): Promise<void> {
     await injectThanks(newVersion, previewPath);
 
     const full = await readFile(previewPath, "utf8");
-    const start = full.indexOf(`## [${newVersion}]`);
-    let previousTag = "";
-    try {
-      previousTag = await getPreviousTag();
-    } catch {
-      /* no previous tag — print to end */
-    }
-    const end = previousTag
-      ? full.indexOf(`## [${previousTag.replace(/^v/, "")}]`)
-      : full.length;
-
-    const entry =
-      start === -1 ? full : full.slice(start, end > start ? end : full.length).trimEnd();
+    const entry = extractChangelogSection(full, newVersion);
     const rule = "─".repeat(70);
     console.log(`\n${rule}\n${entry}\n${rule}`);
     console.log("\nPREVIEW ONLY — CHANGELOG.md and git are untouched.");
@@ -519,7 +543,7 @@ export async function pushRelease(newVersion: string, state: ReleaseState, cwd =
   console.log("  Pushed");
 }
 
-async function waitForRelease(newVersion: string): Promise<void> {
+async function waitForRelease(newVersion: string, sourceSha: string): Promise<void> {
   console.log("Waiting for GitHub release artifacts...");
   const tag = `v${newVersion}`;
   const maxWait = 10 * 60 * 1000; // 10 minutes
@@ -529,15 +553,17 @@ async function waitForRelease(newVersion: string): Promise<void> {
   while (Date.now() - start < maxWait) {
     try {
       const result = await $`gh api repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${tag}`.json();
-      const release = result as { assets: { name: string }[] };
+      const release = result as StableRelease;
       const assets = release.assets.map((a) => a.name);
       const expected = expectedStableReleaseAssetNames(newVersion);
-
-      if (stableReleaseAssetsReady(newVersion, assets)) {
-        console.log("  All release artifacts ready");
+      const runs = release.draft === false && release.prerelease === false
+        ? await $`gh run list --repo ${`${REPO_OWNER}/${REPO_NAME}`} --workflow release.yml --branch ${tag} --commit ${sourceSha} --limit 1 --json headSha,headBranch,status,conclusion`.json() as PublicationRun[]
+        : [];
+      if (stableReleasePublicationReady(newVersion, release, runs[0], sourceSha)) {
+        console.log("  Public stable assets and exact-SHA release workflow verified");
         return;
       }
-      console.log(`  Waiting... (${assets.length}/${expected.length} assets)`);
+      console.log(`  Waiting... (${assets.length}/${expected.length} assets; publication and verification pending)`);
     } catch {
       console.log("  Release not created yet...");
     }
@@ -570,13 +596,14 @@ Candidate uses the local tag snapshot; a real release refreshes origin/main and 
 Steps that would be executed:
   1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun run test
   2. Update version: package.json (version: "${newVersion}")
-  3. Generate changelog: bunx git-cliff --tag v${newVersion} -o CHANGELOG.md
+  3. Prepend the new stable-range changelog: bunx git-cliff <previous-stable>..HEAD --tag v${newVersion} --prepend CHANGELOG.md
   4. Add "New Contributors" + "Thanks" sections to CHANGELOG.md (via GitHub API)
   5. Commit: git commit -m "chore(release): v${newVersion}"
   6. Tag: git tag v${newVersion}
   7. Push: git push --atomic origin main v${newVersion}
-  8. Wait for the five CLI archives, packaged MV3 extension, checksums,
-     build metadata, and exact-SHA security receipt
+  8. Wait for public stable assets and successful exact-SHA release workflow:
+     five CLI archives, packaged MV3 extension, checksums, build metadata,
+     and exact-SHA security receipt
   9. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
        -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME}
 
@@ -709,7 +736,7 @@ async function main(): Promise<void> {
     await pushRelease(newVersion, state);
 
     // 9. Wait for GitHub release artifacts
-    await waitForRelease(newVersion);
+    await waitForRelease(newVersion, state.releaseCommit);
 
     // 10. Update Homebrew tap
     await updateHomebrew(newVersion);

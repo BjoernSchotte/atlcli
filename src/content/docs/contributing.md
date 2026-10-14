@@ -371,22 +371,23 @@ async function handleCommand(args: string[], flags: Flags, opts: Options): Promi
 
 ## Releasing
 
-Releases are automated via the release script:
+Product releases use UTC CalVer (`YYYY.M.N`), with a monthly release counter.
+CLI and Chrome extension share the version; libraries retain
+[SemVer and their API policy](/reference/versioning/).
+The release script calculates the next version automatically:
 
 ```bash
-bun scripts/release.ts patch    # 0.16.0 → 0.16.1
-bun scripts/release.ts minor    # 0.16.0 → 0.17.0
-bun scripts/release.ts major    # 0.16.0 → 1.0.0
+bun scripts/release.ts --dry-run
 ```
 
 ### What the Release Script Does
 
-1. Validates clean working directory and main branch
+1. Validates clean working directory and main branch; fetches main/tags and requires main to match origin/main
 2. Runs tests and type checking
-3. Bumps version in `package.json`
-4. Generates the changelog with git-cliff, crediting contributors and issue reporters
+3. Allocates `YYYY.M.N` from reserved stable tags and updates root `package.json`
+4. Prepends the changelog from the previous reachable stable tag, carries reviewed **Unreleased** notes into the new entry, and credits contributors/reporters
 5. Creates commit and tag
-6. Pushes to origin (triggers GitHub release workflow)
+6. Atomically pushes main and the annotated tag to origin (triggers GitHub release workflow)
 7. Waits for the SHA-bound CI preflight and security attestation
 8. Waits for release artifacts
 9. Triggers Homebrew tap update
@@ -406,7 +407,7 @@ bun scripts/release.ts major    # 0.16.0 → 1.0.0
 ### Security Review Before Every Release
 
 Run `/security-review` over the diff since the previous tag and confirm it is
-clean before you cut a release. `bun scripts/release.ts <type> --dry-run` prints
+clean before you cut a release. `bun scripts/release.ts --dry-run` prints
 this as a reminder checklist item; the script does not block on it, so the
 confirmation is yours to make.
 
@@ -435,11 +436,51 @@ Both `--dry-run` and `--preview` print and exit without changing anything, so no
 
 ```bash
 # Show the step-by-step release plan
-bun scripts/release.ts minor --dry-run
+bun scripts/release.ts --dry-run
 
 # Render the changelog entry, including the Thanks section
-bun scripts/release.ts minor --preview
+bun scripts/release.ts --preview
 ```
+
+Dry-run and preview work on review branches and dirty worktrees. They use the
+**local tag snapshot** and do not fetch or reserve a version; the actual release
+refreshes tags before allocating its number. Old `patch`, `minor`, and `major`
+arguments are rejected with a migration hint. Dry-run and preview are mutually exclusive.
+
+For a complete release, review **Breaking changes** and migrations in the preview,
+finish the security review and E2E checks, then run on a clean, synchronized `main`:
+
+```bash
+bun run typecheck
+bun run test
+ATLCLI_RELEASE_E2E=1 bun run test scripts/release-changelog.test.ts
+bun scripts/release.ts --dry-run
+bun scripts/release.ts --preview
+# After explicit release approval:
+bun scripts/release.ts
+```
+
+The GitHub release uses the exact new changelog section, plus checksums and
+installation instructions. Historical changelog entries are preserved.
+
+### Release recovery
+
+- **Reserved version:** a conflicting tag rejects the entire atomic push.
+  Inspect the remote, reconcile local main/tags and run another dry-run. Never
+  force-push, move, delete or reuse a published release tag.
+- **Clock regression or future tag:** allocation stops if the candidate would
+  not be newer than the root version and all known stable tags. Check the UTC
+  clock and tag history before retrying.
+- **Push error:** automatic local rollback stops after any push attempt, because
+  a lost response may follow a successful remote write. Inspect `origin/main`
+  and the release tag before recovering manually.
+- **Failed publication:** preserve the source commit/tag and inspect Actions and
+  any draft. Do not treat a draft or asset upload as a completed public release.
+
+After publication, verify the GitHub release, all CLI/extension assets and checksums,
+the exact build identity, the Homebrew update result and `brew info atlcli`.
+
+Related topics: [Versioning](/reference/versioning/), [Updating](/reference/updating/).
 
 ## Development release operations
 

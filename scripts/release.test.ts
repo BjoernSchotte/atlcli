@@ -10,6 +10,7 @@ import {
   rollback,
   showDryRunPlan,
   stableReleaseAssetsReady,
+  stableReleasePublicationReady,
   type ReleaseState,
 } from "./release";
 
@@ -284,5 +285,20 @@ describe("stable release completion", () => {
         `missing ${required} must keep the release incomplete`,
       ).toBe(false);
     }
+  });
+
+  test("does not dispatch Homebrew for a draft or unfinished publication workflow", () => {
+    const sourceSha = "a".repeat(40);
+    const release = { draft: false, prerelease: false, assets: complete.map((name) => ({ name })) };
+    const run = { headSha: sourceSha, headBranch: "v0.17.2", status: "completed", conclusion: "success" };
+    expect(stableReleasePublicationReady("0.17.2", release, run, sourceSha)).toBe(true);
+    for (const partial of [{ draft: true }, { prerelease: true }, { assets: [] }]) {
+      expect(stableReleasePublicationReady("0.17.2", { ...release, ...partial }, run, sourceSha)).toBe(false);
+    }
+    for (const partial of [{ status: "in_progress" }, { conclusion: "failure" },
+      { headSha: "b".repeat(40) }, { headBranch: "main" }]) {
+      expect(stableReleasePublicationReady("0.17.2", release, { ...run, ...partial }, sourceSha)).toBe(false);
+    }
+    expect(stableReleasePublicationReady("0.17.2", release, undefined, sourceSha)).toBe(false);
   });
 });

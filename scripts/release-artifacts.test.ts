@@ -38,6 +38,20 @@ function devIdentity(overrides: Partial<Parameters<typeof createReleaseIdentity>
 }
 
 describe("release identity", () => {
+  test.each(["2026.10.1", "2026.10.10"])("keeps %s product identity across channels and consumers", (version) => {
+    const stable = devIdentity({ channel: "stable", rootVersion: version });
+    expect(stable.releaseTag).toBe(`v${version}`);
+    expect(stable.cliVersion).toBe(version);
+    expect(stable.extensionVersion).toBe(version);
+    expect(stable.homebrewVersion).toBe(version);
+    expect(expectedStableReleaseAssetNames(version)).toContain(`atlcli-extension-chrome-mv3-v${version}.zip`);
+    const dev = devIdentity({ rootVersion: version });
+    expect(dev.cliVersion).toBe(`${version}-dev.20260812.418.2+01234567`);
+    expect(dev.extensionVersion).toBe(`${version}.418`);
+    expect(dev.releaseTag).toBe("dev-20260812.418.2-01234567");
+    expect(dev.homebrewVersion).toBe("20260812021745.418.2");
+  });
+
   test("creates stable identity without a prerelease version", () => {
     expect(
       createReleaseIdentity({

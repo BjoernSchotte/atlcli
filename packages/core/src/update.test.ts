@@ -27,6 +27,15 @@ function releaseInfo(channel: "stable" | "dev" | "source", version: string): Rel
 }
 
 describe("semantic version comparison", () => {
+  test("orders legacy and CalVer versions numerically while preserving prerelease order", () => {
+    for (const [before, after] of [["0.17.2", "2026.10.1"], ["2026.9.12", "2026.10.1"],
+      ["2026.10.9", "2026.10.10"], ["2026.12.15", "2027.1.1"],
+      ["2026.10.1-dev.20261014.12.1+aaaaaaaa", "2026.10.1"]]) {
+      expect(compareVersions(before!, after!)).toBe(-1);
+      expect(compareVersions(after!, before!)).toBe(1);
+    }
+  });
+
   test("orders stable and prerelease versions without NaN coercion", () => {
     expect(compareVersions("v0.17.2", "0.17.2")).toBe(0);
     expect(compareVersions("0.17.2-dev.2", "0.17.2-dev.10")).toBe(-1);
