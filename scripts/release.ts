@@ -3,17 +3,16 @@
  * Release script for atlcli.
  *
  * Usage:
- *   bun scripts/release.ts patch          # 0.16.0 → 0.16.1
- *   bun scripts/release.ts minor          # 0.16.0 → 0.17.0
- *   bun scripts/release.ts major          # 0.16.0 → 1.0.0
- *   bun scripts/release.ts minor --dry-run   # Print the release plan (no changes)
- *   bun scripts/release.ts minor --preview   # Render the changelog entry (no changes)
+ *   bun scripts/release.ts               # Next UTC YYYY.M.N product release
+ *   bun scripts/release.ts --dry-run     # Print the release plan (no changes)
+ *   bun scripts/release.ts --preview     # Render the changelog entry (no changes)
  *   bun scripts/release.ts --skip-tests   # Skip test step
  */
 
 import { $ } from "bun";
 import { readFile, writeFile } from "node:fs/promises";
 import { expectedStableReleaseAssetNames } from "./release-artifacts.js";
+import { nextCalverVersion, previousStableTag } from "./release-version.js";
 
 const REPO_OWNER = "BjoernSchotte";
 const REPO_NAME = "atlcli";
@@ -24,7 +23,6 @@ export function stableReleaseAssetsReady(version: string, actualNames: string[])
 }
 
 interface Args {
-  type: "patch" | "minor" | "major";
   dryRun: boolean;
   skipTests: boolean;
   preview: boolean;
@@ -57,11 +55,11 @@ export interface ReleaseState {
   tagCreated: boolean;
   mainPushed: boolean;
   tagPushed: boolean;
+  pushAttempted: boolean;
 }
 
-function parseArgs(argv: string[]): Args {
+export function parseArgs(argv: string[]): Args {
   const args: Args = {
-    type: "patch",
     dryRun: false,
     skipTests: false,
     preview: false,
@@ -69,7 +67,7 @@ function parseArgs(argv: string[]): Args {
 
   for (const arg of argv) {
     if (arg === "patch" || arg === "minor" || arg === "major") {
-      args.type = arg;
+      throw new Error(`Product releases use automatic CalVer now; replace '${arg}' with no bump argument`);
     } else if (arg === "--dry-run") {
       args.dryRun = true;
     } else if (arg === "--preview") {
@@ -80,23 +78,20 @@ function parseArgs(argv: string[]): Args {
       showHelp();
       process.exit(0);
     } else {
-      console.error(`Unknown argument: ${arg}`);
-      showHelp();
-      process.exit(1);
+      throw new Error(`Unknown argument: ${arg}`);
     }
   }
 
+  if (args.dryRun && args.preview) throw new Error("--dry-run and --preview cannot be used together");
   return args;
 }
 
 function showHelp(): void {
   console.log(`
-Usage: bun scripts/release.ts [type] [options]
+Usage: bun scripts/release.ts [options]
 
-Types:
-  patch          Bump patch version (0.16.0 → 0.16.1) [default]
-  minor          Bump minor version (0.16.0 → 0.17.0)
-  major          Bump major version (0.16.0 → 1.0.0)
+Product versions: YYYY.M.N (UTC month, no padding, monthly release counter).
+The next version is allocated from reserved stable tags; libraries retain SemVer.
 
 Options:
   --dry-run      Print the release plan and exit (no changes made)
@@ -105,22 +100,21 @@ Options:
   --help, -h     Show this help message
 
 Examples:
-  bun scripts/release.ts patch
-  bun scripts/release.ts minor --dry-run
-  bun scripts/release.ts minor --preview
-  bun scripts/release.ts major --skip-tests
+  bun scripts/release.ts --dry-run
+  bun scripts/release.ts --preview
+  bun scripts/release.ts
 `);
 }
 
-async function validateEnvironment(dryRun: boolean): Promise<void> {
+async function validateEnvironment(readOnly: boolean): Promise<void> {
   console.log("Validating environment...");
 
   // A dry run only renders the release plan from the checked-out package
   // version. Keep it usable from review branches and dirty worktrees so the
   // mandatory rehearsal can happen before the release implementation is
   // committed. The real release path below retains every mutation precondition.
-  if (dryRun) {
-    console.log("  Dry run: mutation preconditions are not required");
+  if (readOnly) {
+    console.log("  Dry run: mutation preconditions are not required (also applies to preview)");
     return;
   }
 
@@ -135,6 +129,11 @@ async function validateEnvironment(dryRun: boolean): Promise<void> {
   if (branch.trim() !== "main") {
     throw new Error(`Must be on main branch. Currently on: ${branch.trim()}`);
   }
+
+  await $`git fetch origin main --tags`;
+  const head = (await $`git rev-parse HEAD`.text()).trim();
+  const remoteHead = (await $`git rev-parse origin/main`.text()).trim();
+  if (head !== remoteHead) throw new Error("main must be in sync with origin/main before cutting a release");
 
   // Check gh CLI available and authenticated
   try {
@@ -156,18 +155,6 @@ async function validateEnvironment(dryRun: boolean): Promise<void> {
 async function getCurrentVersion(): Promise<string> {
   const pkg = JSON.parse(await readFile("package.json", "utf8"));
   return pkg.version;
-}
-
-function bumpVersion(current: string, type: "patch" | "minor" | "major"): string {
-  const [major, minor, patch] = current.split(".").map(Number);
-  switch (type) {
-    case "major":
-      return `${major + 1}.0.0`;
-    case "minor":
-      return `${major}.${minor + 1}.0`;
-    case "patch":
-      return `${major}.${minor}.${patch + 1}`;
-  }
 }
 
 export const RELEASE_TEST_COMMAND = ["bun", "run", "test"] as const;
@@ -229,8 +216,10 @@ async function generateChangelog(
 }
 
 async function getPreviousTag(): Promise<string> {
-  const tag = await $`git describe --tags --abbrev=0 HEAD`.text();
-  return tag.trim();
+  const tags = (await $`git tag --merged HEAD --list ${"v*"}`.text()).trim().split("\n");
+  const tag = previousStableTag(tags);
+  if (!tag) throw new Error("No reachable stable tag found");
+  return tag;
 }
 
 /**
@@ -520,11 +509,12 @@ async function createTag(newVersion: string): Promise<void> {
   console.log("  Tag created");
 }
 
-async function pushRelease(newVersion: string, state: ReleaseState): Promise<void> {
+export async function pushRelease(newVersion: string, state: ReleaseState, cwd = process.cwd()): Promise<void> {
   console.log("Pushing to origin...");
-  await $`git push origin main`;
+  // A lost response may follow a successful push: never automatically undo that state.
+  state.pushAttempted = true;
+  await $`git -C ${cwd} push --atomic origin main ${`v${newVersion}`}`;
   state.mainPushed = true;
-  await $`git push origin ${`v${newVersion}`}`;
   state.tagPushed = true;
   console.log("  Pushed");
 }
@@ -574,6 +564,8 @@ export function showDryRunPlan(currentVersion: string, newVersion: string, skipT
 DRY RUN - No changes will be made.
 
 Release plan: ${currentVersion} → ${newVersion}
+Policy: YYYY.M.N, UTC month, monthly release counter; libraries retain SemVer.
+Candidate uses the local tag snapshot; a real release refreshes origin/main and tags first.
 
 Steps that would be executed:
   1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun run test
@@ -582,7 +574,7 @@ Steps that would be executed:
   4. Add "New Contributors" + "Thanks" sections to CHANGELOG.md (via GitHub API)
   5. Commit: git commit -m "chore(release): v${newVersion}"
   6. Tag: git tag v${newVersion}
-  7. Push: git push origin main && git push origin v${newVersion}
+  7. Push: git push --atomic origin main v${newVersion}
   8. Wait for the five CLI archives, packaged MV3 extension, checksums,
      build metadata, and exact-SHA security receipt
   9. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
@@ -596,11 +588,11 @@ Pre-release checklist (not enforced by this script — confirm each yourself):
       parse budget, link-target schemes, font intake) plus any network code
       added since the last tag.
       See docs: Contributing → Releasing → Security Review Before Every Release.
-  [ ] CHANGELOG entry reads correctly (bun scripts/release.ts <type> --preview)
+  [ ] CHANGELOG entry reads correctly (bun scripts/release.ts --preview)
   [ ] Docs updated for any behavior change in this release
 
 To execute this release, run without --dry-run:
-  bun scripts/release.ts ${newVersion.endsWith(".0.0") ? "major" : newVersion.endsWith(".0") ? "minor" : "patch"}
+  bun scripts/release.ts
 `);
 }
 
@@ -614,9 +606,9 @@ export async function rollback(
     return;
   }
 
-  if (state.mainPushed || state.tagPushed) {
+  if (state.pushAttempted || state.mainPushed || state.tagPushed) {
     console.log(
-      "Release changes were pushed; automatic rollback skipped to avoid diverging from origin.",
+      "A release push was attempted; automatic rollback skipped because remote state may have changed.",
     );
     console.log(`Inspect origin/main and tag v${newVersion} before recovering manually.`);
     return;
@@ -646,8 +638,6 @@ export async function rollback(
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-
   let newVersion = "";
   const state: ReleaseState = {
     startingHead: "",
@@ -657,16 +647,19 @@ async function main(): Promise<void> {
     tagCreated: false,
     mainPushed: false,
     tagPushed: false,
+    pushAttempted: false,
   };
 
   try {
+    const args = parseArgs(process.argv.slice(2));
     // 1. Validate environment
-    await validateEnvironment(args.dryRun);
+    await validateEnvironment(args.dryRun || args.preview);
     state.startingHead = (await $`git rev-parse HEAD`.text()).trim();
 
     // 2. Calculate new version
     const currentVersion = await getCurrentVersion();
-    newVersion = bumpVersion(currentVersion, args.type);
+    const tags = (await $`git tag --list ${"v*"}`.text()).trim().split("\n");
+    newVersion = nextCalverVersion(currentVersion, tags, new Date());
 
     // DRY RUN: Just show the plan and exit
     if (args.dryRun) {

@@ -5,6 +5,8 @@ import { join } from "node:path";
 import {
   assertSuccessfulExit,
   RELEASE_TEST_COMMAND,
+  parseArgs,
+  pushRelease,
   rollback,
   showDryRunPlan,
   stableReleaseAssetsReady,
@@ -39,6 +41,7 @@ describe("release rollback", () => {
   beforeEach(async () => {
     cwd = await realpath(await mkdtemp(join(tmpdir(), "atlcli-release-test-")));
     await git(cwd, "init");
+    await git(cwd, "branch", "-M", "main");
     await git(cwd, "config", "user.email", "release-test@example.com");
     await git(cwd, "config", "user.name", "Release Test");
     await writeFile(join(cwd, "package.json"), '{"version":"0.17.0"}\n');
@@ -61,6 +64,7 @@ describe("release rollback", () => {
       tagCreated: false,
       mainPushed: false,
       tagPushed: false,
+      pushAttempted: false,
       ...overrides,
     };
   }
@@ -124,6 +128,50 @@ describe("release rollback", () => {
     expect(await git(cwd, "rev-parse", "HEAD")).toBe(releaseCommit);
     expect(await git(cwd, "tag", "-l", "v0.17.1")).toBe("v0.17.1");
   });
+
+  test("pushes the release commit and tag atomically", async () => {
+    const remote = join(cwd, "remote.git");
+    await git(cwd, "init", "--bare", remote);
+    await git(cwd, "remote", "add", "origin", remote);
+    await git(cwd, "tag", "v2026.10.1");
+    const releaseState = state();
+    await pushRelease("2026.10.1", releaseState, cwd);
+    expect(await git(cwd, "--git-dir", remote, "rev-parse", "refs/heads/main")).toBe(startingHead);
+    expect(await git(cwd, "--git-dir", remote, "rev-parse", "refs/tags/v2026.10.1")).toBe(startingHead);
+    expect(releaseState.mainPushed && releaseState.tagPushed && releaseState.pushAttempted).toBe(true);
+  });
+
+  test("a reserved tag rejects the whole push and rollback preserves uncertain state", async () => {
+    const remote = join(cwd, "remote.git");
+    await git(cwd, "init", "--bare", remote);
+    await git(cwd, "remote", "add", "origin", remote);
+    await git(cwd, "push", "origin", "main");
+    await git(cwd, "--git-dir", remote, "tag", "v2026.10.1", startingHead);
+    await writeFile(join(cwd, "package.json"), '{"version":"2026.10.1"}\n');
+    await git(cwd, "add", "package.json");
+    await git(cwd, "commit", "-m", "chore(release): v2026.10.1");
+    const releaseCommit = await git(cwd, "rev-parse", "HEAD");
+    await git(cwd, "tag", "v2026.10.1");
+    const releaseState = state({ filesMutated: true, commitCreated: true, releaseCommit, tagCreated: true });
+    await expect(pushRelease("2026.10.1", releaseState, cwd)).rejects.toThrow();
+    expect(await git(cwd, "--git-dir", remote, "rev-parse", "refs/heads/main")).toBe(startingHead);
+    expect(releaseState.pushAttempted).toBe(true);
+    await rollback("2026.10.1", releaseState, cwd);
+    expect(await git(cwd, "rev-parse", "HEAD")).toBe(releaseCommit);
+    expect(await git(cwd, "tag", "-l", "v2026.10.1")).toBe("v2026.10.1");
+  });
+});
+
+describe("release arguments", () => {
+  test("uses automatic CalVer and rejects old SemVer bump commands", () => {
+    expect(parseArgs([])).toEqual({ dryRun: false, skipTests: false, preview: false });
+    expect(parseArgs(["--dry-run"]).dryRun).toBe(true);
+    for (const type of ["patch", "minor", "major"]) {
+      expect(() => parseArgs([type])).toThrow("CalVer");
+    }
+    expect(() => parseArgs(["--unknown"])).toThrow("Unknown argument");
+    expect(() => parseArgs(["--dry-run", "--preview"])).toThrow("together");
+  });
 });
 
 describe("release dry-run pre-release checklist (spec 011)", () => {
@@ -163,6 +211,15 @@ describe("release dry-run pre-release checklist (spec 011)", () => {
     expect(out).toContain("--dry-run");
   });
 
+  test("shows the CalVer invocation and atomic push", () => {
+    const out = planOutput();
+    expect(out).toContain("UTC");
+    expect(out).toContain("local tag snapshot");
+    expect(out).toContain("git push --atomic origin main v0.18.0");
+    expect(out).not.toContain("release.ts patch");
+    expect(out).not.toContain("release.ts minor");
+  });
+
   test("keeps the stable Homebrew dispatch isolated from the dev formula", () => {
     const out = planOutput();
     expect(out).toContain("-f formula=atlcli -f tag=v0.18.0");
@@ -184,7 +241,9 @@ describe("release dry-run pre-release checklist (spec 011)", () => {
   });
 
   test("runs from a review branch without release mutation preconditions", async () => {
-    const proc = Bun.spawn(["bun", "scripts/release.ts", "patch", "--dry-run"], {
+    const statusBefore = await git(join(import.meta.dir, ".."), "status", "--porcelain");
+    const tagsBefore = await git(join(import.meta.dir, ".."), "tag", "--list");
+    const proc = Bun.spawn(["bun", "scripts/release.ts", "--dry-run"], {
       cwd: join(import.meta.dir, ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -199,6 +258,8 @@ describe("release dry-run pre-release checklist (spec 011)", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("DRY RUN - No changes will be made.");
     expect(stdout).toContain("Dry run: mutation preconditions are not required");
+    expect(await git(join(import.meta.dir, ".."), "status", "--porcelain")).toBe(statusBefore);
+    expect(await git(join(import.meta.dir, ".."), "tag", "--list")).toBe(tagsBefore);
   });
 });
 
