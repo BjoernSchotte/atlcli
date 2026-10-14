@@ -83,7 +83,9 @@ Bun workspaces monorepo with Turbo. Dependencies: `apps/cli` → `packages/*`
 
 ### Releasing
 
-Never release automatically. Always dry-run first: `bun scripts/release.ts <type> --dry-run`
+Never release automatically. Always dry-run first: `bun scripts/release.ts --dry-run`.
+Product releases (CLI and extension) use UTC `YYYY.M.N`, with a monthly counter
+starting at 1. The `@atlcli/*` libraries retain their SemVer/API policy.
 
 Post-release: verify GitHub release page, Homebrew tap (`brew info atlcli`), CHANGELOG.md
 

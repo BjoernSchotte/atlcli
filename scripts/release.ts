@@ -3,17 +3,18 @@
  * Release script for atlcli.
  *
  * Usage:
- *   bun scripts/release.ts patch          # 0.16.0 → 0.16.1
- *   bun scripts/release.ts minor          # 0.16.0 → 0.17.0
- *   bun scripts/release.ts major          # 0.16.0 → 1.0.0
- *   bun scripts/release.ts minor --dry-run   # Print the release plan (no changes)
- *   bun scripts/release.ts minor --preview   # Render the changelog entry (no changes)
+ *   bun scripts/release.ts               # Next UTC YYYY.M.N product release
+ *   bun scripts/release.ts --dry-run     # Print the release plan (no changes)
+ *   bun scripts/release.ts --preview     # Render the changelog entry (no changes)
  *   bun scripts/release.ts --skip-tests   # Skip test step
  */
 
 import { $ } from "bun";
 import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expectedStableReleaseAssetNames } from "./release-artifacts.js";
+import { nextCalverVersion, previousStableTag } from "./release-version.js";
+import { extractChangelogSection } from "./release-notes.js";
 
 const REPO_OWNER = "BjoernSchotte";
 const REPO_NAME = "atlcli";
@@ -23,8 +24,29 @@ export function stableReleaseAssetsReady(version: string, actualNames: string[])
   return expectedStableReleaseAssetNames(version).every((name) => actual.has(name));
 }
 
+interface StableRelease {
+  draft: boolean;
+  prerelease: boolean;
+  assets: { name: string }[];
+}
+
+interface PublicationRun {
+  headSha: string;
+  headBranch: string;
+  status: string;
+  conclusion: string | null;
+}
+
+export function stableReleasePublicationReady(
+  version: string, release: StableRelease, run: PublicationRun | undefined, sourceSha: string,
+): boolean {
+  return release.draft === false && release.prerelease === false &&
+    stableReleaseAssetsReady(version, release.assets.map(({ name }) => name)) &&
+    run?.headSha === sourceSha && run.headBranch === `v${version}` &&
+    run.status === "completed" && run.conclusion === "success";
+}
+
 interface Args {
-  type: "patch" | "minor" | "major";
   dryRun: boolean;
   skipTests: boolean;
   preview: boolean;
@@ -57,11 +79,11 @@ export interface ReleaseState {
   tagCreated: boolean;
   mainPushed: boolean;
   tagPushed: boolean;
+  pushAttempted: boolean;
 }
 
-function parseArgs(argv: string[]): Args {
+export function parseArgs(argv: string[]): Args {
   const args: Args = {
-    type: "patch",
     dryRun: false,
     skipTests: false,
     preview: false,
@@ -69,7 +91,7 @@ function parseArgs(argv: string[]): Args {
 
   for (const arg of argv) {
     if (arg === "patch" || arg === "minor" || arg === "major") {
-      args.type = arg;
+      throw new Error(`Product releases use automatic CalVer now; replace '${arg}' with no bump argument`);
     } else if (arg === "--dry-run") {
       args.dryRun = true;
     } else if (arg === "--preview") {
@@ -80,23 +102,20 @@ function parseArgs(argv: string[]): Args {
       showHelp();
       process.exit(0);
     } else {
-      console.error(`Unknown argument: ${arg}`);
-      showHelp();
-      process.exit(1);
+      throw new Error(`Unknown argument: ${arg}`);
     }
   }
 
+  if (args.dryRun && args.preview) throw new Error("--dry-run and --preview cannot be used together");
   return args;
 }
 
 function showHelp(): void {
   console.log(`
-Usage: bun scripts/release.ts [type] [options]
+Usage: bun scripts/release.ts [options]
 
-Types:
-  patch          Bump patch version (0.16.0 → 0.16.1) [default]
-  minor          Bump minor version (0.16.0 → 0.17.0)
-  major          Bump major version (0.16.0 → 1.0.0)
+Product versions: YYYY.M.N (UTC month, no padding, monthly release counter).
+The next version is allocated from reserved stable tags; libraries retain SemVer.
 
 Options:
   --dry-run      Print the release plan and exit (no changes made)
@@ -105,22 +124,21 @@ Options:
   --help, -h     Show this help message
 
 Examples:
-  bun scripts/release.ts patch
-  bun scripts/release.ts minor --dry-run
-  bun scripts/release.ts minor --preview
-  bun scripts/release.ts major --skip-tests
+  bun scripts/release.ts --dry-run
+  bun scripts/release.ts --preview
+  bun scripts/release.ts
 `);
 }
 
-async function validateEnvironment(dryRun: boolean): Promise<void> {
+async function validateEnvironment(readOnly: boolean): Promise<void> {
   console.log("Validating environment...");
 
   // A dry run only renders the release plan from the checked-out package
   // version. Keep it usable from review branches and dirty worktrees so the
   // mandatory rehearsal can happen before the release implementation is
   // committed. The real release path below retains every mutation precondition.
-  if (dryRun) {
-    console.log("  Dry run: mutation preconditions are not required");
+  if (readOnly) {
+    console.log("  Dry run: mutation preconditions are not required (also applies to preview)");
     return;
   }
 
@@ -135,6 +153,11 @@ async function validateEnvironment(dryRun: boolean): Promise<void> {
   if (branch.trim() !== "main") {
     throw new Error(`Must be on main branch. Currently on: ${branch.trim()}`);
   }
+
+  await $`git fetch origin main --tags`;
+  const head = (await $`git rev-parse HEAD`.text()).trim();
+  const remoteHead = (await $`git rev-parse origin/main`.text()).trim();
+  if (head !== remoteHead) throw new Error("main must be in sync with origin/main before cutting a release");
 
   // Check gh CLI available and authenticated
   try {
@@ -156,18 +179,6 @@ async function validateEnvironment(dryRun: boolean): Promise<void> {
 async function getCurrentVersion(): Promise<string> {
   const pkg = JSON.parse(await readFile("package.json", "utf8"));
   return pkg.version;
-}
-
-function bumpVersion(current: string, type: "patch" | "minor" | "major"): string {
-  const [major, minor, patch] = current.split(".").map(Number);
-  switch (type) {
-    case "major":
-      return `${major + 1}.0.0`;
-    case "minor":
-      return `${major}.${minor + 1}.0`;
-    case "patch":
-      return `${major}.${minor}.${patch + 1}`;
-  }
 }
 
 export const RELEASE_TEST_COMMAND = ["bun", "run", "test"] as const;
@@ -219,18 +230,36 @@ async function updateVersion(newVersion: string): Promise<void> {
   console.log("  package.json updated");
 }
 
-async function generateChangelog(
+export async function generateChangelog(
   newVersion: string,
   changelogPath = "CHANGELOG.md",
+  cwd = process.cwd(),
 ): Promise<void> {
   console.log("Generating changelog...");
-  await $`bunx git-cliff --tag v${newVersion} -o ${changelogPath}`;
+  const previousTag = await getPreviousTag(cwd);
+  const range = previousTag ? `${previousTag}..HEAD` : "HEAD";
+  // Prepend only the new entry so reviewed historical migrations survive.
+  let history = await readFile(join(cwd, "CHANGELOG.md"), "utf8");
+  const unreleasedTitle = /^## \[(unreleased)\][^\r\n]*\r?$/im.exec(history)?.[1];
+  const unreleased = unreleasedTitle ? extractChangelogSection(history, unreleasedTitle) : "";
+  const manualNotes = unreleased.split("\n").slice(1).join("\n").trim();
+  if (unreleased) history = history.replace(unreleased, "");
+  await writeFile(changelogPath, history);
+  const tagPattern = `^v${newVersion.replaceAll(".", "\\.")}$`;
+  await $`bunx git-cliff ${range} --tag v${newVersion} --tag-pattern ${tagPattern} --prepend ${changelogPath}`.cwd(cwd);
+  if (manualNotes) {
+    const generated = await readFile(changelogPath, "utf8");
+    const entry = extractChangelogSection(generated, newVersion);
+    const [heading, ...body] = entry.split("\n");
+    const reviewedEntry = `${heading}\n\n${manualNotes}\n\n${body.join("\n").trim()}`;
+    await writeFile(changelogPath, generated.replace(entry, () => reviewedEntry));
+  }
   console.log(`  ${changelogPath} updated`);
 }
 
-async function getPreviousTag(): Promise<string> {
-  const tag = await $`git describe --tags --abbrev=0 HEAD`.text();
-  return tag.trim();
+async function getPreviousTag(cwd = process.cwd()): Promise<string | null> {
+  const tags = (await $`git -C ${cwd} tag --merged HEAD --list ${"v*"}`.text()).trim().split("\n");
+  return previousStableTag(tags);
 }
 
 /**
@@ -310,10 +339,8 @@ async function injectNewContributors(
   newVersion: string,
   changelogPath = "CHANGELOG.md",
 ): Promise<void> {
-  let previousTag: string;
-  try {
-    previousTag = await getPreviousTag();
-  } catch {
+  const previousTag = await getPreviousTag();
+  if (!previousTag) {
     console.log("  No previous tag found, skipping contributor detection");
     return;
   }
@@ -420,10 +447,8 @@ async function findReleaseAcknowledgments(previousTag: string): Promise<ReleaseA
  * version's heading, so it lands under the new version.
  */
 async function injectThanks(_newVersion: string, changelogPath = "CHANGELOG.md"): Promise<void> {
-  let previousTag: string;
-  try {
-    previousTag = await getPreviousTag();
-  } catch {
+  const previousTag = await getPreviousTag();
+  if (!previousTag) {
     console.log("  No previous tag found, skipping thanks section");
     return;
   }
@@ -485,19 +510,7 @@ async function previewChangelog(newVersion: string): Promise<void> {
     await injectThanks(newVersion, previewPath);
 
     const full = await readFile(previewPath, "utf8");
-    const start = full.indexOf(`## [${newVersion}]`);
-    let previousTag = "";
-    try {
-      previousTag = await getPreviousTag();
-    } catch {
-      /* no previous tag — print to end */
-    }
-    const end = previousTag
-      ? full.indexOf(`## [${previousTag.replace(/^v/, "")}]`)
-      : full.length;
-
-    const entry =
-      start === -1 ? full : full.slice(start, end > start ? end : full.length).trimEnd();
+    const entry = extractChangelogSection(full, newVersion);
     const rule = "─".repeat(70);
     console.log(`\n${rule}\n${entry}\n${rule}`);
     console.log("\nPREVIEW ONLY — CHANGELOG.md and git are untouched.");
@@ -520,16 +533,17 @@ async function createTag(newVersion: string): Promise<void> {
   console.log("  Tag created");
 }
 
-async function pushRelease(newVersion: string, state: ReleaseState): Promise<void> {
+export async function pushRelease(newVersion: string, state: ReleaseState, cwd = process.cwd()): Promise<void> {
   console.log("Pushing to origin...");
-  await $`git push origin main`;
+  // A lost response may follow a successful push: never automatically undo that state.
+  state.pushAttempted = true;
+  await $`git -C ${cwd} push --atomic origin main ${`v${newVersion}`}`;
   state.mainPushed = true;
-  await $`git push origin ${`v${newVersion}`}`;
   state.tagPushed = true;
   console.log("  Pushed");
 }
 
-async function waitForRelease(newVersion: string): Promise<void> {
+async function waitForRelease(newVersion: string, sourceSha: string): Promise<void> {
   console.log("Waiting for GitHub release artifacts...");
   const tag = `v${newVersion}`;
   const maxWait = 10 * 60 * 1000; // 10 minutes
@@ -539,15 +553,17 @@ async function waitForRelease(newVersion: string): Promise<void> {
   while (Date.now() - start < maxWait) {
     try {
       const result = await $`gh api repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${tag}`.json();
-      const release = result as { assets: { name: string }[] };
+      const release = result as StableRelease;
       const assets = release.assets.map((a) => a.name);
       const expected = expectedStableReleaseAssetNames(newVersion);
-
-      if (stableReleaseAssetsReady(newVersion, assets)) {
-        console.log("  All release artifacts ready");
+      const runs = release.draft === false && release.prerelease === false
+        ? await $`gh run list --repo ${`${REPO_OWNER}/${REPO_NAME}`} --workflow release.yml --branch ${tag} --commit ${sourceSha} --limit 1 --json headSha,headBranch,status,conclusion`.json() as PublicationRun[]
+        : [];
+      if (stableReleasePublicationReady(newVersion, release, runs[0], sourceSha)) {
+        console.log("  Public stable assets and exact-SHA release workflow verified");
         return;
       }
-      console.log(`  Waiting... (${assets.length}/${expected.length} assets)`);
+      console.log(`  Waiting... (${assets.length}/${expected.length} assets; publication and verification pending)`);
     } catch {
       console.log("  Release not created yet...");
     }
@@ -574,17 +590,20 @@ export function showDryRunPlan(currentVersion: string, newVersion: string, skipT
 DRY RUN - No changes will be made.
 
 Release plan: ${currentVersion} → ${newVersion}
+Policy: YYYY.M.N, UTC month, monthly release counter; libraries retain SemVer.
+Candidate uses the local tag snapshot; a real release refreshes origin/main and tags first.
 
 Steps that would be executed:
   1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun run test
   2. Update version: package.json (version: "${newVersion}")
-  3. Generate changelog: bunx git-cliff --tag v${newVersion} -o CHANGELOG.md
+  3. Prepend the new stable-range changelog: bunx git-cliff <previous-stable>..HEAD --tag v${newVersion} --prepend CHANGELOG.md
   4. Add "New Contributors" + "Thanks" sections to CHANGELOG.md (via GitHub API)
   5. Commit: git commit -m "chore(release): v${newVersion}"
   6. Tag: git tag v${newVersion}
-  7. Push: git push origin main && git push origin v${newVersion}
-  8. Wait for the five CLI archives, packaged MV3 extension, checksums,
-     build metadata, and exact-SHA security receipt
+  7. Push: git push --atomic origin main v${newVersion}
+  8. Wait for public stable assets and successful exact-SHA release workflow:
+     five CLI archives, packaged MV3 extension, checksums, build metadata,
+     and exact-SHA security receipt
   9. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
        -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME}
 
@@ -596,11 +615,11 @@ Pre-release checklist (not enforced by this script — confirm each yourself):
       parse budget, link-target schemes, font intake) plus any network code
       added since the last tag.
       See docs: Contributing → Releasing → Security Review Before Every Release.
-  [ ] CHANGELOG entry reads correctly (bun scripts/release.ts <type> --preview)
+  [ ] CHANGELOG entry reads correctly (bun scripts/release.ts --preview)
   [ ] Docs updated for any behavior change in this release
 
 To execute this release, run without --dry-run:
-  bun scripts/release.ts ${newVersion.endsWith(".0.0") ? "major" : newVersion.endsWith(".0") ? "minor" : "patch"}
+  bun scripts/release.ts
 `);
 }
 
@@ -614,9 +633,9 @@ export async function rollback(
     return;
   }
 
-  if (state.mainPushed || state.tagPushed) {
+  if (state.pushAttempted || state.mainPushed || state.tagPushed) {
     console.log(
-      "Release changes were pushed; automatic rollback skipped to avoid diverging from origin.",
+      "A release push was attempted; automatic rollback skipped because remote state may have changed.",
     );
     console.log(`Inspect origin/main and tag v${newVersion} before recovering manually.`);
     return;
@@ -646,8 +665,6 @@ export async function rollback(
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-
   let newVersion = "";
   const state: ReleaseState = {
     startingHead: "",
@@ -657,16 +674,19 @@ async function main(): Promise<void> {
     tagCreated: false,
     mainPushed: false,
     tagPushed: false,
+    pushAttempted: false,
   };
 
   try {
+    const args = parseArgs(process.argv.slice(2));
     // 1. Validate environment
-    await validateEnvironment(args.dryRun);
+    await validateEnvironment(args.dryRun || args.preview);
     state.startingHead = (await $`git rev-parse HEAD`.text()).trim();
 
     // 2. Calculate new version
     const currentVersion = await getCurrentVersion();
-    newVersion = bumpVersion(currentVersion, args.type);
+    const tags = (await $`git tag --list ${"v*"}`.text()).trim().split("\n");
+    newVersion = nextCalverVersion(currentVersion, tags, new Date());
 
     // DRY RUN: Just show the plan and exit
     if (args.dryRun) {
@@ -716,7 +736,7 @@ async function main(): Promise<void> {
     await pushRelease(newVersion, state);
 
     // 9. Wait for GitHub release artifacts
-    await waitForRelease(newVersion);
+    await waitForRelease(newVersion, state.releaseCommit);
 
     // 10. Update Homebrew tap
     await updateHomebrew(newVersion);

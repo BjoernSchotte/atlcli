@@ -18,8 +18,11 @@ body = """
     ### {{ group | striptags | trim | upper_first }}
     {% for commit in commits %}
         - {% if commit.scope %}**{{ commit.scope }}:** {% endif %}\
-            {{ commit.message | upper_first }}\
+            {{ commit.message | upper_first }} \
             ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/bjoernschotte/atlcli/commit/{{ commit.id }}))\
+            {% if commit.breaking_description and commit.breaking_description != commit.message %}\
+                \n\n  {{ commit.breaking_description }}\n\
+            {% endif %}\
     {% endfor %}
 {% endfor %}
 """
@@ -32,6 +35,7 @@ conventional_commits = true
 filter_unconventional = true
 split_commits = false
 commit_parsers = [
+    { field = "breaking", pattern = "true", group = "<!-- 0 -->Breaking changes" },
     { message = "^feat", group = "Features" },
     { message = "^fix", group = "Bug Fixes" },
     { message = "^doc", group = "Documentation" },
@@ -43,7 +47,7 @@ commit_parsers = [
     { message = "^chore|^ci", group = "Miscellaneous" },
     { body = ".*security", group = "Security" },
 ]
-protect_breaking_commits = false
+protect_breaking_commits = true
 filter_commits = false
 tag_pattern = "v[0-9].*"
 skip_tags = ""

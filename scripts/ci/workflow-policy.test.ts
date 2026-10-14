@@ -417,6 +417,17 @@ describe("CI workflow policy", () => {
     expect(stable).not.toContain("softprops/action-gh-release");
   });
 
+  it("validates product CalVer and publishes the reviewed changelog section", async () => {
+    const stable = await workflow("release.yml");
+    expect(stable).toContain("assertCalverVersion");
+    expect(stable).toContain("bun scripts/release-notes.ts");
+    expect(stable).toContain('"$VERSION" CHANGELOG.md release/checksums.txt release_notes.md');
+    expect(stable).not.toContain("git describe --tags");
+    expect(stable).not.toContain("git log --pretty=format");
+    expect(stable).toContain("does not match package.json");
+    expect(stable).toContain('tags: [\'v*\']');
+  });
+
   it("dispatches Homebrew dev only after public proof with a scoped short-lived app token", async () => {
     const dev = await workflow("dev-release.yml");
     const homebrew = block(dev, /^ {2}publish-homebrew-dev:\s*$/, 2);

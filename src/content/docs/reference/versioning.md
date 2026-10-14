@@ -1,6 +1,6 @@
 ---
 title: "Package Versioning"
-description: "Semver policy for the @atlcli/* packages: lockstep versions, pre-1.0 rules, and the deferred registry publish"
+description: "Product CalVer and library SemVer: release numbering, API compatibility, and deferred registry publishing"
 ---
 
 # Package Versioning
@@ -13,6 +13,7 @@ repo can publish.
 
 ## In this page
 
+- [Product releases: CalVer](#product-releases-calver)
 - [Lockstep versioning](#lockstep-versioning)
 - [Pre-1.0 semver rules](#pre-10-semver-rules)
 - [1.0 and the API freeze](#10-and-the-api-freeze)
@@ -22,11 +23,36 @@ repo can publish.
 - [Why lockstep, not changesets](#why-lockstep-not-changesets)
 - [Related topics](#related-topics)
 
+## Product releases: CalVer
+
+The CLI and Chrome extension share one calendar version, `YYYY.M.N`:
+
+- `YYYY` is the four-digit year and `M` the month, both from **UTC**.
+- `N` counts releases in that month, starting at 1. It is not the day of the month.
+- No leading zeroes: `2026.9.12` precedes `2026.10.1`; the next October release is `2026.10.2`.
+- Git tags are `v<version>`, for example `v2026.10.1`. Existing `v0.x` tags remain valid history.
+
+The root `package.json` owns the product version. The release script allocates
+the next number from reserved stable tags and requires the tag and package
+version to match. A tag reserved by a failed release still consumes its number.
+Dev tags retain their `dev-YYYYMMDD.<run>.<attempt>-<sha8>` format and use the
+root product version as their CLI prerelease base.
+
+**CalVer does not signal API compatibility.** Breaking product changes appear
+under **Breaking changes** in the changelog with migration instructions.
+Existing JSON/schema contracts keep their own versioning rules.
+
+The examples above illustrate numbering; they are not a release announcement.
+See [Contributing: Releasing](/contributing/#releasing) for a minimal dry-run
+and a complete release workflow.
+
 ## Lockstep versioning
 
-The `@atlcli/*` packages are developed and tested only together, on the existing release
-tooling (`scripts/release.ts`, git-cliff changelog, one tag) — there is no per-package release
-schedule. Since the API freeze there are **two version tiers**: the frozen set at `1.0.0`
+The `@atlcli/*` libraries retain **SemVer**, independently of product CalVer.
+They are developed and tested together and share the scoped git-cliff changelog;
+there is no independent registry release schedule. A product release updates
+only the root version, not every workspace manifest. Since the API freeze there
+are **two version tiers**: the frozen set at `1.0.0`
 (`confluence`, `docx`, `pdf`, `pdf-compiler-browser`, `export-macros`) and the rest still at
 `0.x` (see the [freeze table](#10-and-the-api-freeze)). Internal `@atlcli/*` dependencies use
 `workspace:*`, which `bun pm pack` rewrites to each dependency's **concrete current version**
@@ -121,12 +147,12 @@ changelog by scope yields each package's history without a second changelog syst
 
 Considered and **rejected** (decision recorded here so it isn't re-litigated blindly):
 
-- The repo already runs a single-version release train with one changelog and one tag;
+- The repo already runs a single product release train with one changelog and one tag;
   changesets would add a second changelog system and a bot workflow sized for many
   independent maintainers, which this repo doesn't have.
-- Per-package version drift would force consumers (and the consumer-smoke matrix) to reason
-  about version compatibility between sibling packages that are developed and tested only in
-  lockstep.
+- Independent release schedules would add compatibility combinations between
+  sibling packages that are developed and tested together. The existing API-freeze
+  version tiers remain intentional.
 - Conventional-Commit scopes already deliver the per-package changelog story.
 
 This reasoning is independent of the publish target, so it holds while registry publishing is
