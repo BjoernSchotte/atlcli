@@ -233,11 +233,12 @@ A tagged table becomes one native Confluence table when its grid is complete:
 |---|---|
 | Table continues on the next page | One table; rows in source order |
 | Header row repeated on every page | Kept once; the repetitions are recognized, not duplicated |
-| Row split by a page break | One row; each cell's text is joined in page order |
+| Repeated header drawn as untagged text (LibreOffice) | Recognized directly above the continuation rows when every column matches; not duplicated |
+| Row split by a page break | One row; each cell's text continues as one paragraph |
 | Row or column span across a page break | Kept as a span |
 | Intentionally empty cell | Native empty cell |
 | Producer omitted an empty cell's tag | Placed by the cells' `Headers` references; the gap becomes an empty cell |
-| Nested, rotated, or ambiguous table | Falls back or reports; no invented cells |
+| Nested, rotated, or ambiguous table | Linearized text plus one rendered crop of the table region; the rest of the page stays editable |
 | More than 5,000 rows in total | Each page keeps its own table; reported |
 
 PDFium exposes text, geometry, tags, page objects, annotations, and rendering
@@ -248,11 +249,16 @@ back or report instead of receiving invented cells.
 
 > **Tip.** Export PDFs from Word, LibreOffice, or a browser with tagging
 > ("accessible PDF") enabled. Tagged exports keep tables, lists, and reading
-> order far better than untagged ones.
+> order far better than untagged ones. In LibreOffice, enable
+> **File > Export as PDF > General > Universal Accessibility (PDF/UA)** or
+> **Tagged PDF**. Word for Mac tags PDFs only with **Best for electronic
+> distribution and accessibility**.
 
 Likewise, a PDF image object may be a mask, tile, background, or clipped layer.
 AtlCLI correlates visible placement and structure evidence before native media
-output. Composite and vector figures use a rendered crop when safe.
+output. Composite and vector figures use a rendered crop when safe. A browser
+`<figure>` becomes one image with its caption once, even though the PDF nests
+the image's own Figure inside it.
 
 ## Import from an attachment
 

@@ -39,7 +39,7 @@ and cross-host PDFium parity all change together.
 | PIQ-15 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
 | PIQ-16 | FROZEN | moved to the local-VLM proposal lane (Section 14a) |
 | PIQ-17 | DONE | `EVIDENCE.md#piq-17` |
-| PIQ-18 | OPEN | prove the complete neutral and private-live acceptance scenario |
+| PIQ-18 | DONE (neutral, live) | `EVIDENCE.md#piq-18`; private republication not repeated |
 
 > **Executor instructions:** Read this plan completely before changing code.
 > Run the drift and privacy checks in Task PIQ-00 first. Execute tasks in

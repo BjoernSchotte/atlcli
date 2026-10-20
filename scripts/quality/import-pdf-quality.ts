@@ -43,6 +43,14 @@ export interface PdfQualityExpectedSpan {
   colspan: number;
 }
 
+/** Shape of one native table, in document order. Blank cells are [row, column]. */
+export interface PdfQualityExpectedTable {
+  rows: number;
+  columns: number;
+  headerRows: number;
+  blankCells: Array<[number, number]>;
+}
+
 export interface PdfQualityManifestEntry {
   id: string;
   path: string;
@@ -63,6 +71,8 @@ export interface PdfQualityManifestEntry {
     safeLinks: string[];
     requiredIssueCodes?: string[];
     tableSpans?: PdfQualityExpectedSpan[];
+    tables?: PdfQualityExpectedTable[];
+    figures?: { nativeRaster: number; renderedRegion: number };
   };
 }
 
@@ -86,6 +96,8 @@ export interface PdfQualityObservation {
   spans: PdfQualityExpectedSpan[];
   links: string[];
   issueCodes: string[];
+  tables: PdfQualityExpectedTable[];
+  figures: { nativeRaster: number; renderedRegion: number };
   review: PdfImportReviewV3;
 }
 
@@ -114,6 +126,8 @@ export interface PdfQualityFixtureResult {
   expectedBoundaryExact: boolean;
   fallbackExact: boolean;
   requiredIssuesExact: boolean;
+  tableShapesExact: boolean;
+  figuresExact: boolean;
   unresolvedBoundaryInNativeBlockCount: number;
   unsafeLinkPromotedCount: number;
   failureCodes: string[];
@@ -239,6 +253,24 @@ function linksInBlock(block: ImportBlock): string[] {
   return [];
 }
 
+function tableShapes(blocks: readonly ImportBlock[]): PdfQualityExpectedTable[] {
+  return blocks.flatMap((block) => {
+    if (block.type !== "table") return [];
+    const blankCells: Array<[number, number]> = [];
+    for (const [rowIndex, row] of block.rows.entries()) {
+      for (const [columnIndex, cell] of row.cells.entries()) {
+        if (cell.blocks.map(textOfBlock).join("").length === 0) blankCells.push([rowIndex, columnIndex]);
+      }
+    }
+    return [{
+      rows: block.rows.length,
+      columns: Math.max(0, ...block.rows.map((row) => row.cells.reduce((sum, cell) => sum + (cell.colspan ?? 1), 0))),
+      headerRows: block.rows.filter((row) => row.cells.length > 0 && row.cells.every((cell) => cell.header)).length,
+      blankCells,
+    }];
+  });
+}
+
 export async function readPdfQualityManifest(): Promise<PdfQualityManifest> {
   const parsed = JSON.parse(await readFile(MANIFEST_PATH, "utf8")) as PdfQualityManifest;
   if (parsed.schema !== "atlcli.import-pdf.quality-fixture/v1" || !Array.isArray(parsed.fixtures)) {
@@ -273,6 +305,11 @@ export async function collectPdfQualityObservations(
       spans: flattened.spans,
       links: review.document.blocks.flatMap(linksInBlock),
       issueCodes: review.document.issues.map((issue) => issue.code),
+      tables: tableShapes(review.document.blocks),
+      figures: {
+        nativeRaster: review.evidence.filter((entry) => entry.decisionCode === "pdf/figure-raster-native").length,
+        renderedRegion: review.evidence.filter((entry) => entry.decisionCode === "pdf/figure-rendered-region-attached").length,
+      },
       review,
     });
   }
@@ -470,6 +507,10 @@ function evaluateFixture(
   const requiredIssuesExact = (fixture.expected.requiredIssueCodes ?? []).every((code) =>
     observation.issueCodes.includes(code)
   );
+  const tableShapesExact = fixture.expected.tables === undefined
+    || JSON.stringify(fixture.expected.tables) === JSON.stringify(observation.tables);
+  const figuresExact = fixture.expected.figures === undefined
+    || JSON.stringify(fixture.expected.figures) === JSON.stringify(observation.figures);
   const unresolvedIds = new Set(review.boundaries.filter((item) => item.action === "unresolved").map((item) => item.id));
   const unresolvedBoundaryInNativeBlockCount = review.evidence.filter((entry) =>
     entry.outcome === "native" && entry.boundaryDecisionIds.some((id) => unresolvedIds.has(id))
@@ -501,6 +542,8 @@ function evaluateFixture(
   if (!boundariesExact) failureCodes.push("expected-boundary-exact");
   if (!fallbackExact) failureCodes.push("fallback-outcome");
   if (!requiredIssuesExact) failureCodes.push("required-issues");
+  if (!tableShapesExact) failureCodes.push("table-shape");
+  if (!figuresExact) failureCodes.push("figure-count");
   if (unresolvedBoundaryInNativeBlockCount !== 0) failureCodes.push("unresolved-native-boundary");
   if (unsafeLinkPromotedCount !== 0) failureCodes.push("unsafe-link-promoted");
   const result: PdfQualityFixtureResult = {
@@ -522,6 +565,8 @@ function evaluateFixture(
     expectedBoundaryExact: boundariesExact,
     fallbackExact,
     requiredIssuesExact,
+    tableShapesExact,
+    figuresExact,
     unresolvedBoundaryInNativeBlockCount,
     unsafeLinkPromotedCount,
     failureCodes,

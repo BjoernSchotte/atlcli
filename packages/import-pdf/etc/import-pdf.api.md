@@ -436,7 +436,7 @@ export declare const PDF_TABLE_POLICY_V2: Readonly<{
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/3";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/4";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -445,16 +445,17 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/4";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/5";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/4";
+    readonly revision: "atlcli.pdf-text-assembly-policy/5";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
     readonly differentLineCenterDeltaGlyphFactor: 1.2;
     readonly insertSpaceGapGlyphFactor: 0.75;
+    readonly literalConventionInsertSpaceGapGlyphFactor: 2;
     readonly noSpaceGapGlyphFactor: 0.35;
     readonly confidence: Readonly<{
         authored: 1;
@@ -1615,6 +1616,9 @@ export declare function structureRoleV2(node: PdfStructureNodeFactV2): string;
 // export: summarizePdfPlannedPage
 export declare function summarizePdfPlannedPage(page: PdfPlannedPageV1): Record<string, unknown>;
 
+// export: taggedFigureCaptionCharacterIndexesV2
+export declare function taggedFigureCaptionCharacterIndexesV2(page: PdfPageFactsV2): number[];
+
 // export: taggedHeadingLevel
 export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
 
@@ -2147,7 +2151,7 @@ export declare const PDF_TABLE_POLICY_V2: Readonly<{
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/3";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/4";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -2156,16 +2160,17 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/4";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/5";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/4";
+    readonly revision: "atlcli.pdf-text-assembly-policy/5";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
     readonly differentLineCenterDeltaGlyphFactor: 1.2;
     readonly insertSpaceGapGlyphFactor: 0.75;
+    readonly literalConventionInsertSpaceGapGlyphFactor: 2;
     readonly noSpaceGapGlyphFactor: 0.35;
     readonly confidence: Readonly<{
         authored: 1;
@@ -3370,6 +3375,9 @@ export declare function structureRoleV2(node: PdfStructureNodeFactV2): string;
 // export: summarizePdfPlannedPage
 export declare function summarizePdfPlannedPage(page: PdfPlannedPageV1): Record<string, unknown>;
 
+// export: taggedFigureCaptionCharacterIndexesV2
+export declare function taggedFigureCaptionCharacterIndexesV2(page: PdfPageFactsV2): number[];
+
 // export: taggedHeadingLevel
 export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
 
@@ -3866,7 +3874,7 @@ export declare const PDF_TABLE_POLICY_V2: Readonly<{
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/3";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/4";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -3875,16 +3883,17 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/4";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/5";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/4";
+    readonly revision: "atlcli.pdf-text-assembly-policy/5";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
     readonly differentLineCenterDeltaGlyphFactor: 1.2;
     readonly insertSpaceGapGlyphFactor: 0.75;
+    readonly literalConventionInsertSpaceGapGlyphFactor: 2;
     readonly noSpaceGapGlyphFactor: 0.35;
     readonly confidence: Readonly<{
         authored: 1;
@@ -5044,6 +5053,9 @@ export declare function structureRoleV2(node: PdfStructureNodeFactV2): string;
 
 // export: summarizePdfPlannedPage
 export declare function summarizePdfPlannedPage(page: PdfPlannedPageV1): Record<string, unknown>;
+
+// export: taggedFigureCaptionCharacterIndexesV2
+export declare function taggedFigureCaptionCharacterIndexesV2(page: PdfPageFactsV2): number[];
 
 // export: taggedHeadingLevel
 export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;
@@ -5586,7 +5598,7 @@ export declare const PDF_TABLE_POLICY_V2: Readonly<{
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/3";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/4";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -5595,16 +5607,17 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/4";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/5";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/4";
+    readonly revision: "atlcli.pdf-text-assembly-policy/5";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
     readonly differentLineCenterDeltaGlyphFactor: 1.2;
     readonly insertSpaceGapGlyphFactor: 0.75;
+    readonly literalConventionInsertSpaceGapGlyphFactor: 2;
     readonly noSpaceGapGlyphFactor: 0.35;
     readonly confidence: Readonly<{
         authored: 1;
@@ -6808,6 +6821,9 @@ export declare function structureRoleV2(node: PdfStructureNodeFactV2): string;
 
 // export: summarizePdfPlannedPage
 export declare function summarizePdfPlannedPage(page: PdfPlannedPageV1): Record<string, unknown>;
+
+// export: taggedFigureCaptionCharacterIndexesV2
+export declare function taggedFigureCaptionCharacterIndexesV2(page: PdfPageFactsV2): number[];
 
 // export: taggedHeadingLevel
 export declare function taggedHeadingLevel(role: string): 1 | 2 | 3 | 4 | 5 | 6 | null;

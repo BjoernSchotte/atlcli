@@ -4,7 +4,7 @@
  *
  *   bun specs/pdf-import-quality/fixtures/producer-tools.ts producer-source --output <file.docx>
  *   bun specs/pdf-import-quality/fixtures/producer-tools.ts sanitize-export \
- *     --input <raw.pdf> --output <fixture.pdf> --producer "<producer and version>"
+ *     --input <raw.pdf> --output <fixture.pdf> --producer "<producer and version>" [--title "<title>"]
  *
  * `producer-source` writes a minimal WordprocessingML document from
  * `producer-source.json`. `sanitize-export` rewrites a PDF from its trailer:
@@ -57,7 +57,7 @@ function number(value: number): string {
 }
 
 /** Rewrites every object reachable from the trailer's Root, keeping object numbers. */
-export function sanitizePdf(bytes: Uint8Array, producer: string): Uint8Array {
+export function sanitizePdf(bytes: Uint8Array, producer: string, title = NEUTRAL_INFO.Title): Uint8Array {
   const reader = new PdfObjectReader(bytes);
   const reachable = new Set<number>();
   const visit = (value: PdfValue | undefined): void => {
@@ -121,7 +121,7 @@ export function sanitizePdf(bytes: Uint8Array, producer: string): Uint8Array {
   }
   const infoNum = (order.at(-1) ?? 0) + 1;
   offsets.set(infoNum, length);
-  const info: Record<string, string> = { ...NEUTRAL_INFO, Creator: producer, Producer: producer };
+  const info: Record<string, string> = { ...NEUTRAL_INFO, Title: title, Creator: producer, Producer: producer };
   emit(latin1(`${infoNum} 0 obj\n<<${Object.entries(info).map(([key, text]) => `/${key} ${utf16Text(text)}`).join(" ")}>>\nendobj\n`));
   const xref = length;
   emit(latin1(
@@ -227,10 +227,11 @@ if (import.meta.main) {
     console.log(`created neutral producer source: ${output}`);
   } else if (command === "sanitize-export") {
     const output = option(args, "output");
-    await writeFile(output, sanitizePdf(new Uint8Array(await readFile(option(args, "input"))), option(args, "producer")));
+    const title = args.includes("--title") ? option(args, "title") : undefined;
+    await writeFile(output, sanitizePdf(new Uint8Array(await readFile(option(args, "input"))), option(args, "producer"), title));
     console.log(`sanitized neutral producer export: ${output}`);
   } else {
-    console.error("usage: producer-tools.ts producer-source --output <docx> | sanitize-export --input <pdf> --output <pdf> --producer <name>");
+    console.error("usage: producer-tools.ts producer-source --output <docx> | sanitize-export --input <pdf> --output <pdf> --producer <name> [--title <title>]");
     process.exit(2);
   }
 }

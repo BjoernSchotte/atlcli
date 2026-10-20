@@ -3,7 +3,7 @@ import { digestPdfCanonical } from "./canonical.js";
 import type { PdfTextDirection } from "./text.js";
 
 export const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 =
-  "atlcli.pdf-text-assembly-policy/4" as const;
+  "atlcli.pdf-text-assembly-policy/5" as const;
 
 const PRESENTATION_LIGATURES = Object.freeze({
   "\ufb00": "ff",
@@ -23,6 +23,11 @@ export const PDF_TEXT_ASSEMBLY_POLICY_V2 = Object.freeze({
   sameLineCenterDeltaGlyphFactor: 0.55,
   differentLineCenterDeltaGlyphFactor: 1.2,
   insertSpaceGapGlyphFactor: 0.75,
+  /**
+   * A producer that writes word spaces as glyphs separates words with one, so
+   * a gap without it is a space only when it is clearly wider than one.
+   */
+  literalConventionInsertSpaceGapGlyphFactor: 2,
   noSpaceGapGlyphFactor: 0.35,
   confidence: Object.freeze({
     authored: 1,
@@ -681,7 +686,10 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
         );
       } else if ((textRunChange || markedContentChange) && wordPair) {
         const gap = relation.gapGlyphFactor;
-        if (gap !== null && gap >= PDF_TEXT_ASSEMBLY_POLICY_V2.insertSpaceGapGlyphFactor && scriptMatch) {
+        const insertSpaceGap = literalWhitespaceConvention
+          ? PDF_TEXT_ASSEMBLY_POLICY_V2.literalConventionInsertSpaceGapGlyphFactor
+          : PDF_TEXT_ASSEMBLY_POLICY_V2.insertSpaceGapGlyphFactor;
+        if (gap !== null && gap >= insertSpaceGap && scriptMatch) {
           addBoundary(
             previous,
             anchor,

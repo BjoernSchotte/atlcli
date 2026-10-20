@@ -98,6 +98,7 @@ interface VisualCandidate {
   alt?: string;
   captionBlock?: ImportBlock;
   captionBlockId?: string;
+  captionCharacterIndexes?: number[];
 }
 
 interface VisualItem {
@@ -180,6 +181,11 @@ function taggedCandidates(page: PdfPageFactsV1): VisualCandidate[] {
   return candidates;
 }
 
+/** Characters of tagged captions that the figure stage projects with their figure. */
+export function taggedFigureCaptionCharacterIndexesV2(page: PdfPageFactsV2): number[] {
+  return taggedCandidatesV2(page).flatMap((candidate) => candidate.captionCharacterIndexes ?? []);
+}
+
 function taggedCandidatesV2(page: PdfPageFactsV2): VisualCandidate[] {
   const candidates: VisualCandidate[] = [];
   const isFigure = (node: PdfStructureNodeFactV2) => structureRoleV2(node) === "Figure";
@@ -227,6 +233,7 @@ function taggedCandidatesV2(page: PdfPageFactsV2): VisualCandidate[] {
       ...(alt ? { alt } : {}),
       ...(captionBlockId && captionText ? {
         captionBlockId,
+        captionCharacterIndexes: captionText.characters.map((character) => character.index),
         captionBlock: {
           id: captionBlockId,
           type: "paragraph",
@@ -659,7 +666,10 @@ async function preservePdfFigureCandidates<E extends PdfFigureEvidence>(
       evidence.push(versionedFigureEvidence<E>({
         sourceId: candidate.captionBlock.sourceRefs?.[0] ?? candidate.captionBlock.id,
         targetNodeId: candidate.captionBlock.id,
-        locator: { pageIndex: candidate.pageIndex },
+        locator: {
+          pageIndex: candidate.pageIndex,
+          ...(candidate.captionCharacterIndexes ? { characterIndexes: candidate.captionCharacterIndexes } : {}),
+        },
         basis: ["structure-tree", "marked-content"],
         confidence: 1,
         decisionCode: "pdf/figure-caption-native",

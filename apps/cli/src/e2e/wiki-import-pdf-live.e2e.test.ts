@@ -116,7 +116,15 @@ interface PdfQualityTruthEntry {
     }>;
     safeLinks: string[];
     ownership: { fallbackPages: number[]; localizedRepairRegions: number };
+    tables?: AdfTableShape[];
   };
+}
+
+interface AdfTableShape {
+  rows: number;
+  columns: number;
+  headerRows: number;
+  blankCells: Array<[number, number]>;
 }
 
 interface PublishedProof {
@@ -357,6 +365,37 @@ function summarizeOrderedAdf(value: string): OrderedContentSummary {
   return summary;
 }
 
+/** Native table shapes in an ADF body: header rows and blank cells as [row, column]. */
+function adfTableShapes(value: string): AdfTableShape[] {
+  const shapes: AdfTableShape[] = [];
+  const nodes = (node: unknown): Record<string, unknown>[] =>
+    node && typeof node === "object" && Array.isArray((node as Record<string, unknown>).content)
+      ? ((node as Record<string, unknown>).content as unknown[]).filter((child): child is Record<string, unknown> => Boolean(child) && typeof child === "object")
+      : [];
+  const text = (node: Record<string, unknown>): string =>
+    (typeof node.text === "string" ? node.text : "") + nodes(node).map(text).join("");
+  const walk = (node: Record<string, unknown>): void => {
+    if (node.type !== "table") {
+      nodes(node).forEach(walk);
+      return;
+    }
+    const rows = nodes(node);
+    const blankCells: Array<[number, number]> = [];
+    rows.forEach((row, rowIndex) => nodes(row).forEach((cell, columnIndex) => {
+      if (text(cell).length === 0) blankCells.push([rowIndex, columnIndex]);
+    }));
+    shapes.push({
+      rows: rows.length,
+      columns: Math.max(0, ...rows.map((row) => nodes(row).reduce((sum, cell) =>
+        sum + Number((cell.attrs as Record<string, unknown> | undefined)?.colspan ?? 1), 0))),
+      headerRows: rows.filter((row) => nodes(row).length > 0 && nodes(row).every((cell) => cell.type === "tableHeader")).length,
+      blankCells,
+    });
+  };
+  walk(JSON.parse(value) as Record<string, unknown>);
+  return shapes;
+}
+
 async function pdfQualityTruth(id: string): Promise<PdfQualityTruthEntry> {
   const manifest = JSON.parse(await readFile(QUALITY_MANIFEST, "utf8")) as { fixtures?: PdfQualityTruthEntry[] };
   const fixture = manifest.fixtures?.find((candidate) => candidate.id === id);
@@ -571,6 +610,67 @@ describe.skipIf(!RUN).serial("built CLI PDF import live Cloud certification", ()
       },
     );
   }, CASE_TIMEOUT_MS);
+
+  for (const id of ["acceptance-browser", "acceptance-libreoffice"]) {
+    it(`publishes the ${id} document with native multi-page tables and no fallback`, async () => {
+      const truth = await pdfQualityTruth(id);
+      const expectedBlocks = truth.expected.orderedBlocks.map((block) => ({
+        type: block.type,
+        depth: block.depth ?? 0,
+        text: block.text.normalize("NFC"),
+      }));
+      const fixturePath = resolve(QUALITY_FIXTURES, truth.path);
+      const sourceBytes = new Uint8Array(await readFile(fixturePath));
+      const wasmBinary = new Uint8Array(await readFile(PDFIUM_WASM));
+      const extraction = await buildPdfImportReviewV3(sourceBytes, createPdfiumFactsAdapterV2({ wasmBinary }), {
+        target: {
+          spaceKey: E2E_SPACE_KEY,
+          title: "Neutral acceptance extraction proof",
+          deployment: "cloud",
+          supportsPageTree: true,
+          evidence: "profile",
+        },
+        splitPolicy: parsePdfSplitPolicy("off"),
+        scanPolicy: "fail",
+        unsupported: "fail",
+      });
+      const extracted = summarizeOrderedImportBlocks(extraction.document.blocks);
+      expect(extraction.blockers).toEqual([]);
+      expect(extracted.blocks).toEqual(expectedBlocks);
+      expect(extracted.tableCount).toBe(2);
+      expect(extracted.mediaIds).toHaveLength(1);
+      expect(extracted.fallbackScopes).toEqual([]);
+      for (const page of extraction.pages) {
+        expect(page).toMatchObject({
+          fallbackScope: "none",
+          unresolvedBoundaryCount: 0,
+          unownedCharacterCount: 0,
+          duplicateOwnershipAttemptCount: 0,
+        });
+      }
+
+      await withPublishedPdf(
+        `import-pdf-${id}`,
+        fixturePath,
+        ["--split", "off", "--scan-policy", "fail", "--unsupported", "fail"],
+        async ({ receipt, orderedSummaries, client }) => {
+          const readback = orderedSummaries.get(receipt.page.id)!;
+          expect(receipt.source.sha256).toBe(extraction.source.sha256);
+          expect(receipt.sourceAttachment).toBeUndefined();
+          expect(readback.blocks).toEqual(expectedBlocks);
+          expect(readback.tableCount).toBe(2);
+          expect(readback.mediaIds).toHaveLength(1);
+          expect(readback.fallbackScopes).toEqual([]);
+          const adf = await client.getPageAdf(receipt.page.id);
+          expect(adfTableShapes(adf.body.value)).toEqual(truth.expected.tables!);
+          // Only the native figure is attached: no source PDF, no fallback image.
+          const attachments = await client.listAttachments(receipt.page.id);
+          expect(attachments).toHaveLength(1);
+          expect(attachments.every((attachment) => attachment.mediaType !== "application/pdf")).toBe(true);
+        },
+      );
+    }, CASE_TIMEOUT_MS);
+  }
 
   it("publishes qualified two-column untagged text in the proven reading order", async () => {
     await withPublishedPdf("import-pdf-untagged", "complex-untagged.pdf", ["--split", "off"], ({ receipt, summaries }) => {

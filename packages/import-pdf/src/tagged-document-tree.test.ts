@@ -194,6 +194,19 @@ describe("logical table projection across pages", () => {
     expect(block?.type === "table" ? block.rows.length : null).toBe(4);
   });
 
+  it("continues a cell split by a page break as one paragraph with one text run", () => {
+    // Regression: the parts became two paragraphs, and three adjacent runs
+    // failed Confluence readback, which merges adjacent text nodes.
+    const projection = projectTaggedLogicalTableV2([
+      { page: pageWith(0, ["Name", "Note", "A", "first:"]), table: table(0, [row(0, "h", "TH", [0, 1]), row(0, "r1", "TD", [2, 3])]), corruptMcids: new Set() },
+      { page: pageWith(1, ["", "done."]), table: table(1, [row(1, "r1", "TD", [0, 1])]), corruptMcids: new Set() },
+    ]);
+    const block = projection?.blocks[0];
+    const cell = block?.type === "table" ? block.rows[1]!.cells[1]! : null;
+    expect(cell?.blocks).toHaveLength(1);
+    expect(cell?.blocks[0]).toMatchObject({ type: "paragraph", runs: [{ kind: "text", text: "first: done." }] });
+  });
+
   it("joins a logical table longer than the per-page geometry row limit", () => {
     // Regression: 300 rows over three pages used to exceed the 250-row page
     // limit, so the table silently split into one table per page.

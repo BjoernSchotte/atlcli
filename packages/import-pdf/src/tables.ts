@@ -810,7 +810,25 @@ export function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTablePartV2
       for (const [viewIndex, { view, projected }] of projectedViews.entries()) {
         const repeat = repeated && viewIndex > 0;
         const assembly = projected.correlated.assembly;
-        if (!repeat) cell.blocks.push(...projected.cell.blocks);
+        if (!repeat) {
+          // Each view is the cell's text on one page, so a row split by a
+          // page break continues the same paragraph. A trailing hyphen is
+          // ambiguous across pages and keeps the parts apart.
+          const previous = cell.blocks.at(-1);
+          const next = projected.cell.blocks[0]!;
+          const previousText = previous?.type === "paragraph"
+            ? previous.runs.map((run) => run.kind === "text" ? run.text : "\n").join("")
+            : "";
+          if (previous?.type === "paragraph" && /\S$/u.test(previousText) && !/[-\u00ad\u2010]$/u.test(previousText) && next.runs.length > 0) {
+            // Merge like taggedRunsV2 so adjacent runs with equal marks stay one.
+            for (const run of [{ kind: "text" as const, text: " " }, ...next.runs]) {
+              const last = previous.runs.at(-1);
+              if (last?.kind === "text" && run.kind === "text" && JSON.stringify(last.marks) === JSON.stringify(run.marks)) {
+                last.text += run.text;
+              } else previous.runs.push({ ...run });
+            }
+          } else cell.blocks.push(...projected.cell.blocks);
+        }
         projected.correlated.characters.forEach((character) => claimed.get(view.page.index)!.add(character.index));
         if (projected.correlated.bbox && view.page === first.page) boxes.push(projected.correlated.bbox);
         appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
@@ -842,6 +860,21 @@ export function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTablePartV2
       }
     }
     projectedRows.push({ cells: projectedCells });
+  }
+  for (const repeat of untaggedHeaderRepeatsV2(parts, rows)) {
+    repeat.characterIndexes.forEach((index) => claimed.get(repeat.page.index)!.add(index));
+    evidence.push({
+      sourceId: `${repeat.cell.id}:untagged-repeat:p${repeat.page.index}`,
+      targetNodeId: `${repeat.cell.id}:cell`,
+      locator: tableLocatorV2(repeat.page, repeat.cell.id, repeat.bbox, [], repeat.characterIndexes),
+      // The cell identity comes from the tree; geometry places its repetition.
+      basis: ["structure-tree", "text-geometry"],
+      confidence: 0.9,
+      decisionCode: "pdf/table-untagged-cell-header-repeated",
+      outcome: "native",
+      analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
+      boundaryDecisionIds: [],
+    });
   }
   const table = first.table;
   const id = `${table.id}:table`;
@@ -898,6 +931,73 @@ export function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTablePartV2
     boundaries,
     transformations,
   };
+}
+
+const visibleGlyph = (value: string) => value.replace(/[\s\u00ad]/gu, "").length > 0;
+
+/**
+ * Some producers (LibreOffice) draw the repeated header row of a continuation
+ * page as untagged text. It is that header only when it sits directly above
+ * the part's first tagged row and each header cell's column holds exactly
+ * that cell's characters; anything else stays residue.
+ */
+function untaggedHeaderRepeatsV2(
+  parts: readonly PdfTaggedTablePartV2[],
+  rows: readonly TaggedLogicalRowV2[],
+): Array<{ page: PdfPageFactsV2; cell: PdfStructureNodeFactV2; bbox?: PdfNormalizedRect; characterIndexes: number[] }> {
+  const first = parts[0]!;
+  const headerRows = rows.slice(0, Math.max(0, rows.findIndex((row) =>
+    !row.primary.every((cell) => structureRoleV2(cell) === "TH")
+  )));
+  const headers = headerRows.flatMap((row) => row.primary.flatMap((cell, index) => {
+    const view = row.cells[index]![0]!;
+    if (view.page !== first.page) return [];
+    const characters = correlateTaggedTextWithLinksV2(view.page, cell).characters.filter((character) => visibleGlyph(character.value));
+    const bbox = unionRects(characters.map((character) => character.bbox));
+    return bbox ? [{ cell, row, bbox, signature: characters.map((character) => character.value).join("") }] : [];
+  }));
+  const band = unionRects(headers.map((header) => header.bbox));
+  if (!band) return [];
+  const tolerance = PDF_TABLE_POLICY_V1.alignedRowTolerance;
+  const result: ReturnType<typeof untaggedHeaderRepeatsV2> = [];
+  for (const part of parts.slice(1)) {
+    if (part.page === first.page || headerRows.some((row) => row.cells.some((views) => views.some((view) => view.page === part.page)))) continue;
+    const mcids = new Set(orderedDescendantMcidsV2(part.table));
+    // Characters without geometry cannot be placed and stay residue.
+    const placed = part.page.characters.flatMap((character) => character.bbox ? [{ ...character, bbox: character.bbox }] : []);
+    const tops = placed.filter((character) => character.mcid !== null && mcids.has(character.mcid)).map((character) => character.bbox.y);
+    if (tops.length === 0) continue;
+    const top = Math.min(...tops);
+    const candidates = placed.filter((character) =>
+      character.mcid === null
+      && visibleGlyph(character.value)
+      && character.bbox.y + character.bbox.height <= top + tolerance
+      && character.bbox.y >= top - band.height - 2 * tolerance
+    );
+    if (candidates.length === 0) continue;
+    const assigned = new Set<number>();
+    const matches = headers.map((header) => {
+      const characters = candidates.filter((character) => {
+        const center = character.bbox.x + character.bbox.width / 2;
+        return center >= header.bbox.x - tolerance && center <= header.bbox.x + header.bbox.width + tolerance;
+      });
+      characters.forEach((character) => assigned.add(character.index));
+      return { header, characters };
+    });
+    if (
+      assigned.size !== candidates.length
+      || matches.some(({ header, characters }) => characters.map((character) => character.value).join("") !== header.signature)
+    ) continue;
+    for (const { header, characters } of matches) {
+      result.push({
+        page: part.page,
+        cell: header.cell,
+        ...(unionRects(characters.map((character) => character.bbox)) ? { bbox: unionRects(characters.map((character) => character.bbox))! } : {}),
+        characterIndexes: characters.map((character) => character.index),
+      });
+    }
+  }
+  return result;
 }
 
 function uniqueCoordinates(values: readonly number[]): number[] {

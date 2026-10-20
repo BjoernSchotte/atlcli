@@ -154,6 +154,32 @@ export function projectTaggedList(
 }
 
 const INLINE_LIST_BODY_ROLES = new Set(["NonStruct", "Span", "Strong", "Em", "Link", "Quote"]);
+const LIST_MARKER = /^(?:[•◦▪▫‣⁃∙·●○■□–—*-]|\d{1,3}[.)]|[a-z][.)]|[ivxlc]{1,6}[.)])$/iu;
+
+/**
+ * Without an Lbl, some producers (LibreOffice) write the list marker into the
+ * body as its own leading marked-content sequence. That sequence is the label
+ * when it holds exactly one marker token and a later sequence holds text.
+ */
+function implicitListLabelV2(
+  page: PdfPageFactsV2,
+  paragraph: PdfStructureNodeFactV2 | undefined,
+): { paragraph: PdfStructureNodeFactV2; characters: PdfPageFactsV2["characters"]; mcid: number } | null {
+  const firstKid = paragraph?.kids[0];
+  if (!paragraph || firstKid?.kind !== "mcid" || !paragraph.kids.slice(1).some((kid) => kid.kind === "mcid")) return null;
+  const characters = page.characters.filter((character) => character.mcid === firstKid.mcid);
+  const marker = characters.map((character) => character.value).join("").replace(/[\s\u00ad]/gu, "");
+  if (!LIST_MARKER.test(marker)) return null;
+  return {
+    paragraph: {
+      ...paragraph,
+      directMcids: paragraph.directMcids.filter((mcid) => mcid !== firstKid.mcid),
+      kids: paragraph.kids.slice(1),
+    },
+    characters,
+    mcid: firstKid.mcid,
+  };
+}
 
 export function projectTaggedListV2(
   page: PdfPageFactsV2,
@@ -209,6 +235,8 @@ export function projectTaggedListV2(
       : leadingParagraph
         ? [leadingParagraph]
         : bodyChildren.filter((child) => structureRoleV2(child) === "P");
+    const implicitLabel = label ? null : implicitListLabelV2(page, paragraphNodes[0]);
+    if (implicitLabel) paragraphNodes[0] = implicitLabel.paragraph;
     const nestedNodes = bodyChildren.filter((child) => structureRoleV2(child) === "L");
     const unknownNodes = inlineBody ? [] : bodyChildren.filter((child) =>
       !["P", "L"].includes(structureRoleV2(child)) && !(leadingParagraph && inlineRole(child))
@@ -433,6 +461,28 @@ export function projectTaggedListV2(
         boundaryDecisionIds: labelCorrelation
           ? pdfTextBoundaryDecisionIdsV2(labelCorrelation.assembly)
           : [],
+      });
+    }
+    if (implicitLabel) {
+      const labelValue = implicitLabel.characters.map((character) => character.value).join("");
+      ordered ||= /^\s*(?:\d+|[a-z]+)[.)]\s*$/iu.test(labelValue);
+      implicitLabel.characters.forEach((character) => claimed.add(character.index));
+      evidence.push({
+        sourceId: `${paragraphNodes[0]!.id}:implicit-label`,
+        targetNodeId: blocks[0]!.id,
+        locator: {
+          pageIndex: page.index,
+          ...(page.label ? { pageLabel: page.label } : {}),
+          structurePath: paragraphNodes[0]!.id,
+          markedContentIds: [`p${page.index}:mcid:${implicitLabel.mcid}`],
+          characterIndexes: implicitLabel.characters.map((character) => character.index),
+        },
+        basis: ["structure-tree", "marked-content"],
+        confidence: 0.95,
+        decisionCode: "pdf/tagged-list-label-implicit",
+        outcome: "native",
+        analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
+        boundaryDecisionIds: [],
       });
     }
     items.push({

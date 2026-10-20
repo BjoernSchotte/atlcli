@@ -21,7 +21,7 @@ describe("PDF import semantic quality gate", () => {
 
     expect(result.schema).toBe("atlcli.import-pdf-quality/1");
     expect(result.passed).toBe(true);
-    expect(result.fixtures).toHaveLength(7);
+    expect(result.fixtures).toHaveLength(9);
     expect(new Set(result.fixtures.map((fixture) => fixture.producerFamily)))
       .toEqual(new Set(["independent", "word", "libreoffice", "browser"]));
     expect(result.fixtures.every((fixture) => fixture.passed)).toBe(true);
@@ -66,6 +66,19 @@ describe("PDF import semantic quality gate", () => {
       "word-boundary-recall",
       "ordered-block-pairs",
     ]));
+    expect(result.fixtures.filter((entry) => !entry.passed).map((entry) => entry.fixtureId))
+      .toEqual([fixture.id]);
+  });
+
+  it("fails an acceptance fixture when a table shape or the figure count differs", () => {
+    const mutated = structuredClone(manifest);
+    const fixture = mutated.fixtures.find((entry) => entry.id === "acceptance-browser")!;
+    fixture.expected.tables![0]!.blankCells.pop();
+    fixture.expected.figures!.nativeRaster = 2;
+    const result = evaluatePdfQuality(mutated, observations);
+    const row = result.fixtures.find((entry) => entry.fixtureId === fixture.id)!;
+
+    expect(row.failureCodes).toEqual(expect.arrayContaining(["table-shape", "figure-count"]));
     expect(result.fixtures.filter((entry) => !entry.passed).map((entry) => entry.fixtureId))
       .toEqual([fixture.id]);
   });

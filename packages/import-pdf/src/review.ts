@@ -484,7 +484,19 @@ export async function buildPdfImportReviewV2(
       (locator.characterIndexes ?? []).map((characterIndex) => `${locator.pageIndex}:${characterIndex}`)
     ))
     : []);
-  const ownership = ("ownership" in base ? base.ownership : ownershipAudit.ownership).map((entry) => {
+  // The figure stage projects tagged captions; their characters are owned by
+  // the caption block it adds, not reported.
+  const captionOwners = new Map(visual.evidence
+    .filter((entry) => entry.decisionCode === "pdf/figure-caption-native" && entry.targetNodeId)
+    .flatMap((entry) => (entry.locator.characterIndexes ?? [])
+      .map((characterIndex) => [`${entry.locator.pageIndex}:${characterIndex}`, entry] as const)));
+  const ownership = ("ownership" in base ? base.ownership : ownershipAudit.ownership).map((current) => {
+    const caption = current.outcome === "reported"
+      ? captionOwners.get(`${current.pageIndex}:${current.characterIndex}`)
+      : undefined;
+    const entry = caption
+      ? { ...current, ownerSourceId: caption.sourceId, targetNodeId: caption.targetNodeId!, basis: "tagged" as const, outcome: "native" as const }
+      : current;
     const covered = entry.basis === "fallback"
       || attachedFallbackPages.has(entry.pageIndex)
       || attachedFallbackIndexes.has(`${entry.pageIndex}:${entry.characterIndex}`);

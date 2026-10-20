@@ -77,3 +77,46 @@ Japanese text is present in the text layer but the local exporter did not
 materialize a visible glyph. It is a critical negative, not positive visual
 CJK evidence; the independent, Word, and Chromium fixtures provide positive
 CJK coverage.
+
+## Acceptance fixtures (PIQ-18)
+
+`acceptance-browser.pdf` and `acceptance-libreoffice.pdf` export one neutral
+document: a heading, a paragraph and a list, a 61-row tagged table continued
+across pages with a repeated header, an intentionally blank header cell and
+body cell, wrapped punctuation-bearing cells, a decorative rule, one raster
+figure with caption followed by body text, and a second table.
+
+`acceptance-source.ts` is the single content model. It writes
+`acceptance-source.html` and provides the oracle: the ordered blocks, the table
+shapes (`tables`) and the figure counts (`figures`). Only page indexes come
+from the export, located in the PDFium text layer by `acceptanceBlockPages()`
+because pagination is the producer's choice. Nothing in the oracle is taken
+from importer output.
+
+```bash
+bun specs/pdf-import-quality/fixtures/acceptance-source.ts
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+  --no-pdf-header-footer --print-to-pdf=.tmp/acceptance-browser.raw.pdf \
+  specs/pdf-import-quality/fixtures/acceptance-source.html
+```
+
+LibreOffice 7.1 has no command-line switch for tagged export. Enable it in a
+throwaway profile, then import the HTML with Writer:
+
+```bash
+mkdir -p .tmp/lo-profile/user
+cat > .tmp/lo-profile/user/registrymodifications.xcu <<'XCU'
+<?xml version="1.0" encoding="UTF-8"?>
+<oor:items xmlns:oor="http://openoffice.org/2001/registry">
+<item oor:path="/org.openoffice.Office.Common/Filter/PDF/Export"><prop oor:name="UseTaggedPDF" oor:op="fuse"><value>true</value></prop></item>
+</oor:items>
+XCU
+soffice -env:UserInstallation=file://$PWD/.tmp/lo-profile --headless \
+  "--infilter=HTML (StarWriter)" --convert-to pdf:writer_pdf_Export \
+  --outdir .tmp specs/pdf-import-quality/fixtures/acceptance-source.html
+```
+
+Sanitize both raw exports with `producer-tools.ts sanitize-export ... --title
+"Neutral Acceptance Handbook"`, then rerun `bun specs/pdf-import-quality/fixtures/update-manifest.ts`.
+Word for Mac exports untagged PDFs without its online service, so there is no
+tagged Word acceptance fixture.

@@ -25,7 +25,7 @@ import {
 } from "./assembly-evidence.js";
 import { digestPdfCanonical, digestPdfFactsV2 } from "./canonical.js";
 import { rectsTouch } from "./fallbacks.js";
-import { mergePdfBlocksByEvidence } from "./figures.js";
+import { mergePdfBlocksByEvidence, taggedFigureCaptionCharacterIndexesV2 } from "./figures.js";
 import { PdfImportError } from "./issues.js";
 import { taggedRunsV2 } from "./links.js";
 import { normalizeTaggedPdfFactsV2 } from "./normalize.js";
@@ -286,11 +286,15 @@ export async function normalizeHybridPdfFactsV2(
       && entry.outcome !== "rejected"
     ).map((entry) => entry.characterIndex));
     // An unresolved cell of a linearized table is already in its row text and
-    // inside the table's rendered region; geometry must not project it again.
-    const tableCovered = new Set(evidence.filter((entry) =>
-      entry.locator.pageIndex === page.index
-      && entry.decisionCode === "pdf/table-tagged-boundary-unresolved"
-    ).flatMap((entry) => entry.locator.characterIndexes ?? []));
+    // inside the table's rendered region, and a figure's caption is projected
+    // with its figure; geometry must not project either again.
+    const tableCovered = new Set([
+      ...evidence.filter((entry) =>
+        entry.locator.pageIndex === page.index
+        && entry.decisionCode === "pdf/table-tagged-boundary-unresolved"
+      ).flatMap((entry) => entry.locator.characterIndexes ?? []),
+      ...taggedFigureCaptionCharacterIndexesV2(page),
+    ]);
     const visible = page.characters.filter((character) => isVisibleCharacter(character.value));
     const residualIndexes = new Set(visible
       .filter((character) => !taggedOwned.has(character.index) && !tableCovered.has(character.index))

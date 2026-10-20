@@ -32,7 +32,63 @@ from the earlier PASS rows until those tasks pass.
 | PIQ-15 | PASS | 2026-10-20 |
 | PIQ-16 | FROZEN | 2026-10-20 |
 | PIQ-17 | PASS | 2026-10-20 |
-| PIQ-18 | OPEN | 2026-08-27 |
+| PIQ-18 | PASS (neutral, live) | 2026-10-20 |
+
+## PIQ-18
+
+Result: **PASS** for the neutral corpus and the automated DOCSY proof. The
+private acceptance document was re-checked locally with body-free counts only
+(unchanged: all tables native, no fallback, no unresolved boundary); it was not
+republished.
+
+### Fixtures and oracle
+
+`acceptance-source.ts` is the single content model for
+`acceptance-browser.pdf` (Chrome 155, print-to-pdf) and
+`acceptance-libreoffice.pdf` (LibreOffice 7.1 Writer, tagged export through
+the `UseTaggedPDF` profile setting). Both are sanitized with
+`producer-tools.ts`. The oracle (ordered blocks, table shapes, figure counts)
+comes from the model; only page indexes come from the PDFium text layer. The
+quality gate gains `table-shape` and `figure-count` failure codes, and a
+perturbation test proves that the owning fixture fails.
+
+| Oracle item | Expected | Browser | LibreOffice |
+|---|---|---|---|
+| Pages | producer | 5 | 2 |
+| Native tables | 2 | 2 | 2 |
+| Inventory table | 61 × 3, 1 header row, blank [0,1] and [7,1] | exact | exact |
+| Summary table | 3 × 2, 1 header row | exact | exact |
+| Native raster figures | 1 | 1 | 1 |
+| Region or page fallbacks | 0 | 0 | 0 |
+| Unresolved boundaries, unowned or duplicate characters | 0 | 0 | 0 |
+| `--scan-policy fail --unsupported fail` blockers | 0 | 0 | 0 |
+
+### Importer defects the fixtures exposed
+
+| Defect | Producer | Fix |
+|---|---|---|
+| Caption imported twice | Chrome | V2 figures own their caption characters; geometry no longer repairs them and the review assigns them to the caption block |
+| Repeated header rows on continuation pages became loose paragraphs | LibreOffice (draws them untagged) | untagged text directly above a continuation part whose columns match the header exactly is that header's repetition |
+| List items started with "• " | LibreOffice (no `Lbl`) | a leading marked-content sequence holding one marker token is the item label |
+| "Item 11" read as "Item 1 1" | Chrome (one glyph per text run) | with the literal-whitespace convention a gap must exceed 2 glyph widths to be a space |
+| A row split by a page break gave each cell two paragraphs | all | the cell's page views continue one paragraph (a trailing hyphen keeps them apart); runs are merged so Confluence readback matches |
+
+Revisions: tagged policy V2 `/4`, text assembly V2 `/5`.
+
+### Verification
+
+```text
+bun run check:import-pdf-quality       passed: true (9 fixtures)
+bun run test packages/import-pdf specs/pdf-import-quality scripts/quality apps/cli/src/commands
+bun run test:e2e:import-pdf            DOCSY, built CLI, cleanup verified
+bun run typecheck                      4 successful tasks
+```
+
+The live cases publish each acceptance PDF with `--split off --scan-policy
+fail --unsupported fail` and without `--attach-source`, read the ADF back
+independently (ordered blocks, table shapes, one media node, no fallback) and
+check that the only attachment is the figure. Word for Mac exports untagged
+PDFs without its online service, so there is no tagged Word acceptance fixture.
 
 ## PIQ-17
 
