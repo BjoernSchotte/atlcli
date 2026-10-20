@@ -1069,27 +1069,27 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-}) | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "callout";
 }>, "content"> & {
     content: PreparedPdfBlock[];
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "expand";
 }>, "content"> & {
     content: PreparedPdfBlock[];
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "list";
 }>, "items"> & {
     items: Array<Omit<ListItem, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "layout";
 }>, "columns"> & {
     columns: Array<Omit<LayoutColumn, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "table";
 }>, "caption" | "rows"> & {
     caption?: PreparedPdfCaption;
@@ -1098,7 +1098,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
             content: PreparedPdfBlock[];
         }>;
     }>;
-} | (Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "chart";
 }>, "caption"> & {
     caption?: PreparedPdfCaption;
@@ -2604,27 +2604,27 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-}) | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "callout";
 }>, "content"> & {
     content: PreparedPdfBlock[];
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "expand";
 }>, "content"> & {
     content: PreparedPdfBlock[];
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "list";
 }>, "items"> & {
     items: Array<Omit<ListItem, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "layout";
 }>, "columns"> & {
     columns: Array<Omit<LayoutColumn, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "table";
 }>, "caption" | "rows"> & {
     caption?: PreparedPdfCaption;
@@ -2633,7 +2633,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
             content: PreparedPdfBlock[];
         }>;
     }>;
-} | (Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "chart";
 }>, "caption"> & {
     caption?: PreparedPdfCaption;
@@ -4139,27 +4139,27 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-}) | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "callout";
 }>, "content"> & {
     content: PreparedPdfBlock[];
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "expand";
 }>, "content"> & {
     content: PreparedPdfBlock[];
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "list";
 }>, "items"> & {
     items: Array<Omit<ListItem, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "layout";
 }>, "columns"> & {
     columns: Array<Omit<LayoutColumn, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-} | Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "table";
 }>, "caption" | "rows"> & {
     caption?: PreparedPdfCaption;
@@ -4168,7 +4168,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
             content: PreparedPdfBlock[];
         }>;
     }>;
-} | (Omit<Extract<ExportBlock, {
+}) | (Omit<Extract<ExportBlock, {
     type: "chart";
 }>, "caption"> & {
     caption?: PreparedPdfCaption;

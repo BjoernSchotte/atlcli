@@ -25,6 +25,21 @@ packages export `dist/` by default and live `src/` only under the
 missing) `dist/` builds — `scripts/dev-resolution.test.ts` fails loudly if
 that happens.
 
+### TypeScript compilers
+
+`tsc` is TypeScript 7 (native, from the `@typescript/native` alias) and runs
+every typecheck and package build. `import "typescript"` resolves to the
+TypeScript 6 compiler API (`@typescript/typescript6`), because TS 7.0 has no
+programmatic API; the API-based guards (`scripts/api-report.ts`,
+`scripts/api-closure.ts`, `scripts/check-browser-build.ts`, the extension
+phase-1 guard) and `astro check` rely on it. Never `bun add typescript`
+directly; `scripts/compiler-split.test.ts` guards the split. TS 7 sorts union
+members and other declaration output, so a compiler bump can change
+`packages/*/etc/*.api.md` without an API change: regenerate them with
+`bun scripts/api-report.ts --update` and review the diff. After branch
+switches, probe compiler errors on a fresh `bun install`; stale workspace
+symlinks surface as thousands of bogus resolution errors.
+
 ### Testing Local Changes
 
 ```bash

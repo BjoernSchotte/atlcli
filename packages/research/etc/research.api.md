@@ -727,15 +727,15 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
     citationSourceIds: z.ZodArray<z.ZodString>;
     gaps: z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -748,27 +748,27 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
         markdown: z.ZodString;
         sourceRefs: z.ZodArray<z.ZodString>;
         assertion: z.ZodEnum<{
+            absence: "absence";
             none: "none";
             positive: "positive";
-            absence: "absence";
         }>;
         scope: z.ZodEnum<{
-            none: "none";
-            source: "source";
-            "selected-sources": "selected-sources";
             "bound-scope": "bound-scope";
+            none: "none";
+            "selected-sources": "selected-sources";
+            source: "source";
         }>;
     }, z.core.$strict>>;
     gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -793,15 +793,15 @@ export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
     markdown: z.ZodString;
     sourceRefs: z.ZodArray<z.ZodString>;
     assertion: z.ZodEnum<{
+        absence: "absence";
         none: "none";
         positive: "positive";
-        absence: "absence";
     }>;
     scope: z.ZodEnum<{
-        none: "none";
-        source: "source";
-        "selected-sources": "selected-sources";
         "bound-scope": "bound-scope";
+        none: "none";
+        "selected-sources": "selected-sources";
+        source: "source";
     }>;
 }, z.core.$strict>;
 
@@ -954,8 +954,8 @@ export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
     searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
         searchId: z.ZodString;
         product: z.ZodEnum<{
-            jira: "jira";
             confluence: "confluence";
+            jira: "jira";
         }>;
         variants: z.ZodArray<z.ZodObject<{
             variantId: z.ZodString;
@@ -3900,8 +3900,8 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     relationships: z.ZodArray<z.ZodObject<{
         classification: z.ZodEnum<{
-            verified: "verified";
             hypothesis: "hypothesis";
+            verified: "verified";
         }>;
         jiraIssueKey: z.ZodString;
         confluenceContentId: z.ZodString;
@@ -4429,10 +4429,10 @@ export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
 export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
 
 // export: RESEARCH_T3_GRAPH_ROLES
-export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T3_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_T5_GRAPH_ROLES
-export declare const RESEARCH_T5_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T5_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
 export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
@@ -9116,15 +9116,15 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
     citationSourceIds: z.ZodArray<z.ZodString>;
     gaps: z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -9137,27 +9137,27 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
         markdown: z.ZodString;
         sourceRefs: z.ZodArray<z.ZodString>;
         assertion: z.ZodEnum<{
+            absence: "absence";
             none: "none";
             positive: "positive";
-            absence: "absence";
         }>;
         scope: z.ZodEnum<{
-            none: "none";
-            source: "source";
-            "selected-sources": "selected-sources";
             "bound-scope": "bound-scope";
+            none: "none";
+            "selected-sources": "selected-sources";
+            source: "source";
         }>;
     }, z.core.$strict>>;
     gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -9182,15 +9182,15 @@ export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
     markdown: z.ZodString;
     sourceRefs: z.ZodArray<z.ZodString>;
     assertion: z.ZodEnum<{
+        absence: "absence";
         none: "none";
         positive: "positive";
-        absence: "absence";
     }>;
     scope: z.ZodEnum<{
-        none: "none";
-        source: "source";
-        "selected-sources": "selected-sources";
         "bound-scope": "bound-scope";
+        none: "none";
+        "selected-sources": "selected-sources";
+        source: "source";
     }>;
 }, z.core.$strict>;
 
@@ -9343,8 +9343,8 @@ export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
     searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
         searchId: z.ZodString;
         product: z.ZodEnum<{
-            jira: "jira";
             confluence: "confluence";
+            jira: "jira";
         }>;
         variants: z.ZodArray<z.ZodObject<{
             variantId: z.ZodString;
@@ -12280,8 +12280,8 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     relationships: z.ZodArray<z.ZodObject<{
         classification: z.ZodEnum<{
-            verified: "verified";
             hypothesis: "hypothesis";
+            verified: "verified";
         }>;
         jiraIssueKey: z.ZodString;
         confluenceContentId: z.ZodString;
@@ -12809,10 +12809,10 @@ export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
 export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
 
 // export: RESEARCH_T3_GRAPH_ROLES
-export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T3_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_T5_GRAPH_ROLES
-export declare const RESEARCH_T5_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T5_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
 export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
@@ -17485,15 +17485,15 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
     citationSourceIds: z.ZodArray<z.ZodString>;
     gaps: z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -17506,27 +17506,27 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
         markdown: z.ZodString;
         sourceRefs: z.ZodArray<z.ZodString>;
         assertion: z.ZodEnum<{
+            absence: "absence";
             none: "none";
             positive: "positive";
-            absence: "absence";
         }>;
         scope: z.ZodEnum<{
-            none: "none";
-            source: "source";
-            "selected-sources": "selected-sources";
             "bound-scope": "bound-scope";
+            none: "none";
+            "selected-sources": "selected-sources";
+            source: "source";
         }>;
     }, z.core.$strict>>;
     gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -17551,15 +17551,15 @@ export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
     markdown: z.ZodString;
     sourceRefs: z.ZodArray<z.ZodString>;
     assertion: z.ZodEnum<{
+        absence: "absence";
         none: "none";
         positive: "positive";
-        absence: "absence";
     }>;
     scope: z.ZodEnum<{
-        none: "none";
-        source: "source";
-        "selected-sources": "selected-sources";
         "bound-scope": "bound-scope";
+        none: "none";
+        "selected-sources": "selected-sources";
+        source: "source";
     }>;
 }, z.core.$strict>;
 
@@ -17712,8 +17712,8 @@ export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
     searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
         searchId: z.ZodString;
         product: z.ZodEnum<{
-            jira: "jira";
             confluence: "confluence";
+            jira: "jira";
         }>;
         variants: z.ZodArray<z.ZodObject<{
             variantId: z.ZodString;
@@ -20658,8 +20658,8 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     relationships: z.ZodArray<z.ZodObject<{
         classification: z.ZodEnum<{
-            verified: "verified";
             hypothesis: "hypothesis";
+            verified: "verified";
         }>;
         jiraIssueKey: z.ZodString;
         confluenceContentId: z.ZodString;
@@ -21187,10 +21187,10 @@ export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
 export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
 
 // export: RESEARCH_T3_GRAPH_ROLES
-export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T3_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_T5_GRAPH_ROLES
-export declare const RESEARCH_T5_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T5_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
 export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
@@ -25886,15 +25886,15 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
     citationSourceIds: z.ZodArray<z.ZodString>;
     gaps: z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -25907,27 +25907,27 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
         markdown: z.ZodString;
         sourceRefs: z.ZodArray<z.ZodString>;
         assertion: z.ZodEnum<{
+            absence: "absence";
             none: "none";
             positive: "positive";
-            absence: "absence";
         }>;
         scope: z.ZodEnum<{
-            none: "none";
-            source: "source";
-            "selected-sources": "selected-sources";
             "bound-scope": "bound-scope";
+            none: "none";
+            "selected-sources": "selected-sources";
+            source: "source";
         }>;
     }, z.core.$strict>>;
     gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -25952,15 +25952,15 @@ export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
     markdown: z.ZodString;
     sourceRefs: z.ZodArray<z.ZodString>;
     assertion: z.ZodEnum<{
+        absence: "absence";
         none: "none";
         positive: "positive";
-        absence: "absence";
     }>;
     scope: z.ZodEnum<{
-        none: "none";
-        source: "source";
-        "selected-sources": "selected-sources";
         "bound-scope": "bound-scope";
+        none: "none";
+        "selected-sources": "selected-sources";
+        source: "source";
     }>;
 }, z.core.$strict>;
 
@@ -26113,8 +26113,8 @@ export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
     searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
         searchId: z.ZodString;
         product: z.ZodEnum<{
-            jira: "jira";
             confluence: "confluence";
+            jira: "jira";
         }>;
         variants: z.ZodArray<z.ZodObject<{
             variantId: z.ZodString;
@@ -27830,17 +27830,6 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
         };
     } | undefined;
 }): {
-    name: string;
-    tools: DynamicStructuredTool<z.ZodObject<{
-        description: z.ZodString;
-        subagent_type: z.ZodString;
-    }, z.core.$strip>, {
-        description: string;
-        subagent_type: string;
-    }, {
-        description: string;
-        subagent_type: string;
-    }, unknown, unknown, "task">[];
     "~middlewareTypes"?: import("langchain").MiddlewareTypeConfig<undefined, undefined, unknown, readonly [
         DynamicStructuredTool<z.ZodObject<{
             description: z.ZodString;
@@ -27864,6 +27853,17 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     beforeModel?: import("langchain").BeforeModelHook<undefined, unknown> | undefined;
     afterModel?: import("langchain").AfterModelHook<undefined, unknown> | undefined;
     afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
+    name: string;
+    tools: DynamicStructuredTool<z.ZodObject<{
+        description: z.ZodString;
+        subagent_type: z.ZodString;
+    }, z.core.$strip>, {
+        description: string;
+        subagent_type: string;
+    }, {
+        description: string;
+        subagent_type: string;
+    }, unknown, unknown, "task">[];
 };
 
 // export: createChatInteractionStateV1
@@ -29281,8 +29281,8 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     relationships: z.ZodArray<z.ZodObject<{
         classification: z.ZodEnum<{
-            verified: "verified";
             hypothesis: "hypothesis";
+            verified: "verified";
         }>;
         jiraIssueKey: z.ZodString;
         confluenceContentId: z.ZodString;
@@ -29855,10 +29855,10 @@ export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
 export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
 
 // export: RESEARCH_T3_GRAPH_ROLES
-export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T3_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_T5_GRAPH_ROLES
-export declare const RESEARCH_T5_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T5_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
 export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
@@ -34768,15 +34768,15 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
     citationSourceIds: z.ZodArray<z.ZodString>;
     gaps: z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -34789,27 +34789,27 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
         markdown: z.ZodString;
         sourceRefs: z.ZodArray<z.ZodString>;
         assertion: z.ZodEnum<{
+            absence: "absence";
             none: "none";
             positive: "positive";
-            absence: "absence";
         }>;
         scope: z.ZodEnum<{
-            none: "none";
-            source: "source";
-            "selected-sources": "selected-sources";
             "bound-scope": "bound-scope";
+            none: "none";
+            "selected-sources": "selected-sources";
+            source: "source";
         }>;
     }, z.core.$strict>>;
     gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -34834,15 +34834,15 @@ export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
     markdown: z.ZodString;
     sourceRefs: z.ZodArray<z.ZodString>;
     assertion: z.ZodEnum<{
+        absence: "absence";
         none: "none";
         positive: "positive";
-        absence: "absence";
     }>;
     scope: z.ZodEnum<{
-        none: "none";
-        source: "source";
-        "selected-sources": "selected-sources";
         "bound-scope": "bound-scope";
+        none: "none";
+        "selected-sources": "selected-sources";
+        source: "source";
     }>;
 }, z.core.$strict>;
 
@@ -34995,8 +34995,8 @@ export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
     searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
         searchId: z.ZodString;
         product: z.ZodEnum<{
-            jira: "jira";
             confluence: "confluence";
+            jira: "jira";
         }>;
         variants: z.ZodArray<z.ZodObject<{
             variantId: z.ZodString;
@@ -36701,17 +36701,6 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
         };
     } | undefined;
 }): {
-    name: string;
-    tools: DynamicStructuredTool<z.ZodObject<{
-        description: z.ZodString;
-        subagent_type: z.ZodString;
-    }, z.core.$strip>, {
-        description: string;
-        subagent_type: string;
-    }, {
-        description: string;
-        subagent_type: string;
-    }, unknown, unknown, "task">[];
     "~middlewareTypes"?: import("langchain").MiddlewareTypeConfig<undefined, undefined, unknown, readonly [
         DynamicStructuredTool<z.ZodObject<{
             description: z.ZodString;
@@ -36735,6 +36724,17 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     beforeModel?: import("langchain").BeforeModelHook<undefined, unknown> | undefined;
     afterModel?: import("langchain").AfterModelHook<undefined, unknown> | undefined;
     afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
+    name: string;
+    tools: DynamicStructuredTool<z.ZodObject<{
+        description: z.ZodString;
+        subagent_type: z.ZodString;
+    }, z.core.$strip>, {
+        description: string;
+        subagent_type: string;
+    }, {
+        description: string;
+        subagent_type: string;
+    }, unknown, unknown, "task">[];
 };
 
 // export: createChatInteractionStateV1
@@ -38167,8 +38167,8 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     relationships: z.ZodArray<z.ZodObject<{
         classification: z.ZodEnum<{
-            verified: "verified";
             hypothesis: "hypothesis";
+            verified: "verified";
         }>;
         jiraIssueKey: z.ZodString;
         confluenceContentId: z.ZodString;
@@ -38741,10 +38741,10 @@ export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
 export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
 
 // export: RESEARCH_T3_GRAPH_ROLES
-export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T3_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_T5_GRAPH_ROLES
-export declare const RESEARCH_T5_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T5_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
 export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
@@ -43428,15 +43428,15 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
     citationSourceIds: z.ZodArray<z.ZodString>;
     gaps: z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -43449,27 +43449,27 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
         markdown: z.ZodString;
         sourceRefs: z.ZodArray<z.ZodString>;
         assertion: z.ZodEnum<{
+            absence: "absence";
             none: "none";
             positive: "positive";
-            absence: "absence";
         }>;
         scope: z.ZodEnum<{
-            none: "none";
-            source: "source";
-            "selected-sources": "selected-sources";
             "bound-scope": "bound-scope";
+            none: "none";
+            "selected-sources": "selected-sources";
+            source: "source";
         }>;
     }, z.core.$strict>>;
     gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -43494,15 +43494,15 @@ export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
     markdown: z.ZodString;
     sourceRefs: z.ZodArray<z.ZodString>;
     assertion: z.ZodEnum<{
+        absence: "absence";
         none: "none";
         positive: "positive";
-        absence: "absence";
     }>;
     scope: z.ZodEnum<{
-        none: "none";
-        source: "source";
-        "selected-sources": "selected-sources";
         "bound-scope": "bound-scope";
+        none: "none";
+        "selected-sources": "selected-sources";
+        source: "source";
     }>;
 }, z.core.$strict>;
 
@@ -44695,10 +44695,10 @@ export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research
 export declare const RESEARCH_PLAN_DIFF_SCHEMA_V1: "atlcli.research-plan-diff/v1";
 
 // export: RESEARCH_T3_GRAPH_ROLES
-export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T3_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_T5_GRAPH_ROLES
-export declare const RESEARCH_T5_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T5_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
@@ -45698,15 +45698,15 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     messageMarkdown: z.ZodString;
     citationSourceIds: z.ZodArray<z.ZodString>;
     gaps: z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -45719,27 +45719,27 @@ export declare const CHAT_AGENT_DRAFT_SCHEMA_V2: z.ZodObject<{
         markdown: z.ZodString;
         sourceRefs: z.ZodArray<z.ZodString>;
         assertion: z.ZodEnum<{
+            absence: "absence";
             none: "none";
             positive: "positive";
-            absence: "absence";
         }>;
         scope: z.ZodEnum<{
-            none: "none";
-            source: "source";
-            "selected-sources": "selected-sources";
             "bound-scope": "bound-scope";
+            none: "none";
+            "selected-sources": "selected-sources";
+            source: "source";
         }>;
     }, z.core.$strict>>;
     gaps: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        code: z.ZodPipe<z.ZodString, z.ZodTransform<"unresolved-reference" | "no-detail-evidence" | "truncated-source" | "incomplete-coverage", string>>;
+        code: z.ZodPipe<z.ZodString, z.ZodTransform<"incomplete-coverage" | "no-detail-evidence" | "truncated-source" | "unresolved-reference", string>>;
         message: z.ZodString;
         sourceIds: z.ZodArray<z.ZodString>;
     }, z.core.$strict>>>;
     continuation: z.ZodOptional<z.ZodObject<{
         kind: z.ZodEnum<{
-            "follow-up": "follow-up";
-            "deep-research": "deep-research";
             clarification: "clarification";
+            "deep-research": "deep-research";
+            "follow-up": "follow-up";
         }>;
         prompt: z.ZodString;
     }, z.core.$strict>>;
@@ -45764,15 +45764,15 @@ export declare const CHAT_ANSWER_BLOCK_SCHEMA_V2: z.ZodObject<{
     markdown: z.ZodString;
     sourceRefs: z.ZodArray<z.ZodString>;
     assertion: z.ZodEnum<{
+        absence: "absence";
         none: "none";
         positive: "positive";
-        absence: "absence";
     }>;
     scope: z.ZodEnum<{
-        none: "none";
-        source: "source";
-        "selected-sources": "selected-sources";
         "bound-scope": "bound-scope";
+        none: "none";
+        "selected-sources": "selected-sources";
+        source: "source";
     }>;
 }, z.core.$strict>;
 
@@ -45925,8 +45925,8 @@ export declare const CHAT_RETRIEVAL_PLAN_PROPOSAL_SCHEMA_V1: z.ZodObject<{
     searches: z.ZodOptional<z.ZodArray<z.ZodObject<{
         searchId: z.ZodString;
         product: z.ZodEnum<{
-            jira: "jira";
             confluence: "confluence";
+            jira: "jira";
         }>;
         variants: z.ZodArray<z.ZodObject<{
             variantId: z.ZodString;
@@ -47631,17 +47631,6 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
         };
     } | undefined;
 }): {
-    name: string;
-    tools: DynamicStructuredTool<z.ZodObject<{
-        description: z.ZodString;
-        subagent_type: z.ZodString;
-    }, z.core.$strip>, {
-        description: string;
-        subagent_type: string;
-    }, {
-        description: string;
-        subagent_type: string;
-    }, unknown, unknown, "task">[];
     "~middlewareTypes"?: import("langchain").MiddlewareTypeConfig<undefined, undefined, unknown, readonly [
         DynamicStructuredTool<z.ZodObject<{
             description: z.ZodString;
@@ -47665,6 +47654,17 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     beforeModel?: import("langchain").BeforeModelHook<undefined, unknown> | undefined;
     afterModel?: import("langchain").AfterModelHook<undefined, unknown> | undefined;
     afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
+    name: string;
+    tools: DynamicStructuredTool<z.ZodObject<{
+        description: z.ZodString;
+        subagent_type: z.ZodString;
+    }, z.core.$strip>, {
+        description: string;
+        subagent_type: string;
+    }, {
+        description: string;
+        subagent_type: string;
+    }, unknown, unknown, "task">[];
 };
 
 // export: createChatInteractionStateV1
@@ -49097,8 +49097,8 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     relationships: z.ZodArray<z.ZodObject<{
         classification: z.ZodEnum<{
-            verified: "verified";
             hypothesis: "hypothesis";
+            verified: "verified";
         }>;
         jiraIssueKey: z.ZodString;
         confluenceContentId: z.ZodString;
@@ -49671,10 +49671,10 @@ export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
 export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
 
 // export: RESEARCH_T3_GRAPH_ROLES
-export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T3_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_T5_GRAPH_ROLES
-export declare const RESEARCH_T5_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+export declare const RESEARCH_T5_GRAPH_ROLES: ("contradiction-verifier" | "coverage-moderator" | "document-distiller" | "focused-researcher" | "outline-planner" | "reconciler" | "synthesizer")[];
 
 // export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
 export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";

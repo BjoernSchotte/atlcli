@@ -1,0 +1,76 @@
+{
+  "schema": "atlcli.ts7-adoption-evidence/v1",
+  "date": "2026-10-20",
+  "baseCommit": "f50a356d",
+  "machine": { "cpu": "Apple M5 Max", "cores": 18, "os": "macOS (darwin 25.4.0)", "bun": "1.4.2" },
+  "compilers": {
+    "before": { "tsc": "5.9.3", "api": "5.9.3" },
+    "after": {
+      "tsc": "7.0.2 (@typescript/native = npm:typescript@^7.0.2)",
+      "api": "6.0.3 (typescript = npm:@typescript/typescript6@^6.0.2)",
+      "typescript5InLockfile": false
+    }
+  },
+  "timingProtocol": "3 cold runs each, turbo --force, fresh install; median reported",
+  "timings": {
+    "typecheck": {
+      "command": "turbo run typecheck typecheck:root --force (root, extension, pdf-compiler-browser, browser-export-harness)",
+      "ts59Ms": [14892, 14127, 15471],
+      "ts7Ms": [1986, 2577, 2548],
+      "medianMs": { "ts59": 14892, "ts7": 2548 },
+      "speedup": 5.8
+    },
+    "build": {
+      "command": "turbo run build --force (35 tasks)",
+      "ts59Ms": [18570, 19559, 19828],
+      "ts7Ms": [4646, 5402, 5334],
+      "medianMs": { "ts59": 19559, "ts7": 5334 },
+      "speedup": 3.7
+    }
+  },
+  "emitParity": {
+    "distFiles": 2389,
+    "js": {
+      "same": 590,
+      "changed": 1,
+      "explained": {
+        "packages/action-palette-react/dist/ActionPalette.js": "react/jsx-runtime import specifiers sorted (Fragment, jsx, jsxs); semantically identical"
+      }
+    },
+    "dts": {
+      "same": 583,
+      "changed": 8,
+      "verdict": "reorder-only (stableTypeOrdering): union members sorted, object-type keys reordered, redundant parentheses around intersection union members",
+      "files": [
+        "packages/pdf/dist/types.d.ts",
+        "packages/code-highlight/dist/registry.d.ts",
+        "packages/research/dist/agent-draft.d.ts",
+        "packages/research/dist/graph.d.ts",
+        "packages/research/dist/dynamic-subagents.d.ts",
+        "packages/research/dist/chat-agent/workflow.d.ts",
+        "packages/research/dist/chat-agent/retrieval-plan.d.ts",
+        "packages/research/dist/chat-agent/contracts.d.ts"
+      ]
+    },
+    "maps": { "same": 790, "changed": 392, "note": "mappings follow emit changes; packed-consumer gate passes" },
+    "added": 0,
+    "removed": 0
+  },
+  "apiReports": {
+    "regenerated": ["code-highlight", "pdf", "research"],
+    "verdict": "order/paren-insensitive token bags equal for code-highlight and pdf; research diff proven to be 143 line moves/union reorders (+143/-143 identical multisets)"
+  },
+  "gates": {
+    "typecheckAll": "pass (4/4 targets, no cache)",
+    "build": "pass (35/35)",
+    "checkBrowser": "pass",
+    "apiReportTest": "pass after reviewed regeneration",
+    "phase1GuardMutationTests": "pass (template-store-migration.test.ts)",
+    "docsCheck": "pass (0 errors, 0 warnings, Astro/Volar on TS 6 API)",
+    "docsBuild": "pass",
+    "packCheckConsumerSmokeInstallMatrix": "pass (28/28, ATLCLI_CONSUMER_SMOKE=1); consumer type-checks TS7-emitted .d.ts with a TypeScript 5.9.3 consumer",
+    "compilerSplitGuard": "pass (scripts/compiler-split.test.ts)",
+    "fullSuite": "9394 pass, 123 skip, 0 fail",
+    "e2e": "built CLI, profile mayflower, space DOCSY: wiki export 1117356071 to PDF (8 pages) and DOCX succeeded; read-only, no Confluence resources created"
+  }
+}
