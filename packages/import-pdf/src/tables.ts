@@ -24,6 +24,7 @@ import {
   pdfTextAssemblyOutcomeV2,
   pdfTextBoundaryDecisionIdsV2,
 } from "./assembly-evidence.js";
+import { continueCellBlocksV2 } from "./geometry-tables.js";
 import { correlateTaggedTextWithLinksV2, taggedRuns, taggedRunsV2 } from "./links.js";
 import {
   assembleGeometryFragmentsV2,
@@ -811,23 +812,8 @@ export function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTablePartV2
         const repeat = repeated && viewIndex > 0;
         const assembly = projected.correlated.assembly;
         if (!repeat) {
-          // Each view is the cell's text on one page, so a row split by a
-          // page break continues the same paragraph. A trailing hyphen is
-          // ambiguous across pages and keeps the parts apart.
-          const previous = cell.blocks.at(-1);
-          const next = projected.cell.blocks[0]!;
-          const previousText = previous?.type === "paragraph"
-            ? previous.runs.map((run) => run.kind === "text" ? run.text : "\n").join("")
-            : "";
-          if (previous?.type === "paragraph" && /\S$/u.test(previousText) && !/[-\u00ad\u2010]$/u.test(previousText) && next.runs.length > 0) {
-            // Merge like taggedRunsV2 so adjacent runs with equal marks stay one.
-            for (const run of [{ kind: "text" as const, text: " " }, ...next.runs]) {
-              const last = previous.runs.at(-1);
-              if (last?.kind === "text" && run.kind === "text" && JSON.stringify(last.marks) === JSON.stringify(run.marks)) {
-                last.text += run.text;
-              } else previous.runs.push({ ...run });
-            }
-          } else cell.blocks.push(...projected.cell.blocks);
+          // Each view is the cell's text on one page.
+          continueCellBlocksV2(cell.blocks, projected.cell.blocks);
         }
         projected.correlated.characters.forEach((character) => claimed.get(view.page.index)!.add(character.index));
         if (projected.correlated.bbox && view.page === first.page) boxes.push(projected.correlated.bbox);

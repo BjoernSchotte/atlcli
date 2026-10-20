@@ -11,7 +11,7 @@
  * edges are one table; a header row repeated on the continuation is shown
  * once and still owns its characters.
  */
-import type { ImportIssue, ImportTableRow } from "@atlcli/import-core";
+import type { ImportBlock, ImportIssue, ImportTableRow } from "@atlcli/import-core";
 import {
   PDF_TABLE_POLICY_REVISION_V2,
   type PdfDecisionEvidenceV2,
@@ -89,6 +89,8 @@ export interface PdfGeometryGridV2 {
   headerRows: number;
   pathIds: string[];
   fragmentIds: string[];
+  /** The top side has no rule: the first row may continue the previous page's last row. */
+  openTop?: boolean;
 }
 
 const P = PDF_GEOMETRY_TABLE_POLICY_V2;
@@ -193,6 +195,26 @@ function headerRowCount(rowCount: number, cells: readonly PdfGeometryGridCellV2[
   return body.some((cell) => cell.fragments.some((fragment) => !bold(fragment))) ? header : 0;
 }
 
+/**
+ * Where every line of one orientation ends at the same coordinate beyond the
+ * outermost perpendicular line, that coordinate is an open frame side: Word
+ * tables without outer side borders, or a table continued from the previous
+ * page without a top rule.
+ */
+function impliedFrameEdge(
+  lines: readonly Ruling[],
+  horizontal: boolean,
+  positions: readonly number[],
+  start: boolean,
+): number | null {
+  const ends = positions.map((at) => {
+    const on = lines.filter((line) => line.horizontal === horizontal && Math.abs(line.at - at) <= P.coordinateTolerance);
+    return start ? Math.min(...on.map((line) => line.from)) : Math.max(...on.map((line) => line.to));
+  });
+  const edge = start ? Math.min(...ends) : Math.max(...ends);
+  return Number.isFinite(edge) && ends.every((end) => Math.abs(end - edge) <= P.coordinateTolerance) ? edge : null;
+}
+
 function ruledGrid(
   page: PdfPageFactsV2,
   connected: readonly Ruling[],
@@ -206,6 +228,19 @@ function ruledGrid(
   const ys = clusterCoordinates(component.filter((ruling) => ruling.horizontal).map((ruling) => ruling.at));
   if (xs.length < 3 && ys.length >= 3) return rowRuledGrid(page, connected, component, ys, fragments);
   if (xs.length < 3 || ys.length < 3) return null; // at least two columns and two rows
+  const open = { left: false, right: false, top: false, bottom: false };
+  if (lines.length === component.length) {
+    const sides = {
+      left: impliedFrameEdge(component, true, ys, true),
+      right: impliedFrameEdge(component, true, ys, false),
+      top: impliedFrameEdge(component, false, xs, true),
+      bottom: impliedFrameEdge(component, false, xs, false),
+    };
+    if (sides.left !== null && xs[0]! - sides.left >= P.minimumBand) { xs.unshift(sides.left); open.left = true; }
+    if (sides.right !== null && sides.right - xs.at(-1)! >= P.minimumBand) { xs.push(sides.right); open.right = true; }
+    if (sides.top !== null && ys[0]! - sides.top >= P.minimumBand) { ys.unshift(sides.top); open.top = true; }
+    if (sides.bottom !== null && sides.bottom - ys.at(-1)! >= P.minimumBand) { ys.push(sides.bottom); open.bottom = true; }
+  }
   const rows = ys.length - 1;
   const columns = xs.length - 1;
   if (rows > P.maximumRows || columns > P.maximumColumns) return null;
@@ -213,10 +248,11 @@ function ruledGrid(
   const right = xs.at(-1)!;
   const top = ys[0]!;
   const bottom = ys.at(-1)!;
-  // The frame must be drawn; an open grid is not proven.
+  // The frame must be drawn or implied by every line ending on it; an open
+  // grid is not proven.
   if (
-    !drawn(component, true, top, left, right) || !drawn(component, true, bottom, left, right)
-    || !drawn(component, false, left, top, bottom) || !drawn(component, false, right, top, bottom)
+    !open.top && !drawn(component, true, top, left, right) || !open.bottom && !drawn(component, true, bottom, left, right)
+    || !open.left && !drawn(component, false, left, top, bottom) || !open.right && !drawn(component, false, right, top, bottom)
   ) return null;
   const parent = Array.from({ length: rows * columns }, (_, index) => index);
   const find = (index: number): number => parent[index] === index ? index : (parent[index] = find(parent[index]!));
@@ -295,6 +331,7 @@ function ruledGrid(
     headerRows: headerRowCount(rows, cells),
     pathIds: [...new Set(connected.map((ruling) => ruling.pathId))],
     fragmentIds: inside.map((fragment) => fragment.id),
+    ...(open.top ? { openTop: true } : {}),
   };
 }
 
@@ -510,6 +547,31 @@ export interface PdfGeometryTablePartV2 {
   grid: PdfGeometryGridV2;
 }
 
+/**
+ * Appends one page's view of a cell to the cell's blocks. A row split by a
+ * page break continues the same paragraph; a trailing hyphen is ambiguous
+ * across pages and keeps the parts apart.
+ */
+export function continueCellBlocksV2(blocks: ImportBlock[], next: readonly ImportBlock[]): void {
+  const previous = blocks.at(-1);
+  const first = next[0];
+  const previousText = previous?.type === "paragraph"
+    ? previous.runs.map((run) => run.kind === "text" ? run.text : "\n").join("")
+    : "";
+  if (
+    previous?.type === "paragraph" && first?.type === "paragraph" && next.length === 1
+    && /\S$/u.test(previousText) && !/[-\u00ad\u2010]$/u.test(previousText) && first.runs.length > 0
+  ) {
+    // Merge like taggedRunsV2 so adjacent runs with equal marks stay one.
+    for (const run of [{ kind: "text" as const, text: " " }, ...first.runs]) {
+      const last = previous.runs.at(-1);
+      if (last?.kind === "text" && run.kind === "text" && JSON.stringify(last.marks) === JSON.stringify(run.marks)) {
+        last.text += run.text;
+      } else previous.runs.push({ ...run });
+    }
+  } else blocks.push(...next);
+}
+
 const cellText = (cell: PdfGeometryGridCellV2) => cell.fragments.map((fragment) => fragment.text.trim()).join(" ");
 
 /** Whether `next` continues `previous` on the following page with the same columns. */
@@ -560,15 +622,29 @@ export function projectGeometryTableV2(parts: readonly PdfGeometryTablePartV2[])
     "text-boundary" as const,
     ...(header ? ["font-evidence" as const] : []),
   ];
+  // The last projected row's cells by column, for a row split by a page break.
+  let lastRow = new Map<number, ImportTableRow["cells"][number]>();
   for (const [partIndex, { page, grid }] of parts.entries()) {
     const skip = partIndex === 0 ? 0 : repeatedHeaderRows(first.grid, grid);
-    const rowOffset = rows.length - skip;
+    // Without a top rule and a repeated header, the first row is the rest of
+    // the previous page's last row when both rows have the same simple cells.
+    const splitRow = partIndex > 0 && skip === 0 && grid.openTop === true
+      && grid.cells.filter((cell) => cell.row === 0).every((cell) =>
+        cell.rowspan === 1 && cell.colspan === 1 && lastRow.get(cell.column)?.rowspan === undefined
+        && lastRow.get(cell.column)?.colspan === undefined
+      )
+      && lastRow.size === grid.columnCount;
+    const rowOffset = rows.length - skip - (splitRow ? 1 : 0);
     for (let row = 0; row < grid.rowCount; row += 1) {
       const repeat = row < skip;
+      const continues = splitRow && row === 0;
       const projectedRow: ImportTableRow = { cells: [] };
+      const projectedColumns = new Map<number, ImportTableRow["cells"][number]>();
       for (const cell of grid.cells.filter((candidate) => candidate.row === row)) {
         const key = `${cell.row}:${cell.column}`;
-        const id = repeat ? cellIds.get(key)! : `${tableId}:cell:${row + rowOffset}:${cell.column}`;
+        const id = continues
+          ? lastRow.get(cell.column)!.id
+          : repeat ? cellIds.get(key)! : `${tableId}:cell:${row + rowOffset}:${cell.column}`;
         if (partIndex === 0) cellIds.set(key, id);
         const header = partIndex === 0 ? row < grid.headerRows : repeat;
         const fragments = [...cell.fragments].sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x || a.sourceOrder - b.sourceOrder);
@@ -610,21 +686,30 @@ export function projectGeometryTableV2(parts: readonly PdfGeometryTablePartV2[])
             analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
             boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(assembly),
           });
+          if (continues) {
+            const target = lastRow.get(cell.column)!;
+            const linked = taggedRunsV2(assembly, fragments.flatMap((fragment) => fragment.characters), page.annotations);
+            target.sourceRefs = [...(target.sourceRefs ?? []), ...fragments.map((fragment) => fragment.id)];
+            continueCellBlocksV2(target.blocks, [{ id: `${id}:p${page.index}:paragraph`, type: "paragraph", runs: linked.runs, sourceRefs: fragments.map((fragment) => fragment.id) }]);
+            continue;
+          }
           if (!repeat) {
             const linked = taggedRunsV2(assembly, fragments.flatMap((fragment) => fragment.characters), page.annotations);
-            projectedRow.cells.push({
+            const projectedCell = {
               id,
               sourceRefs: fragments.map((fragment) => fragment.id),
               header,
               ...(cell.rowspan > 1 ? { rowspan: cell.rowspan } : {}),
               ...(cell.colspan > 1 ? { colspan: cell.colspan } : {}),
-              blocks: [{ id: `${id}:paragraph`, type: "paragraph", runs: linked.runs, sourceRefs: fragments.map((fragment) => fragment.id) }],
-            });
+              blocks: [{ id: `${id}:paragraph`, type: "paragraph" as const, runs: linked.runs, sourceRefs: fragments.map((fragment) => fragment.id) }],
+            };
+            projectedRow.cells.push(projectedCell);
+            projectedColumns.set(cell.column, projectedCell);
             continue;
           }
         }
-        if (!repeat) {
-          projectedRow.cells.push({
+        if (!repeat && !continues) {
+          projectedColumns.set(cell.column, {
             id,
             sourceRefs: [id],
             header,
@@ -632,9 +717,13 @@ export function projectGeometryTableV2(parts: readonly PdfGeometryTablePartV2[])
             ...(cell.colspan > 1 ? { colspan: cell.colspan } : {}),
             blocks: [],
           });
+          projectedRow.cells.push(projectedColumns.get(cell.column)!);
         }
       }
-      if (!repeat) rows.push(projectedRow);
+      if (!repeat && !continues) {
+        rows.push(projectedRow);
+        lastRow = projectedColumns;
+      }
     }
   }
   const native = outcome === "native";
@@ -692,6 +781,8 @@ export function projectUntaggedGeometryTablesV2(
   pages: readonly PdfPageFactsV2[],
   analyses: readonly PdfReadingOrderPageV2[],
   ignoredFragmentIds: ReadonlySet<string>,
+  /** Pages a table does not continue onto or from (pages that fall back). */
+  isolatedPages: ReadonlySet<number> = new Set(),
 ): PdfTableProjectionV2[][] {
   const grids = analyses.map((analysis) => detectGeometryGridsV2(pages[analysis.pageIndex]!, analysis));
   const body = analyses.map((analysis) => analysis.fragments.filter((fragment) =>
@@ -713,9 +804,9 @@ export function projectUntaggedGeometryTablesV2(
     for (const grid of pageGrids) {
       if (continued.has(grid)) continue;
       const parts: PdfGeometryTablePartV2[] = [{ page: pages[grid.pageIndex]!, grid }];
-      for (let last = grid; endsPage(last);) {
+      for (let last = grid; endsPage(last) && !isolatedPages.has(last.pageIndex);) {
         const next = grids[last.pageIndex + 1]?.[0];
-        if (!next || !startsPage(next) || !geometryGridContinues(last, next)) break;
+        if (!next || isolatedPages.has(next.pageIndex) || !startsPage(next) || !geometryGridContinues(last, next)) break;
         parts.push({ page: pages[next.pageIndex]!, grid: next });
         continued.add(next);
         last = next;

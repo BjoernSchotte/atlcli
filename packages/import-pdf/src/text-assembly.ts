@@ -3,7 +3,7 @@ import { digestPdfCanonical } from "./canonical.js";
 import type { PdfTextDirection } from "./text.js";
 
 export const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 =
-  "atlcli.pdf-text-assembly-policy/6" as const;
+  "atlcli.pdf-text-assembly-policy/7" as const;
 
 const PRESENTATION_LIGATURES = Object.freeze({
   "\ufb00": "ff",
@@ -569,14 +569,15 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
           true,
         );
       } else if (generatedWhitespace.length > 0 && relation.sameLine === false) {
+        // Symbols such as "+" or "→" wrap like words.
         const punctuationLineWrap = (isClosingPunctuation(previous.value) || previous.value === "\u2013"
-          || /\p{Pc}$/u.test(previous.value))
+          || /[\p{Pc}\p{S}]$/u.test(previous.value))
           && !isWidePunctuation(previous.value)
           && isWord(anchor.value)
           && !isCjk(anchor.value)
           || isWord(previous.value)
             && !isCjk(previous.value)
-            && (isOpeningPunctuation(anchor.value) || anchor.value === "\u2013")
+            && (isOpeningPunctuation(anchor.value) || anchor.value === "\u2013" || /^\p{S}/u.test(anchor.value))
             && !isWidePunctuation(anchor.value);
         if (wordPair && scriptMatch && !cjkPair || punctuationLineWrap) {
           addBoundary(

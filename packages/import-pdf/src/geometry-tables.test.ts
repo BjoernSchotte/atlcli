@@ -4,6 +4,8 @@
  * by the `untagged-word` quality fixture.
  */
 import { describe, expect, it } from "bun:test";
+import { createNodePdfiumFactsAdapterV2 } from "./node.js";
+import { normalizeUntaggedPdfFactsV2 } from "./untagged.js";
 import type { PdfNormalizedRect, PdfPageFactsV2, PdfPathObjectFact, PdfTextCharacterFactV2 } from "./contracts.js";
 import { detectGeometryGridsV2, geometryDecorationPathIdsV2 } from "./geometry-tables.js";
 import { analyzeGeometryReadingOrderV2 } from "./reading-order.js";
@@ -163,5 +165,156 @@ describe("decoration", () => {
       { x: 0.1, y: 0.7, width: 0.2, height: 0.1 },
     ]);
     expect([...geometryDecorationPathIdsV2(facts, [])]).toEqual(["path:0"]);
+  });
+});
+
+/** A PDF with one Helvetica text and filled-rectangle content stream per page, in points (595 x 842). */
+function pagesPdf(pages: Array<{ rects: Array<[number, number, number, number]>; texts: Array<[string, number, number]>; raw?: string[] }>): Uint8Array {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pages.map((_, index) => `${4 + index * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  for (const [index, { rects, texts, raw = [] }] of pages.entries()) {
+    const content = [
+      ...rects.map(([x, y, w, h]) => `${x} ${y} ${w} ${h} re f`),
+      ...texts.map(([text, x, y]) => `BT /F1 11 Tf ${x} ${y} Td (${text}) Tj ET`),
+      ...raw,
+    ].join("\n");
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${5 + index * 2} 0 R >>`,
+      `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    );
+  }
+  let body = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const offset = body.length;
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")}`;
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(body);
+}
+
+async function normalizePdf(bytes: Uint8Array) {
+  const { facts, factsDigest } = await (await createNodePdfiumFactsAdapterV2()).analyze(bytes);
+  return normalizeUntaggedPdfFactsV2(facts, factsDigest);
+}
+
+const tables = (result: Awaited<ReturnType<typeof normalizePdf>>) =>
+  result.document.blocks.filter((block) => block.type === "table");
+const tableTexts = (table: ReturnType<typeof tables>[number]) => table.type === "table"
+  ? table.rows.map((row) => row.cells.map((cell) => cell.blocks.map((block) =>
+      block.type === "paragraph" ? block.runs.map((run) => run.kind === "text" ? run.text : "").join("") : "").join("/")))
+  : [];
+
+/**
+ * A Word-style table without outer side borders: full-width row rules from
+ * x 60 to 460 and column rules at 160, 260, 360 between `top` and `bottom`.
+ * Rows are 24 points high; `rows` hold the cell texts, top row first.
+ */
+function openSidedTable(rows: string[][], top: number, rules: { topRule: boolean; verticalTop?: number }) {
+  const bottom = top - rows.length * 24;
+  const ys = Array.from({ length: rows.length + 1 }, (_, index) => top - index * 24)
+    .filter((y, index) => index > 0 || rules.topRule);
+  const verticalTop = rules.verticalTop ?? top;
+  return {
+    rects: [
+      ...ys.map((y) => [60, y, 400, 0.5] as [number, number, number, number]),
+      ...[160, 260, 360].map((x) => [x, bottom, 0.5, verticalTop - bottom] as [number, number, number, number]),
+    ],
+    texts: rows.flatMap((cells, row) => cells.flatMap((text, column) =>
+      text ? [[text, 66 + column * 100, top - row * 24 - 16] as [string, number, number]] : []
+    )),
+  };
+}
+
+describe("open-sided and continued ruled tables", () => {
+  it("implies the side borders a Word table omits", async () => {
+    const result = await normalizePdf(pagesPdf([openSidedTable([
+      ["Item", "Owner", "Due", "State"],
+      ["Alpha", "North", "May", "Open"],
+      ["Beta", "South", "June", "Done"],
+    ], 700, { topRule: true })]));
+
+    expect(result.requiresFallbackPages).toEqual([]);
+    expect(tables(result).map(tableTexts)).toEqual([[
+      ["Item", "Owner", "Due", "State"],
+      ["Alpha", "North", "May", "Open"],
+      ["Beta", "South", "June", "Done"],
+    ]]);
+  });
+
+  it("continues a row split by a page break in the same cells", async () => {
+    // Regression: the continued page has no top rule, so its grid was not
+    // closed, and the rest of the split row became a row of its own.
+    const first = openSidedTable([["Item", "Owner", "Due", "State"], ["Alpha", "North", "May", "Open"]], 120, { topRule: true });
+    const next = openSidedTable([["", "region", "", ""], ["Beta", "South", "June", "Done"], ["Gamma", "East", "July", "Open"]], 790, { topRule: false, verticalTop: 814 });
+    const result = await normalizePdf(pagesPdf([first, next]));
+
+    expect(result.requiresFallbackPages).toEqual([]);
+    expect(tables(result).map(tableTexts)).toEqual([[
+      ["Item", "Owner", "Due", "State"],
+      ["Alpha", "North region", "May", "Open"],
+      ["Beta", "South", "June", "Done"],
+      ["Gamma", "East", "July", "Open"],
+    ]]);
+  });
+
+  it("keeps the later parts of a table whose first page falls back", async () => {
+    // Regression: the table's blocks belonged to its first page; when that
+    // page fell back, the rows on the following pages disappeared.
+    const first = openSidedTable([["Item", "Owner", "Due", "State"], ["Alpha", "North", "May", "Open"]], 120, { topRule: true });
+    const next = openSidedTable([["Beta", "South", "June", "Done"], ["Gamma", "East", "July", "Open"], ["Delta", "West", "May", "Done"]], 790, { topRule: false, verticalTop: 814 });
+    const result = await normalizePdf(pagesPdf([
+      // Rotated text sends the first page to a fallback.
+      { ...first, raw: ["BT /F1 11 Tf 0 1 -1 0 520 400 Tm (Rotated margin note) Tj ET"] },
+      next,
+    ]));
+
+    expect(result.requiresFallbackPages).toEqual([0]);
+    expect(tables(result).map(tableTexts)).toEqual([[
+      ["Beta", "South", "June", "Done"],
+      ["Gamma", "East", "July", "Open"],
+      ["Delta", "West", "May", "Done"],
+    ]]);
+  });
+});
+
+describe("linearized alignment-only tables", () => {
+  // Columns drift by 12 points from row to row: too loose for a borderless
+  // table, aligned enough to be linearized with a rendered crop.
+  const rows = [["Plot", "Apples", "Pears"], ["North", "12", "8"], ["South", "9", "11"]];
+  const alignedTexts = (top: number, pitch = 20) => rows.flatMap((cells, row) => cells.map((text, column) =>
+    [text, 70 + column * 150 + (row % 2) * 12, top - row * pitch] as [string, number, number]
+  ));
+
+  it("keeps the rest of the page native around a linearized table", async () => {
+    const result = await normalizePdf(pagesPdf([{ rects: [], texts: [
+      ["Neutral introduction paragraph.", 70, 700],
+      ...alignedTexts(640),
+      ["Neutral closing paragraph.", 70, 520],
+    ] }]));
+
+    expect(result.requiresFallbackPages).toEqual([]);
+    expect(result.document.issues.some((issue) => issue.code === "pdf-import/table-alignment-only-linearized")).toBe(true);
+    expect(result.document.blocks.map((block) =>
+      block.type === "paragraph" ? block.runs.map((run) => run.kind === "text" ? run.text : "").join("") : block.type
+    )).toEqual([
+      "Neutral introduction paragraph.",
+      "Plot | Apples | Pears", "North | 12 | 8", "South | 9 | 11",
+      "Neutral closing paragraph.",
+    ]);
+  });
+
+  it("falls back when other text lies inside the table region", async () => {
+    const result = await normalizePdf(pagesPdf([{ rects: [], texts: [
+      ...alignedTexts(640, 40),
+      ["A note between the rows", 70, 620],
+    ] }]));
+
+    expect(result.requiresFallbackPages).toEqual([0]);
   });
 });

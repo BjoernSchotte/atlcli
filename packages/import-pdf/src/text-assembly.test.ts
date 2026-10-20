@@ -479,16 +479,17 @@ describe("PDF V2 text assembly line and whitespace evidence (PIQ-14)", () => {
     expect(result.boundaries.at(-1)).toMatchObject({ action: "join-line", basis: expect.arrayContaining(["punctuation"]) });
   });
 
-  it("joins a line ending in a digit or an underscore with the next line", () => {
-    // Regression: a digit (Common script) before a Latin word and an
-    // underscore at a line end left the wrap unresolved: page fallback.
+  it("joins a line ending in a digit, an underscore or a symbol with the next line", () => {
+    // Regression: a digit (Common script) before a Latin word, and an
+    // underscore or a symbol ("+", "→") at a wrap left it unresolved: page
+    // fallback, or a ruled table linearized.
     const wrap = (left: string, right: string) => assemblePdfTextV2(input("wrap", [
       ...word(left, 0, 0.1),
       generatedWhitespace("\r", left.length),
       generatedWhitespace("\n", left.length + 1),
       ...word(right, left.length + 2, 0.1, { ...nextLine, run: "pdf:p0:text-run:1" }),
     ]));
-    for (const [left, right] of [["clause 3", "applies"], ["neutral_", "field"]] as const) {
+    for (const [left, right] of [["clause 3", "applies"], ["neutral_", "field"], ["cost +", "Fee"], ["step \u2192", "Next"], ["plan", "\u2192 next"]] as const) {
       const result = wrap(left, right);
       expect(result.text).toBe(`${left} ${right}`);
       expect(result.unresolvedBoundaryCount).toBe(0);

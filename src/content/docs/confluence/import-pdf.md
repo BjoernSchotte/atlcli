@@ -249,11 +249,15 @@ tables from the drawing itself, without learned models:
 | Case | Result |
 |---|---|
 | Borders drawn on every cell | One native table; a missing separator merges cells into a span |
+| No outer side borders (a common Word table style), or no top rule on a continued page | The open side is implied where every row rule or column rule ends; native table |
+| Row split by a page break | One row; each cell's text continues as one paragraph |
 | Only horizontal rules between rows | Rows from the rules, columns from left text edges shared by several rows; wrapped cell text stays in its cell |
 | No lines, three or more columns of single-line cells | Native table when every row has the same cells and the columns are clearly separated |
 | Table continues on the next page with the same columns | One table; a repeated bold header row is kept once |
 | Shading or a highlight behind text | Background: the text stays editable, no image |
-| Text that crosses a drawn cell edge, an open frame, two-column text | No table; the text stays in reading order or the page falls back |
+| Text that crosses a drawn cell edge, a frame open where its lines do not end evenly, two-column text | No table; the text stays in reading order or the page falls back |
+| Aligned text that is not a proven table | Rows linearized as `cell \| cell` paragraphs plus a rendered crop of the region; the rest of the page stays editable. The page falls back only when other text lies inside that region |
+| A page of a multi-page table falls back | The table's parts on the other pages are imported as their own table |
 
 Bold header rows are recognized from the font name when the PDF reports no
 font weight. Clause numbers, terms, and table-of-contents page numbers beside

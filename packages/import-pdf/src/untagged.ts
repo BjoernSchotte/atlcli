@@ -479,6 +479,27 @@ function headingLevelsV2(
   ]));
 }
 
+/**
+ * A linearized table and its rendered crop can stand in for a region only
+ * when no other text lies inside that region; otherwise the crop would
+ * repeat it and the rows would break its reading order.
+ */
+function linearizedTableContainedV2(
+  table: PdfTableProjectionV2,
+  analysis: PdfReadingOrderPageV2,
+  suppressed: ReadonlySet<string>,
+): boolean {
+  if (!table.bbox) return false;
+  const bbox = table.bbox;
+  const owned = new Set(table.fragmentIds);
+  return analysis.fragments.every((fragment) => {
+    if (owned.has(fragment.id) || suppressed.has(fragment.id) || fragment.furniture || fragment.duplicateOf) return true;
+    const x = fragment.bbox.x + fragment.bbox.width / 2;
+    const y = fragment.bbox.y + fragment.bbox.height / 2;
+    return x < bbox.x || x > bbox.x + bbox.width || y < bbox.y || y > bbox.y + bbox.height;
+  });
+}
+
 function suppressedEvidenceV2(
   page: PdfPageFactsV2,
   fragment: PdfGeometryFragmentV2,
@@ -646,7 +667,7 @@ function projectQualifiedPageV2(
     unresolved: false,
   };
   const available = analysis.ordered.filter((fragment) => !suppressed.has(fragment.id));
-  const pending = tables.filter((table) => table.mode === "native")
+  const pending = [...tables]
     .sort((left, right) => (left.bbox?.y ?? 0) - (right.bbox?.y ?? 0));
   const insertTableBefore = (fragment?: PdfGeometryFragmentV2): void => {
     while (pending.length > 0 && (!fragment || !pending[0]!.bbox || pending[0]!.bbox.y < fragment.bbox.y)) {
@@ -746,154 +767,184 @@ export async function normalizeUntaggedPdfFactsV2(
     );
   }
   const rawAnalyses = facts.pages.map((page) => analyzeGeometryReadingOrderV2(page));
-  const geometryTables = projectUntaggedGeometryTablesV2(facts.pages, rawAnalyses, detectRepeatedRegions(rawAnalyses, 2));
-  const tables = rawAnalyses.map((analysis) => {
-    if (geometryTables[analysis.pageIndex]!.length > 0) return geometryTables[analysis.pageIndex]!;
-    const legacy = analyzeUntaggedTableV2(facts.pages[analysis.pageIndex]!, analysis);
-    return legacy.mode === "none" ? [] : [legacy];
-  });
-  const analyses = facts.pages.map((page) => analyzeGeometryReadingOrderV2(
-    page,
-    new Set(tables[page.index]!.filter((table) => table.mode === "native").flatMap((table) => table.fragmentIds)),
-  ));
-  calibrateGeometryFontSizesV2(analyses);
-  const repeated = detectRepeatedRegions(analyses, 2);
-  const automaticallySuppressed = new Set<string>([
-    ...repeated,
-    ...analyses.flatMap((analysis) => analysis.fragments
-      .filter((fragment) => fragment.furniture || fragment.duplicateOf)
-      .map((fragment) => fragment.id)),
-  ]);
-  const bodyFont = geometryBodyFontSizeV2(analyses);
-  const headingLevelByFont = headingLevelsV2(analyses, automaticallySuppressed, bodyFont);
-  const blocks: ImportBlock[] = [];
-  const evidence: PdfDecisionEvidenceV2[] = [];
-  const issues: ImportIssue[] = facts.issues.map(({ pageIndex, ...issue }) => ({
-    ...issue,
-    ...(pageIndex === undefined ? {} : { context: { ...issue.context, pageIndex } }),
-  }));
-  const boundaries: PdfTextBoundaryDecisionV2[] = [];
-  const transformations: PdfTextTransformationV2[] = [];
-  const pageOutcomes: PdfUntaggedPageOutcomeV2[] = [];
-  const requiresFallbackPages: number[] = [];
-  for (const analysis of analyses) {
-    const page = facts.pages[analysis.pageIndex]!;
-    const pageTables = tables[analysis.pageIndex]!;
-    const boundaryStart = boundaries.length;
-    for (const table of pageTables) {
-      boundaries.push(...table.boundaries);
-      transformations.push(...table.transformations);
-      evidence.push(...table.evidence);
-      issues.push(...table.issues);
-    }
-    const reasons = new Set(analysis.qualificationReasons);
-    if (facts.tagged && !options.allowTagged) reasons.add("tagged-document-routed-to-geometry");
-    if (!pageHasQualifiedDigitalLayout(page)) reasons.add(`page-kind-${page.kind}`);
-    if (pageTables.some((table) => table.mode === "linearized-render-required")) reasons.add("table-render-required");
-    const suppressed = analysis.fragments.filter((fragment) =>
-      automaticallySuppressed.has(fragment.id)
+  // A table continued across pages loses the parts on its other pages when
+  // one page falls back; such pages end continuation and the pages are
+  // projected again until no fallback page holds part of a longer table.
+  const project = (isolatedPages: ReadonlySet<number>) => {
+    const geometryTables = projectUntaggedGeometryTablesV2(
+      facts.pages,
+      rawAnalyses,
+      detectRepeatedRegions(rawAnalyses, 2),
+      isolatedPages,
     );
-    for (const fragment of suppressed) {
-      const reason = fragment.furniture
-        ? "page-furniture"
-        : fragment.duplicateOf ? "overlap-duplicate" : "repeated-region";
-      evidence.push(suppressedEvidenceV2(page, fragment, reason));
-      appendPdfTextAssemblyV2({ boundaries, transformations }, fragment.assembly);
-      issues.push(...pdfTextAssemblyIssuesV2(fragment.assembly, page.index, fragment.id));
-    }
-    if (suppressed.length > 0) {
-      issues.push({
-        code: "pdf-import/geometry-regions-suppressed",
-        severity: "info",
-        outcome: "approximated",
-        message: "Page furniture, repeated regions, or exact overlapping duplicates were suppressed with source evidence.",
-        sourceRefs: suppressed.map((fragment) => fragment.id),
-        context: { pageIndex: page.index, regions: suppressed.length },
-      });
-    }
-    const blockStart = blocks.length;
-    const projection = reasons.size === 0
-      ? projectQualifiedPageV2(
-          page,
-          analysis,
-          automaticallySuppressed,
-          headingLevelByFont,
-          pageTables,
-        )
-      : null;
-    if (projection?.unresolved) reasons.add("unresolved-text-boundary");
-    if (reasons.size === 0 && projection) {
-      blocks.push(...projection.blocks);
-      evidence.push(...projection.evidence);
-      issues.push(...projection.issues);
-      boundaries.push(...projection.boundaries);
-      transformations.push(...projection.transformations);
-    } else {
-      if (projection) {
-        evidence.push(...projection.evidence.filter((item) => item.outcome !== "native"));
+    const tables = rawAnalyses.map((analysis) => {
+      if (geometryTables[analysis.pageIndex]!.length > 0) return geometryTables[analysis.pageIndex]!;
+      const legacy = analyzeUntaggedTableV2(facts.pages[analysis.pageIndex]!, analysis);
+      return legacy.mode === "none" ? [] : [legacy];
+    });
+    // Linearized tables own their fragments too: their text and a rendered
+    // crop of the region stand in for the table, the rest of the page stays native.
+    const analyses = facts.pages.map((page) => analyzeGeometryReadingOrderV2(
+      page,
+      new Set(tables[page.index]!.flatMap((table) => table.fragmentIds)),
+    ));
+    calibrateGeometryFontSizesV2(analyses);
+    const repeated = detectRepeatedRegions(analyses, 2);
+    const automaticallySuppressed = new Set<string>([
+      ...repeated,
+      ...analyses.flatMap((analysis) => analysis.fragments
+        .filter((fragment) => fragment.furniture || fragment.duplicateOf)
+        .map((fragment) => fragment.id)),
+    ]);
+    const bodyFont = geometryBodyFontSizeV2(analyses);
+    const headingLevelByFont = headingLevelsV2(analyses, automaticallySuppressed, bodyFont);
+    const blocks: ImportBlock[] = [];
+    const evidence: PdfDecisionEvidenceV2[] = [];
+    const issues: ImportIssue[] = facts.issues.map(({ pageIndex, ...issue }) => ({
+      ...issue,
+      ...(pageIndex === undefined ? {} : { context: { ...issue.context, pageIndex } }),
+    }));
+    const boundaries: PdfTextBoundaryDecisionV2[] = [];
+    const transformations: PdfTextTransformationV2[] = [];
+    const pageOutcomes: PdfUntaggedPageOutcomeV2[] = [];
+    const requiresFallbackPages: number[] = [];
+    for (const analysis of analyses) {
+      const page = facts.pages[analysis.pageIndex]!;
+      const pageTables = tables[analysis.pageIndex]!;
+      const boundaryStart = boundaries.length;
+      for (const table of pageTables) {
+        boundaries.push(...table.boundaries);
+        transformations.push(...table.transformations);
+        evidence.push(...table.evidence);
+        issues.push(...table.issues);
+      }
+      const reasons = new Set(analysis.qualificationReasons);
+      if (facts.tagged && !options.allowTagged) reasons.add("tagged-document-routed-to-geometry");
+      if (!pageHasQualifiedDigitalLayout(page)) reasons.add(`page-kind-${page.kind}`);
+      if (pageTables.some((table) =>
+        table.mode === "linearized-render-required"
+        && !linearizedTableContainedV2(table, analysis, automaticallySuppressed)
+      )) reasons.add("table-render-required");
+      const suppressed = analysis.fragments.filter((fragment) =>
+        automaticallySuppressed.has(fragment.id)
+      );
+      for (const fragment of suppressed) {
+        const reason = fragment.furniture
+          ? "page-furniture"
+          : fragment.duplicateOf ? "overlap-duplicate" : "repeated-region";
+        evidence.push(suppressedEvidenceV2(page, fragment, reason));
+        appendPdfTextAssemblyV2({ boundaries, transformations }, fragment.assembly);
+        issues.push(...pdfTextAssemblyIssuesV2(fragment.assembly, page.index, fragment.id));
+      }
+      if (suppressed.length > 0) {
+        issues.push({
+          code: "pdf-import/geometry-regions-suppressed",
+          severity: "info",
+          outcome: "approximated",
+          message: "Page furniture, repeated regions, or exact overlapping duplicates were suppressed with source evidence.",
+          sourceRefs: suppressed.map((fragment) => fragment.id),
+          context: { pageIndex: page.index, regions: suppressed.length },
+        });
+      }
+      const blockStart = blocks.length;
+      const projection = reasons.size === 0
+        ? projectQualifiedPageV2(
+            page,
+            analysis,
+            automaticallySuppressed,
+            headingLevelByFont,
+            pageTables,
+          )
+        : null;
+      if (projection?.unresolved) reasons.add("unresolved-text-boundary");
+      if (reasons.size === 0 && projection) {
+        blocks.push(...projection.blocks);
+        evidence.push(...projection.evidence);
         issues.push(...projection.issues);
         boundaries.push(...projection.boundaries);
         transformations.push(...projection.transformations);
-      }
-      requiresFallbackPages.push(page.index);
-      for (const table of pageTables) if (table.mode === "linearized-render-required") blocks.push(...table.blocks);
-      const tableFragmentIds = new Set(pageTables.flatMap((table) => table.fragmentIds));
-      const fallbackFragments = analysis.fragments.filter((fragment) =>
-        !automaticallySuppressed.has(fragment.id) && !tableFragmentIds.has(fragment.id)
-      );
-      for (const fragment of fallbackFragments) {
-        appendPdfTextAssemblyV2({ boundaries, transformations }, fragment.assembly);
-        issues.push(...pdfTextAssemblyIssuesV2(fragment.assembly, page.index, fragment.id));
-        evidence.push({
-          sourceId: fragment.id,
-          locator: evidenceLocatorV2(page, fragment),
-          basis: ["text-geometry", "text-boundary"],
-          confidence: 0,
-          decisionCode: "pdf/geometry-page-fallback-required",
+      } else {
+        if (projection) {
+          evidence.push(...projection.evidence.filter((item) => item.outcome !== "native"));
+          issues.push(...projection.issues);
+          boundaries.push(...projection.boundaries);
+          transformations.push(...projection.transformations);
+        }
+        requiresFallbackPages.push(page.index);
+        for (const table of pageTables) if (table.mode === "linearized-render-required") blocks.push(...table.blocks);
+        const tableFragmentIds = new Set(pageTables.flatMap((table) => table.fragmentIds));
+        const fallbackFragments = analysis.fragments.filter((fragment) =>
+          !automaticallySuppressed.has(fragment.id) && !tableFragmentIds.has(fragment.id)
+        );
+        for (const fragment of fallbackFragments) {
+          appendPdfTextAssemblyV2({ boundaries, transformations }, fragment.assembly);
+          issues.push(...pdfTextAssemblyIssuesV2(fragment.assembly, page.index, fragment.id));
+          evidence.push({
+            sourceId: fragment.id,
+            locator: evidenceLocatorV2(page, fragment),
+            basis: ["text-geometry", "text-boundary"],
+            confidence: 0,
+            decisionCode: "pdf/geometry-page-fallback-required",
+            outcome: "reported",
+            analyzerRevision: PDF_GEOMETRY_POLICY_REVISION_V2,
+            boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(fragment.assembly),
+          });
+        }
+        issues.push({
+          code: "pdf-import/geometry-page-fallback-required",
+          severity: "warning",
           outcome: "reported",
-          analyzerRevision: PDF_GEOMETRY_POLICY_REVISION_V2,
-          boundaryDecisionIds: pdfTextBoundaryDecisionIdsV2(fragment.assembly),
+          message: "The untagged page did not meet the conservative native-layout qualification policy.",
+          sourceRefs: [`pdf:p${page.index}`],
+          context: { pageIndex: page.index, reasons: [...reasons].sort().join(",") },
         });
       }
-      issues.push({
-        code: "pdf-import/geometry-page-fallback-required",
-        severity: "warning",
-        outcome: "reported",
-        message: "The untagged page did not meet the conservative native-layout qualification policy.",
-        sourceRefs: [`pdf:p${page.index}`],
-        context: { pageIndex: page.index, reasons: [...reasons].sort().join(",") },
+      if (blocks.length > blockStart && page.index > 0) blocks[blockStart]!.pageBoundaryBefore = true;
+      const accounted = new Set(analysis.fragments.flatMap((fragment) =>
+        fragment.assembly.characterIndexes
+      ));
+      const visible = visibleCharacterIndexesV2(page);
+      const unaccounted = visible.filter((index) => !accounted.has(index));
+      if (unaccounted.length > 0 && !reasons.has("missing-geometry")) {
+        throw new PdfImportError(
+          "pdf/incomplete",
+          "Geometry V2 normalization left visible source characters unaccounted.",
+          { pageIndex: page.index, characters: unaccounted.length },
+        );
+      }
+      const pageBoundaries = boundaries.slice(boundaryStart);
+      pageOutcomes.push({
+        pageIndex: page.index,
+        mode: reasons.size === 0 ? "geometry-native" : "fallback-required",
+        projectedNodeIds: blocks.slice(blockStart).map((block) => block.id),
+        columnCount: analysis.columnCount,
+        sourceFragmentCount: analysis.fragments.length,
+        suppressedFragmentCount: suppressed.length,
+        accountedCharacterCount: accounted.size,
+        unaccountedCharacterCount: unaccounted.length,
+        qualificationReasons: [...reasons].sort(),
+        boundaryDecisionCount: pageBoundaries.length,
+        unresolvedBoundaryCount: pageBoundaries.filter((boundary) =>
+          boundary.action === "unresolved"
+        ).length,
       });
     }
-    if (blocks.length > blockStart && page.index > 0) blocks[blockStart]!.pageBoundaryBefore = true;
-    const accounted = new Set(analysis.fragments.flatMap((fragment) =>
-      fragment.assembly.characterIndexes
-    ));
-    const visible = visibleCharacterIndexesV2(page);
-    const unaccounted = visible.filter((index) => !accounted.has(index));
-    if (unaccounted.length > 0 && !reasons.has("missing-geometry")) {
-      throw new PdfImportError(
-        "pdf/incomplete",
-        "Geometry V2 normalization left visible source characters unaccounted.",
-        { pageIndex: page.index, characters: unaccounted.length },
-      );
+    return { blocks, evidence, issues, boundaries, transformations, pageOutcomes, requiresFallbackPages, tables };
+  };
+  const isolatedPages = new Set<number>();
+  let projected = project(isolatedPages);
+  for (;;) {
+    const tablePages = new Map<string, number[]>();
+    for (const table of projected.tables.flat()) {
+      if (table.mode === "native") tablePages.set(table.sourceId, [...(tablePages.get(table.sourceId) ?? []), table.pageIndex]);
     }
-    const pageBoundaries = boundaries.slice(boundaryStart);
-    pageOutcomes.push({
-      pageIndex: page.index,
-      mode: reasons.size === 0 ? "geometry-native" : "fallback-required",
-      projectedNodeIds: blocks.slice(blockStart).map((block) => block.id),
-      columnCount: analysis.columnCount,
-      sourceFragmentCount: analysis.fragments.length,
-      suppressedFragmentCount: suppressed.length,
-      accountedCharacterCount: accounted.size,
-      unaccountedCharacterCount: unaccounted.length,
-      qualificationReasons: [...reasons].sort(),
-      boundaryDecisionCount: pageBoundaries.length,
-      unresolvedBoundaryCount: pageBoundaries.filter((boundary) =>
-        boundary.action === "unresolved"
-      ).length,
-    });
+    const spanned = new Set([...tablePages.values()].filter((pages) => pages.length > 1).flat());
+    const isolate = projected.requiresFallbackPages.filter((page) => spanned.has(page) && !isolatedPages.has(page));
+    if (isolate.length === 0) break;
+    for (const page of isolate) isolatedPages.add(page);
+    projected = project(isolatedPages);
   }
+  const { blocks, evidence, issues, boundaries, transformations, pageOutcomes, requiresFallbackPages } = projected;
   const firstHeading = blocks.find((block) => block.type === "heading");
   const titleCandidate = firstHeading?.type === "heading"
     ? firstHeading.runs.map((run) => run.kind === "text" ? run.text : "\n").join("").trim()

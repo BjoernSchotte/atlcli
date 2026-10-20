@@ -113,7 +113,30 @@ neutral regression test:
   the wrap to the next line unresolved. Digits now match any non-CJK script,
   and a connector punctuation mark may end a wrapped line.
 
-Revisions: geometry policy V2 `/5`, text assembly V2 `/6`. The motivating
+Follow-up for `table-render-required` pages:
+
+- **Open frames:** a ruled grid whose row rules all end at the same x (or
+  whose column rules all end at the same y) has that side implied: Word
+  tables without outer side borders, and a table continued from the previous
+  page without a top rule. Mixed shading components keep the closed-frame
+  rule.
+- **Split rows:** without a top rule and without a repeated header, the first
+  row of a continued part with simple cells continues the previous page's
+  last row; its cell text continues the same paragraph (shared with the
+  tagged path through `continueCellBlocksV2`).
+- **Contained linearization:** an alignment-only table linearized with a
+  rendered crop no longer sends its page to a fallback when no other text
+  lies inside its region; the rest of the page stays native.
+- **No lost continuation parts:** when a page holding part of a multi-page
+  table falls back, tables are projected again without continuation across
+  that page. Before, the table's blocks belonged to its first page and the
+  rows on its other pages were silently dropped while their characters
+  counted as owned.
+- **Line wraps at symbols:** a symbol (`+`, `→`) at either side of a wrap
+  joins with one space.
+
+Revisions after both steps: geometry policy V2 `/6`, table policy V2 `/6`,
+text assembly V2 `/7`. The motivating
 private documents were re-measured locally; nothing about them is recorded here.
 
 ## PIQ-18
