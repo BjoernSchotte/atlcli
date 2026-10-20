@@ -50,20 +50,20 @@ Declared per package via `engines` and verified by the consumer-smoke suites
 
 | Package | Runtime | Notes |
 |---|---|---|
-| `@atlcli/plugin-api` | Node ≥ 20, Bun | Pure types + helpers |
-| `@atlcli/core` | Node ≥ 20, Bun | Node barrel uses `node:` builtins only |
-| `@atlcli/diagram` | Node ≥ 20, Bun, browsers | Isomorphic; mermaid renderer lazy-loaded |
+| `@atlcli/plugin-api` | Node ≥ 22.12, Bun | Pure types + helpers |
+| `@atlcli/core` | Node ≥ 22.12, Bun | Node barrel uses `node:` builtins only |
+| `@atlcli/diagram` | Node ≥ 22.12, Bun, browsers | Isomorphic; mermaid renderer lazy-loaded |
 | `@atlcli/jira` | **Bun only** (≥ 1.3) | The barrel's webhook server is `Bun.serve`-native |
-| `@atlcli/confluence` | Node ≥ 20, Bun, browsers | The default barrel is isomorphic; the non-frozen `./internal` subpath (sync-db, webhook-server, …) is **Bun-only** |
-| `@atlcli/code-highlight` | Node ≥ 20, Bun, browsers | Node/Bun installs Oniguruma; browser conditions install the JavaScript RegExp engine; languages/themes use generated direct loaders |
-| `@atlcli/docx` | Node ≥ 20, Bun, browsers | Browser intent hosts import the ordered `./browser-entry`; legacy split subpaths remain compatible |
-| `@atlcli/pdf` | Node ≥ 20, Bun, browsers | Fully isomorphic |
-| `@atlcli/pdf-compiler-browser` | Node ≥ 20, Bun, browsers | Needs `WebAssembly`; wasm/fonts supplied by the host |
-| `@atlcli/export-jobs` | Node ≥ 20, Bun, browsers | Durable job records, validation, and host-injected persistence ports |
-| `@atlcli/export-macros` | Node ≥ 20, Bun, browsers | Isomorphic; hosts inject walker/client ports |
-| `@atlcli/export-wiring` | Node ≥ 20, Bun, browsers | Isomorphic host wiring: macro ports over a real client, the external-asset policy/fetcher, and the trust routers |
-| `@atlcli/template-pack` | Node ≥ 20, Bun, browsers | Pure byte-in/byte-out (PizZip + WebCrypto) |
-| `@atlcli/export-node` | Node ≥ 20, Bun | The batteries-included Node starting point |
+| `@atlcli/confluence` | Node ≥ 22.12, Bun, browsers | The default barrel is isomorphic; the non-frozen `./internal` subpath (sync-db, webhook-server, …) is **Bun-only** |
+| `@atlcli/code-highlight` | Node ≥ 22.12, Bun, browsers | Node/Bun installs Oniguruma; browser conditions install the JavaScript RegExp engine; languages/themes use generated direct loaders |
+| `@atlcli/docx` | Node ≥ 22.12, Bun, browsers | Browser intent hosts import the ordered `./browser-entry`; legacy split subpaths remain compatible |
+| `@atlcli/pdf` | Node ≥ 22.12, Bun, browsers | Fully isomorphic |
+| `@atlcli/pdf-compiler-browser` | Node ≥ 22.12, Bun, browsers | Needs `WebAssembly`; wasm/fonts supplied by the host |
+| `@atlcli/export-jobs` | Node ≥ 22.12, Bun, browsers | Durable job records, validation, and host-injected persistence ports |
+| `@atlcli/export-macros` | Node ≥ 22.12, Bun, browsers | Isomorphic; hosts inject walker/client ports |
+| `@atlcli/export-wiring` | Node ≥ 22.12, Bun, browsers | Isomorphic host wiring: macro ports over a real client, the external-asset policy/fetcher, and the trust routers |
+| `@atlcli/template-pack` | Node ≥ 22.12, Bun, browsers | Pure byte-in/byte-out (PizZip + WebCrypto) |
+| `@atlcli/export-node` | Node ≥ 22.12, Bun | The batteries-included Node starting point |
 
 ## Path 1: Filesystem linking (`file:` directories)
 
