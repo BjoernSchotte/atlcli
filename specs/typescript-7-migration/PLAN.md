@@ -1,6 +1,6 @@
 # TypeScript 7 Migration
 
-Status: **In progress**: T1/T2 merged in #238, 2026-10-20
+Status: **Implemented**: T1/T2 in #238; T0, T3–T6 in the TypeScript 7 PR, 2026-10-20. See `adoption-evidence.json`.
 
 Planning baseline: commit `b0bc2218`
 
@@ -56,6 +56,24 @@ TypeScript 5.9.3 (tsc + JS API)
           ▼  later, separate decision
      tsrs as an optional non-blocking typecheck lane → drop-in once stable
 ```
+
+## Implementation outcome
+
+- `tsc` is TypeScript 7.0.2 and `require("typescript")` is the TypeScript
+  6.0.3 API. TypeScript 5 is gone from `bun.lock`. Bun's hoisted linker
+  links the aliases as planned: `tsc` → TS 7, `tsc6` → TS 6, and `tsserver`
+  → TS 6 (editor/Volar path). There are no peer warnings.
+- No source changes were needed beyond T1/T2. Every gate passes on a fresh
+  install: typechecks, build, browser and phase-1 guards, `docs:check`/build,
+  pack check, consumer smoke, and the full suite (9394 pass, 0 fail).
+- Emit: 590/591 `.js` files are byte-identical. The one difference is a
+  sorted `react/jsx-runtime` import. 8 `.d.ts` files changed, all
+  reorder-only (`stableTypeOrdering`). Three API reports were regenerated
+  and proven reorder-only.
+- Median cold timings: typecheck 14.9 s → 2.5 s (5.8×), build 19.6 s → 5.3 s
+  (3.7×).
+- `scripts/compiler-split.test.ts` guards the split. `CLAUDE.md` and
+  `contributing.md` document it.
 
 ## Goals
 
@@ -221,12 +239,12 @@ Out of scope:
 
 **Depends on:** none.
 
-- [ ] On a fresh install, run the full command table on TS 5.9.3 and record
+- [x] On a fresh install, run the full command table on TS 5.9.3 and record
       exit codes.
-- [ ] Build every package (`turbo run build --force`) and snapshot all
+- [x] Build every package (`turbo run build --force`) and snapshot all
       `packages/*/dist` trees (path list plus SHA-256 per file) into ignored
       scratch output.
-- [ ] Record three cold timings each for all typechecks
+- [x] Record three cold timings each for all typechecks
       (`turbo ... --force`) and `turbo run build --force`, with machine and
       Bun version.
 
@@ -265,16 +283,16 @@ Expected: the extension type-checks identically on both compilers.
 
 **Depends on:** T1, T2.
 
-- [ ] Root `devDependencies`: replace `typescript` with
+- [x] Root `devDependencies`: replace `typescript` with
       `"typescript": "npm:@typescript/typescript6@^6.0.2"` and add
       `"@typescript/native": "npm:typescript@^7.0.2"`.
-- [ ] `apps/browser-export-harness`: drop its own `typescript` pin, or align
+- [x] `apps/browser-export-harness`: drop its own `typescript` pin, or align
       it to the same two aliases. There must be exactly one TS 7 and one TS 6
       in `bun.lock`.
-- [ ] Verify bin wiring under Bun's hoisted linker: `node_modules/.bin/tsc`
+- [x] Verify bin wiring under Bun's hoisted linker: `node_modules/.bin/tsc`
       is TS 7, `tsc6` is TS 6, and `bunx tsc` resolves the local TS 7. If Bun
       mis-links aliased bins, STOP (see below).
-- [ ] Verify `@astrojs/check`'s peer resolves to the TS 6 alias without peer
+- [x] Verify `@astrojs/check`'s peer resolves to the TS 6 alias without peer
       warnings that fail CI.
 
 Expected: compiler identity commands print 7.0.x and 6.0.x.
@@ -283,14 +301,14 @@ Expected: compiler identity commands print 7.0.x and 6.0.x.
 
 **Depends on:** T3.
 
-- [ ] Run the full command table. Fix only what TS 7 forces. Each source
+- [x] Run the full command table. Fix only what TS 7 forces. Each source
       change cites the TS 7 rule that requires it.
-- [ ] API guards on the TS 6 API: `api-report`/`api-closure` reports are
+- [x] API guards on the TS 6 API: `api-report`/`api-closure` reports are
       byte-identical without `--update`. If the TS 6 printer changes output,
       regenerate, review the diff and record why it is cosmetic.
-- [ ] `check:browser` and the phase-1 guard's mutation tests still fail on
+- [x] `check:browser` and the phase-1 guard's mutation tests still fail on
       the sabotaged fixtures.
-- [ ] `docs:check` (Astro/Volar on TS 6) passes. Handle any TS 6
+- [x] `docs:check` (Astro/Volar on TS 6) passes. Handle any TS 6
       deprecation diagnostics in `tsconfig.docs.json` explicitly, not with a
       blanket `ignoreDeprecations`.
 
@@ -300,15 +318,15 @@ Expected: everything green with TypeScript 7 as the only `tsc`.
 
 **Depends on:** T4.
 
-- [ ] Rebuild all packages and diff against the T0 snapshot. `.js` and
+- [x] Rebuild all packages and diff against the T0 snapshot. `.js` and
       `.d.ts` must be identical, or each difference is listed and justified
       (for example union order from `stableTypeOrdering`). For `.map` files,
       check that `sources` resolve to existing files and that the
       packed-consumer test passes.
-- [ ] Repeat the T0 timing protocol and store `adoption-evidence.json` under
+- [x] Repeat the T0 timing protocol and store `adoption-evidence.json` under
       this spec: compiler versions, lockfile digest, gate results, parity
       verdict, timings (median of three, cold).
-- [ ] Run the CLI E2E smoke against DOCSY (profile `mayflower`) using the
+- [x] Run the CLI E2E smoke against DOCSY (profile `mayflower`) using the
       built CLI, and clean up test pages.
 
 Expected: a reviewer can see from the evidence alone that output did not
@@ -318,11 +336,11 @@ regress.
 
 **Depends on:** T4.
 
-- [ ] Update `CLAUDE.md` (build/typecheck notes) and
+- [x] Update `CLAUDE.md` (build/typecheck notes) and
       `src/content/docs/contributing.md`. Cover the compiler split (TS 7 `tsc` vs. TS 6 API)
       and the fresh-install gotcha. Add a short "switching the editor to the
       TS 7 language server" note.
-- [ ] Add a guard test (or extend `scripts/dev-resolution.test.ts`) that
+- [x] Add a guard test (or extend `scripts/dev-resolution.test.ts`) that
       fails if `tsc` is not 7.x or the `typescript` API is not 6.x. This
       keeps a future `bun add typescript` from silently undoing the split.
 
@@ -343,10 +361,10 @@ Expected: the split is documented and protected by a test.
 
 ## Definition of done
 
-- [ ] TypeScript 7 is the only `tsc`. TypeScript 6 is the only compiler API.
+- [x] TypeScript 7 is the only `tsc`. TypeScript 6 is the only compiler API.
       TypeScript 5.9 is gone from `bun.lock`.
 - [ ] All gates in the command table pass in CI and locally on a fresh install.
-- [ ] Emit parity and timings are recorded in `adoption-evidence.json`.
+- [x] Emit parity and timings are recorded in `adoption-evidence.json`.
 - [ ] Docs and the identity guard test are merged in the same PR.
 - [ ] Nothing is pushed or released without authorization.
 
