@@ -71,7 +71,7 @@ function evidenceV2(sourceId: string, targetNodeId: string, y: number): PdfDecis
   return {
     ...evidence(sourceId, targetNodeId, y),
     boundaryDecisionIds: [],
-    analyzerRevision: "atlcli.pdf-tagged-policy/2",
+    analyzerRevision: "atlcli.pdf-tagged-policy/3",
   };
 }
 

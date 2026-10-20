@@ -6,7 +6,12 @@
  * (pageIndex, MCID) pairs; joining them with PDFium character facts is the
  * only way structure obtains text. The tree never carries body text itself.
  */
-import type { PdfPageFactsV2 } from "./contracts.js";
+import type {
+  PdfPageFactsV2,
+  PdfStructureAttributeFact,
+  PdfStructureKidFactV2,
+  PdfStructureNodeFactV2,
+} from "./contracts.js";
 import { PdfObjectReader, classifyMarkedContent, isRef, nameOf, pdfText, type MarkedContentKind, type PdfDict, type PdfValue } from "./pdf-objects.js";
 
 export type DocStructKid =
@@ -28,6 +33,8 @@ export interface DocStructElement {
   /** The element's /ID entry, used by table /Headers references. */
   elementId: string;
   attributes: { rowSpan?: number; colSpan?: number; scope?: string; headers?: string[] };
+  /** Every attribute entry, encoded like PDFium's structure attribute facts. */
+  rawAttributes: PdfStructureAttributeFact[];
   kids: DocStructKid[];
 }
 
@@ -114,6 +121,7 @@ export function readDocStructTree(bytes: Uint8Array, options: DocStructTreeOptio
           language: pdfText(dict.entries.get("Lang")),
           elementId: pdfText(dict.entries.get("ID")),
           attributes: attributes(reader, dict),
+          rawAttributes: rawAttributes(reader, dict),
           kids,
         },
       };
@@ -188,6 +196,38 @@ function attributes(reader: PdfObjectReader, dict: PdfDict): DocStructElement["a
     if (Array.isArray(headers) && !out.headers) out.headers = headers.map((h) => pdfText(reader.resolve(h)));
   }
   return out;
+}
+
+// FPDF_OBJECT_* type codes, so document-tree attributes match PDFium facts.
+const OBJECT_TYPE = { unknown: 0, boolean: 1, number: 2, string: 3, name: 4, array: 5 } as const;
+
+function rawAttributes(reader: PdfObjectReader, dict: PdfDict): PdfStructureAttributeFact[] {
+  const out: PdfStructureAttributeFact[] = [];
+  const raw = reader.resolve(dict.entries.get("A"));
+  const list = raw === null ? [] : Array.isArray(raw) ? raw : [raw];
+  for (const item of list) {
+    const a = reader.dict(item);
+    if (!a) continue;
+    for (const [name, value] of a.entries) out.push({ name, ...attributeValue(reader, value, 0) });
+  }
+  return out;
+}
+
+function attributeValue(reader: PdfObjectReader, value: PdfValue | undefined, depth: number): Omit<PdfStructureAttributeFact, "name"> {
+  const v = reader.resolve(value);
+  if (typeof v === "boolean") return { type: OBJECT_TYPE.boolean, value: v };
+  if (typeof v === "number") return { type: OBJECT_TYPE.number, value: v };
+  if (Array.isArray(v)) {
+    return {
+      type: OBJECT_TYPE.array,
+      value: depth >= 4 ? [] : v.map((item) => ({ name: "", ...attributeValue(reader, item, depth + 1) })),
+    };
+  }
+  if (v && typeof v === "object") {
+    if (v.kind === "name") return { type: OBJECT_TYPE.name, value: v.value };
+    if (v.kind === "string") return { type: OBJECT_TYPE.string, value: pdfText(v) };
+  }
+  return { type: OBJECT_TYPE.unknown, value: null };
 }
 
 const STANDARD_ROLES = new Set([
@@ -419,4 +459,93 @@ export function elementCharacters(
     for (const index of byMcid.get(`${ref.pageIndex}:${ref.mcid}`) ?? []) out.push({ pageIndex: ref.pageIndex, index });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Page-scoped V2 structure facts derived from the document tree
+// ---------------------------------------------------------------------------
+
+const TABLE_PART_ROLES = new Set(["Table", "THead", "TBody", "TFoot", "TR", "TH", "TD"]);
+
+/**
+ * Projects the document tree onto each page in the existing V2 fact shape.
+ *
+ * Every page sees the elements that own content on it, with `logicalId` equal
+ * across pages. A child that owns content only elsewhere becomes
+ * `page-external` instead of `unresolved`. Inside a table, rows and cells
+ * without content on any page are kept on their parent's first page, and every
+ * cell of a shown row is shown, so a page-local grid stays rectangular.
+ * Elements without content anywhere outside tables are omitted: they carry
+ * nothing visible.
+ */
+export function pageStructuresFromDocTree(tree: DocStructTree, pageCount: number): PdfStructureNodeFactV2[][] {
+  const pagesOf = new Map<DocStructElement, number[]>();
+  const pages = (el: DocStructElement): number[] => {
+    const cached = pagesOf.get(el);
+    if (cached) return cached;
+    const set = new Set<number>();
+    for (const kid of el.kids) {
+      if (kid.kind === "content" && kid.pageIndex !== null) set.add(kid.pageIndex);
+      else if (kid.kind === "element") pages(kid.element).forEach((p) => set.add(p));
+    }
+    const sorted = [...set].sort((a, b) => a - b);
+    pagesOf.set(el, sorted);
+    return sorted;
+  };
+
+  const project = (el: DocStructElement, pageIndex: number, homePage: number): PdfStructureNodeFactV2 => {
+    const logicalId = logicalIdOf(el.id);
+    const kids: PdfStructureKidFactV2[] = [];
+    const directMcids: number[] = [];
+    el.kids.forEach((kid, index) => {
+      if (kid.kind === "content") {
+        if (kid.pageIndex === null) kids.push({ kind: "unresolved", index, reason: "document-structure-invalid" });
+        else if (kid.pageIndex === pageIndex) {
+          kids.push({ kind: "mcid", index, mcid: kid.mcid });
+          directMcids.push(kid.mcid);
+        } else kids.push({ kind: "page-external", index, pageIndexes: [kid.pageIndex] });
+        return;
+      }
+      if (kid.kind === "object") {
+        kids.push({ kind: "object-reference", index, pageIndexes: kid.pageIndex === null ? [] : [kid.pageIndex] });
+        return;
+      }
+      if (kid.kind === "invalid") {
+        kids.push({ kind: "unresolved", index, reason: "document-structure-invalid" });
+        return;
+      }
+      const child = kid.element;
+      const childPages = pages(child);
+      const inTable = TABLE_PART_ROLES.has(el.standardRole) && TABLE_PART_ROLES.has(child.standardRole);
+      const cellOfShownRow = el.standardRole === "TR" && (child.standardRole === "TH" || child.standardRole === "TD");
+      if (childPages.includes(pageIndex) || cellOfShownRow || (inTable && childPages.length === 0 && pageIndex === homePage)) {
+        kids.push({ kind: "element", index, node: project(child, pageIndex, childPages[0] ?? homePage) });
+      } else if (childPages.length > 0) {
+        kids.push({ kind: "page-external", index, pageIndexes: childPages });
+      }
+      // else: no content anywhere and not a table part, omitted
+    });
+    return {
+      id: `pdf:p${pageIndex}:struct:${logicalId}`,
+      logicalId,
+      type: el.standardRole,
+      title: el.title,
+      alt: el.alt,
+      actualText: el.actualText,
+      language: el.language,
+      elementId: el.elementId,
+      directMcids,
+      kids,
+      attributes: el.rawAttributes,
+    };
+  };
+
+  return Array.from({ length: pageCount }, (_, pageIndex) =>
+    tree.roots.filter((root) => pages(root).includes(pageIndex)).map((root) => project(root, pageIndex, pages(root)[0]!)),
+  );
+}
+
+/** `obj:12` -> `o12`; direct-object paths keep their structural position. */
+function logicalIdOf(id: string): string {
+  return id.replace(/obj:(\d+)/g, "o$1").replace(/^root\//, "r").replace(/\//g, ".");
 }

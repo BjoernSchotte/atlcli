@@ -231,7 +231,8 @@ describe("full-document structure tree on neutral producers", () => {
 
   it("keeps one logical table across three pages where PDFium's page views cannot", async () => {
     const { tree, facts, correlation } = await load("struct-tree/browser-multipage-table.pdf");
-    expect(pdfiumUnresolved(facts)).toBeGreaterThan(0);
+    expect(facts.structureSource).toBe("document-tree");
+    expect(pdfiumUnresolved(facts)).toBe(0);
     expect(correlation.tables[0]).toEqual({
       id: correlation.tables[0].id,
       pageIndexes: [0, 1, 2],
@@ -259,7 +260,8 @@ describe("full-document structure tree on neutral producers", () => {
 
   it("resolves row and column spans and nested tables from the tree", async () => {
     const { tree, facts, correlation } = await load("struct-tree/browser-hard-table.pdf");
-    expect(pdfiumUnresolved(facts)).toBeGreaterThan(0);
+    expect(facts.structureSource).toBe("document-tree");
+    expect(pdfiumUnresolved(facts)).toBe(0);
     expect(correlation.tables.map((t) => [t.pageIndexes, t.rows, t.columns, t.spannedCells, t.shortRows])).toEqual([
       [[0, 1], 46, 3, 2, 0],
       [[1], 1, 2, 0, 0],

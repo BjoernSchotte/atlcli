@@ -36,6 +36,7 @@ import { projectTaggedList, projectTaggedListV2 } from "./lists.js";
 import { correlateTaggedTextWithLinksV2, taggedRuns, taggedRunsV2 } from "./links.js";
 import {
   indexTaggedStructure,
+  flattenStructureV2,
   indexTaggedStructureV2,
   isSemanticContainer,
   structureChildrenV2,
@@ -49,7 +50,13 @@ import {
   unresolvedStructureKidIndexesV2,
 } from "./text.js";
 import { PdfImportError } from "./issues.js";
-import { projectTaggedTable, projectTaggedTableV2 } from "./tables.js";
+import {
+  projectTaggedLogicalTableV2,
+  projectTaggedTable,
+  projectTaggedTableV2,
+  type PdfTableProjectionV2,
+  type PdfTaggedTablePartV2,
+} from "./tables.js";
 import {
   PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2,
   type PdfTextBoundaryDecisionV2,
@@ -368,6 +375,9 @@ interface MutableProjectionV2 {
   transformations: PdfTextTransformationV2[];
   corruptTagCount: number;
   previousHeadingLevel: number | null;
+  /** Native projections of tables that span pages, keyed by logical table identity. */
+  logicalTables: ReadonlyMap<string, PdfTableProjectionV2>;
+  emittedLogicalTables: Set<string>;
 }
 
 function locatorV2(
@@ -470,6 +480,22 @@ function projectNodeV2(
     return;
   }
   if (role === "Table") {
+    const logical = node.logicalId ? state.logicalTables.get(node.logicalId) : undefined;
+    if (logical) {
+      // A table spanning pages is emitted once, where it starts; every page
+      // claims its own share of the table's characters.
+      logical.pageClaims?.find((claim) => claim.pageIndex === page.index)?.characterIndexes
+        .forEach((index) => state.claimedCharacterIndexes.add(index));
+      if (!state.emittedLogicalTables.has(node.logicalId!)) {
+        state.emittedLogicalTables.add(node.logicalId!);
+        state.blocks.push(...logical.blocks);
+        state.evidence.push(...logical.evidence);
+        state.issues.push(...logical.issues);
+        state.boundaries.push(...logical.boundaries);
+        state.transformations.push(...logical.transformations);
+      }
+      return;
+    }
     const table = projectTaggedTableV2(page, node, corruptMcids);
     state.blocks.push(...table.blocks);
     state.evidence.push(...table.evidence);
@@ -641,6 +667,8 @@ export async function normalizeTaggedPdfFactsV2(
   const pageOutcomes: PdfTaggedPageOutcomeV2[] = [];
   const requiresGeometryPages: number[] = [];
   let previousHeadingLevel: number | null = null;
+  const logicalTables = projectMultiPageTablesV2(facts);
+  const emittedLogicalTables = new Set<string>();
   for (const page of facts.pages) {
     const pageBlockStart = blocks.length;
     const boundaryStart = boundaries.length;
@@ -654,6 +682,8 @@ export async function normalizeTaggedPdfFactsV2(
       transformations,
       corruptTagCount: index.duplicateMcids.size,
       previousHeadingLevel,
+      logicalTables,
+      emittedLogicalTables,
     };
     if (!facts.tagged || page.structures.length === 0) {
       state.corruptTagCount += 1;
@@ -737,4 +767,29 @@ export async function normalizeTaggedPdfFactsV2(
     ...digestInput,
     semanticDigest: await digestPdfCanonical(digestInput),
   };
+}
+
+/**
+ * Finds tables whose document-tree identity appears on more than one page and
+ * projects each as one native table (PIQ-15). Tables that do not qualify are
+ * left to the page-local projection and its fallbacks.
+ */
+function projectMultiPageTablesV2(facts: PdfFactsV2): Map<string, PdfTableProjectionV2> {
+  const parts = new Map<string, PdfTaggedTablePartV2[]>();
+  for (const page of facts.pages) {
+    const corruptMcids = indexTaggedStructureV2(page).duplicateMcids;
+    for (const node of flattenStructureV2(page.structures)) {
+      if (!node.logicalId || structureRoleV2(node) !== "Table") continue;
+      const list = parts.get(node.logicalId) ?? [];
+      list.push({ page, table: node, corruptMcids });
+      parts.set(node.logicalId, list);
+    }
+  }
+  const result = new Map<string, PdfTableProjectionV2>();
+  for (const [logicalId, list] of parts) {
+    if (list.length < 2) continue;
+    const projection = projectTaggedLogicalTableV2(list);
+    if (projection?.mode === "native") result.set(logicalId, projection);
+  }
+  return result;
 }

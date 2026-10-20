@@ -34,9 +34,9 @@ and cross-host PDFium parity all change together.
 | PIQ-10 | DONE | `EVIDENCE.md#piq-10` |
 | PIQ-11 | SUPERSEDED | full-document tag tree (Section 14a); spike GO |
 | PIQ-12 | OPEN | preserve usable siblings of page-external or unresolved children |
-| PIQ-13 | OPEN | support intentional empty native table cells |
-| PIQ-14 | OPEN | reconstruct safe punctuation line boundaries |
-| PIQ-15 | OPEN | reconcile native table continuations across pages |
+| PIQ-13 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
+| PIQ-14 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
+| PIQ-15 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
 | PIQ-16 | FROZEN | moved to the local-VLM proposal lane (Section 14a) |
 | PIQ-17 | OPEN | contain unresolved fallbacks to affected regions |
 | PIQ-18 | OPEN | prove the complete neutral and private-live acceptance scenario |

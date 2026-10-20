@@ -153,6 +153,8 @@ export function projectTaggedList(
   return { block, evidence, issues, claimedCharacterIndexes: [...claimed].sort((a, b) => a - b) };
 }
 
+const INLINE_LIST_BODY_ROLES = new Set(["NonStruct", "Span", "Strong", "Em", "Link", "Quote"]);
+
 export function projectTaggedListV2(
   page: PdfPageFactsV2,
   node: PdfStructureNodeFactV2,
@@ -184,15 +186,32 @@ export function projectTaggedListV2(
     }
     const labelText = labelCorrelation?.text ?? "";
     const bodyChildren = structureChildrenV2(body);
-    const inlineBody = bodyChildren.length > 0 && bodyChildren.every((child) =>
-      ["NonStruct", "Span", "Strong", "Em", "Link", "Quote"].includes(structureRoleV2(child))
-    );
+    const inlineRole = (child: PdfStructureNodeFactV2) => INLINE_LIST_BODY_ROLES.has(structureRoleV2(child));
+    const inlineBody = bodyChildren.length > 0 && bodyChildren.every(inlineRole);
+    // Producers such as word processors put an item's own text directly into
+    // LBody, followed by a nested list. That leading content is the item's
+    // paragraph when it precedes every non-inline child.
+    const leadingKids = body.kids.filter((kid) => kid.kind === "mcid" || (kid.kind === "element" && inlineRole(kid.node)));
+    const firstBlockKid = body.kids.findIndex((kid) => kid.kind === "element" && !inlineRole(kid.node));
+    const leadingParagraph = !inlineBody
+      && bodyChildren.every((child) => structureRoleV2(child) !== "P")
+      && leadingKids.length > 0
+      && firstBlockKid >= 0
+      && leadingKids.every((kid) => body.kids.indexOf(kid) < firstBlockKid)
+      ? {
+        ...body,
+        directMcids: leadingKids.flatMap((kid) => kid.kind === "mcid" ? [kid.mcid] : []),
+        kids: leadingKids,
+      }
+      : null;
     const paragraphNodes = bodyChildren.length === 0 || inlineBody
       ? [body]
-      : bodyChildren.filter((child) => structureRoleV2(child) === "P");
+      : leadingParagraph
+        ? [leadingParagraph]
+        : bodyChildren.filter((child) => structureRoleV2(child) === "P");
     const nestedNodes = bodyChildren.filter((child) => structureRoleV2(child) === "L");
     const unknownNodes = inlineBody ? [] : bodyChildren.filter((child) =>
-      !["P", "L"].includes(structureRoleV2(child))
+      !["P", "L"].includes(structureRoleV2(child)) && !(leadingParagraph && inlineRole(child))
     );
     const nestedIndex = nestedNodes[0] ? bodyChildren.indexOf(nestedNodes[0]) : -1;
     const lastParagraphIndex = Math.max(-1, ...paragraphNodes.map((paragraph) =>
@@ -249,6 +268,17 @@ export function projectTaggedListV2(
       issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, paragraph.id));
       const mcids = orderedDescendantMcidsV2(paragraph);
       const unresolvedStructure = paragraph.kids.some((kid) => kid.kind === "unresolved");
+      if (
+        !correlated.text
+        && (mcids.length > 0 || paragraph.kids.length === 0)
+        && !mcids.some((mcid) => corruptMcids.has(mcid))
+        && !correlated.hasUnicodeError
+        && !unresolvedStructure
+        && correlated.characters.every((character) => !character.value.trim())
+      ) {
+        // Marked content that paints nothing visible (e.g. a lone space).
+        continue;
+      }
       if (
         !correlated.text
         || mcids.length === 0
@@ -328,6 +358,25 @@ export function projectTaggedListV2(
       aggregate.transformations.push(...child.transformations);
       evidence.push(...child.evidence);
       issues.push(...child.issues);
+    }
+    if (blocks.length === 0 && paragraphNodes.length > 0 && !child && !evidence.some((entry) =>
+      entry.decisionCode === "pdf/tagged-list-item-paragraph-demoted"
+      && paragraphNodes.some((paragraph) => paragraph.id === entry.sourceId)
+    )) {
+      // Every body paragraph was empty: an authored empty item (bullet only).
+      const paragraphId = `${body.id}:empty:paragraph`;
+      blocks.push({ id: paragraphId, type: "paragraph", runs: [], sourceRefs: [body.id] });
+      evidence.push({
+        sourceId: body.id,
+        targetNodeId: paragraphId,
+        locator: { pageIndex: page.index, ...(page.label ? { pageLabel: page.label } : {}), structurePath: body.id },
+        basis: ["structure-tree", "marked-content"],
+        confidence: 1,
+        decisionCode: "pdf/tagged-list-item-paragraph-empty",
+        outcome: "native",
+        analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
+        boundaryDecisionIds: [],
+      });
     }
     if (blocks.length === 0) {
       issues.push({

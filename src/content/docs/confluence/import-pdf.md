@@ -222,11 +222,32 @@ untagged document. `--reading-order tags` requires a tagged PDF and fails if
 tags are absent. `--reading-order geometry` deliberately ignores tags and is
 useful only after reviewing the changed order and confidence.
 
+For tagged PDFs, AtlCLI reads the document's structure tree as a whole
+(not page by page), so every table, row, and cell keeps one identity across
+pages. Structure only proposes rows and cells; every character still comes
+from the PDF's own text layer, so structure can never add text.
+
+A tagged table becomes one native Confluence table when its grid is complete:
+
+| Case | Result |
+|---|---|
+| Table continues on the next page | One table; rows in source order |
+| Header row repeated on every page | Kept once; the repetitions are recognized, not duplicated |
+| Row split by a page break | One row; each cell's text is joined in page order |
+| Row or column span across a page break | Kept as a span |
+| Intentionally empty cell | Native empty cell |
+| Producer omitted an empty cell's tag | Placed by the cells' `Headers` references; the gap becomes an empty cell |
+| Nested, rotated, or ambiguous table | Falls back or reports; no invented cells |
+
 PDFium exposes text, geometry, tags, page objects, annotations, and rendering
-primitives; it does not provide a native semantic table importer. AtlCLI emits
-a native table only when tag/cell/span or qualified rectangular-grid evidence
-passes its threshold. Borderless, nested, rotated, ambiguous, or continued
-tables fall back or report instead of receiving invented cells.
+primitives; it does not provide a native semantic table importer. For untagged
+PDFs, AtlCLI emits a native table only when qualified rectangular-grid
+evidence passes its threshold. Borderless or ambiguous untagged tables fall
+back or report instead of receiving invented cells.
+
+> **Tip.** Export PDFs from Word, LibreOffice, or a browser with tagging
+> ("accessible PDF") enabled. Tagged exports keep tables, lists, and reading
+> order far better than untagged ones.
 
 Likewise, a PDF image object may be a mask, tile, background, or clipped layer.
 AtlCLI correlates visible placement and structure evidence before native media
@@ -432,6 +453,8 @@ release claim.
 | Words appear merged in preview | A source boundary was absent or inferred incorrectly | Inspect V3 page metrics and `reviewRegions`; do not publish if the exact neutral/source-authorized review is wrong. Prefer a corrected source PDF over text post-processing. |
 | `pdf/text-boundary-unresolved` blocks publication | Geometry, tags, or text-run evidence cannot prove a material join or space | Keep `--unsupported fail`, obtain a better-authored PDF, or explicitly review a localized/page fallback under the report policy. |
 | `pdf/character-ownership-failed` blocks publication | A visible character is unowned or has competing semantic owners | Review the page locator and fallback scope. Do not bypass the blocker without explicit reported/fallback coverage. |
+| A tagged table becomes a page image or linearized text | The table nests another table, or a cell's text has an unresolved boundary or invalid Unicode | Check `pdf-import/table-tagged-linearized` and its `reason` in the JSON preview. Re-export with tagging enabled, or flatten the nested table in the source. |
+| Issue `pdf-import/document-structure-unavailable` | The structure tree could not be read as a whole (damaged cross-references or budget) | Import continues with page-scoped structure; multi-page tables may fall back. Re-save the PDF from its producer. |
 | Image-only page blocks publication | Default scan policy forbids silent empty output | Choose `page-image`, or use `report` plus both publication acknowledgements. |
 | Too many wiki pages | Heading/range plan exceeds `--max-wiki-pages` | Increase the cap up to 200 or choose a larger `pages:N` target; review the new plan. |
 | `--split off` is rejected | Source exceeds 40 pages or a hard editability budget | Use `auto`, heading, or page-range splitting. |

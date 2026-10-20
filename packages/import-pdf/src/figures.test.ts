@@ -65,7 +65,7 @@ describe("PDF figure and rendered fallback preservation", () => {
     expect(result.figures).toHaveLength(1);
     expect(result.figures[0]).toMatchObject({
       mode: "native-raster",
-      captionBlockId: "pdf:p0:struct:3.1:caption",
+      captionBlockId: "pdf:p0:struct:o19:caption",
       authorAlt: true,
     });
     expect(result.evidence.every((entry) => Array.isArray(entry.boundaryDecisionIds))).toBe(true);
@@ -126,11 +126,11 @@ describe("PDF figure and rendered fallback preservation", () => {
     expect(result.figures).toEqual([]);
     expect(result.document.issues).toContainEqual(expect.objectContaining({
       code: "pdf-import/tagged-figure-deferred",
-      sourceRefs: ["pdf:p0:struct:3"],
+      sourceRefs: ["pdf:p0:struct:o39"],
       outcome: "reported",
     }));
     expect(result.evidence).toContainEqual(expect.objectContaining({
-      sourceId: "pdf:p0:struct:3",
+      sourceId: "pdf:p0:struct:o39",
       decisionCode: "pdf/tagged-figure-deferred",
       outcome: "reported",
     }));

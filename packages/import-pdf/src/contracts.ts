@@ -5,9 +5,9 @@ export const PDF_FACTS_SCHEMA_V2 = "atlcli.pdf-facts/2" as const;
 export const PDFIUM_ENGINE_VERSION = "2.15.1" as const;
 export const PDFIUM_WASM_SHA256 = "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa" as const;
 export const PDF_FACTS_ADAPTER_REVISION = "atlcli.pdfium-public-fpdf/1" as const;
-export const PDF_FACTS_ADAPTER_REVISION_V2 = "atlcli.pdfium-public-fpdf/2" as const;
+export const PDF_FACTS_ADAPTER_REVISION_V2 = "atlcli.pdfium-public-fpdf/3" as const;
 export const PDF_ANALYSIS_POLICY_REVISION = "atlcli.pdf-analysis-policy/1" as const;
-export const PDF_ANALYSIS_POLICY_REVISION_V2 = "atlcli.pdf-analysis-policy/2" as const;
+export const PDF_ANALYSIS_POLICY_REVISION_V2 = "atlcli.pdf-analysis-policy/3" as const;
 export const PDF_ASSET_MATERIALIZER_REVISION = "atlcli.pdfium-asset-materializer/1" as const;
 
 export interface PdfNormalizedRect {
@@ -64,11 +64,23 @@ export type PdfStructureKidFactV2 =
   | {
       kind: "unresolved";
       index: number;
-      reason: "child-handle-and-mcid-unavailable";
-    };
+      reason: "child-handle-and-mcid-unavailable" | "document-structure-invalid";
+    }
+  /**
+   * A child that exists in the document structure tree but owns no content on
+   * this page. `pageIndexes` lists the pages where it does; it is not corruption.
+   */
+  | { kind: "page-external"; index: number; pageIndexes: number[] }
+  /** An object reference (OBJR) such as a link annotation; never body text. */
+  | { kind: "object-reference"; index: number; pageIndexes: number[] };
 
 export interface PdfStructureNodeFactV2 {
   id: string;
+  /**
+   * Document-wide identity of the structure element, equal on every page that
+   * shows it. Present only when structure comes from the document tree.
+   */
+  logicalId?: string;
   type: string;
   title: string;
   alt: string;
@@ -229,9 +241,13 @@ export interface PdfFactsV1 {
   issues: PdfFactsIssue[];
 }
 
+/** Where V2 page structures come from: the full document tree or PDFium's page-scoped views. */
+export type PdfStructureSourceV2 = "document-tree" | "pdfium-page" | "none";
+
 export interface PdfFactsV2 {
   schema: typeof PDF_FACTS_SCHEMA_V2;
   provenance: PdfAnalysisProvenanceV2;
+  structureSource: PdfStructureSourceV2;
   inputSha256: string;
   inputBytes: number;
   pageCount: number;
@@ -343,7 +359,7 @@ export interface PdfFactsAdapterV2 {
 export const PDF_TAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-tagged-semantics/1" as const;
 export const PDF_TAGGED_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-tagged-semantics/2" as const;
 export const PDF_TAGGED_POLICY_REVISION = "atlcli.pdf-tagged-policy/1" as const;
-export const PDF_TAGGED_POLICY_REVISION_V2 = "atlcli.pdf-tagged-policy/2" as const;
+export const PDF_TAGGED_POLICY_REVISION_V2 = "atlcli.pdf-tagged-policy/3" as const;
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-untagged-semantics/1" as const;
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-untagged-semantics/2" as const;
 export const PDF_HYBRID_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-hybrid-semantics/2" as const;
@@ -351,7 +367,7 @@ export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as co
 export const PDF_GEOMETRY_POLICY_REVISION_V2 = "atlcli.pdf-geometry-policy/3" as const;
 export const PDF_HYBRID_POLICY_REVISION_V2 = "atlcli.pdf-hybrid-policy/2" as const;
 export const PDF_TABLE_POLICY_REVISION = "atlcli.pdf-table-policy/1" as const;
-export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/2" as const;
+export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/3" as const;
 export const PDF_FIGURE_POLICY_REVISION = "atlcli.pdf-figure-policy/1" as const;
 export const PDF_VISUAL_FALLBACK_POLICY_REVISION = "atlcli.pdf-visual-fallback-policy/1" as const;
 

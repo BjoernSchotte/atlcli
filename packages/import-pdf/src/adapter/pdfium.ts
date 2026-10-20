@@ -33,11 +33,15 @@ import {
   type PdfStructureNodeFact,
   type PdfStructureKidFactV2,
   type PdfStructureNodeFactV2,
+  type PdfStructureSourceV2,
   type PdfTextCharacterFact,
   type PdfTextCharacterFactV2,
 } from "../contracts.js";
 import { resolvePdfAnalysisBudgets, type PdfAnalysisBudgets } from "../budgets.js";
 import { digestPdfCanonical, digestPdfFacts, digestPdfFactsV2 } from "../canonical.js";
+import { PdfObjectError } from "../pdf-objects.js";
+import { flattenStructureV2 } from "../structure.js";
+import { pageStructuresFromDocTree, readDocStructTree, type DocStructTree } from "../struct-tree.js";
 import { classifyPdfDocument, classifyPdfPage } from "../classify.js";
 import { PdfImportError, isPdfImportError } from "../issues.js";
 import { encodeRgbaPng } from "../fallbacks.js";
@@ -879,6 +883,8 @@ async function analyzePdfiumV2(
   options: PdfAnalysisOptions,
   failAt?: PdfiumFailureStage,
   factsDigestMaxBytes?: number,
+  // The V1 projection keeps PDFium's page-scoped structure so its pinned facts stay stable.
+  documentStructure = true,
 ): Promise<PdfAnalysisResultV2> {
   const budgets = resolvePdfAnalysisBudgets(options.budgets);
   validateInput(data, budgets);
@@ -958,6 +964,7 @@ async function analyzePdfiumV2(
       const facts: PdfFactsV2 = {
         schema: PDF_FACTS_SCHEMA_V2,
         provenance,
+        structureSource: "none",
         inputSha256,
         inputBytes: data.byteLength,
         pageCount: 0,
@@ -1123,6 +1130,23 @@ async function analyzePdfiumV2(
     if (!completeness.complete) {
       throw new PdfImportError("pdf/incomplete", "PDF page accounting is incomplete.");
     }
+    let structureSource: PdfStructureSourceV2 = tagged ? "pdfium-page" : "none";
+    if (tagged && documentStructure) {
+      const replaced = documentStructuresV2(data, pages, budgets);
+      if (replaced.pages) {
+        pages.splice(0, pages.length, ...replaced.pages);
+        structureSource = "document-tree";
+      } else {
+        issues.push({
+          code: "pdf-import/document-structure-unavailable",
+          severity: "info",
+          outcome: "reported",
+          message: "The document structure tree could not be read; page-scoped PDFium structure is used.",
+          context: { reason: replaced.reason },
+        });
+      }
+      check(control, "before-finalize");
+    }
     const javascriptActionCount = Math.max(0, module.FPDFDoc_GetJavaScriptActionCount(document));
     const attachmentCount = Math.max(0, module.FPDFDoc_GetAttachmentCount(document));
     if (javascriptActionCount > 0) {
@@ -1153,6 +1177,7 @@ async function analyzePdfiumV2(
     const facts: PdfFactsV2 = {
       schema: PDF_FACTS_SCHEMA_V2,
       provenance,
+      structureSource,
       inputSha256,
       inputBytes: data.byteLength,
       pageCount: totalPages,
@@ -1244,6 +1269,38 @@ function projectPageFactsV1(page: PdfPageFactsV2): PdfPageFactsV1 {
   };
 }
 
+/**
+ * Replaces PDFium's page-scoped structure with page views of the full document
+ * structure tree. Returns no pages (and a body-free reason) when the tree is
+ * unreadable, disagrees on page count, or exceeds the structure budgets.
+ */
+function documentStructuresV2(
+  data: Uint8Array,
+  pages: readonly PdfPageFactsV2[],
+  budgets: ReturnType<typeof resolvePdfAnalysisBudgets>,
+): { pages?: PdfPageFactsV2[]; reason: string } {
+  let tree: DocStructTree | null;
+  try {
+    tree = readDocStructTree(data, {
+      maxElements: budgets.maxStructureNodesTotal,
+      maxDepth: budgets.maxStructureDepth,
+    });
+  } catch (error) {
+    return { reason: error instanceof PdfObjectError ? error.code : "pdf-objects/unreadable" };
+  }
+  if (!tree) return { reason: "no-structure-tree-root" };
+  if (tree.pageCount !== pages.length) return { reason: "page-count-mismatch" };
+  const structures = pageStructuresFromDocTree(tree, pages.length);
+  let total = 0;
+  for (const pageStructures of structures) {
+    const count = flattenStructureV2(pageStructures).length;
+    if (count > budgets.maxStructureNodesPerPage) return { reason: "structure-nodes-per-page" };
+    total += count;
+  }
+  if (total > budgets.maxStructureNodesTotal) return { reason: "structure-nodes-total" };
+  return { pages: pages.map((page) => ({ ...page, structures: structures[page.index]! })), reason: "document-tree" };
+}
+
 function projectFactsV1(facts: PdfFactsV2, optionsDigest: string): PdfFactsV1 {
   return {
     schema: PDF_FACTS_SCHEMA_V1,
@@ -1286,6 +1343,7 @@ async function analyzePdfiumV1(
     options,
     failAt,
     Number.MAX_SAFE_INTEGER,
+    false,
   );
   const budgets = resolvePdfAnalysisBudgets(options.budgets);
   const optionsDigest = await digestPdfCanonical({

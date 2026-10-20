@@ -34,6 +34,77 @@ from the earlier PASS rows until those tasks pass.
 | PIQ-17 | OPEN | 2026-08-27 |
 | PIQ-18 | OPEN | 2026-08-27 |
 
+## PIQ-13 to PIQ-15 on the document tree
+
+Result: **DONE** in the production tagged lane. V2 page structures now come
+from the full-document structure tree (`facts.structureSource:
+"document-tree"`); V1 keeps PDFium's page-scoped structure so its pinned facts
+are unchanged.
+
+### Contract and revision changes
+
+- `PdfStructureKidFactV2` gains `page-external` and `object-reference`;
+  `unresolved` gains the reason `document-structure-invalid`.
+- `PdfStructureNodeFactV2.logicalId` (optional) is equal on every page that
+  shows an element; `PdfFactsV2.structureSource` records the structure origin.
+- Revisions: adapter V2 `/3`, analysis policy V2 `/3`, tagged policy V2 `/3`,
+  table policy V2 `/3`, text assembly V2 `/4`. API report and closure
+  regenerated.
+
+### Behavior
+
+- **PIQ-13:** empty `TH`/`TD` are native empty cells. A row whose producer
+  omitted an empty cell element is re-placed by its cells' `/Headers`
+  references and the gap becomes an empty cell. Nested, rotated or
+  Unicode-invalid cells still fail closed.
+- **PIQ-14:** closing punctuation or a spaced en dash at a line end before a
+  letter, and a word before opening punctuation or an en dash on the next
+  line, join with one space. Ideographic punctuation and digits are excluded.
+  A block that writes word spaces as literal glyphs (and has no generated
+  whitespace) proves `no-space` for an ambiguous same-line run change
+  (`whitespace-convention`). A left-to-right line whose glyphs were emitted out
+  of visual order is read in visual order; sequences with right-to-left text
+  are never reordered.
+- **PIQ-15:** a table whose logical identity appears on several pages is
+  projected once as a whole. Rows are joined by structure identity: a
+  repeated header (same element, or a header-only row at the start of a
+  continuation page with identical characters) appears once and still owns
+  its repetitions; a row split by a page break joins its cells' content; row
+  spans across a page break are kept.
+- Lists: an item's own text before a nested list (word processors and
+  browsers) is the item paragraph; an item without visible text is an empty
+  item instead of demoting the whole list.
+
+### Neutral results (CLI preview, before → after)
+
+| Fixture | Native tables | Page fallbacks | Unresolved boundaries |
+|---|---|---|---|
+| struct-tree/browser-multipage-table | 0 → 2 | 3/3 → 0 | 249 → 0 |
+| struct-tree/browser-rowspan-break | – → 1 | – → 0 | – → 0 |
+| struct-tree/browser-list-patterns | – | – → 0 | – → 0 |
+| struct-tree/browser-hard-table (nested table negative) | 0 → 0 (linearized) | 2 → 1 | 125 → 2 |
+
+### Private acceptance
+
+A private tagged document (word-processor export) was imported locally and,
+with the owner's explicit approval, into DOCSY as one test page. Before: every
+page was a page fallback and no table was native. After: no page fallback, all
+of its tables native including one continued across a page break with a single
+header, and an independent readback matched every table cell and the complete
+word sequence of the local result. No private bytes, text, identifiers,
+counts or URLs are recorded here.
+
+### Verification
+
+```text
+bun run test packages/import-pdf      all pass
+bun run typecheck                     4 successful tasks
+bun run check:import-pdf-quality      passed: true, falseNativeCount 0
+bun run check:research-privacy        tracked tree passed
+bun run check:browser                 passed
+bun run test scripts/api-report.test.ts scripts/quality   pass
+```
+
 ## Full-document structure tree spike
 
 Result: **GO** for the full-document tag tree as the primary tagged-PDF

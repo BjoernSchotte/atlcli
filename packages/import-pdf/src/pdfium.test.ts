@@ -365,7 +365,8 @@ describe("PDFium V2 facts adapter", () => {
       {
         kind: "unresolved",
         index: 1,
-        reason: "child-handle-and-mcid-unavailable",
+        // Read from the document tree, the broken child is classified precisely.
+        reason: "document-structure-invalid",
       },
       { kind: "mcid", index: 2, mcid: 1 },
     ]);

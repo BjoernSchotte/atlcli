@@ -3,7 +3,7 @@ import { digestPdfCanonical } from "./canonical.js";
 import type { PdfTextDirection } from "./text.js";
 
 export const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 =
-  "atlcli.pdf-text-assembly-policy/3" as const;
+  "atlcli.pdf-text-assembly-policy/4" as const;
 
 const PRESENTATION_LIGATURES = Object.freeze({
   "\ufb00": "ff",
@@ -56,7 +56,9 @@ export type PdfTextBoundaryBasisV2 =
   | "script"
   | "punctuation"
   | "hyphen"
-  | "actual-text";
+  | "actual-text"
+  /** The block encodes word spaces as literal glyphs and none were generated. */
+  | "whitespace-convention";
 
 export interface PdfTextBoundaryDecisionV2 {
   id: string;
@@ -220,6 +222,11 @@ function isOpeningPunctuation(value: string): boolean {
   return /[\p{Ps}\p{Pi}]$/u.test(value);
 }
 
+/** Ideographic and full-width punctuation never takes a space at a line wrap. */
+function isWidePunctuation(value: string): boolean {
+  return /[\u3000-\u303f\uff00-\uffef]/u.test(value);
+}
+
 function expandPresentationLigatures(value: string): { text: string; expanded: boolean } {
   let expanded = false;
   const text = [...value].map((character) => {
@@ -369,6 +376,11 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
   );
   const medianWidth = median(widths);
   const medianHeight = median(heights);
+  // A producer that writes word spaces as literal glyphs (and for which PDFium
+  // generated none) makes the absence of a space between two runs evidence.
+  const literalWhitespaceConvention =
+    input.characters.some((character) => !character.generated && isWhitespace(sourceValue(character).text))
+    && !input.characters.some((character) => character.generated && isWhitespace(sourceValue(character).text));
   const state: SourceAssemblyState = { pieces: [], boundaries: [], transformations: [] };
 
   const addBoundary = (
@@ -521,9 +533,14 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
           true,
         );
       } else if (generatedWhitespace.length > 0 && relation.sameLine === false) {
-        const punctuationLineWrap = isClosingPunctuation(previous.value)
+        const punctuationLineWrap = (isClosingPunctuation(previous.value) || previous.value === "\u2013")
+          && !isWidePunctuation(previous.value)
           && isWord(anchor.value)
-          && !isCjk(anchor.value);
+          && !isCjk(anchor.value)
+          || isWord(previous.value)
+            && !isCjk(previous.value)
+            && (isOpeningPunctuation(anchor.value) || anchor.value === "\u2013")
+            && !isWidePunctuation(anchor.value);
         if (wordPair && scriptMatch && !cjkPair || punctuationLineWrap) {
           addBoundary(
             previous,
@@ -601,6 +618,15 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
           PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.script,
         );
       } else if (relation.sameLine === false) {
+        // A spaced en dash at a line end separates words like closing punctuation.
+        const closingLineWrap = (isClosingPunctuation(previous.value) || previous.value === "\u2013")
+          && !isWidePunctuation(previous.value)
+          && /^\p{Letter}/u.test(anchor.value)
+          && !isCjk(anchor.value);
+        const openingLineWrap = isWord(previous.value)
+          && !isCjk(previous.value)
+          && (isOpeningPunctuation(anchor.value) || anchor.value === "\u2013")
+          && !isWidePunctuation(anchor.value);
         if (wordPair && scriptMatch) {
           addBoundary(
             previous,
@@ -609,6 +635,21 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
             [
               ...(textRunChange ? ["text-run" as const] : []),
               ...(orderedBasis ? ["structure-order" as const] : []),
+              "baseline",
+              "script",
+            ],
+            PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.lineJoin,
+          );
+          appendPiece(state.pieces, " ", [], true);
+        } else if (closingLineWrap || openingLineWrap) {
+          addBoundary(
+            previous,
+            anchor,
+            "join-line",
+            [
+              ...(textRunChange ? ["text-run" as const] : []),
+              ...(orderedBasis ? ["structure-order" as const] : []),
+              "punctuation",
               "baseline",
               "script",
             ],
@@ -665,6 +706,20 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
               ...(orderedBasis ? ["structure-order" as const] : []),
               "baseline",
               "glyph-gap",
+            ],
+            PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.strongGeometry,
+          );
+        } else if (gap !== null && literalWhitespaceConvention && scriptMatch) {
+          addBoundary(
+            previous,
+            anchor,
+            "no-space",
+            [
+              ...(textRunChange ? ["text-run" as const] : []),
+              ...(orderedBasis ? ["structure-order" as const] : []),
+              "baseline",
+              "glyph-gap",
+              "whitespace-convention",
             ],
             PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.strongGeometry,
           );

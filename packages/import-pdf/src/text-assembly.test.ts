@@ -465,3 +465,62 @@ describe("PDF V2 text assembly", () => {
     }));
   });
 });
+
+describe("PDF V2 text assembly line and whitespace evidence (PIQ-14)", () => {
+  const nextLine = { y: 0.2 };
+
+  it("joins closing punctuation at a line end with a word on the next line", () => {
+    const result = assemblePdfTextV2(input("closing-wrap", [
+      ...word("item;", 0, 0.1),
+      ...word("continues", 5, 0.1, { ...nextLine, run: "pdf:p0:text-run:1" }),
+    ], { orderBasis: "structure-order" }));
+    expect(result.text).toBe("item; continues");
+    expect(result.unresolvedBoundaryCount).toBe(0);
+    expect(result.boundaries.at(-1)).toMatchObject({ action: "join-line", basis: expect.arrayContaining(["punctuation"]) });
+  });
+
+  it("joins a word with opening punctuation and a spaced en dash on the next line", () => {
+    const opening = assemblePdfTextV2(input("opening-wrap", [
+      ...word("note", 0, 0.1),
+      ...word("(see", 4, 0.1, { ...nextLine, run: "pdf:p0:text-run:1" }),
+    ], { orderBasis: "structure-order" }));
+    expect(opening.text).toBe("note (see");
+    const dash = assemblePdfTextV2(input("dash-wrap", [
+      ...word("A–", 0, 0.1),
+      ...word("b", 2, 0.1, { ...nextLine, run: "pdf:p0:text-run:1" }),
+    ], { orderBasis: "structure-order" }));
+    expect(dash.text).toBe("A– b");
+  });
+
+  it("never joins ideographic punctuation or a closing mark before a digit with a space", () => {
+    const cjk = assemblePdfTextV2(input("cjk-wrap", [
+      ...word("港。", 0, 0.1),
+      ...word("字", 2, 0.1, { ...nextLine, run: "pdf:p0:text-run:1" }),
+    ], { orderBasis: "structure-order" }));
+    expect(cjk.text).not.toContain(" ");
+    const digit = assemblePdfTextV2(input("digit-wrap", [
+      ...word("3.", 0, 0.1),
+      ...word("5", 2, 0.1, { ...nextLine, run: "pdf:p0:text-run:1" }),
+    ], { orderBasis: "structure-order" }));
+    expect(digit.unresolvedBoundaryCount).toBe(1);
+  });
+
+  it("uses the literal-whitespace convention for an ambiguous same-line run change", () => {
+    // Gap of 0.005 against 0.009 glyphs lies between the no-space and insert-space thresholds.
+    const ambiguous = (extra: PdfTextCharacterFactV2[]) => assemblePdfTextV2(input("convention", [
+      ...word("It", 0, 0.1),
+      ...word("em", 2, 0.124, { run: "pdf:p0:text-run:1" }),
+      ...extra,
+    ]));
+    const withLiteralSpace = ambiguous([
+      character(" ", 4, 0.15, { run: "pdf:p0:text-run:1" }),
+      ...word("1", 5, 0.16, { run: "pdf:p0:text-run:1" }),
+    ]);
+    expect(withLiteralSpace.text).toBe("Item 1");
+    expect(withLiteralSpace.boundaries[0]).toMatchObject({ action: "no-space", basis: expect.arrayContaining(["whitespace-convention"]) });
+    const withoutConvention = ambiguous([]);
+    expect(withoutConvention.unresolvedBoundaryCount).toBe(1);
+    const mixed = ambiguous([character(" ", 4, 0, { run: null, generated: true, bbox: false }), ...word("1", 5, 0.16)]);
+    expect(mixed.boundaries[0]?.action).toBe("unresolved");
+  });
+});

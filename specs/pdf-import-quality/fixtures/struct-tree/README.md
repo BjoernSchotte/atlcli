@@ -10,6 +10,8 @@ export timestamp.
 |---|---|---|
 | `browser-multipage-table.pdf` | `browser-multipage-table.html` | one table across three pages, repeated `THead`, intentional empty `TH`, an omitted empty `TD` placed by `/Headers`, punctuation-bearing wrapped cells, a second table with row and column spans |
 | `browser-hard-table.pdf` | `browser-hard-table.html` | figure before a table, `rowspan` crossing a page break, `colspan`, a nested table, CJK and RTL cells |
+| `browser-rowspan-break.pdf` | `browser-rowspan-break.html` | the hard table without the nested table: a native `rowspan` across a page break, glyphs emitted out of visual order in a left-to-right cell, RTL and CJK cells |
+| `browser-list-patterns.pdf` | `browser-list-patterns.html` | item text before a nested list, an empty item, a spaced en dash wrapped onto its own line |
 
 Regenerate (not part of CI; output is not byte-deterministic):
 

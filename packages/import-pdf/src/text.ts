@@ -128,6 +128,48 @@ export function charactersForMcids(
     .sort((a, b) => a.index - b.index);
 }
 
+/**
+ * Some producers emit the glyphs of a left-to-right line out of visual order
+ * inside one marked-content sequence. A line without right-to-left characters
+ * reads in visual order, so such a line is reordered by x. Lines with any
+ * right-to-left character, rotated glyphs or missing geometry keep their source
+ * order; text assembly then reports what it cannot decide.
+ */
+function visualOrderForLtrLinesV2(characters: PdfTextCharacterFactV2[]): PdfTextCharacterFactV2[] {
+  if (characters.some((character) => /[\p{Script=Arabic}\p{Script=Hebrew}]/u.test(character.value))) {
+    return characters;
+  }
+  const lines: Array<{ top: number; bottom: number; characters: PdfTextCharacterFactV2[] }> = [];
+  for (const character of characters) {
+    const line = lines.at(-1);
+    const box = character.bbox;
+    // Zero-height glyphs (typically spaces) carry no line evidence; keep them in place.
+    if (line && (!box || box.height <= 0)) {
+      line.characters.push(character);
+      continue;
+    }
+    const center = box ? box.y + box.height / 2 : Number.NaN;
+    if (line && box && center >= line.top && center <= line.bottom) {
+      line.characters.push(character);
+      line.top = Math.min(line.top, box.y);
+      line.bottom = Math.max(line.bottom, box.y + box.height);
+    } else {
+      lines.push({ top: box?.y ?? Number.NaN, bottom: box ? box.y + box.height : Number.NaN, characters: [character] });
+    }
+  }
+  return lines.flatMap(({ characters: line }) => {
+    const reorderable = line.length > 1
+      && line.every((character) => character.bbox && Math.abs(character.angleRadians) <= 0.001);
+    if (!reorderable) return line;
+    const backwardJump = line.some((character, index) => {
+      const previous = line[index - 1];
+      return previous !== undefined && character.bbox!.x + character.bbox!.width / 2
+        < previous.bbox!.x - previous.bbox!.width / 2;
+    });
+    return backwardJump ? [...line].sort((left, right) => left.bbox!.x - right.bbox!.x) : line;
+  });
+}
+
 /** Preserve structure-tree MCID order and page order only inside each MCID. */
 export function charactersForOrderedMcidsV2(
   page: PdfPageFactsV2,
@@ -136,7 +178,7 @@ export function charactersForOrderedMcidsV2(
   const result: PdfTextCharacterFactV2[] = [];
   const seen = new Set<number>();
   for (const mcid of mcids) {
-    const owned = page.characters.filter((character) => character.mcid === mcid);
+    const owned = visualOrderForLtrLinesV2(page.characters.filter((character) => character.mcid === mcid));
     const previous = result.at(-1);
     const first = owned[0];
     if (previous && first && first.index > previous.index) {
