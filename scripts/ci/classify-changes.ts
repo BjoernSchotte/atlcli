@@ -31,6 +31,17 @@ const GLOBAL_FILES = new Set(["package.json", "bun.lock", "turbo.json", "tsconfi
 const DOCUMENTATION_PREFIXES = ["docs/", "spec/", "specs/", ".github/ISSUE_TEMPLATE/"];
 const DOCUMENTATION_FILES = new Set(["README.md", "CHANGELOG.md", "LICENSE", "NOTICE", ".impeccable.md"]);
 const README_MEDIA_PREFIX = "assets/readme/";
+/**
+ * Standalone workflows that no other workflow calls and that gate nothing but
+ * the docs site. They need the docs build plus the workflow-policy unit tests,
+ * not the product platform gates. Reusable or CI workflows still fail open.
+ */
+const DOCS_ONLY_WORKFLOWS = new Set([".github/workflows/docs.yml"]);
+/**
+ * Repository tooling files that feed Turbo input hashing but no package
+ * tarball (every publishable package ships an explicit `files` allowlist).
+ */
+const TOOLING_FILES = new Set([".gitignore"]);
 const PRODUCT_PREFIXES = ["apps/", "packages/", "patches/", "plugins/", "scripts/", "services/"];
 
 /** Transitive workspace inputs of the three Astro publishing packages. */
@@ -141,8 +152,12 @@ function affectsSiteDocs(path: string): boolean {
   return SITE_DOC_FILES.has(path) || startsWithAny(path, SITE_DOC_PREFIXES);
 }
 
+function isCiTestFile(path: string): boolean {
+  return /^scripts\/ci\/[^/]+\.test\.ts$/.test(path);
+}
+
 function affectsConsumers(path: string): boolean {
-  return startsWithAny(path, ["packages/", "patches/", "scripts/"]);
+  return startsWithAny(path, ["packages/", "patches/", "scripts/"]) && !isCiTestFile(path);
 }
 
 function enableProductQuality(routes: CiRoutes): void {
@@ -205,7 +220,8 @@ function classifyProductCapability(path: string, routes: CiRoutes): void {
 
   // CI orchestration changes must exercise every candidate capability. Other
   // scripts stay on static/unit/package proof unless they own a named surface.
-  if (path.startsWith("scripts/ci/")) {
+  // A CI test file orchestrates nothing; the unit lane already runs it.
+  if (path.startsWith("scripts/ci/") && !isCiTestFile(path)) {
     enableEveryProductCapability(routes);
   }
   if (
@@ -228,6 +244,16 @@ export function classifyChanges(paths: readonly string[], full = false): CiRoute
     // The privacy scanner protects the complete tracked tree, so every real
     // change receives the lightweight gate irrespective of its product route.
     routes.researchPrivacy = true;
+
+    if (DOCS_ONLY_WORKFLOWS.has(path)) {
+      routes.docs = true;
+      enableProductQuality(routes);
+      continue;
+    }
+    if (TOOLING_FILES.has(path)) {
+      enableProductQuality(routes);
+      continue;
+    }
 
     if (path.startsWith(".github/workflows/") || GLOBAL_FILES.has(path)) {
       return allRoutes();

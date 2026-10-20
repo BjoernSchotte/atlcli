@@ -1043,6 +1043,15 @@ describe("CI workflow policy", () => {
     }
   });
 
+  it("builds the docs site outside the CLI bundle directory", async () => {
+    // Astro empties its outDir; sharing root dist/ wiped dist/index.js on every docs build.
+    const astroConfig = await readFile(join(REPO_ROOT, "astro.config.mjs"), "utf8");
+    const outDir = astroConfig.match(/outDir:\s*['"]\.\/([^'"]+)['"]/)?.[1];
+    expect(outDir).toBeDefined();
+    expect(outDir).not.toBe("dist");
+    expect(await workflow("docs.yml")).toContain(`path: ${outDir}/`);
+  });
+
   it("grants Pages write permissions only to the deploy job", async () => {
     const docs = await workflow("docs.yml");
     const build = docs.slice(0, docs.indexOf("  deploy:"));
