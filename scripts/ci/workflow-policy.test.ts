@@ -65,6 +65,8 @@ const requiredGateEnv = {
   RASTER_BROWSER: "success",
   NFS_REQUIRED: "true",
   NFS: "success",
+  // Defaults model a run that owes native platform proof (main push).
+  PLATFORM_PROOF: "true",
 };
 
 function runRequiredGate(
@@ -871,11 +873,13 @@ describe("CI workflow policy", () => {
     expect(tests).not.toBeNull();
     expect(tests).toContain("if: inputs.run_tests");
     expect(tests).toContain("fail-fast: false");
-    for (const group of ["general-1", "general-2", "general-3", "pdf-typst"]) {
+    for (const group of ["general-1", "general-2", "general-3", "general-4", "general-5", "general-6", "pdf-typst"]) {
       expect(tests).toContain(`group: ${group}`);
     }
+    expect(tests).not.toContain("group: general-7");
     expect(tests).toContain("bun scripts/ci/run-test-lane.ts");
-    expect(tests).toContain("--topology general-3x1");
+    expect(tests).toContain("--topology general-6x1");
+    expect(tests).not.toContain("--topology general-3x1");
     expect(tests).toContain('if: matrix.poppler');
     expect(tests).toContain('if: matrix.fonts');
     expect(tests).not.toContain("fonts: false");
@@ -942,7 +946,7 @@ describe("CI workflow policy", () => {
     expect(telemetry).toContain("pattern: bun-test-junit-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(telemetry).toContain("pattern: turbo-summary-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(telemetry).toContain("--turbo turbo-results");
-    expect(telemetry).toContain("'general-3x1'");
+    expect(telemetry).toContain("'general-6x1'");
     expect(telemetry).toContain("bun scripts/ci/telemetry-summary.ts");
     expect(required).not.toBeNull();
     expect(required).not.toContain("telemetry");
@@ -1041,6 +1045,41 @@ describe("CI workflow policy", () => {
       expect(source).not.toContain("ATLCLI_E2E_API_TOKEN");
       expect(source).not.toContain("ATLCLI_E2E_PROFILE");
     }
+  });
+
+  it("runs native platform proof after merge, never on pull requests", async () => {
+    const ci = await workflow("ci.yml");
+    const nfs = await workflow("reusable-nfs.yml");
+    expect(ci).toContain("platformProof: ${{ github.event_name != 'pull_request' }}");
+    for (const job of ["pdf-cli-macos", "pdf-sink-windows", "raster-normalizer-browser-ratchet", "nfs-helper"]) {
+      const body = block(ci, new RegExp(`^ {2}${job}:\\s*$`), 2);
+      expect(body, job).toMatch(/^ {4}if: .*needs\.changes\.outputs\.platformProof == 'true'/m);
+    }
+    // The aggregate expects these gates skipped on PRs and successful on main.
+    const required = block(ci, /^ {2}required:\s*$/, 2);
+    expect(required).toContain("PLATFORM_PROOF: ${{ needs.changes.outputs.platformProof }}");
+    for (const gate of ['"NFS helper" "$(platform_selected "$NFS_REQUIRED")"',
+      '"macOS PDF" "$(platform_selected "$PDF_REQUIRED")"',
+      '"Windows PDF sink" "$(platform_selected "$PDF_REQUIRED")"',
+      '"Raster normalizer browser ratchet" "$(platform_selected "$BROWSER_REQUIRED")"']) {
+      expect(required).toContain(`require_result ${gate}`);
+    }
+    // Linux browser evidence stays a pull-request gate.
+    expect(required).toContain('require_result "Browser export harness" "$BROWSER_REQUIRED" "$BROWSER"');
+
+    const script = yamlLiteral(required!, /^ {8}run: \|$/)!;
+    const prSkipped = { PLATFORM_PROOF: "false", MACOS: "skipped", WINDOWS: "skipped", RASTER_BROWSER: "skipped", NFS: "skipped" };
+    expect(runRequiredGate(script, prSkipped).exitCode).toBe(0);
+    // A platform gate that ran on a PR, or was skipped on main, is a policy breach.
+    expect(runRequiredGate(script, { ...prSkipped, NFS: "success" }).exitCode).not.toBe(0);
+    expect(runRequiredGate(script, { EVENT_NAME: "push", DOCS: "skipped", RASTER_BROWSER: "skipped" }).exitCode).not.toBe(0);
+    expect(runRequiredGate(script, { ...prSkipped, TEST: "failure" }).exitCode).not.toBe(0);
+    for (const os of ["ubuntu-22.04", "ubuntu-22.04-arm", "macos-14", "macos-15-intel"]) {
+      expect(nfs).toContain(`- os: ${os}`);
+    }
+    expect(nfs).not.toContain("exclude:");
+    // macOS runners ship Homebrew; only Linux needs setup-homebrew for PATH.
+    expect(nfs).toMatch(/- name: Set up Homebrew for native installer proof\n\s+if: runner\.os == 'Linux'\n/);
   });
 
   it("builds the docs site outside the CLI bundle directory", async () => {

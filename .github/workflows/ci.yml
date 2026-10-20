@@ -50,6 +50,10 @@ jobs:
       docs: ${{ steps.routes.outputs.docs }}
       readmeMedia: ${{ steps.routes.outputs.readmeMedia }}
       researchPrivacy: ${{ steps.routes.outputs.researchPrivacy }}
+      # Native platform proof (NFS on 4 OSes, macOS/Windows PDF, raster RSS)
+      # runs after merge on main, schedules and manual runs; pull requests
+      # get the Linux lanes only. Without a merge queue, main is the gate.
+      platformProof: ${{ github.event_name != 'pull_request' }}
       proofMode: ${{ steps.proof.outputs.mode }}
       aggregateStatusName: ${{ steps.proof.outputs.aggregateStatusName }}
       validatedHeadSha: ${{ steps.proof.outputs.validatedHeadSha }}
@@ -262,7 +266,7 @@ jobs:
   # workflow, lockfile, and unknown paths still fail open to every gate.
   pdf-cli-macos:
     needs: changes
-    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.pdfPlatform == 'true'
+    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.pdfPlatform == 'true' && needs.changes.outputs.platformProof == 'true'
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
@@ -293,7 +297,7 @@ jobs:
 
   pdf-sink-windows:
     needs: changes
-    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.pdfPlatform == 'true'
+    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.pdfPlatform == 'true' && needs.changes.outputs.platformProof == 'true'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -489,7 +493,7 @@ jobs:
   raster-normalizer-browser-ratchet:
     name: Raster normalizer / ${{ matrix.browser }}
     needs: changes
-    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.browserHarness == 'true'
+    if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.browserHarness == 'true' && needs.changes.outputs.platformProof == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -673,7 +677,7 @@ jobs:
   nfs-helper:
     name: NFS helper
     needs: changes
-    if: needs.changes.outputs.proofMode != 'superseded' && needs.changes.outputs.nfs == 'true'
+    if: needs.changes.outputs.proofMode != 'superseded' && needs.changes.outputs.nfs == 'true' && needs.changes.outputs.platformProof == 'true'
     uses: ./.github/workflows/reusable-nfs.yml
 
   required:
@@ -742,6 +746,7 @@ jobs:
           RASTER_BROWSER: ${{ needs.raster-normalizer-browser-ratchet.result }}
           NFS_REQUIRED: ${{ needs.changes.outputs.nfs }}
           NFS: ${{ needs.nfs-helper.result }}
+          PLATFORM_PROOF: ${{ needs.changes.outputs.platformProof }}
         run: |
           require_result() {
             local gate="$1"
@@ -772,8 +777,14 @@ jobs:
             exit 0
           fi
 
+          # Native platform gates are selected only when this event owes platform
+          # proof (not on pull requests); main pushes then require them.
+          platform_selected() {
+            if [[ "$1" == "true" && "$PLATFORM_PROOF" == "true" ]]; then echo true; else echo false; fi
+          }
+
           require_result "Tracked research privacy" "true" "$PRIVACY"
-          require_result "NFS helper" "$NFS_REQUIRED" "$NFS"
+          require_result "NFS helper" "$(platform_selected "$NFS_REQUIRED")" "$NFS"
 
           DOCS_SELECTED="$DOCS_REQUIRED"
           if [[ "$EVENT_NAME" == "push" ]]; then
@@ -808,10 +819,10 @@ jobs:
           require_result "Draft quality" "false" "$DRAFT_QUALITY"
           require_result "Product quality" "$QUALITY_REQUIRED" "$TEST"
           require_result "Pinned consumer smoke" "$CONSUMER_REQUIRED" "$CONSUMER"
-          require_result "macOS PDF" "$PDF_REQUIRED" "$MACOS"
-          require_result "Windows PDF sink" "$PDF_REQUIRED" "$WINDOWS"
+          require_result "macOS PDF" "$(platform_selected "$PDF_REQUIRED")" "$MACOS"
+          require_result "Windows PDF sink" "$(platform_selected "$PDF_REQUIRED")" "$WINDOWS"
           require_result "Browser export harness" "$BROWSER_REQUIRED" "$BROWSER"
-          require_result "Raster normalizer browser ratchet" "$BROWSER_REQUIRED" "$RASTER_BROWSER"
+          require_result "Raster normalizer browser ratchet" "$(platform_selected "$BROWSER_REQUIRED")" "$RASTER_BROWSER"
 
   # Measurement is deliberately downstream from, and non-blocking for, the
   # stable required check. A telemetry failure stays visible without delaying
@@ -871,7 +882,7 @@ jobs:
 
       - name: Summarize timing evidence
         env:
-          CI_TEST_TOPOLOGY: ${{ needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true' && 'general-3x1' || 'not-run' }}
+          CI_TEST_TOPOLOGY: ${{ needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true' && 'general-6x1' || 'not-run' }}
           CI_PROOF_MODE: ${{ needs.changes.outputs.proofMode }}
           CI_ROUTE_CODE: ${{ needs.changes.outputs.code }}
           CI_ROUTE_CONSUMER: ${{ needs.changes.outputs.consumer }}

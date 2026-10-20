@@ -79,7 +79,10 @@ jobs:
         run: |
           ATLCLI_VFS_TEST_BINARY="$RUNNER_TEMP/nfs-helper/atlcli" \
             bun run test apps/cli/src/e2e/wiki-sh-built.e2e.test.ts
+      # macOS runners ship Homebrew on PATH; setup-homebrew's full update cost
+      # ~5 min there. Linux needs it to put Linuxbrew on PATH (~6 s).
       - name: Set up Homebrew for native installer proof
+        if: runner.os == 'Linux'
         uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c # 2026.07.10.1
       - name: Test companion-aware Homebrew installation
         shell: bash
