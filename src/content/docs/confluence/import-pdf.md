@@ -138,7 +138,7 @@ acknowledgments and after reviewing the affected page labels and locators.
 | Tagged or qualified lists | Native ordered/bullet lists; otherwise conservative paragraphs or a reported outcome |
 | Safe `http`, `https`, and `mailto` links | Native links after scheme filtering |
 | Tagged tables with proven cells/spans | Native tables |
-| Simple qualified untagged grids | Native tables only above the geometry threshold |
+| Untagged tables with drawn borders, row rules, or clear column alignment | Native tables, including merged cells and continuation across pages |
 | Tagged raster figures with visible placement | Native media with author alternative text when present |
 | Composite/vector/ambiguous visible figures | Bounded rendered-region image fallback |
 | Repeated page headers, footers, and page numbers | Suppressed only when repeated-region evidence qualifies |
@@ -243,9 +243,21 @@ A tagged table becomes one native Confluence table when its grid is complete:
 
 PDFium exposes text, geometry, tags, page objects, annotations, and rendering
 primitives; it does not provide a native semantic table importer. For untagged
-PDFs, AtlCLI emits a native table only when qualified rectangular-grid
-evidence passes its threshold. Borderless or ambiguous untagged tables fall
-back or report instead of receiving invented cells.
+PDFs (for example Word for Mac's default **Save As PDF**), AtlCLI rebuilds
+tables from the drawing itself, without learned models:
+
+| Case | Result |
+|---|---|
+| Borders drawn on every cell | One native table; a missing separator merges cells into a span |
+| Only horizontal rules between rows | Rows from the rules, columns from left text edges shared by several rows; wrapped cell text stays in its cell |
+| No lines, three or more columns of single-line cells | Native table when every row has the same cells and the columns are clearly separated |
+| Table continues on the next page with the same columns | One table; a repeated bold header row is kept once |
+| Shading or a highlight behind text | Background: the text stays editable, no image |
+| Text that crosses a drawn cell edge, an open frame, two-column text | No table; the text stays in reading order or the page falls back |
+
+Bold header rows are recognized from the font name when the PDF reports no
+font weight. Clause numbers, terms, and table-of-contents page numbers beside
+their text are read as part of the line, not as a second column.
 
 > **Tip.** Export PDFs from Word, LibreOffice, or a browser with tagging
 > ("accessible PDF") enabled. Tagged exports keep tables, lists, and reading
@@ -462,6 +474,7 @@ release claim.
 | `pdf/character-ownership-failed` blocks publication | A visible character is unowned or has competing semantic owners | Review the page locator and fallback scope. Do not bypass the blocker without explicit reported/fallback coverage. |
 | A tagged table becomes a page image or linearized text | The table nests another table, or a cell's text has an unresolved boundary or invalid Unicode | Check `pdf-import/table-tagged-linearized` and its `reason` in the JSON preview. Re-export with tagging enabled, or flatten the nested table in the source. |
 | Issue `pdf-import/table-continuation-unjoined`: the table repeats on every page | One page part does not qualify as a grid, or the table exceeds 5,000 rows | Check the issue `reason`. Each page part stays a native table when it qualifies on its own. |
+| An untagged table arrives as paragraphs | No drawn grid or row rules, fewer than three aligned columns, or text crossing a cell edge | Export with table borders, or as a tagged PDF. The text is complete and in reading order either way. |
 | Issue `pdf-import/document-structure-unavailable` | The structure tree could not be read as a whole (damaged cross-references or budget) | Import continues with page-scoped structure; multi-page tables may fall back. Re-save the PDF from its producer. |
 | Image-only page blocks publication | Default scan policy forbids silent empty output | Choose `page-image`, or use `report` plus both publication acknowledgements. |
 | Too many wiki pages | Heading/range plan exceeds `--max-wiki-pages` | Increase the cap up to 200 or choose a larger `pages:N` target; review the new plan. |

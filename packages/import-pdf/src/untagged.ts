@@ -39,6 +39,7 @@ import {
   type PdfReadingOrderPageV1,
   type PdfReadingOrderPageV2,
 } from "./reading-order.js";
+import { projectUntaggedGeometryTablesV2 } from "./geometry-tables.js";
 import { detectRepeatedRegions } from "./repeated-regions.js";
 import {
   analyzeUntaggedTable,
@@ -634,7 +635,7 @@ function projectQualifiedPageV2(
   analysis: PdfReadingOrderPageV2,
   suppressed: ReadonlySet<string>,
   headingLevelByFont: ReadonlyMap<number, 1 | 2 | 3 | 4 | 5 | 6>,
-  table: PdfTableProjectionV2,
+  tables: readonly PdfTableProjectionV2[],
 ): GeometryProjectionV2 {
   const projection: GeometryProjectionV2 = {
     blocks: [],
@@ -645,15 +646,12 @@ function projectQualifiedPageV2(
     unresolved: false,
   };
   const available = analysis.ordered.filter((fragment) => !suppressed.has(fragment.id));
-  let tableInserted = false;
+  const pending = tables.filter((table) => table.mode === "native")
+    .sort((left, right) => (left.bbox?.y ?? 0) - (right.bbox?.y ?? 0));
   const insertTableBefore = (fragment?: PdfGeometryFragmentV2): void => {
-    if (
-      tableInserted
-      || table.mode !== "native"
-      || (fragment && table.bbox && table.bbox.y >= fragment.bbox.y)
-    ) return;
-    projection.blocks.push(...table.blocks);
-    tableInserted = true;
+    while (pending.length > 0 && (!fragment || !pending[0]!.bbox || pending[0]!.bbox.y < fragment.bbox.y)) {
+      projection.blocks.push(...pending.shift()!.blocks);
+    }
   };
   for (let index = 0; index < available.length;) {
     const fragment = available[index]!;
@@ -748,18 +746,18 @@ export async function normalizeUntaggedPdfFactsV2(
     );
   }
   const rawAnalyses = facts.pages.map((page) => analyzeGeometryReadingOrderV2(page));
-  const tables = rawAnalyses.map((analysis) =>
-    analyzeUntaggedTableV2(facts.pages[analysis.pageIndex]!, analysis)
-  );
-  const analyses = facts.pages.map((page) => {
-    const table = tables[page.index]!;
-    return analyzeGeometryReadingOrderV2(
-      page,
-      table.mode === "native" ? new Set(table.fragmentIds) : new Set(),
-    );
+  const geometryTables = projectUntaggedGeometryTablesV2(facts.pages, rawAnalyses, detectRepeatedRegions(rawAnalyses, 2));
+  const tables = rawAnalyses.map((analysis) => {
+    if (geometryTables[analysis.pageIndex]!.length > 0) return geometryTables[analysis.pageIndex]!;
+    const legacy = analyzeUntaggedTableV2(facts.pages[analysis.pageIndex]!, analysis);
+    return legacy.mode === "none" ? [] : [legacy];
   });
+  const analyses = facts.pages.map((page) => analyzeGeometryReadingOrderV2(
+    page,
+    new Set(tables[page.index]!.filter((table) => table.mode === "native").flatMap((table) => table.fragmentIds)),
+  ));
   calibrateGeometryFontSizesV2(analyses);
-  const repeated = detectRepeatedRegions(analyses);
+  const repeated = detectRepeatedRegions(analyses, 2);
   const automaticallySuppressed = new Set<string>([
     ...repeated,
     ...analyses.flatMap((analysis) => analysis.fragments
@@ -780,16 +778,18 @@ export async function normalizeUntaggedPdfFactsV2(
   const requiresFallbackPages: number[] = [];
   for (const analysis of analyses) {
     const page = facts.pages[analysis.pageIndex]!;
-    const table = tables[analysis.pageIndex]!;
+    const pageTables = tables[analysis.pageIndex]!;
     const boundaryStart = boundaries.length;
-    boundaries.push(...table.boundaries);
-    transformations.push(...table.transformations);
-    evidence.push(...table.evidence);
-    issues.push(...table.issues);
+    for (const table of pageTables) {
+      boundaries.push(...table.boundaries);
+      transformations.push(...table.transformations);
+      evidence.push(...table.evidence);
+      issues.push(...table.issues);
+    }
     const reasons = new Set(analysis.qualificationReasons);
     if (facts.tagged && !options.allowTagged) reasons.add("tagged-document-routed-to-geometry");
     if (!pageHasQualifiedDigitalLayout(page)) reasons.add(`page-kind-${page.kind}`);
-    if (table.mode === "linearized-render-required") reasons.add("table-render-required");
+    if (pageTables.some((table) => table.mode === "linearized-render-required")) reasons.add("table-render-required");
     const suppressed = analysis.fragments.filter((fragment) =>
       automaticallySuppressed.has(fragment.id)
     );
@@ -818,7 +818,7 @@ export async function normalizeUntaggedPdfFactsV2(
           analysis,
           automaticallySuppressed,
           headingLevelByFont,
-          table,
+          pageTables,
         )
       : null;
     if (projection?.unresolved) reasons.add("unresolved-text-boundary");
@@ -836,8 +836,8 @@ export async function normalizeUntaggedPdfFactsV2(
         transformations.push(...projection.transformations);
       }
       requiresFallbackPages.push(page.index);
-      if (table.mode === "linearized-render-required") blocks.push(...table.blocks);
-      const tableFragmentIds = new Set(table.fragmentIds);
+      for (const table of pageTables) if (table.mode === "linearized-render-required") blocks.push(...table.blocks);
+      const tableFragmentIds = new Set(pageTables.flatMap((table) => table.fragmentIds));
       const fallbackFragments = analysis.fragments.filter((fragment) =>
         !automaticallySuppressed.has(fragment.id) && !tableFragmentIds.has(fragment.id)
       );

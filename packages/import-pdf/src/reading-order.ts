@@ -233,6 +233,12 @@ export function geometryBodyFontSize(pages: readonly PdfReadingOrderPageV1[]): n
 }
 
 export const PDF_GEOMETRY_POLICY_V2 = Object.freeze({
+  /**
+   * A fragment narrower than this beside text on the same line is a label
+   * (clause number, term) or a page number in a table of contents, not
+   * evidence of a second text column.
+   */
+  minimumColumnEvidenceWidth: 0.15,
   ...PDF_GEOMETRY_POLICY_V1,
   lineClusterCenterGlyphFactor: 0.7,
   minimumLineClusterTolerance: 0.0025,
@@ -439,41 +445,49 @@ function splitGeometryLineV2(
   });
 }
 
+/** One geometry fragment from characters of one physical line, or null when it shows nothing. */
+export function geometryFragmentV2(
+  page: PdfPageFactsV2,
+  part: readonly PdfTextCharacterFactV2[],
+  lineIndex: number,
+  sourceOrder: number,
+): PdfGeometryFragmentV2 | null {
+  const indexes = part.map((character) => character.index);
+  const start = Math.min(...indexes);
+  const end = Math.max(...indexes);
+  const id = `pdf:p${page.index}:fragment-v2:${start}-${end}`;
+  const assembly = assemblePdfTextV2({ sourceId: id, characters: part, orderBasis: "geometry" });
+  if (!assembly.text || !assembly.bbox) return null;
+  const sourceCharacters = part.filter((character) => !character.generated);
+  return {
+    id,
+    pageIndex: page.index,
+    text: assembly.text,
+    bbox: assembly.bbox,
+    characters: [...part],
+    assembly,
+    fontSizePoints: median(sourceCharacters.filter((character) => character.fontSizePoints > 1)
+      .map((character) => character.fontSizePoints)),
+    fontWeight: median(sourceCharacters.map((character) =>
+      character.fontWeight || (character.boldFontName ? 700 : 0)
+    )),
+    angleRadians: median(sourceCharacters.map((character) => character.angleRadians)),
+    direction: assembly.direction,
+    sourceOrder,
+    column: 0,
+    furniture: pageFurnitureV2(assembly.text, assembly.bbox),
+    physicalLineIndex: lineIndex,
+  };
+}
+
 export function extractGeometryFragmentsV2(page: PdfPageFactsV2): PdfGeometryFragmentV2[] {
   const lines = clusterPhysicalLinesV2(page);
   const lineCharacters = assignSupportingCharactersV2(page, lines);
   const fragments: PdfGeometryFragmentV2[] = [];
   for (const [lineIndex] of lines.entries()) {
     for (const part of splitGeometryLineV2(lineCharacters.get(lineIndex) ?? [])) {
-      const indexes = part.map((character) => character.index);
-      const start = Math.min(...indexes);
-      const end = Math.max(...indexes);
-      const id = `pdf:p${page.index}:fragment-v2:${start}-${end}`;
-      const assembly = assemblePdfTextV2({ sourceId: id, characters: part, orderBasis: "geometry" });
-      if (!assembly.text || !assembly.bbox) continue;
-      const sourceCharacters = part.filter((character) => !character.generated);
-      const fontSizePoints = median(
-        sourceCharacters.filter((character) => character.fontSizePoints > 1)
-          .map((character) => character.fontSizePoints),
-      );
-      const angleRadians = median(sourceCharacters.map((character) => character.angleRadians));
-      const fontWeight = median(sourceCharacters.map((character) => character.fontWeight));
-      fragments.push({
-        id,
-        pageIndex: page.index,
-        text: assembly.text,
-        bbox: assembly.bbox,
-        characters: [...part],
-        assembly,
-        fontSizePoints,
-        fontWeight,
-        angleRadians,
-        direction: assembly.direction,
-        sourceOrder: fragments.length,
-        column: 0,
-        furniture: pageFurnitureV2(assembly.text, assembly.bbox),
-        physicalLineIndex: lineIndex,
-      });
+      const fragment = geometryFragmentV2(page, part, lineIndex, fragments.length);
+      if (fragment) fragments.push(fragment);
     }
   }
   return fragments;
@@ -514,7 +528,9 @@ function assignColumnsV2(
     const alignedLeft = new Set<string>();
     const alignedRight = new Set<string>();
     for (const leftFragment of left) {
+      if (leftFragment.bbox.width < PDF_GEOMETRY_POLICY_V2.minimumColumnEvidenceWidth) continue;
       for (const rightFragment of right) {
+        if (rightFragment.bbox.width < PDF_GEOMETRY_POLICY_V2.minimumColumnEvidenceWidth) continue;
         const centerDelta = Math.abs(
           verticalCenter(leftFragment.bbox) - verticalCenter(rightFragment.bbox),
         );

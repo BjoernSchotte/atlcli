@@ -126,8 +126,9 @@ describe("PDF table reconstruction", () => {
     ).every((item) => item.boundaryDecisionIds.every((id) =>
       result.boundaries.some((boundary) => boundary.id === id)
     ))).toBe(true);
+    // The header row is set in Helvetica-Bold: a header row.
     expect(documentToStorage(result.document)).toContain(
-      "<tr><td><p>Plot</p></td><td><p>Apples</p></td><td><p>Pears</p></td></tr>",
+      "<tr><th><p>Plot</p></th><th><p>Apples</p></th><th><p>Pears</p></th></tr>",
     );
   });
 

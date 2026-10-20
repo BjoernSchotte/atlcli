@@ -117,6 +117,7 @@ interface PdfQualityTruthEntry {
     safeLinks: string[];
     ownership: { fallbackPages: number[]; localizedRepairRegions: number };
     tables?: AdfTableShape[];
+    figures?: { nativeRaster: number; renderedRegion: number };
   };
 }
 
@@ -611,9 +612,11 @@ describe.skipIf(!RUN).serial("built CLI PDF import live Cloud certification", ()
     );
   }, CASE_TIMEOUT_MS);
 
-  for (const id of ["acceptance-browser", "acceptance-libreoffice"]) {
+  for (const id of ["acceptance-browser", "acceptance-libreoffice", "untagged-word"]) {
     it(`publishes the ${id} document with native multi-page tables and no fallback`, async () => {
       const truth = await pdfQualityTruth(id);
+      const tableCount = truth.expected.tables!.length;
+      const figureCount = truth.expected.figures!.nativeRaster;
       const expectedBlocks = truth.expected.orderedBlocks.map((block) => ({
         type: block.type,
         depth: block.depth ?? 0,
@@ -637,8 +640,8 @@ describe.skipIf(!RUN).serial("built CLI PDF import live Cloud certification", ()
       const extracted = summarizeOrderedImportBlocks(extraction.document.blocks);
       expect(extraction.blockers).toEqual([]);
       expect(extracted.blocks).toEqual(expectedBlocks);
-      expect(extracted.tableCount).toBe(2);
-      expect(extracted.mediaIds).toHaveLength(1);
+      expect(extracted.tableCount).toBe(tableCount);
+      expect(extracted.mediaIds).toHaveLength(figureCount);
       expect(extracted.fallbackScopes).toEqual([]);
       for (const page of extraction.pages) {
         expect(page).toMatchObject({
@@ -658,14 +661,14 @@ describe.skipIf(!RUN).serial("built CLI PDF import live Cloud certification", ()
           expect(receipt.source.sha256).toBe(extraction.source.sha256);
           expect(receipt.sourceAttachment).toBeUndefined();
           expect(readback.blocks).toEqual(expectedBlocks);
-          expect(readback.tableCount).toBe(2);
-          expect(readback.mediaIds).toHaveLength(1);
+          expect(readback.tableCount).toBe(tableCount);
+          expect(readback.mediaIds).toHaveLength(figureCount);
           expect(readback.fallbackScopes).toEqual([]);
           const adf = await client.getPageAdf(receipt.page.id);
           expect(adfTableShapes(adf.body.value)).toEqual(truth.expected.tables!);
           // Only the native figure is attached: no source PDF, no fallback image.
           const attachments = await client.listAttachments(receipt.page.id);
-          expect(attachments).toHaveLength(1);
+          expect(attachments).toHaveLength(figureCount);
           expect(attachments.every((attachment) => attachment.mediaType !== "application/pdf")).toBe(true);
         },
       );

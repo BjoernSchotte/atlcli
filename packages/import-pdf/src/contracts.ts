@@ -5,7 +5,7 @@ export const PDF_FACTS_SCHEMA_V2 = "atlcli.pdf-facts/2" as const;
 export const PDFIUM_ENGINE_VERSION = "2.15.1" as const;
 export const PDFIUM_WASM_SHA256 = "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa" as const;
 export const PDF_FACTS_ADAPTER_REVISION = "atlcli.pdfium-public-fpdf/1" as const;
-export const PDF_FACTS_ADAPTER_REVISION_V2 = "atlcli.pdfium-public-fpdf/3" as const;
+export const PDF_FACTS_ADAPTER_REVISION_V2 = "atlcli.pdfium-public-fpdf/4" as const;
 export const PDF_ANALYSIS_POLICY_REVISION = "atlcli.pdf-analysis-policy/1" as const;
 export const PDF_ANALYSIS_POLICY_REVISION_V2 = "atlcli.pdf-analysis-policy/3" as const;
 export const PDF_ASSET_MATERIALIZER_REVISION = "atlcli.pdfium-asset-materializer/1" as const;
@@ -36,6 +36,11 @@ export interface PdfTextCharacterFact {
 export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
   /** Stable first-seen per-page ordinal; never a PDFium handle. */
   textRunId: string | null;
+  /**
+   * Set when PDFium reports no font weight (`fontWeight` 0, common in macOS
+   * Quartz exports) and the font's name marks it bold.
+   */
+  boldFontName?: true;
 }
 
 export interface PdfStructureAttributeFact {
@@ -364,10 +369,10 @@ export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-untagged-semantics/1
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-untagged-semantics/2" as const;
 export const PDF_HYBRID_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-hybrid-semantics/2" as const;
 export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as const;
-export const PDF_GEOMETRY_POLICY_REVISION_V2 = "atlcli.pdf-geometry-policy/3" as const;
+export const PDF_GEOMETRY_POLICY_REVISION_V2 = "atlcli.pdf-geometry-policy/4" as const;
 export const PDF_HYBRID_POLICY_REVISION_V2 = "atlcli.pdf-hybrid-policy/3" as const;
 export const PDF_TABLE_POLICY_REVISION = "atlcli.pdf-table-policy/1" as const;
-export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/4" as const;
+export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/5" as const;
 export const PDF_FIGURE_POLICY_REVISION = "atlcli.pdf-figure-policy/1" as const;
 export const PDF_VISUAL_FALLBACK_POLICY_REVISION = "atlcli.pdf-visual-fallback-policy/1" as const;
 

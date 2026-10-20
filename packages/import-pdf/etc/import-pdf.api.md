@@ -129,7 +129,7 @@ export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames
 export declare function descendantMcids(node: PdfStructureNodeFact): number[];
 
 // export: detectRepeatedRegions
-export declare function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[]): Set<string>;
+export declare function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[], minimumPages?: number): Set<string>;
 
 // export: digestPdfCanonical
 export declare function digestPdfCanonical(value: unknown, maxBytes?: number): Promise<string>;
@@ -166,6 +166,9 @@ export declare function geometryBodyFontSize(pages: readonly PdfReadingOrderPage
 
 // export: geometryBodyFontSizeV2
 export declare function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number;
+
+// export: geometryFragmentV2
+export declare function geometryFragmentV2(page: PdfPageFactsV2, part: readonly PdfTextCharacterFactV2[], lineIndex: number, sourceOrder: number): PdfGeometryFragmentV2 | null;
 
 // export: headingHierarchyGap
 export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
@@ -266,7 +269,7 @@ export declare const PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3: "pdf/character-
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION_V2
-export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/3";
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/4";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
@@ -297,7 +300,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/3";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/4";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -336,6 +339,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
+    readonly minimumColumnEvidenceWidth: 0.15;
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
@@ -409,7 +413,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/4";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/5";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -456,6 +460,9 @@ export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
     readonly differentLineCenterDeltaGlyphFactor: 1.2;
     readonly insertSpaceGapGlyphFactor: 0.75;
     readonly literalConventionInsertSpaceGapGlyphFactor: 2;
+    readonly observedWordGapNoSpaceRatio: 0.8;
+    readonly tabGapGlyphFactor: 2.5;
+    readonly minimumObservedWordGaps: 2;
     readonly noSpaceGapGlyphFactor: 0.35;
     readonly confidence: Readonly<{
         authored: 1;
@@ -1492,6 +1499,7 @@ export interface PdfTextCharacterFact {
 // export: PdfTextCharacterFactV2
 export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
     textRunId: string | null;
+    boldFontName?: true;
 }
 
 // export: PdfTextDirection
@@ -1814,7 +1822,7 @@ export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames
 export declare function descendantMcids(node: PdfStructureNodeFact): number[];
 
 // export: detectRepeatedRegions
-export declare function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[]): Set<string>;
+export declare function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[], minimumPages?: number): Set<string>;
 
 // export: digestPdfCanonical
 export declare function digestPdfCanonical(value: unknown, maxBytes?: number): Promise<string>;
@@ -1854,6 +1862,9 @@ export declare function geometryBodyFontSize(pages: readonly PdfReadingOrderPage
 
 // export: geometryBodyFontSizeV2
 export declare function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number;
+
+// export: geometryFragmentV2
+export declare function geometryFragmentV2(page: PdfPageFactsV2, part: readonly PdfTextCharacterFactV2[], lineIndex: number, sourceOrder: number): PdfGeometryFragmentV2 | null;
 
 // export: headingHierarchyGap
 export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
@@ -1978,7 +1989,7 @@ export declare const PDF_DEGENERATE_TAG_MAX_WIDTH = 0.01;
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION_V2
-export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/3";
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/4";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
@@ -2012,7 +2023,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/3";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/4";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -2051,6 +2062,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
+    readonly minimumColumnEvidenceWidth: 0.15;
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
@@ -2124,7 +2136,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/4";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/5";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -2171,6 +2183,9 @@ export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
     readonly differentLineCenterDeltaGlyphFactor: 1.2;
     readonly insertSpaceGapGlyphFactor: 0.75;
     readonly literalConventionInsertSpaceGapGlyphFactor: 2;
+    readonly observedWordGapNoSpaceRatio: 0.8;
+    readonly tabGapGlyphFactor: 2.5;
+    readonly minimumObservedWordGaps: 2;
     readonly noSpaceGapGlyphFactor: 0.35;
     readonly confidence: Readonly<{
         authored: 1;
@@ -3245,6 +3260,7 @@ export interface PdfTextCharacterFact {
 // export: PdfTextCharacterFactV2
 export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
     textRunId: string | null;
+    boldFontName?: true;
 }
 
 // export: PdfTextDirection
@@ -3567,7 +3583,7 @@ export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames
 export declare function descendantMcids(node: PdfStructureNodeFact): number[];
 
 // export: detectRepeatedRegions
-export declare function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[]): Set<string>;
+export declare function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[], minimumPages?: number): Set<string>;
 
 // export: digestPdfCanonical
 export declare function digestPdfCanonical(value: unknown, maxBytes?: number): Promise<string>;
@@ -3604,6 +3620,9 @@ export declare function geometryBodyFontSize(pages: readonly PdfReadingOrderPage
 
 // export: geometryBodyFontSizeV2
 export declare function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number;
+
+// export: geometryFragmentV2
+export declare function geometryFragmentV2(page: PdfPageFactsV2, part: readonly PdfTextCharacterFactV2[], lineIndex: number, sourceOrder: number): PdfGeometryFragmentV2 | null;
 
 // export: headingHierarchyGap
 export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
@@ -3704,7 +3723,7 @@ export declare const PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3: "pdf/character-
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION_V2
-export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/3";
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/4";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
@@ -3735,7 +3754,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/3";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/4";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -3774,6 +3793,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
+    readonly minimumColumnEvidenceWidth: 0.15;
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
@@ -3847,7 +3867,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/4";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/5";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -3894,6 +3914,9 @@ export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
     readonly differentLineCenterDeltaGlyphFactor: 1.2;
     readonly insertSpaceGapGlyphFactor: 0.75;
     readonly literalConventionInsertSpaceGapGlyphFactor: 2;
+    readonly observedWordGapNoSpaceRatio: 0.8;
+    readonly tabGapGlyphFactor: 2.5;
+    readonly minimumObservedWordGaps: 2;
     readonly noSpaceGapGlyphFactor: 0.35;
     readonly confidence: Readonly<{
         authored: 1;
@@ -4930,6 +4953,7 @@ export interface PdfTextCharacterFact {
 // export: PdfTextCharacterFactV2
 export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
     textRunId: string | null;
+    boldFontName?: true;
 }
 
 // export: PdfTextDirection
@@ -5258,7 +5282,7 @@ export declare function derivePdfSplitTitleRenames(plan: PdfSplitPlanV1, renames
 export declare function descendantMcids(node: PdfStructureNodeFact): number[];
 
 // export: detectRepeatedRegions
-export declare function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[]): Set<string>;
+export declare function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[], minimumPages?: number): Set<string>;
 
 // export: digestPdfCanonical
 export declare function digestPdfCanonical(value: unknown, maxBytes?: number): Promise<string>;
@@ -5298,6 +5322,9 @@ export declare function geometryBodyFontSize(pages: readonly PdfReadingOrderPage
 
 // export: geometryBodyFontSizeV2
 export declare function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number;
+
+// export: geometryFragmentV2
+export declare function geometryFragmentV2(page: PdfPageFactsV2, part: readonly PdfTextCharacterFactV2[], lineIndex: number, sourceOrder: number): PdfGeometryFragmentV2 | null;
 
 // export: headingHierarchyGap
 export declare function headingHierarchyGap(previous: number | null, next: number): boolean;
@@ -5425,7 +5452,7 @@ export declare const PDF_DEGENERATE_TAG_MAX_WIDTH = 0.01;
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION_V2
-export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/3";
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/4";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
@@ -5459,7 +5486,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/3";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/4";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -5498,6 +5525,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
+    readonly minimumColumnEvidenceWidth: 0.15;
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
@@ -5571,7 +5599,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/4";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/5";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -5618,6 +5646,9 @@ export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
     readonly differentLineCenterDeltaGlyphFactor: 1.2;
     readonly insertSpaceGapGlyphFactor: 0.75;
     readonly literalConventionInsertSpaceGapGlyphFactor: 2;
+    readonly observedWordGapNoSpaceRatio: 0.8;
+    readonly tabGapGlyphFactor: 2.5;
+    readonly minimumObservedWordGaps: 2;
     readonly noSpaceGapGlyphFactor: 0.35;
     readonly confidence: Readonly<{
         authored: 1;
@@ -6692,6 +6723,7 @@ export interface PdfTextCharacterFact {
 // export: PdfTextCharacterFactV2
 export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
     textRunId: string | null;
+    boldFontName?: true;
 }
 
 // export: PdfTextDirection

@@ -120,3 +120,25 @@ Sanitize both raw exports with `producer-tools.ts sanitize-export ... --title
 "Neutral Acceptance Handbook"`, then rerun `bun specs/pdf-import-quality/fixtures/update-manifest.ts`.
 Word for Mac exports untagged PDFs without its online service, so there is no
 tagged Word acceptance fixture.
+
+## Untagged Word fixture
+
+`untagged-word.pdf` is Word for Mac's default **Save As PDF** of
+`untagged-source.docx`: an untagged PDF whose table borders are thin filled
+rectangles, as in most untagged business documents. `untagged-source.ts` is the
+content model; it writes the DOCX and provides the oracle (`untaggedOrderedBlocks`,
+`UNTAGGED_TABLES`, `UNTAGGED_SPANS`). Page indexes come from the PDFium text
+layer.
+
+```bash
+bun specs/pdf-import-quality/fixtures/untagged-source.ts
+osascript -e 'on run argv' -e 'tell application "Microsoft Word"' \
+  -e 'open (POSIX file (item 1 of argv))' \
+  -e 'save as active document file name (item 2 of argv) file format format PDF' \
+  -e 'close active document saving no' -e 'end tell' -e 'end run' \
+  "$PWD/specs/pdf-import-quality/fixtures/untagged-source.docx" "$PWD/.tmp/untagged-word.raw.pdf"
+bun specs/pdf-import-quality/fixtures/producer-tools.ts sanitize-export \
+  --input .tmp/untagged-word.raw.pdf --output specs/pdf-import-quality/fixtures/untagged-word.pdf \
+  --producer "Microsoft Word for Mac <version> Save As PDF" --title "Neutral Supplier Handbook"
+bun specs/pdf-import-quality/fixtures/update-manifest.ts
+```

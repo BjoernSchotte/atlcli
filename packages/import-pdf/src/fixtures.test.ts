@@ -94,9 +94,9 @@ describe("neutral PDF import quality corpus", () => {
     expect(truth.license).toBe("Apache-2.0");
     expect(truth.provenance).toContain("Neutral AtlCLI-authored corpus only");
     expect(truth.privacyContract.allowlistedUrlHosts).toEqual(["example.com"]);
-    expect(truth.fixtures).toHaveLength(9);
+    expect(truth.fixtures).toHaveLength(10);
     expect(truth.fixtures.filter((entry) => entry.reproduction === "generated")).toHaveLength(4);
-    expect(truth.fixtures.filter((entry) => entry.reproduction === "pinned-export")).toHaveLength(5);
+    expect(truth.fixtures.filter((entry) => entry.reproduction === "pinned-export")).toHaveLength(6);
     expect(new Set(truth.fixtures.map((entry) => entry.producer.family))).toEqual(
       new Set(["independent", "word", "libreoffice", "browser"]),
     );
@@ -115,6 +115,7 @@ describe("neutral PDF import quality corpus", () => {
       "README.md",
       "acceptance-source.html",
       "acceptance-source.ts",
+      "untagged-source.ts",
       "generate-core.ts",
       "manifest.json",
       "producer-source.html",

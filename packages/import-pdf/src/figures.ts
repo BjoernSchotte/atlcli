@@ -31,6 +31,7 @@ import { flattenStructure, flattenStructureV2, structureChildrenV2, structureRol
 import { analyzeUntaggedTable, analyzeUntaggedTableV2 } from "./tables.js";
 import { correlateTaggedText, orderedDescendantMcidsV2, unionRects } from "./text.js";
 import { pageHasQualifiedDigitalLayout } from "./untagged.js";
+import { detectGeometryGridsV2, geometryDecorationPathIdsV2 } from "./geometry-tables.js";
 
 export const PDF_FIGURE_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-figure-semantics/1" as const;
 export const PDF_FIGURE_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-figure-semantics/2" as const;
@@ -345,11 +346,11 @@ function untaggedCandidatesV2(page: PdfPageFactsV2): VisualCandidate[] {
   if (!pageHasQualifiedDigitalLayout(page)) return [];
   const analysis = analyzeGeometryReadingOrderV2(page);
   const table = analyzeUntaggedTableV2(page, analysis);
-  const tablePaths = new Set(
-    table.mode === "native" && table.blocks[0]?.type === "table"
-      ? table.blocks[0].sourceRefs ?? []
-      : [],
-  );
+  // Table rulings and backgrounds behind text are not figures.
+  const tablePaths = new Set([
+    ...(table.mode === "native" && table.blocks[0]?.type === "table" ? table.blocks[0].sourceRefs ?? [] : []),
+    ...geometryDecorationPathIdsV2(page, detectGeometryGridsV2(page, analysis)),
+  ]);
   const items: VisualItem[] = [
     ...page.images.flatMap((image) => image.bbox ? [{
       id: image.id,
@@ -475,9 +476,11 @@ function blockLocation(
   const matches = evidence.filter((item) =>
     refs.has(item.sourceId) || (item.targetNodeId ? refs.has(item.targetNodeId) : false)
   );
-  const box = unionRects(matches.map((item) => item.locator.bbox));
+  // A block that spans pages (a continued table) sits where it starts.
+  const pageIndex = matches.length > 0 ? Math.min(...matches.map((item) => item.locator.pageIndex)) : 0;
+  const box = unionRects(matches.filter((item) => item.locator.pageIndex === pageIndex).map((item) => item.locator.bbox));
   return {
-    pageIndex: matches[0]?.locator.pageIndex ?? 0,
+    pageIndex,
     y: box?.y ?? Number.MAX_SAFE_INTEGER,
     x: box?.x ?? 0,
     height: box?.height ?? 0,

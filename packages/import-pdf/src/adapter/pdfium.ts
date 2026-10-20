@@ -192,6 +192,17 @@ function readUtf16(
   });
 }
 
+const BOLD_FONT_NAME = /(?:bold|black|heavy|semibold|demibold)/iu;
+
+function fontName(module: WrappedPdfiumModule, textPage: number, index: number): string {
+  const byteLength = module.FPDFText_GetFontInfo(textPage, index, 0, 0, 0);
+  if (byteLength <= 1) return "";
+  return withPointer(module, byteLength, (pointer) => {
+    const written = module.FPDFText_GetFontInfo(textPage, index, pointer, byteLength, 0);
+    return written > 1 ? new TextDecoder().decode(memory(module).HEAPU8.slice(pointer, pointer + written - 1)) : "";
+  });
+}
+
 function readUtf8WithOutLength(
   module: WrappedPdfiumModule,
   getter: (pointer: number, bytes: number, outLengthPointer: number) => boolean,
@@ -541,6 +552,7 @@ function extractTextV2(
     countEvidence(control, count);
     const characters: PdfTextCharacterFactV2[] = [];
     const textRunIds = new Map<number, string>();
+    const boldByTextObject = new Map<number, boolean>();
     let nextTextRunOrdinal = 0;
     for (let index = 0; index < count; index += 1) {
       if ((index & 1023) === 0) check(control, "text-characters");
@@ -557,13 +569,21 @@ function extractTextV2(
           textRunIds.set(textObject, textRunId);
         }
       }
+      const fontWeight = Math.max(0, module.FPDFText_GetFontWeight(textPage, index));
+      let boldFontName = false;
+      if (fontWeight === 0 && textObject) {
+        // One font per text object; read its name once.
+        boldFontName = boldByTextObject.get(textObject) ?? BOLD_FONT_NAME.test(fontName(module, textPage, index));
+        boldByTextObject.set(textObject, boldFontName);
+      }
       characters.push({
         index,
         unicode,
         value: unicode > 0 && unicode <= 0x10ffff ? String.fromCodePoint(unicode) : "",
         bbox: normalizeRect(raw, pageWidth, pageHeight),
         fontSizePoints: round(module.FPDFText_GetFontSize(textPage, index)),
-        fontWeight: Math.max(0, module.FPDFText_GetFontWeight(textPage, index)),
+        fontWeight,
+        ...(boldFontName ? { boldFontName: true as const } : {}),
         angleRadians: round(module.FPDFText_GetCharAngle(textPage, index), 6),
         mcid: mcid >= 0 ? mcid : null,
         textRunId,

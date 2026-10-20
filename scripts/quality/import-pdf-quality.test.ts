@@ -21,7 +21,7 @@ describe("PDF import semantic quality gate", () => {
 
     expect(result.schema).toBe("atlcli.import-pdf-quality/1");
     expect(result.passed).toBe(true);
-    expect(result.fixtures).toHaveLength(9);
+    expect(result.fixtures).toHaveLength(10);
     expect(new Set(result.fixtures.map((fixture) => fixture.producerFamily)))
       .toEqual(new Set(["independent", "word", "libreoffice", "browser"]));
     expect(result.fixtures.every((fixture) => fixture.passed)).toBe(true);

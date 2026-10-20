@@ -98,6 +98,7 @@ function isAggregateOwnershipEvidence(entry: PdfDecisionEvidenceV2): boolean {
     "pdf/geometry-list-native",
     "pdf/table-tagged-native",
     "pdf/table-untagged-grid-native",
+    "pdf/table-untagged-aligned-native",
   ].includes(entry.decisionCode);
 }
 

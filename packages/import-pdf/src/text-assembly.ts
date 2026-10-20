@@ -28,6 +28,17 @@ export const PDF_TEXT_ASSEMBLY_POLICY_V2 = Object.freeze({
    * a gap without it is a space only when it is clearly wider than one.
    */
   literalConventionInsertSpaceGapGlyphFactor: 2,
+  /**
+   * In geometry order PDFium inserts a generated space wherever its font
+   * metrics show a word gap. A same-line gap with no generated character is
+   * then no space when it is at most this share of the narrowest word gap the
+   * block marks with whitespace. Structure order filters generated
+   * characters, so the rule does not apply there.
+   */
+  observedWordGapNoSpaceRatio: 0.8,
+  /** A same-line gap this wide (a tab stop) separates words of any script. */
+  tabGapGlyphFactor: 2.5,
+  minimumObservedWordGaps: 2,
   noSpaceGapGlyphFactor: 0.35,
   confidence: Object.freeze({
     authored: 1,
@@ -387,6 +398,18 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
     input.characters.some((character) => !character.generated && isWhitespace(sourceValue(character).text))
     && !input.characters.some((character) => character.generated && isWhitespace(sourceValue(character).text));
   const state: SourceAssemblyState = { pieces: [], boundaries: [], transformations: [] };
+  // Word gaps this block marks with whitespace (literal or generated).
+  const observedWordGaps = anchors.flatMap((anchor, index) => {
+    const previous = anchors[index - 1];
+    if (!previous) return [];
+    const whitespace = input.characters.slice(previous.position + 1, anchor.position)
+      .some((character) => isWhitespace(sourceValue(character).text));
+    const gap = whitespace ? geometryRelation(previous, anchor, medianWidth, medianHeight).gapGlyphFactor : null;
+    return gap !== null && gap > 0 ? [gap] : [];
+  });
+  const narrowestWordGap = observedWordGaps.length >= PDF_TEXT_ASSEMBLY_POLICY_V2.minimumObservedWordGaps
+    ? Math.min(...observedWordGaps)
+    : null;
 
   const addBoundary = (
     left: Anchor,
@@ -689,7 +712,7 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
         const insertSpaceGap = literalWhitespaceConvention
           ? PDF_TEXT_ASSEMBLY_POLICY_V2.literalConventionInsertSpaceGapGlyphFactor
           : PDF_TEXT_ASSEMBLY_POLICY_V2.insertSpaceGapGlyphFactor;
-        if (gap !== null && gap >= insertSpaceGap && scriptMatch) {
+        if (gap !== null && (gap >= insertSpaceGap && scriptMatch || gap >= PDF_TEXT_ASSEMBLY_POLICY_V2.tabGapGlyphFactor)) {
           addBoundary(
             previous,
             anchor,
@@ -714,6 +737,24 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
               ...(orderedBasis ? ["structure-order" as const] : []),
               "baseline",
               "glyph-gap",
+            ],
+            PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.strongGeometry,
+          );
+        } else if (
+          input.orderBasis === "geometry" && gap !== null && scriptMatch && narrowestWordGap !== null
+          && between.every((character) => !character.generated)
+          && gap <= PDF_TEXT_ASSEMBLY_POLICY_V2.observedWordGapNoSpaceRatio * narrowestWordGap
+        ) {
+          addBoundary(
+            previous,
+            anchor,
+            "no-space",
+            [
+              ...(textRunChange ? ["text-run" as const] : []),
+              ...(orderedBasis ? ["structure-order" as const] : []),
+              "baseline",
+              "glyph-gap",
+              "whitespace-convention",
             ],
             PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.strongGeometry,
           );

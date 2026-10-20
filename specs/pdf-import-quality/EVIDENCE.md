@@ -30,9 +30,70 @@ from the earlier PASS rows until those tasks pass.
 | PIQ-13 | PASS | 2026-10-20 |
 | PIQ-14 | PASS | 2026-10-20 |
 | PIQ-15 | PASS | 2026-10-20 |
-| PIQ-16 | FROZEN | 2026-10-20 |
+| PIQ-16 | PASS | 2026-10-20 |
 | PIQ-17 | PASS | 2026-10-20 |
 | PIQ-18 | PASS (neutral, live) | 2026-10-20 |
+
+## PIQ-16 untagged geometry
+
+Result: **PASS** with deterministic geometry only (PLAN Section 14b).
+
+### Behavior
+
+- **Rulings:** thin paths are rules; rectangles contribute their edges. A
+  connected set of rules is one local grid, so page decorations elsewhere no
+  longer block a table. Drawn lines win over shading edges, which follow
+  elementary cells even inside merged cells.
+- **Ruled grids:** a closed frame is required; a cell edge without a drawn
+  separator merges cells into a rectangular span; text that crosses a drawn
+  edge is split per character, and a glyph on an edge rejects the grid.
+- **Row-ruled tables:** horizontal rules give the rows, left text edges shared
+  by at least two rows give the columns. A band with several lines is one row
+  with wrapped cells, or several rows when every line starts in the first
+  column and fills two columns.
+- **Borderless:** three or more aligned single-line columns with clear gaps in
+  at least three rows.
+- **Continuation:** a grid that ends a page joins a grid that starts the next
+  page when every column edge matches; a repeated bold header row is shown once
+  and owns its characters.
+- **Decoration:** rectangles that hold text and no image (shading, highlights,
+  boxed notes, footer panels) are backgrounds, not figures.
+- **Facts:** `PdfTextCharacterFactV2.boldFontName` is set when PDFium reports no
+  weight and the font name marks it bold (macOS Quartz exports); headers and
+  headings use it.
+- **Reading order:** fragments narrower than 0.15 page width beside text on the
+  same line (clause numbers, terms, table-of-contents page numbers) are not
+  evidence of a second column.
+- **Text boundaries (geometry order):** a same-line gap without any PDFium
+  generated character and at most 0.8 of the block's narrowest whitespace word
+  gap is no space; a gap of 2.5 glyph widths separates words of any script.
+- Two-page documents get repeated-header and footer suppression (V2).
+
+Revisions: adapter V2 `/4`, geometry policy V2 `/4`, table policy V2 `/5`.
+
+### Neutral result
+
+`untagged-word.pdf` (Word for Mac 16.113.4 Save As PDF of
+`untagged-source.docx`): before, 0 native tables, 4 rendered crops and both
+pages as page fallbacks. After, the quality oracle matches exactly: the 46-row
+inventory joined across the page break with one header row and the blank cell,
+the pricing table with a row span and a column span over two header rows, the
+borderless contacts table, the shaded note as a paragraph, the list, and the
+footer suppressed; no image, no fallback, no unresolved boundary. Live DOCSY
+publication with `--scan-policy fail --unsupported fail` and ADF readback
+pass.
+
+The motivating private documents were re-measured locally with body-free
+counts only. Nothing about them is recorded here.
+
+### Verification
+
+```text
+bun run test                            9504+ pass (api report refreshed)
+bun run check:import-pdf-quality        passed: true (10 fixtures)
+bun run test:e2e:import-pdf             13 pass, DOCSY, cleanup verified
+bun run bench:import-pdf                p95 212 ms, peak RSS 550 MiB, all gates
+```
 
 ## PIQ-18
 

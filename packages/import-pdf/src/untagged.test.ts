@@ -171,18 +171,39 @@ describe("untagged PDF conservative geometry semantics", () => {
 
   it("retains repeated vertically aligned V2 column evidence", () => {
     const analysis = analyzeGeometryReadingOrderV2(pageWithLinesV2([
-      { text: "Left one", x: 0.08, y: 0.2 },
-      { text: "Right one", x: 0.56, y: 0.2 },
-      { text: "Left two", x: 0.08, y: 0.3 },
-      { text: "Right two", x: 0.56, y: 0.3 },
-      { text: "Left three", x: 0.08, y: 0.4 },
-      { text: "Right three", x: 0.56, y: 0.4 },
+      { text: "Left column line one", x: 0.08, y: 0.2 },
+      { text: "Right column line one", x: 0.56, y: 0.2 },
+      { text: "Left column line two", x: 0.08, y: 0.3 },
+      { text: "Right column line two", x: 0.56, y: 0.3 },
+      { text: "Left column line three", x: 0.08, y: 0.4 },
+      { text: "Right column line three", x: 0.56, y: 0.4 },
     ]));
 
     expect(analysis.columnCount).toBe(2);
     expect(analysis.qualificationReasons).toEqual([]);
     expect(analysis.ordered.map((fragment) => fragment.text)).toEqual([
-      "Left one", "Left two", "Left three", "Right one", "Right two", "Right three",
+      "Left column line one", "Left column line two", "Left column line three",
+      "Right column line one", "Right column line two", "Right column line three",
+    ]);
+  });
+
+  it("reads clause numbers beside their text as one column", () => {
+    // Regression: contract clauses ("1.1" then text, hanging indent) were
+    // taken for two overlapping columns and sent the page to a fallback.
+    const analysis = analyzeGeometryReadingOrderV2(pageWithLinesV2([
+      { text: "1.1", x: 0.08, y: 0.2 },
+      { text: "The supplier delivers the neutral goods.", x: 0.3, y: 0.2 },
+      { text: "1.2", x: 0.08, y: 0.3 },
+      { text: "The buyer pays within thirty days.", x: 0.3, y: 0.3 },
+      { text: "A full-width paragraph closes the clause section.", x: 0.08, y: 0.4 },
+    ]));
+
+    expect(analysis.columnCount).toBe(1);
+    expect(analysis.qualificationReasons).toEqual([]);
+    expect(analysis.ordered.map((fragment) => fragment.text)).toEqual([
+      "1.1", "The supplier delivers the neutral goods.",
+      "1.2", "The buyer pays within thirty days.",
+      "A full-width paragraph closes the clause section.",
     ]);
   });
 

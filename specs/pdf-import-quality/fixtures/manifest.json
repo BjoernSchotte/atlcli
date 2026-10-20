@@ -26,6 +26,10 @@
     {
       "path": "acceptance-source.html",
       "sha256": "d07343eceb9d7b41865918be39b5697409384aa2b170009663b05570ecd84ffd"
+    },
+    {
+      "path": "untagged-source.docx",
+      "sha256": "993daaedc907eafbf7f1ee5393fb0086faf4c5c36cdd84cbab512b8d6e8f995e"
     }
   ],
   "fixtures": [
@@ -1890,6 +1894,497 @@
         ],
         "figures": {
           "nativeRaster": 1,
+          "renderedRegion": 0
+        }
+      }
+    },
+    {
+      "id": "untagged-word",
+      "path": "untagged-word.pdf",
+      "class": "digital-untagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "untagged-acceptance",
+        "ruled-table",
+        "multi-page-table",
+        "repeated-header",
+        "merged-cells",
+        "shaded-cells",
+        "borderless-table",
+        "text-box",
+        "page-footer",
+        "list"
+      ],
+      "producer": {
+        "family": "word",
+        "product": "Microsoft Word for Mac",
+        "version": "16.113.4",
+        "platform": "macOS arm64",
+        "options": "Save As PDF (AppleScript); no online service"
+      },
+      "authoringSource": "untagged-source.docx",
+      "sha256": "7024367b0f3aa0537b536d4906142e74c7ed4fcb982ad913ac6c8b98c985680e",
+      "bytes": 34875,
+      "pages": 2,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "title",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Supplier Handbook"
+          },
+          {
+            "id": "intro",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "This handbook lists neutral supplier records for import acceptance."
+          },
+          {
+            "id": "inventory-heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Inventory"
+          },
+          {
+            "id": "inventory-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item | Quantity | Remarks"
+          },
+          {
+            "id": "inventory-1",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 1 | 3 | Remark 1, checked."
+          },
+          {
+            "id": "inventory-2",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 2 | 6 | Remark 2, checked."
+          },
+          {
+            "id": "inventory-3",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 3 | 9 | Remark 3, checked."
+          },
+          {
+            "id": "inventory-4",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 4 | 12 | Remark 4, checked."
+          },
+          {
+            "id": "inventory-5",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 5 | 15 | Remark 5, checked."
+          },
+          {
+            "id": "inventory-6",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 6 | 18 | Remark 6, checked."
+          },
+          {
+            "id": "inventory-7",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 7 | 21 | Remark 7, checked."
+          },
+          {
+            "id": "inventory-8",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 8 | 24 | Remark 8, checked."
+          },
+          {
+            "id": "inventory-9",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 9 |  | Remark 9, checked."
+          },
+          {
+            "id": "inventory-10",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 10 | 30 | Remark 10, checked."
+          },
+          {
+            "id": "inventory-11",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 11 | 33 | Remark 11, checked."
+          },
+          {
+            "id": "inventory-12",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 12 | 36 | Remark 12, checked."
+          },
+          {
+            "id": "inventory-13",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 13 | 39 | Remark 13, checked."
+          },
+          {
+            "id": "inventory-14",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 14 | 42 | Remark 14, checked."
+          },
+          {
+            "id": "inventory-15",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 15 | 45 | Remark 15, checked."
+          },
+          {
+            "id": "inventory-16",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 16 | 48 | Remark 16, checked."
+          },
+          {
+            "id": "inventory-17",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 17 | 51 | Remark 17, checked."
+          },
+          {
+            "id": "inventory-18",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 18 | 54 | Remark 18, checked."
+          },
+          {
+            "id": "inventory-19",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 19 | 57 | Remark 19, checked."
+          },
+          {
+            "id": "inventory-20",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 20 | 60 | Remark 20, checked."
+          },
+          {
+            "id": "inventory-21",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 21 | 63 | Remark 21, checked."
+          },
+          {
+            "id": "inventory-22",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 22 | 66 | Remark 22, checked."
+          },
+          {
+            "id": "inventory-23",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 23 | 69 | Remark 23, checked."
+          },
+          {
+            "id": "inventory-24",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 24 | 72 | Remark 24, checked."
+          },
+          {
+            "id": "inventory-25",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 25 | 75 | Remark 25, checked."
+          },
+          {
+            "id": "inventory-26",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 26 | 78 | Remark 26, checked."
+          },
+          {
+            "id": "inventory-27",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 27 | 81 | Remark 27, checked."
+          },
+          {
+            "id": "inventory-28",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 28 | 84 | Remark 28, checked."
+          },
+          {
+            "id": "inventory-29",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 29 | 87 | Remark 29, checked."
+          },
+          {
+            "id": "inventory-30",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 30 | 90 | Remark 30, checked."
+          },
+          {
+            "id": "inventory-31",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 31 | 93 | Remark 31, checked."
+          },
+          {
+            "id": "inventory-32",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 32 | 96 | Remark 32, checked."
+          },
+          {
+            "id": "inventory-33",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 33 | 99 | Remark 33, checked."
+          },
+          {
+            "id": "inventory-34",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 34 | 102 | Remark 34, checked."
+          },
+          {
+            "id": "inventory-35",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 35 | 105 | Remark 35, checked."
+          },
+          {
+            "id": "inventory-36",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 36 | 108 | Remark 36, checked."
+          },
+          {
+            "id": "inventory-37",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 37 | 111 | Remark 37, checked."
+          },
+          {
+            "id": "inventory-38",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 38 | 114 | Remark 38, checked."
+          },
+          {
+            "id": "inventory-39",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 39 | 117 | Remark 39, checked."
+          },
+          {
+            "id": "inventory-40",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 40 | 120 | Remark 40, checked."
+          },
+          {
+            "id": "inventory-41",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 41 | 123 | Remark 41, checked."
+          },
+          {
+            "id": "inventory-42",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 42 | 126 | Remark 42, checked."
+          },
+          {
+            "id": "inventory-43",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 43 | 129 | Remark 43, checked."
+          },
+          {
+            "id": "inventory-44",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 44 | 132 | Remark 44, checked."
+          },
+          {
+            "id": "inventory-45",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 45 | 135 | Remark 45, checked."
+          },
+          {
+            "id": "after-inventory",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "The inventory ends here."
+          },
+          {
+            "id": "note",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "Note: this shaded box holds a neutral reminder."
+          },
+          {
+            "id": "pricing-heading",
+            "pageIndex": 1,
+            "type": "heading",
+            "text": "Pricing"
+          },
+          {
+            "id": "pricing-header-1",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Product | Quarters"
+          },
+          {
+            "id": "pricing-header-2",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Q1 | Q2"
+          },
+          {
+            "id": "pricing-1",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Alpha | 10 | 12"
+          },
+          {
+            "id": "pricing-2",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Beta | 7 | 9"
+          },
+          {
+            "id": "pricing-3",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Gamma | 4 | 5"
+          },
+          {
+            "id": "contacts-heading",
+            "pageIndex": 1,
+            "type": "heading",
+            "text": "Contacts"
+          },
+          {
+            "id": "contacts-0",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Role | Team | Hours"
+          },
+          {
+            "id": "contacts-1",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Buyer | North | 8-16"
+          },
+          {
+            "id": "contacts-2",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Planner | South | 9-17"
+          },
+          {
+            "id": "contacts-3",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Auditor | East | 7-15"
+          },
+          {
+            "id": "list-1",
+            "pageIndex": 1,
+            "type": "list-paragraph",
+            "text": "Check every record."
+          },
+          {
+            "id": "list-2",
+            "pageIndex": 1,
+            "type": "list-paragraph",
+            "text": "Confirm the quantity."
+          },
+          {
+            "id": "list-3",
+            "pageIndex": 1,
+            "type": "list-paragraph",
+            "text": "Archive the handbook."
+          },
+          {
+            "id": "end",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "End of handbook."
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-untagged"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/table-continuation-joined"
+        ],
+        "tableSpans": [
+          {
+            "pageIndex": 1,
+            "tableIndex": 0,
+            "rowIndex": 0,
+            "columnIndex": 0,
+            "rowspan": 2,
+            "colspan": 1
+          },
+          {
+            "pageIndex": 1,
+            "tableIndex": 0,
+            "rowIndex": 0,
+            "columnIndex": 1,
+            "rowspan": 1,
+            "colspan": 2
+          }
+        ],
+        "tables": [
+          {
+            "rows": 46,
+            "columns": 3,
+            "headerRows": 1,
+            "blankCells": [
+              [
+                9,
+                1
+              ]
+            ]
+          },
+          {
+            "rows": 5,
+            "columns": 3,
+            "headerRows": 2,
+            "blankCells": []
+          },
+          {
+            "rows": 4,
+            "columns": 3,
+            "headerRows": 1,
+            "blankCells": []
+          }
+        ],
+        "figures": {
+          "nativeRaster": 0,
           "renderedRegion": 0
         }
       }

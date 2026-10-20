@@ -37,7 +37,7 @@ and cross-host PDFium parity all change together.
 | PIQ-13 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
 | PIQ-14 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
 | PIQ-15 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
-| PIQ-16 | FROZEN | moved to the local-VLM proposal lane (Section 14a) |
+| PIQ-16 | DONE | reopened deterministically (Section 14b); `EVIDENCE.md#piq-16-untagged-geometry` |
 | PIQ-17 | DONE | `EVIDENCE.md#piq-17` |
 | PIQ-18 | DONE (neutral, live) | `EVIDENCE.md#piq-18`; private republication not repeated |
 
@@ -1465,8 +1465,28 @@ Consequences for the open packages:
 | PIQ-13 | kept: empty cells, including producer-omitted cells placed by `/Headers` |
 | PIQ-14 | kept: punctuation line boundaries inside cells remain unresolved today |
 | PIQ-15 | simplified: logical table identity and repeated `THead` evidence come from the tree |
-| PIQ-16 | frozen: geometric grid recovery moves to the VLM proposal lane |
+| PIQ-16 | reopened (Section 14b): deterministic geometric recovery, no learned model |
 | PIQ-17, PIQ-18 | kept |
+
+## 14b. Correction: untagged tables without learned models (2026-10-20)
+
+Freezing PIQ-16 in favour of a VLM lane was wrong. Body-free measurement of
+the motivating untagged documents (all Word for Mac exports) showed that their
+losses are deterministic classes: borders drawn as thin filled rectangles,
+tables ruled by rows only, shading and highlights behind text treated as
+figures, footer graphics rendered on every page, ambiguous same-line run
+changes and labels or page numbers read as a second column. Published results
+agree: heuristic recovery is reliable for ruled grids and clearly aligned
+borderless tables (ICDAR 2013 born-digital), while learned models win on
+borderless tables with complex headers, unruled multi-line cells and
+detection on mixed layouts.
+
+PIQ-16 is therefore implemented deterministically in `geometry-tables.ts`
+(local ruling components, merges from missing separators, row-ruled tables
+with alignment columns, conservative borderless tables, continuation across
+pages, decoration paths). A small learned table-structure model (Table
+Transformer, local and opt-in) is a later, separate complement for the
+remaining classes.
 
 ## 15. Open implementation work packages and proof gates
 
@@ -1999,7 +2019,7 @@ sanitized failure reason. Do not paste raw live receipts into GitHub.
   boundaries.
 - [ ] PIQ-15 produces one native continued table when identity is proven and
   two native tables when it is not.
-- [ ] PIQ-16 detects local geometric grids independently of page decorations
+- [x] PIQ-16 detects local geometric grids independently of page decorations
   and global reading order.
 - [x] PIQ-17 limits unresolved table loss to the smallest safe region.
 - [ ] PIQ-18 proves exact neutral source fidelity, DOCSY publication/readback,
