@@ -1,19 +1,16 @@
 # PDF-00 neutral fixture corpus
 
-Every PDF in this directory is generated from `generate.py`, contains only
-synthetic AtlCLI test content, and is licensed under the repository's
-Apache-2.0 license. `truth.json` records the expected semantic facts, split
-boundaries, byte sizes, and SHA-256 digests.
+Every PDF in this directory is a frozen, synthetic AtlCLI test input licensed
+under the repository's Apache-2.0 license. `truth.json` records the expected
+semantic facts, split boundaries, byte sizes, and SHA-256 digests; tests read
+only the committed bytes.
 
-Regenerate in an isolated Python environment with the exact probe-only pins:
-
-```bash
-python3 -m venv .tmp/import-pdf-fixtures-venv
-.tmp/import-pdf-fixtures-venv/bin/pip install \
-  -r specs/import-pdf-mvp/fixtures/requirements.txt
-.tmp/import-pdf-fixtures-venv/bin/python \
-  specs/import-pdf-mvp/fixtures/generate.py
-```
+The corpus was generated with ReportLab, Pillow, and pypdf. That Python
+generator was removed on 2026-10-20 because nothing regenerates the corpus;
+its last version is `git show b0bc2218:specs/import-pdf-mvp/fixtures/generate.py`.
+New or changed fixtures follow the TypeScript pattern of
+`specs/pdf-import-quality/fixtures/generate-core.ts` and must update
+`truth.json` in the same change.
 
 The encrypted negative fixture uses the public test password
 `neutral-fixture`. It exists only to prove fail-closed classification and must
