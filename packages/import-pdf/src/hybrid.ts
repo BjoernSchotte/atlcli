@@ -285,9 +285,15 @@ export async function normalizeHybridPdfFactsV2(
       && entry.outcome !== "reported"
       && entry.outcome !== "rejected"
     ).map((entry) => entry.characterIndex));
+    // An unresolved cell of a linearized table is already in its row text and
+    // inside the table's rendered region; geometry must not project it again.
+    const tableCovered = new Set(evidence.filter((entry) =>
+      entry.locator.pageIndex === page.index
+      && entry.decisionCode === "pdf/table-tagged-boundary-unresolved"
+    ).flatMap((entry) => entry.locator.characterIndexes ?? []));
     const visible = page.characters.filter((character) => isVisibleCharacter(character.value));
     const residualIndexes = new Set(visible
-      .filter((character) => !taggedOwned.has(character.index))
+      .filter((character) => !taggedOwned.has(character.index) && !tableCovered.has(character.index))
       .map((character) => character.index));
     const projectedNodeIds = tagged.pageOutcomes.find((outcome) => outcome.pageIndex === page.index)
       ?.projectedNodeIds ?? [];

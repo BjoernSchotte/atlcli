@@ -339,7 +339,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
-export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/2";
+export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/3";
 
 // export: PDF_HYBRID_POLICY_V2
 export declare const PDF_HYBRID_POLICY_V2: Readonly<{
@@ -2050,7 +2050,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
-export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/2";
+export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/3";
 
 // export: PDF_HYBRID_POLICY_V2
 export declare const PDF_HYBRID_POLICY_V2: Readonly<{
@@ -3769,7 +3769,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
-export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/2";
+export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/3";
 
 // export: PDF_HYBRID_POLICY_V2
 export declare const PDF_HYBRID_POLICY_V2: Readonly<{
@@ -5489,7 +5489,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
-export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/2";
+export declare const PDF_HYBRID_POLICY_REVISION_V2: "atlcli.pdf-hybrid-policy/3";
 
 // export: PDF_HYBRID_POLICY_V2
 export declare const PDF_HYBRID_POLICY_V2: Readonly<{

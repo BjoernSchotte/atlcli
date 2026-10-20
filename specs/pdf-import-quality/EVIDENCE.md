@@ -31,8 +31,39 @@ from the earlier PASS rows until those tasks pass.
 | PIQ-14 | PASS | 2026-10-20 |
 | PIQ-15 | PASS | 2026-10-20 |
 | PIQ-16 | FROZEN | 2026-10-20 |
-| PIQ-17 | OPEN | 2026-08-27 |
+| PIQ-17 | PASS | 2026-10-20 |
 | PIQ-18 | OPEN | 2026-08-27 |
+
+## PIQ-17
+
+Result: **PASS**. A rejected tagged table is one atomic region: its cell text
+stays linearized once and its rendered crop covers the whole table, including
+cells whose text boundary is unresolved. Geometry no longer re-projects those
+cells as residue, so they no longer escalate to a page fallback through the
+`overlapping-tagged-owner` rule. Hybrid policy V2 `/3`.
+
+The same fixture exposed a duplicated figure: browsers tag `<figure>` as a
+Figure around the image's own Figure and the caption, and both claimed the
+image. V2 now projects only the outermost Figure and takes the alternative
+text from the nested one when the outer has none. V1 is unchanged.
+
+Neutral result, `struct-tree/browser-hard-table` (nested table negative,
+review with `--split off`):
+
+| Metric | Before | After |
+|---|---|---|
+| Page fallbacks | 1 (`overlapping-tagged-owner`) | 0 |
+| Table region crops | 2 | 2 (one per page part) |
+| Native raster figures | 2 media items for one image | 1, with author alt text |
+| `figure-alt-missing` | 1 | 0 |
+| Block order | heading, paragraph, image, image, … | heading, paragraph, image, caption and body, table crop and rows per page |
+
+The figure (y 0.14 to 0.20) lies outside the page-0 table crop (from y 0.27).
+Escalation stays explicit for residue that cannot be localized:
+`dispersed-residual-regions`, `oversized-residual-region`,
+`overlapping-tagged-owner` and `missing-geometry` (`hybrid.test.ts`). Two
+disjoint rejected tables produce two crops (`figures.test.ts`); solved
+fixtures produce none.
 
 ## Live E2E, benchmark and scaling rerun (2026-10-20)
 

@@ -87,6 +87,11 @@ describe("tagged lane on the full-document structure tree", () => {
       code: "pdf-import/table-tagged-linearized",
       context: expect.objectContaining({ reason: "cell-evidence" }),
     }));
+    // PIQ-17: the unresolved nested cell stays in the linearized row text once
+    // and is covered by the table's rendered region, not by a page fallback.
+    expect(semantics.pageOutcomes.map((page) => page.fallbackScope)).toEqual(["none", "none"]);
+    const texts = JSON.stringify(semantics.document.blocks).match(/[^"]*Inner[^"]*/gu);
+    expect(texts).toHaveLength(1);
     // The table spans pages; the failed join is reported, not silent.
     expect(semantics.document.issues).toContainEqual(expect.objectContaining({
       code: "pdf-import/table-continuation-unjoined",

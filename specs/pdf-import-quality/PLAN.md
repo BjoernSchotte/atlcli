@@ -38,7 +38,7 @@ and cross-host PDFium parity all change together.
 | PIQ-14 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
 | PIQ-15 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
 | PIQ-16 | FROZEN | moved to the local-VLM proposal lane (Section 14a) |
-| PIQ-17 | OPEN | contain unresolved fallbacks to affected regions |
+| PIQ-17 | DONE | `EVIDENCE.md#piq-17` |
 | PIQ-18 | OPEN | prove the complete neutral and private-live acceptance scenario |
 
 > **Executor instructions:** Read this plan completely before changing code.
@@ -1840,18 +1840,18 @@ unlocalizable, overlapping, or dispersed residual content.
 
 **Repository proof.**
 
-- [ ] A page with editable body text plus one rejected table produces one
+- [x] A page with editable body text plus one rejected table produces one
   region fallback and no page fallback.
-- [ ] Body text before and after the rejected table remains native and ordered.
-- [ ] A native raster figure remains exactly one media item and is excluded
+- [x] Body text before and after the rejected table remains native and ordered.
+- [x] A native raster figure remains exactly one media item and is excluded
   from the table fallback crop.
-- [ ] Two disjoint rejected table regions produce two region fallbacks without
+- [x] Two disjoint rejected table regions produce two region fallbacks without
   a full-page image.
-- [ ] An unlocalizable or materially overlapping residual escalates to one page
+- [x] An unlocalizable or materially overlapping residual escalates to one page
   fallback with the exact reason.
-- [ ] A fully solved tagged or geometry fixture produces zero fallback scopes
+- [x] A fully solved tagged or geometry fixture produces zero fallback scopes
   and zero fallback attachments.
-- [ ] `bun run test packages/import-pdf/src/hybrid.test.ts
+- [x] `bun run test packages/import-pdf/src/hybrid.test.ts
   packages/import-pdf/src/fallback-policy.test.ts
   packages/import-pdf/src/visual-fallbacks.test.ts
   packages/import-pdf/src/fallback-presentation.test.ts` passes.
@@ -2001,7 +2001,7 @@ sanitized failure reason. Do not paste raw live receipts into GitHub.
   two native tables when it is not.
 - [ ] PIQ-16 detects local geometric grids independently of page decorations
   and global reading order.
-- [ ] PIQ-17 limits unresolved table loss to the smallest safe region.
+- [x] PIQ-17 limits unresolved table loss to the smallest safe region.
 - [ ] PIQ-18 proves exact neutral source fidelity, DOCSY publication/readback,
   cleanup, current-Bun execution, and private local acceptance without
   committing private material.

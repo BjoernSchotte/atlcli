@@ -19,6 +19,7 @@ import {
   type PdfNormalizedRect,
   type PdfPageFactsV1,
   type PdfPageFactsV2,
+  type PdfStructureNodeFactV2,
   type PdfStructureNodeFact,
 } from "./contracts.js";
 import { digestPdfCanonical, digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
@@ -181,9 +182,17 @@ function taggedCandidates(page: PdfPageFactsV1): VisualCandidate[] {
 
 function taggedCandidatesV2(page: PdfPageFactsV2): VisualCandidate[] {
   const candidates: VisualCandidate[] = [];
-  const figures = flattenStructureV2(page.structures)
-    .filter((node) => structureRoleV2(node) === "Figure");
-  for (const figure of figures) {
+  const isFigure = (node: PdfStructureNodeFactV2) => structureRoleV2(node) === "Figure";
+  const all = flattenStructureV2(page.structures).filter(isFigure);
+  // Browsers tag <figure> as a Figure around the image's own Figure and the
+  // caption. The outermost Figure is the one visual; nested ones are parts.
+  const nested = new Set(all.flatMap((figure) =>
+    flattenStructureV2(structureChildrenV2(figure)).filter(isFigure).map((node) => node.id)
+  ));
+  for (const figure of all.filter((node) => !nested.has(node.id))) {
+    const alt = figure.alt.trim()
+      || flattenStructureV2(structureChildrenV2(figure)).find((node) => isFigure(node) && node.alt.trim())?.alt.trim()
+      || "";
     const ownMcids = new Set(orderedDescendantMcidsV2(figure));
     const images = page.images.filter((image) => image.mcid !== null && ownMcids.has(image.mcid));
     const paths = page.paths.filter((path) => path.mcid !== null && ownMcids.has(path.mcid));
@@ -215,7 +224,7 @@ function taggedCandidatesV2(page: PdfPageFactsV2): VisualCandidate[] {
             dpi: PDF_FIGURE_POLICY_V1.renderDpi,
           },
       mode: direct ? "native-raster" : "rendered-region",
-      ...(figure.alt.trim() ? { alt: figure.alt.trim() } : {}),
+      ...(alt ? { alt } : {}),
       ...(captionBlockId && captionText ? {
         captionBlockId,
         captionBlock: {
@@ -424,7 +433,7 @@ function tableFallbackCandidates(base: PdfFigureBaseSemantics): VisualCandidate[
     const targetIds = new Set(tableBlocks.flatMap((block) => [block.id, ...(block.sourceRefs ?? [])]));
     const evidence = base.evidence.filter((item) =>
       item.locator.pageIndex === pageIndex
-      && item.outcome === "approximated"
+      && (item.outcome === "approximated" || item.decisionCode === "pdf/table-tagged-boundary-unresolved")
       && (
         item.sourceId === sourceId
         || targetIds.has(item.sourceId)

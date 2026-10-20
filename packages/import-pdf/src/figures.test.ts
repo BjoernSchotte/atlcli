@@ -298,6 +298,43 @@ describe("PDF figure and rendered fallback preservation", () => {
     )).toHaveLength(2);
   });
 
+  it("projects a browser figure (Figure around the image's Figure and a Caption) as one media item", async () => {
+    // Regression: both Figure elements claimed the same image and produced two media items.
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = new Uint8Array(await readFile(resolve(qualityFixtureRoot, "struct-tree/browser-hard-table.pdf")));
+    const analyzed = await adapter.analyze(bytes);
+    const base = await normalizeTaggedPdfFactsV2(analyzed.facts, analyzed.factsDigest);
+    const result = await preservePdfFiguresV2(analyzed.facts, analyzed.factsDigest, bytes, adapter, base);
+    const native = result.figures.filter((figure) => figure.mode === "native-raster");
+    expect(native).toHaveLength(1);
+    expect(native[0]!.authorAlt).toBe(true);
+    expect(result.document.issues.some((issue) => issue.code === "pdf-import/figure-alt-missing")).toBe(false);
+    expect(result.document.blocks.filter((block) => block.type === "image")).toHaveLength(3);
+    // The table region crops do not cover the figure.
+    const figureBox = native[0]!.bbox;
+    for (const crop of result.figures.filter((figure) => figure.mode === "table-region-fallback" && figure.pageIndex === 0)) {
+      expect(crop.bbox.y >= figureBox.y + figureBox.height || crop.bbox.y + crop.bbox.height <= figureBox.y).toBe(true);
+    }
+  });
+
+  it("includes an unresolved cell of a linearized tagged table in the table region crop", async () => {
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const bytes = new Uint8Array(await readFile(resolve(qualityFixtureRoot, "struct-tree/browser-hard-table.pdf")));
+    const analyzed = await adapter.analyze(bytes);
+    const base = await normalizeTaggedPdfFactsV2(analyzed.facts, analyzed.factsDigest);
+    const unresolved = base.evidence.find((item) => item.decisionCode === "pdf/table-tagged-boundary-unresolved");
+    expect(unresolved?.locator.bbox).toBeDefined();
+    // Place the unresolved cell at the table's edge, outside every resolved cell.
+    unresolved!.locator.bbox = { x: 0.05, y: 0.9, width: 0.2, height: 0.03 };
+    const result = await preservePdfFiguresV2(analyzed.facts, analyzed.factsDigest, bytes, adapter, base);
+    const crop = result.figures.find((figure) =>
+      figure.mode === "table-region-fallback" && figure.pageIndex === unresolved!.locator.pageIndex
+    )!.bbox;
+    const cell = unresolved!.locator.bbox!;
+    expect(crop.x <= cell.x && crop.y <= cell.y).toBe(true);
+    expect(crop.x + crop.width >= cell.x + cell.width && crop.y + crop.height >= cell.y + cell.height).toBe(true);
+  });
+
   it("keeps a paragraph above a rendered region ahead of that image", async () => {
     const adapter = await createNodePdfiumFactsAdapter();
     const bytes = await fixture("heading-rich-100.pdf");
