@@ -33,10 +33,10 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--space` | Space key |
-| `--cql` | CQL query to filter pages |
+| `--space` | Space key (defaults to the profile's space) |
+| `--cql` | CQL query to filter pages; takes precedence over `--space` |
 | `--label` | Filter by label |
-| `--limit` | Maximum results |
+| `--limit` | Maximum results (default: 25) |
 
 ## Get Page
 
