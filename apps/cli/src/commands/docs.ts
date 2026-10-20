@@ -537,6 +537,34 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
   );
 }
 
+/**
+ * Folders whose descendants `docs pull` may walk to find nested (empty) folders.
+ *
+ * Folders found as ancestors of pulled pages are only walked when they lie
+ * inside the scope: always for a space pull, from the root down for a tree pull,
+ * never for a single-page pull (its ancestor folders are just the path to it).
+ * Folders found as children of pulled pages are inside the scope by
+ * construction.
+ */
+export function foldersToTraverse(
+  scope: SyncScope,
+  pages: ReadonlyArray<{ id: string; ancestors: ReadonlyArray<{ id: string }> }>,
+  folders: ConfluenceFolder[]
+): ConfluenceFolder[] {
+  if (scope.type === "space") return [...folders];
+  if (scope.type === "page") return [];
+
+  const ancestorFolderIds = new Set<string>();
+  const inTreeIds = new Set<string>();
+  for (const page of pages) {
+    const ids = page.ancestors.map((a) => a.id);
+    ids.forEach((id) => ancestorFolderIds.add(id));
+    const rootIndex = ids.indexOf(scope.ancestorId);
+    if (rootIndex >= 0) ids.slice(rootIndex).forEach((id) => inTreeIds.add(id));
+  }
+  return folders.filter((f) => !ancestorFolderIds.has(f.id) || inTreeIds.has(f.id));
+}
+
 async function handlePull(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   // Target directory precedence: positional > --dir > --out (legacy alias) > cwd.
   // `--dir` is the spelling the help preamble promises for every subcommand;
@@ -760,7 +788,13 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const folderIdSet = new Set(folders.map((f) => f.id));
   const EMPTY_FOLDER_SCAN_THRESHOLD = 100;
 
-  if (deploymentType === "cloud" && pageDetails.length < EMPTY_FOLDER_SCAN_THRESHOLD) {
+  // A single-page pull only materializes the page and its ancestor path, so it
+  // never looks for (empty) folders below the page.
+  if (
+    deploymentType === "cloud" &&
+    scope.type !== "page" &&
+    pageDetails.length < EMPTY_FOLDER_SCAN_THRESHOLD
+  ) {
     for (const page of pageDetails) {
       try {
         const children = await client.getPageDirectChildren(page.id);
@@ -783,8 +817,10 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   }
 
   // Also check for nested folders (folder inside folder)
-  // Recursively check folder children until no new folders found
-  let foldersToCheck = [...folders];
+  // Recursively check folder children until no new folders found. Only folders
+  // inside the pull scope are walked: walking an ancestor folder of a --page-id
+  // or --ancestor pull would materialize the whole space's folder tree.
+  let foldersToCheck = foldersToTraverse(scope, pageDetails, folders);
   while (foldersToCheck.length > 0) {
     const newFolders: ConfluenceFolder[] = [];
     for (const folder of foldersToCheck) {
