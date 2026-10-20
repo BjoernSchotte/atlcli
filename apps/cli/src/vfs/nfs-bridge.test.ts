@@ -1364,8 +1364,8 @@ with socket.socket() as client:
         finally { await moved.close(); }
       }
       if (glow) {
-        const probe = await promisify(execFile)("python3", [
-          resolve(import.meta.dir, "../../../../scripts/bench/glow-probe.py"),
+        const probe = await promisify(execFile)(process.execPath, [
+          resolve(import.meta.dir, "../../../../scripts/bench/glow-probe.ts"),
           process.env.ATLCLI_NFS_GLOW!, join(mountpoint, "child-0-400"), "Test",
         ], { timeout: 20_000 });
         const timing = JSON.parse(probe.stdout);
