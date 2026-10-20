@@ -507,12 +507,19 @@ fn parse_args(args: &[String]) -> Result<HelperArgs, String> {
         Some(port) => port.parse().map_err(|_| format!("invalid port: {port}"))?,
         None => 0,
     };
-    let mut parsed = HelperArgs { port, writable: false, deadlines: Deadlines::PRODUCTION };
+    let mut parsed = HelperArgs {
+        port,
+        writable: false,
+        deadlines: Deadlines::PRODUCTION,
+    };
     for arg in args.iter().skip(1) {
         if arg == "--staged-rw" {
             parsed.writable = true;
         } else if let Some(values) = arg.strip_prefix("--deadlines-ms=") {
-            let ms: Vec<u64> = values.split(',').map(str::parse).collect::<Result<_, _>>()
+            let ms: Vec<u64> = values
+                .split(',')
+                .map(str::parse)
+                .collect::<Result<_, _>>()
                 .map_err(|_| format!("invalid deadlines: {values}"))?;
             let [read, dispatch, write] = ms[..] else {
                 return Err(format!("expected 3 deadlines: {values}"));
@@ -542,8 +549,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         return Ok(());
     }
-    let HelperArgs { port, writable, deadlines } =
-        parse_args(&std::env::args().skip(1).collect::<Vec<_>>())?;
+    let HelperArgs {
+        port,
+        writable,
+        deadlines,
+    } = parse_args(&std::env::args().skip(1).collect::<Vec<_>>())?;
     let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
     let mut session = [0; 16];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut session)?;
@@ -611,13 +621,26 @@ mod tests {
 
     #[test]
     fn production_deadlines_are_60_120_30_seconds() {
-        assert_eq!(Deadlines::PRODUCTION, Deadlines {
-            read: Duration::from_secs(60),
-            dispatch: Duration::from_secs(120),
-            write: Duration::from_secs(30),
-        });
-        assert_eq!(args(&["0", "--staged-rw"]).unwrap().deadlines, Deadlines::PRODUCTION);
-        assert_eq!(args(&[]).unwrap(), HelperArgs { port: 0, writable: false, deadlines: Deadlines::PRODUCTION });
+        assert_eq!(
+            Deadlines::PRODUCTION,
+            Deadlines {
+                read: Duration::from_secs(60),
+                dispatch: Duration::from_secs(120),
+                write: Duration::from_secs(30),
+            }
+        );
+        assert_eq!(
+            args(&["0", "--staged-rw"]).unwrap().deadlines,
+            Deadlines::PRODUCTION
+        );
+        assert_eq!(
+            args(&[]).unwrap(),
+            HelperArgs {
+                port: 0,
+                writable: false,
+                deadlines: Deadlines::PRODUCTION
+            }
+        );
     }
 
     #[test]
