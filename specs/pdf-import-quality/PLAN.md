@@ -329,7 +329,8 @@ continues to verify target transport semantics.
 
 ### 4.1 Temporary multi-engine spike decision
 
-A non-production spike under `scripts/experiments/pdf-oracle/` validates the
+A non-production spike (removed after the full-document tree spike; see git
+history before 2026-10-20 under `scripts/experiments/pdf-oracle/`) validated the
 data flow needed by PIQ-11 through PIQ-17 without Docling, PaddleOCR, OCR, or a
 language model. It keeps the existing PDFium review as the baseline and runs
 four independent diagnostic projections:

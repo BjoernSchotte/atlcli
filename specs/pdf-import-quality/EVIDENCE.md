@@ -104,6 +104,9 @@ bun run test scripts/api-report.test.ts   5 pass
 ## Temporary multi-engine oracle spike
 
 Result: **diagnostic architecture GO; production integration NOT proven**.
+The spike code (PDFBox, pdfplumber, PDF.js and Poppler drivers) was removed on
+2026-10-20 after the full-document structure tree replaced its role; it remains
+in git history.
 This checkpoint does not complete PIQ-11 through PIQ-18 and does not change
 the production importer or Confluence publication path.
 
