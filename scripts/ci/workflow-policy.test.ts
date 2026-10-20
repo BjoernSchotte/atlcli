@@ -1008,6 +1008,22 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain("continue-on-error: ${{ inputs.leg == 'latest' }}");
   });
 
+  it("runs the consumer smoke on exactly the declared Node engines floor", async () => {
+    // A stale floor (Node 20 while @tanstack/charts' peer set needed Node 22)
+    // kept every PR's required gate red. CI must test the floor packages promise.
+    const reusable = await workflow("reusable-consumer-smoke.yml");
+    const floors = new Set<string>();
+    for (const dir of ["packages", "apps"]) {
+      for (const name of await readdir(join(REPO_ROOT, dir))) {
+        const manifest = await readFile(join(REPO_ROOT, dir, name, "package.json"), "utf8").catch(() => null);
+        const node = manifest && (JSON.parse(manifest) as { engines?: { node?: string } }).engines?.node;
+        if (node) floors.add(node);
+      }
+    }
+    expect([...floors]).toEqual([">=22.12.0"]);
+    expect(reusable).toMatch(/node-version: "22\.12\.0"/);
+  });
+
   it("does not let a non-blocking benchmark mask M1 acceptance", async () => {
     const bench = await workflow("bench.yml");
     const benchmark = bench.slice(bench.indexOf("  benchmark:"), bench.indexOf("  m1-acceptance:"));

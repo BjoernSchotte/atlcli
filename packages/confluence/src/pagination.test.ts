@@ -94,6 +94,25 @@ describe("drainPaginated", () => {
     }
   });
 
+  test("maxItems caps the total and stops fetching (page list --limit drained the whole site)", async () => {
+    const fetcher = fixtureFetcher<number>([
+      { items: [1, 2], next: "cursor-2" },
+      { items: [3, 4], next: "cursor-3" },
+      { items: [5], next: undefined },
+    ]);
+    expect(await drainPaginated(fetcher.fetch, { maxItems: 3 })).toEqual([1, 2, 3]);
+    expect(fetcher.calls).toBe(2);
+  });
+
+  test("maxItems still follows short pages with a live next token", async () => {
+    const fetcher = fixtureFetcher<number>([
+      { items: [], next: "cursor-2" },
+      { items: [1], next: undefined },
+    ]);
+    expect(await drainPaginated(fetcher.fetch, { maxItems: 5 })).toEqual([1]);
+    expect(fetcher.calls).toBe(2);
+  });
+
   test("single final page (no next) fetches exactly once", async () => {
     const fetcher = fixtureFetcher<number>([{ items: [1, 2], next: undefined }]);
     expect(await drainPaginated(fetcher.fetch)).toEqual([1, 2]);

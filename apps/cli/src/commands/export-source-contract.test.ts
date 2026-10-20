@@ -113,7 +113,7 @@ describe("engine parity checklist — shared block model (spec 008 T3.5)", () =>
  */
 function cliFailureMessage(
   args: string[],
-  result: { exitCode: number; signalCode?: string | null; stdout: string; stderr: string }
+  result: { exitCode: number; signalCode?: string | number | null; stdout: string; stderr: string }
 ): string {
   const signal = result.signalCode ? ` signal=${result.signalCode}` : "";
   return (

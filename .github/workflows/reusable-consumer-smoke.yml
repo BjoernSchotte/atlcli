@@ -46,10 +46,12 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Setup Node.js (LTS floor)
+      # Exact engines floor of every Node-compatible package (">=22.12.0").
+      # Node 20 is EOL and npm cannot install @tanstack/charts' peer set there.
+      - name: Setup Node.js (engines floor)
         uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22.12.0"
 
       - name: Install pnpm
         run: npm install -g pnpm@9
