@@ -45,16 +45,11 @@ binary, and extracted evidence for prohibited private terms.
 
 ## Prepare a neutral desktop producer source
 
-Desktop export is an explicit review operation and is not part of CI. Create a
-temporary environment with the exact pins in `producer-requirements.txt`, then
-prepare the DOCX outside the repository:
+Desktop export is an explicit review operation and is not part of CI. Prepare
+the neutral DOCX outside the repository (no extra dependencies; Bun only):
 
 ```bash
-python3 -m venv .tmp/pdf-import-quality-producer-venv
-.tmp/pdf-import-quality-producer-venv/bin/pip install \
-  -r specs/pdf-import-quality/fixtures/producer-requirements.txt
-.tmp/pdf-import-quality-producer-venv/bin/python \
-  specs/pdf-import-quality/fixtures/producer-tools.py producer-source \
+bun specs/pdf-import-quality/fixtures/producer-tools.ts producer-source \
   --output .tmp/pdf-import-quality-producer.docx
 ```
 
@@ -63,15 +58,16 @@ Export that neutral DOCX with Word and LibreOffice. Export
 the corpus:
 
 ```bash
-.tmp/pdf-import-quality-producer-venv/bin/python \
-  specs/pdf-import-quality/fixtures/producer-tools.py sanitize-export \
+bun specs/pdf-import-quality/fixtures/producer-tools.ts sanitize-export \
   --input .tmp/raw.pdf \
   --output specs/pdf-import-quality/fixtures/producer-example.pdf \
   --producer "Neutral producer and exact version"
 ```
 
-Sanitization replaces document metadata, removes timestamps and XMP metadata,
-and prunes unreferenced cloned objects. It does not make a private input safe.
+Sanitization rewrites the PDF from its trailer: it keeps object numbers and
+stream bytes, replaces the Info dictionary with neutral values, removes XMP
+metadata and timestamps, and drops every object the document does not
+reference. `producer-tools.test.ts` proves that PDFium facts are unchanged. It does not make a private input safe.
 Never run a private PDF through this tool.
 
 After updating a pinned producer export, update `manifest.json`, render every

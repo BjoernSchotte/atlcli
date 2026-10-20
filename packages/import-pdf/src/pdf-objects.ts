@@ -23,6 +23,8 @@ export interface PdfRef {
 export interface PdfName {
   kind: "name";
   value: string;
+  /** The name's bytes after #-unescaping, for byte-exact rewriting. */
+  raw: Uint8Array;
 }
 export interface PdfString {
   kind: "string";
@@ -61,7 +63,7 @@ const MAX_NESTING = 64;
 
 type Token =
   | { t: "num"; v: number; raw: string }
-  | { t: "name"; v: string }
+  | { t: "name"; v: string; raw: Uint8Array }
   | { t: "str"; v: Uint8Array }
   | { t: "kw"; v: string }
   | { t: "punct"; v: "[" | "]" | "<<" | ">>" }
@@ -108,7 +110,10 @@ class Lexer {
       return { t: "punct", v: ">>" };
     }
     if (c === 0x28) return { t: "str", v: this.literalString() };
-    if (c === 0x2f) return { t: "name", v: this.name() };
+    if (c === 0x2f) {
+      const raw = this.name();
+      return { t: "name", v: utf8OrLatin1(raw), raw };
+    }
     const start = this.pos;
     while (this.pos < b.length && !WHITESPACE.has(b[this.pos]) && !DELIMITERS.has(b[this.pos])) this.pos++;
     if (this.pos === start) {
@@ -121,7 +126,7 @@ class Lexer {
     return { t: "kw", v: raw };
   }
 
-  private name(): string {
+  private name(): Uint8Array {
     const b = this.bytes;
     this.pos++;
     const out: number[] = [];
@@ -135,7 +140,7 @@ class Lexer {
         this.pos++;
       }
     }
-    return utf8OrLatin1(Uint8Array.from(out));
+    return Uint8Array.from(out);
   }
 
   private hexString(): Uint8Array {
@@ -222,7 +227,7 @@ class Parser {
         return tok.v;
       }
       case "name":
-        return { kind: "name", value: tok.v };
+        return { kind: "name", value: tok.v, raw: tok.raw };
       case "str":
         return { kind: "string", bytes: tok.v };
       case "punct":

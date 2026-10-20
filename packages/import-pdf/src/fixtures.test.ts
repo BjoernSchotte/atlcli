@@ -115,10 +115,9 @@ describe("neutral PDF import quality corpus", () => {
       "README.md",
       "generate-core.ts",
       "manifest.json",
-      "producer-requirements.txt",
       "producer-source.html",
       "producer-source.json",
-      "producer-tools.py",
+      "producer-tools.ts",
       "update-manifest.ts",
     ];
     const sourceText = (await Promise.all(
