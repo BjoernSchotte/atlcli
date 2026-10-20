@@ -1,4 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { SqliteAdapter } from "./sqlite-adapter.js";
 import { createPageRecord, createAttachmentRecord } from "./types.js";
 import type {
@@ -33,6 +36,38 @@ describe("SqliteAdapter", () => {
       await adapter.close();
       // Should not throw on double close
       await adapter.close();
+    });
+
+    // Regression: CLI commands open several connections to one sync.db. Without
+    // a busy timeout a write that overlaps another connection's transaction
+    // failed at once with "database is locked" (seen in docs pull on CI).
+    test("waits for another connection's write lock instead of failing", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "sync-db-busy-"));
+      const dbPath = join(dir, "sync.db");
+      const shared = new SqliteAdapter({ dbPath });
+      await shared.init();
+      const holder = Bun.spawn([process.execPath, "-e", `
+        import { Database } from "bun:sqlite";
+        const db = new Database(${JSON.stringify(dbPath)});
+        db.exec("BEGIN IMMEDIATE");
+        console.log("LOCKED");
+        await Bun.sleep(300);
+        db.exec("COMMIT");
+      `], { stdout: "pipe" });
+      try {
+        const reader = holder.stdout.getReader();
+        expect(new TextDecoder().decode((await reader.read()).value)).toContain("LOCKED");
+        reader.releaseLock();
+        await shared.upsertPage(createPageRecord({
+          pageId: "1", path: "a.md", title: "A", spaceKey: "TEST", version: 1,
+          lastSyncedAt: "2026-01-01T00:00:00Z", localHash: "h", remoteHash: "h", baseHash: "h",
+        }));
+        expect((await shared.getPage("1"))?.path).toBe("a.md");
+      } finally {
+        await holder.exited;
+        await shared.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
   });
 
