@@ -193,8 +193,10 @@ Out of scope:
 
 ## Git workflow
 
-- Implement on a dedicated branch, for example
-  `build/typescript-7-migration`, separate from feature work.
+- Two PRs, each on a dedicated branch separate from feature work:
+  1. `build/ts7-prep`: T0 (baseline), T1 and T2, all green on TS 5.9.
+  2. `build/typescript-7-migration`: T3–T6, based on `main` after PR 1 is
+     merged.
 - One logical commit per task where practical, using Conventional Commits,
   for example `build: adopt typescript 7 native compiler side-by-side with ts6 api`.
 - Do not push, open a PR or release without explicit operator authorization.
@@ -360,10 +362,10 @@ Stop and report instead of improvising if:
 3. **TS 7 performance features.** Evaluate `--isolatedDeclarations` and
    project references with `--builders` for the 30 package builds.
 
-## Open questions
+## Resolved planning questions
 
-1. Should the tsrs lane (follow-up 1) be part of this spec's PR, or a
-   separate spec after TS 7 lands? Recommendation: separate.
-2. Should T1/T2 (`bun-types` bump, extension `types`) ship as their own small
-   PR first? They are green on TS 5.9 and lower the TS 7 PR's risk.
-   Recommendation: yes.
+1. The tsrs lane (follow-up 1) gets its own spec after TS 7 lands. It is not
+   part of this migration. (Operator, 2026-10-20.)
+2. T1 and T2 (`bun-types` bump, extension `types`) ship first as their own
+   small PR on TS 5.9. T3–T6 follow in the TypeScript 7 PR.
+   (Operator, 2026-10-20.)
