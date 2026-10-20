@@ -32,6 +32,8 @@ export async function startNfsServer(options: {
   vfs: ConfluenceVfs; spaces: readonly string[]; journal?: NfsJournal;
   journalLocation?: { path: string; scope: string };
   helperPath: string; port?: number; onSweep?: (report: SweepReport) => void;
+  /** Test-only: shorter helper connection deadlines; the helper rejects values above production. */
+  deadlinesMs?: { read: number; dispatch: number; write: number };
 }): Promise<RunningNfsServer> {
   const port = options.port ?? 0;
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Invalid NFS port");
@@ -58,7 +60,10 @@ export async function startNfsServer(options: {
 
   const fs = new NfsFilesystem(options.vfs, options.spaces, new SweepDetector(50, 10_000, options.onSweep), options.journal);
   const publisher = options.journal ? new NfsPublisher(options.journal, options.vfs, options.spaces) : undefined;
-  const child = spawn(options.helperPath, [String(port), ...(options.journal ? ["--staged-rw"] : [])], { stdio: ["pipe", "pipe", "pipe"], env: {} });
+  const deadlines = options.deadlinesMs;
+  const child = spawn(options.helperPath, [String(port), ...(options.journal ? ["--staged-rw"] : []),
+    ...(deadlines ? [`--deadlines-ms=${deadlines.read},${deadlines.dispatch},${deadlines.write}`] : [])],
+  { stdio: ["pipe", "pipe", "pipe"], env: {} });
   // Drain diagnostic output without collecting unbounded or tenant-derived text.
   child.stderr.resume();
   let resolveExit!: () => void;
