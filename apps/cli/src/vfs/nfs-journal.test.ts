@@ -372,7 +372,10 @@ it("reuses bounded database pages over repeated overwrites and publication inten
     expect(existsSync(path + "-journal") ? statSync(path + "-journal").size : 0).toBe(0);
   }
   expect(journal.pending()).toEqual([]);
-});
+  // 80 fsync-bound commits must outgrow the 192 KiB limit to prove page reuse.
+  // macos-15-intel CI takes 2.9-3.7 s (once 5.4 s) vs <1.2 s elsewhere, so the
+  // default 5 s timeout was a flake there.
+}, 20_000);
 
 it("migrates a recovered WAL and preserves databases larger than a reduced limit", async () => {
   const { path, journal } = fixture(); journal.close();
