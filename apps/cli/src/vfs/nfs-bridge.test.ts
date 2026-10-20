@@ -24,32 +24,9 @@ const helperPath = process.env.ATLCLI_NFS_TEST_HELPER;
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 async function assertNativeLocks(path: string, writable = false): Promise<void> {
-  const probe = await promisify(execFile)("python3", ["-c", `
-import errno, fcntl, subprocess, sys
-mode = 'r+b' if sys.argv[2] == 'rw' else 'rb'
-child = """
-import errno, fcntl, sys
-with open(sys.argv[1], sys.argv[2]) as file:
-    try:
-        getattr(fcntl, sys.argv[3])(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError as error:
-        if error.errno not in (errno.EACCES, errno.EAGAIN):
-            raise
-        sys.exit(10)
-"""
-for operation in (['flock', 'lockf'] if mode == 'r+b' else ['flock']):
-    with open(sys.argv[1], mode) as file:
-        lock = getattr(fcntl, operation)
-        lock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        args = [sys.executable, '-c', child, sys.argv[1], mode, operation]
-        assert subprocess.run(args, timeout=2).returncode == 10
-        lock(file, fcntl.LOCK_UN)
-        assert subprocess.run(args, timeout=2).returncode == 0
-with open(sys.argv[1], mode) as file:
-    fcntl.lockf(file, fcntl.LOCK_SH | fcntl.LOCK_NB)
-    fcntl.lockf(file, fcntl.LOCK_UN)
-print('local locks verified')
-`, path, writable ? "rw" : "ro"], { timeout: 5000 });
+  const probe = await promisify(execFile)(process.execPath, [
+    resolve(import.meta.dir, "native-lock-probe.ts"), path, writable ? "rw" : "ro",
+  ], { timeout: 10_000 });
   expect(probe.stdout.trim()).toBe("local locks verified");
 }
 function ints(...values: number[]): Buffer {
@@ -746,46 +723,38 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     let reads = 0;
     const read = vfs.readFileBytes.bind(vfs);
     vfs.readFileBytes = async path => { reads++; return read(path); };
-    const result = promisify(execFile)("python3", ["-c", `
-import base64, json, socket, struct, sys, time
-handle = base64.b64decode(sys.argv[2])
-def words(*values):
-    return struct.pack('>' + 'I' * len(values), *values)
-with socket.socket() as client:
-    client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
-    client.settimeout(5)
-    client.connect(('127.0.0.1', int(sys.argv[1])))
-    for xid in range(32):
-        request = words(xid + 100, 0, 2, 100003, 3, 6, 0, 0, 0, 0)
-        request += words(len(handle)) + handle + words(0, 0, 1024 * 1024)
-        client.sendall(words(0x80000000 + len(request)) + request)
-    # Keep the negotiated receive window small until the production 30s write
-    # deadline has elapsed. Then drain queued bytes to observe FIN/reset.
-    time.sleep(35)
-    received = 0
-    while True:
-        try:
-            data = client.recv(1024 * 1024)
-        except ConnectionResetError:
-            break
-        if not data:
-            break
-        received += len(data)
-    print(json.dumps({'received': received}))
-`, String(server.port), file.toString("base64")], { timeout: 45_000 });
+    // A reader that never drains: 32 one-megabyte READ requests, then no
+    // reads until the server's 30s write deadline has elapsed. Without reading,
+    // the kernel buffers fill and the server's responses block.
+    const client = connect(server.port, "127.0.0.1");
+    client.pause();
+    const result = new Promise<number>((done, reject) => {
+      let received = 0;
+      client.setTimeout(45_000, () => client.destroy(new Error("Server write deadline was not enforced")));
+      client.on("connect", () => {
+        for (let xid = 0; xid < 32; xid++) {
+          const request = Buffer.concat([ints(xid + 100, 0, 2, 100003, 3, 6, 0, 0, 0, 0), ints(file.length), file, ints(0, 0, 1024 * 1024)]);
+          client.write(Buffer.concat([ints(0x80000000 + request.length), request]));
+        }
+        setTimeout(() => {
+          client.on("data", (chunk: Buffer) => { received += chunk.length; });
+          client.resume();
+        }, 35_000);
+      });
+      client.on("error", (error: NodeJS.ErrnoException) => error.code === "ECONNRESET" ? done(received) : reject(error));
+      client.on("close", () => done(received));
+    });
     // Attach a rejection handler immediately while the independent RPC runs.
     void result.catch(() => {});
     try {
       await Bun.sleep(500);
       expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
-      const { stdout } = await result;
-      expect(JSON.parse(stdout).received).toBeLessThan(32 * 1024 * 1024);
+      expect(await result).toBeLessThan(32 * 1024 * 1024);
       expect(reads).toBeGreaterThan(0);
       expect(reads).toBeLessThan(32);
       expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
     } finally {
-      result.child.kill("SIGTERM");
-      await result.catch(() => {});
+      client.destroy();
     }
   }, 50_000);
 
