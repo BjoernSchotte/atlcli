@@ -1,6 +1,6 @@
 # TypeScript 7 Migration
 
-Status: **Planned**, 2026-10-20
+Status: **In progress**: T1/T2 merged in #238, 2026-10-20
 
 Planning baseline: commit `b0bc2218`
 
@@ -140,6 +140,20 @@ Source: [Announcing TypeScript 7.0](https://devblogs.microsoft.com/typescript/?p
 - Removed options (`baseUrl`, `node10`, `es5`, `downlevelIteration`,
   `esModuleInterop:false`, and others) are unused here.
 
+### Node runtime floor (changed in #238)
+
+Every Node-compatible package now declares `engines.node >=22.12.0`. The
+pinned consumer smoke runs on exactly Node 22.12.0, and a
+`workflow-policy.test.ts` regression test keeps the two in sync. The old
+floor was `>=20`. Node 20 is EOL since 2026-04-30, and npm cannot install
+`@tanstack/charts`' optional peer set on it (`edgesOut` arborist crash),
+which kept the required gate red from 2026-10-17. For this migration:
+
+- TS 7's `tsc` binary is native, so the Node floor does not constrain the
+  compiler. Only the TS 6 API package and Astro/Volar run on Node.
+- The T5 packed-consumer gate (`pack-check`, consumer smoke) now runs on
+  Node 22.12.0. That is the floor that `.d.ts` emit parity must hold for.
+
 ## Architecture contract
 
 - **One `tsc`.** After migration, `node_modules/.bin/tsc` is TypeScript 7
@@ -222,12 +236,14 @@ Expected: a reproducible baseline that later tasks diff against.
 
 **Depends on:** T0. Independent of TS 7, and can land first on its own.
 
-- [ ] Update `bun-types` to the release matching the pinned Bun line
-      (probe: `1.4.3`).
-- [ ] Fix the four `signalCode: proc.signalCode` call sites in
-      `export-source-contract.test.ts`. Prefer widening `cliFailureMessage`'s
-      parameter type over casting at each call site.
-- [ ] `bun run typecheck` and the affected test pass on **TS 5.9**.
+**Done in #238** (merged as `f50a356d`).
+
+- [x] Update `bun-types` to the release matching the pinned Bun line:
+      `^1.4.2`, matching `packageManager: bun@1.4.2`.
+- [x] Fix the four `signalCode: proc.signalCode` call sites in
+      `export-source-contract.test.ts` by widening `cliFailureMessage`'s
+      parameter to `string | number | null`.
+- [x] `bun run typecheck` and the affected test pass on **TS 5.9**.
 
 Expected: TS 5.9 still green, and the `bun-types` TS 7 incompatibility is
 gone.
@@ -236,11 +252,12 @@ gone.
 
 **Depends on:** T0. Can land before TS 7.
 
-- [ ] Add `"types": ["chrome"]` (plus anything else the TS 7 run reports) to
-      `apps/extension/tsconfig.json`. Check whether the WXT-generated
-      `.wxt/tsconfig.json` already contributes `types` and merge correctly.
-- [ ] `wxt prepare && tsc --noEmit` passes on TS 5.9, and on TS 7 via
-      `bunx -p typescript@7.0.2 tsc --noEmit`.
+**Done in #238.**
+
+- [x] Add `"types": ["chrome"]` to `apps/extension/tsconfig.json`. The
+      WXT-generated `.wxt/tsconfig.json` contributes no `types`.
+- [x] `wxt prepare && tsc --noEmit` passes on TS 5.9 and on TS 7
+      (`typescript@7.0.2`), with 0 errors each.
 
 Expected: the extension type-checks identically on both compilers.
 
