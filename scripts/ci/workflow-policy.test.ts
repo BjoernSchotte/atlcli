@@ -691,7 +691,10 @@ describe("CI workflow policy", () => {
     const raster = block(ci, /^ {2}raster-normalizer-browser-ratchet:\s*$/, 2);
     expect(raster).not.toBeNull();
     expect(raster).toContain("needs: changes");
-    expect(raster).toContain("browser: [pinned-chromium-140, current-cft-stable]");
+    // PRs run only the pinned browser; every other event also ratchets current CfT.
+    expect(raster).toContain(
+      `browser: \${{ fromJSON(github.event_name == 'pull_request' && '["pinned-chromium-140"]' || '["pinned-chromium-140","current-cft-stable"]') }}`,
+    );
     expect(raster).toContain("last-known-good-versions-with-downloads.json");
     expect(raster).toContain("chrome-for-testing-public/$version/linux64/chrome-linux64.zip");
     expect(raster).toContain("ATLCLI_RASTER_QUALITY_EXECUTABLE_PATH=$browser");
@@ -871,11 +874,13 @@ describe("CI workflow policy", () => {
     expect(tests).not.toBeNull();
     expect(tests).toContain("if: inputs.run_tests");
     expect(tests).toContain("fail-fast: false");
-    for (const group of ["general-1", "general-2", "general-3", "pdf-typst"]) {
+    for (const group of ["general-1", "general-2", "general-3", "general-4", "general-5", "general-6", "pdf-typst"]) {
       expect(tests).toContain(`group: ${group}`);
     }
+    expect(tests).not.toContain("group: general-7");
     expect(tests).toContain("bun scripts/ci/run-test-lane.ts");
-    expect(tests).toContain("--topology general-3x1");
+    expect(tests).toContain("--topology general-6x1");
+    expect(tests).not.toContain("--topology general-3x1");
     expect(tests).toContain('if: matrix.poppler');
     expect(tests).toContain('if: matrix.fonts');
     expect(tests).not.toContain("fonts: false");
@@ -942,7 +947,7 @@ describe("CI workflow policy", () => {
     expect(telemetry).toContain("pattern: bun-test-junit-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(telemetry).toContain("pattern: turbo-summary-*-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}");
     expect(telemetry).toContain("--turbo turbo-results");
-    expect(telemetry).toContain("'general-3x1'");
+    expect(telemetry).toContain("'general-6x1'");
     expect(telemetry).toContain("bun scripts/ci/telemetry-summary.ts");
     expect(required).not.toBeNull();
     expect(required).not.toContain("telemetry");
@@ -1041,6 +1046,20 @@ describe("CI workflow policy", () => {
       expect(source).not.toContain("ATLCLI_E2E_API_TOKEN");
       expect(source).not.toContain("ATLCLI_E2E_PROFILE");
     }
+  });
+
+  it("keeps Intel macOS NFS off pull requests but on every other event", async () => {
+    const ci = await workflow("ci.yml");
+    const nfs = await workflow("reusable-nfs.yml");
+    const caller = block(ci, /^ {2}nfs-helper:\s*$/, 2);
+    expect(caller).toContain("include_darwin_x64: ${{ github.event_name != 'pull_request' }}");
+    expect(nfs).toMatch(/include_darwin_x64:[\s\S]*?type: boolean[\s\S]*?default: true/);
+    expect(nfs).toContain("os: ${{ !inputs.include_darwin_x64 && 'macos-15-intel' || 'none' }}");
+    for (const os of ["ubuntu-22.04", "ubuntu-22.04-arm", "macos-14", "macos-15-intel"]) {
+      expect(nfs).toContain(`- os: ${os}`);
+    }
+    // macOS runners ship Homebrew; only Linux needs setup-homebrew for PATH.
+    expect(nfs).toMatch(/- name: Set up Homebrew for native installer proof\n\s+if: runner\.os == 'Linux'\n/);
   });
 
   it("builds the docs site outside the CLI bundle directory", async () => {

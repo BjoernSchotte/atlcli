@@ -10,6 +10,7 @@ export type TestLane = "general" | "package-contract" | "pdf-typst";
 export type TestTopology =
   | "general-2x1"
   | "general-3x1"
+  | "general-6x1"
   | "general-2x2-workers";
 export type SetupRequirement = "fonts" | "poppler" | "stateful" | "typst-runtime";
 
@@ -73,6 +74,7 @@ export interface TestLaneMatrixEntry {
 const TOPOLOGIES = new Set<TestTopology>([
   "general-2x1",
   "general-3x1",
+  "general-6x1",
   "general-2x2-workers",
 ]);
 const LANES = new Set<TestLane>(["general", "package-contract", "pdf-typst"]);
@@ -352,7 +354,7 @@ export function planTestLanes(
     filesByLane[entries.get(file)?.lane ?? "general"].push(file);
   }
 
-  const jobCount = topology === "general-3x1" ? 3 : 2;
+  const jobCount = Number(/^general-(\d)x/.exec(topology)![1]);
   const workers: 1 | 2 = topology === "general-2x2-workers" ? 2 : 1;
   const units = groupGeneralUnits(filesByLane.general, entries, fallbackSeconds);
   const bins = assignGeneralBins(units, jobCount, workers);

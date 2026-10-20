@@ -493,7 +493,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [pinned-chromium-140, current-cft-stable]
+        # PRs prove the pinned browser; main also tracks current CfT drift.
+        browser: ${{ fromJSON(github.event_name == 'pull_request' && '["pinned-chromium-140"]' || '["pinned-chromium-140","current-cft-stable"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -675,6 +676,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.proofMode != 'superseded' && needs.changes.outputs.nfs == 'true'
     uses: ./.github/workflows/reusable-nfs.yml
+    with:
+      include_darwin_x64: ${{ github.event_name != 'pull_request' }}
 
   required:
     name: ${{ needs.changes.outputs.aggregateStatusName }}
@@ -871,7 +874,7 @@ jobs:
 
       - name: Summarize timing evidence
         env:
-          CI_TEST_TOPOLOGY: ${{ needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true' && 'general-3x1' || 'not-run' }}
+          CI_TEST_TOPOLOGY: ${{ needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.unitTests == 'true' && 'general-6x1' || 'not-run' }}
           CI_PROOF_MODE: ${{ needs.changes.outputs.proofMode }}
           CI_ROUTE_CODE: ${{ needs.changes.outputs.code }}
           CI_ROUTE_CONSUMER: ${{ needs.changes.outputs.consumer }}
