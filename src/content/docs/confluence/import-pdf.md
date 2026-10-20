@@ -238,6 +238,7 @@ A tagged table becomes one native Confluence table when its grid is complete:
 | Intentionally empty cell | Native empty cell |
 | Producer omitted an empty cell's tag | Placed by the cells' `Headers` references; the gap becomes an empty cell |
 | Nested, rotated, or ambiguous table | Falls back or reports; no invented cells |
+| More than 5,000 rows in total | Each page keeps its own table; reported |
 
 PDFium exposes text, geometry, tags, page objects, annotations, and rendering
 primitives; it does not provide a native semantic table importer. For untagged
@@ -454,6 +455,7 @@ release claim.
 | `pdf/text-boundary-unresolved` blocks publication | Geometry, tags, or text-run evidence cannot prove a material join or space | Keep `--unsupported fail`, obtain a better-authored PDF, or explicitly review a localized/page fallback under the report policy. |
 | `pdf/character-ownership-failed` blocks publication | A visible character is unowned or has competing semantic owners | Review the page locator and fallback scope. Do not bypass the blocker without explicit reported/fallback coverage. |
 | A tagged table becomes a page image or linearized text | The table nests another table, or a cell's text has an unresolved boundary or invalid Unicode | Check `pdf-import/table-tagged-linearized` and its `reason` in the JSON preview. Re-export with tagging enabled, or flatten the nested table in the source. |
+| Issue `pdf-import/table-continuation-unjoined`: the table repeats on every page | One page part does not qualify as a grid, or the table exceeds 5,000 rows | Check the issue `reason`. Each page part stays a native table when it qualifies on its own. |
 | Issue `pdf-import/document-structure-unavailable` | The structure tree could not be read as a whole (damaged cross-references or budget) | Import continues with page-scoped structure; multi-page tables may fall back. Re-save the PDF from its producer. |
 | Image-only page blocks publication | Default scan policy forbids silent empty output | Choose `page-image`, or use `report` plus both publication acknowledgements. |
 | Too many wiki pages | Heading/range plan exceeds `--max-wiki-pages` | Increase the cap up to 200 or choose a larger `pages:N` target; review the new plan. |

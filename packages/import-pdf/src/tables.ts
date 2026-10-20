@@ -57,6 +57,14 @@ export const PDF_TABLE_POLICY_V1 = Object.freeze({
   boldHeaderWeight: 600,
 } as const);
 
+/**
+ * Limits for tagged tables. A logical table joins its page views, so it may
+ * exceed the per-page geometry limit; the facts budgets bound its total size.
+ */
+export const PDF_TABLE_POLICY_V2 = Object.freeze({
+  maximumLogicalRows: 5_000,
+} as const);
+
 export type PdfTableProjectionMode = "native" | "linearized-render-required" | "none";
 
 export interface PdfTableProjectionV1 {
@@ -540,7 +548,7 @@ function collectLogicalRowsV2(
 function taggedGridLayoutV2(
   rows: readonly TaggedLogicalRowV2[],
 ): { valid: boolean; reason: string; layout?: TaggedGridLayoutV2 } {
-  if (rows.length === 0 || rows.length > PDF_TABLE_POLICY_V1.maximumRows) {
+  if (rows.length === 0 || rows.length > PDF_TABLE_POLICY_V2.maximumLogicalRows) {
     return { valid: false, reason: "row-count" };
   }
   const occupied = new Map<string, string>();
@@ -724,6 +732,11 @@ export function projectTaggedTableV2(
 ): PdfTableProjectionV2 {
   return projectTaggedLogicalTableV2([{ page, table, corruptMcids }])
     ?? linearizeTaggedTableV2(page, table, collectTaggedTableRowsV2(table).rows, qualifyTaggedTableV2([{ page, table, corruptMcids }]).reason);
+}
+
+/** Why page views of one table element do not qualify as one native table. */
+export function taggedTableQualificationReasonV2(parts: readonly PdfTaggedTablePartV2[]): string {
+  return qualifyTaggedTableV2(parts).reason;
 }
 
 function qualifyTaggedTableV2(parts: readonly PdfTaggedTablePartV2[]) {

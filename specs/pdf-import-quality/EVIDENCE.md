@@ -27,12 +27,40 @@ from the earlier PASS rows until those tasks pass.
 | PIQ-10 | PASS | 2026-08-27 |
 | PIQ-11 | OPEN | 2026-08-27 |
 | PIQ-12 | OPEN | 2026-08-27 |
-| PIQ-13 | OPEN | 2026-08-27 |
-| PIQ-14 | OPEN | 2026-08-27 |
-| PIQ-15 | OPEN | 2026-08-27 |
-| PIQ-16 | OPEN | 2026-08-27 |
+| PIQ-13 | PASS | 2026-10-20 |
+| PIQ-14 | PASS | 2026-10-20 |
+| PIQ-15 | PASS | 2026-10-20 |
+| PIQ-16 | FROZEN | 2026-10-20 |
 | PIQ-17 | OPEN | 2026-08-27 |
 | PIQ-18 | OPEN | 2026-08-27 |
+
+## Live E2E, benchmark and scaling rerun (2026-10-20)
+
+`bun run test:e2e:import-pdf` (current checkout, profile `mayflower`, space
+`DOCSY`): 10 pass, 0 fail; the resource tracker removed every created page.
+
+`bun run bench:import-pdf` now measures the V2 adapter the CLI uses (it
+measured V1 before). All gates pass: p95 218 ms (budget 30 s), first progress
+p95 9 ms (500 ms), cancellation p95 0.9 ms (1 s), peak RSS 540 MiB (750 MiB),
+deterministic facts and recovery. The fixture is untagged, so the
+document-tree reader is measured separately on locally generated neutral
+Chromium exports (not committed):
+
+| Input | Tree read | Adapter total | Review | Native tables | Fallbacks |
+|---|---|---|---|---|---|
+| 15 pages, one 600-row table | 49 ms | 327 ms | 0.8 s | 1 | 0 |
+| 68 pages, 150 sections and one 2,000-row table | 150 ms | 816 ms | 6.0 s | 1 | 0 |
+
+The scaling run found that a logical table above the per-page geometry limit
+of 250 rows split silently into one table per page. Tagged tables now use
+`PDF_TABLE_POLICY_V2.maximumLogicalRows` (5,000; table policy V2 `/4`), and a
+continuation that still cannot be joined reports
+`pdf-import/table-continuation-unjoined` with its reason.
+
+Known limits: on the 68-page input the V2 review peaks at about 1.8 GiB RSS
+(the V1 review on `main` peaks at 1.2 GiB and yields no native table). A
+6,000-row variant exceeds the existing PDFium evidence budget (250,000
+entries) in page-scoped structure extraction and fails closed.
 
 ## PIQ-13 to PIQ-15 on the document tree
 

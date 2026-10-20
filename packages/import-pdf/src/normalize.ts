@@ -52,6 +52,7 @@ import {
 import { PdfImportError } from "./issues.js";
 import {
   projectTaggedLogicalTableV2,
+  taggedTableQualificationReasonV2,
   projectTaggedTable,
   projectTaggedTableV2,
   type PdfTableProjectionV2,
@@ -667,7 +668,7 @@ export async function normalizeTaggedPdfFactsV2(
   const pageOutcomes: PdfTaggedPageOutcomeV2[] = [];
   const requiresGeometryPages: number[] = [];
   let previousHeadingLevel: number | null = null;
-  const logicalTables = projectMultiPageTablesV2(facts);
+  const logicalTables = projectMultiPageTablesV2(facts, issues);
   const emittedLogicalTables = new Set<string>();
   for (const page of facts.pages) {
     const pageBlockStart = blocks.length;
@@ -774,7 +775,7 @@ export async function normalizeTaggedPdfFactsV2(
  * projects each as one native table (PIQ-15). Tables that do not qualify are
  * left to the page-local projection and its fallbacks.
  */
-function projectMultiPageTablesV2(facts: PdfFactsV2): Map<string, PdfTableProjectionV2> {
+function projectMultiPageTablesV2(facts: PdfFactsV2, issues: ImportIssue[]): Map<string, PdfTableProjectionV2> {
   const parts = new Map<string, PdfTaggedTablePartV2[]>();
   for (const page of facts.pages) {
     const corruptMcids = indexTaggedStructureV2(page).duplicateMcids;
@@ -789,7 +790,23 @@ function projectMultiPageTablesV2(facts: PdfFactsV2): Map<string, PdfTableProjec
   for (const [logicalId, list] of parts) {
     if (list.length < 2) continue;
     const projection = projectTaggedLogicalTableV2(list);
-    if (projection?.mode === "native") result.set(logicalId, projection);
+    if (projection?.mode === "native") {
+      result.set(logicalId, projection);
+      continue;
+    }
+    // Each page view is still projected on its own page.
+    issues.push({
+      code: "pdf-import/table-continuation-unjoined",
+      severity: "warning",
+      outcome: "reported",
+      message: "A table continued across page breaks could not be joined; each page shows its own part.",
+      sourceRefs: list.map((part) => part.table.id),
+      context: {
+        pageIndex: list[0]!.page.index,
+        pages: list.length,
+        reason: projection ? "cell-reported" : taggedTableQualificationReasonV2(list),
+      },
+    });
   }
   return result;
 }

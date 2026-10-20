@@ -409,7 +409,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/3";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/4";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -425,6 +425,11 @@ export declare const PDF_TABLE_POLICY_V1: Readonly<{
     readonly minimumAlignedRows: 3;
     readonly minimumAlignedColumns: 3;
     readonly boldHeaderWeight: 600;
+}>;
+
+// export: PDF_TABLE_POLICY_V2
+export declare const PDF_TABLE_POLICY_V2: Readonly<{
+    readonly maximumLogicalRows: 5000;
 }>;
 
 // export: PDF_TAGGED_POLICY_REVISION
@@ -1658,6 +1663,9 @@ export interface TaggedStructureIndexV2 {
     unresolvedNodeIds: Set<string>;
 }
 
+// export: taggedTableQualificationReasonV2
+export declare function taggedTableQualificationReasonV2(parts: readonly PdfTaggedTablePartV2[]): string;
+
 // export: textDirection
 export declare function textDirection(value: string): PdfTextDirection;
 
@@ -2112,7 +2120,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/3";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/4";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -2128,6 +2136,11 @@ export declare const PDF_TABLE_POLICY_V1: Readonly<{
     readonly minimumAlignedRows: 3;
     readonly minimumAlignedColumns: 3;
     readonly boldHeaderWeight: 600;
+}>;
+
+// export: PDF_TABLE_POLICY_V2
+export declare const PDF_TABLE_POLICY_V2: Readonly<{
+    readonly maximumLogicalRows: 5000;
 }>;
 
 // export: PDF_TAGGED_POLICY_REVISION
@@ -3405,6 +3418,9 @@ export interface TaggedStructureIndexV2 {
     unresolvedNodeIds: Set<string>;
 }
 
+// export: taggedTableQualificationReasonV2
+export declare function taggedTableQualificationReasonV2(parts: readonly PdfTaggedTablePartV2[]): string;
+
 // export: textDirection
 export declare function textDirection(value: string): PdfTextDirection;
 
@@ -3823,7 +3839,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/3";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/4";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -3839,6 +3855,11 @@ export declare const PDF_TABLE_POLICY_V1: Readonly<{
     readonly minimumAlignedRows: 3;
     readonly minimumAlignedColumns: 3;
     readonly boldHeaderWeight: 600;
+}>;
+
+// export: PDF_TABLE_POLICY_V2
+export declare const PDF_TABLE_POLICY_V2: Readonly<{
+    readonly maximumLogicalRows: 5000;
 }>;
 
 // export: PDF_TAGGED_POLICY_REVISION
@@ -5071,6 +5092,9 @@ export interface TaggedStructureIndexV2 {
     duplicateMcids: Set<number>;
     unresolvedNodeIds: Set<string>;
 }
+
+// export: taggedTableQualificationReasonV2
+export declare function taggedTableQualificationReasonV2(parts: readonly PdfTaggedTablePartV2[]): string;
 
 // export: textDirection
 export declare function textDirection(value: string): PdfTextDirection;
@@ -5535,7 +5559,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/3";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/4";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -5551,6 +5575,11 @@ export declare const PDF_TABLE_POLICY_V1: Readonly<{
     readonly minimumAlignedRows: 3;
     readonly minimumAlignedColumns: 3;
     readonly boldHeaderWeight: 600;
+}>;
+
+// export: PDF_TABLE_POLICY_V2
+export declare const PDF_TABLE_POLICY_V2: Readonly<{
+    readonly maximumLogicalRows: 5000;
 }>;
 
 // export: PDF_TAGGED_POLICY_REVISION
@@ -6827,6 +6856,9 @@ export interface TaggedStructureIndexV2 {
     duplicateMcids: Set<number>;
     unresolvedNodeIds: Set<string>;
 }
+
+// export: taggedTableQualificationReasonV2
+export declare function taggedTableQualificationReasonV2(parts: readonly PdfTaggedTablePartV2[]): string;
 
 // export: textDirection
 export declare function textDirection(value: string): PdfTextDirection;

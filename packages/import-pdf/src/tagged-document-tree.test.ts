@@ -87,6 +87,11 @@ describe("tagged lane on the full-document structure tree", () => {
       code: "pdf-import/table-tagged-linearized",
       context: expect.objectContaining({ reason: "cell-evidence" }),
     }));
+    // The table spans pages; the failed join is reported, not silent.
+    expect(semantics.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/table-continuation-unjoined",
+      context: expect.objectContaining({ reason: "cell-evidence", pages: 2 }),
+    }));
   });
 });
 
@@ -182,5 +187,19 @@ describe("logical table projection across pages", () => {
     ]);
     const block = projection?.blocks[0];
     expect(block?.type === "table" ? block.rows.length : null).toBe(4);
+  });
+
+  it("joins a logical table longer than the per-page geometry row limit", () => {
+    // Regression: 300 rows over three pages used to exceed the 250-row page
+    // limit, so the table silently split into one table per page.
+    const part = (pageIndex: number) => {
+      const words = Array.from({ length: 100 }, (_, r) => [`R${pageIndex}-${r}`, `${r}`]).flat();
+      const rows = Array.from({ length: 100 }, (_, r) => row(pageIndex, `p${pageIndex}r${r}`, "TD", [2 * r, 2 * r + 1]));
+      return { page: pageWith(pageIndex, words), table: table(pageIndex, rows), corruptMcids: new Set<number>() };
+    };
+    const projection = projectTaggedLogicalTableV2([part(0), part(1), part(2)]);
+    expect(projection?.mode).toBe("native");
+    const block = projection?.blocks[0];
+    expect(block?.type === "table" ? block.rows.length : null).toBe(300);
   });
 });

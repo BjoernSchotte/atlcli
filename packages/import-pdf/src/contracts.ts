@@ -367,7 +367,7 @@ export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as co
 export const PDF_GEOMETRY_POLICY_REVISION_V2 = "atlcli.pdf-geometry-policy/3" as const;
 export const PDF_HYBRID_POLICY_REVISION_V2 = "atlcli.pdf-hybrid-policy/2" as const;
 export const PDF_TABLE_POLICY_REVISION = "atlcli.pdf-table-policy/1" as const;
-export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/3" as const;
+export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/4" as const;
 export const PDF_FIGURE_POLICY_REVISION = "atlcli.pdf-figure-policy/1" as const;
 export const PDF_VISUAL_FALLBACK_POLICY_REVISION = "atlcli.pdf-visual-fallback-policy/1" as const;
 

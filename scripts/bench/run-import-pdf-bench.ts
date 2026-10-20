@@ -11,7 +11,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  createPdfiumFactsAdapter,
+  createPdfiumFactsAdapterV2,
   isPdfImportError,
 } from "../../packages/import-pdf/src/index.js";
 import { runMeasured } from "./bench-env.js";
@@ -60,7 +60,7 @@ function syntheticInput(): Uint8Array {
 async function child(): Promise<void> {
   const bytes = syntheticInput();
   const wasmBinary = new Uint8Array(readFileSync(WASM));
-  const adapter = createPdfiumFactsAdapter({ wasmBinary });
+  const adapter = createPdfiumFactsAdapterV2({ wasmBinary });
   let firstProgressAt: number | undefined;
   const started = performance.now();
   const first = await adapter.analyze(bytes, {
@@ -73,7 +73,7 @@ async function child(): Promise<void> {
   const controller = new AbortController();
   let cancelledAfterPages = 0;
   let cancelStarted = 0;
-  const cancelling = createPdfiumFactsAdapter({ wasmBinary });
+  const cancelling = createPdfiumFactsAdapterV2({ wasmBinary });
   try {
     await cancelling.analyze(bytes, {
       signal: controller.signal,
@@ -90,7 +90,7 @@ async function child(): Promise<void> {
     if (!isPdfImportError(error) || error.code !== "pdf/cancelled") throw error;
   }
   const cancelLatencyMs = performance.now() - cancelStarted;
-  const recovery = await createPdfiumFactsAdapter({ wasmBinary }).analyze(bytes);
+  const recovery = await createPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes);
   const result: ChildResult = {
     pageCount: first.facts.pageCount,
     inputBytes: bytes.byteLength,
