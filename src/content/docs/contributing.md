@@ -304,6 +304,33 @@ accidental requests against a non-sandbox instance.
 - Prefer explicit types over `any`
 - Use interfaces for public APIs
 
+#### Compiler versions
+
+The repository runs two TypeScript versions side by side:
+
+| What | Version | Used by |
+|---|---|---|
+| `tsc` | TypeScript 7 (native) | `bun run typecheck`, every package `build` |
+| `import "typescript"` | TypeScript 6 API | API report and closure guards, browser-build guard, `bun run docs:check` |
+
+TypeScript 7.0 ships no programmatic API, so tools that import the compiler
+stay on the TypeScript 6 compatibility package. Do not run `bun add typescript`;
+`scripts/compiler-split.test.ts` fails if the split collapses.
+
+:::tip[Editor setup]
+For TypeScript 7 diagnostics in your editor, switch the workspace to the
+TypeScript 7 language server as described in the
+[TypeScript 7.0 release notes](https://devblogs.microsoft.com/typescript/?p=5246).
+Astro files still use the TypeScript 6 language service.
+:::
+
+:::caution[API reports after a compiler bump]
+TypeScript 7 orders union members and declaration output deterministically.
+A compiler upgrade can therefore change `packages/*/etc/*.api.md` without any
+API change. Regenerate with `bun scripts/api-report.ts --update` and review
+the diff before committing.
+:::
+
 ### Formatting
 
 The project uses Biome for linting and formatting:
