@@ -402,10 +402,13 @@ function splitGeometryLineV2(
       && !isBreak(character)
       && /^\s$/u.test(character.value)
     );
+    const gap = previous ? directionalGapV2(previous, anchor, direction) : 0;
     if (
       previous
       && !separatedByWhitespace
-      && directionalGapV2(previous, anchor, direction) > threshold
+      // PDFium flags a hyphen only where its text line ends; text after it
+      // on the same visual line belongs to another column or cell.
+      && (gap > threshold || previous.hyphen && gap > 0)
     ) {
       anchorGroups.push(current);
       current = [];

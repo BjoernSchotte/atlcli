@@ -255,6 +255,24 @@ describe("PDF V2 text assembly", () => {
     })]);
   });
 
+  it("keeps a line-end hyphen before a capital on the next line", () => {
+    // Regression: PDFium flags every line-end hyphen (U+0002), so compounds
+    // such as "Kunden-Projekt" lost their hyphen when wrapped there.
+    const result = assemblePdfTextV2(input("compound-wrap", [
+      ...word("Kunden", 0, 0.1),
+      character("\u0002", 6, 0.16, { hyphen: true }),
+      ...word("Projekt", 7, 0.1, { run: "pdf:p0:text-run:1", y: 0.15 }),
+    ]));
+
+    expect(result.text).toBe("Kunden-Projekt");
+    expect(result.unresolvedBoundaryCount).toBe(0);
+    expect(result.boundaries).toEqual([expect.objectContaining({
+      leftCharacterIndex: 5,
+      rightCharacterIndex: 7,
+      action: "retain-hyphen",
+    })]);
+  });
+
   it("expands only allowlisted presentation ligatures and keeps NFC stable", () => {
     const ligature = assemblePdfTextV2(input("ligature", word("o\ufb03ce", 0, 0.1)));
     const nfc = assemblePdfTextV2(input("nfc", [

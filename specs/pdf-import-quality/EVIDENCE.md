@@ -135,8 +135,17 @@ Follow-up for `table-render-required` pages:
 - **Line wraps at symbols:** a symbol (`+`, `→`) at either side of a wrap
   joins with one space.
 
-Revisions after both steps: geometry policy V2 `/6`, table policy V2 `/6`,
-text assembly V2 `/7`. The motivating
+Line-end hyphens: PDFium flags every hyphen that ends its text line
+(`FPDFText_IsHyphen`, often with Unicode U+0002) and cannot tell a syllable
+break from a hard hyphen. Word exports showed these flagged hyphens with the
+same letter-case distribution as hyphens inside lines, so wrapped compounds
+lost their hyphen. A flagged hyphen before a capital on the next line is now
+retained; before a lowercase letter it is still removed. A flagged hyphen
+also ends its fragment when text of another column follows on the same
+visual line, even under the fragment gap.
+
+Revisions after these steps: geometry policy V2 `/7`, table policy V2 `/6`,
+text assembly V2 `/8`. The motivating
 private documents were re-measured locally; nothing about them is recorded here.
 
 ## PIQ-18

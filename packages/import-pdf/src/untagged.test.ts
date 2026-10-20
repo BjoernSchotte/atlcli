@@ -262,6 +262,23 @@ describe("untagged PDF conservative geometry semantics", () => {
     ]);
   });
 
+  it("ends a fragment at a line-end hyphen followed by another column", () => {
+    // Regression: a left cell's line ended in a PDFium hyphen and the right
+    // cell's text followed on the same line a little under the fragment gap;
+    // both became one fragment with an unresolved boundary.
+    const page = pageWithLinesV2([
+      { text: "Left cell text con", x: 0.1, y: 0.2 },
+      { text: "Right cell", x: 0.35, y: 0.2 },
+      { text: "tinues here", x: 0.1, y: 0.25 },
+    ]);
+    const hyphen = page.characters.find((character) => character.value === "n" && character.bbox?.x === 0.1 + 17 * 0.012)!;
+    Object.assign(hyphen, { value: "\u0002", unicode: 2, hyphen: true });
+    const analysis = analyzeGeometryReadingOrderV2(page);
+
+    expect(analysis.qualificationReasons).toEqual([]);
+    expect(analysis.fragments.filter((fragment) => fragment.physicalLineIndex === analysis.fragments[0]!.physicalLineIndex)).toHaveLength(2);
+  });
+
   it("keeps a line of underscores far below text on its own line", () => {
     const page = pageWithLinesV2([
       { text: "Signature", x: 0.1, y: 0.2 },

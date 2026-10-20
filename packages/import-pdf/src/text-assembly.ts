@@ -3,7 +3,7 @@ import { digestPdfCanonical } from "./canonical.js";
 import type { PdfTextDirection } from "./text.js";
 
 export const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 =
-  "atlcli.pdf-text-assembly-policy/7" as const;
+  "atlcli.pdf-text-assembly-policy/8" as const;
 
 const PRESENTATION_LIGATURES = Object.freeze({
   "\ufb00": "ff",
@@ -505,7 +505,24 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
           );
         }
       } else if (generatedHyphens.length > 0) {
-        if (wordPair && scriptMatch && relation.sameLine === false) {
+        if (wordPair && scriptMatch && relation.sameLine === false && /^\p{Lu}/u.test(anchor.value)) {
+          // PDFium flags any hyphen at a line end (some producers give it no
+          // Unicode, U+0002). A capital after the wrap continues a compound
+          // ("Kunden-Projekt"), not a split syllable: keep the hyphen.
+          addBoundary(
+            previous,
+            anchor,
+            "retain-hyphen",
+            [
+              "hyphen",
+              ...(orderedBasis ? ["structure-order" as const] : []),
+              "baseline",
+              "script",
+            ],
+            PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.dehyphenated,
+          );
+          appendPiece(state.pieces, "-", generatedHyphens.map(({ character }) => character.index), true);
+        } else if (wordPair && scriptMatch && relation.sameLine === false) {
           addBoundary(
             previous,
             anchor,
