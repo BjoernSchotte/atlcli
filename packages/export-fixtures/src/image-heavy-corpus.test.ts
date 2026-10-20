@@ -86,6 +86,20 @@ describe("image-heavy corpus (issue #118 Phase 0)", () => {
     );
   });
 
+  it("perRole caps each role, drops the aggregate floor, and keeps every placement kind", () => {
+    const small = generateImageHeavyCorpus({ scale: TEST_SCALE, perRole: 1 });
+    expect(small.assets.map((asset) => asset.role).sort()).toEqual(
+      ["diagram", "logo", "photo", "screenshot"]
+    );
+    expect(small.minAggregateBytes).toBe(0);
+    expect(small.manifest.every((entry) => entry.placements > 0)).toBe(true);
+    expect(small.counts.inlinePlacements).toBe(1);
+    expect(small.manifestSha256).not.toBe(corpus().manifestSha256);
+    // Uncapped full-size assets are byte-identical: the cap only drops assets.
+    expect(small.assets[0]!.sha256).toBe(corpus().assets[0]!.sha256);
+    expect(() => generateImageHeavyCorpus({ scale: TEST_SCALE, perRole: 0 })).toThrow(/perRole/);
+  });
+
   it("verifies its pure SHA-256 against node:crypto", () => {
     for (const asset of corpus().assets.slice(0, 3)) {
       const expected = createHash("sha256").update(asset.bytes).digest("hex");
