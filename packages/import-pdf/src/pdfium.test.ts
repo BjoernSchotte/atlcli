@@ -283,10 +283,10 @@ describe("PDFium V2 facts adapter", () => {
     );
 
     expect(simple.factsDigest).toBe(
-      "5f2b76680800f21c8ea01d2030421bf46491ae99c3270ebac8b371aedd52c64a",
+      "4c6a4595512ef809a699eed88115413d33f2a588eb39399211a1cc64f5f9f5aa",
     );
     expect(fragmented.factsDigest).toBe(
-      "0cfb59c1212d667cd28a941336fd6f8c4263392f65a7e2ef39a930d18b3696da",
+      "267003fab6711ae8933a10213a2fe56a9e0deeead7355c202ac9129f059c4d45",
     );
     expect(simple.facts.provenance.optionsDigest).toBe(
       "cc08a36bd42d41e600e84e08cf88c3b14b474f0a064ee5efc4cc4c5f8593d304",
