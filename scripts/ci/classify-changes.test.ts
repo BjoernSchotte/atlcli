@@ -188,10 +188,35 @@ describe("classifyChanges", () => {
     });
   }
 
+  it("routes the docs-site output move (#240) to docs and product quality only", () => {
+    expect(
+      classifyChanges([
+        ".github/workflows/docs.yml",
+        ".gitignore",
+        "astro.config.mjs",
+        "scripts/ci/workflow-policy.test.ts",
+        "tsconfig.docs.json",
+      ]),
+    ).toEqual(narrow({ code: true, staticQuality: true, unitTests: true, docs: true }));
+  });
+
+  it("keeps CI orchestration code and fixtures on every capability", () => {
+    for (const path of [
+      "scripts/ci/classify-changes.ts",
+      "scripts/ci/test-lanes.json",
+      "scripts/ci/fixtures/example.json",
+    ]) {
+      expect(classifyChanges([path]), path).toEqual({ ...all, docs: false, readmeMedia: false });
+    }
+  });
+
   it("fails open for global, workflow, and unknown paths", () => {
     for (const path of [
       "bun.lock",
       ".github/workflows/ci.yml",
+      ".github/workflows/reusable-quality.yml",
+      ".github/workflows/consumer-smoke.yml",
+      ".gitattributes",
       "new-runtime/config.toml",
       "assets/runtime/example.png",
       "assets/readme-preview/example.png",
