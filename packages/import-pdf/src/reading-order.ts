@@ -249,6 +249,8 @@ export const PDF_GEOMETRY_POLICY_V2 = Object.freeze({
   pageNumberFooterMinimumY: 0.9,
   columnStartPrecision: 100,
   columnAlignmentGlyphFactor: 0.7,
+  /** Height to width below which a punctuation or symbol glyph is a flat mark. */
+  flatMarkMaximumAspect: 0.25,
 } as const);
 
 export interface PdfGeometryFragmentV2
@@ -286,28 +288,48 @@ interface GeometryLineClusterV2 {
   height: number;
 }
 
+/**
+ * A flat mark such as an underscore sits below the baseline of the line it
+ * belongs to, so its center misses the line's center tolerance.
+ */
+function isFlatMarkV2(character: PdfTextCharacterFactV2): boolean {
+  return character.bbox!.height < character.bbox!.width * PDF_GEOMETRY_POLICY_V2.flatMarkMaximumAspect
+    && /^[\p{P}\p{S}]$/u.test(character.value);
+}
+
 function clusterPhysicalLinesV2(page: PdfPageFactsV2): GeometryLineClusterV2[] {
   const clusters: GeometryLineClusterV2[] = [];
   const anchors = page.characters
     .filter(isGeometryAnchorV2)
     .sort((left, right) =>
-      verticalCenter(left.bbox!) - verticalCenter(right.bbox!)
+      Number(isFlatMarkV2(left)) - Number(isFlatMarkV2(right))
+      || verticalCenter(left.bbox!) - verticalCenter(right.bbox!)
       || left.bbox!.x - right.bbox!.x
       || left.index - right.index
     );
   for (const anchor of anchors) {
     const center = verticalCenter(anchor.bbox!);
+    const flat = isFlatMarkV2(anchor);
     const cluster = clusters.find((candidate) =>
       Math.abs(candidate.center - center) <= Math.max(
         PDF_GEOMETRY_POLICY_V2.minimumLineClusterTolerance,
         Math.max(candidate.height, anchor.bbox!.height)
           * PDF_GEOMETRY_POLICY_V2.lineClusterCenterGlyphFactor,
       )
-    );
+    ) ?? (flat
+      // Lines are sorted by center already; the nearest line above whose
+      // descender band holds the mark owns it.
+      ? clusters.filter((candidate) =>
+          center >= candidate.center && center - candidate.center <= candidate.height
+        ).sort((left, right) => (center - left.center) - (center - right.center))[0]
+      : undefined);
     if (cluster) {
       cluster.anchors.push(anchor);
-      cluster.center = median(cluster.anchors.map((character) => verticalCenter(character.bbox!)));
-      cluster.height = median(cluster.anchors.map((character) => character.bbox!.height));
+      // Flat marks join a line without moving its center or height.
+      const shaping = cluster.anchors.filter((character) => !isFlatMarkV2(character));
+      const basis = shaping.length > 0 ? shaping : cluster.anchors;
+      cluster.center = median(basis.map((character) => verticalCenter(character.bbox!)));
+      cluster.height = median(basis.map((character) => character.bbox!.height));
     } else {
       clusters.push({ anchors: [anchor], center, height: anchor.bbox!.height });
     }
@@ -588,6 +610,9 @@ export function analyzeGeometryReadingOrderV2(
   }
   const columnCount = assignColumnsV2(fragments, ignoredFragmentIds);
   if (columnCount > PDF_GEOMETRY_POLICY_V2.maxColumns) reasons.add("too-many-columns");
+  // Reading band per fragment: text spanning both columns (a heading or a
+  // paragraph above or below a two-column block) separates bands.
+  const band = new Map<string, number>();
   if (columnCount === 2) {
     const content = fragments.filter((fragment) =>
       !fragment.furniture && !fragment.duplicateOf && !ignoredFragmentIds.has(fragment.id)
@@ -598,18 +623,32 @@ export function analyzeGeometryReadingOrderV2(
     if (counts.some((count) => count < PDF_GEOMETRY_POLICY_V2.minimumLinesPerColumn)) {
       reasons.add("under-evidenced-column");
     }
-    const leftEdge = Math.max(...content.filter((fragment) => fragment.column === 0)
-      .map((fragment) => fragment.bbox.x + fragment.bbox.width));
-    const rightEdge = Math.min(...content.filter((fragment) => fragment.column === 1)
-      .map((fragment) => fragment.bbox.x));
-    if (leftEdge >= rightEdge) reasons.add("column-overlap");
+    const right = content.filter((fragment) => fragment.column === 1);
+    const rightEdge = Math.min(...right.map((fragment) => fragment.bbox.x));
+    const spanning = content.filter((fragment) =>
+      fragment.column === 0 && fragment.bbox.x + fragment.bbox.width >= rightEdge
+    ).sort((left, right) => left.bbox.y - right.bbox.y);
+    // Right-column text beside spanning text is a true overlap.
+    if (spanning.some((wide) => right.some((fragment) =>
+      Math.min(wide.bbox.y + wide.bbox.height, fragment.bbox.y + fragment.bbox.height)
+        > Math.max(wide.bbox.y, fragment.bbox.y)
+    ))) reasons.add("column-overlap");
+    else if (spanning.length > 0) {
+      for (const fragment of content) {
+        const rank = spanning.indexOf(fragment);
+        band.set(fragment.id, rank >= 0
+          ? rank * 2 + 1
+          : spanning.filter((wide) => wide.bbox.y < fragment.bbox.y).length * 2);
+      }
+    }
   }
   const ordered = fragments
     .filter((fragment) =>
       !fragment.furniture && !fragment.duplicateOf && !ignoredFragmentIds.has(fragment.id)
     )
     .sort((left, right) =>
-      left.column - right.column
+      (band.get(left.id) ?? 0) - (band.get(right.id) ?? 0)
+      || left.column - right.column
       || left.bbox.y - right.bbox.y
       || left.bbox.x - right.bbox.x
       || left.sourceOrder - right.sourceOrder

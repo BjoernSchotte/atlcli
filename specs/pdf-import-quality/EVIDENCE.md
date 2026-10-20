@@ -95,6 +95,27 @@ bun run test:e2e:import-pdf             13 pass, DOCSY, cleanup verified
 bun run bench:import-pdf                p95 212 ms, peak RSS 550 MiB, all gates
 ```
 
+### Fallback hardening (2026-10-20)
+
+Three false-positive page-fallback causes on Word for Mac exports, each with a
+neutral regression test:
+
+- **Flat marks:** an underscore's glyph box lies under the baseline, so it
+  formed its own physical line inside its word's box (`conflicting-overlap`).
+  A punctuation or symbol glyph flatter than 0.25 of its width now joins the
+  nearest line above whose descender band holds it, without moving that line;
+  a row of underscores well below text stays its own line.
+- **Banded columns:** full-width text above or below a two-column block made
+  the page `column-overlap`. A left-column fragment reaching the right column
+  now separates reading bands (full-width text, left column, right column);
+  right-column text beside it still fails closed.
+- **Line wraps:** a line ending in a Common-script digit or an underscore left
+  the wrap to the next line unresolved. Digits now match any non-CJK script,
+  and a connector punctuation mark may end a wrapped line.
+
+Revisions: geometry policy V2 `/5`, text assembly V2 `/6`. The motivating
+private documents were re-measured locally; nothing about them is recorded here.
+
 ## PIQ-18
 
 Result: **PASS** for the neutral corpus and the automated DOCSY proof. The

@@ -3,7 +3,7 @@ import { digestPdfCanonical } from "./canonical.js";
 import type { PdfTextDirection } from "./text.js";
 
 export const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 =
-  "atlcli.pdf-text-assembly-policy/5" as const;
+  "atlcli.pdf-text-assembly-policy/6" as const;
 
 const PRESENTATION_LIGATURES = Object.freeze({
   "\ufb00": "ff",
@@ -225,9 +225,17 @@ function isCjk(value: string): boolean {
   return script(value) === "cjk";
 }
 
+/** Common-script digits (0-9 and their kin) belong to every non-CJK script. */
+function isCommonDigit(value: string): boolean {
+  return /^\p{Nd}+$/u.test(value) && /^\p{Script=Common}+$/u.test(value);
+}
+
 function sameWordScript(left: string, right: string): boolean {
   const leftScript = script(left);
-  return leftScript !== "non-word" && leftScript === script(right);
+  const rightScript = script(right);
+  if (leftScript === "non-word" || rightScript === "non-word") return false;
+  if (isCommonDigit(left) || isCommonDigit(right)) return leftScript !== "cjk" && rightScript !== "cjk";
+  return leftScript === rightScript;
 }
 
 function isClosingPunctuation(value: string): boolean {
@@ -561,7 +569,8 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
           true,
         );
       } else if (generatedWhitespace.length > 0 && relation.sameLine === false) {
-        const punctuationLineWrap = (isClosingPunctuation(previous.value) || previous.value === "\u2013")
+        const punctuationLineWrap = (isClosingPunctuation(previous.value) || previous.value === "\u2013"
+          || /\p{Pc}$/u.test(previous.value))
           && !isWidePunctuation(previous.value)
           && isWord(anchor.value)
           && !isCjk(anchor.value)

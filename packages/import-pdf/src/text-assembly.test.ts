@@ -479,6 +479,23 @@ describe("PDF V2 text assembly line and whitespace evidence (PIQ-14)", () => {
     expect(result.boundaries.at(-1)).toMatchObject({ action: "join-line", basis: expect.arrayContaining(["punctuation"]) });
   });
 
+  it("joins a line ending in a digit or an underscore with the next line", () => {
+    // Regression: a digit (Common script) before a Latin word and an
+    // underscore at a line end left the wrap unresolved: page fallback.
+    const wrap = (left: string, right: string) => assemblePdfTextV2(input("wrap", [
+      ...word(left, 0, 0.1),
+      generatedWhitespace("\r", left.length),
+      generatedWhitespace("\n", left.length + 1),
+      ...word(right, left.length + 2, 0.1, { ...nextLine, run: "pdf:p0:text-run:1" }),
+    ]));
+    for (const [left, right] of [["clause 3", "applies"], ["neutral_", "field"]] as const) {
+      const result = wrap(left, right);
+      expect(result.text).toBe(`${left} ${right}`);
+      expect(result.unresolvedBoundaryCount).toBe(0);
+    }
+    expect(wrap("3", "\u5e74").unresolvedBoundaryCount).toBe(1);
+  });
+
   it("joins a word with opening punctuation and a spaced en dash on the next line", () => {
     const opening = assemblePdfTextV2(input("opening-wrap", [
       ...word("note", 0, 0.1),

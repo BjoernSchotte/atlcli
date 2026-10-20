@@ -187,6 +187,42 @@ describe("untagged PDF conservative geometry semantics", () => {
     ]);
   });
 
+  it("reads full-width text around a two-column block in bands", () => {
+    // Regression: a full-width paragraph above a two-column signature block
+    // was taken for overlapping columns and sent the page to a fallback.
+    const wide = "A full-width neutral paragraph spans both of the columns.";
+    const analysis = analyzeGeometryReadingOrderV2(pageWithLinesV2([
+      { text: wide, x: 0.08, y: 0.1 },
+      { text: "Left party line one", x: 0.08, y: 0.2 },
+      { text: "Right party line one", x: 0.56, y: 0.2 },
+      { text: "Left party line two", x: 0.08, y: 0.25 },
+      { text: "Right party line two", x: 0.56, y: 0.25 },
+      { text: "Another full-width neutral paragraph closes the page here.", x: 0.08, y: 0.4 },
+    ]));
+
+    expect(analysis.columnCount).toBe(2);
+    expect(analysis.qualificationReasons).toEqual([]);
+    expect(analysis.ordered.map((fragment) => fragment.text)).toEqual([
+      wide,
+      "Left party line one", "Left party line two",
+      "Right party line one", "Right party line two",
+      "Another full-width neutral paragraph closes the page here.",
+    ]);
+  });
+
+  it("still fails closed when wide text runs into right-column text", () => {
+    const analysis = analyzeGeometryReadingOrderV2(pageWithLinesV2([
+      { text: "Left column line one", x: 0.08, y: 0.2 },
+      { text: "Right column line one", x: 0.56, y: 0.2 },
+      { text: "Left column line two runs far too wide into", x: 0.08, y: 0.25 },
+      { text: "Right column line two", x: 0.64, y: 0.25 },
+      { text: "Left column line three", x: 0.08, y: 0.3 },
+      { text: "Right column line three", x: 0.56, y: 0.3 },
+    ]));
+
+    expect(analysis.qualificationReasons).toContain("column-overlap");
+  });
+
   it("reads clause numbers beside their text as one column", () => {
     // Regression: contract clauses ("1.1" then text, hanging indent) were
     // taken for two overlapping columns and sent the page to a fallback.
@@ -205,6 +241,39 @@ describe("untagged PDF conservative geometry semantics", () => {
       "1.2", "The buyer pays within thirty days.",
       "A full-width paragraph closes the clause section.",
     ]);
+  });
+
+  it("keeps an underscore below the baseline in its word", () => {
+    // Regression: an underscore's flat glyph box sits under the letters, so
+    // it formed its own line inside the word's box: conflicting overlap and
+    // a page fallback.
+    const page = pageWithLinesV2([
+      { text: "Name the neutral_field here.", x: 0.1, y: 0.2 },
+      { text: "A second line follows below.", x: 0.1, y: 0.25 },
+    ]);
+    const underscore = page.characters.find((character) => character.value === "_")!;
+    underscore.bbox = { ...underscore.bbox!, y: 0.2235, height: 0.0015 };
+    const analysis = analyzeGeometryReadingOrderV2(page);
+
+    expect(analysis.qualificationReasons).toEqual([]);
+    expect(analysis.ordered.map((fragment) => fragment.text)).toEqual([
+      "Name the neutral_field here.",
+      "A second line follows below.",
+    ]);
+  });
+
+  it("keeps a line of underscores far below text on its own line", () => {
+    const page = pageWithLinesV2([
+      { text: "Signature", x: 0.1, y: 0.2 },
+      { text: "____", x: 0.1, y: 0.26 },
+    ]);
+    for (const character of page.characters.filter((item) => item.value === "_")) {
+      character.bbox = { ...character.bbox!, height: 0.0015 };
+    }
+    const analysis = analyzeGeometryReadingOrderV2(page);
+
+    expect(analysis.qualificationReasons).toEqual([]);
+    expect(analysis.ordered.map((fragment) => fragment.text)).toEqual(["Signature", "____"]);
   });
 
   it("routes clustered physical lines and paragraphs through V2 assembly", async () => {

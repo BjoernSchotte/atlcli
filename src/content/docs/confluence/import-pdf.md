@@ -259,6 +259,15 @@ Bold header rows are recognized from the font name when the PDF reports no
 font weight. Clause numbers, terms, and table-of-contents page numbers beside
 their text are read as part of the line, not as a second column.
 
+Reading order on untagged pages:
+
+| Case | Result |
+|---|---|
+| Full-width text above or below a two-column block (for example signature blocks) | Read in bands: the full-width text, then the left column, then the right column |
+| Text from the left column running into right-column text on the same line | Page falls back (`column-overlap`) |
+| Underscore inside a word (`neutral_field`) | Kept in its word; its flat glyph below the baseline is not a second line |
+| Line ending in a digit or an underscore | Joined with the next line by one space |
+
 > **Tip.** Export PDFs from Word, LibreOffice, or a browser with tagging
 > ("accessible PDF") enabled. Tagged exports keep tables, lists, and reading
 > order far better than untagged ones. In LibreOffice, enable
