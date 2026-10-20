@@ -35,14 +35,43 @@ asserted).
 |---|---|---|---|
 | 1 | Tests shorten helper deadlines (only within 100 ms..=production) | #241 | −3.5–4 min on all 4 NFS jobs |
 | 2 | Skip `setup-homebrew` on macOS (Homebrew is preinstalled on PATH) | `reusable-nfs.yml` | −~5 min on macOS NFS |
-| 3 | Intel macOS NFS only off pull requests (`include_darwin_x64`) | `ci.yml`, `reusable-nfs.yml` | removes the scarcest runner from PRs; main/release keep all 4 targets |
+| 3 | ~~Intel macOS NFS only off pull requests~~ | — | superseded by stage 2 (no native platform jobs on PRs) |
 | 4 | 6 general test shards (`general-6x1`) + refreshed duration snapshot (median of 3 runs, 757/771 files) | `test-lanes.ts`, `reusable-quality.yml`, `test-duration-snapshot.json` | general shards ~6 min → ~2–2.5 min |
-| 5 | Raster RSS: PR runs pinned Chromium only; other events add current CfT | `ci.yml` | one fewer 5.5 min job per PR; drift still tracked on main |
+| 5 | ~~Raster RSS: PR runs pinned Chromium only~~ | — | superseded by stage 2 (raster runs on main only, both browsers) |
 | 6 | Split typecheck job | — | dropped: TS 7 already cut it to 97 s |
 | — | Narrow routing for docs-only workflow, `.gitignore`, CI test files | #240 | docs/config PRs skip platform gates |
 
 Expected PR critical path after all measures: **~4–5 min**, bounded by the
 NFS Linux/macOS jobs (~3–4 min) and the pdf-typst test shard (~3 min).
+
+## Stage 2: PR fast lane (native platform proof after merge)
+
+The measures above still left a ~5.5 min raster job and ~3 min NFS jobs on
+every PR. GitHub merge queue is not available for user-owned repositories
+(`BjoernSchotte/atlcli`). So the operator turned off "Require branches to be
+up to date before merging" on 2026-10-20 (`strict: false`). That removes the
+BEHIND → update-branch → full rerun cycle.
+
+- `changes` emits `platformProof = github.event_name != 'pull_request'`.
+- `nfs-helper` (4 OSes), `pdf-cli-macos`, `pdf-sink-windows` and the raster
+  RSS ratchet run only when `platformProof` is true: main pushes,
+  schedules and manual runs.
+- The `required` aggregate selects those gates via `platform_selected`.
+  They must be **skipped** on PRs and **succeed** on main. Policy tests
+  simulate both directions.
+- Linux lanes stay PR gates: typecheck/build/contracts, 6+1 test shards,
+  consumer smoke, docs, Astro platform and Linux browser evidence.
+- This supersedes measures 3 and 5. The Intel-only-off-PR input and the
+  PR-only single-browser raster matrix were removed again. On main, all 4
+  NFS targets and both browsers run as before.
+
+Trade-off: a native-platform regression surfaces on main after merge, not
+on the PR. It must be fixed forward or reverted. A merge queue would move
+that check before the merge if the repository moves to an organization.
+
+Expected PR critical path: **~3–3.5 min**. The bound is the Linux
+browser-evidence chain (assets 65 s → evidence ~140 s), the pdf-typst shard
+(~3.4 min) and consumer smoke (~3 min).
 
 ## Coverage kept
 

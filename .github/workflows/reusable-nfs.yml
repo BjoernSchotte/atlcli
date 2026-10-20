@@ -2,11 +2,6 @@ name: NFS transport proof
 
 on:
   workflow_call:
-    inputs:
-      include_darwin_x64:
-        description: Run the scarce Intel macOS runner (main/release proof); PRs skip it
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -26,8 +21,6 @@ jobs:
             target: darwin-arm64
           - os: macos-15-intel
             target: darwin-x64
-        exclude:
-          - os: ${{ !inputs.include_darwin_x64 && 'macos-15-intel' || 'none' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:

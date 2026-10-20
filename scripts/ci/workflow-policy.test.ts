@@ -65,6 +65,8 @@ const requiredGateEnv = {
   RASTER_BROWSER: "success",
   NFS_REQUIRED: "true",
   NFS: "success",
+  // Defaults model a run that owes native platform proof (main push).
+  PLATFORM_PROOF: "true",
 };
 
 function runRequiredGate(
@@ -691,10 +693,7 @@ describe("CI workflow policy", () => {
     const raster = block(ci, /^ {2}raster-normalizer-browser-ratchet:\s*$/, 2);
     expect(raster).not.toBeNull();
     expect(raster).toContain("needs: changes");
-    // PRs run only the pinned browser; every other event also ratchets current CfT.
-    expect(raster).toContain(
-      `browser: \${{ fromJSON(github.event_name == 'pull_request' && '["pinned-chromium-140"]' || '["pinned-chromium-140","current-cft-stable"]') }}`,
-    );
+    expect(raster).toContain("browser: [pinned-chromium-140, current-cft-stable]");
     expect(raster).toContain("last-known-good-versions-with-downloads.json");
     expect(raster).toContain("chrome-for-testing-public/$version/linux64/chrome-linux64.zip");
     expect(raster).toContain("ATLCLI_RASTER_QUALITY_EXECUTABLE_PATH=$browser");
@@ -1048,16 +1047,37 @@ describe("CI workflow policy", () => {
     }
   });
 
-  it("keeps Intel macOS NFS off pull requests but on every other event", async () => {
+  it("runs native platform proof after merge, never on pull requests", async () => {
     const ci = await workflow("ci.yml");
     const nfs = await workflow("reusable-nfs.yml");
-    const caller = block(ci, /^ {2}nfs-helper:\s*$/, 2);
-    expect(caller).toContain("include_darwin_x64: ${{ github.event_name != 'pull_request' }}");
-    expect(nfs).toMatch(/include_darwin_x64:[\s\S]*?type: boolean[\s\S]*?default: true/);
-    expect(nfs).toContain("os: ${{ !inputs.include_darwin_x64 && 'macos-15-intel' || 'none' }}");
+    expect(ci).toContain("platformProof: ${{ github.event_name != 'pull_request' }}");
+    for (const job of ["pdf-cli-macos", "pdf-sink-windows", "raster-normalizer-browser-ratchet", "nfs-helper"]) {
+      const body = block(ci, new RegExp(`^ {2}${job}:\\s*$`), 2);
+      expect(body, job).toMatch(/^ {4}if: .*needs\.changes\.outputs\.platformProof == 'true'/m);
+    }
+    // The aggregate expects these gates skipped on PRs and successful on main.
+    const required = block(ci, /^ {2}required:\s*$/, 2);
+    expect(required).toContain("PLATFORM_PROOF: ${{ needs.changes.outputs.platformProof }}");
+    for (const gate of ['"NFS helper" "$(platform_selected "$NFS_REQUIRED")"',
+      '"macOS PDF" "$(platform_selected "$PDF_REQUIRED")"',
+      '"Windows PDF sink" "$(platform_selected "$PDF_REQUIRED")"',
+      '"Raster normalizer browser ratchet" "$(platform_selected "$BROWSER_REQUIRED")"']) {
+      expect(required).toContain(`require_result ${gate}`);
+    }
+    // Linux browser evidence stays a pull-request gate.
+    expect(required).toContain('require_result "Browser export harness" "$BROWSER_REQUIRED" "$BROWSER"');
+
+    const script = yamlLiteral(required!, /^ {8}run: \|$/)!;
+    const prSkipped = { PLATFORM_PROOF: "false", MACOS: "skipped", WINDOWS: "skipped", RASTER_BROWSER: "skipped", NFS: "skipped" };
+    expect(runRequiredGate(script, prSkipped).exitCode).toBe(0);
+    // A platform gate that ran on a PR, or was skipped on main, is a policy breach.
+    expect(runRequiredGate(script, { ...prSkipped, NFS: "success" }).exitCode).not.toBe(0);
+    expect(runRequiredGate(script, { EVENT_NAME: "push", DOCS: "skipped", RASTER_BROWSER: "skipped" }).exitCode).not.toBe(0);
+    expect(runRequiredGate(script, { ...prSkipped, TEST: "failure" }).exitCode).not.toBe(0);
     for (const os of ["ubuntu-22.04", "ubuntu-22.04-arm", "macos-14", "macos-15-intel"]) {
       expect(nfs).toContain(`- os: ${os}`);
     }
+    expect(nfs).not.toContain("exclude:");
     // macOS runners ship Homebrew; only Linux needs setup-homebrew for PATH.
     expect(nfs).toMatch(/- name: Set up Homebrew for native installer proof\n\s+if: runner\.os == 'Linux'\n/);
   });
