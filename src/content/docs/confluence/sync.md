@@ -310,7 +310,7 @@ Options:
 | `--force` | Overwrite local modifications - markdown **and** attachments |
 | `--comments` | Export comments to sidecar files |
 | `--no-attachments` | Skip downloading attachments |
-| `--limit <n>` | Maximum pages to pull |
+| `--limit <n>` | Pull at most `n` pages of a space or tree scope (positive integer). Without it, every page in scope is pulled. Pages beyond the cap are left untouched locally, not deleted. |
 
 ### Local modifications are never overwritten silently
 

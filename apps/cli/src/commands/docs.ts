@@ -571,7 +571,14 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   // `--out` predates it and is kept working (and documented) for scripts.
   const outDirArg = args[0] ?? getFlag(flags, "dir") ?? getFlag(flags, "out") ?? ".";
   const outDir = resolve(outDirArg); // Resolve to absolute path
-  const limit = Number(getFlag(flags, "limit") ?? 50);
+  // --limit caps how many pages are pulled; without it a scope pulls every page.
+  const limitFlag = getFlag(flags, "limit");
+  // A bare `--limit` (or `--limit -1`, which the parser reads as two flags)
+  // arrives as `true`, not a string; reject it rather than pull everything.
+  if (flags.limit !== undefined && !/^[1-9]\d*$/.test(limitFlag ?? "")) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--limit must be a positive integer.");
+  }
+  const limit = limitFlag === undefined ? undefined : Number(limitFlag);
   const force = hasFlag(flags, "force");
   const labelFilter = getFlag(flags, "label");
 
@@ -645,7 +652,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
 
   if (cql) {
     // Tree or space scope: use CQL search
-    pages = await client.searchPages(cql, Number.isNaN(limit) ? 50 : limit);
+    pages = await client.searchPages(cql, 50, { maxResults: limit });
   } else {
     // Single page scope: direct fetch
     const pageId = (scope as { type: "page"; pageId: string }).pageId;
