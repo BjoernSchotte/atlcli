@@ -34,6 +34,73 @@ from the earlier PASS rows until those tasks pass.
 | PIQ-17 | OPEN | 2026-08-27 |
 | PIQ-18 | OPEN | 2026-08-27 |
 
+## Full-document structure tree spike
+
+Result: **GO** for the full-document tag tree as the primary tagged-PDF
+structure source. Production routing is not changed yet.
+
+### What was built
+
+- `packages/import-pdf/src/pdf-objects.ts`: read-only PDF object reader in
+  pure TypeScript (classic and stream cross-references, `/Prev` and
+  `/XRefStm`, object streams, FlateDecode with PNG predictors, scan recovery)
+  plus a content-stream classifier for MCID-marked sequences.
+- `packages/import-pdf/src/struct-tree.ts`: `StructTreeRoot` traversal with
+  `obj:<num>` identity, RoleMap resolution, MCR/OBJR/integer kids, table
+  attributes (`RowSpan`, `ColSpan`, `Scope`, `Headers`), a body-free
+  correlation with PDFium V2 facts, and `elementCharacters()` which returns
+  PDFium character positions in structure order.
+- Inflate uses `fflate` 0.8.3, already in the workspace through `@atlcli/docx`.
+
+### Neutral results
+
+| Fixture | PDFium unresolved kids | Tree invalid kids | Unmatched refs | Marked chars owned once |
+|---|---|---|---|---|
+| independent tagged (3) | 0 | 0 | 0 (one XObject figure classified) | 100 % |
+| producer-browser | 1 | 0 | 0 | 100 % |
+| producer-libreoffice | 0 | 0 | 0 | 100 % |
+| struct-tree/browser-multipage-table | 175 | 0 | 0 | 100 % |
+| struct-tree/browser-hard-table | 58 | 0 | 0 | 100 % |
+
+- The three-page table is one logical table (71 rows, 3 columns). Chromium
+  tags each repeated page header as additional content of the same `TH`, which
+  is direct proof for removing repeated headers in PIQ-15.
+- Chromium omits the element for an empty `TD`; the remaining cells carry
+  `/Headers` references that place them unambiguously.
+- Exact cell text materialized through `elementCharacters()` matches the
+  authored sources, including `rowspan` across a page break, `colspan`, CJK and
+  the nested table.
+- A private local acceptance document (Word export) was evaluated transiently.
+  Its only gap was MCID sequences painting a single space that PDFium does not
+  report as characters; the classifier proves them whitespace. No private
+  bytes, counts, text or identifiers are recorded here.
+
+### Remaining gaps (not structure-tree issues)
+
+- Cell text still needs the V2 text assembler: wrapped lines without an
+  emitted space (`Inner`/`A`) and punctuation transitions stay unresolved
+  boundaries (PIQ-14).
+- A nested table's text is also inside the outer cell's references; the
+  projection must exclude nested `Table` descendants.
+- One RTL row shows PDFium's character order within a single MCID; bidi
+  handling belongs to text assembly.
+- Untagged PDFs (common for contracts) are out of scope for this lane.
+
+### Verification
+
+```text
+bun run test packages/import-pdf scripts/experiments
+139 pass
+0 fail
+```
+
+```text
+bun run typecheck            4 successful tasks
+bun run check:research-privacy   tracked tree passed
+bun run check:import-pdf-quality passed: true
+bun run test scripts/api-report.test.ts   5 pass
+```
+
 ## Temporary multi-engine oracle spike
 
 Result: **diagnostic architecture GO; production integration NOT proven**.

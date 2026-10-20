@@ -32,12 +32,12 @@ and cross-host PDFium parity all change together.
 | PIQ-08 | DONE | `EVIDENCE.md#piq-08` |
 | PIQ-09 | DONE | `EVIDENCE.md#piq-09` |
 | PIQ-10 | DONE | `EVIDENCE.md#piq-10` |
-| PIQ-11 | OPEN | identify page-external structure children deterministically |
+| PIQ-11 | SUPERSEDED | full-document tag tree (Section 14a); spike GO |
 | PIQ-12 | OPEN | preserve usable siblings of page-external or unresolved children |
 | PIQ-13 | OPEN | support intentional empty native table cells |
 | PIQ-14 | OPEN | reconstruct safe punctuation line boundaries |
 | PIQ-15 | OPEN | reconcile native table continuations across pages |
-| PIQ-16 | OPEN | detect geometric tables as local connected grids |
+| PIQ-16 | FROZEN | moved to the local-VLM proposal lane (Section 14a) |
 | PIQ-17 | OPEN | contain unresolved fallbacks to affected regions |
 | PIQ-18 | OPEN | prove the complete neutral and private-live acceptance scenario |
 
@@ -1433,6 +1433,39 @@ only when that local acceptance import contains editable tables and ordinary
 content without table-driven page images.
 
 ---
+
+## 14a. Direction change: propose and verify (2026-10-20)
+
+The acceptance review and the full-document structure-tree spike (see
+`EVIDENCE.md#full-document-structure-tree-spike`) change how PIQ-11 through
+PIQ-17 are approached. AtlCLI no longer tries to *detect* all structure with
+its own heuristics. Instead, structure sources **propose** blocks, rows and
+cells, and the PDFium character facts **verify** them: a proposal is accepted
+only when every referenced character maps to exactly one PDFium character.
+Structure never contributes text of its own.
+
+Proposal sources, in order:
+
+1. **Full-document tag tree** (deterministic, default). A pure TypeScript
+   reader (`pdf-objects.ts`, `struct-tree.ts`) traverses `StructTreeRoot` with
+   stable object identity across pages and joins `(page, MCID)` references
+   with PDFium characters. Runs unchanged in CLI, browser and Forge.
+2. **Local document VLM** (opt-in switch, user-provided local endpoint), for
+   untagged born-digital PDFs. Separate specification.
+3. **Frontier model** (later, separate PR; optional when a frontier LLM is
+   already configured).
+
+Consequences for the open packages:
+
+| Task | New scope |
+|---|---|
+| PIQ-11 | replaced by the full-document tree; page-external children no longer need cross-page path reconciliation |
+| PIQ-12 | kept, smaller: siblings come from the document tree |
+| PIQ-13 | kept: empty cells, including producer-omitted cells placed by `/Headers` |
+| PIQ-14 | kept: punctuation line boundaries inside cells remain unresolved today |
+| PIQ-15 | simplified: logical table identity and repeated `THead` evidence come from the tree |
+| PIQ-16 | frozen: geometric grid recovery moves to the VLM proposal lane |
+| PIQ-17, PIQ-18 | kept |
 
 ## 15. Open implementation work packages and proof gates
 
