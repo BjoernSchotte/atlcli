@@ -150,7 +150,12 @@ export function summarizeActionsJobs(
     const runnerSeconds = skipped
       ? null
       : elapsedSeconds(job.started_at, job.completed_at, job.name);
-    const queueSeconds = skipped
+    // A job carried over into a re-run attempt keeps its old started_at but
+    // gets the new attempt's created_at; it never queued in this attempt.
+    const carriedOver =
+      (timestamp(job.started_at, `${job.name} start`) ?? Infinity) <
+      (timestamp(job.created_at, `${job.name} creation`) ?? -Infinity);
+    const queueSeconds = skipped || carriedOver
       ? null
       : elapsedSeconds(job.created_at, job.started_at, `${job.name} queue`);
     return {

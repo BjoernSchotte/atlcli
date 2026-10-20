@@ -32,6 +32,7 @@ import {
   type ArtifactDigest,
 } from "./release-artifacts.js";
 import { readReleaseTree, releaseTreeDigest } from "./release-archive.js";
+import { ADVISORY_JOB_NAMES } from "./ci/release-eligibility.js";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
@@ -73,9 +74,11 @@ interface SecurityAttestation {
 interface SourceEligibility {
   schema: "atlcli.source-eligibility/v1";
   decision: "eligible" | "blocked";
+  degraded: boolean;
   sourceSha: string;
-  workflow: { conclusion: string };
-  requiredJob: { conclusion: string };
+  workflow: { conclusion: string | null };
+  requiredJob: { conclusion: string | null };
+  advisory: { name: string; conclusion: string }[];
 }
 
 interface ExtractedExtensionInspection {
@@ -535,11 +538,18 @@ export async function verifyReleaseArtifacts(input: {
     throw new Error("security attestation contains a failed check");
   }
   if (metadata.channel === "dev") {
+    // Same rule as release-eligibility.ts: a failed canonical run is admissible
+    // only when every failed job is an allowlisted advisory job.
+    const advisoryOnlyFailure =
+      eligibility?.workflow.conclusion === "failure" &&
+      eligibility.degraded &&
+      eligibility.advisory.length > 0 &&
+      eligibility.advisory.every(({ name }) => ADVISORY_JOB_NAMES.has(name));
     if (
       !eligibility ||
       eligibility.sourceSha !== metadata.sourceSha ||
       eligibility.decision !== "eligible" ||
-      eligibility.workflow.conclusion !== "success" ||
+      (eligibility.workflow.conclusion !== "success" && !advisoryOnlyFailure) ||
       eligibility.requiredJob.conclusion !== "success"
     ) {
       throw new Error("source eligibility is not a successful proof for metadata source SHA");

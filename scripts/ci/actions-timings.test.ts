@@ -117,6 +117,35 @@ describe("Actions timing summary", () => {
     expect(summary.eligibleForGreenPercentiles).toBe(false);
   });
 
+  // Regression: on a re-run attempt GitHub carries passed jobs over from the
+  // earlier attempt but stamps created_at with the new attempt, so it lands
+  // after started_at. The crash turned every re-run's telemetry job red, which
+  // marked the canonical main run failed (run 38637454432, attempt 2).
+  test("reports no queue time for jobs carried over from an earlier attempt", () => {
+    const summary = summarizeActionsJobs([
+      {
+        id: 1,
+        name: "consumer-smoke",
+        status: "completed",
+        conclusion: "success",
+        created_at: "2026-07-30T11:00:00Z",
+        started_at: "2026-07-30T10:00:01Z",
+        completed_at: "2026-07-30T10:02:01Z",
+      },
+      {
+        id: 2,
+        name: "rerun-test",
+        status: "completed",
+        conclusion: "success",
+        created_at: "2026-07-30T11:00:00Z",
+        started_at: "2026-07-30T11:00:05Z",
+        completed_at: "2026-07-30T11:01:05Z",
+      },
+    ]);
+    expect(summary.jobs[0]).toMatchObject({ queueSeconds: null, runnerSeconds: 120 });
+    expect(summary.jobs[1]).toMatchObject({ queueSeconds: 5, runnerSeconds: 60 });
+  });
+
   test("rejects malformed and backwards timestamps", () => {
     const base: ActionsJob = {
       id: 1,
