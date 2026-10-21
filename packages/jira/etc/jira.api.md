@@ -1376,6 +1376,9 @@ export interface CsvImportOptions {
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
 export declare function deleteTemplate(name: string): Promise<void>;
 
+// export: descriptionExcerpt
+export declare function descriptionExcerpt(description: unknown, max?: number): string | undefined;
+
 // export: ensureMigrated
 export declare function ensureMigrated(): Promise<{
     migrated: string[];
@@ -2667,6 +2670,8 @@ export interface ReportIssue {
     link: string;
     summary: string;
     summaryMd: string;
+    excerpt?: string;
+    excerptMd?: string;
     type: string;
     status: string;
     statusCategory: ReportStatusCategory;
@@ -4259,6 +4264,9 @@ export interface CsvImportOptions {
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
 export declare function deleteTemplate(name: string): Promise<void>;
 
+// export: descriptionExcerpt
+export declare function descriptionExcerpt(description: unknown, max?: number): string | undefined;
+
 // export: ensureMigrated
 export declare function ensureMigrated(): Promise<{
     migrated: string[];
@@ -5550,6 +5558,8 @@ export interface ReportIssue {
     link: string;
     summary: string;
     summaryMd: string;
+    excerpt?: string;
+    excerptMd?: string;
     type: string;
     status: string;
     statusCategory: ReportStatusCategory;

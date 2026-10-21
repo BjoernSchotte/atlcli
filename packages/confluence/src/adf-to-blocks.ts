@@ -617,7 +617,15 @@ function decodeInlineChildren(
   if (!nodes) return [];
   const out: InlineNode[] = [];
   for (let index = 0; index < nodes.length; index += 1) {
-    out.push(...decodeInlineNode(nodes[index]!, ctx, `${path}[${index}]`));
+    let node = nodes[index]!;
+    // Confluence keeps the newline of `<br />\n` storage in the next text node;
+    // like HTML, whitespace after a line break starts no new line.
+    if (node.type === "text" && out.at(-1)?.type === "lineBreak" && /^\s/.test(node.text ?? "")) {
+      const text = (node.text ?? "").replace(/^\s+/, "");
+      if (text === "") continue;
+      node = { ...node, text };
+    }
+    out.push(...decodeInlineNode(node, ctx, `${path}[${index}]`));
   }
   return out;
 }

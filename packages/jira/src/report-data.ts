@@ -6,7 +6,7 @@
  * an issue summary like `Fix *all* the [things]` turning into formatting.
  */
 import { getStoryPoints } from "./analysis.js";
-import type { JiraIssue, SprintMetrics } from "./types.js";
+import type { AdfNode, JiraIssue, SprintMetrics } from "./types.js";
 
 export type ReportStatusCategory = "todo" | "inprogress" | "done";
 
@@ -17,6 +17,9 @@ export interface ReportIssue {
   link: string;
   summary: string;
   summaryMd: string;
+  /** Opening text of the description, about two lines; absent when there is none. */
+  excerpt?: string;
+  excerptMd?: string;
   type: string;
   status: string;
   statusCategory: ReportStatusCategory;
@@ -109,12 +112,15 @@ export function buildReportData(input: BuildReportInput): ReportData {
       const parent = f.parent;
       const isEpicParent = parent?.fields?.issuetype?.name === "Epic" || parent?.fields?.issuetype?.hierarchyLevel === 1;
       const parentSummary = parent?.fields?.summary ?? parent?.key ?? "";
+      const excerpt = descriptionExcerpt(f.description);
       return {
         key: issue.key,
         url: browse(issue.key),
         link: `[${issue.key}](${browse(issue.key)})`,
         summary: f.summary ?? "",
         summaryMd: escapeMarkdown(f.summary ?? ""),
+        excerpt,
+        excerptMd: excerpt ? escapeMarkdown(excerpt) : undefined,
         type: f.issuetype?.name ?? "Other",
         status: f.status?.name ?? "",
         statusCategory: category,
@@ -193,6 +199,49 @@ export function buildReportData(input: BuildReportInput): ReportData {
     },
     generatedAt: input.now.toISOString(),
   };
+}
+
+const EXCERPT_MAX = 240;
+/** Blocks whose text is not prose: an excerpt skips them. */
+const NON_PROSE = new Set(["codeBlock", "table", "mediaSingle", "mediaGroup", "blockCard", "embedCard", "extension", "bodiedExtension"]);
+
+/**
+ * The opening prose of a description as one line of plain text, cut at a word
+ * boundary near {@link EXCERPT_MAX} characters. Code, tables and media are
+ * skipped; Data Center wiki-markup strings are only whitespace-collapsed.
+ */
+export function descriptionExcerpt(description: unknown, max = EXCERPT_MAX): string | undefined {
+  const text =
+    typeof description === "string"
+      ? description
+      : description && typeof description === "object"
+        ? proseOf(((description as { content?: AdfNode[] }).content ?? []))
+        : "";
+  const line = text.replace(/\s+/g, " ").trim();
+  if (!line) return undefined;
+  if (line.length <= max) return line;
+  const cut = line.slice(0, max + 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max / 2 ? cut.slice(0, space) : line.slice(0, max)).replace(/[\s.,;:–-]+$/, "")}…`;
+}
+
+function proseOf(nodes: AdfNode[]): string {
+  return nodes
+    .map((node) => {
+      if (NON_PROSE.has(node.type)) return " ";
+      if (node.type === "text") return node.text ?? "";
+      if (node.type === "hardBreak") return " ";
+      if (node.type === "mention" || node.type === "emoji") return String(node.attrs?.text ?? "");
+      if (node.type === "inlineCard") return String(node.attrs?.url ?? "");
+      if (node.type === "status") return String(node.attrs?.text ?? "");
+      if (node.type === "date") {
+        const day = new Date(Number(node.attrs?.timestamp));
+        return Number.isNaN(day.getTime()) ? "" : day.toISOString().slice(0, 10);
+      }
+      // Block boundaries become spaces so paragraphs do not run together.
+      return node.content ? ` ${proseOf(node.content)} ` : "";
+    })
+    .join("");
 }
 
 function statusCategory(key: string | undefined): ReportStatusCategory {

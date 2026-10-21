@@ -399,6 +399,20 @@ describe("storageToBlocks — paragraphs & marks", () => {
     ]);
   });
 
+  test("whitespace after a line break is not carried into the next line", () => {
+    const out = blocks("<ul><li><strong>a</strong><br />\n  b</li></ul>");
+    const item = (out[0] as { items: Array<{ content: Array<{ content: InlineNode[] }> }> }).items[0]!;
+    expect(item.content[0]!.content).toEqual([
+      { type: "text", text: "a", marks: ["bold"] },
+      { type: "lineBreak" },
+      { type: "text", text: "b" },
+    ]);
+    expect((blocks("<p>a<br />\n</p>")[0] as { content: InlineNode[] }).content).toEqual([
+      { type: "text", text: "a" },
+      { type: "lineBreak" },
+    ]);
+  });
+
   test("decodes entities including numeric and nbsp", () => {
     const out = blocks("<p>a &amp; b &lt;c&gt; &#8212; d&nbsp;e</p>");
     const content = (out[0] as { content: InlineNode[] }).content;

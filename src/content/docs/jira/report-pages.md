@@ -52,10 +52,21 @@ The page shows the sprint goal, dates, issue and story-point counts, and done an
 | `--points-field` | field ID | detected (sprint) | Story points field |
 | `--dry-run` | flag | off | Print the markdown and the planned action; write nothing |
 | `--force` | flag | off | Overwrite a same-title page atlcli did not create |
-| `--export` | path ending in `.pdf` or `.docx` | none | Export the page after writing it |
+| `--export` | path ending in `.pdf` or `.docx` | none | Export the page after writing it; an existing file is replaced |
 | `--export-template` | path or name | bundled | Export template (as `atlcli wiki export --template`) |
 | `--list-templates` | flag | off | List the bundled templates |
 | `--print-template` | template name | none | Print a bundled template to start your own |
+
+## PDF layout
+
+A report PDF is laid out for reading on screen or sending around:
+
+- no cover page; the page title and metadata sit in the running header,
+- a contents page only when the report has 8 or more sections (`##` headings),
+- issue keys shown as pills (`ATLCLI-53`) that link to Jira,
+- each issue with its summary in bold and the first two lines or so of its description.
+
+The closing "End of document" page of the default export template is kept. For full control, pass your own PDF template with `--export-template` (see [Create a PDF template from YAML](../confluence/pdf-template-from-yaml.md)).
 
 ## Running it again
 
@@ -99,6 +110,15 @@ name: changelog
 {{/each}}
 ```
 
+With the description excerpt on its own line (a trailing `\` is a line break):
+
+```markdown
+{{#each doneIssues}}
+- {{{link}}} **{{{summaryMd}}}**{{#if excerptMd}}\
+  {{{excerptMd}}}{{/if}}
+{{/each}}
+```
+
 Grouped by epic, with each issue's assignee:
 
 ```markdown
@@ -138,7 +158,7 @@ Fields ending in `Md` and `link` are already escaped markdown. Insert them with 
 | `metrics.sayDoRatio` | number | Sprint only, with a story points field |
 | `generatedAt` | ISO timestamp | Render time |
 
-Each issue has `key`, `url`, `link` (`[KEY](url)`), `summary`, `summaryMd`, `type`, `status`, `statusCategory` (`todo`, `inprogress`, `done`), `done`, `assignee`, `points`, and `epic` (`key`, `url`, `summary`, `summaryMd`).
+Each issue has `key`, `url`, `link` (`[KEY](url)`), `summary`, `summaryMd`, `excerpt` and `excerptMd` (the opening prose of the description as one line, about 240 characters, code and tables skipped; absent when the description is empty), `type`, `status`, `statusCategory` (`todo`, `inprogress`, `done`), `done`, `assignee`, `points`, and `epic` (`key`, `url`, `summary`, `summaryMd`).
 
 ## Troubleshooting
 

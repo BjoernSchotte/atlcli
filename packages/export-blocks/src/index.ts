@@ -143,11 +143,18 @@ export interface SmartCardSemantics {
 /** Deterministic visible label shared by both static export engines. */
 export function smartCardDisplayText(card: SmartCardSemantics): string {
   const title = card.title?.trim();
-  if (title) return title;
   const url = card.url?.trim();
+  // A pasted Jira link stores its URL as the title; the issue key reads better.
+  if (url && (!title || title === url)) {
+    const issueKey = JIRA_BROWSE_KEY.exec(url)?.[1];
+    if (issueKey) return issueKey;
+  }
+  if (title) return title;
   if (url) return url;
   return card.source === "datasource" ? "Datasource" : "Smart link";
 }
+
+const JIRA_BROWSE_KEY = /^https?:\/\/[^/?#]+(?:\/[^?#]*)?\/browse\/([A-Z][A-Z0-9_]*-\d+)\/?(?:[?#].*)?$/;
 
 /**
  * A typed inline node. Serializers render these to runs/spans; the model never

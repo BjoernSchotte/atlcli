@@ -8,6 +8,7 @@ import type {
   DocxExportJobRequestV1,
   ExportSourceV1,
   PdfExportJobRequestV1,
+  PdfExportSettingsV1,
   PdfTemplateReferenceV1,
   PdfOutputPolicyV1,
 } from "@atlcli/export-jobs";
@@ -130,6 +131,7 @@ export function buildCliPdfJobRequest(
     imagePpi?: number;
     outputPolicy?: PdfOutputPolicyV1;
     template?: PdfTemplateReferenceV1;
+    settings?: PdfExportSettingsV1;
   },
 ): PdfExportJobRequestV1 {
   const targetKind = input.outputTargetKind ?? "file";
@@ -158,7 +160,7 @@ export function buildCliPdfJobRequest(
         id: "builtin-default",
         manifestVersion: "1",
       },
-    settings: {},
+    settings: input.settings ?? {},
     options: {
       resolveMacros: true,
       codeTheme: resolveCodeThemeId(input.codeTheme),

@@ -493,6 +493,10 @@ async function handlePdfExport(
     ...(imageProfileFlag ? { imageProfile: imageProfileFlag } : {}),
     ...(imagePpi !== undefined ? { imagePpi } : {}),
     ...(outputPolicy !== undefined ? { outputPolicy } : {}),
+    settings: {
+      ...(hasFlag(flags, "no-cover") ? { cover: false } : {}),
+      ...(hasFlag(flags, "no-toc") ? { outline: false } : {}),
+    },
   });
   const { exportPdfAsOrdinaryJob } = await import("./export-pdf.js");
   const outcome = await exportPdfAsOrdinaryJob({
@@ -2165,6 +2169,8 @@ PDF Options (--format pdf):
   --out-dir <dir>           Write to a directory with a derived <pageId>-<slug>.pdf
                             name (alternative to --output; not both)
   --force                   Overwrite an existing regular output file
+  --no-cover                Leave out the cover page
+  --no-toc                  Leave out the table of contents
   --strict                  Exit code 2 if the export completed with warnings
   --no-cache                Do not persist downloaded assets across invocations
   --exported-at <ISO8601>   Fix the export timestamp (reproducible builds; also

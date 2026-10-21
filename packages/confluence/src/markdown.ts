@@ -75,6 +75,10 @@ const md = new MarkdownIt({
   .use(sub)  // ~subscript~
   .use(sup); // ^superscript^
 
+// markdown-it writes `<br />\n`; Confluence keeps that newline as a leading
+// space of the next line (in storage and ADF), so write the break alone.
+md.renderer.rules.hardbreak = () => "<br />";
+
 md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx];
   const info = (token.info || "").trim();

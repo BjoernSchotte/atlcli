@@ -49,7 +49,7 @@ export interface ReportIdentity {
   contentHash?: string;
 }
 
-const REPORT_FIELDS = ["summary", "status", "issuetype", "assignee", "parent"];
+const REPORT_FIELDS = ["summary", "status", "issuetype", "assignee", "parent", "description"];
 
 export async function handleVersionNotes(args: string[], flags: Flags, opts: OutputOptions): Promise<void> {
   if (await printTemplateIfAsked(flags, opts)) return;
@@ -282,13 +282,33 @@ async function publishReport(
     // Same code path as `atlcli wiki export`; with --json its report follows
     // the page result as a second JSON document.
     const { handleExport } = await import("./export.js");
-    const exportFlags: Flags = { output: exportPath, format: exportPath.toLowerCase().endsWith(".pdf") ? "pdf" : "docx" };
+    const exportFlags = reportExportFlags(exportPath, markdown);
     const exportTemplate = getFlag(flags, "export-template");
     if (exportTemplate) exportFlags.template = exportTemplate;
     const profileFlag = getFlag(flags, "profile");
     if (profileFlag) exportFlags.profile = profileFlag;
     await handleExport([pageId], exportFlags, opts);
   }
+}
+
+/** `wiki export` flags for a report's `--export` file. */
+export function reportExportFlags(exportPath: string, markdown: string): Flags {
+  const format = exportPath.toLowerCase().endsWith(".pdf") ? "pdf" : "docx";
+  // Regenerated on every run, so the file is replaced like the page is.
+  const flags: Flags = { output: exportPath, format, force: true };
+  // A report is short: no cover page, and a contents page only once it has many sections.
+  if (format === "pdf") {
+    flags["no-cover"] = true;
+    if (!reportNeedsToc(markdown)) flags["no-toc"] = true;
+  }
+  return flags;
+}
+
+/** ponytail: section count stands in for length; measure rendered pages if this misjudges. */
+export const REPORT_TOC_MIN_HEADINGS = 8;
+
+export function reportNeedsToc(markdown: string): boolean {
+  return (markdown.match(/^#{1,3} \S/gm) ?? []).length >= REPORT_TOC_MIN_HEADINGS;
 }
 
 async function resolveReportTemplate(name: string, profileName: string, space: string): Promise<Template | null> {

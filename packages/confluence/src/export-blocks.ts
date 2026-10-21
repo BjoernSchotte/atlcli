@@ -2056,7 +2056,9 @@ function walkInline(nodes: XmlNode[], ctx: WalkCtx): InlineNode[] {
   const out: InlineNode[] = [];
   for (const node of nodes) {
     if (node.type === "text") {
-      if (node.text !== "") out.push({ type: "text", text: node.text });
+      // `<br />\n` is common storage; like HTML, whitespace after a line break starts no new line.
+      const text = out.at(-1)?.type === "lineBreak" ? node.text.replace(/^\s+/, "") : node.text;
+      if (text !== "") out.push({ type: "text", text });
       continue;
     }
     out.push(...walkInlineElement(node, ctx));

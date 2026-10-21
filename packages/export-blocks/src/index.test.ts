@@ -6,6 +6,7 @@ import {
   materializeTable,
   mentionDisplayText,
   resolveCalloutIcon,
+  smartCardDisplayText,
   type ExportBlock,
 } from "./index.js";
 
@@ -49,5 +50,16 @@ describe("@atlcli/export-blocks", () => {
         table.rows[0]!.cells[0],
       ],
     }]);
+  });
+
+  test("smart links to a Jira issue show the issue key instead of the URL", () => {
+    const url = "https://x.atlassian.net/browse/ATLCLI-53";
+    expect(smartCardDisplayText({ appearance: "inline", source: "url", url, title: url })).toBe("ATLCLI-53");
+    expect(smartCardDisplayText({ appearance: "inline", source: "url", url })).toBe("ATLCLI-53");
+    expect(smartCardDisplayText({ appearance: "inline", source: "url", url: "https://jira.example.com/jira/browse/AB_2-7?focusedId=1" })).toBe("AB_2-7");
+    // A real title wins; other URLs are untouched.
+    expect(smartCardDisplayText({ appearance: "inline", source: "url", url, title: "Fix login" })).toBe("Fix login");
+    expect(smartCardDisplayText({ appearance: "inline", source: "url", url: "https://x.atlassian.net/wiki/x" })).toBe("https://x.atlassian.net/wiki/x");
+    expect(smartCardDisplayText({ appearance: "inline", source: "url", url: "https://x.atlassian.net/browse/lower-1" })).toBe("https://x.atlassian.net/browse/lower-1");
   });
 });
